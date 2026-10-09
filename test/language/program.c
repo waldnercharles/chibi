@@ -19,6 +19,7 @@
 #include "types/catalog.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -2270,7 +2271,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     );
     fclose(file);
     REQUIRE(!chmod(manifest, 0640) && !chmod(path, 0600));
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 2);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 12);
     char text[2048];
     file = fopen(outside, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
@@ -2283,7 +2284,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(manifest, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 14\n"));
+    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 15\n"));
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
@@ -2419,7 +2420,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(!strncmp(text, "version 14\n", 11));
+    REQUIRE(!strncmp(text, "version 15\n", 11));
     unlink(path);
     snprintf(path, sizeof path, "%s/content/B.chibi", root);
     file = fopen(path, "rb");
@@ -2510,6 +2511,89 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                                { .type = PIN_BOOL, .b = true } };
     REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
     REQUIRE(number_state(instance, "n", 8));
+    return true;
+}
+/* Migrates a version 14 project holding content/Level.kdl and a start scene
+ * at `path` under the root, which the manifest names `start_scene`. */
+static bool migrates_start_scene(
+    const char *source,
+    const char *expected,
+    const char *start_scene,
+    const char *path
+)
+{
+    char root[] = "/tmp/chibi-migrate-XXXXXX", manifest[256], error[256];
+    REQUIRE(mkdtemp(root));
+    char scene[256], start[256], directory[256];
+    snprintf(directory, sizeof directory, "%s/content", root);
+    REQUIRE(!mkdir(directory, 0700));
+    snprintf(scene, sizeof scene, "%s/content/Level.kdl", root);
+    snprintf(start, sizeof start, "%s/%s", root, path);
+    snprintf(directory, sizeof directory, "%s", start);
+    *strrchr(directory, '/') = 0;
+    REQUIRE(!mkdir(directory, 0700) || errno == EEXIST);
+    const char *scenes[] = { scene, start };
+    for (int i = 0; i < 2; i++) {
+        FILE *file = fopen(scenes[i], "wb");
+        fputs(source, file);
+        fclose(file);
+    }
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    FILE *file = fopen(manifest, "wb");
+    fprintf(file, "version 14\ncontent \"content\"\nstart_scene \"%s\"\n", start_scene);
+    fclose(file);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    for (int i = 0; i < 2; i++) {
+        char text[1024];
+        file = fopen(scenes[i], "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        REQUIRE(!strcmp(text, expected));
+        unlink(scenes[i]);
+    }
+    unlink(manifest);
+    rmdir(directory);
+    snprintf(directory, sizeof directory, "%s/content", root);
+    rmdir(directory);
+    rmdir(root);
+    return true;
+}
+TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors)
+{
+    const char *source = "version 1\n"
+                         "name \"Start\"\n"
+                         "(array)entities {\n"
+                         "    - name=\"Camera\" prototype=\"Camera\"\n"
+                         "    - name=\"Player\" prototype=\"Player\" {\n"
+                         "        (array)behaviors \"Move\"\n"
+                         "    }\n"
+                         "}\n";
+    const char *expected = "version 1\n"
+                           "name \"Start\"\n"
+                           "(array)entities {\n"
+                           "    - {\n"
+                           "        name \"Camera\"\n"
+                           "        prototype \"Camera\"\n"
+                           "        (array)behaviors\n"
+                           "    }\n"
+                           "    - {\n"
+                           "        name \"Player\"\n"
+                           "        prototype \"Player\"\n"
+                           "        (array)behaviors \"Move\"\n"
+                           "    }\n"
+                           "}\n";
+    char *migrated = chibi_migrate_scene_behaviors(source);
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    REQUIRE(!chibi_migrate_scene_behaviors(expected));
+    REQUIRE(!chibi_migrate_scene_behaviors(
+        "name \"Camera\"\n(array)entities {\n    - name=\"A\"\n}\n"
+    ));
+    free(migrated);
+
+    /* Scenes outside content/scenes migrate too, and so does a start scene
+     * the scan cannot find: outside the content, or hidden. */
+    REQUIRE(migrates_start_scene(source, expected, "../Start.kdl", "Start.kdl"));
+    REQUIRE(migrates_start_scene(source, expected, ".scenes/Start.kdl", "content/.scenes/Start.kdl"));
     return true;
 }
 TEST_CASE(program_single_result_call_fields_read_the_result)
@@ -3182,6 +3266,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_11_references_migrate_to_values);
     RUN_TEST_CASE(program_version_12_results_migrate_to_returns);
     RUN_TEST_CASE(program_version_13_values_migrate_to_their_expressions);
+    RUN_TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

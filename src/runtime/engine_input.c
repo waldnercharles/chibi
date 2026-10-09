@@ -18,7 +18,13 @@ typedef struct
     char *action;
     bool pressed;
 } input_transition;
-typedef input_transition input_button;
+typedef struct
+{
+    char *action;
+    bool pressed;
+    /* started: went down since the last step began; stepped: before this one. */
+    bool started, stepped;
+} input_button;
 typedef struct
 {
     ecs_entity entity;
@@ -35,6 +41,8 @@ struct engine_input
     CF_V2 aim;
     bool aim_sampled, aim_point, firing;
     uint64_t controls;
+    /* Controls held after each change since the last step, oldest first. */
+    uint64_t *trail;
     input_button *buttons;
     input_transition *transitions;
     ecs_entity *controlled;
@@ -63,6 +71,7 @@ void engine_input_free(engine_input *input)
         free(input->buttons[i].action);
     }
     afree(input->transitions);
+    afree(input->trail);
     afree(input->buttons);
     afree(input->controlled);
     afree(input->released);
@@ -139,6 +148,7 @@ void engine_input_clear(engine_input *input)
     input->aim_sampled = true;
     input->firing = false;
     input->controls = 0;
+    aclear(input->trail);
     clear_actions(input);
     /* Pause may never run another fixed tick. Clear reflected local input now,
      * without dispatching authored gameplay while transport is stopped. */
@@ -171,13 +181,18 @@ static bool update_button(engine_input *input, const char *action, bool down)
 {
     int index = button_index(input, action);
     if (index < 0) {
-        apush(input->buttons, ((input_button){ xstrdup(action), down }));
+        apush(
+            input->buttons,
+            ((input_button){ .action = xstrdup(action), .pressed = down, .started = down })
+        );
         return down;
     }
-    if (input->buttons[index].pressed == down) {
+    input_button *button = &input->buttons[index];
+    if (button->pressed == down) {
         return false;
     }
-    input->buttons[index].pressed = down;
+    button->pressed = down;
+    button->started |= down;
     return true;
 }
 
@@ -214,6 +229,9 @@ int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
 {
     _Static_assert(GAME_CONTROL_COUNT < 64, "control bitset");
     *firing = false;
+    if (controls != input->controls) {
+        apush(input->trail, controls);
+    }
     input->controls = controls;
     input_button *sample = NULL;
     ecs_component_id component = GAME_COMPONENT_GameActionBinding.id;
@@ -242,7 +260,7 @@ int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
                 index++;
             }
             if (index == acount(sample)) {
-                apush(sample, ((input_button){ (char *)binding->action, down }));
+                apush(sample, ((input_button){ .action = (char *)binding->action, .pressed = down }));
             } else {
                 sample[index].pressed |= down;
             }
@@ -280,6 +298,12 @@ int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
     }
     afree(sample);
     return result;
+}
+
+int engine_input_trail(const engine_input *input, const uint64_t **controls)
+{
+    *controls = input->trail;
+    return acount(input->trail);
 }
 
 input_keyframe engine_input_held(const engine_input *input)
@@ -537,6 +561,11 @@ static void apply_action_state(engine_input *input)
 int engine_input_apply(engine_input *input)
 {
     input->message[0] = 0;
+    aclear(input->trail);
+    for (int i = 0; i < acount(input->buttons); i++) {
+        input->buttons[i].stepped = input->buttons[i].started;
+        input->buttons[i].started = false;
+    }
     apply_action_state(input);
     int result = apply_aim_sample(input);
     if (result >= 0) {
@@ -606,3 +635,37 @@ const char *engine_input_error(const engine_input *input)
 {
     return input->message;
 }
+
+static const input_button *named_button(const engine_input *input, const char *action)
+{
+    int index = input ? button_index(input, action) : -1;
+    return index < 0 ? NULL : &input->buttons[index];
+}
+
+static const char *action_held(void *service, const pin_value *in, pin_value *out)
+{
+    if (!in[0].str || !in[0].str[0]) {
+        return "Action Held requires an action name";
+    }
+    const input_button *button = named_button(service, in[0].str);
+    out[0].b = button && button->pressed;
+    return NULL;
+}
+
+static const char *action_pressed(void *service, const pin_value *in, pin_value *out)
+{
+    if (!in[0].str || !in[0].str[0]) {
+        return "Action Pressed requires an action name";
+    }
+    const input_button *button = named_button(service, in[0].str);
+    out[0].b = button && button->stepped;
+    return NULL;
+}
+
+const node_host_call GAME_INPUT_HELD_CALL = { .service = GAME_INPUT_SERVICE,
+                                              .invoke = action_held,
+                                              .optional_service = true };
+const node_host_call GAME_INPUT_PRESSED_CALL = { .service = GAME_INPUT_SERVICE,
+                                                 .invoke = action_pressed,
+                                                 .optional_service = true };
+const node_access GAME_INPUT_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };

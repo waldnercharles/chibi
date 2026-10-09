@@ -15,6 +15,7 @@ typedef struct
     av_value *components;
     av_value *retained;
     char **behaviors;
+    bool own_behaviors; /* behaviors replace the prototype's; otherwise it keeps them */
 } game_scene_entity;
 
 typedef struct game_scene_document
@@ -42,13 +43,8 @@ int game_scene_document_rename_entity(
     char *error,
     size_t error_size
 );
-int game_scene_document_add_entity(
-    game_scene_document *document,
-    const char *name,
-    const char *prototype,
-    const char *const *behaviors,
-    int behavior_count
-);
+/* The new entity keeps its prototype's behaviors until it sets its own. */
+int game_scene_document_add_entity(game_scene_document *document, const char *name, const char *prototype);
 int game_scene_document_remove_entity(game_scene_document *document, int index);
 int game_scene_document_set_entity_prototype(game_scene_document *document, int index, const char *prototype);
 int game_scene_document_set_entity_behaviors(

@@ -97,7 +97,7 @@ typedef struct
     game_behavior_world *behaviors;
     ecs_entity *entities;
 } destroy_trace;
-static void destroyed(ecs_world *world, ecs_entity entity, void *user)
+static void destroyed(ecs_world *world, ecs_event, ecs_entity entity, ecs_component_id, void *user)
 {
     destroy_trace *trace = user;
     assert(ecs_entity_is_alive(world, entity));
@@ -151,7 +151,7 @@ static void test_bulk_destroy(behavior_backend backend)
     game_entities_request_destroy(host, stale);
     game_entities_request_destroy(host, (ecs_entity){ 0 });
     destroy_trace trace = { .behaviors = world };
-    ecs_world_set_destroy_observer(ecs, destroyed, &trace);
+    int observer = ecs_world_observe(ecs, ECS_ON_DESTROY, 0, destroyed, &trace);
     assert(!game_entities_flush(host));
     assert(acount(trace.entities) == COUNT / 2);
     for (int i = 0; i < acount(trace.entities); i++) {
@@ -160,7 +160,7 @@ static void test_bulk_destroy(behavior_backend backend)
             ecs_entity_to_u64(entities[COUNT - 2 - i * 2])
         );
     }
-    ecs_world_set_destroy_observer(ecs, NULL, NULL);
+    assert(!ecs_world_unobserve(ecs, observer));
     afree(trace.entities);
     assert(ecs_world_live_count(ecs) == (COUNT + 1) / 2);
     assert(game_behavior_attachment_count(world) == COUNT + 1);

@@ -39,10 +39,13 @@ what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
 model and a shape share a name there is no catalog, so it lists no asset
 problems until one is renamed. It never changes files: a project saved by an
 earlier build fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
-A prototype's `(array)includes` names other prototypes, which `chibi_ctl` finds
-by file name, so name each prototype's file after it. `--format` checks such a
-prototype but keeps its text as written instead of folding the included
-components in.
+A prototype is the `name` it declares, whatever its file is called: scenes and
+other prototypes' `(array)includes` find it by that name in the player and in
+`chibi_ctl` alike, and two prototypes that declare one name, or a name over
+1024 bytes, are refused.
+`new_asset` names a new prototype's file after it. `--format` checks a
+prototype with includes but keeps its text as written instead of folding the
+included components in.
 
 ## Declare components
 

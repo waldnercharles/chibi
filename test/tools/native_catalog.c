@@ -53,6 +53,10 @@ TEST_CASE(native_application_catalog_links_generated_kernels_and_input_reads)
     REQUIRE(index >= 0);
     declaration = &catalog->capabilities[index];
     REQUIRE(declaration->parameter_count == 1 && declaration->parameters[0].type.storage == PIN_STR);
+    /* No host event takes an action's name, so a map may name Fire or Dash. */
+    REQUIRE(script_catalog_find_capability(catalog, "Tick", SCRIPT_CAPABILITY_EVENT) >= 0);
+    REQUIRE(script_catalog_find_capability(catalog, "Fire", SCRIPT_CAPABILITY_EVENT) < 0);
+    REQUIRE(script_catalog_find_capability(catalog, "Dash", SCRIPT_CAPABILITY_EVENT) < 0);
     native_capabilities_free(native);
     native = NULL;
     REQUIRE(output.x == -3 && output.y == 10);

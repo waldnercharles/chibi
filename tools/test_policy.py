@@ -122,7 +122,7 @@ TOOLS = {
     'compile-space-cadet': [str(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/bin/chibi-compile'),
                             '--project-root', '/Users/cwaldner/Personal/chibi-space-cadet',
                             '--output', str(ROOT / '.chibi/architecture/player-space-cadet/project.chibip')],
-    # One reviewed CPU-only typed renderer transaction/lifetime case; no window, GPU, fonts or files.
+    # Reviewed CPU-only typed renderer transaction/lifetime cases and pure desktop key/stick mapping; no window, GPU, fonts or files.
     'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--render-resources'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene-prepared'],

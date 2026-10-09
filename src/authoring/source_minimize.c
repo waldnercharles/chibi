@@ -98,31 +98,21 @@ static bool same_symbol(const pair *p, int i, int j)
            x->outcome == y->outcome && x->lazy_local == y->lazy_local &&
            ((payload(x) && payload(y)) || same_text(x->name, y->name));
 }
+/* Arguments evaluate in source order, so a rewrite must keep their order as
+ * well as their parameters. */
 static bool same_arguments(const pair *p, const script_expression *x, const script_expression *y)
 {
     if (x->argument_count != y->argument_count) {
         return false;
     }
-    bool *used = xcalloc((size_t)(y->argument_count ? y->argument_count : 1), sizeof *used);
-    bool same = true;
-    for (int i = 0; same && i < x->argument_count; i++) {
-        const script_argument *left = &x->arguments[i];
-        int match = -1;
-        for (int j = 0; match < 0 && j < y->argument_count; j++) {
-            const script_argument *right = &y->arguments[j];
-            if (!used[j] && right->parameter == left->parameter &&
-                right->member == left->member) {
-                match = j;
-            }
-        }
-        same = match >= 0 &&
-               same_expression(p, left->value, y->arguments[match].value);
-        if (same) {
-            used[match] = true;
+    for (int i = 0; i < x->argument_count; i++) {
+        const script_argument *left = &x->arguments[i], *right = &y->arguments[i];
+        if (right->parameter != left->parameter || right->member != left->member ||
+            !same_expression(p, left->value, right->value)) {
+            return false;
         }
     }
-    free(used);
-    return same;
+    return true;
 }
 /* Component paths record their root symbol only for navigation; the
  * receiver expression carries their meaning. */

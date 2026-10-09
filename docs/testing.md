@@ -36,7 +36,8 @@ that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 
 CI runs the build and both groups on Linux and macOS. On Windows it builds the
-SDK tools, compiles `test/fixtures/studio` and builds Studio against the
+SDK tools, compiles `test/fixtures/studio` under a one-minute step timeout
+(the test supervisor needs POSIX signals) and builds Studio against the
 installed SDK, without running tests. The Windows jobs are advisory until they
 first pass.
 

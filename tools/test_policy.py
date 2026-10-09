@@ -76,7 +76,7 @@ TOOLS = {
     'source-edit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-edit'],
     # One new-asset scaffolding case in a temporary content folder.
     'new-asset': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--new-asset'],
-    # Nine validate_project cases, each a scaffolded temporary project and a few built chibi_ctl runs.
+    # Twelve validate_project cases, each a scaffolded temporary project and a few built chibi_ctl runs.
     'validate-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--validate-project',
                          str(ROOT / 'build/bin/chibi_ctl')],
     'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--shader-parameters-prepared'],
@@ -128,8 +128,17 @@ TOOLS = {
     'compile-space-cadet': [str(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/bin/chibi-compile'),
                             '--project-root', '/Users/cwaldner/Personal/chibi-space-cadet',
                             '--output', str(ROOT / '.chibi/architecture/player-space-cadet/project.chibip')],
-    # Reviewed CPU-only typed renderer transaction/lifetime cases and pure desktop key/stick mapping; no window, GPU, fonts or files.
+    # Reviewed CPU-only renderer cases: typed transaction/lifetime, sprite image sets, sky face layout
+    # and halves, sky irradiance, the split-sum table, sky publication, and pure desktop key/stick
+    # mapping; no window, GPU, fonts or files.
     'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--render-resources'],
+    # Hidden-app 64x64 3D renders: rhythm, ambient, lights, shadows, exposure, the Environment
+    # sky and its light, and color ramps.
+    'scene3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene3d'],
+    # Four reviewed hidden-app 64x64 cases: a ramp past 4 KB of the ramp table through a 2D draw
+    # shader and the material raster, every program kind compiling the table, and the table
+    # counted among a raster batch's samplers.
+    'material-ramps': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--material-ramps'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene-prepared'],
     # Five independently reviewed model/shader/mesh preparation, persistence and lifetime cases; no files, world or GPU.
@@ -146,6 +155,9 @@ TOOLS = {
     'text-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--text-format'],
     # One reviewed in-tree Box3D package case: a falling box comes to rest and three raycasts, CPU only.
     'box3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--box3d'],
+    # Four reviewed in-tree Radiance .hdr cases: flat and run-length decoding, malformed files,
+    # preparation from mounted content and import without replacement; one temporary folder, no GPU.
+    'sky-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--sky-files'],
     # Nine reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, sound requests, declared components, per-step action state and recorded taps, and held actions across a pause.
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--native'],
     # 2D physics through ECS and Contact Begin events: motion, contacts, masks, queries and parallel collection.

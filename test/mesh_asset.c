@@ -130,7 +130,7 @@ void test_mesh_asset()
     assert(render_mesh_surface_pick(&surface, (CF_V2){ 10, 20 }, &height));
     near_value(height, 7);
     CF_V3 normal = render_mesh_surface_normal(
-        render_arena_visual_model(&surface.parts[0].visual),
+        render_scene3d_visual_model(&surface.parts[0].visual),
         asset.vertices[0].normal
     );
     near_value(normal.x, 0);

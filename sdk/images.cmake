@@ -1,10 +1,15 @@
 # CPU resident images and typed pixel artifacts have no desktop dependencies.
 if(NOT TARGET chibi_image_catalog)
-    add_library(chibi_image_catalog STATIC "${CHIBI_SDK_ROOT}/src/runtime/images/catalog.c")
+    add_library(chibi_image_catalog STATIC "${CHIBI_SDK_ROOT}/src/runtime/images/catalog.c"
+        "${CHIBI_SDK_ROOT}/src/runtime/images/sky.c")
     add_library(Chibi::image_catalog ALIAS chibi_image_catalog)
     set_target_properties(chibi_image_catalog PROPERTIES EXPORT_NAME image_catalog)
-    chibi_sdk_headers(chibi_image_catalog PUBLIC runtime/images/catalog.h runtime/images/table.h)
+    chibi_sdk_headers(chibi_image_catalog PUBLIC runtime/images/catalog.h runtime/images/table.h
+        runtime/images/sky.h)
     target_link_libraries(chibi_image_catalog PUBLIC chibi_shader_runtime PRIVATE chibi_types chibi_support)
+    if(UNIX)
+        target_link_libraries(chibi_image_catalog PRIVATE m)
+    endif()
     list(APPEND CHIBI_SDK_TARGETS chibi_image_catalog)
 endif()
 if(CHIBI_SDK_BUILD_COMPILER AND NOT TARGET chibi_image_preparation)

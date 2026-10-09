@@ -2,12 +2,12 @@
 add_library(chibi_visual_catalog STATIC
     "${CHIBI_SDK_ROOT}/src/render/shader_catalog.c"
     "${CHIBI_SDK_ROOT}/src/render/shader_values.c"
-    "${CHIBI_SDK_ROOT}/src/render/arena_parts.c"
+    "${CHIBI_SDK_ROOT}/src/render/scene3d_parts.c"
     "${CHIBI_SDK_ROOT}/src/render/shader_parameters.c")
 add_library(Chibi::visual_catalog ALIAS chibi_visual_catalog)
 set_target_properties(chibi_visual_catalog PROPERTIES EXPORT_NAME visual_catalog)
 chibi_sdk_headers(chibi_visual_catalog PUBLIC render/shader_catalog.h render/shader_catalog_records.h render/shader_values.h
-    render/arena_parts.h render/arena_parts_table.h render/catalog_publication.h render/shader_parameters.h)
+    render/scene3d_parts.h render/scene3d_parts_table.h render/catalog_publication.h render/shader_parameters.h)
 set(visual_private "${CMAKE_CURRENT_BINARY_DIR}/private/visual_catalog")
 foreach(header render/shader_catalog_internal.h)
     configure_file("${CHIBI_SDK_ROOT}/src/${header}" "${visual_private}/${header}" COPYONLY)

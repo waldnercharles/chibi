@@ -166,17 +166,25 @@ of the project. Each refusal's errno tells a bad request from a taken name and
 a storage failure. CPU only; the folder is removed afterwards.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-nine cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+twelve cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
 start scene inside them is reported once; a UI document named by the
-manifest or a scene must exist; a scene's missing prototype or behavior, and
-each syntax error in a source, is one error; a project saved by an earlier
-build is reported, not upgraded; a scene runs as a scenario in a project
-that has a material; and a scenario runs with a real Ogg Vorbis sound but
-refuses copies whose headers or audio packets players cannot decode. A few
-short `chibi_ctl` runs, CPU only; the project is removed afterwards.
+manifest or a scene must exist, and markup that is a folder or a link is
+refused; a scene's missing prototype or behavior, and each syntax error in a
+source, is one error; a project saved by an earlier build is reported, not
+upgraded; the application icon must decode as a PNG and a long project name
+needs a title; a prototype that includes another validates, runs in a scene
+and keeps its include through `--format`, while a missing include is
+reported and the included prototype's behaviors stay its own references;
+a scene runs as a scenario in a project that has a material; a scenario runs
+with a real Ogg Vorbis sound but refuses copies whose headers or audio packets
+players cannot decode; and in a project whose manifest names another content
+folder, assets are scaffolded, validated, run, formatted, found and reported
+there under their `content/` paths, and `status` names that folder even once
+the project is too old to open. A few short `chibi_ctl` runs, CPU only; the
+project is removed afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,
@@ -432,6 +440,22 @@ consumer passes 43 assertions in 0.403 seconds, without files, processes or GPU.
 the copy Cute pins). A box falls onto static ground and comes to rest, then
 closest raycasts hit the box, hit the ground and miss. It needs a native tools
 build and passes 14 assertions in 0.052 seconds, without files, processes or GPU.
+`sky-files` selects four in-tree Radiance `.hdr` cases: flat and run-length
+decoding, fourteen malformed files, preparation from mounted content (read
+once, with an identity that follows the texels) and import that never replaces
+a file. It needs a compiler build, uses one temporary folder and passes 661
+assertions in 0.12 seconds under ASan/UBSan with leak checks, without
+processes or GPU.
+`material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
+fill the first 288 entries of a program's ramp table, so a last ramp's stops
+lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp
+must show its color through a 2D draw shader and in the material raster's
+scene target. The third case only compiles every program kind with the table,
+which cannot catch a binding collision, and the fourth counts the ramp table
+among the samplers a raster batch binds, which GLES3 limits to 16. It needs the
+desktop build with material graphs (`CHIBI_TOOLS_BUILD_DIR=build/test/tools`)
+and passes 32 assertions in 2.5 seconds under ASan/UBSan on Vulkan llvmpipe,
+whose worker threads leak 112 bytes, so it runs with `detect_leaks=0`.
 `graph-model` selects two independently reviewed public consumer cases for nested
 value copies, opaque artifact replacement/destruction and topology mutation
 rules. They pass 25 assertions in 0.355 seconds under ASan/UBSan. The consumer

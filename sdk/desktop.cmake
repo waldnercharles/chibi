@@ -87,19 +87,20 @@ set(render_sources appearance_geometry.c scene_renderer.c shader_fragment.c shad
     shader_publish.c screenshot.c sdf_shapes.c material.c material_lod.c shader_images.c
     shader_program.c sdf_motion.c fog.c material_raster.c fluid_raster.c
     reflections.c radiance.c post_2d.c gpu_timing.c viewport.c audio.c geometry_2d.c grid_2d.c
-    mesh_surface.c mesh_material.c arena3d.c arena_geometry.c arena_influence.c
-    arena_visual.c arena_trail.c arena_camera.c arena_pick.c arena_post.c field_image.c ui.c device_controls.c)
+    mesh_surface.c mesh_material.c scene3d.c scene3d_geometry.c scene3d_influence.c
+    scene3d_visual.c scene3d_trail.c scene3d_camera.c scene3d_pick.c scene3d_post.c scene3d_shadow.c
+    scene3d_light_shadow.c scene3d_sky.c field_image.c ui.c device_controls.c)
 list(TRANSFORM render_sources PREPEND "${CHIBI_SDK_ROOT}/src/render/")
 add_library(chibi_renderer STATIC ${render_sources}
     "${CHIBI_SDK_ROOT}/src/runtime/camera.c")
 add_library(Chibi::render ALIAS chibi_renderer)
 set_target_properties(chibi_renderer PROPERTIES EXPORT_NAME render)
 file(GLOB render_headers RELATIVE "${CHIBI_SDK_ROOT}/src" "${CHIBI_SDK_ROOT}/src/render/*.h")
-list(REMOVE_ITEM render_headers render/shader_catalog_internal.h render/arena_parts.h render/arena_parts_table.h render/catalog_publication.h render/shader_catalog.h render/shader_catalog_records.h render/shader_values.h render/shader_parameters.h)
+list(REMOVE_ITEM render_headers render/shader_catalog_internal.h render/scene3d_parts.h render/scene3d_parts_table.h render/catalog_publication.h render/shader_catalog.h render/shader_catalog_records.h render/shader_values.h render/shader_parameters.h)
 chibi_sdk_headers(chibi_renderer PUBLIC ${render_headers} support/file_watch.h runtime/camera.h)
 set(render_private "${CMAKE_CURRENT_BINARY_DIR}/private/render")
 file(REMOVE "${render_private}/render/shader_catalog_internal.h"
-    "${render_private}/render/arena_parts_internal.h" "${render_private}/render/shader_publish_internal.h")
+    "${render_private}/render/scene3d_parts_internal.h" "${render_private}/render/shader_publish_internal.h")
 foreach(header diagnostics/tracy.h support/math.h third_party/yyjson/yyjson.h)
     if(header STREQUAL "third_party/yyjson/yyjson.h")
         configure_file("${CHIBI_SDK_ROOT}/${header}" "${render_private}/${header}" COPYONLY)

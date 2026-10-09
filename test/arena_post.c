@@ -1,5 +1,4 @@
-#include "render/arena_post.h"
-
+#include "render/scene3d_post.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -11,7 +10,7 @@
 
 typedef struct
 {
-    render_arena_post *post;
+    render_scene3d_post *post;
     CF_Shader emitter;
 } fixture;
 
@@ -50,8 +49,8 @@ static void *read_canvas(CF_Canvas canvas, int bytes)
 static void scene(fixture *f, int width, int height, GameEnvironment settings, int pattern)
 {
     cf_app_update(NULL);
-    if (!render_arena_post_prepare(f->post, width, height, &settings)) {
-        fprintf(stderr, "arena post prepare: %s\n", render_arena_post_error(f->post));
+    if (!render_scene3d_post_prepare(f->post, width, height, &settings)) {
+        fprintf(stderr, "arena post prepare: %s\n", render_scene3d_post_error(f->post));
         assert(false);
     }
     cf_draw_push();
@@ -63,15 +62,15 @@ static void scene(fixture *f, int width, int height, GameEnvironment settings, i
     cf_draw_set_uniform_color("external_color", (CF_Color){ INFINITY, NAN, -INFINITY, 1 });
     cf_draw_quad_fill((CF_Aabb){ { -1, -1 }, { 1, 1 } }, 0);
     cf_draw_pop_shader();
-    cf_render_to(render_arena_post_target(f->post), true);
+    cf_render_to(render_scene3d_post_target(f->post), true);
     cf_draw_pop();
 }
 
 static CF_Pixel *finish(fixture *f, int width, int height)
 {
-    assert(render_arena_post_process(f->post));
+    assert(render_scene3d_post_process(f->post));
     cf_app_draw_onto_screen(false);
-    return read_canvas(render_arena_post_output(f->post), width * height * (int)sizeof(CF_Pixel));
+    return read_canvas(render_scene3d_post_output(f->post), width * height * (int)sizeof(CF_Pixel));
 }
 
 static CF_Pixel *render(fixture *f, int width, int height, GameEnvironment settings, int pattern)
@@ -94,18 +93,18 @@ static float half_value(uint16_t bits)
 
 static bool hdr_and_tonemap(fixture *f)
 {
-    GameEnvironment settings = render_arena_post_defaults();
+    GameEnvironment settings = render_scene3d_post_defaults();
     settings.bloom_strength = 0;
     scene(f, 32, 32, settings, 2);
-    assert(render_arena_post_process(f->post));
+    assert(render_scene3d_post_process(f->post));
     cf_app_draw_onto_screen(false);
-    uint16_t *hdr = read_canvas(render_arena_post_target(f->post), 32 * 32 * 8);
+    uint16_t *hdr = read_canvas(render_scene3d_post_target(f->post), 32 * 32 * 8);
     int center = (16 * 32 + 16) * 4;
     bool ok = fabsf(half_value(hdr[center]) - 4) < 0.01f &&
               fabsf(half_value(hdr[center + 1]) - 1) < 0.01f &&
               fabsf(half_value(hdr[center + 2]) - 0.25f) < 0.01f;
     free(hdr);
-    CF_Pixel *pixels = read_canvas(render_arena_post_output(f->post), 32 * 32 * (int)sizeof(CF_Pixel));
+    CF_Pixel *pixels = read_canvas(render_scene3d_post_output(f->post), 32 * 32 * (int)sizeof(CF_Pixel));
     // Independent display references: sRGB(Reinhard(4,1,.25)).
     CF_Pixel p = pixels[16 * 32 + 16];
     ok &= abs(p.r - 231) <= 1 && abs(p.g - 188) <= 1 && abs(p.b - 124) <= 1 &&
@@ -121,7 +120,7 @@ static bool bloom_and_exposure(fixture *f)
         WIDTH = 128,
         COUNT = WIDTH * WIDTH
     };
-    GameEnvironment settings = render_arena_post_defaults();
+    GameEnvironment settings = render_scene3d_post_defaults();
     settings.bloom_radius = 0.06f;
     settings.bloom_strength = 0;
     CF_Pixel *disabled = render(f, WIDTH, WIDTH, settings, 0);
@@ -155,7 +154,7 @@ static bool bloom_and_exposure(fixture *f)
 
 static bool source_boundaries(fixture *f)
 {
-    GameEnvironment settings = render_arena_post_defaults();
+    GameEnvironment settings = render_scene3d_post_defaults();
     bool ok = true;
     for (int bloom = 0; bloom <= 1; bloom++) {
         settings.bloom_strength = (float)bloom;
@@ -172,7 +171,7 @@ static bool source_boundaries(fixture *f)
                 p.b,
                 p.a
             );
-            uint16_t *hdr = read_canvas(render_arena_post_target(f->post), 8 * 8 * 8);
+            uint16_t *hdr = read_canvas(render_scene3d_post_target(f->post), 8 * 8 * 8);
             int center = (4 * 8 + 4) * 4;
             fprintf(
                 stderr,
@@ -231,7 +230,7 @@ static CF_V2 glow_spread(const CF_Pixel *pixels, int width, int height)
 
 static bool resize_and_radius(fixture *f)
 {
-    GameEnvironment settings = render_arena_post_defaults();
+    GameEnvironment settings = render_scene3d_post_defaults();
     settings.bloom_strength = 1;
     settings.bloom_radius = 0.06f;
     CF_Pixel *small = render(f, 256, 128, settings, 0);
@@ -261,7 +260,7 @@ static bool resize_and_radius(fixture *f)
         int width = sizes[i][0], height = sizes[i][1];
         CF_Pixel *pixels = render(f, width, height, settings, 2);
         int actual_w, actual_h;
-        cf_canvas_get_size(render_arena_post_output(f->post), &actual_w, &actual_h);
+        cf_canvas_get_size(render_scene3d_post_output(f->post), &actual_w, &actual_h);
         ok &= actual_w == width && actual_h == height && pixels[0].r > 200 &&
               pixels[0].a == 255;
         free(pixels);
@@ -272,7 +271,7 @@ static bool resize_and_radius(fixture *f)
 
 static bool state_and_retention(fixture *f)
 {
-    GameEnvironment settings = render_arena_post_defaults();
+    GameEnvironment settings = render_scene3d_post_defaults();
     settings.bloom_strength = 0;
     scene(f, 33, 17, settings, 1);
     cf_draw_push();
@@ -281,7 +280,7 @@ static bool state_and_retention(fixture *f)
     cf_draw_push_scissor((CF_Rect){ 3, 4, 10, 11 });
     cf_draw_push_viewport((CF_Rect){ 6, 7, 12, 13 });
     CF_V2 before = cf_world_to_screen((CF_V2){ 20, 30 });
-    assert(render_arena_post_process(f->post));
+    assert(render_scene3d_post_process(f->post));
     CF_V2 after = cf_world_to_screen((CF_V2){ 20, 30 });
     CF_Rect viewport = cf_draw_peek_viewport(), scissor = cf_draw_peek_scissor();
     bool ok = fabsf(before.x - after.x) < 0.001f &&
@@ -291,10 +290,10 @@ static bool state_and_retention(fixture *f)
     cf_draw_pop_scissor();
     cf_draw_pop();
     cf_app_draw_onto_screen(false);
-    CF_Pixel *pixels = read_canvas(render_arena_post_output(f->post), 33 * 17 * (int)sizeof(CF_Pixel));
+    CF_Pixel *pixels = read_canvas(render_scene3d_post_output(f->post), 33 * 17 * (int)sizeof(CF_Pixel));
     ok &= pixels[2 * 33 + 16].r > 200 && pixels[2 * 33 + 16].g == 0 &&
           pixels[14 * 33 + 16].g > 200 && pixels[14 * 33 + 16].r == 0;
-    CF_Canvas saved = render_arena_post_output(f->post);
+    CF_Canvas saved = render_scene3d_post_output(f->post);
     float invalid[][4] = { { NAN, 0, 1, 0 },
                            { 17, 0, 1, 0 },
                            { 0, -1, 1, 0 },
@@ -305,10 +304,10 @@ static bool state_and_retention(fixture *f)
                                 invalid[i][1],
                                 invalid[i][2],
                                 invalid[i][3] };
-        ok &= !render_arena_post_prepare(f->post, 129, 75, &bad) &&
-              render_arena_post_error(f->post)[0] &&
-              !render_arena_post_process(f->post) &&
-              render_arena_post_output(f->post).id == saved.id;
+        ok &= !render_scene3d_post_prepare(f->post, 129, 75, &bad) &&
+              render_scene3d_post_error(f->post)[0] &&
+              !render_scene3d_post_process(f->post) &&
+              render_scene3d_post_output(f->post).id == saved.id;
     }
     CF_Pixel *retained = read_canvas(saved, 33 * 17 * (int)sizeof(CF_Pixel));
     ok &= !memcmp(pixels, retained, 33 * 17 * sizeof *pixels);
@@ -319,7 +318,7 @@ static bool state_and_retention(fixture *f)
 
 int test_arena_post()
 {
-    fixture f = { .post = render_arena_post_new(),
+    fixture f = { .post = render_scene3d_post_new(),
                   .emitter = cf_make_draw_shader_from_source(emitter_source) };
     assert(f.emitter.id);
     bool hdr = hdr_and_tonemap(&f);
@@ -327,7 +326,7 @@ int test_arena_post()
     bool boundaries = source_boundaries(&f);
     bool radius = resize_and_radius(&f);
     bool state = state_and_retention(&f);
-    render_arena_post_free(f.post);
+    render_scene3d_post_free(f.post);
     cf_destroy_shader(f.emitter);
     bool ok = hdr && bloom && boundaries && radius && state;
     printf(

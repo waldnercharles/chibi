@@ -1,8 +1,8 @@
 #include "render/viewport.h"
 
 #include "platform/cute.h"
-#include "render/arena3d.h"
 #include "render/audio.h"
+#include "render/scene3d.h"
 #include "render/ui.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -30,8 +30,6 @@ struct engine_viewport
     bool panning;
     bool pointer_active;
     bool perspective;
-    bool arena_showcase;
-    float arena_showcase_time;
     CF_V2 image_min, image_size;
     engine_viewport_pointer pointer;
     int requested_width;
@@ -335,35 +333,16 @@ void engine_viewport_get_camera(const engine_viewport *viewport, engine_viewport
                                         viewport->roll };
 }
 
-void engine_viewport_set_arena_showcase(engine_viewport *viewport, float time)
-{
-    assert(isfinite(time));
-    viewport->arena_showcase = true;
-    viewport->arena_showcase_time = time;
-}
-
-void engine_viewport_clear_arena_camera(engine_viewport *viewport)
-{
-    viewport->arena_showcase = false;
-}
-
-void engine_viewport_get_arena_camera(const engine_viewport *viewport, render_arena_camera *camera)
+void engine_viewport_get_camera3d(const engine_viewport *viewport, render_scene3d_camera *camera)
 {
     engine_viewport_camera frame;
     engine_viewport_get_camera(viewport, &frame);
-    *camera = viewport->arena_showcase ? render_arena_camera_make_showcase(
-                                             frame.center_x,
-                                             frame.center_y,
-                                             frame.span_width,
-                                             frame.span_height,
-                                             viewport->arena_showcase_time
-                                         )
-                                       : render_arena_camera_make(
-                                             frame.center_x,
-                                             frame.center_y,
-                                             frame.span_width,
-                                             frame.span_height
-                                         );
+    *camera = render_scene3d_camera_make(
+        frame.center_x,
+        frame.center_y,
+        frame.span_width,
+        frame.span_height
+    );
 }
 
 void engine_viewport_set_perspective(engine_viewport *viewport, bool perspective)
@@ -385,9 +364,9 @@ static bool pointer_world(const engine_viewport *viewport, CF_V2 ndc, CF_V2 *wor
                           frame.center_y + ndc.y * frame.span_height * 0.5f };
         return true;
     }
-    render_arena_camera camera;
-    engine_viewport_get_arena_camera(viewport, &camera);
-    if (!render_arena_ground(&camera, ndc, world)) {
+    render_scene3d_camera camera;
+    engine_viewport_get_camera3d(viewport, &camera);
+    if (!render_scene3d_ground(&camera, ndc, world)) {
         return false;
     }
     world->y = -world->y;

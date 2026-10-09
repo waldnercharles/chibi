@@ -21,6 +21,7 @@
 #include "authoring/mesh_prepare.h"
 #include "authoring/native_prototype.h"
 #include "authoring/preview_source.h"
+#include "authoring/project_prepare.h"
 #include "authoring/prototype_preview.h"
 #include "authoring/reference_index.h"
 #include "authoring/shader_prepare.h"
@@ -211,6 +212,7 @@ typedef struct
 typedef struct
 {
     char *root;
+    char *content; /* the folder the assets were read from */
     asset_entry *entries;
     catalog_asset *assets;
     reference_index *references;
@@ -304,6 +306,11 @@ static const contract_field CONTRACT_BAKE_MODEL[] = {
     { "destination", "string", true, "New bundle directory; parent must exist. Existing output is retained and rejected." },
     { "options", "object", false, "Bounded cell_size, max_axis_cells, max_triangles, max_samples, max_work and edge_iterations." },
     { "overrides", "array", false, "Checked parameter snapshot keyed by asset, scope and parameter_id, with value components." },
+};
+static const contract_field CONTRACT_IMPORT_SKY[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "source", "string", true, "Radiance .hdr file to copy into the project, such as a download." },
+    { "destination", "string", false, "New content/... .hdr path; defaults to content/skies/ and the source's file name. An existing file is kept and rejected." },
 };
 static const contract_field CONTRACT_ANALYZE_CODE[] = {
     { "project_root", "string", false, "Optional project directory supplying library/event signatures; defaults to the controller root." },
@@ -658,6 +665,17 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         "publish an engine mesh, OBJ, MTL and provenance bundle.",
         CONTRACT_BAKE_MODEL,
         CONTRACT_FIELD_COUNT(CONTRACT_BAKE_MODEL),
+        1,
+        false,
+        false,
+        false,
+    },
+    {
+        "import_sky",
+        "Check that a Radiance .hdr file is an equirectangular sky and copy it "
+        "into the project's content for Environment's sky.",
+        CONTRACT_IMPORT_SKY,
+        CONTRACT_FIELD_COUNT(CONTRACT_IMPORT_SKY),
         1,
         false,
         false,
@@ -1172,11 +1190,42 @@ static int resolve_asset_ref(yyjson_val *root, asset_ref *out, char *error, size
     return 0;
 }
 
-static char *asset_full_path(const char *root, const asset_ref *ref)
+/* The project the current request reads: its root and the folder its
+ * manifest keeps content in, read once per request. */
+static struct
 {
-    size_t size = strlen(root) + strlen(ref->relative) + 2;
+    char *root, *content;
+} PROJECT;
+
+/* Reads where the project at `root` keeps its content for the request that
+ * follows; false with why in `error` when its manifest is malformed. */
+static bool open_content(const char *root, char *error, size_t error_size)
+{
+    char *content = chibi_project_content(root, error, error_size);
+    if (!content) {
+        return false;
+    }
+    free(PROJECT.root);
+    free(PROJECT.content);
+    PROJECT.root = xstrdup(root);
+    PROJECT.content = content;
+    return true;
+}
+
+const char *chibi_automation_content(const char *root)
+{
+    assert(PROJECT.root && !strcmp(PROJECT.root, root));
+    return PROJECT.content;
+}
+
+/* The owned file a virtual content/ path names in the project at `root`. */
+static char *content_path(const char *root, const char *relative)
+{
+    assert(!strncmp(relative, "content/", strlen("content/")));
+    const char *content = chibi_automation_content(root);
+    size_t size = strlen(content) + strlen(relative);
     char *path = xmalloc(size);
-    snprintf(path, size, "%s/%s", root, ref->relative);
+    snprintf(path, size, "%s%s", content, relative + strlen("content"));
     return path;
 }
 
@@ -1185,28 +1234,22 @@ static char *asset_full_path(const char *root, const asset_ref *ref)
  * to turn a project-relative asset path into an arbitrary filesystem read. */
 static int verify_asset_directory(const char *root, const asset_family *family, char *error, size_t error_size)
 {
-    size_t content_size = strlen(root) + strlen("/content") + 1;
-    char *content_path = xmalloc(content_size);
-    snprintf(content_path, content_size, "%s/content", root);
+    const char *content = chibi_automation_content(root);
     struct stat info;
-    if (lstat(content_path, &info) != 0) {
-        int missing = errno == ENOENT;
-        free(content_path);
-        if (missing) {
+    if (lstat(content, &info) != 0) {
+        if (errno == ENOENT) {
             return 0;
         }
-        return set_errorf(error, error_size, "could not inspect %s", "content"), -1;
+        return set_errorf(error, error_size, "could not inspect %s", content), -1;
     }
     if (!S_ISDIR(info.st_mode)) {
-        free(content_path);
-        return set_error(error, error_size, "content is not a directory"), -1;
+        return set_errorf(error, error_size, "content is not a directory: %s", content),
+             -1;
     }
-    free(content_path);
 
-    size_t directory_size = strlen(root) + strlen("/content/") +
-                            strlen(family->folder) + 1;
+    size_t directory_size = strlen(content) + strlen(family->folder) + 2;
     char *directory_path = xmalloc(directory_size);
-    snprintf(directory_path, directory_size, "%s/content/%s", root, family->folder);
+    snprintf(directory_path, directory_size, "%s/%s", content, family->folder);
     if (lstat(directory_path, &info) != 0) {
         int missing = errno == ENOENT;
         free(directory_path);
@@ -1295,6 +1338,7 @@ static void free_catalog_assets(catalog_asset *assets)
 static void free_catalog_snapshot(catalog_snapshot *snapshot)
 {
     free(snapshot->root);
+    free(snapshot->content);
     free_asset_entries(snapshot->entries);
     free_catalog_assets(snapshot->assets);
     reference_index_free(snapshot->references);
@@ -1427,7 +1471,7 @@ static bool read_scenario_asset(const char *json, char *error, size_t error_size
 /* The ui folder of the project at `root`. */
 static void ui_folder(const char *root, char *out, size_t size)
 {
-    snprintf(out, size, "%s/content/ui", root);
+    snprintf(out, size, "%s/ui", chibi_automation_content(root));
 }
 
 /* A ui asset's styles beside its markup, owned; NULL when it has none. */
@@ -1454,7 +1498,8 @@ static bool read_ui_asset(const char *root, const char *name, char *error, size_
 }
 
 /* Whether the ui folder holds markup for `name`, matched as preparation
- * matches it: a regular file with the exact name, top level only. */
+ * matches it: a regular file with the exact name, top level only. Like the
+ * catalog, which checks each document's markup, it does not follow a link. */
 static bool ui_exists(const char *root, const char *name)
 {
     char folder[1024], file[512], path[1600];
@@ -1470,7 +1515,7 @@ static bool ui_exists(const char *root, const char *name)
     }
     snprintf(path, sizeof path, "%s/%s", folder, file);
     struct stat info;
-    return found && !stat(path, &info) && S_ISREG(info.st_mode);
+    return found && !lstat(path, &info) && S_ISREG(info.st_mode);
 }
 
 /* UI language service (workstream B): validateAsset for a ui asset whose
@@ -1484,10 +1529,8 @@ static int validate_ui(
     yyjson_mut_val *diagnostics
 )
 {
-    char content[1024];
-    snprintf(content, sizeof content, "%s/content", root);
     char *rcss = ui_styles(root, name);
-    int errors = automation_ui_validate(content, name, rml, rcss, doc, diagnostics);
+    int errors = automation_ui_validate(chibi_automation_content(root), name, rml, rcss, doc, diagnostics);
     free(rcss);
     return errors;
 }
@@ -1533,17 +1576,13 @@ static bool load_declared(const char *root, declared_components **out, char *err
     if (!table) {
         return false;
     }
-    size_t length = strlen(root) + sizeof "/content";
-    char *content = xmalloc(length);
-    snprintf(content, length, "%s/content", root);
     bool loaded = authoring_component_declarations_load(
-        content,
+        chibi_automation_content(root),
         native_capabilities_catalog(table),
         out,
         error,
         size
     );
-    free(content);
     native_capabilities_free(table);
     return loaded;
 }
@@ -1554,25 +1593,19 @@ static void load_catalog_links(const char *root, const asset_entry *entries, cat
     if (!links->native) {
         return;
     }
-    size_t length = strlen(root) + sizeof "/content";
-    char *content = xmalloc(length);
-    snprintf(content, length, "%s/content", root);
     script_lower_bindings bindings = authoring_language_bindings(links->native);
     links->sources = authoring_sources_prepare(
-        content,
+        chibi_automation_content(root),
         authoring_language_catalog_view(links->native),
         &bindings,
         BEHAVIOR_BYTECODE
     );
-    free(content);
     for (int i = 0; i < acount(entries) && !links->error[0]; i++) {
         if (!links_family(entries[i].family) ||
             !strcmp(entries[i].family->extension, CODE_ASSET_EXTENSION)) {
             continue;
         }
-        size_t length = strlen(root) + strlen(entries[i].relative) + 2;
-        char *path = xmalloc(length);
-        snprintf(path, length, "%s/%s", root, entries[i].relative);
+        char *path = content_path(root, entries[i].relative);
         char *text = read_file(path, NULL, NULL, links->error, sizeof links->error);
         behavior_asset *asset = text ? behavior_asset_load(text) : NULL;
         if (text && !asset) {
@@ -1608,7 +1641,68 @@ static void catalog_add_report(catalog_asset *asset, const compile_report *repor
     }
 }
 
+static int load_named_asset(
+    const char *root,
+    const asset_family *family,
+    const char *name,
+    asset_ref *ref,
+    char **json,
+    size_t *bytes,
+    uint64_t *hash,
+    char *error,
+    size_t error_size
+);
+
+/* Prototype includes name other prototypes, found by file name as scene
+ * entities find theirs. Each is read once and kept until the includes are
+ * freed. */
+typedef struct
+{
+    const char *root;
+    char **names, **texts;
+} prototype_includes;
+
+static const char *include_prototype(const char *name, void *user)
+{
+    prototype_includes *includes = user;
+    for (int i = 0; i < acount(includes->names); i++) {
+        if (!strcmp(includes->names[i], name)) {
+            return includes->texts[i];
+        }
+    }
+    asset_ref ref;
+    char *text = NULL, error[256];
+    const asset_family *family = family_by_kind("prototype");
+    if (load_named_asset(includes->root, family, name, &ref, &text, NULL, NULL, error, sizeof error) !=
+        CHIBI_AUTOMATION_OK) {
+        free(text);
+        return NULL;
+    }
+    apush(includes->names, xstrdup(name));
+    apush(includes->texts, text);
+    return text;
+}
+
+static game_prototype_registry prototype_registry(prototype_includes *includes)
+{
+    game_prototype_registry registry = project_registry();
+    registry.include = include_prototype;
+    registry.include_user = includes;
+    return registry;
+}
+
+static void prototype_includes_free(prototype_includes *includes)
+{
+    for (int i = 0; i < acount(includes->texts); i++) {
+        free(includes->names[i]);
+        free(includes->texts[i]);
+    }
+    afree(includes->names);
+    afree(includes->texts);
+}
+
 static void catalog_validate_asset(
+    const char *root,
     const catalog_links *links,
     catalog_asset *asset,
     const char *json,
@@ -1670,7 +1764,8 @@ static void catalog_validate_asset(
         }
         behavior_asset_free(behavior);
     } else if (family->loader == ASSET_PROTOTYPE) {
-        game_prototype_registry registry = project_registry();
+        prototype_includes includes = { root };
+        game_prototype_registry registry = prototype_registry(&includes);
         char error[256] = { 0 };
         game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
         if (!prototype) {
@@ -1679,6 +1774,7 @@ static void catalog_validate_asset(
         } else {
             game_prototype_free(prototype);
         }
+        prototype_includes_free(&includes);
     } else if (family->loader == ASSET_EDITOR || family->loader == ASSET_SCENARIO) {
         char error[256] = { 0 };
         bool ok = family->loader == ASSET_EDITOR
@@ -1778,7 +1874,6 @@ static char *manifest_string(const char *root, const char *key)
 /* Adds what an asset holds to the index, with `page` the project's default
  * page. An asset its loader rejects holds nothing; its diagnostics say why. */
 static void catalog_add_content(
-    const char *,
     reference_index *index,
     const catalog_asset *asset,
     const char *text,
@@ -1789,7 +1884,6 @@ static void catalog_add_content(
         return;
     }
     char error[256];
-    game_prototype_registry registry = project_registry();
     switch (asset->asset.family->loader) {
         case ASSET_GRAPH: {
             behavior_asset *graph = behavior_asset_load(text);
@@ -1802,7 +1896,10 @@ static void catalog_add_content(
         case ASSET_SYSTEM:
             return; /* Executable declarations were indexed through canonical facts. */
         case ASSET_PROTOTYPE: {
-            game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
+            /* What an included prototype holds is its references, not this
+             * one's, which only names it. */
+            game_prototype_registry registry = project_registry();
+            game_prototype *prototype = game_prototype_load_authored(text, &registry, error, sizeof error);
             if (prototype) {
                 reference_index_add_prototype(index, asset->reference, prototype);
                 game_prototype_free(prototype);
@@ -1893,14 +1990,6 @@ static void catalog_link_references(catalog_asset *assets, const reference_index
     }
 }
 
-static char *catalog_path(const char *root, const catalog_asset *asset)
-{
-    size_t size = strlen(root) + strlen(asset->asset.relative) + 2;
-    char *path = xmalloc(size);
-    snprintf(path, size, "%s/%s", root, asset->asset.relative);
-    return path;
-}
-
 /* Every asset first, then what each holds, so references find the event
  * definitions they name. */
 static int catalog_index_references(
@@ -1915,7 +2004,7 @@ static int catalog_index_references(
     reference_index *index = reference_index_new();
     for (int i = 0; i < acount(assets); i++) {
         reference_asset_kind kind = assets[i].asset.family->reference;
-        char *path = catalog_path(root, &assets[i]);
+        char *path = content_path(root, assets[i].asset.relative);
         assets[i]
             .reference = kind == REFERENCE_ASSET_KIND_COUNT
                            ? -1
@@ -1927,7 +2016,7 @@ static int catalog_index_references(
         if (assets[i].reference < 0) {
             continue;
         }
-        char *path = catalog_path(root, &assets[i]);
+        char *path = content_path(root, assets[i].asset.relative);
         char *text = read_file(path, NULL, NULL, error, error_size);
         free(path);
         if (!text) {
@@ -1935,7 +2024,7 @@ static int catalog_index_references(
             reference_index_free(index);
             return -1;
         }
-        catalog_add_content(root, index, &assets[i], text, page);
+        catalog_add_content(index, &assets[i], text, page);
         free(text);
     }
     free(page);
@@ -2183,19 +2272,12 @@ static int analyze_project_source(
     if (!native) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    size_t length = strlen(root) + 128;
-    char *content = xmalloc(length), *path = xmalloc(length);
-    snprintf(content, length, "%s/content", root);
+    const char *content = chibi_automation_content(root);
     asset_ref ref = { 0 };
     char ignored[256] = "";
     bool bound = !resolve_asset_ref(request, &ref, ignored, sizeof ignored) &&
                  !strcmp(ref.family->extension, CODE_ASSET_EXTENSION);
-    if (bound) {
-        free(path);
-        path = asset_full_path(root, &ref);
-    } else {
-        snprintf(path, length, "%s/behaviors/__draft.chibi", content);
-    }
+    char *path = content_path(root, bound ? ref.relative : "content/behaviors/__draft.chibi");
     source_catalog_edit edit = { .path = path, .text = text };
     source_catalog *catalog = source_catalog_edited(
         content,
@@ -2226,7 +2308,6 @@ static int analyze_project_source(
         afree(documents);
         source_catalog_free(catalog);
         authoring_language_catalog_free(native);
-        free(content);
         free(path);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
@@ -2465,7 +2546,6 @@ static int analyze_project_source(
     afree(documents);
     source_catalog_free(catalog);
     authoring_language_catalog_free(native);
-    free(content);
     free(path);
     return inspection_status;
 }
@@ -2500,9 +2580,7 @@ static int load_catalog_asset(
         .name = asset_name_from_filename(entry->filename),
         .valid = true,
     };
-    size_t path_size = strlen(root) + strlen(entry->relative) + 2;
-    char *path = xmalloc(path_size);
-    snprintf(path, path_size, "%s/%s", root, entry->relative);
+    char *path = content_path(root, entry->relative);
     char read_error[256] = { 0 };
     char *json = read_file(path, NULL, NULL, read_error, sizeof read_error);
     if (!json) {
@@ -2560,7 +2638,7 @@ static int load_catalog_asset(
         }
         catalog_scan_members(asset, json_root);
         yyjson_doc_free(document);
-        catalog_validate_asset(links, asset, json, path);
+        catalog_validate_asset(root, links, asset, json, path);
     }
     free(path);
     free(json);
@@ -2641,9 +2719,11 @@ static int build_catalog_from_entries(
     load_catalog_links(root, entries, &links);
     int status = 0;
     for (int i = 0; i < acount(entries) && !status; i++) {
-        bool graph = entries[i].family->loader == ASSET_GRAPH ||
-                     entries[i].family->loader == ASSET_SYSTEM;
-        int previous_index = previous && (!graph || graphs_cached)
+        asset_loader loader = entries[i].family->loader;
+        bool graph = loader == ASSET_GRAPH || loader == ASSET_SYSTEM;
+        /* A prototype is loaded again each time, since a prototype it
+           includes may have changed or appeared. */
+        int previous_index = previous && (!graph || graphs_cached) && loader != ASSET_PROTOTYPE
                                ? cached_catalog_asset_index(previous, &entries[i])
                                : -1;
         if (previous_index >= 0) {
@@ -2675,6 +2755,7 @@ static int build_catalog_from_entries(
 
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size)
 {
+    const char *content = chibi_automation_content(root);
     asset_entry *entries = NULL;
     for (int family_index = 0;
          family_index < (int)(sizeof ASSET_FAMILIES / sizeof *ASSET_FAMILIES);
@@ -2688,10 +2769,9 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
         if (directory_status == 0) {
             continue;
         }
-        size_t directory_size = strlen(root) + strlen("/content/") +
-                                strlen(family->folder) + 1;
+        size_t directory_size = strlen(content) + strlen(family->folder) + 2;
         char *directory_path = xmalloc(directory_size);
-        snprintf(directory_path, directory_size, "%s/content/%s", root, family->folder);
+        snprintf(directory_path, directory_size, "%s/%s", content, family->folder);
         DIR *directory = opendir(directory_path);
         if (!directory) {
             free(directory_path);
@@ -2791,6 +2871,7 @@ static int catalog_snapshot_get(
     }
     uint64_t components = components_hash();
     if (CATALOG_SNAPSHOT.assets && !strcmp(CATALOG_SNAPSHOT.root, root) &&
+        !strcmp(CATALOG_SNAPSHOT.content, chibi_automation_content(root)) &&
         CATALOG_SNAPSHOT.components == components &&
         asset_entries_equal(entries, CATALOG_SNAPSHOT.entries)) {
         free_asset_entries(entries);
@@ -2815,6 +2896,7 @@ static int catalog_snapshot_get(
     uint64_t next_revision = CATALOG_SNAPSHOT.revision + 1;
     free_catalog_snapshot(&CATALOG_SNAPSHOT);
     CATALOG_SNAPSHOT.root = xstrdup(root);
+    CATALOG_SNAPSHOT.content = xstrdup(chibi_automation_content(root));
     CATALOG_SNAPSHOT.entries = entries;
     CATALOG_SNAPSHOT.assets = assets;
     CATALOG_SNAPSHOT.references = references;
@@ -3644,7 +3726,14 @@ static int handle_navigation(const char *root, yyjson_val *request, response *re
         automation_ui_references_requested(request)) {
         char failure[256] = { 0 };
         yyjson_mut_val *found = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
-        int status = automation_ui_references(root, request, result->doc, found, failure, sizeof failure);
+        int status = automation_ui_references(
+            chibi_automation_content(root),
+            request,
+            result->doc,
+            found,
+            failure,
+            sizeof failure
+        );
         if (status != CHIBI_AUTOMATION_OK) {
             response_error(result, exit_code, status, failure);
         }
@@ -4624,6 +4713,30 @@ static void inspect_model_parameters(
     free_behavior_assets(models);
 }
 
+static int handle_import_sky(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *source = request_string(request, "source");
+    const char *destination = request_string(request, "destination");
+    if (!source || (yyjson_obj_get(request, "destination") && !destination)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "Invalid import_sky source or destination.");
+        return -1;
+    }
+    chibi_project project = { 0 };
+    char error[512] = { 0 };
+    char *key = chibi_project_open(&project, root, error, sizeof error) == 0
+                  ? image_prepare_sky_import(project.content, source, destination, error, sizeof error)
+                  : NULL;
+    chibi_project_free(&project);
+    if (!key) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_strcpy(result->doc, value, "path", key);
+    free(key);
+    return 0;
+}
+
 static int handle_bake_model(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
     const char *name = request_string(request, "model");
@@ -4686,13 +4799,17 @@ static int handle_bake_model(const char *root, yyjson_val *request, response *re
     }
     options.overrides = overrides;
     options.override_count = array ? (int)yyjson_arr_size(array) : 0;
-    size_t length = strlen(root) + sizeof "/content";
-    char *content = xmalloc(length);
-    snprintf(content, length, "%s/content", root);
     model_export_summary summary = { 0 };
     char error[512] = { 0 };
-    bool ok = model_export_bundle(content, name, destination, &options, &summary, error, sizeof error);
-    free(content);
+    bool ok = model_export_bundle(
+        chibi_automation_content(root),
+        name,
+        destination,
+        &options,
+        &summary,
+        error,
+        sizeof error
+    );
     if (!ok) {
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
         return -1;
@@ -4727,7 +4844,7 @@ static int inspect_source_asset(
     yyjson_mut_obj_put(input, yyjson_mut_str(bound, "source"), yyjson_mut_strcpy(bound, text));
     yyjson_mut_obj_put(input, yyjson_mut_str(bound, "path"), yyjson_mut_strcpy(bound, ref->relative));
     yyjson_mut_obj_put(input, yyjson_mut_str(bound, "inspect_source_graph"), yyjson_mut_bool(bound, true));
-    char *path = asset_full_path(root, ref);
+    char *path = content_path(root, ref->relative);
     size_t sidecar_size = strlen(path) + 6;
     char *sidecar = xmalloc(sidecar_size);
     snprintf(sidecar, sidecar_size, "%s.meta", path);
@@ -5145,21 +5262,15 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
         return -1;
     }
-    size_t length = strlen(root) + sizeof "/content";
-    char *content = xmalloc(length);
-    snprintf(content, length, "%s/content", root);
     script_lower_bindings bindings = authoring_language_bindings(native);
     authoring_sources *sources = authoring_sources_prepare(
-        content,
+        chibi_automation_content(root),
         authoring_language_catalog_view(native),
         &bindings,
         behavior_default_backend()
     );
-    free(content);
     const authoring_source *selected = NULL;
-    length = strlen(root) + strlen(ref.relative) + 2;
-    char *path = xmalloc(length);
-    snprintf(path, length, "%s/%s", root, ref.relative);
+    char *path = content_path(root, ref.relative);
     for (int i = 0; i < authoring_sources_count(sources); i++) {
         const authoring_source *source = authoring_sources_at(sources, i);
         if (!strcmp(source->path, path)) {
@@ -5249,7 +5360,11 @@ static int handle_status(const char *root, response *result, int *exit_code)
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     yyjson_mut_obj_add_strcpy(result->doc, value, "project_root", root);
-    yyjson_mut_obj_add_strcpy(result->doc, value, "content_root", "content");
+    /* The folder as the manifest names it: relative when below the root. */
+    const char *content = chibi_automation_content(root);
+    size_t length = strlen(root);
+    bool below = !strncmp(content, root, length) && content[length] == '/';
+    yyjson_mut_obj_add_strcpy(result->doc, value, "content_root", below ? content + length + 1 : content);
     yyjson_mut_obj_add_uint(result->doc, value, "assets", (uint64_t)acount(entries));
     yyjson_mut_val *families = yyjson_mut_obj_add_obj(result->doc, value, "families");
     for (int family_index = 0;
@@ -5342,7 +5457,7 @@ static int load_asset(
         }
         return CHIBI_AUTOMATION_IO_ERROR;
     }
-    char *path = asset_full_path(root, ref);
+    char *path = content_path(root, ref->relative);
     struct stat info;
     if (lstat(path, &info) != 0 || !S_ISREG(info.st_mode)) {
         free(path);
@@ -5386,7 +5501,7 @@ static int load_named_asset(
         }
         return CHIBI_AUTOMATION_IO_ERROR;
     }
-    char *path = asset_full_path(root, ref);
+    char *path = content_path(root, ref->relative);
     struct stat info;
     if (lstat(path, &info) != 0 || !S_ISREG(info.st_mode)) {
         free(path);
@@ -5480,6 +5595,7 @@ static char *canonical_source(
 /* Owned canonical file text for one asset, produced by its native loader and
  * saver. */
 static char *canonical_asset(
+    const char *root,
     const source_catalog *sources,
     const asset_family *family,
     const char *json,
@@ -5514,13 +5630,18 @@ static char *canonical_asset(
         case ASSET_SYSTEM:
             return canonical_source(sources, json, path, metadata, error, error_size);
         case ASSET_PROTOTYPE: {
-            game_prototype_registry registry = project_registry();
+            prototype_includes includes = { root };
+            game_prototype_registry registry = prototype_registry(&includes);
             game_prototype *prototype = game_prototype_load(json, &registry, error, error_size);
-            if (!prototype) {
-                return NULL;
+            char *text = NULL;
+            if (prototype) {
+                /* Saving folds included components in, so a prototype that
+                 * includes others keeps its text as written. */
+                text = acount(includes.texts) ? xstrdup(json)
+                                              : game_prototype_save(prototype);
             }
-            char *text = game_prototype_save(prototype);
             game_prototype_free(prototype);
+            prototype_includes_free(&includes);
             return text;
         }
         case ASSET_SCENE: {
@@ -5550,9 +5671,7 @@ static char *canonical_asset(
  * differed, or -1 when it is invalid or cannot be written. */
 static int format_input_map(const char *root, bool check)
 {
-    size_t length = strlen(root) + sizeof "/content/" INPUT_MAP_FILE;
-    char *path = xmalloc(length);
-    snprintf(path, length, "%s/content/" INPUT_MAP_FILE, root);
+    char *path = content_path(root, "content/" INPUT_MAP_FILE);
     struct stat info;
     if (stat(path, &info) && errno == ENOENT) {
         free(path);
@@ -5588,8 +5707,9 @@ int chibi_automation_format_assets(const char *root, bool check)
 {
     asset_entry *entries = NULL;
     declared_components *declared = NULL;
-    char error[256] = { 0 };
-    if (!load_declared(root, &declared, error, sizeof error) ||
+    char error[512] = { 0 };
+    if (!open_content(root, error, sizeof error) ||
+        !load_declared(root, &declared, error, sizeof error) ||
         enumerate_assets(root, &entries, error, sizeof error)) {
         fprintf(stderr, "chibi_ctl --format: %s\n", error);
         declared_components_free(declared);
@@ -5601,25 +5721,22 @@ int chibi_automation_format_assets(const char *root, bool check)
         free_asset_entries(entries);
         return -1;
     }
-    size_t length = strlen(root) + sizeof "/content";
-    char *content = xmalloc(length);
-    snprintf(content, length, "%s/content", root);
-    source_catalog *sources = source_catalog_new(content, authoring_language_catalog_view(native));
-    free(content);
+    source_catalog *sources = source_catalog_new(
+        chibi_automation_content(root),
+        authoring_language_catalog_view(native)
+    );
     int differing = 0;
     for (int i = 0; i < acount(entries) && differing >= 0; i++) {
         if (entries[i].family->loader == ASSET_UI) {
             continue;
         }
-        size_t size = strlen(root) + strlen(entries[i].relative) + 2;
-        char *path = xmalloc(size);
-        snprintf(path, size, "%s/%s", root, entries[i].relative);
+        char *path = content_path(root, entries[i].relative);
         size_t bytes = 0;
         uint64_t hash = 0;
         char *json = read_file(path, &bytes, &hash, error, sizeof error);
         char *metadata = NULL;
         char *text = json
-                       ? canonical_asset(sources, entries[i].family, json, path, &metadata, error, sizeof error)
+                       ? canonical_asset(root, sources, entries[i].family, json, path, &metadata, error, sizeof error)
                        : NULL;
         if (text && strcmp(entries[i].family->extension, CODE_ASSET_EXTENSION)) {
             char *disk = asset_text_to_disk(text, error, sizeof error);
@@ -5854,7 +5971,7 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
     add_asset_identity(result->doc, value, &ref, bytes, hash);
     yyjson_mut_obj_add_strcpy(result->doc, value, "source", json);
     if (!strcmp(ref.family->extension, CODE_ASSET_EXTENSION)) {
-        char *path = asset_full_path(root, &ref);
+        char *path = content_path(root, ref.relative);
         size_t length = strlen(path) + 6;
         char *sidecar = xmalloc(length);
         snprintf(sidecar, length, "%s.meta", path);
@@ -6045,7 +6162,8 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             behavior_asset_free(asset);
         }
     } else if (ref.family->loader == ASSET_PROTOTYPE) {
-        game_prototype_registry registry = project_registry();
+        prototype_includes includes = { root };
+        game_prototype_registry registry = prototype_registry(&includes);
         char load_error[256] = { 0 };
         game_prototype *prototype = game_prototype_load(json, &registry, load_error, sizeof load_error);
         if (!prototype) {
@@ -6066,6 +6184,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
                 add_load_diagnostic(result->doc, diagnostics, load_error);
             }
         }
+        prototype_includes_free(&includes);
     } else if (ref.family->loader == ASSET_UI) {
         char *name = asset_name_from_filename(ref.filename);
         errors = validate_ui(root, name, json, result->doc, diagnostics);
@@ -6108,19 +6227,10 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     return 0;
 }
 
-/* A cataloged asset's path below `root`, owned. */
-static char *asset_path(const char *root, const catalog_asset *asset)
-{
-    size_t bytes = strlen(root) + strlen(asset->asset.relative) + 2;
-    char *path = xmalloc(bytes);
-    snprintf(path, bytes, "%s/%s", root, asset->asset.relative);
-    return path;
-}
-
 /* A cataloged asset's text, owned; NULL with why in `error`. */
 static char *asset_text(const char *root, const catalog_asset *asset, char *error, size_t size)
 {
-    char *path = asset_path(root, asset);
+    char *path = content_path(root, asset->asset.relative);
     char *text = read_file(path, NULL, NULL, error, size);
     free(path);
     return text;
@@ -6135,7 +6245,7 @@ static bool cataloged_scene(const char *root, const catalog_asset *assets, const
         if (assets[i].asset.family->loader != ASSET_SCENE) {
             continue;
         }
-        char *scene = asset_path(root, &assets[i]);
+        char *scene = content_path(root, assets[i].asset.relative);
         char *other = realpath(scene, NULL);
         found = other && !strcmp(file, other);
         free(other);
@@ -6157,9 +6267,47 @@ static bool valid_start_scene(const char *root, const char *path, char *error, s
     return valid;
 }
 
+/* Preparation takes every markup entry at the top of the ui folder, and
+ * follows links. The catalog checks only regular files, so any other entry
+ * is unchecked here and refused; returns how many there are. */
+static int validate_ui_folder(const char *root, yyjson_mut_doc *doc, yyjson_mut_val *diagnostics)
+{
+    char folder[1024], path[1600], message[600];
+    ui_folder(root, folder, sizeof folder);
+    DIR *dir = opendir(folder);
+    int errors = 0;
+    for (struct dirent *entry; dir && (entry = readdir(dir));) {
+        const char *name = entry->d_name;
+        size_t length = strlen(name), extension = strlen(UI_MARKUP_EXTENSION);
+        if (name[0] == '.' || length <= extension ||
+            strcmp(name + length - extension, UI_MARKUP_EXTENSION)) {
+            continue;
+        }
+        snprintf(path, sizeof path, "%s/%s", folder, name);
+        struct stat info;
+        if (!lstat(path, &info) && S_ISREG(info.st_mode)) {
+            continue;
+        }
+        snprintf(
+            message,
+            sizeof message,
+            "UI document '%.*s' is not a regular file",
+            (int)(length - extension),
+            name
+        );
+        add_load_diagnostic(doc, diagnostics, message);
+        errors++;
+    }
+    if (dir) {
+        closedir(dir);
+    }
+    return errors;
+}
+
 /* The manifest opens at this build's version and names a start scene that
-   exists and loads, and a UI document that exists; adds a diagnostic for each
-   problem and returns how many. */
+   exists and loads, a UI document that exists, and a title and icon that
+   preparation accepts, and the ui folder holds only regular markup files;
+   adds a diagnostic for each problem and returns how many. */
 static int validate_manifest(
     const char *root,
     const catalog_asset *assets,
@@ -6193,6 +6341,11 @@ static int validate_manifest(
         add_load_diagnostic(doc, diagnostics, message);
         errors++;
     }
+    if (!authoring_project_application_valid(&project, error, sizeof error)) {
+        add_load_diagnostic(doc, diagnostics, error);
+        errors++;
+    }
+    errors += validate_ui_folder(root, doc, diagnostics);
     free(scene);
     chibi_project_free(&project);
     return errors;
@@ -6261,11 +6414,10 @@ static source_catalog *declaration_catalog(const char *root, char *error, size_t
     if (!native) {
         return NULL;
     }
-    size_t bytes = strlen(root) + sizeof "/content";
-    char *content = xmalloc(bytes);
-    snprintf(content, bytes, "%s/content", root);
-    source_catalog *catalog = source_catalog_new(content, authoring_language_catalog_view(native));
-    free(content);
+    source_catalog *catalog = source_catalog_new(
+        chibi_automation_content(root),
+        authoring_language_catalog_view(native)
+    );
     authoring_language_catalog_free(native);
     return catalog;
 }
@@ -6302,7 +6454,7 @@ static int handle_validate_project(const char *root, response *result, int *exit
     for (int i = 0; i < acount(assets); i++) {
         const catalog_asset *asset = &assets[i];
         error[0] = '\0';
-        char *path = asset_path(root, asset);
+        char *path = content_path(root, asset->asset.relative);
         /* The declaration diagnostics below take the place of the fallout,
            in sources and in scenes whose behaviors are sources, and of the
            errors they repeat with lines. */
@@ -6448,21 +6600,20 @@ static int handle_new_asset(const char *root, yyjson_val *request, response *res
         );
         return -1;
     }
-    size_t bytes = strlen(root) + sizeof "/content";
-    char *content = xmalloc(bytes);
-    snprintf(content, bytes, "%s/content", root);
+    const char *content = chibi_automation_content(root);
     char error[512] = { 0 };
     errno = 0;
     char *path = new_asset_create(content, (new_asset_kind)kind, name, error, sizeof error);
-    free(content);
     if (!path) {
         response_error(result, exit_code, scaffold_status(), error);
         return -1;
     }
+    char relative[1024];
+    snprintf(relative, sizeof relative, "content%s", path + strlen(content));
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     yyjson_mut_obj_add_strcpy(result->doc, value, "kind", family->kind);
     yyjson_mut_obj_add_strcpy(result->doc, value, "name", name);
-    yyjson_mut_obj_add_strcpy(result->doc, value, "path", path + strlen(root) + 1);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "path", relative);
     free(path);
     return 0;
 }
@@ -6492,9 +6643,7 @@ static int load_behavior_family_assets(
         if (entries[i].family != family) {
             continue;
         }
-        size_t path_size = strlen(root) + strlen(entries[i].relative) + 2;
-        char *path = xmalloc(path_size);
-        snprintf(path, path_size, "%s/%s", root, entries[i].relative);
+        char *path = content_path(root, entries[i].relative);
         char read_error[256] = { 0 };
         char *json = read_file(path, NULL, NULL, read_error, sizeof read_error);
         if (!json) {
@@ -6525,9 +6674,7 @@ static int load_behavior_family_assets(
 /* Scenarios use the application's canonical declaration and source pipeline. */
 static int register_shared_assets(const char *root, game_prototype_preview *preview, char *error, size_t error_size)
 {
-    size_t size = strlen(root) + sizeof "/content";
-    char *content = xmalloc(size);
-    snprintf(content, size, "%s/content", root);
+    const char *content = chibi_automation_content(root);
     /* The preview's live world is the only world, so nothing registers twice. */
     int loaded = app_behavior_fixtures_load(game_prototype_preview_live(preview), NULL, content);
     bool sounds = loaded >= 0 &&
@@ -6537,7 +6684,6 @@ static int register_shared_assets(const char *root, game_prototype_preview *prev
                       error,
                       error_size
                   );
-    free(content);
     if (loaded < 0) {
         set_error(error, error_size, "project source or native asset preparation failed; see preparation diagnostics");
     }
@@ -6705,6 +6851,7 @@ typedef struct
     size_t prototype_bytes;
     uint64_t prototype_hash;
     game_prototype_registry registry;
+    prototype_includes includes;
     game_prototype *prototype;
     game_scene_document *scene;
     int loads; /* scenes started by Load Scene */
@@ -6967,6 +7114,7 @@ static void scenario_context_free(scenario_context *context)
     game_prototype_preview_free(context->preview);
     game_prototype_free(context->prototype);
     clear_scenario_scene(context);
+    prototype_includes_free(&context->includes);
     free(context->root);
     if (context->owns_file_system) {
         authoring_shader_catalog_clear();
@@ -6988,12 +7136,9 @@ static int scenario_mount_content(const char *root, scenario_context *context, c
         context->owns_file_system = true;
         authoring_shader_catalog_clear();
     }
-    size_t content_size = strlen(root) + sizeof "/content";
-    char *content = xmalloc(content_size);
-    snprintf(content, content_size, "%s/content", root);
+    const char *content = chibi_automation_content(root);
     bool mounted = render_image_mount_content(content, error, error_size) &&
                    authoring_mesh_mount_content(content, error, error_size);
-    free(content);
     return mounted ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_EXECUTION_ERROR;
 }
 
@@ -7121,7 +7266,8 @@ static int prepare_scenario(
         return status;
     }
 
-    context->registry = project_registry();
+    context->includes = (prototype_includes){ root };
+    context->registry = prototype_registry(&context->includes);
     char *scenario_json = scenario_prototype_text(prototype_json, context->prototype_hash);
     context->prototype = scenario_json
                            ? game_prototype_load(scenario_json, &context->registry, error, error_size)
@@ -7305,7 +7451,8 @@ static int prepare_scene_scenario(
         return status;
     }
     context->root = xstrdup(root);
-    context->registry = project_registry();
+    context->includes = (prototype_includes){ context->root };
+    context->registry = prototype_registry(&context->includes);
     context->preview = game_prototype_preview_new(&context->registry);
     if (!context->preview) {
         free(scene_json);
@@ -9009,6 +9156,10 @@ int chibi_automation_preview(
         yyjson_doc_free(doc);
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
+    if (!open_content(root, error, error_size)) {
+        yyjson_doc_free(doc);
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
     chibi_preview_run *run = xcalloc(1, sizeof *run);
     run->request = doc;
     scenario_context *context = &run->context;
@@ -10558,9 +10709,9 @@ static int load_ui_events(
             free(document);
             continue;
         }
-        char path[1024];
-        snprintf(path, sizeof path, "%s/%s", root, entries[i].relative);
+        char *path = content_path(root, entries[i].relative);
         char *text = read_file(path, NULL, NULL, error, error_size);
+        free(path);
         ui_document_event *found = NULL;
         ui_document_binding *bound = NULL;
         if (text) {
@@ -11487,9 +11638,11 @@ static int validate_ui_binding(const char *root, const GameUi *ui, char *error, 
 /* A prototype's shader binding and UI document resolve. */
 static int validate_prototype_bindings(const char *root, const char *text, char *error, size_t error_size)
 {
-    game_prototype_registry registry = project_registry();
+    prototype_includes includes = { root };
+    game_prototype_registry registry = prototype_registry(&includes);
     game_prototype *prototype = game_prototype_load(text, &registry, error, error_size);
     if (!prototype) {
+        prototype_includes_free(&includes);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     int status = CHIBI_AUTOMATION_OK;
@@ -11503,6 +11656,7 @@ static int validate_prototype_bindings(const char *root, const char *text, char 
         }
     }
     game_prototype_free(prototype);
+    prototype_includes_free(&includes);
     return status;
 }
 
@@ -11570,17 +11724,13 @@ static int validate_scene_behavior(const char *root, const char *name, char *err
     if (!native) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    size_t length = strlen(root) + sizeof "/content";
-    char *content = xmalloc(length);
-    snprintf(content, length, "%s/content", root);
     script_lower_bindings bindings = authoring_language_bindings(native);
     authoring_sources *sources = authoring_sources_prepare(
-        content,
+        chibi_automation_content(root),
         authoring_language_catalog_view(native),
         &bindings,
         behavior_default_backend()
     );
-    free(content);
     bool found = false;
     bool valid = authoring_sources_valid(sources);
     for (int i = 0; i < authoring_sources_count(sources); i++) {
@@ -11615,7 +11765,8 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
         game_scene_document_free(scene);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    game_prototype_registry registry = project_registry();
+    prototype_includes includes = { root };
+    game_prototype_registry registry = prototype_registry(&includes);
     int status = CHIBI_AUTOMATION_OK;
     bool fallout = false;
     for (int i = 0; i < acount(scene->entities) && status == CHIBI_AUTOMATION_OK; i++) {
@@ -11708,6 +11859,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
         }
     }
     game_scene_document_free(scene);
+    prototype_includes_free(&includes);
     return status != CHIBI_AUTOMATION_OK
              ? status
              : fallout_status(fallout, error, error_size);
@@ -11752,9 +11904,16 @@ static int handle_inspect_ui(const char *root, yyjson_val *request, response *re
     automation_ui_inspect(name, text, rcss, result->doc, value);
     yyjson_val *complete = yyjson_obj_get(request, "complete");
     if (complete) {
-        char content[1024];
-        snprintf(content, sizeof content, "%s/content", root);
-        status = automation_ui_complete(content, text, rcss, complete, result->doc, value, error, sizeof error);
+        status = automation_ui_complete(
+            chibi_automation_content(root),
+            text,
+            rcss,
+            complete,
+            result->doc,
+            value,
+            error,
+            sizeof error
+        );
     }
     free(rcss);
     free(name);
@@ -11777,8 +11936,8 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "validate_project") ||
            !strcmp(operation, "new_asset") || !strcmp(operation, "bake_model") ||
            !strcmp(operation, "preview_field") ||
-           !strcmp(operation, "search_nodes") || !strcmp(operation, "catalog") ||
-           !strcmp(operation, "search_assets") ||
+           !strcmp(operation, "import_sky") || !strcmp(operation, "search_nodes") ||
+           !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
            !strcmp(operation, "find_references") ||
            !strcmp(operation, "call_hierarchy") ||
@@ -11838,8 +11997,9 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     }
     declared_components *declared = NULL;
     if (root) {
-        char error[256] = { 0 };
-        if (!load_declared(root, &declared, error, sizeof error)) {
+        char error[512] = { 0 };
+        if (!open_content(root, error, sizeof error) ||
+            !load_declared(root, &declared, error, sizeof error)) {
             response_error(&result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
             free(root);
             yyjson_doc_free(document);
@@ -11884,19 +12044,26 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     } else if (!strcmp(operation, "analyze_code")) {
         char error[256] = { 0 };
         yyjson_mut_val *value = yyjson_mut_obj_add_obj(result.doc, result.root, "result");
-        const char *analysis_root = request_string(root_value, "project_root");
+        /* A root that does not exist holds no source but the one analyzed. */
+        const char *analysis_root = root ? root
+                                         : request_string(root_value, "project_root");
         if (!analysis_root) {
             analysis_root = default_root;
         }
-        int status = analyze_project_source(
-            analysis_root,
-            root_value,
-            true,
-            result.doc,
-            value,
-            error,
-            sizeof error
-        );
+        int status = root || open_content(analysis_root, error, sizeof error)
+                       ? CHIBI_AUTOMATION_OK
+                       : CHIBI_AUTOMATION_VALIDATION_ERROR;
+        if (status == CHIBI_AUTOMATION_OK) {
+            status = analyze_project_source(
+                analysis_root,
+                root_value,
+                true,
+                result.doc,
+                value,
+                error,
+                sizeof error
+            );
+        }
         if (status != CHIBI_AUTOMATION_OK) {
             response_error(&result, exit_code, status, error);
         }
@@ -11920,6 +12087,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_navigation(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "bake_model")) {
         handle_bake_model(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "import_sky")) {
+        handle_import_sky(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_graph")) {
         handle_inspect_graph(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_system")) {

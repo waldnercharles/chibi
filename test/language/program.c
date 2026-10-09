@@ -1913,6 +1913,8 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                   "    function Half(x: double) -> (Out: double) {\n"
                   "        result Out: double = x / 2\n"
                   "        if x > 100 {\n"
+                  "            Out := 3\n"
+                  "            Out = 4\n"
                   "            return\n"
                   "        }\n"
                   "    }\n"
@@ -1940,6 +1942,8 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                    "return 7 }\n"
                    "    function Half(x: double) -> (Out: double) {\n"
                    "        if x > 100 {\n"
+                   "            Out := 3\n"
+                   "            Out = 4\n"
                    "            return x / 2\n"
                    "        }\n"
                    "        return x / 2\n"
@@ -1980,7 +1984,8 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     REQUIRE(!symlink(outside, staged));
     file = fopen(manifest, "wb");
     fputs(
-        "meta {\n    version 12\n}\n// metadata {\nversion 12\ncontent "
+        "meta {\n    version 12\n}\n// metadata {\nname \"P\"; version "
+        "12\ncontent "
         "\"content\"\n"
         "start_scene \"scenes/Start.kdl\"\n",
         file
@@ -1997,7 +2002,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(manifest, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(!strncmp(text, "meta version=12\nversion 13\n", 26));
+    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 13\n"));
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);

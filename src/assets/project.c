@@ -345,7 +345,7 @@ static const char *version_digits(const char *text, int from)
                 return digits;
             }
         }
-        start = *p == '\n' || (start && strchr(" \t\r", *p));
+        start = *p == '\n' || *p == ';' || (start && strchr(" \t\r", *p));
         depth += (*p == '{') - (*p == '}');
         p++;
     }

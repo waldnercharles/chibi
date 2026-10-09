@@ -543,23 +543,29 @@ static void returns(TSNode node, TSNode **out)
         }
     }
 }
-/* Whether the function's own statements assign `name`. */
+static bool names(const char *source, TSNode node, const char *name)
+{
+    uint32_t start = ts_node_start_byte(node), length = ts_node_end_byte(node) - start;
+    if (is(node, "string")) {
+        start++, length -= 2;
+    }
+    return is_name(node) && strlen(name) == length &&
+           !strncmp(name, source + start, length);
+}
+/* Whether the function's own statements assign `name` before a local of the
+ * same name shadows it. */
 static bool assigns(const char *source, TSNode node, const char *name)
 {
-    if (is(node, "assignment")) {
-        TSNode target = ts_node_child_by_field_name(node, "target", 6);
-        uint32_t start = ts_node_start_byte(target),
-                 length = ts_node_end_byte(target) - start;
-        if (is(target, "string")) {
-            start++, length -= 2;
-        }
-        if (is_name(target) && strlen(name) == length &&
-            !strncmp(name, source + start, length)) {
-            return true;
-        }
+    if (is(node, "assignment") &&
+        names(source, ts_node_child_by_field_name(node, "target", 6), name)) {
+        return true;
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
         TSNode child = ts_node_named_child(node, i);
+        if (is(child, "local_declaration") &&
+            names(source, ts_node_child_by_field_name(child, "name", 4), name)) {
+            return false; /* Later statements write the local. */
+        }
         if (!is(child, "function_declaration") &&
             !is(child, "macro_declaration") && assigns(source, child, name)) {
             return true;

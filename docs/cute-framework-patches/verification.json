@@ -74,6 +74,16 @@
       "notes": "Fails on 4 scenes when the whole-canvas depth copy's arguments are swapped."
     },
     {
+      "command": "make agent-gpu-test AGENT_SELECTOR=--sdf-coverage",
+      "backend": "Vulkan (lavapipe)",
+      "status": "passed",
+      "tests": 1,
+      "assertions": 2,
+      "wall_seconds_cold": 4.6,
+      "wall_seconds_warm": 1.3,
+      "notes": "Fails when the warp's amplitude and frequency swap parameter slots, or when the draw bounds drop the warp's padding."
+    },
+    {
       "command": "build/test/tools/test_tools --interior-border with CF_APP_OPTIONS_GFX_OPENGL_BIT, one local run",
       "backend": "GLES 3.2 (Mesa, Xvfb)",
       "status": "passed",

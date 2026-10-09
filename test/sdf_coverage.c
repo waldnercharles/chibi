@@ -1,7 +1,9 @@
 /* The engine and Cute expose ABI-compatible vector types with the same name. */
 #include "platform/cute.h"
 #include "render/sdf_shapes.h"
+#include "third_party/pico_headers/pico_unit.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,17 +16,12 @@ void test_draw_tiled_stats(int *tiled, int *instanced);
 enum
 {
     SIDE = 128,
-    PIXELS = SIDE * SIDE
+    PIXELS = SIDE * SIDE,
+    HALF = 36
 };
 
-static float coverage(float distance, float edge)
-{
-    float t = fminf(1, fmaxf(0, distance - edge));
-    return 1 - t * t * (3 - 2 * t);
-}
-
 /* Independent transcription of Neon-Swarm's entity_raster.shd, followed by
- * the signed distance to a diamond with half-size 22. */
+ * the signed distance to a diamond with half-size HALF. */
 static float source_distance(const GameSdfMotion *motion, float x, float y)
 {
     float angle = atan2f(y, x);
@@ -49,9 +46,20 @@ static float source_distance(const GameSdfMotion *motion, float x, float y)
     }
     x = fabsf(x);
     y = fabsf(y);
-    float t = fminf(1, fmaxf(0, (22 - x + y) / 44));
-    float distance = hypotf(x - 22 * (1 - t), y - 22 * t);
-    return x + y < 22 ? -distance : distance;
+    float t = fminf(1, fmaxf(0, (HALF - x + y) / (2.0f * HALF)));
+    float distance = hypotf(x - HALF * (1 - t), y - HALF * t);
+    return x + y < HALF ? -distance : distance;
+}
+
+/* Cute antialiases a custom field from its local slope, d / |grad d|, so the
+ * edge and border keep their widths however the warp stretches the field. */
+static float field_distance(const GameSdfMotion *motion, float x, float y)
+{
+    const float h = 0.5f;
+    float gx = source_distance(motion, x + h, y) - source_distance(motion, x - h, y);
+    float gy = source_distance(motion, x, y + h) - source_distance(motion, x, y - h);
+    float slope = hypotf(gx, gy) / (2 * h);
+    return source_distance(motion, x, y) / fmaxf(slope, 1e-6f);
 }
 
 static int render(
@@ -79,7 +87,9 @@ static int render(
     if (border) {
         cf_draw_push_interior_border(cf_make_color_rgba_f(0, 0, 1, 0.75f), 3);
     }
-    GameAppearance appearance = { .width = 44, .height = 44, .shape = GAME_SHAPE_DIAMOND };
+    GameAppearance appearance = { .width = 2 * HALF,
+                                  .height = 2 * HALF,
+                                  .shape = GAME_SHAPE_DIAMOND };
     /* Fractional offset places distorted tips across tile boundaries. */
     GameTransform transform = { 7.25f, -3.75f };
     bool drawn = app_sdf_shapes_draw(shapes, &appearance, &transform, 0, motion);
@@ -123,50 +133,82 @@ static int render(
     return copied != size;
 }
 
+static bool matches(CF_Pixel pixel, const int expected[4])
+{
+    int actual[] = { pixel.colors.r,
+                     pixel.colors.g,
+                     pixel.colors.b,
+                     pixel.colors.a };
+    for (int channel = 0; channel < 4; channel++) {
+        if (abs(actual[channel] - expected[channel]) > 4) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Every pixel whose 3x3 neighborhood lies more than two pixels, to first
+ * order, from the field's zero crossing must be untouched background outside
+ * and fill inside (inside the border band when bordered). The GPU antialiases
+ * from field differences across neighboring pixels, so a pixel next to the
+ * edge, or in the warp's unresolved center, may blend. */
 static int check_pixels(const CF_Pixel *pixels, const GameSdfMotion *motion, bool tiled, bool border)
 {
+    const float edge = 2, band = border ? 3 : 0;
+    const int background[] = { 0, 255, 0, 255 };
+    /* Red at 40% over the green background when bordered. */
+    const int fill[] = { border ? 102 : 255, border ? 153 : 0, 0, 255 };
+    float distances[PIXELS];
     for (int y = 0; y < SIDE; y++) {
         for (int x = 0; x < SIDE; x++) {
-            float distance = source_distance(
+            distances[y * SIDE + x] = field_distance(
                 motion,
                 x + 0.5f - SIDE / 2 - 7.25f,
                 SIDE / 2 - y - 0.5f - 3.75f
             );
-            float fill = coverage(distance, border ? -3 : 0);
-            float edge = border ? (coverage(distance, 0) - fill) * 0.75f : 0;
-            float red = fill * (border ? 0.4f : 1) * (1 - edge);
-            float expected[] = { red, 1 - red - edge, edge, 1 };
-            CF_Pixel pixel = pixels[y * SIDE + x];
-            unsigned actual[] = { pixel.colors.r,
-                                  pixel.colors.g,
-                                  pixel.colors.b,
-                                  pixel.colors.a };
-            for (int channel = 0; channel < 4; channel++) {
-                if (fabsf(actual[channel] - expected[channel] * 255) > 4) {
-                    fprintf(
-                        stderr,
-                        "SDF coverage tiled=%d border=%d phase=%g "
-                        "pixel=(%d,%d) "
-                        "channel=%d: got %u expected %.2f\n",
-                        tiled,
-                        border,
-                        motion->time,
-                        x,
-                        y,
-                        channel,
-                        actual[channel],
-                        expected[channel] * 255
-                    );
-                    return 1;
+        }
+    }
+    int erased = 0, missing = 0, outside = 0, inside = 0;
+    for (int y = 1; y < SIDE - 1; y++) {
+        for (int x = 1; x < SIDE - 1; x++) {
+            float nearest = INFINITY, farthest = -INFINITY;
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    float distance = distances[(y + dy) * SIDE + x + dx];
+                    nearest = fminf(nearest, distance);
+                    farthest = fmaxf(farthest, distance);
                 }
             }
+            CF_Pixel pixel = pixels[y * SIDE + x];
+            if (nearest > edge) {
+                outside++;
+                erased += !matches(pixel, background);
+            } else if (farthest < -band - edge) {
+                inside++;
+                missing += !matches(pixel, fill);
+            }
         }
+    }
+    if (erased || missing || !outside || !inside) {
+        fprintf(
+            stderr,
+            "SDF coverage tiled=%d border=%d phase=%g: %d of %d background "
+            "pixels erased, %d of %d inside pixels missing\n",
+            tiled,
+            border,
+            motion->time,
+            erased,
+            outside,
+            missing,
+            inside
+        );
+        return 1;
     }
     return 0;
 }
 
 /* Reuse the production registration and its exact parameter packing. */
-int test_sdf_coverage(app_sdf_shapes shapes)
+static int sdf_coverage(app_sdf_shapes shapes)
 {
     if (!shapes.id) {
         fprintf(stderr, "SDF coverage production shader unavailable\n");
@@ -181,47 +223,33 @@ int test_sdf_coverage(app_sdf_shapes shapes)
         return 1;
     }
     cf_canvas_set_clear_color(canvas, cf_make_color_rgba_f(0, 0, 0, 0));
-    CF_Pixel instanced[PIXELS], tiled[PIXELS];
-    bool available = test_draw_tiled_available();
+    CF_Pixel pixels[PIXELS];
     int failed = 0;
     for (int phase = 0; phase < 3 && !failed; phase++) {
+        /* A warp the pixel grid resolves everywhere but at its center, so the
+         * CPU field's first-order distances hold. */
         GameSdfMotion motion = {
-            .amplitude = 18,
-            .angular_frequency = 17,
+            .amplitude = 6,
+            .angular_frequency = 7,
             .temporal_frequency = 2.3f,
             .time = phase * 0.73f,
-            .pluck_amplitude = phase ? 6 : 0,
+            .pluck_amplitude = phase ? 4 : 0,
             .pluck_origin = -0.8f,
             .pluck_age = phase * 0.2f,
             .pluck_speed = 1.7f,
         };
         for (int border = 0; border < 2 && !failed; border++) {
-            failed = render(canvas, shapes, &motion, false, border, instanced);
-            if (!failed) {
-                failed = check_pixels(instanced, &motion, false, border);
-            }
-            if (!available || failed) {
-                continue;
-            }
-            failed = render(canvas, shapes, &motion, true, border, tiled);
-            if (!failed) {
-                failed = check_pixels(tiled, &motion, true, border);
-            }
-            for (int i = 0; i < PIXELS && !failed; i++) {
-                for (int channel = 0; channel < 4; channel++) {
-                    const unsigned char *a = (const unsigned char *)&instanced[i];
-                    const unsigned char *b = (const unsigned char *)&tiled[i];
-                    if (abs((int)a[channel] - b[channel]) > 3) {
-                        fprintf(stderr, "SDF coverage backend mismatch at pixel %d\n", i);
-                        failed = 1;
-                    }
+            for (int tiled = 0; tiled < 2 && !failed; tiled++) {
+                failed = render(canvas, shapes, &motion, tiled, border, pixels);
+                if (!failed) {
+                    failed = check_pixels(pixels, &motion, tiled, border);
                 }
             }
         }
     }
     const char *capture = getenv("CHIBI_SDF_SCREENSHOT");
     if (capture && !failed) {
-        CF_Image image = { SIDE, SIDE, available ? tiled : instanced };
+        CF_Image image = { SIDE, SIDE, pixels };
         void *data = NULL;
         int size = 0;
         CF_Result result = cf_image_save_png_to_memory(&image, &data, &size);
@@ -240,11 +268,38 @@ int test_sdf_coverage(app_sdf_shapes shapes)
     }
     test_draw_tiled_auto();
     cf_destroy_canvas(canvas);
-    if (!available) {
-        puts("SDF coverage tiled SKIP: compute renderer unavailable");
-    }
     if (!failed) {
-        puts("SDF coverage PASS: production radial/pluck shader matches CPU and both renderers");
+        puts("SDF coverage PASS: production radial/pluck shader matches the CPU field in both renderers");
     }
     return failed;
+}
+
+TEST_CASE(custom_shapes_match_the_cpu_reference)
+{
+    /* Only GLES lacks Cute's compute renderer, and this app never selects it. */
+    REQUIRE(test_draw_tiled_available());
+    REQUIRE(!sdf_coverage(app_sdf_shapes_init()));
+    return true;
+}
+
+void test_render_sdf_coverage()
+{
+#ifdef __linux__
+    /* Linux agents may have no display, and the offscreen driver still reaches
+     * Vulkan. Metal and D3D12 need the platform's own window. */
+    setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+#endif
+    CF_Result made = cf_make_app(
+        "sdf-coverage",
+        0,
+        0,
+        0,
+        SIDE,
+        SIDE,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        NULL
+    );
+    assert(!cf_is_error(made));
+    RUN_TEST_CASE(custom_shapes_match_the_cpu_reference);
+    cf_destroy_app();
 }

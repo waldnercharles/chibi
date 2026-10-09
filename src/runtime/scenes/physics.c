@@ -905,6 +905,37 @@ static const physics_body *anchor(const game_physics *physics, ecs_entity entity
     return NULL;
 }
 
+static bool continuous_sensor(const physics_body *body)
+{
+    return body->settings.continuous && body->collider.sensor;
+}
+
+/* A continuous sensor stops where it first meets a blocker, after its
+ * followers have been placed and tested at its full sweep, so none may
+ * carry a collider. */
+static int anchors_valid(game_physics *physics)
+{
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        const physics_body *body = &physics->bodies[i];
+        if (!body->body.index1 || !body->seen || !body->follower) {
+            continue;
+        }
+        const physics_body *with = anchor(physics, body->entity);
+        if (with && continuous_sensor(with)) {
+            snprintf(
+                physics->error,
+                sizeof physics->error,
+                "A continuous sensor Body cannot carry colliders; entity %u is "
+                "under entity %u.",
+                body->entity.slot,
+                with->entity.slot
+            );
+            return FLOW_ERR_ARGUMENT;
+        }
+    }
+    return FLOW_OK;
+}
+
 /* Before the step, each follower takes the velocity of the point of its
  * anchor it is attached to, so contacts during the step see it move. After
  * it, the follower lands exactly where the anchor's new pose places it and
@@ -997,11 +1028,6 @@ static contact_pair *add_pair(contact_pair **pairs, const physics_body *a, const
                          .fraction = 1 })
     );
     return &(*pairs)[acount(*pairs) - 1];
-}
-
-static bool continuous_sensor(const physics_body *body)
-{
-    return body->settings.continuous && body->collider.sensor;
 }
 
 static float distance(const physics_body *a, b2Transform first, const physics_body *b, b2Transform second)
@@ -1834,6 +1860,9 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     int result = synchronize(physics, delta_seconds);
     CHIBI_TRACE_ZONE_END(sync_zone);
     profile_phase(physics, &start, &physics->profile.synchronize_ms);
+    if (result >= 0) {
+        result = anchors_valid(physics);
+    }
     if (result < 0) {
         return result;
     }

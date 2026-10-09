@@ -540,8 +540,14 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             result.type
         );
         script_type actual = script_analyzer_expr_type(a, result.left);
-        if (!script_type_numeric(actual) || !script_type_numeric(result.type)) {
-            script_analyzer_diagnostic(a, node, "Cast requires scalar numeric types");
+        bool numeric = script_type_numeric(actual) && script_type_numeric(result.type);
+        if (!numeric &&
+            script_catalog_type_assignable(a->catalog, result.type, actual)) {
+            /* The cast only supplied the expected type, as for a polymorphic call. */
+            return result.left;
+        }
+        if (!numeric) {
+            script_analyzer_diagnostic(a, node, "Cast requires scalar numeric types or the value's own type");
         }
         result.effects = script_analyzer_expr_effects(a, result.left);
         return script_analyzer_expr_add(a, result);

@@ -1,7 +1,5 @@
 library "DirectionMath" {
     pure function "Direction Orientation"(X: float = 0.0, Y: float = 0.0) -> (Orientation: struct<"GameOrientation"> = null) {
-        value atan2 = atan2(entry.Y, entry.X)
-        value make_gameorientation = make_game_orientation(atan2)
-        return make_gameorientation
+        return make_game_orientation(atan2(entry.Y, entry.X))
     }
 }

@@ -1,46 +1,28 @@
 behavior "MovementTrailBehavior" {
     state "Particle Carry": float = 0.0
-    value is_stationary = "Is Stationary"(input.Direction)
-    on Input as input {
-        if is_stationary {
+    on Input {
+        if "Is Stationary"(event.Direction) {
             set_variable<"Particle Carry">(0.0)
         } else {
-            await "Emit Movement Trail"(input.Direction)
+            await "Emit Movement Trail"(event.Direction)
         }
     }
     function "Emit Movement Trail"(Direction: struct<"CF_V2"> = null) {
         depth_limit 32
-        value particle_carry = get_variable<"Particle Carry">()
-        value add = add(particle_carry, "Emission Budget"(delta_time()))
-        value normalize_vector_2 = vec2_norm(entry.Direction)
-        value multiply = multiply(normalize_vector_2, B: plain float = -1.0)
-        value multiply_2 = multiply(multiply, B: plain float = 9.0)
-        value get_gametransform = get_game_transform()
-        value add_2 = add(convert<"game_transform_to_cf">(get_gametransform), multiply_2)
-        value subtract = subtract(particle_carry, B: plain float = 1.0)
         after entry {
-            await set_variable<"Particle Carry">(add)
-            while greater_or_equal(particle_carry, 1.0) {
-                await emit_directed_particles(add_2, multiply, 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
-                set_variable<"Particle Carry">(subtract)
+            await set_variable<"Particle Carry">(add(get_variable<"Particle Carry">(), "Emission Budget"(delta_time())))
+            while greater_or_equal(get_variable<"Particle Carry">(), 1.0) {
+                await emit_directed_particles(add(convert<"game_transform_to_cf">(get_game_transform()), multiply(multiply(vec2_norm(entry.Direction), B: plain float = -1.0), B: plain float = 9.0)), multiply(vec2_norm(entry.Direction), B: plain float = -1.0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
+                set_variable<"Particle Carry">(subtract(get_variable<"Particle Carry">(), B: plain float = 1.0))
             }
             return
         }
     }
     pure function "Emission Budget"<T0: float, T1: float>(dt: T0 = 0.0) -> (Result: T1 = 0.0) {
-        value real = real(0.0)
-        value real_2 = real(0.10000000149011612)
-        value clamp = clamp(entry, real, real_2)
-        value real_3 = real(64.0)
-        value multiply = multiply(clamp, real_3)
-        return multiply
+        return multiply(clamp(entry, real(0.0), real(0.10000000149011612)), real(64.0))
     }
     pure function "Is Stationary"(Direction: struct<"CF_V2"> = null) -> (Stationary: bool = false) {
         depth_limit 32
-        value multiply = multiply(entry.Direction.x, entry.Direction.x)
-        value multiply_2 = multiply(entry.Direction.y, entry.Direction.y)
-        value add = add(multiply, multiply_2)
-        value greater_or_equal = greater_or_equal(0.0, add)
-        return greater_or_equal
+        return greater_or_equal(0.0, add(multiply(entry.Direction.x, entry.Direction.x), multiply(entry.Direction.y, entry.Direction.y)))
     }
 }

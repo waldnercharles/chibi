@@ -2012,7 +2012,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
         file
     );
     fclose(file);
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 2);
     char text[2048];
     file = fopen(outside, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
@@ -2023,7 +2023,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(manifest, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 13\n"));
+    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 14\n"));
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
@@ -2159,7 +2159,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(!strncmp(text, "version 13\n", 11));
+    REQUIRE(!strncmp(text, "version 14\n", 11));
     unlink(path);
     snprintf(path, sizeof path, "%s/content/B.chibi", root);
     file = fopen(path, "rb");
@@ -2181,6 +2181,50 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     return true;
 }
 
+TEST_CASE(program_version_13_values_migrate_to_their_expressions)
+{
+    const char *source = "behavior V { n: double = 0\n"
+                         "    value twice = n * 2\n"
+                         "    value more = twice + 1\n"
+                         "    value who: entity = self\n"
+                         "    function Add(x: double) {\n"
+                         "        value sum: double = x + more\n"
+                         "        local X = entry.x\n"
+                         "        return Keep(Value: sum + local.X)\n"
+                         "    }\n"
+                         "    function Keep(Value: double) { return Value }\n"
+                         "    function Shadow(more: double) { return more }\n"
+                         "    on Impulse(amount, enabled) { w := who; n = "
+                         "Add(amount) + "
+                         "Shadow(5) + twice }\n"
+                         "}\n";
+    const char *expected = "behavior V { n: double = 0\n"
+                           "    function Add(x: double) {\n"
+                           "        return Keep(Value: cast<double>(x + ((n * "
+                           "2) + 1)) + entry.x)\n"
+                           "    }\n"
+                           "    function Keep(Value: double) { return Value }\n"
+                           "    function Shadow(more: double) { return more }\n"
+                           "    on Impulse(amount, enabled) { w := "
+                           "cast<entity>(self); n = Add(amount) "
+                           "+ Shadow(5) + (n * 2) }\n"
+                           "}\n";
+    char *migrated = chibi_migrate_values(source);
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    REQUIRE(!chibi_migrate_values(expected));
+    free(migrated);
+    prepare();
+    REQUIRE(compile(expected, BEHAVIOR_BYTECODE));
+    execution_instance *instance = execution_program_attach(
+        program,
+        ecs_entity_to_u64(ecs_world_create_entity(world))
+    );
+    const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                               { .type = PIN_BOOL, .b = true } };
+    REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(number_state(instance, "n", 8));
+    return true;
+}
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -2668,6 +2712,7 @@ void test_language_program()
     RUN_TEST_CASE(program_nested_functions_wait_for_themselves);
     RUN_TEST_CASE(program_version_11_references_migrate_to_values);
     RUN_TEST_CASE(program_version_12_results_migrate_to_returns);
+    RUN_TEST_CASE(program_version_13_values_migrate_to_their_expressions);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

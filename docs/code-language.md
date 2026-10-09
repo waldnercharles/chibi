@@ -116,7 +116,9 @@ reflected structs. Arrays use `number[]`; collection types use `set<int>` or
 `map<int>`. Literal arrays use `[1, 2]`; reflected struct literals use `{x: 1, y: 2}`.
 Runtime strings cannot contain embedded NUL bytes. Explicit scalar conversions use
 `cast<number>(value)` or `cast<float>(value)`. They remain available at numeric
-boundaries; ordinary arithmetic uses its inferred or expected type.
+boundaries; ordinary arithmetic uses its inferred or expected type. A cast to a
+value's own type, such as `cast<entity>(get_global_variable("Player"))`, only
+supplies the type a polymorphic call needs.
 
 Vector receivers support `velocity.norm()`, statically resolved to the existing
 vec2 normalization operation. `vec2_norm(velocity)` names that operation directly.

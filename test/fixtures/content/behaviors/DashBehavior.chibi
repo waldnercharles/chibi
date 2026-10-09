@@ -1,22 +1,16 @@
 behavior "DashBehavior" {
     state "Just Started" := false
     state "Struck Entities": handle<"ecs.entity">[] = []
-    value get_gamedash = get_game_dash()
-    value delta_time = delta_time()
-    value greater_or_equal = greater_or_equal(delta_time, get_gamedash.Value.cooldown_remaining)
-    value get_gamedash_2 = get_game_dash()
-    value less = less(0.0, get_gamedash_2.Value.remaining)
-    value greater_or_equal_2 = greater_or_equal(0.0, get_gamedash.Value.remaining)
     on Dash {
-        if greater_or_equal {
-            if greater_or_equal_2 {
+        if greater_or_equal(delta_time(), get_game_dash().Value.cooldown_remaining) {
+            if greater_or_equal(0.0, get_game_dash().Value.remaining) {
                 await "Start Dash"()
             }
         }
     }
     on Tick {
         await "Advance Dash Timers"()
-        if less {
+        if less(0.0, get_game_dash().Value.remaining) {
             await "Drive Dash"()
         }
     }
@@ -24,40 +18,27 @@ behavior "DashBehavior" {
         await "Strike Target"(event.Other)
     }
     function "Capture Dash Direction"() {
-        value get_gameinput = get_game_input()
-        value get_gameaim = get_game_aim()
-        value break_cf_v2 = break_cf_v2(get_gameinput.Value.move)
-        value abs = abs(break_cf_v2.x)
-        value abs_2 = abs(break_cf_v2.y)
-        value add = add(abs, abs_2)
-        value greater_or_equal = greater_or_equal(add, 0.0001)
-        value normalize_vector_2 = vec2_norm(get_gameinput.Value.move)
-        value normalize_vector_2_2 = vec2_norm(get_gameaim.Value.direction)
         after entry {
-            if greater_or_equal {
-                await set_game_dash_direction(normalize_vector_2)
+            if greater_or_equal(add(abs(break_cf_v2(get_game_input().Value.move).x), abs(break_cf_v2(get_game_input().Value.move).y)), 0.0001) {
+                await set_game_dash_direction(vec2_norm(get_game_input().Value.move))
                 return
             } else {
-                await set_game_dash_direction(normalize_vector_2_2)
+                await set_game_dash_direction(vec2_norm(get_game_aim().Value.direction))
                 return
             }
         }
     }
     function "Drive Dash"() {
-        value get_gamedash = get_game_dash()
-        value break_cf_v2 = break_cf_v2(get_gamedash.Value.direction)
         after entry {
-            await set_game_velocity(multiply(get_gamedash.Value.direction, get_gamedash.Value.speed))
-            await set_game_orientation("DirectionMath"."Direction Orientation"(break_cf_v2.x, break_cf_v2.y))
+            await set_game_velocity(multiply(get_game_dash().Value.direction, get_game_dash().Value.speed))
+            await set_game_orientation("DirectionMath"."Direction Orientation"(break_cf_v2(get_game_dash().Value.direction).x, break_cf_v2(get_game_dash().Value.direction).y))
             return
         }
     }
     function "Restore Movement"() {
-        value get_gameinput = get_game_input()
-        value has_gameinput = has_game_input()
         after entry {
-            if has_gameinput {
-                await set_game_velocity("MovementActions"."Movement Velocity"(get_gameinput.Value.move, get_game_movement()))
+            if has_game_input() {
+                await set_game_velocity("MovementActions"."Movement Velocity"(get_game_input().Value.move, get_game_movement()))
                 return
             } else {
                 await set_game_velocity({
@@ -69,14 +50,12 @@ behavior "DashBehavior" {
         }
     }
     function "Advance Dash"() {
-        value get_gamedash = get_game_dash()
-        action set_gamedash_remaining = set_game_dash_remaining(max(subtract(get_gamedash.Value.remaining, delta_time()), B: float = 0.0))
-        value less = less(0.0, set_gamedash_remaining.Value.remaining)
+        action set_gamedash_remaining = set_game_dash_remaining(max(subtract(get_game_dash().Value.remaining, delta_time()), B: float = 0.0))
         after entry {
             set_gamedash_remaining()
         }
         after set_gamedash_remaining {
-            if less {
+            if less(0.0, set_gamedash_remaining.Value.remaining) {
                 return
             } else {
                 await "Restore Movement"()
@@ -85,16 +64,13 @@ behavior "DashBehavior" {
         }
     }
     function "Advance Dash Timers"() {
-        value just_started = get_variable<"Just Started">()
-        value get_gamedash = get_game_dash()
-        value less = less(0.0, get_gamedash.Value.remaining)
         after entry {
-            if just_started {
+            if get_variable<"Just Started">() {
                 await set_variable<"Just Started">(false)
                 return
             } else {
-                await set_game_dash_cooldown_remaining(max(subtract(get_gamedash.Value.cooldown_remaining, delta_time()), B: float = 0.0))
-                if less {
+                await set_game_dash_cooldown_remaining(max(subtract(get_game_dash().Value.cooldown_remaining, delta_time()), B: float = 0.0))
+                if less(0.0, get_game_dash().Value.remaining) {
                     await "Advance Dash"()
                     return
                 } else {
@@ -104,24 +80,16 @@ behavior "DashBehavior" {
         }
     }
     function "Strike Target"(Other: handle<"ecs.entity"> = 0) {
-        value get_gamedash = get_game_dash()
-        value less = less(0.0, get_gamedash.Value.remaining)
-        value hasentity_gamehealth = has_entity_game_health(entry.Other)
-        value hasentity_gamecollider = has_entity_game_collider(entry.Other)
-        value getentity_gamecollider = get_entity_game_collider(entry.Other)
-        value has_any_flags = has_any_flags(getentity_gamecollider.Value.category, 2)
-        value struck_entities = get_variable<"Struck Entities">()
-        value contains = contains(struck_entities, entry.Other)
         after entry {
-            if less {
-                if hasentity_gamehealth {
-                    if hasentity_gamecollider {
-                        if has_any_flags {
-                            if contains {
+            if less(0.0, get_game_dash().Value.remaining) {
+                if has_entity_game_health(entry.Other) {
+                    if has_entity_game_collider(entry.Other) {
+                        if has_any_flags(get_entity_game_collider(entry.Other).Value.category, 2) {
+                            if contains(get_variable<"Struck Entities">(), entry.Other) {
                                 return
                             } else {
-                                await set_variable<"Struck Entities">(array_add(struck_entities, entry.Other))
-                                await send_event<"Damage">(entry.Other, get_gamedash.Value.damage, self)
+                                await set_variable<"Struck Entities">(array_add(get_variable<"Struck Entities">(), entry.Other))
+                                await send_event<"Damage">(entry.Other, get_game_dash().Value.damage, self)
                                 return
                             }
                         } else {
@@ -147,14 +115,11 @@ behavior "DashBehavior" {
         }
     }
     function "Start Dash"() {
-        value get_gamehealth = get_game_health()
-        value integer_greater_or_equal = integer_greater_or_equal(get_gamehealth.Value.current, 1)
-        value get_gamedash = get_game_dash()
         after entry {
-            if integer_greater_or_equal {
+            if integer_greater_or_equal(get_game_health().Value.current, 1) {
                 await "Capture Dash Direction"()
-                await set_game_dash_remaining(get_gamedash.Value.duration)
-                await set_game_dash_cooldown_remaining(get_gamedash.Value.cooldown)
+                await set_game_dash_remaining(get_game_dash().Value.duration)
+                await set_game_dash_cooldown_remaining(get_game_dash().Value.cooldown)
                 await set_variable<"Just Started">(true)
                 await set_variable<"Struck Entities">([])
                 await "Strike Current Contacts"()

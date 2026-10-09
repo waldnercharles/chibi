@@ -19,6 +19,9 @@ enum
     SIDE_MAX = 16384,
     LUMINANCE_SIDE = 16
 };
+/* The slowest easing the stored adapted value can follow; see
+ * scene3d_post_adapt.shd. */
+static const float slowest_adaptation = .1f;
 
 typedef struct
 {
@@ -229,14 +232,15 @@ bool render_scene3d_post_prepare(render_scene3d_post *post, int width, int heigh
         !in_range(settings->bloom_strength, 0, 8) ||
         !in_range(settings->bloom_threshold, 0, 65504) ||
         !in_range(settings->bloom_radius, 0, 0.25f) ||
-        !in_range(settings->adaptation_speed, 0, 100) ||
+        (settings->adaptation_speed != 0 &&
+         !in_range(settings->adaptation_speed, slowest_adaptation, 100)) ||
         (unsigned)settings->tone_mapping > GAME_TONE_MAPPING_NEUTRAL) {
         snprintf(
             post->error,
             sizeof post->error,
             "Environment requires finite exposure [-16,16] EV, bloom strength "
-            "[0,8], threshold [0,65504], radius [0,0.25], adaptation speed "
-            "[0,100], and a known tone mapping."
+            "[0,8], threshold [0,65504], radius [0,0.25], adaptation speed 0 "
+            "or [0.1,100], and a known tone mapping."
         );
         return false;
     }

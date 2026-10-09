@@ -547,7 +547,10 @@ static bool collect_sun(render_scene3d *scene3d, ecs_world *world, const engine 
     int count = 0;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        if (!engine_entity_visible(runtime, world, entity)) {
+        /* The light has no place in the world, so fog cannot cull it; only
+         * hiding it at run time leaves it out. */
+        const GameRenderState *state = GAME_GameRenderState_get_const(world, entity);
+        if (runtime && state && state->hidden) {
             continue;
         }
         if (count++) {

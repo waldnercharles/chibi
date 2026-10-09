@@ -253,6 +253,8 @@ TEST_CASE(neutral_tone_mapping_keeps_saturated_colors)
     environment.adaptation_speed = 101;
     REQUIRE(!render(&environment));
     REQUIRE(strstr(render_scene3d_post_error(post), "adaptation speed"));
+    environment.adaptation_speed = .05f;
+    REQUIRE(!render(&environment));
     return true;
 }
 

@@ -352,6 +352,58 @@ static void contextual_numeric(analyzer *a, int index, script_type type)
     }
 }
 
+/* Awaiting a task handle waits for that task and takes the results of the
+ * function that started it, when the handle's type names one. */
+static int join_task(analyzer *a, TSNode node, int value)
+{
+    script_type task = script_analyzer_expr_type(a, value);
+    script_expression result = { .kind = SCRIPT_EXPR_JOIN,
+                                 .type = { .storage = PIN_FLOW },
+                                 .range = script_analyzer_range(node),
+                                 .symbol = -1,
+                                 .left = value,
+                                 .right = -1,
+                                 .entry = -1,
+                                 .awaited = true,
+                                 .effects = script_analyzer_expr_effects(a, value) |
+                                            SCRIPT_EFFECT_SUSPEND };
+    const script_catalog_capability
+        *library = script_catalog_capability_by_id(a->catalog, task.nominal);
+    if (library && library->result_count) {
+        for (int i = 0; i < library->result_count; i++) {
+            apush(result.results, library->results[i].type);
+        }
+        result.result_count = library->result_count;
+        result.type = library->result_count == 1
+                        ? library->results[0].type
+                        : (script_type){ .storage = PIN_STRUCT,
+                                         .nominal = library->id,
+                                         .flags = SCRIPT_TYPE_RESULTS };
+    }
+    for (int i = 0; task.nominal && !library && i < acount(a->out->symbols); i++) {
+        const script_symbol *symbol = &a->out->symbols[i];
+        if (symbol->id != task.nominal || symbol->kind != SCRIPT_FUNCTION ||
+            symbol->function < 0) {
+            continue;
+        }
+        const script_function *function = &a->out->functions[symbol->function];
+        int count = acount(function->results);
+        for (int r = 0; r < count; r++) {
+            apush(result.results, a->out->symbols[function->results[r]].type);
+        }
+        result.result_count = count;
+        result.right = symbol->function;
+        if (count == 1) {
+            result.type = result.results[0];
+        } else if (count > 1) {
+            result.type = (script_type){ .storage = PIN_STRUCT,
+                                         .flags = SCRIPT_TYPE_RESULTS };
+        }
+        break;
+    }
+    asetlen(a->narrowed, 0);
+    return script_analyzer_expr_add(a, result);
+}
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected)
 {
     script_expression result = { .kind = SCRIPT_EXPR_ERROR,
@@ -368,10 +420,20 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         return script_analyzer_expression(a, script_analyzer_field(node, "expression"), expected);
     }
     if (script_analyzer_is(node, "await_expression")) {
-        int value = script_analyzer_expression(a, script_analyzer_field(node, "value"), expected);
+        TSNode inner = script_analyzer_field(node, "value");
+        while (script_analyzer_is(inner, "parenthesized_expression")) {
+            inner = script_analyzer_field(inner, "expression");
+        }
+        TSNode outer = a->awaited;
+        a->awaited = inner;
+        int value = script_analyzer_expression(a, inner, expected);
+        a->awaited = outer;
         script_expression *call = &a->out->expressions[value];
         if (call->kind == SCRIPT_EXPR_STORE) {
             return value; /* A state write completes synchronously. */
+        }
+        if (call->type.flags & SCRIPT_TYPE_TASK) {
+            return join_task(a, node, value);
         }
         if (call->kind != SCRIPT_EXPR_CALL) {
             script_analyzer_diagnostic(a, node, "Await requires a capability call");
@@ -387,7 +449,10 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             script_analyzer_diagnostic(a, node, "Cannot capture an awaited shared action result");
         }
         call->awaited = true;
-        call->effects |= SCRIPT_EFFECT_SUSPEND;
+        /* Component accessors complete in place, awaited or not. */
+        if (!capability || capability->component_access == SCRIPT_COMPONENT_ACCESS_NONE) {
+            call->effects |= SCRIPT_EFFECT_SUSPEND;
+        }
         asetlen(a->narrowed, 0);
         return value;
     }
@@ -457,9 +522,6 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                                  symbol.kind == SCRIPT_COMPONENT
                            ? SCRIPT_EFFECT_READ
                            : 0;
-        if (symbol.kind == SCRIPT_LAZY) {
-            result.effects |= script_analyzer_expr_effects(a, symbol.initializer);
-        }
         script_analyzer_use(a, node, index, SCRIPT_READ, 0);
         return script_analyzer_expr_add(a, result);
     }
@@ -478,8 +540,14 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             result.type
         );
         script_type actual = script_analyzer_expr_type(a, result.left);
-        if (!script_type_numeric(actual) || !script_type_numeric(result.type)) {
-            script_analyzer_diagnostic(a, node, "Cast requires scalar numeric types");
+        bool numeric = script_type_numeric(actual) && script_type_numeric(result.type);
+        if (!numeric &&
+            script_catalog_type_assignable(a->catalog, result.type, actual)) {
+            /* The cast only supplied the expected type, as for a polymorphic call. */
+            return result.left;
+        }
+        if (!numeric) {
+            script_analyzer_diagnostic(a, node, "Cast requires scalar numeric types or the value's own type");
         }
         result.effects = script_analyzer_expr_effects(a, result.left);
         return script_analyzer_expr_add(a, result);
@@ -496,18 +564,12 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         result.op = script_analyzer_operator_node(a, op);
         result.left = script_analyzer_expression(a, script_analyzer_field(node, "operand"), expected);
-        result.type = script_analyzer_expr_type(a, result.left);
+        result.type = result.op == SCRIPT_OP_NOT
+                        ? script_analyzer_presence(a, result.left)
+                        : script_analyzer_expr_type(a, result.left);
         result.effects = script_analyzer_expr_effects(a, result.left);
-        if (script_analyzer_text_is(a, op, "&")) {
-            result.op = SCRIPT_OP_REFERENCE;
-            if ((expected.flags & SCRIPT_TYPE_REFERENCE) &&
-                !a->out->expressions[result.left].writable) {
-                script_analyzer_diagnostic(a, node, "Reference requires a writable value");
-            }
-            result.type.flags |= SCRIPT_TYPE_REFERENCE;
-            result.writable = a->out->expressions[result.left].writable;
-        } else if (result.op == SCRIPT_OP_NOT) {
-            if (!(result.type.flags & SCRIPT_TYPE_OPTIONAL)) {
+        if (result.op == SCRIPT_OP_NOT) {
+            if (!(result.type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK))) {
                 script_analyzer_require(
                     a,
                     node,
@@ -585,6 +647,11 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         bool equality = result.op == SCRIPT_OP_EQ || result.op == SCRIPT_OP_NE;
         bool comparison = result.op >= SCRIPT_OP_EQ && result.op <= SCRIPT_OP_GE;
         bool logical = result.op == SCRIPT_OP_AND || result.op == SCRIPT_OP_OR;
+        if (logical || (equality && (script_analyzer_is(left, "nil") ||
+                                     script_analyzer_is(right, "nil")))) {
+            x = script_analyzer_presence(a, result.left);
+            y = script_analyzer_presence(a, result.right);
+        }
         if (equality &&
             (script_analyzer_is(left, "nil") || script_analyzer_is(right, "nil"))) {
             script_type nonnil = script_analyzer_is(left, "nil") ? y : x;

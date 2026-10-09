@@ -26,6 +26,33 @@ unsigned script_analyzer_statement_effects(script_analysis *out, script_statemen
     }
     return effects;
 }
+static bool waits(TSNode node)
+{
+    if (script_analyzer_is(node, "await_expression") ||
+        script_analyzer_is(node, "yield_statement")) {
+        return true;
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        /* A nested function waits for itself, not for its parent. */
+        if (!script_analyzer_is(child, "function_declaration") &&
+            !script_analyzer_is(child, "macro_declaration") && waits(child)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* A function waits when its body awaits or yields. Calling it without await
+ * starts a task, so unawaited calls never make the caller wait. */
+bool script_analyzer_function_waits(const analyzer *a, int function)
+{
+    for (int i = 0; i < acount(a->bodies); i++) {
+        if (a->bodies[i].function == function) {
+            return waits(a->bodies[i].node);
+        }
+    }
+    return false;
+}
 void script_analyzer_finish_effects(analyzer *a)
 {
     script_analysis *out = a->out;
@@ -39,14 +66,14 @@ void script_analyzer_finish_effects(analyzer *a)
             }
             if (expression->kind == SCRIPT_EXPR_CALL) {
                 if (expression->right >= 0) {
-                    effects |= out->functions[expression->right].effects;
+                    effects |= out->functions[expression->right].effects &
+                               ~(expression->task ? SCRIPT_EFFECT_SUSPEND : 0u);
                 }
             } else if (expression->right >= 0) {
                 effects |= out->expressions[expression->right].effects;
             }
             if (expression->kind == SCRIPT_EXPR_SYMBOL && expression->symbol >= 0 &&
-                (out->symbols[expression->symbol].kind == SCRIPT_LAZY ||
-                 out->symbols[expression->symbol].lazy_local) &&
+                out->symbols[expression->symbol].lazy_local &&
                 out->symbols[expression->symbol].initializer >= 0) {
                 effects |= out->expressions[out->symbols[expression->symbol].initializer]
                                .effects;
@@ -160,13 +187,23 @@ void script_analyzer_finish_bindings(analyzer *a)
     afree(a->out->bindings);
     a->out->bindings = ordered;
 }
+static void define_inferred(analyzer *a, int body);
 void script_analyzer_callable_definition(analyzer *a, int index, TSNode body)
 {
     int old_scope = a->scope, old_function = a->function;
     a->function = index;
     a->scope = a->out->functions[index].scope;
     if (a->out->functions[index].kind != SCRIPT_FUNCTION_SYSTEM) {
+        int nested = acount(a->bodies);
         script_analyzer_declaration_pass(a, body);
+        /* Nested inferred functions have results before this body calls them. */
+        for (int i = nested; i < acount(a->bodies); i++) {
+            if (a->out->functions[a->bodies[i].function].inferred) {
+                define_inferred(a, i);
+            }
+        }
+        a->scope = a->out->functions[index].scope;
+        a->function = index;
         script_analyzer_definition_pass(a, body);
     }
     script_statement block = { .kind = SCRIPT_STMT_BLOCK,
@@ -192,6 +229,75 @@ void script_analyzer_callable_definition(analyzer *a, int index, TSNode body)
     a->scope = old_scope;
     a->function = old_function;
     asetlen(a->narrowed, 0);
+}
+/* Whether `node` calls `symbol`, resolving each call where `node` sees it. */
+static bool calls(analyzer *a, TSNode node, int symbol)
+{
+    if (script_analyzer_is(node, "call_expression")) {
+        /* Spelled as call analysis resolves it, so `Lib.F` is not `F`. */
+        char *target = script_analyzer_qualified_name(a, script_analyzer_field(node, "function"));
+        bool match = script_analyzer_callable_symbol(a, target) == symbol;
+        free(target);
+        if (match) {
+            return true;
+        }
+    }
+    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if (!script_analyzer_is(child, "function_declaration") &&
+            !script_analyzer_is(child, "macro_declaration") &&
+            calls(a, child, symbol)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Defines inferred bodies after the inferred functions they call, so each
+ * call sees its callee's results. */
+static void define_inferred(analyzer *a, int body)
+{
+    function_body b = a->bodies[body];
+    if (b.state == BODY_DONE) {
+        return;
+    }
+    if (b.state == BODY_ACTIVE) {
+        TSNode name = script_analyzer_field(ts_node_parent(b.node), "name");
+        script_analyzer_diagnostic(a, name, "Recursive functions need declared results");
+        return;
+    }
+    a->bodies[body].state = BODY_ACTIVE;
+    for (int i = 0; i < acount(a->bodies); i++) {
+        const script_function *callee = &a->out->functions[a->bodies[i].function];
+        int old_scope = a->scope;
+        a->scope = a->out->functions[b.function].scope;
+        bool called = callee->inferred && calls(a, b.node, callee->symbol);
+        a->scope = old_scope;
+        if (called) {
+            define_inferred(a, i);
+        }
+    }
+    script_analyzer_callable_definition(a, b.function, b.node);
+    script_analyzer_function_type(a, b.function);
+    a->bodies[body].state = BODY_DONE;
+}
+/* Defines the callable bodies not yet defined, or only the inferred ones. */
+void script_analyzer_callable_definitions(analyzer *a, bool inferred_only)
+{
+    for (int i = 0; i < acount(a->bodies); i++) {
+        if (a->out->functions[a->bodies[i].function].inferred) {
+            define_inferred(a, i);
+        }
+    }
+    for (int i = 0; i < acount(a->bodies) && !inferred_only; i++) {
+        if (a->bodies[i].state == BODY_PENDING) {
+            a->bodies[i].state = BODY_DONE;
+            script_analyzer_callable_definition(
+                a,
+                a->bodies[i].function,
+                a->bodies[i].node
+            );
+        }
+    }
 }
 void script_analyzer_host_declarations(analyzer *a, TSNode root)
 {

@@ -564,9 +564,6 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
                 strcmp(f.jit_kind, "identity") != 0) {
                 reflect_error(c, "unknown node JIT lowering kind");
             }
-            if (has_annotate(c, "node:jit-fast-math")) {
-                f.jit_flags |= 1u << 0;
-            }
             f.conversion_from = annotation_value(c, "node:conversion-from:");
             f.conversion_to = annotation_value(c, "node:conversion-to:");
             if ((f.conversion_from == NULL) != (f.conversion_to == NULL)) {

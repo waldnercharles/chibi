@@ -801,7 +801,7 @@ static source_catalog *build(
     c->edit_used = NULL;
     c->edits = NULL;
     c->edit_count = 0;
-    qsort(c->sources, (size_t)acount(c->sources), sizeof *c->sources, compare_sources);
+    asort(c->sources, compare_sources);
     for (int i = 0; i < acount(c->sources); i++) {
         for (int j = 0; j < i; j++) {
             if (!strcmp(c->sources[i].identity, c->sources[j].identity)) {

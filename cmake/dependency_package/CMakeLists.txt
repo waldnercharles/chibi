@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 project(chibi_dependencies LANGUAGES C CXX)
+# The C runtime Chibi links on Windows, so one runtime serves both.
+if(WIN32)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
+endif()
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CHIBI_DEPENDENCY_SOURCE_ROOT "${CHIBI_SOURCE_ROOT}")

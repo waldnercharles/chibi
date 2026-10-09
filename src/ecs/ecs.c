@@ -859,7 +859,7 @@ int ecs_world_apply_commands(ecs_world *world)
     if (!acount(world->commands)) {
         return ECS_OK;
     }
-    qsort(world->commands, (size_t)acount(world->commands), sizeof *world->commands, compare_commands);
+    asort(world->commands, compare_commands);
     int result = ECS_OK;
     for (int i = 0; i < acount(world->commands); i++) {
         const ecs_command *command = &world->commands[i];
@@ -1374,12 +1374,7 @@ static int query_expression_candidate(
             candidate_union(&candidate->slots, child.slots);
             afree(child.slots);
         }
-        qsort(
-            candidate->slots,
-            (size_t)acount(candidate->slots),
-            sizeof *candidate->slots,
-            compare_slots
-        );
+        asort(candidate->slots, compare_slots);
         int write = 0;
         for (int i = 0; i < acount(candidate->slots); i++) {
             if (!write || candidate->slots[i] != candidate->slots[write - 1]) {

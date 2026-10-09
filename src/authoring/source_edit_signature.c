@@ -60,7 +60,7 @@ bool source_edit_signature(
 )
 {
     if (!r->signature || strlen(r->signature) > 64 * 1024 || !signature(r->signature)) {
-        return fail(error, size, "Provide one callable signature within 64 KiB: (parameters)->(results)");
+        return fail(error, size, "Provide one callable signature within 64 KiB: (parameters) or (parameters) -> (results)");
     }
     const source_presentation_origin *o = NULL;
     for (int i = 0; i < authoring_source_presentation_origin_count(p); i++) {
@@ -89,14 +89,15 @@ bool source_edit_signature(
         return fail(error, size, "This source record has no callable signature");
     }
     TSNode parameters = field(node, "parameters"), results = field(node, "results");
-    if (ts_node_is_null(parameters) || ts_node_is_null(results)) {
+    if (ts_node_is_null(parameters)) {
         script_syntax_free(syntax);
         return fail(error, size, "The callable signature is incomplete");
     }
+    TSNode last = ts_node_is_null(results) ? parameters : results;
     apush(
         changes->patches,
         ((text_edit){ (int)ts_node_start_byte(parameters),
-                      (int)ts_node_end_byte(results),
+                      (int)ts_node_end_byte(last),
                       xstrdup(r->signature) })
     );
     changes->text = text_edits_apply(a->text, changes->patches, acount(changes->patches));

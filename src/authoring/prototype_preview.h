@@ -72,7 +72,8 @@ int game_prototype_preview_register_prototype(
     const game_prototype *prototype
 );
 void game_prototype_preview_stop(game_prototype_preview *preview);
-/* Apply world settings while stopped; launch/reset retains them. */
+/* Apply world settings while stopped or between scenes; launch/reset
+ * retains them. */
 int game_prototype_preview_configure_physics(game_prototype_preview *preview, game_physics_settings settings);
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time);
 /* The preview owns a normal engine; transport, timing and input use its shared pipeline. */

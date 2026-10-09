@@ -6508,17 +6508,21 @@ static game_scene_flow *scenario_scenes(const scenario_context *context)
     );
 }
 
-/* Reads a scene document and readies the entities it starts with. */
+/* Reads a scene document, applies its physics settings and readies the
+ * entities it starts with. */
 static int enter_scenario_scene(scenario_context *context, const char *json, char *error, size_t error_size)
 {
     context->scene = game_scene_document_load(json, error, error_size);
     if (!context->scene) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    if (!acount(context->scene->entities)) {
-        set_error(error, error_size, "scene has no entities");
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
-    }
+    /* The document checked the settings, and no scene bodies remain. */
+    int configured = game_prototype_preview_configure_physics(
+        context->preview,
+        context->scene->physics
+    );
+    assert(configured == 0);
+    (void)configured;
     for (int i = 0; i < acount(context->scene->entities); i++) {
         game_scene_entity *entity = &context->scene->entities[i];
         asset_ref prototype_ref = { 0 };
@@ -6653,6 +6657,11 @@ static int prepare_scene_scenario(
     }
     if (status == CHIBI_AUTOMATION_OK) {
         status = enter_scenario_scene(context, scene_json, error, error_size);
+    }
+    /* A scene a script loads may start empty; a scenario needs something to run. */
+    if (status == CHIBI_AUTOMATION_OK && !acount(context->scene->entities)) {
+        set_error(error, error_size, "scene has no entities");
+        status = CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     free(scene_json);
     if (status == CHIBI_AUTOMATION_OK) {

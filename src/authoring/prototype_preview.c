@@ -26,6 +26,7 @@ struct game_prototype_preview
     ecs_entity *entities;
     engine *runtime;
     char **component_strings;
+    bool started; /* launched; a scene it loads may have no entities */
 };
 
 game_entities *game_prototype_preview_entities(game_prototype_preview *preview)
@@ -75,6 +76,7 @@ static void clear_entity(game_prototype_preview *preview)
 {
     engine_reset(preview->runtime);
     destroy_entities(preview);
+    preview->started = false;
 }
 
 game_prototype_preview *game_prototype_preview_new(const game_prototype_registry *registry)
@@ -243,6 +245,7 @@ int game_prototype_preview_launch(
             clear_entity(preview);
             return ECS_ERR_COMMAND;
         }
+        preview->started = true;
         engine_set_playing(preview->runtime, true);
     }
     return result;
@@ -282,7 +285,7 @@ int game_prototype_preview_start_scene(
     size_t error_size
 )
 {
-    assert(entities && entity_count > 0);
+    assert(entity_count >= 0 && (entities || !entity_count));
     preview->live->runtime->deferred = true;
     for (int i = 0; i < entity_count; i++) {
         if (!entities[i].prototype || entities[i].behavior_count < 0 ||
@@ -373,6 +376,7 @@ int game_prototype_preview_start_scene(
         clear_entity(preview);
         return ECS_ERR_COMMAND;
     }
+    preview->started = true;
     return ECS_OK;
 }
 
@@ -410,7 +414,7 @@ int game_prototype_preview_input(
     engine_input_failure *error
 )
 {
-    if (!preview || !preview->entity.slot) {
+    if (!preview || !preview->started) {
         return FLOW_ERR_ARGUMENT;
     }
     return engine_dispatch_input(preview->runtime, action, value, pressed, error);
@@ -418,7 +422,7 @@ int game_prototype_preview_input(
 
 int game_prototype_preview_sample_movement(game_prototype_preview *preview, float x, float y)
 {
-    if (!preview || !preview->entity.slot) {
+    if (!preview || !preview->started) {
         return FLOW_ERR_ARGUMENT;
     }
     return engine_sample_movement(preview->runtime, x, y);
@@ -426,7 +430,7 @@ int game_prototype_preview_sample_movement(game_prototype_preview *preview, floa
 
 int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time)
 {
-    if (!preview || !preview->entity.slot) {
+    if (!preview || !preview->started) {
         return FLOW_ERR_ARGUMENT;
     }
     return engine_frame(preview->runtime, monotonic_time);

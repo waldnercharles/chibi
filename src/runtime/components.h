@@ -391,6 +391,21 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameAppearance)
 }
 GameAppearance;
 
+/* Draws one frame of an image instead of an Appearance, one world unit per
+ * texel, centred on the Transform. Frames are frame_width by frame_height
+ * cells numbered left to right, then top to bottom; zero sizes use the whole
+ * image. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameSprite)
+{
+    const char *image;
+    int frame;
+    int frame_width;
+    int frame_height;
+    bool flip_x;
+    int layer;
+}
+GameSprite;
+
 /* Radians from gameplay +X toward +Y: atan2(direction.y, direction.x).
  * The 2D canvas flips Y at presentation; 3D maps gameplay Y to world Z. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameOrientation)

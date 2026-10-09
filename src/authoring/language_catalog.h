@@ -12,8 +12,9 @@ typedef struct
     const script_catalog *project;
 } authoring_language_catalog_input;
 
-/* Retains the explicit native table and owns a merged declaration snapshot.
- * Actual native kernels/layouts keep their declaration lifetime. */
+/* Retains the explicit native table and owns a merged declaration snapshot
+ * that also holds the loaded project's declared types. Actual native kernels/layouts
+ * keep their declaration lifetime. */
 authoring_language_catalog *authoring_language_catalog_new(
     const authoring_language_catalog_input *,
     char *error,

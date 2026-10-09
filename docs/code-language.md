@@ -7,13 +7,13 @@ modules; visual editors consume their authoring projections.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 10. Scenes, prototypes, event
+Project manifests are `project.kdl`, version 14. Scenes, prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 10
+version 14
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -50,11 +50,20 @@ payloads are declarative configuration, not executable behavior source.
 Semicolons are optional at the end of a line and before a closing brace.
 Separate multiple statements on one line with semicolons. Parenthesized calls,
 arrays and struct literals may span lines. An operator at the end or beginning
-of a line continues the expression. Source saving preserves the author's choice.
+of a line continues the expression.
+
+`chibi_ctl --format` writes the shortest spelling that analyzes to the same
+program: it drops semicolons, argument labels before the first skipped
+parameter, literal arguments equal to their defaults, inferable declaration and
+argument types, redundant parentheses and casts, handler aliases (the payload is
+`event`), empty `else` blocks, `-> ()` and `return()`, and writes `return(x)` as `return x`. Each rewrite is kept only
+when the re-analyzed program is unchanged; source that does not analyze is only
+re-indented. Parentheses that group `&&` under `||`, or one bitwise operator under another,
+stay. Ranges are written `0..n - 1`.
 
 Named call arguments use `Value: expression`. An explicit argument type includes
 its value or source, for example `Value: float = amount` or
-`Source: ref int from &count`. A bare identifier after `:` is a value expression.
+`Source: ref int from count`. A bare identifier after `:` is a value expression.
 
 ```code
 system FreeMotion(position: Transform, velocity: Velocity)
@@ -90,7 +99,7 @@ Behavior-root declarations own persistent instance state. `elapsed := 0;` infers
 Boolean, string and homogeneous array defaults also infer their type. Empty arrays
 and nominal values require an explicit type. `elapsed: number = 0;` spells out the
 type; native storage types such as `float` and `int64` remain available when precision
-or a reflected interface needs them. Formatting preserves existing numeric storage.
+or a reflected interface needs them. Formatting keeps a declared type unless inference produces the same storage.
 
 Names may be identifiers or quoted display names. Prototype references in native
 prototype arguments resolve project symbols, such as `spawn(MovementEmitter)`.
@@ -105,9 +114,13 @@ by a local value. Missing, ambiguous and wrong-kind symbols are errors.
 Values include booleans, numbers, strings, arrays, sets, maps, nominal handles and
 reflected structs. Arrays use `number[]`; collection types use `set<int>` or
 `map<int>`. Literal arrays use `[1, 2]`; reflected struct literals use `{x: 1, y: 2}`.
+Collection natives such as `array_add` return a new value: write
+`hair = array_add(hair, h)`. A pure native called as a statement is an error.
 Runtime strings cannot contain embedded NUL bytes. Explicit scalar conversions use
 `cast<number>(value)` or `cast<float>(value)`. They remain available at numeric
-boundaries; ordinary arithmetic uses its inferred or expected type.
+boundaries; ordinary arithmetic uses its inferred or expected type. A cast to a
+value's own type, such as `cast<entity>(get_global_variable("Player"))`, only
+supplies the type a polymorphic call needs.
 
 Vector receivers support `velocity.norm()`, statically resolved to the existing
 vec2 normalization operation. `vec2_norm(velocity)` names that operation directly.
@@ -148,6 +161,16 @@ entity. Reads can traverse nested reflected structs; assigning a nested struct
 subfield is currently rejected. Component and field names that cannot be resolved
 produce source diagnostics. Prototype membership improves completion ranking;
 it does not guarantee that a component is present on a live entity.
+A component path used as a condition tests presence instead: `if self.GameDash`,
+`!self.GameDash`, `self.GameDash == nil` and `&&`/`||` operands ask whether the
+entity has the component, so `if self.GameDash && self.GameDash.remaining > 0`
+reads the field only when it exists.
+`chibi_ctl --format` spells reflected accessor calls as paths: `get_dash().Value`
+becomes `self.Dash`, `has_dash()` in a condition becomes `self.Dash`, and a
+statement `set_dash_remaining(v)` becomes `self.Dash.remaining = v`. It also
+spells `get_variable<"x">()` as `state."x"` and operator functions such as
+`add(a, b)` and `less(a, b)` as operators. Each rewrite is kept only when the
+program analyzes the same. Awaiting a component accessor does not wait.
 
 Ordinary blocks support assignments, compound assignments, `if`/`else`, `match`, `while`,
 `for (i in first..last)` with inclusive bounds, `foreach (item in array)`,
@@ -161,7 +184,9 @@ branches use `sequence { branch { ... } branch { ... } }` and run in their nativ
 order. Labels and `goto` express shared or irreducible control flow when structured
 blocks cannot describe it.
 
-An awaited call with one data result can declare a block-scoped result:
+An unawaited call continues before its native completes, so using its data
+result is an error. An awaited call with one data result can declare a
+block-scoped result:
 
 ```code
 on Begin {
@@ -175,14 +200,66 @@ Capturing a shared action instance is rejected because later invocations could
 replace its output. Scopes with explicit labels cannot declare awaited results,
 because a jump could bypass their initialization. An ordinary block declaration
 such as `x := calculation;` evaluates once at that execution point using a native
-Snapshot node. Later reads use the captured value; a root-level `value` or `local`
+Snapshot node. Later reads use the captured value; a root-level `local`
 remains a lazy computation.
 
-This provides suspended invocations, not a general coroutine API. Source cannot
-currently create task handles, launch concurrent child tasks, explicitly yield,
-await another task, or cancel a task by handle. The runtime retains call frames
-and captured locals across supported native waits and cancels owned invocations
-when their entity or system registration is removed.
+### Tasks
+
+A function waits when its body contains `await` or `yield`. Calling such a
+function without `await` starts a task: the function runs inside the call until
+its first suspension, then runs beside the caller, and the call returns a `task`
+handle. `await` on the call or on the handle waits for the function and gives its
+result.
+
+```code
+behavior Turret {
+    pulse: task
+    ready: bool = false
+
+    function Charge(time: double) -> (power: double) {
+        await Delay(time)
+        yield
+        return(time * 2)
+    }
+
+    on Begin {
+        pulse = Charge(1)     // starts a task and continues here
+        power := await pulse  // waits for the task's result
+        if !pulse {           // a task is true while it is running
+            ready = true
+        }
+        cancel pulse          // stops it and every task it started
+    }
+}
+```
+
+- `yield` resumes on the next update.
+- `cancel t` stops a running task and the tasks it started; anything awaiting it
+  wakes with default results. Cancelling a finished task does nothing.
+- A finished task keeps its results until 32 more of its owner's tasks finish.
+  Awaiting it after that is a runtime error, so keep a result you need longer in
+  a state.
+- A task is true while it is running, so `if t` and `if !t` test it.
+- A `task` state needs no default; until assigned it refers to no task.
+- Tasks belong to the entity or system registration that started them and stop
+  when it is removed. A running task never blocks the events and ticks of its
+  owner.
+- Calls into a library start tasks the same way, such as `Store.Work()`.
+- A `task` state takes the function of the tasks assigned to it, so after
+  `pulse = Charge(1)`, `power := await pulse` gives `Charge`'s result. A state
+  that holds tasks of different functions, or a task passed in as a plain
+  `task`, can be awaited only for completion.
+- Awaiting a task whose function has several results gives the same tuple as
+  awaiting the call: `(await t).b`.
+- A task keeps references to state, components and locals for as long as it
+  runs, so `Bump(health)` works. A task shares a local with its caller like a
+  closure: each sees the other's writes while the caller runs, and the task
+  keeps the local after the caller returns. Each declaration makes a new local,
+  so tasks started in a loop each keep their own.
+
+The runtime retains call frames and captured locals across supported native waits
+and cancels owned invocations when their entity or system registration is
+removed.
 
 Native calls use their reflected names or unique snake-case spellings. Named
 arguments follow `name: expression`; ordinary statement calls may use positional
@@ -190,19 +267,17 @@ arguments. Explicit types are needed for polymorphic values that reflection
 cannot infer. Multiple results use named projections, such as
 `nearest.Entity`. No result is selected by guessing the first output.
 
-A lazy value names a computation and retains native dependency semantics:
+A root-level `local` names a computation that each activation evaluates once,
+when it is first read, and keeps until the activation ends:
 
 ```code
-value nearest = find_nearest_entity(Owner: self, Radius: 500);
-local target = nearest.Entity;
+local nearest = find_nearest_entity(Owner: self, Radius: 500);
 ```
 
-A boolean lazy value keeps a data result even before consumers are connected.
-Reading it in an `if` does not turn the shared computation into an executable
-branch. Assignments belong in executable blocks.
+A computation that should be recomputed at every read is written where it is
+read, or as a function. Assignments belong in executable blocks.
 
-
-This is not an eager snapshot. Stateful capabilities shared by several paths
+A local is not an eager snapshot. Stateful capabilities shared by several paths
 have one named action instance. Methods invoke its named entries, and handlers
 consume its named outcomes. The instance keeps its state across method calls and
 events. An invocation runs any emitted outcome handler before its next statement.
@@ -222,9 +297,16 @@ behavior SharedGate {
 Functions declare data parameters and results. Ordinary functions infer their
 execution continuation; `pure function` declares a data-only signature. Calls
 use the function name directly. Qualification selects an external library:
-`"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`.
+`"MovementActions"."Apply Force"(Force: force)`. Reference parameters use `ref`; a call passes any writable value to them directly, such as `nudge(self.Velocity)`, and the function writes through it. There is no address-of operator. Other parameters are the function's own copies, so it may assign them without changing the caller's value.
 Type parameters preserve generic relationships, for example
-`function Identity<T: float>(item: T) -> (output: T) { ... }`.
+`function Identity<T: float>(item: T) -> (output: T) { ... }`. A function
+gives its results with `return x`, or `return(a, b)` in signature order. A bare `return` gives
+each result's current value.
+
+A function without `->` infers its results from its first `return`: `return x` gives one
+result named `Result` with the type of `x`, and `return(Hit: h, Distance: d)` gives one result
+per label. Later returns must match. A function that never returns a value has no results.
+Recursive functions, and functions that call each other in a cycle, declare their results.
 
 When several graph calls share a pure generated expression body, formatting
 emits one ordinary pure function and calls it from each original site. Typed
@@ -287,7 +369,8 @@ without declared membership use the runtime's inferred component query.
 ### State lifetime and live reload
 
 State belongs to a behavior instance and persists across event executions and
-suspension. A compatible live update preserves values by stable variable
+suspension. Task, entity and array state needs no default; it starts empty.
+A compatible live update preserves values by stable variable
 identity, type, container and reflected layout. A changed default applies to new
 instances; restarting applies it to an existing instance. Adding or removing
 state, changing its type or losing its identity requires a restart. Updates wait
@@ -360,7 +443,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 10. Executable files contain no generated identity
+Project manifests use version 14. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently
@@ -386,7 +469,7 @@ Vim editing preserve indentation on new lines and indent inside brace blocks.
 A connected input can retain a binding or literal for later disconnection:
 
 ```text
-reroute_data(In: fallback(driver, binding: &component("GameMovement"), default: {speed: 0}));
+reroute_data(In: fallback(driver, binding: component("GameMovement"), default: {speed: 0}));
 ```
 
-`fallback` preserves the input's authored precedence: the connected driver wins, then the binding, then the literal default. Removing the wire restores the binding; removing the binding restores the default. It does not test truthiness or catch runtime errors. The `binding` and `default` clauses are optional, but at least one must be present. A binding with a retained default can use `fallback(&state.speed, default: 0)`. Defaults must be compatible literals.
+`fallback` preserves the input's authored precedence: the connected driver wins, then the binding, then the literal default. Removing the wire restores the binding; removing the binding restores the default. It does not test truthiness or catch runtime errors. The `binding` and `default` clauses are optional, but at least one must be present. A binding with a retained default can use `fallback(binding: speed, default: 0)`; a binding must be writable. Defaults must be compatible literals.

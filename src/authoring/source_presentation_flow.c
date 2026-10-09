@@ -378,7 +378,7 @@ void source_view_function_graph(source_projection *p, int index)
         if (s->function != index || s->declaration.start < 0) {
             continue;
         }
-        if (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_LAZY || s->kind == SCRIPT_ACTION ||
+        if (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_ACTION ||
             s->kind == SCRIPT_RESULT || s->kind == SCRIPT_LABEL) {
             source_view_declaration(p, i);
         }

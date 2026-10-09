@@ -113,9 +113,8 @@ int script_analyzer_lookup_storage(analyzer *a, TSNode node, script_symbol_kind 
     free(name);
     return found;
 }
-int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind, script_type type, bool writable)
+static int declare(analyzer *a, TSNode node, char *name, script_symbol_kind kind, script_type type, bool writable)
 {
-    char *name = script_analyzer_name_copy(a, node);
     int existing = script_analyzer_lookup_name(a, name);
     if (kind == SCRIPT_FUNCTION || kind == SCRIPT_MACRO) {
         existing = -1;
@@ -159,6 +158,15 @@ int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind
     apush(a->out->symbols, symbol);
     return acount(a->out->symbols) - 1;
 }
+int script_analyzer_symbol_new(analyzer *a, TSNode node, script_symbol_kind kind, script_type type, bool writable)
+{
+    return declare(a, node, script_analyzer_name_copy(a, node), kind, type, writable);
+}
+/* A result named by the language rather than the source, declared at `node`. */
+int script_analyzer_result_new(analyzer *a, TSNode node, const char *name, script_type type)
+{
+    return declare(a, node, xstrdup(name), SCRIPT_RESULT, type, true);
+}
 void script_analyzer_use(analyzer *a, TSNode node, int symbol, script_use_kind kind, uint64_t member)
 {
     apush(a->out->uses, ((script_use){ script_analyzer_range(node), symbol, kind, member }));
@@ -186,9 +194,11 @@ void script_analyzer_require(analyzer *a, TSNode node, script_type expected, scr
         script_analyzer_diagnostic(
             a,
             node,
-            "Incompatible types: expected %s, got %s",
+            "Incompatible types: expected %s%s, got %s%s",
             script_scalar_name(expected.storage),
-            script_scalar_name(actual.storage)
+            expected.flags & SCRIPT_TYPE_OPTIONAL ? "?" : "",
+            script_scalar_name(actual.storage),
+            actual.flags & SCRIPT_TYPE_OPTIONAL ? "?" : ""
         );
     }
 }
@@ -201,10 +211,6 @@ const script_expression *script_analyzer_result_source(const analyzer *a, int in
         }
         if (value->kind == SCRIPT_EXPR_SYMBOL && value->symbol >= 0) {
             index = a->out->symbols[value->symbol].initializer;
-            continue;
-        }
-        if (value->kind == SCRIPT_EXPR_UNARY && value->op == SCRIPT_OP_REFERENCE) {
-            index = value->left;
             continue;
         }
         return value;
@@ -440,6 +446,12 @@ int script_analyzer_initializer_find(const analyzer *a, int symbol)
     }
     return -1;
 }
+/* Tasks, handles and arrays start empty without a written default. */
+static bool starts_empty(script_type type)
+{
+    return (type.flags & SCRIPT_TYPE_TASK) || type.storage == PIN_HANDLE ||
+           type.container != PIN_CONTAINER_SINGLE;
+}
 void script_analyzer_resolve_initializer(analyzer *a, int symbol)
 {
     script_symbol *record = &a->out->symbols[symbol];
@@ -461,7 +473,34 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
     int old_scope = a->scope;
     a->scope = record->scope;
     script_type expected = record->type;
-    int value = script_analyzer_expression(a, a->initializers[index].value, expected);
+    TSNode node = a->initializers[index].value;
+    int value;
+    if (ts_node_is_null(node) && starts_empty(expected)) {
+        value = script_analyzer_expr_add(
+            a,
+            (script_expression){ .kind = expected.container != PIN_CONTAINER_SINGLE
+                                           ? SCRIPT_EXPR_ARRAY
+                                           : SCRIPT_EXPR_CONSTANT,
+                                 .type = expected,
+                                 .constant = { .type = expected.storage,
+                                               .container = expected.container },
+                                 .range = record->declaration,
+                                 .symbol = -1,
+                                 .left = -1,
+                                 .right = -1,
+                                 .entry = -1 }
+        );
+    } else if (ts_node_is_null(node)) {
+        script_analyzer_diagnostic(
+            a,
+            node,
+            "'%s' requires a default value",
+            record->name
+        );
+        value = script_analyzer_expression(a, node, expected);
+    } else {
+        value = script_analyzer_expression(a, node, expected);
+    }
     a->scope = old_scope;
     record = &a->out->symbols[symbol];
     record->initializer = value;
@@ -490,12 +529,6 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
     if ((record->kind == SCRIPT_STATE || record->kind == SCRIPT_SHARED_STATE) &&
         script_analyzer_expr_effects(a, value)) {
         script_analyzer_diagnostic(a, a->initializers[index].value, "State defaults must be constant and deterministic");
-    }
-    if (record->kind == SCRIPT_LAZY &&
-        script_analyzer_expr_effects(a, value) &
-            (SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
-             SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND)) {
-        script_analyzer_diagnostic(a, a->initializers[index].value, "Lazy values cannot perform execution effects");
     }
 }
 script_operator script_analyzer_operator_node(analyzer *a, TSNode node)

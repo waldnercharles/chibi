@@ -134,13 +134,6 @@ static const char *result_name(
     }
     return NULL;
 }
-/* A declaration-scope value is recomputed, whereas a local or action owns a
- * producer result. A writable lazy local may instead alias live storage; that
- * remains a named storage read and is never a duplicated call. */
-static bool retained(const script_symbol *symbol)
-{
-    return symbol->kind != SCRIPT_LAZY;
-}
 typedef source_edit_connection connection;
 static connection connect_value(
     const script_analysis *analysis,
@@ -208,10 +201,9 @@ static connection connect_value(
     if (results.expression) {
         effects |= results.expression->effects;
     }
-    if ((!named || !retained(named)) &&
-        ((e && e->awaited) ||
-         effects & (SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL | SCRIPT_EFFECT_HOST |
-                    SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_RANDOM))) {
+    if (!named && ((e && e->awaited) ||
+                   effects & (SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL | SCRIPT_EFFECT_HOST |
+                              SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_RANDOM))) {
         fail(error, size, "Name this producer's result before connecting it; the connection would evaluate it twice");
         return out;
     }
@@ -426,7 +418,7 @@ char *source_edit_check_connection(
 }
 bool source_edit_single_expression(const char *text)
 {
-    static const char prefix[] = "behavior __Edit { value __candidate = ";
+    static const char prefix[] = "behavior __Edit { __candidate := ";
     size_t length = strlen(text);
     char *probe = xmalloc(sizeof prefix + length + 4);
     snprintf(probe, sizeof prefix + length + 4, "%s%s; }", prefix, text);
@@ -437,7 +429,7 @@ bool source_edit_single_expression(const char *text)
         sizeof prefix - 1,
         (uint32_t)(sizeof prefix - 1 + length)
     );
-    while (!ts_node_is_null(node) && strcmp(ts_node_type(node), "value_declaration")) {
+    while (!ts_node_is_null(node) && strcmp(ts_node_type(node), "state_declaration")) {
         node = ts_node_parent(node);
     }
     if (ts_node_is_null(node)) {

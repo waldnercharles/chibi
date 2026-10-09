@@ -275,6 +275,10 @@ static int publish(const char *stage, const char *destination)
         return -1;
     }
     return rename(stage, destination);
+#elif defined(_WIN32)
+    /* The runtime's own rename never replaces; the call is parenthesized to
+     * skip the replacing POSIX rename support/win32/posix.h maps it to. */
+    return (rename)(stage, destination);
 #elif defined(__linux__)
     return (int)syscall(SYS_renameat2, AT_FDCWD, stage, AT_FDCWD, destination, 1 /* RENAME_NOREPLACE */);
 #else

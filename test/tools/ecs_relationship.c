@@ -141,6 +141,7 @@ TEST_CASE(ecs_registration_shares_one_id_space)
     component.key = owner_desc.key;
     REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_ERR_DUPLICATE);
     REQUIRE(ecs_world_relationship(world, parent_desc.id)->traits & ECS_REL_ACYCLIC);
+    REQUIRE(!(ecs_world_relationship(world, owner_desc.id)->traits & ECS_REL_TRAVERSABLE));
     REQUIRE(!ecs_world_relationship(world, armor_desc.id));
     return true;
 }

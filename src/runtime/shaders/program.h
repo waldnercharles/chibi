@@ -231,8 +231,9 @@ char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_
  * Unsupported reachable operations return NULL without an error;
  * singular/non-differentiable samples return NaN for finite-difference fallback. */
 char *shader_graph_glsl_gradient_named(const shader_graph *g, const char *prefix, shader_error *error);
-/* Generates graph GLSL that reads ramp stops from sg_ramp_data. The offset is
- * the first vec4 reserved for this graph in the containing program. */
+/* Generates graph GLSL that reads ramp stops through sg_ramp(i), which the
+ * containing program defines. The offset is the first vec4 reserved for this
+ * graph in that program's ramp table. */
 char *shader_graph_glsl_named_ramps(
     const shader_graph *g,
     const char *prefix,

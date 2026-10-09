@@ -16,7 +16,9 @@ typedef struct
     render_shader_set set;
     int preview_shape, preview_part;
     CF_Shader draw;
-    float (*ramp_data)[4];
+    /* Ramp stops, one vec4 per texel. SDL's Vulkan backend binds only the first
+     * 4 KB of each uniform block, which the stops would overflow. */
+    CF_Texture ramps;
     int ramp_vec4_count;
     unsigned ramp_revision;
     unsigned revision;
@@ -125,6 +127,21 @@ render_programs *render_programs_new(render_program_kind kind)
     return programs;
 }
 
+static void upload_ramps(program *entry)
+{
+    if (!entry->ramps.id) {
+        CF_TextureParams params = cf_texture_defaults(RENDER_SHADER_RAMP_VEC4_MAX, 1);
+        params.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
+        params.filter = CF_FILTER_NEAREST;
+        params.usage = CF_TEXTURE_USAGE_SAMPLER_BIT;
+        entry->ramps = cf_make_texture(params);
+    }
+    float stops[RENDER_SHADER_RAMP_VEC4_MAX][4] = { 0 };
+    render_shader_ramp_payload(&entry->set, stops);
+    cf_texture_update(entry->ramps, stops, (int)sizeof stops);
+    entry->ramp_revision = render_shader_ramp_revision();
+}
+
 static bool compile(render_programs *programs, program *entry)
 {
     shader_compile_count++;
@@ -136,22 +153,32 @@ static bool compile(render_programs *programs, program *entry)
     int previous = programs->kind == RENDER_PROGRAM_RASTER_MESH       ? 10
                  : programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE ? 5
                                                                       : 0;
+    bool scene3d = programs->kind == RENDER_PROGRAM_SCENE3D,
+         fragment = programs->kind == RENDER_PROGRAM_FRAGMENT,
+         sdf = programs->kind == RENDER_PROGRAM_SDF_MATERIAL ||
+               programs->kind == RENDER_PROGRAM_SDF_PREVIEW;
+    /* Set 2 holds the samplers, then the storage buffers. Cute's atlas or the
+     * scene's parameters come ahead of the images; the scene's shadow and sky
+     * maps, SDF depth or the raster's previous targets follow them, and the
+     * ramp table comes last. */
+    int first = scene3d || fragment ? 1 : 0;
+    int samplers = first + entry->set.count +
+                   (scene3d ? 5
+                    : sdf   ? 1
+                            : previous);
     int ramp_vec4_count = render_shader_ramp_vec4_count(&entry->set);
-    float (*ramp_data)[4] = ramp_vec4_count
-                              ? xcalloc(RENDER_SHADER_RAMP_VEC4_MAX, sizeof *ramp_data)
-                              : NULL;
-    if (ramp_data) {
-        render_shader_ramp_payload(&entry->set, ramp_data);
+    int buffers = samplers + (ramp_vec4_count > 0);
+    char ramps[160] = "";
+    if (ramp_vec4_count) {
+        snprintf(
+            ramps,
+            sizeof ramps,
+            "layout(set=2,binding=%d) uniform sampler2D sg_ramps;\n"
+            "vec4 sg_ramp(int i){return texelFetch(sg_ramps,ivec2(i,0),0);}\n",
+            samplers
+        );
     }
-    char *graphs = render_shader_glsl(
-        &entry->set,
-        2,
-        raster || programs->kind == RENDER_PROGRAM_MESH_MATERIAL ||
-                (programs->kind == RENDER_PROGRAM_SDF_MATERIAL ||
-                 programs->kind == RENDER_PROGRAM_SDF_PREVIEW)
-            ? 0
-            : 1
-    );
+    char *graphs = render_shader_glsl(&entry->set, 2, first);
     if (programs->kind == RENDER_PROGRAM_SDF_PREVIEW && entry->preview_part >= 0) {
         shader_error error = { 0 };
         char *preview = render_shader_model_preview_glsl(
@@ -161,7 +188,6 @@ static bool compile(render_programs *programs, program *entry)
         );
         if (!preview) {
             free(graphs);
-            free(ramp_data);
             snprintf(entry->error, sizeof entry->error, "%s", error.message);
             return false;
         }
@@ -176,18 +202,14 @@ static bool compile(render_programs *programs, program *entry)
                                                                             : "#define SG_MODEL_PREVIEW 1\n")
                                                                      : "";
     const char *uniforms =
-        programs->kind == RENDER_PROGRAM_FRAGMENT
-            ? "layout(set=3,binding=1) uniform shd_uniforms { "
-              "vec2 sg_lighting; vec4 sg_entity[85]; vec4 "
-              "sg_ramp_data[SG_RAMP_COUNT]; };\n"
-        : (programs->kind == RENDER_PROGRAM_SDF_MATERIAL ||
-           programs->kind == RENDER_PROGRAM_SDF_PREVIEW)
+        fragment ? "layout(set=3,binding=1) uniform shd_uniforms { "
+                   "vec2 sg_lighting; vec4 sg_entity[85]; };\n"
+        : sdf
             ? "layout(set=3,binding=0) uniform uniform_block { "
               "vec4 u_eye; vec4 u_camera[4]; vec2 u_depth; vec4 u_shape; vec4 "
               "u_sdf_quality; vec2 u_occlusion; "
               "vec4 u_model_materials[33]; vec4 u_preview_plane; "
-              "vec4 u_preview_options; vec4 u_preview_uv_bounds[2]; "
-              "vec4 sg_ramp_data[SG_RAMP_COUNT]; };\n"
+              "vec4 u_preview_options; vec4 u_preview_uv_bounds[2]; };\n"
         : programs->kind == RENDER_PROGRAM_MESH_MATERIAL
             ? "layout(set=3,binding=0) uniform uniform_block { "
               "vec4 u_fallback[4]; vec4 u_surface; vec4 "
@@ -195,8 +217,7 @@ static bool compile(render_programs *programs, program *entry)
               "u_camera[4]; vec2 u_depth; "
               "vec4 u_model[3]; vec4 u_inverse[3]; vec4 u_shape; "
               "vec4 u_shape_parameters[32]; "
-              "vec4 u_parameters[32]; vec4 "
-              "sg_ramp_data[SG_RAMP_COUNT]; };\n"
+              "vec4 u_parameters[32]; };\n"
         : raster
             ? "layout(set=3,binding=0) uniform uniform_block { "
               "float u_world_min_x; "
@@ -204,17 +225,16 @@ static bool compile(render_programs *programs, program *entry)
               "int u_tiles_x; "
               "int u_first_entity; int u_last_entity; int u_has_previous; "
               "int u_metaball_group; vec4 u_mesh_rect; vec2 u_mesh_extent; "
-              "vec4 u_plane_right; vec4 u_plane_down; vec4 u_plane_target; "
-              "vec4 sg_ramp_data[SG_RAMP_COUNT]; };\n"
+              "vec4 u_plane_right; vec4 u_plane_down; vec4 u_plane_target; };\n"
             : "";
     /* Room for the defines ahead of the sources. */
     size_t bytes = strlen(graphs) + strlen(programs->body) + strlen(scene) +
-                   strlen(uniforms) + 1024;
+                   strlen(uniforms) + strlen(ramps) + 1024;
     char *source = xmalloc(bytes);
     snprintf(
         source,
         bytes,
-        "#define SG_GRAPHS 1\n#define SG_RAMP_COUNT %d\n%s"
+        "#define SG_GRAPHS 1\n%s"
         "#define SG_PREVIOUS_SCENE_BINDING %d\n#define "
         "SG_PREVIOUS_SOURCE_BINDING %d\n"
         "#define SG_PREVIOUS_ALBEDO_BINDING %d\n#define "
@@ -226,8 +246,7 @@ static bool compile(render_programs *programs, program *entry)
         "%d\n#define SG_SHADOW_BINDING %d\n#define SG_SHADOW_BLOCKERS_BINDING "
         "%d\n#define SG_LIGHT_SHADOW_BINDING %d\n#define "
         "SG_SKY_SPECULAR_BINDING "
-        "%d\n#define SG_SKY_BRDF_BINDING %d\n%s%s%s\n%s",
-        RENDER_SHADER_RAMP_VEC4_MAX,
+        "%d\n#define SG_SKY_BRDF_BINDING %d\n%s%s%s%s\n%s",
         programs->kind == RENDER_PROGRAM_RASTER_MESH
             ? "#define SG_ACCUMULATE 1\n#define SG_MESH_LAYER 1\n"
         : previous ? "#define SG_ACCUMULATE 1\n"
@@ -237,13 +256,10 @@ static bool compile(render_programs *programs, program *entry)
         entry->set.count + 2,
         entry->set.count + 3,
         entry->set.count + 4,
-        entry->set.count + previous,
-        entry->set.count + previous + 1,
-        entry->set.count + previous + 2,
-        entry->set.count + ((programs->kind == RENDER_PROGRAM_SDF_MATERIAL ||
-                             programs->kind == RENDER_PROGRAM_SDF_PREVIEW)
-                                ? 1
-                                : previous + 3),
+        buffers,
+        buffers + 1,
+        buffers + 2,
+        buffers + (sdf ? 0 : 3),
         entry->set.count,
         entry->set.count + 1,
         entry->set.count + 2,
@@ -252,6 +268,7 @@ static bool compile(render_programs *programs, program *entry)
         entry->set.count + 5,
         scene,
         uniforms,
+        ramps,
         graphs,
         programs->body
     );
@@ -269,7 +286,6 @@ static bool compile(render_programs *programs, program *entry)
     free(graphs);
     free(source);
     if (!draw.id) {
-        free(ramp_data);
         snprintf(entry->error, sizeof entry->error, "%s", cf_shader_compile_error());
         return false;
     }
@@ -278,10 +294,10 @@ static bool compile(render_programs *programs, program *entry)
     }
     entry->draw = draw;
     programs->successful_compilations++;
-    free(entry->ramp_data);
-    entry->ramp_data = ramp_data;
     entry->ramp_vec4_count = ramp_vec4_count;
-    entry->ramp_revision = render_shader_ramp_revision();
+    if (ramp_vec4_count) {
+        upload_ramps(entry);
+    }
     entry->error[0] = 0;
     return true;
 }
@@ -427,12 +443,11 @@ int render_programs_prepare(render_programs *programs, const render_shader_set *
     return index + 1;
 }
 
-static void update_ramp_data(program *entry)
+static void update_ramps(program *entry)
 {
     if (entry->ramp_vec4_count && entry->revision == render_shader_revision() &&
         entry->ramp_revision != render_shader_ramp_revision()) {
-        render_shader_ramp_payload(&entry->set, entry->ramp_data);
-        entry->ramp_revision = render_shader_ramp_revision();
+        upload_ramps(entry);
     }
 }
 
@@ -444,14 +459,14 @@ const char *render_programs_error(const render_programs *programs)
 void render_programs_bind3d(render_programs *programs, int index)
 {
     program *entry = &programs->entries[index - 1];
-    update_ramp_data(entry);
+    update_ramps(entry);
     for (int i = 0; i < entry->set.count; i++) {
         char name[32];
         snprintf(name, sizeof name, "sg_image_%d", i);
         cf_draw3d_set_texture(name, render_image_texture(entry->set.images[i], NULL));
     }
     if (entry->ramp_vec4_count) {
-        cf_draw3d_set_uniform("sg_ramp_data", entry->ramp_data, CF_UNIFORM_TYPE_FLOAT4, RENDER_SHADER_RAMP_VEC4_MAX);
+        cf_draw3d_set_texture("sg_ramps", entry->ramps);
     }
     cf_draw3d_push_shader(entry->draw);
 }
@@ -464,13 +479,16 @@ void render_programs_unbind3d(render_programs *programs, int index)
         snprintf(name, sizeof name, "sg_image_%d", i);
         cf_draw3d_set_texture(name, (CF_Texture){ 0 });
     }
+    if (entry->ramp_vec4_count) {
+        cf_draw3d_set_texture("sg_ramps", (CF_Texture){ 0 });
+    }
     cf_draw3d_pop_shader();
 }
 
 void render_programs_bind2d(render_programs *programs, int index)
 {
     program *entry = &programs->entries[index - 1];
-    update_ramp_data(entry);
+    update_ramps(entry);
     cf_draw_push_shader(entry->draw);
     for (int i = 0; i < entry->set.count; i++) {
         char name[32];
@@ -478,7 +496,7 @@ void render_programs_bind2d(render_programs *programs, int index)
         cf_draw_set_texture(name, render_image_texture(entry->set.images[i], NULL));
     }
     if (entry->ramp_vec4_count) {
-        cf_draw_set_uniform("sg_ramp_data", entry->ramp_data, CF_UNIFORM_TYPE_FLOAT4, RENDER_SHADER_RAMP_VEC4_MAX);
+        cf_draw_set_texture("sg_ramps", entry->ramps);
     }
 }
 
@@ -490,13 +508,16 @@ void render_programs_unbind2d(render_programs *programs, int index)
         snprintf(name, sizeof name, "sg_image_%d", i);
         RENDER_DRAW_UNBIND_TEXTURES(name);
     }
+    if (entry->ramp_vec4_count) {
+        RENDER_DRAW_UNBIND_TEXTURES("sg_ramps");
+    }
     cf_draw_pop_shader();
 }
 
 CF_Shader render_programs_bind_raster(render_programs *programs, int index, CF_Material material)
 {
     program *entry = &programs->entries[index - 1];
-    update_ramp_data(entry);
+    update_ramps(entry);
     for (int i = 0; i < entry->set.count; i++) {
         char name[32];
         snprintf(name, sizeof name, "sg_image_%d", i);
@@ -507,7 +528,7 @@ CF_Shader render_programs_bind_raster(render_programs *programs, int index, CF_M
         );
     }
     if (entry->ramp_vec4_count) {
-        cf_material_set_uniform_fs(material, "sg_ramp_data", entry->ramp_data, CF_UNIFORM_TYPE_FLOAT4, RENDER_SHADER_RAMP_VEC4_MAX);
+        cf_material_set_texture_fs(material, "sg_ramps", entry->ramps);
     }
     return entry->draw;
 }
@@ -521,7 +542,9 @@ void render_programs_free(render_programs *programs)
         if (programs->entries[i].draw.id) {
             cf_destroy_shader(programs->entries[i].draw);
         }
-        free(programs->entries[i].ramp_data);
+        if (programs->entries[i].ramps.id) {
+            cf_destroy_texture(programs->entries[i].ramps);
+        }
     }
     afree(programs->entries);
     free(programs->slots);

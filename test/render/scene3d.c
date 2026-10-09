@@ -3,6 +3,7 @@
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
+#include "render/shader_program.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
 #include "runtime/images/sky.h"
@@ -10,13 +11,12 @@
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #if CHIBI_TEST_MATERIAL_GRAPHS
-#include "authoring/shader_prepare.h"
-#include "graph/authoring/graph_edit.h"
-#include "graph/shader/shader_graph.h"
+#include "material_graphs.h"
 #endif
 
 #include <assert.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -1592,41 +1592,6 @@ TEST_CASE(sky_lights_surfaces_by_its_gradients)
 }
 
 #if CHIBI_TEST_MATERIAL_GRAPHS
-static const node_desc *pack_node(const char *name)
-{
-    for (int i = 0; i < SHADER_PACK.node_count; i++) {
-        if (!strcmp(SHADER_PACK.nodes[i]->name, name)) {
-            return SHADER_PACK.nodes[i];
-        }
-    }
-    return NULL;
-}
-
-/* Registers a material with a white base and constant roughness and metallic.
- * A Vector3 node supplies the white: this dispatcher's type catalog lacks the
- * shader types that a color default needs. */
-static bool register_surface(const char *name, float roughness, float metallic)
-{
-    behavior_asset *material = behavior_asset_new(name);
-    material->domain = BEHAVIOR_DOMAIN_MATERIAL;
-    graph *g = material->graph;
-    node *output = shader_graph_add_output(g, false);
-    node *white = graph_add_node(g, pack_node("Shader Vector3"));
-    pin_value one = { .type = PIN_F32, .f = 1 };
-    pin_value values[] = { { .type = PIN_F32, .f = roughness },
-                           { .type = PIN_F32, .f = metallic } };
-    bool built = white && !graph_connect_data(g, white, 0, output, 0) &&
-                 !graph_set_pin_default(g, output, 0, 2, &values[0]) &&
-                 !graph_set_pin_default(g, output, 0, 3, &values[1]);
-    for (int i = 0; i < 3; i++) {
-        built = built && !graph_set_pin_default(g, white, 0, i, &one);
-    }
-    shader_error error = { 0 };
-    built = built && render_shader_upsert(material, &error);
-    behavior_asset_free(material);
-    return built;
-}
-
 /* The two-unit box at the origin, drawn with surface material `name`. */
 static ecs_entity add_surface_box(const char *name)
 {
@@ -1652,7 +1617,7 @@ TEST_CASE(mirrors_reflect_the_sky_in_its_directions)
 {
     look_at_corner();
     publish_octant_sky();
-    REQUIRE(register_surface("Mirror", 0, 1));
+    REQUIRE(test_register_surface("Mirror", 0, 1));
     add_surface_box("Mirror");
     GameEnvironment environment = sky_environment();
     for (int quarters = 0; quarters < 2; quarters++) {
@@ -1691,8 +1656,8 @@ TEST_CASE(rough_surfaces_blur_the_sky_they_reflect)
 {
     look_at_corner();
     publish_octant_sky();
-    REQUIRE(register_surface("Mirror", 0, 1));
-    REQUIRE(register_surface("Rough", 1, 1));
+    REQUIRE(test_register_surface("Mirror", 0, 1));
+    REQUIRE(test_register_surface("Rough", 1, 1));
     ecs_entity box = add_surface_box("Mirror");
     GameEnvironment environment = sky_environment();
     int mean[2][3] = { 0 };
@@ -1721,6 +1686,52 @@ TEST_CASE(rough_surfaces_blur_the_sky_they_reflect)
     }
     REQUIRE(mean[0][0] < 10 && mean[0][1] < 10 && mean[0][2] > 160);
     REQUIRE(mean[1][0] > 25 && mean[1][1] > 25 && mean[1][2] + 40 < mean[0][2]);
+    return true;
+}
+
+/* Whether the box's top shows linear color `rgb` through neutral tone
+ * mapping, whose offset applies with every channel at least 0.08. */
+static bool shows_ramp(const float rgb[3])
+{
+    CF_Pixel shown = top();
+    int values[3];
+    channels(shown, values);
+    for (int c = 0; c < 3; c++) {
+        if (abs(values[c] - neutral_srgb(rgb[c])) > 2) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Ramps of every material in a program share one table. Nine full ramps fill
+ * its first 288 entries, so the last material's stops lie past the 4 KB a
+ * Vulkan uniform block exposes. Each material reads its own stops, and a
+ * numeric stop edit reaches the GPU without a recompile. */
+TEST_CASE(color_ramps_color_surfaces_from_any_table_offset)
+{
+    static const float gray[4] = { .3f, .3f, .3f, 1 },
+                       red[4] = { .7f, .1f, .4f, 1 },
+                       green[4] = { .1f, .7f, .4f, 1 },
+                       blue[4] = { .1f, .4f, .7f, 1 };
+    for (int i = 0; i < 9; i++) {
+        char name[16];
+        snprintf(name, sizeof name, "Filler %d", i);
+        REQUIRE(test_register_ramp(name, SHADER_RAMP_MAX, gray, gray));
+    }
+    REQUIRE(test_register_ramp("Ramp", 2, red, green));
+    ecs_entity box = add_surface_box("Filler 0");
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    REQUIRE(shows_ramp(gray));
+    GAME_GameShader_get(world, box)->material = "Ramp";
+    REQUIRE(render(&environment));
+    REQUIRE(shows_ramp((const float[]){ .55f, .25f, .4f }));
+    unsigned compiles = render_shader_compile_count();
+    REQUIRE(test_register_ramp("Ramp", 2, red, blue));
+    REQUIRE(render(&environment));
+    REQUIRE(shows_ramp((const float[]){ .55f, .175f, .475f }));
+    REQUIRE(render_shader_compile_count() == compiles);
     return true;
 }
 #endif
@@ -1773,6 +1784,7 @@ void test_render_scene3d()
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(mirrors_reflect_the_sky_in_its_directions);
     RUN_TEST_CASE(rough_surfaces_blur_the_sky_they_reflect);
+    RUN_TEST_CASE(color_ramps_color_surfaces_from_any_table_offset);
 #endif
     pu_clear_setup();
     cf_destroy_app();

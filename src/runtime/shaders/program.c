@@ -695,7 +695,7 @@ static void ramp_glsl(char **text, const shader_node *n, const char *prefix, int
             first->color[3]
         );
     } else {
-        append(text, "if(factor<=sg_ramp_data[%d].x)return sg_ramp_data[%d];\n", offset, offset + 1);
+        append(text, "if(factor<=sg_ramp(%d).x)return sg_ramp(%d);\n", offset, offset + 1);
     }
     for (int i = 1; i < acount(n->ramp); i++) {
         const shader_ramp_stop *a = &n->ramp[i - 1], *b = &n->ramp[i];
@@ -724,12 +724,12 @@ static void ramp_glsl(char **text, const shader_node *n, const char *prefix, int
             int left = offset + 2 * (i - 1), right = offset + 2 * i;
             append(
                 text,
-                "if(factor<sg_ramp_data[%d].x) { float t=clamp((factor-"
-                "sg_ramp_data[%d].x)/"
-                "(sg_ramp_data[%d].x-sg_ramp_data[%d].x),0.0,1.0); int "
+                "if(factor<sg_ramp(%d).x) { float t=clamp((factor-"
+                "sg_ramp(%d).x)/"
+                "(sg_ramp(%d).x-sg_ramp(%d).x),0.0,1.0); int "
                 "mode=int(clamp(interpolation,0.0,2.0)); if(mode==1)t=0.0; "
                 "if(mode==2)t=t*t*(3.0-2.0*t); return "
-                "mix(sg_ramp_data[%d],sg_ramp_data[%d],t); }\n",
+                "mix(sg_ramp(%d),sg_ramp(%d),t); }\n",
                 right,
                 left,
                 right,
@@ -750,7 +750,7 @@ static void ramp_glsl(char **text, const shader_node *n, const char *prefix, int
             last->color[3]
         );
     } else {
-        append(text, "return sg_ramp_data[%d]; }\n", offset + 2 * (acount(n->ramp) - 1) + 1);
+        append(text, "return sg_ramp(%d); }\n", offset + 2 * (acount(n->ramp) - 1) + 1);
     }
 }
 /* Whether nodes a and b compute the same value, given each earlier node's

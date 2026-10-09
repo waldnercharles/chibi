@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#define GAME_UI_DOCUMENT_VERSION UINT64_C(1)
+#define GAME_UI_DOCUMENT_VERSION UINT64_C(2)
 typedef enum
 {
     GAME_UI_RESOURCE_IMAGE = 1,

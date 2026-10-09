@@ -98,7 +98,7 @@ static void wire(execution_wire *w, render_mesh_asset *a)
     v3(w, &a->min);
     v3(w, &a->max);
     int count = w->reading ? 0 : acount(a->vertices);
-    execution_wire_count(w, &count, 8);
+    execution_wire_count(w, &count, 1);
     if (!w->error && count > MESH_PREPARED_VERTEX_MAX) {
         w->error = "Prepared mesh vertex limit";
     }
@@ -123,7 +123,7 @@ static void wire(execution_wire *w, render_mesh_asset *a)
         }
     }
     count = w->reading ? 0 : acount(a->groups);
-    execution_wire_count(w, &count, 8);
+    execution_wire_count(w, &count, 1);
     if (!w->error && count > 1024) {
         w->error = "Prepared mesh group limit";
     }

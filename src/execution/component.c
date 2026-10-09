@@ -18,11 +18,17 @@ bool behavior_function_bind(
 {
     ctx->owner = owner;
     ctx->services = services;
-    if (!f->component_access && !f->component_bindings) {
+    /* A reference argument may name a component the caller resolved, and a
+     * task keeps it after the caller's world binding ends. */
+    bool world = f->component_access;
+    for (int i = 0; !world && i < acount(f->argument_kinds); i++) {
+        world = f->argument_kinds[i] == BEHAVIOR_REFERENCE;
+    }
+    if (!world && !f->component_bindings) {
         return true;
     }
     for (int i = 0; i < acount(services); i++) {
-        if (f->component_access && !strcmp(services[i].type_name, "ecs.world")) {
+        if (world && !strcmp(services[i].type_name, "ecs.world")) {
             ctx->world = ecs_world_execution(services[i].value);
         }
         if (f->component_bindings &&

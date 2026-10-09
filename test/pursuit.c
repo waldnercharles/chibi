@@ -65,9 +65,6 @@ static test_source_fixture read_behavior(const char *name)
                 }
                 const script_expression
                     *speed = &analysis->expressions[call->arguments[j].value];
-                if (speed->kind == SCRIPT_EXPR_UNARY && speed->op == SCRIPT_OP_REFERENCE) {
-                    speed = &analysis->expressions[speed->left];
-                }
                 reads_speed |= speed->kind == SCRIPT_EXPR_MEMBER &&
                                speed->member && speed->left >= 0 &&
                                analysis->expressions[speed->left].kind ==

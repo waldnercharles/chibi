@@ -932,7 +932,8 @@ int behavior_function_run_once(const behavior_function *f, behavior_function_con
     ctx->edges = f->edges;
     bool owned = !ctx->queries && !ctx->commands &&
                  (acount(f->queries) || acount(f->commands) ||
-                  (!ctx->data && (acount(f->host_calls) || acount(f->data_values))));
+                  (!ctx->data && (acount(f->host_calls) ||
+                                  acount(f->data_values) || acount(f->calls))));
     if (owned) {
         behavior_function_prepare_host(f, ctx);
         ctx->owned_host = true;

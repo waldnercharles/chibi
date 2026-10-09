@@ -630,7 +630,9 @@ const char *render_material_raster_error(const render_material_raster *r)
 static bool add_images(render_shader_set *set, const render_material_entity *entity, shader_error *error)
 {
     return render_shader_set_add(set, (int)entity->reserved[0], error) &&
-           render_shader_set_add(set, (int)entity->reserved[1], error);
+           render_shader_set_add(set, (int)entity->reserved[1], error) &&
+           (entity->shape_type != RENDER_SHAPE_SPRITE ||
+            render_shader_set_add_image(set, (int)entity->points[12], error));
 }
 
 static bool prepare_batches(render_material_raster *r)

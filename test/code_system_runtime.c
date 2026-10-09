@@ -367,22 +367,22 @@ static bool optional_membership_roundtrip(behavior_backend backend)
 static bool any_query_membership(behavior_backend backend)
 {
     system_fixture f = fixture_new();
-    ecs_entity bare = health(&f), bound = health(&f), collider = health(&f);
-    REQUIRE(!GAME_GameActionBinding_add(f.world, bound, 0));
-    REQUIRE(!GAME_GameActionBinding_add(f.world, collider, 0));
+    ecs_entity bare = health(&f), aimed = health(&f), collider = health(&f);
+    REQUIRE(!GAME_GameAim_add(f.world, aimed, 0));
+    REQUIRE(!GAME_GameAim_add(f.world, collider, 0));
     REQUIRE(!GAME_GameCollider_add(f.world, collider, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(prepare(
         &f,
         "system AnyQuery(health:Health) { "
-        "query any(has(Collider), not(has(ActionBinding))); "
+        "query any(has(Collider), not(has(Aim))); "
         "health.Current+=1; }",
         backend
     ));
     REQUIRE(tick(&f, 0));
-    REQUIRE(instance(&f, bare) && !instance(&f, bound) && instance(&f, collider));
+    REQUIRE(instance(&f, bare) && !instance(&f, aimed) && instance(&f, collider));
     REQUIRE(GAME_GameHealth_get_const(f.world, bare)->current == 1);
-    REQUIRE(GAME_GameHealth_get_const(f.world, bound)->current == 0);
+    REQUIRE(GAME_GameHealth_get_const(f.world, aimed)->current == 0);
     REQUIRE(GAME_GameHealth_get_const(f.world, collider)->current == 1);
     fixture_free(&f);
     return true;

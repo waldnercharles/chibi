@@ -202,6 +202,11 @@ char *new_asset_create(const char *content, new_asset_kind kind, const char *nam
             free(path);
             return NULL;
         }
+        if (errno != ENOENT && errno != ENOTDIR) {
+            snprintf(error, size, "Cannot check %s: %s", path, strerror(errno));
+            free(path);
+            return NULL;
+        }
     }
     snprintf(path, bytes, "%s/%s/%s%s", content, FOLDERS[kind], name, new_asset_extension(kind));
     char *text = new_asset_text(kind, name);

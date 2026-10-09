@@ -182,9 +182,15 @@ TEST_CASE(missing_ui_documents_are_reported)
         !strcmp(first_message(yyjson_obj_get(problem, "diagnostics")), "Unknown UI document 'Pause'")
     );
 
-    char folder[256];
+    char folder[256], hud[256];
     path(folder, sizeof folder, "game/content/ui");
     REQUIRE(mkdir(folder, 0700) == 0);
+    /* Preparation only reads regular files. */
+    path(hud, sizeof hud, "game/content/ui/Hud.rml");
+    REQUIRE(mkdir(hud, 0700) == 0);
+    REQUIRE(validate() != 0 && errors() == 2);
+    REQUIRE(!strcmp(first_message(result("project")), "Unknown UI document 'Hud'"));
+    REQUIRE(rmdir(hud) == 0);
     write_file("game/content/ui/Hud.rml", "<div>Score</div>\n");
     write_file("game/content/ui/Pause.rml", "<div>Paused</div>\n");
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));

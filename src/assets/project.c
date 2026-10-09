@@ -121,7 +121,11 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
         return -1;
     }
     char *parent = parent_path(root);
-    if (!is_directory(parent)) {
+    struct stat info;
+    /* mkdir reports a parent that exists but cannot be inspected. */
+    bool missing = stat(parent, &info) ? errno == ENOENT || errno == ENOTDIR
+                                       : !S_ISDIR(info.st_mode);
+    if (missing) {
         set_errorf(error, error_size, "Project parent directory does not exist: %s", parent);
         free(parent);
         errno = EINVAL;

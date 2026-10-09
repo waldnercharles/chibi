@@ -1440,10 +1440,10 @@ static bool read_ui_asset(const char *root, const char *name, char *error, size_
 }
 
 /* Whether the ui folder holds markup for `name`, matched as preparation
- * matches it: the exact file name, top level only. */
+ * matches it: a regular file with the exact name, top level only. */
 static bool ui_exists(const char *root, const char *name)
 {
-    char folder[1024], file[512];
+    char folder[1024], file[512], path[1600];
     ui_folder(root, folder, sizeof folder);
     snprintf(file, sizeof file, "%s" UI_MARKUP_EXTENSION, name);
     DIR *dir = opendir(folder);
@@ -1454,7 +1454,9 @@ static bool ui_exists(const char *root, const char *name)
     if (dir) {
         closedir(dir);
     }
-    return found;
+    snprintf(path, sizeof path, "%s/%s", folder, file);
+    struct stat info;
+    return found && !stat(path, &info) && S_ISREG(info.st_mode);
 }
 
 /* UI language service (workstream B): validateAsset for a ui asset whose

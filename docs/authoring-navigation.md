@@ -39,6 +39,12 @@ Consumers use these shared APIs:
   declarations without editable source. Bare KDL names, such as input map
   action nodes, stay bare when the new name is an identifier. Applying a plan does not publish it;
   consumers validate the complete candidate and check stale bytes before commit.
+- `authoring/source_prototype_flow.h` finds the string constants that reach a
+  prototype parameter, such as Spawn Prototype's, through locals, state, authored
+  function parameters and their defaults, in any document. Navigation indexes
+  each as a reference to that prototype, so find references and rename cover
+  `kind := "Drone"` before `spawn(kind)` and a library's `Prototype: name =
+  "Drone"` default. It does not follow component fields or event payloads.
 - `authoring/source_references.h` maps these facts into the shared asset reference
   index, including source ranges and owning callable IDs.
 

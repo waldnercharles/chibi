@@ -414,6 +414,17 @@ static bool notify_modified(ecs_world *world)
     return marked;
 }
 
+/* Delivers a row's pending ON_SET before a command removes the row. */
+static void flush_modified(ecs_world *world, ecs_component *component, ecs_entity entity)
+{
+    uint64_t bit = UINT64_C(1) << (entity.slot % 64u);
+    if (!component->modified || !(component->modified[entity.slot / 64u] & bit)) {
+        return;
+    }
+    component->modified[entity.slot / 64u] &= ~bit;
+    notify(world, ECS_ON_SET, entity, component->desc.id);
+}
+
 static int command_rank(ecs_command_kind kind)
 {
     switch (kind) {
@@ -493,36 +504,71 @@ typedef struct
     bool recorded; /* Its own destroy command is still pending. */
 } cleanup_entry;
 
-/* Collects entity and, breadth first, every source its DELETE relationships
- * would destroy. Returns false when a PANIC relationship still has a source,
- * leaving every pending_destroy state as it was. */
-static bool collect_cleanup(ecs_world *world, ecs_entity entity, cleanup_entry **entries)
+typedef struct
 {
-    bool recorded = world->pending_destroy[entity.slot] == DESTROY_RECORDED;
-    apush(*entries, ((cleanup_entry){ entity, recorded }));
-    world->pending_destroy[entity.slot] = DESTROY_RUNNING;
-    bool allowed = true;
-    for (int at = 0; allowed && at < acount(*entries); at++) {
-        uint32_t slot = (*entries)[at].entity.slot;
-        for (int r = 0; allowed && r < acount(world->relationships); r++) {
-            const ecs_relationship *relationship = &world->relationships[r];
-            const uint32_t *sources = relationship->sources[slot];
-            ecs_cleanup policy = relationship->desc.on_delete_target;
-            allowed = policy != ECS_CLEANUP_PANIC || !acount(sources);
-            for (int i = 0; policy == ECS_CLEANUP_DELETE && i < acount(sources); i++) {
-                uint32_t source = sources[i];
-                if (world->pending_destroy[source] == DESTROY_RUNNING) {
-                    continue;
-                }
-                cleanup_entry entry = {
-                    .entity = { source, world->generations[source] },
-                    .recorded = world->pending_destroy[source] == DESTROY_RECORDED,
-                };
-                apush(*entries, entry);
-                world->pending_destroy[source] = DESTROY_RUNNING;
+    cleanup_entry entry;
+    int relationship; /* Next relationship whose sources to visit. */
+    int source;
+} cleanup_frame;
+
+static void push_cleanup(ecs_world *world, cleanup_frame **stack, uint32_t slot)
+{
+    cleanup_frame frame = {
+        .entry = { { slot, world->generations[slot] },
+                   world->pending_destroy[slot] == DESTROY_RECORDED },
+    };
+    apush(*stack, frame);
+    world->pending_destroy[slot] = DESTROY_RUNNING;
+}
+
+/* Returns the frame's next DELETE source not yet collected, or 0 when none
+ * remain. Clears allowed when a PANIC relationship still has a source. */
+static uint32_t next_cleanup_source(ecs_world *world, cleanup_frame *frame, bool *allowed)
+{
+    uint32_t slot = frame->entry.entity.slot;
+    for (; frame->relationship < acount(world->relationships);
+         frame->relationship++, frame->source = 0) {
+        const ecs_relationship *relationship = &world->relationships[frame->relationship];
+        const uint32_t *sources = relationship->sources[slot];
+        ecs_cleanup policy = relationship->desc.on_delete_target;
+        if (policy == ECS_CLEANUP_PANIC && acount(sources)) {
+            *allowed = false;
+            return 0;
+        }
+        while (policy == ECS_CLEANUP_DELETE && frame->source < acount(sources)) {
+            uint32_t source = sources[frame->source++];
+            if (world->pending_destroy[source] != DESTROY_RUNNING) {
+                return source;
             }
         }
     }
+    return 0;
+}
+
+/* Collects entity and every source its DELETE relationships would destroy in
+ * postorder, so each source comes before its targets. Returns false when a
+ * PANIC relationship still has a source, leaving every pending_destroy state
+ * as it was. */
+static bool collect_cleanup(ecs_world *world, ecs_entity entity, cleanup_entry **entries)
+{
+    cleanup_frame *stack = NULL;
+    bool allowed = true;
+    push_cleanup(world, &stack, entity.slot);
+    while (allowed && acount(stack)) {
+        uint32_t source = next_cleanup_source(world, &stack[acount(stack) - 1], &allowed);
+        if (source) {
+            push_cleanup(world, &stack, source);
+            continue;
+        }
+        if (allowed) {
+            apush(*entries, stack[acount(stack) - 1].entry);
+            asetlen(stack, acount(stack) - 1);
+        }
+    }
+    for (int i = 0; i < acount(stack); i++) {
+        apush(*entries, stack[i].entry);
+    }
+    afree(stack);
     for (int i = 0; !allowed && i < acount(*entries); i++) {
         const cleanup_entry *entry = &(*entries)[i];
         world->pending_destroy[entry->entity.slot] = entry->recorded
@@ -535,6 +581,13 @@ static bool collect_cleanup(ecs_world *world, ecs_entity entity, cleanup_entry *
 /* Notifies and removes one entity whose cleanup was collected. */
 static void retire_entity(ecs_world *world, ecs_entity entity)
 {
+    for (int i = 0; world_observes(world, ECS_ON_SET) && i < acount(world->components);
+         i++) {
+        ecs_component *component = &world->components[i];
+        if (component_matches(component, entity.slot)) {
+            flush_modified(world, component, entity);
+        }
+    }
     if (world_observes(world, ECS_ON_DESTROY)) {
         notify(world, ECS_ON_DESTROY, entity, 0);
     }
@@ -563,7 +616,8 @@ static void retire_entity(ecs_world *world, ecs_entity entity)
 }
 
 /* Applies OnDeleteTarget cleanup before the entity goes: DELETE sources are
- * destroyed deepest first, and a PANIC source fails it before any change. */
+ * destroyed before their targets, and a PANIC source fails it before any
+ * change. */
 static int destroy_entity(ecs_world *world, ecs_entity entity)
 {
     cleanup_entry *entries = NULL;
@@ -571,7 +625,7 @@ static int destroy_entity(ecs_world *world, ecs_entity entity)
         afree(entries);
         return ECS_ERR_COMMAND;
     }
-    for (int i = acount(entries) - 1; i >= 0; i--) {
+    for (int i = 0; i < acount(entries); i++) {
         retire_entity(world, entries[i].entity);
     }
     afree(entries);
@@ -658,6 +712,7 @@ static int apply_remove(ecs_world *world, const ecs_command *command)
     if (!ecs_component_has(world, command->entity, command->component)) {
         return ECS_ERR_COMPONENT;
     }
+    flush_modified(world, component, command->entity);
     if (observes(component, ECS_ON_REMOVE)) {
         notify(world, ECS_ON_REMOVE, command->entity, command->component);
     }
@@ -1455,13 +1510,21 @@ bool ecs_component_has_entities(
     return false;
 }
 
-void *ecs_component_data(ecs_world *world, ecs_entity entity, ecs_component_id component_id)
+static void *row_data(const ecs_world *world, ecs_component *component, ecs_entity entity)
 {
-    ecs_component *component = world ? find_component(world, component_id) : NULL;
-    if (!component || !ecs_component_has(world, entity, component_id)) {
+    if (!component || !ecs_component_has(world, entity, component->desc.id)) {
         return NULL;
     }
     return component_address(component, entity.slot);
+}
+
+/* Name rows change only through ecs_world_record_name. */
+void *ecs_component_data(ecs_world *world, ecs_entity entity, ecs_component_id component_id)
+{
+    if (!world || component_id == ECS_NAME) {
+        return NULL;
+    }
+    return row_data(world, find_component(world, component_id), entity);
 }
 
 const void *ecs_component_data_const(const ecs_world *world, ecs_entity entity, ecs_component_id component_id)
@@ -1526,7 +1589,7 @@ int ecs_component_write_field(
     ecs_component *component = world ? find_component(world, component_id) : NULL;
     const type_field *type_field = component ? component_field(component, field) : NULL;
     void *data = ecs_component_data(world, entity, component_id);
-    if (!type_field || !data || component_id == ECS_NAME) {
+    if (!type_field || !data) {
         return ECS_ERR_ARGUMENT;
     }
     if (type_field->type == PIN_STR || type_field->type == PIN_NAME) {
@@ -1646,7 +1709,7 @@ bool ecs_component_accepts_value(const ecs_world *world, ecs_component_id id, si
     bool whole;
     const type_field *field;
     return component_value_target(
-        world ? find_component_const(world, id) : NULL,
+        world && id != ECS_NAME ? find_component_const(world, id) : NULL,
         offset,
         declared,
         &whole,
@@ -1663,8 +1726,7 @@ static int write_value(
     pin_value value
 )
 {
-    void *row = component ? ecs_component_data(world, entity, component->desc.id)
-                          : NULL;
+    void *row = row_data(world, component, entity);
     bool whole;
     const type_field *field;
     if (!row || !value_type_matches(declared, value) ||

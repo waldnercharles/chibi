@@ -117,6 +117,9 @@ TEST_CASE(ecs_names_resolve_paths_and_stay_unique_among_siblings)
     pin_value text = { .type = PIN_NAME, .str = "Forged" };
     REQUIRE(ecs_component_write_field(world, other, ECS_NAME, 0, text) == ECS_ERR_ARGUMENT);
     REQUIRE(ecs_component_write_value(world, other, ECS_NAME, 0, text, text) == ECS_ERR_ARGUMENT);
+    REQUIRE(!ecs_component_data(world, gun, ECS_NAME));
+    REQUIRE(ecs_component_data_const(world, gun, ECS_NAME));
+    REQUIRE(!ecs_component_accepts_value(world, ECS_NAME, 0, text));
     char buffer[] = "Renamed";
     REQUIRE(ecs_world_record_name(world, other, buffer, 0) == ECS_OK);
     buffer[0] = 'X';

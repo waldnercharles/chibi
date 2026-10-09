@@ -528,6 +528,22 @@ TEST_CASE(ecs_destroy_notifies_the_entity_and_each_component_before_removal)
     return true;
 }
 
+TEST_CASE(ecs_rows_destroyed_later_in_the_batch_still_report_their_set)
+{
+    observed_count = 0;
+    observe_all(record_desc.id);
+    ecs_entity entity = ecs_world_create_entity(world);
+    sdk_record initial = { .amount = 4 };
+    REQUIRE(ecs_world_record_add(world, entity, record_desc.id, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_destroy(world, entity, 1) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(observed_count == 3);
+    REQUIRE(observed_is(0, ECS_ON_ADD, entity, record_desc.id, 4));
+    REQUIRE(observed_is(1, ECS_ON_SET, entity, record_desc.id, 4));
+    REQUIRE(observed_is(2, ECS_ON_REMOVE, entity, record_desc.id, 4));
+    return true;
+}
+
 static ecs_entity follower;
 
 static void tag_on_add(ecs_world *w, ecs_event, ecs_entity entity, ecs_component_id, void *)
@@ -695,6 +711,7 @@ void test_tool_ecs()
     RUN_TEST_CASE(ecs_managed_storage_retires_on_remove_destroy_and_world_free);
     RUN_TEST_CASE(ecs_observers_see_add_set_and_remove_at_the_sync_point);
     RUN_TEST_CASE(ecs_destroy_notifies_the_entity_and_each_component_before_removal);
+    RUN_TEST_CASE(ecs_rows_destroyed_later_in_the_batch_still_report_their_set);
     RUN_TEST_CASE(ecs_observer_commands_apply_in_the_same_sync_point);
     RUN_TEST_CASE(ecs_observer_queries_skip_rows_removed_earlier_in_the_batch);
     RUN_TEST_CASE(ecs_set_marks_coalesce_in_slot_order_until_unobserved);

@@ -60,7 +60,7 @@ typedef enum
 {
     ECS_REL_EXCLUSIVE = 1u << 0, /* One target per source; adding replaces it. */
     ECS_REL_ACYCLIC = 1u << 1,   /* Adding a pair that closes a cycle fails. */
-    ECS_REL_TRAVERSABLE = 1u << 2 | ECS_REL_ACYCLIC, /* Queries may walk it. */
+    ECS_REL_TRAVERSABLE = 1u << 2, /* Queries may walk it; registration adds ACYCLIC. */
 } ecs_relationship_trait;
 
 /* What destroying a target does to the pairs that point at it. */
@@ -76,7 +76,8 @@ typedef enum
  * - ChildOf: Exclusive, Traversable, and destroying a parent destroys its
  *   children first. Children keep the order they were parented in.
  * - Name: one name per entity, unique among its siblings (or among roots).
- *   Set it with ecs_world_record_name; direct adds and writes are rejected.
+ *   Set it with ecs_world_record_name; direct adds and writes are rejected,
+ *   and ecs_component_data returns NULL for it.
  * - Disabled: a tag that hides the entity from every query that does not name
  *   Disabled. It does not propagate to children. */
 #define ECS_CHILD_OF UINT64_C(0x84771d550890f1a1)

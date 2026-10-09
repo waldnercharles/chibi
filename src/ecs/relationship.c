@@ -231,6 +231,9 @@ int ecs_world_register_relationship(ecs_world *world, const ecs_relationship_des
         return ECS_ERR_DUPLICATE;
     }
     ecs_relationship relationship = { .desc = *desc };
+    if (desc->traits & ECS_REL_TRAVERSABLE) {
+        relationship.desc.traits |= ECS_REL_ACYCLIC;
+    }
     relationship.desc.name = xstrdup(desc->name);
     relationship.desc.key = desc->key ? xstrdup(desc->key) : NULL;
     relationship_grow(&relationship, 0, world->execution.slot_count);

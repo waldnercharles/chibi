@@ -1411,6 +1411,15 @@ static int collect_sources(const char *directory, const char *suffix, char ***pa
     closedir(dir);
     return status;
 }
+static bool collected(char **paths, const char *path)
+{
+    for (int i = 0; i < acount(paths); i++) {
+        if (!strcmp(paths[i], path)) {
+            return true;
+        }
+    }
+    return false;
+}
 int chibi_project_migrate_content(
     const char *content,
     const char *start_scene,
@@ -1430,10 +1439,10 @@ int chibi_project_migrate_content(
         error,
         error_size
     );
-    size_t length = strlen(content);
+    /* The scan skips hidden entries, and the start scene may lie outside the
+     * content, so add it unless the scan found it. */
     struct stat info;
-    if (!status && scenes && start_scene &&
-        (strncmp(start_scene, content, length) || start_scene[length] != '/') &&
+    if (!status && scenes && start_scene && !collected(paths, start_scene) &&
         !stat(start_scene, &info) && S_ISREG(info.st_mode)) {
         apush(paths, xstrdup(start_scene));
     }

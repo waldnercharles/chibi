@@ -55,3 +55,4 @@ projects/local-game
 build-sdk-reflect/
 build-studio/
 build-asan/
+build-web-player/

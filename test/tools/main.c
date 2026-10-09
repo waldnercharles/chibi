@@ -15,6 +15,9 @@ void test_tool_types();
 void test_tool_ecs();
 void test_tool_ecs_relationships();
 void test_tool_ecs_hierarchy();
+void test_tool_ecs_world();
+void test_tool_ecs_query();
+void test_tool_ecs_query_benchmark();
 void test_tool_prepared(const char *producer, const char *consumer);
 void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
@@ -75,6 +78,7 @@ int main(int argc, char **argv)
     bool read = argc == 3 && !strcmp(argv[1], "--prepared-read");
     bool package = argc == 2 && !strcmp(argv[1], "--package");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
+    bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool native = false, native_values = false, native_catalog = false,
@@ -128,16 +132,17 @@ int main(int argc, char **argv)
     native = argc == 2 && !strcmp(argv[1], "--native");
     physics = argc == 2 && !strcmp(argv[1], "--physics");
 #endif
-    if (argc != 1 && !corpus && !coverage && !shader_parameters && !source_edit &&
-        !package && !unit && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics && !render_resources &&
-        !box3d && !persistent_store && !whole_alias && !whole_math &&
-        !whole_integer && !whole_conversion && !whole_select && !owned_tick &&
-        !parallel_tick && !source_features && !source_numeric && !source_material &&
+    if (argc != 1 && !corpus && !coverage && !shader_parameters &&
+        !source_edit && !package && !unit && !query_benchmark && !prepared &&
+        !read && !scene && !scene_prepared && !native && !native_values &&
+        !native_catalog && !physics && !render_resources && !box3d &&
+        !persistent_store && !whole_alias && !whole_math && !whole_integer &&
+        !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
+        !source_features && !source_numeric && !source_material &&
         !source_presentation && !system_schedule && !source_systems) {
         fprintf(
             stderr,
-            "Usage: %s [--package | --unit | "
+            "Usage: %s [--package | --unit | --ecs-query-benchmark | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
@@ -257,12 +262,16 @@ int main(int argc, char **argv)
         test_tool_prepared_runtime(argv[2]);
     } else if (unit) {
         test_tool_execution_policy();
+    } else if (query_benchmark) {
+        test_tool_ecs_query_benchmark();
     } else {
         test_tool_execution_policy();
         test_tool_types();
         test_tool_ecs();
         test_tool_ecs_relationships();
         test_tool_ecs_hierarchy();
+        test_tool_ecs_world();
+        test_tool_ecs_query();
         test_tool_package();
         test_tool_collab();
         test_tool_test_policy();

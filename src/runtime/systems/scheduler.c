@@ -45,7 +45,6 @@ static void free_names(const char *const *names, int count)
 static void free_entry(entry *e)
 {
     free((char *)e->desc.name);
-    ecs_query_expr_free((ecs_query_expr *)e->desc.query);
     free((void *)e->desc.reads);
     free((void *)e->desc.writes);
     free_names(e->desc.resource_reads, e->desc.resource_read_count);
@@ -100,7 +99,6 @@ int game_schedule_register(game_schedule *s, const game_schedule_desc *d)
     }
     entry e = { .desc = *d, .serial = s->next_serial++ };
     e.desc.name = xstrdup(d->name);
-    e.desc.query = d->query ? ecs_query_expr_clone(d->query) : NULL;
     e.desc.resource_reads = (const char *const *)
         copy_names(d->resource_reads, d->resource_read_count);
     e.desc.resource_writes = (const char *const *)

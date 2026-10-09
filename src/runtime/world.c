@@ -63,10 +63,22 @@ static bool install(ecs_world *world, const ecs_component_desc *desc)
     }
     return ecs_world_register_component(world, desc, NULL) == ECS_OK;
 }
+static bool valid_actions(const game_world_options *options)
+{
+    if (options->action_count < 0 || (options->action_count && !options->actions)) {
+        return false;
+    }
+    for (int i = 0; i < options->action_count; i++) {
+        if (!options->actions[i].name) {
+            return false;
+        }
+    }
+    return true;
+}
 game_world *game_world_new(const game_world_options *options, char *error, size_t size)
 {
     assert(options && (!size || error));
-    if (options->modules & ~GAME_WORLD_MODULES_ALL ||
+    if (options->modules & ~GAME_WORLD_MODULES_ALL || !valid_actions(options) ||
         (options->fields && !(options->modules & GAME_WORLD_MATERIALS)) ||
         options->components.component_count < 0 ||
         options->components.component_count > 1024 ||

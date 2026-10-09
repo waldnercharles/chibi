@@ -548,6 +548,16 @@ static bool jump_world(engine **out)
     const input_action actions[] = {
         { "Jump", (UINT64_C(1) << GAME_CONTROL_Z) | (UINT64_C(1) << GAME_CONTROL_X), false },
     };
+    /* A count without actions, or an unnamed action, is rejected. */
+    const input_action unnamed = { NULL, UINT64_C(1) << GAME_CONTROL_Z, false };
+    game_world_options invalid[] = {
+        { .modules = GAME_WORLD_INPUT, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &unnamed, .action_count = 1 },
+    };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(!game_world_new(&invalid[i], error, sizeof error));
+        REQUIRE(!strcmp(error, "Invalid runtime world options"));
+    }
     game_world_options options = { .modules = GAME_WORLD_INPUT,
                                    .actions = actions,
                                    .action_count = 1 };
@@ -616,6 +626,10 @@ TEST_CASE(native_pause_keeps_held_actions)
     REQUIRE(jump_step(runtime, z, true, true));
     REQUIRE(jump.presses == 1);
     REQUIRE(engine_set_playing(runtime, false) == 0);
+    /* Hosts sample no controls while paused; that sample is ignored. */
+    bool firing = true;
+    REQUIRE(engine_sample_controls(runtime, 0, &firing) == FLOW_OK && !firing);
+    REQUIRE(engine_frame(runtime, (jump.steps + 0.5) * ENGINE_FIXED_SECONDS) == 0);
     REQUIRE(engine_set_playing(runtime, true) == 0);
     /* The first frame after resuming only restarts the clock. */
     REQUIRE(engine_frame(runtime, (jump.steps + 0.5) * ENGINE_FIXED_SECONDS) == 0);

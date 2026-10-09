@@ -633,7 +633,9 @@ int engine_sample_controls(engine *engine, uint64_t controls, bool *firing)
     if (!engine->input) {
         return FLOW_ERR_STATE;
     }
-    if (engine->replay) {
+    /* A stopped transport keeps the controls held when it stopped, so hosts
+     * that sample nothing while paused never press them again on resume. */
+    if (engine->replay || (!engine->playing && !engine->step_requested)) {
         *firing = false;
         return FLOW_OK;
     }

@@ -4,5 +4,6 @@ components {
         color 0xffffffff
         direction x=0.45 y=-0.85 z=-0.4
         intensity 2.8
+        shadows #true
     }
 }

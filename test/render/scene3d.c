@@ -21,6 +21,7 @@ enum
 };
 
 static ecs_world *world;
+static bool backdrop; /* Queue a white 2D fill before each 3D draw. */
 static render_scene3d *scene3d;
 static render_scene3d_post *post;
 static game_particles *particles;
@@ -40,6 +41,7 @@ static void setup()
 
 static void teardown()
 {
+    backdrop = false;
     engine_free(runtime);
     runtime = NULL;
     render_scene3d_free(scene3d);
@@ -98,6 +100,24 @@ static CF_Pixel front()
     return pixels[(SIDE / 2 + 10) * SIDE + SIDE / 2];
 }
 
+static render_scene3d_camera camera()
+{
+    return (render_scene3d_camera){
+        .view = cf_look_at((CF_V3){ 0, 4, 4 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 }),
+        .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
+    };
+}
+
+/* The pixel showing a world point. */
+static CF_Pixel pixel_at(CF_V3 world)
+{
+    render_scene3d_camera view = camera();
+    CF_V3 ndc = render_scene3d_project(&view, world);
+    int x = (int)((ndc.x + 1) * SIDE / 2), y = (int)((1 - ndc.y) * SIDE / 2);
+    assert(x >= 0 && x < SIDE && y >= 0 && y < SIDE);
+    return pixels[y * SIDE + x];
+}
+
 /* Post-processes the scene target and reads back the tone-mapped output. */
 static bool finish(float time)
 {
@@ -126,21 +146,12 @@ static bool render_at(const GameEnvironment *environment, float time)
     }
     CF_Canvas canvas = render_scene3d_post_target(post);
     cf_canvas_set_clear_color(canvas, (CF_Color){ 0, 0, 0, 1 });
-    render_scene3d_camera camera = {
-        .view = cf_look_at((CF_V3){ 0, 4, 4 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 }),
-        .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
-    };
+    render_scene3d_camera view = camera();
     cf_app_update(NULL);
-    bool drawn = render_scene3d_draw(
-        scene3d,
-        world,
-        particles,
-        &camera,
-        0,
-        runtime,
-        &settings,
-        (render_skip){ 0 }
-    );
+    if (backdrop) {
+        cf_draw_quad_fill(cf_make_aabb((CF_V2){ -SIDE, -SIDE }, (CF_V2){ SIDE, SIDE }), 0);
+    }
+    bool drawn = render_scene3d_draw(scene3d, world, particles, &view, 0, runtime, &settings, (render_skip){ 0 });
     cf_render_to(canvas, true);
     return finish(time) && drawn;
 }
@@ -421,6 +432,89 @@ TEST_CASE(slow_auto_exposure_eases_past_half_float_steps)
     return true;
 }
 
+/* A 2-unit box rests on a floor at the origin. Sunlight travels along +x and
+ * down at 45 degrees, so the box shades the floor where 1 < x < 3. The floor
+ * spans just the view, so no other solid reaches as close to the sun. */
+static GameDirectionalLight *add_shadow_scene()
+{
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->intensity = 1;
+    return sun;
+}
+
+static GameEnvironment unlit_environment()
+{
+    GameEnvironment environment = game_environment_defaults();
+    environment.ambient_intensity = 0;
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    return environment;
+}
+
+static const CF_V3 shaded = { 1.6f, 0, .5f };
+/* Sunlit floor at grazing and open spots, and the box's roof. */
+static const CF_V3 sunlit[] = {
+    { -1.6f, 0, .5f }, { -2.2f, 0, -.5f }, { -1.2f, 0, 1.5f },
+    { 1.6f, 0, 1.6f }, { 0, 2, 0 },
+};
+enum
+{
+    SUNLIT = sizeof sunlit / sizeof *sunlit
+};
+
+TEST_CASE(directional_light_casts_shadows)
+{
+    GameDirectionalLight *sun = add_shadow_scene();
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    CF_Pixel open[SUNLIT];
+    for (int i = 0; i < SUNLIT; i++) {
+        open[i] = pixel_at(sunlit[i]);
+    }
+    /* Without shadows the floor is lit evenly on both sides of the box. */
+    REQUIRE(open[0].colors.g > 60 && distance(pixel_at(shaded), open[0]) <= 3);
+    sun->shadows = true;
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(pixel_at(shaded).colors.g == 0);
+    /* Lit surfaces keep all their light: nothing shadows itself. */
+    for (int i = 0; i < SUNLIT; i++) {
+        REQUIRE(distance(pixel_at(sunlit[i]), open[i]) <= 3);
+    }
+    return true;
+}
+
+TEST_CASE(solids_outside_the_view_cast_shadows_into_it)
+{
+    GameDirectionalLight *sun = add_shadow_scene();
+    sun->shadows = true;
+    /* A pillar well beyond the left edge of the view, and nearer the sun than
+     * the floor, shades the floor up to x = 1. */
+    add_solid_at(-8, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 8, 4 }, 0xffffffffu);
+    /* A crowd far away splits collection across workers where the host has
+     * them, so the pillar arrives through a worker's buffer. */
+    for (int i = 0; i < 1100; i++) {
+        add_solid_at(60, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1, 1 }, 0xffffffffu);
+    }
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(sunlit[0]).colors.g == 0);
+    REQUIRE(pixel_at(sunlit[3]).colors.g > 60);
+    return true;
+}
+
+TEST_CASE(shadow_pass_leaves_earlier_draws_queued)
+{
+    add_box(0xffffffffu);
+    add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 })->shadows = true;
+    GameEnvironment environment = unlit_environment();
+    backdrop = true;
+    REQUIRE(render(&environment));
+    REQUIRE(pixels[0].colors.g > 100);
+    return true;
+}
+
 void test_render_scene3d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -441,6 +535,9 @@ void test_render_scene3d()
     RUN_TEST_CASE(auto_exposure_meters_around_non_finite_texels);
     RUN_TEST_CASE(auto_exposure_adapts_over_scene_time);
     RUN_TEST_CASE(slow_auto_exposure_eases_past_half_float_steps);
+    RUN_TEST_CASE(directional_light_casts_shadows);
+    RUN_TEST_CASE(solids_outside_the_view_cast_shadows_into_it);
+    RUN_TEST_CASE(shadow_pass_leaves_earlier_draws_queued);
     pu_clear_setup();
     cf_destroy_app();
 }

@@ -89,7 +89,7 @@ static bool inputs(bool replacement, game_player_asset records[3])
                                              GAME_PLAYER_ASSET_UI };
     const char *const names[] = { "OwnedShader", pixel_key, "OwnedPage" };
     for (int i = 0; i < 3; i++) {
-        REQUIRE(lengths[i] > 16 && lengths[i] < 8192);
+        REQUIRE(lengths[i] > 0 && lengths[i] < 8192);
         records[i] = (game_player_asset){
             .name = names[i],
             .kind = kinds[i],

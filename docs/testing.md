@@ -405,6 +405,10 @@ passes in 0.799 seconds under ASan/UBSan; there is no world, process or GPU work
 canonical ABI lookup, NaN comparisons, integer saturation, nominal enums, vector
 conversion and output ownership after input/table retirement. The scoped native
 consumer passes 43 assertions in 0.403 seconds, without files, processes or GPU.
+`box3d` selects one in-tree check of the `chibi_box3d` package (Box3D v0.1.0,
+the copy Cute pins). A box falls onto static ground and comes to rest, then
+closest raycasts hit the box, hit the ground and miss. It needs a native tools
+build and passes 14 assertions in 0.052 seconds, without files, processes or GPU.
 `graph-model` selects two independently reviewed public consumer cases for nested
 value copies, opaque artifact replacement/destruction and topology mutation
 rules. They pass 25 assertions in 0.355 seconds under ASan/UBSan. The consumer

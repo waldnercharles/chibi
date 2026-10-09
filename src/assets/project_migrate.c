@@ -68,17 +68,20 @@ static int name_char(const char **p)
     *p += strspn(*p, "_ -");
     return tolower((unsigned char)(**p ? *(*p)++ : 0));
 }
-/* Library calls resolve through the catalog, which ignores case and the
- * separators `_`, ` ` and `-` (script_name_matches). */
+/* Names resolve through the catalog, which ignores case and the separators
+ * `_`, ` ` and `-` (script_name_matches). */
+static bool names_match(const char *a, const char *b)
+{
+    int c, d;
+    do {
+        c = name_char(&a), d = name_char(&b);
+    } while (c == d && c);
+    return c == d;
+}
 static bool similar_name(const char *a_source, TSNode a, const char *b_source, TSNode b)
 {
     char *x = name_text(a_source, a), *y = name_text(b_source, b);
-    const char *p = x, *q = y;
-    int c, d;
-    do {
-        c = name_char(&p), d = name_char(&q);
-    } while (c == d && c);
-    bool matches = c == d;
+    bool matches = names_match(x, y);
     free(x);
     free(y);
     return matches;
@@ -2316,7 +2319,7 @@ char *chibi_migrate_action_bindings(const char *asset, av_doc *map)
     av_doc_free(document);
     return migrated;
 }
-/* The word in `source`, outside strings and comments, that reads a binding,
+/* The binding name a word in `source` spells, outside strings and comments,
  * or NULL. */
 static const char *binding_use(const char *source)
 {
@@ -2333,9 +2336,13 @@ static const char *binding_use(const char *source)
         while (word_char(*end)) {
             end++;
         }
-        for (size_t i = 0; i < sizeof words / sizeof *words; i++) {
-            if ((size_t)(end - p) == strlen(words[i]) &&
-                !strncmp(p, words[i], (size_t)(end - p))) {
+        char word[32];
+        size_t length = (size_t)(end - p);
+        for (size_t i = 0; length < sizeof word && i < sizeof words / sizeof *words;
+             i++) {
+            memcpy(word, p, length);
+            word[length] = '\0';
+            if (names_match(word, words[i])) {
                 return words[i];
             }
         }

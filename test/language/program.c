@@ -3158,7 +3158,7 @@ TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
      * one stops the migration. */
     const char *scripts[][2] = {
         { CHIBI_PROJECT_MANIFEST, "version 15\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n" },
-        { "content/Move.chibi", "behavior Move {\n    // ActionBinding\n    on PressedChanged(pressed) {\n    }\n}\n" },
+        { "content/Move.chibi", "behavior Move {\n    // ActionBinding\n    on pressed_changed(pressed) {\n    }\n}\n" },
     };
     for (int i = 0; i < 2; i++) {
         snprintf(path, sizeof path, "%s/%s", root, scripts[i][0]);

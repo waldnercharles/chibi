@@ -749,7 +749,7 @@ static bool write_depth(
     header(w);
     U64(c.plan->id);
     U64(c.plan->owner_type);
-    if (!c.plan->id) {
+    if (!w->error && !c.plan->id) {
         w->error = "module lacks stable identity";
     }
     types(&c);
@@ -889,7 +889,7 @@ execution_module *execution_prepared_read_budget(
     header(w);
     U64(c.plan->id);
     U64(c.plan->owner_type);
-    if (!c.plan->id) {
+    if (!w->error && !c.plan->id) {
         w->error = "module lacks stable identity";
     }
     types(&c);

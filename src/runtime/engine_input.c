@@ -67,6 +67,9 @@ void engine_input_set_actions(engine_input *input, const input_action *actions, 
     free_actions(input);
     for (int i = 0; i < count; i++) {
         input_action action = actions[i];
+        for (int j = 0; j < i; j++) {
+            assert(strcmp(actions[j].name, action.name));
+        }
         action.name = xstrdup(action.name);
         apush(input->actions, action);
     }

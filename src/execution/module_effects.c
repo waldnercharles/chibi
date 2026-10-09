@@ -232,7 +232,7 @@ static void unknown(effects *e)
     e->summary->structural = e->summary->host_sink = e->summary->world_read = true;
     e->summary->deterministic = false;
 }
-static void access(effects *e, const node_access *a)
+static void add_access(effects *e, const node_access *a)
 {
     if (!a) {
         unknown(e);
@@ -334,7 +334,7 @@ static void function(effects *e, const behavior_function *f, int depth)
                     unknown(e);
                     break;
                 }
-                access(e, call->access);
+                add_access(e, call->access);
                 break;
             }
             case BF_WRITE:

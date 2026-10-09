@@ -104,7 +104,8 @@ int engine_sample_movement(engine *engine, float x, float y);
 int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point);
 /* Copies the project's input map. Without input the engine ignores it. */
 void engine_set_input_actions(engine *engine, const input_action *actions, int count);
-/* Held physical controls interpreted through the input map. */
+/* Held physical controls interpreted through the input map. Ignored while
+ * replaying, and while stopped unless a step is requested. */
 int engine_sample_controls(engine *engine, uint64_t controls, bool *firing);
 /* Gameplay input recording and replay count fixed steps from the last reset,
  * so both follow a scene from its start. Recording keeps a key wherever held

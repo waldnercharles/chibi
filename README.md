@@ -32,6 +32,51 @@ files or the compiler changed since the last run, then starts `chibi-player`
 beside it. Options after the project go to the player. Studio's `chibi-dev`
 opens a project the same way.
 
+To ship a game, export it with an installed SDK's `chibi`:
+
+```sh
+dist/sdk/bin/chibi export ~/games/neon-swarm --output ~/builds/NeonSwarm
+~/builds/NeonSwarm/"Neon Swarm"     # runs the exported game
+```
+
+The folder holds the player, named after the project, and `data/` with the
+compiled game and its resources. `data/engine/` holds the shaders, licenses and
+engine identity. Exporting again replaces an earlier export, including files
+added to it. The exporter recognizes its own output by the empty
+`.chibi-export` it writes beside the compiled game; any other existing folder
+is left alone. `--archive` also writes
+`NeonSwarm.tar.gz` (`NeonSwarm.app.tar.gz` on macOS).
+
+On macOS the export is an app, `NeonSwarm.app`, with an `Info.plist`, the
+project icon as an `.icns`, and an ad hoc signature. Its icon must be a square
+PNG of 16, 32, 64, 128, 256, 512 or 1024 pixels. Elsewhere the folder also holds
+a desktop entry, `neon-swarm.desktop`, which runs `Neon Swarm` from `PATH` with
+the `neon-swarm` theme icon. To install it, symlink the folder's executable into
+a directory on `PATH`, put the project icon in your icon theme as
+`neon-swarm.png`, and the entry in `~/.local/share/applications`.
+
+On Windows the folder holds `Neon Swarm.exe` beside `data/`, with the project
+icon, which must be a square PNG of at most 256 pixels, in the executable's
+resources. The SDK and its dependencies link the release C runtime statically
+in every configuration, so the folder runs without the Visual C++
+redistributable.
+
+For browsers, export a static site with the browser player, which
+`make package-web-player` builds with Emscripten into `dist/web-player`:
+
+```sh
+make package-web-player
+dist/sdk/bin/chibi export ~/games/neon-swarm --web dist/web-player --output ~/builds/neon-swarm-web
+python3 -m http.server -d ~/builds/neon-swarm-web    # play at http://localhost:8000
+```
+
+The site holds `index.html`, titled with the project's title, the player's
+`chibi-player.js` and `chibi-player.wasm`, and the same `data/` folder, which
+`files.json` lists. The page fetches those files before the game starts,
+so it needs a web server rather than a `file://` URL. Any static host works.
+`chibi-celeste/.github/workflows/web.yml` builds and publishes a game repository
+on GitHub Pages; copy it to publish another game.
+
 Both SDK product builds prepare a standalone host reflection tool. `SDK_PREFIX`,
 `RUNTIME_SDK_PREFIX`, and `PLAYER_OUTPUT` select their outputs. Packaging leaves
 registered games untouched; `make update-game-runtime` explicitly verifies and
@@ -77,6 +122,24 @@ reflection. CMake pins dependencies. `NATIVE_TOOLCHAIN_FLAGS`, `LIBCLANG_ROOT`,
 and `JOBS` select the toolchain, matching reflection installation, and compile
 parallelism. Builds print phase summaries with full logs in `.chibi/logs`;
 `VERBOSE=1` streams output. SDK product builds use a standalone reflection tool.
+
+Windows builds use the LLVM installer's clang, which targets the Microsoft C
+runtime and finds Visual Studio's Windows SDK, with CMake and Ninja. The make
+wrappers need a POSIX shell, so configure directly:
+
+```sh
+cmake -S . -B build -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+    -DCMAKE_BUILD_TYPE=Debug -DCHIBI_ENABLE_SANITIZERS=OFF \
+    -DLIBCLANG_ROOT="C:/Program Files/LLVM"
+cmake --build build --target chibi chibi-compile chibi-player chibi_ctl
+```
+
+Reflection loads `libclang.dll`, so LLVM's `bin` folder must be on `PATH`. C
+sources that link `Chibi::support` get the POSIX calls the Microsoft runtime
+lacks from `src/support/win32`. The C tests still need POSIX, so Windows builds
+skip them. Executables embed `src/host/windows/chibi.manifest`, which makes the
+runtime's file names UTF-8; installed consumers add
+`share/chibi/windows/chibi.rc` to theirs.
 
 ## Browser Studio
 

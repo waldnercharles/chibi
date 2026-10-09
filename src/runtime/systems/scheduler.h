@@ -26,7 +26,6 @@ typedef struct
     const char *name;
     system_phase phase;
     int order;
-    const ecs_query_expr *query;
     const uint64_t *reads, *writes;
     int read_count, write_count;
     const char *const *resource_reads, *const *resource_writes;

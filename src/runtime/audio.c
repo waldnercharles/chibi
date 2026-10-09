@@ -14,6 +14,9 @@
 #define VOICE_QUEUE 128
 #define SOUND_RATE 44100
 #define FADE_MAX 60
+#define OGG_BEGIN_OF_STREAM 2 /* page header flags */
+#define OGG_END_OF_STREAM 4
+#define VORBIS_IDENTIFICATION 30 /* header packet bytes */
 enum
 {
     TAG_MUSIC,
@@ -127,20 +130,41 @@ static bool wav_playable(const unsigned char *bytes, size_t length)
     size_t data = wav_chunk(bytes, length, fmt + size + (size & 1), "data", &size);
     return data && size >= (uint32_t)(channels * bits / 8);
 }
-/* An Ogg stream whose first packet identifies mono or stereo Vorbis; Opus and
- * surround streams are not decoded. */
+/* An Ogg stream whose first page holds only a mono or stereo Vorbis
+ * identification header, as stb_vorbis requires, and whose pages are whole up
+ * to the one that ends the stream. Bytes after that page, such as a tag, are
+ * ignored. Opus and surround streams are not decoded. */
 static bool ogg_vorbis(const unsigned char *bytes, size_t length)
 {
-    if (length < 27) {
+    if (length < 28 + VORBIS_IDENTIFICATION || bytes[5] != OGG_BEGIN_OF_STREAM ||
+        bytes[26] != 1 || bytes[27] != VORBIS_IDENTIFICATION) {
         return false;
     }
-    size_t packet = 27 + (size_t)bytes[26];
-    if (length < packet + 12 || bytes[packet] != 1 ||
-        memcmp(bytes + packet + 1, "vorbis", 6)) {
+    const unsigned char *id = bytes + 28;
+    if (id[0] != 1 || memcmp(id + 1, "vorbis", 6) || (id[11] != 1 && id[11] != 2)) {
         return false;
     }
-    int channels = bytes[packet + 11];
-    return channels == 1 || channels == 2;
+    for (size_t page = 0; page < length;) {
+        if (length - page < 27 || memcmp(bytes + page, "OggS", 4)) {
+            return false;
+        }
+        size_t body = page + 27 + bytes[page + 26];
+        if (body > length) {
+            return false;
+        }
+        size_t end = body;
+        for (size_t i = page + 27; i < body; i++) {
+            end += bytes[i];
+        }
+        if (end > length) {
+            return false;
+        }
+        if (bytes[page + 5] & OGG_END_OF_STREAM) {
+            return true;
+        }
+        page = end;
+    }
+    return false;
 }
 game_sound_format game_sound_format_of(const void *data, size_t length)
 {
@@ -164,6 +188,16 @@ void game_audio_add_sound(game_audio *audio, const char *name, const void *data,
 int game_audio_sound_count(const game_audio *audio)
 {
     return acount(audio->sounds);
+}
+size_t game_audio_sound_storage_bytes(const game_audio *audio)
+{
+    size_t bytes = audio->sounds
+                     ? sizeof(dyna_hdr) + (size_t)acap(audio->sounds) * sizeof(sound)
+                     : 0;
+    for (int i = 0; i < acount(audio->sounds); i++) {
+        bytes += strlen(audio->sounds[i].name) + 1 + audio->sounds[i].length;
+    }
+    return bytes;
 }
 const void *game_audio_sound(const game_audio *audio, int index, size_t *length)
 {

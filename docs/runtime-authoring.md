@@ -92,10 +92,10 @@ load scenes".
 ## Play sounds and music
 
 Put mono or stereo WAV and Ogg Vorbis files in `content/sounds`. A WAV holds
-plain PCM (8 to 32-bit) or float samples; WAVE_FORMAT_EXTENSIBLE, surround and
-Opus files fail preparation. A sound's name is its file name without the
-extension, so `content/sounds/jump.ogg` is `"jump"`. Scripts play one
-with `play_sound(Sound: "jump")`, and set its Volume and Pan from 0 to 1.
+plain PCM (8 to 32-bit) or float samples; WAVE_FORMAT_EXTENSIBLE, surround,
+Opus and cut-short files fail preparation. A sound's name is its file name
+without the extension, so `content/sounds/jump.ogg` is `"jump"`. Scripts play
+one with `play_sound(Sound: "jump")`, and set its Volume and Pan from 0 to 1.
 `play_music(Music: "theme", Fade: 1)` loops a track and fades it in. Asking for
 the track that already plays changes nothing, so scenes that share a track keep
 it running. `stop_music(Fade: 1)` fades it out. `set_master_volume`,

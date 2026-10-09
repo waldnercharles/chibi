@@ -830,10 +830,17 @@ TEST_CASE(native_player_plays_sounds)
     game_audio *audio = game_world_modules(game_player_world(player))->audio;
     REQUIRE(game_audio_sound_count(audio) == 1);
     REQUIRE(!memcmp(game_audio_sound(audio, 0, &length), wav, sizeof wav) && length == sizeof wav);
-    /* The copied sounds count against the retained storage budget. */
-    size_t budget = sizeof wav - 1;
+    /* The library's records, names and copies count against the retained
+     * storage budget. */
+    size_t budget = 1 << 20;
     spec.decoded_remaining = &budget;
-    REQUIRE(!game_player_new(&spec, error, sizeof error) && budget == sizeof wav - 1);
+    game_player *charged = game_player_new(&spec, error, sizeof error);
+    REQUIRE(charged);
+    game_player_free(charged);
+    size_t used = (1 << 20) - budget;
+    REQUIRE(used > sizeof wav + sizeof "Jump");
+    budget = used - 1;
+    REQUIRE(!game_player_new(&spec, error, sizeof error) && budget == used - 1);
     REQUIRE(!strcmp(error, "Prepared player retained storage budget exceeded"));
 
     pin_value jump = { .type = PIN_STR, .str = "Jump" },
@@ -920,10 +927,24 @@ TEST_CASE(native_player_plays_sounds)
     memcpy(early + 12, wav + 36, 12);
     memcpy(early + 24, wav + 12, 24);
     REQUIRE(!game_sound_format_of(early, sizeof early));
-    unsigned char ogg[40] = { 'O', 'g', 'g', 'S' };
-    ogg[26] = 1, ogg[27] = 30, ogg[28] = 1, ogg[39] = 2;
+    /* A page holding only a stereo Vorbis identification header, an empty
+     * page that ends the stream, and a few trailing bytes. */
+    unsigned char ogg[88] = { 'O', 'g', 'g', 'S' };
+    ogg[5] = 2, ogg[26] = 1, ogg[27] = 30, ogg[28] = 1, ogg[39] = 2;
     memcpy(ogg + 29, "vorbis", 6);
+    memcpy(ogg + 58, "OggS", 4);
+    ogg[63] = 4;
+    memcpy(ogg + 85, "TAG", 3);
     REQUIRE(game_sound_format_of(ogg, sizeof ogg) == GAME_SOUND_OGG);
+    REQUIRE(game_sound_format_of(ogg, 85) == GAME_SOUND_OGG);
+    /* Cut inside the header or the last page, or before the stream ends. */
+    REQUIRE(!game_sound_format_of(ogg, 40));
+    REQUIRE(!game_sound_format_of(ogg, 84));
+    REQUIRE(!game_sound_format_of(ogg, 58));
+    /* The first page must not end the stream. */
+    ogg[5] = 6;
+    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
+    ogg[5] = 2;
     ogg[39] = 6;
     REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
     memcpy(ogg + 28, "OpusHead", 8);

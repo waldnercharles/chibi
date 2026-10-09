@@ -33,7 +33,8 @@ typedef enum
 } game_sound_format;
 /* Identifies an encoded sound file the playback host can decode, from its
  * headers: a mono or stereo integer or float WAV with all its samples, or mono
- * or stereo Ogg Vorbis. A Vorbis stream cut short is only found when it plays. */
+ * or stereo Ogg Vorbis in whole pages. Damaged Vorbis data inside whole pages
+ * is only found when it plays. */
 game_sound_format game_sound_format_of(const void *data, size_t length);
 game_audio *game_audio_new();
 void game_audio_free(game_audio *audio);
@@ -43,6 +44,8 @@ void game_audio_reset(game_audio *audio);
 /* Copies a WAV or OGG file that scripts play by name. */
 void game_audio_add_sound(game_audio *audio, const char *name, const void *data, size_t length);
 int game_audio_sound_count(const game_audio *audio);
+/* Bytes the sound library holds: its records, names and copied files. */
+size_t game_audio_sound_storage_bytes(const game_audio *audio);
 const void *game_audio_sound(const game_audio *audio, int index, size_t *length);
 bool game_audio_tone(game_audio *audio, game_tone tone);
 int game_audio_take(game_audio *audio, game_voice *out, int capacity);

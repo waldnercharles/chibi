@@ -69,7 +69,7 @@ static bool valid_actions(const game_world_options *options)
     }
     for (int i = 0; i < options->action_count; i++) {
         const char *name = options->actions[i].name;
-        if (!name) {
+        if (!name || !name[0]) {
             return false;
         }
         for (int j = 0; j < i; j++) {

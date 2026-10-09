@@ -1,66 +1,141 @@
 {
-  "audited_on": "2026-10-06",
-  "upstream_commit": "7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d",
-  "builds": {
-    "build": {
-      "dependency_package": "5bce4eb040332f88f382c16a0c4b50aeca85bde708e3707c080c7dad6b8b6b69",
-      "all_17_patch_hashes_match": true,
-      "upstream_pin_matches": true,
-      "build_type": "Debug"
-    },
-    "build-web": {
-      "dependency_package": "df50bf0bba0b71e720622ce25c18474f999954310ace124b8323aadd4b88539b",
-      "all_17_patch_hashes_match": true,
-      "upstream_pin_matches": true,
-      "build_type": "Release"
-    },
-    "build-web-threads": {
-      "dependency_package": "9227a3d06b7c08f9e69ab8a6068e1a63d3e5fac46a494b80de09d482e2afc3c8",
-      "all_17_patch_hashes_match": true,
-      "upstream_pin_matches": true,
-      "build_type": "Release"
-    }
-  },
-  "native": {
-    "command": "make build BUILD_TARGET='chibi chibi_ctl test_suite'",
-    "status": "passed",
-    "configure_seconds": 0.8,
-    "build_seconds": 44.2,
-    "compiler": "Clang 23.1.1",
-    "sanitizers": "address,undefined"
-  },
-  "web": {
-    "command": "make web",
-    "status": "passed",
-    "compiler": "Emscripten 6.0.9",
-    "serial_configure_seconds": 72.9,
-    "serial_build_seconds": 61.3,
-    "threaded_configure_seconds": 1.4,
-    "threaded_build_seconds": 1.0,
-    "package_seconds": 0.1
-  },
-  "tooling_tests": {
-    "command": "make test",
-    "status": "passed",
-    "tests": 17,
-    "assertions": 188,
-    "execution_seconds": 19.461,
-    "deadline_seconds": 60
-  },
+  "audited_on": "2026-10-09",
+  "upstream_commit": "96e6034aa6bc44665856ee480962a9ddab0b87cc",
+  "previous_commit": "7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d",
+  "host": "Linux x86_64 container, lavapipe (llvmpipe) Vulkan and Mesa GLES 3.2 under Xvfb",
   "patch_applicability": {
     "status": "passed",
-    "independent_patches": 16,
-    "cache_prerequisite": "cute-custom-coverage",
-    "ordered_series_patches": 17,
-    "patched_source_diff_check": "passed"
+    "independent_patches": 6,
+    "ordered_series_patches": 6,
+    "patched_source_diff_check": "passed",
+    "series_matches_rebased_branch": true
   },
+  "native": {
+    "command": "make build BUILD_TARGET='test_tools chibi_ctl chibi-player'",
+    "status": "passed",
+    "configure_seconds": 342.1,
+    "build_seconds": 69.1,
+    "compiler": "Clang 18.1.3",
+    "sanitizers": "address,undefined"
+  },
+  "sdk": {
+    "command": "make package-sdk SDK_PREFIX=dist/sdk",
+    "status": "passed",
+    "configure_seconds": 217.1,
+    "build_seconds": 25.1
+  },
+  "studio": {
+    "source": "chibi-studio main fdb250c",
+    "build_command": "make studio-build STUDIO_SDK_PREFIX=dist/sdk",
+    "build_status": "passed",
+    "build_seconds": 34.4,
+    "smoke_command": "xvfb-run -a env SDL_AUDIODRIVER=dummy build-studio/bin/chibi-dev --project-root projects/starter --headless --frames 2 --fixed-dt 0.0166667",
+    "smoke_status": "passed",
+    "smoke_diagnostics": "no Studio UI, runtime frame or initialization errors"
+  },
+  "web": {
+    "emscripten": "6.0.10",
+    "command": "make package-web-player",
+    "status": "passed",
+    "build_seconds": 291.3,
+    "notes": "WebGL 2 only; the player still links without Asyncify.",
+    "browser_checks": [
+      {
+        "command": "chibi export test/fixtures/sprites --web dist/web-player, served from localhost to headless Chromium",
+        "backend": "WebGL 2 (SwiftShader)",
+        "status": "passed",
+        "notes": "The Start scene renders like the desktop preview."
+      }
+    ]
+  },
+  "selectors": [
+    {
+      "command": "make agent-gpu-test AGENT_SELECTOR=--interior-border",
+      "backend": "Vulkan (lavapipe)",
+      "status": "passed",
+      "tests": 2,
+      "assertions": 9,
+      "wall_seconds_cold": 6.1,
+      "wall_seconds_warm": 0.8
+    },
+    {
+      "command": "make agent-gpu-test AGENT_SELECTOR=--sdf-visibility",
+      "backend": "Vulkan (lavapipe)",
+      "status": "passed",
+      "scenes": 14,
+      "wall_seconds_cold": 8.9,
+      "wall_seconds_warm": 2.9,
+      "notes": "Fails on 4 scenes when the whole-canvas depth copy's arguments are swapped."
+    },
+    {
+      "command": "make agent-gpu-test AGENT_SELECTOR=--sdf-coverage",
+      "backend": "Vulkan (lavapipe)",
+      "status": "passed",
+      "tests": 1,
+      "assertions": 2,
+      "wall_seconds_cold": 4.6,
+      "wall_seconds_warm": 1.3,
+      "notes": "Fails when the warp's amplitude and frequency swap parameter slots, or when the draw bounds drop the warp's padding."
+    },
+    {
+      "command": "build/test/tools/test_tools --interior-border with CF_APP_OPTIONS_GFX_OPENGL_BIT, one local run",
+      "backend": "GLES 3.2 (Mesa, Xvfb)",
+      "status": "passed",
+      "tests": 2,
+      "assertions": 4,
+      "notes": "Instanced cases only, from before the tiled case required Cute's compute renderer, which GLES lacks."
+    },
+    {
+      "command": "make test-short",
+      "status": "passed",
+      "tests": 6,
+      "assertions": 61
+    },
+    {
+      "command": "make test-tools",
+      "status": "failed",
+      "tests": 88,
+      "failed": 1,
+      "notes": "portable_nested_cleanup_preserves_sibling fails in this container on every branch."
+    },
+    {
+      "command": "build/test/tools/test_tools --render-resources",
+      "status": "passed",
+      "tests": 10,
+      "assertions": 580,
+      "notes": "After merging main with the 3D renderer stack, which relaxed the prepared-image bound that failed before."
+    },
+    {
+      "command": "build/test/tools/test_tools --scene3d",
+      "backend": "Vulkan (lavapipe)",
+      "status": "passed",
+      "tests": 41,
+      "assertions": 9215,
+      "notes": "The 3D renderer stack's cases, merged from main, on this pin."
+    },
+    {
+      "command": "build/test/tools/test_tools --material-ramps",
+      "backend": "Vulkan (lavapipe)",
+      "status": "passed",
+      "tests": 4,
+      "assertions": 32
+    },
+    {
+      "command": "build/test/tools/test_tools --sky-files",
+      "status": "passed",
+      "tests": 4,
+      "assertions": 665
+    }
+  ],
+  "previews": [
+    {
+      "command": "chibi_ctl --render-request preview_scene Start (test/fixtures/sprites), 480x270, 2 frames",
+      "status": "passed",
+      "notes": "Byte-identical PNG to the same preview from a build of the 3D renderer branch, which still uses the previous pin."
+    }
+  ],
   "not_run": [
     "full native and render aggregate tests, quarantined by repository policy",
-    "GPU selectors, quarantined by repository policy",
-    "runtime reproductions of the gist examples",
-    "sanitizer leak reproductions"
-  ],
-  "maintenance_notes": [
-    "Build retirement metadata capture skipped for Makefile-based web builds because its Ninja target query failed. Build and packaging commands completed successfully."
+    "Windows, macOS and D3D12 or Metal backends"
   ]
 }

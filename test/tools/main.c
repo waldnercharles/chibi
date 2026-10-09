@@ -26,6 +26,9 @@ void test_tool_scene();
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
+void test_render_interior_border();
+void test_render_sdf_visibility();
+void test_render_sdf_coverage();
 void test_render_scene3d();
 void test_device_controls();
 #endif
@@ -102,7 +105,8 @@ int main(int argc, char **argv)
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
     bool native = false, native_values = false, native_catalog = false,
-         physics = false, render_resources = false, scene3d = false,
+         physics = false, render_resources = false, interior_border = false,
+         sdf_visibility = false, sdf_coverage = false, scene3d = false,
          material_ramps = false, box3d = false, sky_files = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
@@ -140,6 +144,9 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
+    interior_border = argc == 2 && !strcmp(argv[1], "--interior-border");
+    sdf_visibility = argc == 2 && !strcmp(argv[1], "--sdf-visibility");
+    sdf_coverage = argc == 2 && !strcmp(argv[1], "--sdf-coverage");
     scene3d = argc == 2 && !strcmp(argv[1], "--scene3d");
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
     material_ramps = argc == 2 && !strcmp(argv[1], "--material-ramps");
@@ -161,10 +168,11 @@ int main(int argc, char **argv)
     if (argc != 1 && !corpus && !shader_parameters && !source_edit && !new_asset &&
         !package && !unit && !query_benchmark && !prepared && !read && !scene &&
         !scene_prepared && !native && !native_values && !native_catalog &&
-        !physics && !render_resources && !scene3d && !material_ramps && !box3d &&
-        !sky_files && !persistent_store && !whole_alias && !whole_math &&
-        !whole_integer && !whole_conversion && !whole_select && !owned_tick &&
-        !parallel_tick && !source_features && !source_numeric && !source_material &&
+        !physics && !render_resources && !interior_border && !sdf_visibility &&
+        !sdf_coverage && !scene3d && !material_ramps && !box3d && !sky_files &&
+        !persistent_store && !whole_alias && !whole_math && !whole_integer &&
+        !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
+        !source_features && !source_numeric && !source_material &&
         !source_presentation && !system_schedule && !source_systems &&
         !validate_project && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
         fprintf(
@@ -175,7 +183,8 @@ int main(int argc, char **argv)
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
             "| --physics "
-            "| --render-resources | --scene3d | --material-ramps | --box3d | "
+            "| --render-resources | --interior-border | --sdf-visibility | "
+            "--sdf-coverage | --scene3d | --material-ramps | --box3d | "
             "--sky-files | "
             "--persistent-store | "
             "--whole-alias | "
@@ -250,8 +259,14 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
-    if (render_resources || scene3d) {
-        if (scene3d) {
+    if (render_resources || interior_border || sdf_visibility || sdf_coverage || scene3d) {
+        if (interior_border) {
+            test_render_interior_border();
+        } else if (sdf_visibility) {
+            test_render_sdf_visibility();
+        } else if (sdf_coverage) {
+            test_render_sdf_coverage();
+        } else if (scene3d) {
             test_render_scene3d();
         } else {
             test_render_resources();

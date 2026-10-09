@@ -1,16 +1,16 @@
 # Draw a border inside an SDF shape
 
-Keep `cute-interior-border.patch`. Upstream `7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d` has outer outlines and glows, but no interior-border API. Its [effect shader](https://github.com/RandyGaul/cute_framework/blob/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d/tools/builtin_shaders.h#L452) expands an outline outside the shape.
+Keep `cute-interior-border.patch`. Since [976ac895](https://github.com/RandyGaul/cute_framework/commit/976ac895), upstream's `cf_draw_push_outline` is a band inside the edge drawn over the full fill, like a CSS border. A translucent outline therefore shows the fill beneath it.
 
-Chibi needs a border that preserves the authored silhouette. `src/editor/workspace/scene_viewport.c`, in `draw_appearance`, uses the border color and width from `GameAppearance`. An outer outline changes the visible size. Drawing a smaller shape over a larger one also changes translucent compositing and requires a second draw.
+Chibi's entity raster (`src/render/shaders/hrc/entity_raster.frag`) erodes the fill instead: the border takes the shape's edge coverage and a translucent border shows what is behind the shape. Studio's scene viewport draws appearances through Cute with `cf_draw_push_interior_border` so that its preview matches the runtime.
 
-The patch adds `cf_draw_push_interior_border`. It erodes the fill by the requested width, assigns the remaining edge coverage to the border, and composites premultiplied border over fill. It encodes interior width as a negative value in the existing outline state. Ordinary `cf_draw_push_outline` clamps nonpositive widths to zero, so its previous disabling behavior remains intact. The matching pop is `cf_draw_pop_outline`.
+The patch adds `cf_draw_push_interior_border`. It encodes the width as a negative value in the outline stack, so `cf_draw_pop_outline` pops it. `cf_draw_push_outline` clamps nonpositive widths to zero, so its behavior is unchanged. In the shared SDF shader, a negative width erodes the fill by the width, gives the rest of the shape's coverage to the border, and places the premultiplied border over the eroded fill. Effects follow what was drawn, as upstream's outline does: a stroke's own band, or the filled shape. The border composes with glow. Sprites and text ignore it.
 
-The command renderer carries the effect payload for negative widths and disables opaque tile-cover claims for interior borders. A translucent border must not cause it to discard geometry behind the shape. The shared SDF shader handles filled and stroked shapes and can combine the border with glow. Sprites and text ignore this effect.
+Because the border can be translucent where an opaque fill would not be, interior borders never claim opaque tile cover and never write 2D depth.
 
 ## Example
 
-Illustrative C code, called after Cute draw initialization. This draws a radius-16 circle with a three-unit blue border inside its existing edge.
+Illustrative C code, called after Cute draw initialization. This draws a radius-16 circle with a three-unit blue border inside its edge.
 
 ```c
 cf_draw_push_color(cf_make_color_rgba_f(1, 0, 0, 0.4f));
@@ -20,11 +20,11 @@ cf_draw_pop_outline();
 cf_draw_pop_color();
 ```
 
-`test/interior_border.c` contains pixel comparisons for circles and diamonds with opaque and translucent fills, using both tiled and instanced draw paths. The test's existence is evidence of intended coverage, not a claim that it passed during this upgrade. This patch does not add a standalone graphics-backend API and has no dependency on another local patch.
+The `interior-border` tool selector (`test/render/interior_border.c`) compares circles and diamonds with opaque and translucent fills against a CPU reference, through both the instanced and tiled draw paths.
 
 ## Apply the patch
 
-This diff targets Cute Framework commit [`7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d`](https://github.com/RandyGaul/cute_framework/commit/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d). Run these commands from a checkout of that commit.
+This diff targets Cute Framework commit [`96e6034aa6bc44665856ee480962a9ddab0b87cc`](https://github.com/RandyGaul/cute_framework/commit/96e6034aa6bc44665856ee480962a9ddab0b87cc). Run these commands from a checkout of that commit.
 
 This patch can be applied independently.
 
@@ -33,4 +33,4 @@ git apply --check cute-interior-border.patch
 git apply cute-interior-border.patch
 ```
 
-Patch SHA-256: `8cdfbfd97cf33e744eff27e3cccf7ff757335bf0c82594b8d3922fa37858045c`.
+Patch SHA-256: `31b56685e3bc889f8553900052ff1016a88c5945f5c4a39bb227e53f06e2e00b`.

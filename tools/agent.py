@@ -40,7 +40,9 @@ PLAYER_SELECTORS = {
 }
 STUDIO_SELECTORS = {'--studio-starter-startup': 'studio-starter-startup',
                     '--studio-source-edit': 'studio-source-edit'}
-GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS
+RENDER_SELECTORS = {'--interior-border': 'interior-border', '--sdf-visibility': 'sdf-visibility',
+                    '--sdf-coverage': 'sdf-coverage'}
+GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS
 PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
     ('font', f'font/Inter/{weight}/normal') for weight in (400, 500, 600, 700)
 }
@@ -473,6 +475,12 @@ def main():
             acceptance_binary, acceptance_fixture, preflight = studio_source_edit_preflight()
         elif args.selector in STUDIO_SELECTORS:
             preflight = studio_startup_preflight()
+        elif args.selector in RENDER_SELECTORS:
+            # Render consumers link the desktop SDK, so only the main build has them.
+            command = [str(ROOT / args.build_dir / 'test/tools/test_tools'), args.selector]
+            if not Path(command[0]).is_file():
+                return report('blocked', 'render_tools_not_built', selector=args.selector,
+                              build_command=f'make build BUILD_DIR={args.build_dir} BUILD_TARGET=test_tools')
         execution_evidence = None
         scratch_context = tempfile.TemporaryDirectory(prefix='chibi-studio-source-edit-') if args.selector == '--studio-source-edit' else nullcontext(None)
         with scratch_context as scratch:

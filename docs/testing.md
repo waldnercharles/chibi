@@ -443,6 +443,35 @@ consumer passes 43 assertions in 0.403 seconds, without files, processes or GPU.
 the copy Cute pins). A box falls onto static ground and comes to rest, then
 closest raycasts hit the box, hit the ground and miss. It needs a native tools
 build and passes 14 assertions in 0.052 seconds, without files, processes or GPU.
+`interior-border` draws a circle and a diamond with Cute's interior border into
+a hidden 64 x 64 canvas, opaque and translucent, through Cute's instanced and
+tiled draw paths, and compares every pixel with an analytic reference. It is a
+GPU check that needs the render-enabled tools of the main build: run
+`make build BUILD_TARGET=test_tools`, then
+`make agent-gpu-test AGENT_SELECTOR=--interior-border`, which runs that build's
+`test/tools/test_tools` after the agent's device preflight. Pass the same
+`BUILD_DIR` to both to check another build. On lavapipe it passes
+9 assertions in 6.1 seconds on a cold shader cache and 0.9 seconds warm. The
+tiled case fails when Cute's compute renderer is unavailable. Every SDL_GPU
+backend has one, so there a failure means Cute's tile shaders did not load.
+`sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
+(occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
+near clipping, a mixed 2D layer, and a later frame without the occluder) with
+hidden-surface rejection on and off, and requires the same pixels both ways and
+the expected depth snapshot copies. It also checks Cute's whole-canvas depth copy
+on its own: a cropped draw after the copy must not reach the snapshot. It reads
+the shaders from `src/render/shaders`. Build and run it like `interior-border`
+with `AGENT_SELECTOR=--sdf-visibility`. On lavapipe it passes in 8.9 seconds
+with Mesa's shader cache disabled and 2.9 seconds warm.
+`sdf-coverage` draws the production warped-SDF shape from `src/render/sdf_shapes.c`
+into a hidden 128 x 128 canvas at three warp and pluck phases, plain and with an
+interior border, through Cute's instanced and tiled draw paths. Every pixel whose
+neighborhood lies more than two pixels from the CPU field's edge, to first order,
+must be untouched background outside and fill inside. That catches wrong
+parameter packing, bounds that clip the warp, and background erased by a false
+opaque-cover claim. Cute owns the antialiased band between. Build and run it like
+`interior-border` with `AGENT_SELECTOR=--sdf-coverage`. On lavapipe it passes
+2 assertions in 4.6 seconds with Mesa's shader cache disabled and 1.3 seconds warm.
 `sky-files` selects four in-tree Radiance `.hdr` cases: flat and run-length
 decoding, fourteen malformed files, preparation from mounted content (read
 once, with an identity that follows the texels) and import that never replaces

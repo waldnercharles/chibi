@@ -1,6 +1,12 @@
 behavior InputProbe {
     on Input {
         self.Transform += Direction
+        if held("Fire") {
+            self.Aim.firing = true
+        }
+        if pressed("Fire") {
+            self.Aim.firing = true
+        }
     }
     on Fire {
         self.Aim.firing = true

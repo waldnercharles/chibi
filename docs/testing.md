@@ -45,8 +45,10 @@ scripts, prototypes and scenes use, prints each gap, and runs every scene for
 four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
 failure. Every prototype, behavior, library and system must be reachable from a
 scene: placed or attached there, spawned by name or called from source that
-runs, and only that source counts. A scene entity runs its own behavior list,
-which replaces its prototype's; a spawned prototype runs the prototype's list.
+runs, and only that source counts. A scene entity with its own behavior list
+runs that list in place of its prototype's; otherwise it and a spawned
+prototype run the prototype's list. Components count only on these placed and
+spawned instances, after the scene's overrides.
 A system runs only while an entity's `EngineSystem` names it. Components the
 project declares in `content/components` load as they do in preparation and
 count as its own catalog entries. Run it on any project whose content folder is

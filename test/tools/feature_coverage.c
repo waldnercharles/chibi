@@ -316,10 +316,13 @@ static void reach_system(const char *name)
     }
 }
 
-/* An instance a scene runs: its merged components count as used, and the
- * systems its EngineSystem names run. */
+/* An instance a scene runs: its merged components count as used, and its
+ * behaviors and the systems its EngineSystem names run. */
 static void use_instance(const game_prototype *instance)
 {
+    for (int i = 0; i < acount(instance->graphs); i++) {
+        reach_behavior(instance->graphs[i]);
+    }
     for (int i = 0; i < acount(instance->components); i++) {
         const game_prototype_component *component = &instance->components[i];
         use_component_name(component->desc->name);
@@ -331,10 +334,9 @@ static void use_instance(const game_prototype *instance)
 }
 
 /* Reaches the named prototype and the prototypes it includes. A spawn also
- * uses its merged instance and runs its behaviors, which already hold its
- * includes' behaviors. A scene placement uses the entity's merged instance
- * and runs its own behavior list instead (place_prototype). Returns whether
- * it reached anything new. */
+ * uses its instance, which is merged over its includes. A scene placement
+ * uses the entity's instance instead (place_prototype). Returns whether it
+ * reached anything new. */
 static bool reach_prototype(const char *name, bool spawned)
 {
     for (int i = 0; i < acount(prototypes); i++) {
@@ -353,9 +355,6 @@ static bool reach_prototype(const char *name, bool spawned)
         if (spawned && !listed(spawned_prototypes, name)) {
             apush(spawned_prototypes, xstrdup(name));
             use_instance(prototype);
-            for (int j = 0; j < acount(prototype->graphs); j++) {
-                reach_behavior(prototype->graphs[j]);
-            }
             reached = true;
         }
         return reached;
@@ -402,7 +401,8 @@ static void use_prototypes()
 }
 
 /* A placed entity's instance is its prototype with the scene's component
- * overrides merged over it, as at runtime. */
+ * overrides merged over it and its own behavior list, if it has one, in
+ * place of the prototype's, as at runtime. */
 static void place_prototype(const game_scene_entity *entity)
 {
     reach_prototype(entity->prototype, false);
@@ -431,9 +431,6 @@ static void use_scenes()
         for (int j = 0; scene && j < acount(scene->entities); j++) {
             const game_scene_entity *entity = &scene->entities[j];
             place_prototype(entity);
-            for (int k = 0; k < acount(entity->behaviors); k++) {
-                reach_behavior(entity->behaviors[k]);
-            }
         }
         game_scene_document_free(scene);
         free(text);

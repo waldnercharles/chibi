@@ -72,16 +72,21 @@ static void write_byte(execution_wire *w, unsigned char byte)
 void execution_wire_u64(execution_wire *w, uint64_t *value)
 {
     if (!w->reading) {
-        if (!available(w, 10)) {
-            return;
-        }
+        unsigned char bytes[10];
+        size_t width = 0;
         uint64_t rest = *value;
         do {
-            unsigned char byte = rest & 0x7f;
+            bytes[width] = rest & 0x7f;
             rest >>= 7;
-            write_byte(w, rest ? byte | 0x80 : byte);
-            w->size++;
+            bytes[width++] |= rest ? 0x80 : 0;
         } while (rest);
+        if (!available(w, width)) {
+            return;
+        }
+        for (size_t i = 0; i < width; i++) {
+            write_byte(w, bytes[i]);
+        }
+        w->size += width;
         w->offset = w->size;
         return;
     }
@@ -329,7 +334,7 @@ static void collection(execution_wire *w, pin_value *v, unsigned depth)
         return;
     }
     int count = w->reading ? 0 : array->count;
-    execution_wire_count(w, &count, 24);
+    execution_wire_count(w, &count, 3);
     if (w->error) {
         return;
     }

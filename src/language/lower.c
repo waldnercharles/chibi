@@ -325,6 +325,17 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
         range
     );
 }
+/* A fractional value, such as a `number`, truncates to the int an array index
+ * or a range bound takes. Integers keep their width: casts only narrow floats. */
+static int int_slot(lower *l, int value, script_range range)
+{
+    script_type from = l->a->expressions[value].type;
+    int slot = expression(l, value);
+    if (from.storage != PIN_F32 && from.storage != PIN_F64) {
+        return slot;
+    }
+    return convert(l, slot, from, (script_type){ .storage = PIN_I32 }, range);
+}
 static behavior_function_op binary_op(script_operator op)
 {
     switch (op) {
@@ -1069,6 +1080,23 @@ static const script_catalog_parameter *call_parameter(const script_catalog_capab
     assert(index >= 0 && cap->parameter_count > 0);
     return &cap->parameters[index < cap->parameter_count ? index : cap->parameter_count - 1];
 }
+/* A wildcard parameter takes its argument's type, except that the scalar
+ * operands of a numeric aggregate such as clamp share the call's unified type. */
+static script_type wildcard_type(
+    lower *l,
+    const script_expression *e,
+    const script_catalog_capability *cap,
+    int value
+)
+{
+    script_type type = l->a->expressions[value].type;
+    if (cap->numeric_aggregate && type.storage != PIN_STRUCT &&
+        e->type.storage != PIN_STRUCT && script_type_numeric(type) &&
+        script_type_numeric(e->type)) {
+        type.storage = e->type.storage;
+    }
+    return type;
+}
 static pin_value *argument_defaults(lower *l, const script_expression *e, const script_catalog_capability *cap)
 {
     pin_value *values = NULL;
@@ -1080,7 +1108,7 @@ static pin_value *argument_defaults(lower *l, const script_expression *e, const 
         if (wildcard) {
             for (int j = 0; j < e->argument_count; j++) {
                 if (e->arguments[j].parameter == i) {
-                    type = l->a->expressions[e->arguments[j].value].type;
+                    type = wildcard_type(l, e, cap, e->arguments[j].value);
                 }
             }
         }
@@ -1101,7 +1129,7 @@ static void command_arguments(lower *l, int first, const script_expression *e, c
         }
         script_type expected = call_parameter(cap, arg->parameter)->type;
         if (expected.storage == PIN_FLOW || (expected.flags & SCRIPT_TYPE_UNTYPED)) {
-            expected = l->a->expressions[arg->value].type;
+            expected = wildcard_type(l, e, cap, arg->value);
         }
         int value = expression(l, arg->value);
         value = convert(l, value, l->a->expressions[arg->value].type, expected, arg->range);
@@ -2354,7 +2382,7 @@ static int call(lower *l, const script_expression *e)
         }
         script_type expected = call_parameter(cap, arg->parameter)->type;
         if (expected.storage == PIN_FLOW || (expected.flags & SCRIPT_TYPE_UNTYPED)) {
-            expected = l->a->expressions[arg->value].type;
+            expected = wildcard_type(l, e, cap, arg->value);
         }
         int value = expression(l, arg->value);
         value = convert(l, value, l->a->expressions[arg->value].type, expected, arg->range);
@@ -2862,7 +2890,7 @@ static int reference_expression(lower *l, const script_expression *e)
         int slots[] = { reference(l, e->left), -1, -1, -1 };
         if (e->kind == SCRIPT_EXPR_INDEX) {
             headers[2] = (pin_value){ .type = PIN_I32 };
-            slots[2] = expression(l, e->right);
+            slots[2] = int_slot(l, e->right, e->range);
         }
         return primitive(
             l,
@@ -3157,8 +3185,8 @@ static int expression_value(lower *l, int index)
             return value;
         }
         case SCRIPT_EXPR_INDEX: {
-            int array = expression(l, e->left), index = expression(l, e->right);
-            return array_item(l, array, index, e->type, e->range);
+            int array = expression(l, e->left);
+            return array_item(l, array, int_slot(l, e->right, e->range), e->type, e->range);
         }
         case SCRIPT_EXPR_FALLBACK: return expression(l, e->left);
         case SCRIPT_EXPR_NIL:
@@ -3725,6 +3753,16 @@ static void assign_value(lower *l, const script_statement *s, int value)
 {
     int symbol = s->symbol;
     if (s->expression < 0) {
+        /* A `return` stores into its result, which may be wider. */
+        if (symbol >= 0 && symbol < l->a->symbol_count) {
+            value = convert(
+                l,
+                value,
+                l->a->expressions[s->second].type,
+                l->a->symbols[symbol].type,
+                s->range
+            );
+        }
         store_symbol(l, symbol, value, s->range);
         return;
     }
@@ -4118,7 +4156,8 @@ static void statement(lower *l, int index)
             return;
         }
         case SCRIPT_STMT_FOR: {
-            int first = expression(l, s->expression), last = expression(l, s->second);
+            int first = int_slot(l, s->expression, s->range),
+                last = int_slot(l, s->second, s->range);
             store_symbol(l, s->symbol, first, s->range);
             int bound = behavior_function_builder_local(l->builder, (pin_value){ .type = PIN_I32 });
             emit(

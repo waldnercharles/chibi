@@ -536,6 +536,61 @@ static bool append_entity(
     return true;
 }
 
+/* A sprite is a white box whose raster multiplies its material by the frame's
+ * texels, so a Material tints it. */
+static bool append_sprite(
+    app_scene_renderer *renderer,
+    const GameTransform *position,
+    const GameSprite *sprite,
+    float angle,
+    const GameMaterial *material
+)
+{
+    shader_image_source source = { .key = (char *)sprite->image,
+                                   .color_space = SHADER_IMAGE_SRGB,
+                                   .filter = SHADER_IMAGE_NEAREST,
+                                   .wrap = SHADER_IMAGE_CLAMP };
+    shader_error error = { 0 };
+    int image = render_image_variant_resident(&source, &error);
+    int width, height;
+    if (!image || !render_image_info(sprite->image, &width, &height)) {
+        snprintf(renderer->error, sizeof renderer->error, "Sprite: %s", error.message);
+        return false;
+    }
+    int cell_width = sprite->frame_width > 0 ? sprite->frame_width : width;
+    int cell_height = sprite->frame_height > 0 ? sprite->frame_height : height;
+    int columns = width / cell_width, frames = columns * (height / cell_height);
+    if (sprite->frame < 0 || sprite->frame >= frames) {
+        snprintf(
+            renderer->error,
+            sizeof renderer->error,
+            "Sprite frame %d is outside the %d frames of %s",
+            sprite->frame,
+            frames,
+            sprite->image
+        );
+        return false;
+    }
+    GameAppearance box = { .width = (float)cell_width,
+                           .height = (float)cell_height,
+                           .color = 0xffffffffu,
+                           .layer = sprite->layer };
+    if (!append_entity(renderer, position, &box, angle, NULL, material)) {
+        return true;
+    }
+    float u0 = (float)(sprite->frame % columns * cell_width) / (float)width;
+    float v0 = (float)(sprite->frame / columns * cell_height) / (float)height;
+    float u1 = u0 + (float)cell_width / (float)width;
+    render_material_entity *draw = &alast(renderer->entities);
+    draw->shape_type = RENDER_SHAPE_SPRITE;
+    draw->points[8] = sprite->flip_x ? u1 : u0;
+    draw->points[9] = v0;
+    draw->points[10] = sprite->flip_x ? u0 : u1;
+    draw->points[11] = v0 + (float)cell_height / (float)height;
+    draw->points[12] = (float)image;
+    return true;
+}
+
 static unsigned particle_color(unsigned start, unsigned end, float age)
 {
     unsigned color = 0;
@@ -735,7 +790,9 @@ static void collect_order(app_scene_renderer *renderer, ecs_world *world)
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
         const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
-        apush(renderer->actors, ((draw_actor){ entity, appearance ? appearance->layer : 0 }));
+        const GameSprite *sprite = GAME_GameSprite_get_const(world, entity);
+        int layer = sprite ? sprite->layer : appearance ? appearance->layer : 0;
+        apush(renderer->actors, ((draw_actor){ entity, layer }));
     }
     ecs_query_end(&query);
     if (acount(renderer->actors) > 1) {
@@ -947,6 +1004,23 @@ static bool collect(
                                                .sdf_shape = detail })
             );
             apush(renderer->entities, draw);
+            continue;
+        }
+        const GameSprite *sprite = GAME_GameSprite_get_const(world, entity);
+        if (sprite) {
+            GameTransform position = *GAME_GameTransform_get_const(world, entity);
+            if (runtime) {
+                engine_render_position(runtime, entity, &position);
+            }
+            if (!append_sprite(
+                    renderer,
+                    &position,
+                    sprite,
+                    orientation ? -orientation->radians : 0,
+                    GAME_GameMaterial_get_const(world, entity)
+                )) {
+                return false;
+            }
             continue;
         }
         const GameAppearance *authored = GAME_GameAppearance_get_const(world, entity);

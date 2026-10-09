@@ -287,10 +287,11 @@ static void infer_results(analyzer *a, script_function *function, TSNode values)
     }
     a->scope = old_scope;
 }
+/* A literal settles to its number, so later returns convert to it. */
 static void infer_type(analyzer *a, int symbol, int expression)
 {
     script_type type = script_analyzer_expr_type(a, expression);
-    type.flags &= ~SCRIPT_TYPE_REFERENCE;
+    type.flags &= ~(SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_UNTYPED);
     a->out->symbols[symbol].type = type;
 }
 int script_analyzer_statement_inner(analyzer *a, TSNode node)

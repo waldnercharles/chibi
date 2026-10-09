@@ -1,5 +1,6 @@
 #include "assets/project.h"
 #include "assets/project_migrate.h"
+#include "authoring/native_bindings.h"
 #include "ecs/ecs.h"
 #include "execution/delay.h"
 #include "execution/inspection.h"
@@ -7,6 +8,7 @@
 #include "execution/status.h"
 #include "language/identity.h"
 #include "language/lower.h"
+#include "runtime/arithmetic_definition.h"
 #include "runtime/core_definition.h"
 #include "runtime/native_definitions.h"
 #include "runtime/state_definition.h"
@@ -349,6 +351,12 @@ static bool host(void *, uint64_t id, script_lower_host *out)
     *out = (script_lower_host){ .intrinsic = BF_DELAY };
     return true;
 }
+/* A pack's own natives, then the fixture's hosts. */
+static bool pack_host(void *user, uint64_t id, script_lower_host *out)
+{
+    script_lower_bindings natives = authoring_native_bindings(state_native);
+    return natives.host(natives.user, id, out) || host(user, id, out);
+}
 static bool compile_catalog(const char *source, behavior_backend backend, const script_catalog *active)
 {
     syntax = script_parse(source);
@@ -359,7 +367,8 @@ static bool compile_catalog(const char *source, behavior_backend backend, const 
         }
         return false;
     }
-    const script_lower_bindings bindings = { .global = global, .host = host };
+    const script_lower_bindings bindings = { .global = global,
+                                             .host = state_native ? pack_host : host };
     execution_module_plan *plan = script_lower(analysis, active, &bindings);
     if (!plan || !plan->valid) {
         for (int i = 0; plan && i < plan->diagnostic_count; i++) {
@@ -390,7 +399,7 @@ static bool compile_module(const char *source, behavior_backend backend)
 {
     return compile_catalog(source, backend, &catalog);
 }
-static bool compile_state(const char *source, behavior_backend backend)
+static bool compile_pack(const char *source, behavior_backend backend, const native_definition_pack *pack)
 {
     const native_capability_pack base = {
         .catalog = &catalog,
@@ -398,8 +407,7 @@ static bool compile_state(const char *source, behavior_backend backend)
         .layout_count = 2,
     };
     char error[256];
-    const native_definition_pack packs[] = { NATIVE_STATE_DEFINITION_PACK,
-                                             CORE_DEFINITION_PACK };
+    const native_definition_pack packs[] = { *pack, CORE_DEFINITION_PACK };
     state_native = native_capabilities_from_definition_packs(&base, 1, packs, 2, error, sizeof error);
     if (!state_native) {
         fprintf(stderr, "state catalog: %s\n", error);
@@ -1067,6 +1075,35 @@ TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics)
     }
     return true;
 }
+/* A failed call stack unwinds at once, so neither payload collection nor a
+ * service rebind reaches the host banks its frames released. */
+TEST_CASE(program_failed_call_stacks_unwind_at_once)
+{
+    const char *source = "behavior Failure { n: double = 0;"
+                         "function Inner() -> (Result: double) { Delay(1); "
+                         "return fail_native() }"
+                         "function Middle() { n += Inner() }"
+                         "function Outer() { Middle() }"
+                         "on Impulse(amount, enabled) { Outer() } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        strcpy(failure_message, "nested failure");
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) < 0);
+        execution_program_clear_error(program);
+        execution_program_set_name(program, "rebound after failure");
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 0));
+    }
+    return true;
+}
 TEST_CASE(program_module_finish_preserves_failure_and_consumes_success)
 {
     char initial[] = "producer text";
@@ -1441,7 +1478,7 @@ TEST_CASE(program_state_actions_demand_inputs_route_and_preserve_per_owner_state
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
-        REQUIRE(compile_state(source, backends[b]));
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_STATE_DEFINITION_PACK));
         ecs_entity owners[] = { ecs_world_create_entity(world),
                                 ecs_world_create_entity(world) };
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
@@ -1501,7 +1538,7 @@ TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
-        REQUIRE(compile_state(source, backends[b]));
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_STATE_DEFINITION_PACK));
         ecs_entity owner = ecs_world_create_entity(world);
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
@@ -2666,6 +2703,63 @@ TEST_CASE(program_task_keeps_state_and_component_references)
     }
     return true;
 }
+/* Found porting Celeste's player: a zero-argument function that only calls
+ * others, number array indexes and range bounds, and clamp over an int bound. */
+TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp)
+{
+    const char
+        *source = "behavior N { n: double = 0; w: int = 4; a: double[] = [1, "
+                  "2, 3];"
+                  "function Leaf() -> (v: double) { j := 1.5; return(a[j]) }"
+                  "function Inner() -> (v: double) { return(Leaf() + 1) }"
+                  "function Start() -> (v: double) { return(Inner()) }"
+                  "function Bump() { n += 1 } function Relay() { Bump() }"
+                  "function Kick() { Relay() }"
+                  "on Impulse(amount, enabled) { i := 2; a[i] = 10;"
+                  "n = Start() + a[2] + clamp(amount, 0, w); Kick();"
+                  "j := 1.5; for (k in 1..j) { n += k } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_pack(source, backends[b], &NATIVE_ARITHMETIC_DEFINITION_PACK));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 2.5 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 17.5));
+    }
+    return true;
+}
+/* Found animating Celeste's sprite: a result takes the type of its first
+ * return, a literal settles to a number, and other returns convert to it. */
+TEST_CASE(program_returns_convert_to_their_result_type)
+{
+    const char
+        *source = "behavior M { n: double = 0; k: int = 3;"
+                  "function Half(v: int) { return v % 2 }"
+                  "function First() { if k == 2 { return 8.5 } return Half(k) }"
+                  "function Literal() { if k == 2 { return 8 } return Half(k) }"
+                  "function Declared() -> (r: double) { return Half(k) }"
+                  "on Impulse(amount, enabled) {"
+                  "n = First() * 0.5 + Literal() * 0.5 + Declared() } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 2));
+    }
+    return true;
+}
 TEST_CASE(program_yield_resumes_on_the_next_update_without_time)
 {
     const char *source = "behavior Y { done: double = 0;"
@@ -2797,7 +2891,9 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     };
     for (int i = 0; i < 4; i++) {
         prepare();
-        REQUIRE(!compile_state(writes[i / 2], i % 2 ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        REQUIRE(
+            !compile_pack(writes[i / 2], i % 2 ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE, &NATIVE_STATE_DEFINITION_PACK)
+        );
     }
     return true;
 }
@@ -2885,7 +2981,7 @@ TEST_CASE(program_branch_completes_inside_action_continuation)
         REQUIRE(length > 0 && (size_t)length < sizeof source);
         for (int b = 0; b < 2; b++) {
             prepare();
-            REQUIRE(compile_state(source, backends[b]));
+            REQUIRE(compile_pack(source, backends[b], &NATIVE_STATE_DEFINITION_PACK));
             execution_instance *instance = execution_program_attach(
                 program,
                 ecs_entity_to_u64(positioned(1, 1))
@@ -3011,6 +3107,7 @@ TEST_CASE(program_assignments_and_reference_writes_do_not_allocate)
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_failed_call_stacks_unwind_at_once);
     RUN_TEST_CASE(program_module_finish_preserves_failure_and_consumes_success);
     RUN_TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit);
     RUN_TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit);
@@ -3049,6 +3146,8 @@ void test_language_program()
     RUN_TEST_CASE(program_library_call_starts_a_task);
     RUN_TEST_CASE(program_library_task_writes_the_callers_state);
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
+    RUN_TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp);
+    RUN_TEST_CASE(program_returns_convert_to_their_result_type);
     RUN_TEST_CASE(program_yield_resumes_on_the_next_update_without_time);
     RUN_TEST_CASE(program_task_state_awaits_its_function_results);
     RUN_TEST_CASE(program_task_handles_belong_to_their_instance);

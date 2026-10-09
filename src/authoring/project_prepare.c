@@ -193,23 +193,41 @@ static bool application_title_valid(const chibi_project *project, char *error, s
     }
     return valid;
 }
-/* The window icon ships beside the artifact, so it must decode as a PNG. */
-static bool application_icon_valid(const chibi_project *project, char *error, size_t size)
+/* The window icon ships beside the artifact, so it must decode as a PNG. Its
+ * size and hash fill `icon` for the manifest's external records. */
+static bool application_icon_read(
+    const chibi_project *project,
+    game_player_asset *icon,
+    char *error,
+    size_t size
+)
 {
-    const char *icon = project->application.icon;
-    if (!icon) {
+    const char *path = project->application.icon;
+    if (!path) {
         return true;
     }
-    size_t length = strlen(project->root) + strlen(icon) + 2;
-    char *path = xmalloc(length);
-    snprintf(path, length, "%s/%s", project->root, icon);
+    size_t length = strlen(project->root) + strlen(path) + 2;
+    char *file = xmalloc(length);
+    snprintf(file, length, "%s/%s", project->root, path);
     char reason[128];
-    bool valid = image_prepare_png_valid(path, reason, sizeof reason);
-    free(path);
-    if (!valid && size) {
-        snprintf(error, size, "Application icon is not a readable PNG: %s: %s", icon, reason);
+    int bytes = 0;
+    void *data = image_prepare_png_read(file, &bytes, reason, sizeof reason);
+    free(file);
+    if (!data) {
+        if (size) {
+            snprintf(error, size, "Application icon is not a readable PNG: %s: %s", path, reason);
+        }
+        return false;
     }
-    return valid;
+    *icon = (game_player_asset){
+        .name = path,
+        .path = path,
+        .external = true,
+        .length = (size_t)bytes,
+        .content_hash = game_player_asset_fingerprint(data, (size_t)bytes)
+    };
+    free(data);
+    return true;
 }
 static uint64_t content_hash(const void *data, size_t size)
 {
@@ -220,7 +238,32 @@ static uint64_t content_hash(const void *data, size_t size)
     }
     return hash;
 }
-static char *manifest(const game_player_asset *assets, const authoring_project_artifact *artifact)
+static void add_record(yyjson_mut_doc *doc, yyjson_mut_val *records, const char *kind, const game_player_asset *asset)
+{
+    yyjson_mut_val *record = yyjson_mut_arr_add_obj(doc, records);
+    yyjson_mut_obj_add_str(doc, record, "kind", kind);
+    yyjson_mut_obj_add_str(doc, record, "key", asset->name);
+    yyjson_mut_obj_add_uint(doc, record, "bytes", asset->length);
+    if (asset->path) {
+        yyjson_mut_obj_add_str(doc, record, "path", asset->path);
+    }
+    char hash[17];
+    snprintf(
+        hash,
+        sizeof hash,
+        "%016" PRIx64,
+        asset->external ? asset->content_hash
+                        : game_player_asset_fingerprint(asset->data, asset->length)
+    );
+    yyjson_mut_obj_add_strcpy(doc, record, "content_hash", hash);
+}
+/* The artifact's resource closure: embedded assets, and the external files,
+ * the window icon among them, that must ship beside it. */
+static char *manifest(
+    const game_player_asset *assets,
+    const game_player_asset *icon,
+    const authoring_project_artifact *artifact
+)
 {
     static const char *const kinds[] = { "shader", "model",         "mesh",
                                          "image",  "shader-values", "parts",
@@ -241,22 +284,15 @@ static char *manifest(const game_player_asset *assets, const authoring_project_a
     yyjson_mut_val *embedded = yyjson_mut_obj_add_arr(doc, root, "embedded");
     yyjson_mut_val *external = yyjson_mut_obj_add_arr(doc, root, "external");
     for (int i = 0; i < acount(assets); i++) {
-        yyjson_mut_val *record = yyjson_mut_arr_add_obj(doc, assets[i].external ? external : embedded);
-        yyjson_mut_obj_add_str(doc, record, "kind", kinds[assets[i].kind]);
-        yyjson_mut_obj_add_str(doc, record, "key", assets[i].name);
-        yyjson_mut_obj_add_uint(doc, record, "bytes", assets[i].length);
-        if (assets[i].path) {
-            yyjson_mut_obj_add_str(doc, record, "path", assets[i].path);
-        }
-        snprintf(
-            hash,
-            sizeof hash,
-            "%016" PRIx64,
-            assets[i].external
-                ? assets[i].content_hash
-                : game_player_asset_fingerprint(assets[i].data, assets[i].length)
+        add_record(
+            doc,
+            assets[i].external ? external : embedded,
+            kinds[assets[i].kind],
+            &assets[i]
         );
-        yyjson_mut_obj_add_strcpy(doc, record, "content_hash", hash);
+    }
+    if (icon->path) {
+        add_record(doc, external, "icon", icon);
     }
     char *text = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY, NULL);
     yyjson_mut_doc_free(doc);
@@ -298,12 +334,13 @@ bool authoring_project_prepare(
     const execution_module **definitions = NULL;
     game_player_prototype *prepared = NULL;
     game_player_asset *assets = NULL;
+    game_player_asset icon = { 0 };
     const game_scene **visual_scenes = NULL;
     size_t module_bytes = 0;
     char *scene_path = NULL, *text = NULL;
     if (chibi_project_open(&project, options->project, error, size) ||
         !application_title_valid(&project, error, size) ||
-        !application_icon_valid(&project, error, size)) {
+        !application_icon_read(&project, &icon, error, size)) {
         goto done;
     }
     if (!render_image_mount_content(project.content, error, size) ||
@@ -494,7 +531,7 @@ bool authoring_project_prepare(
         size
     );
     if (valid) {
-        artifact->manifest = manifest(assets, artifact);
+        artifact->manifest = manifest(assets, &icon, artifact);
         if (!artifact->manifest) {
             authoring_project_artifact_free(artifact);
             valid = fail(error, size, "Prepared resource manifest encoding failed");

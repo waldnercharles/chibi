@@ -5630,9 +5630,7 @@ static char *canonical_asset(
  * differed, or -1 when it is invalid or cannot be written. */
 static int format_input_map(const char *root, bool check)
 {
-    size_t length = strlen(root) + sizeof "/content/" INPUT_MAP_FILE;
-    char *path = xmalloc(length);
-    snprintf(path, length, "%s/content/" INPUT_MAP_FILE, root);
+    char *path = content_path(root, "content/" INPUT_MAP_FILE);
     struct stat info;
     if (stat(path, &info) && errno == ENOENT) {
         free(path);

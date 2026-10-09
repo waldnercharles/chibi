@@ -491,7 +491,15 @@ TEST_CASE(manifest_content_folder_is_used)
         ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
         0
     );
+    /* The input map is formatted where the content is too. */
+    write_file("game/assets/input.kdl", "Dash {\n  (array)sources \"Aim Stick\"\n}\n");
     REQUIRE(format("--check") != 0 && format(NULL) == 0 && format("--check") == 0);
+    char map[256];
+    path(map, sizeof map, "game/assets/input.kdl");
+    char *formatted = tool_read(map);
+    bool canonical = reads(formatted, "Dash {\n    (array)sources \"Aim Stick\"\n}\n");
+    free(formatted);
+    REQUIRE(canonical);
 
     char folder[256];
     path(folder, sizeof folder, "game/assets/ui");

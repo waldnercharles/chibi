@@ -2831,14 +2831,18 @@ TEST_CASE(program_task_shares_boxed_locals)
                          "function Keep(x: ref double) -> () { yield; x += 1; "
                          "yield; kept += x; }"
                          "function Relay(x: ref double) -> () { Keep(x); }"
+                         "function Pair(x: double) -> (a: double, b: double) "
+                         "{ return(a: x * 1000 + 5, b: 0) }"
                          "on Impulse(amount, enabled) {"
                          "if amount == 0 { v := 1.0; t := Bump(v); v += 100; "
                          "await t; seen = v; }"
                          "else if amount == 1 { w := 5.0; Keep(w); }"
                          "else if amount == 2 { i := 0.0; while i < 2 { u := "
                          "i * 10; Keep(u); i += 1; } }"
-                         "else { j := 0.0; while j < 2 { z := j * 100 + 2; "
-                         "Relay(z); j += 1; } } } }";
+                         "else if amount == 3 { j := 0.0; while j < 2 { z := "
+                         "j * 100 + 2; Relay(z); j += 1; } }"
+                         "else { k := 0.0; while k < 2 { p := Pair(k); "
+                         "Keep(p.a); k += 1; } } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2846,7 +2850,7 @@ TEST_CASE(program_task_shares_boxed_locals)
         ecs_entity owner = ecs_world_create_entity(world);
         execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
         REQUIRE(instance != NULL);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             const pin_value args[] = { { .type = PIN_F64, .d = i },
                                        { .type = PIN_BOOL, .b = true } };
             REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
@@ -2854,10 +2858,11 @@ TEST_CASE(program_task_shares_boxed_locals)
         for (int i = 1; i <= 3; i++) {
             REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
         }
-        /* The caller and its task share v; each declaration of u, and of z
-         * through Relay, is its own; w and z outlive their callers. */
+        /* The caller and its task share v; each declaration of u, of z
+         * through Relay, and of the tuple p is its own; w and z outlive
+         * their callers. */
         REQUIRE(number_state(instance, "seen", 112));
-        REQUIRE(number_state(instance, "kept", 6 + 1 + 11 + 3 + 103));
+        REQUIRE(number_state(instance, "kept", 6 + 1 + 11 + 3 + 103 + 6 + 1006));
         REQUIRE(execution_instance_pending(instance) == 0);
     }
     return true;

@@ -686,6 +686,8 @@ TEST_CASE(native_player_reads_declared_components)
 {
     char error[192];
     REQUIRE(rejected("CF_V2", "float", "already an engine type"));
+    REQUIRE(rejected("float", "float", "built-in script type"));
+    REQUIRE(rejected("task", "float", "built-in script type"));
     REQUIRE(rejected("Charge", "vec9", "unknown type vec9"));
     REQUIRE(rejected("Charge", "handle", "unknown type handle"));
     REQUIRE(rejected("2Charge", "float", "identifier"));
@@ -709,6 +711,8 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(
         script->component && script->component_id == components.components[0]->id
     );
+    /* The set is freed before the player reads its own copy. */
+    ecs_component_id id = script->component_id;
     REQUIRE(
         script->fields[4].type.storage == PIN_STRUCT &&
         script->fields[4].type.nominal == script_catalog_id("type", "CF_V2")
@@ -750,7 +754,7 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(type_catalog_find("Charge"));
     ecs_world *ecs = game_world_ecs(game_player_world(player));
     ecs_entity cell = game_scene_instance_entity(game_player_scene(player), 0);
-    const charge *read = ecs_component_data_const(ecs, cell, script->component_id);
+    const charge *read = ecs_component_data_const(ecs, cell, id);
     REQUIRE(read && read->level == 1.25f && read->cycles == 2 && read->full);
     REQUIRE(read->drift.x == 1 && read->drift.y == -1);
     game_player_free(player);

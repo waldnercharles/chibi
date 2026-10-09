@@ -75,7 +75,7 @@ help:
 		'make studio-run PROJECT_ROOT=/game  Run the external Studio consumer' \
 		'make studio-dev PROJECT_ROOT=/game  Run Studio with checkpoint recovery' \
 		'make package-studio Package the external Studio distribution' \
-		'make install STUDIO_SOURCE=/studio [PREFIX=~/.local]  Install chibi-dev and chibi' \
+		'make install [PREFIX=~/.local]  Install chibi-dev and chibi from ../chibi-studio' \
 		'make controller-build / controller-run PROJECT_ROOT=/game' \
 		'make update-game-runtime Explicitly refresh registered deployments' \
 		'make agent-list     List runnable classified selectors and admission status' \
@@ -130,7 +130,8 @@ ARTIFACT ?=
 RESOURCE_ROOT ?= $(dir $(abspath $(ARTIFACT)))
 SCENE ?=
 SCENE_ARG = $(if $(SCENE),--scene "$(SCENE)")
-STUDIO_SOURCE ?=
+# Studio's checkout, by default beside the engine's.
+STUDIO_SOURCE ?= $(abspath $(CURDIR)/../chibi-studio)
 STUDIO_SDK_PREFIX ?= $(SDK_PREFIX)
 STUDIO_BUILD_DIR ?= build-studio
 STUDIO_PACKAGE_BUILD_DIR ?= build-studio-package
@@ -158,7 +159,7 @@ player-run:
 	env $(NATIVE_RUNTIME_ENV) "$(PLAYER_OUTPUT)/bin/chibi-player" "$(abspath $(ARTIFACT))" --resource-root "$(abspath $(RESOURCE_ROOT))" $(ARGS)
 
 studio-build:
-	@test -n "$(STUDIO_SOURCE)" && test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'Set STUDIO_SOURCE to the separate Studio repository' >&2; exit 2; }
+	@test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'No Studio checkout at $(STUDIO_SOURCE): clone chibi-studio beside chibi or set STUDIO_SOURCE' >&2; exit 2; }
 	@test -f "$(STUDIO_SDK_PREFIX)/share/chibi/package.json" || { printf '%s\n' 'Set STUDIO_SDK_PREFIX to a packaged compiler/desktop SDK' >&2; exit 2; }
 	@$(QUIET) configure-studio -- cmake -S "$(STUDIO_SOURCE)" -B "$(STUDIO_BUILD_DIR)" -G Ninja $(NATIVE_TOOLCHAIN_FLAGS) $(STUDIO_CMAKE_FLAGS) -DChibi_DIR="$(abspath $(STUDIO_SDK_PREFIX))/lib/cmake/Chibi"
 	@$(QUIET) build-studio -- cmake --build "$(STUDIO_BUILD_DIR)" --target chibi-studio --parallel $(JOBS)
@@ -180,7 +181,7 @@ package-studio:
 # Release Studio and the SDK's chibi, chibi-compile and chibi-player, in their
 # own build trees so development builds stay as they are.
 install:
-	@test -n "$(STUDIO_SOURCE)" && test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'Set STUDIO_SOURCE to the separate Studio repository' >&2; exit 2; }
+	@test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'No Studio checkout at $(STUDIO_SOURCE): clone chibi-studio beside chibi or set STUDIO_SOURCE' >&2; exit 2; }
 	@$(MAKE) package-sdk SDK_BUILD_DIR="$(INSTALL_SDK_BUILD_DIR)" SDK_PREFIX="$(INSTALL_SDK_PREFIX)" SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
 	@$(MAKE) studio-build STUDIO_SDK_PREFIX="$(INSTALL_SDK_PREFIX)" STUDIO_BUILD_DIR="$(INSTALL_STUDIO_BUILD_DIR)" STUDIO_CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=Release
 	@cmake --install "$(INSTALL_STUDIO_BUILD_DIR)" --prefix "$(abspath $(PREFIX))"
@@ -226,7 +227,7 @@ package-web-player: sdk-reflect-build
 	@cmake --install "$(WEB_PLAYER_BUILD_DIR)" --component web_player --prefix "$(abspath $(WEB_PLAYER_OUTPUT))"
 
 web-configure:
-	@test -n "$(STUDIO_SOURCE)" && test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'Set STUDIO_SOURCE to the separate Studio repository' >&2; exit 2; }
+	@test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'No Studio checkout at $(STUDIO_SOURCE): clone chibi-studio beside chibi or set STUDIO_SOURCE' >&2; exit 2; }
 	@$(MAKE) package-web-sdk
 	@$(QUIET) configure-web-studio -- sh tools/web_env.sh emcmake cmake -S "$(STUDIO_SOURCE)" -B "$(WEB_BUILD_DIR)" -G Ninja $(WEB_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DChibi_DIR="$(abspath $(WEB_SDK_PREFIX))/lib/cmake/Chibi" -DCHIBI_STUDIO_WEB_PROJECTS="$(WEB_PROJECTS)" -DCHIBI_STUDIO_COLLAB_URL="$(CHIBI_COLLAB_URL)"
 

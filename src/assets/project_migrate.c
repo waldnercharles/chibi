@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <yyjson.h>
 
 typedef struct
 {
@@ -2534,30 +2535,26 @@ static char *drop_motions(const char *asset)
     av_doc_free(document);
     return migrated;
 }
-/* The first of `words` that a string literal in `source` holds whole, or
- * NULL. */
+/* The first of `words` that a string literal in `source` holds whole, decoded
+ * as the language decodes strings, or NULL. */
 static const char *quoted_use(const char *source, const char *const *words, size_t count)
 {
-    for (const char *p = source; *p;) {
+    const char *use = NULL;
+    for (const char *p = source; *p && !use;) {
         const char *end = skip_literal(p);
         if (end == p) {
             p++;
             continue;
         }
-        char text[32];
-        size_t length = (size_t)(end - p);
-        if (*p == '"' && length >= 2 && end[-1] == '"' && length - 2 < sizeof text) {
-            memcpy(text, p + 1, length - 2);
-            text[length - 2] = '\0';
-            for (size_t i = 0; i < count; i++) {
-                if (names_match(text, words[i])) {
-                    return words[i];
-                }
-            }
+        yyjson_doc *document = *p == '"' ? yyjson_read(p, (size_t)(end - p), 0) : NULL;
+        const char *text = yyjson_get_str(yyjson_doc_get_root(document));
+        for (size_t i = 0; text && !use && i < count; i++) {
+            use = names_match(text, words[i]) ? words[i] : NULL;
         }
+        yyjson_doc_free(document);
         p = end;
     }
-    return NULL;
+    return use;
 }
 /* Version 18 removes GameSdfMotion from every scene and prototype. Any other
  * use, by name or in a string in a script or as text left in another asset,

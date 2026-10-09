@@ -3411,6 +3411,11 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
           "has_component(Component: "
           "\"GAME.GameSdfMotion\", Entity: 0)\n    }\n}\n",
           "Probe.chibi uses GAME.GameSdfMotion" },
+        { "content/Escaped.chibi",
+          "behavior Escaped {\n    on Tick(dt) {\n        moving := "
+          "has_component(Component: "
+          "\"GAME.GameSdf\\u004dotion\", Entity: 0)\n    }\n}\n",
+          "Escaped.chibi uses GAME.GameSdfMotion" },
         { "content/Scenario.kdl",
           "name \"Wobble\"\ncomponent \"GAME.GameSdfMotion\"\n",
           "Scenario.kdl uses GameSdfMotion" },

@@ -65,10 +65,12 @@ typedef unsigned short mode_t;
 /* The runtime's open in binary mode, keeping only the owner's read and write
  * bits, the only ones it accepts. */
 int posix_win32_open(const char *path, int flags, ...);
-/* stat, with symbolic links and junctions as S_IFLNK instead of their target. */
+/* stat, with symbolic links and junctions as S_IFLNK instead of their target,
+ * dangling ones included. */
 int posix_win32_lstat(const char *path, struct stat *info);
 /* The absolute path with forward slashes, into `resolved` (PATH_MAX bytes)
- * or a new buffer for NULL; NULL when it does not exist. Links stay as named. */
+ * or a new buffer for NULL; NULL when it does not exist. Symbolic links and
+ * junctions resolve to their targets, as POSIX's do. */
 char *posix_win32_realpath(const char *path, char *resolved);
 char *posix_win32_mkdtemp(char *pattern);
 int posix_win32_mkstemp(char *pattern);

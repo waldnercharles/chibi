@@ -5,12 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* A pure native returns a new value, so a call statement drops all it did.
- * Invoking an action runs its flow outputs instead. */
+/* A pure native returns a new value, so a call statement drops all it did,
+ * including when a named action invokes it. */
 static bool discards_result(const analyzer *a, const script_expression *call)
 {
-    if (call->kind != SCRIPT_EXPR_CALL || call->right >= 0 || !call->result_count ||
-        (call->symbol >= 0 && a->out->symbols[call->symbol].kind == SCRIPT_ACTION)) {
+    if (call->kind != SCRIPT_EXPR_CALL || call->right >= 0 || !call->result_count) {
         return false;
     }
     const script_catalog_capability

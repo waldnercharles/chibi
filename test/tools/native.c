@@ -487,7 +487,8 @@ static bool jump_step(engine *runtime, uint64_t controls, bool held, bool presse
     REQUIRE(jump.steps == steps + 1 && jump.held == held && jump.pressed == pressed);
     return true;
 }
-TEST_CASE(native_action_state_combines_sources_per_step)
+/* A world whose Tick reads Jump, bound to Z and X and to a disabled C. */
+static bool jump_world(engine **out)
 {
     cleanup();
     jump = (typeof(jump)){ 0 };
@@ -549,8 +550,14 @@ TEST_CASE(native_action_state_combines_sources_per_step)
     REQUIRE(bind_jump(ecs, GAME_CONTROL_Z, false));
     REQUIRE(bind_jump(ecs, GAME_CONTROL_X, false));
     REQUIRE(bind_jump(ecs, GAME_CONTROL_C, true));
-    engine *runtime = game_world_engine(simulation);
-    REQUIRE(engine_frame(runtime, 0) == 0);
+    *out = game_world_engine(simulation);
+    REQUIRE(engine_frame(*out, 0) == 0);
+    return true;
+}
+TEST_CASE(native_action_state_combines_sources_per_step)
+{
+    engine *runtime;
+    REQUIRE(jump_world(&runtime));
     const uint64_t z = UINT64_C(1) << GAME_CONTROL_Z,
                    x = UINT64_C(1) << GAME_CONTROL_X,
                    c = UINT64_C(1) << GAME_CONTROL_C;
@@ -566,6 +573,68 @@ TEST_CASE(native_action_state_combines_sources_per_step)
     REQUIRE(engine_sample_controls(runtime, x, &firing) == FLOW_OK);
     REQUIRE(jump_step(runtime, 0, false, true));
     REQUIRE(jump_step(runtime, 0, false, false));
+    cleanup();
+    return true;
+}
+#define Z_DOWN (UINT64_C(1) << GAME_CONTROL_Z)
+#define X_DOWN (UINT64_C(1) << GAME_CONTROL_X)
+/* The controls sampled before each step. */
+static const struct
+{
+    int count;
+    uint64_t samples[3];
+} tapped_steps[] = {
+    { 1, { 0 } },
+    { 2, { Z_DOWN, 0 } },         /* tap */
+    { 1, { Z_DOWN } },            /* press */
+    { 2, { 0, Z_DOWN } },         /* release, press */
+    { 1, { Z_DOWN } },            /* hold */
+    { 3, { 0, Z_DOWN, 0 } },      /* release, tap */
+    { 3, { X_DOWN, Z_DOWN, 0 } }, /* tap one source, then another */
+    { 1, { 0 } },
+};
+#define TAPPED_STEPS (int)(sizeof tapped_steps / sizeof *tapped_steps)
+/* Runs every step, sampling live controls (ignored while replaying), and keeps
+ * what Tick read in each. */
+static bool run_taps(engine *runtime, bool read[][2])
+{
+    for (int step = 0; step < TAPPED_STEPS; step++) {
+        for (int i = 0; i < tapped_steps[step].count; i++) {
+            bool firing;
+            REQUIRE(
+                engine_sample_controls(runtime, tapped_steps[step].samples[i], &firing) == FLOW_OK
+            );
+        }
+        REQUIRE(engine_frame(runtime, (step + 1.5) * ENGINE_FIXED_SECONDS) == 0);
+        REQUIRE(jump.steps == step + 1);
+        read[step][0] = jump.held;
+        read[step][1] = jump.pressed;
+    }
+    return true;
+}
+TEST_CASE(native_recorded_taps_replay_per_step)
+{
+    static const bool expected[TAPPED_STEPS][2] = {
+        { false, false }, { false, true }, { true, true },  { true, true },
+        { true, false },  { false, true }, { false, true }, { false, false },
+    };
+    engine *runtime;
+    REQUIRE(jump_world(&runtime));
+    engine_record_input(runtime, 3);
+    bool live[TAPPED_STEPS][2], replayed[TAPPED_STEPS][2];
+    REQUIRE(run_taps(runtime, live));
+    REQUIRE(!memcmp(live, expected, sizeof live));
+    int count;
+    const input_keyframe *recorded = engine_recorded_input(runtime, &count);
+    input_keyframe *keys = NULL;
+    for (int i = 0; i < count; i++) {
+        apush(keys, recorded[i]);
+    }
+    REQUIRE(jump_world(&runtime));
+    engine_replay_input(runtime, keys, count, 3);
+    afree(keys);
+    REQUIRE(run_taps(runtime, replayed));
+    REQUIRE(!memcmp(replayed, live, sizeof live));
     cleanup();
     return true;
 }
@@ -786,5 +855,6 @@ void test_tool_native()
     RUN_TEST_CASE(native_prepared_world_runs_source_and_real_physics);
     RUN_TEST_CASE(native_player_loads_package_and_retires_producers);
     RUN_TEST_CASE(native_action_state_combines_sources_per_step);
+    RUN_TEST_CASE(native_recorded_taps_replay_per_step);
     pu_clear_setup();
 }

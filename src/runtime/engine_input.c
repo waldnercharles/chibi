@@ -41,6 +41,8 @@ struct engine_input
     CF_V2 aim;
     bool aim_sampled, aim_point, firing;
     uint64_t controls;
+    /* Controls that went down, and up, since the last step began. */
+    uint64_t downs, ups;
     input_button *buttons;
     input_transition *transitions;
     ecs_entity *controlled;
@@ -145,6 +147,7 @@ void engine_input_clear(engine_input *input)
     input->aim_sampled = true;
     input->firing = false;
     input->controls = 0;
+    input->downs = input->ups = 0;
     clear_actions(input);
     /* Pause may never run another fixed tick. Clear reflected local input now,
      * without dispatching authored gameplay while transport is stopped. */
@@ -225,6 +228,8 @@ int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
 {
     _Static_assert(GAME_CONTROL_COUNT < 64, "control bitset");
     *firing = false;
+    input->downs |= controls & ~input->controls;
+    input->ups |= input->controls & ~controls;
     input->controls = controls;
     input_button *sample = NULL;
     ecs_component_id component = GAME_COMPONENT_GameActionBinding.id;
@@ -299,13 +304,24 @@ input_keyframe engine_input_held(const engine_input *input)
                              .aim = input->aim,
                              .aim_point = input->aim_point,
                              .firing = input->firing,
-                             .controls = input->controls };
+                             .controls = input->controls,
+                             .taps = input->downs & input->ups };
 }
 
 int engine_input_hold(engine_input *input, const input_keyframe *key)
 {
     bool firing;
-    int result = engine_input_controls(input, key->controls, &firing);
+    int result = FLOW_OK;
+    if (key->taps) {
+        /* Release then press each tapped control before holding the key. */
+        result = engine_input_controls(input, key->controls & ~key->taps, &firing);
+        if (result >= 0) {
+            result = engine_input_controls(input, key->controls | key->taps, &firing);
+        }
+    }
+    if (result >= 0) {
+        result = engine_input_controls(input, key->controls, &firing);
+    }
     engine_input_movement(input, key->movement);
     engine_input_aim(input, key->aim, key->firing, key->aim_point);
     return result;
@@ -548,6 +564,7 @@ static void apply_action_state(engine_input *input)
 int engine_input_apply(engine_input *input)
 {
     input->message[0] = 0;
+    input->downs = input->ups = 0;
     for (int i = 0; i < acount(input->buttons); i++) {
         input->buttons[i].stepped = input->buttons[i].started;
         input->buttons[i].started = false;

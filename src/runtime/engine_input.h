@@ -32,7 +32,8 @@ int engine_input_apply(engine_input *input);
 const char *engine_input_error(const engine_input *input);
 /* The held input as a key at step zero. */
 input_keyframe engine_input_held(const engine_input *input);
-/* Hold a key's input as the host samples it: controls, movement, then aim. */
+/* Hold a key's input as the host samples it: taps, controls, movement, then
+ * aim. */
 int engine_input_hold(engine_input *input, const input_keyframe *key);
 
 /* Action Held and Action Pressed read every source of an action, as combined at

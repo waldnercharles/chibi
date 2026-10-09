@@ -767,7 +767,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
 }
 GameCamera;
 
-/* Sources are grouped by device: mouse, keyboard, then controller. */
+/* Sources are grouped by device: mouse, keyboard, then controller. Escape is
+ * not a source: hosts reserve it to pause play. */
 typedef enum
 {
     GAME_CONTROL_NONE,
@@ -780,7 +781,6 @@ typedef enum
     GAME_CONTROL_ALT,
     GAME_CONTROL_TAB,
     GAME_CONTROL_ENTER,
-    GAME_CONTROL_ESCAPE,
     GAME_CONTROL_BACKSPACE,
     GAME_CONTROL_ARROW_UP,
     GAME_CONTROL_ARROW_DOWN,

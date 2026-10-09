@@ -40,7 +40,6 @@ GameControl game_control_for_key(CF_KeyButton key)
         case CF_KEY_RALT: return GAME_CONTROL_ALT;
         case CF_KEY_TAB: return GAME_CONTROL_TAB;
         case CF_KEY_RETURN: return GAME_CONTROL_ENTER;
-        case CF_KEY_ESCAPE: return GAME_CONTROL_ESCAPE;
         case CF_KEY_BACKSPACE: return GAME_CONTROL_BACKSPACE;
         case CF_KEY_UP: return GAME_CONTROL_ARROW_UP;
         case CF_KEY_DOWN: return GAME_CONTROL_ARROW_DOWN;
@@ -64,7 +63,6 @@ static bool key_down(GameControl control)
         case GAME_CONTROL_SPACE: return cf_key_down(CF_KEY_SPACE);
         case GAME_CONTROL_TAB: return cf_key_down(CF_KEY_TAB);
         case GAME_CONTROL_ENTER: return cf_key_down(CF_KEY_RETURN);
-        case GAME_CONTROL_ESCAPE: return cf_key_down(CF_KEY_ESCAPE);
         case GAME_CONTROL_BACKSPACE: return cf_key_down(CF_KEY_BACKSPACE);
         case GAME_CONTROL_ARROW_UP: return cf_key_down(CF_KEY_UP);
         case GAME_CONTROL_ARROW_DOWN: return cf_key_down(CF_KEY_DOWN);

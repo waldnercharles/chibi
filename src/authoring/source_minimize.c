@@ -889,6 +889,10 @@ static void accessor_read(collector *c, TSNode node, const script_expression *ca
     path_edits(&r, c, start(read), end(read), written_argument(c, node, call, cap->component_entity), cap);
     apush(c->rewrites, r);
 }
+static bool is_self(const collector *c, script_range range)
+{
+    return range.end - range.start == 4 && !strncmp(c->text + range.start, "self", 4);
+}
 /* `set_dash(v)` becomes `self.Dash = v`; the value keeps its text. */
 static void accessor_write(
     collector *c,
@@ -918,17 +922,12 @@ static void accessor_write(
         free((char *)last->text);
         last->text = text;
     } else {
-        char *root = NULL;
-        if (entity < 0) {
-            append_text(&root, "self", 4);
-        } else {
-            script_range e = value_range(c, entity);
-            bool bare = primary_at(c, e);
-            append_text(&root, "(", !bare);
-            append_text(&root, c->text + e.start, e.end - e.start);
-            append_text(&root, ")", !bare);
+        /* An entity written after the value would be evaluated first. */
+        if (entity >= 0 && !is_self(c, value_range(c, entity))) {
+            return;
         }
-        char *suffix = component_suffix(c, cap, false);
+        char *suffix = component_suffix(c, cap, false), *root = NULL;
+        append_text(&root, "self", 4);
         append_text(&root, suffix, (int)strlen(suffix));
         append_text(&root, " = ", 3);
         apush(root, 0);

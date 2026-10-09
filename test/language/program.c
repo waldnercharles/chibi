@@ -2289,7 +2289,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(manifest, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 17\n"));
+    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 18\n"));
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
@@ -2425,7 +2425,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(!strncmp(text, "version 17\n", 11));
+    REQUIRE(!strncmp(text, "version 18\n", 11));
     unlink(path);
     snprintf(path, sizeof path, "%s/content/B.chibi", root);
     file = fopen(path, "rb");
@@ -3316,6 +3316,151 @@ TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
     rmdir(root);
     return true;
 }
+/* Migrates a version 17 project whose scene and prototype deform shapes. */
+TEST_CASE(program_version_17_sdf_motion_is_removed)
+{
+    const char *scene = "version 1\n"
+                        "name \"Start\"\n"
+                        "(array)entities {\n"
+                        "    - {\n"
+                        "        name \"Enemy\"\n"
+                        "        prototype \"Enemy\"\n"
+                        "        (array)behaviors\n"
+                        "        components {\n"
+                        "            GAME.GameSdfMotion amplitude=2.0\n"
+                        "            (object)GAME.GameInput\n"
+                        "        }\n"
+                        "        retained_components {\n"
+                        "            GameSdfMotion time=1.0\n"
+                        "        }\n"
+                        "    }\n"
+                        "}\n";
+    const char *prototype = "name \"Enemy\"\n"
+                            "components {\n"
+                            "    GAME.GameSdfMotion angular_frequency=4.0\n"
+                            "}\n"
+                            "detached_components {\n"
+                            "    GAME.GameSdfMotion pluck_amplitude=1.0\n"
+                            "}\n";
+    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
+    REQUIRE(mkdtemp(root));
+    const char *directories[] = { "content", "content/scenes", "content/prototypes" };
+    for (int i = 0; i < 3; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        REQUIRE(!mkdir(path, 0700));
+    }
+    const char *manifest = "version 17\ncontent \"content\"\nstart_scene "
+                           "\"scenes/Start.kdl\"\n";
+    const char *files[][2] = {
+        { CHIBI_PROJECT_MANIFEST, manifest },
+        { "content/scenes/Start.kdl", scene },
+        { "content/prototypes/Enemy.kdl", prototype },
+        { "content/Note.chibi", "// GameSdfMotion is gone.\nbehavior Note {\n}\n" },
+    };
+    for (int i = 0; i < 4; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        FILE *file = fopen(path, "wb");
+        fputs(files[i][1], file);
+        fclose(file);
+    }
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 17);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
+    const char *expected[] = {
+        NULL,
+        "version 1\n"
+        "name \"Start\"\n"
+        "(array)entities {\n"
+        "    - {\n"
+        "        name \"Enemy\"\n"
+        "        prototype \"Enemy\"\n"
+        "        (array)behaviors\n"
+        "        components {\n"
+        "            (object)GAME.GameInput\n"
+        "        }\n"
+        "    }\n"
+        "}\n",
+        "name \"Enemy\"\n"
+        "(object)components\n",
+        files[3][1],
+    };
+    for (int i = 1; i < 4; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        char text[1024];
+        FILE *file = fopen(path, "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        if (strcmp(text, expected[i])) {
+            fprintf(stderr, "migrated %s:\n%s", files[i][0], text);
+        }
+        REQUIRE(!strcmp(text, expected[i]));
+    }
+
+    /* Only a person can remove any other use, so a script that names the
+     * component, by name or in a string, or another asset that still names
+     * it stops the migration before any asset changes. */
+    static const struct
+    {
+        const char *path, *text, *message;
+    } uses[] = {
+        { "content/Wobble.chibi",
+          "behavior Wobble {\n    on Tick(dt) {\n        "
+          "self.GameSdfMotion.time += dt\n    }\n}\n",
+          "Wobble.chibi uses GameSdfMotion, which version 18 removes" },
+        { "content/Probe.chibi",
+          "behavior Probe {\n    on Tick(dt) {\n        moving := "
+          "has_component(Component: "
+          "\"GAME.GameSdfMotion\", Entity: 0)\n    }\n}\n",
+          "Probe.chibi uses GAME.GameSdfMotion" },
+        { "content/Escaped.chibi",
+          "behavior Escaped {\n    on Tick(dt) {\n        moving := "
+          "has_component(Component: "
+          "\"GAME.GameSdf\\u004dotion\", Entity: 0)\n    }\n}\n",
+          "Escaped.chibi uses GAME.GameSdfMotion" },
+        { "content/Scenario.kdl",
+          "name \"Wobble\"\ncomponent \"GAME.GameSdfMotion\"\n",
+          "Scenario.kdl uses GameSdfMotion" },
+    };
+    for (size_t u = 0; u < sizeof uses / sizeof *uses; u++) {
+        const char *kept[][2] = {
+            { CHIBI_PROJECT_MANIFEST, manifest },
+            { "content/prototypes/Enemy.kdl", prototype },
+            { uses[u].path, uses[u].text },
+        };
+        for (int i = 0; i < 3; i++) {
+            snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
+            FILE *file = fopen(path, "wb");
+            fputs(kept[i][1], file);
+            fclose(file);
+        }
+        REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
+        if (!strstr(error, uses[u].message)) {
+            fprintf(stderr, "migration error: %s\n", error);
+        }
+        REQUIRE(strstr(error, uses[u].message));
+        for (int i = 0; i < 3; i++) {
+            snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
+            char text[1024];
+            FILE *file = fopen(path, "rb");
+            text[fread(text, 1, sizeof text - 1, file)] = 0;
+            fclose(file);
+            REQUIRE(!strcmp(text, kept[i][1]));
+        }
+        snprintf(path, sizeof path, "%s/%s", root, uses[u].path);
+        unlink(path);
+    }
+    snprintf(path, sizeof path, "%s/%s", root, CHIBI_PROJECT_MANIFEST);
+    unlink(path);
+    for (int i = 1; i < 4; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        unlink(path);
+    }
+    for (int i = 2; i >= 0; i--) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        rmdir(path);
+    }
+    rmdir(root);
+    return true;
+}
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -3989,6 +4134,7 @@ void test_language_program()
     RUN_TEST_CASE(program_input_map_validates_actions);
     RUN_TEST_CASE(program_input_actions_read_through_typed_names);
     RUN_TEST_CASE(program_version_16_locals_migrate_to_declarations);
+    RUN_TEST_CASE(program_version_17_sdf_motion_is_removed);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

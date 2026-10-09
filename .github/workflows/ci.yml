@@ -8,8 +8,17 @@ on:
         type: boolean
         default: false
   pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.claude/**'
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.claude/**'
 
 permissions:
   contents: read
@@ -21,21 +30,18 @@ concurrency:
 jobs:
   tools:
     name: Fast C regressions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        with:
-          path: build-tools
-          key: tools-${{ runner.os }}-${{ hashFiles('test/tools/CMakeLists.txt') }}-${{ github.sha }}
-          restore-keys: tools-${{ runner.os }}-${{ hashFiles('test/tools/CMakeLists.txt') }}-
       - name: Essential C regressions (60-second aggregate ceiling)
         run: make test-tools TOOLS_C_COMPILER=cc
 
   native:
     if: github.event_name == 'workflow_dispatch' && inputs.native
     name: Native partial coverage (${{ matrix.build_type }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -60,21 +66,24 @@ jobs:
       - name: Identify dependency sources
         id: deps
         run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
-      - name: Cache dependency sources
-        uses: actions/cache@v4
+      - name: Restore dependency sources
+        id: dependency-cache
+        uses: actions/cache/restore@v4
         with:
-          path: ~/.cache/chibi-fetchcontent/${{ steps.deps.outputs.key }}
-          key: fetchcontent-${{ runner.os }}-${{ steps.deps.outputs.key }}
+          path: ~/.cache/chibi-fetchcontent
+          key: fetchcontent-v2-${{ runner.os }}-${{ steps.deps.outputs.key }}
+          restore-keys: fetchcontent-v2-${{ runner.os }}-
       - name: Set up CMake
         uses: lukka/get-cmake@latest
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: native-${{ matrix.build_type }}
+          key: native-v1-${{ runner.os }}-${{ runner.arch }}-clang18-${{ matrix.build_type }}
+          save: ${{ github.ref == 'refs/heads/main' }}
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
             clang-18 libclang-18-dev libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers \
             libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
@@ -85,6 +94,12 @@ jobs:
           cat docs/test-quarantine.md >> "$GITHUB_STEP_SUMMARY"
       - name: Compile owned SDK and CLI products
         run: make build
+      - name: Save dependency sources
+        if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/chibi-fetchcontent
+          key: ${{ steps.dependency-cache.outputs.cache-primary-key }}
       - name: Essential C regressions with reflection identity (60-second aggregate ceiling)
         run: make test-tools TOOLS_C_COMPILER=clang-18
       - name: Record retired suite ownership
@@ -94,7 +109,8 @@ jobs:
 
   format:
     name: clang-format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Install clang-format

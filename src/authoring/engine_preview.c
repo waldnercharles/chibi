@@ -26,5 +26,7 @@ engine *authoring_engine_new(ecs_world *world, game_preview_runtime *r)
     m.context = r;
     m.boundary = boundary;
     m.paused = paused;
-    return engine_new(world, &m);
+    assert(!r->engine);
+    r->engine = engine_new(world, &m);
+    return r->engine;
 }

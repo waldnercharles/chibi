@@ -58,7 +58,7 @@ FAST_CMAKE_FLAGS ?= $(LOCAL_CMAKE_FLAGS)
 # allocator does not report a failed nano-zone reservation.
 NATIVE_RUNTIME_ENV ?= MallocNanoZone=0
 
-.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio package-player update-game-runtime web web-configure web-serial web-serve web-profile web-threads web-threads-serve publish-web format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
+.PHONY: all help build build-debug build-release controller-build controller-run prepare-project player-run studio-build studio-run studio-dev package-studio install package-player update-game-runtime web web-configure web-serial web-serve web-profile web-threads web-threads-serve publish-web format check-format test test-full test-tools test-slow test-fast test-list test-compiler-parity test-render benchmark clean
 
 all: build
 
@@ -75,6 +75,7 @@ help:
 		'make studio-run PROJECT_ROOT=/game  Run the external Studio consumer' \
 		'make studio-dev PROJECT_ROOT=/game  Run Studio with checkpoint recovery' \
 		'make package-studio Package the external Studio distribution' \
+		'make install [PREFIX=~/.local]  Install the Release SDK, including chibi' \
 		'make controller-build / controller-run PROJECT_ROOT=/game' \
 		'make update-game-runtime Explicitly refresh registered deployments' \
 		'make agent-list     List runnable classified selectors and admission status' \
@@ -129,13 +130,17 @@ ARTIFACT ?=
 RESOURCE_ROOT ?= $(dir $(abspath $(ARTIFACT)))
 SCENE ?=
 SCENE_ARG = $(if $(SCENE),--scene "$(SCENE)")
-STUDIO_SOURCE ?=
+# Studio's checkout, by default beside the engine's.
+STUDIO_SOURCE ?= $(abspath $(CURDIR)/../chibi-studio)
 STUDIO_SDK_PREFIX ?= $(SDK_PREFIX)
 STUDIO_BUILD_DIR ?= build-studio
 STUDIO_PACKAGE_BUILD_DIR ?= build-studio-package
 STUDIO_OUTPUT ?= dist/chibi-studio-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
 STUDIO_CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Debug
 STUDIO_CHECKPOINT ?= $(STUDIO_BUILD_DIR)/workspace.json
+PREFIX ?= $(HOME)/.local
+INSTALL_SDK_BUILD_DIR ?= build-install-sdk
+INSTALL_SDK_PREFIX ?= dist/install-sdk
 
 controller-run:
 	@test -n "$(PROJECT_ROOT)" || { printf '%s\n' 'Set PROJECT_ROOT to an authored game directory' >&2; exit 2; }
@@ -153,7 +158,7 @@ player-run:
 	env $(NATIVE_RUNTIME_ENV) "$(PLAYER_OUTPUT)/bin/chibi-player" "$(abspath $(ARTIFACT))" --resource-root "$(abspath $(RESOURCE_ROOT))" $(ARGS)
 
 studio-build:
-	@test -n "$(STUDIO_SOURCE)" && test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'Set STUDIO_SOURCE to the separate Studio repository' >&2; exit 2; }
+	@test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'No Studio checkout at $(STUDIO_SOURCE): clone chibi-studio beside chibi or set STUDIO_SOURCE' >&2; exit 2; }
 	@test -f "$(STUDIO_SDK_PREFIX)/share/chibi/package.json" || { printf '%s\n' 'Set STUDIO_SDK_PREFIX to a packaged compiler/desktop SDK' >&2; exit 2; }
 	@$(QUIET) configure-studio -- cmake -S "$(STUDIO_SOURCE)" -B "$(STUDIO_BUILD_DIR)" -G Ninja $(NATIVE_TOOLCHAIN_FLAGS) $(STUDIO_CMAKE_FLAGS) -DChibi_DIR="$(abspath $(STUDIO_SDK_PREFIX))/lib/cmake/Chibi"
 	@$(QUIET) build-studio -- cmake --build "$(STUDIO_BUILD_DIR)" --target chibi-studio --parallel $(JOBS)
@@ -171,6 +176,15 @@ studio-dev:
 package-studio:
 	@$(MAKE) studio-build STUDIO_BUILD_DIR="$(STUDIO_PACKAGE_BUILD_DIR)" STUDIO_CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release -DCHIBI_STUDIO_DISTRIBUTION=ON"
 	@$(QUIET) package-studio -- python3 "$(STUDIO_SDK_PREFIX)/share/chibi/tools/package_studio.py" --build "$(STUDIO_PACKAGE_BUILD_DIR)" --sdk "$(STUDIO_SDK_PREFIX)" --output "$(STUDIO_OUTPUT)"
+
+# A Release SDK, in its own build tree so the development SDK stays as it is.
+# Packaging computes the engine identity, engine.json, which exports carry;
+# the install adds it to the build's files. Studio's `make install` builds
+# against PREFIX.
+install:
+	@$(MAKE) package-sdk SDK_BUILD_DIR="$(INSTALL_SDK_BUILD_DIR)" SDK_PREFIX="$(INSTALL_SDK_PREFIX)" SDK_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)"
+	@cmake --install "$(INSTALL_SDK_BUILD_DIR)" --prefix "$(abspath $(PREFIX))"
+	@cmake -E copy "$(INSTALL_SDK_PREFIX)/share/chibi/engine.json" "$(abspath $(PREFIX))/share/chibi/engine.json"
 
 build-release:
 	@$(MAKE) build BUILD_DIR="$(RELEASE_BUILD_DIR)" LOCAL_CMAKE_FLAGS="$(RELEASE_CMAKE_FLAGS)" BUILD_TARGET="$(BUILD_TARGET)"
@@ -193,7 +207,7 @@ benchmark:
 # Browser Studio consumes a separately packaged Emscripten SDK generation.
 .PHONY: web-sdk-build package-web-sdk
 web-sdk-build: sdk-reflect-build
-	@$(QUIET) configure-web-sdk -- sh tools/web_env.sh sh tools/configure.sh sdk-web "$(WEB_SDK_BUILD_DIR)" -G Ninja $(WEB_SDK_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_WEB_THREADS=$(if $(filter 1,$(WEB_THREADS)),ON,OFF) -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+	@$(QUIET) configure-web-sdk -- sh tools/web_env.sh sh tools/configure.sh sdk-web "$(WEB_SDK_BUILD_DIR)" $(WEB_SDK_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_WEB_THREADS=$(if $(filter 1,$(WEB_THREADS)),ON,OFF) -DCHIBI_WEB_WORKERS=$(WEB_WORKERS) -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect" -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 	@$(QUIET) build-web-sdk -- cmake --build "$(WEB_SDK_BUILD_DIR)" --parallel $(JOBS)
 
 package-web-sdk: web-sdk-build
@@ -212,7 +226,7 @@ package-web-player: sdk-reflect-build
 	@cmake --install "$(WEB_PLAYER_BUILD_DIR)" --component web_player --prefix "$(abspath $(WEB_PLAYER_OUTPUT))"
 
 web-configure:
-	@test -n "$(STUDIO_SOURCE)" && test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'Set STUDIO_SOURCE to the separate Studio repository' >&2; exit 2; }
+	@test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'No Studio checkout at $(STUDIO_SOURCE): clone chibi-studio beside chibi or set STUDIO_SOURCE' >&2; exit 2; }
 	@$(MAKE) package-web-sdk
 	@$(QUIET) configure-web-studio -- sh tools/web_env.sh emcmake cmake -S "$(STUDIO_SOURCE)" -B "$(WEB_BUILD_DIR)" -G Ninja $(WEB_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DChibi_DIR="$(abspath $(WEB_SDK_PREFIX))/lib/cmake/Chibi" -DCHIBI_STUDIO_WEB_PROJECTS="$(WEB_PROJECTS)" -DCHIBI_STUDIO_COLLAB_URL="$(CHIBI_COLLAB_URL)"
 

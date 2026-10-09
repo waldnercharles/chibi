@@ -19,6 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
+    ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
     ('--studio-source-edit',): 'Reviewed actual installed Studio edit/undo/redo, disposable3file212byteproject+isolatedprefs, fourhidden1920x1080frames, shared60s',
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
@@ -27,8 +28,8 @@ NATIVE = {
     ('--player-space-cadet-vm',): 'Reviewed first GPU measurement: fixed prepared SpaceCadet UI/font manifest, VM, four hidden 1280x720 frames at fixed dt, whole process under 60 seconds; tools/agent.py preflight required',
     ('--player-space-cadet-sljit',): 'Reviewed first GPU measurement: fixed prepared SpaceCadet UI/font manifest, SLJIT, four hidden 1280x720 frames at fixed dt, whole process under 60 seconds; tools/agent.py preflight required',
     ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
+    ('--viewport-resize',): 'Reviewed hidden 64x64 app: an engine viewport takes its first requested size at once and later sizes after two draws; GPU; docs/testing.md',
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
-    ('--sdf-coverage',): 'Reviewed hidden 128x128 app: production warped-SDF shape, plain and bordered, three phases, instanced and tiled draw paths against its CPU field, readback; GPU; docs/testing.md',
     ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky and ramps with readback; GPU; docs/rendering-3d.md',
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
     ('--material-ramps',): 'Reviewed hidden 64x64 app: four color ramp table cases through 2D and material raster shaders; GPU; docs/testing.md',
@@ -82,7 +83,7 @@ TOOLS = {
     'source-edit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-edit'],
     # One new-asset scaffolding case in a temporary content folder.
     'new-asset': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--new-asset'],
-    # Thirteen validate_project cases, each a scaffolded temporary project and a few built chibi_ctl runs.
+    # Sixteen validate_project cases, each a scaffolded temporary project and a few built chibi_ctl runs.
     'validate-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--validate-project',
                          str(ROOT / 'build/bin/chibi_ctl')],
     'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--shader-parameters-prepared'],
@@ -142,12 +143,12 @@ TOOLS = {
     # opaque and translucent, through the instanced and tiled draw paths. The agent runs the
     # render-enabled test_tools of its selected build directory.
     'interior-border': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--interior-border'],
+    # Three reviewed hidden-app cases: an engine viewport replaces its placeholder canvas on the
+    # first requested size and waits two draws for later sizes.
+    'viewport-resize': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--viewport-resize'],
     # Fourteen reviewed hidden-app scenes of meshes and SDFs hiding each other, compared with
     # hidden-surface rejection on and off, plus Cute's whole-canvas depth copy on its own.
     'sdf-visibility': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--sdf-visibility'],
-    # One reviewed hidden-app case: the production warped-SDF shape through both draw paths,
-    # checked against its CPU field outside the antialiased edge.
-    'sdf-coverage': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--sdf-coverage'],
     # Hidden-app 64x64 3D renders: rhythm, ambient, lights, shadows, exposure, the Environment
     # sky and its light, and color ramps.
     'scene3d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d'],
@@ -177,7 +178,7 @@ TOOLS = {
     # Four reviewed in-tree Radiance .hdr cases: flat and run-length decoding, malformed files,
     # preparation from mounted content and import without replacement; one temporary folder, no GPU.
     'sky-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--sky-files'],
-    # Seven reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, declared components, and per-step action state and recorded taps.
+    # Nine reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, sound requests, declared components, per-step action state and recorded taps, and held actions across a pause.
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--native'],
     # 2D physics through ECS and Contact Begin events: motion, contacts, masks, queries and parallel collection.
     'physics': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--physics'],
@@ -213,6 +214,7 @@ TOOLS = {
     # Reviewed finite C syntax cases and a corpus capped at 256 files/8 MiB.
     'language': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'),
                  '--syntax', '--corpus', str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'corpus.txt')],
+    'web-storage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--web-storage'],
     'native-tools': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools')],
 
 }
@@ -481,7 +483,7 @@ def main():
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
         if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'player-space-cadet-vm', 'player-space-cadet-sljit', 'studio-starter-startup', 'studio-source-edit',
-                            'interior-border', 'sdf-visibility', 'sdf-coverage', 'scene3d', 'scene3d-gles',
+                            'interior-border', 'viewport-resize', 'sdf-visibility', 'scene3d', 'scene3d-gles',
                             'material-ramps'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])

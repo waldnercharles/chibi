@@ -949,32 +949,9 @@ path was also verified. Full radiance/material lighting remains unfinished.
 
 ## Source deformation
 
-`GameSdfMotion` carries standing-wave amplitude, rounded angular frequency,
-temporal frequency, time, and the source shader's counter-propagating pluck
-packets. The shader inverse-rotates into local coordinates before applying
-Neon-Swarm's radial displacement, then evaluates the original silhouette.
-Picking uses the same coordinate warp. Fit and selection bounds include the
-maximum displacement: positive standing amplitude plus twice active pluck
-amplitude. Two overlapping packets can exceed the source CPU bound of one pluck
-amplitude, so the editor uses the conservative bound.
-
-Warped fields are not Lipschitz distance bounds. Cute bins every custom shape
-by its supplied AABB and never lets one claim opaque cover, so the tiled path
-neither drops tiles the warp reaches nor erases background it does not cover.
-Cute antialiases a custom field from its local slope, d / |grad d|, so the edge
-stays about a pixel wide and the interior border keeps its width where the warp
-stretches the field. The runtime entity raster antialiases the raw field, so
-where the warp stretches the field, Studio's preview draws softer edges and
-wider borders than the game.
-
-The optional component's clocks advance in both simulation hosts alongside
-particles. Pause freezes them; step advances them; restart restores authored
-values. This deliberately uses simulation time rather than Neon-Swarm's global
-wall clock. Enemy exposes the component with zero amplitude until an authored
-signal drives it. The source itself currently disables pluck every update;
-pluck is supported by the renderer without inventing an always-on effect.
-Audio-driven beat envelopes and the full radiance/material composite remain
-unfinished. Local glow is still an approximation of the source lighting.
+`GameSdfMotion` once carried Neon-Swarm's standing-wave and pluck deformation.
+It was removed on October 9, 2026, with project version 18, so shapes no longer
+deform.
 
 The next lighting slice should be a viewport-owned renderer with a narrow
 render-list interface. Keep gameplay and CPU particle simulation independent.
@@ -1003,16 +980,6 @@ Particles should enter the same material render list. Source
 capsules, emission, borders and absorption. Our fading squares remain a fidelity
 gap. Shape, size/emission curves and velocity alignment can be added to the
 existing CPU particles before adopting GPU simulation or pseudo-3D motion.
-
-Deformation validation: `make test` passes, including native editor checks and
-resize-pane. GPU readback exercises the production shader at three phases with
-strong standing waves and pluck, opaque background preservation, translucent
-interior borders, and actual instanced/tiled execution. Every pixel matches the
-independent source equations within the stated GPU rounding tolerance, and the
-captured stress case was inspected. CPU tests cover frequency rounding, packet
-overlap, bounds, invalid inputs, and simulation pause/step/reset. Paused prototype
-frames now observe host time without simulating, preventing accumulated pause
-time from jumping particles or deformation forward on resume.
 
 ## Material and radiance implementation
 
@@ -1112,7 +1079,7 @@ the full entity generation, and clears on destruction or reset. Runtime entities
 never enter the scene save list. The host enumeration API filters dead handles,
 including handles whose slot has since been reused by an unrelated entity.
 Paused Scene viewport clicks use the same runtime selection as Outline. Picking
-follows renderer order and exact rotated/warped shape containment. Spawned entities
+follows renderer order and exact rotated shape containment. Spawned entities
 receive the shared selection outline, but pointer movement cannot edit them.
 Clicking empty space clears either selection kind. Authored instance dragging
 retains its existing transaction and Undo behavior.

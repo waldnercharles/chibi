@@ -11,6 +11,7 @@ void test_tool_collab();
 void test_tool_test_policy();
 void test_tool_validation_plan();
 void test_tool_publish();
+void test_tool_web_storage();
 void test_tool_types();
 void test_tool_ecs();
 void test_tool_ecs_relationships();
@@ -27,7 +28,7 @@ void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
 void test_render_interior_border();
-void test_render_sdf_coverage();
+void test_render_viewport_resize();
 void test_render_scene3d(bool gles);
 void test_device_controls();
 #endif
@@ -101,13 +102,14 @@ int main(int argc, char **argv)
     bool read = argc == 3 && !strcmp(argv[1], "--prepared-read");
     bool package = argc == 2 && !strcmp(argv[1], "--package");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
+    bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, render_resources = false, interior_border = false,
-         sdf_visibility = false, sdf_coverage = false, scene3d = false,
+         viewport_resize = false, sdf_visibility = false, scene3d = false,
          material_ramps = false, box3d = false, sky_files = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
@@ -146,7 +148,7 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
     interior_border = argc == 2 && !strcmp(argv[1], "--interior-border");
-    sdf_coverage = argc == 2 && !strcmp(argv[1], "--sdf-coverage");
+    viewport_resize = argc == 2 && !strcmp(argv[1], "--viewport-resize");
     bool scene3d_gles = argc == 2 && !strcmp(argv[1], "--scene3d-gles");
     scene3d = scene3d_gles || (argc == 2 && !strcmp(argv[1], "--scene3d"));
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
@@ -168,25 +170,27 @@ int main(int argc, char **argv)
     physics = argc == 2 && !strcmp(argv[1], "--physics");
 #endif
     if (argc != 1 && !corpus && !shader_parameters && !source_edit && !new_asset &&
-        !package && !unit && !query_benchmark && !prepared && !read && !scene &&
-        !scene_prepared && !native && !native_values && !native_catalog &&
-        !physics && !render_resources && !interior_border && !sdf_visibility &&
-        !sdf_coverage && !scene3d && !material_ramps && !box3d && !sky_files &&
-        !persistent_store && !whole_alias && !whole_math && !whole_integer &&
-        !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
-        !source_features && !source_numeric && !source_material &&
+        !package && !unit && !web_storage && !query_benchmark && !prepared &&
+        !read && !scene && !scene_prepared && !native && !native_values &&
+        !native_catalog && !physics && !render_resources && !interior_border &&
+        !viewport_resize && !sdf_visibility && !scene3d && !material_ramps &&
+        !box3d && !sky_files && !persistent_store && !whole_alias && !whole_math &&
+        !whole_integer && !whole_conversion && !whole_select && !owned_tick &&
+        !parallel_tick && !source_features && !source_numeric && !source_material &&
         !source_presentation && !system_schedule && !source_systems &&
         !validate_project && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
         fprintf(
             stderr,
-            "Usage: %s [--package | --unit | --ecs-query-benchmark | "
+            "Usage: %s [--package | --unit | --web-storage | "
+            "--ecs-query-benchmark | "
             "--studio-selectors test_suite | --validate-project chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
             "| --physics "
-            "| --render-resources | --interior-border | --sdf-visibility | "
-            "--sdf-coverage | --scene3d | --scene3d-gles | --material-ramps | "
+            "| --render-resources | --interior-border | --viewport-resize | "
+            "--sdf-visibility | "
+            "--scene3d | --scene3d-gles | --material-ramps | "
             "--box3d | "
             "--sky-files | "
             "--persistent-store | "
@@ -263,11 +267,11 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
-    if (render_resources || interior_border || sdf_coverage || scene3d) {
+    if (render_resources || interior_border || viewport_resize || scene3d) {
         if (interior_border) {
             test_render_interior_border();
-        } else if (sdf_coverage) {
-            test_render_sdf_coverage();
+        } else if (viewport_resize) {
+            test_render_viewport_resize();
         } else if (scene3d) {
             test_render_scene3d(scene3d_gles);
         } else {
@@ -334,6 +338,8 @@ int main(int argc, char **argv)
         test_tool_studio_selectors(argv[2]);
     } else if (unit) {
         test_tool_execution_policy();
+    } else if (web_storage) {
+        test_tool_web_storage();
     } else if (query_benchmark) {
         test_tool_ecs_query_benchmark();
     } else {

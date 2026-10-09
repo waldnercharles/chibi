@@ -169,7 +169,7 @@ of the project. Each refusal's errno tells a bad request from a taken name and
 a storage failure. CPU only; the folder is removed afterwards.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-thirteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+sixteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
@@ -184,13 +184,17 @@ reported and the included prototype's behaviors stay its own references; a
 prototype is found by the name it declares, even when another file bears that
 name or the name could not name a file, `new_asset` refuses a declared name,
 two declarations of one name are a conflict, and a file the search cannot read,
-or one declaring a name longer than the player takes, fails it; a scene runs as a scenario in a project that has a material; a
-scene requested by its file name runs, and reloads, under its own name; and in
-a project whose manifest names another content folder, assets are
-scaffolded, validated, run, formatted, found and reported there under their
-`content/` paths, and `status` names that folder even once the project is too
-old to open. A few short `chibi_ctl` runs, CPU only; the project is removed
-afterwards.
+or one declaring a name longer than the player takes, fails it; a scene runs as
+a scenario in a project that has a material; a scene requested by its file name
+runs, and reloads, under its own name; a scenario's controls hold the input
+map's actions; a scenario and validation accept a real
+Ogg Vorbis sound, but refuse copies whose headers or audio packets players
+cannot decode; sounds that fit the player's resource count alone, but not with
+the project's other resources, fail validation as they fail compiling; and in a
+project whose manifest names another content folder, assets are scaffolded,
+validated, run, formatted, found and reported there under their `content/`
+paths, and `status` names that folder even once the project is too old to open.
+A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,
@@ -457,6 +461,10 @@ GPU check that needs the render-enabled tools of the main build: run
 9 assertions in 6.1 seconds on a cold shader cache and 0.9 seconds warm. The
 tiled case fails when Cute's compute renderer is unavailable. Every SDL_GPU
 backend has one, so there a failure means Cute's tile shaders did not load.
+`viewport-resize` creates an engine viewport at a 640 x 360 placeholder in a
+hidden app. The first requested size must replace the canvas on that draw, and
+a later size only once it has been requested for two more draws. Build and run
+it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
 near clipping, a mixed 2D layer, and a later frame without the occluder) with
@@ -467,15 +475,6 @@ shader graphs, so it needs a compiler build, and it reads the shaders from
 `src/render/shaders`. Build and run it like `interior-border`
 with `AGENT_SELECTOR=--sdf-visibility`. On lavapipe it passes in 8.9 seconds
 with Mesa's shader cache disabled and 2.9 seconds warm.
-`sdf-coverage` draws the production warped-SDF shape from `src/render/sdf_shapes.c`
-into a hidden 128 x 128 canvas at three warp and pluck phases, plain and with an
-interior border, through Cute's instanced and tiled draw paths. Every pixel whose
-neighborhood lies more than two pixels from the CPU field's edge, to first order,
-must be untouched background outside and fill inside. That catches wrong
-parameter packing, bounds that clip the warp, and background erased by a false
-opaque-cover claim. Cute owns the antialiased band between. Build and run it like
-`interior-border` with `AGENT_SELECTOR=--sdf-coverage`. On lavapipe it passes
-2 assertions in 4.6 seconds with Mesa's shader cache disabled and 1.3 seconds warm.
 `sky-files` selects four in-tree Radiance `.hdr` cases: flat and run-length
 decoding, fourteen malformed files, preparation from mounted content (read
 once, with an identity that follows the texels) and import that never replaces

@@ -1,5 +1,6 @@
 #include "runtime/player.h"
 
+#include "runtime/audio.h"
 #include "runtime/component_catalog.h"
 #include "runtime/material_field_prepared.h"
 #include "support/array.h"
@@ -65,13 +66,18 @@ bool game_player_asset_valid(const game_player_asset *asset)
         (asset->path && !game_player_relative_path(asset->path))) {
         return false;
     }
+    /* Sounds travel inside the artifact. */
     if (asset->external) {
-        return !asset->data && asset->path && asset->content_hash;
+        return asset->kind != GAME_PLAYER_ASSET_SOUND && !asset->data &&
+               asset->path && asset->content_hash;
     }
-    return asset->data &&
-           (!asset->content_hash ||
-            asset->content_hash ==
-                game_player_asset_fingerprint(asset->data, asset->length));
+    if (!asset->data || (asset->kind == GAME_PLAYER_ASSET_SOUND &&
+                         !game_sound_format_of(asset->data, asset->length))) {
+        return false;
+    }
+    return !asset->content_hash ||
+           asset->content_hash ==
+               game_player_asset_fingerprint(asset->data, asset->length);
 }
 /* The object's global binding name, or NULL when it binds none. */
 static const char *binding_name(const game_scene *scene, int object)
@@ -307,6 +313,39 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
         }
     }
     const engine_modules *services = game_world_modules(p->world);
+    if (services->audio) {
+        /* The library keeps records, names and its own copy of each file, all
+         * charged before any file is copied. */
+        assert(!game_audio_sound_count(services->audio));
+        int sounds = 0;
+        size_t bytes = 0;
+        for (int i = 0; i < spec->asset_count; i++) {
+            const game_player_asset *asset = &spec->assets[i];
+            if (asset->kind == GAME_PLAYER_ASSET_SOUND) {
+                sounds++;
+                bytes += strlen(asset->name) + 1 + asset->length;
+            }
+        }
+        game_audio_reserve_sounds(services->audio, sounds);
+        bytes += game_audio_sound_storage_bytes(services->audio);
+        if (bytes > *remaining) {
+            fail(error, size, "Prepared player retained storage budget exceeded");
+            goto reject;
+        }
+        *remaining -= bytes;
+        for (int i = 0; i < spec->asset_count; i++) {
+            const game_player_asset *asset = &spec->assets[i];
+            if (asset->kind == GAME_PLAYER_ASSET_SOUND) {
+                game_audio_add_sound(
+                    services->audio,
+                    asset->name,
+                    asset->data,
+                    asset->length
+                );
+            }
+        }
+        assert(game_audio_sound_storage_bytes(services->audio) == bytes);
+    }
     if (services->physics &&
         game_physics_configure(services->physics, game_scene_physics(spec->scene)) < 0) {
         fail(error, size, "Prepared scene physics configuration failed");

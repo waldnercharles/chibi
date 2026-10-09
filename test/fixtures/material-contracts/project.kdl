@@ -1,4 +1,4 @@
-version 17
+version 18
 name "Material contracts"
 content "content"
 start_scene "scenes/Start.kdl"

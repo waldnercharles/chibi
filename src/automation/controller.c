@@ -25,6 +25,7 @@
 #include "authoring/prototype_preview.h"
 #include "authoring/reference_index.h"
 #include "authoring/shader_prepare.h"
+#include "authoring/sound_prepare.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_collection.h"
 #include "authoring/source_format.h"
@@ -36,6 +37,7 @@
 #include "authoring/source_rename.h"
 #include "authoring/studio_project.h"
 #include "authoring/studio_schema.h"
+#include "authoring/visual_prepare.h"
 #include "automation/content_hash.h"
 #include "automation/field_preview.h"
 #include "automation/navigation.h"
@@ -6457,6 +6459,49 @@ static int validate_ui_folder(const char *root, yyjson_mut_doc *doc, yyjson_mut_
     return errors;
 }
 
+/* Sounds are not cataloged assets, so the first one preparation refuses is
+   a problem of the project; returns how many, at most one. */
+static int validate_sounds(const char *root, yyjson_mut_doc *doc, yyjson_mut_val *project)
+{
+    game_player_asset *sounds = NULL;
+    char error[512];
+    bool valid = authoring_sounds_prepare(chibi_automation_content(root), &sounds, error, sizeof error);
+    authoring_visual_prepared_free(sounds);
+    if (!valid) {
+        add_load_diagnostic(doc, project, error);
+    }
+    return !valid;
+}
+
+/* Prepares the project as chibi-compile does, which refuses more than the
+   checks before it, such as resources that only overflow the player's limits
+   together; the refusal is a problem of the project. Returns how many, at
+   most one. */
+static int validate_preparation(const char *root, yyjson_mut_doc *doc, yyjson_mut_val *project)
+{
+    char error[512] = { 0 };
+    native_capabilities *native = authoring_application_catalog_new(
+        studio_project_is(root),
+        error,
+        sizeof error
+    );
+    authoring_project_options options = {
+        .project = root,
+        .native = native,
+        .components = { GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT },
+        .modules = GAME_WORLD_MODULES_ALL
+    };
+    authoring_project_artifact artifact = { 0 };
+    bool valid = native &&
+                 authoring_project_prepare(&options, &artifact, error, sizeof error);
+    authoring_project_artifact_free(&artifact);
+    native_capabilities_free(native);
+    if (!valid) {
+        add_load_diagnostic(doc, project, error);
+    }
+    return !valid;
+}
+
 /* The manifest opens at this build's version and names a start scene that
    exists and loads, a UI document that exists, and a title and icon that
    preparation accepts, and the ui folder holds only regular markup files;
@@ -6670,6 +6715,12 @@ static int handle_validate_project(const char *root, response *result, int *exit
     }
     free(placed);
     source_catalog_free(catalog);
+    /* Preparation, which checks the sounds too, runs only once nothing else
+       is wrong, since it stops at the first problem and would repeat one
+       listed above; the project then opened at this build's version, so it
+       never upgrades its files. Otherwise the sounds are checked alone. */
+    errors += errors ? validate_sounds(root, doc, project)
+                     : validate_preparation(root, doc, project);
     yyjson_mut_obj_add_bool(doc, value, "valid", errors == 0);
     yyjson_mut_obj_add_int(doc, value, "assets", acount(assets));
     yyjson_mut_obj_add_int(doc, value, "errors", errors);
@@ -6848,17 +6899,20 @@ static int load_behavior_family_assets(
 /* Scenarios use the application's canonical declaration and source pipeline. */
 static int register_shared_assets(const char *root, game_prototype_preview *preview, char *error, size_t error_size)
 {
+    const char *content = chibi_automation_content(root);
     /* The preview's live world is the only world, so nothing registers twice. */
-    int loaded = app_behavior_fixtures_load(
-        game_prototype_preview_live(preview),
-        NULL,
-        chibi_automation_content(root)
-    );
+    int loaded = app_behavior_fixtures_load(game_prototype_preview_live(preview), NULL, content);
+    bool sounds = loaded >= 0 &&
+                  authoring_sounds_load(
+                      content,
+                      engine_audio(game_prototype_preview_runtime(preview)),
+                      error,
+                      error_size
+                  );
     if (loaded < 0) {
         set_error(error, error_size, "project source or native asset preparation failed; see preparation diagnostics");
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    return CHIBI_AUTOMATION_OK;
+    return sounds ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_VALIDATION_ERROR;
 }
 
 static int add_scenario_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t frames, double fixed_dt)
@@ -7394,6 +7448,16 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
         catalog_hash_text(&context->runtime_hash, entries[i].relative);
         char hash[17];
         snprintf(hash, sizeof hash, "%016llx", (unsigned long long)entries[i].hash);
+        catalog_hash_text(&context->runtime_hash, hash);
+    }
+    /* Sounds are no catalog asset, but which ones loaded decides what
+     * play_sound finds, so a replay checks them too. */
+    const game_audio *audio = engine_audio(
+        game_prototype_preview_runtime(context->preview)
+    );
+    if (game_audio_sound_count(audio)) {
+        char hash[17];
+        snprintf(hash, sizeof hash, "%016llx", (unsigned long long)game_audio_library_hash(audio));
         catalog_hash_text(&context->runtime_hash, hash);
     }
     return status;

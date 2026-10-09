@@ -50,12 +50,12 @@ CHIBI_GPU_SELECTOR("--studio-source-edit")
 /* Cute's interior border on two shapes in a hidden 64x64 app, through the
  * instanced and tiled draw paths, with readback. */
 CHIBI_GPU_SELECTOR("--interior-border")
+/* An engine viewport in a hidden app takes its first requested size at once
+ * and later sizes after two draws. */
+CHIBI_GPU_SELECTOR("--viewport-resize")
 /* Meshes and SDFs hiding each other in a hidden 96x80 app, with and without
  * hidden-surface rejection and its depth snapshot copies, with readback. */
 CHIBI_GPU_SELECTOR("--sdf-visibility")
-/* The production warped-SDF shape in a hidden 128x128 app, through the
- * instanced and tiled draw paths, against its CPU field, with readback. */
-CHIBI_GPU_SELECTOR("--sdf-coverage")
 /* The 3D renderer's cases in a hidden 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--scene3d")
 /* The same cases on GLES, under xvfb-run on Linux. */

@@ -21,17 +21,16 @@
 #include <string.h>
 
 /* The GPU entity is the prefix before the separately uploaded parameters:
- * the material's, then the shape's. */
+ * the material's, then the shape's. The layer after them stays on the CPU. */
 enum
 {
     GPU_ENTITY_BYTES = offsetof(render_material_entity, material_parameters),
-    PARAMETER_BYTES = sizeof(render_material_entity) - GPU_ENTITY_BYTES
+    PARAMETER_BYTES = offsetof(render_material_entity, layer) - GPU_ENTITY_BYTES
 };
-_Static_assert(sizeof(render_material_entity) == 1360, "entity std430 stride");
 _Static_assert(offsetof(render_material_entity, points) == 80, "entity point offset");
 _Static_assert(offsetof(render_material_entity, scene) == 144, "entity material offset");
-_Static_assert(offsetof(render_material_entity, time) == 304, "entity clock offset");
-_Static_assert(GPU_ENTITY_BYTES == 336, "entity GPU size");
+_Static_assert(offsetof(render_material_entity, time) == 272, "entity clock offset");
+_Static_assert(GPU_ENTITY_BYTES == 304, "entity std430 stride");
 _Static_assert(PARAMETER_BYTES == 1024, "material and shape parameters");
 
 /* A fragment shader binds at most 16 samplers. On GLES3, Cute binds the
@@ -483,7 +482,6 @@ static bool circle_emission_filterable(const render_material_entity *entity)
     return entity->shape_type == RENDER_SHAPE_CIRCLE && entity->thickness <= 0 &&
            entity->border_thickness <= 0 && entity->reserved[0] <= 0 &&
            entity->reserved[1] <= 0 && entity->metaball_group == 0 &&
-           entity->wobble[0] == 0 && entity->pluck[0] == 0 &&
            (entity->emission[0] != 0 || entity->emission[1] != 0 ||
             entity->emission[2] != 0);
 }
@@ -680,7 +678,7 @@ static bool prepare_batches(render_material_raster *r)
             int first = i;
             while (i + 1 < acount(r->sorted) &&
                    r->sorted[i + 1].shape_type == RENDER_SHAPE_MESH &&
-                   r->sorted[i + 1].wobble[3] == entity->wobble[3]) {
+                   r->sorted[i + 1].layer == entity->layer) {
                 i++;
             }
             apush(r->batches, ((material_batch){ .first = first, .last = i + 1, .mesh = true }));
@@ -965,8 +963,7 @@ bool render_material_raster_draw_mixed(
         return false;
     }
     for (int i = 0; i < count; i++) {
-        if (!isfinite(entities[i].wobble[3]) ||
-            entities[i].shape_type > RENDER_SHAPE_MESH ||
+        if (!isfinite(entities[i].layer) || entities[i].shape_type > RENDER_SHAPE_MESH ||
             entities[i].point_count > 8 || entities[i].metaball_group > 4) {
             return false;
         }
@@ -995,7 +992,7 @@ bool render_material_raster_draw_mixed(
        bytes, where sorting entities would move each one log n times. */
     asetlen(r->order, count);
     for (int i = 0; i < count; i++) {
-        r->order[i] = (draw_order){ entities[i].wobble[3], i };
+        r->order[i] = (draw_order){ entities[i].layer, i };
     }
     if (count) {
         qsort(r->order, (size_t)count, sizeof *r->order, compare);
@@ -1025,8 +1022,8 @@ bool render_material_raster_draw_mixed(
             parameter_base = (uint32_t)block * 64;
             memcpy(r->parameter_data + (size_t)block++ * 256, entity->material_parameters, 1024);
         }
-        // Sorting uses the CPU-only time[1] lane. Its uploaded bits address
-        // compact parameters; entity and tile indices remain independent.
+        // The uploaded time[1] bits address compact parameters; entity and
+        // tile indices remain independent.
         memcpy(data + offsetof(render_material_entity, time) + sizeof(float), &parameter_base, sizeof parameter_base);
     }
     r->gpu_indices[count] = record;

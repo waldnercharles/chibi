@@ -25,7 +25,6 @@ component GameFluidVolume
 # 3D rendering and surfaces: owned by the 3D renderer roadmap (R items).
 component GameGeometry3D
 component GameSdfSurface3D
-component GameSdfMotion
 component GameSurfaceQuality
 component GameSurfaceInfluence
 component GameMeshAsset

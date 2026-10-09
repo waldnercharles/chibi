@@ -240,7 +240,7 @@ static bool separate_meshes(render_material_raster *raster, ecs_world *world, ec
     GAME_GameGeometry3D_get(world, other)->elevation = -6;
     layers[0].points[0] = 0;
     layers[1].points[0] = 1;
-    layers[1].wobble[3] = 1;
+    layers[1].layer = 1;
     cf_app_update(NULL);
     ok &= render_material_raster_draw_mixed(raster, layers, 2, view, world, actors, 2, 0);
     cf_app_draw_onto_screen(false);
@@ -251,8 +251,8 @@ static bool separate_meshes(render_material_raster *raster, ecs_world *world, ec
                                                 actors[1] };
     render_material_entity gap_layers[] = {
         { .shape_type = RENDER_SHAPE_MESH },
-        { .shape_type = RENDER_SHAPE_MESH, .points = { 1 }, .wobble = { 0, 0, 0, 1 } },
-        { .shape_type = RENDER_SHAPE_MESH, .points = { 2 }, .wobble = { 0, 0, 0, 1 } }
+        { .shape_type = RENDER_SHAPE_MESH, .points = { 1 }, .layer = 1 },
+        { .shape_type = RENDER_SHAPE_MESH, .points = { 2 }, .layer = 1 }
     };
     cf_app_update(NULL);
     ok &= render_material_raster_draw_mixed(raster, gap_layers, 3, view, world, gap_actors, 3, 0);
@@ -263,7 +263,7 @@ static bool separate_meshes(render_material_raster *raster, ecs_world *world, ec
     GAME_GameGeometry3D_get(world, other)->width = 40;
     GAME_GameGeometry3D_get(world, other)->depth = 30;
     actors[0].position.x = .5f;
-    layers[1].wobble[3] = 0;
+    layers[1].layer = 0;
     for (int reverse = 0; reverse < 2 && ok; reverse++) {
         layers[0].points[0] = reverse ? 1 : 0;
         layers[1].points[0] = reverse ? 0 : 1;
@@ -764,12 +764,12 @@ bool test_mesh_material()
                                    .albedo = { 0, 0, 1, 1 },
                                    .absorption = { 1, 1, 1, 1 } };
     render_material_entity layers[] = { box, mesh };
-    layers[0].wobble[3] = -1;
+    layers[0].layer = -1;
     if (ok) {
         ok = draw(raster, world, actor, layers, 2, view) &&
              inspect(raster, WIDTH, HEIGHT, 48, 40, 1, 0, 0, 0, 2);
     }
-    layers[0].wobble[3] = 1;
+    layers[0].layer = 1;
     if (ok) {
         ok = draw(raster, world, actor, layers, 2, view) &&
              inspect(raster, WIDTH, HEIGHT, 48, 40, 0, 1, 0, 0, 0);

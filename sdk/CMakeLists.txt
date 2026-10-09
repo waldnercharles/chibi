@@ -431,7 +431,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
     chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h)
     target_link_libraries(chibi_project_document PRIVATE chibi_input_action chibi_asset_text
-        chibi_language_syntax chibi_support)
+        chibi_language_syntax chibi_json chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_project_document)
     add_library(chibi_reference_index STATIC "${CHIBI_SDK_ROOT}/src/authoring/reference_index.c")
     add_library(Chibi::reference_index ALIAS chibi_reference_index)

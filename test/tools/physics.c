@@ -1040,6 +1040,25 @@ static void followers()
     dispose(&f);
 }
 
+/* A child of a moving body moves with it within the same step, so it touches
+ * what lies where its parent carries it, not only where it started. */
+static void followers_move_with_their_body()
+{
+    fixture f = create();
+    ecs_entity parent = body(&f, 0, 200, GAME_BODY_DYNAMIC, 1, 0);
+    *GAME_GameVelocity_get(f.world, parent) = (GameVelocity){ 1200, 0 };
+    ecs_entity child = sensor(&f, 10, 0);
+    assert(ecs_world_record_add_pair(f.world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    /* The child starts over 8..12 and ends over 28..32; the target covers
+     * 30..38. */
+    ecs_entity target = body(&f, 34, 200, GAME_BODY_KINEMATIC, 2, 4);
+    assert(step(&f, 1.0f / 60) == 2);
+    assert(other(&f, child) == ecs_entity_to_u64(target));
+    assert(fabsf(GAME_GameTransform_get_const(f.world, parent)->x - 20) < .001f);
+    dispose(&f);
+}
+
 /* A destructible under a placed parent breaks where its parent places it. */
 static void followed_material()
 {
@@ -1301,6 +1320,7 @@ static void physics_cases()
     lifecycle_and_validation();
     interpolation();
     followers();
+    followers_move_with_their_body();
     followed_material();
     current_contact_query();
     ordered_contacts();

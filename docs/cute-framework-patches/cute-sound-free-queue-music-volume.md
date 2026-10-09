@@ -9,7 +9,7 @@
 
 ## Upstream status
 
-Both bugs remain at audited upstream commit `7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d`. See [the free queue](https://github.com/RandyGaul/cute_framework/blob/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d/libraries/cute/cute_sound.h#L1792-L1800), [the fade states](https://github.com/RandyGaul/cute_framework/blob/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d/libraries/cute/cute_sound.h#L1091-L1150), [the mixer's music scale](https://github.com/RandyGaul/cute_framework/blob/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d/libraries/cute/cute_sound.h#L1184-L1186) and [`cs_music_set_volume`](https://github.com/RandyGaul/cute_framework/blob/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d/libraries/cute/cute_sound.h#L2127-L2133).
+Both bugs remain at pinned upstream commit `96e6034aa6bc44665856ee480962a9ddab0b87cc`. See [the free queue](https://github.com/RandyGaul/cute_framework/blob/96e6034aa6bc44665856ee480962a9ddab0b87cc/libraries/cute/cute_sound.h#L1792-L1800), [the fade states](https://github.com/RandyGaul/cute_framework/blob/96e6034aa6bc44665856ee480962a9ddab0b87cc/libraries/cute/cute_sound.h#L1091-L1150), [the mixer's music scale](https://github.com/RandyGaul/cute_framework/blob/96e6034aa6bc44665856ee480962a9ddab0b87cc/libraries/cute/cute_sound.h#L1184-L1186) and [`cs_music_set_volume`](https://github.com/RandyGaul/cute_framework/blob/96e6034aa6bc44665856ee480962a9ddab0b87cc/libraries/cute/cute_sound.h#L2127-L2133).
 
 ## Example
 
@@ -30,7 +30,7 @@ A one-off manual check, not an admitted test, played a 220 Hz OGG loop with `set
 
 ## Apply the patch
 
-This diff targets Cute Framework commit [`7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d`](https://github.com/RandyGaul/cute_framework/commit/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d) and applies independently.
+This diff targets Cute Framework commit [`96e6034aa6bc44665856ee480962a9ddab0b87cc`](https://github.com/RandyGaul/cute_framework/commit/96e6034aa6bc44665856ee480962a9ddab0b87cc) and applies independently, or after the other retained patches.
 
 ```sh
 git apply --check cute-sound-free-queue-music-volume.patch

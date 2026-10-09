@@ -225,7 +225,7 @@ def definitions(arguments: list[str]) -> dict[str, str]:
             raise RuntimeError(f"dependency packages accept only -DNAME=VALUE arguments: {argument}")
         name, value = match.groups()
         if (name.startswith("FETCHCONTENT_") or name.startswith("CHIBI_DEPENDENCY_")
-                or name in ("CHIBI_SOURCE_ROOT", "CHIBI_SDL3_PACKAGE_PREFIX", "CMAKE_PROJECT_INCLUDE",
+                or name in ("CHIBI_SOURCE_ROOT", "CF_USE_SYSTEM_SDL", "SDL3_DIR", "CMAKE_PROJECT_INCLUDE",
                             "CMAKE_PROJECT_INCLUDE_BEFORE", "CMAKE_PROJECT_TOP_LEVEL_INCLUDES",
                             "CHIBI_SLJIT_SOURCE_DIR", "CHIBI_SJLIT_SOURCE_DIR",
                             "CMAKE_PREFIX_PATH", "CMAKE_MODULE_PATH", "CMAKE_INCLUDE_PATH",

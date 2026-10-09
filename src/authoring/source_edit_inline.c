@@ -173,8 +173,7 @@ bool source_edit_inline(
     }
     for (int i = 0; i < a->symbol_count; i++) {
         if (source_refactor_contains(function->range, a->symbols[i].declaration) &&
-            (a->symbols[i].kind == SCRIPT_STATE ||
-             a->symbols[i].kind == SCRIPT_ACTION || a->symbols[i].lazy_local)) {
+            (a->symbols[i].kind == SCRIPT_STATE || a->symbols[i].kind == SCRIPT_ACTION)) {
             return source_refactor_fail(error, size, "Inlining must retain callable-owned persistent or deferred storage");
         }
     }

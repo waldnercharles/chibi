@@ -6,7 +6,7 @@ set(CHIBI_CUTE_MATH_INCLUDE_DIR "${CHIBI_CUTE_MATH_INCLUDE_DIR}" CACHE PATH
 if(NOT CHIBI_CUTE_MATH_INCLUDE_DIR)
     FetchContent_Declare(chibi_math_source
         GIT_REPOSITORY https://github.com/RandyGaul/cute_framework.git
-        GIT_TAG 7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d
+        GIT_TAG 96e6034aa6bc44665856ee480962a9ddab0b87cc
         SOURCE_SUBDIR chibi-headers-only UPDATE_DISCONNECTED TRUE)
     FetchContent_MakeAvailable(chibi_math_source)
     set(CHIBI_CUTE_MATH_INCLUDE_DIR "${chibi_math_source_SOURCE_DIR}/include")

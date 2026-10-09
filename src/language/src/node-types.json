@@ -1235,10 +1235,6 @@
           "named": true
         },
         {
-          "type": "lazy_local_declaration",
-          "named": true
-        },
-        {
           "type": "local_declaration",
           "named": true
         },
@@ -1500,10 +1496,6 @@
         },
         {
           "type": "handler",
-          "named": true
-        },
-        {
-          "type": "lazy_local_declaration",
           "named": true
         },
         {
@@ -2592,114 +2584,6 @@
           },
           {
             "type": "string",
-            "named": true
-          }
-        ]
-      }
-    }
-  },
-  {
-    "type": "lazy_local_declaration",
-    "named": true,
-    "fields": {
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "string",
-            "named": true
-          }
-        ]
-      },
-      "type": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "parameter_list",
-            "named": true
-          },
-          {
-            "type": "type",
-            "named": true
-          }
-        ]
-      },
-      "value": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "array_expression",
-            "named": true
-          },
-          {
-            "type": "await_expression",
-            "named": true
-          },
-          {
-            "type": "binary_expression",
-            "named": true
-          },
-          {
-            "type": "boolean",
-            "named": true
-          },
-          {
-            "type": "builtin_reference",
-            "named": true
-          },
-          {
-            "type": "call_expression",
-            "named": true
-          },
-          {
-            "type": "cast_expression",
-            "named": true
-          },
-          {
-            "type": "engine_reference",
-            "named": true
-          },
-          {
-            "type": "identifier",
-            "named": true
-          },
-          {
-            "type": "index_expression",
-            "named": true
-          },
-          {
-            "type": "member_expression",
-            "named": true
-          },
-          {
-            "type": "nil",
-            "named": true
-          },
-          {
-            "type": "number",
-            "named": true
-          },
-          {
-            "type": "parenthesized_expression",
-            "named": true
-          },
-          {
-            "type": "string",
-            "named": true
-          },
-          {
-            "type": "struct_expression",
-            "named": true
-          },
-          {
-            "type": "unary_expression",
             "named": true
           }
         ]
@@ -4181,10 +4065,6 @@
           "named": true
         },
         {
-          "type": "lazy_local_declaration",
-          "named": true
-        },
-        {
           "type": "local_declaration",
           "named": true
         },
@@ -5042,10 +4922,6 @@
   },
   {
     "type": "library",
-    "named": false
-  },
-  {
-    "type": "local",
     "named": false
   },
   {

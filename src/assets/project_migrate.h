@@ -31,11 +31,11 @@ char *chibi_migrate_references(const char *source);
  * when it declares no results. */
 char *chibi_migrate_results(const char *source);
 /* Version 14 removes `value` declarations: each read of one becomes its
- * expression, which a typed declaration casts. Returns an owned
+ * expression, which a typed declaration casts. Sets `migrated` to an owned
  * copy of `source`, or NULL when it declares none. When a declaration where
- * a value is read would capture a name the value reads, returns NULL and
- * sets `error`. */
-char *chibi_migrate_values(const char *source, char *error, size_t error_size);
+ * a value is read would capture a name the value reads, returns -1 and
+ * describes it in `error`. */
+int chibi_migrate_values(const char *source, char **migrated, char *error, size_t error_size);
 /* Version 15 scene entities without a `behaviors` list keep their
  * prototype's behaviors. Returns an owned copy of a version 14 scene in which
  * every such entity lists none, or NULL when the text does not change or is
@@ -46,5 +46,13 @@ char *chibi_migrate_scene_behaviors(const char *scene);
  * the input map document `map`, and returns an owned copy of the asset
  * without them, or NULL when it has none. */
 char *chibi_migrate_action_bindings(const char *asset, av_doc *map);
+/* Version 17 removes `local` declarations: each handler, function or system
+ * that reads one declares it with `:=` before its first statement that reads
+ * it, in the innermost block holding those reads, and `local.X` reads become
+ * `X`. Sets `migrated` to an owned copy of `source`, or NULL when it declares
+ * none. A read outside any handler, such as an action argument, becomes the
+ * local's expression. Returns -1 and describes the problem in `error` when a
+ * declaration would capture a name the local reads. */
+int chibi_migrate_locals(const char *source, char **migrated, char *error, size_t error_size);
 
 #endif

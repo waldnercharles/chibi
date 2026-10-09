@@ -62,21 +62,11 @@ size_t execution_module_storage_bytes(const execution_module *m)
             add_storage(&bytes, 1, behavior_function_storage_bytes(f->subscription));
         }
         add_storage(&bytes, (size_t)f->local_capture_count, sizeof *f->captures);
-        add_storage(&bytes, (size_t)f->local_count, sizeof *f->locals);
         if (f->entry) {
             add_storage(&bytes, 1, strlen(f->entry) + 1);
         }
         if (f->event_name) {
             add_storage(&bytes, 1, strlen(f->event_name) + 1);
-        }
-        for (int j = 0; j < f->local_count; j++) {
-            const execution_module_local *local = &f->locals[j];
-            add_storage(&bytes, 1, behavior_function_storage_bytes(local->initializer));
-            add_storage(
-                &bytes,
-                (size_t)local->local_capture_count,
-                sizeof *local->captures
-            );
         }
     }
     for (int i = 0; i < p->binding_count; i++) {
@@ -129,11 +119,6 @@ static void destroy_plan(execution_module_plan *m)
         behavior_function_free(m->functions[i].body);
         behavior_function_free(m->functions[i].subscription);
         free(m->functions[i].captures);
-        for (int j = 0; j < m->functions[i].local_count; j++) {
-            behavior_function_free(m->functions[i].locals[j].initializer);
-            free(m->functions[i].locals[j].captures);
-        }
-        free(m->functions[i].locals);
         free(m->functions[i].entry);
         free(m->functions[i].event_name);
     }
@@ -428,7 +413,6 @@ static const execution_module_event_declaration *event_declaration(
     return NULL;
 }
 static bool captures_match(
-    const execution_module_plan *m,
     const behavior_function *parent,
     const behavior_function *child,
     int arguments,
@@ -453,35 +437,9 @@ static bool captures_match(
             physical.container != PIN_CONTAINER_SINGLE) {
             return false;
         }
-        if (capture->value >= 0) {
-            if (capture->field != 0 || !parent ||
-                capture->value >= acount(parent->data_values) ||
-                !same_type(capture->type, parent->data_values[capture->value].initial)) {
-                return false;
-            }
-            continue;
-        }
-        if (capture->value != -1 || !capture->id || capture->field < 0) {
-            return false;
-        }
-        bool found = false;
-        for (int f = 0; f < m->function_count; f++) {
-            const execution_module_function *fn = &m->functions[f];
-            for (int j = 0; j < fn->local_count; j++) {
-                const execution_module_local *local = &fn->locals[j];
-                if (local->id == capture->id && local->value >= 0 &&
-                    capture->field < local->result_count &&
-                    local->value < acount(fn->body->data_values) &&
-                    local->result_count <= acount(fn->body->data_values) - local->value &&
-                    same_type(
-                        capture->type,
-                        fn->body->data_values[local->value + capture->field].initial
-                    )) {
-                    found = true;
-                }
-            }
-        }
-        if (!found) {
+        if (capture->value < 0 || !parent ||
+            capture->value >= acount(parent->data_values) ||
+            !same_type(capture->type, parent->data_values[capture->value].initial)) {
             return false;
         }
     }
@@ -501,82 +459,7 @@ static bool captures_valid(const execution_module_plan *m, const execution_modul
             return false;
         }
     }
-    return captures_match(m, parent, f->body, f->capture_count, f->captures, f->local_capture_count);
-}
-static bool function_waits(const behavior_function *f, const behavior_function ***seen)
-{
-    apush(*seen, f);
-    for (int at = 0; at < acount(*seen); at++) {
-        const behavior_function *current = (*seen)[at];
-        for (int i = 0; i < acount(current->instructions); i++) {
-            behavior_function_op op = current->instructions[i].op;
-            if (op == BF_DELAY || op == BF_SUSPEND || op == BF_COMMAND_BEGIN) {
-                return true;
-            }
-        }
-        for (int i = 0; i < acount(current->calls); i++) {
-            const behavior_function *callee = current->calls[i].function;
-            bool found = false;
-            for (int j = 0; j < acount(*seen); j++) {
-                found |= (*seen)[j] == callee;
-            }
-            if (!found) {
-                apush(*seen, callee);
-            }
-        }
-    }
-    return false;
-}
-static bool initializer_waits(const behavior_function *f)
-{
-    const behavior_function **seen = NULL;
-    bool waits = function_waits(f, &seen);
-    afree(seen);
-    return waits;
-}
-static bool locals_valid(const execution_module_plan *m, const execution_module_function *fn)
-{
-    if (fn->local_count < 0 || (fn->local_count && !fn->locals)) {
-        return false;
-    }
-    for (int i = 0; i < fn->local_count; i++) {
-        const execution_module_local *local = &fn->locals[i];
-        const behavior_function *init = local->initializer;
-        if (!local->id || local->value < 0 || local->result_count <= 0 ||
-            local->value >= acount(fn->body->data_values) || !init ||
-            local->result_count > acount(fn->body->data_values) - local->value ||
-            !init->frozen || initializer_waits(init) ||
-            init->variable_count != m->state_count ||
-            init->result_count != local->result_count ||
-            init->argument_count != local->capture_count + local->local_capture_count ||
-            !captures_match(
-                m,
-                fn->body,
-                init,
-                local->capture_count,
-                local->captures,
-                local->local_capture_count
-            )) {
-            return false;
-        }
-        for (int result = 0; result < local->result_count; result++) {
-            if (!same_type(
-                    fn->body->data_values[local->value + result].initial,
-                    init->result_defaults[result]
-                )) {
-                return false;
-            }
-        }
-        for (int j = 0; j < i; j++) {
-            const execution_module_local *other = &fn->locals[j];
-            if (other->id == local->id ||
-                (other->value < local->value + local->result_count &&
-                 local->value < other->value + other->result_count)) {
-                return false;
-            }
-        }
-    }
-    return true;
+    return captures_match(parent, f->body, f->capture_count, f->captures, f->local_capture_count);
 }
 static const execution_module_action *module_action(const execution_module_plan *m, uint64_t id)
 {
@@ -734,9 +617,8 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
     }
     for (int i = 0; i < m->function_count; i++) {
         const execution_module_function *f = &m->functions[i];
-        if (!f->body || !f->body->frozen || f->body->variable_count != m->state_count ||
-            f->local_count < 0 || (f->local_count && !f->locals)) {
-            snprintf(error, size, "function %d has an invalid definition or local table", i);
+        if (!f->body || !f->body->frozen || f->body->variable_count != m->state_count) {
+            snprintf(error, size, "function %d has an invalid definition", i);
             return FLOW_ERR_COMPILE;
         }
     }
@@ -802,7 +684,7 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
                 }
             }
         }
-        if (!captures_valid(m, f) || !locals_valid(m, f)) {
+        if (!captures_valid(m, f)) {
             snprintf(error, size, "function %d has an invalid capture schema", i);
             return FLOW_ERR_COMPILE;
         }
@@ -814,13 +696,6 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
         }
     }
     for (int i = 0; i < m->function_count; i++) {
-        for (int j = 0; j < m->functions[i].local_count; j++) {
-            behavior_function *init = m->functions[i].locals[j].initializer;
-            if (backend == BEHAVIOR_SLJIT && !behavior_function_compile(init)) {
-                snprintf(error, size, "native lazy initializer emission failed");
-                return FLOW_ERR_COMPILE;
-            }
-        }
     }
     for (int i = 0; i < m->binding_count; i++) {
         const execution_module_binding *b = &m->bindings[i];
@@ -911,12 +786,6 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
             snprintf(error, size, "invalid function action state contract");
             return FLOW_ERR_COMPILE;
         }
-        for (int j = 0; j < function->local_count; j++) {
-            if (!state_function_valid(m, function->locals[j].initializer)) {
-                snprintf(error, size, "invalid initializer action state contract");
-                return FLOW_ERR_COMPILE;
-            }
-        }
     }
     for (int i = 0; i < m->binding_count; i++) {
         if (!state_function_valid(m, m->bindings[i].body) ||
@@ -930,11 +799,6 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
     for (int i = 0; i < m->function_count; i++) {
         if (!function_requirements(m, m->functions[i].body, &seen, decoded)) {
             goto services_missing;
-        }
-        for (int j = 0; j < m->functions[i].local_count; j++) {
-            if (!function_requirements(m, m->functions[i].locals[j].initializer, &seen, decoded)) {
-                goto services_missing;
-            }
         }
         if (m->functions[i].subscription) {
             if (!function_requirements(m, m->functions[i].subscription, &seen, decoded)) {

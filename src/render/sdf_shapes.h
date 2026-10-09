@@ -9,7 +9,8 @@
 typedef CF_CustomShape app_sdf_shapes;
 
 /* Register once per Cute app lifetime, before queuing scene drawing. A zero id
- * reports unsupported custom coverage shaders or shader compilation failure. */
+ * reports that Cute's instanced renderer is unavailable or the shader failed
+ * to compile. */
 app_sdf_shapes app_sdf_shapes_init();
 /* Transform positions use game Y-down; radians and shader coordinates use Y-up.
  * The caller owns color, interior border and glow draw state. */

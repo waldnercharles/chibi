@@ -69,7 +69,7 @@ static const char source[] =
 
 app_sdf_shapes app_sdf_shapes_init()
 {
-    return cf_make_custom_shape_coverage(source);
+    return cf_make_custom_shape(source);
 }
 
 bool app_sdf_shapes_draw(

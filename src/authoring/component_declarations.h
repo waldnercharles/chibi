@@ -10,8 +10,9 @@
  *         - name="maximum" type="int" description="Full health."
  *     }
  *
- * *out stays NULL when the project declares none. A name may not shadow a
- * type the native catalog already offers. */
+ * A project that declares none gets an empty set, which still replaces the
+ * sets of other projects. A name may not shadow a type the native catalog
+ * already offers. */
 bool authoring_component_declarations_load(
     const char *content,
     const script_catalog *native,

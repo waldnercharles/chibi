@@ -5,46 +5,34 @@ behavior "WaveBehavior" {
     state Elapsed: float = 0.0
     state Spawned: int = 0
     state Side: float = -1.0
-    value get_gametransform = get_game_transform()
-    value self_2 = engine["Self"]()
-    value find_nearest_entity = find_nearest_entity(get_gametransform, 1000000.0, 1, self_2)
     on Tick {
-        if find_nearest_entity.Found {
+        if find_nearest_entity(get_game_transform(), 1000000.0, 1, engine["Self"]()).Found {
             await set_variable<"Elapsed">(add(get_variable<"Elapsed">(), delta_time()))
-            await "Spawn Within Wave Limit"(find_nearest_entity.Position)
+            await "Spawn Within Wave Limit"(find_nearest_entity(get_game_transform(), 1000000.0, 1, engine["Self"]()).Position)
         }
     }
     function "Spawn Within Wave Limit"("Player Position": struct<"CF_V2"> = null) {
-        value interval = get_variable<"Interval">()
-        value max = max(interval, B: float = 0.01)
-        value elapsed = get_variable<"Elapsed">()
-        value spawned = get_variable<"Spawned">()
-        value countlimit = get_variable<"CountLimit">()
-        value integer_greater_or_equal = integer_greater_or_equal(spawned, countlimit)
-        value side = get_variable<"Side">()
         after entry {
-            while greater_or_equal(elapsed, max) {
-                if integer_greater_or_equal {
+            while greater_or_equal(get_variable<"Elapsed">(), max(get_variable<"Interval">(), B: float = 0.01)) {
+                if integer_greater_or_equal(get_variable<"Spawned">(), get_variable<"CountLimit">()) {
                     return
                 } else {
-                    await set_variable<"Elapsed">(subtract(elapsed, max))
+                    await set_variable<"Elapsed">(subtract(get_variable<"Elapsed">(), max(get_variable<"Interval">(), B: float = 0.01)))
                     await "Spawn Enemy"(entry."Player Position")
-                    await set_variable<"Spawned">(add(spawned, B: int = 1))
-                    set_variable<"Side">(multiply(side, B: float = -1.0))
+                    await set_variable<"Spawned">(add(get_variable<"Spawned">(), B: int = 1))
+                    set_variable<"Side">(multiply(get_variable<"Side">(), B: float = -1.0))
                 }
             }
             return
         }
     }
     function "Spawn Enemy"("Player Position": struct<"CF_V2"> = null) {
-        value side = get_variable<"Side">()
-        value spawndistance = get_variable<"SpawnDistance">()
         action spawn_prototype = engine["Spawn Prototype"]("Enemy")
         after entry {
             spawn_prototype()
         }
         after spawn_prototype {
-            await set_entity_game_transform(spawn_prototype.Entity, make_game_transform(add(entry."Player Position".x, multiply(side, spawndistance)), entry."Player Position".y))
+            await set_entity_game_transform(spawn_prototype.Entity, make_game_transform(add(entry."Player Position".x, multiply(get_variable<"Side">(), get_variable<"SpawnDistance">())), entry."Player Position".y))
             return
         }
     }

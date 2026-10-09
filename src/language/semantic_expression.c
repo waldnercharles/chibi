@@ -540,8 +540,14 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             result.type
         );
         script_type actual = script_analyzer_expr_type(a, result.left);
-        if (!script_type_numeric(actual) || !script_type_numeric(result.type)) {
-            script_analyzer_diagnostic(a, node, "Cast requires scalar numeric types");
+        bool numeric = script_type_numeric(actual) && script_type_numeric(result.type);
+        if (!numeric &&
+            script_catalog_type_assignable(a->catalog, result.type, actual)) {
+            /* The cast only supplied the expected type, as for a polymorphic call. */
+            return result.left;
+        }
+        if (!numeric) {
+            script_analyzer_diagnostic(a, node, "Cast requires scalar numeric types or the value's own type");
         }
         result.effects = script_analyzer_expr_effects(a, result.left);
         return script_analyzer_expr_add(a, result);
@@ -558,7 +564,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         }
         result.op = script_analyzer_operator_node(a, op);
         result.left = script_analyzer_expression(a, script_analyzer_field(node, "operand"), expected);
-        result.type = script_analyzer_expr_type(a, result.left);
+        result.type = result.op == SCRIPT_OP_NOT
+                        ? script_analyzer_presence(a, result.left)
+                        : script_analyzer_expr_type(a, result.left);
         result.effects = script_analyzer_expr_effects(a, result.left);
         if (result.op == SCRIPT_OP_NOT) {
             if (!(result.type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK))) {
@@ -639,6 +647,11 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         bool equality = result.op == SCRIPT_OP_EQ || result.op == SCRIPT_OP_NE;
         bool comparison = result.op >= SCRIPT_OP_EQ && result.op <= SCRIPT_OP_GE;
         bool logical = result.op == SCRIPT_OP_AND || result.op == SCRIPT_OP_OR;
+        if (logical || (equality && (script_analyzer_is(left, "nil") ||
+                                     script_analyzer_is(right, "nil")))) {
+            x = script_analyzer_presence(a, result.left);
+            y = script_analyzer_presence(a, result.right);
+        }
         if (equality &&
             (script_analyzer_is(left, "nil") || script_analyzer_is(right, "nil"))) {
             script_type nonnil = script_analyzer_is(left, "nil") ? y : x;

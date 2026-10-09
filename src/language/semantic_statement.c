@@ -47,9 +47,18 @@ void script_analyzer_narrow_condition(analyzer *a, int expression_index, bool tr
         }
     }
 }
+/* A component path tested as a condition asks whether the entity has it. */
+script_type script_analyzer_presence(analyzer *a, int value)
+{
+    script_expression *e = &a->out->expressions[value];
+    if (e->kind == SCRIPT_EXPR_COMPONENT) {
+        e->type.flags |= SCRIPT_TYPE_OPTIONAL;
+    }
+    return e->type;
+}
 void script_analyzer_condition_type(analyzer *a, TSNode node, int value)
 {
-    script_type type = script_analyzer_expr_type(a, value);
+    script_type type = script_analyzer_presence(a, value);
     if (!(type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK))) {
         script_analyzer_require(a, node, script_analyzer_boolean_type(), type);
     }
@@ -93,15 +102,15 @@ int script_analyzer_statement_block(analyzer *a, TSNode node)
 }
 /* A task symbol declared without its function takes the function of the
  * tasks assigned to it, so awaiting it gives that function's results. Tasks
- * of different functions leave it awaitable only for completion. */
+ * of different or unknown functions leave it awaitable only for completion. */
 static void infer_task(analyzer *a, int symbol, script_type value)
 {
     script_symbol *s = &a->out->symbols[symbol];
     if (!(s->type.flags & SCRIPT_TYPE_TASK) || !(value.flags & SCRIPT_TYPE_TASK) ||
-        !value.nominal || s->type.nominal == value.nominal || s->mixed_tasks) {
+        (value.nominal && s->type.nominal == value.nominal) || s->mixed_tasks) {
         return;
     }
-    s->mixed_tasks = s->type.nominal != 0;
+    s->mixed_tasks = s->type.nominal != 0 || !value.nominal;
     s->type.nominal = s->mixed_tasks ? 0 : value.nominal;
 }
 /* The function a call starts a task of, by name: a local function or a
@@ -120,40 +129,32 @@ static uint64_t task_function(analyzer *a, TSNode call)
                                                  : NULL;
     return library && (library->effects & SCRIPT_EFFECT_SUSPEND) ? library->id : 0;
 }
-/* Locals shadow a state only inside their own callable. */
-static bool callable(TSNode node)
+/* Whether a local or parameter declared directly in `scope` is named `name`. */
+static bool declares(analyzer *a, TSNode scope, const char *name)
 {
-    return script_analyzer_is(node, "function_declaration") ||
-           script_analyzer_is(node, "macro_declaration") ||
-           script_analyzer_is(node, "handler");
-}
-/* Whether a local or parameter of this callable, outside nested ones, is
- * named `name`. */
-static bool declares(analyzer *a, TSNode node, const char *name)
-{
-    if (script_analyzer_is(node, "local_declaration") ||
-        script_analyzer_is(node, "parameter")) {
-        char *declared = script_analyzer_name_copy(a, script_analyzer_field(node, "name"));
+    for (uint32_t i = 0; i < script_analyzer_named_count(scope); i++) {
+        TSNode child = ts_node_named_child(scope, i);
+        if (script_analyzer_is(child, "parameter_list") && declares(a, child, name)) {
+            return true;
+        }
+        if (!script_analyzer_is(child, "local_declaration") &&
+            !script_analyzer_is(child, "parameter")) {
+            continue;
+        }
+        char *declared = script_analyzer_name_copy(a, script_analyzer_field(child, "name"));
         bool same = !strcmp(declared, name);
         free(declared);
         if (same) {
             return true;
         }
     }
-    for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-        TSNode child = ts_node_named_child(node, i);
-        if (!callable(child) && declares(a, child, name)) {
-            return true;
-        }
-    }
     return false;
 }
-/* Whether a callable around `node`, which nested functions can see into,
- * declares `name`. */
+/* Whether a block or callable enclosing `node` declares `name`. */
 static bool shadowed(analyzer *a, TSNode node, const char *name)
 {
     for (; !ts_node_is_null(node); node = ts_node_parent(node)) {
-        if (callable(node) && declares(a, node, name)) {
+        if (declares(a, node, name)) {
             return true;
         }
     }

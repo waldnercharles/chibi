@@ -1,9 +1,8 @@
 behavior "WeaponBehavior" {
-    value get_gameweapon = get_game_weapon()
     on Fire {
         await "WeaponActions"."Fire Projectile"(get_game_transform(), {
             x: 1.0,
             y: 0.0
-        }, get_gameweapon.Value.damage, "Projectile", self)
+        }, get_game_weapon().Value.damage, "Projectile", self)
     }
 }

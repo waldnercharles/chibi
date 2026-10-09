@@ -1,27 +1,16 @@
 behavior "WavePulseBehavior" {
     state Age: float = 0.0
-    value age = get_variable<"Age">()
-    value delta_time = delta_time()
-    value add: double = add(age, delta_time)
-    action age_2 = set_variable<"Age">(add)
-    value divide = divide(age_2.Value, B: plain double = 0.8)
-    value greater_or_equal = greater_or_equal(divide, 1.0)
-    value multiply = multiply(A: plain double = 336.0, divide)
-    value add_2 = add(A: plain double = 24.0, multiply)
-    value subtract = subtract(add_2, B: plain double = 28.0)
-    value max = max(A: plain double = 0.0, subtract)
-    value subtract_2 = subtract(A: plain double = 1.0, divide)
-    value multiply_2 = multiply(A: plain double = 0.65, subtract_2)
+    action age_2 = set_variable<"Age">(add(get_variable<"Age">(), delta_time()))
     on Tick {
         age_2()
     }
     after age_2 {
-        if greater_or_equal {
+        if greater_or_equal(divide(age_2.Value, B: plain double = 0.8), 1.0) {
             destroy_entity(self)
         } else {
-            await set_game_surface_influence_radius(add_2)
-            await set_game_surface_influence_inner_radius(max)
-            set_game_surface_influence_strength(multiply_2)
+            await set_game_surface_influence_radius(add(A: plain double = 24.0, multiply(A: plain double = 336.0, divide(age_2.Value, B: plain double = 0.8))))
+            await set_game_surface_influence_inner_radius(max(A: plain double = 0.0, subtract(add(A: plain double = 24.0, multiply(A: plain double = 336.0, divide(age_2.Value, B: plain double = 0.8))), B: plain double = 28.0)))
+            set_game_surface_influence_strength(multiply(A: plain double = 0.65, subtract(A: plain double = 1.0, divide(age_2.Value, B: plain double = 0.8))))
         }
     }
 }

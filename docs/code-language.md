@@ -116,7 +116,9 @@ reflected structs. Arrays use `number[]`; collection types use `set<int>` or
 `map<int>`. Literal arrays use `[1, 2]`; reflected struct literals use `{x: 1, y: 2}`.
 Runtime strings cannot contain embedded NUL bytes. Explicit scalar conversions use
 `cast<number>(value)` or `cast<float>(value)`. They remain available at numeric
-boundaries; ordinary arithmetic uses its inferred or expected type.
+boundaries; ordinary arithmetic uses its inferred or expected type. A cast to a
+value's own type, such as `cast<entity>(get_global_variable("Player"))`, only
+supplies the type a polymorphic call needs.
 
 Vector receivers support `velocity.norm()`, statically resolved to the existing
 vec2 normalization operation. `vec2_norm(velocity)` names that operation directly.
@@ -157,6 +159,10 @@ entity. Reads can traverse nested reflected structs; assigning a nested struct
 subfield is currently rejected. Component and field names that cannot be resolved
 produce source diagnostics. Prototype membership improves completion ranking;
 it does not guarantee that a component is present on a live entity.
+A component path used as a condition tests presence instead: `if self.GameDash`,
+`!self.GameDash`, `self.GameDash == nil` and `&&`/`||` operands ask whether the
+entity has the component, so `if self.GameDash && self.GameDash.remaining > 0`
+reads the field only when it exists.
 
 Ordinary blocks support assignments, compound assignments, `if`/`else`, `match`, `while`,
 `for (i in first..last)` with inclusive bounds, `foreach (item in array)`,
@@ -223,8 +229,8 @@ behavior Turret {
 - `cancel t` stops a running task and the tasks it started; anything awaiting it
   wakes with default results. Cancelling a finished task does nothing.
 - A finished task keeps its results until 32 more of its owner's tasks finish.
-  Awaiting it after that gives default results, like a cancelled task, so keep a
-  result you need longer in a state.
+  Awaiting it after that is a runtime error, so keep a result you need longer in
+  a state.
 - A task is true while it is running, so `if t` and `if !t` test it.
 - A `task` state needs no default; until assigned it refers to no task.
 - Tasks belong to the entity or system registration that started them and stop
@@ -233,7 +239,8 @@ behavior Turret {
 - Calls into a library start tasks the same way, such as `Store.Work()`.
 - A `task` state takes the function of the tasks assigned to it, so after
   `pulse = Charge(1)`, `power := await pulse` gives `Charge`'s result. A state
-  that holds tasks of different functions can be awaited only for completion.
+  that holds tasks of different functions, or a task passed in as a plain
+  `task`, can be awaited only for completion.
 - Awaiting a task whose function has several results gives the same tuple as
   awaiting the call: `(await t).b`.
 - A task keeps references to state, components and locals for as long as it

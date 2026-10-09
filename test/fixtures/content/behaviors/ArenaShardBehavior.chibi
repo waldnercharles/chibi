@@ -4,59 +4,37 @@ behavior "ArenaShardBehavior" {
     state "Roll Rate": float = 0.0
     state Lift: float = 0.0
     state "Birth Scale": float = 1.0
-    value delta_time = delta_time()
-    action age_2 = set_variable<"Age">(get_variable<"Age">() + delta_time)
-    value greater_or_equal = greater_or_equal("Age Phase"(age_2.Value, delta_time), 1.0)
-    value get_gamevisualtransform = get_game_visual_transform()
-    value random_range = random_range(-6.0, 6.0)
-    value random_range_2 = random_range(-7.0, 7.0)
-    value random_range_3 = random_range(18.0, 42.0)
+    action age_2 = set_variable<"Age">(get_variable<"Age">() + delta_time())
     on Tick {
         age_2()
     }
     after age_2 {
-        if greater_or_equal {
+        if greater_or_equal("Age Phase"(age_2.Value, delta_time()), 1.0) {
             destroy_entity(self)
         } else {
-            await "Advance Shard Motion"(delta_time, age_2.Value)
+            await "Advance Shard Motion"(delta_time(), age_2.Value)
         }
     }
     on Begin {
-        await "Initialize Shard"(get_gamevisualtransform.Value.scale, random_range, random_range_2, random_range_3)
+        await "Initialize Shard"(get_game_visual_transform().Value.scale, random_range(-6.0, 6.0), random_range(-7.0, 7.0), random_range(18.0, 42.0))
     }
     pure function "Age Phase"<T0: float, T1: float, T2: float>(Age: T0 = 0.0, Delta: T1 = 0.0) -> (Result: T2 = 0.0) {
-        value add = add(entry.Age, entry.Delta)
-        value real = real(0.55)
-        value divide = divide(add, real)
-        return divide
+        return divide(add(entry.Age, entry.Delta), real(0.55))
     }
     pure function "Fade"<T0: float, T1: double>(Normalized: T0 = 0.0) -> (Result: T1 = 0.0) {
-        value real = real(1.0)
-        value subtract = subtract(real, entry)
-        value real_2 = real(1.0)
-        value subtract_2 = subtract(real_2, entry)
-        value multiply = multiply(subtract, subtract_2)
-        return multiply
+        return multiply(subtract(real(1.0), entry), subtract(real(1.0), entry))
     }
     pure function "Position X"<T0: float, T1: float, T2: float, T3: float>(PositionX: T0 = 0.0, VelocityX: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
-        value multiply = multiply(entry.VelocityX, entry.Delta)
-        value add = add(entry.PositionX, multiply)
-        return add
+        return add(entry.PositionX, multiply(entry.VelocityX, entry.Delta))
     }
     pure function "Position Y"<T0: float, T1: float, T2: float, T3: float>(PositionY: T0 = 0.0, VelocityY: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
-        value multiply = multiply(entry.VelocityY, entry.Delta)
-        value add = add(entry.PositionY, multiply)
-        return add
+        return add(entry.PositionY, multiply(entry.VelocityY, entry.Delta))
     }
     pure function "Pitch"<T0: float, T1: float, T2: float, T3: float>(Pitch: T0 = 0.0, PitchRate: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
-        value multiply = multiply(entry.PitchRate, entry.Delta)
-        value add = add(entry.Pitch, multiply)
-        return add
+        return add(entry.Pitch, multiply(entry.PitchRate, entry.Delta))
     }
     pure function "Roll"<T0: float, T1: float, T2: float, T3: float>(Roll: T0 = 0.0, RollRate: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
-        value multiply = multiply(entry.RollRate, entry.Delta)
-        value add = add(entry.Roll, multiply)
-        return add
+        return add(entry.Roll, multiply(entry.RollRate, entry.Delta))
     }
     function "Initialize Shard"(scale: float = 0.0, "Pitch Rate": double = 0.0, "Roll Rate": double = 0.0, Lift: double = 0.0) {
         after entry {
@@ -68,34 +46,14 @@ behavior "ArenaShardBehavior" {
         }
     }
     function "Advance Shard Motion"(Seconds: float = 0.0, Age: float = 0.0) {
-        value get_gametransform = get_game_transform()
-        value get_gamevelocity = get_game_velocity()
-        value get_gamevisualtransform = get_game_visual_transform()
-        value pitch_rate = get_variable<"Pitch Rate">()
-        value roll_rate = get_variable<"Roll Rate">()
-        value lift = get_variable<"Lift">()
-        value get_gamegeometry3d = get_game_geometry3_d()
-        value multiply: double = multiply(lift, entry.Seconds)
-        value add = add(get_gamegeometry3d.Value.elevation, multiply)
-        value multiply_2 = multiply(entry.Seconds, B: plain double = 90.0)
-        value subtract = subtract(lift, multiply_2)
-        value age_phase = "Age Phase"(entry.Age, entry.Seconds)
-        value birth_scale = get_variable<"Birth Scale">()
-        value multiply_3 = multiply(birth_scale, Fade(age_phase))
-        value x = get_gametransform.Value.x
-        value x_2 = get_gamevelocity.Value.x
-        value y = get_gametransform.Value.y
-        value y_2 = get_gamevelocity.Value.y
-        value pitch_2 = get_gamevisualtransform.Value.pitch
-        value roll_2 = get_gamevisualtransform.Value.roll
         after entry {
-            await set_game_transform_x("Position X"(get_gametransform.Value.x, get_gamevelocity.Value.x, entry.Seconds))
-            await set_game_transform_y("Position Y"(get_gametransform.Value.y, get_gamevelocity.Value.y, entry.Seconds))
-            await set_game_visual_transform_pitch(Pitch(get_gamevisualtransform.Value.pitch, pitch_rate, entry.Seconds))
-            await set_game_visual_transform_roll(Roll(get_gamevisualtransform.Value.roll, roll_rate, entry.Seconds))
-            await set_game_visual_transform_scale(multiply_3)
-            await set_game_geometry3_d_elevation(add)
-            await set_variable<"Lift">(subtract)
+            await set_game_transform_x("Position X"(get_game_transform().Value.x, get_game_velocity().Value.x, entry.Seconds))
+            await set_game_transform_y("Position Y"(get_game_transform().Value.y, get_game_velocity().Value.y, entry.Seconds))
+            await set_game_visual_transform_pitch(Pitch(get_game_visual_transform().Value.pitch, get_variable<"Pitch Rate">(), entry.Seconds))
+            await set_game_visual_transform_roll(Roll(get_game_visual_transform().Value.roll, get_variable<"Roll Rate">(), entry.Seconds))
+            await set_game_visual_transform_scale(multiply(get_variable<"Birth Scale">(), Fade("Age Phase"(entry.Age, entry.Seconds))))
+            await set_game_geometry3_d_elevation(add(get_game_geometry3_d().Value.elevation, cast<double>(multiply(get_variable<"Lift">(), entry.Seconds))))
+            await set_variable<"Lift">(subtract(get_variable<"Lift">(), multiply(entry.Seconds, B: plain double = 90.0)))
             return
         }
     }

@@ -592,12 +592,20 @@ static bool names(const char *source, TSNode node, const char *name)
     return is_name(node) && strlen(name) == length &&
            !strncmp(name, source + start, length);
 }
-/* Whether the function's own statements assign `name` before a local of the
+/* The variable a write lands in: `Values` for `Values[0].x = 1`. */
+static TSNode written(TSNode target)
+{
+    while (is(target, "member_expression") || is(target, "index_expression")) {
+        target = ts_node_child_by_field_name(target, "object", 6);
+    }
+    return target;
+}
+/* Whether the function's own statements write `name` before a local of the
  * same name shadows it. */
 static bool assigns(const char *source, TSNode node, const char *name)
 {
     if (is(node, "assignment") &&
-        names(source, ts_node_child_by_field_name(node, "target", 6), name)) {
+        names(source, written(ts_node_child_by_field_name(node, "target", 6)), name)) {
         return true;
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
@@ -790,6 +798,331 @@ char *chibi_migrate_results(const char *source)
     free(stripped);
     return migrated;
 }
+/* A version 13 lazy `value Name = e` or `local Name = e` declaration. */
+typedef struct
+{
+    int offset; /* Of its name, in the rewritten source. */
+    TSNode node;
+    char *name, *expansion;
+    bool expanding;
+} lazy;
+typedef struct
+{
+    int start, end;
+    char *text;
+} replacement;
+/* Rewrites `value Name = e` as `Name := e` and `value Name: T = e` as
+ * `Name: T = e`, which parse as states at the root and locals in callables. */
+static char *strip_lazy(const char *source, lazy **out)
+{
+    char *text = xmalloc(strlen(source) + 1), *at = text;
+    for (const char *p = source; *p;) {
+        const char *skip = skip_literal(p);
+        if (skip != p) {
+            at = stpncpy(at, p, (size_t)(skip - p));
+            p = skip;
+            continue;
+        }
+        size_t keyword = !strncmp(p, "value", 5) ? 5
+                       : !strncmp(p, "local", 5) ? 5
+                                                 : 0;
+        const char *name = p + keyword;
+        while (keyword && (*name == ' ' || *name == '\t')) {
+            name++;
+        }
+        const char *after = *name == '"' ? skip_literal(name) : name;
+        while (*after != '"' && word_char(*after)) {
+            after++;
+        }
+        const char *sign = after;
+        while (*sign == ' ' || *sign == '\t') {
+            sign++;
+        }
+        if (!keyword || word_char(p[keyword]) || name == p + keyword ||
+            after == name || (p > source && word_char(p[-1])) ||
+            !statement_start(source, p) || (*sign != ':' && *sign != '=') ||
+            sign[1] == '=' || (*sign == ':' && sign[1] == '=')) {
+            *at++ = *p++;
+            continue;
+        }
+        apush(*out, ((lazy){ .offset = (int)(at - text) }));
+        at = stpncpy(at, name, (size_t)(after - name));
+        if (*sign == '=') {
+            at = stpcpy(at, " :=");
+            p = sign + 1;
+        } else {
+            p = after;
+        }
+    }
+    *at = '\0';
+    return text;
+}
+static bool scope_node(TSNode node)
+{
+    return is(node, "declaration_body") || is(node, "system_body") ||
+           is(node, "callable_body") || is(node, "block") ||
+           is(node, "function_declaration") || is(node, "macro_declaration") ||
+           is(node, "handler");
+}
+/* The lazy declaration directly in `scope` named like `name`, if any. */
+static lazy *lazy_in(const char *text, lazy *all, TSNode scope, TSNode name)
+{
+    for (int i = 0; i < acount(all); i++) {
+        if (ts_node_eq(ts_node_parent(all[i].node), scope) &&
+            same_name(text, ts_node_child_by_field_name(all[i].node, "name", 4), text, name)) {
+            return &all[i];
+        }
+    }
+    return NULL;
+}
+/* Whether a local or parameter declared directly in `scope` is named like
+ * `name`. */
+static bool declares_name(const char *text, TSNode scope, TSNode name)
+{
+    for (uint32_t i = 0; i < ts_node_named_child_count(scope); i++) {
+        TSNode child = ts_node_named_child(scope, i);
+        if (is(child, "parameter_list") && declares_name(text, child, name)) {
+            return true;
+        }
+        if ((is(child, "local_declaration") || is(child, "parameter")) &&
+            same_name(text, ts_node_child_by_field_name(child, "name", 4), text, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* The lazy declaration a read of `name` at `node` resolves to, if any. */
+static lazy *resolve_lazy(const char *text, lazy *all, TSNode node, TSNode name)
+{
+    for (TSNode scope = ts_node_parent(node); !ts_node_is_null(scope);
+         scope = ts_node_parent(scope)) {
+        if (!scope_node(scope)) {
+            continue;
+        }
+        lazy *found = lazy_in(text, all, scope, name);
+        if (found || declares_name(text, scope, name)) {
+            return found;
+        }
+    }
+    return NULL;
+}
+static bool child_is(TSNode parent, const char *field, TSNode node)
+{
+    TSNode child = ts_node_child_by_field_name(parent, field, (uint32_t)strlen(field));
+    return !ts_node_is_null(child) && ts_node_eq(child, node);
+}
+/* The lazy declaration `node` reads: an identifier in expression position or
+ * `local.Name`. */
+static lazy *lazy_read(const char *text, lazy *all, TSNode node)
+{
+    TSNode parent = ts_node_parent(node);
+    if (is(node, "member_expression")) {
+        TSNode object = ts_node_child_by_field_name(node, "object", 6);
+        TSNode member = ts_node_child_by_field_name(node, "member", 6);
+        bool local = is(object, "builtin_reference") &&
+                     ts_node_end_byte(object) - ts_node_start_byte(object) == 5 &&
+                     !strncmp(text + ts_node_start_byte(object), "local", 5);
+        return local ? resolve_lazy(text, all, node, member) : NULL;
+    }
+    if (!is(node, "identifier") || ts_node_is_null(parent) || is(parent, "type") ||
+        is(parent, "argument_name") || child_is(parent, "name", node) ||
+        child_is(parent, "member", node) || child_is(parent, "alias", node) ||
+        child_is(parent, "type", node) || child_is(parent, "function", node)) {
+        return NULL;
+    }
+    return resolve_lazy(text, all, node, node);
+}
+static bool primary(TSNode node)
+{
+    static const char *const kinds[] = {
+        "identifier",
+        "string",
+        "number",
+        "boolean",
+        "nil",
+        "call_expression",
+        "member_expression",
+        "index_expression",
+        "parenthesized_expression",
+        "cast_expression",
+        "array_expression",
+        "struct_expression",
+        "builtin_reference",
+        "engine_reference",
+    };
+    for (size_t i = 0; i < sizeof kinds / sizeof *kinds; i++) {
+        if (is(node, kinds[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+static char *expansion(const char *text, lazy *all, lazy *l);
+/* The text of `node` with each lazy read replaced by its expansion. */
+static void expand_into(const char *text, lazy *all, TSNode node, char **out)
+{
+    lazy *read = lazy_read(text, all, node);
+    if (read) {
+        const char *value = expansion(text, all, read);
+        for (const char *c = value; *c; c++) {
+            apush(*out, *c);
+        }
+        return;
+    }
+    uint32_t at = ts_node_start_byte(node);
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        TSNode child = ts_node_child(node, i);
+        for (; at < ts_node_start_byte(child); at++) {
+            apush(*out, text[at]);
+        }
+        expand_into(text, all, child, out);
+        at = ts_node_end_byte(child);
+    }
+    for (; at < ts_node_end_byte(node); at++) {
+        apush(*out, text[at]);
+    }
+}
+static char *expansion(const char *text, lazy *all, lazy *l)
+{
+    if (l->expansion) {
+        return l->expansion;
+    }
+    assert(!l->expanding);
+    l->expanding = true;
+    TSNode value = ts_node_child_by_field_name(l->node, "value", 5);
+    TSNode type = ts_node_child_by_field_name(l->node, "type", 4);
+    while (!ts_node_is_null(type) && is(value, "parenthesized_expression")) {
+        value = ts_node_child_by_field_name(value, "expression", 10);
+    }
+    char *out = NULL;
+    const char *open = !ts_node_is_null(type) ? "cast<"
+                     : primary(value)         ? ""
+                                              : "(";
+    for (const char *c = open; *c; c++) {
+        apush(out, *c);
+    }
+    for (uint32_t i = ts_node_is_null(type) ? 0 : ts_node_start_byte(type);
+         !ts_node_is_null(type) && i < ts_node_end_byte(type);
+         i++) {
+        apush(out, text[i]);
+    }
+    if (!ts_node_is_null(type)) {
+        apush(out, '>');
+        apush(out, '(');
+    }
+    expand_into(text, all, value, &out);
+    if (*open) {
+        apush(out, ')');
+    }
+    apush(out, '\0');
+    l->expansion = xstrdup(out);
+    afree(out);
+    return l->expansion;
+}
+/* Replaces each lazy read outside lazy declarations. */
+static void lazy_reads(const char *text, lazy *all, TSNode node, replacement **out)
+{
+    for (int i = 0; i < acount(all); i++) {
+        if (ts_node_eq(all[i].node, node)) {
+            return;
+        }
+    }
+    lazy *read = lazy_read(text, all, node);
+    if (read) {
+        apush(
+            *out,
+            ((replacement){ (int)ts_node_start_byte(node),
+                            (int)ts_node_end_byte(node),
+                            xstrdup(expansion(text, all, read)) })
+        );
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        lazy_reads(text, all, ts_node_named_child(node, i), out);
+    }
+}
+static int by_start(const void *a, const void *b)
+{
+    return ((const replacement *)a)->start - ((const replacement *)b)->start;
+}
+char *chibi_migrate_values(const char *source)
+{
+    lazy *all = NULL;
+    char *text = strip_lazy(source, &all);
+    if (!acount(all)) {
+        free(text);
+        afree(all);
+        return NULL;
+    }
+    script_syntax *syntax = script_parse(text);
+    TSNode root = ts_tree_root_node(syntax->tree);
+    for (int i = 0; i < acount(all); i++) {
+        TSNode node = ts_node_descendant_for_byte_range(
+            root,
+            (uint32_t)all[i].offset,
+            (uint32_t)all[i].offset
+        );
+        while (!ts_node_is_null(node) && !is(node, "state_declaration") &&
+               !is(node, "local_declaration")) {
+            node = ts_node_parent(node);
+        }
+        assert(
+            !ts_node_is_null(node) &&
+            ts_node_start_byte(node) == (uint32_t)all[i].offset
+        );
+        all[i].node = node;
+    }
+    replacement *edits = NULL;
+    lazy_reads(text, all, root, &edits);
+    for (int i = 0; i < acount(all); i++) {
+        /* A declaration alone on its lines goes with them. */
+        int start = all[i].offset, end = (int)ts_node_end_byte(all[i].node);
+        while (start > 0 && (text[start - 1] == ' ' || text[start - 1] == '\t')) {
+            start--;
+        }
+        while (text[end] == ' ' || text[end] == '\t' || text[end] == ';') {
+            end++;
+        }
+        bool ended = text[end - 1] == '\n';
+        bool alone = (start == 0 || text[start - 1] == '\n') &&
+                     (ended || text[end] == '\n' || !text[end]);
+        if (!alone) {
+            start = all[i].offset;
+            end -= ended;
+        } else if (!ended && text[end] == '\n') {
+            end++;
+        }
+        apush(edits, ((replacement){ start, end, xstrdup("") }));
+    }
+    qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
+    char *result = NULL;
+    int from = 0;
+    for (int i = 0; i < acount(edits); i++) {
+        for (; from < edits[i].start; from++) {
+            apush(result, text[from]);
+        }
+        for (const char *c = edits[i].text; *c; c++) {
+            apush(result, *c);
+        }
+        from = edits[i].end;
+        free(edits[i].text);
+    }
+    for (; text[from]; from++) {
+        apush(result, text[from]);
+    }
+    apush(result, '\0');
+    char *migrated = xstrdup(result);
+    afree(result);
+    afree(edits);
+    for (int i = 0; i < acount(all); i++) {
+        free(all[i].expansion);
+    }
+    afree(all);
+    script_syntax_free(syntax);
+    free(text);
+    return migrated;
+}
+
 static char *read_text(const char *path)
 {
     FILE *file = fopen(path, "rb");
@@ -909,6 +1242,12 @@ int chibi_project_migrate_content(const char *content, int from, char *error, si
                 migrated = xmalloc((size_t)(count + 1) * sizeof *migrated);
                 for (int i = 0; i < count; i++) {
                     migrated[i] = chibi_migrate_results(sources[i]);
+                }
+                break;
+            case 13:
+                migrated = xmalloc((size_t)(count + 1) * sizeof *migrated);
+                for (int i = 0; i < count; i++) {
+                    migrated[i] = chibi_migrate_values(sources[i]);
                 }
                 break;
             default: assert(false);

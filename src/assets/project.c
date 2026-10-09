@@ -311,11 +311,28 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
 /* Skips a quoted string or comment at `p`, or returns `p` unchanged. */
 static const char *skip_text(const char *p)
 {
-    if (*p == '"') {
-        for (p++; *p && *p != '"'; p++) {
-            p += *p == '\\' && p[1];
+    size_t hashes = strspn(p, "#");
+    if (p[hashes] == '"') {
+        /* KDL strings: "a", raw #"a"#, and multi-line """a""" or #"""a"""#. */
+        size_t quotes = strncmp(p + hashes, "\"\"\"", 3) ? 1 : 3;
+        for (p += hashes + quotes; *p; p++) {
+            if (!hashes && *p == '\\' && p[1]) {
+                p++;
+            } else if (!strncmp(p, "\"\"\"", quotes) && strspn(p + quotes, "#") >= hashes) {
+                return p + quotes + hashes;
+            }
         }
-        return *p ? p + 1 : p;
+        return p;
+    }
+    if (p[0] == '/' && p[1] == '-') {
+        /* `/-` discards what follows; skipping to the node's end is enough. */
+        int depth = 0;
+        for (p += 2 + strspn(p + 2, " \t\r\n"); *p && (depth || !strchr("\n;", *p));) {
+            const char *next = skip_text(p);
+            depth += next == p ? (*p == '{') - (*p == '}') : 0;
+            p = next == p ? p + 1 : next;
+        }
+        return p;
     }
     if (p[0] == '/' && p[1] == '/') {
         return p + strcspn(p, "\n");

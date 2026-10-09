@@ -12,7 +12,8 @@
 #include <stdlib.h>
 
 /* Finished slots keep their results for later awaits until this many have
- * accumulated; the oldest is then reused under a new generation. */
+ * accumulated; the oldest is then reused under a new generation, and awaiting
+ * its old handle fails. */
 #define TASK_RETAINED 32
 
 const node_command EXECUTION_Yield = { .intrinsic = NODE_COMMAND_YIELD };
@@ -355,6 +356,11 @@ int program_task_command(
                 }
                 apush(t->waiters, request);
                 return FLOW_OK;
+            }
+            if (!t && handle) {
+                ctx->error_message = "the awaited task's results have expired; "
+                                     "keep a result you need longer in a state";
+                return FLOW_ERR_STATE;
             }
             program_request_deliver(request, t ? t->results : NULL, t ? t->result_count : 0);
             break;

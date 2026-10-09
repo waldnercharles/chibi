@@ -1,9 +1,11 @@
 #include "assets/prototype.h"
 
+#include "assets/scene_document.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct
@@ -57,6 +59,8 @@ static const ecs_component_desc nested = {
 };
 static const ecs_component_desc *const components[] = { &component, &nested };
 static game_prototype *prototype, *loaded;
+static game_scene_document *scene, *reloaded;
+static char *saved;
 static av_value *before, *after, *values, *rebased;
 
 static void cleanup()
@@ -69,6 +73,11 @@ static void cleanup()
     av_value_free(values);
     av_value_free(rebased);
     before = after = values = rebased = NULL;
+    game_scene_document_free(scene);
+    game_scene_document_free(reloaded);
+    scene = reloaded = NULL;
+    free(saved);
+    saved = NULL;
 }
 
 TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence)
@@ -149,9 +158,43 @@ TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence)
     return true;
 }
 
+static bool keeps_prototype_behaviors(const game_scene_document *document)
+{
+    const game_scene_entity *entities = document->entities;
+    return acount(entities) == 3 && !entities[0].own_behaviors &&
+           !acount(entities[0].behaviors) && entities[1].own_behaviors &&
+           acount(entities[1].behaviors) == 1 &&
+           !strcmp(entities[1].behaviors[0], "Steer") &&
+           entities[2].own_behaviors && !acount(entities[2].behaviors);
+}
+
+TEST_CASE(scene_entities_keep_prototype_behaviors_until_they_list_their_own)
+{
+    char error[192];
+    scene = game_scene_document_load(
+        "version 1\nname \"Start\"\n(array)entities {\n"
+        "    - name=\"Inherits\" prototype=\"Mover\"\n"
+        "    - name=\"Replaces\" prototype=\"Mover\" { (array)behaviors "
+        "\"Steer\"; }\n"
+        "    - name=\"Opts out\" prototype=\"Mover\" { (array)behaviors; }\n"
+        "}\n",
+        error,
+        sizeof error
+    );
+    REQUIRE(scene && keeps_prototype_behaviors(scene));
+    saved = game_scene_document_save(scene, (ecs_component_catalog){ 0 });
+    REQUIRE(saved);
+    reloaded = game_scene_document_load(saved, error, sizeof error);
+    REQUIRE(reloaded && keeps_prototype_behaviors(reloaded));
+    REQUIRE(game_scene_document_add_entity(reloaded, "Added", "Mover") == 0);
+    REQUIRE(!alast(reloaded->entities).own_behaviors);
+    return true;
+}
+
 void test_prototype_document()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence);
+    RUN_TEST_CASE(scene_entities_keep_prototype_behaviors_until_they_list_their_own);
     pu_clear_setup();
 }

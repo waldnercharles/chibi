@@ -129,11 +129,13 @@ add_library(Chibi::ui_runtime ALIAS chibi_ui_runtime)
 set_target_properties(chibi_ui_runtime PROPERTIES EXPORT_NAME ui_runtime)
 chibi_sdk_headers(chibi_ui_runtime PUBLIC runtime/ui.h runtime/ui_native.h runtime/ui_definition.h)
 target_link_libraries(chibi_ui_runtime PUBLIC chibi_asset_values chibi_native_capabilities PRIVATE chibi_value_document chibi_math)
-add_library(chibi_input_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/engine_input.c" "${CHIBI_SDK_ROOT}/src/runtime/source_input.c")
+add_library(chibi_input_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/engine_input.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/input_definition.c" "${CHIBI_SDK_ROOT}/src/runtime/source_input.c")
 add_library(Chibi::input_runtime ALIAS chibi_input_runtime)
 set_target_properties(chibi_input_runtime PROPERTIES EXPORT_NAME input_runtime)
-chibi_sdk_headers(chibi_input_runtime PUBLIC runtime/engine_input.h runtime/input_timeline.h runtime/source_input.h)
-target_link_libraries(chibi_input_runtime PUBLIC chibi_native_types chibi_execution_contract chibi_behavior_runtime PRIVATE chibi_scheduling chibi_events)
+chibi_sdk_headers(chibi_input_runtime PUBLIC runtime/engine_input.h runtime/input_definition.h
+    runtime/input_timeline.h runtime/source_input.h)
+target_link_libraries(chibi_input_runtime PUBLIC chibi_native_types chibi_native_capabilities chibi_execution_contract chibi_behavior_runtime PRIVATE chibi_scheduling chibi_events)
 target_include_directories(chibi_save_runtime PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
 list(APPEND CHIBI_SDK_TARGETS chibi_native_types chibi_entity_runtime chibi_audio_runtime
     chibi_rhythm_runtime chibi_particle_runtime chibi_save_runtime chibi_ui_runtime chibi_input_runtime)
@@ -162,5 +164,5 @@ target_link_libraries(chibi_host_native_default PUBLIC chibi_host_native_catalog
     chibi_conversion_capabilities chibi_text_capabilities chibi_native_bindings chibi_entity_runtime
     chibi_audio_runtime chibi_rhythm_runtime chibi_vector_capabilities chibi_math_capabilities
     chibi_arithmetic_capabilities chibi_particle_runtime chibi_save_runtime chibi_ui_runtime
-    chibi_visual_motion_runtime chibi_physics_runtime chibi_material_runtime chibi_visibility_runtime)
+    chibi_visual_motion_runtime chibi_physics_runtime chibi_material_runtime chibi_visibility_runtime chibi_input_runtime)
 list(APPEND CHIBI_SDK_TARGETS chibi_host_native_default)

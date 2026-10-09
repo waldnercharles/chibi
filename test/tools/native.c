@@ -6,6 +6,7 @@
 #include "runtime/behaviors/entities_source.h"
 #include "runtime/component_catalog.h"
 #include "runtime/declared_components.h"
+#include "runtime/engine_input.h"
 #include "runtime/material_field_prepared.h"
 #include "runtime/player.h"
 #include "runtime/player_prepared.h"
@@ -451,6 +452,200 @@ TEST_CASE(native_prepared_world_runs_source_and_real_physics)
         REQUIRE(value == 3);
         cleanup();
     }
+    return true;
+}
+static struct
+{
+    int steps;
+    bool held, pressed;
+} jump;
+/* Reads the service the engine bound, the way Action Held and Pressed do. */
+static const char *observe_jump(void *service, const pin_value *, pin_value *)
+{
+    const pin_value action = { .type = PIN_STR, .str = "Jump" };
+    pin_value held = { .type = PIN_BOOL }, pressed = { .type = PIN_BOOL };
+    const char *error = GAME_INPUT_HELD_CALL.invoke(service, &action, &held);
+    if (!error) {
+        error = GAME_INPUT_PRESSED_CALL.invoke(service, &action, &pressed);
+    }
+    jump.steps++;
+    jump.held = held.b;
+    jump.pressed = pressed.b;
+    return error;
+}
+static bool bind_jump(ecs_world *ecs, GameControl source, bool disabled)
+{
+    ecs_entity entity = ecs_world_create_entity(ecs);
+    REQUIRE(GAME_GameActionBinding_add(ecs, entity, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
+    *GAME_GameActionBinding_get(ecs, entity) = (GameActionBinding){ .source = source,
+                                                                    .action = "Jump",
+                                                                    .disabled = disabled };
+    return true;
+}
+/* Samples controls, runs exactly one fixed step and checks what Tick read. */
+static bool jump_step(engine *runtime, uint64_t controls, bool held, bool pressed)
+{
+    bool firing;
+    REQUIRE(engine_sample_controls(runtime, controls, &firing) == FLOW_OK);
+    int steps = jump.steps;
+    REQUIRE(engine_frame(runtime, (steps + 1.5) * ENGINE_FIXED_SECONDS) == 0);
+    REQUIRE(jump.steps == steps + 1 && jump.held == held && jump.pressed == pressed);
+    return true;
+}
+/* A world whose Tick reads Jump, bound to Z and X and to a disabled C. */
+static bool jump_world(engine **out)
+{
+    cleanup();
+    jump = (typeof(jump)){ 0 };
+    char error[192];
+    game_world_options options = { .modules = GAME_WORLD_INPUT };
+    simulation = game_world_new(&options, error, sizeof error);
+    REQUIRE(simulation);
+    ecs_world *ecs = game_world_ecs(simulation);
+    static const node_host_call call = { .service = GAME_INPUT_SERVICE,
+                                         .invoke = observe_jump,
+                                         .optional_service = true };
+    behavior_function_builder *builder = behavior_function_builder_new();
+    const pin_value dt = { .type = PIN_F32 };
+    behavior_function_builder_signature(builder, &dt, 1, NULL, 0, NULL, 0);
+    int host_call = behavior_function_builder_host(builder, &call, &GAME_INPUT_READ_ACCESS, NULL, 0, NULL, 0);
+    REQUIRE(behavior_function_builder_host_identity(builder, host_call, 990, 991));
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_HOST_CALL,
+                                         .target = host_call,
+                                         .left = BEHAVIOR_FUNCTION_HOST_DATA }
+    );
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    behavior_function *body = behavior_function_builder_finish(builder, error, sizeof error);
+    behavior_function_builder_free(builder);
+    REQUIRE(body);
+    execution_module_plan *plan = execution_module_plan_new();
+    plan->id = 992;
+    plan->valid = true;
+    execution_module_event_field *event_fields = malloc(sizeof *event_fields);
+    REQUIRE(event_fields);
+    *event_fields = (execution_module_event_field){ .name = "dt", .initial = dt };
+    apush(
+        plan->events,
+        ((
+            execution_module_event_declaration
+        ){ .id = 993, .abi = 994, .name = "Tick", .fields = event_fields, .field_count = 1 })
+    );
+    plan->event_count = 1;
+    apush(
+        plan->functions,
+        ((execution_module_function){ .id = 995,
+                                      .kind = EXECUTION_FUNCTION_HANDLER,
+                                      .event = 993,
+                                      .event_abi = 994,
+                                      .body = body })
+    );
+    plan->function_count = 1;
+    module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    execution_module_plan_free(plan);
+    REQUIRE(module);
+    REQUIRE(game_source_register(game_world_sources(simulation), "Jumper", module, NULL) == 0);
+    execution_module_free(module);
+    module = NULL;
+    ecs_entity jumper = ecs_world_create_entity(ecs);
+    REQUIRE(
+        game_source_attach(game_world_sources(simulation), jumper, "Jumper", false, 0, 0) == 0
+    );
+    REQUIRE(bind_jump(ecs, GAME_CONTROL_Z, false));
+    REQUIRE(bind_jump(ecs, GAME_CONTROL_X, false));
+    REQUIRE(bind_jump(ecs, GAME_CONTROL_C, true));
+    *out = game_world_engine(simulation);
+    REQUIRE(engine_frame(*out, 0) == 0);
+    return true;
+}
+TEST_CASE(native_action_state_combines_sources_per_step)
+{
+    engine *runtime;
+    REQUIRE(jump_world(&runtime));
+    const uint64_t z = UINT64_C(1) << GAME_CONTROL_Z,
+                   x = UINT64_C(1) << GAME_CONTROL_X,
+                   c = UINT64_C(1) << GAME_CONTROL_C;
+    REQUIRE(jump_step(runtime, 0, false, false));
+    REQUIRE(jump_step(runtime, z, true, true));
+    REQUIRE(jump_step(runtime, z, true, false));
+    /* Moving from one source to another never releases the action. */
+    REQUIRE(jump_step(runtime, x, true, false));
+    REQUIRE(jump_step(runtime, 0, false, false));
+    REQUIRE(jump_step(runtime, c, false, false));
+    /* A tap between two steps still counts as pressed for the next one. */
+    bool firing;
+    REQUIRE(engine_sample_controls(runtime, x, &firing) == FLOW_OK);
+    REQUIRE(jump_step(runtime, 0, false, true));
+    REQUIRE(jump_step(runtime, 0, false, false));
+    cleanup();
+    return true;
+}
+#define Z_DOWN (UINT64_C(1) << GAME_CONTROL_Z)
+#define X_DOWN (UINT64_C(1) << GAME_CONTROL_X)
+/* The controls sampled before each step. */
+static const struct
+{
+    int count;
+    uint64_t samples[3];
+} tapped_steps[] = {
+    { 1, { 0 } },
+    { 2, { Z_DOWN, 0 } },         /* tap */
+    { 1, { Z_DOWN } },            /* press */
+    { 2, { 0, Z_DOWN } },         /* release, press */
+    { 1, { Z_DOWN } },            /* hold */
+    { 3, { 0, Z_DOWN, 0 } },      /* release, tap */
+    { 3, { X_DOWN, Z_DOWN, 0 } }, /* tap one source, then another */
+    { 1, { 0 } },
+    { 1, { Z_DOWN } },
+    /* Move to another source, then release: never pressed again. */
+    { 3, { Z_DOWN | X_DOWN, X_DOWN, 0 } },
+};
+#define TAPPED_STEPS (int)(sizeof tapped_steps / sizeof *tapped_steps)
+/* Runs every step, sampling live controls (ignored while replaying), and keeps
+ * what Tick read in each. */
+static bool run_taps(engine *runtime, bool read[][2])
+{
+    for (int step = 0; step < TAPPED_STEPS; step++) {
+        for (int i = 0; i < tapped_steps[step].count; i++) {
+            bool firing;
+            REQUIRE(
+                engine_sample_controls(runtime, tapped_steps[step].samples[i], &firing) == FLOW_OK
+            );
+        }
+        REQUIRE(engine_frame(runtime, (step + 1.5) * ENGINE_FIXED_SECONDS) == 0);
+        REQUIRE(jump.steps == step + 1);
+        read[step][0] = jump.held;
+        read[step][1] = jump.pressed;
+    }
+    return true;
+}
+TEST_CASE(native_recorded_taps_replay_per_step)
+{
+    static const bool expected[TAPPED_STEPS][2] = {
+        { false, false }, { false, true },  { true, true },  { true, true },
+        { true, false },  { false, true },  { false, true }, { false, false },
+        { true, true },   { false, false },
+    };
+    engine *runtime;
+    REQUIRE(jump_world(&runtime));
+    engine_record_input(runtime, 3);
+    bool live[TAPPED_STEPS][2], replayed[TAPPED_STEPS][2];
+    REQUIRE(run_taps(runtime, live));
+    REQUIRE(!memcmp(live, expected, sizeof live));
+    int count;
+    const input_keyframe *recorded = engine_recorded_input(runtime, &count);
+    input_keyframe *keys = NULL;
+    for (int i = 0; i < count; i++) {
+        apush(keys, recorded[i]);
+    }
+    REQUIRE(jump_world(&runtime));
+    engine_replay_input(runtime, keys, count, 3);
+    afree(keys);
+    REQUIRE(run_taps(runtime, replayed));
+    REQUIRE(!memcmp(replayed, live, sizeof live));
+    cleanup();
     return true;
 }
 static bool player_host(void *, uint64_t id, execution_prepared_host *out)
@@ -1063,6 +1258,7 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(type_catalog_find("Charge") == type);
     ecs_component_catalog components = declared_components_ecs(declared);
     REQUIRE(components.component_count == 1 && components.components[0]->type == type);
+    REQUIRE(components.components[0]->layout_hash == type_layout_hash(type));
     ecs_component_catalog project = project_components();
     REQUIRE(script_catalog_project() == declared_components_catalog(declared));
     REQUIRE(project.component_count == GAME_REGISTRY_COMPONENT_COUNT + 1);
@@ -1087,7 +1283,20 @@ TEST_CASE(native_player_reads_declared_components)
                                    .object_count = 1 };
     scene = game_scene_prepare(&scene_spec, error, sizeof error);
     REQUIRE(scene);
-    game_player_spec spec = { .declared = declared, .scene = scene };
+    game_player_spec spec = { .world = { .components = components },
+                              .declared = declared,
+                              .scene = scene };
+    /* A player keeps its own set's layout while a newer set is published. */
+    declared_component smaller = { .name = "Charge", .fields = &level, .field_count = 1 };
+    declared_components *newer = declared_components_new(&smaller, 1, error, sizeof error);
+    REQUIRE(newer && type_catalog_find("Charge")->size != type->size);
+    player = game_player_new(&spec, error, sizeof error);
+    REQUIRE(player);
+    ecs_world *own = game_world_ecs(game_player_world(player));
+    REQUIRE(ecs_world_component(own, charge_id)->type == type);
+    game_player_free(player);
+    player = NULL;
+    declared_components_free(newer);
     game_player_application application = { 0 };
     size_t length;
     REQUIRE(
@@ -1139,5 +1348,7 @@ void test_tool_native()
     RUN_TEST_CASE(native_player_loads_named_scenes);
     RUN_TEST_CASE(native_player_plays_sounds);
     RUN_TEST_CASE(native_player_reads_declared_components);
+    RUN_TEST_CASE(native_action_state_combines_sources_per_step);
+    RUN_TEST_CASE(native_recorded_taps_replay_per_step);
     pu_clear_setup();
 }

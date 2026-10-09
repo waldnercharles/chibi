@@ -1,4 +1,5 @@
 #include "assets/project.h"
+#include "assets/prototype.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "third_party/yyjson/yyjson.h"
@@ -994,6 +995,74 @@ TEST_CASE(prototype_children_come_with_their_instance)
     return true;
 }
 
+/* Prototypes `prefix`0 to `prefix`<levels - 1>, each with two children that
+ * use the next, so loading `prefix`0 reads 2^levels - 2 other documents. */
+static void write_fans(const char *prefix, int levels)
+{
+    for (int i = 0; i < levels; i++) {
+        char file[128], text[256];
+        snprintf(file, sizeof file, "game/content/prototypes/%s%d.kdl", prefix, i);
+        int n = snprintf(text, sizeof text, "name \"%s%d\"\n", prefix, i);
+        if (i + 1 < levels) {
+            snprintf(
+                text + n,
+                sizeof text - n,
+                "(array)children { - name=\"L\" prototype=\"%s%d\"; - "
+                "name=\"R\" "
+                "prototype=\"%s%d\"; }\n",
+                prefix,
+                i + 1,
+                prefix,
+                i + 1
+            );
+        }
+        write_file(file, text);
+    }
+}
+
+TEST_CASE(prototype_expansion_is_shared)
+{
+    /* Each load stays under its own limit, but the project's loads together
+     * read more than one load may, so preparing it stops. Fan0 to Fan12 read
+     * 16369 documents, and Twin's two Fan0 children read 16382 more. */
+    char folder[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_fans("Fan", 13);
+    write_file(
+        "game/content/prototypes/Twin.kdl",
+        "name \"Twin\"\n(array)children { - name=\"L\" prototype=\"Fan0\"; - "
+        "name=\"R\" prototype=\"Fan0\"; }\n"
+    );
+    REQUIRE(validate() != 0);
+    const char *message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "through their includes and children"));
+    return true;
+}
+
+TEST_CASE(scene_instances_share_the_expansion)
+{
+    /* Each instance loads its prototype again, so a scene's instances share
+     * one budget too. An instance of Bush0 reads 512 documents: its
+     * overlay, Bush0 and Bush0's 510. */
+    char folder[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_fans("Bush", 9);
+    REQUIRE(validate() == 0);
+    static char scene[GAME_PROTOTYPE_EXPANSION_MAX];
+    int n = snprintf(scene, sizeof scene, "version 1\nname \"Start\"\n(array)entities {\n");
+    for (int i = 0; i < GAME_PROTOTYPE_EXPANSION_MAX / 512; i++) {
+        n += snprintf(scene + n, sizeof scene - n, "    - name=\"B%d\" prototype=\"Bush0\"\n", i);
+    }
+    snprintf(scene + n, sizeof scene - n, "}\n");
+    write_file("game/content/scenes/Start.kdl", scene);
+    REQUIRE(validate() != 0);
+    const char *message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "through their includes and children"));
+    return true;
+}
+
 /* The x a Tick wrote to the scene's only Transform in the last snapshot. */
 static double snapshot_x()
 {
@@ -1063,6 +1132,8 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(scenes_run_under_their_own_name);
     RUN_TEST_CASE(scene_children_are_placed_by_their_parent);
     RUN_TEST_CASE(prototype_children_come_with_their_instance);
+    RUN_TEST_CASE(prototype_expansion_is_shared);
+    RUN_TEST_CASE(scene_instances_share_the_expansion);
     RUN_TEST_CASE(scenarios_hold_input_actions);
     pu_clear_setup();
 }

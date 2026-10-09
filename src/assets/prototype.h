@@ -9,9 +9,11 @@
 
 /* The longest name a prototype may declare, in bytes. */
 #define GAME_PROTOTYPE_NAME_MAX 1024
-/* The most prototype documents one load may read through includes and
- * children, so a small set of documents cannot expand without bound. */
-#define GAME_PROTOTYPE_EXPANSION_MAX 65536
+/* The most prototype documents one load, or the loads a project prepares
+ * together, may read through includes and children, so a small set of
+ * documents cannot expand without bound. A prepared scene holds at most 4096
+ * records, so no tree that prepares comes near it. */
+#define GAME_PROTOTYPE_EXPANSION_MAX 16384
 
 typedef const char *(*game_prototype_include_fn)(const char *name, void *user);
 

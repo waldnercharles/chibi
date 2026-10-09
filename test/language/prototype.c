@@ -521,7 +521,7 @@ TEST_CASE(prototype_expansion_is_bounded)
     prototype = game_prototype_load(find_fan("Fan10", NULL), &registry, error, sizeof error);
     REQUIRE(prototype && prototype->expanded == 2046);
     loaded = game_prototype_load(find_fan("Fan0", NULL), &registry, error, sizeof error);
-    REQUIRE(!loaded && strstr(error, "reads more than 65536 prototypes"));
+    REQUIRE(!loaded && strstr(error, "reads more than 16384 prototypes"));
     return true;
 }
 

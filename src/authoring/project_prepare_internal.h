@@ -23,4 +23,8 @@ game_prototype *project_prepare_object(
     char *,
     size_t
 );
+/* Adds what loading `prototype` read to `expanded`, the documents read so far
+ * by loads retained together; false once it reaches
+ * GAME_PROTOTYPE_EXPANSION_MAX. */
+bool project_prepare_expand(int *expanded, const game_prototype *prototype, char *error, size_t size);
 void project_prepare_prototypes_free(project_prototype *);

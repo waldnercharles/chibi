@@ -135,9 +135,11 @@ bool project_prepare_prototypes(
     }
     registry->include = include;
     registry->include_user = *result;
+    int expanded = 0;
     for (int i = 0; i < acount(*result); i++) {
         (*result)[i].prototype = game_prototype_load((*result)[i].text, registry, error, size);
-        if (!(*result)[i].prototype) {
+        if (!(*result)[i].prototype ||
+            !project_prepare_expand(&expanded, (*result)[i].prototype, error, size)) {
             return false;
         }
         const char *identity = game_prototype_identity((*result)[i].prototype);
@@ -148,6 +150,17 @@ bool project_prepare_prototypes(
         }
     }
     return true;
+}
+bool project_prepare_expand(int *expanded, const game_prototype *prototype, char *error, size_t size)
+{
+    *expanded += 1 + prototype->expanded;
+    if (*expanded < GAME_PROTOTYPE_EXPANSION_MAX) {
+        return true;
+    }
+    if (size) {
+        snprintf(error, size, "Prototypes read more than %d prototypes through their includes and children", GAME_PROTOTYPE_EXPANSION_MAX);
+    }
+    return false;
 }
 const game_prototype *project_prepare_prototype(const project_prototype *values, const char *name)
 {

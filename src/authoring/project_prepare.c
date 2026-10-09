@@ -309,9 +309,7 @@ bool authoring_project_prepare(
         goto done;
     }
     native = authoring_language_catalog_new(
-        &(authoring_language_catalog_input){
-            .native = options->native,
-            .project = declared ? declared_components_catalog(declared) : NULL },
+        &(authoring_language_catalog_input){ .native = options->native },
         error,
         size
     );

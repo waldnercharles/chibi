@@ -1,7 +1,9 @@
 #include "runtime/declared_components.h"
 
 #include "capabilities/catalog.h"
+#include "runtime/component_catalog.h"
 #include "support/arena.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
 
@@ -27,7 +29,18 @@ struct declared_components
     script_catalog catalog;
     /* Authored field type spellings, kept for the wire. */
     const char ***spellings;
+    /* The native registry followed by desc_list. */
+    const ecs_component_desc **project;
 };
+/* Sets alive now, oldest first; the newest one is the project's. */
+static const declared_components **alive;
+static void publish(const declared_components *c)
+{
+    type_catalog_set_project(
+        c ? &(type_catalog_pack){ .types = c->type_list, .type_count = c->count } : NULL
+    );
+    script_catalog_set_project(c ? &c->catalog : NULL);
+}
 static bool fail(char *error, size_t size, const char *name, const char *message)
 {
     if (size) {
@@ -228,16 +241,29 @@ declared_components *declared_components_new(
     c->desc_list = xcalloc((size_t)count + 1, sizeof *c->desc_list);
     c->script_types = xcalloc((size_t)count + 1, sizeof *c->script_types);
     c->spellings = xcalloc((size_t)count + 1, sizeof *c->spellings);
+    /* A new set replaces the newest one, so it may reuse that set's names. */
+    if (acount(alive)) {
+        publish(NULL);
+    }
     for (int i = 0; i < count; i++) {
         if (!build(c, i, &components[i], error, size)) {
+            if (acount(alive)) {
+                publish(alast(alive));
+            }
             c->count = 0;
             declared_components_free(c);
             return NULL;
         }
     }
     c->catalog = (script_catalog){ .types = c->script_types, .type_count = count };
-    type_catalog_set_project(&(type_catalog_pack){ .types = c->type_list,
-                                                   .type_count = count });
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        apush(c->project, GAME_REGISTRY_COMPONENTS[i]);
+    }
+    for (int i = 0; i < count; i++) {
+        apush(c->project, c->desc_list[i]);
+    }
+    apush(alive, c);
+    publish(c);
     return c;
 }
 declared_components *declared_components_retain(declared_components *c)
@@ -251,9 +277,25 @@ void declared_components_free(declared_components *c)
     if (!c || --c->references) {
         return;
     }
-    if (c->catalog.types) {
-        type_catalog_set_project(NULL);
+    for (int i = 0; i < acount(alive); i++) {
+        if (alive[i] != c) {
+            continue;
+        }
+        bool newest = i == acount(alive) - 1;
+        if (newest) {
+            publish(NULL);
+        }
+        memmove(&alive[i], &alive[i + 1], (size_t)(acount(alive) - i - 1) * sizeof *alive);
+        asetlen(alive, acount(alive) - 1);
+        if (newest && acount(alive)) {
+            publish(alast(alive));
+        }
+        if (!acount(alive)) {
+            afree(alive);
+        }
+        break;
     }
+    afree(c->project);
     free(c->types);
     free(c->type_list);
     free(c->descs);
@@ -272,6 +314,15 @@ const script_catalog *declared_components_catalog(const declared_components *c)
 {
     assert(c);
     return &c->catalog;
+}
+ecs_component_catalog project_components()
+{
+    if (!acount(alive)) {
+        return (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS,
+                                        GAME_REGISTRY_COMPONENT_COUNT };
+    }
+    const declared_components *c = alast(alive);
+    return (ecs_component_catalog){ c->project, acount(c->project) };
 }
 void declared_components_wire(execution_wire *wire, declared_components **out)
 {
@@ -309,7 +360,8 @@ void declared_components_wire(execution_wire *wire, declared_components **out)
         }
         component->fields = fields[i];
     }
-    if (wire->reading && !wire->error && count) {
+    /* An empty set still replaces the sets of other projects. */
+    if (wire->reading && !wire->error) {
         char message[256];
         *out = declared_components_new(components, count, message, sizeof message);
         if (!*out) {

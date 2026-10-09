@@ -3,6 +3,7 @@
 #include "execution/ecs_reader.h"
 #include "runtime/behaviors/entities_source.h"
 #include "runtime/component_catalog.h"
+#include "runtime/declared_components.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -76,8 +77,9 @@ game_world *game_world_new(const game_world_options *options, char *error, size_
     game_world *w = xcalloc(1, sizeof *w);
     w->owns_ecs = !options->ecs;
     w->ecs = options->ecs ? options->ecs : ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        if (!install(w->ecs, GAME_REGISTRY_COMPONENTS[i])) {
+    ecs_component_catalog project = project_components();
+    for (int i = 0; i < project.component_count; i++) {
+        if (!install(w->ecs, project.components[i])) {
             goto fail;
         }
     }

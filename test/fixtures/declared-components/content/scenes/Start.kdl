@@ -2,6 +2,7 @@ version 1
 name "Start"
 (array)entities {
     - name="Camera" prototype="Camera"
+    - name="Recharge" prototype="RechargeSystem"
     - name="Cell" prototype="Battery"
     - {
         name "Spare"

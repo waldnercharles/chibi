@@ -618,6 +618,37 @@ typedef NODE_COMPONENT_TYPE_DENSE(GamePointLight)
 }
 GamePointLight;
 
+/* A cone of local scene-linear light. Radius and center elevation use project
+ * units, and color is 0xRRGGBBAA like a Point Light's. Direction is the world
+ * direction the cone points; it need not be normalized. Outer angle is the
+ * cone's full width in degrees, and the light fades from full strength at the
+ * inner angle to none at the outer one. Shadows lets opaque solids within its
+ * cone and radius block it. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameSpotLight)
+{
+    unsigned color NODE_COLOR;
+    float intensity;
+    float radius;
+    float elevation;
+    CF_V3 direction;
+    float inner_angle;
+    float outer_angle;
+    bool shadows;
+}
+GameSpotLight;
+
+static inline GameSpotLight game_spot_light_defaults()
+{
+    return (GameSpotLight){ .color = 0xffffffffu,
+                            .intensity = 6,
+                            .radius = 400,
+                            .elevation = 160,
+                            .direction = { 0, -1, 0 },
+                            .inner_angle = 40,
+                            .outer_angle = 60,
+                            .shadows = true };
+}
+
 /* A colored activity signal for material effects, independent of lighting. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameSurfaceInfluence)
 {

@@ -46,7 +46,7 @@ PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
 }
 PLAYER_EMPTY_CATALOGS = {
     ('shader-values', 'parameters'): (12, '0ba1d1fcd4761fcb'),
-    ('parts', 'parts'): (24, '828f9f8944989ff6'),
+    ('parts', 'parts'): (11, '9af98571205f1f12'),
 }
 PLAYER_RESOURCES |= PLAYER_EMPTY_CATALOGS.keys()
 
@@ -97,7 +97,7 @@ def studio_startup_preflight():
                         1024 * 1024) != evidence.get('sdk_config_sha256')):
         raise ValueError('studio_startup_build_provenance_mismatch')
     starter = source / 'projects/starter'
-    expected = {'project.kdl': b'version 10\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
+    expected = {'project.kdl': b'version 14\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
                 'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n'}
     if {p.relative_to(starter).as_posix() for p in starter.rglob('*') if p.is_file()} != set(expected):
         raise ValueError('studio_starter_membership_changed')
@@ -164,9 +164,9 @@ def studio_source_edit_preflight():
         raise ValueError('studio_acceptance_sdk_changed')
     fixture = source / 'tests/acceptance/project'
     expected = {
-        'project.kdl': b'version 10\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
+        'project.kdl': b'version 14\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
         'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n',
-        'content/behaviors/Counter.chibi': b'behavior Counter {\n    state count: int = 1;\n    on Tick {\n        count = count + 1;\n    }\n}\n',
+        'content/behaviors/Counter.chibi': b'behavior Counter {\n    state count: int = 1\n    on Tick {\n        count = count + 1\n    }\n}\n',
     }
     paths = list(fixture.rglob('*'))
     if any(p.is_symlink() for p in paths) or {p.relative_to(fixture).as_posix() for p in paths if p.is_file()} != set(expected):
@@ -175,7 +175,7 @@ def studio_source_edit_preflight():
         if (fixture / name).stat().st_size != len(value) or bounded_read(fixture / name, len(value)) != value:
             raise ValueError('studio_acceptance_fixture_changed')
     studio_resource_preflight(build)
-    return build / 'bin/studio-acceptance', fixture, dict(fixture_files=3, fixture_bytes=212, frames=4, window=[1920,1080])
+    return build / 'bin/studio-acceptance', fixture, dict(fixture_files=3, fixture_bytes=210, frames=4, window=[1920,1080])
 
 
 def player_artifact_preflight(artifact=None):

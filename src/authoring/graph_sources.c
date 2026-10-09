@@ -113,7 +113,7 @@ bool authoring_graph_sources_load(const char *content_root, authoring_graph_sour
         free(directory_path);
     }
     if (acount(paths) > 1) {
-        qsort(paths, (size_t)acount(paths), sizeof *paths, path_compare);
+        asort(paths, path_compare);
     }
     bool valid = true;
     authoring_graph_source *result = NULL;

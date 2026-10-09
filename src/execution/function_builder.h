@@ -90,6 +90,13 @@ int behavior_function_builder_call(
     const pin_value *results,
     int result_count
 );
+/* Starts the callee as a task; the invocation's single result is its handle. */
+int behavior_function_builder_task(
+    behavior_function_builder *builder,
+    const behavior_function *callee,
+    const pin_value *arguments,
+    int argument_count
+);
 int behavior_function_builder_call_first(const behavior_function_builder *builder, int call);
 int behavior_function_builder_call_results(const behavior_function_builder *builder, int call);
 int behavior_function_builder_query(

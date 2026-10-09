@@ -550,17 +550,18 @@ static bool write_desktop_entry(const chibi_export_spec *spec, const char *stagi
     return written;
 }
 
-/* Signs a macOS app ad hoc, so it runs after its contents changed. */
-static void sign(const char *staging)
+/* Signs a macOS app ad hoc, so it runs after its contents changed. Other
+ * hosts cannot sign and keep the app as built. */
+static bool sign(const char *staging)
 {
 #ifdef __APPLE__
     char *argv[] = { "/usr/bin/codesign", "--force", "--sign", "-",
                      (char *)staging,     NULL };
-    if (chibi_process_run(argv) != 0) {
-        fprintf(stderr, "Export warning: the app could not be signed: %s\n", staging);
-    }
+    return chibi_process_run(argv) == 0 ||
+           failed("the app could not be signed", staging);
 #else
     (void)staging;
+    return true;
 #endif
 }
 
@@ -582,8 +583,7 @@ static bool finish_app(const chibi_export_spec *spec, const char *staging, const
             return false;
         }
     }
-    sign(staging);
-    return true;
+    return sign(staging);
 }
 
 /* Adds what the layout needs beside the player and data. */

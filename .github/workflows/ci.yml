@@ -115,7 +115,7 @@ jobs:
       - name: Two hidden Studio frames
         shell: bash
         run: |
-          timeout 60 xvfb-run -a build-studio/bin/chibi-dev \
+          timeout --kill-after=10 60 xvfb-run -a build-studio/bin/chibi-dev \
             --project-root chibi-studio/projects/starter --headless --frames 2 --fixed-dt 0.0166667 2>&1 | tee studio.log
           ! grep -E 'Studio UI:|runtime frame failed|Could not initialize' studio.log
 

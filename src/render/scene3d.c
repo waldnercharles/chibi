@@ -72,6 +72,7 @@ struct render_scene3d
     /* Direction toward the sun, sun radiance, and hemisphere ambient radiance. */
     CF_V4 sun_direction, sun_color, ambient_sky, ambient_ground;
     bool sun_shadows;
+    float sun_spread; /* Tangent of half the sun's angular diameter. */
     render_scene3d_shadow *shadow;
     CF_M4x4 *shadow_boxes;
     CF_Texture parameters;
@@ -509,20 +510,34 @@ static CF_V4 radiance(unsigned color, float intensity)
                     0 };
 }
 
-static void set_sun(render_scene3d *scene3d, const GameDirectionalLight *light)
+/* Wider suns blur penumbrae past what the soft filter's taps resolve. */
+static const float widest_sun = 20;
+
+static bool set_sun(render_scene3d *scene3d, const GameDirectionalLight *light)
 {
+    if (!(light->angular_diameter >= 0 && light->angular_diameter <= widest_sun)) {
+        snprintf(
+            scene3d->binding_error,
+            sizeof scene3d->binding_error,
+            "Directional Light angular diameter must be 0 to %g degrees.",
+            widest_sun
+        );
+        return false;
+    }
     CF_V3 direction = light->direction;
     float length = cf_len_v3(direction);
     scene3d->sun_color = (CF_V4){ 0 };
     scene3d->sun_shadows = false;
+    scene3d->sun_spread = tanf(light->angular_diameter * CF_PI / 360);
     if (!isfinite(length) || length <= 0 || !isfinite(light->intensity) ||
         light->intensity <= 0) {
-        return;
+        return true;
     }
     direction = cf_div_v3_f(direction, -length);
     scene3d->sun_direction = (CF_V4){ direction.x, direction.y, direction.z, 0 };
     scene3d->sun_color = radiance(light->color, light->intensity);
     scene3d->sun_shadows = light->shadows && light->color >> 8;
+    return true;
 }
 
 static void set_ambient(render_scene3d *scene3d, const GameEnvironment *environment)
@@ -545,6 +560,7 @@ static bool collect_sun(render_scene3d *scene3d, ecs_world *world, const engine 
         return true;
     }
     int count = 0;
+    bool valid = true;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
         /* The light has no place in the world, so fog cannot cull it; only
@@ -556,14 +572,14 @@ static bool collect_sun(render_scene3d *scene3d, ecs_world *world, const engine 
         if (count++) {
             break;
         }
-        set_sun(scene3d, GAME_GameDirectionalLight_get_const(world, entity));
+        valid = set_sun(scene3d, GAME_GameDirectionalLight_get_const(world, entity));
     }
     ecs_query_end(&query);
     if (count > 1) {
         snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "A 3D scene can have only one Directional Light.");
         return false;
     }
-    return true;
+    return valid;
 }
 
 static int compare_draws(const void *left, const void *right)
@@ -620,6 +636,7 @@ static int fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *came
     return render_scene3d_shadow_fit(
         scene3d->shadow,
         toward,
+        scene3d->sun_spread,
         scene3d->shadow_boxes,
         acount(scene3d->shadow_boxes),
         receivers,

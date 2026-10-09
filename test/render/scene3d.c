@@ -122,12 +122,17 @@ static CF_Pixel front()
 }
 
 /* The pixel showing a world point. */
-static CF_Pixel pixel_at(CF_V3 world)
+static int pixel_index(CF_V3 world)
 {
     CF_V3 ndc = render_scene3d_project(&lens, world);
     int x = (int)((ndc.x + 1) * SIDE / 2), y = (int)((1 - ndc.y) * SIDE / 2);
     assert(x >= 0 && x < SIDE && y >= 0 && y < SIDE);
-    return pixels[y * SIDE + x];
+    return y * SIDE + x;
+}
+
+static CF_Pixel pixel_at(CF_V3 world)
+{
+    return pixels[pixel_index(world)];
 }
 
 /* Post-processes the scene target and reads back the tone-mapped output. */
@@ -577,6 +582,23 @@ static GameDirectionalLight *add_walls(unsigned walls)
     return sun;
 }
 
+/* How much green a wall's shadow gained or lost since `before`, summed over
+ * a grid across the shadow and its edges. */
+static int softened(const CF_Pixel *before, int wall)
+{
+    float depth = wall_depths[wall];
+    int change = 0;
+    for (int y = -4; y <= 4; y++) {
+        for (int x = -4; x <= 4; x++) {
+            CF_V3 at = on_wall(wall, .02f * y);
+            at.x += .02f * x * depth;
+            int i = pixel_index(at);
+            change += abs(pixels[i].colors.g - before[i].colors.g);
+        }
+    }
+    return change;
+}
+
 TEST_CASE(deep_views_split_sun_shadows_into_cascades)
 {
     GameDirectionalLight *sun = add_walls(0xf);
@@ -588,16 +610,28 @@ TEST_CASE(deep_views_split_sun_shadows_into_cascades)
         open[i][1] = pixel_at(on_wall(i, .15f));
     }
     sun->shadows = true;
-    REQUIRE(render(&environment));
-    REQUIRE(render_scene3d_last_work(scene3d).cascades == WALLS);
-    /* A single map across the whole view would blur the nearest shadow away. */
+    /* A single map across the whole view would blur the nearest shadow away.
+     * A 5-degree sun leaves each shadow's core dark and its surroundings lit. */
+    CF_Pixel hard[PIXELS];
+    for (int soft = 0; soft < 2; soft++) {
+        sun->angular_diameter = 5.0f * soft;
+        REQUIRE(render(&environment));
+        REQUIRE(render_scene3d_last_work(scene3d).cascades == WALLS);
+        for (int i = 0; i < WALLS; i++) {
+            REQUIRE(pixel_at(on_wall(i, 0)).colors.g == 0);
+            REQUIRE(
+                open[i][0].colors.g > 60 &&
+                distance(pixel_at(on_wall(i, -.15f)), open[i][0]) <= 3
+            );
+            REQUIRE(distance(pixel_at(on_wall(i, .15f)), open[i][1]) <= 3);
+        }
+        if (!soft) {
+            memcpy(hard, pixels, sizeof hard);
+        }
+    }
+    /* It softens the edges in every cascade. */
     for (int i = 0; i < WALLS; i++) {
-        REQUIRE(pixel_at(on_wall(i, 0)).colors.g == 0);
-        REQUIRE(
-            open[i][0].colors.g > 60 &&
-            distance(pixel_at(on_wall(i, -.15f)), open[i][0]) <= 3
-        );
-        REQUIRE(distance(pixel_at(on_wall(i, .15f)), open[i][1]) <= 3);
+        REQUIRE(softened(hard, i) > 200);
     }
     return true;
 }
@@ -640,6 +674,79 @@ TEST_CASE(shadow_cascades_cover_only_what_the_view_shows)
     return true;
 }
 
+/* A thin wall 4 units tall runs along z from -3 to 3 on a floor. Sunlight
+ * travels along +x and down at 45 degrees, so the wall shades the floor where
+ * 0 < x < 4, and the floor at x lies under the wall's end at height x. The
+ * camera looks straight down at that end, z = 3. */
+static GameDirectionalLight *add_wall_scene()
+{
+    lens = (render_scene3d_camera){
+        .view = cf_look_at((CF_V3){ 2, 10, 3 }, (CF_V3){ 2, 0, 3 }, (CF_V3){ 0, 0, -1 }),
+        .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
+    };
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 40, 40, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, 6, 4, 2 }, 0xffffffffu);
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->intensity = 1;
+    return sun;
+}
+
+/* Floor just inside and just outside the shadow's side, near the wall's foot
+ * and near its top, then deep inside the shadow. */
+static const CF_V3 wall_edges[] = {
+    { .5f, 0, 2.85f },  { .5f, 0, 3.15f }, { 3.5f, 0, 2.85f },
+    { 3.5f, 0, 3.15f }, { 2, 0, 1 },
+};
+enum
+{
+    WALL_EDGES = sizeof wall_edges / sizeof *wall_edges
+};
+
+TEST_CASE(sun_size_softens_shadows_away_from_casters)
+{
+    GameDirectionalLight *sun = add_wall_scene();
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    CF_Pixel open[WALL_EDGES];
+    for (int i = 0; i < WALL_EDGES; i++) {
+        open[i] = pixel_at(wall_edges[i]);
+        REQUIRE(open[i].colors.g > 60);
+    }
+    /* A point-sized sun casts hard edges everywhere. */
+    sun->shadows = true;
+    REQUIRE(render(&environment));
+    for (int i = 0; i < WALL_EDGES; i++) {
+        bool lit = i % 2 && i < 4;
+        REQUIRE(
+            lit ? distance(pixel_at(wall_edges[i]), open[i]) <= 3
+                : pixel_at(wall_edges[i]).colors.g == 0
+        );
+    }
+    /* A 10-degree sun spreads each edge by 0.25 of the caster's height: the
+     * edge stays hard at the wall's foot and blurs past 0.15 near its top,
+     * while the shadow's core stays dark. */
+    sun->angular_diameter = 10;
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(pixel_at(wall_edges[0]).colors.g == 0);
+    REQUIRE(distance(pixel_at(wall_edges[1]), open[1]) <= 3);
+    REQUIRE(pixel_at(wall_edges[2]).colors.g > 10);
+    REQUIRE(pixel_at(wall_edges[3]).colors.g < open[3].colors.g - 10);
+    REQUIRE(pixel_at(wall_edges[4]).colors.g == 0);
+    /* A short wall just past the view's near edge, which the camera culls,
+     * still shades the floor inside the view that its penumbra reaches. The
+     * edge is the cascade's low side, which no rounding widens. */
+    CF_V3 fringe = { 5.5f, 0, -1.1f };
+    CF_Pixel lit = pixel_at(fringe);
+    add_solid((CF_V3){ 2, 2, -1.5f }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, .4f, 4 }, 0xffffffffu);
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(fringe).colors.g < lit.colors.g - 10);
+    sun->angular_diameter = 21;
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_error(scene3d), "angular diameter"));
+    return true;
+}
+
 void test_render_scene3d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -666,6 +773,7 @@ void test_render_scene3d()
     RUN_TEST_CASE(deep_views_split_sun_shadows_into_cascades);
     RUN_TEST_CASE(empty_depth_ranges_take_no_cascade);
     RUN_TEST_CASE(shadow_cascades_cover_only_what_the_view_shows);
+    RUN_TEST_CASE(sun_size_softens_shadows_away_from_casters);
     pu_clear_setup();
     cf_destroy_app();
 }

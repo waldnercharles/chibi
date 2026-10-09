@@ -33,6 +33,21 @@
     "smoke_status": "passed",
     "smoke_diagnostics": "no Studio UI, runtime frame or initialization errors"
   },
+  "web": {
+    "emscripten": "6.0.10",
+    "command": "make package-web-player",
+    "status": "passed",
+    "build_seconds": 291.3,
+    "notes": "WebGL 2 only; the player still links without Asyncify.",
+    "browser_checks": [
+      {
+        "command": "chibi export test/fixtures/sprites --web dist/web-player, served from localhost to headless Chromium",
+        "backend": "WebGL 2 (SwiftShader)",
+        "status": "passed",
+        "notes": "The Start scene renders like the desktop preview."
+      }
+    ]
+  },
   "selectors": [
     {
       "command": "make agent-gpu-test AGENT_SELECTOR=--interior-border",
@@ -42,6 +57,15 @@
       "assertions": 9,
       "wall_seconds_cold": 6.1,
       "wall_seconds_warm": 0.8
+    },
+    {
+      "command": "make agent-gpu-test AGENT_SELECTOR=--sdf-visibility",
+      "backend": "Vulkan (lavapipe)",
+      "status": "passed",
+      "scenes": 14,
+      "wall_seconds_cold": 8.9,
+      "wall_seconds_warm": 2.9,
+      "notes": "Fails on 4 scenes when the whole-canvas depth copy's arguments are swapped."
     },
     {
       "command": "build/test/tools/test_tools --interior-border with CF_APP_OPTIONS_GFX_OPENGL_BIT, one local run",
@@ -79,8 +103,6 @@
   ],
   "not_run": [
     "full native and render aggregate tests, quarantined by repository policy",
-    "the hidden-surface depth copy in src/render/mesh_material.c at run time: no content or admitted check draws imported meshes with SDFs",
-    "web builds, which move to WebGPU in a separate change",
     "Windows, macOS and D3D12 or Metal backends"
   ]
 }

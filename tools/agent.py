@@ -40,7 +40,7 @@ PLAYER_SELECTORS = {
 }
 STUDIO_SELECTORS = {'--studio-starter-startup': 'studio-starter-startup',
                     '--studio-source-edit': 'studio-source-edit'}
-RENDER_SELECTORS = {'--interior-border': 'interior-border'}
+RENDER_SELECTORS = {'--interior-border': 'interior-border', '--sdf-visibility': 'sdf-visibility'}
 GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS
 PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
     ('font', f'font/Inter/{weight}/normal') for weight in (400, 500, 600, 700)

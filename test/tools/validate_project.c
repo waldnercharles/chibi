@@ -300,7 +300,7 @@ TEST_CASE(catalog_errors_are_reported_once)
     return true;
 }
 
-TEST_CASE(old_projects_are_not_upgraded)
+TEST_CASE(other_project_versions_are_not_opened)
 {
     char manifest[256];
     path(manifest, sizeof manifest, "game/project.kdl");
@@ -319,6 +319,13 @@ TEST_CASE(old_projects_are_not_upgraded)
     bool kept = text && !strcmp(text, old);
     free(text);
     REQUIRE(kept);
+    /* A newer build's project needs that build, whatever its fields mean
+     * there. */
+    snprintf(old, sizeof old, "version %d\nname 5\n", version + 1);
+    tool_write(manifest, old);
+    REQUIRE(validate() != 0 && errors() == 1);
+    message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "needs a newer build"));
     return true;
 }
 
@@ -702,7 +709,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(cataloged_start_scene_is_reported_once);
     RUN_TEST_CASE(missing_ui_documents_are_reported);
     RUN_TEST_CASE(catalog_errors_are_reported_once);
-    RUN_TEST_CASE(old_projects_are_not_upgraded);
+    RUN_TEST_CASE(other_project_versions_are_not_opened);
     RUN_TEST_CASE(application_settings_are_checked);
     RUN_TEST_CASE(prototype_includes_resolve);
     RUN_TEST_CASE(prototypes_are_found_by_declared_name);

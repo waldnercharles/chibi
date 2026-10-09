@@ -1,21 +1,21 @@
 behavior "ProjectileBehavior" {
-    action set_gameprojectile_age = set_game_projectile_age(add(get_game_projectile().Value.age, delta_time()))
+    action set_gameprojectile_age = set_game_projectile_age(self.Projectile.age + delta_time())
     on Tick {
-        await "Face Direction"(get_game_velocity().Value.x, get_game_velocity().Value.y)
+        await "Face Direction"(self.Velocity.x, self.Velocity.y)
         set_gameprojectile_age()
     }
     after set_gameprojectile_age {
-        if greater_or_equal(set_gameprojectile_age.Value.age, set_gameprojectile_age.Value.lifetime) {
+        if set_gameprojectile_age.Value.age >= set_gameprojectile_age.Value.lifetime {
             destroy_entity(self)
         }
     }
     function "Face Direction"(X: float = 0.0, Y: float = 0.0) {
         after entry {
-            if has_game_orientation() {
+            if self.Orientation {
                 if greater_or_equal(0.0, "Direction Magnitude"(entry.X, entry.Y)) {
                     return
                 } else {
-                    await set_game_orientation("DirectionMath"."Direction Orientation"(entry.X, entry.Y))
+                    self.Orientation = "DirectionMath"."Direction Orientation"(entry.X, entry.Y)
                     return
                 }
             } else {
@@ -24,6 +24,6 @@ behavior "ProjectileBehavior" {
         }
     }
     pure function "Direction Magnitude"<T0: float, T1: float, T2: float>(x: T0 = 0.0, y: T1 = 0.0) -> (Result: T2 = 0.0) {
-        return add(abs(entry.x), abs(entry.y))
+        return abs(entry.x) + abs(entry.y)
     }
 }

@@ -4,7 +4,7 @@ behavior "ArenaShardBehavior" {
     state "Roll Rate": float = 0.0
     state Lift: float = 0.0
     state "Birth Scale": float = 1.0
-    action age_2 = set_variable<"Age">(get_variable<"Age">() + delta_time())
+    action age_2 = set_variable<"Age">(state."Age" + delta_time())
     on Tick {
         age_2()
     }
@@ -16,44 +16,44 @@ behavior "ArenaShardBehavior" {
         }
     }
     on Begin {
-        await "Initialize Shard"(get_game_visual_transform().Value.scale, random_range(-6.0, 6.0), random_range(-7.0, 7.0), random_range(18.0, 42.0))
+        await "Initialize Shard"(self.VisualTransform.scale, random_range(-6.0, 6.0), random_range(-7.0, 7.0), random_range(18.0, 42.0))
     }
     pure function "Age Phase"<T0: float, T1: float, T2: float>(Age: T0 = 0.0, Delta: T1 = 0.0) -> (Result: T2 = 0.0) {
-        return divide(add(entry.Age, entry.Delta), real(0.55))
+        return (entry.Age + entry.Delta) / real(0.55)
     }
     pure function "Fade"<T0: float, T1: double>(Normalized: T0 = 0.0) -> (Result: T1 = 0.0) {
-        return multiply(subtract(real(1.0), entry), subtract(real(1.0), entry))
+        return (real(1.0) - entry) * (real(1.0) - entry)
     }
     pure function "Position X"<T0: float, T1: float, T2: float, T3: float>(PositionX: T0 = 0.0, VelocityX: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
-        return add(entry.PositionX, multiply(entry.VelocityX, entry.Delta))
+        return entry.PositionX + entry.VelocityX * entry.Delta
     }
     pure function "Position Y"<T0: float, T1: float, T2: float, T3: float>(PositionY: T0 = 0.0, VelocityY: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
-        return add(entry.PositionY, multiply(entry.VelocityY, entry.Delta))
+        return entry.PositionY + entry.VelocityY * entry.Delta
     }
     pure function "Pitch"<T0: float, T1: float, T2: float, T3: float>(Pitch: T0 = 0.0, PitchRate: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
-        return add(entry.Pitch, multiply(entry.PitchRate, entry.Delta))
+        return entry.Pitch + entry.PitchRate * entry.Delta
     }
     pure function "Roll"<T0: float, T1: float, T2: float, T3: float>(Roll: T0 = 0.0, RollRate: T1 = 0.0, Delta: T2 = 0.0) -> (Result: T3 = 0.0) {
-        return add(entry.Roll, multiply(entry.RollRate, entry.Delta))
+        return entry.Roll + entry.RollRate * entry.Delta
     }
     function "Initialize Shard"(scale: float = 0.0, "Pitch Rate": double = 0.0, "Roll Rate": double = 0.0, Lift: double = 0.0) {
         after entry {
-            await set_variable<"Birth Scale">(entry.scale)
-            await set_variable<"Pitch Rate">(entry."Pitch Rate")
-            await set_variable<"Roll Rate">(entry."Roll Rate")
-            await set_variable<"Lift">(entry.Lift)
+            state."Birth Scale" = entry.scale
+            state."Pitch Rate" = entry."Pitch Rate"
+            state."Roll Rate" = entry."Roll Rate"
+            state."Lift" = entry.Lift
             return
         }
     }
     function "Advance Shard Motion"(Seconds: float = 0.0, Age: float = 0.0) {
         after entry {
-            await set_game_transform_x("Position X"(get_game_transform().Value.x, get_game_velocity().Value.x, entry.Seconds))
-            await set_game_transform_y("Position Y"(get_game_transform().Value.y, get_game_velocity().Value.y, entry.Seconds))
-            await set_game_visual_transform_pitch(Pitch(get_game_visual_transform().Value.pitch, get_variable<"Pitch Rate">(), entry.Seconds))
-            await set_game_visual_transform_roll(Roll(get_game_visual_transform().Value.roll, get_variable<"Roll Rate">(), entry.Seconds))
-            await set_game_visual_transform_scale(multiply(get_variable<"Birth Scale">(), Fade("Age Phase"(entry.Age, entry.Seconds))))
-            await set_game_geometry3_d_elevation(add(get_game_geometry3_d().Value.elevation, cast<double>(multiply(get_variable<"Lift">(), entry.Seconds))))
-            await set_variable<"Lift">(subtract(get_variable<"Lift">(), multiply(entry.Seconds, B: plain double = 90.0)))
+            self.Transform.x = "Position X"(self.Transform.x, self.Velocity.x, entry.Seconds)
+            self.Transform.y = "Position Y"(self.Transform.y, self.Velocity.y, entry.Seconds)
+            self.VisualTransform.pitch = Pitch(self.VisualTransform.pitch, state."Pitch Rate", entry.Seconds)
+            self.VisualTransform.roll = Roll(self.VisualTransform.roll, state."Roll Rate", entry.Seconds)
+            self.VisualTransform.scale = state."Birth Scale" * Fade("Age Phase"(entry.Age, entry.Seconds))
+            self.Geometry3D.elevation = self.Geometry3D.elevation + cast<double>(state."Lift" * entry.Seconds)
+            state."Lift" = state."Lift" - multiply(entry.Seconds, B: plain double = 90.0)
             return
         }
     }

@@ -2,15 +2,15 @@ behavior "DashBehavior" {
     state "Just Started" := false
     state "Struck Entities": handle<"ecs.entity">[] = []
     on Dash {
-        if greater_or_equal(delta_time(), get_game_dash().Value.cooldown_remaining) {
-            if greater_or_equal(0.0, get_game_dash().Value.remaining) {
+        if delta_time() >= self.Dash.cooldown_remaining {
+            if 0.0 >= self.Dash.remaining {
                 await "Start Dash"()
             }
         }
     }
     on Tick {
         await "Advance Dash Timers"()
-        if less(0.0, get_game_dash().Value.remaining) {
+        if 0.0 < self.Dash.remaining {
             await "Drive Dash"()
         }
     }
@@ -19,43 +19,43 @@ behavior "DashBehavior" {
     }
     function "Capture Dash Direction"() {
         after entry {
-            if greater_or_equal(add(abs(break_cf_v2(get_game_input().Value.move).x), abs(break_cf_v2(get_game_input().Value.move).y)), 0.0001) {
-                await set_game_dash_direction(vec2_norm(get_game_input().Value.move))
+            if abs(break_cf_v2(self.Input.move).x) + abs(break_cf_v2(self.Input.move).y) >= 0.0001 {
+                self.Dash.direction = vec2_norm(self.Input.move)
                 return
             } else {
-                await set_game_dash_direction(vec2_norm(get_game_aim().Value.direction))
+                self.Dash.direction = vec2_norm(self.Aim.direction)
                 return
             }
         }
     }
     function "Drive Dash"() {
         after entry {
-            await set_game_velocity(multiply(get_game_dash().Value.direction, get_game_dash().Value.speed))
-            await set_game_orientation("DirectionMath"."Direction Orientation"(break_cf_v2(get_game_dash().Value.direction).x, break_cf_v2(get_game_dash().Value.direction).y))
+            self.Velocity = self.Dash.direction * self.Dash.speed
+            self.Orientation = "DirectionMath"."Direction Orientation"(break_cf_v2(self.Dash.direction).x, break_cf_v2(self.Dash.direction).y)
             return
         }
     }
     function "Restore Movement"() {
         after entry {
-            if has_game_input() {
-                await set_game_velocity("MovementActions"."Movement Velocity"(get_game_input().Value.move, get_game_movement()))
+            if self.Input {
+                self.Velocity = "MovementActions"."Movement Velocity"(self.Input.move, self.Movement)
                 return
             } else {
-                await set_game_velocity({
+                self.Velocity = {
                     x: 0.0,
                     y: 0.0
-                })
+                }
                 return
             }
         }
     }
     function "Advance Dash"() {
-        action set_gamedash_remaining = set_game_dash_remaining(max(subtract(get_game_dash().Value.remaining, delta_time()), B: float = 0.0))
+        action set_gamedash_remaining = set_game_dash_remaining(max(self.Dash.remaining - delta_time(), B: float = 0.0))
         after entry {
             set_gamedash_remaining()
         }
         after set_gamedash_remaining {
-            if less(0.0, set_gamedash_remaining.Value.remaining) {
+            if 0.0 < set_gamedash_remaining.Value.remaining {
                 return
             } else {
                 await "Restore Movement"()
@@ -65,12 +65,12 @@ behavior "DashBehavior" {
     }
     function "Advance Dash Timers"() {
         after entry {
-            if get_variable<"Just Started">() {
-                await set_variable<"Just Started">(false)
+            if state."Just Started" {
+                state."Just Started" = false
                 return
             } else {
-                await set_game_dash_cooldown_remaining(max(subtract(get_game_dash().Value.cooldown_remaining, delta_time()), B: float = 0.0))
-                if less(0.0, get_game_dash().Value.remaining) {
+                self.Dash.cooldown_remaining = max(self.Dash.cooldown_remaining - delta_time(), B: float = 0.0)
+                if 0.0 < self.Dash.remaining {
                     await "Advance Dash"()
                     return
                 } else {
@@ -81,15 +81,15 @@ behavior "DashBehavior" {
     }
     function "Strike Target"(Other: handle<"ecs.entity"> = 0) {
         after entry {
-            if less(0.0, get_game_dash().Value.remaining) {
-                if has_entity_game_health(entry.Other) {
-                    if has_entity_game_collider(entry.Other) {
-                        if has_any_flags(get_entity_game_collider(entry.Other).Value.category, 2) {
-                            if contains(get_variable<"Struck Entities">(), entry.Other) {
+            if 0.0 < self.Dash.remaining {
+                if entry.Other.Health {
+                    if entry.Other.Collider {
+                        if has_any_flags(entry.Other.Collider.category, 2) {
+                            if contains(state."Struck Entities", entry.Other) {
                                 return
                             } else {
-                                await set_variable<"Struck Entities">(array_add(get_variable<"Struck Entities">(), entry.Other))
-                                await send_event<"Damage">(entry.Other, get_game_dash().Value.damage, self)
+                                state."Struck Entities" = array_add(state."Struck Entities", entry.Other)
+                                await send_event<"Damage">(entry.Other, self.Dash.damage, self)
                                 return
                             }
                         } else {
@@ -116,12 +116,12 @@ behavior "DashBehavior" {
     }
     function "Start Dash"() {
         after entry {
-            if integer_greater_or_equal(get_game_health().Value.current, 1) {
+            if self.Health.current >= 1 {
                 await "Capture Dash Direction"()
-                await set_game_dash_remaining(get_game_dash().Value.duration)
-                await set_game_dash_cooldown_remaining(get_game_dash().Value.cooldown)
-                await set_variable<"Just Started">(true)
-                await set_variable<"Struck Entities">([])
+                self.Dash.remaining = self.Dash.duration
+                self.Dash.cooldown_remaining = self.Dash.cooldown
+                state."Just Started" = true
+                state."Struck Entities" = []
                 await "Strike Current Contacts"()
                 return
             } else {

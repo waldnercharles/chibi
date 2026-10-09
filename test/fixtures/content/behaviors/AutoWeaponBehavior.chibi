@@ -1,15 +1,15 @@
 behavior "AutoWeaponBehavior" {
     state Elapsed: float = 0.0
     on Tick {
-        if find_nearest_entity(get_game_transform(), 600.0, 2, engine["Self"]()).Found {
-            await "Fire Ready Projectiles"(get_game_transform(), direction_to<"Direction To">(get_game_transform(), find_nearest_entity(get_game_transform(), 600.0, 2, engine["Self"]()).Position), get_game_weapon().Value.damage)
+        if find_nearest_entity(self.Transform, 600.0, 2, engine["Self"]()).Found {
+            await "Fire Ready Projectiles"(self.Transform, direction_to<"Direction To">(self.Transform, find_nearest_entity(self.Transform, 600.0, 2, engine["Self"]()).Position), self.Weapon.damage)
         }
     }
     function "Fire Ready Projectiles"(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0) {
         after entry {
-            await set_variable<"Elapsed">(add(get_variable<"Elapsed">(), delta_time()))
-            while "WeaponActions"."Check Firing Interval"(get_variable<"Elapsed">(), get_game_weapon().Value.cooldown).Ready {
-                await set_variable<"Elapsed">("WeaponActions"."Check Firing Interval"(get_variable<"Elapsed">(), get_game_weapon().Value.cooldown).Remainder)
+            state."Elapsed" = state."Elapsed" + delta_time()
+            while "WeaponActions"."Check Firing Interval"(state."Elapsed", self.Weapon.cooldown).Ready {
+                state."Elapsed" = "WeaponActions"."Check Firing Interval"(state."Elapsed", self.Weapon.cooldown).Remainder
                 await "WeaponActions"."Fire Projectile"(entry.Origin, entry.Direction, entry.Damage, "Projectile", self)
             }
             return

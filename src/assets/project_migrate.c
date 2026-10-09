@@ -1411,13 +1411,32 @@ static int collect_sources(const char *directory, const char *suffix, char ***pa
     closedir(dir);
     return status;
 }
-int chibi_project_migrate_content(const char *content, int from, char *error, size_t error_size)
+int chibi_project_migrate_content(
+    const char *content,
+    const char *start_scene,
+    int from,
+    char *error,
+    size_t error_size
+)
 {
     char **paths = NULL;
-    /* Version 15 changes scenes, wherever the content keeps them; every
+    /* Version 15 changes scenes, wherever the project keeps them; every
      * earlier step changes scripts. */
-    const char *suffix = from == 14 ? DECLARATIVE_ASSET_EXTENSION : ".chibi";
-    int status = collect_sources(content, suffix, &paths, error, error_size);
+    bool scenes = from == 14;
+    int status = collect_sources(
+        content,
+        scenes ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
+        &paths,
+        error,
+        error_size
+    );
+    size_t length = strlen(content);
+    struct stat info;
+    if (!status && scenes && start_scene &&
+        (strncmp(start_scene, content, length) || start_scene[length] != '/') &&
+        !stat(start_scene, &info) && S_ISREG(info.st_mode)) {
+        apush(paths, xstrdup(start_scene));
+    }
     int count = acount(paths);
     char **sources = xmalloc((size_t)(count + 1) * sizeof *sources);
     for (int i = 0; i < count; i++) {

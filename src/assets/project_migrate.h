@@ -3,9 +3,16 @@
 
 #include <stddef.h>
 
-/* Upgrades the sources under `content` from project version `from` to
- * `from + 1`. Returns 0, or -1 with `error` set. */
-int chibi_project_migrate_content(const char *content, int from, char *error, size_t error_size);
+/* Upgrades the sources under `content`, and the `start_scene` path when it
+ * lies outside, from project version `from` to `from + 1`. Returns 0, or -1
+ * with `error` set. */
+int chibi_project_migrate_content(
+    const char *content,
+    const char *start_scene,
+    int from,
+    char *error,
+    size_t error_size
+);
 /* Version 11 starts a task for an unawaited call to a function that waits.
  * Given every version 10 source of a project, returns an owned array with an
  * owned copy of each source that gains `await` before the calls that blocked

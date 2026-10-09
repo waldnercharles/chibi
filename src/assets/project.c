@@ -309,9 +309,27 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
     return 0;
 }
 
+static char *scene_path(const char *root, const char *content, const char *scene)
+{
+    if (scene[0] == '/') {
+        return xstrdup(scene);
+    }
+    if (!strncmp(scene, "content/", strlen("content/"))) {
+        return join_path(root, scene);
+    }
+    return join_path(content, scene);
+}
+
 /* Runs each step from `from` and then records the new version. The manifest
  * is written last, so an interrupted upgrade reruns from the old version. */
-static int upgrade(const char *manifest, const char *content, int from, char *error, size_t error_size)
+static int upgrade(
+    const char *manifest,
+    const char *content,
+    const char *start_scene,
+    int from,
+    char *error,
+    size_t error_size
+)
 {
     char *text = read_file(manifest, error, error_size);
     if (!text) {
@@ -324,7 +342,7 @@ static int upgrade(const char *manifest, const char *content, int from, char *er
     av_source version = av_get_source(av_obj_get(av_doc_root(document), "version"));
     av_doc_free(document);
     for (int version = from; version < CHIBI_PROJECT_VERSION; version++) {
-        if (chibi_project_migrate_content(content, version, error, error_size)) {
+        if (chibi_project_migrate_content(content, start_scene, version, error, error_size)) {
             free(text);
             return -1;
         }
@@ -487,13 +505,18 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
                            : join_path(project->root, project->content);
     free(input);
     char *absolute_content = absolute_path(content_path);
+    char *start_scene = absolute_content && project->start_scene &&
+                                project->start_scene[0]
+                          ? scene_path(project->root, absolute_content, project->start_scene)
+                          : NULL;
     if (absolute_content && is_directory(absolute_content) &&
         version < CHIBI_PROJECT_VERSION &&
-        upgrade(manifest, absolute_content, version, error, error_size)) {
+        upgrade(manifest, absolute_content, start_scene, version, error, error_size)) {
         free(absolute_content);
         absolute_content = NULL;
         version = -1;
     }
+    free(start_scene);
     free(manifest);
     free(content_path);
     free(project->content);
@@ -537,14 +560,6 @@ char *chibi_project_scene_path(const chibi_project *project, const char *request
         return NULL;
     }
     const char *scene = requested && requested[0] ? requested : project->start_scene;
-    if (!scene || !scene[0]) {
-        return NULL;
-    }
-    if (scene[0] == '/') {
-        return xstrdup(scene);
-    }
-    if (!strncmp(scene, "content/", strlen("content/"))) {
-        return join_path(project->root, scene);
-    }
-    return join_path(project->content, scene);
+    return scene && scene[0] ? scene_path(project->root, project->content, scene)
+                             : NULL;
 }

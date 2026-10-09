@@ -2421,23 +2421,30 @@ TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors)
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/content", root);
     REQUIRE(!mkdir(path, 0700));
-    /* A start scene outside content/scenes migrates too. */
-    char scene[256];
-    snprintf(scene, sizeof scene, "%s/content/Start.kdl", root);
-    FILE *file = fopen(scene, "wb");
-    fputs(source, file);
-    fclose(file);
+    /* Scenes outside content/scenes migrate too, and so does a start scene
+     * outside the content. */
+    char scene[256], start[256];
+    snprintf(scene, sizeof scene, "%s/content/Level.kdl", root);
+    snprintf(start, sizeof start, "%s/Start.kdl", root);
+    const char *scenes[] = { scene, start };
+    for (int i = 0; i < 2; i++) {
+        FILE *file = fopen(scenes[i], "wb");
+        fputs(source, file);
+        fclose(file);
+    }
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
-    file = fopen(path, "wb");
-    fputs("version 14\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", file);
+    FILE *file = fopen(path, "wb");
+    fprintf(file, "version 14\ncontent \"content\"\nstart_scene \"%s\"\n", start);
     fclose(file);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
-    char text[1024];
-    file = fopen(scene, "rb");
-    text[fread(text, 1, sizeof text - 1, file)] = 0;
-    fclose(file);
-    REQUIRE(!strcmp(text, expected));
-    unlink(scene);
+    for (int i = 0; i < 2; i++) {
+        char text[1024];
+        file = fopen(scenes[i], "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        REQUIRE(!strcmp(text, expected));
+        unlink(scenes[i]);
+    }
     unlink(path);
     snprintf(path, sizeof path, "%s/content", root);
     rmdir(path);

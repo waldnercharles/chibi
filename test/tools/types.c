@@ -13,6 +13,11 @@
 #include "test/support/reflected_types.h"
 bool test_source_runtime_active();
 #endif
+#ifdef CHIBI_TEST_MATERIAL_GRAPHS
+/* Material graphs keep colors and ramp stops in shader-typed defaults. */
+bool test_material_graphs_active();
+type_catalog_pack test_material_graph_types();
+#endif
 
 typedef struct
 {
@@ -130,6 +135,11 @@ type_catalog_pack test_shader_parameters_types();
 #endif
 int type_catalog_pack_count()
 {
+#ifdef CHIBI_TEST_MATERIAL_GRAPHS
+    if (test_material_graphs_active()) {
+        return 3;
+    }
+#endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     if (test_source_runtime_active()) {
 #ifdef CHIBI_TEST_SOURCE_FEATURES
@@ -150,6 +160,11 @@ int type_catalog_pack_count()
 type_catalog_pack type_catalog_pack_at(int index)
 {
     assert(index >= 0 && index < type_catalog_pack_count());
+#ifdef CHIBI_TEST_MATERIAL_GRAPHS
+    if (index == 2 && test_material_graphs_active()) {
+        return test_material_graph_types();
+    }
+#endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     if (test_source_runtime_active()) {
 #ifdef CHIBI_TEST_SOURCE_FEATURES

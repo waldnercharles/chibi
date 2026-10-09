@@ -5,7 +5,7 @@
 #include "runtime/engine.h"
 
 typedef struct engine_viewport engine_viewport;
-typedef struct render_arena_camera render_arena_camera;
+typedef struct render_scene3d_camera render_scene3d_camera;
 typedef struct render_ui render_ui;
 typedef struct ui_world ui_world;
 typedef struct rml_input rml_input;
@@ -108,11 +108,9 @@ void engine_viewport_get_view(const engine_viewport *viewport, engine_viewport_v
 void engine_viewport_set_view(engine_viewport *viewport, const engine_viewport_view *view);
 
 void engine_viewport_get_camera(const engine_viewport *viewport, engine_viewport_camera *camera);
-/* The optional arena presentation camera is rebuilt from the current viewport
- * frame, so panning and zooming remain synchronized with picking. */
-void engine_viewport_set_arena_showcase(engine_viewport *viewport, float time);
-void engine_viewport_clear_arena_camera(engine_viewport *viewport);
-void engine_viewport_get_arena_camera(const engine_viewport *viewport, render_arena_camera *camera);
+/* The 3D camera is rebuilt from the current viewport frame, so panning and
+ * zooming remain synchronized with picking. */
+void engine_viewport_get_camera3d(const engine_viewport *viewport, render_scene3d_camera *camera);
 void engine_viewport_set_perspective(engine_viewport *viewport, bool perspective);
 bool engine_viewport_perspective(const engine_viewport *viewport);
 void engine_viewport_fit(engine_viewport *viewport, float min_x, float min_y, float max_x, float max_y);

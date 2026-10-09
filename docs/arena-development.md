@@ -327,7 +327,7 @@ ordinary lit Surface materials. Color channels share the existing packed linear
 material convention. Radius and elevation use project units; intensity controls
 peak scene-linear radiance. Unlit materials ignore point lights. Each view keeps
 at most 32 sources ranked by estimated camera influence, and reports entering or
-leaving that budget. Lights do not cast shadows.
+leaving that budget. Point lights do not cast shadows.
 
 The panel response is separate from physical lighting. Surface Influence carries
 Color, Strength, Radius and Linger on player/projectile/enemy prototypes.

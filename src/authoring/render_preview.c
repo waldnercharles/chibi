@@ -12,13 +12,13 @@ static void set_error(shader_error *error, const char *message)
     }
 }
 
-bool authoring_render_arena_preview(
-    render_arena *arena,
+bool authoring_render_scene3d_preview(
+    render_scene3d *scene3d,
     const behavior_asset *asset,
-    const render_arena_camera *camera,
+    const render_scene3d_camera *camera,
     const char *parameters_json,
     float time,
-    const render_arena_activity *activity
+    const render_scene3d_activity *activity
 )
 {
     shader_error error = { 0 };
@@ -31,11 +31,11 @@ bool authoring_render_arena_preview(
         );
     }
     if (!registered) {
-        render_arena_set_error(arena, error.message);
+        render_scene3d_set_error(scene3d, error.message);
         return false;
     }
-    bool drawn = render_arena_preview_material(
-        arena,
+    bool drawn = render_scene3d_preview_material(
+        scene3d,
         render_shader_find(asset->name),
         camera,
         parameters_json,
@@ -43,7 +43,7 @@ bool authoring_render_arena_preview(
         activity
     );
     if (!registered) {
-        render_arena_set_error(arena, error.message);
+        render_scene3d_set_error(scene3d, error.message);
     }
     return drawn;
 }

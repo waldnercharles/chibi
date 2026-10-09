@@ -1,6 +1,7 @@
 #pragma once
 #include "ecs/component_catalog.h"
 #include "execution/log.h"
+#include "runtime/behaviors/scene_flow.h"
 #include "runtime/engine.h"
 
 typedef struct game_world game_world;
@@ -37,6 +38,9 @@ typedef struct
  * and spawned entities, but leaves other borrowed-world entities alive.
  * On failure no field catalog ownership transfers. */
 game_world *game_world_new(const game_world_options *, char *error, size_t size);
+/* Whether game_world_new accepts this input map: at most INPUT_ACTION_MAX
+ * uniquely named actions, each with at least one known control. */
+bool game_world_actions_valid(const input_action *actions, int count);
 void game_world_free(game_world *);
 ecs_world *game_world_ecs(const game_world *);
 game_source_registry *game_world_sources(const game_world *);
@@ -44,6 +48,8 @@ game_entities *game_world_entities(const game_world *);
 engine *game_world_engine(const game_world *);
 game_materials *game_world_materials(const game_world *);
 material_fields *game_world_fields(const game_world *);
+/* Scene requests from scripts, which the host applies between frames. */
+game_scene_flow *game_world_scenes(const game_world *);
 
 /* Borrowed installed services; callbacks/context and service ownership remain
  * with the world. Valid until world_free. */

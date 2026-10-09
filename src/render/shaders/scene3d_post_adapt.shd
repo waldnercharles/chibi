@@ -1,0 +1,29 @@
+// Mean log2 luminance of the metered grid's lit taps, eased from the previous
+// frame's value. A frame with no lit taps meters as middle gray. Rate 1 snaps
+// to the current frame without reading the previous one. Slow easing moves
+// the value by less than one half-float step a frame, so it is stored as r + g:
+// r in steps of 1/64, exact in half floats below 32, and g the remainder.
+// The remainder's own steps still let the slowest accepted speed, 0.1, settle
+// within 0.02 EV of its target at 240 frames a second.
+layout(set = 2, binding = 1) uniform sampler2D previous;
+layout(set = 3, binding = 1) uniform shd_uniforms {
+    float rate;
+};
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    ivec2 size = textureSize(u_image, 0);
+    vec2 total = vec2(0);
+    for (int y = 0; y < size.y; y++) {
+        for (int x = 0; x < size.x; x++) {
+            total += texelFetch(u_image, ivec2(x, y), 0).rg;
+        }
+    }
+    float current = total.y > 0.0 ? total.x / total.y : log2(0.18);
+    if (rate < 1.0) {
+        vec4 stored = texelFetch(previous, ivec2(0), 0);
+        current = mix(stored.r + stored.g, current, rate);
+    }
+    float high = floor(current * 64.0) / 64.0;
+    return vec4(high, current - high, 0, 1);
+}

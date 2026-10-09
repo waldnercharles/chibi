@@ -559,6 +559,30 @@ static char *input_text(source_catalog *c, const char *path)
     }
     return read_source(c, path);
 }
+/* Each action's definition is its exact node name in the map, which
+ * input_map_read accepted. */
+static void input_definitions(source_catalog *c, const char *path, const char *text)
+{
+    av_doc *document = asset_text_read(text, NULL, 0);
+    assert(document);
+    const av_value *root = av_doc_root(document);
+    for (size_t i = 0; i < av_obj_size(root); i++) {
+        const char *name = own(c, av_get_str(av_obj_key_at(root, i)));
+        av_source at = av_get_source(av_obj_value_at(root, i));
+        assert(at.name_start < at.name_end && at.name_end != SIZE_MAX);
+        apush(
+            c->definitions,
+            ((source_catalog_definition){
+                .id = script_catalog_id("event", name),
+                .kind = SCRIPT_CAPABILITY_EVENT,
+                .name = name,
+                .path = path,
+                .text = text,
+                .range = text_range(text, (int)at.name_start, (int)at.name_end) })
+        );
+    }
+    av_doc_free(document);
+}
 static bool has_global(const source_catalog *c, const char *name)
 {
     for (int i = 0; i < c->view.global_count; i++) {
@@ -608,6 +632,7 @@ static void input_declarations(source_catalog *c)
         free(text);
         return;
     }
+    const char *owned_text = own(c, text);
     free(text);
     if (!acount(c->input)) {
         return;
@@ -686,6 +711,7 @@ static void input_declarations(source_catalog *c)
         .type = { .storage = PIN_STR, .nominal = map_type },
     };
     c->view.globals = globals;
+    input_definitions(c, own(c, path), owned_text);
 }
 static script_catalog_parameter *parameters(
     source_catalog *c,
@@ -1019,7 +1045,14 @@ static source_catalog *build(
                 }
             }
             if (!reference->id) {
-                error(c, reference->path, reference->range, "Unknown authored behavior or system attachment");
+                char message[192];
+                snprintf(
+                    message,
+                    sizeof message,
+                    "Unknown behavior or system '%s'",
+                    reference->name
+                );
+                error(c, reference->path, reference->range, message);
             }
             continue;
         }
@@ -1034,7 +1067,15 @@ static source_catalog *build(
             }
         }
         if (!reference->id) {
-            error(c, reference->path, reference->range, "Unknown authored prototype or event reference");
+            char message[192];
+            snprintf(
+                message,
+                sizeof message,
+                "Unknown %s '%s'",
+                kind == SCRIPT_CAPABILITY_EVENT ? "event" : "prototype",
+                reference->name
+            );
+            error(c, reference->path, reference->range, message);
         }
     }
     return c;

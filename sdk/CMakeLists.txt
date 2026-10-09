@@ -51,8 +51,11 @@ set(CHIBI_SDK_NEEDS_THREADS OFF)
 # Installed consumers add share/chibi/windows/chibi.rc themselves.
 function(chibi_windows_manifest target)
     if(WIN32)
-        target_sources(${target} PRIVATE
-            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/host/windows/chibi.rc")
+        set(windows "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/host/windows")
+        target_sources(${target} PRIVATE "${windows}/chibi.rc")
+        # The resource compiler reports no dependencies, so name the manifest.
+        set_source_files_properties("${windows}/chibi.rc" TARGET_DIRECTORY ${target}
+            PROPERTIES OBJECT_DEPENDS "${windows}/chibi.manifest")
     endif()
 endfunction()
 if(WIN32)

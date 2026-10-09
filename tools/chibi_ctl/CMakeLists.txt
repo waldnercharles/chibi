@@ -69,6 +69,8 @@ if(COMMAND chibi_windows_manifest)
 elseif(WIN32)
     enable_language(RC)
     target_sources(chibi_ctl PRIVATE "${Chibi_RESOURCE_DIR}/windows/chibi.rc")
+    set_source_files_properties("${Chibi_RESOURCE_DIR}/windows/chibi.rc"
+        PROPERTIES OBJECT_DEPENDS "${Chibi_RESOURCE_DIR}/windows/chibi.manifest")
 endif()
 foreach(package IN LISTS packages)
     target_link_libraries(chibi_ctl PRIVATE Chibi::${package})

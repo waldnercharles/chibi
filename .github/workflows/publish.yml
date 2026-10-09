@@ -34,6 +34,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: engine
     env:
       LIBCLANG_ROOT: /usr/lib/llvm-18
       NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
@@ -41,14 +44,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
+          path: engine
       - name: Check immutable release
         id: release
         run: |
-          gh api 'repos/{owner}/{repo}/releases?per_page=100' > releases.json
+          gh api 'repos/{owner}/{repo}/releases?per_page=100' > "$RUNNER_TEMP/engine-releases.json"
           python3 - <<'PY'
           import json
           import os
-          release = next((r for r in json.load(open('releases.json'))
+          from pathlib import Path
+          releases = json.loads((Path(os.environ['RUNNER_TEMP']) / 'engine-releases.json').read_text())
+          release = next((r for r in releases
                           if r['tag_name'] == os.environ['ENGINE_TAG']), None)
           required = {'chibi-export-linux-x64.tar.gz', 'chibi-web-sdk.tar.gz',
                       'chibi-sdk-linux-x64.tar.gz',
@@ -83,7 +89,7 @@ jobs:
           path: |
             ~/.cache/chibi-fetchcontent
             ~/.cache/chibi-dependency-packages
-          key: publish-deps-v1-ubuntu24-x64-clang18-${{ env.EMSDK_VERSION }}-${{ hashFiles('cmake/**', 'tools/dependency_package.py', 'tools/fetchcontent_cache.py') }}
+          key: publish-deps-v1-ubuntu24-x64-clang18-${{ env.EMSDK_VERSION }}-${{ hashFiles('engine/cmake/**', 'engine/tools/dependency_package.py', 'engine/tools/fetchcontent_cache.py') }}
           restore-keys: publish-deps-v1-ubuntu24-x64-clang18-${{ env.EMSDK_VERSION }}-
       - name: Restore compiler cache
         if: steps.release.outputs.complete != 'true'
@@ -93,26 +99,33 @@ jobs:
       - name: Build relocatable export tools and browser SDK
         if: steps.release.outputs.complete != 'true'
         run: |
+          test -z "$(git status --porcelain --untracked-files=normal)"
           make package-sdk package-web-sdk package-web-player \
             SDK_CMAKE_FLAGS='-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_ENABLE_CCACHE=ON' \
             WEB_SDK_CMAKE_FLAGS='-DCHIBI_ENABLE_CCACHE=ON' WEB_THREADS=0 JOBS=4
       - name: Assemble release archives
         if: steps.release.outputs.complete != 'true'
         run: |
-          mkdir -p release
-          tar -czf release/chibi-export-linux-x64.tar.gz -C dist sdk/bin/chibi sdk/share/chibi web-player
-          tar -czf release/chibi-sdk-linux-x64.tar.gz -C dist/sdk .
-          tar -czf release/chibi-web-sdk.tar.gz -C dist/web-sdk .
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          export RELEASE_DIR="$RUNNER_TEMP/engine-release"
+          mkdir -p "$RELEASE_DIR"
           python3 - <<'PY'
           import json
           import os
           from pathlib import Path
+          for sdk in ('sdk', 'web-sdk'):
+              source = json.loads(Path(f'dist/{sdk}/share/chibi/package.json').read_text())['source']
+              if source['dirty'] or source['revision'] != os.environ['GITHUB_SHA']:
+                  raise SystemExit(f'{sdk} package does not identify the clean candidate')
           record = {'format': 1, 'engine_sha': os.environ['GITHUB_SHA'],
                     'emsdk_version': os.environ['EMSDK_VERSION'],
                     'platform': 'ubuntu-24.04-x64', 'web_threads': False}
-          Path('release/build.json').write_text(json.dumps(record, indent=2) + '\n')
+          (Path(os.environ['RELEASE_DIR']) / 'build.json').write_text(json.dumps(record, indent=2) + '\n')
           PY
-          cd release
+          tar -czf "$RELEASE_DIR/chibi-export-linux-x64.tar.gz" -C dist sdk/bin/chibi sdk/share/chibi web-player
+          tar -czf "$RELEASE_DIR/chibi-sdk-linux-x64.tar.gz" -C dist/sdk .
+          tar -czf "$RELEASE_DIR/chibi-web-sdk.tar.gz" -C dist/web-sdk .
+          cd "$RELEASE_DIR"
           sha256sum chibi-export-linux-x64.tar.gz chibi-sdk-linux-x64.tar.gz chibi-web-sdk.tar.gz build.json > SHA256SUMS
           sha256sum --check SHA256SUMS
       - name: Publish complete release
@@ -131,5 +144,5 @@ jobs:
               --notes "Serial browser SDK and Linux export tools. Emscripten $EMSDK_VERSION. Verify SHA256SUMS before extraction."
           fi
           test "$(gh release view "$ENGINE_TAG" --json isDraft --jq .isDraft)" = true
-          gh release upload "$ENGINE_TAG" release/* --clobber
+          gh release upload "$ENGINE_TAG" "$RUNNER_TEMP/engine-release/"* --clobber
           gh release edit "$ENGINE_TAG" --draft=false --prerelease --latest=false

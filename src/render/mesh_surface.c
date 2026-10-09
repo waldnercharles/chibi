@@ -202,16 +202,13 @@ bool render_mesh_surface_build_with_bounds(
         }
         const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
         const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
-        const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
-        if (!position) {
-            position = global ? &global->position : NULL;
-        }
+        GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
         float scale = transform ? transform->scale : 1;
         CF_V3 rotation = transform ? (CF_V3){ transform->pitch,
                                               transform->yaw,
                                               transform->roll }
                                    : (CF_V3){ 0 };
-        float angle = global ? global->radians : 0;
+        float angle = pose.radians;
         CF_V3 dimensions = { shape->width, shape->height, shape->depth };
         CF_V3 center = { 0 };
         const GameShader *binding = GAME_GameShader_get_const(world, entity);
@@ -252,7 +249,7 @@ bool render_mesh_surface_build_with_bounds(
                               max[1] * .5f + min[1] * .5f,
                               max[2] * .5f + min[2] * .5f };
         }
-        if (!isfinite(position->x) || !isfinite(position->y) ||
+        if (!isfinite(pose.position.x) || !isfinite(pose.position.y) ||
             !isfinite(shape->elevation) || !isfinite(scale) || !isfinite(angle) ||
             !isfinite(rotation.x) || !isfinite(rotation.y) || !isfinite(rotation.z) ||
             !isfinite(dimensions.x) || !isfinite(dimensions.y) ||
@@ -268,7 +265,9 @@ bool render_mesh_surface_build_with_bounds(
         render_mesh_surface_part part = {
             .visual = { .part = { .primitive = GAME_PRIMITIVE_BOX, .dimensions = dimensions },
                         .frame = cf_m4_from_trs(
-                            (CF_V3){ position->x, shape->elevation, position->y },
+                            (CF_V3){ pose.position.x,
+                                     shape->elevation,
+                                     pose.position.y },
                             game_visual_rotation(angle, rotation),
                             (CF_V3){ scale, scale, scale }
                         ) }
@@ -309,20 +308,17 @@ bool render_mesh_surface_build_with_bounds(
             return false;
         }
         const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
-        const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
         const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
-        if (!position) {
-            position = global ? &global->position : NULL;
-        }
-        float angle = global ? global->radians : 0;
+        GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
+        float angle = pose.radians;
         float scale = transform ? transform->scale : 1;
         CF_V3 rotation = transform ? (CF_V3){ transform->pitch,
                                               transform->yaw,
                                               transform->roll }
                                    : (CF_V3){ 0 };
         if (!isfinite(
-                position->x + position->y + shape->elevation + angle + scale +
-                rotation.x + rotation.y + rotation.z + shape->width +
+                pose.position.x + pose.position.y + shape->elevation + angle +
+                scale + rotation.x + rotation.y + rotation.z + shape->width +
                 shape->height + shape->depth
             ) ||
             scale < 0 || shape->width <= 0 || shape->height <= 0 || shape->depth <= 0) {
@@ -339,7 +335,9 @@ bool render_mesh_surface_build_with_bounds(
                                                   shape->height,
                                                   shape->depth } },
                         .frame = cf_m4_from_trs(
-                            (CF_V3){ position->x, shape->elevation, position->y },
+                            (CF_V3){ pose.position.x,
+                                     shape->elevation,
+                                     pose.position.y },
                             game_visual_rotation(angle, rotation),
                             (CF_V3){ scale, scale, scale }
                         ) },

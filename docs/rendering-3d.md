@@ -71,12 +71,13 @@ has them. A scene without a valid rhythm clock draws with the beat at rest.
 64x64 app. It checks ambient, the directional light, the one-light limit,
 drawing without a rhythm clock, both tone maps, auto exposure's geometric
 mean, background rejection, easing, snapping and settings checks, and sun
-shadows: a box's shadow, no self-shadowing on lit faces, and a solid outside the
-view casting into it. It runs `test_tools` from the
+shadows: a box's shadow, no self-shadowing on lit faces, a solid the camera
+culls casting into the view (collected across workers), and the depth pass
+leaving earlier queued draws alone. It runs `test_tools` from the
 desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`. llvmpipe leaks
 112 bytes from its own worker threads, so LeakSanitizer hosts on llvmpipe need
 `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with Vulkan llvmpipe
-passed 11 cases and 56 assertions in 1.4 seconds on 2026-10-09.
+passed 12 cases and 58 assertions in 1.8 seconds on 2026-10-09.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

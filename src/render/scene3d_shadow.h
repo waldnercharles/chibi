@@ -10,10 +10,10 @@
 typedef struct render_scene3d_shadow render_scene3d_shadow;
 render_scene3d_shadow *render_scene3d_shadow_new();
 void render_scene3d_shadow_free(render_scene3d_shadow *shadow);
-/* Fits an orthographic light view to boxes, the unit cubes that built-in
- * meshes scale into the world. The first `receivers` boxes are in view and set
- * the area the map covers; the rest only cast into it. False when the camera
- * sees none of the receivers. */
+/* Fits an orthographic light view to boxes, unit cubes placed around solids
+ * in the world. The first `receivers` boxes are in view and set the area the
+ * map covers; the rest only cast into it. False when the camera sees none of
+ * the receivers. */
 bool render_scene3d_shadow_fit(
     render_scene3d_shadow *shadow,
     CF_V3 toward_light,

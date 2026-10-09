@@ -20,9 +20,6 @@ enum
     SHADOW_LAYER = INT_MIN / 2
 };
 
-/* Built-in meshes reach 2/3 of a unit from their center: the triangle's tip. */
-static const float mesh_extent = 2.0f / 3;
-
 struct render_scene3d_shadow
 {
     CF_Texture map;
@@ -105,9 +102,9 @@ static bool load_shader(render_scene3d_shadow *shadow, char *error, size_t size)
 
 static CF_V3 box_corner(CF_M4x4 box, int corner)
 {
-    CF_V3 unit = { corner & 1 ? mesh_extent : -mesh_extent,
-                   corner & 2 ? mesh_extent : -mesh_extent,
-                   corner & 4 ? mesh_extent : -mesh_extent };
+    CF_V3 unit = { corner & 1 ? .5f : -.5f,
+                   corner & 2 ? .5f : -.5f,
+                   corner & 4 ? .5f : -.5f };
     return cf_m4_transform_point(box, unit);
 }
 
@@ -193,11 +190,12 @@ static bool fit_area(
     if (!(size > 0) || min.x > max.x || min.y > max.y) {
         return false;
     }
-    float margin = size * MARGIN_TEXELS / SHADOW_SIZE;
-    size = exp2f(ceilf(log2f(size + 2 * margin) * 4) / 4);
+    /* Room for the margin on both sides and one texel lost to snapping. */
+    size *= (float)SHADOW_SIZE / (SHADOW_SIZE - 2 * MARGIN_TEXELS - 1);
+    size = exp2f(ceilf(log2f(size) * 4) / 4);
     shadow->texel = size / SHADOW_SIZE;
-    min.x = floorf((min.x - margin) / shadow->texel) * shadow->texel;
-    min.y = floorf((min.y - margin) / shadow->texel) * shadow->texel;
+    min.x = (floorf(min.x / shadow->texel) - MARGIN_TEXELS) * shadow->texel;
+    min.y = (floorf(min.y / shadow->texel) - MARGIN_TEXELS) * shadow->texel;
     shadow->area = (CF_Aabb){ min, { min.x + size, min.y + size } };
     return true;
 }
@@ -216,13 +214,14 @@ bool render_scene3d_shadow_fit(
     if (!fit_area(shadow, boxes, receivers, camera)) {
         return false;
     }
-    /* Depth spans every box over the area, so casters outside the view count. */
+    /* Depth runs from the box over the area nearest the sun, which may be
+     * outside the view, to the receiver farthest from it. */
     float low = FLT_MAX, high = -FLT_MAX;
     for (int i = 0; i < count; i++) {
         CF_V3 a, b;
         light_bounds(shadow, boxes[i], &a, &b);
         if (covers(shadow, a, b)) {
-            low = fminf(low, a.z);
+            low = i < receivers ? fminf(low, a.z) : low;
             high = fmaxf(high, b.z);
         }
     }

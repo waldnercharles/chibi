@@ -522,7 +522,7 @@ static void set_sun(render_scene3d *scene3d, const GameDirectionalLight *light)
     direction = cf_div_v3_f(direction, -length);
     scene3d->sun_direction = (CF_V4){ direction.x, direction.y, direction.z, 0 };
     scene3d->sun_color = radiance(light->color, light->intensity);
-    scene3d->sun_shadows = light->shadows && (light->color & 0xffffff00u);
+    scene3d->sun_shadows = light->shadows && light->color >> 8;
 }
 
 static void set_ambient(render_scene3d *scene3d, const GameEnvironment *environment)
@@ -580,12 +580,15 @@ static int compare_draws(const void *left, const void *right)
     return (a->row > b->row) - (a->row < b->row);
 }
 
+/* The unit cube around a solid's mesh; triangles reach 2/3 along x. */
 static CF_M4x4 shape_box(CF_M4x4 frame, const GameGeometry3D *shape)
 {
-    return cf_mul_m4(
-        frame,
-        cf_m4_scale((CF_V3){ shape->width, shape->height, shape->depth })
-    );
+    CF_V3 size = { shape->width, shape->height, shape->depth };
+    if (shape->primitive == GAME_PRIMITIVE_TRIANGLE ||
+        shape->primitive == GAME_PRIMITIVE_TRIANGLE_OUTLINE) {
+        size.x *= 4.0f / 3;
+    }
+    return cf_mul_m4(frame, cf_m4_scale(size));
 }
 
 /* Fits the sun's shadow map to the solids in view, then the casters outside it. */
@@ -609,14 +612,25 @@ static bool fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *cam
     CF_V3 toward = { scene3d->sun_direction.x,
                      scene3d->sun_direction.y,
                      scene3d->sun_direction.z };
-    return render_scene3d_shadow_fit(
-        scene3d->shadow,
-        toward,
-        scene3d->shadow_boxes,
-        acount(scene3d->shadow_boxes),
-        receivers,
-        camera
-    );
+    if (!render_scene3d_shadow_fit(
+            scene3d->shadow,
+            toward,
+            scene3d->shadow_boxes,
+            acount(scene3d->shadow_boxes),
+            receivers,
+            camera
+        )) {
+        return false;
+    }
+    /* Keep only the casters that reach the map. */
+    int kept = 0;
+    for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
+        if (render_scene3d_shadow_reaches(scene3d->shadow, scene3d->shadow_boxes[receivers + i])) {
+            scene3d->buffer.casters[kept++] = scene3d->buffer.casters[i];
+        }
+    }
+    asetlen(scene3d->buffer.casters, kept);
+    return true;
 }
 
 static void draw_caster(const render_scene3d *scene3d, CF_M4x4 frame, const GameGeometry3D *shape)
@@ -645,13 +659,9 @@ static bool draw_shadow(render_scene3d *scene3d)
         }
         draw_caster(scene3d, draw->frame, &draw->shape);
     }
-    const CF_M4x4 *boxes = scene3d->shadow_boxes + acount(scene3d->shadow_boxes) -
-                           acount(scene3d->buffer.casters);
     for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
         const scene3d_caster *caster = &scene3d->buffer.casters[i];
-        if (render_scene3d_shadow_reaches(scene3d->shadow, boxes[i])) {
-            draw_caster(scene3d, caster->frame, &caster->shape);
-        }
+        draw_caster(scene3d, caster->frame, &caster->shape);
     }
     render_scene3d_shadow_end(scene3d->shadow);
     return true;

@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 project(chibi LANGUAGES C CXX)
+# Windows executables embed their manifest, and link the C runtime
+# statically so exported games run without the Visual C++ redistributable.
+# Dependencies always build in Release, so every configuration links the
+# release runtime and shares one C runtime with them.
+if(WIN32)
+    enable_language(RC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # The C++ shims and dependencies use no modules or dependency scanner.
@@ -106,8 +114,7 @@ list(LENGTH LIBCLANG_RESOURCE_INCLUDE_DIRS LIBCLANG_RESOURCE_COUNT)
 if(LIBCLANG_RESOURCE_COUNT)
     list(GET LIBCLANG_RESOURCE_INCLUDE_DIRS 0 LIBCLANG_RESOURCE_INCLUDE_DIR)
 endif()
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
-   (NOT LIBCLANG_INCLUDE_DIR OR NOT LIBCLANG_LIBRARY))
+if(NOT CMAKE_CROSSCOMPILING AND (NOT LIBCLANG_INCLUDE_DIR OR NOT LIBCLANG_LIBRARY))
   message(FATAL_ERROR "libclang not found; set LIBCLANG_ROOT to an LLVM installation")
 endif()
 
@@ -183,7 +190,7 @@ endif()
 add_subdirectory(sdk)
 
 # Only reflection consumes libclang; runtime and compiler artifacts do not.
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if(NOT CMAKE_CROSSCOMPILING)
     add_executable(reflect ${CHIBI_REFLECT_SOURCES})
     target_include_directories(reflect PRIVATE "${LIBCLANG_INCLUDE_DIR}")
     include("${CMAKE_CURRENT_SOURCE_DIR}/tools/reflect/resource.cmake")
@@ -243,18 +250,25 @@ if(TARGET Chibi::project_preparation AND TARGET Chibi::render)
     add_subdirectory(tools/chibi_ctl)
 endif()
 
-if(CHIBI_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+# The C tests use POSIX processes and files directly.
+if(CHIBI_BUILD_TESTS AND NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if(TARGET Chibi::authoring)
         add_subdirectory(test/language)
     endif()
     add_subdirectory(test/tools)
-    add_executable(test_host test/host/main.c test/host/process.c test/host/state_file.c
-        src/host/process.c src/host/state_file.c)
+    add_executable(test_host test/host/main.c test/host/export.c test/host/process.c
+        test/host/state_file.c src/host/export.c src/host/process.c src/host/state_file.c
+        src/support/xalloc.c third_party/yyjson/yyjson.c)
     set(host_test_headers "${CMAKE_CURRENT_BINARY_DIR}/testing/host/include")
-    foreach(header process state_file)
+    foreach(header export process state_file)
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/host/${header}.h"
             "${host_test_headers}/host/${header}.h" COPYONLY)
     endforeach()
+    foreach(header array xalloc)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/support/${header}.h"
+            "${host_test_headers}/support/${header}.h" COPYONLY)
+    endforeach()
+    target_include_directories(test_host PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/third_party/pico_headers/pico_unit.h"
         "${host_test_headers}/third_party/pico_headers/pico_unit.h" COPYONLY)
     target_include_directories(test_host PRIVATE "${host_test_headers}")
@@ -272,19 +286,25 @@ if(CHIBI_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
             "-DCONCURRENT=$<TARGET_FILE:concurrent_runner>"
             -P "${CMAKE_SOURCE_DIR}/cmake/tests/generation.cmake"
         DEPENDS concurrent_runner VERBATIM)
-    add_custom_target(check-reflect
-        COMMAND ${CMAKE_COMMAND} "-DREFLECT=$<TARGET_FILE:reflect>"
-            "-DTEST_DIR=${CMAKE_BINARY_DIR}/tests/identity"
-            "-DCONCURRENT=$<TARGET_FILE:concurrent_runner>"
-            -P "${CMAKE_SOURCE_DIR}/cmake/tests/identity.cmake"
-        DEPENDS reflect concurrent_runner VERBATIM)
+    if(TARGET reflect)
+        add_custom_target(check-reflect
+            COMMAND ${CMAKE_COMMAND} "-DREFLECT=$<TARGET_FILE:reflect>"
+                "-DTEST_DIR=${CMAKE_BINARY_DIR}/tests/identity"
+                "-DCONCURRENT=$<TARGET_FILE:concurrent_runner>"
+                -P "${CMAKE_SOURCE_DIR}/cmake/tests/identity.cmake"
+            DEPENDS reflect concurrent_runner VERBATIM)
+    endif()
 endif()
 
-file(CREATE_LINK "${CMAKE_BINARY_DIR}/compile_commands.json"
-    "${CMAKE_SOURCE_DIR}/compile_commands.json" SYMBOLIC
-    RESULT CHIBI_COMPILE_COMMANDS_LINK_RESULT)
-if(NOT CHIBI_COMPILE_COMMANDS_LINK_RESULT STREQUAL "0" AND
-   (NOT IS_SYMLINK "${CMAKE_SOURCE_DIR}/compile_commands.json" OR
-    NOT EXISTS "${CMAKE_SOURCE_DIR}/compile_commands.json"))
-    message(FATAL_ERROR "Could not publish compile commands: ${CHIBI_COMPILE_COMMANDS_LINK_RESULT}")
+# Windows needs Developer Mode for symbolic links, so editors there read the
+# build tree's compile commands directly.
+if(NOT CMAKE_HOST_WIN32)
+    file(CREATE_LINK "${CMAKE_BINARY_DIR}/compile_commands.json"
+        "${CMAKE_SOURCE_DIR}/compile_commands.json" SYMBOLIC
+        RESULT CHIBI_COMPILE_COMMANDS_LINK_RESULT)
+    if(NOT CHIBI_COMPILE_COMMANDS_LINK_RESULT STREQUAL "0" AND
+       (NOT IS_SYMLINK "${CMAKE_SOURCE_DIR}/compile_commands.json" OR
+        NOT EXISTS "${CMAKE_SOURCE_DIR}/compile_commands.json"))
+        message(FATAL_ERROR "Could not publish compile commands: ${CHIBI_COMPILE_COMMANDS_LINK_RESULT}")
+    endif()
 endif()

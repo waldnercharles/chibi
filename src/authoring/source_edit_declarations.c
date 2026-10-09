@@ -141,9 +141,10 @@ bool source_edit_declarations(
                 free(quoted);
                 return fail(error, size, "Create a single expression within the 64 KiB limit");
             }
+            /* A named expression is a function, recomputed at each call. */
             size_t bytes = strlen(quoted) + strlen(r->expression) + 32;
             fragment = xmalloc(bytes);
-            snprintf(fragment, bytes, "value %s = %s;", quoted, r->expression);
+            snprintf(fragment, bytes, "function %s() { return %s }", quoted, r->expression);
         } else {
             size_t bytes = strlen(quoted) + 64;
             fragment = xmalloc(bytes);
@@ -171,8 +172,7 @@ bool source_edit_declarations(
         o->record < a->expression_count) {
         for (int i = 0; i < a->symbol_count; i++) {
             if (a->symbols[i].initializer == o->record &&
-                (a->symbols[i].kind == SCRIPT_LOCAL || a->symbols[i].kind == SCRIPT_LAZY ||
-                 a->symbols[i].kind == SCRIPT_ACTION ||
+                (a->symbols[i].kind == SCRIPT_LOCAL || a->symbols[i].kind == SCRIPT_ACTION ||
                  a->symbols[i].kind == SCRIPT_STATE)) {
                 index = i;
                 break;
@@ -264,12 +264,12 @@ bool source_edit_declarations(
         );
         while (!ts_node_is_null(node) &&
                strcmp(ts_node_type(node), "action_declaration") &&
-               strcmp(ts_node_type(node), "value_declaration")) {
+               strcmp(ts_node_type(node), "lazy_local_declaration")) {
             node = ts_node_parent(node);
         }
         if (ts_node_is_null(node)) {
             script_syntax_free(syntax);
-            return fail(error, size, "Only action and value declarations support disabled source syntax");
+            return fail(error, size, "Only action and local declarations support disabled source syntax");
         }
         TSNode first = ts_node_child(node, 0);
         bool disabled = !strcmp(ts_node_type(first), "disabled");

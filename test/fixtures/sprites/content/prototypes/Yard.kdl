@@ -1,0 +1,5 @@
+name "Yard"
+components {
+    GAME.GameAppearance color=0x24382aff height=180.0 width=320.0
+    (object)GAME.GameTransform
+}

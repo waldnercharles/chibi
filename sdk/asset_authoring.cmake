@@ -19,7 +19,8 @@ chibi_sdk_headers(chibi_asset_authoring PUBLIC
 target_link_libraries(chibi_asset_authoring PUBLIC
     chibi_prototype_document chibi_graph_model chibi_reference_index chibi_field_catalog
     PRIVATE chibi_authoring chibi_asset_text chibi_scene_document chibi_ui_document
-    chibi_graph_authoring chibi_graph_compilation chibi_native_types chibi_text_source)
+    chibi_graph_authoring chibi_graph_compilation chibi_native_types chibi_text_source
+    chibi_declared_components)
 
 add_library(chibi_model_authoring STATIC
     "${CHIBI_SDK_ROOT}/src/assets/model_source.c"

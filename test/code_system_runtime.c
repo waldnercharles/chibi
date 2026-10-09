@@ -215,9 +215,8 @@ static bool persistent_wait_membership(behavior_backend backend)
     fixture_free(&f);
     return true;
 }
-static bool host_spawn_resume(behavior_backend backend)
+static bool register_child(system_fixture *f)
 {
-    system_fixture f = fixture_new();
     char error[256];
     const game_scene_object object = { .name = "Child" };
     game_scene *child = game_scene_prepare(
@@ -232,9 +231,25 @@ static bool host_spawn_resume(behavior_backend backend)
         fprintf(stderr, "system prototype preparation: %s\n", error);
     }
     bool registered = child &&
-                      !game_entities_register_prepared(f.live->entities, "Child", child);
+                      !game_entities_register_prepared(f->live->entities, "Child", child);
     game_scene_free(child);
-    REQUIRE(registered);
+    return registered;
+}
+static int live_children(system_fixture *f)
+{
+    ecs_entity *children = NULL;
+    game_entities_copy_live(f->live->entities, &children);
+    int count = 0;
+    for (int i = 0; i < acount(children); i++) {
+        count += ecs_entity_is_alive(f->world, children[i]);
+    }
+    afree(children);
+    return count;
+}
+static bool host_spawn_resume(behavior_backend backend)
+{
+    system_fixture f = fixture_new();
+    REQUIRE(register_child(&f));
     ecs_entity owner = health(&f);
     REQUIRE(prepare(
         &f,
@@ -257,11 +272,39 @@ static bool host_spawn_resume(behavior_backend backend)
     REQUIRE(tick(&f, .3));
     REQUIRE(!instance(&f, owner));
     REQUIRE(game_entities_flush(f.live->entities) >= 0);
-    ecs_entity *children = NULL;
-    game_entities_copy_live(f.live->entities, &children);
-    int child_count = acount(children);
-    afree(children);
-    REQUIRE(child_count == 1);
+    REQUIRE(live_children(&f) == 1);
+    fixture_free(&f);
+    return true;
+}
+/* A spawn delivered inside an awaited function keeps initializing after that
+ * function returns, until the activation that called it finishes. */
+static bool nested_spawn_outlives_frame(behavior_backend backend)
+{
+    system_fixture f = fixture_new();
+    REQUIRE(register_child(&f));
+    REQUIRE(prepare(
+        &f,
+        "behavior Spawner {\n"
+        "    made := 0.0\n"
+        "    function Make() {\n"
+        "        await spawn(Child)\n"
+        "        made += 1\n"
+        "    }\n"
+        "    on Begin {\n"
+        "        await Make()\n"
+        "        made += 1\n"
+        "    }\n"
+        "}\n",
+        backend
+    ));
+    ecs_entity owner = ecs_world_create_entity(f.world);
+    REQUIRE(!ecs_world_apply_commands(f.world));
+    REQUIRE(!game_source_attach(f.live->sources, owner, "System", false, 0, 0));
+    REQUIRE(game_entities_flush(f.live->entities) >= 0);
+    REQUIRE(game_entities_flush_initializers(f.live->entities, 0) >= 0);
+    REQUIRE(state(&f, owner, "made") == 2);
+    REQUIRE(game_entities_flush(f.live->entities) >= 0);
+    REQUIRE(live_children(&f) == 1);
     fixture_free(&f);
     return true;
 }
@@ -471,6 +514,14 @@ TEST_CASE(source_system_host_spawn_resume)
     }
     return true;
 }
+TEST_CASE(source_behavior_nested_spawn_outlives_frame)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(nested_spawn_outlives_frame(backends[i]));
+    }
+    return true;
+}
 TEST_CASE(source_system_live_component_resume)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
@@ -615,6 +666,7 @@ void test_code_system_runtime()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_system_persistent_wait_membership);
     RUN_TEST_CASE(source_system_host_spawn_resume);
+    RUN_TEST_CASE(source_behavior_nested_spawn_outlives_frame);
     RUN_TEST_CASE(source_system_live_component_resume);
     RUN_TEST_CASE(source_system_optional_membership_roundtrip);
     RUN_TEST_CASE(source_system_reactive_checkpoint);

@@ -23,7 +23,7 @@ MANIFEST = Path('share/chibi/package.json')
 CORE_TARGETS = {'ui_document_values', 'text_search', 'image_catalog', 'support', 'types', 'ecs', 'execution_contract', 'execution', 'behavior_runtime', 'events',
                 'asset_values', 'value_document', 'capabilities', 'native_capabilities', 'native_prepared', 'core_capabilities', 'array_capabilities', 'field_capabilities', 'state_capabilities', 'selection_capabilities', 'set_capabilities', 'comparison_capabilities', 'conversion_capabilities', 'text_capabilities', 'fmt', 'host_native_catalog', 'scene_runtime', 'scheduling', 'fields', 'field_catalog', 'tasks', 'shader_runtime', 'model_runtime', 'ui_documents'}
 COMPILER_TARGETS = {'image_preparation', 'builtin_fonts', 'graph_catalog', 'studio_graph', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
-NATIVE_TARGETS = {'visual_catalog', 'json', 'native_types', 'native_bindings', 'spatial_runtime', 'entity_runtime', 'audio_runtime', 'rhythm_runtime', 'particle_runtime', 'save_runtime', 'ui_runtime', 'input_runtime', 'host_native_default', 'visibility_runtime', 'engine', 'player', 'visual_motion_runtime', 'material_runtime', 'physics_runtime', 'task_pool_runtime', 'box2d', 'box3d'}
+NATIVE_TARGETS = {'visual_catalog', 'json', 'native_types', 'declared_components', 'native_bindings', 'spatial_runtime', 'entity_runtime', 'audio_runtime', 'rhythm_runtime', 'particle_runtime', 'save_runtime', 'ui_runtime', 'input_runtime', 'host_native_default', 'visibility_runtime', 'engine', 'player', 'visual_motion_runtime', 'material_runtime', 'physics_runtime', 'task_pool_runtime', 'box2d', 'box3d'}
 VALUE_TARGETS = {'math', 'vector_capabilities', 'math_capabilities', 'arithmetic_capabilities', 'mesh_runtime', 'model_bake'}
 DESKTOP_TARGETS = {'builtin_fonts', 'platform', 'ui', 'render'}
 NATIVE_AUTHORING_TARGETS = {'shader_preparation', 'project_compilation', 'asset_authoring', 'model_authoring', 'scenario_document'}
@@ -288,9 +288,8 @@ def build_identity(build, cache):
             else:
                 key = 'external/' + path.name + '-' + checksum[:16]
             inputs[key] = checksum
-    for name, record in formats.items():
-        if (not isinstance(record, dict) or type(record.get('version')) is not int
-                or record['version'] < 1 or not isinstance(record.get('source'), str)
+    def owned(name, record):
+        if (not isinstance(record, dict) or not isinstance(record.get('source'), str)
                 or not isinstance(record.get('header'), str)
                 or not record['source'].startswith('src/')
                 or not record['header'].startswith('src/')):
@@ -303,6 +302,12 @@ def build_identity(build, cache):
         if source != record.get('sha256') or not copies or any(
                 checksum != record.get('header_sha256') for checksum in copies):
             raise ValueError(f'Configured artifact format differs from compiled ownership: {name}; reconfigure/rebuild first')
+    for name, record in formats.items():
+        owned(name, record)
+        if type(record.get('version')) is not int or record['version'] < 1:
+            raise ValueError(f'Configured artifact format is invalid: {name}')
+        if 'codec' in record:
+            owned(name, record['codec'])
     if set(executables) != allowed_products:
         raise ValueError(f'Built executables differ from product contract: {sorted(executables)}')
     return {'configured_engine': configured,

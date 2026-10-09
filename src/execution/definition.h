@@ -70,11 +70,14 @@ typedef struct
     uint64_t event_id, event_abi;
 } behavior_function_command;
 /* Both functions belong to the same immutable program generation. Result banks
- * use canonical Return input indices, including the unused EXEC slot. */
+ * use canonical Return input indices, including the unused EXEC slot. A task
+ * invocation starts the callee beside the caller; its only result is the
+ * task handle. */
 typedef struct
 {
     const behavior_function *function;
     int first, count, result_first, result_count;
+    bool task;
 } behavior_function_invocation;
 enum
 {

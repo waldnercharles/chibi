@@ -2630,6 +2630,14 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
             !unchanged && strstr(error, "disabled")
         );
     }
+    /* A comment in a result type does not end it. */
+    const char *tuple = "behavior L { n: double = 0\n"
+                        "    function Pair() { return 1 }\n"
+                        "    local pair: (a: double /* ) */) = Pair()\n"
+                        "    on Tick() { n = pair }\n}\n";
+    REQUIRE(!chibi_migrate_locals(tuple, &unchanged, error, sizeof error));
+    REQUIRE(unchanged && strstr(unchanged, "{ pair := Pair(); n = pair }"));
+    free(unchanged);
     /* Comments and line breaks may sit between a local's tokens. */
     const char *spaced[] = {
         "behavior L { n: double = 0; local /* note */ X = 1\n"

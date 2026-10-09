@@ -972,6 +972,11 @@ static char *strip_lazy(const char *source, const char *keyword_text, lazy **out
         if (*sign == ':' && *tuple == '(') {
             int depth = 0;
             do {
+                const char *skip = skip_literal(tuple);
+                if (skip != tuple) {
+                    tuple = skip;
+                    continue;
+                }
                 depth += (*tuple == '(') - (*tuple == ')');
                 tuple++;
             } while (depth && *tuple);

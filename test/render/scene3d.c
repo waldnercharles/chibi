@@ -51,22 +51,35 @@ static ecs_entity add(ecs_component_id component, const void *data)
     return entity;
 }
 
-static void add_box(unsigned color)
+static void add_solid(GameGeometry3D shape, unsigned color)
 {
-    ecs_entity box = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 0 });
-    GameGeometry3D shape = { GAME_PRIMITIVE_BOX, 2, 2, 2, 0 };
+    ecs_entity solid = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 0 });
     GameMaterial material = { .scene = color };
-    assert(ecs_world_record_add(world, box, GAME_COMPONENT_GameGeometry3D.id, &shape, 0) == ECS_OK);
     assert(
-        ecs_world_record_add(world, box, GAME_COMPONENT_GameMaterial.id, &material, 0) == ECS_OK
+        ecs_world_record_add(world, solid, GAME_COMPONENT_GameGeometry3D.id, &shape, 0) == ECS_OK
+    );
+    assert(
+        ecs_world_record_add(world, solid, GAME_COMPONENT_GameMaterial.id, &material, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
 }
 
-static void add_sun(unsigned color, CF_V3 direction)
+static void add_box(unsigned color)
+{
+    add_solid((GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 0 }, color);
+}
+
+/* A floor whose top face fills the whole view. */
+static void add_floor()
+{
+    add_solid((GameGeometry3D){ GAME_PRIMITIVE_BOX, 400, 400, .2f, -.1f }, 0xffffffffu);
+}
+
+static GameDirectionalLight *add_sun(unsigned color, CF_V3 direction)
 {
     GameDirectionalLight sun = { .color = color, .intensity = 3, .direction = direction };
-    add(GAME_COMPONENT_GameDirectionalLight.id, &sun);
+    ecs_entity entity = add(GAME_COMPONENT_GameDirectionalLight.id, &sun);
+    return GAME_GameDirectionalLight_get(world, entity);
 }
 
 /* The box's top face fills the image center; its front face is just below. */
@@ -80,11 +93,13 @@ static CF_Pixel front()
     return pixels[(SIDE / 2 + 10) * SIDE + SIDE / 2];
 }
 
-static bool render(const GameEnvironment *environment)
+static bool render_at(const GameEnvironment *environment, float time)
 {
     GameEnvironment settings = *environment;
     settings.bloom_strength = 0;
-    assert(render_scene3d_post_prepare(post, SIDE, SIDE, &settings));
+    if (!render_scene3d_post_prepare(post, SIDE, SIDE, &settings)) {
+        return false;
+    }
     CF_Canvas canvas = render_scene3d_post_target(post);
     cf_canvas_set_clear_color(canvas, (CF_Color){ 0, 0, 0, 1 });
     render_scene3d_camera camera = {
@@ -94,7 +109,7 @@ static bool render(const GameEnvironment *environment)
     cf_app_update(NULL);
     bool drawn = render_scene3d_draw(scene3d, world, particles, &camera, 0, NULL, &settings, (render_skip){ 0 });
     cf_render_to(canvas, true);
-    bool processed = render_scene3d_post_process(post);
+    bool processed = render_scene3d_post_process(post, time);
     cf_app_draw_onto_screen(false);
     if (!drawn || !processed) {
         return false;
@@ -108,6 +123,11 @@ static bool render(const GameEnvironment *environment)
     bool read = cf_readback_data(readback, pixels, bytes) == bytes;
     cf_destroy_readback(readback);
     return read;
+}
+
+static bool render(const GameEnvironment *environment)
+{
+    return render_at(environment, 0);
 }
 
 TEST_CASE(scene_draws_without_a_valid_rhythm_clock)
@@ -132,7 +152,8 @@ TEST_CASE(environment_ambient_lights_unlit_faces)
     REQUIRE(top().colors.r == 0 && front().colors.r == 0);
     environment.ambient_sky = 0x00ff00ffu;
     environment.ambient_ground = 0x00ff00ffu;
-    environment.ambient_intensity = 1;
+    environment.ambient_intensity = .5f;
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
     REQUIRE(render(&environment));
     REQUIRE(top().colors.g > 100 && top().colors.r == 0 && top().colors.b == 0);
     return true;
@@ -146,7 +167,10 @@ TEST_CASE(directional_light_shades_faces_it_faces)
     environment.ambient_intensity = 0;
     REQUIRE(render(&environment));
     CF_Pixel lit = top(), side = front();
-    REQUIRE(lit.colors.r > 150 && lit.colors.g == 0 && lit.colors.b == 0);
+    REQUIRE(
+        lit.colors.r > 150 && lit.colors.r > 2 * lit.colors.g &&
+        lit.colors.r > 2 * lit.colors.b
+    );
     REQUIRE(side.colors.r < lit.colors.r / 4);
     return true;
 }
@@ -162,6 +186,99 @@ TEST_CASE(scene_rejects_a_second_directional_light)
     return true;
 }
 
+TEST_CASE(neutral_tone_mapping_keeps_saturated_colors)
+{
+    add_box(0xffffffffu);
+    add_sun(0xff0000ffu, (CF_V3){ 0, -1, 0 })->intensity = 1;
+    GameEnvironment environment = game_environment_defaults();
+    environment.ambient_intensity = 0;
+    REQUIRE(render(&environment));
+    CF_Pixel agx = top();
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    REQUIRE(render(&environment));
+    CF_Pixel neutral = top();
+    REQUIRE(agx.colors.r > 0 && agx.colors.g > 0 && agx.colors.b > 0);
+    REQUIRE(neutral.colors.r > 100 && neutral.colors.g == 0 && neutral.colors.b == 0);
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL + 1;
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_post_error(post), "tone mapping"));
+    return true;
+}
+
+static int distance(CF_Pixel a, CF_Pixel b)
+{
+    return abs(a.colors.r - b.colors.r) + abs(a.colors.g - b.colors.g) +
+           abs(a.colors.b - b.colors.b);
+}
+
+TEST_CASE(auto_exposure_meters_the_frame_to_middle_gray)
+{
+    add_floor();
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
+    sun->intensity = .25f;
+    GameEnvironment environment = game_environment_defaults();
+    environment.ambient_intensity = 0;
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    REQUIRE(render(&environment));
+    CF_Pixel fixed_dim = top();
+    sun->intensity *= 8;
+    REQUIRE(render(&environment));
+    CF_Pixel fixed_bright = top();
+    REQUIRE(distance(fixed_dim, fixed_bright) > 60);
+
+    /* Zero speed adapts fully every frame, even while scene time stands still. */
+    environment.auto_exposure = true;
+    environment.adaptation_speed = 0;
+    REQUIRE(render(&environment));
+    CF_Pixel bright = top();
+    sun->intensity /= 8;
+    REQUIRE(render(&environment));
+    CF_Pixel dim = top();
+    REQUIRE(distance(dim, bright) <= 6);
+    /* sRGB of middle gray after Neutral's toe, 0.14, is about 105. */
+    REQUIRE(abs(dim.colors.g - 105) <= 10);
+    return true;
+}
+
+TEST_CASE(auto_exposure_ignores_an_empty_background)
+{
+    add_box(0xffffffffu);
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 })->intensity = .25f;
+    GameEnvironment environment = game_environment_defaults();
+    environment.ambient_intensity = 0;
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.auto_exposure = true;
+    REQUIRE(render(&environment));
+    /* Only the sunlit top face is metered, so it lands on middle gray. */
+    REQUIRE(abs(top().colors.g - 105) <= 10);
+    REQUIRE(pixels[0].colors.g == 0);
+    return true;
+}
+
+TEST_CASE(auto_exposure_adapts_over_scene_time)
+{
+    add_floor();
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
+    GameEnvironment environment = game_environment_defaults();
+    environment.ambient_intensity = 0;
+    environment.auto_exposure = true;
+    environment.adaptation_speed = 2;
+    REQUIRE(render_at(&environment, 1));
+    CF_Pixel settled = top();
+    sun->intensity *= 8;
+    REQUIRE(render_at(&environment, 1.1f));
+    CF_Pixel adapting = top();
+    REQUIRE(render_at(&environment, 20));
+    CF_Pixel adapted = top();
+    REQUIRE(adapting.colors.g > settled.colors.g + 30);
+    REQUIRE(distance(adapted, settled) <= 6);
+    /* Time running backward, as on a restart, snaps instead of easing. */
+    sun->intensity /= 8;
+    REQUIRE(render_at(&environment, 0));
+    REQUIRE(distance(top(), settled) <= 6);
+    return true;
+}
+
 void test_render_scene3d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -174,6 +291,10 @@ void test_render_scene3d()
     RUN_TEST_CASE(environment_ambient_lights_unlit_faces);
     RUN_TEST_CASE(directional_light_shades_faces_it_faces);
     RUN_TEST_CASE(scene_rejects_a_second_directional_light);
+    RUN_TEST_CASE(neutral_tone_mapping_keeps_saturated_colors);
+    RUN_TEST_CASE(auto_exposure_meters_the_frame_to_middle_gray);
+    RUN_TEST_CASE(auto_exposure_ignores_an_empty_background);
+    RUN_TEST_CASE(auto_exposure_adapts_over_scene_time);
     pu_clear_setup();
     cf_destroy_app();
 }

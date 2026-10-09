@@ -316,7 +316,7 @@ static bool scene3d_finish(app_scene_renderer *renderer, bool submitted)
     bool processed = false;
     if (submitted) {
         cf_render_to(render_scene3d_post_target(renderer->post), true);
-        processed = render_scene3d_post_process(renderer->post);
+        processed = render_scene3d_post_process(renderer->post, renderer->time);
         if (!processed) {
             snprintf(
                 renderer->error,

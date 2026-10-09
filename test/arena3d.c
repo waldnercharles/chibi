@@ -270,7 +270,7 @@ static bool render(ecs_world *world, const render_scene3d_camera *camera, CF_Pix
     bool ok = render_scene3d_draw(arena, world, particles, camera, 0, NULL, (render_skip){ 0 });
     geometry_work = render_scene3d_last_work(arena);
     cf_render_to(canvas, true);
-    ok &= render_scene3d_post_process(post);
+    ok &= render_scene3d_post_process(post, 0);
     cf_app_draw_onto_screen(false);
     ok &= read_pixels(render_scene3d_post_output(post), pixels);
     render_scene3d_free(arena);

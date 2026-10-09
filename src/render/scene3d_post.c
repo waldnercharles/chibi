@@ -16,7 +16,8 @@
 enum
 {
     LEVELS = 14,
-    SIDE_MAX = 16384
+    SIDE_MAX = 16384,
+    LUMINANCE_SIDE = 16
 };
 
 typedef struct
@@ -31,9 +32,21 @@ typedef struct
     int width, height, count;
 } post_targets;
 
+/* Auto exposure meters log luminance into a small grid, then eases a 1x1
+ * value toward its mean; the two 1x1 canvases alternate as previous and next. */
+typedef struct
+{
+    CF_Canvas luminance, adapted[2];
+    CF_Shader measure, adapt;
+    int latest;
+    bool valid;
+    float time;
+} post_exposure;
+
 struct render_scene3d_post
 {
     post_targets targets;
+    post_exposure exposure;
     CF_Canvas output, pending_output;
     CF_Shader downsample, blur, composite;
     GameEnvironment settings;
@@ -63,6 +76,13 @@ static void destroy_targets(post_targets *targets)
     }
 }
 
+static void destroy_shader(CF_Shader shader)
+{
+    if (shader.id) {
+        cf_destroy_shader(shader);
+    }
+}
+
 void render_scene3d_post_free(render_scene3d_post *post)
 {
     if (!post) {
@@ -71,15 +91,14 @@ void render_scene3d_post_free(render_scene3d_post *post)
     destroy_targets(&post->targets);
     destroy_canvas(post->output);
     destroy_canvas(post->pending_output);
-    if (post->downsample.id) {
-        cf_destroy_shader(post->downsample);
-    }
-    if (post->blur.id) {
-        cf_destroy_shader(post->blur);
-    }
-    if (post->composite.id) {
-        cf_destroy_shader(post->composite);
-    }
+    destroy_canvas(post->exposure.luminance);
+    destroy_canvas(post->exposure.adapted[0]);
+    destroy_canvas(post->exposure.adapted[1]);
+    destroy_shader(post->downsample);
+    destroy_shader(post->blur);
+    destroy_shader(post->composite);
+    destroy_shader(post->exposure.measure);
+    destroy_shader(post->exposure.adapt);
     free(post);
 }
 
@@ -167,6 +186,23 @@ static bool resize(render_scene3d_post *post, int width, int height)
     return true;
 }
 
+static bool prepare_exposure(render_scene3d_post *post)
+{
+    post_exposure *exposure = &post->exposure;
+    if (!exposure->luminance.id) {
+        exposure->luminance = make_canvas(LUMINANCE_SIDE, LUMINANCE_SIDE, true, false);
+        exposure->adapted[0] = make_canvas(1, 1, true, false);
+        exposure->adapted[1] = make_canvas(1, 1, true, false);
+    }
+    if (!exposure->luminance.id || !exposure->adapted[0].id ||
+        !exposure->adapted[1].id) {
+        snprintf(post->error, sizeof post->error, "Cannot allocate auto exposure targets.");
+        return false;
+    }
+    return load_shader(post, &exposure->measure, "scene3d_post_luminance.shd") &&
+           load_shader(post, &exposure->adapt, "scene3d_post_adapt.shd");
+}
+
 static bool in_range(float value, float low, float high)
 {
     return isfinite(value) && value >= low && value <= high;
@@ -180,13 +216,15 @@ bool render_scene3d_post_prepare(render_scene3d_post *post, int width, int heigh
     if (!in_range(settings->exposure, -16, 16) ||
         !in_range(settings->bloom_strength, 0, 8) ||
         !in_range(settings->bloom_threshold, 0, 65504) ||
-        !in_range(settings->bloom_radius, 0, 0.25f)) {
+        !in_range(settings->bloom_radius, 0, 0.25f) ||
+        !in_range(settings->adaptation_speed, 0, 100) ||
+        (unsigned)settings->tone_mapping > GAME_TONE_MAPPING_NEUTRAL) {
         snprintf(
             post->error,
             sizeof post->error,
             "Environment requires finite exposure [-16,16] EV, bloom strength "
-            "[0,8], "
-            "threshold [0,65504], and radius [0,0.25]."
+            "[0,8], threshold [0,65504], radius [0,0.25], adaptation speed "
+            "[0,100], and a known tone mapping."
         );
         return false;
     }
@@ -207,6 +245,7 @@ bool render_scene3d_post_prepare(render_scene3d_post *post, int width, int heigh
     if (!load_shader(post, &post->downsample, "scene3d_post_downsample.shd") ||
         !load_shader(post, &post->blur, "scene3d_post_blur.shd") ||
         !load_shader(post, &post->composite, "scene3d_post_composite.shd") ||
+        (settings->auto_exposure && !prepare_exposure(post)) ||
         !resize(post, width, height)) {
         return false;
     }
@@ -268,7 +307,28 @@ static void blur(render_scene3d_post *post, int index)
     cf_draw_pop_shader();
 }
 
-bool render_scene3d_post_process(render_scene3d_post *post)
+static void meter(render_scene3d_post *post, float time)
+{
+    post_exposure *exposure = &post->exposure;
+    float elapsed = time - exposure->time, speed = post->settings.adaptation_speed;
+    bool snap = !exposure->valid || elapsed < 0 || speed == 0;
+    exposure->time = time;
+    exposure->valid = true;
+    cf_draw_push_shader(exposure->measure);
+    cf_draw_set_uniform_v2("footprint", (CF_V2){ 1.0f / LUMINANCE_SIDE, 1.0f / LUMINANCE_SIDE });
+    pass(post->targets.scene, exposure->luminance);
+    cf_draw_pop_shader();
+    CF_Canvas previous = exposure->adapted[exposure->latest];
+    exposure->latest ^= 1;
+    cf_draw_push_shader(exposure->adapt);
+    cf_draw_set_texture("previous", cf_canvas_get_target(previous));
+    cf_draw_set_uniform_float("rate", snap ? 1 : 1 - expf(-elapsed * speed));
+    pass(exposure->luminance, exposure->adapted[exposure->latest]);
+    RENDER_DRAW_UNBIND_TEXTURES("previous");
+    cf_draw_pop_shader();
+}
+
+bool render_scene3d_post_process(render_scene3d_post *post, float time)
 {
     if (!post->ready) {
         return false;
@@ -296,6 +356,10 @@ bool render_scene3d_post_process(render_scene3d_post *post)
             blur(post, high);
         }
     }
+    post->exposure.valid &= settings.auto_exposure;
+    if (settings.auto_exposure) {
+        meter(post, time);
+    }
     CF_Canvas source = post->targets.scene;
     cf_draw_push_shader(post->composite);
     cf_draw_set_texture(
@@ -306,12 +370,20 @@ bool render_scene3d_post_process(render_scene3d_post *post)
         "bloom_high",
         cf_canvas_get_target(bloom ? post->targets.levels[high].blurred : source)
     );
+    cf_draw_set_texture(
+        "adapted",
+        cf_canvas_get_target(
+            settings.auto_exposure ? post->exposure.adapted[post->exposure.latest] : source
+        )
+    );
     cf_draw_set_uniform_float("exposure", settings.exposure);
     cf_draw_set_uniform_float("strength", bloom ? settings.bloom_strength : 0);
     cf_draw_set_uniform_float("level_mix", lod - low);
+    cf_draw_set_uniform_int("auto_exposure", settings.auto_exposure);
+    cf_draw_set_uniform_int("tone_mapping", settings.tone_mapping);
     cf_draw_push_filter(CF_DRAW_FILTER_NEAREST);
     pass(source, post->pending_output.id ? post->pending_output : post->output);
-    RENDER_DRAW_UNBIND_TEXTURES("bloom_low", "bloom_high");
+    RENDER_DRAW_UNBIND_TEXTURES("bloom_low", "bloom_high", "adapted");
     cf_draw_pop_filter();
     cf_draw_pop_shader();
 

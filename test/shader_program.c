@@ -211,7 +211,7 @@ static void arena_frame(
         authoring_render_scene3d_preview(arena, asset, camera, NULL, 0, &(render_scene3d_activity){ 0 })
     );
     cf_render_to(render_scene3d_post_target(post), true);
-    assert(render_scene3d_post_process(post));
+    assert(render_scene3d_post_process(post, 0));
     cf_app_draw_onto_screen(false);
     read_canvas_pixels(render_scene3d_post_output(post), pixels);
 }

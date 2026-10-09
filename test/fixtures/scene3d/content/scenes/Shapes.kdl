@@ -2,6 +2,7 @@ version 1
 name "Shapes"
 presentation "3d"
 (array)entities {
+    - name="Environment" prototype="Environment"
     - name="Sun" prototype="Sun"
     - {
         name "Box"

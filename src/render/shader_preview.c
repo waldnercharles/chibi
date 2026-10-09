@@ -216,7 +216,7 @@ bool render_shader_preview_draw(render_shader_preview *preview, float time, cons
             return false;
         }
         cf_render_to(render_scene3d_post_target(preview->post), true);
-        if (!render_scene3d_post_process(preview->post)) {
+        if (!render_scene3d_post_process(preview->post, 0)) {
             set_preview_error(preview, render_scene3d_post_error(preview->post));
             return false;
         }

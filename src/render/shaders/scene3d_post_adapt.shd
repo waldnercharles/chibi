@@ -1,0 +1,23 @@
+// Mean log2 luminance of the metered grid's lit taps, eased from the previous
+// frame's value. A frame with no lit taps meters as middle gray. Rate 1 snaps
+// to the current frame without reading the previous one.
+layout(set = 2, binding = 1) uniform sampler2D previous;
+layout(set = 3, binding = 1) uniform shd_uniforms {
+    float rate;
+};
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    ivec2 size = textureSize(u_image, 0);
+    vec2 total = vec2(0);
+    for (int y = 0; y < size.y; y++) {
+        for (int x = 0; x < size.x; x++) {
+            total += texelFetch(u_image, ivec2(x, y), 0).rg;
+        }
+    }
+    float current = total.y > 0.0 ? total.x / total.y : log2(0.18);
+    if (rate < 1.0) {
+        current = mix(texture(previous, vec2(0.5)).r, current, rate);
+    }
+    return vec4(current, 0, 0, 1);
+}

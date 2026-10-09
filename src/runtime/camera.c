@@ -6,8 +6,9 @@
 
 #include <math.h>
 
-/* The 3D lens of a camera, looking along its global -Z with +Y up when it has
- * a Transform3D. False for values the 3D path can't use. */
+/* The 3D lens of a camera, looking along its global -Z with +Y up from its
+ * offset position when it has a Transform3D. False for values the 3D path
+ * can't use. */
 static bool camera_lens(const GameCamera *camera, const GameGlobalTransform3D *pose, engine_viewport_lens *lens)
 {
     float closest = camera->near_clip, farthest = camera->far_clip;
@@ -22,7 +23,10 @@ static bool camera_lens(const GameCamera *camera, const GameGlobalTransform3D *p
     if (!pose) {
         return true;
     }
-    lens->eye = pose->position;
+    lens->eye = cf_add_v3(
+        pose->position,
+        (CF_V3){ camera->offset.x, 0, camera->offset.y }
+    );
     lens->forward = cf_neg_v3(pose->z_axis);
     lens->up = pose->y_axis;
     CF_V3 side = cf_cross_v3(lens->forward, lens->up);

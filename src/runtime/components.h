@@ -865,8 +865,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
     float roll;
     float target_elevation;
     /* 3D scenes. A camera with a Transform3D looks along its local -Z with +Y
-     * up; one without frames its span from a fixed overhead angle. Field of
-     * view is vertical, in radians, and zero picks 35 degrees. Set both clip
+     * up, from its position moved by the offset (gameplay y is world z); one
+     * without frames its span from a fixed overhead angle. Field of view is
+     * vertical, in radians, and zero picks 35 degrees. Set both clip
      * distances or neither; zero clips scale with the span's height. */
     float fov;
     float near_clip;

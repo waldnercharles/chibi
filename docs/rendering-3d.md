@@ -7,14 +7,16 @@ into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
 
 ## Camera
 
-A `GameCamera` with a `GameTransform3D` looks along its global -Z with +Y up,
-so its local +X points right in the image. One with only a `GameTransform`
-frames its span from 10 degrees off overhead. `fov` is the vertical field of
-view in radians, and zero picks 35 degrees. `near_clip` and `far_clip` are set
-together or both left at zero, which scales them with the span's height. The
-span's aspect shapes the image either way. Panning or zooming the viewport
-returns it to the overhead framing. Fog conceals view rays that never reach the
-ground ahead, such as those above the horizon, as it does ground past its grid.
+A `GameCamera` with a `GameTransform3D` looks along its global -Z with +Y up, so
+its local +X points right in the image. Its `offset` moves the eye across the
+ground (gameplay y is world z), as it moves an overhead camera's target. One
+with only a `GameTransform` frames its span from 10 degrees off overhead. `fov`
+is the vertical field of view in radians, and zero picks 35 degrees. `near_clip`
+and `far_clip` are set together or both left at zero, which scales them with the
+span's height (at least 0.01 and 200). The span's aspect shapes the image either
+way. Panning or zooming the viewport returns it to the overhead framing. Fog
+conceals view rays that never reach the ground ahead, such as those above the
+horizon, as it does ground past its grid.
 
 ## Lighting
 

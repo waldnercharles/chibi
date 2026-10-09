@@ -270,6 +270,13 @@ TEST_CASE(cameras_look_along_their_transform3d)
     REQUIRE(near_value(ahead.x, 0) && near_value(ahead.y, 0));
     REQUIRE(near_value(above.x, 0) && above.y > .1f);
     REQUIRE(right.x > .1f && near_value(right.y, 0));
+    GameCamera *authored = GAME_GameCamera_get(world, camera);
+    authored->offset = (CF_V2){ 1, 2 };
+    REQUIRE(look_through_camera() == 1);
+    CF_V3 offset = render_scene3d_project(&lens, (CF_V3){ 6, 0, 2 });
+    REQUIRE(near_value(offset.x, 0) && near_value(offset.y, 0));
+    authored->offset = (CF_V2){ 0 };
+    REQUIRE(look_through_camera() == 1);
     GameEnvironment environment = game_environment_defaults();
     REQUIRE(render(&environment));
     REQUIRE(center().colors.r > 2 * center().colors.b);
@@ -310,6 +317,23 @@ TEST_CASE(camera_field_of_view_and_clips_shape_the_projection)
     REQUIRE(look_through_camera() == 1);
     REQUIRE(near_value(render_scene3d_project(&lens, (CF_V3){ .5f, 0, 0 }).z, 0));
     REQUIRE(near_value(render_scene3d_project(&lens, (CF_V3){ 50, 0, 0 }).z, 1));
+    return true;
+}
+
+/* Default clips stay in order however close the framing distance gets. */
+TEST_CASE(default_clips_stay_ordered_for_close_framings)
+{
+    render_scene3d_camera close = render_scene3d_camera_make(0, 0, .0001f, .0001f);
+    CF_V3 ahead = { 0, -cosf(10 * CF_PI / 180), -sinf(10 * CF_PI / 180) };
+    float depth = render_scene3d_project(&close, ahead).z;
+    REQUIRE(depth > 0 && depth < 1);
+    ecs_entity camera = add_camera_3d(
+        cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, -CF_PI / 2)
+    );
+    GAME_GameCamera_get(world, camera)->fov = 3.1415f;
+    REQUIRE(look_through_camera() == 1);
+    depth = render_scene3d_project(&lens, (CF_V3){ 1, 0, 0 }).z;
+    REQUIRE(depth > 0 && depth < 1);
     return true;
 }
 
@@ -2069,6 +2093,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(scene_draws_without_a_valid_rhythm_clock);
     RUN_TEST_CASE(cameras_look_along_their_transform3d);
     RUN_TEST_CASE(camera_field_of_view_and_clips_shape_the_projection);
+    RUN_TEST_CASE(default_clips_stay_ordered_for_close_framings);
     RUN_TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use);
     RUN_TEST_CASE(navigating_drops_an_authored_lens);
     RUN_TEST_CASE(fog_conceals_rays_that_miss_the_ground);

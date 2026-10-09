@@ -100,7 +100,7 @@ static void parts_wire(execution_wire *w, prepared_parts *r)
     if (!w->error && (!r->key || !r->key[0] || strlen(r->key) > 65536)) {
         w->error = "Prepared part key is invalid";
     }
-    execution_wire_count(w, &r->parts.count, 8);
+    execution_wire_count(w, &r->parts.count, 1);
     if (!w->error && r->parts.count > SCENE3D_PART_LIMIT) {
         w->error = "Prepared part count exceeds limit";
     }
@@ -147,7 +147,7 @@ bool render_scene3d_parts_save(unsigned char **data, size_t *length, char *error
     execution_wire w = { 0 };
     parts_header(&w);
     int count = acount(records);
-    execution_wire_count(&w, &count, 8);
+    execution_wire_count(&w, &count, 1);
     if (count > 4096) {
         w.error = "Prepared part table exceeds count limit";
     }
@@ -186,7 +186,7 @@ render_parts_table *render_parts_prepare(
     render_parts_table *table = xcalloc(1, sizeof *table);
     parts_header(&w);
     int count = 0;
-    execution_wire_count(&w, &count, 8);
+    execution_wire_count(&w, &count, 1);
     if (!w.error && count > 4096) {
         w.error = "Prepared part table exceeds count limit";
     }

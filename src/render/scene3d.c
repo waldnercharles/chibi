@@ -736,12 +736,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         scene3d->buffer.pixels,
         acount(scene3d->buffer.pixels) * (int)sizeof *scene3d->buffer.pixels
     );
-    qsort(
-        scene3d->buffer.draws,
-        (size_t)acount(scene3d->buffer.draws),
-        sizeof *scene3d->buffer.draws,
-        compare_draws
-    );
+    asort(scene3d->buffer.draws, compare_draws);
     bool shadowed = fit_shadow(scene3d, camera);
     if (shadowed && !draw_shadow(scene3d)) {
         return false;

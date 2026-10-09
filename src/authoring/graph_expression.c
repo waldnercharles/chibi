@@ -178,9 +178,6 @@ void graph_expression_capture_name(const char *text, char *out, size_t size)
     code_lexer lexer;
     code_lex_init(&lexer, text);
     code_token first = code_lex_next(&lexer);
-    if (first.punctuation == '&') {
-        first = code_lex_next(&lexer);
-    }
     if (code_token_is(&lexer, first, "component")) {
         code_token open = code_lex_next(&lexer);
         code_token component = code_lex_next(&lexer);

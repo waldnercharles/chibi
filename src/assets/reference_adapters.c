@@ -736,6 +736,20 @@ void reference_index_add_prototype(reference_index *index, int source, const gam
         add_behavior(index, at, prototype->graphs[i]);
     }
     add_prototype_fields(index, at, prototype, NULL);
+    const game_scene_document *children = prototype->children;
+    for (int i = 0; children && i < acount(children->entities); i++) {
+        const game_scene_entity *child = &children->entities[i];
+        char *path = game_scene_document_entity_path(children, i);
+        reference_object object = {
+            .name = path,
+            .prototype = child->prototype,
+            .overrides = child->components,
+            .behaviors = (const char *const *)child->behaviors,
+            .behavior_count = acount(child->behaviors),
+        };
+        reference_index_add_object(index, source, &object);
+        free(path);
+    }
 }
 
 void reference_index_add_object(reference_index *index, int source, const reference_object *object)

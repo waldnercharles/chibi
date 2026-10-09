@@ -382,8 +382,30 @@ static void move_strings(game_prototype *dst, game_prototype *src)
     afree(src->strings);
 }
 
-static void merge_prototype(game_prototype *dst, game_prototype *src)
+/* An include's children come before the including prototype's own. */
+static bool merge_children(game_prototype *dst, game_prototype *src, char *error, size_t error_size)
 {
+    if (!src->children) {
+        return true;
+    }
+    if (!dst->children) {
+        dst->children = src->children;
+        src->children = NULL;
+    } else if (game_scene_document_take_entities(dst->children, src->children, error, error_size)) {
+        return false;
+    }
+    for (int i = 0; i < acount(src->child_prototypes); i++) {
+        apush(dst->child_prototypes, src->child_prototypes[i]);
+    }
+    aclear(src->child_prototypes);
+    return true;
+}
+
+static bool merge_prototype(game_prototype *dst, game_prototype *src, char *error, size_t error_size)
+{
+    if (!merge_children(dst, src, error, error_size)) {
+        return false;
+    }
     move_strings(dst, src);
     for (int i = 0; i < acount(src->components); i++) {
         game_prototype_component component = src->components[i];
@@ -400,6 +422,7 @@ static void merge_prototype(game_prototype *dst, game_prototype *src)
         apush(dst->graphs, src->graphs[i]);
     }
     aclear(src->graphs);
+    return true;
 }
 
 static game_prototype *load_document(
@@ -411,6 +434,32 @@ static game_prototype *load_document(
     size_t error_size
 );
 
+/* The prototype the resolver gives for `name`, loaded under `stack`; `role`
+ * says in errors what named it. */
+static game_prototype *load_named(
+    const game_prototype_registry *registry,
+    const char *role,
+    const char *name,
+    char *const *stack,
+    int stack_count,
+    char *error,
+    size_t error_size
+)
+{
+    const char *source = registry->include(name, registry->include_user);
+    if (!source) {
+        set_error(error, error_size, "%s %s is unavailable", role, name);
+        return NULL;
+    }
+    game_prototype *prototype = load_document(source, registry, stack, stack_count, error, error_size);
+    if (prototype && strcmp(prototype->name, name)) {
+        set_error(error, error_size, "%s %s is named %s", role, name, prototype->name);
+        game_prototype_free(prototype);
+        return NULL;
+    }
+    return prototype;
+}
+
 /* Folds the included prototype's content into `prototype`, before its own. */
 static bool merge_include(
     game_prototype *prototype,
@@ -421,23 +470,98 @@ static bool merge_include(
     size_t error_size
 )
 {
-    const game_prototype_registry *registry = prototype->registry;
-    const char *source = registry->include(name, registry->include_user);
-    if (!source) {
-        set_error(error, error_size, "prototype include %s is unavailable", name);
+    game_prototype *base = load_named(
+        prototype->registry,
+        "prototype include",
+        name,
+        stack,
+        stack_count,
+        error,
+        error_size
+    );
+    bool merged = base && merge_prototype(prototype, base, error, error_size);
+    game_prototype_free(base);
+    return merged;
+}
+
+/* What the child spawns as: its prototype with its components and behaviors,
+ * under its own name. */
+static game_prototype *resolve_child(
+    const game_prototype_registry *registry,
+    const game_scene_entity *child,
+    char *const *stack,
+    int stack_count,
+    char *error,
+    size_t error_size
+)
+{
+    game_prototype *prototype = load_named(
+        registry,
+        "child prototype",
+        child->prototype,
+        stack,
+        stack_count,
+        error,
+        error_size
+    );
+    if (!prototype) {
+        return NULL;
+    }
+    if (parse_components(prototype, &prototype->components, child->components, error, error_size)) {
+        game_prototype_free(prototype);
+        return NULL;
+    }
+    if (child->own_behaviors) {
+        aclear(prototype->graphs);
+        for (int i = 0; i < acount(child->behaviors); i++) {
+            apush(prototype->graphs, own_string(prototype, child->behaviors[i]));
+        }
+    }
+    free(prototype->name);
+    prototype->name = xstrdup(child->name);
+    return prototype;
+}
+
+/* Reads the document's children after any its includes gave it and, unless
+ * `authored`, resolves each. */
+static bool read_children(
+    game_prototype *prototype,
+    av_value *children,
+    bool authored,
+    char *const *stack,
+    int stack_count,
+    char *error,
+    size_t error_size
+)
+{
+    if (!authored && !prototype->registry->include) {
+        set_error(error, error_size, "prototype children need a resolver");
         return false;
     }
-    game_prototype *base = load_document(source, registry, stack, stack_count, error, error_size);
-    if (base && strcmp(base->name, name)) {
-        set_error(error, error_size, "prototype include %s is named %s", name, base->name);
-        game_prototype_free(base);
+    if (!prototype->children) {
+        prototype->children = game_scene_document_new(prototype->name);
+    }
+    int first = acount(prototype->children->entities);
+    char reason[256];
+    if (game_scene_document_read_entities(prototype->children, children, reason, sizeof reason)) {
+        set_error(error, error_size, "children of prototype %s: %s", prototype->name, reason);
         return false;
     }
-    if (base) {
-        merge_prototype(prototype, base);
-        game_prototype_free(base);
+    for (int i = first; !authored && i < acount(prototype->children->entities); i++) {
+        game_prototype *child = resolve_child(
+            prototype->registry,
+            &prototype->children->entities[i],
+            stack,
+            stack_count,
+            error,
+            error_size
+        );
+        if (!child) {
+            return false;
+        }
+        apush(prototype->child_prototypes, child);
     }
-    return base != NULL;
+    return true;
 }
 
 /* With `authored`, the included prototypes are named but not loaded, so the
@@ -530,6 +654,12 @@ static game_prototype *load_value_document(
             game_prototype_free(prototype);
             return NULL;
         }
+    }
+    av_value *children = av_obj_get(root, "children");
+    if (children &&
+        !read_children(prototype, children, authored, next_stack, stack_count + 1, error, error_size)) {
+        game_prototype_free(prototype);
+        return NULL;
     }
     av_value *graphs = av_obj_get(root, "behaviors");
     if (graphs) {
@@ -715,6 +845,11 @@ void game_prototype_free(game_prototype *prototype)
     afree(prototype->detached_components);
     afree(prototype->graphs);
     afree(prototype->includes);
+    game_scene_document_free(prototype->children);
+    for (int i = 0; i < acount(prototype->child_prototypes); i++) {
+        game_prototype_free(prototype->child_prototypes[i]);
+    }
+    afree(prototype->child_prototypes);
     game_prototype_owned_strings_free(prototype->strings);
     free(prototype->name);
     free(prototype->identity);
@@ -943,6 +1078,16 @@ av_value *game_prototype_to_value(const game_prototype *prototype)
         }
         av_obj_add_val(doc, root, "behaviors", array);
         afree(graphs);
+    }
+    if (prototype->children && acount(prototype->children->entities)) {
+        ecs_component_catalog catalog = { prototype->registry->components,
+                                          prototype->registry->component_count };
+        av_obj_add_val(
+            doc,
+            root,
+            "children",
+            game_scene_document_entities_value(doc, prototype->children, catalog)
+        );
     }
     av_value *result = av_value_copy(av_doc_root(doc));
     av_doc_free(doc);
@@ -1318,36 +1463,18 @@ int game_prototype_apply_components_value(
     return 0;
 }
 
-int game_prototype_spawn_components(
+/* Creates the prototype's entity under `parent`, unless that is zero, then its
+ * children under it, appending each entity with what it spawned as. */
+static int create_tree(
     const game_prototype *prototype,
     ecs_world *world,
-    ecs_entity *entity,
+    ecs_entity parent,
+    ecs_entity **entities,
+    const game_prototype ***prototypes,
     char *error,
     size_t error_size
 )
 {
-    game_prototype components = *prototype;
-    components.graphs = NULL;
-    return game_prototype_spawn(&components, world, NULL, entity, error, error_size);
-}
-
-int game_prototype_spawn(
-    const game_prototype *prototype,
-    ecs_world *world,
-    const game_prototype_spawn_hooks *hooks,
-    ecs_entity *out_entity,
-    char *error,
-    size_t error_size
-)
-{
-    if (!prototype || !world || !out_entity) {
-        set_error(error, error_size, "invalid prototype spawn arguments");
-        return ECS_ERR_ARGUMENT;
-    }
-    if (acount(prototype->graphs) && (!hooks || !hooks->attach)) {
-        set_error(error, error_size, "prototype has behavior graphs but no attach hook");
-        return ECS_ERR_ARGUMENT;
-    }
     if (game_prototype_register_tag(prototype, world) != ECS_OK) {
         set_error(error, error_size, "prototype identity tag could not be registered");
         return ECS_ERR_DUPLICATE;
@@ -1357,6 +1484,8 @@ int game_prototype_spawn(
         set_error(error, error_size, "prototype entity allocation failed");
         return ECS_ERR_CAPACITY;
     }
+    apush(*entities, entity);
+    apush(*prototypes, prototype);
     for (int i = 0; i < acount(prototype->components); i++) {
         const game_prototype_component *component = &prototype->components[i];
         if (ecs_world_record_add(world, entity, component->desc->id, NULL, (uint64_t)i + 1)) {
@@ -1366,18 +1495,22 @@ int game_prototype_spawn(
                 "component %s could not be added",
                 component->desc->name
             );
-            ecs_world_destroy_entity(world, entity);
             return ECS_ERR_COMPONENT;
         }
     }
-    if (ecs_world_record_add(world, entity, prototype->tag.desc.id, NULL, 0)) {
-        set_error(error, error_size, "prototype identity tag could not be added");
-        ecs_world_destroy_entity(world, entity);
+    if (ecs_world_record_add(world, entity, prototype->tag.desc.id, NULL, 0) ||
+        (parent.slot &&
+         ecs_world_record_add_pair(world, entity, ECS_CHILD_OF, parent, 0))) {
+        set_error(
+            error,
+            error_size,
+            "prototype %s could not be placed",
+            prototype->name
+        );
         return ECS_ERR_COMPONENT;
     }
     if (ecs_world_apply_commands(world) != ECS_OK) {
         set_error(error, error_size, "prototype component application failed");
-        ecs_world_destroy_entity(world, entity);
         return ECS_ERR_COMMAND;
     }
     for (int i = 0; i < acount(prototype->components); i++) {
@@ -1393,27 +1526,111 @@ int game_prototype_spawn(
                     component->desc->name,
                     component->desc->type->fields[field].name
                 );
-                ecs_world_destroy_entity(world, entity);
                 return ECS_ERR_COMPONENT;
             }
         }
     }
-    if (hooks && hooks->attach) {
-        for (int i = 0; i < acount(prototype->graphs); i++) {
-            if (hooks->attach(world, entity, prototype->graphs[i], hooks->attach_user)) {
+    int count = prototype->children ? acount(prototype->children->entities) : 0;
+    assert(acount(prototype->child_prototypes) == count);
+    int *children = NULL; /* where each child's entity lands in `entities` */
+    int result = ECS_OK;
+    for (int i = 0; !result && i < count; i++) {
+        int index = prototype->children->entities[i].parent;
+        apush(children, acount(*entities));
+        result = create_tree(
+            prototype->child_prototypes[i],
+            world,
+            index < 0 ? entity : (*entities)[children[index]],
+            entities,
+            prototypes,
+            error,
+            error_size
+        );
+    }
+    afree(children);
+    return result;
+}
+
+/* Every entity exists before any behavior attaches; without hooks none do. */
+static int spawn_tree(
+    const game_prototype *prototype,
+    ecs_world *world,
+    const game_prototype_spawn_hooks *hooks,
+    ecs_entity *out_entity,
+    char *error,
+    size_t error_size
+)
+{
+    ecs_entity *entities = NULL;
+    const game_prototype **prototypes = NULL;
+    int result = create_tree(prototype, world, (ecs_entity){ 0 }, &entities, &prototypes, error, error_size);
+    for (int i = 0; !result && hooks && i < acount(entities); i++) {
+        const game_prototype *spawned = prototypes[i];
+        for (int j = 0; !result && j < acount(spawned->graphs); j++) {
+            if (!hooks->attach) {
+                set_error(error, error_size, "prototype has behavior graphs but no attach hook");
+                result = ECS_ERR_ARGUMENT;
+            } else if (
+                hooks->attach(world, entities[i], spawned->graphs[j], hooks->attach_user)
+            ) {
                 set_error(
                     error,
                     error_size,
                     "behavior graph %s could not attach",
-                    prototype->graphs[i]
+                    spawned->graphs[j]
                 );
-                ecs_world_destroy_entity(world, entity);
-                return ECS_ERR_COMMAND;
+                result = ECS_ERR_COMMAND;
             }
         }
     }
-    *out_entity = entity;
-    return ECS_OK;
+    if (result) {
+        /* Children go first: one whose ChildOf was never applied would
+         * outlive its parent. */
+        ecs_world_clear_commands(world);
+        for (int i = acount(entities) - 1; i >= 0; i--) {
+            if (ecs_entity_is_alive(world, entities[i])) {
+                ecs_world_destroy_entity(world, entities[i]);
+            }
+        }
+    }
+    if (!result) {
+        *out_entity = entities[0];
+    }
+    afree(entities);
+    afree(prototypes);
+    return result;
+}
+
+int game_prototype_spawn_components(
+    const game_prototype *prototype,
+    ecs_world *world,
+    ecs_entity *entity,
+    char *error,
+    size_t error_size
+)
+{
+    if (!prototype || !world || !entity) {
+        set_error(error, error_size, "invalid prototype spawn arguments");
+        return ECS_ERR_ARGUMENT;
+    }
+    return spawn_tree(prototype, world, NULL, entity, error, error_size);
+}
+
+int game_prototype_spawn(
+    const game_prototype *prototype,
+    ecs_world *world,
+    const game_prototype_spawn_hooks *hooks,
+    ecs_entity *out_entity,
+    char *error,
+    size_t error_size
+)
+{
+    if (!prototype || !world || !out_entity) {
+        set_error(error, error_size, "invalid prototype spawn arguments");
+        return ECS_ERR_ARGUMENT;
+    }
+    static const game_prototype_spawn_hooks none = { 0 };
+    return spawn_tree(prototype, world, hooks ? hooks : &none, out_entity, error, error_size);
 }
 
 int game_prototype_read_field(

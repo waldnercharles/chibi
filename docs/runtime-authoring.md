@@ -113,6 +113,29 @@ be unique among its siblings and cannot contain `.`; a path such as
 }
 ```
 
+A prototype lists `children` in the same shape, and each instance of it,
+whether placed in a scene or spawned, gets the whole tree. A prototype that
+includes another gets the included prototype's children before its own. A
+child cannot use the prototype it belongs to, directly or through its
+children. Studio cannot load a prototype with children yet, as with
+includes, and snapshots name only the scene's own entities.
+
+```kdl
+name "Ship"
+components {
+    GameTransform x=0.0 y=0.0
+}
+(array)children {
+    - {
+        name "Turret"
+        prototype "Turret"
+        components {
+            GameTransform x=0.0 y=-12.0
+        }
+    }
+}
+```
+
 ## Edit and verify
 
 1. Read the existing asset and its dependencies. Use the shared SDK's reflected

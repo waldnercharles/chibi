@@ -213,6 +213,15 @@ int game_scene_object_parent(const game_scene *scene, int index)
     assert(index >= 0 && index < scene->spec.object_count);
     return scene->spec.parents[index];
 }
+bool game_scene_is_tree(const game_scene *scene)
+{
+    for (int i = 1; i < scene->spec.object_count; i++) {
+        if (scene->spec.parents[i] < 0) {
+            return false;
+        }
+    }
+    return scene->spec.object_count > 0;
+}
 size_t game_scene_storage_bytes(const game_scene *scene)
 {
     size_t capacity = arena_storage_bytes(&scene->storage);
@@ -420,11 +429,11 @@ game_scene_instance *game_scene_instantiate_components(
 {
     return instantiate(scene, world, NULL, false, error, size);
 }
-ecs_entity game_scene_instance_take_entity(game_scene_instance *instance)
+ecs_entity *game_scene_instance_take_entities(game_scene_instance *instance)
 {
-    assert(instance && !instance->sources && acount(instance->entities) == 1);
-    ecs_entity entity = instance->entities[0];
-    aclear(instance->entities);
+    assert(instance && !instance->sources && game_scene_is_tree(instance->scene));
+    ecs_entity *entities = instance->entities;
+    instance->entities = NULL;
     game_scene_instance_free(instance);
-    return entity;
+    return entities;
 }

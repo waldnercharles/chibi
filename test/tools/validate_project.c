@@ -856,14 +856,16 @@ TEST_CASE(scenes_run_under_their_own_name)
     return true;
 }
 
-/* The x of the GlobalTransform2D on the snapshot entity named `name`. */
+/* The x of the GlobalTransform2D on the snapshot entity named `name`, or on
+ * the first unnamed one when `name` is NULL. */
 static double global_x(const char *name)
 {
     yyjson_val *entity, *component;
     size_t i, count, j, components;
     yyjson_arr_foreach(result("entities"), i, count, entity)
     {
-        if (!reads(yyjson_get_str(yyjson_obj_get(entity, "name")), name)) {
+        const char *named = yyjson_get_str(yyjson_obj_get(entity, "name"));
+        if (name ? !reads(named, name) : named != NULL) {
             continue;
         }
         yyjson_arr_foreach(yyjson_obj_get(entity, "components"), j, components, component)
@@ -916,6 +918,55 @@ TEST_CASE(scene_children_are_placed_by_their_parent)
         "(array)children { - name=\"Turret\" prototype=\"Hull\"; - "
         "name=\"Turret\" prototype=\"Hull\"; }; }\n}\n"
     );
+    REQUIRE(validate() != 0);
+    return true;
+}
+
+/* A prototype's children come with each instance of it, placed by it. */
+TEST_CASE(prototype_children_come_with_their_instance)
+{
+    char folder[256], ship[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    GameTransform x=0 y=0\n}\n");
+    write_file(
+        "game/content/prototypes/Ship.kdl",
+        "name \"Ship\"\ncomponents { GameTransform x=0 y=0; }\n"
+        "(array)children { - name=\"Gun\" prototype=\"Hull\" { components { "
+        "GameTransform x=4 y=0; }; }; }\n"
+    );
+    write_file(
+        "game/content/scenes/Start.kdl",
+        "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Flagship\" "
+        "prototype=\"Ship\" { components { GameTransform x=100 y=0; }; }\n}\n"
+    );
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    REQUIRE(format(NULL) == 0 && format("--check") == 0);
+    path(ship, sizeof ship, "game/content/prototypes/Ship.kdl");
+    char *text = tool_read(ship);
+    bool nested = text &&
+                  strstr(text, "(array)children {\n    - {\n        name \"Gun\"");
+    free(text);
+    REQUIRE(nested);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"runtime_snapshot\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
+        0
+    );
+    /* Snapshots name only the scene's own objects. */
+    REQUIRE(yyjson_arr_size(result("entities")) == 2);
+    REQUIRE(global_x("Flagship") == 100 && global_x(NULL) == 104);
+    /* A child is an edge to the prototype it uses. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"asset_dependencies\",\"kind\":\"prototype\",\"name\":\"Ship\"}") ==
+        0
+    );
+    yyjson_val *edges = result("edges");
+    yyjson_val *to = yyjson_obj_get(yyjson_arr_get_first(edges), "to");
+    REQUIRE(
+        yyjson_arr_size(edges) == 1 &&
+        reads(yyjson_get_str(yyjson_obj_get(to, "name")), "Hull")
+    );
+    write_file("game/content/prototypes/Ship.kdl", "name \"Ship\"\n(array)children { - name=\"Again\" prototype=\"Ship\"; }\n");
     REQUIRE(validate() != 0);
     return true;
 }
@@ -988,6 +1039,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(manifest_content_folder_is_used);
     RUN_TEST_CASE(scenes_run_under_their_own_name);
     RUN_TEST_CASE(scene_children_are_placed_by_their_parent);
+    RUN_TEST_CASE(prototype_children_come_with_their_instance);
     RUN_TEST_CASE(scenarios_hold_input_actions);
     pu_clear_setup();
 }

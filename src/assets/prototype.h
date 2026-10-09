@@ -1,6 +1,7 @@
 #ifndef CHIBI_GAME_PROTOTYPE_H
 #define CHIBI_GAME_PROTOTYPE_H
 
+#include "assets/scene_document.h"
 #include "ecs/ecs.h"
 #include "support/asset_value.h"
 
@@ -69,6 +70,13 @@ typedef struct game_prototype
     game_prototype_component *detached_components;
     char **graphs;
     char **includes; /* the prototypes its document includes, in order */
+    /* Its children, nested in the scene entity shape: the document's roots
+     * are this prototype's direct children. NULL when it has none. */
+    game_scene_document *children;
+    /* Loaded with an include resolver, each of `children`'s entities as it
+     * spawns: its prototype with the child's components and behaviors, named
+     * as the child. Empty for an authored load. */
+    struct game_prototype **child_prototypes;
     char **strings;
 } game_prototype;
 
@@ -84,7 +92,8 @@ game_prototype *game_prototype_load(
     size_t error_size
 );
 /* Only what the document itself authors: its includes are named in
- * `includes` but not loaded, so no resolver is needed. For indexing a
+ * `includes`, and its children's prototypes in `children`, but neither is
+ * loaded, so no resolver is needed. For indexing a
  * prototype's direct references; its components are not what it spawns. */
 game_prototype *game_prototype_load_authored(
     const char *text,

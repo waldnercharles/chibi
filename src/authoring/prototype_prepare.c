@@ -71,7 +71,75 @@ bool authoring_prototype_resources(const game_prototype *prototype, char *error,
             }
         }
     }
+    for (int i = 0; i < acount(prototype->child_prototypes); i++) {
+        if (!authoring_prototype_resources(prototype->child_prototypes[i], error, size)) {
+            return false;
+        }
+    }
     return true;
+}
+
+static const unsigned char tag = 1;
+
+void authoring_objects_add(
+    authoring_objects *objects,
+    const game_prototype *prototype,
+    const char *name,
+    int parent
+)
+{
+    game_scene_component *components = NULL;
+    for (int i = 0; i < acount(prototype->components); i++) {
+        const game_prototype_component *component = &prototype->components[i];
+        apush(components, ((game_scene_component){ component->desc, component->data }));
+    }
+    apush(components, ((game_scene_component){ game_prototype_tag_desc(prototype), &tag }));
+    apush(objects->components, components);
+    apush(objects->parents, parent);
+    apush(
+        objects->objects,
+        ((game_scene_object){
+            .name = name,
+            .components = components,
+            .component_count = acount(components),
+            .behaviors = (const char *const *)prototype->graphs,
+            .behavior_count = acount(prototype->graphs),
+        })
+    );
+}
+
+void authoring_objects_add_children(authoring_objects *objects, const game_prototype *prototype, int index)
+{
+    const game_scene_document *children = prototype->children;
+    int *added = NULL; /* where each child lands in `objects` */
+    for (int i = 0; children && i < acount(children->entities); i++) {
+        int parent = children->entities[i].parent;
+        const game_prototype *child = prototype->child_prototypes[i];
+        apush(added, acount(objects->objects));
+        authoring_objects_add(objects, child, child->name, parent < 0 ? index : added[parent]);
+        authoring_objects_add_children(objects, child, alast(added));
+    }
+    afree(added);
+}
+
+game_scene *authoring_objects_prepare(
+    authoring_objects *objects,
+    game_scene_spec spec,
+    char *error,
+    size_t size
+)
+{
+    spec.objects = objects->objects;
+    spec.object_count = acount(objects->objects);
+    spec.parents = objects->parents;
+    game_scene *scene = game_scene_prepare(&spec, error, size);
+    for (int i = 0; i < acount(objects->components); i++) {
+        afree(objects->components[i]);
+    }
+    afree(objects->components);
+    afree(objects->parents);
+    afree(objects->objects);
+    return scene;
 }
 
 game_scene *authoring_prototype_prepare(const game_prototype *prototype, char *error, size_t size)
@@ -80,27 +148,10 @@ game_scene *authoring_prototype_prepare(const game_prototype *prototype, char *e
     if (!authoring_prototype_resources(prototype, error, size)) {
         return NULL;
     }
-    game_scene_component *components = NULL;
-    for (int i = 0; i < acount(prototype->components); i++) {
-        const game_prototype_component *component = &prototype->components[i];
-        apush(components, ((game_scene_component){ component->desc, component->data }));
-    }
-    unsigned char tag = 1;
-    apush(components, ((game_scene_component){ game_prototype_tag_desc(prototype), &tag }));
-    game_scene_object object = {
-        .name = prototype->name,
-        .components = components,
-        .component_count = acount(components),
-        .behaviors = (const char *const *)prototype->graphs,
-        .behavior_count = acount(prototype->graphs),
-    };
-    game_scene_spec spec = {
-        .name = prototype->name,
-        .physics = game_physics_defaults(),
-        .objects = &object,
-        .object_count = 1,
-    };
-    game_scene *prepared = game_scene_prepare(&spec, error, size);
-    afree(components);
-    return prepared;
+    authoring_objects objects = { 0 };
+    authoring_objects_add(&objects, prototype, prototype->name, -1);
+    authoring_objects_add_children(&objects, prototype, 0);
+    game_scene_spec spec = { .name = prototype->name,
+                             .physics = game_physics_defaults() };
+    return authoring_objects_prepare(&objects, spec, error, size);
 }

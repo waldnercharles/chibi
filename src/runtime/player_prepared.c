@@ -254,7 +254,7 @@ bool game_player_prepared_write(
     for (int i = 0; i < prototypes && !wire.error; i++) {
         const game_player_prototype *p = &spec->prototypes[i];
         const char *name = p->name;
-        if (!name || !name[0] || !p->scene || game_scene_object_count(p->scene) != 1) {
+        if (!name || !name[0] || !p->scene || !game_scene_is_tree(p->scene)) {
             wire.error = "Prepared player prototype record is incomplete";
             break;
         }

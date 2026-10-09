@@ -2684,6 +2684,12 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
         )
     );
     free(unchanged);
+    /* A system's component parameter is storage too. */
+    const char *system = "system S(position: Position) { local p = position; "
+                         "p.x = 1 }\n";
+    REQUIRE(!chibi_migrate_locals(system, &unchanged, error, sizeof error));
+    REQUIRE(unchanged && strstr(unchanged, "{ position.x = 1 }"));
+    free(unchanged);
     /* `local.X` names the root local past a nearer `X`. */
     const char *qualified = "behavior L { n: double = 0\n"
                             "    local X = n + 1\n"

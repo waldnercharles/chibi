@@ -998,7 +998,7 @@ static bool scope_node(TSNode node)
     return is(node, "declaration_body") || is(node, "system_body") ||
            is(node, "callable_body") || is(node, "block") ||
            is(node, "function_declaration") || is(node, "macro_declaration") ||
-           is(node, "handler");
+           is(node, "handler") || is(node, "system");
 }
 /* The lazy declaration directly in `scope` named like `name`, if any. */
 static lazy *lazy_in(const char *text, lazy *all, TSNode scope, TSNode name)

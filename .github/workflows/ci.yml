@@ -62,6 +62,9 @@ jobs:
           key: native-deps-${{ runner.os }}-clang18-${{ steps.deps.outputs.key }}
       - name: Build chibi_ctl and the test drivers (ASan and UBSan)
         run: make test-build LIBCLANG_ROOT=/usr/lib/llvm-18
+      # The only engine build on fork pull requests, which skip the Studio job.
+      - name: Build chibi, chibi-compile and chibi-player
+        run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Native selectors (one 60-second deadline)
         run: make test-native LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Language selectors (one 60-second deadline)

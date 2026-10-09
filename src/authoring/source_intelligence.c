@@ -493,8 +493,7 @@ static const script_symbol *visible_symbol(const script_analysis *a, int offset,
         for (int i = 0; i < a->symbol_count; i++) {
             const script_symbol *s = &a->symbols[i];
             if (s->scope == scope && !strcmp(s->name, name) &&
-                !((s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_LAZY) &&
-                  s->declaration.start >= offset)) {
+                !(s->kind == SCRIPT_LOCAL && s->declaration.start >= offset)) {
                 return s;
             }
         }
@@ -931,8 +930,7 @@ void authoring_source_complete(
                 if (s->scope != scope || visible_symbol(a, offset, s->name) != s) {
                     continue;
                 }
-                if ((s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_LAZY) &&
-                    s->declaration.start >= offset) {
+                if (s->kind == SCRIPT_LOCAL && s->declaration.start >= offset) {
                     continue;
                 }
                 if (!compatible(catalog, expected, s->type)) {

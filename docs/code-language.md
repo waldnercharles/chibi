@@ -192,7 +192,7 @@ Capturing a shared action instance is rejected because later invocations could
 replace its output. Scopes with explicit labels cannot declare awaited results,
 because a jump could bypass their initialization. An ordinary block declaration
 such as `x := calculation;` evaluates once at that execution point using a native
-Snapshot node. Later reads use the captured value; a root-level `value` or `local`
+Snapshot node. Later reads use the captured value; a root-level `local`
 remains a lazy computation.
 
 ### Tasks
@@ -259,19 +259,17 @@ arguments. Explicit types are needed for polymorphic values that reflection
 cannot infer. Multiple results use named projections, such as
 `nearest.Entity`. No result is selected by guessing the first output.
 
-A lazy value names a computation and retains native dependency semantics:
+A root-level `local` names a computation that each activation evaluates once,
+when it is first read, and keeps until the activation ends:
 
 ```code
-value nearest = find_nearest_entity(Owner: self, Radius: 500);
-local target = nearest.Entity;
+local nearest = find_nearest_entity(Owner: self, Radius: 500);
 ```
 
-A boolean lazy value keeps a data result even before consumers are connected.
-Reading it in an `if` does not turn the shared computation into an executable
-branch. Assignments belong in executable blocks.
+A computation that should be recomputed at every read is written where it is
+read, or as a function. Assignments belong in executable blocks.
 
-
-This is not an eager snapshot. Stateful capabilities shared by several paths
+A local is not an eager snapshot. Stateful capabilities shared by several paths
 have one named action instance. Methods invoke its named entries, and handlers
 consume its named outcomes. The instance keeps its state across method calls and
 events. An invocation runs any emitted outcome handler before its next statement.

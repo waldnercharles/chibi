@@ -530,12 +530,6 @@ void script_analyzer_resolve_initializer(analyzer *a, int symbol)
         script_analyzer_expr_effects(a, value)) {
         script_analyzer_diagnostic(a, a->initializers[index].value, "State defaults must be constant and deterministic");
     }
-    if (record->kind == SCRIPT_LAZY &&
-        script_analyzer_expr_effects(a, value) &
-            (SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
-             SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND)) {
-        script_analyzer_diagnostic(a, a->initializers[index].value, "Lazy values cannot perform execution effects");
-    }
 }
 script_operator script_analyzer_operator_node(analyzer *a, TSNode node)
 {

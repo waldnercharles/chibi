@@ -519,9 +519,6 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                                  symbol.kind == SCRIPT_COMPONENT
                            ? SCRIPT_EFFECT_READ
                            : 0;
-        if (symbol.kind == SCRIPT_LAZY) {
-            result.effects |= script_analyzer_expr_effects(a, symbol.initializer);
-        }
         script_analyzer_use(a, node, index, SCRIPT_READ, 0);
         return script_analyzer_expr_add(a, result);
     }

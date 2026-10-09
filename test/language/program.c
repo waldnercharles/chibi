@@ -1458,9 +1458,8 @@ TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration
         "captured:double=0;"
         " function Duration()->(seconds:double){evaluations+=1;return(3);}"
         " action pending=retriggerable_delay(Duration:Duration());"
-        " value original=signal.amount;"
         " on Impulse as signal(amount,enabled){pending();}"
-        " after pending.Completed{completions+=1;captured=original;} }";
+        " after pending.Completed{completions+=1;captured=signal.amount;} }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2200,8 +2199,9 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                          "}\n";
     const char *expected = "behavior V { n: double = 0\n"
                            "    function Add(x: double) {\n"
+                           "        local X = entry.x\n"
                            "        return Keep(Value: cast<double>(x + ((n * "
-                           "2) + 1)) + entry.x)\n"
+                           "2) + 1)) + local.X)\n"
                            "    }\n"
                            "    function Keep(Value: double) { return Value }\n"
                            "    function Shadow(more: double) { return more }\n"

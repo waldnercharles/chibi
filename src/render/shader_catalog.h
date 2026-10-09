@@ -121,7 +121,10 @@ bool render_shader_sample(
 );
 unsigned render_shader_revision();
 unsigned render_shader_ramp_revision();
-/* Leaves room for Cute's atlas/instance texture within GLES3's 16 fragment units. */
+/* Leaves room within GLES3's 16 fragment units for Cute's atlas, the ramp
+ * table, the scene's maps or the raster's storage textures. An accumulating
+ * raster batch also samples the five previous targets, which leaves GLES room
+ * for only six images; a batch with more fails to link there. */
 enum
 {
     RENDER_SHADER_IMAGE_MAX = 8,

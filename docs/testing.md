@@ -419,9 +419,9 @@ processes or GPU.
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp
 must show its color through a 2D draw shader and in the material raster's
-scene target, and every program kind must compile with the table. It needs the
-desktop build with material graphs (`CHIBI_TOOLS_BUILD_DIR=build/test/tools`)
-and passes 21 assertions in 2.5 seconds under ASan/UBSan on Vulkan llvmpipe,
+scene target. The third case only compiles every program kind with the table,
+which cannot catch a binding collision. It needs the desktop build with
+material graphs (`CHIBI_TOOLS_BUILD_DIR=build/test/tools`) and passes 20 assertions in 2.5 seconds under ASan/UBSan on Vulkan llvmpipe,
 whose worker threads leak 112 bytes, so it runs with `detect_leaks=0`.
 `graph-model` selects two independently reviewed public consumer cases for nested
 value copies, opaque artifact replacement/destruction and topology mutation

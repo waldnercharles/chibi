@@ -6,10 +6,18 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+/* The scene's shadow, shadow blocker, light shadow, sky specular and split-sum
+ * maps, which follow its images in set 2. */
+enum
+{
+    SCENE3D_MAPS = 5
+};
 
 typedef struct
 {
@@ -148,35 +156,34 @@ static bool compile(render_programs *programs, program *entry)
     bool raster = programs->kind == RENDER_PROGRAM_RASTER ||
                   programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE ||
                   programs->kind == RENDER_PROGRAM_RASTER_MESH;
-    /* The raster's samplers are the images, then the previous batch's five
-     * targets; its storage buffers follow them in the same set. */
-    int previous = programs->kind == RENDER_PROGRAM_RASTER_MESH       ? 10
-                 : programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE ? 5
-                                                                      : 0;
     bool scene3d = programs->kind == RENDER_PROGRAM_SCENE3D,
          fragment = programs->kind == RENDER_PROGRAM_FRAGMENT,
          sdf = programs->kind == RENDER_PROGRAM_SDF_MATERIAL ||
                programs->kind == RENDER_PROGRAM_SDF_PREVIEW;
     /* Set 2 holds the samplers, then the storage buffers. Cute's atlas or the
-     * scene's parameters come ahead of the images; the scene's shadow and sky
-     * maps, SDF depth or the raster's previous targets follow them, and the
-     * ramp table comes last. */
+     * scene's parameters come ahead of the images. The scene's maps, SDF depth
+     * or the previous raster batch's targets follow them, and the ramp table
+     * comes last. */
+    int previous = programs->kind == RENDER_PROGRAM_RASTER_MESH       ? 10
+                 : programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE ? 5
+                                                                      : 0;
     int first = scene3d || fragment ? 1 : 0;
     int samplers = first + entry->set.count +
-                   (scene3d ? 5
+                   (scene3d ? SCENE3D_MAPS
                     : sdf   ? 1
                             : previous);
     int ramp_vec4_count = render_shader_ramp_vec4_count(&entry->set);
     int buffers = samplers + (ramp_vec4_count > 0);
     char ramps[160] = "";
     if (ramp_vec4_count) {
-        snprintf(
+        int length = snprintf(
             ramps,
             sizeof ramps,
             "layout(set=2,binding=%d) uniform sampler2D sg_ramps;\n"
             "vec4 sg_ramp(int i){return texelFetch(sg_ramps,ivec2(i,0),0);}\n",
             samplers
         );
+        assert(length < (int)sizeof ramps);
     }
     char *graphs = render_shader_glsl(&entry->set, 2, first);
     if (programs->kind == RENDER_PROGRAM_SDF_PREVIEW && entry->preview_part >= 0) {

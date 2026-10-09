@@ -49,15 +49,18 @@ static int register_ramps()
              : 0;
 }
 
-static void readback(CF_Canvas canvas, void *data, int bytes)
+static bool readback(CF_Canvas canvas, void *data, int bytes)
 {
     CF_Readback read = cf_canvas_readback(canvas);
-    assert(read.id);
+    if (!read.id) {
+        return false;
+    }
     while (!cf_readback_ready(read)) {
         cf_sleep(1);
     }
-    assert(cf_readback_data(read, data, bytes) == bytes);
+    bool read_all = cf_readback_data(read, data, bytes) == bytes;
     cf_destroy_readback(read);
+    return read_all;
 }
 
 static float half(uint16_t value)
@@ -89,19 +92,21 @@ TEST_CASE(draw_shader_ramps_read_their_whole_table)
     render_programs *programs = render_programs_new(RENDER_PROGRAM_FRAGMENT);
     shader_error error = { 0 };
     int program = render_shader_fragment_prepare(programs, &entity, &error);
-    REQUIRE(program);
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
     cf_app_update(NULL);
     cf_draw_push();
     cf_draw_projection(cf_ortho_2d(0, 0, SIDE, SIDE));
-    render_shader_fragment_draw(programs, program, &entity, (CF_V2){ 1, 0 });
+    if (program) {
+        render_shader_fragment_draw(programs, program, &entity, (CF_V2){ 1, 0 });
+    }
     cf_render_to(canvas, true);
     cf_draw_pop();
     cf_app_draw_onto_screen(false);
     static CF_Pixel pixels[PIXELS];
-    readback(canvas, pixels, (int)sizeof pixels);
+    bool read = readback(canvas, pixels, (int)sizeof pixels);
     cf_destroy_canvas(canvas);
     render_programs_free(programs);
+    REQUIRE(program && read);
     CF_Pixel shown = pixels[SIDE / 2 * SIDE + SIDE / 2];
     int values[] = { shown.colors.r, shown.colors.g, shown.colors.b };
     for (int c = 0; c < 3; c++) {
@@ -117,7 +122,7 @@ TEST_CASE(raster_ramps_read_their_whole_table)
     REQUIRE(ramp);
     render_material_entity entity = box(ramp);
     render_material_raster *raster = render_material_raster_new();
-    REQUIRE(render_material_raster_resize(raster, SIDE, SIDE));
+    bool resized = render_material_raster_resize(raster, SIDE, SIDE);
     cf_app_update(NULL);
     render_material_view view = { .min_x = -SIDE * .5f,
                                   .max_y = SIDE * .5f,
@@ -125,16 +130,19 @@ TEST_CASE(raster_ramps_read_their_whole_table)
                                   .height = SIDE,
                                   .crop_max_u = 1,
                                   .crop_max_v = 1 };
-    bool drawn = render_material_raster_draw(raster, &entity, 1, view);
+    bool drawn = resized && render_material_raster_draw(raster, &entity, 1, view);
     cf_app_draw_onto_screen(false);
-    REQUIRE(drawn);
-    CF_CanvasParams params = cf_canvas_defaults(0, 0);
-    params.attach_target = render_material_raster_textures(raster).scene;
-    CF_Canvas canvas = cf_make_canvas(params);
     static uint16_t pixels[PIXELS * 4];
-    readback(canvas, pixels, (int)sizeof pixels);
-    cf_destroy_canvas(canvas);
+    bool read = false;
+    if (drawn) {
+        CF_CanvasParams params = cf_canvas_defaults(0, 0);
+        params.attach_target = render_material_raster_textures(raster).scene;
+        CF_Canvas canvas = cf_make_canvas(params);
+        read = readback(canvas, pixels, (int)sizeof pixels);
+        cf_destroy_canvas(canvas);
+    }
     render_material_raster_free(raster);
+    REQUIRE(read);
     const uint16_t *shown = &pixels[(SIDE / 2 * SIDE + SIDE / 2) * 4];
     for (int c = 0; c < 3; c++) {
         REQUIRE(fabsf(half(shown[c]) - mixed[c]) < .01f);
@@ -142,8 +150,8 @@ TEST_CASE(raster_ramps_read_their_whole_table)
     return true;
 }
 
-/* Every kind of program compiles with the ramp table: each puts it after its
- * own samplers and ahead of its storage buffers. */
+/* Every kind of program compiles with the ramp table. A compile cannot tell
+ * whether the table's binding collides with another, which only drawing shows. */
 TEST_CASE(every_program_kind_compiles_ramps)
 {
     int ramp = register_ramps();

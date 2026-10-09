@@ -724,16 +724,13 @@ static void ramp_glsl(char **text, const shader_node *n, const char *prefix, int
             int left = offset + 2 * (i - 1), right = offset + 2 * i;
             append(
                 text,
-                "if(factor<sg_ramp(%d).x) { float t=clamp((factor-"
-                "sg_ramp(%d).x)/"
-                "(sg_ramp(%d).x-sg_ramp(%d).x),0.0,1.0); int "
+                "{ float l=sg_ramp(%d).x,r=sg_ramp(%d).x; if(factor<r) { "
+                "float t=clamp((factor-l)/(r-l),0.0,1.0); int "
                 "mode=int(clamp(interpolation,0.0,2.0)); if(mode==1)t=0.0; "
                 "if(mode==2)t=t*t*(3.0-2.0*t); return "
-                "mix(sg_ramp(%d),sg_ramp(%d),t); }\n",
-                right,
+                "mix(sg_ramp(%d),sg_ramp(%d),t); } }\n",
                 left,
                 right,
-                left,
                 left + 1,
                 right + 1
             );

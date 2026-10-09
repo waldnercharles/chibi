@@ -5,6 +5,7 @@
 #include "graph/shader/shader_graph.h"
 #include "types/catalog.h"
 
+#include <assert.h>
 #include <string.h>
 
 type_catalog_pack test_material_graph_types()
@@ -56,6 +57,7 @@ bool test_register_surface(const char *name, float roughness, float metallic)
 
 bool test_register_ramp(const char *name, int count, const float from[4], const float to[4])
 {
+    assert(count >= 2 && count <= SHADER_RAMP_MAX);
     behavior_asset *material = new_material(name);
     graph *g = material->graph;
     node *output = shader_graph_add_output(g, false);

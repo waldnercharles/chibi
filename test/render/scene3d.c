@@ -1704,9 +1704,10 @@ static bool shows_ramp(const float rgb[3])
     return true;
 }
 
-/* Ramps of every material in a program share one table. Nine full ramps fill
- * its first 288 entries, so the last material's stops lie past the 4 KB a
- * Vulkan uniform block exposes. Each material reads its own stops, and a
+/* Ramps of every material in a program share one table. SDL's Vulkan backend
+ * binds the first 4 KB of a uniform block, which the scene's lights fill, so a
+ * table in that block left every ramp black. Nine full ramps fill its first 288
+ * entries; the first and the last material each read their own stops, and a
  * numeric stop edit reaches the GPU without a recompile. */
 TEST_CASE(color_ramps_color_surfaces_from_any_table_offset)
 {

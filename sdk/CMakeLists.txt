@@ -4,7 +4,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(ChibiSDK VERSION ${CHIBI_SDK_VERSION} LANGUAGES C)
     if(WIN32)
         enable_language(RC)
-        set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+        set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
     endif()
 endif()
 
@@ -525,9 +525,6 @@ install(EXPORT ChibiTargets NAMESPACE Chibi:: DESTINATION lib/cmake/Chibi)
 include(CMakePackageConfigHelpers)
 # Installed consumers must link the C runtime these libraries were built with.
 set(CHIBI_MSVC_RUNTIME MultiThreaded)
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CHIBI_MSVC_RUNTIME MultiThreadedDebug)
-endif()
 configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/ChibiConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/ChibiConfig.cmake"
     INSTALL_DESTINATION lib/cmake/Chibi)

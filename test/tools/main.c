@@ -13,6 +13,11 @@ void test_tool_validation_plan();
 void test_tool_publish();
 void test_tool_types();
 void test_tool_ecs();
+void test_tool_ecs_relationships();
+void test_tool_ecs_hierarchy();
+void test_tool_ecs_world();
+void test_tool_ecs_query();
+void test_tool_ecs_query_benchmark();
 void test_tool_studio_selectors(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
 void test_tool_prepared_runtime(const char *directory);
@@ -49,6 +54,9 @@ int run_language_prepare_corpora_sljit(const char *);
 void test_source_native_numeric_queries();
 void test_source_native_material_features();
 #endif
+#ifdef CHIBI_TEST_BOX3D
+void test_box3d();
+#endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
 void test_tool_native();
 void test_tool_native_values();
@@ -68,10 +76,11 @@ int main(int argc, char **argv)
     bool read = argc == 3 && !strcmp(argv[1], "--prepared-read");
     bool package = argc == 2 && !strcmp(argv[1], "--package");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
+    bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool native = false, native_values = false, native_catalog = false,
-         physics = false, render_resources = false;
+         physics = false, render_resources = false, box3d = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -108,28 +117,33 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
 #endif
+#ifdef CHIBI_TEST_BOX3D
+    box3d = argc == 2 && !strcmp(argv[1], "--box3d");
+#endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     native_catalog = argc == 2 && !strcmp(argv[1], "--native-catalog");
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
     native = argc == 2 && !strcmp(argv[1], "--native");
     physics = argc == 2 && !strcmp(argv[1], "--physics");
 #endif
-    if (argc != 1 && !corpus && !shader_parameters && !source_edit && !package &&
-        !unit && !prepared && !read && !scene && !scene_prepared && !native &&
-        !native_values && !native_catalog && !physics && !render_resources &&
-        !persistent_store && !whole_alias && !whole_math && !whole_integer &&
-        !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
-        !source_features && !source_numeric && !source_material &&
-        !source_presentation && !system_schedule && !source_systems &&
-        (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
+    if (argc != 1 && !corpus && !shader_parameters && !source_edit &&
+        !package && !unit && !query_benchmark && !prepared && !read && !scene &&
+        !scene_prepared && !native && !native_values && !native_catalog && !physics &&
+        !render_resources && !box3d && !persistent_store && !whole_alias &&
+        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
+        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
+        !source_material && !source_presentation && !system_schedule &&
+        !source_systems && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
         fprintf(
             stderr,
-            "Usage: %s [--package | --unit | --studio-selectors test_suite | "
+            "Usage: %s [--package | --unit | --ecs-query-benchmark | "
+            "--studio-selectors test_suite | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
             "| --physics "
-            "| --render-resources | --persistent-store | --whole-alias | "
+            "| --render-resources | --box3d | --persistent-store | "
+            "--whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
             "--whole-select | --owned-tick | "
             "--parallel-tick | --source-native-features | "
@@ -204,6 +218,13 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
 #endif
+#ifdef CHIBI_TEST_BOX3D
+    if (box3d) {
+        test_box3d();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     if (native || native_values || native_catalog || physics) {
         if (physics) {
@@ -233,10 +254,16 @@ int main(int argc, char **argv)
         test_tool_studio_selectors(argv[2]);
     } else if (unit) {
         test_tool_execution_policy();
+    } else if (query_benchmark) {
+        test_tool_ecs_query_benchmark();
     } else {
         test_tool_execution_policy();
         test_tool_types();
         test_tool_ecs();
+        test_tool_ecs_relationships();
+        test_tool_ecs_hierarchy();
+        test_tool_ecs_world();
+        test_tool_ecs_query();
         test_tool_package();
         test_tool_collab();
         test_tool_test_policy();

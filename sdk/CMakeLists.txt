@@ -29,6 +29,7 @@ option(CHIBI_SDK_BUILD_COMPILER "Build language, compiler and source authoring p
 option(CHIBI_SDK_BUILD_NATIVE "Build built-in component and entity packages" OFF)
 option(CHIBI_SDK_BUILD_DESKTOP "Build desktop platform, rendering and UI packages" OFF)
 option(CHIBI_WEB_THREADS "Build the web SDK with pthread workers" OFF)
+option(CHIBI_WEB_PLAYER "Build the browser player that chibi export --web ships" OFF)
 set(CHIBI_WEB_WORKERS 4 CACHE STRING "Total worker budget for the threaded web SDK")
 if(CHIBI_WEB_THREADS)
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -177,10 +178,15 @@ chibi_sdk_headers(chibi_native_capabilities PUBLIC runtime/native_capabilities.h
 target_link_libraries(chibi_native_capabilities PUBLIC chibi_capabilities chibi_execution_contract)
 
 add_library(chibi_ecs STATIC "${CHIBI_SDK_ROOT}/src/ecs/ecs.c"
+    "${CHIBI_SDK_ROOT}/src/ecs/relationship.c" "${CHIBI_SDK_ROOT}/src/ecs/hierarchy.c"
+    "${CHIBI_SDK_ROOT}/src/ecs/query.c"
     "${CHIBI_SDK_ROOT}/src/ecs/component_catalog.c")
 add_library(Chibi::ecs ALIAS chibi_ecs)
 set_target_properties(chibi_ecs PROPERTIES EXPORT_NAME ecs)
 chibi_sdk_headers(chibi_ecs PUBLIC ecs/ecs.h ecs/execution.h ecs/component_catalog.h)
+configure_file("${CHIBI_SDK_ROOT}/src/ecs/ecs_internal.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/ecs/ecs/ecs_internal.h" COPYONLY)
+target_include_directories(chibi_ecs PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/ecs")
 target_link_libraries(chibi_ecs PUBLIC chibi_types)
 
 add_library(chibi_events STATIC "${CHIBI_SDK_ROOT}/src/runtime/events.c")
@@ -512,7 +518,7 @@ if(TARGET chibi-compile AND TARGET chibi-player)
     install(TARGETS chibi RUNTIME DESTINATION bin)
 endif()
 foreach(target IN LISTS CHIBI_SDK_TARGETS)
-    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_task_scheduler|chibi_asset_kdl)$")
+    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
             target_compile_options(${target} PRIVATE -Wno-experimental)

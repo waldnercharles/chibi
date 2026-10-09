@@ -1,7 +1,6 @@
 #include "ecs/ecs.h"
 
-#include "ecs/execution.h"
-#include "support/arena.h"
+#include "ecs/ecs_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/array.h"
@@ -12,48 +11,27 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct
-{
-    ecs_component_desc desc;
-    uint64_t *occupancy;
-    uint32_t *dense;
-    bool dense_stale; /* dense still lists slots removed since it was compacted */
-    uint32_t slot_count; /* Allocated payload rows, independent of world capacity. */
-    int count;
-    uint32_t singleton;
-    arena *owned_rows; /* Lazy per-row snapshots, independent of borrowed writes. */
-    unsigned observed; /* Bit per ecs_event with at least one observer. */
-    uint64_t *modified; /* Rows awaiting ON_SET; allocated while ON_SET is observed. */
-    bool dirty;         /* Some modified bit may be set. */
-} ecs_component;
-
 typedef enum
 {
     ECS_COMMAND_CREATE,
     ECS_COMMAND_DESTROY,
     ECS_COMMAND_ADD,
     ECS_COMMAND_REMOVE,
+    ECS_COMMAND_ADD_PAIR,
+    ECS_COMMAND_REMOVE_PAIR,
 } ecs_command_kind;
 
-typedef struct
+struct ecs_command
 {
     uint64_t sort_key;
     uint64_t sequence;
     ecs_command_kind kind;
     ecs_entity entity;
     ecs_component_id component;
+    ecs_entity target; /* Pair commands only. */
     void *value;
     size_t value_size;
-} ecs_command;
-
-typedef struct
-{
-    int id;
-    ecs_event event;
-    ecs_component_id component;
-    ecs_observer callback;
-    void *user;
-} ecs_observer_entry;
+};
 
 /* Observers that keep recording commands or marking rows would never reach
  * the end of a sync point. */
@@ -67,30 +45,6 @@ struct ecs_query_expr
     ecs_query_expr_kind kind;
     ecs_component_id component;
     ecs_query_expr **children;
-};
-
-struct ecs_world
-{
-    ecs_execution_view execution;
-    ecs_execution_column *execution_columns;
-    uint32_t *generations;
-    unsigned char *occupied;
-    unsigned char *reserved;
-    unsigned char *pending_destroy;
-    uint32_t free_hint;
-    uint32_t live_count;
-    uint32_t high_water;
-    ecs_component *components;
-    int *component_lookup; /* Component array index + 1; zero is an empty bucket. */
-    int component_lookup_capacity;
-    ecs_command *commands;
-    char **field_strings; /* Interned values assigned through the field API. */
-    uint64_t next_sequence;
-    int iteration_depth;
-    bool applying;
-    ecs_observer_entry *observers;
-    int last_observer;
-    unsigned observed; /* Union of every observer's event bit. */
 };
 
 typedef struct
@@ -288,12 +242,7 @@ static uint32_t grown_slots(uint32_t current, uint32_t required, size_t limit)
     return (uint32_t)(count < limit ? count : limit);
 }
 
-static size_t occupancy_words(uint32_t slots)
-{
-    return ((size_t)slots + 63) / 64;
-}
-
-static void *grow_storage(void *data, size_t old_count, size_t count, size_t stride)
+void *ecs_grow_storage(void *data, size_t old_count, size_t count, size_t stride)
 {
     assert(count <= SIZE_MAX / stride && old_count <= count);
     data = xrealloc(data, count * stride);
@@ -319,15 +268,17 @@ int ecs_world_reserve_entities(ecs_world *world, uint32_t capacity)
     }
     uint32_t old = world->execution.slot_count;
     uint32_t count = grown_slots(old, capacity + 1, limit);
-    world->generations = grow_storage(
+    world->generations = ecs_grow_storage(
         world->generations,
         old,
         count,
         sizeof *world->generations
     );
-    world->occupied = grow_storage(world->occupied, old, count, sizeof *world->occupied);
-    world->reserved = grow_storage(world->reserved, old, count, sizeof *world->reserved);
-    world->pending_destroy = grow_storage(
+    world
+        ->occupied = ecs_grow_storage(world->occupied, old, count, sizeof *world->occupied);
+    world
+        ->reserved = ecs_grow_storage(world->reserved, old, count, sizeof *world->reserved);
+    world->pending_destroy = ecs_grow_storage(
         world->pending_destroy,
         old,
         count,
@@ -341,14 +292,14 @@ int ecs_world_reserve_entities(ecs_world *world, uint32_t capacity)
     world->execution.slot_count = count;
     for (int i = 0; i < acount(world->components); i++) {
         ecs_component *c = &world->components[i];
-        c->occupancy = grow_storage(
+        c->occupancy = ecs_grow_storage(
             c->occupancy,
             occupancy_words(old),
             occupancy_words(count),
             sizeof *c->occupancy
         );
         if (c->modified) {
-            c->modified = grow_storage(
+            c->modified = ecs_grow_storage(
                 c->modified,
                 occupancy_words(old),
                 occupancy_words(count),
@@ -356,6 +307,9 @@ int ecs_world_reserve_entities(ecs_world *world, uint32_t capacity)
             );
         }
         update_execution_column(world, i);
+    }
+    for (int i = 0; i < acount(world->relationships); i++) {
+        relationship_grow(&world->relationships[i], old, count);
     }
     return ECS_OK;
 }
@@ -379,7 +333,7 @@ static int reserve_component(ecs_world *world, ecs_component *component, uint32_
     if (!count) {
         return ECS_ERR_CAPACITY;
     }
-    component->desc.column_base = grow_storage(
+    component->desc.column_base = ecs_grow_storage(
         component->desc.column_base,
         component->slot_count,
         count,
@@ -388,18 +342,6 @@ static int reserve_component(ecs_world *world, ecs_component *component, uint32_
     component->slot_count = count;
     update_execution_column(world, (int)(component - world->components));
     return ECS_OK;
-}
-
-static int slot_valid(const ecs_world *world, uint32_t slot)
-{
-    return slot > 0 && slot < world->execution.slot_count;
-}
-
-static int entity_matches(const ecs_world *world, ecs_entity entity)
-{
-    return slot_valid(world, entity.slot) && entity.generation &&
-           world->occupied[entity.slot] &&
-           world->generations[entity.slot] == entity.generation;
 }
 
 static int component_matches(const ecs_component *component, uint32_t slot)
@@ -588,8 +530,10 @@ static int command_rank(ecs_command_kind kind)
         case ECS_COMMAND_DESTROY: return 1;
         case ECS_COMMAND_ADD: return 2;
         case ECS_COMMAND_REMOVE: return 3;
+        case ECS_COMMAND_REMOVE_PAIR: return 4;
+        case ECS_COMMAND_ADD_PAIR: return 5;
     }
-    return 4;
+    return 6;
 }
 
 static int compare_commands(const void *left_ptr, const void *right_ptr)
@@ -612,6 +556,11 @@ static int compare_commands(const void *left_ptr, const void *right_ptr)
     }
     if (left->entity.generation != right->entity.generation) {
         return left->entity.generation < right->entity.generation ? -1 : 1;
+    }
+    uint64_t left_target = ecs_entity_to_u64(left->target);
+    uint64_t right_target = ecs_entity_to_u64(right->target);
+    if (left_target != right_target) {
+        return left_target < right_target ? -1 : 1;
     }
     if (left->value_size != right->value_size) {
         return left->value_size < right->value_size ? -1 : 1;
@@ -640,16 +589,94 @@ static int apply_create(ecs_world *world, const ecs_command *command)
     }
     world->reserved[slot] = 0;
     world->occupied[slot] = 1;
+    world->pending_destroy[slot] = DESTROY_NONE;
     world->live_count++;
     return ECS_OK;
 }
 
-static int apply_destroy(ecs_world *world, const ecs_command *command)
+typedef struct
 {
-    ecs_entity entity = command->entity;
-    if (!entity_matches(world, entity)) {
-        return ECS_ERR_ENTITY;
+    ecs_entity entity;
+    bool recorded; /* Its own destroy command is still pending. */
+} cleanup_entry;
+
+typedef struct
+{
+    cleanup_entry entry;
+    int relationship; /* Next relationship whose sources to visit. */
+    int source;
+} cleanup_frame;
+
+static void push_cleanup(ecs_world *world, cleanup_frame **stack, uint32_t slot)
+{
+    cleanup_frame frame = {
+        .entry = { { slot, world->generations[slot] },
+                   world->pending_destroy[slot] == DESTROY_RECORDED },
+    };
+    apush(*stack, frame);
+    world->pending_destroy[slot] = DESTROY_RUNNING;
+}
+
+/* Returns the frame's next DELETE source not yet collected, or 0 when none
+ * remain. Clears allowed when a PANIC relationship still has a source. */
+static uint32_t next_cleanup_source(ecs_world *world, cleanup_frame *frame, bool *allowed)
+{
+    uint32_t slot = frame->entry.entity.slot;
+    for (; frame->relationship < acount(world->relationships);
+         frame->relationship++, frame->source = 0) {
+        const ecs_relationship *relationship = &world->relationships[frame->relationship];
+        const uint32_t *sources = relationship->sources[slot];
+        ecs_cleanup policy = relationship->desc.on_delete_target;
+        if (policy == ECS_CLEANUP_PANIC && acount(sources)) {
+            *allowed = false;
+            return 0;
+        }
+        while (policy == ECS_CLEANUP_DELETE && frame->source < acount(sources)) {
+            uint32_t source = sources[frame->source++];
+            if (world->pending_destroy[source] != DESTROY_RUNNING) {
+                return source;
+            }
+        }
     }
+    return 0;
+}
+
+/* Collects entity and every source its DELETE relationships would destroy in
+ * postorder, so each source comes before its targets. Returns false when a
+ * PANIC relationship still has a source, leaving every pending_destroy state
+ * as it was. */
+static bool collect_cleanup(ecs_world *world, ecs_entity entity, cleanup_entry **entries)
+{
+    cleanup_frame *stack = NULL;
+    bool allowed = true;
+    push_cleanup(world, &stack, entity.slot);
+    while (allowed && acount(stack)) {
+        uint32_t source = next_cleanup_source(world, &stack[acount(stack) - 1], &allowed);
+        if (source) {
+            push_cleanup(world, &stack, source);
+            continue;
+        }
+        if (allowed) {
+            apush(*entries, stack[acount(stack) - 1].entry);
+            asetlen(stack, acount(stack) - 1);
+        }
+    }
+    for (int i = 0; i < acount(stack); i++) {
+        apush(*entries, stack[i].entry);
+    }
+    afree(stack);
+    for (int i = 0; !allowed && i < acount(*entries); i++) {
+        const cleanup_entry *entry = &(*entries)[i];
+        world->pending_destroy[entry->entity.slot] = entry->recorded
+                                                       ? DESTROY_RECORDED
+                                                       : DESTROY_NONE;
+    }
+    return allowed;
+}
+
+/* Notifies and removes one entity whose cleanup was collected. */
+static void retire_entity(ecs_world *world, ecs_entity entity)
+{
     for (int i = 0; world_observes(world, ECS_ON_SET) && i < acount(world->components);
          i++) {
         ecs_component *component = &world->components[i];
@@ -669,6 +696,7 @@ static int apply_destroy(ecs_world *world, const ecs_command *command)
             notify(world, ECS_ON_REMOVE, entity, component->desc.id);
         }
     }
+    relationship_detach(world, entity.slot);
     for (int i = 0; i < acount(world->components); i++) {
         ecs_component *component = &world->components[i];
         if (component_matches(component, entity.slot)) {
@@ -676,35 +704,93 @@ static int apply_destroy(ecs_world *world, const ecs_command *command)
         }
     }
     world->occupied[entity.slot] = 0;
-    world->pending_destroy[entity.slot] = 0;
+    world->pending_destroy[entity.slot] = DESTROY_APPLIED;
     world->live_count--;
     advance_generation(world, entity.slot);
     trim_high_water(world);
+}
+
+/* Applies OnDeleteTarget cleanup before the entity goes: DELETE sources are
+ * destroyed before their targets, and a PANIC source fails it before any
+ * change. */
+static int destroy_entity(ecs_world *world, ecs_entity entity)
+{
+    cleanup_entry *entries = NULL;
+    if (!collect_cleanup(world, entity, &entries)) {
+        afree(entries);
+        return ECS_ERR_COMMAND;
+    }
+    for (int i = 0; i < acount(entries); i++) {
+        retire_entity(world, entries[i].entity);
+    }
+    afree(entries);
     return ECS_OK;
 }
-static int apply_add(ecs_world *world, const ecs_command *command)
+
+/* A sync point that already destroyed an entity skips its later commands. */
+static bool destroyed_earlier(const ecs_world *world, ecs_entity entity)
 {
-    ecs_component *component = find_component(world, command->component);
-    if (!component || !entity_matches(world, command->entity)) {
-        return ECS_ERR_ENTITY;
+    return slot_valid(world, entity.slot) && !world->occupied[entity.slot] &&
+           world->pending_destroy[entity.slot] == DESTROY_APPLIED;
+}
+
+static int apply_destroy(ecs_world *world, const ecs_command *command)
+{
+    if (entity_matches(world, command->entity)) {
+        return destroy_entity(world, command->entity);
     }
-    if (ecs_component_has(world, command->entity, command->component)) {
-        return ECS_ERR_DUPLICATE;
-    }
-    int result = reserve_component(world, component, command->entity.slot);
+    return destroyed_earlier(world, command->entity) ? ECS_OK : ECS_ERR_ENTITY;
+}
+
+/* Adds the row, then any missing components it implies, before ON_ADD. */
+static int add_component(ecs_world *world, ecs_component *component, ecs_entity entity, const void *value)
+{
+    int result = reserve_component(world, component, entity.slot);
     if (result) {
         return result;
     }
-    void *address = component_address(component, command->entity.slot);
+    void *address = component_address(component, entity.slot);
     memset(address, 0, component->desc.element_size);
-    if (command->value) {
-        memcpy(address, command->value, component->desc.element_size);
+    if (value) {
+        memcpy(address, value, component->desc.element_size);
     }
-    occupancy_add(world, component, command->entity.slot);
+    occupancy_add(world, component, entity.slot);
+    for (int i = 0; result == ECS_OK && i < acount(component->with); i++) {
+        ecs_component *implied = find_component(world, component->with[i]);
+        if (!component_matches(implied, entity.slot)) {
+            result = add_component(world, implied, entity, NULL);
+        }
+    }
     if (observes(component, ECS_ON_ADD)) {
-        notify(world, ECS_ON_ADD, command->entity, command->component);
+        notify(world, ECS_ON_ADD, entity, component->desc.id);
+    }
+    if (value) {
+        mark_modified(component, entity.slot);
+    }
+    return result;
+}
+
+/* An add of a component already present, for example implied by With
+ * earlier in the sync point, writes its value instead. */
+static int apply_add(ecs_world *world, const ecs_command *command)
+{
+    ecs_component *component = find_component(world, command->component);
+    if (destroyed_earlier(world, command->entity)) {
+        return ECS_OK;
+    }
+    if (!component || !entity_matches(world, command->entity)) {
+        return ECS_ERR_ENTITY;
+    }
+    if (!component_matches(component, command->entity.slot)) {
+        return add_component(world, component, command->entity, command->value);
     }
     if (command->value) {
+        release_row(component, command->entity.slot);
+        memcpy(
+            component_address(component, command->entity.slot),
+            command->value,
+            component->desc.element_size
+        );
         mark_modified(component, command->entity.slot);
     }
     return ECS_OK;
@@ -713,6 +799,9 @@ static int apply_add(ecs_world *world, const ecs_command *command)
 static int apply_remove(ecs_world *world, const ecs_command *command)
 {
     ecs_component *component = find_component(world, command->component);
+    if (destroyed_earlier(world, command->entity)) {
+        return ECS_OK;
+    }
     if (!component || !entity_matches(world, command->entity)) {
         return ECS_ERR_ENTITY;
     }
@@ -724,6 +813,58 @@ static int apply_remove(ecs_world *world, const ecs_command *command)
         notify(world, ECS_ON_REMOVE, command->entity, command->component);
     }
     occupancy_remove(world, component, command->entity.slot);
+    return ECS_OK;
+}
+
+static bool closes_cycle(
+    const ecs_world *world,
+    const ecs_relationship *relationship,
+    ecs_entity entity,
+    ecs_entity target
+)
+{
+    return (relationship->desc.traits & ECS_REL_ACYCLIC) &&
+           relationship_reaches(world, relationship, target, entity.slot);
+}
+
+static int apply_add_pair(ecs_world *world, const ecs_command *command)
+{
+    ecs_relationship *relationship = world_relationship(world, command->component);
+    if (destroyed_earlier(world, command->entity) ||
+        destroyed_earlier(world, command->target)) {
+        return ECS_OK;
+    }
+    if (!entity_matches(world, command->entity) ||
+        !entity_matches(world, command->target)) {
+        return ECS_ERR_ENTITY;
+    }
+    if (ecs_has_pair(world, command->entity, command->component, command->target)) {
+        return ECS_ERR_DUPLICATE;
+    }
+    if (closes_cycle(world, relationship, command->entity, command->target)) {
+        return ECS_ERR_CYCLE;
+    }
+    relationship_link(relationship, command->entity.slot, command->target);
+    return ECS_OK;
+}
+
+static int apply_remove_pair(ecs_world *world, const ecs_command *command)
+{
+    if (destroyed_earlier(world, command->entity) ||
+        destroyed_earlier(world, command->target)) {
+        return ECS_OK;
+    }
+    if (!entity_matches(world, command->entity)) {
+        return ECS_ERR_ENTITY;
+    }
+    if (!ecs_has_pair(world, command->entity, command->component, command->target)) {
+        return ECS_ERR_COMPONENT;
+    }
+    relationship_unlink(
+        world_relationship(world, command->component),
+        command->entity.slot,
+        command->target
+    );
     return ECS_OK;
 }
 
@@ -780,8 +921,13 @@ void ecs_world_free(ecs_world *world)
         free(world->components[i].occupancy);
         afree(world->components[i].dense);
         free(world->components[i].modified);
+        afree(world->components[i].with);
     }
     afree(world->components);
+    for (int i = 0; i < acount(world->relationships); i++) {
+        relationship_free(&world->relationships[i], world->execution.slot_count);
+    }
+    afree(world->relationships);
     afree(world->observers);
     afree(world->execution_columns);
     free(world->component_lookup);
@@ -797,6 +943,23 @@ void ecs_world_free(ecs_world *world)
     free(world);
 }
 
+bool world_key_taken(const ecs_world *world, const char *key)
+{
+    for (int i = 0; i < acount(world->components); i++) {
+        const char *taken = world->components[i].desc.key;
+        if (taken && !strcmp(taken, key)) {
+            return true;
+        }
+    }
+    for (int i = 0; i < acount(world->relationships); i++) {
+        const char *taken = world->relationships[i].desc.key;
+        if (taken && !strcmp(taken, key)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int ecs_world_register_component(ecs_world *world, const ecs_component_desc *desc, ecs_component_id *out_id)
 {
     if (!world || !desc || !desc->name || !desc->name[0] || !desc->element_size ||
@@ -806,22 +969,18 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
     if (world->iteration_depth || world->applying) {
         return ECS_ERR_ITERATING;
     }
-    if (desc->id && find_component(world, desc->id)) {
+    if (desc->id &&
+        (find_component(world, desc->id) || world_relationship(world, desc->id))) {
         return ECS_ERR_DUPLICATE;
     }
-    if (desc->key) {
-        for (int i = 0; i < acount(world->components); i++) {
-            if (world->components[i].desc.key &&
-                strcmp(world->components[i].desc.key, desc->key) == 0) {
-                return ECS_ERR_DUPLICATE;
-            }
-        }
+    if (desc->key && world_key_taken(world, desc->key)) {
+        return ECS_ERR_DUPLICATE;
     }
     ecs_component_id id = desc->id;
     if (!id) {
         id = 1;
         for (;;) {
-            if (!find_component(world, id)) {
+            if (!find_component(world, id) && !world_relationship(world, id)) {
                 break;
             }
             id++;
@@ -848,6 +1007,25 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
     if (out_id) {
         *out_id = id;
     }
+    return ECS_OK;
+}
+
+int ecs_world_add_with(ecs_world *world, ecs_component_id component_id, ecs_component_id implied)
+{
+    assert(world);
+    if (world->iteration_depth || world->applying) {
+        return ECS_ERR_ITERATING;
+    }
+    ecs_component *component = find_component(world, component_id);
+    if (!component || !find_component(world, implied) || implied == component_id) {
+        return ECS_ERR_COMPONENT;
+    }
+    for (int i = 0; i < acount(component->with); i++) {
+        if (component->with[i] == implied) {
+            return ECS_ERR_DUPLICATE;
+        }
+    }
+    apush(component->with, implied);
     return ECS_OK;
 }
 
@@ -914,7 +1092,7 @@ int ecs_world_record_destroy(ecs_world *world, ecs_entity entity, uint64_t sort_
         world->pending_destroy[entity.slot]) {
         return ECS_ERR_ENTITY;
     }
-    world->pending_destroy[entity.slot] = 1;
+    world->pending_destroy[entity.slot] = DESTROY_RECORDED;
     apush(
         world->commands,
         (ecs_command){
@@ -989,6 +1167,8 @@ static int apply_command(ecs_world *world, const ecs_command *command)
         case ECS_COMMAND_DESTROY: return apply_destroy(world, command);
         case ECS_COMMAND_ADD: return apply_add(world, command);
         case ECS_COMMAND_REMOVE: return apply_remove(world, command);
+        case ECS_COMMAND_ADD_PAIR: return apply_add_pair(world, command);
+        case ECS_COMMAND_REMOVE_PAIR: return apply_remove_pair(world, command);
     }
     return ECS_ERR_COMMAND;
 }
@@ -1026,6 +1206,88 @@ static int apply_batch(ecs_world *world)
     release_commands(world, batch);
     afree(batch);
     return result;
+}
+
+/* A target is live, or reserved by a create that applies earlier. */
+static bool target_valid(const ecs_world *world, ecs_entity target, uint64_t sort_key)
+{
+    if (!slot_valid(world, target.slot) || !target.generation ||
+        world->generations[target.slot] != target.generation) {
+        return false;
+    }
+    if (world->occupied[target.slot]) {
+        return !dying(world, target);
+    }
+    for (int i = 0; world->reserved[target.slot] && i < acount(world->commands); i++) {
+        const ecs_command *command = &world->commands[i];
+        if (command->kind == ECS_COMMAND_CREATE &&
+            command->entity.slot == target.slot) {
+            return command->sort_key <= sort_key;
+        }
+    }
+    return false;
+}
+
+static int record_pair(
+    ecs_world *world,
+    ecs_command_kind kind,
+    ecs_entity entity,
+    ecs_component_id id,
+    ecs_entity target,
+    uint64_t sort_key
+)
+{
+    assert(world);
+    const ecs_relationship *relationship = world_relationship(world, id);
+    if (world->iteration_depth || !relationship || !entity_matches(world, entity) ||
+        dying(world, entity) || !target_valid(world, target, sort_key)) {
+        return ECS_ERR_ENTITY;
+    }
+    bool present = ecs_has_pair(world, entity, id, target);
+    if (kind == ECS_COMMAND_ADD_PAIR && present) {
+        return ECS_ERR_DUPLICATE;
+    }
+    if (kind == ECS_COMMAND_REMOVE_PAIR && !present) {
+        return ECS_ERR_COMPONENT;
+    }
+    if (kind == ECS_COMMAND_ADD_PAIR && world->occupied[target.slot] &&
+        closes_cycle(world, relationship, entity, target)) {
+        return ECS_ERR_CYCLE;
+    }
+    apush(
+        world->commands,
+        (ecs_command){
+            .sort_key = sort_key,
+            .sequence = world->next_sequence++,
+            .kind = kind,
+            .entity = entity,
+            .component = id,
+            .target = target,
+        }
+    );
+    return ECS_OK;
+}
+
+int ecs_world_record_add_pair(
+    ecs_world *world,
+    ecs_entity entity,
+    ecs_component_id relationship,
+    ecs_entity target,
+    uint64_t sort_key
+)
+{
+    return record_pair(world, ECS_COMMAND_ADD_PAIR, entity, relationship, target, sort_key);
+}
+
+int ecs_world_record_remove_pair(
+    ecs_world *world,
+    ecs_entity entity,
+    ecs_component_id relationship,
+    ecs_entity target,
+    uint64_t sort_key
+)
+{
+    return record_pair(world, ECS_COMMAND_REMOVE_PAIR, entity, relationship, target, sort_key);
 }
 
 int ecs_world_apply_commands(ecs_world *world)
@@ -1821,6 +2083,9 @@ uint64_t ecs_world_hash(const ecs_world *world)
                 component_address(component, slot),
                 component->desc.element_size
             );
+        }
+        for (int i = 0; i < acount(world->relationships); i++) {
+            hash = relationship_hash(&world->relationships[i], slot, hash);
         }
     }
     return hash;

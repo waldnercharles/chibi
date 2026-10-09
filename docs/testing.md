@@ -223,17 +223,6 @@ use no renderer, sleeps or child processes. Its exact dispatcher runs only regis
 validation and these cases. The migrated selector is independently reviewed and
 admitted for its first supervised capture.
 
-`--source-session` admits only `test_asset_code_checkpoint`: four fixed source
-session cases plus the existing KDL checkpoint and external merge checks. Each
-temporary project has at most two tiny executable files. It covers invalid
-drafts, undo/redo, catalog refresh, retained presentations, navigation, source and
-sidecar disk conflicts, and retry after a sidecar write fails. Preview services
-are initialized and freed, but no engine step, render, window or process runs.
-The corrected migrated selector passes four cases and 71 assertions in 1.483
-seconds. A later admitted extension verifies coalescing a continuous graph gesture
-into one source/metadata undo entry, stale-text rejection and history boundaries;
-that extension awaits its capture.
-
 `python3 tools/test_policy.py tool language-headless` selects two independently
 reviewed public SDK consumer cases on VM and SLJIT. Each owns one entity and
 scalar component, runs five explicit steps, and checks registration ownership,
@@ -267,31 +256,6 @@ against the engine catalog alone. They are not in a group: no manifest is checke
 in, and the repository's fixtures are not complete projects for them, since some
 reference events and prototypes they omit or declare their own components. Run
 them on extracted game projects and keep the manifest with the evidence.
-
-`--automation-authoring-readonly` selects the existing code/navigation contracts
-with direct file fixture setup and seven rejected retired mutation operations.
-Independent review found bounded file/analysis work and a 1,100-caller hierarchy
-fixture, with no runtime frames or GPU. It uses a finite cleanup shell command.
-It passed in 1.004 seconds on 2026-10-07; retired mutation transport checks are
-no longer registered or admitted.
-
-`--authoring-preview-lifecycle` covers the existing live/update/prototype contracts
-with small in-memory assets, three CPU engine frames and no renderer callbacks,
-project reads, sleeps or child processes. Independent source review admitted its
-first supervised measurement, which passed in 1.180 seconds on 2026-10-07. An
-independently reviewed extension exercises canonical source registration through
-prototype attachment, deferred Begin, typed events, replacement, system/binding
-ordering and pending-work cancellation on VM and SLJIT. The expanded selector
-passed in 1.628 seconds, including 68 new pico assertions. It does
-not cover rendered material updates or Studio interactions.
-
-`--execution-request-lifecycle` selects registry validation and the existing host
-wait contracts. Independent review found one 1,024-iteration tiny graph loop and
-one three-event scheduler case, with supplied timestamps and no sleeps, files,
-processes or GPU work. Assertions cover completion, cancellation, release, stale
-requests, retained observations and FIFO resumption. It passed in 0.281 seconds
-on 2026-10-07 after the neutral native Spawn adapter. Broader execution suites
-remain quarantined.
 
 Managed test executions, including aggregates, have one hard 60-second ceiling.
 Known slow and unmeasured commands are quarantined; hardware opt-in cannot clear

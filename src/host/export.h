@@ -10,9 +10,12 @@ typedef enum
     /* A macOS app: the player in Contents/MacOS, the data in
      * Contents/Resources with the icon as an .icns, and an Info.plist */
     CHIBI_EXPORT_APP,
+    /* The player as <name>.exe beside data/, with the icon in its resources;
+     * only a Windows host can add the icon */
+    CHIBI_EXPORT_WINDOWS,
 } chibi_export_layout;
 
-/* `bin` holds chibi-compile and chibi-player, and bin/../share/chibi holds the
+/* `bin` holds this host's chibi-compile and chibi-player, and bin/../share/chibi holds the
  * engine resources. `output` is the folder to create, or an earlier export;
  * an app's output gains the .app extension. */
 typedef struct

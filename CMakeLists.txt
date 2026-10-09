@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
 project(chibi LANGUAGES C CXX)
+# Windows executables embed their manifest, and link the C runtime
+# statically so exported games run without the Visual C++ redistributable.
+# Dependencies always build in Release, so every configuration links the
+# release runtime and shares one C runtime with them.
+if(WIN32)
+    enable_language(RC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     # The C++ shims and dependencies use no modules or dependency scanner.

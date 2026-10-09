@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.25)
 set(CHIBI_SDK_VERSION 0.1.0)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(ChibiSDK VERSION ${CHIBI_SDK_VERSION} LANGUAGES C)
+    if(WIN32)
+        enable_language(RC)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
+    endif()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -42,6 +46,22 @@ if(CHIBI_SDK_BUILD_DESKTOP AND NOT CHIBI_SDK_BUILD_NATIVE)
     message(FATAL_ERROR "Desktop runtime requires CHIBI_SDK_BUILD_NATIVE")
 endif()
 set(CHIBI_SDK_NEEDS_THREADS OFF)
+
+# Windows executables read and write file names as UTF-8, as elsewhere.
+# Installed consumers add share/chibi/windows/chibi.rc themselves.
+function(chibi_windows_manifest target)
+    if(WIN32)
+        set(windows "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/host/windows")
+        target_sources(${target} PRIVATE "${windows}/chibi.rc")
+        # The resource compiler reports no dependencies, so name the manifest.
+        set_source_files_properties("${windows}/chibi.rc" TARGET_DIRECTORY ${target}
+            PROPERTIES OBJECT_DEPENDS "${windows}/chibi.manifest")
+    endif()
+endfunction()
+if(WIN32)
+    install(FILES "${CHIBI_SDK_ROOT}/src/host/windows/chibi.rc"
+        "${CHIBI_SDK_ROOT}/src/host/windows/chibi.manifest" DESTINATION share/chibi/windows)
+endif()
 
 # Both source and installed consumers see only headers owned by their declared
 # dependency closure. Keep include spellings stable while isolating search roots.
@@ -488,6 +508,7 @@ if(TARGET chibi-compile AND TARGET chibi-player)
     target_link_libraries(chibi PRIVATE chibi_project_document chibi_support chibi_json)
     target_compile_options(chibi PRIVATE -Wall -Wextra -Werror)
     add_dependencies(chibi chibi-compile chibi-player)
+    chibi_windows_manifest(chibi)
     install(TARGETS chibi RUNTIME DESTINATION bin)
 endif()
 foreach(target IN LISTS CHIBI_SDK_TARGETS)
@@ -505,6 +526,8 @@ install(TARGETS ${CHIBI_SDK_TARGETS}
     EXPORT ChibiTargets ARCHIVE DESTINATION lib)
 install(EXPORT ChibiTargets NAMESPACE Chibi:: DESTINATION lib/cmake/Chibi)
 include(CMakePackageConfigHelpers)
+# Installed consumers must link the C runtime these libraries were built with.
+set(CHIBI_MSVC_RUNTIME MultiThreaded)
 configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/ChibiConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/ChibiConfig.cmake"
     INSTALL_DESTINATION lib/cmake/Chibi)

@@ -59,6 +59,9 @@ int run_feature_coverage(const char *project);
 #ifdef CHIBI_TEST_BOX3D
 void test_box3d();
 #endif
+#ifdef CHIBI_TEST_REFLECT
+void test_tool_reflect();
+#endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
 void test_tool_native();
 void test_tool_native_values();
@@ -277,6 +280,9 @@ int main(int argc, char **argv)
         test_tool_test_policy();
         test_tool_validation_plan();
         test_tool_publish();
+#ifdef CHIBI_TEST_REFLECT
+        test_tool_reflect();
+#endif
     }
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;

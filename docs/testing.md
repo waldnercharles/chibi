@@ -281,7 +281,10 @@ retired script coverage and exact admitted native tuples.
 package/install and configure preservation, room service, publication,
 supervisor cleanup/deadlines and validation-planner regressions. Packaging,
 publication and room service implementations remain external programs; C tests
-own their assertions. Select this complete group for affected tooling contracts.
+own their assertions. A tooling build configured with `CHIBI_REFLECT_EXECUTABLE`
+also runs that `reflect` against component manifest identity, unchanged and failed
+generation, handle pins and JIT identity; without it those cases are absent, not
+passed. Select this complete group for affected tooling contracts.
 CI runs `make test-tools`; the planner's `--tools` also selects that complete group.
 Both modes retain one shared 60-second supervisor deadline. Retired script suites
 have not been reproduced completely.

@@ -23,7 +23,7 @@ group below on every pull request.
 
 ```sh
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
-make test-native         # every test_tools selector, one 60-second deadline
+make test-native         # each test_tools selector with checked-in inputs, one 60-second deadline
 make test-language-all   # every test_language selector, one 60-second deadline
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
@@ -204,9 +204,13 @@ runtime four cases/184 assertions, and parent one case/five assertions. The prod
 used ASan/UBSan; the consumer was a normal Debug runtime-only SDK build.
 
 `--semantic-corpora`, `--prepare-corpora` and `--prepare-corpora-sljit` take
-an explicit manifest of project roots (one absolute path per line, at most 16
-projects, 256 sources and 8 MiB in total). They analyze or prepare every source
-of each project; no manifest is checked in, so they are not in a group.
+a manifest with one row per project: its content folder, a tab, and a file that
+lists every `.chibi` source in it (at most 16 projects, 256 sources and 8 MiB in
+total). They analyze, or prepare for bytecode or SLJIT, every listed source
+against the engine catalog alone. They are not in a group: no manifest is checked
+in, and the repository's fixtures are not complete projects for them, since some
+reference events and prototypes they omit or declare their own components. Run
+them on extracted game projects and keep the manifest with the evidence.
 
 `--automation-authoring-readonly` selects the existing code/navigation contracts
 with direct file fixture setup and seven rejected retired mutation operations.

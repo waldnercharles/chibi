@@ -63,7 +63,7 @@ static void wire(execution_wire *w, game_ui_document *d)
     execution_wire_owned_string(w, &d->style);
     execution_wire_owned_string(w, &d->body);
     int count = w->reading ? 0 : acount(d->resources);
-    execution_wire_count(w, &count, 16);
+    execution_wire_count(w, &count, 2);
     if (!w->error && count > UI_DOCUMENT_LIMIT) {
         w->error = "Prepared UI resource limit";
     }

@@ -40,6 +40,14 @@ char *script_analyzer_qualified_name(analyzer *a, TSNode node)
     free(right);
     return name;
 }
+static TSNode unparenthesized_parent(TSNode node)
+{
+    TSNode parent = ts_node_parent(node);
+    while (script_analyzer_is(parent, "parenthesized_expression")) {
+        parent = ts_node_parent(parent);
+    }
+    return parent;
+}
 int script_analyzer_callable_symbol(const analyzer *a, const char *name)
 {
     int symbol = script_analyzer_lookup_name(a, name);
@@ -247,11 +255,17 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                                  .right = -1,
                                  .type = script_analyzer_bad_type(),
                                  .effects = receiver.effects };
+    if (receiver.type.flags & SCRIPT_TYPE_TASK) {
+        script_analyzer_diagnostic(a, member, "Await this task to read '%s'", name);
+        free(name);
+        return script_analyzer_expr_add(a, result);
+    }
     const script_expression *initializer = script_analyzer_result_source(a, left);
     int receiver_function = receiver.symbol >= 0
                               ? a->out->symbols[receiver.symbol].function
                               : -1;
-    if (receiver_function < 0 && initializer && initializer->kind == SCRIPT_EXPR_CALL) {
+    if (receiver_function < 0 && initializer &&
+        (initializer->kind == SCRIPT_EXPR_CALL || initializer->kind == SCRIPT_EXPR_JOIN)) {
         receiver_function = initializer->right;
     }
     const script_catalog_capability
@@ -261,7 +275,8 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                                                 )
                                               : NULL;
     bool output_root = receiver.kind == SCRIPT_EXPR_SYMBOL ||
-                       receiver.kind == SCRIPT_EXPR_CALL;
+                       receiver.kind == SCRIPT_EXPR_CALL ||
+                       receiver.kind == SCRIPT_EXPR_JOIN;
     bool named_output = output_root && initializer_capability &&
                         script_analyzer_parameter_index(
                             initializer_capability->results,
@@ -509,9 +524,8 @@ static int fallback_expression(analyzer *a, TSNode node, script_type expected)
             result.type = actual;
         }
         script_analyzer_require(a, value, result.type, actual);
-        if (ordinal == 1 &&
-            !(script_analyzer_expr_type(a, index).flags & SCRIPT_TYPE_REFERENCE)) {
-            script_analyzer_diagnostic(a, value, "Fallback binding requires a reference");
+        if (ordinal == 1 && !a->out->expressions[index].writable) {
+            script_analyzer_diagnostic(a, value, "Fallback binding requires a writable value");
         }
         if (ordinal == 2 &&
             (script_analyzer_expr_effects(a, index) ||
@@ -585,6 +599,7 @@ static int state_access(analyzer *a, TSNode node, const script_catalog_capabilit
     script_analyzer_require(a, argument, result.type, value_type);
     int right = script_analyzer_expression(a, value, value_type);
     script_analyzer_require(a, value, result.type, script_analyzer_expr_type(a, right));
+    script_analyzer_infer_task(a, symbol, script_analyzer_expr_type(a, right));
     script_analyzer_use(a, name_node, symbol, SCRIPT_WRITE, 0);
     script_expression store = { .kind = SCRIPT_EXPR_STORE,
                                 .type = result.type,
@@ -810,6 +825,55 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
     return found;
 }
 
+/* The local a reference argument names, or -1. A task can outlive the
+ * declaring frame, so the local moves to a box the task keeps. */
+/* The local or reference parameter a reference argument reaches. */
+static int local_root(const analyzer *a, int expression)
+{
+    while (expression >= 0) {
+        const script_expression *e = &a->out->expressions[expression];
+        if (e->kind == SCRIPT_EXPR_SYMBOL) {
+            const script_symbol *s = e->symbol >= 0 ? &a->out->symbols[e->symbol]
+                                                    : NULL;
+            bool forwarded = s && s->kind == SCRIPT_PARAMETER &&
+                             (s->type.flags & SCRIPT_TYPE_REFERENCE);
+            return s && (s->kind == SCRIPT_LOCAL || forwarded) ? e->symbol : -1;
+        }
+        bool path = e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_INDEX;
+        if (!path) {
+            return -1;
+        }
+        expression = e->left;
+    }
+    return -1;
+}
+/* A reference parameter that reaches a task boxes what its callers pass. */
+void script_analyzer_finish_boxes(analyzer *a)
+{
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (int i = 0; i < acount(a->out->expressions); i++) {
+            const script_expression *e = &a->out->expressions[i];
+            const script_function *f = e->kind == SCRIPT_EXPR_CALL &&
+                                               !e->task && e->right >= 0
+                                         ? &a->out->functions[e->right]
+                                         : NULL;
+            if (!f || f->kind != SCRIPT_FUNCTION_AUTHORED) {
+                continue;
+            }
+            for (int j = 0; j < acount(e->arguments); j++) {
+                int p = e->arguments[j].parameter;
+                int root = p >= 0 && p < acount(f->parameters) &&
+                                   a->out->symbols[f->parameters[p]].boxed
+                             ? local_root(a, e->arguments[j].value)
+                             : -1;
+                if (root >= 0 && !a->out->symbols[root].boxed) {
+                    a->out->symbols[root].boxed = changed = true;
+                }
+            }
+        }
+    }
+}
 int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expected)
 {
     TSNode target = script_analyzer_field(node, "function"),
@@ -1238,9 +1302,55 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     }
     free(seen);
     free(resolved_arguments);
-    int count = capability ? capability->result_count
-              : function   ? acount(function->results)
-                           : 0;
+    /* An unawaited call to an authored function or library function that
+     * waits starts a task. Action initializers and invocations keep their own
+     * lifetimes. */
+    bool spawnable = !result.instance && entry_index < 0 &&
+                     !ts_node_eq(node, a->awaited) &&
+                     !script_analyzer_is(unparenthesized_parent(node), "action_declaration") &&
+                     !(symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_ACTION);
+    bool authored_task = spawnable && function && !capability &&
+                         function->kind == SCRIPT_FUNCTION_AUTHORED &&
+                         script_analyzer_function_waits(a, function_index);
+    bool library_task = spawnable && capability &&
+                        capability->kind == SCRIPT_CAPABILITY_FUNCTION &&
+                        (capability->effects & SCRIPT_EFFECT_SUSPEND);
+    /* An unawaited action continues before its result exists. */
+    TSNode use = unparenthesized_parent(node);
+    if (!result.instance && entry_index < 0 && !ts_node_eq(node, a->awaited) &&
+        capability && capability->kind == SCRIPT_CAPABILITY_ACTION &&
+        (capability->effects & SCRIPT_EFFECT_SUSPEND) && capability->result_count &&
+        !script_analyzer_is(use, "expression_statement") &&
+        !script_analyzer_is(use, "action_declaration")) {
+        script_analyzer_diagnostic(a, node, "Await this call before using its result");
+    }
+    if (authored_task || library_task) {
+        result.task = true;
+        result.effects &= ~SCRIPT_EFFECT_SUSPEND;
+        result.type = (script_type){
+            .storage = PIN_U64,
+            .nominal = library_task ? capability->id
+                                    : a->out->symbols[function->symbol].id,
+            .flags = SCRIPT_TYPE_TASK
+        };
+        for (int i = 0; i < acount(result.arguments); i++) {
+            int p = result.arguments[i].parameter;
+            script_type type = p < 0 ? script_analyzer_bad_type()
+                             : library_task
+                                 ? capability->parameters[p].type
+                                 : a->out->symbols[function->parameters[p]].type;
+            int local = type.flags & SCRIPT_TYPE_REFERENCE
+                          ? local_root(a, result.arguments[i].value)
+                          : -1;
+            if (local >= 0) {
+                a->out->symbols[local].boxed = true;
+            }
+        }
+    }
+    int count = result.task ? 0
+              : capability  ? capability->result_count
+              : function    ? acount(function->results)
+                            : 0;
     if (count == 1) {
         result.type = capability ? capability->results[0].type
                                  : a->out->symbols[function->results[0]].type;
@@ -1318,7 +1428,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
         result.type = (script_type){ .storage = PIN_STRUCT,
                                      .nominal = result.capability,
                                      .flags = SCRIPT_TYPE_RESULTS };
-    } else if (capability || function) {
+    } else if (!result.task && (capability || function)) {
         result.type = (script_type){ .storage = PIN_FLOW };
     }
     for (int i = 0; i < count; i++) {

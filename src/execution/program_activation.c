@@ -47,8 +47,19 @@ static void cancel_continuations(behavior_function_context *ctx)
         child->status = FLOW_ERR_STATE;
     }
 }
+void program_activation_cancel(execution_activation *a)
+{
+    behavior_function_visit_contexts(&a->context, cancel_continuations);
+    while (acount(a->requests)) {
+        execution_request_detach(a->requests[0]->request);
+    }
+    a->finished = true;
+    a->status = FLOW_OK;
+}
 void program_activation_free(execution_activation *activation)
 {
+    program_task_finished(activation, true);
+    program_boxes_free(activation);
     program_inspection_release(activation);
     unlink_continuation(activation);
     behavior_function_visit_contexts(&activation->context, cancel_continuations);
@@ -70,6 +81,7 @@ static void leave_context(behavior_function_context *ctx, int result)
     execution_activation *a = ctx->inspection_user;
     program_commit_instance(ctx);
     cancel_continuations(ctx);
+    program_boxes_detach(a, ctx);
     for (int i = 0; i < acount(a->locals);) {
         if (a->locals[i].context == ctx) {
             adel(a->locals, i);
@@ -78,11 +90,19 @@ static void leave_context(behavior_function_context *ctx, int result)
         }
     }
     for (int i = 0; i < acount(a->requests);) {
-        if (a->requests[i]->context != ctx) {
+        command_wait *wait = a->requests[i];
+        if (wait->context != ctx) {
             i++;
             continue;
         }
-        execution_request_detach(a->requests[i]->request);
+        /* A delivered request, such as a spawn still initializing its entity,
+         * belongs to the activation until it finishes, not to the frame. */
+        if (wait->delivered) {
+            wait->context = ctx->parent;
+            i++;
+            continue;
+        }
+        execution_request_detach(wait->request);
     }
 }
 execution_activation *program_activation_new(
@@ -156,6 +176,7 @@ execution_activation *program_activation_new(
     };
     program_bind_world_callbacks(&a->context);
     program_bind_commands(&a->context);
+    program_bind_tasks(&a->context);
     a->context.program_name = instance->program->name;
     program_bind_instance(function, &a->context);
     behavior_function_bind_storage(&a->context, &a->payload);
@@ -207,7 +228,7 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     }
     for (int i = 0; i < acount(a->requests);) {
         command_wait *wait = a->requests[i];
-        if (wait->timer && wait->deadline <= now) {
+        if (program_wait_due(wait, now)) {
             bool completed = flow_host_complete(wait->request, -1, (pin_value){ 0 });
             assert(completed);
             (void)completed;
@@ -247,7 +268,7 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     double deadline = 0;
     for (int i = 0; i < acount(a->requests); i++) {
         command_wait *wait = a->requests[i];
-        if (wait->timer && (!deadline || wait->deadline < deadline)) {
+        if (wait->timer && !wait->yield && (!deadline || wait->deadline < deadline)) {
             deadline = wait->deadline;
         }
     }
@@ -309,6 +330,10 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     }
     program_commit_instance(&a->context);
     a->finished = a->status != FLOW_SUSPENDED_RESULT && a->status != FLOW_PAUSED_RESULT;
+    if (a->finished) {
+        program_boxes_detach(a, NULL);
+        program_task_finished(a, false);
+    }
     program_inspection_finish(a);
     program_continuation_finish(a);
     program_collect_payloads(a->instance->program, a);

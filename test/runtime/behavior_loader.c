@@ -49,7 +49,7 @@ void run_behavior_loader_checks()
 
     write_asset(directory, "Unknown", "behavior Unknown { on Tick() { Missing(); } }\n");
 
-    write_asset(directory, "MissingLibrary", "behavior MissingLibrary { value missing = AbsentLibrary.Missing(); }\n");
+    write_asset(directory, "MissingLibrary", "behavior MissingLibrary { local missing = AbsentLibrary.Missing(); }\n");
 
     ecs_world *ecs = ecs_world_new();
     game_preview_world *world = game_preview_world_new(ecs);

@@ -143,10 +143,8 @@ TEST_CASE(instanced_shapes_draw_an_interior_border)
 
 TEST_CASE(tiled_shapes_draw_the_same_interior_border)
 {
-    if (!test_draw_tiled_available()) {
-        puts("Tiled draws need Cute's compute renderer, which this backend lacks.");
-        return true;
-    }
+    /* Only GLES lacks Cute's compute renderer, and this app never selects it. */
+    REQUIRE(test_draw_tiled_available());
     for (int shape = 0; shape < 2; shape++) {
         REQUIRE(draws_border(true, shape, 1));
         REQUIRE(draws_border(true, shape, 0.4f));
@@ -161,7 +159,11 @@ static void teardown()
 
 void test_render_interior_border()
 {
+#ifdef __linux__
+    /* Linux agents may have no display, and the offscreen driver still reaches
+     * Vulkan. Metal and D3D12 need the platform's own window. */
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+#endif
     CF_Result made = cf_make_app(
         "interior-border",
         0,

@@ -7,19 +7,26 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* The sky an Environment draws behind the 3D scene: an RGBA16F cube map built
- * from its resident equirectangular sky, drawn wherever no surface is. */
+/* The sky an Environment draws behind the 3D scene and lights it with: an
+ * RGBA16F cube map built from its resident equirectangular sky, drawn wherever
+ * no surface is, plus its irradiance and a GGX-prefiltered copy for surfaces'
+ * diffuse and specular light. */
 typedef struct render_scene3d_sky render_scene3d_sky;
 render_scene3d_sky *render_scene3d_sky_new();
 void render_scene3d_sky_free(render_scene3d_sky *sky);
-/* Checks the Environment's sky fields and rebuilds the cube when its sky
- * changed; false with `error` saying why. An empty sky draws nothing. */
+/* Checks the Environment's sky fields and rebuilds the cubes when its sky
+ * changed; false with `error` saying why. An empty sky draws and lights
+ * nothing. */
 bool render_scene3d_sky_prepare(
     render_scene3d_sky *sky,
     const GameEnvironment *environment,
     char *error,
     size_t size
 );
+/* Sets the sky light uniforms and textures every 3D surface shader reads,
+ * whether a sky shows or not; unbind clears the textures. */
+void render_scene3d_sky_bind(render_scene3d_sky *sky);
+void render_scene3d_sky_unbind();
 /* Queues the prepared sky into the current 3D draw, after opaque surfaces and
  * before translucent ones so they blend over it. */
 void render_scene3d_sky_draw(const render_scene3d_sky *sky, const render_scene3d_camera *camera);

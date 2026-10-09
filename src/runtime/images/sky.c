@@ -119,6 +119,121 @@ void render_sky_face(const render_sky *sky, int face, int size, uint16_t *texels
     }
 }
 
+/* The polynomial each spherical-harmonic coefficient scales, toward d. */
+static void harmonics(const float d[3], float terms[9])
+{
+    float x = d[0], y = d[1], z = d[2];
+    float values[9] = {
+        1, x, y, z, x * y, y * z, 3 * y * y - 1, x * z, x * x - z * z
+    };
+    memcpy(terms, values, sizeof values);
+}
+
+void render_sky_irradiance(const render_sky *sky, float coefficients[9][3])
+{
+    /* Each basis function's normalization, and the cosine lobe's attenuation
+     * of its band. */
+    static const float basis[9] = { .282095f, .488603f,  .488603f,
+                                    .488603f, 1.092548f, 1.092548f,
+                                    .315392f, 1.092548f, .546274f };
+    static const float bands[9] = { pi,         2 * pi / 3, 2 * pi / 3,
+                                    2 * pi / 3, pi / 4,     pi / 4,
+                                    pi / 4,     pi / 4,     pi / 4 };
+    float (*columns)[2] = xmalloc(sizeof *columns * (size_t)sky->width);
+    for (int x = 0; x < sky->width; x++) {
+        float azimuth = ((x + .5f) / sky->width - .5f) * 2 * pi;
+        columns[x][0] = sinf(azimuth);
+        columns[x][1] = cosf(azimuth);
+    }
+    double sums[9][3] = { 0 };
+    for (int y = 0; y < sky->height; y++) {
+        /* A row spans a band of elevation; its texels share its solid angle. */
+        float top = (.5f - (float)y / sky->height) * pi;
+        float bottom = (.5f - (float)(y + 1) / sky->height) * pi;
+        float solid_angle = 2 * pi / sky->width * (sinf(top) - sinf(bottom));
+        float elevation = (top + bottom) / 2, across = cosf(elevation),
+              up = sinf(elevation);
+        for (int x = 0; x < sky->width; x++) {
+            float d[3] = { across * columns[x][0], up, -across * columns[x][1] };
+            float terms[9], rgb[3];
+            harmonics(d, terms);
+            texel(sky, x, y, rgb);
+            for (int c = 0; c < 3; c++) {
+                /* Saturate as the faces do, which also keeps the coefficients
+                 * finite for the brightest RGBE texels. */
+                rgb[c] = fminf(rgb[c], HALF_MAX);
+            }
+            for (int i = 0; i < 9; i++) {
+                for (int c = 0; c < 3; c++) {
+                    sums[i][c] += (double)rgb[c] * terms[i] * solid_angle;
+                }
+            }
+        }
+    }
+    free(columns);
+    for (int i = 0; i < 9; i++) {
+        for (int c = 0; c < 3; c++) {
+            coefficients[i][c] = (float)sums[i][c] * basis[i] * basis[i] * bands[i];
+        }
+    }
+}
+
+enum
+{
+    SPLIT_SUM_SAMPLES = 128
+};
+
+/* The base-2 radical inverse of bits: Hammersley's second coordinate. */
+static float radical_inverse(uint32_t bits)
+{
+    bits = bits << 16 | bits >> 16;
+    bits = (bits & 0x55555555u) << 1 | (bits & 0xaaaaaaaau) >> 1;
+    bits = (bits & 0x33333333u) << 2 | (bits & 0xccccccccu) >> 2;
+    bits = (bits & 0x0f0f0f0fu) << 4 | (bits & 0xf0f0f0f0u) >> 4;
+    bits = (bits & 0x00ff00ffu) << 8 | (bits & 0xff00ff00u) >> 8;
+    return (float)bits * 0x1p-32f;
+}
+
+/* Integrates the GGX specular lobe over even white light by importance
+ * sampling halfway vectors, splitting Fresnel into what scales the
+ * reflectance at normal incidence and what adds to it. */
+static void split_sum(float nv, float roughness, float result[2])
+{
+    float alpha = fmaxf(roughness * roughness, .05f * .05f), a2 = alpha * alpha;
+    float vx = sqrtf(1 - nv * nv);
+    result[0] = result[1] = 0;
+    for (int i = 0; i < SPLIT_SUM_SAMPLES; i++) {
+        float phi = 2 * pi * i / SPLIT_SUM_SAMPLES, u = radical_inverse((uint32_t)i);
+        float nh = sqrtf((1 - u) / (1 + (a2 - 1) * u));
+        float vh = vx * sqrtf(1 - nh * nh) * cosf(phi) + nv * nh;
+        float nl = 2 * vh * nh - nv;
+        if (nl <= 0) {
+            continue;
+        }
+        float visibility = .5f / (nl * sqrtf(nv * nv * (1 - a2) + a2) +
+                                  nv * sqrtf(nl * nl * (1 - a2) + a2));
+        float weight = 4 * visibility * nl * vh / nh;
+        float fresnel = powf(1 - vh, 5);
+        result[0] += (1 - fresnel) * weight;
+        result[1] += fresnel * weight;
+    }
+    result[0] /= SPLIT_SUM_SAMPLES;
+    result[1] /= SPLIT_SUM_SAMPLES;
+}
+
+void render_sky_split_sum(int size, uint16_t *texels)
+{
+    assert(size > 0);
+    for (int j = 0; j < size; j++) {
+        for (int i = 0; i < size; i++) {
+            float terms[2];
+            split_sum((i + .5f) / size, (j + .5f) / size, terms);
+            texels[((size_t)j * size + i) * 2] = half(terms[0]);
+            texels[((size_t)j * size + i) * 2 + 1] = half(terms[1]);
+        }
+    }
+}
+
 static int find(const render_sky_table *table, const char *key)
 {
     for (int i = 0; i < acount(table->entries); i++) {

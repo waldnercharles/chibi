@@ -143,13 +143,15 @@ static bool contains(const char *relative, const char *text)
 TEST_CASE(export_assembles_a_runnable_folder)
 {
     REQUIRE(mkdtemp(root));
-    /* The fake compiler writes the artifact and lists one external resource. */
+    /* The fake compiler writes the artifact and lists the external resources,
+     * the icon among them. */
     write_at(
         "sdk/bin/chibi-compile",
         "#!/bin/sh\n"
         "test -f \"$2/fail\" && exit 3\n"
         "printf artifact > \"$4\"\n"
-        "printf '{\"external\":[{\"path\":\"art/sheet.bin\"}]}' > "
+        "printf '{\"external\":[{\"path\":\"art/sheet.bin\"},"
+        "{\"kind\":\"icon\",\"path\":\"art/icon.png\"}]}' > "
         "\"$4.resources.json\"\n",
         0755
     );
@@ -165,6 +167,7 @@ TEST_CASE(export_assembles_a_runnable_folder)
     REQUIRE(has("out/Game/My Game_2", "player") && executable("out/Game/My Game_2"));
     REQUIRE(has("out/Game/data/game.chibip", "artifact"));
     REQUIRE(!has("out/Game/data/game.chibip.resources.json", NULL));
+    REQUIRE(has("out/Game/data/.chibi-export", ""));
     REQUIRE(has("out/Game/data/art/sheet.bin", "sheet"));
     REQUIRE(contains("out/Game/data/art/icon.png", "PNG"));
     REQUIRE(contains("out/Game/my-game-2.desktop", "Name=My <Game> \\\\ & Co\nExec=\"My Game_2\"\n"));
@@ -179,6 +182,11 @@ TEST_CASE(export_assembles_a_runnable_folder)
     write_at("mine/notes.txt", "keep", 0644);
     REQUIRE(!export_to("mine"));
     REQUIRE(has("mine/notes.txt", "keep"));
+    /* Looking like an export is not enough: only the exporter's marker
+     * allows replacing a folder. */
+    write_at("mine/data/game.chibip", "theirs", 0644);
+    REQUIRE(!export_to("mine"));
+    REQUIRE(has("mine/notes.txt", "keep") && has("mine/data/game.chibip", "theirs"));
     REQUIRE(!export_to("out/Game/.") && has("out/Game/data/game.chibip", "artifact"));
 
     /* A macOS app keeps the same data in Contents/Resources, and an archive

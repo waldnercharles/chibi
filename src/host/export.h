@@ -32,7 +32,7 @@ typedef struct
 
 /* Compiles the project and assembles a runnable game folder in `layout`: the
  * player, renamed for the game, and the data folder with the artifact, its
- * declared resources and the icon, and engine/ under it with the shaders,
+ * declared resources, the icon among them, and engine/ under it with the shaders,
  * licenses and engine identity. The folder is built beside `output` and moved
  * into place only when complete, and an existing `output` is replaced only
  * when it is an earlier export. Prints the failure and returns false; when

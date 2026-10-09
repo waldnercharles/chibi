@@ -44,12 +44,22 @@ typedef struct
     bool used, allowed;
 } entry;
 
+typedef struct
+{
+    char *name;
+    char **behaviors;
+} prototype_entry;
+
 static char project_root[PATH_MAX];
 static char scratch[] = "/tmp/chibi-feature-coverage-XXXXXX";
 static authoring_language_catalog *native;
 static source_catalog *project;
 static entry *entries;
 static int problems; /* Reported failures; the coverage case fails on any. */
+static prototype_entry *prototypes;
+/* Names a scene reaches: its entities' prototypes and behaviors, their
+ * prototypes' behaviors, and the prototypes those behaviors spawn. */
+static char **reached_prototypes, **reached_behaviors;
 
 /* Language library categories; their functions are not engine features. */
 static const char *const LANGUAGE_CATEGORIES[] = { "Array", "Set", "Flow Control", "Conversion" };
@@ -252,6 +262,38 @@ static void free_paths(char **paths)
     afree(paths);
 }
 
+static bool listed(char **names, const char *name)
+{
+    for (int i = 0; i < acount(names); i++) {
+        if (!strcmp(names[i], name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void reach_behavior(const char *name)
+{
+    if (!listed(reached_behaviors, name)) {
+        apush(reached_behaviors, xstrdup(name));
+    }
+}
+
+static void reach_prototype(const char *name)
+{
+    if (listed(reached_prototypes, name)) {
+        return;
+    }
+    apush(reached_prototypes, xstrdup(name));
+    for (int i = 0; i < acount(prototypes); i++) {
+        for (int j = 0; !strcmp(prototypes[i].name, name) &&
+                        j < acount(prototypes[i].behaviors);
+             j++) {
+            reach_behavior(prototypes[i].behaviors[j]);
+        }
+    }
+}
+
 static void use_prototypes()
 {
     game_prototype_registry registry = {
@@ -269,6 +311,13 @@ static void use_prototypes()
         problems += !prototype;
         for (int j = 0; prototype && j < acount(prototype->components); j++) {
             use_component_name(prototype->components[j].desc->name);
+        }
+        if (prototype) {
+            prototype_entry item = { .name = xstrdup(prototype->name) };
+            for (int j = 0; j < acount(prototype->graphs); j++) {
+                apush(item.behaviors, xstrdup(prototype->graphs[j]));
+            }
+            apush(prototypes, item);
         }
         game_prototype_free(prototype);
         free(text);
@@ -295,12 +344,92 @@ static void use_scenes()
         }
         problems += !scene;
         for (int j = 0; scene && j < acount(scene->entities); j++) {
-            use_scene_components(scene->entities[j].components);
+            const game_scene_entity *entity = &scene->entities[j];
+            use_scene_components(entity->components);
+            if (entity->prototype) {
+                reach_prototype(entity->prototype);
+            }
+            for (int k = 0; k < acount(entity->behaviors); k++) {
+                reach_behavior(entity->behaviors[k]);
+            }
         }
         game_scene_document_free(scene);
         free(text);
     }
     free_paths(paths);
+}
+
+/* A behavior source's name is its file name in content/behaviors. */
+static bool behavior_name(const source_catalog_source *source, char *name, size_t size)
+{
+    const char *folder = "behaviors/", *found = strstr(source->path, folder);
+    const char *file = found ? found + strlen(folder) : NULL;
+    if (!file || strchr(file, '/')) {
+        return false;
+    }
+    snprintf(name, size, "%.*s", (int)strcspn(file, "."), file);
+    return true;
+}
+
+/* Reaches each prototype that a reached behavior names in a string, as
+ * spawn_prototype("Drone") does. Returns whether it reached any. */
+static bool reach_spawned()
+{
+    bool reached = false;
+    for (int i = 0; i < source_catalog_source_count(project); i++) {
+        const source_catalog_source *source = source_catalog_source_at(project, i);
+        char name[MAX_LINE], quoted[MAX_LINE];
+        if (!behavior_name(source, name, sizeof name) ||
+            !listed(reached_behaviors, name)) {
+            continue;
+        }
+        for (int j = 0; j < acount(prototypes); j++) {
+            snprintf(quoted, sizeof quoted, "\"%s\"", prototypes[j].name);
+            if (!listed(reached_prototypes, prototypes[j].name) &&
+                strstr(source->text, quoted)) {
+                reach_prototype(prototypes[j].name);
+                reached = true;
+            }
+        }
+    }
+    return reached;
+}
+
+/* Only what a scene runs counts as covered, so every prototype and behavior
+ * must be reachable from a scene. */
+static void check_reachable()
+{
+    while (reach_spawned()) {
+    }
+    for (int i = 0; i < acount(prototypes); i++) {
+        if (!listed(reached_prototypes, prototypes[i].name)) {
+            fprintf(
+                stderr,
+                "prototype %s: no scene uses or spawns it\n",
+                prototypes[i].name
+            );
+            problems++;
+        }
+    }
+    for (int i = 0; i < source_catalog_source_count(project); i++) {
+        char name[MAX_LINE];
+        if (behavior_name(source_catalog_source_at(project, i), name, sizeof name) &&
+            !listed(reached_behaviors, name)) {
+            fprintf(stderr, "behavior %s: no scene runs it\n", name);
+            problems++;
+        }
+    }
+}
+
+static void free_prototypes()
+{
+    for (int i = 0; i < acount(prototypes); i++) {
+        free(prototypes[i].name);
+        free_paths(prototypes[i].behaviors);
+    }
+    afree(prototypes);
+    free_paths(reached_prototypes);
+    free_paths(reached_behaviors);
 }
 
 /* coverage-gaps.txt lists the catalog entries the project knowingly leaves
@@ -403,6 +532,7 @@ TEST_CASE(test_catalog_coverage)
     use_sources();
     use_prototypes();
     use_scenes();
+    check_reachable();
     bool strict = read_allowed_gaps();
     report(strict);
     REQUIRE(!problems);
@@ -481,6 +611,7 @@ int run_feature_coverage(const char *root)
     source_catalog_free(project);
     authoring_language_catalog_free(native);
     afree(entries);
+    free_prototypes();
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;
 }

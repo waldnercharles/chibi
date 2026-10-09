@@ -42,7 +42,9 @@ entities). `test_tools --feature-coverage <project>` compares the engine
 catalog (components, native functions and events) with what the project's
 scripts, prototypes and scenes use, prints each gap, and runs every scene for
 four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
-failure. Run it on any project to list what that project leaves unused.
+failure. Every prototype and behavior must be reachable from a scene (placed,
+attached, or spawned by name from a reached behavior), so only what the scenes
+run counts. Run it on any project to list what that project leaves unused.
 
 For the fixture, `coverage-gaps.txt` lists the entries no scene uses yet, each
 with a reason. The check fails when a catalog entry is in neither the scenes nor

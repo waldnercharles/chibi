@@ -216,14 +216,6 @@ static void use_analysis(const script_catalog *catalog, const script_analysis *a
     for (int i = 0; i < analysis->function_count; i++) {
         use_id(ENTRY_EVENT, analysis->functions[i].event);
     }
-    for (int i = 0; i < analysis->query_count; i++) {
-        for (int j = 0; j < catalog->type_count; j++) {
-            if (catalog->types[j].component &&
-                catalog->types[j].component_id == analysis->queries[i].component) {
-                use_id(ENTRY_COMPONENT, catalog->types[j].id);
-            }
-        }
-    }
 }
 
 static void analyze_sources()

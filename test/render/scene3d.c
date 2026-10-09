@@ -351,6 +351,11 @@ TEST_CASE(auto_exposure_adapts_over_scene_time)
     environment.auto_exposure = true;
     REQUIRE(render_at(&environment, 0));
     REQUIRE(distance(top(), settled) <= 6);
+    /* A reset, as for a new scene, snaps even with time moving forward. */
+    sun->intensity /= 8;
+    render_scene3d_post_reset(post);
+    REQUIRE(render_at(&environment, .1f));
+    REQUIRE(distance(top(), settled) <= 6);
     return true;
 }
 

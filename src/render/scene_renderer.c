@@ -384,6 +384,9 @@ void app_scene_renderer_reset(app_scene_renderer *renderer)
     if (renderer && renderer->scene3d) {
         render_scene3d_reset(renderer->scene3d);
     }
+    if (renderer && renderer->post) {
+        render_scene3d_post_reset(renderer->post);
+    }
     if (renderer && renderer->radiance) {
         render_radiance_reset(renderer->radiance);
     }

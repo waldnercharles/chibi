@@ -1019,7 +1019,14 @@ static source_catalog *build(
                 }
             }
             if (!reference->id) {
-                error(c, reference->path, reference->range, "Unknown authored behavior or system attachment");
+                char message[192];
+                snprintf(
+                    message,
+                    sizeof message,
+                    "Unknown behavior or system '%s'",
+                    reference->name
+                );
+                error(c, reference->path, reference->range, message);
             }
             continue;
         }
@@ -1034,7 +1041,15 @@ static source_catalog *build(
             }
         }
         if (!reference->id) {
-            error(c, reference->path, reference->range, "Unknown authored prototype or event reference");
+            char message[192];
+            snprintf(
+                message,
+                sizeof message,
+                "Unknown %s '%s'",
+                kind == SCRIPT_CAPABILITY_EVENT ? "event" : "prototype",
+                reference->name
+            );
+            error(c, reference->path, reference->range, message);
         }
     }
     return c;

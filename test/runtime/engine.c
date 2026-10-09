@@ -300,7 +300,6 @@ static void authored_motion_checks()
         if (mirrored) {
             GAME_GameOrientation_get(f.world, flipper)->radians = 3.141593f - .35f;
             GAME_GameTransform_get(f.world, flipper)->x *= -1;
-            GAME_GameActionBinding_get(f.world, flipper)->source = GAME_CONTROL_M;
         }
         game_behavior_set_deferred(f.live->runtime->behaviors, false);
         assert(game_behavior_begin_pending(f.live->runtime->behaviors) >= 0);
@@ -591,31 +590,6 @@ static void time_scale_checks()
     assert(engine_step(f.runtime) == FLOW_OK);
     assert(engine_frame(f.runtime, 20) == FLOW_OK);
     test_check(timing->simulation_steps == 5, "Step advances exactly one fixed tick at any speed");
-    clock_free(&f);
-}
-
-static void held_binding_checks()
-{
-    clock_fixture f = clock_new(false, false);
-    ecs_entity binding = ecs_world_create_entity(f.world);
-    assert(GAME_GameActionBinding_add(f.world, binding, 0) == ECS_OK);
-    assert(ecs_world_apply_commands(f.world) == ECS_OK);
-    GameActionBinding *action = GAME_GameActionBinding_get(f.world, binding);
-    action->action = "HeldOnly";
-    action->source = GAME_CONTROL_Z;
-    bool firing;
-    assert(engine_frame(f.runtime, 0) == FLOW_OK);
-    assert(engine_dispatch_input(f.runtime, "Fire", 0, 0, NULL) == 0);
-    assert(engine_sample_controls(f.runtime, UINT64_C(1) << GAME_CONTROL_Z, &firing) == FLOW_OK);
-    assert(engine_frame(f.runtime, .02) == FLOW_OK);
-    test_check(action->pressed && !firing, "held bindings expose input without an event receiver");
-    assert(engine_sample_controls(f.runtime, 0, &firing) == FLOW_OK);
-    assert(engine_frame(f.runtime, .04) == FLOW_OK);
-    test_check(!action->pressed, "held-only bindings release on the next input sample");
-    assert(engine_sample_controls(f.runtime, UINT64_C(1) << GAME_CONTROL_Z, &firing) == FLOW_OK);
-    assert(engine_frame(f.runtime, .06) == FLOW_OK);
-    assert(engine_set_focus(f.runtime, ENGINE_FOCUS_CANVAS) == 0);
-    test_check(!action->pressed, "leaving the viewport clears held-only bindings immediately");
     clock_free(&f);
 }
 
@@ -973,7 +947,6 @@ void run_engine_checks(void)
     accumulator_checks();
     time_scale_checks();
     action_checks();
-    held_binding_checks();
     reaction_checks(false);
     reaction_checks(true);
     profile_checks();

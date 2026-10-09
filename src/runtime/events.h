@@ -19,7 +19,6 @@ typedef enum
     GAME_HOST_EVENT_DASH,
     GAME_HOST_EVENT_INPUT,
     GAME_HOST_EVENT_CONTACT_BEGIN,
-    GAME_HOST_EVENT_PRESSED_CHANGED,
     GAME_HOST_EVENT_COUNT,
 } game_host_event;
 
@@ -32,9 +31,6 @@ typedef struct
     const char *description;
     const game_event_field *payload;
     int payload_count;
-    const char *receiver_type;
-    /* Reflected native field sampled by a receiver-bound subscription. */
-    const char *receiver_field;
 } game_host_event_desc;
 
 extern const game_host_event_desc GAME_HOST_EVENTS[GAME_HOST_EVENT_COUNT];

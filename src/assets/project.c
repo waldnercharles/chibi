@@ -106,6 +106,7 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
     }
     if (!root || !root[0] || !name || !name[0]) {
         set_error(error, error_size, "Project path and name are required");
+        errno = EINVAL;
         return -1;
     }
     bool named = false;
@@ -114,19 +115,27 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
     }
     if (!named) {
         set_error(error, error_size, "Enter a project name");
+        errno = EINVAL;
         return -1;
     }
     if (is_directory(root) || is_file(root)) {
         set_errorf(error, error_size, "Project already exists: %s", root);
+        errno = EEXIST;
         return -1;
     }
     char *parent = parent_path(root);
-    if (!is_directory(parent)) {
+    struct stat info;
+    /* mkdir reports a parent that exists but cannot be inspected. */
+    bool missing = stat(parent, &info) ? errno == ENOENT || errno == ENOTDIR
+                                       : !S_ISDIR(info.st_mode);
+    if (missing) {
         set_errorf(error, error_size, "Project parent directory does not exist: %s", parent);
         free(parent);
+        errno = EINVAL;
         return -1;
     }
     free(parent);
+    errno = 0;
     if (mkdir(root, 0755) != 0) {
         if (error_size) {
             snprintf(error, error_size, "Cannot create project: %s", strerror(errno));
@@ -144,11 +153,13 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
                    write_asset_file(manifest_path, manifest, error, error_size) == 0 &&
                    write_asset_file(scene_path, scene, error, error_size) == 0;
     if (!written) {
+        int failure = errno ? errno : EIO;
         unlink(scene_path);
         unlink(manifest_path);
         rmdir(scenes);
         rmdir(content);
         rmdir(root);
+        errno = failure;
         if (!error_size || !error[0]) {
             set_error(error, error_size, "Could not create project files");
         }
@@ -553,7 +564,7 @@ char *chibi_project_find(const char *start)
     return NULL;
 }
 
-int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size)
+static int open_project(chibi_project *project, const char *path, bool migrate, char *error, size_t error_size)
 {
     if (!project) {
         set_error(error, error_size, "Project output is required");
@@ -604,6 +615,13 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
     project->root = root;
     int version = CHIBI_PROJECT_VERSION;
     if (manifest && read_manifest(manifest, project, &version, error, error_size) != 0) {
+        chibi_project_free(project);
+        free(input);
+        free(manifest);
+        return -1;
+    }
+    if (!migrate && version < CHIBI_PROJECT_VERSION) {
+        snprintf(error, error_size, "Project version %d is older than %d; run chibi_ctl --project-root <root> --migrate", version, CHIBI_PROJECT_VERSION);
         chibi_project_free(project);
         free(input);
         free(manifest);
@@ -664,6 +682,16 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
         error[0] = '\0';
     }
     return 0;
+}
+
+int chibi_project_open(chibi_project *project, const char *path, char *error, size_t error_size)
+{
+    return open_project(project, path, true, error, error_size);
+}
+
+int chibi_project_read(chibi_project *project, const char *path, char *error, size_t error_size)
+{
+    return open_project(project, path, false, error, error_size);
 }
 
 char *chibi_project_scene_path(const chibi_project *project, const char *requested)

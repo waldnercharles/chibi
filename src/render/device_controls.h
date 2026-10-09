@@ -18,5 +18,8 @@ uint64_t game_controls_down();
 CF_V2 game_controls_movement();
 /* The right stick's unit direction, or zero inside its dead zone. */
 CF_V2 game_controls_aim();
+/* A stick deflection in [-1, 1] with its radial dead zone removed: zero
+ * inside it, then rescaled so the edge reads 0 and full deflection reads 1. */
+CF_V2 game_controls_dead_zone(CF_V2 stick);
 
 #endif

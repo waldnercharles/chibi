@@ -31,6 +31,7 @@ NATIVE = {
     ('--source-systems',): 'First supervised measurement; independently reviewed eight pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
     ('--source-edit',): 'Independently reviewed nine fixed source-edit cases, tiny inputs and checked transactions including extraction/inline/signature/binding/capture and layout, no files/world/runtime/GPU; docs/testing.md',
     ('--source-session',): 'First supervised measurement; independently reviewed four tiny source session cases and fixed KDL checkpoint/merge, at most two sources per project, no engine step/render/window/process; docs/testing.md',
+    ('--ecs-query-benchmark',): 'Reviewed three fixed ECS query workloads, 4096 entities x 2000 passes each, CPU only; run through benchmark_trials',
     ('--system-schedule',): 'First supervised measurement; independently reviewed fixed dependency/order cases, 62 small engine frames and serial/parallel 128 entities x 20 frames, CPU only; docs/testing.md',
     ('--source-presentation',): 'First supervised measurement; independently reviewed two cases, six tiny source snapshots, graph ownership/layout and invalid drafts, CPU only; docs/testing.md',
     ('--prepare-corpora', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive project preparation, shared 256 sources/8 MiB, BYTECODE compilation only, CPU; docs/testing.md',
@@ -77,6 +78,8 @@ TOOLS = {
     'semantic-corpora': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--semantic-corpora', '.chibi/architecture/semantic-corpus/projects.txt'],
     'prepare-corpora': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--prepare-corpora', '.chibi/architecture/semantic-corpus/projects.txt'],
     'prepare-corpora-sljit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--prepare-corpora-sljit', '.chibi/architecture/semantic-corpus/projects.txt'],
+    # Reviewed fixed ECS query workloads; compare builds through benchmark_trials.
+    'ecs-query-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--ecs-query-benchmark'],
     # Reviewed four fixed scheduling cases, including verified source cohorts and mixed phase membership.
     'system-schedule': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--system-schedule'],
     # Same admitted eight fixed source-system cases through installed public consumer, VM and SLJIT.

@@ -21,7 +21,7 @@ target_compile_options(policy_worker PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 # Compiling the tests through the product's source include path would hide leaks.
 configure_file("${CHIBI_TOOL_ROOT}/third_party/pico_headers/pico_unit.h"
     "${CMAKE_CURRENT_BINARY_DIR}/testing/include/third_party/pico_headers/pico_unit.h" COPYONLY)
-add_library(chibi_sdk_contracts OBJECT types.c ecs.c ecs_relationship.c ecs_hierarchy.c)
+add_library(chibi_sdk_contracts OBJECT types.c ecs.c ecs_relationship.c ecs_hierarchy.c ecs_query_benchmark.c)
 target_include_directories(chibi_sdk_contracts PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
 target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::execution_contract Chibi::ecs Chibi::value_document)
 target_compile_options(chibi_sdk_contracts PRIVATE -Wall -Wextra -Werror -UNDEBUG)

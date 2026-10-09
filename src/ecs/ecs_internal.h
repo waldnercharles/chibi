@@ -120,7 +120,22 @@ static inline size_t occupancy_words(uint32_t slots)
     return ((size_t)slots + 63) / 64;
 }
 
+static inline int component_matches(const ecs_component *component, uint32_t slot)
+{
+    return bit_test(component->occupancy, slot);
+}
+
+/* The Disabled column a query skips, or NULL when it names Disabled. */
+static inline const ecs_component *skipped_disabled(const ecs_world *world, bool named)
+{
+    const ecs_component *disabled = &world->components[DISABLED_COMPONENT];
+    return named || !disabled->count ? NULL : disabled;
+}
+
 void *ecs_grow_storage(void *data, size_t old_count, size_t count, size_t stride);
+ecs_component *find_component(const ecs_world *, ecs_component_id);
+/* Drops slots removed since the dense list was last compacted. */
+void compact_dense(ecs_component *);
 
 ecs_relationship *world_relationship(const ecs_world *, ecs_component_id);
 /* Whether a component or relationship already uses the persistent key. */
@@ -129,6 +144,8 @@ void relationship_grow(ecs_relationship *, uint32_t old_slots, uint32_t slots);
 void relationship_free(ecs_relationship *, uint32_t slots);
 /* Whether target already reaches source, so linking them closes a cycle. */
 bool relationship_reaches(const ecs_world *, const ecs_relationship *, ecs_entity from, uint32_t to);
+int relationship_target_count(const ecs_relationship *, uint32_t slot);
+ecs_entity relationship_target(const ecs_relationship *, uint32_t slot, int index);
 void relationship_link(ecs_relationship *, uint32_t source, ecs_entity target);
 void relationship_unlink(ecs_relationship *, uint32_t source, ecs_entity target);
 /* Drops every pair the slot holds as a source and every pair aimed at it. */

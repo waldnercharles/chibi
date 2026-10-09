@@ -122,11 +122,11 @@ struct execution_program
     struct execution_program *owner_program;
     queued_event *events;
     observer_edge *field_edges;
-    ecs_query_expr *query;
+    ecs_term *query; /* Membership terms, when queried. */
     int *binding_order;
     double now, delta;
     unsigned budget;
-    bool dispatching, enabled;
+    bool dispatching, enabled, queried;
     execution_activation *running;
     execution_activation **system_activations;
     bool system_prepared, system_ran;

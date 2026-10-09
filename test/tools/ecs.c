@@ -124,7 +124,6 @@ static const ecs_component_desc managed_desc = {
 static ecs_world *world;
 static ecs_query query;
 static bool querying;
-static ecs_query_expr *expression;
 
 static void prepare_world()
 {
@@ -138,8 +137,6 @@ static void release_world()
         ecs_query_end(&query);
         querying = false;
     }
-    ecs_query_expr_free(expression);
-    expression = NULL;
     ecs_world_free(world);
     world = NULL;
 }
@@ -197,7 +194,7 @@ TEST_CASE(ecs_commands_wait_for_the_iteration_sync_point)
     return true;
 }
 
-TEST_CASE(ecs_boolean_query_retains_its_expression_membership)
+TEST_CASE(ecs_or_chains_and_negation_match_in_slot_order)
 {
     REQUIRE(ecs_world_register_component(world, &tag_desc, NULL) == ECS_OK);
     REQUIRE(ecs_world_register_component(world, &excluded_desc, NULL) == ECS_OK);
@@ -210,18 +207,13 @@ TEST_CASE(ecs_boolean_query_retains_its_expression_membership)
     REQUIRE(ecs_world_record_add(world, entities[2], record_desc.id, NULL, 0) == ECS_OK);
     REQUIRE(ecs_world_record_add(world, entities[2], excluded_desc.id, NULL, 1) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    expression = ecs_query_expr_new(ECS_QUERY_ALL);
-    ecs_query_expr *any = ecs_query_expr_new(ECS_QUERY_ANY);
-    assert(ecs_query_expr_add(expression, any) == ECS_OK);
-    assert(ecs_query_expr_add(any, ecs_query_expr_has(record_desc.id)) == ECS_OK);
-    assert(ecs_query_expr_add(any, ecs_query_expr_has(tag_desc.id)) == ECS_OK);
-    ecs_query_expr *excluded = ecs_query_expr_new(ECS_QUERY_NOT);
-    assert(ecs_query_expr_add(expression, excluded) == ECS_OK);
-    assert(ecs_query_expr_add(excluded, ecs_query_expr_has(excluded_desc.id)) == ECS_OK);
-    ecs_query_expr *copy = ecs_query_expr_clone(expression);
-    ecs_query_expr_free(expression);
-    expression = copy;
-    REQUIRE(ecs_query_begin_expression(world, &query, expression) == ECS_OK);
+    ecs_term terms[] = {
+        { .oper = ECS_OR, .id = record_desc.id },
+        { .oper = ECS_OR, .id = tag_desc.id },
+        { .oper = ECS_NOT, .id = excluded_desc.id },
+    };
+    REQUIRE(ecs_query_begin_terms(world, &query, terms, 3) == ECS_OK);
+    terms[2].oper = ECS_AND; /* Begin copied the terms. */
     querying = true;
     ecs_entity found;
     REQUIRE(ecs_query_next(&query, &found) && found.slot == entities[0].slot);
@@ -696,7 +688,7 @@ void test_tool_ecs()
     pu_setup(prepare_world, release_world);
     RUN_TEST_CASE(ecs_handles_reject_destroyed_and_canceled_generations);
     RUN_TEST_CASE(ecs_commands_wait_for_the_iteration_sync_point);
-    RUN_TEST_CASE(ecs_boolean_query_retains_its_expression_membership);
+    RUN_TEST_CASE(ecs_or_chains_and_negation_match_in_slot_order);
     RUN_TEST_CASE(ecs_execution_view_refreshes_after_growth_and_registration);
     RUN_TEST_CASE(ecs_reflected_field_writes_retain_strings);
     RUN_TEST_CASE(ecs_managed_rows_outlive_sources_and_reclaim_replacements);

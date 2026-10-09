@@ -13,8 +13,8 @@ static const char *operator_name(script_operator op)
     static const char *names[] = { "Value", "+",  "-",  "*",  "/",  "%",
                                    "-",     "!",  "&&", "||", "==", "!=",
                                    "<",     "<=", ">",  ">=", "&",  "|",
-                                   "^",     "<<", ">>", "~",  "&" };
-    assert(op >= SCRIPT_OP_NONE && op <= SCRIPT_OP_REFERENCE);
+                                   "^",     "<<", ">>", "~" };
+    assert(op >= SCRIPT_OP_NONE && op <= SCRIPT_OP_BIT_NOT);
     return names[op];
 }
 static const char *expression_name(source_projection *p, const script_expression *e)
@@ -42,6 +42,9 @@ static const char *expression_name(source_projection *p, const script_expression
         case SCRIPT_EXPR_NIL: return "nil";
         case SCRIPT_EXPR_FALLBACK: return "Fallback";
         case SCRIPT_EXPR_STORE: return "Store";
+        case SCRIPT_EXPR_YIELD: return "Yield";
+        case SCRIPT_EXPR_JOIN: return "Await Task";
+        case SCRIPT_EXPR_CANCEL: return "Cancel Task";
     }
     assert(false);
     return "";

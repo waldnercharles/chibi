@@ -3,9 +3,26 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+/* An await typed before a later assignment mixed its task state gives
+ * results the state's tasks may not have. */
+static void finish_joins(analyzer *a)
+{
+    for (int i = 0; i < acount(a->out->expressions); i++) {
+        const script_expression *e = &a->out->expressions[i];
+        if (e->kind != SCRIPT_EXPR_JOIN || !e->result_count ||
+            a->out->expressions[e->left].kind != SCRIPT_EXPR_SYMBOL ||
+            !a->out->symbols[a->out->expressions[e->left].symbol].mixed_tasks) {
+            continue;
+        }
+        script_diagnostic d = { .range = e->range };
+        snprintf(d.message, sizeof d.message, "This task can hold tasks of other functions; await it only to wait");
+        apush(a->out->diagnostics, d);
+    }
+}
 static script_analysis *analyze(
     const script_syntax *syntax,
     const script_catalog *catalog,
@@ -114,6 +131,9 @@ static script_analysis *analyze(
             }
         }
         if (!declarations) {
+            script_analyzer_task_hints(&a, body);
+            /* Inferred bodies first: other code reads their results. */
+            script_analyzer_callable_definitions(&a, true);
             for (int j = 0; j < acount(a.initializers); j++) {
                 script_analyzer_resolve_initializer(&a, a.initializers[j].symbol);
             }
@@ -124,13 +144,14 @@ static script_analysis *analyze(
                 out->functions[function].event = catalog->tick_event;
                 script_analyzer_callable_definition(&a, function, body);
             }
-            for (int j = 0; j < acount(a.bodies); j++) {
-                script_analyzer_callable_definition(
-                    &a,
-                    a.bodies[j].function,
-                    a.bodies[j].node
-                );
-            }
+            script_analyzer_callable_definitions(&a, false);
+        }
+        if (declarations && out->kind == SCRIPT_PROGRAM_LIBRARY) {
+            /* Library signatures need inferred results; the full analysis
+             * reports the bodies' diagnostics. */
+            int reported = acount(out->diagnostics);
+            script_analyzer_callable_definitions(&a, true);
+            asetlen(out->diagnostics, reported);
         }
     }
     if (!found) {
@@ -141,6 +162,8 @@ static script_analysis *analyze(
             script_analyzer_resolve_initializer(&a, a.initializers[i].symbol);
         }
         script_analyzer_finish_effects(&a);
+        script_analyzer_finish_boxes(&a);
+        finish_joins(&a);
         script_analyzer_finish_bindings(&a);
     }
     for (int i = 0; i < acount(out->functions); i++) {

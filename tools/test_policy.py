@@ -126,9 +126,9 @@ TOOLS = {
     # One reviewed CPU-only typed renderer transaction/lifetime case; no window, GPU, fonts or files.
     'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--render-resources'],
     # Two reviewed hidden-app 64x64 cases: Cute's interior border on a circle and a diamond,
-    # opaque and translucent, through the instanced and tiled draw paths. Render consumers
-    # build only with the desktop SDK, so this defaults to the `make build` tools.
-    'interior-border': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--interior-border'],
+    # opaque and translucent, through the instanced and tiled draw paths. The agent runs the
+    # render-enabled test_tools of its selected build directory.
+    'interior-border': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--interior-border'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene-prepared'],
     # Five independently reviewed model/shader/mesh preparation, persistence and lifetime cases; no files, world or GPU.

@@ -14,6 +14,7 @@
 #include "types/catalog.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -230,7 +231,7 @@ static bool wait_runnable(void *owner, double now)
     }
     for (int i = 0; i < acount(a->requests); i++) {
         command_wait *wait = a->requests[i];
-        if ((wait->timer && wait->deadline <= now) ||
+        if (program_wait_due(wait, now) ||
             (flow_host_status(wait->request) == FLOW_HOST_READY && !wait->delivered)) {
             return true;
         }
@@ -272,12 +273,20 @@ static int begin_command(behavior_function_context *ctx, int command)
     apush(activation->requests, wait);
     behavior_command_binding *binding = &ctx->commands[command];
     const node_command *descriptor = function->commands[command].command;
-    if (descriptor->intrinsic == NODE_COMMAND_DELAY) {
-        assert(binding->count == 1);
-        pin_value duration = ctx->command_arguments[binding->first];
-        assert(duration.type == PIN_F64 && duration.container == PIN_CONTAINER_SINGLE);
+    if (descriptor->intrinsic == NODE_COMMAND_DELAY ||
+        descriptor->intrinsic == NODE_COMMAND_YIELD) {
         wait->timer = true;
-        wait->deadline = ctx->now + duration.d;
+        if (descriptor->intrinsic == NODE_COMMAND_YIELD) {
+            wait->yield = true;
+            wait->update = activation->instance->program->updates;
+            wait->begun = true;
+            return 1;
+        } else {
+            assert(binding->count == 1);
+            pin_value duration = ctx->command_arguments[binding->first];
+            assert(duration.type == PIN_F64 && duration.container == PIN_CONTAINER_SINGLE);
+            wait->deadline = ctx->now + duration.d;
+        }
         wait->begun = true;
         if (wait->deadline > ctx->now) {
             if (!activation->context.wake_time ||
@@ -291,6 +300,18 @@ static int begin_command(behavior_function_context *ctx, int command)
         (void)completed;
         wait->timer = false;
         flow_host_release(request);
+    } else if (descriptor->intrinsic != NODE_COMMAND_NATIVE) {
+        int status = program_task_command(
+            ctx,
+            &function->commands[command],
+            descriptor->intrinsic,
+            request
+        );
+        if (status < 0) {
+            flow_host_release(request);
+            execution_request_detach(request);
+            return status;
+        }
     } else if (!binding->begin) {
         flow_host_release(request);
         execution_request_detach(request);
@@ -298,7 +319,7 @@ static int begin_command(behavior_function_context *ctx, int command)
         return FLOW_ERR_NODE;
     }
     const char *error = NULL;
-    int result = descriptor->intrinsic == NODE_COMMAND_DELAY
+    int result = descriptor->intrinsic != NODE_COMMAND_NATIVE
                    ? 0
                    : binding->begin(
                          binding->service,
@@ -332,6 +353,29 @@ static int begin_command(behavior_function_context *ctx, int command)
         return 0;
     }
     return 1;
+}
+bool program_request_deliver(flow_host_request *request, const pin_value *values, int count)
+{
+    command_wait *wait = execution_request_context(request, &wait_sink);
+    if (!wait) {
+        return false;
+    }
+    const behavior_function_command *c = &wait->function->commands[wait->command];
+    for (int i = 0; i < c->result_count; i++) {
+        int index = c->result_first + i;
+        const pin_value *value = i < count
+                                   ? &values[i]
+                                   : &wait->function->command_results[index];
+        if (!program_same_type(wait->function->command_results[index], *value) ||
+            pin_value_snapshot_to_arena(
+                &wait->activation->payload,
+                &wait->context->command_results[index],
+                value
+            )) {
+            return false;
+        }
+    }
+    return flow_host_complete(request, -1, (pin_value){ 0 });
 }
 int program_complete_action(behavior_function_context *ctx, uint64_t action, const pin_value *values, int count)
 {
@@ -378,18 +422,11 @@ int program_complete_action(behavior_function_context *ctx, uint64_t action, con
             apush(arguments, ctx->arguments[i]);
         }
         for (int i = 0; i < fn->local_capture_count; i++) {
-            const execution_module_capture *capture = &fn->captures[i];
-            pin_value *value = program_capture_value(ctx, capture);
-            if (!value) {
+            pin_value reference;
+            if (!program_capture_reference(&owner->payload, ctx, &fn->captures[i], &reference)) {
                 afree(arguments);
                 return FLOW_ERR_STATE;
             }
-            pin_value reference = execution_reference_value(
-                &owner->payload,
-                ctx,
-                value,
-                capture->type
-            );
             apush(arguments, reference);
         }
         for (int i = 0; i < count; i++) {

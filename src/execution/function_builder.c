@@ -320,7 +320,30 @@ int behavior_function_builder_call(
     for (int i = 0; i < result_count; i++) {
         data_value(f, results[i]);
     }
-    apush(f->calls, ((behavior_function_invocation){ callee, first, argument_count, result_first, result_count }));
+    apush(
+        f->calls,
+        ((
+            behavior_function_invocation
+        ){ callee, first, argument_count, result_first, result_count, false })
+    );
+    return index;
+}
+int behavior_function_builder_task(
+    behavior_function_builder *b,
+    const behavior_function *callee,
+    const pin_value *arguments,
+    int argument_count
+)
+{
+    int index = behavior_function_builder_call(
+        b,
+        callee,
+        arguments,
+        argument_count,
+        &(pin_value){ .type = PIN_U64 },
+        1
+    );
+    b->function->calls[index].task = true;
     return index;
 }
 int behavior_function_builder_call_first(const behavior_function_builder *b, int call)
@@ -751,7 +774,7 @@ static const char *verify_instruction(const behavior_function *f, int pc)
                 i->op == BF_COMMAND
                     ? f->commands[i->target].command->invoke != NULL
                     : (f->commands[i->target].command->begin != NULL ||
-                       f->commands[i->target].command->intrinsic == NODE_COMMAND_DELAY),
+                       f->commands[i->target].command->intrinsic != NODE_COMMAND_NATIVE),
                 "missing command implementation"
             );
             break;
@@ -1053,6 +1076,8 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
             return count == 2 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_LOCAL_GROUP_STORE:
             return count >= 2 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_LOCAL_RELEASE:
+            return count == 1 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_ACTION_READ:
         case EXECUTION_INTRINSIC_EVENT_READ:
             return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
@@ -1097,14 +1122,16 @@ static bool context_address(size_t offset)
         FIELD(activation)
         FIELD(data)
         FIELD(program_name)
-        FIELD(instance_time) FIELD(inspection_user) FIELD(points) FIELD(variables)
-            FIELD(states) FIELD(arguments) FIELD(results) FIELD(error_message)
-                FIELD(services) FIELD(queries) FIELD(commands)
-                    FIELD(command_arguments) FIELD(command_results)
-                        FIELD(owner_type_name) FIELD(world) FIELD(binding_world)
-                            FIELD(columns) FIELD(variable_storage) FIELD(value_owner)
-                                FIELD(value_storage) FIELD(watches) FIELD(edges)
-                                    FIELD(watch_storage) return true;
+        FIELD(instance_time)
+        FIELD(inspection_user)
+        FIELD(points)
+        FIELD(variables) FIELD(states) FIELD(arguments) FIELD(results)
+            FIELD(error_message) FIELD(services) FIELD(queries) FIELD(commands)
+                FIELD(command_arguments) FIELD(command_results)
+                    FIELD(owner_type_name) FIELD(world) FIELD(binding_world)
+                        FIELD(columns) FIELD(variable_storage) FIELD(value_owner)
+                            FIELD(value_storage) FIELD(watches) FIELD(edges)
+                                FIELD(watch_storage) return true;
         default: return false;
     }
 #undef FIELD
@@ -1387,6 +1414,7 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_REFERENCE_READ:
                 case EXECUTION_INTRINSIC_REFERENCE_WRITE:
                 case EXECUTION_INTRINSIC_LOCAL_GROUP_STORE:
+                case EXECUTION_INTRINSIC_LOCAL_RELEASE:
                     expected = BEHAVIOR_REFERENCE;
                     break;
                 case EXECUTION_INTRINSIC_REFERENCE_MAKE:
@@ -1590,6 +1618,23 @@ static const char *verify_metadata(const behavior_function *f)
                     return "invalid delay command schema";
                 }
                 break;
+            case NODE_COMMAND_YIELD:
+            case NODE_COMMAND_TASK_JOIN:
+            case NODE_COMMAND_TASK_CANCEL:
+            case NODE_COMMAND_TASK_RUNNING: {
+                bool handle = command->intrinsic != NODE_COMMAND_YIELD;
+                if (command->invoke || command->begin || command->service ||
+                    spec->count != handle ||
+                    (handle && f->command_arguments[spec->first].type != PIN_U64) ||
+                    (command->intrinsic == NODE_COMMAND_TASK_RUNNING
+                         ? spec->result_count != 1 ||
+                               f->command_results[spec->result_first].type != PIN_BOOL
+                         : command->intrinsic != NODE_COMMAND_TASK_JOIN &&
+                               spec->result_count)) {
+                    return "invalid task command schema";
+                }
+                break;
+            }
             default: return "invalid command intrinsic";
         }
         if (spec->result_pins) {
@@ -1618,7 +1663,7 @@ static const char *verify_metadata(const behavior_function *f)
             callee->argument_count != acount(callee->argument_kinds) ||
             callee->result_count != acount(callee->result_kinds) ||
             call->count != callee->argument_count ||
-            call->result_count != callee->result_count) {
+            call->result_count != (call->task ? 1 : callee->result_count)) {
             return "callee signature count differs from invocation";
         }
         for (int argument = 0; argument < call->count; argument++) {
@@ -1631,7 +1676,10 @@ static const char *verify_metadata(const behavior_function *f)
                 return "callee argument type differs from invocation";
             }
         }
-        for (int result = 0; result < call->result_count; result++) {
+        if (call->task && f->data_values[call->result_first].initial.type != PIN_U64) {
+            return "task invocation requires one uint64 handle";
+        }
+        for (int result = 0; !call->task && result < call->result_count; result++) {
             if (f->data_values[call->result_first + result].kind !=
                     callee->result_kinds[result] ||
                 !same_type(

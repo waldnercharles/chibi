@@ -1,13 +1,8 @@
 behavior "MaterialImpactHealth" {
-    owner "ecs.entity";
-    on "Material Impact" as material_impact(Energy: float = 0.0, Cause: int = 0, Point: struct<"CF_V2"> = {
-        x: 0.0,
-        y: 0.0
-    }) {
-        &component("GAME.GameHealth", "current") = max(&component("GAME.GameHealth", "current") - to_integer(Value: ceiling(Value: material_impact.Energy)), 0);
-        if (cast<double>(&component("GAME.GameHealth", "current")) <= 0) {
-            destroy_entity(Entity: self);
-        } else {
+    on "Material Impact" {
+        self.Health.Current = max(self.Health.Current - to_integer(ceiling(event.Energy)), 0)
+        if cast<double>(self.Health.Current) <= 0 {
+            destroy_entity(self)
         }
     }
 }

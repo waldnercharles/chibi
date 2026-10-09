@@ -103,7 +103,7 @@ int script_analyzer_statement_block(analyzer *a, TSNode node)
 /* A task symbol declared without its function takes the function of the
  * tasks assigned to it, so awaiting it gives that function's results. Tasks
  * of different or unknown functions leave it awaitable only for completion. */
-static void infer_task(analyzer *a, int symbol, script_type value)
+void script_analyzer_infer_task(analyzer *a, int symbol, script_type value)
 {
     script_symbol *s = &a->out->symbols[symbol];
     if (!(s->type.flags & SCRIPT_TYPE_TASK) || !(value.flags & SCRIPT_TYPE_TASK) ||
@@ -204,24 +204,49 @@ static bool nested_callee(analyzer *a, TSNode body, TSNode node, TSNode call)
     free(name);
     return found;
 }
+/* The state `set_variable<"name">(value)` writes, or -1. */
+static int state_write(analyzer *a, TSNode call, TSNode *value)
+{
+    char *name = script_analyzer_qualified_name(a, script_analyzer_field(call, "function"));
+    int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+    free(name);
+    TSNode types = script_analyzer_field(call, "type_arguments");
+    TSNode arguments = script_analyzer_field(call, "arguments");
+    if (index < 0 ||
+        a->catalog->capabilities[index].state_access != SCRIPT_STATE_ACCESS_WRITE ||
+        script_analyzer_named_count(types) != 1 ||
+        script_analyzer_named_count(arguments) != 1) {
+        return -1;
+    }
+    TSNode argument = ts_node_named_child(arguments, 0);
+    *value = script_analyzer_field(argument, "value");
+    if (ts_node_is_null(*value)) {
+        *value = argument;
+    }
+    TSNode type = ts_node_named_child(types, 0);
+    return script_analyzer_lookup_storage(a, script_analyzer_field(type, "name"), SCRIPT_STATE);
+}
 static void task_hints(analyzer *a, TSNode body, TSNode node)
 {
+    TSNode value = { 0 };
+    int symbol = -1;
     if (script_analyzer_is(node, "assignment") &&
         script_analyzer_is(script_analyzer_field(node, "operator"), "=")) {
-        TSNode value = script_analyzer_field(node, "value");
-        while (script_analyzer_is(value, "parenthesized_expression")) {
-            value = script_analyzer_field(value, "expression");
-        }
-        int symbol = script_analyzer_is(value, "call_expression") &&
-                             !nested_callee(a, body, node, value)
-                       ? task_target(a, node)
-                       : -1;
-        if (symbol >= 0 && (a->out->symbols[symbol].type.flags & SCRIPT_TYPE_TASK)) {
-            script_type task = { .storage = PIN_U64,
-                                 .nominal = task_function(a, value),
-                                 .flags = SCRIPT_TYPE_TASK };
-            infer_task(a, symbol, task);
-        }
+        value = script_analyzer_field(node, "value");
+        symbol = task_target(a, node);
+    } else if (script_analyzer_is(node, "call_expression")) {
+        symbol = state_write(a, node, &value);
+    }
+    while (script_analyzer_is(value, "parenthesized_expression")) {
+        value = script_analyzer_field(value, "expression");
+    }
+    if (symbol >= 0 && (a->out->symbols[symbol].type.flags & SCRIPT_TYPE_TASK) &&
+        script_analyzer_is(value, "call_expression") &&
+        !nested_callee(a, body, node, value)) {
+        script_type task = { .storage = PIN_U64,
+                             .nominal = task_function(a, value),
+                             .flags = SCRIPT_TYPE_TASK };
+        script_analyzer_infer_task(a, symbol, task);
     }
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
         task_hints(a, body, ts_node_named_child(node, i));
@@ -322,7 +347,11 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             );
         }
         a->out->symbols[result.symbol].initializer = result.expression;
-        infer_task(a, result.symbol, script_analyzer_expr_type(a, result.expression));
+        script_analyzer_infer_task(
+            a,
+            result.symbol,
+            script_analyzer_expr_type(a, result.expression)
+        );
         result.effects = script_analyzer_expr_effects(a, result.expression);
         if (a->out->expressions[result.expression].awaited) {
             for (int i = 0; i < acount(a->out->symbols); i++) {
@@ -380,7 +409,11 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         if (address.symbol >= 0) {
             script_analyzer_use(a, target, address.symbol, SCRIPT_WRITE, address.member);
-            infer_task(a, address.symbol, script_analyzer_expr_type(a, result.second));
+            script_analyzer_infer_task(
+                a,
+                address.symbol,
+                script_analyzer_expr_type(a, result.second)
+            );
         }
         return script_analyzer_statement_add(a, result);
     }

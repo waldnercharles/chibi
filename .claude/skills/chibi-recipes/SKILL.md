@@ -9,10 +9,9 @@ smallest ones are named below.
 
 ## Add a component
 
-Game components never go in C. A game declares its own components in
-`content/components/*.kdl` (declared components, from #204 and #207); they
-need no engine change. `components.h` holds only engine capabilities that
-several games reuse. For one of those:
+`components.h` holds only engine capabilities that several games reuse.
+Game rules, tuning and scene composition stay in authored content. For a
+reusable capability:
 
 1. Declare the struct in `src/runtime/components.h` with
    `NODE_COMPONENT_TYPE_DENSE(Name)` (see `GameGlobalBinding`). Use plain
@@ -64,26 +63,25 @@ The smallest complete example is Play Sound:
    `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.
 3. Format and validate: `build/bin/chibi_ctl --project-root <root> --format`,
    then a `validate_asset` request per changed asset.
-4. Run it bounded:
-   `printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"<Name>","frames":4}' | build/bin/chibi_ctl --project-root <root>`
-   and check `behavior_failures` and the state evidence. Keep frame counts
+4. Run it bounded. A scene:
+   `printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"<Scene>","frames":4}' | build/bin/chibi_ctl --project-root <root>`
+   A scenario, which supplies its own scene, frames and input:
+   `printf '%s\n' '{"contract":1,"operation":"run_scenario","scenario":"<Name>"}' | build/bin/chibi_ctl --project-root <root>`
+   Check `behavior_failures` and the state evidence. Keep frame counts
    small; the 60-second policy applies.
 
 ## Change saved projects (migration)
 
-Never hand-bump `CHIBI_PROJECT_VERSION`. Reserve the next version in the
-project's roadmap coordination ledger (`roadmap/coordination.md` in the
-project files) first, so parallel changes don't take the same number. Then:
+Projects saved at another version don't load: the loader rejects any
+`version` other than `CHIBI_PROJECT_VERSION`. Migrate assets directly; there
+are no compatibility aliases (see the first rule in `AGENTS.md`).
 
-1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and add the step
-   that upgrades the previous version in `src/assets/project_migrate.c`
-   (from #197).
-2. Write a pico_unit case that migrates a small old-format source and checks
-   the result.
-3. Migrate every project the change reaches with
-   `chibi_ctl --project-root <root> --migrate`: `test/fixtures/*`,
-   `examples/language`, and the game and Studio repositories
-   (`chibi-voidweaver`, `chibi-celeste`, `chibi-studio/projects`), each in
-   its own PR that names the engine PR it needs.
+1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h`.
+2. Edit every project the change reaches to the new format and set its
+   `project.kdl` `version`: every `project.kdl` under `test/fixtures`, and the
+   game and Studio repositories (`chibi-voidweaver`, `chibi-celeste`,
+   `chibi-studio/projects`), each in its own PR that names the engine PR it
+   needs.
+3. Cover the new format with a pico_unit case that loads a small project.
 4. Run `chibi_ctl --format` on each migrated project and compile it with
    `chibi-compile` to prove it still loads.

@@ -32,9 +32,6 @@ layout(set = 2, binding = 9) uniform sampler2D u_mesh_normal;
 #define SG_INDICES_BINDING 2
 #define SG_PARAMETERS_BINDING 3
 #endif
-#ifndef SG_RAMP_COUNT
-#define SG_RAMP_COUNT 512
-#endif
 #ifndef SG_GRAPHS
 void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,vec4 object_frame,float time,vec4 values[32],out vec4 result[8]) {
  for(int i=0;i<8;i++) result[i]=vec4(0);
@@ -52,7 +49,6 @@ layout(set = 3, binding = 0) uniform uniform_block {
     int u_first_entity;
     int u_last_entity;
     int u_metaball_group;
-    vec4 sg_ramp_data[SG_RAMP_COUNT];
 };
 #endif
 // GLSL ES emulates each storage buffer as texel fetches of a single vec4 or

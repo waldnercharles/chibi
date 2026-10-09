@@ -1,9 +1,5 @@
 #define SG_SCENE_INFLUENCE 1
 
-#ifndef SG_RAMP_COUNT
-#define SG_RAMP_COUNT 512
-#endif
-
 layout(set = 3, binding = 0) uniform uniform_block {
     vec4 scene_camera_time;
     vec4 scene_rhythm;
@@ -24,7 +20,6 @@ layout(set = 3, binding = 0) uniform uniform_block {
     vec4 scene_shadow_ranges;
     vec4 scene_shadow_soft;
     vec4 scene_light_shadow;
-    vec4 sg_ramp_data[SG_RAMP_COUNT];
 };
 
 float sg_scene_beat_phase() { return scene_rhythm.x; }

@@ -229,11 +229,13 @@ mirror box shows the octant each view ray reflects into; a rough box gathers
 the neighboring octants. A sky brightening toward an axis lights the faces
 along it more than those across it, unturned and turned an eighth, which
 reaches every irradiance term but the xy and yz ones; render-resources checks
-those on the CPU. It runs `test_tools`
+those on the CPU. Unlit color ramps show their color whether their stops start
+the program's ramp table or lie past the first 4 KB of it, and a stop color
+edit shows without a recompile. It runs `test_tools`
 from the desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 39 cases and 9194 assertions in 7.4 seconds on 2026-10-09.
+Vulkan llvmpipe passed 40 cases and 9212 assertions in 8.5 seconds on 2026-10-09.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

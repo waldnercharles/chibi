@@ -9,8 +9,9 @@ layout(set = 2, binding = SG_LIGHT_SHADOW_BINDING) uniform sampler2DShadow scene
 layout(set = 2, binding = SG_SKY_SPECULAR_BINDING) uniform samplerCube scene_sky_specular;
 layout(set = 2, binding = SG_SKY_BRDF_BINDING) uniform sampler2D scene_sky_brdf;
 // SDL's Vulkan backend binds only the first 4 KB of each uniform block, which
-// the scene's lights fill, so the sky's light has a block of its own.
-layout(set = 3, binding = 1) uniform sky_block {
+// the scene's lights fill, so the sky's light has a block of its own. It takes
+// the name draw3d fills besides uniform_block: GLES matches blocks by name.
+layout(set = 3, binding = 1) uniform shd_uniforms {
     vec4 scene_sky_light;
     vec4 scene_sky_irradiance[9];
 };

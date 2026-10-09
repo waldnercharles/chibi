@@ -46,9 +46,11 @@ failure. Every prototype, behavior, library and system must be reachable from a
 scene: placed or attached there, spawned by name or called from source that
 runs, and only that source counts. A scene entity runs its own behavior list,
 which replaces its prototype's; a spawned prototype runs the prototype's list.
-A system runs only while an entity's `EngineSystem` names it. Run it on any
-project whose content folder is `content` to list what that project leaves
-unused; it fails while any of that is unlisted.
+A system runs only while an entity's `EngineSystem` names it. Components the
+project declares in `content/components` load as they do in preparation and
+count as its own catalog entries. Run it on any project whose content folder is
+`content` to list what that project leaves unused; it fails while any of that
+is unlisted.
 
 The project's `coverage-gaps.txt` lists the entries no scene uses yet, in groups
 under a comment that gives the reason; without the file, every unused entry is a

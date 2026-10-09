@@ -5,6 +5,7 @@
 #include "assets/prototype.h"
 #include "assets/scene_document.h"
 #include "authoring/application_catalog.h"
+#include "authoring/component_declarations.h"
 #include "authoring/language_catalog.h"
 #include "authoring/project_prepare_internal.h"
 #include "authoring/source_catalog.h"
@@ -70,7 +71,9 @@ static entry *entries;
 static int problems; /* Reported failures; the coverage case fails on any. */
 static prototype_entry *prototypes;
 static script_analysis **analyses; /* One per project source, in catalog order. */
-/* The project's loaded prototypes; scene placements merge over them. */
+/* The project's declared components and loaded prototypes; scene
+ * placements merge over the prototypes. */
+static declared_components *declared;
 static game_prototype_registry registry;
 static project_prototype *values;
 /* Names a scene reaches: its entities' prototypes, behaviors and systems, the
@@ -380,9 +383,10 @@ static char **engine_systems(const game_prototype *prototype)
 /* Loads the prototypes as project preparation does, so includes resolve. */
 static void use_prototypes()
 {
+    ecs_component_catalog components = project_components();
     registry = (game_prototype_registry){
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+        .components = components.components,
+        .component_count = components.component_count,
     };
     char error[256];
     if (!project_prepare_prototypes(content_root, &registry, &values, error, sizeof error)) {
@@ -698,6 +702,17 @@ TEST_CASE(test_catalog_coverage)
     char error[256];
     native_capabilities *table = authoring_application_catalog_new(false, error, sizeof error);
     REQUIRE(table != NULL);
+    /* The live declared set joins the language catalog and project_components. */
+    if (!authoring_component_declarations_load(
+            content_root,
+            native_capabilities_catalog(table),
+            &declared,
+            error,
+            sizeof error
+        )) {
+        fprintf(stderr, "%s/components: %s\n", content_root, error);
+    }
+    REQUIRE(declared != NULL);
     const authoring_language_catalog_input input = { .native = table };
     native = authoring_language_catalog_new(&input, error, sizeof error);
     native_capabilities_free(table);
@@ -823,6 +838,7 @@ int run_feature_coverage(const char *root)
     authoring_language_catalog_free(native);
     afree(entries);
     free_reach();
+    declared_components_free(declared);
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;
 }

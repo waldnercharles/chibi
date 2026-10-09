@@ -6,4 +6,5 @@ components {
     (object)GAME.GameMaterial
     GAME.GameSprite frame=1 frame_height=16 frame_width=16 image="content/images/props.png" layer=1
     (object)GAME.GameTransform
+    Heat level=1.0 rate=0.5
 }

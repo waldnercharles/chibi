@@ -106,6 +106,9 @@ static void reference_trace(const void *value, const void *shape, arena_marker m
     pin_value_trace(&reference->root, mark, user);
     pin_value_trace(&reference->type, mark, user);
     mark(user, reference->path);
+    if (reference->kind == LANGUAGE_REFERENCE_STATE) {
+        mark(user, reference->owner);
+    }
     if (reference->kind == LANGUAGE_REFERENCE_VALUE && !reference->box) {
         mark(user, reference->value);
         pin_value_trace(reference->value, mark, user);
@@ -197,6 +200,12 @@ void execution_reference_capture(
     language_reference *ref = arena_alloc(storage, sizeof *ref);
     *ref = *base;
     ref->owner = owner;
+    /* State stays with the instance that owns it, which a library task's
+     * context does not; keep a copy of the originating context. */
+    if (base->kind == LANGUAGE_REFERENCE_STATE) {
+        ref->owner = arena_alloc(storage, sizeof *ref->owner);
+        *ref->owner = *base->owner;
+    }
     ref->path = capture_path(storage, base->path);
     if (box) {
         ref->box = box;

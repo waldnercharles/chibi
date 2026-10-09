@@ -308,39 +308,46 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
     return 0;
 }
 
-/* The depth of braces open after `line`, skipping quoted strings. */
-static int line_depth(const char *line, int depth)
+/* Skips a quoted string or comment at `p`, or returns `p` unchanged. */
+static const char *skip_text(const char *p)
 {
-    bool quoted = false;
-    for (const char *p = line; *p && *p != '\n'; p++) {
-        if (*p == '\\' && quoted && p[1]) {
-            p++;
-            continue;
+    if (*p == '"') {
+        for (p++; *p && *p != '"'; p++) {
+            p += *p == '\\' && p[1];
         }
-        quoted ^= *p == '"';
-        depth += !quoted && *p == '{';
-        depth -= !quoted && *p == '}';
+        return *p ? p + 1 : p;
     }
-    return depth;
+    if (p[0] == '/' && p[1] == '/') {
+        return p + strcspn(p, "\n");
+    }
+    if (p[0] == '/' && p[1] == '*') {
+        const char *end = strstr(p + 2, "*/");
+        return end ? end + 2 : p + strlen(p);
+    }
+    return p;
 }
 
 /* The digits of a top-level `version <from>` node, or NULL. */
 static const char *version_digits(const char *text, int from)
 {
     int depth = 0;
-    for (const char *line = text; line; line = strchr(line, '\n')) {
-        line += *line == '\n';
-        const char *p = line + strspn(line, " \t");
-        bool top = depth == 0;
-        depth = line_depth(line, depth);
-        if (!top || strncmp(p, "version", 7) || !strchr(" \t", p[7])) {
+    bool start = true;
+    for (const char *p = text; *p;) {
+        const char *next = skip_text(p);
+        if (next != p) {
+            p = next;
             continue;
         }
-        p += 7 + strspn(p + 7, " \t");
-        char *end;
-        if (strtol(p, &end, 10) == from && end != p) {
-            return p;
+        if (start && depth == 0 && !strncmp(p, "version", 7) && strchr(" \t", p[7])) {
+            const char *digits = p + 7 + strspn(p + 7, " \t");
+            char *end;
+            if (strtol(digits, &end, 10) == from && end != digits) {
+                return digits;
+            }
         }
+        start = *p == '\n' || (start && strchr(" \t\r", *p));
+        depth += (*p == '{') - (*p == '}');
+        p++;
     }
     return NULL;
 }

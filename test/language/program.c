@@ -141,6 +141,10 @@ static const script_catalog_parameter library_results[] = {
     { .name = "local_count", .type = { .storage = PIN_F64 } },
     { .name = "position_x", .type = { .storage = PIN_F64 } },
 };
+static const script_catalog_parameter bump_parameter = {
+    .name = "x",
+    .type = { .storage = PIN_F64, .flags = SCRIPT_TYPE_REFERENCE },
+};
 static const script_catalog_parameter failed_result = { .name = "Result",
                                                         .type = { .storage = PIN_F64 } };
 static const script_catalog_parameter managed_result = { .name = "Result",
@@ -170,6 +174,15 @@ static const script_catalog_capability capabilities[] = {
       .kind = SCRIPT_CAPABILITY_FUNCTION,
       .results = library_results,
       .result_count = 2,
+      .outcomes = completed,
+      .outcome_count = 1,
+      .completion_outcome = 0,
+      .effects = SCRIPT_EFFECT_READ | SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_SUSPEND },
+    { .id = 41,
+      .name = "library_bump",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .parameters = &bump_parameter,
+      .parameter_count = 1,
       .outcomes = completed,
       .outcome_count = 1,
       .completion_outcome = 0,
@@ -213,7 +226,7 @@ static const script_catalog catalog = {
     .types = script_types,
     .type_count = 2,
     .capabilities = capabilities,
-    .capability_count = 8,
+    .capability_count = sizeof capabilities / sizeof *capabilities,
     .globals = globals,
     .global_count = 2,
     .entity_type = 700,
@@ -318,7 +331,7 @@ static bool host(void *, uint64_t id, script_lower_host *out)
         *out = (script_lower_host){ .call = &failing_call };
         return true;
     }
-    if (id == 40 && imported) {
+    if ((id == 40 || id == 41) && imported) {
         for (int i = 0; i < execution_module_function_count(imported); i++) {
             execution_module_function_info function = execution_module_function_at(imported, i);
             if (function.kind == EXECUTION_FUNCTION_AUTHORED) {
@@ -1300,18 +1313,22 @@ TEST_CASE(program_source_float_width_conversion_preserves_native_input)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     static const script_catalog_parameter result = { .name = "amount",
                                                      .type = { .storage = PIN_F32 } };
-    script_catalog_capability caps[8];
+    enum
+    {
+        COUNT = sizeof capabilities / sizeof *capabilities
+    };
+    script_catalog_capability caps[COUNT + 1];
     memcpy(caps, capabilities, sizeof capabilities);
-    caps[7] = (script_catalog_capability){ .id = 70,
-                                           .name = "NativeFloat",
-                                           .kind = SCRIPT_CAPABILITY_FUNCTION,
-                                           .results = &result,
-                                           .result_count = 1,
-                                           .completion_outcome = -1,
-                                           .effects = SCRIPT_EFFECT_HOST };
+    caps[COUNT] = (script_catalog_capability){ .id = 70,
+                                               .name = "NativeFloat",
+                                               .kind = SCRIPT_CAPABILITY_FUNCTION,
+                                               .results = &result,
+                                               .result_count = 1,
+                                               .completion_outcome = -1,
+                                               .effects = SCRIPT_EFFECT_HOST };
     script_catalog floats = catalog;
     floats.capabilities = caps;
-    floats.capability_count = 8;
+    floats.capability_count = COUNT + 1;
     for (int b = 0; b < 2; b++) {
         prepare();
         syntax = script_parse(source);
@@ -1963,7 +1980,8 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     REQUIRE(!symlink(outside, staged));
     file = fopen(manifest, "wb");
     fputs(
-        "meta {\n    version 12\n}\nversion 12\ncontent \"content\"\n"
+        "meta {\n    version 12\n}\n// metadata {\nversion 12\ncontent "
+        "\"content\"\n"
         "start_scene \"scenes/Start.kdl\"\n",
         file
     );
@@ -2231,6 +2249,37 @@ TEST_CASE(program_library_call_starts_a_task)
     return true;
 }
 
+TEST_CASE(program_library_task_writes_the_callers_state)
+{
+    const char *library_source = "library Lib { count: double = 10;"
+                                 "function Bump(x: ref double) { yield; "
+                                 "x += 1; count += 1 } }";
+    const char
+        *owner_source = "behavior Owner { n: double = 5;"
+                        "on Impulse(amount, enabled) { library_bump(n) } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile_module(library_source, backends[b]));
+        imported = module;
+        module = NULL;
+        script_analysis_free(analysis);
+        analysis = NULL;
+        script_syntax_free(syntax);
+        syntax = NULL;
+        REQUIRE(compile(owner_source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 6) && execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
 TEST_CASE(program_task_keeps_state_and_component_references)
 {
     const char *source = "behavior R { n: double = 0;"
@@ -2480,6 +2529,7 @@ void test_language_program()
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
     RUN_TEST_CASE(program_library_call_starts_a_task);
+    RUN_TEST_CASE(program_library_task_writes_the_callers_state);
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
     RUN_TEST_CASE(program_yield_resumes_on_the_next_update_without_time);
     RUN_TEST_CASE(program_task_state_awaits_its_function_results);

@@ -38,7 +38,7 @@
 
 1. Review the whole diff as a reviewer would: correctness, ownership and lifetimes, failure paths, the style rules above, and dead code left behind. In Claude Code run `/code-review`; otherwise review it yourself. Fix what you find before committing.
 2. Add or update a pico_unit case for every behavior change, in the dispatcher that owns the area (`test/tools` or `test/language`). A fix needs a case that failed before it.
-3. Build what you touched (`make build`; `make language-build` for language and authoring code) and run the admitted checks that cover it: `make test-tools`, `make test-language*`, and the tool selectors `make test-list` prints. Say which ran; quarantined coverage is not passed.
+3. Build what you touched (`make build`; `make language-build` for language and authoring code) and run the admitted checks that cover it: `make test-tools`, the `make test-language` targets for the area (`test-language`, `-semantic`, `-execution`, `-program`, `-headless`, `-format`, `-prepared`), and the tool selectors `make test-list` prints. Say which ran; quarantined coverage is not passed.
 4. Format. The pre-commit hook (`.githooks/pre-commit`, installed by configure) runs clang-format 22 on staged C sources; `make check-format` checks everything. Format hand-edited assets with `chibi_ctl --format`.
 5. Commit messages say what changed and why, in the imperative.
 

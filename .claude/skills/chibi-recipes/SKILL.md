@@ -59,9 +59,11 @@ The smallest complete example is Play Sound:
    `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.
 3. Format and validate: `build/bin/chibi_ctl --project-root <root> --format`,
    then a `validate_asset` request per changed asset.
-4. Run it bounded:
-   `printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"<Name>","frames":4}' | build/bin/chibi_ctl --project-root <root>`
-   and check `behavior_failures` and the state evidence. Keep frame counts
+4. Run it bounded. A scene:
+   `printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"<Scene>","frames":4}' | build/bin/chibi_ctl --project-root <root>`
+   A scenario, which supplies its own scene, frames and input:
+   `printf '%s\n' '{"contract":1,"operation":"run_scenario","scenario":"<Name>"}' | build/bin/chibi_ctl --project-root <root>`
+   Check `behavior_failures` and the state evidence. Keep frame counts
    small; the 60-second policy applies.
 
 ## Change saved projects (migration)

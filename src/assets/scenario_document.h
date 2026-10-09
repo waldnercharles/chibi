@@ -21,7 +21,8 @@
  *   }
  *
  * Each key holds its whole input from its frame (a fixed step) until the next
- * key; omitted fields are zero. A timeline that does not key frame zero holds
+ * key; omitted fields are zero. Keys that share a frame are sampled in order
+ * before the step, as controls pressed and released between two steps are. A timeline that does not key frame zero holds
  * no input until its first key. The scene starts as authored, with the
  * game's saved progress replaced by saved_state (none when omitted). */
 typedef struct

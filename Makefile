@@ -87,6 +87,7 @@ help:
 		'make test-list      Report admitted checks and quarantined coverage' \
 		'make web STUDIO_SOURCE=/studio  Build external browser Studio and installed web SDK' \
 		'make web-threads    Build the separate worker SDK/browser profile' \
+		'make package-web-player  Build the browser player for chibi export --web' \
 		'make publish-web    Disabled: extracted browser publishing is not integrated' \
 		'make format / check-format  Format or check project C sources' \
 		'make clean          Remove default engine build outputs'
@@ -197,6 +198,18 @@ web-sdk-build: sdk-reflect-build
 
 package-web-sdk: web-sdk-build
 	@python3 tools/package_sdk.py --build "$(WEB_SDK_BUILD_DIR)" --output "$(WEB_SDK_PREFIX)" --kind sdk
+
+# The browser player that `chibi export --web` copies into a static site, and
+# the compiler for the same target that prepares its game under Node. Both
+# build apart from the web SDK package.
+WEB_PLAYER_BUILD_DIR ?= build-web-player
+WEB_PLAYER_OUTPUT ?= dist/web-player
+.PHONY: package-web-player
+package-web-player: sdk-reflect-build
+	@$(QUIET) configure-web-player -- sh tools/web_env.sh sh tools/configure.sh sdk-web "$(WEB_PLAYER_BUILD_DIR)" $(WEB_SDK_CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Release -DCHIBI_SDK_BUILD_COMPILER=ON -DCHIBI_SDK_BUILD_NATIVE=ON -DCHIBI_SDK_BUILD_DESKTOP=ON -DCHIBI_WEB_PLAYER=ON -DCHIBI_ENABLE_SJLIT=OFF -DCHIBI_ENABLE_SANITIZERS=OFF -DCHIBI_REFLECT_EXECUTABLE="$(abspath $(SDK_REFLECT_BUILD_DIR))/reflect"
+	@$(QUIET) build-web-player -- cmake --build "$(WEB_PLAYER_BUILD_DIR)" --target chibi-player chibi-compile --parallel $(JOBS)
+	@rm -rf "$(WEB_PLAYER_OUTPUT)"
+	@cmake --install "$(WEB_PLAYER_BUILD_DIR)" --component web_player --prefix "$(abspath $(WEB_PLAYER_OUTPUT))"
 
 web-configure:
 	@test -n "$(STUDIO_SOURCE)" && test -f "$(STUDIO_SOURCE)/CMakeLists.txt" || { printf '%s\n' 'Set STUDIO_SOURCE to the separate Studio repository' >&2; exit 2; }

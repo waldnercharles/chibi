@@ -7074,9 +7074,13 @@ static int advance_scenario(
     if (status != CHIBI_AUTOMATION_OK) {
         return status;
     }
-    /* The clock starts with a frame like the player's first, after which
-     * a scene Begin asked for starts. */
-    status = tick_scenario(context, 0, error, error_size);
+    /* Like the player's first frame, this one runs no step and follows no
+     * scene. The player begins its start scene in the next frame's step,
+     * with its first Tick, and follows a scene Begin asked for after that. */
+    if (game_prototype_preview_tick(context->preview, 0) != 0) {
+        set_error(error, error_size, "could not initialize scenario clock");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
     for (uint64_t frame = 0; frame < frames && status == CHIBI_AUTOMATION_OK; frame++) {
         status = tick_scenario(context, (double)(frame + 1) * fixed_dt, error, error_size);
     }
@@ -7630,8 +7634,10 @@ static int profile_scenario(
             true
         );
     }
-    if (status == CHIBI_AUTOMATION_OK) {
-        status = tick_scenario(&context, 0, error, sizeof error);
+    if (status == CHIBI_AUTOMATION_OK &&
+        game_prototype_preview_tick(context.preview, 0) != 0) {
+        snprintf(error, sizeof error, "could not initialize scenario clock");
+        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     uint64_t previous_steps = 0;
     uint64_t previous_commands = 0;

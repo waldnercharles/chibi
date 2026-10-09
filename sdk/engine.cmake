@@ -38,9 +38,11 @@ endif()
 list(APPEND CHIBI_SDK_TARGETS chibi_engine)
 
 add_library(chibi_player STATIC "${CHIBI_SDK_ROOT}/src/runtime/player.c"
-    "${CHIBI_SDK_ROOT}/src/runtime/player_prepared.c")
+    "${CHIBI_SDK_ROOT}/src/runtime/player_prepared.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/declared_components.c")
 add_library(Chibi::player ALIAS chibi_player)
 set_target_properties(chibi_player PROPERTIES EXPORT_NAME player)
-chibi_sdk_headers(chibi_player PUBLIC runtime/player.h runtime/player_prepared.h)
+chibi_sdk_headers(chibi_player PUBLIC runtime/declared_components.h runtime/player.h
+    runtime/player_prepared.h)
 target_link_libraries(chibi_player PUBLIC chibi_engine chibi_behavior_runtime chibi_scene_runtime chibi_field_catalog)
 list(APPEND CHIBI_SDK_TARGETS chibi_player)

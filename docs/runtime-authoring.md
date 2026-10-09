@@ -13,6 +13,29 @@ Games use separate repositories such as `chibi-arena3d`, `chibi-space-cadet` and
 its starter and shell assets in `chibi-studio`. Pass the project root to an
 installed authoring tool rather than mounting a game under the engine checkout.
 
+## Declare components
+
+A game declares its own component types under `content/components`, one KDL file
+per component. Fields are laid out in order with natural alignment and start
+zeroed. A field type is a script scalar (`bool`, `int`, `float`, `double`,
+`string`, `entity`, ...) or an engine struct such as `CF_V2`:
+
+```kdl
+name "Charge"
+description "Stored energy that refills over time."
+(array)fields {
+    - name="level" type="float"
+    - name="capacity" type="float"
+    - name="full" type="bool"
+    - name="drift" type="CF_V2"
+}
+```
+
+Prototypes, scenes, behaviors and systems then use `Charge` like an engine
+component. A name may not reuse an engine type. The compiler stores the
+declarations in the prepared artifact, so the player needs no source.
+`chibi_ctl` and Studio do not read declarations yet.
+
 ## Edit and verify
 
 1. Read the existing asset and its dependencies. Use the shared SDK's reflected

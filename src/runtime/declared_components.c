@@ -1,0 +1,385 @@
+#include "runtime/declared_components.h"
+
+#include "capabilities/catalog.h"
+#include "support/arena.h"
+#include "support/xalloc.h"
+#include "types/catalog.h"
+
+#include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_COMPONENTS 1024
+#define MAX_FIELDS 256
+#define ENTITY_TYPE "ecs.entity"
+
+struct declared_components
+{
+    int references;
+    arena storage;
+    int count;
+    type_desc *types;
+    const type_desc **type_list;
+    ecs_component_desc *descs;
+    const ecs_component_desc **desc_list;
+    script_catalog_type *script_types;
+    script_catalog catalog;
+    /* Authored field type spellings, kept for the wire. */
+    const char ***spellings;
+};
+static bool fail(char *error, size_t size, const char *name, const char *message)
+{
+    if (size) {
+        snprintf(error, size, "Component %s: %s", name ? name : "(unnamed)", message);
+    }
+    return false;
+}
+static const char *own(declared_components *c, const char *text)
+{
+    if (!text) {
+        return NULL;
+    }
+    size_t bytes = strlen(text) + 1;
+    char *copy = arena_alloc(&c->storage, bytes);
+    memcpy(copy, text, bytes);
+    return copy;
+}
+static size_t scalar_size(pin_type type)
+{
+    switch (type) {
+        case PIN_BOOL:
+        case PIN_I8:
+        case PIN_U8: return 1;
+        case PIN_I16:
+        case PIN_U16: return 2;
+        case PIN_I32:
+        case PIN_U32:
+        case PIN_F32:
+        case PIN_ENUM: return 4;
+        case PIN_I64:
+        case PIN_U64:
+        case PIN_F64:
+        case PIN_HANDLE: return 8;
+        case PIN_STR:
+        case PIN_NAME: return sizeof(const char *);
+        default: return 0;
+    }
+}
+static size_t struct_alignment(const type_desc *type, int depth)
+{
+    size_t alignment = 1;
+    for (int i = 0; i < type->field_count && depth < 16; i++) {
+        const type_field *field = &type->fields[i];
+        size_t a = field->type == PIN_STRUCT
+                     ? struct_alignment(type_catalog_find(field->type_name), depth + 1)
+                     : scalar_size(field->type);
+        alignment = a > alignment ? a : alignment;
+    }
+    return alignment;
+}
+/* Fills storage, size, alignment and script type for one authored spelling. */
+static bool field_type(const char *spelling, type_field *field, size_t *alignment, script_type *type)
+{
+    *type = script_builtin_type(spelling);
+    if (!(type->flags & SCRIPT_TYPE_ERROR)) {
+        field->type = type->storage;
+        field->size = scalar_size(type->storage);
+        field->type_name = type->storage == PIN_HANDLE ? ENTITY_TYPE : NULL;
+        *alignment = field->size;
+        bool entity = type->storage != PIN_HANDLE ||
+                      type->nominal == script_catalog_id("type", ENTITY_TYPE);
+        return field->size && type->storage != PIN_ENUM && !type->flags && entity;
+    }
+    const type_desc *nested = type_catalog_find(spelling);
+    if (!nested || !nested->size || !nested->field_count) {
+        return false;
+    }
+    field->type = PIN_STRUCT;
+    field->size = nested->size;
+    field->type_name = nested->name;
+    *alignment = struct_alignment(nested, 0);
+    *type = (script_type){ .storage = PIN_STRUCT,
+                           .nominal = script_catalog_id("type", nested->name) };
+    return true;
+}
+static bool identifier(const char *name)
+{
+    if (!name || !(*name == '_' || (*name >= 'A' && *name <= 'Z') ||
+                   (*name >= 'a' && *name <= 'z'))) {
+        return false;
+    }
+    for (const char *p = name; *p; p++) {
+        if (!(*p == '_' || (*p >= '0' && *p <= '9') ||
+              (*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z'))) {
+            return false;
+        }
+    }
+    return true;
+}
+static bool build(declared_components *c, int index, const declared_component *in, char *error, size_t size)
+{
+    const char *name = in->name;
+    if (!identifier(name)) {
+        return fail(error, size, name, "name must be an identifier");
+    }
+    if (type_catalog_find(name)) {
+        return fail(error, size, name, "name is already an engine type");
+    }
+    if (!(script_builtin_type(name).flags & SCRIPT_TYPE_ERROR)) {
+        return fail(error, size, name, "name is a built-in script type");
+    }
+    for (int i = 0; i < index; i++) {
+        if (!strcmp(c->types[i].name, name)) {
+            return fail(error, size, name, "is declared twice");
+        }
+    }
+    if (in->field_count < 1 || in->field_count > MAX_FIELDS || !in->fields) {
+        return fail(error, size, name, "needs between 1 and 256 fields");
+    }
+    name = own(c, name);
+    int count = in->field_count;
+    type_field *fields = arena_alloc(&c->storage, (size_t)count * sizeof *fields);
+    script_catalog_field *script_fields = arena_alloc(&c->storage, (size_t)count * sizeof *script_fields);
+    const char **spellings = arena_alloc(&c->storage, (size_t)count * sizeof *spellings);
+    size_t offset = 0, alignment = 1;
+    for (int i = 0; i < count; i++) {
+        const declared_field *f = &in->fields[i];
+        if (!identifier(f->name) || !f->type) {
+            return fail(error, size, name, "field names must be identifiers with a type");
+        }
+        for (int j = 0; j < i; j++) {
+            if (!strcmp(fields[j].name, f->name)) {
+                return fail(error, size, name, "field is declared twice");
+            }
+        }
+        type_field field = { .name = own(c, f->name),
+                             .description = own(c, f->description) };
+        size_t field_alignment;
+        script_type type;
+        if (!field_type(f->type, &field, &field_alignment, &type)) {
+            char message[160];
+            snprintf(message, sizeof message, "field %s has unknown type %s", f->name, f->type);
+            return fail(error, size, name, message);
+        }
+        offset = (offset + field_alignment - 1) / field_alignment * field_alignment;
+        field.offset = offset;
+        offset += field.size;
+        alignment = field_alignment > alignment ? field_alignment : alignment;
+        fields[i] = field;
+        spellings[i] = own(c, f->type);
+        size_t bytes = strlen(name) + strlen(field.name) + 2;
+        char *qualified = arena_alloc(&c->storage, bytes);
+        snprintf(qualified, bytes, "%s.%s", name, field.name);
+        script_fields[i] = (script_catalog_field){ .id = script_catalog_id("field", qualified),
+                                                   .name = field.name,
+                                                   .type = type,
+                                                   .offset = field.offset,
+                                                   .writable = true };
+    }
+    type_desc *type = &c->types[index];
+    *type = (type_desc){ .name = name,
+                         .size = (offset + alignment - 1) / alignment * alignment,
+                         .fields = fields,
+                         .field_count = count };
+    c->spellings[index] = spellings;
+    c->descs[index] = (ecs_component_desc){ .id = script_catalog_id("component", name),
+                                            .key = name,
+                                            .name = name,
+                                            .element_size = type->size,
+                                            .type = type,
+                                            .index = ECS_INDEX_DENSE };
+    uint64_t id = script_catalog_id("type", name);
+    c->script_types[index] = (script_catalog_type){
+        .id = id,
+        .name = name,
+        .source_name = name,
+        .key = name,
+        .type = { .storage = PIN_STRUCT, .nominal = id },
+        .fields = script_fields,
+        .field_count = count,
+        .size = type->size,
+        .layout = type_layout_hash(type),
+        .component_id = c->descs[index].id,
+        .component = true,
+    };
+    c->type_list[index] = type;
+    c->desc_list[index] = &c->descs[index];
+    return true;
+}
+declared_components *declared_components_new(
+    const declared_component *components,
+    int count,
+    char *error,
+    size_t size
+)
+{
+    assert(count >= 0 && (!count || components) && (!size || error));
+    if (count > MAX_COMPONENTS) {
+        fail(error, size, NULL, "a project declares at most 1024 components");
+        return NULL;
+    }
+    declared_components *c = xcalloc(1, sizeof *c);
+    c->references = 1;
+    c->count = count;
+    c->types = xcalloc((size_t)count + 1, sizeof *c->types);
+    c->type_list = xcalloc((size_t)count + 1, sizeof *c->type_list);
+    c->descs = xcalloc((size_t)count + 1, sizeof *c->descs);
+    c->desc_list = xcalloc((size_t)count + 1, sizeof *c->desc_list);
+    c->script_types = xcalloc((size_t)count + 1, sizeof *c->script_types);
+    c->spellings = xcalloc((size_t)count + 1, sizeof *c->spellings);
+    for (int i = 0; i < count; i++) {
+        if (!build(c, i, &components[i], error, size)) {
+            c->count = 0;
+            declared_components_free(c);
+            return NULL;
+        }
+    }
+    c->catalog = (script_catalog){ .types = c->script_types, .type_count = count };
+    type_catalog_set_project(&(type_catalog_pack){ .types = c->type_list,
+                                                   .type_count = count });
+    return c;
+}
+declared_components *declared_components_retain(declared_components *c)
+{
+    assert(c && c->references > 0);
+    c->references++;
+    return c;
+}
+void declared_components_free(declared_components *c)
+{
+    if (!c || --c->references) {
+        return;
+    }
+    if (c->catalog.types) {
+        type_catalog_set_project(NULL);
+    }
+    free(c->types);
+    free(c->type_list);
+    free(c->descs);
+    free(c->desc_list);
+    free(c->script_types);
+    free(c->spellings);
+    arena_free(&c->storage);
+    free(c);
+}
+ecs_component_catalog declared_components_ecs(const declared_components *c)
+{
+    assert(c);
+    return (ecs_component_catalog){ c->desc_list, c->count };
+}
+const script_catalog *declared_components_catalog(const declared_components *c)
+{
+    assert(c);
+    return &c->catalog;
+}
+void declared_components_wire(execution_wire *wire, declared_components **out)
+{
+    int count = wire->reading || !*out ? 0 : (*out)->count;
+    execution_wire_count(wire, &count, 2);
+    if (wire->error || count > MAX_COMPONENTS) {
+        wire->error = wire->error ? wire->error : "too many declared components";
+        return;
+    }
+    declared_component *components = xcalloc((size_t)count + 1, sizeof *components);
+    declared_field **fields = xcalloc((size_t)count + 1, sizeof *fields);
+    for (int i = 0; i < count && !wire->error; i++) {
+        declared_component *component = &components[i];
+        if (!wire->reading) {
+            const type_desc *type = &(*out)->types[i];
+            component->name = type->name;
+            component->field_count = type->field_count;
+        }
+        execution_wire_string(wire, &component->name);
+        execution_wire_count(wire, &component->field_count, 2);
+        if (wire->error || component->field_count > MAX_FIELDS) {
+            wire->error = wire->error ? wire->error
+                                      : "too many declared component fields";
+            break;
+        }
+        fields[i] = xcalloc((size_t)component->field_count + 1, sizeof *fields[i]);
+        for (int j = 0; j < component->field_count; j++) {
+            declared_field *field = &fields[i][j];
+            if (!wire->reading) {
+                field->name = (*out)->types[i].fields[j].name;
+                field->type = (*out)->spellings[i][j];
+            }
+            execution_wire_string(wire, &field->name);
+            execution_wire_string(wire, &field->type);
+        }
+        component->fields = fields[i];
+    }
+    if (wire->reading && !wire->error && count) {
+        char message[256];
+        *out = declared_components_new(components, count, message, sizeof message);
+        if (!*out) {
+            wire->error = "invalid declared component schema";
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        free(fields[i]);
+    }
+    free(fields);
+    free(components);
+}
+static int find(const declared_components *c, uint64_t id)
+{
+    for (int i = 0; c && i < c->count; i++) {
+        if (c->script_types[i].id == id) {
+            return i;
+        }
+    }
+    return -1;
+}
+static bool host(void *user, uint64_t id, execution_prepared_host *out)
+{
+    const declared_components_linking *l = user;
+    return l->base->host(l->base->user, id, out);
+}
+static bool command(void *user, uint64_t id, const char *reference, execution_prepared_command *out)
+{
+    const declared_components_linking *l = user;
+    return l->base->command(l->base->user, id, reference, out);
+}
+static bool query(void *user, uint64_t id, execution_prepared_query *out)
+{
+    const declared_components_linking *l = user;
+    return l->base->query(l->base->user, id, out);
+}
+static bool event(void *user, uint64_t id, uint64_t abi)
+{
+    const declared_components_linking *l = user;
+    return l->base->event(l->base->user, id, abi);
+}
+static bool type(void *user, uint64_t id, execution_prepared_type *out)
+{
+    const declared_components_linking *l = user;
+    int index = find(l->components, id);
+    if (index < 0) {
+        return l->base->type && l->base->type(l->base->user, id, out);
+    }
+    const script_catalog_type *t = &l->components->script_types[index];
+    *out = (execution_prepared_type){ .name = t->name,
+                                      .type = &l->components->types[index],
+                                      .storage = PIN_STRUCT,
+                                      .size = t->size,
+                                      .layout = t->layout };
+    return true;
+}
+static execution_module *import(void *user, uint64_t id, uint64_t fingerprint)
+{
+    const declared_components_linking *l = user;
+    return l->base->import(l->base->user, id, fingerprint);
+}
+execution_prepared_linker declared_components_linker(const declared_components_linking *l)
+{
+    assert(l && l->base);
+    const execution_prepared_linker *b = l->base;
+    return (execution_prepared_linker){ .user = (void *)l,
+                                        .host = b->host ? host : NULL,
+                                        .command = b->command ? command : NULL,
+                                        .query = b->query ? query : NULL,
+                                        .event = b->event ? event : NULL,
+                                        .type = type,
+                                        .import = b->import ? import : NULL };
+}

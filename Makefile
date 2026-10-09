@@ -293,7 +293,7 @@ test-language-prepared:
 TOOLS_REFLECT ?= $(wildcard $(abspath $(BUILD_DIR))/reflect)
 
 tools-build:
-	@cmake -S test/tools -B "$(TOOLS_BUILD_DIR)" -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Debug $(if $(TOOLS_REFLECT),-DCHIBI_REFLECT_EXECUTABLE="$(TOOLS_REFLECT)",)
+	@cmake -S test/tools -B "$(TOOLS_BUILD_DIR)" -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Debug -DCHIBI_REFLECT_EXECUTABLE="$(TOOLS_REFLECT)"
 	@cmake --build "$(TOOLS_BUILD_DIR)" --parallel $(JOBS)
 
 test-short: tools-build

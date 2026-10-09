@@ -415,8 +415,11 @@ build and passes 14 assertions in 0.052 seconds, without files, processes or GPU
 `interior-border` draws a circle and a diamond with Cute's interior border into
 a hidden 64 x 64 canvas, opaque and translucent, through Cute's instanced and
 tiled draw paths, and compares every pixel with an analytic reference. It is a
-GPU check: `make agent-gpu-test AGENT_SELECTOR=--interior-border` runs it from
-the `make build` tools after the agent's device preflight. On lavapipe it passes
+GPU check that needs the render-enabled tools of the main build: run
+`make build BUILD_TARGET=test_tools`, then
+`make agent-gpu-test AGENT_SELECTOR=--interior-border`, which runs that build's
+`test/tools/test_tools` after the agent's device preflight. Pass the same
+`BUILD_DIR` to both to check another build. On lavapipe it passes
 8 assertions in 6.1 seconds on a cold shader cache and 0.6 seconds warm. A
 backend without Cute's compute renderer skips the tiled case.
 `graph-model` selects two independently reviewed public consumer cases for nested

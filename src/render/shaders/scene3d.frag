@@ -5,6 +5,7 @@ layout(location = 0) out vec4 result;
 layout(set = 2, binding = 0) uniform sampler2D scene_parameters;
 layout(set = 2, binding = SG_SHADOW_BINDING) uniform sampler2DShadow scene_shadow_map;
 layout(set = 2, binding = SG_SHADOW_BLOCKERS_BINDING) uniform sampler2D scene_shadow_blockers;
+layout(set = 2, binding = SG_LIGHT_SHADOW_BINDING) uniform sampler2DShadow scene_light_shadow_map;
 const float PI = 3.141592653589793;
 // Taps per blocker search and per soft filter, and the widest radius of each,
 // in texels of the cascade; scene3d_shadow.c widens cascades by that radius.
@@ -164,6 +165,51 @@ float sun_shadow()
     return 1.0;
 }
 
+int major_axis(vec3 v)
+{
+    vec3 a = abs(v);
+    return a.x >= a.y && a.x >= a.z ? 0 : a.y >= a.z ? 1 : 2;
+}
+
+// Point light i's visibility from the one of its six faces whose 90 degrees
+// hold the lookup, lifted along the geometric normal like the sun's by that
+// face's texels at the point's distance, then compared on a 3x3 grid. Faces
+// look along +x, -x, +y, -y, +z and -z, with up along +y, or +z for the faces
+// along y, and each light takes one atlas row of them.
+float point_shadow(int i)
+{
+    vec4 light = scene_light_positions[i];
+    vec3 normal = safe_normal(v_normal, vec3(0, 1, 0));
+    vec3 delta = v_world - light.xyz;
+    vec2 size = vec2(textureSize(scene_light_shadow_map, 0));
+    float spread = scene_light_shadow.y, face_texels = scene_light_shadow.w;
+    int along = major_axis(delta);
+    float texel = 2.0 * spread * abs(delta[along]) / face_texels;
+    // A face's depth runs along its axis, so a surface turned from the axis
+    // needs the lift even where it faces the light.
+    float facing = min(clamp(-dot(normal, safe_normal(delta, -normal)), 0.0, 1.0), abs(normal[along]));
+    delta += normal * (0.5 + 2.0 * sqrt(1.0 - facing * facing)) * texel;
+    along = major_axis(delta);
+    vec3 forward = vec3(0);
+    forward[along] = delta[along] >= 0.0 ? 1.0 : -1.0;
+    int face = 2 * along + (delta[along] >= 0.0 ? 0 : 1);
+    vec3 side = cross(forward, along == 1 ? vec3(0, 0, 1) : vec3(0, 1, 0));
+    vec3 above = cross(side, forward);
+    float ahead = dot(delta, forward);
+    vec2 uv = vec2(dot(delta, side), -dot(delta, above)) / (ahead * spread) * 0.5 + 0.5;
+    // Perspective depth with the near plane at a share of the radius.
+    float near = scene_light_shadow.z;
+    float depth = (1.0 - near * light.w / ahead) / (1.0 - near);
+    vec2 coord = (vec2(face, i) + uv) * face_texels / size;
+    float lit = 0.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            lit += textureLod(scene_light_shadow_map, vec3(coord + vec2(x, y) / size, depth), 0.0);
+        }
+    }
+    return lit / 9.0;
+}
+
 vec3 direct_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 view)
 {
     float sky = 0.5 + 0.5 * normal.y;
@@ -181,6 +227,7 @@ vec3 direct_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 
         float fade = 1.0 - distance_squared / (radius * radius);
         vec3 light = safe_normal(delta, normal);
         vec3 radiance = scene_light_colors[i].rgb * scene_light_colors[i].w * fade * fade;
+        if (i < int(scene_light_shadow.x)) radiance *= point_shadow(i);
         result += surface_light(base, roughness, metallic, normal, view, light) * radiance;
     }
     return result;

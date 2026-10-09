@@ -14,7 +14,8 @@ into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
   it, and `angular_diameter`, the sun's apparent size from 0 to 20 degrees,
   softens their shadows (see Shadows).
 - **Point Light** (`GamePointLight`): up to 32 per view, ranked by estimated
-  influence on the camera.
+  influence on the camera. `shadows` lets opaque solids within its radius
+  block it (see Point light shadows).
 - **Environment** (`GameEnvironment`): exposure, bloom, and a hemisphere ambient
   that blends `ambient_ground` below to `ambient_sky` above, scaled by
   `ambient_intensity`. Without an Environment the scene uses
@@ -64,10 +65,38 @@ square holds the lookup, and compares against it with a 3x3 grid of hardware
   24-bit, then 16-bit, so four cascades take at most 64 MB. A soft sun adds
   a half-resolution map of each 2x2 block's nearest depth in half floats,
   at most 8 MB.
-- **Not covered**: transparent surfaces, particles and trails cast nothing;
-  point lights cast nothing. Cascade edges change resolution without a blend.
+- **Not covered**: transparent surfaces, particles and trails cast nothing.
+  Cascade edges change resolution without a blend.
   A penumbra's radius stops at 128 texels of its cascade, and a caster
   thinner than the disc's tap spacing shades its penumbra unevenly.
+
+### Point light shadows
+
+A Point Light with `shadows` renders opaque solids' depth from the light into
+six 512x512 faces of one depth atlas (`render/scene3d_point_shadow.c`), one
+row of faces per light. At most four point lights cast shadows in a view: the
+ones that rank highest among those with `shadows`; the rest light without
+them. Ranks follow the camera, so which lights cast can change as it moves.
+
+- **Faces**: each face looks along one axis, +x, -x, +y, -y, +z or -z, across
+  a little more than 90 degrees, so lookups near its edge stay on it. The lit
+  pass reads the face that holds the direction from the light to the surface
+  point, comparing a 3x3 grid of hardware 2x2 comparisons like a sun without
+  angular size.
+- **Casters**: a solid casts for a light when its bounds reach within the
+  light's radius, into each face whose view they reach, including solids the
+  camera culls. A solid whose box holds the light casts nothing for it, so a
+  lamp's own bulb leaves it lit. Solids nearer the light than 1% of its radius
+  cast nothing.
+- **Bias**: each lookup lifts the surface point along its geometric normal by
+  half a texel of its face at the point's distance, up to 2.5 texels for a
+  surface edge on to the light or turned from the face's axis, since a face's
+  depth runs along its axis rather than toward the light.
+- **Memory**: the atlas grows to the most shadowed lights a view has needed,
+  3072 texels wide and 512 tall per light, so four lights take at most 24 MB
+  at 32-bit depth.
+- **Not covered**: point light shadows have hard edges, since a point light
+  has no size.
 
 The material preview sphere draws without shadows.
 
@@ -107,11 +136,17 @@ draws alone, four cascades across a deep view each keeping a small shadow
 sharp, two cascades side by side when the depths between hold nothing, one
 cascade for a floor that reaches far past a shallow view, and a sun's size
 softening a shadow's edge far from its caster but not at its foot, in every
-cascade, and from a caster just outside the view. It runs `test_tools`
+cascade, and from a caster just outside the view. Point light shadows are
+checked across a grid of floor against the box between it and each lamp, for
+one lamp in four spots whose shadows cross between faces, and for two lamps
+outranked by a brighter light that casts nothing; five lamps that cast give
+shadows to the four ranked highest; a sphere lit from between three faces
+keeps its light; a long wall casts for a lamp near one end; and a slab the
+camera culls casts too. It runs `test_tools`
 from the desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 18 cases and 135 assertions in 2.9 seconds on 2026-10-09.
+Vulkan llvmpipe passed 24 cases and 186 assertions in 3.8 seconds on 2026-10-09.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

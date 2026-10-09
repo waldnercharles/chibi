@@ -71,10 +71,8 @@ typedef struct
 
 struct render_scene3d_shadow
 {
-    CF_Texture map;
-    CF_Canvas canvas;
+    render_scene3d_depth_map atlas;
     CF_Shader shader;
-    int width, height;
     blocker_map blockers;
     float spread;
     float reach; /* How far the widest penumbra the scene allows reaches. */
@@ -90,13 +88,13 @@ render_scene3d_shadow *render_scene3d_shadow_new()
     return xcalloc(1, sizeof(render_scene3d_shadow));
 }
 
-static void destroy_map(render_scene3d_shadow *shadow)
+void render_scene3d_depth_map_free(render_scene3d_depth_map *depth)
 {
-    if (!shadow->width) {
+    if (!depth->width) {
         return;
     }
-    cf_destroy_canvas(shadow->canvas);
-    cf_destroy_texture(shadow->map);
+    cf_destroy_canvas(depth->canvas);
+    cf_destroy_texture(depth->map);
 }
 
 static void free_blockers(blocker_map *blockers)
@@ -115,7 +113,7 @@ static void free_blockers(blocker_map *blockers)
 
 void render_scene3d_shadow_free(render_scene3d_shadow *shadow)
 {
-    destroy_map(shadow);
+    render_scene3d_depth_map_free(&shadow->atlas);
     free_blockers(&shadow->blockers);
     if (shadow->shader.id) {
         cf_destroy_shader(shadow->shader);
@@ -125,13 +123,12 @@ void render_scene3d_shadow_free(render_scene3d_shadow *shadow)
     free(shadow);
 }
 
-/* A depth map of at least the given size, cleared to the far plane. */
-static void prepare_map(render_scene3d_shadow *shadow, int width, int height)
+void render_scene3d_depth_map_prepare(render_scene3d_depth_map *depth, int width, int height)
 {
-    if (shadow->width >= width && shadow->height >= height) {
+    if (depth->width >= width && depth->height >= height) {
         return;
     }
-    destroy_map(shadow);
+    render_scene3d_depth_map_free(depth);
     CF_CanvasParams params = cf_canvas_defaults(0, 0);
     CF_TextureParams map = params.depth_stencil_target;
     map.usage = CF_TEXTURE_USAGE_DEPTH_STENCIL_TARGET_BIT | CF_TEXTURE_USAGE_SAMPLER_BIT;
@@ -145,17 +142,17 @@ static void prepare_map(render_scene3d_shadow *shadow, int width, int height)
         format++;
     }
     map.pixel_format = formats[format];
-    map.width = shadow->width = width > shadow->width ? width : shadow->width;
-    map.height = shadow->height = height > shadow->height ? height : shadow->height;
+    map.width = depth->width = width > depth->width ? width : depth->width;
+    map.height = depth->height = height > depth->height ? height : depth->height;
     map.wrap_u = map.wrap_v = CF_WRAP_MODE_CLAMP_TO_EDGE;
     map.compare_enable = true;
     map.compare_function = CF_COMPARE_FUNCTION_LESS_THAN_OR_EQUAL;
-    shadow->map = cf_make_texture(map);
-    params.attach_target = shadow->map;
-    shadow->canvas = cf_make_canvas(params);
-    cf_canvas_set_clear_depth_stencil(shadow->canvas, 1, 0);
+    depth->map = cf_make_texture(map);
+    params.attach_target = depth->map;
+    depth->canvas = cf_make_canvas(params);
+    cf_canvas_set_clear_depth_stencil(depth->canvas, 1, 0);
     /* The placeholder map is only ever bound, never drawn into. */
-    cf_clear_canvas(shadow->canvas);
+    cf_clear_canvas(depth->canvas);
 }
 
 /* A blocker map of at least the given size. */
@@ -208,12 +205,12 @@ static bool load_blocker_pass(blocker_map *blockers, char *error, size_t size)
 static void reduce_blockers(render_scene3d_shadow *shadow)
 {
     blocker_map *blockers = &shadow->blockers;
-    int width = shadow->width / 2, height = shadow->height / 2;
+    int width = shadow->atlas.width / 2, height = shadow->atlas.height / 2;
     prepare_blockers(blockers, width, height);
     cf_material_set_texture_fs_sampler(
         blockers->material,
         "map",
-        shadow->map,
+        shadow->atlas.map,
         blockers->raw
     );
     /* Every texel is rewritten, so nothing need load. */
@@ -225,17 +222,17 @@ static void reduce_blockers(render_scene3d_shadow *shadow)
     cf_draw_elements();
 }
 
-static bool load_shader(render_scene3d_shadow *shadow, char *error, size_t size)
+bool render_scene3d_depth_shader(CF_Shader *shader, char *error, size_t size)
 {
-    if (shadow->shader.id) {
+    if (shader->id) {
         return true;
     }
     char *vertex = render_shader_source("scene3d_shadow.vert");
     char *fragment = render_shader_source("scene3d_shadow.frag");
     if (vertex && fragment) {
-        shadow->shader = cf_make_shader_from_source(vertex, fragment);
+        *shader = cf_make_shader_from_source(vertex, fragment);
     }
-    if (!shadow->shader.id) {
+    if (!shader->id) {
         snprintf(
             error,
             size,
@@ -245,7 +242,7 @@ static bool load_shader(render_scene3d_shadow *shadow, char *error, size_t size)
     }
     free(vertex);
     free(fragment);
-    return shadow->shader.id;
+    return shader->id;
 }
 
 static CF_V3 box_corner(CF_M4x4 box, int corner)
@@ -554,12 +551,16 @@ bool render_scene3d_shadow_reaches(const render_scene3d_shadow *shadow, int casc
 bool render_scene3d_shadow_begin(render_scene3d_shadow *shadow, int cascade, char *error, size_t size)
 {
     assert(cascade < shadow->count);
-    if (!load_shader(shadow, error, size) ||
+    if (!render_scene3d_depth_shader(&shadow->shader, error, size) ||
         (shadow->spread > 0 && !load_blocker_pass(&shadow->blockers, error, size))) {
         return false;
     }
     /* Cascades fill a 2x2 grid of squares row by row. */
-    prepare_map(shadow, shadow->count > 1 ? 2 * TILE : TILE, shadow->count > 2 ? 2 * TILE : TILE);
+    render_scene3d_depth_map_prepare(
+        &shadow->atlas,
+        shadow->count > 1 ? 2 * TILE : TILE,
+        shadow->count > 2 ? 2 * TILE : TILE
+    );
     CF_RenderState state = cf_render_state_3d_defaults();
     /* Open meshes such as the flat triangle cast from either side. */
     state.cull_mode = CF_CULL_MODE_NONE;
@@ -585,7 +586,7 @@ void render_scene3d_shadow_end(render_scene3d_shadow *shadow, int cascade)
     if (cascade < shadow->count - 1) {
         return;
     }
-    cf_render_layers_to(shadow->canvas, SHADOW_LAYER, SHADOW_LAYER, true);
+    cf_render_layers_to(shadow->atlas.canvas, SHADOW_LAYER, SHADOW_LAYER, true);
     if (shadow->spread > 0) {
         reduce_blockers(shadow);
     }
@@ -594,7 +595,7 @@ void render_scene3d_shadow_end(render_scene3d_shadow *shadow, int cascade)
 void render_scene3d_shadow_bind(render_scene3d_shadow *shadow, int count)
 {
     assert(count <= shadow->count);
-    prepare_map(shadow, 1, 1);
+    render_scene3d_depth_map_prepare(&shadow->atlas, 1, 1);
     prepare_blockers(&shadow->blockers, 1, 1);
     CF_M4x4 matrices[CASCADE_LIMIT] = { 0 };
     float texels[CASCADE_LIMIT] = { 0 }, ranges[CASCADE_LIMIT] = { 0 };
@@ -607,14 +608,14 @@ void render_scene3d_shadow_bind(render_scene3d_shadow *shadow, int count)
     /* Cascades, a square's texel in its own UV, and a square's size in atlas UV. */
     CF_V4 settings = { (float)count,
                        1.0f / TILE,
-                       (float)TILE / (float)shadow->width,
-                       (float)TILE / (float)shadow->height };
+                       (float)TILE / (float)shadow->atlas.width,
+                       (float)TILE / (float)shadow->atlas.height };
     cf_draw3d_set_uniform("scene_shadow_matrices", matrices, CF_UNIFORM_TYPE_MAT4, CASCADE_LIMIT);
     cf_draw3d_set_uniform("scene_shadow_texels", texels, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_shadow", &settings, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_shadow_ranges", ranges, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_shadow_soft", &soft, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw3d_set_texture("scene_shadow_map", shadow->map);
+    cf_draw3d_set_texture("scene_shadow_map", shadow->atlas.map);
     cf_draw3d_set_texture(
         "scene_shadow_blockers",
         cf_canvas_get_target(shadow->blockers.canvas)

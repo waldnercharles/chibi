@@ -1,0 +1,73 @@
+---
+name: chibi-recipes
+description: Step-by-step recipes for the Chibi engine repo. Use when adding a reflected component, a native script function, a test scene or scenario, or a project migration.
+---
+
+Each recipe ends with the checklist in `AGENTS.md` ("Before every commit").
+Copy the nearest existing example rather than inventing a new shape; the
+smallest ones are named below.
+
+## Add a component
+
+1. Declare the struct in `src/runtime/components.h` with
+   `NODE_COMPONENT_TYPE_DENSE(Name)` (see `GameGlobalBinding`). Use plain
+   C fields; enums become named choices, `NODE_HANDLE(ecs.entity)` marks an
+   entity reference. Comment what it means and its units.
+2. Build (`make build`). The reflect step regenerates the native type tables
+   and adds the component's row to `src/runtime/component_ids.tsv`. Commit
+   that row with the header change; never edit the ID by hand.
+3. Read the component where it acts: a system in `src/runtime`, or script
+   through the generated get/set. Keep it optional, so scenes without it
+   still work.
+4. Use it in a fixture scene or prototype (KDL key `GAME.<Name>`, see
+   `test/fixtures/content/prototypes/Enemy.kdl`) and cover its behavior with
+   a pico_unit case.
+5. If saved projects change meaning, also follow "Change saved projects".
+
+## Add a native script function
+
+The smallest complete example is Play Sound:
+`src/runtime/audio_definition.h`, `audio_definition.c` and `audio.c`.
+
+1. In `<area>_definition.h`, name the function (`#define ..._NAME`), list its
+   inputs and outputs as X-macros, and write its presentation: category,
+   keywords and a one-sentence description.
+2. In `<area>_definition.c`, add the definition (with its script
+   `source_name`) and its binding to the area's `native_definition_pack`.
+3. Implement the call in `<area>.c` as a `node_host_call` plus its
+   `node_access` effect flags. Pure functions declare no effects.
+4. A new pack also needs its library in `sdk/native.cmake` and an
+   `apush(selected, ...)` in `src/host/native_default.c`.
+5. Test it from source in a tool selector (for example
+   `test/runtime/source_features.c`, run with
+   `python3 tools/test_policy.py tool source-native-features`), on both the VM
+   and SLJIT backends, and call it from a fixture behavior.
+
+## Add a test scene or scenario
+
+1. Pick the fixture project under `test/fixtures` that matches the area, or
+   add one with `project.kdl` (`version`, `name`, `content`, `start_scene`)
+   and a `content/` tree. Don't add game rules to engine fixtures; keep
+   content minimal and independent of any one game.
+2. Add `content/scenes/<Name>.kdl` (`version 1`, `name`, `(array)entities`
+   of `- name=... prototype=...`) and the prototypes it uses. A scenario in
+   `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.
+3. Format and validate: `build/bin/chibi_ctl --project-root <root> --format`,
+   then a `validate_asset` request per changed asset.
+4. Run it bounded:
+   `printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"<Name>","frames":4}' | build/bin/chibi_ctl --project-root <root>`
+   and check `behavior_failures` and the state evidence. Keep frame counts
+   small; the 60-second policy applies.
+
+## Change saved projects (migration)
+
+Follow the first rule in `AGENTS.md`. Then:
+
+1. Write a pico_unit case that migrates a small old-format source and checks
+   the result.
+2. Migrate every project the change reaches: `test/fixtures/*`,
+   `examples/language`, and the game and Studio repositories
+   (`chibi-voidweaver`, `chibi-celeste`, `chibi-studio/projects`), each in
+   its own PR that names the engine PR it needs.
+3. Run `chibi_ctl --format` on each migrated project and compile it with
+   `chibi-compile` to prove it still loads.

@@ -364,6 +364,48 @@ static bool optional_membership_roundtrip(behavior_backend backend)
     formatted = NULL;
     return true;
 }
+/* Lowers any(...) with a nested not(...) to an OR chain with a scoped NOT. */
+static bool any_query_membership(behavior_backend backend)
+{
+    system_fixture f = fixture_new();
+    ecs_entity bare = health(&f), bound = health(&f), collider = health(&f);
+    REQUIRE(!GAME_GameActionBinding_add(f.world, bound, 0));
+    REQUIRE(!GAME_GameActionBinding_add(f.world, collider, 0));
+    REQUIRE(!GAME_GameCollider_add(f.world, collider, 0));
+    REQUIRE(!ecs_world_apply_commands(f.world));
+    REQUIRE(prepare(
+        &f,
+        "system AnyQuery(health:Health) { "
+        "query any(has(Collider), not(has(ActionBinding))); "
+        "health.Current+=1; }",
+        backend
+    ));
+    REQUIRE(tick(&f, 0));
+    REQUIRE(instance(&f, bare) && !instance(&f, bound) && instance(&f, collider));
+    REQUIRE(GAME_GameHealth_get_const(f.world, bare)->current == 1);
+    REQUIRE(GAME_GameHealth_get_const(f.world, bound)->current == 0);
+    REQUIRE(GAME_GameHealth_get_const(f.world, collider)->current == 1);
+    fixture_free(&f);
+    return true;
+}
+static bool empty_any_query(behavior_backend backend)
+{
+    system_fixture f = fixture_new();
+    ecs_entity bare = health(&f), collider = health(&f);
+    REQUIRE(!GAME_GameCollider_add(f.world, collider, 0));
+    REQUIRE(!ecs_world_apply_commands(f.world));
+    REQUIRE(prepare(
+        &f,
+        "system EmptyAny(health:Health) { "
+        "query any(has(Collider), any()); "
+        "health.Current+=1; }",
+        backend
+    ));
+    REQUIRE(tick(&f, 0));
+    REQUIRE(!instance(&f, bare) && instance(&f, collider));
+    fixture_free(&f);
+    return true;
+}
 static bool reactive_checkpoint(behavior_backend backend)
 {
     system_fixture f = fixture_new();
@@ -538,6 +580,22 @@ TEST_CASE(source_system_optional_membership_roundtrip)
     }
     return true;
 }
+TEST_CASE(source_system_any_query_membership)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(any_query_membership(backends[i]));
+    }
+    return true;
+}
+TEST_CASE(source_system_empty_any_query_matches_nothing)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(empty_any_query(backends[i]));
+    }
+    return true;
+}
 TEST_CASE(source_system_reactive_checkpoint)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
@@ -669,6 +727,8 @@ void test_code_system_runtime()
     RUN_TEST_CASE(source_behavior_nested_spawn_outlives_frame);
     RUN_TEST_CASE(source_system_live_component_resume);
     RUN_TEST_CASE(source_system_optional_membership_roundtrip);
+    RUN_TEST_CASE(source_system_any_query_membership);
+    RUN_TEST_CASE(source_system_empty_any_query_matches_nothing);
     RUN_TEST_CASE(source_system_reactive_checkpoint);
     RUN_TEST_CASE(source_system_synchronous_batch_path);
     RUN_TEST_CASE(source_system_camera_follow_runtime);

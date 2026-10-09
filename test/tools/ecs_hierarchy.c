@@ -184,10 +184,10 @@ static int visit(const ecs_component_id *components, int count)
     return visited;
 }
 
-static int visit_expression(const ecs_query_expr *expression)
+static int visit_terms(const ecs_term *terms, int count)
 {
     ecs_query query;
-    assert(ecs_query_begin_expression(world, &query, expression) == ECS_OK);
+    assert(ecs_query_begin_terms(world, &query, terms, count) == ECS_OK);
     int visited = 0;
     ecs_entity found;
     while (ecs_query_next(&query, &found)) {
@@ -210,14 +210,15 @@ TEST_CASE(ecs_disabled_entities_leave_queries_that_do_not_name_them)
     REQUIRE(visit(&health_desc.id, 1) == 2);
     REQUIRE(visit(with_disabled, 2) == 1);
     REQUIRE(visit(NULL, 0) == 2);
-    ecs_query_expr *any = ecs_query_expr_new(ECS_QUERY_ANY);
-    assert(ecs_query_expr_add(any, ecs_query_expr_has(health_desc.id)) == ECS_OK);
-    REQUIRE(visit_expression(any) == 2);
-    ecs_query_expr *not_disabled = ecs_query_expr_new(ECS_QUERY_NOT);
-    assert(ecs_query_expr_add(not_disabled, ecs_query_expr_has(ECS_DISABLED)) == ECS_OK);
-    assert(ecs_query_expr_add(any, not_disabled) == ECS_OK);
-    REQUIRE(visit_expression(any) == 3);
-    ecs_query_expr_free(any);
+    ecs_term any[] = {
+        { .oper = ECS_OR, .id = health_desc.id },
+        { .oper = ECS_OR, .id = ECS_DISABLED },
+    };
+    REQUIRE(visit_terms(any, 1) == 2);
+    REQUIRE(visit_terms(any, 2) == 3);
+    ecs_term not_disabled[] = { { .id = health_desc.id },
+                                { .oper = ECS_NOT, .id = ECS_DISABLED } };
+    REQUIRE(visit_terms(not_disabled, 2) == 2);
     REQUIRE(ecs_component_has_entities(world, health_desc.id, &entities[0], 1));
     ecs_entity enabled[] = { entities[0], entities[2] };
     REQUIRE(!ecs_component_has_entities(world, health_desc.id, enabled, 2));

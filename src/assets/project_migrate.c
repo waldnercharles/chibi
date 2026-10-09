@@ -1667,6 +1667,19 @@ static bool names_storage(const char *text, TSNode name)
     }
     return false;
 }
+/* Whether `call` reads a component, as `get_component` or its engine name. */
+static bool reads_component(const char *text, TSNode call)
+{
+    TSNode callee = ts_node_child_by_field_name(call, "function", 8);
+    TSNode name = is(callee, "engine_reference")
+                    ? ts_node_child_by_field_name(callee, "name", 4)
+                    : callee;
+    const char *spelled = is(callee, "engine_reference") ? "\"Get Component\""
+                                                         : "get_component";
+    uint32_t start = ts_node_start_byte(name);
+    return ts_node_end_byte(name) - start == strlen(spelled) &&
+           !strncmp(text + start, spelled, strlen(spelled));
+}
 /* Whether `node` names storage, as a state, component, parameter or local
  * path, which version 16 read and wrote through a local initialized with it.
  * `self` alone is the owner, not storage. */
@@ -1687,10 +1700,7 @@ static bool storage_path(const char *text, lazy *all, TSNode node)
         return storage_path(text, all, ts_node_child_by_field_name(node, "expression", 10));
     }
     if (is(node, "call_expression")) {
-        TSNode callee = ts_node_child_by_field_name(node, "function", 8);
-        uint32_t start = ts_node_start_byte(callee);
-        return ts_node_end_byte(callee) - start == 13 &&
-               !strncmp(text + start, "get_component", 13);
+        return reads_component(text, node);
     }
     return is(node, "builtin_reference") ||
            (is(node, "identifier") && names_storage(text, node));
@@ -1707,10 +1717,7 @@ static bool computed(const char *text, lazy *all, TSNode node)
         return true;
     }
     if (is(node, "call_expression")) {
-        TSNode callee = ts_node_child_by_field_name(node, "function", 8);
-        uint32_t start = ts_node_start_byte(callee);
-        if (ts_node_end_byte(callee) - start != 13 ||
-            strncmp(text + start, "get_component", 13)) {
+        if (!reads_component(text, node)) {
             return true;
         }
         node = ts_node_child_by_field_name(node, "arguments", 9);
@@ -1722,18 +1729,36 @@ static bool computed(const char *text, lazy *all, TSNode node)
     }
     return false;
 }
+/* Whether evaluating `node` calls something, directly or through the first
+ * read of a local whose initializer does. */
+static bool calls(const char *text, lazy *all, TSNode node)
+{
+    lazy *read = local_read(text, all, node);
+    if (read) {
+        return !read->alias &&
+               calls(text, all, ts_node_child_by_field_name(read->node, "value", 5));
+    }
+    if (is(node, "call_expression") || is(node, "await_expression")) {
+        return true;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (calls(text, all, ts_node_named_child(node, i))) {
+            return true;
+        }
+    }
+    return false;
+}
 /* Whether `node` calls something that runs before `read` is evaluated. */
-static bool calls_before(TSNode node, TSNode read)
+static bool calls_before(const char *text, lazy *all, TSNode node, TSNode read)
 {
     if (ts_node_start_byte(node) >= ts_node_start_byte(read)) {
         return false;
     }
-    if (!encloses(node, read) &&
-        (is(node, "call_expression") || is(node, "await_expression"))) {
-        return true;
+    if (!encloses(node, read)) {
+        return calls(text, all, node);
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        if (calls_before(ts_node_named_child(node, i), read)) {
+        if (calls_before(text, all, ts_node_named_child(node, i), read)) {
             return true;
         }
     }
@@ -1798,8 +1823,8 @@ static int place_local(
     }
     /* A local was evaluated at its first read, which a branch or loop
      * body might skip or reach after the state it reads changed. */
-    if (!constant(value) &&
-        (!always_reads(text, first, block) || calls_before(statement, first))) {
+    if (!constant(value) && (!always_reads(text, first, block) ||
+                             calls_before(text, all, statement, first))) {
         return local_fail(
             error,
             error_size,

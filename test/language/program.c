@@ -2580,8 +2580,12 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
         "    on Tick() { n = hit; hit = 2 }\n}\n",
         "behavior L { n: double = 0; local hit = [0]\n"
         "    on Tick() { hit := 0; a := local.hit[0]; b := local.hit[0] }\n}\n",
+        "behavior L { n: double = 0\n"
+        "    function SetN() { n = 5; return 0 }\n"
+        "    local hit = n + 1; local other = SetN()\n"
+        "    on Tick() { n = other + hit }\n}\n",
     };
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 11; i++) {
         unchanged = NULL;
         REQUIRE(
             chibi_migrate_locals(later[i], &unchanged, error, sizeof error) &&
@@ -2634,29 +2638,32 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
     }
     /* A local naming storage reads and writes it; an action's output or the
      * owner is read once. */
-    const char *alias = "behavior L { n: double = 0\n"
-                        "    local alias = n\n"
-                        "    local typed: double = alias\n"
-                        "    action wait = timer(1)\n"
-                        "    local done = wait.Done\n"
-                        "    local hp = get_component(self).Value\n"
-                        "    local me = self\n"
-                        "    local health = self.Health\n"
-                        "    on Tick() { alias = 2; m := typed; typed = 3; n = "
-                        "done; hp = 4; e := me; health = 5 }\n"
-                        "}\n";
+    const char
+        *alias = "behavior L { n: double = 0\n"
+                 "    local alias = n\n"
+                 "    local typed: double = alias\n"
+                 "    action wait = timer(1)\n"
+                 "    local done = wait.Done\n"
+                 "    local hp = get_component(self).Value\n"
+                 "    local me = self\n"
+                 "    local health = self.Health\n"
+                 "    local armor = engine[\"Get Component\"](self).Value\n"
+                 "    on Tick() { alias = 2; m := typed; typed = 3; n = "
+                 "done; hp = 4; e := me; health = 5; armor = 6 }\n"
+                 "}\n";
     REQUIRE(!chibi_migrate_locals(alias, &unchanged, error, sizeof error));
     REQUIRE(
-        unchanged && !strcmp(
-                         unchanged,
-                         "behavior L { n: double = 0\n"
-                         "    action wait = timer(1)\n"
-                         "    on Tick() { n = 2; m := n; n = 3; done := "
-                         "wait.Done; n = done; "
-                         "get_component(self).Value = 4; me := self; e := me; "
-                         "self.Health = 5 }\n"
-                         "}\n"
-                     )
+        unchanged &&
+        !strcmp(
+            unchanged,
+            "behavior L { n: double = 0\n"
+            "    action wait = timer(1)\n"
+            "    on Tick() { n = 2; m := n; n = 3; done := "
+            "wait.Done; n = done; "
+            "get_component(self).Value = 4; me := self; e := me; "
+            "self.Health = 5; engine[\"Get Component\"](self).Value = 6 }\n"
+            "}\n"
+        )
     );
     free(unchanged);
     /* `local.X` names the root local past a nearer `X`. */

@@ -59,9 +59,11 @@ static source_catalog *project;
 static entry *entries;
 static int problems; /* Reported failures; the coverage case fails on any. */
 static prototype_entry *prototypes;
+static script_analysis **analyses; /* One per project source, in catalog order. */
 /* Names a scene reaches: its entities' prototypes and behaviors, their
- * prototypes' behaviors, and the prototypes those behaviors spawn. */
-static char **reached_prototypes, **reached_behaviors;
+ * prototypes' behaviors, and the prototypes and libraries that running
+ * sources spawn or call. */
+static char **reached_prototypes, **reached_behaviors, **reached_libraries;
 
 /* Language library categories; their functions are not engine features. */
 static const char *const LANGUAGE_CATEGORIES[] = { "Array", "Set", "Flow Control", "Conversion" };
@@ -205,28 +207,11 @@ static void use_analysis(const script_catalog *catalog, const script_analysis *a
     }
 }
 
-/* The rest of a source's path when it lies under content/<folder>, or NULL. */
-static const char *in_folder(const source_catalog_source *source, const char *folder)
-{
-    const char *path = source->path;
-    size_t root = strlen(content_root), length = strlen(folder);
-    if (!strncmp(path, content_root, root) && path[root] == '/') {
-        path += root + 1;
-    }
-    return strncmp(path, folder, length) || path[length] != '/' ? NULL
-                                                                : path + length + 1;
-}
-
-/* A library's own uses don't count, since no check shows that a scene calls
- * it: a feature used only inside a library stays a gap. */
-static void use_sources()
+static void analyze_sources()
 {
     const script_catalog *catalog = source_catalog_view(project);
     for (int i = 0; i < source_catalog_source_count(project); i++) {
         const source_catalog_source *source = source_catalog_source_at(project, i);
-        if (in_folder(source, "libraries")) {
-            continue;
-        }
         script_analysis
             *analysis = script_analyze_document(source->syntax, catalog, source->identity);
         if (!analysis->valid) {
@@ -238,8 +223,7 @@ static void use_sources()
             );
         }
         problems += !analysis->valid;
-        use_analysis(catalog, analysis);
-        script_analysis_free(analysis);
+        apush(analyses, analysis);
     }
 }
 
@@ -378,71 +362,119 @@ static void use_scenes()
     free_paths(paths);
 }
 
-/* A behavior source's name is its file name in content/behaviors. */
-static bool behavior_name(const source_catalog_source *source, char *name, size_t size)
+/* Systems run in every scene; a behavior or library runs once a scene
+ * reaches it. An invalid source never runs; analyze_sources reported it. */
+static bool runs(const script_analysis *analysis)
 {
-    const char *file = in_folder(source, "behaviors");
-    if (!file || strchr(file, '/')) {
+    if (!analysis->valid) {
         return false;
     }
-    snprintf(name, size, "%.*s", (int)strcspn(file, "."), file);
+    switch (analysis->kind) {
+        case SCRIPT_PROGRAM_BEHAVIOR:
+            return listed(reached_behaviors, analysis->name);
+        case SCRIPT_PROGRAM_LIBRARY:
+            return listed(reached_libraries, analysis->name);
+        case SCRIPT_PROGRAM_SYSTEM: return true;
+    }
+    return false;
+}
+
+/* The library that declares the function with this capability ID, or NULL. */
+static const script_analysis *library_of(uint64_t id)
+{
+    for (int i = 0; id && i < acount(analyses); i++) {
+        const script_analysis *library = analyses[i];
+        if (!library->valid || library->kind != SCRIPT_PROGRAM_LIBRARY) {
+            continue;
+        }
+        for (int j = 0; j < library->function_count; j++) {
+            int symbol = library->functions[j].symbol;
+            if (symbol >= 0 && library->symbols[symbol].id == id) {
+                return library;
+            }
+        }
+    }
+    return NULL;
+}
+
+static bool reach_library(uint64_t id)
+{
+    const script_analysis *library = library_of(id);
+    if (!library || listed(reached_libraries, library->name)) {
+        return false;
+    }
+    apush(reached_libraries, xstrdup(library->name));
     return true;
 }
 
-/* Reaches each prototype that a reached behavior spawns by a literal name,
- * as spawn_prototype("Drone") does. Returns whether it reached any. */
-static bool reach_spawned()
+/* Reaches the prototype a spawn call names by a literal, as
+ * spawn_prototype("Drone") does. */
+static bool reach_spawned(
+    const source_catalog_source *source,
+    const script_analysis *analysis,
+    const script_expression *call
+)
 {
-    const script_catalog *catalog = source_catalog_view(project);
     bool reached = false;
-    for (int i = 0; i < source_catalog_source_count(project); i++) {
-        const source_catalog_source *source = source_catalog_source_at(project, i);
-        char name[MAX_LINE];
-        if (!behavior_name(source, name, sizeof name) ||
-            !listed(reached_behaviors, name)) {
+    for (int i = 0; i < call->argument_count; i++) {
+        int value = call->arguments[i].value;
+        const script_expression *argument = value < 0
+                                              ? NULL
+                                              : &analysis->expressions[value];
+        if (!argument || argument->kind != SCRIPT_EXPR_CONSTANT ||
+            source->text[argument->range.start] != '"') {
             continue;
         }
-        script_analysis
-            *analysis = script_analyze_document(source->syntax, catalog, source->identity);
-        for (int j = 0; j < analysis->expression_count; j++) {
-            const script_expression *call = &analysis->expressions[j];
-            const script_catalog_capability
-                *capability = call->kind == SCRIPT_EXPR_CALL
-                                ? script_catalog_capability_by_id(catalog, call->capability)
-                                : NULL;
-            if (!capability || strcmp(capability->name, GAME_ENTITY_SPAWN_SOURCE)) {
-                continue;
-            }
-            for (int k = 0; k < call->argument_count; k++) {
-                int value = call->arguments[k].value;
-                const script_range *range = value < 0
-                                              ? NULL
-                                              : &analysis->expressions[value].range;
-                if (!range || analysis->expressions[value].kind != SCRIPT_EXPR_CONSTANT ||
-                    source->text[range->start] != '"') {
-                    continue;
-                }
-                snprintf(
-                    name,
-                    sizeof name,
-                    "%.*s",
-                    range->end - range->start - 2,
-                    source->text + range->start + 1
-                );
-                reached |= !listed(reached_prototypes, name);
-                reach_prototype(name);
-            }
-        }
-        script_analysis_free(analysis);
+        char name[MAX_LINE];
+        snprintf(
+            name,
+            sizeof name,
+            "%.*s",
+            argument->range.end - argument->range.start - 2,
+            source->text + argument->range.start + 1
+        );
+        reached |= !listed(reached_prototypes, name);
+        reach_prototype(name);
     }
     return reached;
 }
 
-/* Only what a scene runs counts as covered, so every prototype and behavior
- * must be reachable from a scene. */
-static void check_reachable()
+/* Reaches what one running source spawns and the libraries it calls. Returns
+ * whether it reached anything new. */
+static bool reach_from(const source_catalog_source *source, const script_analysis *analysis)
 {
-    while (reach_spawned()) {
+    const script_catalog *catalog = source_catalog_view(project);
+    bool reached = false;
+    for (int i = 0; i < analysis->expression_count; i++) {
+        const script_expression *expression = &analysis->expressions[i];
+        if (expression->kind != SCRIPT_EXPR_CALL) {
+            continue;
+        }
+        const script_catalog_capability
+            *capability = script_catalog_capability_by_id(catalog, expression->capability);
+        reached |= reach_library(expression->capability);
+        if (capability && !strcmp(capability->name, GAME_ENTITY_SPAWN_SOURCE)) {
+            reached |= reach_spawned(source, analysis, expression);
+        }
+    }
+    for (int i = 0; i < analysis->use_count; i++) {
+        int symbol = analysis->uses[i].symbol;
+        reached |= symbol >= 0 && reach_library(analysis->symbols[symbol].capability);
+    }
+    return reached;
+}
+
+/* Only what a scene runs counts as covered, so every prototype, behavior and
+ * library must be reachable from a scene, and only running sources are used. */
+static void use_reachable()
+{
+    for (bool reached = true; reached;) {
+        reached = false;
+        for (int i = 0; i < acount(analyses); i++) {
+            if (runs(analyses[i])) {
+                reached |= reach_from(source_catalog_source_at(project, i), analyses[i]);
+            }
+        }
     }
     for (int i = 0; i < acount(prototypes); i++) {
         if (!listed(reached_prototypes, prototypes[i].name)) {
@@ -454,17 +486,26 @@ static void check_reachable()
             problems++;
         }
     }
-    for (int i = 0; i < source_catalog_source_count(project); i++) {
-        char name[MAX_LINE];
-        if (behavior_name(source_catalog_source_at(project, i), name, sizeof name) &&
-            !listed(reached_behaviors, name)) {
-            fprintf(stderr, "behavior %s: no scene runs it\n", name);
+    const script_catalog *catalog = source_catalog_view(project);
+    for (int i = 0; i < acount(analyses); i++) {
+        const script_analysis *analysis = analyses[i];
+        if (runs(analysis)) {
+            use_analysis(catalog, analysis);
+            continue;
+        }
+        if (analysis->valid && analysis->kind != SCRIPT_PROGRAM_SYSTEM) {
+            fprintf(
+                stderr,
+                "%s %s: no scene runs it\n",
+                analysis->kind == SCRIPT_PROGRAM_BEHAVIOR ? "behavior" : "library",
+                analysis->name
+            );
             problems++;
         }
     }
 }
 
-static void free_prototypes()
+static void free_reach()
 {
     for (int i = 0; i < acount(prototypes); i++) {
         free(prototypes[i].name);
@@ -473,6 +514,11 @@ static void free_prototypes()
     afree(prototypes);
     free_paths(reached_prototypes);
     free_paths(reached_behaviors);
+    free_paths(reached_libraries);
+    for (int i = 0; i < acount(analyses); i++) {
+        script_analysis_free(analyses[i]);
+    }
+    afree(analyses);
 }
 
 /* coverage-gaps.txt lists the catalog entries the project knowingly leaves
@@ -571,10 +617,10 @@ TEST_CASE(test_catalog_coverage)
     }
     REQUIRE(!source_catalog_diagnostic_count(project));
     add_catalog(authoring_language_catalog_view(native), source_catalog_view(project));
-    use_sources();
+    analyze_sources();
     use_prototypes();
     use_scenes();
-    check_reachable();
+    use_reachable();
     bool strict = read_allowed_gaps();
     report(strict);
     REQUIRE(!problems);
@@ -662,12 +708,19 @@ int run_feature_coverage(const char *root)
     if (!resolved) {
         return 1;
     }
+    /* chibi_ctl's run_scenario reads scenes only from <root>/content. */
+    char expected[PATH_MAX];
+    snprintf(expected, sizeof expected, "%s/content", project_root);
+    if (strcmp(content_root, expected)) {
+        fprintf(stderr, "%s: feature coverage needs the content folder at %s\n", root, expected);
+        return 1;
+    }
     RUN_TEST_CASE(test_catalog_coverage);
     RUN_TEST_CASE(test_scenes_run);
     source_catalog_free(project);
     authoring_language_catalog_free(native);
     afree(entries);
-    free_prototypes();
+    free_reach();
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;
 }

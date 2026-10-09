@@ -1,5 +1,6 @@
 #include "runtime/player.h"
 
+#include "runtime/component_catalog.h"
 #include "runtime/material_field_prepared.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -72,6 +73,42 @@ bool game_player_asset_valid(const game_player_asset *asset)
             asset->content_hash ==
                 game_player_asset_fingerprint(asset->data, asset->length));
 }
+/* The object's global binding name, or NULL when it binds none. */
+static const char *binding_name(const game_scene *scene, int object)
+{
+    for (int i = 0; i < game_scene_object_component_count(scene, object); i++) {
+        game_scene_component component = game_scene_object_component_at(scene, object, i);
+        if (component.desc->id == GAME_COMPONENT_GameGlobalBinding.id) {
+            const char *name = ((const GameGlobalBinding *)component.data)->name;
+            return name && name[0] ? name : NULL;
+        }
+    }
+    return NULL;
+}
+static int compare_names(const void *a, const void *b)
+{
+    return strcmp(*(const char *const *)a, *(const char *const *)b);
+}
+bool game_player_scene_bindings_valid(const game_scene *scene, char *error, size_t size)
+{
+    const char **names = NULL;
+    for (int i = 0; i < game_scene_object_count(scene); i++) {
+        const char *name = binding_name(scene, i);
+        if (name) {
+            apush(names, name);
+        }
+    }
+    asort(names, compare_names);
+    const char *shared = NULL;
+    for (int i = 1; !shared && i < acount(names); i++) {
+        shared = strcmp(names[i - 1], names[i]) ? NULL : names[i];
+    }
+    afree(names);
+    if (shared && size) {
+        snprintf(error, size, "Scene '%s' binds two entities to the global '%s'", game_scene_name(scene), shared);
+    }
+    return !shared;
+}
 static bool behaviors_registered(const game_source_registry *sources, const game_scene *scene)
 {
     for (int i = 0; i < game_scene_object_count(scene); i++) {
@@ -129,10 +166,16 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
         fail(error, size, "Prepared player scene names are missing or duplicated");
         return NULL;
     }
+    if (!game_player_scene_bindings_valid(spec->scene, error, size)) {
+        return NULL;
+    }
     for (int i = 0; i < spec->scene_count; i++) {
         const game_player_named_scene *s = &spec->scenes[i];
         if (!s->name || !s->name[0] || !s->scene || !strcmp(s->name, start)) {
             fail(error, size, "Prepared player scene names are missing or duplicated");
+            return NULL;
+        }
+        if (!game_player_scene_bindings_valid(s->scene, error, size)) {
             return NULL;
         }
         for (int j = 0; j < i; j++) {

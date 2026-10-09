@@ -143,12 +143,14 @@ static void assets(execution_wire *wire, game_player_asset **records, int *count
         }
     }
 }
+/* Refuses a scene the player would refuse to enter, so compiling catches it. */
 static void scene_write(execution_wire *wire, const game_scene *scene, char *error, size_t size)
 {
     unsigned char *data = NULL;
     size_t length = 0;
     if (!wire->error &&
-        (!scene || !game_scene_prepared_write(scene, &data, &length, error, size))) {
+        (!scene || !game_player_scene_bindings_valid(scene, error, size) ||
+         !game_scene_prepared_write(scene, &data, &length, error, size))) {
         wire->error = "Prepared player scene encoding failed";
     }
     if (!wire->error) {

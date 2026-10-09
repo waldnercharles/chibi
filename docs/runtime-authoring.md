@@ -124,7 +124,8 @@ takes effect after the frame: the host destroys every entity, discards
 uncommitted save changes, keeps committed save data, and starts the scene, whose
 Begin runs before its first frame. Time, held input and audio carry on.
 `chibi-compile` prepares every scene in `content/scenes`, so the player can load
-any of them. Scene scenarios (`run_scenario`, `runtime_snapshot`,
+any of them, and refuses a scene that binds one `GameGlobalBinding` name to two
+entities. Scene scenarios (`run_scenario`, `runtime_snapshot`,
 `profile_scenario` and recordings) follow requests the same way. Studio play
 mode cannot load scenes yet, so a request there fails with "This host cannot
 load scenes".

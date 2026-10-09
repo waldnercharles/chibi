@@ -903,6 +903,22 @@ static game_scene *one_object_scene(const char *name, float x, const char *globa
     char error[192];
     return game_scene_prepare(&spec, error, sizeof error);
 }
+/* Two entities bound to one global name. */
+static game_scene *twice_bound_scene(const char *global)
+{
+    GameGlobalBinding binding = { .name = global };
+    game_scene_component component = { &GAME_COMPONENT_GameGlobalBinding, &binding };
+    game_scene_object objects[] = {
+        { .name = "First", .components = &component, .component_count = 1 },
+        { .name = "Second", .components = &component, .component_count = 1 }
+    };
+    game_scene_spec spec = { .name = "Twice",
+                             .physics = game_physics_defaults(),
+                             .objects = objects,
+                             .object_count = 2 };
+    char error[192];
+    return game_scene_prepare(&spec, error, sizeof error);
+}
 static float first_x(const game_player *p)
 {
     ecs_entity entity = game_scene_instance_entity(game_player_scene(p), 0);
@@ -935,9 +951,22 @@ TEST_CASE(native_player_loads_named_scenes)
                               .scenes = &named,
                               .scene_count = 1 };
     REQUIRE(!game_player_new(&spec, error, sizeof error));
-    named.name = "Next";
     size_t length;
     game_player_application application = { 0 };
+    /* Entering a scene that binds one global to two entities fails, so the
+       player refuses it when the package is written or opened. */
+    game_scene *twice = twice_bound_scene("Player");
+    REQUIRE(twice);
+    named = (game_player_named_scene){ "Twice", twice };
+    REQUIRE(!game_player_new(&spec, error, sizeof error));
+    REQUIRE(!strcmp(error, "Scene 'Twice' binds two entities to the global 'Player'"));
+    error[0] = 0;
+    REQUIRE(
+        !game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
+    REQUIRE(!strcmp(error, "Scene 'Twice' binds two entities to the global 'Player'"));
+    game_scene_free(twice);
+    named = (game_player_named_scene){ "Next", other_scene };
     REQUIRE(
         game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
     );

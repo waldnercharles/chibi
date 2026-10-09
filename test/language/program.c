@@ -1818,23 +1818,30 @@ TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
                              { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         args[0].d = 1;
-        for (int i = 0; i < 40; i++) {
+        for (int i = 0; i < 31; i++) {
             REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         }
         REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "done", 41));
-        /* All 41 finished together; only the newest 32 keep their results,
-         * so awaiting the first one fails. */
-        args[0].d = 3;
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.15, 0, 1000) != FLOW_OK);
-        REQUIRE(number_state(instance, "got", -1));
-        /* The oldest finished slot, the first task's, now runs Long. */
+        REQUIRE(number_state(instance, "done", 32));
+        /* Starting a task expires nothing: the first result is still kept. */
         args[0].d = 2;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.15, 0, 1000) == FLOW_OK);
+        args[0].d = 3;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.15, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "got", 7));
+        /* The 33rd finish expires the first, and its slot runs the next Long. */
+        args[0].d = 1;
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 0.3, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "done", 33));
+        args[0].d = 3;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.32, 0, 1000) != FLOW_OK);
+        args[0].d = 2;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.35, 0, 1000) == FLOW_OK);
         args[1].b = false;
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.3, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.4, 0, 1000) == FLOW_OK);
         REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "kept", 1) && number_state(instance, "stale", 0));
+        REQUIRE(number_state(instance, "kept", 2) && number_state(instance, "stale", 0));
         REQUIRE(execution_instance_pending(instance) == 0);
     }
     return true;
@@ -2032,9 +2039,15 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                  "        return\n"
                  "    }\n"
                  "    function Bump(x: ref double) { x += 1 }\n"
+                 "    function Observe(x: double) { return x }\n"
                  "    function Bumped(x: double) -> (Total: double) {\n"
                  "        result Total: double = x\n"
                  "        Bump(Total)\n"
+                 "        return\n"
+                 "    }\n"
+                 "    function Seen(x: double) -> (Last: double) {\n"
+                 "        result Last: double = x\n"
+                 "        Observe(x: Last)\n"
                  "        return\n"
                  "    }\n"
                  "    function Outer() -> (X: double) { if n > 0 {} /* lead */ "
@@ -2075,10 +2088,15 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                    "        return Values\n"
                    "    }\n"
                    "    function Bump(x: ref double) { x += 1 }\n"
+                   "    function Observe(x: double) { return x }\n"
                    "    function Bumped(x: double) -> (Total: double) {\n"
                    "        Total = x\n"
                    "        Bump(Total)\n"
                    "        return Total\n"
+                   "    }\n"
+                   "    function Seen(x: double) -> (Last: double) {\n"
+                   "        Observe(x: Last)\n"
+                   "        return x\n"
                    "    }\n"
                    "    function Outer() -> (X: double) { if n > 0 {} /* lead "
                    "*/ "

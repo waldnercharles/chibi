@@ -623,6 +623,79 @@ static TSNode written(TSNode target)
     }
     return target;
 }
+static bool declares_function(const char *source, TSNode node, TSNode callee)
+{
+    if ((is(node, "function_declaration") || is(node, "macro_declaration")) &&
+        same_name(source, ts_node_child_by_field_name(node, "name", 4), source, callee)) {
+        return true;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (declares_function(source, ts_node_named_child(node, i), callee)) {
+            return true;
+        }
+    }
+    return false;
+}
+static bool ref_parameter(TSNode parameter)
+{
+    TSNode type = ts_node_child_by_field_name(parameter, "type", 4);
+    for (uint32_t i = 0; !ts_node_is_null(type) && i < ts_node_child_count(type); i++) {
+        if (is(ts_node_child(type, i), "ref")) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Whether a callable declared in `node` or below, named like `callee`, takes
+ * the `index`th or `label`ed argument by `ref`. */
+static bool takes_ref(const char *source, TSNode node, TSNode callee, int index, TSNode label)
+{
+    if ((is(node, "function_declaration") || is(node, "macro_declaration")) &&
+        same_name(source, ts_node_child_by_field_name(node, "name", 4), source, callee)) {
+        TSNode parameters = ts_node_child_by_field_name(node, "parameters", 10);
+        for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
+            TSNode parameter = ts_node_named_child(parameters, i);
+            bool matches = ts_node_is_null(label)
+                             ? (int)i == index
+                             : same_name(
+                                   source,
+                                   ts_node_child_by_field_name(parameter, "name", 4),
+                                   source,
+                                   label
+                               );
+            if (matches && ref_parameter(parameter)) {
+                return true;
+            }
+        }
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (takes_ref(source, ts_node_named_child(node, i), callee, index, label)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Whether `call` may write `argument`: an authored callee takes it by `ref`,
+ * or the callee is declared elsewhere and may. */
+static bool by_reference(const char *source, TSNode call, TSNode argument, int index)
+{
+    TSNode callee = ts_node_child_by_field_name(call, "function", 8);
+    if (!is_name(callee)) {
+        return true;
+    }
+    TSNode root = call;
+    while (!ts_node_is_null(ts_node_parent(root))) {
+        root = ts_node_parent(root);
+    }
+    if (!declares_function(source, root, callee)) {
+        return true;
+    }
+    TSNode label = (TSNode){ 0 };
+    if (is(argument, "named_argument")) {
+        label = ts_node_named_child(ts_node_child_by_field_name(argument, "name", 4), 0);
+    }
+    return takes_ref(source, root, callee, index, label);
+}
 /* Whether the function's own statements write `name` before a local of the
  * same name shadows it. */
 static bool assigns(const char *source, TSNode node, const char *name)
@@ -632,13 +705,14 @@ static bool assigns(const char *source, TSNode node, const char *name)
         return true;
     }
     if (is(node, "argument_list")) {
-        /* A `ref` parameter may write any argument it is given. */
+        /* A `ref` parameter may write the argument it is given. */
         for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-            TSNode value = ts_node_named_child(node, i);
+            TSNode argument = ts_node_named_child(node, i), value = argument;
             if (is(value, "named_argument")) {
                 value = ts_node_child_by_field_name(value, "value", 5);
             }
-            if (names(source, written(value), name)) {
+            if (names(source, written(value), name) &&
+                by_reference(source, ts_node_parent(node), argument, (int)i)) {
                 return true;
             }
         }

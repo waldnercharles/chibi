@@ -187,6 +187,13 @@ TEST_CASE(export_assembles_a_runnable_folder)
     write_at("mine/data/game.chibip", "theirs", 0644);
     REQUIRE(!export_to("mine"));
     REQUIRE(has("mine/notes.txt", "keep") && has("mine/data/game.chibip", "theirs"));
+    /* Nor is a link to an export's data folder. */
+    char linked[512], target[512];
+    snprintf(linked, sizeof linked, "%s/linked/data", root);
+    snprintf(target, sizeof target, "%s/out/Game/data", root);
+    write_at("linked/notes.txt", "keep", 0644);
+    REQUIRE(symlink(target, linked) == 0);
+    REQUIRE(!export_to("linked") && has("linked/notes.txt", "keep"));
     REQUIRE(!export_to("out/Game/.") && has("out/Game/data/game.chibip", "artifact"));
 
     /* A macOS app keeps the same data in Contents/Resources, and an archive
@@ -260,7 +267,7 @@ TEST_CASE(export_assembles_a_runnable_folder)
     remove_at("project/fail");
     remove_at("project/art/sheet.bin");
     REQUIRE(!export_to("broken"));
-    REQUIRE(entries(".") == 6); /* sdk, project, out, apps, mine and win */
+    REQUIRE(entries(".") == 7); /* sdk, project, out, apps, mine, linked and win */
 
     char command[600];
     snprintf(command, sizeof command, "rm -rf '%s'", root);

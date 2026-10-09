@@ -230,14 +230,9 @@ static bool module_functions(const execution_module_plan *p, unsigned depth, siz
     (*count)++;
     for (int i = 0; i < p->function_count; i++) {
         const execution_module_function *f = &p->functions[i];
-        if (f->local_count < 0 || !owned_functions(f->body, 0, count) ||
+        if (!owned_functions(f->body, 0, count) ||
             !owned_functions(f->subscription, 0, count)) {
             return false;
-        }
-        for (int j = 0; j < f->local_count; j++) {
-            if (!owned_functions(f->locals[j].initializer, 0, count)) {
-                return false;
-            }
         }
     }
     for (int i = 0; i < p->binding_count; i++) {
@@ -261,8 +256,8 @@ size_t execution_module_preparation_bytes(const execution_module_plan *p)
     if (p->query_count < 0 || !module_functions(p, 0, &count)) {
         return SIZE_MAX;
     }
-    /* initializer_waits' seen vector can reach every retained imported body.
-     * Query validation owns one query_count+1 byte row. These phases do not
+    /* The service requirement walk's seen vector can reach every retained
+     * imported body. Query validation owns one query_count+1 byte row. These phases do not
      * overlap, but summing them avoids depending on publication ordering. */
     return sum(bank(count, sizeof(const behavior_function *)), (size_t)p->query_count + 1);
 }

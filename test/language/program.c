@@ -982,62 +982,6 @@ TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_res
     }
     return true;
 }
-TEST_CASE(program_lazy_tuple_initializes_once_and_preserves_group_writes)
-{
-    const char *consumers[] = {
-        "on Impulse(amount, enabled) { first = pair.total; await Delay(1);"
-        "pair.total = 77; second = pair.total; text = pair.message; }",
-        "on Impulse(amount, enabled) { pair.total = 77; first = pair.total;"
-        "second = pair.total; text = pair.message; }",
-        "on Impulse(amount, enabled) { pair = Pair(); first = pair.total;"
-        "second = pair.total; text = pair.message; }",
-        "action pending = timer(1);"
-        "on Impulse(amount, enabled) { first = pair.total; pending(); }"
-        "after pending.Completed { second = pair.total; text = pair.message; }",
-    };
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
-    for (int c = 0; c < 4; c++) {
-        char source[EXAMPLE_SOURCE_CAPACITY];
-        int length = snprintf(
-            source,
-            sizeof source,
-            "behavior LazyTuple { calls: double = 0; first: double = 0;"
-            "second: double = 0; text: string = \"\";"
-            "function Pair() -> (total: double, message: string) {"
-            "calls += 1; return(calls, \"captured\"); }"
-            "local pair = Pair(); %s }",
-            consumers[c]
-        );
-        REQUIRE(length > 0 && (size_t)length < sizeof source);
-        for (int b = 0; b < 2; b++) {
-            prepare();
-            REQUIRE(compile(source, backends[b]));
-            ecs_entity owner = ecs_world_create_entity(world);
-            uint64_t entity = ecs_entity_to_u64(owner);
-            execution_instance *instance = execution_program_attach(program, entity);
-            REQUIRE(instance);
-            const pin_value args[] = { { .type = PIN_F64, .d = 1 },
-                                       { .type = PIN_BOOL, .b = true } };
-            for (int round = 0; round < 2; round++) {
-                double now = round * 2;
-                REQUIRE(
-                    execution_instance_dispatch(instance, 11, args, 2, now, 0, 1000) == FLOW_OK
-                );
-                REQUIRE(number_state(instance, "calls", round + 1));
-                REQUIRE(number_state(instance, "first", c == 1 ? 77 : round + 1));
-                REQUIRE(execution_program_update(program, now + 1, 0, 1000) == FLOW_OK);
-                REQUIRE(number_state(instance, "calls", round + 1));
-                REQUIRE(number_state(instance, "second", c < 2 ? 77 : round + 1));
-                REQUIRE(string_state(instance, "text", "captured"));
-                REQUIRE(execution_instance_pending(instance) == 0);
-            }
-            execution_program_detach(program, entity);
-            execution_memory_usage usage = execution_program_memory_usage(program);
-            REQUIRE(usage.payload_bytes == 0 && usage.payload_capacity == 0);
-        }
-    }
-    return true;
-}
 TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach)
 {
     const char *source = "behavior Timers { early_count: double = 0; "
@@ -1854,15 +1798,24 @@ TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
     }
     return true;
 }
-TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings)
+TEST_CASE(program_task_cancelling_itself_stops_at_once)
 {
-    /* C cancels its own parent, which is refused before the newer sibling A
-     * is touched. */
-    const char *source = "behavior K { kept: double = 0; worker: task;"
-                         "function A() -> () { await Delay(1); kept += 1; }"
-                         "function C() -> () { yield; cancel worker; }"
-                         "function P() -> () { C(); A(); await Delay(5); }"
-                         "on Impulse(amount, enabled) { worker = P() } }";
+    /* C cancels the task that started it: P, its sibling A and C itself stop
+     * at the cancel. Q cancels itself, and R's C cancels R while R is still
+     * running the call that started C. */
+    const char *
+        source = "behavior K { kept: double = 0; worker: task; self_task: task;"
+                 "inline: task; got: double = 0;"
+                 "function A() -> () { await Delay(1); kept += 1; }"
+                 "function C() -> () { yield; cancel worker; kept += 10 }"
+                 "function P() -> () { C(); A(); await Delay(5); kept += 100 }"
+                 "function Q() -> (v: double) { yield; cancel self_task; kept "
+                 "+= 1000; return 7 }"
+                 "function D() -> () { cancel inline; kept += 10000 }"
+                 "function R() -> () { yield; D(); kept += 100000 }"
+                 "function Wait() -> () { got = 1 + await self_task }"
+                 "on Impulse(amount, enabled) { worker = P(); self_task = Q(); "
+                 "Wait(); inline = R() } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -1874,9 +1827,13 @@ TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings)
         const pin_value args[] = { { .type = PIN_F64, .d = 0 },
                                    { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-        REQUIRE(execution_program_update(program, 0.1, 0, 1000) != FLOW_OK);
-        execution_program_update(program, 2, 0, 1000);
-        REQUIRE(number_state(instance, "kept", 1));
+        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 6, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "kept", 0));
+        /* A cancelled task gives its awaiters default results. */
+        REQUIRE(number_state(instance, "got", 1));
+        REQUIRE(execution_instance_pending(instance) == 0);
     }
     return true;
 }
@@ -1916,21 +1873,25 @@ TEST_CASE(program_task_owns_tasks_started_by_its_continuations)
     }
     return true;
 }
-TEST_CASE(program_task_continuation_cannot_cancel_or_await_its_task)
+TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task)
 {
-    /* The continuation resumes on its own, so P is suspended while it runs. */
-    const char *bodies[] = { "cancel worker", "await worker" };
+    /* The continuation resumes on its own, so P is suspended while it runs.
+     * Cancelling P stops P and the continuation, even while the continuation
+     * first runs; awaiting P never ends. */
+    const char *bodies[] = { "yield; cancel worker; hit = 1",
+                             "cancel worker; hit = 1",
+                             "yield; await worker" };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
-    for (int c = 0; c < 2; c++) {
+    for (int c = 0; c < 3; c++) {
         char source[EXAMPLE_SOURCE_CAPACITY];
         int length = snprintf(
             source,
             sizeof source,
-            "behavior S { worker: task;"
+            "behavior S { worker: task; hit: double = 0;"
             "function Count() -> (shown: double) { return 1 }"
             "action act = Count();"
-            "function P() -> () { act(); await Delay(10) }"
-            "after act { yield; %s }"
+            "function P() -> () { yield; act(); await Delay(10) }"
+            "after act { %s }"
             "on Impulse(amount, enabled) { worker = P() } }",
             bodies[c]
         );
@@ -1945,7 +1906,16 @@ TEST_CASE(program_task_continuation_cannot_cancel_or_await_its_task)
             const pin_value args[] = { { .type = PIN_F64, .d = 0 },
                                        { .type = PIN_BOOL, .b = true } };
             REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-            REQUIRE(execution_program_update(program, 1, 0, 1000) != FLOW_OK);
+            if (c == 2) {
+                REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+                REQUIRE(execution_program_update(program, 1, 0, 1000) != FLOW_OK);
+                continue;
+            }
+            for (int u = 0; u < 2; u++) {
+                REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+            }
+            REQUIRE(execution_instance_pending(instance) == 0);
+            REQUIRE(number_state(instance, "hit", 0));
         }
     }
     return true;
@@ -2319,7 +2289,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(manifest, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 16\n"));
+    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 17\n"));
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
@@ -2455,7 +2425,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(!strncmp(text, "version 16\n", 11));
+    REQUIRE(!strncmp(text, "version 17\n", 11));
     unlink(path);
     snprintf(path, sizeof path, "%s/content/B.chibi", root);
     file = fopen(path, "rb");
@@ -2477,6 +2447,275 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     return true;
 }
 
+TEST_CASE(program_version_16_locals_migrate_to_declarations)
+{
+    const char *source = "behavior L { n: double = 0; hits: double = 0\n"
+                         "    local base = n + 1\n"
+                         "    local twice: double = local.base * 2\n"
+                         "    function Add(x: double) {\n"
+                         "        local X = x + 1\n"
+                         "        if local.X > 1 { hits += X }\n"
+                         "        return twice + X\n"
+                         "    }\n"
+                         "    on Impulse(amount, enabled) {\n"
+                         "        if enabled { n = base + Add(amount) }\n"
+                         "    }\n"
+                         "}\n";
+    const char *expected = "behavior L { n: double = 0; hits: double = 0\n"
+                           "    function Add(x: double) {\n"
+                           "        X := x + 1\n"
+                           "        if X > 1 { hits += X }\n"
+                           "        base := n + 1\n"
+                           "        twice: double = base * 2\n"
+                           "        return twice + X\n"
+                           "    }\n"
+                           "    on Impulse(amount, enabled) {\n"
+                           "        if enabled { base := n + 1; n = "
+                           "base + Add(amount) }\n"
+                           "    }\n"
+                           "}\n";
+    char error[256] = "";
+    char *migrated = NULL, *unchanged = NULL;
+    REQUIRE(!chibi_migrate_locals(source, &migrated, error, sizeof error));
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    REQUIRE(!chibi_migrate_locals(expected, &unchanged, error, sizeof error) && !unchanged);
+    /* Declaring `base` in Shadow would make it read the parameter `n`. */
+    const char *shadowed = "behavior L { n: double = 0\n"
+                           "    local base = n + 1\n"
+                           "    function Shadow(n: double) { return base }\n"
+                           "}\n";
+    REQUIRE(
+        chibi_migrate_locals(shadowed, &unchanged, error, sizeof error) &&
+        strstr(error, "`n`")
+    );
+    /* An action argument reads the expression when the action starts. */
+    const char *argument = "behavior L { n: double = 0\n"
+                           "    local base = n + 1\n"
+                           "    local more: double = local.base\n"
+                           "    action wait = timer(more)\n"
+                           "}\n";
+    REQUIRE(!chibi_migrate_locals(argument, &unchanged, error, sizeof error));
+    REQUIRE(
+        unchanged && !strcmp(
+                         unchanged,
+                         "behavior L { n: double = 0\n"
+                         "    action wait = timer(cast<double>((n + 1)))\n"
+                         "}\n"
+                     )
+    );
+    free(unchanged);
+    /* Each run evaluates a local once, so a loop does not re-evaluate it. */
+    const char *loop = "behavior L { n: double = 0\n"
+                       "    local base = 1 + 1\n"
+                       "    on Impulse(amount, enabled) {\n"
+                       "        i: double = 0\n"
+                       "        while i < 2 { i += 1; n += base }\n"
+                       "    }\n"
+                       "}\n";
+    REQUIRE(!chibi_migrate_locals(loop, &unchanged, error, sizeof error));
+    REQUIRE(
+        unchanged && !strcmp(
+                         unchanged,
+                         "behavior L { n: double = 0\n"
+                         "    on Impulse(amount, enabled) {\n"
+                         "        i: double = 0\n"
+                         "        base := 1 + 1\n"
+                         "        while i < 2 { i += 1; n += base }\n"
+                         "    }\n"
+                         "}\n"
+                     )
+    );
+    free(unchanged);
+    /* A quoted name needs an identifier no other name spells. */
+    const char *names[] = {
+        "behavior L { local \"a-b\" = 1; local \"ab\" = 2\n"
+        "    on Impulse(amount, enabled) { amount = local.\"a-b\" + "
+        "local.\"ab\" }\n}\n",
+        "behavior L { ab: double = 0; local \"a b\" = 1\n"
+        "    on Impulse(amount, enabled) { ab = local.\"a b\" }\n}\n",
+        "behavior L { local \"if\" = 1\n"
+        "    on Impulse(amount, enabled) { amount = local.\"if\" }\n}\n",
+    };
+    for (int i = 0; i < 3; i++) {
+        unchanged = NULL;
+        REQUIRE(chibi_migrate_locals(names[i], &unchanged, error, sizeof error) && !unchanged);
+    }
+    /* A branch might skip the first read, or a loop reach it after the state
+     * it reads changed, and an expansion runs at every read. */
+    const char *later[] = {
+        "behavior L { n: double = 0\n"
+        "    function One() { return 1 }\n"
+        "    local hit = One()\n"
+        "    on Tick() { if n > 0 { n = hit }; if n > 1 { n = hit } }\n"
+        "}\n",
+        "behavior L { n: double = 0\n"
+        "    local hit = n + 1\n"
+        "    on Tick() { if n > 0 { n = hit }; n = 10; if n > 1 { n = hit } "
+        "}\n"
+        "}\n",
+        "behavior L { n: double = 0\n"
+        "    local hit = n + 1\n"
+        "    on Tick() { i: double = 0; while i < 2 { i += 1; n += hit } }\n"
+        "}\n",
+        "behavior L { n: double = 0\n"
+        "    function One() { return 1 }\n"
+        "    local hit = One()\n"
+        "    on Tick() { hit := 0; a := local.hit; b := local.hit }\n"
+        "}\n",
+        "behavior L { n: double = 0\n"
+        "    local hit = n + 1\n"
+        "    on Tick() { hit := 0; while n < 2 { n += local.hit } }\n"
+        "}\n",
+        "behavior L { n: double = 0\n"
+        "    function SetN() { n = 5; return 0 }\n"
+        "    local hit = n + 1\n"
+        "    on Tick() { n = SetN() + hit }\n"
+        "}\n",
+        "behavior L { n: double = 0; local hit = hit + 1\n"
+        "    on Tick() { n = hit }\n}\n",
+        "behavior L { n: double = 0; local hit = other; local other = hit\n"
+        "    on Tick() { n = hit }\n}\n",
+        "behavior L { n: double = 0; items: double = 0\n"
+        "    function One() { return 1 }\n"
+        "    local index = One(); local hit = items[index]\n"
+        "    on Tick() { n = hit; hit = 2 }\n}\n",
+        "behavior L { n: double = 0; local hit = [0]\n"
+        "    on Tick() { hit := 0; a := local.hit[0]; b := local.hit[0] }\n}\n",
+        "behavior L { n: double = 0\n"
+        "    function SetN() { n = 5; return 0 }\n"
+        "    local hit = n + 1; local other = SetN()\n"
+        "    on Tick() { n = other + hit }\n}\n",
+        "behavior L { n: double = 0\n"
+        "    function One() { return 1 }\n"
+        "    local hit = One(); local twice = hit + hit\n"
+        "    action wait = timer(twice)\n}\n",
+        "behavior L { n: double = 0\n"
+        "    function One() { return 1 }\n"
+        "    local hit = One()\n"
+        "    on Tick() { hit = 2; n = hit }\n}\n",
+    };
+    for (int i = 0; i < 13; i++) {
+        unchanged = NULL;
+        REQUIRE(
+            chibi_migrate_locals(later[i], &unchanged, error, sizeof error) &&
+            !unchanged && strstr(error, "`hit`")
+        );
+    }
+    /* Read in one branch only, it is declared inside that branch. */
+    const char
+        *one = "behavior L { n: double = 0\n"
+               "    function One() { return 1 }\n"
+               "    local hit = One()\n"
+               "    on Impulse(amount, enabled) { if enabled { n = hit } }\n"
+               "}\n";
+    REQUIRE(!chibi_migrate_locals(one, &unchanged, error, sizeof error));
+    REQUIRE(unchanged && strstr(unchanged, "if enabled { hit := One(); n = hit }"));
+    free(unchanged);
+    /* A condition is always read, so the local goes before its statement. */
+    const char *condition = "behavior L { n: double = 0\n"
+                            "    function One() { return 1 }\n"
+                            "    local hit = One()\n"
+                            "    on Impulse(amount, enabled) { if hit > 0 { n "
+                            "= hit } }\n"
+                            "}\n";
+    REQUIRE(!chibi_migrate_locals(condition, &unchanged, error, sizeof error));
+    REQUIRE(unchanged && strstr(unchanged, "{ hit := One(); if hit > 0 { n = hit } }"));
+    free(unchanged);
+    const char *disabled[] = {
+        "behavior L { disabled local X = 1 }\n",
+        "behavior L { disabled /* x */ local X = 1 }\n"
+    };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(
+            chibi_migrate_locals(disabled[i], &unchanged, error, sizeof error) &&
+            !unchanged && strstr(error, "disabled")
+        );
+    }
+    /* A comment in a result type does not end it. */
+    const char *tuple = "behavior L { n: double = 0\n"
+                        "    function Pair() { return 1 }\n"
+                        "    local pair: (a: double /* ) */) = Pair()\n"
+                        "    on Tick() { n = pair }\n}\n";
+    REQUIRE(!chibi_migrate_locals(tuple, &unchanged, error, sizeof error));
+    REQUIRE(unchanged && strstr(unchanged, "{ pair := Pair(); n = pair }"));
+    free(unchanged);
+    /* Comments and line breaks may sit between a local's tokens. */
+    const char *spaced[] = {
+        "behavior L { n: double = 0; local /* note */ X = 1\n"
+        "    on Impulse(amount, enabled) { n = X }\n}\n",
+        "behavior L { n: double = 0; local X /* note */ = 1\n"
+        "    on Impulse(amount, enabled) { n = X }\n}\n",
+        "behavior L { n: double = 0; local\n    X = 1\n"
+        "    on Impulse(amount, enabled) { n = X }\n}\n",
+    };
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(!chibi_migrate_locals(spaced[i], &unchanged, error, sizeof error));
+        REQUIRE(unchanged && !strstr(unchanged, "local") && strstr(unchanged, "X := 1; n = X"));
+        free(unchanged);
+    }
+    /* A local naming storage reads and writes it; an action's output or the
+     * owner is read once. */
+    const char
+        *alias = "behavior L { n: double = 0\n"
+                 "    local alias = n\n"
+                 "    local typed: double = alias\n"
+                 "    action wait = timer(1)\n"
+                 "    local done = wait.Done\n"
+                 "    local hp = get_component(self).Value\n"
+                 "    local me = self\n"
+                 "    local amount = event.amount\n"
+                 "    local health = self.Health\n"
+                 "    local armor = engine[\"Get Component\"](self).Value\n"
+                 "    on Tick() { alias = 2; m := typed; typed = 3; n = "
+                 "done; hp = 4; e := me; health = 5; armor = 6; a := amount }\n"
+                 "}\n";
+    REQUIRE(!chibi_migrate_locals(alias, &unchanged, error, sizeof error));
+    REQUIRE(
+        unchanged &&
+        !strcmp(
+            unchanged,
+            "behavior L { n: double = 0\n"
+            "    action wait = timer(1)\n"
+            "    on Tick() { n = 2; m := n; n = 3; done := "
+            "wait.Done; n = done; "
+            "get_component(self).Value = 4; me := self; e := me; "
+            "self.Health = 5; engine[\"Get Component\"](self).Value = 6; "
+            "amount := event.amount; a := amount }\n"
+            "}\n"
+        )
+    );
+    free(unchanged);
+    /* A system's component parameter is storage too. */
+    const char *system = "system S(position: Position) { local p = position; "
+                         "p.x = 1 }\n";
+    REQUIRE(!chibi_migrate_locals(system, &unchanged, error, sizeof error));
+    REQUIRE(unchanged && strstr(unchanged, "{ position.x = 1 }"));
+    free(unchanged);
+    /* `local.X` names the root local past a nearer `X`. */
+    const char *qualified = "behavior L { n: double = 0\n"
+                            "    local X = n + 1\n"
+                            "    on Impulse(amount, enabled) { X := 0; n = "
+                            "local.X + X }\n"
+                            "}\n";
+    REQUIRE(!chibi_migrate_locals(qualified, &unchanged, error, sizeof error));
+    REQUIRE(unchanged && !strstr(unchanged, "local") && strstr(unchanged, "n = (n + 1) + X"));
+    free(unchanged);
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(migrated, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 5) && number_state(instance, "hits", 2));
+    }
+    free(migrated);
+    return true;
+}
 TEST_CASE(program_version_13_values_migrate_to_their_expressions)
 {
     const char *source = "behavior V { n: double = 0\n"
@@ -2485,8 +2724,8 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                          "    /* who */ value who: entity = self\n"
                          "    function Add(x: double) {\n"
                          "        value sum: double = x + more\n"
-                         "        local X = entry.x\n"
-                         "        return Keep(Value: sum + local.X)\n"
+                         "        X := entry.x\n"
+                         "        return Keep(Value: sum + X)\n"
                          "    }\n"
                          "    function Keep(Value: double) { return Value }\n"
                          "    function Shadow(more: double) { return more }\n"
@@ -2496,9 +2735,9 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                          "}\n";
     const char *expected = "behavior V { n: double = 0\n"
                            "    /* who */ function Add(x: double) {\n"
-                           "        local X = entry.x\n"
+                           "        X := entry.x\n"
                            "        return Keep(Value: cast<double>(x + ((n * "
-                           "2) + 1)) + local.X)\n"
+                           "2) + 1)) + X)\n"
                            "    }\n"
                            "    function Keep(Value: double) { return Value }\n"
                            "    function Shadow(more: double) { return more }\n"
@@ -2507,16 +2746,22 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                            "+ Shadow(5) + (n * 2) }\n"
                            "}\n";
     char error[256] = "";
-    char *migrated = chibi_migrate_values(source, error, sizeof error);
+    char *migrated = NULL, *unchanged = NULL;
+    REQUIRE(!chibi_migrate_values(source, &migrated, error, sizeof error));
     REQUIRE(migrated && !strcmp(migrated, expected) && !error[0]);
-    REQUIRE(!chibi_migrate_values(expected, error, sizeof error) && !error[0]);
+    REQUIRE(!chibi_migrate_values(expected, &unchanged, error, sizeof error) && !unchanged);
     /* Expanding `twice` where a local `n` is declared would read the local. */
     const char *shadowed = "behavior V { n: double = 0\n"
                            "    value twice = n * 2\n"
                            "    on Impulse(amount, enabled) { n := amount; m "
                            ":= twice }\n"
                            "}\n";
-    REQUIRE(!chibi_migrate_values(shadowed, error, sizeof error) && strstr(error, "`n`"));
+    REQUIRE(
+        chibi_migrate_values(shadowed, &unchanged, error, sizeof error) &&
+        strstr(error, "`n`")
+    );
+    /* The failure does not depend on room for its message. */
+    REQUIRE(chibi_migrate_values(shadowed, &unchanged, NULL, 0) == -1 && !unchanged);
     /* Expanding `x` inside Outer would call Outer's own F. */
     const char *callable = "behavior V { n: double = 0\n"
                            "    function F() { return 1 }\n"
@@ -2525,7 +2770,10 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                            "        return x }\n"
                            "}\n";
     error[0] = '\0';
-    REQUIRE(!chibi_migrate_values(callable, error, sizeof error) && strstr(error, "`F`"));
+    REQUIRE(
+        chibi_migrate_values(callable, &unchanged, error, sizeof error) &&
+        strstr(error, "`F`")
+    );
     /* An action is a callable too. */
     const char *action = "behavior V { n: double = 0\n"
                          "    function F() { return 1 }\n"
@@ -2534,7 +2782,39 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                          "        return x }\n"
                          "}\n";
     error[0] = '\0';
-    REQUIRE(!chibi_migrate_values(action, error, sizeof error) && strstr(error, "`F`"));
+    REQUIRE(
+        chibi_migrate_values(action, &unchanged, error, sizeof error) &&
+        strstr(error, "`F`")
+    );
+    /* A project whose values conflict stays at version 13, even when the
+     * caller has no room for the message. */
+    char root[] = "/tmp/chibi-values-XXXXXX", path[256], manifest[256], text[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/content/V.chibi", root);
+    FILE *file = fopen(path, "wb");
+    fputs(shadowed, file);
+    fclose(file);
+    snprintf(manifest, sizeof manifest, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    file = fopen(manifest, "wb");
+    fputs("version 13\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", file);
+    fclose(file);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1 && strstr(error, "`n`"));
+    REQUIRE(chibi_project_migrate(root, NULL, 0) == -1);
+    file = fopen(manifest, "rb");
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    REQUIRE(strstr(text, "version 13"));
+    file = fopen(path, "rb");
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    REQUIRE(!strcmp(text, shadowed));
+    unlink(path);
+    unlink(manifest);
+    snprintf(path, sizeof path, "%s/content", root);
+    rmdir(path);
+    rmdir(root);
     free(migrated);
     prepare();
     REQUIRE(compile(expected, BEHAVIOR_BYTECODE));
@@ -2926,7 +3206,7 @@ TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
         fputs(files[i][1], file);
         fclose(file);
     }
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 15);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
     const char *expected[] = {
         NULL,
@@ -3522,8 +3802,8 @@ TEST_CASE(program_component_paths_test_presence)
 }
 TEST_CASE(program_branch_completes_inside_action_continuation)
 {
-    /* The inner continuations capture the root local Shown, which the outer
-     * continuation holds only by reference, before and after resuming. */
+    /* The inner action reads the outer action's result when the outer
+     * continuation starts it, before and after resuming. */
     const char *bodies[] = { "n += 1\n inner()", "n += 1\n await Wait()\n inner()" };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int c = 0; c < 2; c++) {
@@ -3535,8 +3815,7 @@ TEST_CASE(program_branch_completes_inside_action_continuation)
             "function Count() -> (shown: double) { return 2 }\n"
             "function Wait() { yield }\n"
             "action outer = Count()\n"
-            "local Shown = outer.shown\n"
-            "action inner = engine[\"Branch\"](Condition: Shown > 0)\n"
+            "action inner = engine[\"Branch\"](Condition: outer.shown > 0)\n"
             "on Impulse(amount, enabled) { outer() }\n"
             "after outer { %s }\n"
             "after inner.True { n += 10 }\n"
@@ -3684,7 +3963,6 @@ void test_language_program()
     RUN_TEST_CASE(program_result_tuple_copies_survive_mutation_loop_and_resume);
     RUN_TEST_CASE(program_array_literals_are_fresh_copies);
     RUN_TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes);
-    RUN_TEST_CASE(program_lazy_tuple_initializes_once_and_preserves_group_writes);
     RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
     RUN_TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits);
@@ -3695,9 +3973,9 @@ void test_language_program()
     RUN_TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches);
     RUN_TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller);
     RUN_TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters);
-    RUN_TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings);
+    RUN_TEST_CASE(program_task_cancelling_itself_stops_at_once);
     RUN_TEST_CASE(program_task_owns_tasks_started_by_its_continuations);
-    RUN_TEST_CASE(program_task_continuation_cannot_cancel_or_await_its_task);
+    RUN_TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task);
     RUN_TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);
@@ -3710,6 +3988,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_15_bindings_migrate_to_the_input_map);
     RUN_TEST_CASE(program_input_map_validates_actions);
     RUN_TEST_CASE(program_input_actions_read_through_typed_names);
+    RUN_TEST_CASE(program_version_16_locals_migrate_to_declarations);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

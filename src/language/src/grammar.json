@@ -244,10 +244,6 @@
         },
         {
           "type": "SYMBOL",
-          "name": "lazy_local_declaration"
-        },
-        {
-          "type": "SYMBOL",
           "name": "event_declaration"
         },
         {
@@ -492,31 +488,6 @@
         {
           "type": "STRING",
           "value": "action"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "_computation_declaration"
-        }
-      ]
-    },
-    "lazy_local_declaration": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "disabled"
-            },
-            {
-              "type": "BLANK"
-            }
-          ]
-        },
-        {
-          "type": "STRING",
-          "value": "local"
         },
         {
           "type": "SYMBOL",
@@ -2389,10 +2360,6 @@
         },
         {
           "type": "STRING",
-          "value": "local"
-        },
-        {
-          "type": "STRING",
           "value": "event"
         },
         {
@@ -3910,10 +3877,6 @@
       {
         "type": "STRING",
         "value": "action"
-      },
-      {
-        "type": "STRING",
-        "value": "local"
       },
       {
         "type": "STRING",

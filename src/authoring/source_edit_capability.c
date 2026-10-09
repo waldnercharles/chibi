@@ -350,12 +350,14 @@ bool source_edit_capability(
             c = &selected;
         }
         if (!r->origin) {
-            const char *storage = c->kind == SCRIPT_CAPABILITY_ACTION || !c->result_count
-                                    ? "action"
-                                    : "local";
-            producer_fragment = producer_call + (int)strlen(storage) +
+            if (c->kind != SCRIPT_CAPABILITY_ACTION && c->result_count) {
+                free(expression);
+                fail(error, size, "Create values inside a handler or function body");
+                goto done;
+            }
+            producer_fragment = producer_call + (int)strlen("action") +
                                 (int)strlen(name) + 4;
-            append(&fragment, "%s %s = %s;\n", storage, name, expression);
+            append(&fragment, "action %s = %s;\n", name, expression);
         } else if (c->kind == SCRIPT_CAPABILITY_ACTION && r->previous) {
             bool waiting = (c->effects & SCRIPT_EFFECT_SUSPEND) != 0;
             if (!c->result_count ||

@@ -7,6 +7,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -45,13 +46,18 @@ static bool is_file(const char *path)
 static char *join_path(const char *base, const char *name);
 static char *parent_path(const char *path);
 
-static int write_asset_file(const char *path, const char *text, char *error, size_t error_size)
+/* `flags` adds open flags, such as O_EXCL | O_NOFOLLOW for a staging path. */
+static int write_asset_file(const char *path, const char *text, int flags, char *error, size_t error_size)
 {
     char *canonical = asset_text_to_disk(text, error, error_size);
     if (!canonical) {
         return -1;
     }
-    FILE *file = fopen(path, "wb");
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | flags, 0666);
+    FILE *file = fd >= 0 ? fdopen(fd, "wb") : NULL;
+    if (fd >= 0 && !file) {
+        close(fd);
+    }
     if (!file) {
         if (error_size) {
             snprintf(error, error_size, "Cannot create %s: %s", path, strerror(errno));
@@ -150,8 +156,8 @@ int chibi_project_create(const char *root, const char *name, char *error, size_t
     char *manifest = manifest_text(name);
     char *scene = start_scene_text();
     bool written = folders && manifest && scene &&
-                   write_asset_file(manifest_path, manifest, error, error_size) == 0 &&
-                   write_asset_file(scene_path, scene, error, error_size) == 0;
+                   write_asset_file(manifest_path, manifest, 0, error, error_size) == 0 &&
+                   write_asset_file(scene_path, scene, 0, error, error_size) == 0;
     if (!written) {
         int failure = errno ? errno : EIO;
         unlink(scene_path);
@@ -498,8 +504,9 @@ static int upgrade(
     size_t length = strlen(manifest) + sizeof ".migrating";
     char *staged = xmalloc(length);
     snprintf(staged, length, "%s.migrating", manifest);
-    remove(staged); /* Never write through a link left at the staging path. */
-    int status = write_asset_file(staged, updated, error, error_size);
+    /* Never write through a link left at the staging path. */
+    unlink(staged);
+    int status = write_asset_file(staged, updated, O_EXCL | O_NOFOLLOW, error, error_size);
     struct stat original;
     if (!status &&
         (stat(manifest, &original) || chmod(staged, original.st_mode & 07777))) {

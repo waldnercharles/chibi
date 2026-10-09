@@ -9,7 +9,7 @@
 
 int behavior_source_pause(behavior_function_context *ctx, int point)
 {
-    if (!ctx->source_pause || ctx->source_debug_suppressed) {
+    if (!ctx->source_pause) {
         return 0;
     }
     return ctx->source_pause(ctx->source_debug_user, ctx, &ctx->source_points[point]);

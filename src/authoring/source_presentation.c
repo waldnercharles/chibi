@@ -50,7 +50,6 @@ static uint64_t semantic_generation(const script_analysis *a, const script_catal
         MIX(s->initializer);
         MIX(s->function);
         MIX(s->writable);
-        MIX(s->lazy_local);
     }
     for (int i = 0; i < a->expression_count; i++) {
         const script_expression *e = &a->expressions[i];

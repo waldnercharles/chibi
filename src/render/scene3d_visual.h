@@ -11,8 +11,15 @@ typedef struct
     CF_M4x4 frame; /* Local project coordinates to world, before part dimensions. */
 } scene3d_visual;
 
+/* Where an entity with a Transform draws: at the drawn `position` with its
+ * propagated angle, or with a NULL position at its exact world transform. */
+GameGlobalTransform2D render_scene3d_placement(
+    const ecs_world *world,
+    ecs_entity entity,
+    const GameTransform *position
+);
 /* Returns parts, zero for an invisible/missing visual, or -1 with an authoring error.
- * A NULL position places the visual at the entity's exact world transform. */
+ * The position is as render_scene3d_placement takes it. */
 int render_scene3d_visuals(
     const ecs_world *world,
     ecs_entity entity,

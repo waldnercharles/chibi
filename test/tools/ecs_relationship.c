@@ -378,9 +378,18 @@ TEST_CASE(ecs_derived_components_follow_their_source_and_reject_writes)
     REQUIRE(ecs_component_write_field(world, armored, total_desc.id, 0, number) == ECS_ERR_ARGUMENT);
     *(int *)ecs_component_data(world, armored, total_desc.id) = 7;
     REQUIRE(*(const int *)ecs_component_data_const(world, armored, total_desc.id) == 7);
+    /* One registered after its source already has rows comes on them too. */
+    ecs_component_desc late = total_desc;
+    late.id = 507, late.key = "sdk.ecs.late", late.name = "Late";
+    REQUIRE(ecs_world_register_component(world, &late, NULL) == ECS_OK);
+    REQUIRE(
+        ecs_component_has(world, armored, late.id) &&
+        !ecs_component_has(world, shielded, late.id)
+    );
     REQUIRE(ecs_world_record_remove(world, armored, armor_desc.id, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     REQUIRE(!ecs_component_has(world, armored, total_desc.id));
+    REQUIRE(!ecs_component_has(world, armored, late.id));
     return true;
 }
 

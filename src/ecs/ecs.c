@@ -990,17 +990,30 @@ bool world_key_taken(const ecs_world *world, const char *key)
     return false;
 }
 
-/* A derived component comes with its source, whichever registers second. */
+/* A derived component comes with its source, whichever registers second,
+ * including on the entities that already have the source. */
 static void link_derived(ecs_world *world, ecs_component_id id)
 {
     for (int i = 0; i < acount(world->components); i++) {
         const ecs_component_desc *desc = &world->components[i].desc;
-        if (desc->derived_from && (desc->id == id || desc->derived_from == id) &&
-            find_component(world, desc->derived_from)) {
-            int result = ecs_world_add_with(world, desc->derived_from, desc->id);
-            assert(result == ECS_OK);
-            (void)result;
+        if (!desc->derived_from || (desc->id != id && desc->derived_from != id)) {
+            continue;
         }
+        ecs_component *source = find_component(world, desc->derived_from);
+        if (!source) {
+            continue;
+        }
+        int result = ecs_world_add_with(world, desc->derived_from, desc->id);
+        ecs_component *derived = &world->components[i];
+        for (uint32_t slot = 1; result == ECS_OK && slot <= world->high_water; slot++) {
+            if (world->occupied[slot] && component_matches(source, slot) &&
+                !component_matches(derived, slot)) {
+                ecs_entity entity = { slot, ecs_world_generation(world, slot) };
+                result = add_component(world, derived, entity, NULL);
+            }
+        }
+        assert(result == ECS_OK);
+        (void)result;
     }
 }
 

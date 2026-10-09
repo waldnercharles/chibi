@@ -42,6 +42,17 @@ typedef struct
     void *user;
 } ecs_observer_entry;
 
+/* Built-ins are registered first, so they keep these array indices. */
+enum
+{
+    NAME_COMPONENT,
+    DISABLED_COMPONENT,
+};
+enum
+{
+    CHILD_OF_RELATIONSHIP,
+};
+
 /* pending_destroy states of a slot. */
 enum
 {
@@ -66,6 +77,7 @@ struct ecs_world
     int *component_lookup; /* Component array index + 1; zero is an empty bucket. */
     int component_lookup_capacity;
     ecs_relationship *relationships;
+    int *depth; /* ChildOf ancestors of each slot. */
     ecs_command *commands;
     char **field_strings; /* Interned values assigned through the field API. */
     uint64_t next_sequence;
@@ -108,7 +120,22 @@ static inline size_t occupancy_words(uint32_t slots)
     return ((size_t)slots + 63) / 64;
 }
 
+static inline int component_matches(const ecs_component *component, uint32_t slot)
+{
+    return bit_test(component->occupancy, slot);
+}
+
+/* The Disabled column a query skips, or NULL when it names Disabled. */
+static inline const ecs_component *skipped_disabled(const ecs_world *world, bool named)
+{
+    const ecs_component *disabled = &world->components[DISABLED_COMPONENT];
+    return named || !disabled->count ? NULL : disabled;
+}
+
 void *ecs_grow_storage(void *data, size_t old_count, size_t count, size_t stride);
+ecs_component *find_component(ecs_world *, ecs_component_id);
+/* Drops slots removed since the dense list was last compacted. */
+void compact_dense(ecs_component *);
 
 ecs_relationship *world_relationship(const ecs_world *, ecs_component_id);
 /* Whether a component or relationship already uses the persistent key. */
@@ -117,10 +144,21 @@ void relationship_grow(ecs_relationship *, uint32_t old_slots, uint32_t slots);
 void relationship_free(ecs_relationship *, uint32_t slots);
 /* Whether target already reaches source, so linking them closes a cycle. */
 bool relationship_reaches(const ecs_world *, const ecs_relationship *, ecs_entity from, uint32_t to);
+int relationship_target_count(const ecs_relationship *, uint32_t slot);
+ecs_entity relationship_target(const ecs_relationship *, uint32_t slot, int index);
 void relationship_link(ecs_relationship *, uint32_t source, ecs_entity target);
 void relationship_unlink(ecs_relationship *, uint32_t source, ecs_entity target);
 /* Drops every pair the slot holds as a source and every pair aimed at it. */
 void relationship_detach(ecs_world *, uint32_t slot);
 uint64_t relationship_hash(const ecs_relationship *, uint32_t slot, uint64_t hash);
+
+/* The slot's name, or NULL when it has none. */
+const char *hierarchy_name(const ecs_world *, uint32_t slot);
+uint32_t hierarchy_parent(const ecs_world *, uint32_t slot);
+/* Whether another child of parent (a root when zero) already uses name. */
+bool hierarchy_name_taken(const ecs_world *, uint32_t parent, const char *name, uint32_t self);
+/* Recomputes depth for the slot and its descendants after a reparent. */
+void hierarchy_update_depth(ecs_world *, uint32_t slot);
+void hierarchy_move_child(ecs_world *, uint32_t child, int index);
 
 #endif

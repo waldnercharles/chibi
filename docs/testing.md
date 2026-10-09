@@ -48,8 +48,10 @@ catalog (components, native functions and events) with what the project's
 scripts, prototypes and scenes use, prints each gap, and runs every scene for
 four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
 failure. Every prototype, behavior, library and system must be reachable from a
-scene: placed or attached there, spawned by name or called from source that
-runs, and only that source counts. A scene entity with its own behavior list
+scene: placed or attached there, spawned or called from source that runs, and
+only that source counts. A spawn reaches the prototype it names directly or
+through a value, such as a local, state or library parameter that holds the
+prototype's name, as find references does. A scene entity with its own behavior list
 runs that list in place of its prototype's; otherwise it and a spawned
 prototype run the prototype's list. Components count only on these placed and
 spawned instances, after the scene's overrides.

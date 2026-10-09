@@ -9,6 +9,7 @@
 #include "authoring/language_catalog.h"
 #include "authoring/project_prepare_internal.h"
 #include "authoring/source_catalog.h"
+#include "authoring/source_prototype_flow.h"
 #include "runtime/behaviors/entities_definition.h"
 #include "runtime/component_catalog.h"
 #include "runtime/components.h"
@@ -71,14 +72,16 @@ static entry *entries;
 static int problems; /* Reported failures; the coverage case fails on any. */
 static prototype_entry *prototypes;
 static script_analysis **analyses; /* One per project source, in catalog order. */
+/* Constants that reach a prototype parameter through values, by analysis. */
+static authoring_prototype_name *prototype_names;
 /* The project's declared components and loaded prototypes; scene
  * placements merge over the prototypes. */
 static declared_components *declared;
 static game_prototype_registry registry;
 static project_prototype *values;
 /* Names a scene reaches: its entities' prototypes, behaviors and systems, the
- * prototypes and libraries that running sources spawn or call, and the
- * behaviors of spawned prototypes. */
+ * prototypes that running sources spawn by reference or through values, the
+ * libraries they call, and the behaviors of spawned prototypes. */
 static char **reached_prototypes, **spawned_prototypes, **reached_behaviors,
     **reached_libraries, **reached_systems;
 
@@ -227,6 +230,7 @@ static void use_analysis(const script_catalog *catalog, const script_analysis *a
 static void analyze_sources()
 {
     const script_catalog *catalog = source_catalog_view(project);
+    authoring_document *documents = NULL;
     for (int i = 0; i < source_catalog_source_count(project); i++) {
         const source_catalog_source *source = source_catalog_source_at(project, i);
         script_analysis
@@ -241,7 +245,10 @@ static void analyze_sources()
         }
         problems += !analysis->valid;
         apush(analyses, analysis);
+        apush(documents, ((authoring_document){ source->path, source->syntax, analysis }));
     }
+    prototype_names = authoring_prototype_names(documents, acount(documents), catalog);
+    afree(documents);
 }
 
 static int compare_paths(const void *a, const void *b)
@@ -503,10 +510,20 @@ static bool reach_spawned(const script_analysis *analysis, const script_expressi
 
 /* Reaches what one running source spawns and the libraries it calls. Returns
  * whether it reached anything new. */
-static bool reach_from(const script_analysis *analysis)
+static bool reach_from(int document)
 {
+    const script_analysis *analysis = analyses[document];
     const script_catalog *catalog = source_catalog_view(project);
     bool reached = false;
+    for (int i = 0; i < acount(prototype_names); i++) {
+        if (prototype_names[i].document == document) {
+            uint64_t id = prototype_names[i].prototype;
+            reached |= reach_prototype(
+                script_catalog_capability_by_id(catalog, id)->name,
+                true
+            );
+        }
+    }
     for (int i = 0; i < analysis->expression_count; i++) {
         const script_expression *expression = &analysis->expressions[i];
         if (expression->kind != SCRIPT_EXPR_CALL) {
@@ -534,7 +551,7 @@ static void use_reachable()
         reached = false;
         for (int i = 0; i < acount(analyses); i++) {
             if (runs(analyses[i])) {
-                reached |= reach_from(analyses[i]);
+                reached |= reach_from(i);
             }
         }
     }
@@ -580,6 +597,7 @@ static void free_reach()
         script_analysis_free(analyses[i]);
     }
     afree(analyses);
+    afree(prototype_names);
 }
 
 /* coverage-gaps.txt lists the catalog entries the project knowingly leaves

@@ -77,7 +77,8 @@ typedef enum
  * - ChildOf: Exclusive, Traversable, and destroying a parent destroys its
  *   children first. Children keep the order they were parented in.
  * - Name: one name per entity, unique among its siblings (or among roots).
- *   Set it with ecs_world_record_name; direct adds and writes are rejected.
+ *   Set it with ecs_world_record_name; direct adds and writes are rejected,
+ *   and ecs_component_data returns NULL for it.
  * - Disabled: a tag that hides the entity from every query that does not name
  *   Disabled. It does not propagate to children. */
 #define ECS_CHILD_OF UINT64_C(0x84771d550890f1a1)

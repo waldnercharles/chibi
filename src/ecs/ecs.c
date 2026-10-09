@@ -1618,13 +1618,21 @@ bool ecs_component_has_entities(
     return false;
 }
 
-void *ecs_component_data(ecs_world *world, ecs_entity entity, ecs_component_id component_id)
+static void *row_data(const ecs_world *world, ecs_component *component, ecs_entity entity)
 {
-    ecs_component *component = world ? find_component(world, component_id) : NULL;
-    if (!component || !ecs_component_has(world, entity, component_id)) {
+    if (!component || !ecs_component_has(world, entity, component->desc.id)) {
         return NULL;
     }
     return component_address(component, entity.slot);
+}
+
+/* Name rows change only through ecs_world_record_name. */
+void *ecs_component_data(ecs_world *world, ecs_entity entity, ecs_component_id component_id)
+{
+    if (!world || component_id == ECS_NAME) {
+        return NULL;
+    }
+    return row_data(world, find_component(world, component_id), entity);
 }
 
 const void *ecs_component_data_const(const ecs_world *world, ecs_entity entity, ecs_component_id component_id)
@@ -1689,7 +1697,7 @@ int ecs_component_write_field(
     ecs_component *component = world ? find_component(world, component_id) : NULL;
     const type_field *type_field = component ? component_field(component, field) : NULL;
     void *data = ecs_component_data(world, entity, component_id);
-    if (!type_field || !data || component_id == ECS_NAME) {
+    if (!type_field || !data) {
         return ECS_ERR_ARGUMENT;
     }
     if (type_field->type == PIN_STR || type_field->type == PIN_NAME) {
@@ -1809,7 +1817,7 @@ bool ecs_component_accepts_value(const ecs_world *world, ecs_component_id id, si
     bool whole;
     const type_field *field;
     return component_value_target(
-        world ? find_component_const(world, id) : NULL,
+        world && id != ECS_NAME ? find_component_const(world, id) : NULL,
         offset,
         declared,
         &whole,
@@ -1826,8 +1834,7 @@ static int write_value(
     pin_value value
 )
 {
-    void *row = component ? ecs_component_data(world, entity, component->desc.id)
-                          : NULL;
+    void *row = row_data(world, component, entity);
     bool whole;
     const type_field *field;
     if (!row || !value_type_matches(declared, value) ||

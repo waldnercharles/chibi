@@ -595,11 +595,12 @@ static CF_M4x4 shape_box(CF_M4x4 frame, const GameGeometry3D *shape)
     return cf_mul_m4(frame, cf_m4_scale(size));
 }
 
-/* Fits the sun's shadow map to the solids in view, then the casters outside it. */
-static bool fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *camera)
+/* Fits the sun's shadow cascades to the solids in view, then the casters
+ * outside it. Returns the cascade count. */
+static int fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *camera)
 {
     if (!scene3d->sun_shadows) {
-        return false;
+        return 0;
     }
     aclear(scene3d->shadow_boxes);
     for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
@@ -616,25 +617,14 @@ static bool fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *cam
     CF_V3 toward = { scene3d->sun_direction.x,
                      scene3d->sun_direction.y,
                      scene3d->sun_direction.z };
-    if (!render_scene3d_shadow_fit(
-            scene3d->shadow,
-            toward,
-            scene3d->shadow_boxes,
-            acount(scene3d->shadow_boxes),
-            receivers,
-            camera
-        )) {
-        return false;
-    }
-    /* Keep only the casters that reach the map. */
-    int kept = 0;
-    for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
-        if (render_scene3d_shadow_reaches(scene3d->shadow, scene3d->shadow_boxes[receivers + i])) {
-            scene3d->buffer.casters[kept++] = scene3d->buffer.casters[i];
-        }
-    }
-    asetlen(scene3d->buffer.casters, kept);
-    return true;
+    return render_scene3d_shadow_fit(
+        scene3d->shadow,
+        toward,
+        scene3d->shadow_boxes,
+        acount(scene3d->shadow_boxes),
+        receivers,
+        camera
+    );
 }
 
 static void draw_caster(const render_scene3d *scene3d, CF_M4x4 frame, const GameGeometry3D *shape)
@@ -645,29 +635,38 @@ static void draw_caster(const render_scene3d *scene3d, CF_M4x4 frame, const Game
     cf_draw3d_pop();
 }
 
-/* Opaque solids in view, which sort first, and the casters that reach the map
- * write their depth from the sun. */
-static bool draw_shadow(render_scene3d *scene3d)
+/* Opaque solids in view and the casters write their depth from the sun into
+ * each cascade they reach. Opaque draws sort first, so draw i has box i. */
+static bool draw_shadow(render_scene3d *scene3d, int cascades)
 {
-    if (!render_scene3d_shadow_begin(
-            scene3d->shadow,
-            scene3d->binding_error,
-            sizeof scene3d->binding_error
-        )) {
-        return false;
-    }
-    for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
-        const scene3d_draw *draw = &scene3d->buffer.draws[i];
-        if (draw->transparent) {
-            break;
+    render_scene3d_shadow *shadow = scene3d->shadow;
+    int receivers = acount(scene3d->shadow_boxes) - acount(scene3d->buffer.casters);
+    for (int cascade = 0; cascade < cascades; cascade++) {
+        if (!render_scene3d_shadow_begin(
+                shadow,
+                cascade,
+                scene3d->binding_error,
+                sizeof scene3d->binding_error
+            )) {
+            return false;
         }
-        draw_caster(scene3d, draw->frame, &draw->shape);
+        for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
+            const scene3d_draw *draw = &scene3d->buffer.draws[i];
+            if (draw->transparent) {
+                break;
+            }
+            if (render_scene3d_shadow_reaches(shadow, cascade, i)) {
+                draw_caster(scene3d, draw->frame, &draw->shape);
+            }
+        }
+        for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
+            const scene3d_caster *caster = &scene3d->buffer.casters[i];
+            if (render_scene3d_shadow_reaches(shadow, cascade, receivers + i)) {
+                draw_caster(scene3d, caster->frame, &caster->shape);
+            }
+        }
+        render_scene3d_shadow_end(shadow, cascade);
     }
-    for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
-        const scene3d_caster *caster = &scene3d->buffer.casters[i];
-        draw_caster(scene3d, caster->frame, &caster->shape);
-    }
-    render_scene3d_shadow_end(scene3d->shadow);
     return true;
 }
 
@@ -737,8 +736,9 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         acount(scene3d->buffer.pixels) * (int)sizeof *scene3d->buffer.pixels
     );
     asort(scene3d->buffer.draws, compare_draws);
-    bool shadowed = fit_shadow(scene3d, camera);
-    if (shadowed && !draw_shadow(scene3d)) {
+    int cascades = fit_shadow(scene3d, camera);
+    scene3d->work.cascades = cascades;
+    if (!draw_shadow(scene3d, cascades)) {
         return false;
     }
     CF_M4x4 inverse = cf_m4_invert(camera->view);
@@ -754,7 +754,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     cf_draw3d_set_uniform("scene_light_positions", scene3d->light_positions, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
     cf_draw3d_set_uniform("scene_light_colors", scene3d->light_colors, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
     render_influences_bind(scene3d->influences);
-    render_scene3d_shadow_bind(scene3d->shadow, shadowed);
+    render_scene3d_shadow_bind(scene3d->shadow, cascades);
     cf_draw3d_set_texture("scene_parameters", scene3d->parameters);
     cf_draw3d_push_projection(camera->projection);
     cf_draw3d_push_view(camera->view);

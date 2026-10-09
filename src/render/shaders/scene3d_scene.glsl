@@ -17,8 +17,9 @@ layout(set = 3, binding = 0) uniform uniform_block {
     vec4 scene_influence_count;
     vec4 scene_influence_positions[64];
     vec4 scene_influence_colors[64];
-    mat4 scene_shadow_matrix;
+    mat4 scene_shadow_matrices[4];
     vec4 scene_shadow;
+    vec4 scene_shadow_texels;
     vec4 sg_ramp_data[SG_RAMP_COUNT];
 };
 

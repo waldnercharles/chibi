@@ -5,16 +5,17 @@
 
 #include <stddef.h>
 
-/* One directional light's shadow map: a depth-only canvas that the lit pass
- * samples with hardware comparison. */
+/* One directional light's cascaded shadow map: depth-only squares of one
+ * atlas, each covering a farther range of the view, that the lit pass samples
+ * with hardware comparison. */
 typedef struct render_scene3d_shadow render_scene3d_shadow;
 render_scene3d_shadow *render_scene3d_shadow_new();
 void render_scene3d_shadow_free(render_scene3d_shadow *shadow);
-/* Fits an orthographic light view to boxes, unit cubes placed around solids
- * in the world. The first `receivers` boxes are in view and set the area the
- * map covers; the rest only cast into it. False when the camera sees none of
- * the receivers. */
-bool render_scene3d_shadow_fit(
+/* Fits orthographic light views to boxes, unit cubes placed around solids in
+ * the world. The first `receivers` boxes are in view and set the areas the
+ * cascades cover; the rest only cast into them. Returns the cascade count,
+ * zero when the camera sees none of the receivers. */
+int render_scene3d_shadow_fit(
     render_scene3d_shadow *shadow,
     CF_V3 toward_light,
     const CF_M4x4 *boxes,
@@ -22,14 +23,15 @@ bool render_scene3d_shadow_fit(
     int receivers,
     const render_scene3d_camera *camera
 );
-/* Whether a box can cast into the fitted map. */
-bool render_scene3d_shadow_reaches(const render_scene3d_shadow *shadow, CF_M4x4 box);
-/* 3D draws issued between begin and end write the fitted light's depth; end
- * renders only those. */
-bool render_scene3d_shadow_begin(render_scene3d_shadow *shadow, char *error, size_t size);
-void render_scene3d_shadow_end(render_scene3d_shadow *shadow);
-/* Binds the map for the lit pass; disabled leaves every surface in the light. */
-void render_scene3d_shadow_bind(render_scene3d_shadow *shadow, bool enabled);
+/* Whether the fitted box at `box` can cast into a cascade. */
+bool render_scene3d_shadow_reaches(const render_scene3d_shadow *shadow, int cascade, int box);
+/* 3D draws issued between begin and end write one cascade's depth from the
+ * light; the last cascade's end renders only those draws. */
+bool render_scene3d_shadow_begin(render_scene3d_shadow *shadow, int cascade, char *error, size_t size);
+void render_scene3d_shadow_end(render_scene3d_shadow *shadow, int cascade);
+/* Binds the first `count` fitted cascades for the lit pass; none leaves every
+ * surface in the light. */
+void render_scene3d_shadow_bind(render_scene3d_shadow *shadow, int count);
 void render_scene3d_shadow_unbind();
 
 #endif

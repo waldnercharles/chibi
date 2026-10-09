@@ -192,12 +192,39 @@ static void use_capability(const script_catalog *catalog, uint64_t id)
     }
 }
 
+/* A generic component call, such as add_component("GAME.Heat"), names its
+ * component through a selector argument whose capability is the type ID. */
+static void use_component_selector(
+    const script_catalog *catalog,
+    const script_analysis *analysis,
+    const script_expression *call
+)
+{
+    const script_catalog_capability
+        *capability = call->capability
+                        ? script_catalog_capability_by_id(catalog, call->capability)
+                        : NULL;
+    if (!capability || capability->component_access == SCRIPT_COMPONENT_ACCESS_NONE ||
+        capability->component) {
+        return;
+    }
+    for (int i = 0; i < acount(call->arguments); i++) {
+        const script_argument *argument = &call->arguments[i];
+        if (argument->parameter >= 0 && argument->parameter < capability->parameter_count &&
+            capability->parameters[argument->parameter].reference_kind ==
+                SCRIPT_REFERENCE_COMPONENT) {
+            use_id(ENTRY_COMPONENT, analysis->expressions[argument->value].capability);
+        }
+    }
+}
+
 static void use_analysis(const script_catalog *catalog, const script_analysis *analysis)
 {
     for (int i = 0; i < analysis->expression_count; i++) {
         const script_expression *expression = &analysis->expressions[i];
         if (expression->kind != SCRIPT_EXPR_COMPONENT) { /* Its capability is a type ID. */
             use_capability(catalog, expression->capability);
+            use_component_selector(catalog, analysis, expression);
         }
         /* A field such as input.Fire.held reads through a native getter. */
         use_capability(catalog, expression->read);

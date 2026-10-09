@@ -5,6 +5,7 @@ behavior EntityProbe {
         drone := await spawn_prototype(Drone)
         debris := "Debris" /* Reaches the spawn through a local. */
         await spawn_prototype(debris)
+        await add_component("GAME.GameOrientation") /* Credited through its selector. */
         if has_entities_with_component("GAME.GameCollider") {
             colliders := find_entities_with_component("GAME.GameCollider")
             nearest := find_nearest_entity(self.Transform, 64.0, 2, self)

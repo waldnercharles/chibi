@@ -49,7 +49,6 @@ function Trigger Visual Reaction
 component GameHRC2D
 component GameStarfield2D
 component GameCamera
-component GameOrientation
 
 # Visibility and fog of war.
 component GameVision

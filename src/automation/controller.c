@@ -6642,8 +6642,7 @@ static int handle_validate_project(const char *root, response *result, int *exit
     yyjson_mut_doc *doc = result->doc;
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, result->root, "result");
     yyjson_mut_val *project = yyjson_mut_obj_add_arr(doc, value, "project");
-    int errors = validate_manifest(root, assets, doc, project) +
-                 validate_sounds(root, doc, project);
+    int errors = validate_manifest(root, assets, doc, project);
     if (cataloged != CHIBI_AUTOMATION_OK) {
         add_load_diagnostic(doc, project, catalog_error);
         errors++;
@@ -6716,12 +6715,12 @@ static int handle_validate_project(const char *root, response *result, int *exit
     }
     free(placed);
     source_catalog_free(catalog);
-    /* Only once nothing else is wrong, since preparation stops at the first
-       problem and would repeat one listed above. The project then opened at
-       this build's version, so preparation never upgrades its files. */
-    if (!errors) {
-        errors = validate_preparation(root, doc, project);
-    }
+    /* Preparation, which checks the sounds too, runs only once nothing else
+       is wrong, since it stops at the first problem and would repeat one
+       listed above; the project then opened at this build's version, so it
+       never upgrades its files. Otherwise the sounds are checked alone. */
+    errors += errors ? validate_sounds(root, doc, project)
+                     : validate_preparation(root, doc, project);
     yyjson_mut_obj_add_bool(doc, value, "valid", errors == 0);
     yyjson_mut_obj_add_int(doc, value, "assets", acount(assets));
     yyjson_mut_obj_add_int(doc, value, "errors", errors);

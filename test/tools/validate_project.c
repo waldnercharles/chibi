@@ -552,10 +552,19 @@ TEST_CASE(sounds_must_decode)
     write_bytes("game/content/sounds/Tone.ogg", bare, sizeof bare);
     const char *message = tone_refusal();
     REQUIRE(message && !strcmp(message, refusal));
-    /* Validation lists it too, as a problem of the project. */
+    /* Validation lists it too, as a problem of the project, */
     REQUIRE(validate() != 0 && errors() == 1);
     message = first_message(result("project"));
     REQUIRE(message && !strcmp(message, refusal));
+    /* even beside another asset's problems, which keep preparation from
+     * reaching the sounds. */
+    write_file("game/content/prototypes/Broken.kdl", "name \"Broken\"\n(array)components {\n");
+    REQUIRE(validate() != 0 && yyjson_arr_size(result("problems")) == 1);
+    message = first_message(result("project"));
+    REQUIRE(message && !strcmp(message, refusal));
+    char broken[256];
+    path(broken, sizeof broken, "game/content/prototypes/Broken.kdl");
+    REQUIRE(unlink(broken) == 0);
 
     /* Every header intact, but its one audio page, the last ~200 bytes,
      * garbled. */

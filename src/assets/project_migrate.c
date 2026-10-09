@@ -1452,6 +1452,21 @@ static char *local_name(const char *text, TSNode name)
     *at = '\0';
     return out;
 }
+/* Whether `node` holds an identifier spelled `name`. */
+static bool spells(const char *text, TSNode node, const char *name)
+{
+    if (is(node, "identifier")) {
+        size_t length = ts_node_end_byte(node) - ts_node_start_byte(node);
+        return length == strlen(name) &&
+               !strncmp(text + ts_node_start_byte(node), name, length);
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (spells(text, ts_node_named_child(node, i), name)) {
+            return true;
+        }
+    }
+    return false;
+}
 static int by_start_order(const void *a, const void *b)
 {
     const replacement *x = a, *y = b;
@@ -1568,6 +1583,18 @@ static int place_local(
     while (!ts_node_eq(ts_node_parent(statement), block)) {
         statement = ts_node_parent(statement);
     }
+    /* Each run evaluates it once, so it goes before the outermost loop. */
+    for (TSNode at = block; !ts_node_eq(at, unit); at = ts_node_parent(at)) {
+        if (is(at, "while_statement") || is(at, "for_statement") ||
+            is(at, "foreach_statement")) {
+            statement = at;
+        }
+    }
+    block = ts_node_parent(statement);
+    while (!container(block)) {
+        statement = block;
+        block = ts_node_parent(block);
+    }
     TSNode name = ts_node_child_by_field_name(l->node, "name", 4);
     for (TSNode scope = block; !ts_node_eq(scope, ts_node_parent(unit));
          scope = ts_node_parent(scope)) {
@@ -1673,6 +1700,21 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
         while (before > 0 && isspace((unsigned char)text[before - 1])) {
             before--;
         }
+        TSNode quoted = ts_node_child_by_field_name(node, "name", 4);
+        bool unique = *all[i].name && !spells(text, root, all[i].name);
+        for (int j = 0; unique && j < i; j++) {
+            unique = strcmp(all[j].name, all[i].name) != 0;
+        }
+        if (!status && text[ts_node_start_byte(quoted)] == '"' && !unique) {
+            status = local_fail(
+                error,
+                error_size,
+                text,
+                quoted,
+                "Local %.*s has no identifier of its own; rename it before "
+                "migrating"
+            );
+        }
         if (!status && before >= 8 && !strncmp(text + before - 8, "disabled", 8)) {
             status = local_fail(
                 error,
@@ -1750,7 +1792,16 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
             apush(result, text[from]);
         }
         apush(result, '\0');
-        *migrated = xstrdup(result);
+        script_syntax *check = script_parse(result);
+        if (ts_node_has_error(ts_tree_root_node(check->tree))) {
+            status = -1;
+            if (error_size) {
+                snprintf(error, error_size, "%s", "A migrated local does not parse, such as a quoted name that is a keyword; rename it before migrating");
+            }
+        } else {
+            *migrated = xstrdup(result);
+        }
+        script_syntax_free(check);
     }
     afree(result);
     for (int i = 0; i < acount(edits); i++) {

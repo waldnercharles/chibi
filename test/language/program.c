@@ -2497,6 +2497,42 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
                      )
     );
     free(unchanged);
+    /* Each run evaluates a local once, so a loop does not re-evaluate it. */
+    const char *loop = "behavior L { n: double = 0\n"
+                       "    local base = n + 1\n"
+                       "    on Impulse(amount, enabled) {\n"
+                       "        i: double = 0\n"
+                       "        while i < 2 { i += 1; n += base }\n"
+                       "    }\n"
+                       "}\n";
+    REQUIRE(!chibi_migrate_locals(loop, &unchanged, error, sizeof error));
+    REQUIRE(
+        unchanged && !strcmp(
+                         unchanged,
+                         "behavior L { n: double = 0\n"
+                         "    on Impulse(amount, enabled) {\n"
+                         "        i: double = 0\n"
+                         "        base := n + 1\n"
+                         "        while i < 2 { i += 1; n += base }\n"
+                         "    }\n"
+                         "}\n"
+                     )
+    );
+    free(unchanged);
+    /* A quoted name needs an identifier no other name spells. */
+    const char *names[] = {
+        "behavior L { local \"a-b\" = 1; local \"ab\" = 2\n"
+        "    on Impulse(amount, enabled) { amount = local.\"a-b\" + "
+        "local.\"ab\" }\n}\n",
+        "behavior L { ab: double = 0; local \"a b\" = 1\n"
+        "    on Impulse(amount, enabled) { ab = local.\"a b\" }\n}\n",
+        "behavior L { local \"if\" = 1\n"
+        "    on Impulse(amount, enabled) { amount = local.\"if\" }\n}\n",
+    };
+    for (int i = 0; i < 3; i++) {
+        unchanged = NULL;
+        REQUIRE(chibi_migrate_locals(names[i], &unchanged, error, sizeof error) && !unchanged);
+    }
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();

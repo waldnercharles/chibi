@@ -285,6 +285,9 @@ DIR *posix_win32_opendir(const char *path)
 struct dirent *posix_win32_readdir(DIR *dir)
 {
     if (!dir->pending && !FindNextFileA(dir->find, &dir->found)) {
+        if (GetLastError() != ERROR_NO_MORE_FILES) {
+            errno = errno_from_windows();
+        }
         return NULL;
     }
     dir->pending = false;

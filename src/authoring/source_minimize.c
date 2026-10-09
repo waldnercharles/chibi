@@ -10,11 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum
-{
-    MINIMIZE_ROUNDS = 8,
-};
-
 typedef enum
 {
     PASS_SHAPE, /* Everything except labels; dropped arguments decide ordinals. */
@@ -1246,11 +1241,9 @@ char *authoring_source_minimize(const char *text, const script_catalog *catalog,
     if (original->valid && !original->diagnostic_count && !syntax->diagnostic_count) {
         oracle o = { catalog, identity, original };
         for (pass phase = PASS_SHAPE; phase <= PASS_LABELS; phase++) {
-            for (int round = 0; round < MINIMIZE_ROUNDS; round++) {
-                char *next = round_text(&o, current, phase);
-                if (!next) {
-                    break;
-                }
+            /* Each round accepts at least one rewrite, so this ends when
+             * nothing is left to drop. */
+            for (char *next; (next = round_text(&o, current, phase));) {
                 free(current);
                 current = next;
             }

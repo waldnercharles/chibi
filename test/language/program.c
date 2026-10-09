@@ -1855,23 +1855,30 @@ TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
                              { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         args[0].d = 1;
-        for (int i = 0; i < 40; i++) {
+        for (int i = 0; i < 31; i++) {
             REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
         }
         REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "done", 41));
-        /* All 41 finished together; only the newest 32 keep their results,
-         * so awaiting the first one fails. */
-        args[0].d = 3;
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.15, 0, 1000) != FLOW_OK);
-        REQUIRE(number_state(instance, "got", -1));
-        /* The oldest finished slot, the first task's, now runs Long. */
+        REQUIRE(number_state(instance, "done", 32));
+        /* Starting a task expires nothing: the first result is still kept. */
         args[0].d = 2;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.15, 0, 1000) == FLOW_OK);
+        args[0].d = 3;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.15, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "got", 7));
+        /* The 33rd finish expires the first, and its slot runs the next Long. */
+        args[0].d = 1;
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 0.3, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "done", 33));
+        args[0].d = 3;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.32, 0, 1000) != FLOW_OK);
+        args[0].d = 2;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.35, 0, 1000) == FLOW_OK);
         args[1].b = false;
-        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.3, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0.4, 0, 1000) == FLOW_OK);
         REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "kept", 1) && number_state(instance, "stale", 0));
+        REQUIRE(number_state(instance, "kept", 2) && number_state(instance, "stale", 0));
         REQUIRE(execution_instance_pending(instance) == 0);
     }
     return true;
@@ -1956,11 +1963,18 @@ TEST_CASE(program_nested_functions_wait_for_themselves)
     const char *source = "behavior N { n: double = 0;"
                          "action later = (Outer());"
                          "function Outer() -> () { function Inner() -> () { "
-                         "await Delay(1); } Inner(); n += 1; } }";
+                         "await Delay(1); } Inner(); n += 1; }"
+                         "function Pause() -> () { await Delay(1); }"
+                         "function Start() -> () { action Pause = timer(1); "
+                         "Pause(); } }";
+    /* A nested action shadows the waiting function of the same name. */
     const char *expected = "behavior N { n: double = 0;"
                            "action later = (Outer());"
                            "function Outer() -> () { function Inner() -> () { "
-                           "await Delay(1); } await Inner(); n += 1; } }";
+                           "await Delay(1); } await Inner(); n += 1; }"
+                           "function Pause() -> () { await Delay(1); }"
+                           "function Start() -> () { action Pause = timer(1); "
+                           "Pause(); } }";
     char **all = chibi_migrate_task_calls(&source, 1);
     REQUIRE(all[0] && !strcmp(all[0], expected));
     free(all[0]);
@@ -2069,9 +2083,17 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                  "        return\n"
                  "    }\n"
                  "    function Bump(x: ref double) { x += 1 }\n"
+                 "    function Observe(x: double) { return x }\n"
+                 "    function Wrap() { function Observe(x: ref double) { "
+                 "x = 1 } }\n"
                  "    function Bumped(x: double) -> (Total: double) {\n"
                  "        result Total: double = x\n"
                  "        Bump(Total)\n"
+                 "        return\n"
+                 "    }\n"
+                 "    function Seen(x: double) -> (Last: double) {\n"
+                 "        result Last: double = x\n"
+                 "        Observe(x: Last)\n"
                  "        return\n"
                  "    }\n"
                  "    function Outer() -> (X: double) { if n > 0 {} /* lead */ "
@@ -2112,10 +2134,17 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                    "        return Values\n"
                    "    }\n"
                    "    function Bump(x: ref double) { x += 1 }\n"
+                   "    function Observe(x: double) { return x }\n"
+                   "    function Wrap() { function Observe(x: ref double) { "
+                   "x = 1 } }\n"
                    "    function Bumped(x: double) -> (Total: double) {\n"
                    "        Total = x\n"
                    "        Bump(Total)\n"
                    "        return Total\n"
+                   "    }\n"
+                   "    function Seen(x: double) -> (Last: double) {\n"
+                   "        Observe(x: Last)\n"
+                   "        return x\n"
                    "    }\n"
                    "    function Outer() -> (X: double) { if n > 0 {} /* lead "
                    "*/ "
@@ -2378,6 +2407,15 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                            "}\n";
     error[0] = '\0';
     REQUIRE(!chibi_migrate_values(callable, error, sizeof error) && strstr(error, "`F`"));
+    /* An action is a callable too. */
+    const char *action = "behavior V { n: double = 0\n"
+                         "    function F() { return 1 }\n"
+                         "    value x = F()\n"
+                         "    function Outer() { action F = timer(1)\n"
+                         "        return x }\n"
+                         "}\n";
+    error[0] = '\0';
+    REQUIRE(!chibi_migrate_values(action, error, sizeof error) && strstr(error, "`F`"));
     free(migrated);
     prepare();
     REQUIRE(compile(expected, BEHAVIOR_BYTECODE));
@@ -2515,6 +2553,15 @@ TEST_CASE(program_task_with_several_results_awaits_a_tuple)
         }
         REQUIRE(number_state(instance, "n", 23));
     }
+    /* A task has no result fields until it is awaited. */
+    prepare();
+    REQUIRE(!compile(
+        "behavior B { n: double = 0;"
+        "function P(x: double) -> (a: double, b: double) { "
+        "yield; return(x, x * 10); }"
+        "on Impulse(amount, enabled) { t := P(amount); n = t.a } }",
+        BEHAVIOR_BYTECODE
+    ));
     return true;
 }
 
@@ -2749,10 +2796,17 @@ TEST_CASE(program_task_state_awaits_its_function_results)
                           "if (time > 99) { pulse := 1 } pulse = Charge(time) }"
                           "function Charge(time: double) -> (power: double) { "
                           "yield; return(time * 2); } }";
-    const char *sources[] = { source,    reordered, local,  wrapped,
-                              qualified, nested,    sibling };
+    /* A nested callee types the state for awaits analyzed after it. */
+    const char *inner = "behavior P { pulse: task; power: double = 0;"
+                        "on Impulse(amount, enabled) { Start(amount) }"
+                        "function Start(time: double) { "
+                        "function Charge(time: double) -> (power: double) { "
+                        "yield; return(time * 2); } "
+                        "pulse = Charge(time); power = await pulse } }";
+    const char *sources[] = { source,    reordered, local,   wrapped,
+                              qualified, nested,    sibling, inner };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
-    for (int b = 0; b < 14; b++) {
+    for (int b = 0; b < 16; b++) {
         prepare();
         REQUIRE(compile(sources[b / 2], backends[b % 2]));
         ecs_entity owner = ecs_world_create_entity(world);
@@ -2775,6 +2829,30 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     );
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(!analysis->valid);
+    /* So does a state write of another function's task, before or after
+     * the await. */
+    const char *writes[] = {
+        "behavior P { pulse: task; power: double = 0;"
+        "function Charge(time: double) -> (power: double) { yield; "
+        "return(time) }"
+        "function Other() -> (name: string) { yield; return(\"x\") }"
+        "on Impulse(amount, enabled) { pulse = Charge(amount); power = await "
+        "pulse }"
+        "function Swap() { set_variable<\"pulse\">(Other()) } }",
+        "behavior P { pulse: task; power: double = 0;"
+        "function Charge(time: double) -> (power: double) { yield; "
+        "return(time) }"
+        "function Other() -> (name: string) { yield; return(\"x\") }"
+        "function Swap() { set_variable<\"pulse\">(Other()) }"
+        "on Impulse(amount, enabled) { pulse = Charge(amount); power = await "
+        "pulse } }"
+    };
+    for (int i = 0; i < 4; i++) {
+        prepare();
+        REQUIRE(
+            !compile_pack(writes[i / 2], i % 2 ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE, &NATIVE_STATE_DEFINITION_PACK)
+        );
+    }
     return true;
 }
 TEST_CASE(program_component_paths_test_presence)
@@ -2887,14 +2965,18 @@ TEST_CASE(program_task_shares_boxed_locals)
                          "function Keep(x: ref double) -> () { yield; x += 1; "
                          "yield; kept += x; }"
                          "function Relay(x: ref double) -> () { Keep(x); }"
+                         "function Pair(x: double) -> (a: double, b: double) "
+                         "{ return(a: x * 1000 + 5, b: 0) }"
                          "on Impulse(amount, enabled) {"
                          "if amount == 0 { v := 1.0; t := Bump(v); v += 100; "
                          "await t; seen = v; }"
                          "else if amount == 1 { w := 5.0; Keep(w); }"
                          "else if amount == 2 { i := 0.0; while i < 2 { u := "
                          "i * 10; Keep(u); i += 1; } }"
-                         "else { j := 0.0; while j < 2 { z := j * 100 + 2; "
-                         "Relay(z); j += 1; } } } }";
+                         "else if amount == 3 { j := 0.0; while j < 2 { z := "
+                         "j * 100 + 2; Relay(z); j += 1; } }"
+                         "else { k := 0.0; while k < 2 { p := Pair(k); "
+                         "Keep(p.a); k += 1; } } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2902,7 +2984,7 @@ TEST_CASE(program_task_shares_boxed_locals)
         ecs_entity owner = ecs_world_create_entity(world);
         execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
         REQUIRE(instance != NULL);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             const pin_value args[] = { { .type = PIN_F64, .d = i },
                                        { .type = PIN_BOOL, .b = true } };
             REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
@@ -2910,10 +2992,11 @@ TEST_CASE(program_task_shares_boxed_locals)
         for (int i = 1; i <= 3; i++) {
             REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
         }
-        /* The caller and its task share v; each declaration of u, and of z
-         * through Relay, is its own; w and z outlive their callers. */
+        /* The caller and its task share v; each declaration of u, of z
+         * through Relay, and of the tuple p is its own; w and z outlive
+         * their callers. */
         REQUIRE(number_state(instance, "seen", 112));
-        REQUIRE(number_state(instance, "kept", 6 + 1 + 11 + 3 + 103));
+        REQUIRE(number_state(instance, "kept", 6 + 1 + 11 + 3 + 103 + 6 + 1006));
         REQUIRE(execution_instance_pending(instance) == 0);
     }
     return true;

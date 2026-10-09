@@ -86,16 +86,13 @@ static void evict(execution_instance *instance)
     *t = (execution_task){ .generation = t->generation + 1, .next = instance->spare };
     instance->spare = link;
 }
-/* Reuses an evicted slot, or the oldest finished one once TASK_RETAINED have
- * finished. */
+/* Reuses an evicted slot. Finishing evicts, so starting a task never
+ * expires a result early. */
 static execution_task *task_new(execution_instance *instance)
 {
-    if (!instance->spare && instance->finished_count < TASK_RETAINED) {
+    if (!instance->spare) {
         apush(instance->tasks, ((execution_task){ .generation = 1 }));
         return &instance->tasks[acount(instance->tasks) - 1];
-    }
-    if (!instance->spare) {
-        evict(instance);
     }
     execution_task *t = slot(instance, instance->spare);
     instance->spare = t->next;

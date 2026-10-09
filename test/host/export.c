@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 static char root[] = "/tmp/chibi-export-XXXXXX";
+static const char *game = "My Game/2";
 
 static void write_at(const char *relative, const char *text, mode_t mode)
 {
@@ -79,7 +80,7 @@ static bool export_as(const char *relative, chibi_export_layout layout, bool arc
     snprintf(bin, sizeof bin, "%s/sdk/bin", root);
     snprintf(output, sizeof output, "%s/%s", root, relative);
     chibi_export_spec spec = { .project = project,
-                               .name = "My Game/2",
+                               .name = game,
                                .title = title,
                                .icon = "art/icon.png",
                                .bin = bin,
@@ -194,6 +195,18 @@ TEST_CASE(export_assembles_a_runnable_folder)
     REQUIRE(symlink(target, linked) == 0);
     REQUIRE(!export_to("linked") && has("linked/notes.txt", "keep"));
     REQUIRE(!export_to("out/Game/.") && has("out/Game/data/game.chibip", "artifact"));
+
+    /* A long project name is cut to a file name every file system takes. */
+    char long_name[301];
+    memset(long_name, 'a', 300);
+    long_name[300] = 0;
+    game = long_name;
+    REQUIRE(export_to("out/Game"));
+    long_name[128] = 0;
+    char cut[160];
+    snprintf(cut, sizeof cut, "out/Game/%s", long_name);
+    REQUIRE(has(cut, "player"));
+    game = "My Game/2";
 
     /* A macOS app keeps the same data in Contents/Resources, and an archive
      * holds the export under its own name. */

@@ -36,6 +36,9 @@ uint64_t game_player_asset_fingerprint(const void *, size_t);
  * leading slash, backslash or colon, and at most 1024 bytes. */
 bool game_player_relative_path(const char *path);
 bool game_player_asset_valid(const game_player_asset *);
+/* False, with the reason, when two of the scene's entities bind one global
+ * name, which entering the scene would refuse. */
+bool game_player_scene_bindings_valid(const game_scene *, char *error, size_t size);
 #define GAME_PLAYER_MAX_ASSETS 4096
 #define GAME_PLAYER_MAX_ASSET_BYTES (64 * 1024 * 1024)
 typedef struct

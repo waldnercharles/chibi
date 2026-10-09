@@ -87,7 +87,7 @@ TEST_CASE(language_declarations_actions_and_bindings)
         "state count: int = 0; shared enabled := true;\n"
         "local target = self.Velocity.Parent;\n"
         "action pending = delay(Duration: 1);\n"
-        "event changed = self.ActionBinding.PressedChanged;\n"
+        "event changed = self.Health.CurrentChanged;\n"
         "bind self.ParticleEmitter.Active = enabled;\n"
         "on Tick as frame(dt: float) { count += cast<int>(dt); }\n"
         "after pending.Completed { destroy(self); }\n"

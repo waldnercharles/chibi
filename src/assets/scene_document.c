@@ -181,16 +181,9 @@ int game_scene_document_rename_entity(
     return 0;
 }
 
-int game_scene_document_add_entity(
-    game_scene_document *document,
-    const char *name,
-    const char *prototype,
-    const char *const *behaviors,
-    int behavior_count
-)
+int game_scene_document_add_entity(game_scene_document *document, const char *name, const char *prototype)
 {
-    if (!name || !name[0] || !prototype || !prototype[0] ||
-        behavior_count < 0 || (behavior_count && !behaviors)) {
+    if (!name || !name[0] || !prototype || !prototype[0]) {
         return -1;
     }
     for (int i = 0; i < acount(document->entities); i++) {
@@ -203,10 +196,6 @@ int game_scene_document_add_entity(
         .prototype = xstrdup(prototype),
         .components = NULL,
     };
-    if (copy_names(&entity.behaviors, behaviors, behavior_count) != 0) {
-        free_entity(&entity);
-        return -1;
-    }
     apush(document->entities, entity);
     return 0;
 }
@@ -259,6 +248,7 @@ int game_scene_document_set_entity_behaviors(
     }
     free_names(&document->entities[index].behaviors);
     document->entities[index].behaviors = copy;
+    document->entities[index].own_behaviors = true;
     return 0;
 }
 
@@ -390,7 +380,7 @@ av_value *game_scene_document_to_value(const game_scene_document *document, ecs_
                 components_value(json, entity->retained, components)
             );
         }
-        if (acount(entity->behaviors)) {
+        if (entity->own_behaviors) {
             av_value *behaviors = av_obj_add_arr(json, value, "behaviors");
             for (int j = 0; j < acount(entity->behaviors); j++) {
                 av_arr_add_strcpy(json, behaviors, entity->behaviors[j]);
@@ -412,9 +402,8 @@ char *game_scene_document_save(const game_scene_document *document, ecs_componen
     return text;
 }
 
-static void load_fail(game_scene_document *document, av_doc *parsed, char **behaviors)
+static void load_fail(game_scene_document *document, av_doc *parsed)
 {
-    free_names(&behaviors);
     game_scene_document_free(document);
     av_doc_free(parsed);
 }
@@ -477,33 +466,29 @@ static game_scene_document *load_document_value(av_doc *parsed, char *error, siz
             (behaviors && !av_is_arr(behaviors)) ||
             (components && !av_is_obj(components))) {
             set_error(error, error_size, "invalid scene entity at index %d", index);
-            load_fail(document, parsed, NULL);
+            load_fail(document, parsed);
             return NULL;
         }
-        char **behavior_names = NULL;
-        if (read_name_array(behaviors, &behavior_names, error, error_size, index, "behaviors") !=
+        if (game_scene_document_add_entity(document, av_get_str(entity_name), av_get_str(prototype)) !=
             0) {
-            load_fail(document, parsed, behavior_names);
-            return NULL;
-        }
-        if (game_scene_document_add_entity(
-                document,
-                av_get_str(entity_name),
-                av_get_str(prototype),
-                (const char *const *)behavior_names,
-                acount(behavior_names)
-            ) != 0) {
             set_error(error, error_size, "duplicate or invalid scene entity at index %d", index);
-            load_fail(document, parsed, behavior_names);
+            load_fail(document, parsed);
             return NULL;
         }
         int entity_index = acount(document->entities) - 1;
+        game_scene_entity *entity = &document->entities[entity_index];
+        entity->own_behaviors = behaviors != NULL;
+        if (read_name_array(behaviors, &entity->behaviors, error, error_size, index, "behaviors") !=
+            0) {
+            load_fail(document, parsed);
+            return NULL;
+        }
         av_value *retained = av_obj_get(entity_value, "retained_components");
         if (retained) {
             int result = game_scene_document_set_entity_retained(document, entity_index, retained);
             if (result != 0) {
                 set_error(error, error_size, "invalid retained components at scene entity %d", index);
-                load_fail(document, parsed, behavior_names);
+                load_fail(document, parsed);
                 return NULL;
             }
         }
@@ -511,11 +496,10 @@ static game_scene_document *load_document_value(av_doc *parsed, char *error, siz
             int component_result = game_scene_document_set_entity_components(document, entity_index, components);
             if (component_result != 0) {
                 set_error(error, error_size, "invalid components at scene entity %d", index);
-                load_fail(document, parsed, behavior_names);
+                load_fail(document, parsed);
                 return NULL;
             }
         }
-        free_names(&behavior_names);
         index++;
     }
     av_doc_free(parsed);

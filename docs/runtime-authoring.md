@@ -13,6 +13,30 @@ Games use separate repositories such as `chibi-arena3d`, `chibi-space-cadet` and
 its starter and shell assets in `chibi-studio`. Pass the project root to an
 installed authoring tool rather than mounting a game under the engine checkout.
 
+## Start a project
+
+Scaffold files with the controller instead of copying another project. `new_project`
+writes `project.kdl` and an empty `content/scenes/Start.kdl`; `new_asset` writes an
+empty asset of one kind in its content folder, the same form Studio's New menu
+starts from, and never overwrites a file. A taken name fails with `asset_conflict`,
+a bad name or path with `invalid_request`, and a disk that refuses the write with
+`io_error`:
+
+```sh
+printf '%s\n' '{"contract":1,"operation":"new_project","path":"tetris","name":"Tetris"}' | chibi_ctl
+printf '%s\n' '{"contract":1,"operation":"new_asset","kind":"behavior","name":"Board"}' | \
+  chibi_ctl --project-root tetris
+```
+
+Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
+`material`, `shape`, `field`, `shader-library` and `model`. Before running content,
+`validate_project` checks the manifest, its start scene and every asset. Its
+`problems` list only the assets with errors or warnings, each diagnostic naming
+what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
+model and a shape share a name there is no catalog, so it lists no asset
+problems until one is renamed. It never changes files: a project saved by an
+earlier build fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
+
 ## Declare components
 
 A game declares its own component types under `content/components`, one KDL file
@@ -97,7 +121,8 @@ printf '%s\n' '{"contract":1,"operation":"validate_asset","path":"behaviors/Proj
 
 Change the path to an asset in your project. A request failure returns a nonzero
 exit status. Inspect the response's diagnostics as well as its status. Retained
-operations include `read_asset`, `validate_asset`, `catalog`, `inspect_graph`,
+operations include `read_asset`, `validate_asset`, `validate_project`,
+`new_project`, `new_asset`, `catalog`, `inspect_graph`,
 `inspect_system`, `inspect_ui`, `find_references`, `call_hierarchy`,
 `run_scenario`, and `runtime_snapshot`. The native contract definitions in
 `src/automation/controller.c` describe each operation's fields. The controller

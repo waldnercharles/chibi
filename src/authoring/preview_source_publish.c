@@ -1,5 +1,7 @@
 #include "authoring/preview_source_internal.h"
 #include "authoring/source_presentation.h"
+#include "runtime/engine.h"
+#include "runtime/world.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -244,6 +246,8 @@ void game_preview_sources_commit(game_preview_source_staging *stage)
     game_preview_source_state *state = world->source_state;
     assert(state->working == stage->sources);
     game_source_commit(stage->runtime);
+    const input_action *actions = authoring_sources_input(stage->sources);
+    engine_set_input_actions(game_world_engine(world->runtime->owner), actions, acount(actions));
     for (int i = 0; i < acount(stage->projections); i++) {
         projection_stage *row = &stage->projections[i];
         game_preview_definition *definition = row->current ? row->current

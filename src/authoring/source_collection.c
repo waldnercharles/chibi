@@ -154,6 +154,10 @@ const script_catalog *authoring_sources_catalog(const authoring_sources *sources
 {
     return source_catalog_view(sources->catalog);
 }
+const input_action *authoring_sources_input(const authoring_sources *sources)
+{
+    return source_catalog_input(sources->catalog);
+}
 int authoring_sources_definition_count(const authoring_sources *sources)
 {
     return source_catalog_definition_count(sources->catalog);

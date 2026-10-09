@@ -10,31 +10,6 @@
 
 #define MAX_PACKS 64
 
-static bool receiver_present(
-    const char *name,
-    const native_capability_pack *native,
-    int native_count,
-    const native_definition_pack *definitions,
-    int definition_count
-)
-{
-    if (!name) {
-        return true;
-    }
-    uint64_t id = script_catalog_id("type", name);
-    for (int i = 0; i < native_count; i++) {
-        const script_catalog *catalog = native[i].catalog;
-        if (catalog && script_catalog_type_by_id(catalog, id)) {
-            return true;
-        }
-    }
-    for (int i = 0; i < definition_count; i++) {
-        if (script_catalog_type_by_id(&definitions[i].base, id)) {
-            return true;
-        }
-    }
-    return false;
-}
 native_capabilities *host_native_catalog_new(
     const native_capability_pack *native,
     int native_count,
@@ -55,19 +30,8 @@ native_capabilities *host_native_catalog_new(
     }
     native_capability_definition *events = NULL;
     native_parameter_definition *payloads[GAME_HOST_EVENT_COUNT] = { 0 };
-    char *observed[GAME_HOST_EVENT_COUNT] = { 0 };
     for (int i = 0; i < GAME_HOST_EVENT_COUNT; i++) {
         const game_host_event_desc *event = &GAME_HOST_EVENTS[i];
-        if (!receiver_present(event->receiver_type, native, native_count, definitions, definition_count)) {
-            continue;
-        }
-        if (event->receiver_field) {
-            assert(event->receiver_type);
-            size_t bytes = strlen(event->receiver_type) +
-                           strlen(event->receiver_field) + 2;
-            observed[i] = xmalloc(bytes);
-            snprintf(observed[i], bytes, "%s.%s", event->receiver_type, event->receiver_field);
-        }
         for (int j = 0; j < event->payload_count; j++) {
             const game_event_field *field = &event->payload[j];
             apush(
@@ -85,10 +49,7 @@ native_capabilities *host_native_catalog_new(
                                              .kind = SCRIPT_CAPABILITY_EVENT,
                                              .inputs = payloads[i],
                                              .input_count = acount(payloads[i]),
-                                             .completion_output = -1,
-                                             .receiver_type = event->receiver_type,
-                                             .component_type = event->receiver_type,
-                                             .component_field = observed[i] })
+                                             .completion_output = -1 })
         );
     }
     native_definition_pack *selected = NULL;
@@ -118,7 +79,6 @@ native_capabilities *host_native_catalog_new(
     afree(events);
     for (int i = 0; i < GAME_HOST_EVENT_COUNT; i++) {
         afree(payloads[i]);
-        free(observed[i]);
     }
     return out;
 }

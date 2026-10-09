@@ -1,3 +1,4 @@
+#include "assets/input_map.h"
 #include "assets/project.h"
 #include "authoring/component_declarations.h"
 #include "authoring/image_prepare.h"
@@ -338,6 +339,7 @@ bool authoring_project_prepare(
     game_player_asset icon = { 0 };
     const game_scene **visual_scenes = NULL;
     declared_components *declared = NULL;
+    input_action *actions = NULL;
     const ecs_component_desc **components = NULL;
     size_t module_bytes = 0;
     char *scene_path = NULL, *text = NULL;
@@ -479,6 +481,10 @@ bool authoring_project_prepare(
         goto done;
     }
     /* The encoded package is linked independently of source/compiler storage. */
+    const input_action *map = authoring_sources_input(sources);
+    for (int i = 0; i < acount(map); i++) {
+        input_map_add(&actions, map[i].name, map[i].controls, map[i].firing);
+    }
     afree(definitions);
     authoring_sources_free(sources);
     sources = NULL;
@@ -528,7 +534,9 @@ bool authoring_project_prepare(
     game_player_spec spec = {
         .world = { .modules = options->modules,
                    .fields = (options->modules & GAME_WORLD_MATERIALS) ? fields : NULL,
-                   .events = events },
+                   .events = events,
+                   .actions = actions,
+                   .action_count = acount(actions) },
         .declared = declared,
         .modules = modules,
         .module_count = acount(modules),
@@ -591,6 +599,7 @@ done:
     authoring_sources_free(sources);
     authoring_language_catalog_free(native);
     afree(components);
+    input_map_free(actions);
     declared_components_free(declared);
     chibi_project_free(&project);
     authoring_mesh_unmount_content();

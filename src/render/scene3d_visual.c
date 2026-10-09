@@ -1,6 +1,7 @@
 #include "render/scene3d_visual.h"
 
 #include "runtime/component_catalog.h"
+#include "runtime/transform_propagation.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -14,13 +15,18 @@ int render_scene3d_visuals(
     size_t size
 )
 {
-    const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
-    if (!position) {
-        position = global ? &global->position : NULL;
-    }
     const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
-    if (!position || !shape) {
+    if (!shape || (!position && !GAME_GameTransform_get_const(world, entity))) {
         return 0;
+    }
+    /* Without a drawn position, picking and bounds may run before any
+     * propagation, so they read the exact world placement. */
+    const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
+    GameGlobalTransform2D pose;
+    if (!position) {
+        pose = game_transform_world_2d(world, entity);
+        position = &pose.position;
+        global = &pose;
     }
     const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
     const GameMeshParts *mesh = GAME_GameMeshParts_get_const(world, entity);

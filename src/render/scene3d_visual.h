@@ -11,7 +11,8 @@ typedef struct
     CF_M4x4 frame; /* Local project coordinates to world, before part dimensions. */
 } scene3d_visual;
 
-/* Returns parts, zero for an invisible/missing visual, or -1 with an authoring error. */
+/* Returns parts, zero for an invisible/missing visual, or -1 with an authoring error.
+ * A NULL position places the visual at the entity's exact world transform. */
 int render_scene3d_visuals(
     const ecs_world *world,
     ecs_entity entity,

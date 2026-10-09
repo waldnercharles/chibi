@@ -315,10 +315,16 @@ def supervise(commands):
                 return result if result > 0 else 128 - result
         return 0
     finally:
-        # The caller can reach the shared deadline and send SIGTERM while we
-        # start cleanup. Protect discovery and polling before either can run.
-        signal.signal(signal.SIGTERM, signal.SIG_IGN)
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        # The caller reaches the same deadline and sends SIGTERM as we start
+        # cleanup. signal.signal runs a pending handler before it installs
+        # the new one, so retry until discovery and polling are protected.
+        while True:
+            try:
+                signal.signal(signal.SIGTERM, signal.SIG_IGN)
+                signal.signal(signal.SIGINT, signal.SIG_IGN)
+                break
+            except (KeyboardInterrupt, TerminationRequested):
+                pass
         if subreaper:
             cleanup_children(read_children)
         elif child is not None:

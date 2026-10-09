@@ -46,7 +46,7 @@ def validate_package(package):
     if record.get('build_id') != package_identity(record):
         raise ValueError('Studio package identity mismatch')
     products = record.get('products')
-    if products not in ({'chibi-studio': 'bin/chibi-studio'}, {'chibi-studio': 'bin/chibi-studio.exe'}):
+    if products not in ({'chibi-studio': 'bin/chibi-dev'}, {'chibi-studio': 'bin/chibi-dev.exe'}):
         raise ValueError('Studio package must contain exactly the Studio product')
     binary = package / products['chibi-studio']
     if not binary.stat().st_size or not os.access(binary, os.X_OK):
@@ -80,7 +80,7 @@ def build_identity(build, sdk, source):
             or cache.get('CHIBI_STUDIO_SDK_BUILD_ID') != source['build_id']
             or cache.get('CHIBI_STUDIO_SDK_MANIFEST_SHA256') != digest(sdk / MANIFEST)):
         raise ValueError('Configured Studio SDK pin differs from the supplied package; reconfigure/rebuild')
-    binaries = [build / 'bin' / name for name in ('chibi-studio', 'chibi-studio.exe')]
+    binaries = [build / 'bin' / name for name in ('chibi-dev', 'chibi-dev.exe')]
     binaries = [path for path in binaries if path.is_file()]
     if len(binaries) != 1:
         raise ValueError('Missing or ambiguous Studio executable')

@@ -161,24 +161,11 @@ static void previous_runtime(const char *game)
     tool_write(filename, manifest);
 }
 
-static int configure_fixture(
-    const char *source,
-    const char *search,
-    const char *option,
-    const char *environment,
-    const char *lock
-)
+static int configure_fixture(const char *source, const char *search, const char *option, const char *environment)
 {
-    const char *argv[] = { "env",
-                           search,
-                           "CHIBI_DEPENDENCY_PACKAGES=0",
-                           environment,
-                           lock,
-                           "sh",
-                           "tools/configure.sh",
-                           "native",
-                           "build",
-                           option,
+    const char *argv[] = { "env",       search,  "CHIBI_DEPENDENCY_PACKAGES=0",
+                           environment, "sh",    "tools/configure.sh",
+                           "native",    "build", option,
                            NULL };
     return tool_run(argv, source, log_path);
 }
@@ -230,55 +217,35 @@ TEST_CASE(warm_configuration_preserves_input_invalidation)
     assert(!chmod(filename, 0700));
     snprintf(search, sizeof search, "PATH=%s:%s", bin, getenv("PATH"));
     path(calls, source, "calls");
-    REQUIRE(
-        configure_fixture(source, search, "-DPROBE=one", "CFLAGS=-DFIRST", "CHIBI_WORKSPACE_LOCK_FD=4") == 0
-    );
+    REQUIRE(configure_fixture(source, search, "-DPROBE=one", "CFLAGS=-DFIRST") == 0);
     REQUIRE(file_equals(calls, "configured\n"));
-    REQUIRE(
-        configure_fixture(source, search, "-DPROBE=one", "CFLAGS=-DFIRST", "CHIBI_WORKSPACE_LOCK_FD=8") == 0
-    );
+    REQUIRE(configure_fixture(source, search, "-DPROBE=one", "CFLAGS=-DFIRST") == 0);
     REQUIRE(file_equals(calls, "configured\n"));
     path(filename, source, "CMakeLists.txt");
     tool_write(filename, "project(changed)\n");
-    REQUIRE(
-        configure_fixture(source, search, "-DPROBE=one", "CFLAGS=-DFIRST", "CHIBI_WORKSPACE_LOCK_FD=8") == 0
-    );
+    REQUIRE(configure_fixture(source, search, "-DPROBE=one", "CFLAGS=-DFIRST") == 0);
     REQUIRE(file_equals(calls, "configured\nconfigured\n"));
     path(filename, source, "external.cmake");
     tool_write(filename, "# changed toolchain input\n");
-    REQUIRE(
-        configure_fixture(source, search, "-DPROBE=one", "CFLAGS=-DFIRST", "CHIBI_WORKSPACE_LOCK_FD=8") == 0
-    );
+    REQUIRE(configure_fixture(source, search, "-DPROBE=one", "CFLAGS=-DFIRST") == 0);
     REQUIRE(file_equals(calls, "configured\nconfigured\nconfigured\n"));
-    REQUIRE(
-        configure_fixture(source, search, "-DPROBE=one", "CFLAGS=-DSECOND", "CHIBI_WORKSPACE_LOCK_FD=8") == 0
-    );
+    REQUIRE(configure_fixture(source, search, "-DPROBE=one", "CFLAGS=-DSECOND") == 0);
     REQUIRE(file_equals(calls, "configured\nconfigured\nconfigured\nconfigured\n"));
-    REQUIRE(
-        configure_fixture(source, search, "-DPROBE=two", "CFLAGS=-DSECOND", "CHIBI_WORKSPACE_LOCK_FD=8") == 0
-    );
+    REQUIRE(configure_fixture(source, search, "-DPROBE=two", "CFLAGS=-DSECOND") == 0);
     REQUIRE(file_equals(calls, "configured\nconfigured\nconfigured\nconfigured\nconfigured\n"));
     path(filename, bin, "cmake");
     FILE *script = fopen(filename, "a");
     assert(script);
     assert(fputs("# tool replaced\n", script) >= 0);
     assert(!fclose(script));
-    REQUIRE(
-        configure_fixture(source, search, "-DPROBE=two", "CFLAGS=-DSECOND", "CHIBI_WORKSPACE_LOCK_FD=8") == 0
-    );
+    REQUIRE(configure_fixture(source, search, "-DPROBE=two", "CFLAGS=-DSECOND") == 0);
     REQUIRE(
         file_equals(calls, "configured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\n")
     );
-    REQUIRE(
-        configure_fixture(source, search, "-DGENERATOR=Ninja", "CFLAGS=-DSECOND", "CHIBI_WORKSPACE_LOCK_FD=8") ==
-        0
-    );
+    REQUIRE(configure_fixture(source, search, "-DGENERATOR=Ninja", "CFLAGS=-DSECOND") == 0);
     path(filename, source, "external.cmake");
     tool_write(filename, "# changed Ninja input\n");
-    REQUIRE(
-        configure_fixture(source, search, "-DGENERATOR=Ninja", "CFLAGS=-DSECOND", "CHIBI_WORKSPACE_LOCK_FD=8") ==
-        0
-    );
+    REQUIRE(configure_fixture(source, search, "-DGENERATOR=Ninja", "CFLAGS=-DSECOND") == 0);
     REQUIRE(
         file_equals(calls, "configured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\n")
     );
@@ -291,24 +258,15 @@ TEST_CASE(warm_configuration_preserves_input_invalidation)
     assert(!mkdir(sdk, 0700));
     path(filename, source, "sdk-choice");
     tool_write(filename, sdk);
-    REQUIRE(
-        configure_fixture(source, search, "-DGENERATOR=Ninja", "CFLAGS=-DSECOND", "CHIBI_WORKSPACE_LOCK_FD=8") ==
-        0
-    );
-    REQUIRE(
-        configure_fixture(source, search, "-DGENERATOR=Ninja", "CFLAGS=-DSECOND", "CHIBI_WORKSPACE_LOCK_FD=8") ==
-        0
-    );
+    REQUIRE(configure_fixture(source, search, "-DGENERATOR=Ninja", "CFLAGS=-DSECOND") == 0);
+    REQUIRE(configure_fixture(source, search, "-DGENERATOR=Ninja", "CFLAGS=-DSECOND") == 0);
     REQUIRE(
         file_equals(calls, "configured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\n")
     );
     path(sdk, source, "sdk-two");
     assert(!mkdir(sdk, 0700));
     tool_write(filename, sdk);
-    REQUIRE(
-        configure_fixture(source, search, "-DGENERATOR=Ninja", "CFLAGS=-DSECOND", "CHIBI_WORKSPACE_LOCK_FD=8") ==
-        0
-    );
+    REQUIRE(configure_fixture(source, search, "-DGENERATOR=Ninja", "CFLAGS=-DSECOND") == 0);
     REQUIRE(
         file_equals(calls, "configured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\nconfigured\n")
     );

@@ -166,7 +166,7 @@ of the project. Each refusal's errno tells a bad request from a taken name and
 a storage failure. CPU only; the folder is removed afterwards.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-twelve cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+fourteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
@@ -174,17 +174,22 @@ start scene inside them is reported once; a UI document named by the
 manifest or a scene must exist, and markup that is a folder or a link is
 refused; a scene's missing prototype or behavior, and each syntax error in a
 source, is one error; a project saved by an earlier build is reported, not
-upgraded; the application icon must decode as a PNG and a long project name
+upgraded, and one from a newer build needs that build; the application icon must decode as a PNG and a long project name
 needs a title; a prototype that includes another validates, runs in a scene
 and keeps its include through `--format`, while a missing include is
-reported and the included prototype's behaviors stay its own references;
-a scene runs as a scenario in a project that has a material; a scenario and
-validation accept a real Ogg Vorbis sound, but refuse copies whose headers or
-audio packets players cannot decode; and in a project whose manifest names another content
-folder, assets are scaffolded, validated, run, formatted, found and reported
-there under their `content/` paths, and `status` names that folder even once
-the project is too old to open. A few short `chibi_ctl` runs, CPU only; the
-project is removed afterwards.
+reported and the included prototype's behaviors stay its own references; a
+prototype is found by the name it declares, even when another file bears that
+name or the name could not name a file, `new_asset` refuses a declared name,
+two declarations of one name are a conflict, and a file the search cannot read,
+or one declaring a name longer than the player takes, fails it; a scene runs as
+a scenario in a project that has a material; a scene requested by its file name
+runs, and reloads, under its own name; a scenario and validation accept a real
+Ogg Vorbis sound, but refuse copies whose headers or audio packets players
+cannot decode; and in a project whose manifest names another content folder,
+assets are scaffolded, validated, run, formatted, found and reported there
+under their `content/` paths, and `status` names that folder even once the
+project is too old to open. A few short `chibi_ctl` runs, CPU only; the project
+is removed afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,

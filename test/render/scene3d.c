@@ -3,6 +3,7 @@
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
 #include "runtime/component_catalog.h"
+#include "runtime/engine.h"
 #include "runtime/particles.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -23,6 +24,7 @@ static render_scene3d *scene3d;
 static render_scene3d_post *post;
 static game_particles *particles;
 static CF_Pixel pixels[PIXELS];
+static engine *runtime;
 
 static void setup()
 {
@@ -37,6 +39,8 @@ static void setup()
 
 static void teardown()
 {
+    engine_free(runtime);
+    runtime = NULL;
     render_scene3d_free(scene3d);
     render_scene3d_post_free(post);
     game_particles_free(particles);
@@ -63,10 +67,10 @@ static void add_box(unsigned color)
     assert(ecs_world_apply_commands(world) == ECS_OK);
 }
 
-static void add_sun(unsigned color, CF_V3 direction)
+static ecs_entity add_sun(unsigned color, CF_V3 direction)
 {
     GameDirectionalLight sun = { .color = color, .intensity = 3, .direction = direction };
-    add(GAME_COMPONENT_GameDirectionalLight.id, &sun);
+    return add(GAME_COMPONENT_GameDirectionalLight.id, &sun);
 }
 
 /* The box's top face fills the image center; its front face is just below. */
@@ -92,7 +96,16 @@ static bool render(const GameEnvironment *environment)
         .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
     };
     cf_app_update(NULL);
-    bool drawn = render_scene3d_draw(scene3d, world, particles, &camera, 0, NULL, &settings, (render_skip){ 0 });
+    bool drawn = render_scene3d_draw(
+        scene3d,
+        world,
+        particles,
+        &camera,
+        0,
+        runtime,
+        &settings,
+        (render_skip){ 0 }
+    );
     cf_render_to(canvas, true);
     bool processed = render_scene3d_post_process(post);
     cf_app_draw_onto_screen(false);
@@ -162,6 +175,24 @@ TEST_CASE(scene_rejects_a_second_directional_light)
     return true;
 }
 
+TEST_CASE(hidden_directional_lights_neither_shade_nor_count)
+{
+    add_box(0xffffffffu);
+    add_sun(0xff0000ffu, (CF_V3){ 0, -2, 0 });
+    ecs_entity hidden = add_sun(0x00ff00ffu, (CF_V3){ 0, -2, 0 });
+    GameRenderState state = { .hidden = true };
+    assert(
+        ecs_world_record_add(world, hidden, GAME_COMPONENT_GameRenderState.id, &state, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    runtime = engine_new(world, NULL);
+    GameEnvironment environment = game_environment_defaults();
+    environment.ambient_intensity = 0;
+    REQUIRE(render(&environment));
+    REQUIRE(top().colors.r > 150 && top().colors.g == 0);
+    return true;
+}
+
 void test_render_scene3d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -174,6 +205,7 @@ void test_render_scene3d()
     RUN_TEST_CASE(environment_ambient_lights_unlit_faces);
     RUN_TEST_CASE(directional_light_shades_faces_it_faces);
     RUN_TEST_CASE(scene_rejects_a_second_directional_light);
+    RUN_TEST_CASE(hidden_directional_lights_neither_shade_nor_count);
     pu_clear_setup();
     cf_destroy_app();
 }

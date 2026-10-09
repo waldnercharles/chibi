@@ -1644,32 +1644,45 @@ static bool always_reads(const char *text, TSNode read, TSNode block)
     }
     return true;
 }
-/* Whether an action in `node` is named like the identifier `name`. */
-static bool names_action(const char *text, TSNode node, TSNode name)
+/* Whether a state, parameter or local declared around `name` has its name. */
+static bool names_storage(const char *text, TSNode name)
 {
-    if (is(node, "action_declaration")) {
-        return same_name(text, ts_node_child_by_field_name(node, "name", 4), text, name);
-    }
-    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        if (names_action(text, ts_node_named_child(node, i), name)) {
+    for (TSNode scope = ts_node_parent(name); !ts_node_is_null(scope);
+         scope = ts_node_parent(scope)) {
+        if (!scope_node(scope)) {
+            continue;
+        }
+        if (redeclares(text, scope, name, (TSNode){ 0 })) {
             return true;
+        }
+        for (uint32_t i = 0; i < ts_node_named_child_count(scope); i++) {
+            TSNode child = ts_node_named_child(scope, i);
+            if (is(child, "state_declaration") &&
+                same_name(text, ts_node_child_by_field_name(child, "name", 4), text, name)) {
+                return true;
+            }
         }
     }
     return false;
 }
 /* Whether `node` names storage, as a state, component, parameter or local
- * path, which version 16 read and wrote through a local initialized with it. */
-static bool storage_path(const char *text, lazy *all, TSNode root, TSNode node)
+ * path, which version 16 read and wrote through a local initialized with it.
+ * `self` alone is the owner, not storage. */
+static bool storage_path(const char *text, lazy *all, TSNode node)
 {
     lazy *read = local_read(text, all, node);
     if (read) {
         return read->alias;
     }
     if (is(node, "member_expression") || is(node, "index_expression")) {
-        return storage_path(text, all, root, ts_node_child_by_field_name(node, "object", 6));
+        TSNode object = ts_node_child_by_field_name(node, "object", 6);
+        uint32_t start = ts_node_start_byte(object);
+        return (is(object, "identifier") && ts_node_end_byte(object) - start == 4 &&
+                !strncmp(text + start, "self", 4)) ||
+               storage_path(text, all, object);
     }
     if (is(node, "parenthesized_expression")) {
-        return storage_path(text, all, root, ts_node_child_by_field_name(node, "expression", 10));
+        return storage_path(text, all, ts_node_child_by_field_name(node, "expression", 10));
     }
     if (is(node, "call_expression")) {
         TSNode callee = ts_node_child_by_field_name(node, "function", 8);
@@ -1677,10 +1690,8 @@ static bool storage_path(const char *text, lazy *all, TSNode root, TSNode node)
         return ts_node_end_byte(callee) - start == 13 &&
                !strncmp(text + start, "get_component", 13);
     }
-    if (!is(node, "identifier")) {
-        return is(node, "builtin_reference");
-    }
-    return !names_action(text, root, node);
+    return is(node, "builtin_reference") ||
+           (is(node, "identifier") && names_storage(text, node));
 }
 /* Whether `node` calls something that runs before `read` is evaluated. */
 static bool calls_before(TSNode node, TSNode read)
@@ -1928,7 +1939,7 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
     free(seen);
     for (int k = 0; !status && k < acount(order); k++) {
         lazy *l = &all[order[k]];
-        l->alias = storage_path(text, all, root, ts_node_child_by_field_name(l->node, "value", 5));
+        l->alias = storage_path(text, all, ts_node_child_by_field_name(l->node, "value", 5));
     }
     replacement *edits = NULL;
     local_use *uses = NULL;

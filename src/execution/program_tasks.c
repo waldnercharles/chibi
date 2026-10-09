@@ -357,8 +357,16 @@ int program_task_command(
         case NODE_COMMAND_TASK_RUNNING:
             program_request_deliver(request, &(pin_value){ .type = PIN_BOOL, .b = running }, 1);
             break;
-        case NODE_COMMAND_TASK_CANCEL:
+        case NODE_COMMAND_TASK_CANCEL: {
+            /* A continuation is not yet listed while it first runs, so
+             * cancelling its task, which may itself be running, cannot
+             * reach it there. */
+            uint64_t owner = program_owning_task(a);
+            bool owned = find(instance, owner) && find(instance, owner)->activation;
             cancel(instance, handle);
+            execution_task *own = find(instance, owner);
+            a->stopping |= owned &&
+                           (!own || !own->activation || own->activation->stopping);
             /* A caller that cancelled itself stops here. */
             if (a->stopping) {
                 flow_host_release(request);
@@ -366,6 +374,7 @@ int program_task_command(
             }
             program_request_deliver(request, NULL, 0);
             break;
+        }
         case NODE_COMMAND_TASK_JOIN:
             if (running) {
                 if (program_owning_task(a) == handle) {

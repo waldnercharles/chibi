@@ -1875,10 +1875,13 @@ TEST_CASE(program_task_owns_tasks_started_by_its_continuations)
 TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task)
 {
     /* The continuation resumes on its own, so P is suspended while it runs.
-     * Cancelling P stops P and the continuation; awaiting P never ends. */
-    const char *bodies[] = { "cancel worker; hit = 1", "await worker" };
+     * Cancelling P stops P and the continuation, even while the continuation
+     * first runs; awaiting P never ends. */
+    const char *bodies[] = { "yield; cancel worker; hit = 1",
+                             "cancel worker; hit = 1",
+                             "yield; await worker" };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
-    for (int c = 0; c < 2; c++) {
+    for (int c = 0; c < 3; c++) {
         char source[EXAMPLE_SOURCE_CAPACITY];
         int length = snprintf(
             source,
@@ -1886,8 +1889,8 @@ TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task)
             "behavior S { worker: task; hit: double = 0;"
             "function Count() -> (shown: double) { return 1 }"
             "action act = Count();"
-            "function P() -> () { act(); await Delay(10) }"
-            "after act { yield; %s }"
+            "function P() -> () { yield; act(); await Delay(10) }"
+            "after act { %s }"
             "on Impulse(amount, enabled) { worker = P() } }",
             bodies[c]
         );
@@ -1902,11 +1905,14 @@ TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task)
             const pin_value args[] = { { .type = PIN_F64, .d = 0 },
                                        { .type = PIN_BOOL, .b = true } };
             REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-            if (c) {
+            if (c == 2) {
+                REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
                 REQUIRE(execution_program_update(program, 1, 0, 1000) != FLOW_OK);
                 continue;
             }
-            REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+            for (int u = 0; u < 2; u++) {
+                REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+            }
             REQUIRE(execution_instance_pending(instance) == 0);
             REQUIRE(number_state(instance, "hit", 0));
         }
@@ -2620,16 +2626,18 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
         REQUIRE(unchanged && !strstr(unchanged, "local") && strstr(unchanged, "X := 1; n = X"));
         free(unchanged);
     }
-    /* A local naming storage reads and writes it; an action's output is
-     * read once. */
+    /* A local naming storage reads and writes it; an action's output or the
+     * owner is read once. */
     const char *alias = "behavior L { n: double = 0\n"
                         "    local alias = n\n"
                         "    local typed: double = alias\n"
                         "    action wait = timer(1)\n"
                         "    local done = wait.Done\n"
                         "    local hp = get_component(self).Value\n"
+                        "    local me = self\n"
+                        "    local health = self.Health\n"
                         "    on Tick() { alias = 2; m := typed; typed = 3; n = "
-                        "done; hp = 4 }\n"
+                        "done; hp = 4; e := me; health = 5 }\n"
                         "}\n";
     REQUIRE(!chibi_migrate_locals(alias, &unchanged, error, sizeof error));
     REQUIRE(
@@ -2639,7 +2647,8 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
                          "    action wait = timer(1)\n"
                          "    on Tick() { n = 2; m := n; n = 3; done := "
                          "wait.Done; n = done; "
-                         "get_component(self).Value = 4 }\n"
+                         "get_component(self).Value = 4; me := self; e := me; "
+                         "self.Health = 5 }\n"
                          "}\n"
                      )
     );

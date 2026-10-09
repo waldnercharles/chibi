@@ -206,6 +206,7 @@ static bool compile(render_programs *programs, program *entry)
             ramp_at
         );
         assert(length < (int)sizeof ramps);
+        (void)length;
     }
     char *graphs = render_shader_glsl(&entry->set, 2, first_image(programs->kind));
     if (programs->kind == RENDER_PROGRAM_SDF_PREVIEW && entry->preview_part >= 0) {

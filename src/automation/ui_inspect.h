@@ -64,9 +64,9 @@ int automation_ui_complete(
 bool automation_ui_references_requested(yyjson_val *request);
 /* Their definitions (a selector styling the class, a declaration of the
  * property) and uses across the ui assets and stylesheets under
- * `root`/content, each at its path, line and column. */
+ * `content_root`, each at its content/ path, line and column. */
 int automation_ui_references(
-    const char *root,
+    const char *content_root,
     yyjson_val *request,
     yyjson_mut_doc *doc,
     yyjson_mut_val *result,

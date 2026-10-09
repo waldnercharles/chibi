@@ -9,17 +9,21 @@ static const float STICK_DEAD_ZONE = 0.18f;
 /* Triggers count as held past a quarter of their travel. */
 static const int TRIGGER_THRESHOLD = 8192;
 
-/* Radial dead zone, rescaled so the stick still reaches full length. Y is
- * positive down, like gameplay coordinates. */
-static CF_V2 stick(CF_JoypadAxis x, CF_JoypadAxis y)
+CF_V2 game_controls_dead_zone(CF_V2 v)
 {
-    CF_V2 v = { cf_joypad_axis(0, x) / 32768.0f, cf_joypad_axis(0, y) / 32768.0f };
     float length = sqrtf(v.x * v.x + v.y * v.y);
     if (length <= STICK_DEAD_ZONE) {
         return (CF_V2){ 0 };
     }
     float scale = fminf(1, (length - STICK_DEAD_ZONE) / (1 - STICK_DEAD_ZONE)) / length;
     return (CF_V2){ v.x * scale, v.y * scale };
+}
+
+/* Y is positive down, like gameplay coordinates. */
+static CF_V2 stick(CF_JoypadAxis x, CF_JoypadAxis y)
+{
+    return game_controls_dead_zone((CF_V2){ cf_joypad_axis(0, x) / 32768.0f,
+                                            cf_joypad_axis(0, y) / 32768.0f });
 }
 
 GameControl game_control_for_key(CF_KeyButton key)

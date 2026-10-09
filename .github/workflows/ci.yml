@@ -83,10 +83,10 @@ jobs:
         run: |
           make test-policy-inventory | tee -a "$GITHUB_STEP_SUMMARY"
           cat docs/test-quarantine.md >> "$GITHUB_STEP_SUMMARY"
-      - name: Essential C regressions (60-second aggregate ceiling)
-        run: make test-tools TOOLS_C_COMPILER=clang-18
       - name: Compile owned SDK and CLI products
         run: make build
+      - name: Essential C regressions with reflection identity (60-second aggregate ceiling)
+        run: make test-tools TOOLS_C_COMPILER=clang-18
       - name: Record retired suite ownership
         run: |
           printf '%s\n' 'The old test_suite, graph smoke executables and combined chibi app are retired.'

@@ -286,14 +286,6 @@ if(CHIBI_BUILD_TESTS AND NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripte
             "-DCONCURRENT=$<TARGET_FILE:concurrent_runner>"
             -P "${CMAKE_SOURCE_DIR}/cmake/tests/generation.cmake"
         DEPENDS concurrent_runner VERBATIM)
-    if(TARGET reflect)
-        add_custom_target(check-reflect
-            COMMAND ${CMAKE_COMMAND} "-DREFLECT=$<TARGET_FILE:reflect>"
-                "-DTEST_DIR=${CMAKE_BINARY_DIR}/tests/identity"
-                "-DCONCURRENT=$<TARGET_FILE:concurrent_runner>"
-                -P "${CMAKE_SOURCE_DIR}/cmake/tests/identity.cmake"
-            DEPENDS reflect concurrent_runner VERBATIM)
-    endif()
 endif()
 
 # Windows needs Developer Mode for symbolic links, so editors there read the

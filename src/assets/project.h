@@ -9,8 +9,11 @@
 #define CHIBI_APPLICATION_TEXT_MAX 1024
 
 /* The manifest version this build opens. Bump it when an asset contract
-   change stops projects saved by earlier builds from loading. */
-#define CHIBI_PROJECT_VERSION 10
+   change alters what projects saved by earlier builds mean or stops them from
+   loading, and add the step that upgrades them in project_migrate.c. */
+#define CHIBI_PROJECT_VERSION 14
+/* Opening a project from this version on upgrades it in place first. */
+#define CHIBI_PROJECT_OLDEST_VERSION 10
 
 /* The optional `application` block: how a shipped game presents its window. */
 typedef struct
@@ -40,6 +43,9 @@ char *chibi_project_find(const char *start);
  * `root` must not already exist; its parent directory must exist. */
 int chibi_project_create(const char *root, const char *name, char *error, size_t error_size);
 void chibi_project_free(chibi_project *project);
+/* Upgrades the project at `path` to CHIBI_PROJECT_VERSION in place. Returns
+ * the number of version steps applied, or -1 with `error` set. */
+int chibi_project_migrate(const char *path, char *error, size_t error_size);
 
 /* Returns an owned scene path inside the selected project. */
 char *chibi_project_scene_path(const chibi_project *project, const char *requested);

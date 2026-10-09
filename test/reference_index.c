@@ -291,7 +291,6 @@ static void test_documents()
         "components {\n"
         "    GameShader material=\"Hull\"\n"
         "    GameUi document=\"Hud\"\n"
-        "    GameActionBinding action=\"Fire\"\n"
         "}\n",
         &registry,
         error,
@@ -315,13 +314,6 @@ static void test_documents()
         reference_index_count_uses(index, asset_symbol(flight), REFERENCE_ROLE(REFERENCE_ATTACH)) == 1
     );
     assert(reference_index_count_uses(index, asset_symbol(hud), REFERENCE_ROLE(REFERENCE_BIND)) == 1);
-    assert(
-        reference_index_count_uses(
-            index,
-            named(REFERENCE_SYMBOL_EVENT, "Fire", NULL),
-            REFERENCE_ROLE(REFERENCE_SEND)
-        ) == 1
-    );
 
     const char *behaviors[] = { "Flight" };
     av_value *overrides = test_read_asset_value("GAME.GameShader material=\"Chrome\"\n");

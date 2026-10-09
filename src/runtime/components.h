@@ -782,15 +782,25 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
 }
 GameCamera;
 
+/* Sources are grouped by device: mouse, keyboard, then controller. Escape is
+ * not a source: hosts reserve it to pause play. */
 typedef enum
 {
     GAME_CONTROL_NONE,
     GAME_CONTROL_MOUSE_LEFT,
     GAME_CONTROL_MOUSE_RIGHT,
+    GAME_CONTROL_MOUSE_MIDDLE,
     GAME_CONTROL_SPACE,
     GAME_CONTROL_SHIFT,
+    GAME_CONTROL_CONTROL,
+    GAME_CONTROL_ALT,
     GAME_CONTROL_TAB,
     GAME_CONTROL_ENTER,
+    GAME_CONTROL_BACKSPACE,
+    GAME_CONTROL_ARROW_UP,
+    GAME_CONTROL_ARROW_DOWN,
+    GAME_CONTROL_ARROW_LEFT,
+    GAME_CONTROL_ARROW_RIGHT,
     GAME_CONTROL_A,
     GAME_CONTROL_B,
     GAME_CONTROL_C,
@@ -817,6 +827,16 @@ typedef enum
     GAME_CONTROL_X,
     GAME_CONTROL_Y,
     GAME_CONTROL_Z,
+    GAME_CONTROL_0,
+    GAME_CONTROL_1,
+    GAME_CONTROL_2,
+    GAME_CONTROL_3,
+    GAME_CONTROL_4,
+    GAME_CONTROL_5,
+    GAME_CONTROL_6,
+    GAME_CONTROL_7,
+    GAME_CONTROL_8,
+    GAME_CONTROL_9,
     GAME_CONTROL_PAD_A,
     GAME_CONTROL_PAD_B,
     GAME_CONTROL_PAD_X,
@@ -828,18 +848,6 @@ typedef enum
     GAME_CONTROL_AIM_STICK,
     GAME_CONTROL_COUNT,
 } GameControl;
-
-/* Multiple sources for the same action are combined before dispatch. Actions
- * target GameInput owners; firing also controls the continuous Aim state. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameActionBinding)
-{
-    GameControl source;
-    const char *action;
-    bool firing;
-    bool disabled;
-    bool pressed;
-}
-GameActionBinding;
 
 /* Shows the ui asset content/ui/<document>.rml over the game view, above
  * documents with a lower order. An element's emit('Event') binding, as in

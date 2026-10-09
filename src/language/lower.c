@@ -301,11 +301,12 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
         range
     );
 }
-/* Any numeric index, such as a `number`, truncates to the int an array takes. */
-static int index_slot(lower *l, const script_expression *e)
+/* Any numeric value, such as a `number`, truncates to the int an array index
+ * or a range bound takes. */
+static int int_slot(lower *l, int value, script_range range)
 {
-    script_type from = l->a->expressions[e->right].type;
-    return convert(l, expression(l, e->right), from, (script_type){ .storage = PIN_I32 }, e->range);
+    script_type from = l->a->expressions[value].type;
+    return convert(l, expression(l, value), from, (script_type){ .storage = PIN_I32 }, range);
 }
 static behavior_function_op binary_op(script_operator op)
 {
@@ -2861,7 +2862,7 @@ static int reference_expression(lower *l, const script_expression *e)
         int slots[] = { reference(l, e->left), -1, -1, -1 };
         if (e->kind == SCRIPT_EXPR_INDEX) {
             headers[2] = (pin_value){ .type = PIN_I32 };
-            slots[2] = index_slot(l, e);
+            slots[2] = int_slot(l, e->right, e->range);
         }
         return primitive(
             l,
@@ -3157,7 +3158,7 @@ static int expression_value(lower *l, int index)
         }
         case SCRIPT_EXPR_INDEX: {
             int array = expression(l, e->left);
-            return array_item(l, array, index_slot(l, e), e->type, e->range);
+            return array_item(l, array, int_slot(l, e->right, e->range), e->type, e->range);
         }
         case SCRIPT_EXPR_FALLBACK: return expression(l, e->left);
         case SCRIPT_EXPR_NIL:
@@ -4090,7 +4091,8 @@ static void statement(lower *l, int index)
             return;
         }
         case SCRIPT_STMT_FOR: {
-            int first = expression(l, s->expression), last = expression(l, s->second);
+            int first = int_slot(l, s->expression, s->range),
+                last = int_slot(l, s->second, s->range);
             store_symbol(l, s->symbol, first, s->range);
             int bound = behavior_function_builder_local(l->builder, (pin_value){ .type = PIN_I32 });
             emit(

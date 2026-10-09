@@ -2406,7 +2406,7 @@ TEST_CASE(program_task_keeps_state_and_component_references)
     return true;
 }
 /* Found porting Celeste's player: a zero-argument function that only calls
- * others, a number array index and clamp over an int bound. */
+ * others, number array indexes and range bounds, and clamp over an int bound. */
 TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp)
 {
     const char
@@ -2418,7 +2418,8 @@ TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp)
                   "function Bump() { n += 1 } function Relay() { Bump() }"
                   "function Kick() { Relay() }"
                   "on Impulse(amount, enabled) { i := 2; a[i] = 10;"
-                  "n = Start() + a[2] + clamp(amount, 0, w); Kick() } }";
+                  "n = Start() + a[2] + clamp(amount, 0, w); Kick();"
+                  "j := 1.5; for (k in 1..j) { n += k } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -2430,7 +2431,7 @@ TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp)
         const pin_value args[] = { { .type = PIN_F64, .d = 2.5 },
                                    { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-        REQUIRE(number_state(instance, "n", 16.5));
+        REQUIRE(number_state(instance, "n", 17.5));
     }
     return true;
 }

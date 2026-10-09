@@ -5,11 +5,88 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifdef _WIN32
+
+#include "support/xalloc.h"
+
+#include <windows.h>
+
+/* Appends `arg` quoted as CommandLineToArgvW and the C runtime split it:
+ * backslashes double only before a quote. */
+static char *quote(char *out, const char *arg)
+{
+    if (arg[0] && !strpbrk(arg, " \t\n\v\"")) {
+        size_t length = strlen(arg);
+        memcpy(out, arg, length + 1);
+        return out + length;
+    }
+    *out++ = '"';
+    for (const char *c = arg;; c++) {
+        size_t slashes = 0;
+        for (; *c == '\\'; c++) {
+            slashes++;
+        }
+        size_t doubled = !*c || *c == '"' ? 2 * slashes : slashes;
+        memset(out, '\\', doubled);
+        out += doubled;
+        if (!*c) {
+            break;
+        }
+        if (*c == '"') {
+            *out++ = '\\';
+        }
+        *out++ = *c;
+    }
+    *out++ = '"';
+    *out = 0;
+    return out;
+}
+
+/* The command line CreateProcess takes for `argv`, owned by the caller. */
+static char *command_line(char *const *argv)
+{
+    size_t size = 1;
+    for (char *const *arg = argv; *arg; arg++) {
+        size += 2 * strlen(*arg) + 3;
+    }
+    char *line = xmalloc(size), *out = line;
+    for (char *const *arg = argv; *arg; arg++) {
+        if (arg != argv) {
+            *out++ = ' ';
+        }
+        out = quote(out, *arg);
+    }
+    *out = 0;
+    return line;
+}
+
+int chibi_process_run(char *const *argv)
+{
+    char *line = command_line(argv);
+    STARTUPINFOA startup = { .cb = sizeof startup };
+    PROCESS_INFORMATION info;
+    bool started = CreateProcessA(NULL, line, NULL, NULL, TRUE, 0, NULL, NULL, &startup, &info);
+    free(line);
+    if (!started) {
+        fprintf(stderr, "Cannot run %s: error %lu\n", argv[0], GetLastError());
+        return 1;
+    }
+    CloseHandle(info.hThread);
+    WaitForSingleObject(info.hProcess, INFINITE);
+    DWORD status = 1;
+    GetExitCodeProcess(info.hProcess, &status);
+    CloseHandle(info.hProcess);
+    return (int)status;
+}
+#else
+
 #include <fcntl.h>
 #include <signal.h>
 #include <spawn.h>
-#include <stdio.h>
-#include <string.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -138,3 +215,4 @@ void chibi_process_stop(chibi_process *process)
     process->stop_started_ms = milliseconds();
     kill(-process->pid, SIGTERM);
 }
+#endif

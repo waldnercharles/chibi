@@ -14,6 +14,10 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef _WIN32
+#include <signal.h>
+#include <sys/utime.h>
+#endif
 
 /* chibi [PROJECT] [PLAYER OPTIONS]: prepares the project when its sources or
  * the compiler changed since the last preparation, then plays it.
@@ -38,7 +42,10 @@ static int64_t modified(const char *path)
     if (stat(path, &info) != 0) {
         return -1;
     }
-#if defined(__APPLE__)
+#if defined(_WIN32)
+    /* The Windows runtime stats whole seconds. */
+    struct timespec time = { .tv_sec = info.st_mtime };
+#elif defined(__APPLE__)
     struct timespec time = info.st_mtimespec;
 #else
     struct timespec time = info.st_mtim;
@@ -63,12 +70,18 @@ typedef struct visit
 
 static bool visiting(const visit *path, const struct stat *info)
 {
+#ifdef _WIN32
+    /* The Windows runtime reports no inodes, so links back up the walk path
+     * are not detected there. */
+    return false;
+#else
     for (; path; path = path->parent) {
         if (path->device == info->st_dev && path->inode == info->st_ino) {
             return true;
         }
     }
     return false;
+#endif
 }
 
 /* Whether `directory` or anything under it, except ignored entries, changed
@@ -201,7 +214,7 @@ static void record_compiler(const char *stamp, const char *identity)
 static int prepare(const char *bin, const chibi_project *project, const char *artifact)
 {
     const char *root = project->root;
-    char *compiler = join(bin, "chibi-compile");
+    char *compiler = join(bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
     char *identity = compiler_identity(compiler);
     char *stamp = join(root, CHIBI_COMPILER_STAMP);
     int64_t prepared = modified(artifact);
@@ -221,7 +234,14 @@ static int prepare(const char *bin, const chibi_project *project, const char *ar
         started[1] = started[0];
         result = chibi_process_run(argv);
         if (!result) {
+#ifdef _WIN32
+            /* A second early, as modified() truncates, so a source saved in
+             * the same second is newer. */
+            time_t second = started[0].tv_sec - 1;
+            utime(artifact, &(struct utimbuf){ .actime = second, .modtime = second });
+#else
             utimensat(AT_FDCWD, artifact, started, 0);
+#endif
             record_compiler(stamp, identity);
         }
         free(dot);
@@ -299,13 +319,20 @@ int main(int argc, char **argv)
     }
     int count = argc - first;
     char **player = xmalloc((size_t)(count + 5) * sizeof *player);
-    player[0] = join(bin, "chibi-player");
+    player[0] = join(bin, "chibi-player" CHIBI_EXECUTABLE_SUFFIX);
     player[1] = artifact;
     player[2] = "--resource-root";
     player[3] = root;
     memcpy(player + 4, argv + first, (size_t)count * sizeof *player);
     player[count + 4] = NULL;
+#ifdef _WIN32
+    /* Windows has no exec that keeps the process; wait for the player, which
+     * handles Ctrl+C itself. */
+    signal(SIGINT, SIG_IGN);
+    return chibi_process_run(player);
+#else
     execv(player[0], player);
     fprintf(stderr, "Cannot run %s: %s\n", player[0], strerror(errno));
     return 1;
+#endif
 }

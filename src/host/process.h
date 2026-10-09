@@ -5,6 +5,18 @@
 #include <stdint.h>
 #include <sys/types.h>
 
+#ifdef _WIN32
+#define CHIBI_EXECUTABLE_SUFFIX ".exe"
+#else
+#define CHIBI_EXECUTABLE_SUFFIX ""
+#endif
+
+/* Runs argv[0], a path or a program on PATH, with this process's standard
+ * streams and waits for it. Returns its exit code or 128 + signal, or prints
+ * why it could not start and returns 1. */
+int chibi_process_run(char *const *argv);
+
+#ifndef _WIN32
 typedef struct
 {
     pid_t pid;
@@ -21,13 +33,10 @@ bool chibi_process_start(
     const char *cwd,
     const char *logpath
 );
-/* Runs argv[0], a path or a program on PATH, with this process's standard
- * streams and waits for it. Returns its exit code or 128 + signal, or prints
- * why it could not start and returns 1. */
-int chibi_process_run(char *const *argv);
 /* Poll reaps without blocking. Finished status is exit code or 128 + signal. */
 bool chibi_process_poll(chibi_process *process);
 /* Signal the entire group. Continue polling to reap and escalate after 2 s. */
 void chibi_process_stop(chibi_process *process);
+#endif
 
 #endif

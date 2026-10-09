@@ -80,8 +80,21 @@ if(CHIBI_WEB_THREADS)
         "-sPTHREAD_POOL_SIZE=${CHIBI_WEB_POOL_SIZE}" -sPTHREAD_POOL_SIZE_STRICT=2
         -sALLOW_MEMORY_GROWTH=1)
 endif()
-chibi_sdk_headers(chibi_support PUBLIC support/arena.h support/array.h support/xalloc.h
-    support/rcss_map.h support/enum.h support/cos_sin.h support/file_io.h support/math.h)
+set(support_headers support/arena.h support/array.h support/xalloc.h support/rcss_map.h
+    support/enum.h support/cos_sin.h support/file_io.h support/math.h)
+if(WIN32)
+    # C sources that use the SDK get the POSIX calls the Microsoft runtime lacks.
+    target_sources(chibi_support PRIVATE "${CHIBI_SDK_ROOT}/src/support/win32/posix.c")
+    list(APPEND support_headers support/win32/posix.h support/win32/unistd.h
+        support/win32/dirent.h support/win32/strings.h support/win32/sys/file.h)
+    set(posix "support/support/win32")
+    target_include_directories(chibi_support PUBLIC
+        "$<$<COMPILE_LANGUAGE:C>:$<BUILD_INTERFACE:${CHIBI_SDK_HEADER_ROOT}/${posix}>>"
+        "$<$<COMPILE_LANGUAGE:C>:$<INSTALL_INTERFACE:include/chibi/${posix}>>")
+    target_compile_options(chibi_support PUBLIC
+        "$<$<COMPILE_LANGUAGE:C>:-include$<BUILD_INTERFACE:${CHIBI_SDK_HEADER_ROOT}/${posix}/posix.h>$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/include/chibi/${posix}/posix.h>>")
+endif()
+chibi_sdk_headers(chibi_support PUBLIC ${support_headers})
 if(UNIX)
     target_link_libraries(chibi_support PUBLIC m)
 endif()

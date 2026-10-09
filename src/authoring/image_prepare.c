@@ -14,6 +14,8 @@
 #define CUTE_JPG_IMPLEMENTATION
 #include "vendor/image_jpg.h"
 #define IMAGE_BYTES_MAX (64 * 1024 * 1024)
+#define IMAGE_SIDES_MESSAGE                                                    \
+    "Image dimensions must be between 1 and 2048 pixels per side"
 static char **roots;
 static void clear(void *)
 {
@@ -48,6 +50,11 @@ static void *read_file(FILE *file, int *length)
     }
     *length = (int)bytes;
     return data;
+}
+static bool sides_valid(int width, int height)
+{
+    return width >= 1 && height >= 1 && width <= RENDER_IMAGE_SIDE_MAX &&
+           height <= RENDER_IMAGE_SIDE_MAX;
 }
 static void *read_bytes(const char *key, int *length)
 {
@@ -86,10 +93,9 @@ static bool decode(void *, const char *key, shader_image_view *out, char *error,
     } else {
         chibi_image_cj_load_jpg_wh(bytes, length, &width, &height);
     }
-    if (width < 1 || height < 1 || width > RENDER_IMAGE_SIDE_MAX ||
-        height > RENDER_IMAGE_SIDE_MAX) {
+    if (!sides_valid(width, height)) {
         free(bytes);
-        return failure(error, size, "Image dimensions must be between 1 and 2048 pixels per side");
+        return failure(error, size, IMAGE_SIDES_MESSAGE);
     }
     unsigned char *pixels = NULL;
     if (png) {
@@ -117,6 +123,12 @@ bool image_prepare_png_valid(const char *path, char *error, size_t size)
     void *bytes = file ? read_file(file, &length) : NULL;
     if (!bytes) {
         return failure(error, size, "Cannot read bounded image file");
+    }
+    int width = 0, height = 0;
+    chibi_image_cp_load_png_wh(bytes, length, &width, &height);
+    if (!sides_valid(width, height)) {
+        free(bytes);
+        return failure(error, size, IMAGE_SIDES_MESSAGE);
     }
     chibi_image_cp_image_t image = chibi_image_cp_load_png_mem(bytes, length);
     free(bytes);

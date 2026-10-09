@@ -583,6 +583,18 @@ TEST_CASE(manifest_content_folder_is_used)
     REQUIRE(rename(from, to) == 0);
     set_manifest("content", "assets");
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    /* Only the content folder is read before a request, so the manifest's
+     * other problems are still listed with the project's. */
+    char kdl[256];
+    path(kdl, sizeof kdl, "game/project.kdl");
+    char *saved = tool_read(kdl);
+    assert(saved);
+    append_manifest("application {\n    fullscreen \"yes\"\n}\n");
+    REQUIRE(validate() != 0 && errors() == 1);
+    const char *listed = first_message(result("project"));
+    REQUIRE(listed && strstr(listed, "fullscreen a boolean"));
+    tool_write(kdl, saved);
+    free(saved);
     /* A start scene's content/ path stays relative to the project root, as
      * earlier builds read it, so with the content in assets/ it is missing. */
     set_start_scene("content/scenes/Start.kdl");

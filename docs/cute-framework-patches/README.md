@@ -20,6 +20,8 @@ Each retained patch has an unlisted GitHub gist containing a README and the exac
 
 The rows follow the build's application order. Sixteen patches apply independently to the audited commit. The custom-shape cache requires the coverage patch because it uses that patch's registration helper and coverage flag. The complete ordered series also applies cleanly.
 
+The counts and checks on this page cover the audit. One patch added since, `cute-sound-free-queue-music-volume`, applies independently and has no gist yet.
+
 | Patch and gist | Why it remains |
 | --- | --- |
 | [cute-installed-sdl](https://gist.github.com/waldnercharles/69885ff04ff601e04c67658722d81713) | Optional use of an exact installed SDL3 package. |
@@ -39,6 +41,7 @@ The rows follow the build's application order. Sixteen patches apply independent
 | [cute-instance-buffer](https://gist.github.com/waldnercharles/6d3532d8380b80ab5d6f8a304b10bc12) | Expose existing shared instance staging through the public C header. |
 | [cute-depth-snapshot](https://gist.github.com/waldnercharles/35405925d7c0b7f9a4b4645f35337b76) | Copy depth for later SDF visibility tests. |
 | [cute-sanitizer-cleanup](https://gist.github.com/waldnercharles/6e73081d5c96eed112d9ba64210d30a2) | Release shader, material, draw, font and compute allocations. |
+| [cute-sound-free-queue-music-volume](cute-sound-free-queue-music-volume.md) | Grow the deferred free queue by pointers and apply the music volume once. |
 
 ## Partial upstream work
 

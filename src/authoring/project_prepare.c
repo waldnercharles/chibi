@@ -8,6 +8,7 @@
 #include "authoring/prototype_prepare.h"
 #include "authoring/scene_prepare.h"
 #include "authoring/shader_prepare.h"
+#include "authoring/sound_prepare.h"
 #include "authoring/source_collection.h"
 #include "authoring/ui_prepare.h"
 #include "authoring/visual_prepare.h"
@@ -195,7 +196,7 @@ static char *manifest(const game_player_asset *assets, const authoring_project_a
 {
     static const char *const kinds[] = { "shader", "model",         "mesh",
                                          "image",  "shader-values", "parts",
-                                         "ui",     "font" };
+                                         "ui",     "font",          "sound" };
     static_assert(sizeof kinds / sizeof *kinds == GAME_PLAYER_ASSET_COUNT);
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_obj(doc);
@@ -433,6 +434,9 @@ bool authoring_project_prepare(
         goto done;
     }
     if (!authoring_ui_assets_prepare(project.content, visual_scenes, acount(visual_scenes), &assets, error, size)) {
+        goto done;
+    }
+    if (!authoring_sounds_prepare(project.content, &assets, error, size)) {
         goto done;
     }
     game_player_spec spec = {

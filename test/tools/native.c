@@ -1,6 +1,7 @@
 #include "execution/function_builder.h"
 #include "execution/module_builder.h"
 #include "execution/status.h"
+#include "runtime/audio.h"
 #include "runtime/behaviors/entities_native.h"
 #include "runtime/behaviors/entities_source.h"
 #include "runtime/component_catalog.h"
@@ -504,8 +505,10 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         module = NULL;
         GameTransform transform = { .x = 4 };
         GameGlobalBinding binding = { .name = "Player" };
-        game_scene_component components[] = { { &GAME_COMPONENT_GameTransform, &transform },
-                                              { &GAME_COMPONENT_GameGlobalBinding, &binding } };
+        game_scene_component components[] = {
+            { &GAME_COMPONENT_GameTransform, &transform },
+            { &GAME_COMPONENT_GameGlobalBinding, &binding }
+        };
         const char *behavior = "Initial";
         game_scene_object object = { .name = "Initial",
                                      .components = components,
@@ -654,6 +657,130 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
     }
     return true;
 }
+static int staged_sounds;
+static void *stage_sounds(void *, const game_player_asset *assets, int count, size_t *, char *, size_t)
+{
+    staged_sounds = count && assets[0].kind == GAME_PLAYER_ASSET_SOUND ? count : -1;
+    return &staged_sounds;
+}
+static bool any_scene(void *, void *, const game_scene *, char *, size_t)
+{
+    return true;
+}
+static void keep_sounds(void *, void *, game_world *) {}
+static void drop_sounds(void *, void *) {}
+static const char *call(const node_host_call *host, game_audio *audio, pin_value a, pin_value b)
+{
+    pin_value in[] = { a, b, { .type = PIN_F32, .f = 0.5f } };
+    return host->invoke(audio, in, NULL);
+}
+TEST_CASE(native_player_plays_sounds)
+{
+    char error[192];
+    GameTransform transform = { .x = 1 };
+    game_scene_component component = { &GAME_COMPONENT_GameTransform, &transform };
+    game_scene_object object = { .name = "Hero",
+                                 .components = &component,
+                                 .component_count = 1 };
+    game_scene_spec scene_spec = { .name = "Start",
+                                   .physics = game_physics_defaults(),
+                                   .objects = &object,
+                                   .object_count = 1 };
+    scene = game_scene_prepare(&scene_spec, error, sizeof error);
+    REQUIRE(scene);
+    static const unsigned char wav[] = "RIFF\x24\0\0\0WAVEfmt ";
+    game_player_asset sound = { .name = "Jump",
+                                .kind = GAME_PLAYER_ASSET_SOUND,
+                                .data = wav,
+                                .length = sizeof wav };
+    game_player_resource_host resources = { .stage = stage_sounds,
+                                            .scene = any_scene,
+                                            .commit = keep_sounds,
+                                            .discard = drop_sounds,
+                                            .retire = drop_sounds };
+    game_player_spec spec = { .world = { .modules = GAME_WORLD_AUDIO },
+                              .scene = scene,
+                              .assets = &sound,
+                              .asset_count = 1,
+                              .resources = resources };
+    size_t length;
+    REQUIRE(game_player_prepared_write(&spec, &player_bytes, &length, error, sizeof error));
+    game_player_host host_context = {
+        .components = { .components = GAME_REGISTRY_COMPONENTS,
+                        .component_count = GAME_REGISTRY_COMPONENT_COUNT },
+        .linker = &(execution_prepared_linker){ .host = player_host },
+        .resources = resources
+    };
+    player = game_player_prepared_read(player_bytes, length, &host_context, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(player && staged_sounds == 1);
+    game_audio *audio = game_world_modules(game_player_world(player))->audio;
+    REQUIRE(game_audio_sound_count(audio) == 1);
+    REQUIRE(!memcmp(game_audio_sound(audio, 0, &length), wav, sizeof wav) && length == sizeof wav);
+
+    pin_value jump = { .type = PIN_STR, .str = "Jump" },
+              missing = { .type = PIN_STR, .str = "Missing" };
+    pin_value quarter = { .type = PIN_F32, .f = 0.25f },
+              two = { .type = PIN_F32, .f = 2 };
+    REQUIRE(!call(&GAME_AUDIO_SOUND_CALL, audio, jump, quarter));
+    REQUIRE(!strcmp(call(&GAME_AUDIO_SOUND_CALL, audio, missing, quarter), "No sound named 'Missing'"));
+    REQUIRE(call(&GAME_AUDIO_SOUND_CALL, audio, jump, two));
+    game_voice voices[2];
+    REQUIRE(game_audio_take(audio, voices, 2) == 1 && game_audio_count(audio) == 1);
+    REQUIRE(voices[0].sound == 0 && voices[0].volume == 0.25f && voices[0].pan == 0.5f);
+    REQUIRE(game_audio_tone(audio, (game_tone){ 440, 220, 0.1f, 0.5f, 0.5f, 0 }));
+    REQUIRE(game_audio_take(audio, voices, 2) == 1 && voices[0].sound == -1);
+
+    float fade;
+    uint64_t started, serial;
+    REQUIRE(!call(&GAME_AUDIO_MUSIC_CALL, audio, jump, two));
+    REQUIRE(game_audio_music(audio, &fade, &started) == 0 && fade == 2);
+    /* The playing track keeps playing when a scene asks for it again. */
+    REQUIRE(!call(&GAME_AUDIO_MUSIC_CALL, audio, jump, quarter));
+    REQUIRE(game_audio_music(audio, &fade, &serial) == 0 && serial == started && fade == 2);
+    REQUIRE(!call(&GAME_AUDIO_STOP_MUSIC_CALL, audio, quarter, quarter));
+    REQUIRE(game_audio_music(audio, &fade, &serial) == -1 && serial != started && fade == 0.25f);
+    REQUIRE(!call(&GAME_AUDIO_MUSIC_VOLUME_CALL, audio, quarter, quarter));
+    REQUIRE(call(&GAME_AUDIO_SOUND_VOLUME_CALL, audio, two, two));
+    REQUIRE(game_audio_volume(audio, GAME_AUDIO_MUSIC) == 0.25f);
+    REQUIRE(
+        game_audio_volume(audio, GAME_AUDIO_MASTER) == 1 &&
+        game_audio_volume(audio, GAME_AUDIO_SOUNDS) == 1
+    );
+
+    uint64_t generation = game_audio_generation(audio), hash = game_audio_hash(audio);
+    REQUIRE(
+        hash && !call(&GAME_AUDIO_MUSIC_CALL, audio, jump, two) &&
+        game_audio_hash(audio) != hash
+    );
+    REQUIRE(!call(&GAME_AUDIO_SOUND_CALL, audio, jump, quarter));
+    REQUIRE(!call(&GAME_AUDIO_MASTER_VOLUME_CALL, audio, quarter, quarter));
+    REQUIRE(!call(&GAME_AUDIO_SOUND_VOLUME_CALL, audio, quarter, quarter));
+    REQUIRE(game_audio_volume(audio, GAME_AUDIO_SOUNDS) == 0.25f);
+    engine_reset(game_world_engine(game_player_world(player)));
+    REQUIRE(
+        game_audio_generation(audio) != generation &&
+        game_audio_music(audio, &fade, &serial) == -1
+    );
+    REQUIRE(!game_audio_hash(audio) && !game_audio_count(audio));
+    REQUIRE(!game_audio_take(audio, voices, 2) && game_audio_sound_count(audio) == 1);
+    for (int i = 0; i < GAME_AUDIO_BUSES; i++) {
+        REQUIRE(game_audio_volume(audio, i) == 1);
+    }
+    static const unsigned char text[] = "not a sound file";
+    sound = (game_player_asset){ .name = "Text",
+                                 .kind = GAME_PLAYER_ASSET_SOUND,
+                                 .data = text,
+                                 .length = sizeof text };
+    REQUIRE(!game_player_asset_valid(&sound));
+    sound = (game_player_asset){ .name = "Jump",
+                                 .kind = GAME_PLAYER_ASSET_SOUND,
+                                 .length = sizeof wav,
+                                 .path = "content/sounds/Jump.wav",
+                                 .content_hash = 1,
+                                 .external = true };
+    REQUIRE(!game_player_asset_valid(&sound));
+    return true;
+}
 void test_tool_native()
 {
     test_native_catalog_enable();
@@ -661,5 +788,6 @@ void test_tool_native()
     RUN_TEST_CASE(native_prepared_spawn_generations);
     RUN_TEST_CASE(native_prepared_world_runs_source_and_real_physics);
     RUN_TEST_CASE(native_player_loads_package_and_retires_producers);
+    RUN_TEST_CASE(native_player_plays_sounds);
     pu_clear_setup();
 }

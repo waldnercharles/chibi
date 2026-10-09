@@ -75,6 +75,21 @@ Inspect `behavior_failures` and the deterministic state evidence in the response
 Test invocations remain subject to the [60-second policy](testing.md#temporary-60-second-policy).
 A short sample run does not establish full runtime or rendering coverage.
 
+## Play sounds and music
+
+Put WAV and OGG files in `content/sounds`. A sound's name is its file name
+without the extension, so `content/sounds/jump.ogg` is `"jump"`. Scripts play one
+with `play_sound(Sound: "jump")`, and set its Volume and Pan from 0 to 1.
+`play_music(Music: "theme", Fade: 1)` loops a track and fades it in. Asking for
+the track that already plays changes nothing, so scenes that share a track keep
+it running. `stop_music(Fade: 1)` fades it out. `set_master_volume`,
+`set_music_volume` and `set_sound_volume` scale each bus from 0 to 1, and the
+master bus scales the others. `play_tone` still synthesizes sweeps and noise
+without a file. `chibi-compile` embeds every sound in the prepared artifact.
+Scenarios hash every audio request, and `runtime_snapshot` counts the sounds and
+tones played in `sound_cues`. Studio play mode cannot play sound files yet, so
+`play_sound` and `play_music` fail there with "No sound named".
+
 ## Runtime identity and capability requests
 
 `.chibi-engine.json` records the player package build ID, source SDK build ID,

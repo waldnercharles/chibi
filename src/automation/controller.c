@@ -22,6 +22,7 @@
 #include "authoring/prototype_preview.h"
 #include "authoring/reference_index.h"
 #include "authoring/shader_prepare.h"
+#include "authoring/sound_prepare.h"
 #include "authoring/source_collection.h"
 #include "authoring/source_format.h"
 #include "authoring/source_intelligence.h"
@@ -5889,12 +5890,18 @@ static int register_shared_assets(const char *root, game_prototype_preview *prev
     char *content = xmalloc(size);
     snprintf(content, size, "%s/content", root);
     int loaded = app_behavior_fixtures_load(game_prototype_preview_live(preview), preview, content);
+    bool sounds = loaded >= 0 &&
+                  authoring_sounds_load(
+                      content,
+                      engine_audio(game_prototype_preview_runtime(preview)),
+                      error,
+                      error_size
+                  );
     free(content);
     if (loaded < 0) {
         set_error(error, error_size, "project source or native asset preparation failed; see preparation diagnostics");
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    return CHIBI_AUTOMATION_OK;
+    return sounds ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_VALIDATION_ERROR;
 }
 
 static int add_scenario_timing(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t frames, double fixed_dt)

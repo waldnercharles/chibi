@@ -22,6 +22,9 @@ typedef struct
     int count;
     uint32_t singleton;
     arena *owned_rows; /* Lazy per-row snapshots, independent of borrowed writes. */
+    unsigned observed; /* Bit per ecs_event with at least one observer. */
+    uint64_t *modified; /* Rows awaiting ON_SET; allocated while ON_SET is observed. */
+    bool dirty;         /* Some modified bit may be set. */
 } ecs_component;
 
 typedef enum
@@ -42,6 +45,22 @@ typedef struct
     void *value;
     size_t value_size;
 } ecs_command;
+
+typedef struct
+{
+    int id;
+    ecs_event event;
+    ecs_component_id component;
+    ecs_observer callback;
+    void *user;
+} ecs_observer_entry;
+
+/* Observers that keep recording commands or marking rows would never reach
+ * the end of a sync point. */
+enum
+{
+    APPLY_ROUND_LIMIT = 1024
+};
 
 struct ecs_query_expr
 {
@@ -68,8 +87,10 @@ struct ecs_world
     char **field_strings; /* Interned values assigned through the field API. */
     uint64_t next_sequence;
     int iteration_depth;
-    ecs_destroy_observer destroy_observer;
-    void *destroy_observer_user;
+    bool applying;
+    ecs_observer_entry *observers;
+    int last_observer;
+    unsigned observed; /* Union of every observer's event bit. */
 };
 
 typedef struct
@@ -326,6 +347,14 @@ int ecs_world_reserve_entities(ecs_world *world, uint32_t capacity)
             occupancy_words(count),
             sizeof *c->occupancy
         );
+        if (c->modified) {
+            c->modified = grow_storage(
+                c->modified,
+                occupancy_words(old),
+                occupancy_words(count),
+                sizeof *c->modified
+            );
+        }
         update_execution_column(world, i);
     }
     return ECS_OK;
@@ -446,6 +475,9 @@ static void occupancy_remove(ecs_world *world, ecs_component *component, uint32_
     uint64_t bit = UINT64_C(1) << (slot % 64u);
     assert(*word & bit);
     *word &= ~bit;
+    if (component->modified) {
+        component->modified[slot / 64u] &= ~bit;
+    }
     occupancy_count(world, component, slot, -1);
     release_row(component, slot);
     if (component->desc.index == ECS_INDEX_DENSE) {
@@ -477,6 +509,65 @@ static void trim_high_water(ecs_world *world)
            !world->reserved[world->high_water]) {
         world->high_water--;
     }
+}
+
+static void notify(ecs_world *world, ecs_event event, ecs_entity entity, ecs_component_id component)
+{
+    for (int i = 0; i < acount(world->observers); i++) {
+        const ecs_observer_entry *observer = &world->observers[i];
+        if (observer->event == event && observer->component == component) {
+            observer->callback(world, event, entity, component, observer->user);
+        }
+    }
+}
+
+static bool observes(const ecs_component *component, ecs_event event)
+{
+    return component->observed & (1u << event);
+}
+
+static bool world_observes(const ecs_world *world, ecs_event event)
+{
+    return world->observed & (1u << event);
+}
+
+/* Writers of one component may run on several threads, so marks are atomic. */
+static void mark_modified(ecs_component *component, uint32_t slot)
+{
+    if (component->modified) {
+        __atomic_fetch_or(&component->modified[slot / 64u], UINT64_C(1) << (slot % 64u), __ATOMIC_RELAXED);
+        __atomic_store_n(&component->dirty, true, __ATOMIC_RELAXED);
+    }
+}
+
+/* Delivers ON_SET for every marked row and reports whether any was marked.
+ * A row's own ON_SET observers may rewrite it without firing again; other
+ * marks they make wait for the next round. */
+static bool notify_modified(ecs_world *world)
+{
+    bool marked = false;
+    for (int i = 0; i < acount(world->components); i++) {
+        ecs_component *component = &world->components[i];
+        if (!component->dirty) {
+            continue;
+        }
+        component->dirty = false;
+        for (uint32_t word = 0; word <= world->high_water / 64u; word++) {
+            uint64_t bits = component->modified[word];
+            component->modified[word] = 0;
+            marked |= bits != 0;
+            while (bits) {
+                uint64_t bit = bits & -bits;
+                bits &= bits - 1;
+                uint32_t slot = word * 64u + (uint32_t)__builtin_ctzll(bit);
+                assert(component_matches(component, slot));
+                ecs_entity entity = { slot, world->generations[slot] };
+                notify(world, ECS_ON_SET, entity, component->desc.id);
+                component->modified[word] &= ~bit;
+            }
+        }
+    }
+    return marked;
 }
 
 static int command_rank(ecs_command_kind kind)
@@ -548,14 +639,21 @@ static int apply_destroy(ecs_world *world, const ecs_command *command)
     if (!entity_matches(world, entity)) {
         return ECS_ERR_ENTITY;
     }
-    if (world->destroy_observer) {
-        /* The observer may query, so it sees the entities destroyed before. */
-        compact_all(world);
-        world->destroy_observer(world, entity, world->destroy_observer_user);
+    if (world_observes(world, ECS_ON_DESTROY)) {
+        notify(world, ECS_ON_DESTROY, entity, 0);
+    }
+    for (int i = 0;
+         world_observes(world, ECS_ON_REMOVE) && i < acount(world->components);
+         i++) {
+        ecs_component *component = &world->components[i];
+        if (observes(component, ECS_ON_REMOVE) &&
+            component_matches(component, entity.slot)) {
+            notify(world, ECS_ON_REMOVE, entity, component->desc.id);
+        }
     }
     for (int i = 0; i < acount(world->components); i++) {
         ecs_component *component = &world->components[i];
-        if (ecs_component_has(world, entity, component->desc.id)) {
+        if (component_matches(component, entity.slot)) {
             occupancy_remove(world, component, entity.slot);
         }
     }
@@ -566,7 +664,6 @@ static int apply_destroy(ecs_world *world, const ecs_command *command)
     trim_high_water(world);
     return ECS_OK;
 }
-
 static int apply_add(ecs_world *world, const ecs_command *command)
 {
     ecs_component *component = find_component(world, command->component);
@@ -586,6 +683,12 @@ static int apply_add(ecs_world *world, const ecs_command *command)
         memcpy(address, command->value, component->desc.element_size);
     }
     occupancy_add(world, component, command->entity.slot);
+    if (observes(component, ECS_ON_ADD)) {
+        notify(world, ECS_ON_ADD, command->entity, command->component);
+    }
+    if (command->value) {
+        mark_modified(component, command->entity.slot);
+    }
     return ECS_OK;
 }
 
@@ -597,6 +700,9 @@ static int apply_remove(ecs_world *world, const ecs_command *command)
     }
     if (!ecs_component_has(world, command->entity, command->component)) {
         return ECS_ERR_COMPONENT;
+    }
+    if (observes(component, ECS_ON_REMOVE)) {
+        notify(world, ECS_ON_REMOVE, command->entity, command->component);
     }
     occupancy_remove(world, component, command->entity.slot);
     return ECS_OK;
@@ -654,8 +760,10 @@ void ecs_world_free(ecs_world *world)
         free(world->components[i].desc.column_base);
         free(world->components[i].occupancy);
         afree(world->components[i].dense);
+        free(world->components[i].modified);
     }
     afree(world->components);
+    afree(world->observers);
     afree(world->execution_columns);
     free(world->component_lookup);
     afree(world->commands);
@@ -676,7 +784,7 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
         !desc->type || desc->type->size != desc->element_size) {
         return ECS_ERR_ARGUMENT;
     }
-    if (world->iteration_depth) {
+    if (world->iteration_depth || world->applying) {
         return ECS_ERR_ITERATING;
     }
     if (desc->id && find_component(world, desc->id)) {
@@ -742,6 +850,13 @@ const ecs_component_desc *ecs_world_component(const ecs_world *world, ecs_compon
     return component ? &component->desc : NULL;
 }
 
+/* Commands recorded by observers apply in a later round, after a destroy in
+ * progress has finished. */
+static bool dying(const ecs_world *world, ecs_entity entity)
+{
+    return world->applying && world->pending_destroy[entity.slot];
+}
+
 ecs_entity ecs_world_record_create(ecs_world *world, uint64_t sort_key)
 {
     if (!world || world->iteration_depth) {
@@ -803,7 +918,7 @@ int ecs_world_record_add(
 {
     ecs_component *component = world ? find_component(world, component_id) : NULL;
     if (!world || world->iteration_depth || !component ||
-        !entity_matches(world, entity)) {
+        !entity_matches(world, entity) || dying(world, entity)) {
         return ECS_ERR_ENTITY;
     }
     if (ecs_component_has(world, entity, component_id)) {
@@ -829,7 +944,7 @@ int ecs_world_record_remove(ecs_world *world, ecs_entity entity, ecs_component_i
 {
     ecs_component *component = world ? find_component(world, component_id) : NULL;
     if (!world || world->iteration_depth || !component ||
-        !entity_matches(world, entity)) {
+        !entity_matches(world, entity) || dying(world, entity)) {
         return ECS_ERR_ENTITY;
     }
     if (!ecs_component_has(world, entity, component_id)) {
@@ -848,49 +963,22 @@ int ecs_world_record_remove(ecs_world *world, ecs_entity entity, ecs_component_i
     return ECS_OK;
 }
 
-int ecs_world_apply_commands(ecs_world *world)
+static int apply_command(ecs_world *world, const ecs_command *command)
 {
-    if (!world) {
-        return ECS_ERR_ARGUMENT;
+    switch (command->kind) {
+        case ECS_COMMAND_CREATE: return apply_create(world, command);
+        case ECS_COMMAND_DESTROY: return apply_destroy(world, command);
+        case ECS_COMMAND_ADD: return apply_add(world, command);
+        case ECS_COMMAND_REMOVE: return apply_remove(world, command);
     }
-    if (world->iteration_depth) {
-        return ECS_ERR_ITERATING;
-    }
-    if (!acount(world->commands)) {
-        return ECS_OK;
-    }
-    qsort(world->commands, (size_t)acount(world->commands), sizeof *world->commands, compare_commands);
-    int result = ECS_OK;
-    for (int i = 0; i < acount(world->commands); i++) {
-        const ecs_command *command = &world->commands[i];
-        switch (command->kind) {
-            case ECS_COMMAND_CREATE:
-                result = apply_create(world, command);
-                break;
-            case ECS_COMMAND_DESTROY:
-                result = apply_destroy(world, command);
-                break;
-            case ECS_COMMAND_ADD: result = apply_add(world, command); break;
-            case ECS_COMMAND_REMOVE:
-                result = apply_remove(world, command);
-                break;
-        }
-        if (result != ECS_OK) {
-            break;
-        }
-    }
-    compact_all(world);
-    ecs_world_clear_commands(world);
-    return result;
+    return ECS_ERR_COMMAND;
 }
 
-void ecs_world_clear_commands(ecs_world *world)
+/* Cancels unapplied reservations and pending destroys, then frees values. */
+static void release_commands(ecs_world *world, ecs_command *commands)
 {
-    if (!world) {
-        return;
-    }
-    for (int i = 0; i < acount(world->commands); i++) {
-        ecs_command *command = &world->commands[i];
+    for (int i = 0; i < acount(commands); i++) {
+        ecs_command *command = &commands[i];
         if (command->kind == ECS_COMMAND_CREATE &&
             slot_valid(world, command->entity.slot) &&
             world->reserved[command->entity.slot] &&
@@ -904,6 +992,55 @@ void ecs_world_clear_commands(ecs_world *world)
         }
         free_command(command);
     }
+}
+
+/* Observers record into a fresh buffer, applied by the next round. */
+static int apply_batch(ecs_world *world)
+{
+    ecs_command *batch = world->commands;
+    world->commands = NULL;
+    qsort(batch, (size_t)acount(batch), sizeof *batch, compare_commands);
+    int result = ECS_OK;
+    for (int i = 0; result == ECS_OK && i < acount(batch); i++) {
+        result = apply_command(world, &batch[i]);
+    }
+    release_commands(world, batch);
+    afree(batch);
+    return result;
+}
+
+int ecs_world_apply_commands(ecs_world *world)
+{
+    if (!world) {
+        return ECS_ERR_ARGUMENT;
+    }
+    if (world->iteration_depth || world->applying) {
+        return ECS_ERR_ITERATING;
+    }
+    world->applying = true;
+    int result = ECS_OK;
+    int rounds = 0;
+    while (result == ECS_OK && (notify_modified(world) || acount(world->commands))) {
+        rounds++;
+        assert(rounds <= APPLY_ROUND_LIMIT);
+        if (rounds > APPLY_ROUND_LIMIT) {
+            result = ECS_ERR_COMMAND;
+        } else if (acount(world->commands)) {
+            result = apply_batch(world);
+        }
+    }
+    world->applying = false;
+    compact_all(world);
+    ecs_world_clear_commands(world);
+    return result;
+}
+
+void ecs_world_clear_commands(ecs_world *world)
+{
+    if (!world) {
+        return;
+    }
+    release_commands(world, world->commands);
     aclear(world->commands);
     trim_high_water(world);
 }
@@ -915,6 +1052,9 @@ int ecs_world_command_count(const ecs_world *world)
 
 ecs_entity ecs_world_create_entity(ecs_world *world)
 {
+    if (world && world->applying) {
+        return (ecs_entity){ 0, 0 };
+    }
     ecs_entity entity = ecs_world_record_create(world, 0);
     if (!entity.slot || ecs_world_apply_commands(world) != ECS_OK) {
         return (ecs_entity){ 0, 0 };
@@ -924,6 +1064,9 @@ ecs_entity ecs_world_create_entity(ecs_world *world)
 
 int ecs_world_destroy_entity(ecs_world *world, ecs_entity entity)
 {
+    if (world && world->applying) {
+        return ECS_ERR_ITERATING;
+    }
     int result = ecs_world_record_destroy(world, entity, 0);
     if (result != ECS_OK) {
         return result;
@@ -1075,6 +1218,7 @@ int ecs_component_write_field(
         value.str = ecs_world_intern_string(world, value.str);
     }
     pin_write_field(data, type_field, value);
+    mark_modified(component, entity.slot);
     return ECS_OK;
 }
 
@@ -1195,17 +1339,17 @@ bool ecs_component_accepts_value(const ecs_world *world, ecs_component_id id, si
     );
 }
 
-int ecs_component_write_value(
+static int write_value(
     ecs_world *world,
+    ecs_component *component,
     ecs_entity entity,
-    ecs_component_id id,
     size_t offset,
     pin_value declared,
     pin_value value
 )
 {
-    ecs_component *component = world ? find_component(world, id) : NULL;
-    void *row = ecs_component_data(world, entity, id);
+    void *row = component ? ecs_component_data(world, entity, component->desc.id)
+                          : NULL;
     bool whole;
     const type_field *field;
     if (!row || !value_type_matches(declared, value) ||
@@ -1267,6 +1411,35 @@ int ecs_component_write_value(
     return ECS_OK;
 }
 
+int ecs_component_write_value(
+    ecs_world *world,
+    ecs_entity entity,
+    ecs_component_id id,
+    size_t offset,
+    pin_value declared,
+    pin_value value
+)
+{
+    ecs_component *component = world ? find_component(world, id) : NULL;
+    int result = write_value(world, component, entity, offset, declared, value);
+    if (result == ECS_OK) {
+        mark_modified(component, entity.slot);
+    }
+    return result;
+}
+
+int ecs_component_modified(ecs_world *world, ecs_entity entity, ecs_component_id id)
+{
+    assert(world);
+    ecs_component *component = find_component(world, id);
+    if (!component || !entity_matches(world, entity) ||
+        !component_matches(component, entity.slot)) {
+        return ECS_ERR_COMPONENT;
+    }
+    mark_modified(component, entity.slot);
+    return ECS_OK;
+}
+
 int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *components, int component_count)
 {
     if (!world || !query || component_count < 0 ||
@@ -1285,7 +1458,7 @@ int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *
         query->component_refs = refs;
         const ecs_component *candidate = NULL;
         for (int i = 0; i < component_count; i++) {
-            const ecs_component *component = find_component(world, components[i]);
+            ecs_component *component = find_component(world, components[i]);
             if (!component) {
                 if (component_count > 1) {
                     free(query->component_refs);
@@ -1294,6 +1467,7 @@ int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *
                 return ECS_ERR_COMPONENT;
             }
             refs[i] = component;
+            compact_dense(component);
             if (component->desc.index == ECS_INDEX_DENSE &&
                 (!candidate || acount(component->dense) < acount(candidate->dense))) {
                 candidate = component;
@@ -1344,18 +1518,15 @@ static void candidate_union(uint32_t **slots, const uint32_t *other)
     }
 }
 
-static int query_expression_candidate(
-    const ecs_world *world,
-    const ecs_query_expr *expr,
-    query_candidate *candidate
-)
+static int query_expression_candidate(ecs_world *world, const ecs_query_expr *expr, query_candidate *candidate)
 {
     candidate->slots = NULL;
     if (expr->kind == ECS_QUERY_HAS) {
-        const ecs_component *component = find_component_const(world, expr->component);
+        ecs_component *component = find_component(world, expr->component);
         if (component->desc.index != ECS_INDEX_DENSE) {
             return 0;
         }
+        compact_dense(component);
         for (int i = 0; i < acount(component->dense); i++) {
             apush(candidate->slots, component->dense[i]);
         }
@@ -1524,13 +1695,93 @@ int ecs_world_iteration_end(ecs_world *world)
     return ECS_OK;
 }
 
-void ecs_world_set_destroy_observer(ecs_world *world, ecs_destroy_observer observer, void *user)
+int ecs_world_observe(
+    ecs_world *world,
+    ecs_event event,
+    ecs_component_id component_id,
+    ecs_observer callback,
+    void *user
+)
 {
-    if (!world) {
-        return;
+    assert(world && callback && event >= ECS_ON_ADD && event <= ECS_ON_DESTROY);
+    if (world->applying || world->iteration_depth) {
+        return ECS_ERR_ITERATING;
     }
-    world->destroy_observer = observer;
-    world->destroy_observer_user = user;
+    if ((event == ECS_ON_DESTROY) != !component_id) {
+        return ECS_ERR_ARGUMENT;
+    }
+    ecs_component *component = component_id ? find_component(world, component_id)
+                                            : NULL;
+    if (component_id && !component) {
+        return ECS_ERR_COMPONENT;
+    }
+    world->observed |= 1u << event;
+    if (component) {
+        component->observed |= 1u << event;
+    }
+    if (event == ECS_ON_SET && !component->modified) {
+        component->modified = xcalloc(
+            occupancy_words(world->execution.slot_count),
+            sizeof *component->modified
+        );
+    }
+    ecs_observer_entry entry = {
+        .id = ++world->last_observer,
+        .event = event,
+        .component = component_id,
+        .callback = callback,
+        .user = user,
+    };
+    apush(world->observers, entry);
+    return entry.id;
+}
+
+static void refresh_observed(ecs_world *world)
+{
+    world->observed = 0;
+    for (int i = 0; i < acount(world->components); i++) {
+        world->components[i].observed = 0;
+    }
+    for (int i = 0; i < acount(world->observers); i++) {
+        const ecs_observer_entry *observer = &world->observers[i];
+        world->observed |= 1u << observer->event;
+        if (observer->component) {
+            find_component(world, observer->component)->observed |= 1u
+                                                                 << observer->event;
+        }
+    }
+    for (int i = 0; i < acount(world->components); i++) {
+        ecs_component *component = &world->components[i];
+        if (!observes(component, ECS_ON_SET)) {
+            free(component->modified);
+            component->modified = NULL;
+            component->dirty = false;
+        }
+    }
+}
+
+int ecs_world_unobserve(ecs_world *world, int observer)
+{
+    assert(world);
+    if (world->applying || world->iteration_depth) {
+        return ECS_ERR_ITERATING;
+    }
+    int count = acount(world->observers);
+    int at = 0;
+    while (at < count && world->observers[at].id != observer) {
+        at++;
+    }
+    if (at == count) {
+        return ECS_ERR_ARGUMENT;
+    }
+    memmove(
+        &world->observers[at],
+        &world->observers[at + 1],
+        (size_t)(count - at - 1) * sizeof *world->observers
+    );
+    asetlen(world->observers, count - 1);
+    refresh_observed(world);
+    return ECS_OK;
 }
 
 uint64_t ecs_world_hash(const ecs_world *world)

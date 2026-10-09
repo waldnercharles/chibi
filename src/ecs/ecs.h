@@ -52,7 +52,17 @@ typedef enum
     ECS_ERR_CAPACITY = -7,
 } ecs_result;
 
-typedef void (*ecs_destroy_observer)(ecs_world *world, ecs_entity entity, void *user);
+/* Lifecycle events, after Flecs's OnAdd/OnSet/OnRemove observers. Component
+ * events name one registered component; ECS_ON_DESTROY names none (zero). */
+typedef enum
+{
+    ECS_ON_ADD,
+    ECS_ON_SET,
+    ECS_ON_REMOVE,
+    ECS_ON_DESTROY,
+} ecs_event;
+
+typedef void (*ecs_observer)(ecs_world *, ecs_event, ecs_entity, ecs_component_id, void *user);
 
 /* Query expressions are deliberately independent of the graph/editor layer.
  * A term matches component presence; groups provide the boolean vocabulary
@@ -187,7 +197,29 @@ void ecs_query_end(ecs_query *query);
 int ecs_world_iteration_begin(ecs_world *world);
 int ecs_world_iteration_end(ecs_world *world);
 
-void ecs_world_set_destroy_observer(ecs_world *world, ecs_destroy_observer observer, void *user);
+/* Observers run on the applying thread inside ecs_world_apply_commands, in
+ * registration order, so delivery is deterministic:
+ * - ON_SET first, for rows written through ecs_component_write_field,
+ *   ecs_component_write_value or ecs_component_modified since the previous
+ *   sync point, by component registration order and then ascending slot.
+ *   Direct writes through row pointers or the execution view fire nothing
+ *   until marked with ecs_component_modified.
+ * - Then the sorted commands. ON_ADD follows an add once its row is
+ *   initialized; an add that carried a value also marks the row for ON_SET.
+ *   ON_REMOVE precedes a remove while the row is still readable. A destroy
+ *   fires ON_DESTROY and then ON_REMOVE for each of its components before any
+ *   of them is removed.
+ * Observers may read and write rows, run queries and record commands.
+ * Recorded commands and new ON_SET marks apply in further rounds of the same
+ * sync point; marks on the row being delivered are dropped, so ON_SET
+ * observers may normalize their own row. Commands for an entity being
+ * destroyed are rejected, as are the synchronous create/destroy helpers.
+ * Registration is rejected while commands are applied or queries iterate.
+ * Returns a positive observer id or a negative ecs_result. */
+int ecs_world_observe(ecs_world *, ecs_event, ecs_component_id, ecs_observer, void *user);
+int ecs_world_unobserve(ecs_world *, int observer);
+/* Queue ON_SET for a row written in place. */
+int ecs_component_modified(ecs_world *, ecs_entity, ecs_component_id);
 uint64_t ecs_world_hash(const ecs_world *world);
 uint32_t ecs_world_live_count(const ecs_world *world);
 uint32_t ecs_world_high_water_mark(const ecs_world *world);

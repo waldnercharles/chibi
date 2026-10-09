@@ -368,14 +368,14 @@ static bool any_query_membership(behavior_backend backend)
 {
     system_fixture f = fixture_new();
     ecs_entity bare = health(&f), bound = health(&f), collider = health(&f);
-    REQUIRE(!GAME_GameActionBinding_add(f.world, bound, 0));
-    REQUIRE(!GAME_GameActionBinding_add(f.world, collider, 0));
+    REQUIRE(!GAME_GameAim_add(f.world, bound, 0));
+    REQUIRE(!GAME_GameAim_add(f.world, collider, 0));
     REQUIRE(!GAME_GameCollider_add(f.world, collider, 0));
     REQUIRE(!ecs_world_apply_commands(f.world));
     REQUIRE(prepare(
         &f,
         "system AnyQuery(health:Health) { "
-        "query any(has(Collider), not(has(ActionBinding))); "
+        "query any(has(Collider), not(has(Aim))); "
         "health.Current+=1; }",
         backend
     ));

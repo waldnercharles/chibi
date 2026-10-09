@@ -9,13 +9,19 @@ smallest ones are named below.
 
 ## Add a component
 
+Game components never go in C. A game declares its own components in
+`content/components/*.kdl` (declared components, from #204 and #207); they
+need no engine change. `components.h` holds only engine capabilities that
+several games reuse. For one of those:
+
 1. Declare the struct in `src/runtime/components.h` with
    `NODE_COMPONENT_TYPE_DENSE(Name)` (see `GameGlobalBinding`). Use plain
    C fields; enums become named choices, `NODE_HANDLE(ecs.entity)` marks an
    entity reference. Comment what it means and its units.
 2. Build (`make build`). The reflect step regenerates the native type tables
    and adds the component's row to `src/runtime/component_ids.tsv`. Commit
-   that row with the header change; never edit the ID by hand.
+   that row with the header change; never edit the ID by hand. Resolve a
+   conflict in that file by rebuilding, not by merging rows by hand.
 3. Read the component where it acts: a system in `src/runtime`, or script
    through the generated get/set. Keep it optional, so scenes without it
    still work.
@@ -61,13 +67,19 @@ The smallest complete example is Play Sound:
 
 ## Change saved projects (migration)
 
-Follow the first rule in `AGENTS.md`. Then:
+Never hand-bump `CHIBI_PROJECT_VERSION`. Reserve the next version in the
+project's roadmap coordination ledger (`roadmap/coordination.md` in the
+project files) first, so parallel changes don't take the same number. Then:
 
-1. Write a pico_unit case that migrates a small old-format source and checks
+1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and add the step
+   that upgrades the previous version in `src/assets/project_migrate.c`
+   (from #197).
+2. Write a pico_unit case that migrates a small old-format source and checks
    the result.
-2. Migrate every project the change reaches: `test/fixtures/*`,
+3. Migrate every project the change reaches with
+   `chibi_ctl --project-root <root> --migrate`: `test/fixtures/*`,
    `examples/language`, and the game and Studio repositories
    (`chibi-voidweaver`, `chibi-celeste`, `chibi-studio/projects`), each in
    its own PR that names the engine PR it needs.
-3. Run `chibi_ctl --format` on each migrated project and compile it with
+4. Run `chibi_ctl --format` on each migrated project and compile it with
    `chibi-compile` to prove it still loads.

@@ -15,9 +15,6 @@ typedef struct
     bool aim_point; /* aim is a world position rather than a direction */
     bool firing;
     uint64_t controls; /* held GameControl bits */
-    /* Controls that went both down and up since the previous step, which held
-     * bits alone cannot show: replay releases, presses, then holds them. */
-    uint64_t taps;
 } input_keyframe;
 
 /* Whether two keys hold the same input, whatever their steps. */
@@ -26,5 +23,5 @@ static inline bool input_keyframe_same(const input_keyframe *a, const input_keyf
     return a->movement.x == b->movement.x && a->movement.y == b->movement.y &&
            a->aim.x == b->aim.x && a->aim.y == b->aim.y &&
            a->aim_point == b->aim_point && a->firing == b->firing &&
-           a->controls == b->controls && a->taps == b->taps;
+           a->controls == b->controls;
 }

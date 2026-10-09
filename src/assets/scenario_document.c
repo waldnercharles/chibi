@@ -79,9 +79,6 @@ static bool read_field(const char *name, av_value *value, input_keyframe *out)
     if (!strcmp(name, "firing")) {
         return read_flag(value, &out->firing);
     }
-    if (!strcmp(name, "taps")) {
-        return read_controls(value, &out->taps);
-    }
     return !strcmp(name, "controls") && read_controls(value, &out->controls);
 }
 
@@ -105,8 +102,8 @@ static bool read_key(av_value *value, int frames, input_keyframe *out, char *err
                 error_size,
                 "key field %s is unknown or invalid: movement is within -1..1, "
                 "aim is finite, "
-                "aim_point and firing are booleans, controls and taps are "
-                "GameControl labels",
+                "aim_point and firing are booleans, controls are GameControl "
+                "labels",
                 av_get_str(name)
             );
             return false;
@@ -155,8 +152,8 @@ static bool read_document(av_value *root, scenario_document *out, char *error, s
             return false;
         }
         int previous = acount(out->keys) - 1;
-        if (previous >= 0 && key.step <= out->keys[previous].step) {
-            return fail(error, error_size, "key frames must increase");
+        if (previous >= 0 && key.step < out->keys[previous].step) {
+            return fail(error, error_size, "key frames must not decrease");
         }
         if (previous < 0 && key.step > 0) {
             apush(out->keys, ((input_keyframe){ 0 }));
@@ -195,19 +192,6 @@ static void write_vector(av_doc *doc, av_value *object, const char *name, CF_V2 
     av_obj_add_val(doc, vector, "y", av_float(doc, value.y));
 }
 
-static void write_controls(av_doc *doc, av_value *object, const char *name, uint64_t bits)
-{
-    if (!bits) {
-        return;
-    }
-    av_value *controls = av_obj_add_arr(doc, object, name);
-    for (int control = GAME_CONTROL_NONE + 1; control < GAME_CONTROL_COUNT; control++) {
-        if (bits & (UINT64_C(1) << control)) {
-            av_arr_add_str(doc, controls, type_catalog_enum_label(CONTROL_ENUM, control));
-        }
-    }
-}
-
 static void write_key(av_doc *doc, av_value *keys, const input_keyframe *key)
 {
     av_value *value = av_arr_add_obj(doc, keys);
@@ -220,8 +204,15 @@ static void write_key(av_doc *doc, av_value *keys, const input_keyframe *key)
     if (key->firing) {
         av_obj_add_bool(doc, value, "firing", true);
     }
-    write_controls(doc, value, "controls", key->controls);
-    write_controls(doc, value, "taps", key->taps);
+    if (!key->controls) {
+        return;
+    }
+    av_value *controls = av_obj_add_arr(doc, value, "controls");
+    for (int control = GAME_CONTROL_NONE + 1; control < GAME_CONTROL_COUNT; control++) {
+        if (key->controls & (UINT64_C(1) << control)) {
+            av_arr_add_str(doc, controls, type_catalog_enum_label(CONTROL_ENUM, control));
+        }
+    }
 }
 
 char *scenario_document_save(const scenario_document *document)

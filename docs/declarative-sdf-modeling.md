@@ -35,7 +35,7 @@ computed bounds are authoritative. `GameGeometry3D` dimensions continue to bound
 raw shapes but do not resize a model. Change model dimensions through its
 parameters, and change instance scale through the visual transform.
 
-Projects use `CHIBI_PROJECT_VERSION` 10. The graph document's own serialized
+Projects use `CHIBI_PROJECT_VERSION` 11. The graph document's own serialized
 `version` is a separate format field; do not replace it with the project version.
 After hand-editing assets, canonicalize and check:
 

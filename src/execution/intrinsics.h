@@ -29,6 +29,7 @@ typedef enum
     EXECUTION_INTRINSIC_STATE_DEMAND = 15,
     EXECUTION_INTRINSIC_STATE_TRANSITION = 16,
     EXECUTION_INTRINSIC_RETRIGGER_ACTION = 17,
+    EXECUTION_INTRINSIC_LOCAL_RELEASE = 18,
 } execution_intrinsic;
 extern const node_host_call EXECUTION_state_demand_call,
     EXECUTION_state_transition_call, EXECUTION_retrigger_action_call;
@@ -42,7 +43,8 @@ extern const node_host_call EXECUTION_action_read_call;
 extern const node_host_call EXECUTION_action_complete_call;
 extern const node_host_call EXECUTION_break_request_call, EXECUTION_break_take_call;
 extern const node_host_call EXECUTION_event_read_call;
-extern const node_host_call EXECUTION_local_group_store_call;
+extern const node_host_call EXECUTION_local_group_store_call,
+    EXECUTION_local_release_call;
 extern const node_host_call EXECUTION_component_has_call,
     EXECUTION_component_membership_call;
 extern const node_access EXECUTION_component_read_access,
@@ -55,4 +57,32 @@ uint64_t execution_intrinsic_abi(uint64_t);
 const node_host_call *execution_intrinsic_resolve(uint64_t);
 const node_access *execution_intrinsic_access(uint64_t);
 pin_value execution_reference_value(arena *, behavior_function_context *, pin_value *, pin_value type);
+/* A local that a task keeps by reference. While the declaring frame runs, the
+ * box names the frame's slot, so both see each other's writes; once the frame
+ * leaves or declares the local again, the box keeps the last value. */
+typedef struct
+{
+    int holders;
+    behavior_function_context *owner;
+    pin_value *value;
+    behavior_function_context detached;
+    pin_value kept;
+    arena storage;
+} execution_box;
+/* The frame and slot of a reference to a local, or false for state and
+ * components. `box` is the box it already uses, if any. */
+bool execution_reference_local(
+    pin_value,
+    behavior_function_context **owner,
+    pin_value **slot,
+    execution_box **box
+);
+/* Copies a reference into `storage` for a task that `owner` runs. A reference
+ * to a local reaches it through `box`. */
+void execution_reference_capture(
+    arena *storage,
+    behavior_function_context *owner,
+    pin_value *value,
+    execution_box *box
+);
 #endif

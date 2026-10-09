@@ -1,34 +1,24 @@
 #include "runtime/math_native.h"
-#define PORT(NAME, KIND, TYPE, NOMINAL, CONTAINER, FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
-    { .name = NAME,                                                                       \
-      .kind = KIND,                                                                       \
-      .storage = TYPE,                                                                    \
-      .type_name = NOMINAL,                                                               \
-      .container = CONTAINER,                                                             \
-      .type_flags = FLAGS,                                                                \
-      .generic_group = GROUP,                                                             \
-      .reference_kind = REFERENCE,                                                        \
-      .has_default = true,                                                                \
-      .default_owner = OWNER,                                                             \
-      .default_value = VALUE },
-static const native_parameter_definition UNARY_INPUTS[] = { NATIVE_MATH_UNARY_INPUTS(PORT) };
-static const native_parameter_definition OUTPUTS[] = { NATIVE_MATH_RESULT_OUTPUTS(PORT) };
+static const native_parameter_definition UNARY_INPUTS[] = {
+    NATIVE_MATH_UNARY_INPUTS(NATIVE_PORT)
+};
+static const native_parameter_definition OUTPUTS[] = {
+    NATIVE_MATH_RESULT_OUTPUTS(NATIVE_PORT)
+};
 static const native_parameter_definition SPRING_INPUTS[] = {
-    NATIVE_MATH_SPRING_INPUTS(PORT)
+    NATIVE_MATH_SPRING_INPUTS(NATIVE_PORT)
 };
 static const native_parameter_definition SPRING_OUTPUTS[] = {
-    NATIVE_MATH_SPRING_OUTPUTS(PORT)
+    NATIVE_MATH_SPRING_OUTPUTS(NATIVE_PORT)
 };
 #define BINARY(KEY, NAME, SOURCE, FN, INPUTS, KEYWORDS, DESCRIPTION)           \
-    static const native_parameter_definition KEY##_inputs[] = { INPUTS(PORT) };
+    static const native_parameter_definition KEY##_inputs[] = { INPUTS(NATIVE_PORT) };
 #define VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM)                               \
-    static const native_parameter_definition KEY##_inputs[] = { INPUTS(PORT) };
+    static const native_parameter_definition KEY##_inputs[] = { INPUTS(NATIVE_PORT) };
 NATIVE_MATH_BINARIES(BINARY)
 NATIVE_MATH_VALUES(VALUE)
 #undef BINARY
 #undef VALUE
-#undef PORT
-#define COUNT(A) (sizeof(A) / sizeof *(A))
 #define DEFINITION(KEY, NAME, SOURCE, INPUTS, OUT, RANDOM)                     \
     { .canonical_name = NAME,                                                  \
       .source_name = SOURCE,                                                   \
@@ -37,9 +27,9 @@ NATIVE_MATH_VALUES(VALUE)
       .effects = RANDOM ? SCRIPT_EFFECT_RANDOM : 0,                            \
       .completion_output = -1,                                                 \
       .inputs = INPUTS,                                                        \
-      .input_count = COUNT(INPUTS),                                            \
+      .input_count = NATIVE_COUNT(INPUTS),                                     \
       .outputs = OUT,                                                          \
-      .output_count = COUNT(OUT) },
+      .output_count = NATIVE_COUNT(OUT) },
 #define UNARY(KEY, NAME, SOURCE, FN, DESCRIPTION)                              \
     DEFINITION(KEY, NAME, SOURCE, UNARY_INPUTS, OUTPUTS, false)
 #define BINARY(KEY, NAME, SOURCE, FN, INPUTS, KEYWORDS, DESCRIPTION)           \
@@ -80,8 +70,7 @@ static const native_definition_binding BINDINGS[] = {
 #undef BINDING
 const native_definition_pack NATIVE_MATH_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
-    .definition_count = COUNT(DEFINITIONS),
+    .definition_count = NATIVE_COUNT(DEFINITIONS),
     .bindings = BINDINGS,
-    .binding_count = COUNT(BINDINGS)
+    .binding_count = NATIVE_COUNT(BINDINGS)
 };
-#undef COUNT

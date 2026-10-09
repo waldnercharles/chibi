@@ -1,7 +1,7 @@
 #ifndef CHIBI_UI_FONT_H
 #define CHIBI_UI_FONT_H
 
-#define GAME_UI_FONT_PREPARED_VERSION 1
+#define GAME_UI_FONT_PREPARED_VERSION 2
 #include <stdbool.h>
 #include <stddef.h>
 /* Decoded records own all fields; builtin views borrow immutable bytes. Only

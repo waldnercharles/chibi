@@ -3,6 +3,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -34,7 +35,7 @@ enum
 typedef struct
 {
     ecs_term term;
-    const ecs_component *component;
+    ecs_component *component;
     const ecs_relationship *pair;
     const ecs_relationship *trav;
     int *up;    /* Memo of each slot's nearest provider, or UP_NONE. */
@@ -81,7 +82,7 @@ static void plan_free(query_plan *plan)
 
 typedef struct
 {
-    const ecs_world *world;
+    ecs_world *world;
     query_plan *plan;
     const ecs_term *terms;
     int count;
@@ -410,9 +411,10 @@ static void use_component(ecs_query *query, ecs_component *component)
     query->limit = query->world->high_water / 64u;
 }
 
-/* How many candidates a top operand offers, or -1 when it cannot supply
- * them. Bitset components count double, since scanning them costs more. */
-static int offered(const query_plan *plan, int top)
+/* Ranks the candidates a top operand offers the way the inline path does:
+ * lists (dense components and pair sources) before bitsets, then fewer
+ * first. Returns -1 when the operand cannot supply candidates. */
+static int64_t offered(const query_plan *plan, int top)
 {
     const plan_node *node = &plan->nodes[plan->top[top]];
     if (node->negate || node->optional || node->kind == NODE_ALL ||
@@ -426,16 +428,17 @@ static int offered(const query_plan *plan, int top)
     if (t->pair) {
         return acount(t->pair->sources[t->term.target.slot]);
     }
-    return t->component->desc.index == ECS_INDEX_DENSE ? acount(t->component->dense)
-                                                       : 2 * t->component->count;
+    int count = t->component->count;
+    return t->component->desc.index == ECS_INDEX_DENSE ? count
+                                                       : (int64_t)INT_MAX + count;
 }
 
 static void choose_candidates(ecs_query *query, query_plan *plan)
 {
-    int best_count = 0;
+    int64_t best_count = 0;
     plan->skip = -1;
     for (int k = 0; k < acount(plan->top); k++) {
-        int count = offered(plan, k);
+        int64_t count = offered(plan, k);
         if (count >= 0 && (plan->skip < 0 || count < best_count)) {
             plan->skip = k;
             best_count = count;
@@ -446,7 +449,7 @@ static void choose_candidates(ecs_query *query, query_plan *plan)
     }
     const plan_term *t = &plan->terms[plan->nodes[plan->top[plan->skip]].term];
     if (t->component) {
-        use_component(query, (ecs_component *)t->component);
+        use_component(query, t->component);
         return;
     }
     query->candidates = t->pair->sources[t->term.target.slot];
@@ -503,22 +506,30 @@ static int depth_along(const ecs_world *world, const ecs_relationship *trav, uin
  * each depth. */
 static void cascade(ecs_query *query, query_plan *plan, const ecs_relationship *trav)
 {
+    uint32_t *found = NULL;
     int *depths = NULL;
+    int deepest = 0;
     uint32_t slot;
     while (next_candidate(query, &slot)) {
         int depth = depth_along(query->world, trav, slot);
-        int at = acount(plan->slots);
-        apush(plan->slots, slot);
+        apush(found, slot);
         apush(depths, depth);
-        while (at && depths[at - 1] > depth) {
-            plan->slots[at] = plan->slots[at - 1];
-            depths[at] = depths[at - 1];
-            at--;
-        }
-        plan->slots[at] = slot;
-        depths[at] = depth;
+        deepest = depth > deepest ? depth : deepest;
     }
+    int *starts = xcalloc((size_t)deepest + 2, sizeof *starts);
+    for (int i = 0; i < acount(found); i++) {
+        starts[depths[i] + 1]++;
+    }
+    for (int depth = 1; depth <= deepest; depth++) {
+        starts[depth] += starts[depth - 1];
+    }
+    asetlen(plan->slots, acount(found));
+    for (int i = 0; i < acount(found); i++) {
+        plan->slots[starts[depths[i]]++] = found[i];
+    }
+    free(starts);
     afree(depths);
+    afree(found);
     query->candidates = plan->slots;
     query->candidate_count = acount(plan->slots);
     query->candidate_cursor = -1;
@@ -538,6 +549,18 @@ static void reset(ecs_query *query, ecs_world *world)
     query->limit = world->high_water;
 }
 
+/* Components beyond the inline limit go through the planner. */
+static int begin_planned(ecs_world *world, ecs_query *query, const ecs_component_id *components, int count)
+{
+    ecs_term *terms = xcalloc((size_t)count, sizeof *terms);
+    for (int i = 0; i < count; i++) {
+        terms[i].id = components[i];
+    }
+    int result = ecs_query_begin_terms(world, query, terms, count);
+    free(terms);
+    return result;
+}
+
 int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *components, int component_count)
 {
     if (!world || !query || component_count < 0 ||
@@ -545,13 +568,7 @@ int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *
         return ECS_ERR_ARGUMENT;
     }
     if (component_count > ECS_QUERY_INLINE) {
-        ecs_term *terms = xcalloc((size_t)component_count, sizeof *terms);
-        for (int i = 0; i < component_count; i++) {
-            terms[i].id = components[i];
-        }
-        int result = ecs_query_begin_terms(world, query, terms, component_count);
-        free(terms);
-        return result;
+        return begin_planned(world, query, components, component_count);
     }
     reset(query, world);
     bool named_disabled = false;
@@ -559,7 +576,7 @@ int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *
     for (int i = 0; i < component_count; i++) {
         ecs_component *component = find_component(world, components[i]);
         if (!component) {
-            reset(query, world);
+            memset(query, 0, sizeof *query);
             return ECS_ERR_COMPONENT;
         }
         query->refs[i] = component;
@@ -635,6 +652,7 @@ int ecs_query_begin_terms(ecs_world *world, ecs_query *query, const ecs_term *te
     int result = parse_group(&p, 0);
     if (result) {
         plan_free(plan);
+        memset(query, 0, sizeof *query);
         return result;
     }
     finish_plan(world, query, plan);
@@ -686,6 +704,7 @@ int ecs_query_next(ecs_query *query, ecs_entity *out_entity)
         }
     }
     if (!found) {
+        query->current = (ecs_entity){ 0, 0 };
         return 0;
     }
     ecs_entity entity = { slot, query->world->generations[slot] };
@@ -703,7 +722,7 @@ ecs_entity ecs_query_var(const ecs_query *query, int var)
 
 ecs_entity ecs_query_src(const ecs_query *query, int term)
 {
-    assert(query && term >= 0);
+    assert(query && term >= 0 && query->current.slot);
     query_plan *plan = query->plan;
     if (!plan) {
         assert(term < query->ref_count);

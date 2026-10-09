@@ -321,6 +321,13 @@ TEST_CASE(ecs_invalid_terms_are_rejected)
     REQUIRE(ecs_query_begin_terms(world, &query, unknown, 1) == ECS_ERR_COMPONENT);
     const ecs_term unbound[] = { { .id = position_desc.id, .src_var = 1 } };
     REQUIRE(ecs_query_begin_terms(world, &query, unbound, 1) == ECS_ERR_ARGUMENT);
+    ecs_entity found;
+    REQUIRE(ecs_query_next(&query, &found) == ECS_ERR_ARGUMENT);
+    ecs_query_end(&query);
+    ecs_component_id missing = 999;
+    REQUIRE(ecs_query_begin(world, &query, &missing, 1) == ECS_ERR_COMPONENT);
+    REQUIRE(ecs_query_next(&query, &found) == ECS_ERR_ARGUMENT);
+    ecs_query_end(&query);
     const ecs_term bound_in_or[] = {
         { .oper = ECS_OR, .id = likes_desc.id, .target_var = 1 },
         { .oper = ECS_OR, .id = position_desc.id },

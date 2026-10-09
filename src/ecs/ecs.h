@@ -323,7 +323,8 @@ int ecs_query_begin_terms(ecs_world *, ecs_query *, const ecs_term *terms, int t
 int ecs_query_next(ecs_query *query, ecs_entity *out_entity);
 /* The current result's variable binding, or zero when unbound. */
 ecs_entity ecs_query_var(const ecs_query *, int var);
-/* The entity that matched the term for the current result, or zero. */
+/* The entity that matched the term for the current result, or zero. Only
+ * valid between a successful ecs_query_next and the next call. */
 ecs_entity ecs_query_src(const ecs_query *, int term);
 void ecs_query_end(ecs_query *query);
 int ecs_world_iteration_begin(ecs_world *world);

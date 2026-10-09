@@ -133,7 +133,7 @@ static inline const ecs_component *skipped_disabled(const ecs_world *world, bool
 }
 
 void *ecs_grow_storage(void *data, size_t old_count, size_t count, size_t stride);
-ecs_component *find_component(const ecs_world *, ecs_component_id);
+ecs_component *find_component(ecs_world *, ecs_component_id);
 /* Drops slots removed since the dense list was last compacted. */
 void compact_dense(ecs_component *);
 

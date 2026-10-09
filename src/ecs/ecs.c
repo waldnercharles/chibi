@@ -92,7 +92,7 @@ static void component_index_append(ecs_world *world)
     }
 }
 
-ecs_component *find_component(const ecs_world *world, ecs_component_id id)
+ecs_component *find_component(ecs_world *world, ecs_component_id id)
 {
     if (!world->component_lookup_capacity) {
         return NULL;

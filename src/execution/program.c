@@ -50,7 +50,8 @@ static int state_assign(state_value *state, const pin_value *value)
     return FLOW_OK;
 }
 /* Lowers a compiled query tree to terms. A group needs a scope unless it is
- * an AND of ANDs; every ANY gets one, so neighboring OR chains stay apart. */
+ * an AND of ANDs; every ANY gets one, so neighboring OR chains stay apart.
+ * An empty scope holds, so an empty ANY holds a negated one instead. */
 static void query_import(const execution_module *m, int index, ecs_oper oper, ecs_term **terms)
 {
     const execution_module_query *q = &m->plan.queries[index];
@@ -68,6 +69,10 @@ static void query_import(const execution_module *m, int index, ecs_oper oper, ec
                                                     : ECS_AND;
     if (scoped) {
         apush(*terms, ((ecs_term){ .kind = ECS_TERM_OPEN, .oper = oper }));
+    }
+    if (q->kind == EXECUTION_QUERY_ANY && !q->child_count) {
+        apush(*terms, ((ecs_term){ .kind = ECS_TERM_OPEN, .oper = ECS_NOT }));
+        apush(*terms, ((ecs_term){ .kind = ECS_TERM_CLOSE }));
     }
     for (int i = 0; i < q->child_count; i++) {
         query_import(m, q->children[i], inner, terms);

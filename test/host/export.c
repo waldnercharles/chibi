@@ -224,6 +224,11 @@ TEST_CASE(export_assembles_a_runnable_folder)
     write_png(64, 32);
     REQUIRE(!export_as("apps/Odd", CHIBI_EXPORT_APP, false));
     write_png(64, 64);
+    char icon_path[512];
+    snprintf(icon_path, sizeof icon_path, "%s/project/art/icon.png", root);
+    REQUIRE(truncate(icon_path, 65 * 1024 * 1024) == 0); /* sparse, over the bound */
+    REQUIRE(!export_as("apps/Odd", CHIBI_EXPORT_APP, false));
+    write_png(64, 64);
     REQUIRE(!export_as("apps/.", CHIBI_EXPORT_APP, false));
     REQUIRE(!export_as("apps/.app", CHIBI_EXPORT_APP, false));
     REQUIRE(!has("apps/Odd.app/Contents/Info.plist", NULL));

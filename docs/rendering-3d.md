@@ -9,8 +9,8 @@ into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
 
 - **Directional Light** (`GameDirectionalLight`): color, intensity and the world
   direction the light travels. A scene shows at most one; a second visible one is
-  an error, and hidden ones are left out. With none, only ambient and point lights
-  shade the scene.
+  an error, and hidden ones are left out. Fog never culls it. With none, only
+  ambient and point lights shade the scene.
 - **Point Light** (`GamePointLight`): up to 32 per view, ranked by estimated
   influence on the camera.
 - **Environment** (`GameEnvironment`): exposure, bloom, and a hemisphere ambient

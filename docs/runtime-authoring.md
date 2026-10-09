@@ -13,6 +13,30 @@ Games use separate repositories such as `chibi-arena3d`, `chibi-space-cadet` and
 its starter and shell assets in `chibi-studio`. Pass the project root to an
 installed authoring tool rather than mounting a game under the engine checkout.
 
+## Start a project
+
+Scaffold files with the controller instead of copying another project. `new_project`
+writes `project.kdl` and an empty `content/scenes/Start.kdl`; `new_asset` writes an
+empty asset of one kind in its content folder, the same form Studio's New menu
+starts from, and never overwrites a file. A taken name fails with `asset_conflict`,
+a bad name or path with `invalid_request`, and a disk that refuses the write with
+`io_error`:
+
+```sh
+printf '%s\n' '{"contract":1,"operation":"new_project","path":"tetris","name":"Tetris"}' | chibi_ctl
+printf '%s\n' '{"contract":1,"operation":"new_asset","kind":"behavior","name":"Board"}' | \
+  chibi_ctl --project-root tetris
+```
+
+Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
+`material`, `shape`, `field`, `shader-library` and `model`. Before running content,
+`validate_project` checks the manifest, its start scene and every asset. Its
+`problems` list only the assets with errors or warnings, each diagnostic naming
+what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
+model and a shape share a name there is no catalog, so it lists no asset
+problems until one is renamed. It never changes files: a project saved by an
+earlier build fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
+
 ## Declare components
 
 A game declares its own component types under `content/components`, one KDL file
@@ -97,7 +121,8 @@ printf '%s\n' '{"contract":1,"operation":"validate_asset","path":"behaviors/Proj
 
 Change the path to an asset in your project. A request failure returns a nonzero
 exit status. Inspect the response's diagnostics as well as its status. Retained
-operations include `read_asset`, `validate_asset`, `catalog`, `inspect_graph`,
+operations include `read_asset`, `validate_asset`, `validate_project`,
+`new_project`, `new_asset`, `catalog`, `inspect_graph`,
 `inspect_system`, `inspect_ui`, `find_references`, `call_hierarchy`,
 `run_scenario`, and `runtime_snapshot`. The native contract definitions in
 `src/automation/controller.c` describe each operation's fields. The controller
@@ -114,6 +139,21 @@ printf '%s\n' '{"contract":1,"operation":"run_scenario","kind":"scene","name":"M
 Inspect `behavior_failures` and the deterministic state evidence in the response.
 Test invocations remain subject to the [60-second policy](testing.md#temporary-60-second-policy).
 A short sample run does not establish full runtime or rendering coverage.
+
+## Switch scenes
+
+Scripts start another scene with `load_scene(Scene: "Level2")`, restart the
+running one with `reload_scene()`, and read its name with `current_scene()`. A
+scene's name is its file name in `content/scenes` without `.kdl`. A request
+takes effect after the frame: the host destroys every entity, discards
+uncommitted save changes, keeps committed save data, and starts the scene, whose
+Begin runs before its first frame. Time, held input and audio carry on.
+`chibi-compile` prepares every scene in `content/scenes`, so the player can load
+any of them, and refuses a scene that binds one `GameGlobalBinding` name to two
+entities. Scene scenarios (`run_scenario`, `runtime_snapshot`,
+`profile_scenario` and recordings) follow requests the same way. Studio play
+mode cannot load scenes yet, so a request there fails with "This host cannot
+load scenes".
 
 ## Runtime identity and capability requests
 

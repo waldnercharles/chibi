@@ -694,9 +694,8 @@ char *chibi_project_scene_path(const chibi_project *project, const char *request
     if (scene[0] == '/') {
         return xstrdup(scene);
     }
-    /* A scene named by its content/ path is in the content folder. */
     if (!strncmp(scene, "content/", strlen("content/"))) {
-        scene += strlen("content/");
+        return join_path(project->root, scene);
     }
     return join_path(project->content, scene);
 }

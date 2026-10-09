@@ -523,9 +523,11 @@ TEST_CASE(manifest_content_folder_is_used)
     REQUIRE(rename(from, to) == 0);
     set_manifest("content", "assets");
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
-    /* A start scene named by its content/ path is in the folder too. */
+    /* A start scene's content/ path stays relative to the project root, as
+     * earlier builds read it, so with the content in assets/ it is missing. */
     set_start_scene("content/scenes/Start.kdl");
-    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    REQUIRE(validate() != 0 && errors() == 1);
+    set_start_scene("scenes/Start.kdl");
     ctl(true, "{\"contract\":1,\"operation\":\"status\"}");
     REQUIRE(reads(yyjson_get_str(result("content_root")), "assets"));
 

@@ -2451,7 +2451,7 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
                          "        return twice + X\n"
                          "    }\n"
                          "    on Impulse(amount, enabled) {\n"
-                         "        if enabled { n = Add(amount) + base }\n"
+                         "        if enabled { n = base + Add(amount) }\n"
                          "    }\n"
                          "}\n";
     const char *expected = "behavior L { n: double = 0; hits: double = 0\n"
@@ -2464,7 +2464,7 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
                            "    }\n"
                            "    on Impulse(amount, enabled) {\n"
                            "        if enabled { base := n + 1; n = "
-                           "Add(amount) + base }\n"
+                           "base + Add(amount) }\n"
                            "    }\n"
                            "}\n";
     char error[256] = "";
@@ -2559,8 +2559,17 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
         "    local hit = n + 1\n"
         "    on Tick() { hit := 0; while n < 2 { n += local.hit } }\n"
         "}\n",
+        "behavior L { n: double = 0\n"
+        "    function SetN() { n = 5; return 0 }\n"
+        "    local hit = n + 1\n"
+        "    on Tick() { n = SetN() + hit }\n"
+        "}\n",
+        "behavior L { n: double = 0; local hit = hit + 1\n"
+        "    on Tick() { n = hit }\n}\n",
+        "behavior L { n: double = 0; local hit = other; local other = hit\n"
+        "    on Tick() { n = hit }\n}\n",
     };
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 8; i++) {
         unchanged = NULL;
         REQUIRE(
             chibi_migrate_locals(later[i], &unchanged, error, sizeof error) &&
@@ -2587,11 +2596,16 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
     REQUIRE(!chibi_migrate_locals(condition, &unchanged, error, sizeof error));
     REQUIRE(unchanged && strstr(unchanged, "{ hit := One(); if hit > 0 { n = hit } }"));
     free(unchanged);
-    const char *disabled = "behavior L { disabled local X = 1 }\n";
-    REQUIRE(
-        chibi_migrate_locals(disabled, &unchanged, error, sizeof error) &&
-        !unchanged && strstr(error, "disabled")
-    );
+    const char *disabled[] = {
+        "behavior L { disabled local X = 1 }\n",
+        "behavior L { disabled /* x */ local X = 1 }\n"
+    };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(
+            chibi_migrate_locals(disabled[i], &unchanged, error, sizeof error) &&
+            !unchanged && strstr(error, "disabled")
+        );
+    }
     /* Comments and line breaks may sit between a local's tokens. */
     const char *spaced[] = {
         "behavior L { n: double = 0; local /* note */ X = 1\n"

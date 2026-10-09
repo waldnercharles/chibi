@@ -1640,6 +1640,23 @@ static bool always_reads(const char *text, TSNode read, TSNode block)
     }
     return true;
 }
+/* Whether `node` calls something that runs before `read` is evaluated. */
+static bool calls_before(TSNode node, TSNode read)
+{
+    if (ts_node_start_byte(node) >= ts_node_start_byte(read)) {
+        return false;
+    }
+    if (!encloses(node, read) &&
+        (is(node, "call_expression") || is(node, "await_expression"))) {
+        return true;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (calls_before(ts_node_named_child(node, i), read)) {
+            return true;
+        }
+    }
+    return false;
+}
 /* Declares `l` in `unit` before the first statement that reads it. */
 static int place_local(
     const char *text,
@@ -1696,14 +1713,15 @@ static int place_local(
     }
     /* A local was evaluated at its first read, which a branch or loop
      * body might skip or reach after the state it reads changed. */
-    if (!constant(value) && !always_reads(text, first, block)) {
+    if (!constant(value) &&
+        (!always_reads(text, first, block) || calls_before(statement, first))) {
         return local_fail(
             error,
             error_size,
             text,
             ts_node_child_by_field_name(l->node, "name", 4),
-            "Local `%.*s` is first read in a branch or loop; declare it "
-            "where it should run before migrating"
+            "Local `%.*s` is first read in a branch or loop, or after a call; "
+            "declare it where it should run before migrating"
         );
     }
     TSNode shadowed = captured(text, all, value, l->node, statement);
@@ -1754,21 +1772,31 @@ static int place_local(
     afree(depends);
     return 0;
 }
-static void depends_first(const char *text, lazy *all, int index, bool *visited, int **order)
+enum
 {
-    if (visited[index]) {
-        return;
+    LOCAL_UNSEEN,
+    LOCAL_VISITING,
+    LOCAL_ORDERED
+};
+/* Orders the locals `index` reads before it; false when one reads itself. */
+static bool depends_first(const char *text, lazy *all, int index, int *seen, int **order)
+{
+    if (seen[index] != LOCAL_UNSEEN) {
+        return seen[index] == LOCAL_ORDERED;
     }
-    visited[index] = true;
+    seen[index] = LOCAL_VISITING;
     char *ignored = NULL;
     int *depends = NULL;
     local_text(text, all, ts_node_child_by_field_name(all[index].node, "value", 5), &ignored, &depends);
     afree(ignored);
-    for (int i = 0; i < acount(depends); i++) {
-        depends_first(text, all, depends[i], visited, order);
+    bool ordered = true;
+    for (int i = 0; ordered && i < acount(depends); i++) {
+        ordered = depends_first(text, all, depends[i], seen, order);
     }
     afree(depends);
+    seen[index] = LOCAL_ORDERED;
     apush(*order, index);
+    return ordered;
 }
 int chibi_migrate_locals(const char *source, char **migrated, char *error, size_t error_size)
 {
@@ -1783,10 +1811,7 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
             p++;
             continue;
         }
-        const char *word = p + 8;
-        while (*word == ' ' || *word == '\t') {
-            word++;
-        }
+        const char *word = gap(p + 8);
         if (word > p + 8 && !strncmp(word, "local", 5) && !word_char(word[5]) &&
             (p == source || !word_char(p[-1])) && statement_start(source, p)) {
             if (error_size) {
@@ -1838,17 +1863,27 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
             );
         }
     }
-    replacement *edits = NULL;
-    local_use *uses = NULL;
-    local_uses(text, all, root, &uses, &edits);
     /* Each local is placed after the locals that read it, so their
      * declarations count as its reads. */
-    bool *visited = xcalloc((size_t)acount(all), sizeof *visited);
+    int *seen = xcalloc((size_t)acount(all), sizeof *seen);
     int *order = NULL;
     for (int i = 0; i < acount(all); i++) {
-        depends_first(text, all, i, visited, &order);
+        if (!depends_first(text, all, i, seen, &order) && !status) {
+            status = local_fail(
+                error,
+                error_size,
+                text,
+                ts_node_child_by_field_name(all[i].node, "name", 4),
+                "Local `%.*s` reads itself; break the cycle before migrating"
+            );
+        }
     }
-    free(visited);
+    free(seen);
+    replacement *edits = NULL;
+    local_use *uses = NULL;
+    if (!status) {
+        local_uses(text, all, root, &uses, &edits);
+    }
     for (int k = acount(order) - 1; !status && k >= 0; k--) {
         int index = order[k];
         TSNode *units = NULL;

@@ -235,10 +235,12 @@ TEST_CASE(sprite_images_join_the_program_set_and_sample_by_variant)
     REQUIRE(set.count == RENDER_SHADER_IMAGE_MAX);
     return true;
 }
-/* A 16 x 8 sky whose every texel holds `rgbe`. */
-static render_sky uniform_sky(const unsigned char rgbe[4])
+/* A sky `width` texels wide whose every texel holds `rgbe`. */
+static render_sky uniform_sky(int width, const unsigned char rgbe[4])
 {
-    render_sky sky = { .width = 16, .height = 8, .texels = xmalloc(16 * 8 * 4) };
+    render_sky sky = { .width = width,
+                       .height = width / 2,
+                       .texels = xmalloc((size_t)width * width / 2 * 4) };
     for (int i = 0; i < sky.width * sky.height; i++) {
         memcpy(sky.texels + i * 4, rgbe, 4);
     }
@@ -255,22 +257,54 @@ static bool uniform_face(const render_sky *sky, int face, const uint16_t rgb[3])
     }
     return true;
 }
+/* The direction texel (x, y) of a 64 x 32 sky looks along. Row 0 looks up,
+ * the middle column along -Z and the column three quarters across along +X. */
+static void sky_ray(int x, int y, float ray[3])
+{
+    float elevation = (.5f - (y + .5f) / 32) * 3.14159265f;
+    float azimuth = ((x + .5f) / 64 - .5f) * 2 * 3.14159265f;
+    ray[0] = cosf(elevation) * sinf(azimuth);
+    ray[1] = sinf(elevation);
+    ray[2] = -cosf(elevation) * cosf(azimuth);
+}
 /* A 64 x 32 sky holding one half in red where a texel looks toward +X, green
- * toward +Y and blue toward +Z. Row 0 looks up, the middle column along -Z
- * and the column three quarters across along +X. */
+ * toward +Y and blue toward +Z. */
 static render_sky octant_sky()
 {
     render_sky sky = { .width = 64, .height = 32, .texels = xmalloc(64 * 32 * 4) };
     for (int y = 0; y < sky.height; y++) {
-        float elevation = (.5f - (y + .5f) / sky.height) * 3.14159265f;
         for (int x = 0; x < sky.width; x++) {
-            float azimuth = ((x + .5f) / sky.width - .5f) * 2 * 3.14159265f;
-            float ray[3] = { cosf(elevation) * sinf(azimuth),
-                             sinf(elevation),
-                             -cosf(elevation) * cosf(azimuth) };
+            float ray[3];
+            sky_ray(x, y, ray);
             unsigned char *t = sky.texels + (y * sky.width + x) * 4;
             for (int c = 0; c < 3; c++) {
                 t[c] = ray[c] > 0 ? 128 : 0;
+            }
+            t[3] = 128;
+        }
+    }
+    return sky;
+}
+/* Unit axes whose squared cosine with each texel's direction the quadratic
+ * sky holds, one per channel. Together they reach every second-band term, the
+ * last with unequal weights on xy, yz and xz. */
+static const float quadratic_axes[3][3] = { { 0, 1, 0 },
+                                            { 1, 0, 0 },
+                                            { .26726124f, .53452248f, .80178373f } };
+/* A 64 x 32 sky whose channel c holds (a_c . d)^2 toward direction d. */
+static render_sky quadratic_sky()
+{
+    render_sky sky = { .width = 64, .height = 32, .texels = xmalloc(64 * 32 * 4) };
+    for (int y = 0; y < sky.height; y++) {
+        for (int x = 0; x < sky.width; x++) {
+            float ray[3];
+            sky_ray(x, y, ray);
+            unsigned char *t = sky.texels + (y * sky.width + x) * 4;
+            for (int c = 0; c < 3; c++) {
+                const float *a = quadratic_axes[c];
+                float cosine = a[0] * ray[0] + a[1] * ray[1] + a[2] * ray[2];
+                /* Mantissa over 256 under exponent 128, capped at 255. */
+                t[c] = (unsigned char)fminf(roundf(cosine * cosine * 256), 255);
             }
             t[3] = 128;
         }
@@ -339,15 +373,144 @@ TEST_CASE(sky_faces_follow_the_gpu_cube_map_layout)
  * exponent is black. */
 TEST_CASE(sky_faces_hold_texels_as_halves)
 {
-    render_sky sky = uniform_sky((const unsigned char[4]){ 128, 64, 32, 129 });
+    render_sky sky = uniform_sky(16, (const unsigned char[4]){ 128, 64, 32, 129 });
     REQUIRE(uniform_face(&sky, 0, (const uint16_t[3]){ 0x3c00, 0x3800, 0x3400 }));
     render_sky_free(&sky);
-    sky = uniform_sky((const unsigned char[4]){ 255, 1, 0, 145 });
+    sky = uniform_sky(16, (const unsigned char[4]){ 255, 1, 0, 145 });
     REQUIRE(uniform_face(&sky, 3, (const uint16_t[3]){ 0x7bff, 0x6000, 0 }));
     render_sky_free(&sky);
-    sky = uniform_sky((const unsigned char[4]){ 255, 255, 255, 0 });
+    sky = uniform_sky(16, (const unsigned char[4]){ 255, 255, 255, 0 });
     REQUIRE(uniform_face(&sky, 5, (const uint16_t[3]){ 0 }));
     render_sky_free(&sky);
+    return true;
+}
+/* Irradiance in channel c toward unit direction d, from coefficients as
+ * sky.h spells them out. */
+static float irradiance(const float coefficients[9][3], const float d[3], int c)
+{
+    float x = d[0], y = d[1], z = d[2];
+    float terms[9] = {
+        1, x, y, z, x * y, y * z, 3 * y * y - 1, x * z, x * x - z * z
+    };
+    float sum = 0;
+    for (int i = 0; i < 9; i++) {
+        sum += coefficients[i][c] * terms[i];
+    }
+    return sum;
+}
+/* An even sky of radiance L gives pi L toward every direction. The octant sky
+ * holds 0.5 in each channel over the half of the sky its axis points into, so
+ * channel c receives pi 0.5 (1 + d_c) / 2: the cosine integral over that half.
+ * Radiance (a . d)^2 lies within the first three bands, which the nine terms
+ * carry exactly, and gives pi (1 + (a . d)^2) / 4. */
+TEST_CASE(sky_irradiance_integrates_the_cosine_lobe)
+{
+    static const float pi = 3.14159265f;
+    float coefficients[3][9][3];
+    render_sky sky = uniform_sky(64, (const unsigned char[4]){ 128, 64, 32, 128 });
+    render_sky_irradiance(&sky, coefficients[0]);
+    render_sky_free(&sky);
+    sky = octant_sky();
+    render_sky_irradiance(&sky, coefficients[1]);
+    render_sky_free(&sky);
+    sky = quadratic_sky();
+    render_sky_irradiance(&sky, coefficients[2]);
+    render_sky_free(&sky);
+    int checked = 0;
+    for (int i = 0; i < 27; i++) {
+        float d[3] = { (float)(i % 3 - 1), (float)(i / 3 % 3 - 1), (float)(i / 9 - 1) };
+        float length = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        if (!length) {
+            continue;
+        }
+        for (int c = 0; c < 3; c++) {
+            d[c] /= length;
+        }
+        for (int c = 0; c < 3; c++) {
+            float even = pi * ldexpf(1, -1 - c), half = pi * .5f * (1 + d[c]) / 2;
+            REQUIRE(fabsf(irradiance(coefficients[0], d, c) - even) < even * .005f);
+            REQUIRE(fabsf(irradiance(coefficients[1], d, c) - half) < pi * .5f * .01f);
+            const float *a = quadratic_axes[c];
+            float cosine = a[0] * d[0] + a[1] * d[1] + a[2] * d[2];
+            float quadratic = pi * (1 + cosine * cosine) / 4;
+            REQUIRE(fabsf(irradiance(coefficients[2], d, c) - quadratic) < pi * .5f * .01f);
+        }
+        checked++;
+    }
+    REQUIRE(checked == 26);
+    return true;
+}
+static float from_half(uint16_t h)
+{
+    int exponent = h >> 10 & 0x1f, mantissa = h & 0x3ff;
+    float value = exponent ? ldexpf((float)(1024 + mantissa), exponent - 25)
+                           : ldexpf((float)mantissa, -24);
+    return h & 0x8000 ? -value : value;
+}
+/* The specular reflectance of a GGX surface under even white light, split
+ * into the part that scales F0 and the part added to it, by integrating the
+ * lobe over a fine grid of light directions. */
+static void reference_split_sum(float nv, float roughness, double result[2])
+{
+    enum
+    {
+        THETAS = 256,
+        PHIS = 512
+    };
+    static const double pi = 3.14159265358979;
+    double alpha = roughness * roughness, a2 = alpha * alpha;
+    double view[3] = { sqrt(1 - nv * nv), 0, nv };
+    result[0] = result[1] = 0;
+    for (int i = 0; i < THETAS; i++) {
+        double theta = (i + .5) * pi / 2 / THETAS, nl = cos(theta);
+        for (int j = 0; j < PHIS; j++) {
+            double phi = (j + .5) * 2 * pi / PHIS;
+            double light[3] = { sin(theta) * cos(phi), sin(theta) * sin(phi), nl };
+            double h[3], length = 0;
+            for (int c = 0; c < 3; c++) {
+                h[c] = light[c] + view[c];
+                length += h[c] * h[c];
+            }
+            double nh = h[2] / sqrt(length);
+            double vh = (h[0] * view[0] + h[2] * view[2]) / sqrt(length);
+            double d = nh * nh * (a2 - 1) + 1;
+            double distribution = a2 / (pi * d * d);
+            double visibility = .5 / (nl * sqrt(nv * nv * (1 - a2) + a2) +
+                                      nv * sqrt(nl * nl * (1 - a2) + a2));
+            double weight = distribution * visibility * nl * sin(theta) *
+                            (pi / 2 / THETAS) * (2 * pi / PHIS);
+            double fresnel = pow(1 - vh, 5);
+            result[0] += (1 - fresnel) * weight;
+            result[1] += fresnel * weight;
+        }
+    }
+}
+/* The table matches a direct integration of the lobe at its texel centers,
+ * and a near-mirror surface reflects all light with Schlick's Fresnel at
+ * n.v. */
+TEST_CASE(split_sum_table_integrates_the_specular_lobe)
+{
+    enum
+    {
+        SIZE = 32
+    };
+    static uint16_t texels[SIZE * SIZE * 2];
+    render_sky_split_sum(SIZE, texels);
+    static const int points[][2] = { { 15, 15 }, { 28, 20 }, { 6, 28 }, { 20, 10 } };
+    for (int i = 0; i < 4; i++) {
+        float nv = (points[i][0] + .5f) / SIZE, roughness = (points[i][1] + .5f) / SIZE;
+        double expected[2];
+        reference_split_sum(nv, roughness, expected);
+        const uint16_t *texel = texels + (points[i][1] * SIZE + points[i][0]) * 2;
+        REQUIRE(fabs(from_half(texel[0]) - expected[0]) < .02);
+        REQUIRE(fabs(from_half(texel[1]) - expected[1]) < .01);
+    }
+    for (int i = 4; i < SIZE; i++) {
+        float nv = (i + .5f) / SIZE, fresnel = powf(1 - nv, 5);
+        float scale = from_half(texels[i * 2]), bias = from_half(texels[i * 2 + 1]);
+        REQUIRE(fabsf(scale + bias - 1) < .02f);
+        REQUIRE(fabsf(bias - fresnel) < .01f);
+    }
     return true;
 }
 static const char *const sky_key = "content/skies/field.hdr";
@@ -371,7 +534,7 @@ static game_scene *environment_scene(const char *sky)
 TEST_CASE(prepared_skies_publish_with_their_generation)
 {
     host = render_prepared_resources(NULL);
-    render_sky sky = uniform_sky((const unsigned char[4]){ 128, 64, 32, 129 });
+    render_sky sky = uniform_sky(16, (const unsigned char[4]){ 128, 64, 32, 129 });
     char error[128] = { 0 };
     REQUIRE(render_sky_prepared_write(&sky, &bytes[0], &lengths[0], error, sizeof error));
     game_player_asset record = {
@@ -438,6 +601,8 @@ void test_render_resources()
     RUN_TEST_CASE(sprite_images_join_the_program_set_and_sample_by_variant);
     RUN_TEST_CASE(sky_faces_follow_the_gpu_cube_map_layout);
     RUN_TEST_CASE(sky_faces_hold_texels_as_halves);
+    RUN_TEST_CASE(sky_irradiance_integrates_the_cosine_lobe);
+    RUN_TEST_CASE(split_sum_table_integrates_the_specular_lobe);
     RUN_TEST_CASE(prepared_skies_publish_with_their_generation);
     pu_clear_setup();
 }

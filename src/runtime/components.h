@@ -554,8 +554,9 @@ typedef enum
  * applies exposure as compensation; it adapts at adaptation_speed per scene
  * second, from 0.1 to 100, and zero adapts every frame. Sky is an
  * equirectangular Radiance .hdr image, such as content/skies/field.hdr, drawn
- * behind the 3D scene. Sky rotation turns it about the up axis in degrees,
- * counterclockwise seen from above; sky exposure brightens it in stops, from
+ * behind the 3D scene; it lights the scene in place of the ambient colors. Sky
+ * rotation turns it and its light about the up axis in degrees,
+ * counterclockwise seen from above; sky exposure brightens both in stops, from
  * -20 to 20. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
 {

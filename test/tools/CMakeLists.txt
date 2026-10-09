@@ -83,6 +83,14 @@ if(TARGET Chibi::render)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_render_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::render)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_RUNTIME=1)
+    # Surface materials with roughness and metallic come from material graphs.
+    if(TARGET Chibi::shader_preparation)
+        target_link_libraries(chibi_render_consumer PRIVATE Chibi::shader_preparation
+            Chibi::graph_compilation Chibi::graph_authoring)
+        target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
+        target_link_libraries(test_tools PRIVATE Chibi::shader_preparation
+            Chibi::graph_compilation Chibi::graph_authoring)
+    endif()
 endif()
 
 # Image preparation decodes and imports files, so only compiler builds have it.

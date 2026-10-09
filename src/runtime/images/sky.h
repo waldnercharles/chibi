@@ -33,6 +33,21 @@ int render_sky_face_size(const render_sky *);
  * size * size RGBA16F texels, bilinearly sampled and clamped to 65504. */
 void render_sky_face(const render_sky *, int face, int size, uint16_t *texels);
 
+/* The sky's irradiance as nine spherical-harmonic coefficients per channel,
+ * convolved with the cosine lobe and folded with their basis constants, so the
+ * irradiance arriving at a surface facing unit direction (x, y, z) is
+ * c0 + c1 x + c2 y + c3 z + c4 xy + c5 yz + c6 (3y^2 - 1) + c7 xz +
+ * c8 (x^2 - z^2). A white sky of radiance 1 gives pi everywhere.
+ * Reference: https://graphics.stanford.edu/papers/envmap/envmap.pdf */
+void render_sky_irradiance(const render_sky *, float coefficients[9][3]);
+/* Writes the split-sum table for lighting from a prefiltered sky as size *
+ * size RG16F texels: the scale and bias that turn a surface's reflectance at
+ * normal incidence into its reflectance under even light, for n.v across
+ * and GGX roughness down, at texel centers. The visibility matches the
+ * direct lights' height-correlated Smith term.
+ * Reference: https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf */
+void render_sky_split_sum(int size, uint16_t *texels);
+
 /* Resident skies keyed by content path. Lookups do no file IO; publishing
  * takes ownership of the texels and replaces an earlier sky with that key. */
 const render_sky *render_sky_find(const char *key);

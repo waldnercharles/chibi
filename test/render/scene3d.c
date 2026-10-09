@@ -2,12 +2,18 @@
 
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
+#include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
 #include "runtime/images/sky.h"
 #include "runtime/particles.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#if CHIBI_TEST_MATERIAL_GRAPHS
+#include "authoring/shader_prepare.h"
+#include "graph/authoring/graph_edit.h"
+#include "graph/shader/shader_graph.h"
+#endif
 
 #include <assert.h>
 #include <math.h>
@@ -55,7 +61,7 @@ static void setup()
 static void teardown()
 {
     backdrop = false;
-    render_skies_clear();
+    render_shader_catalog_clear();
     engine_free(runtime);
     runtime = NULL;
     render_scene3d_free(scene3d);
@@ -73,7 +79,7 @@ static ecs_entity add(ecs_component_id component, const void *data)
 }
 
 /* A solid centered on a world point. */
-static void add_solid(CF_V3 center, GameGeometry3D shape, unsigned color)
+static ecs_entity add_solid(CF_V3 center, GameGeometry3D shape, unsigned color)
 {
     ecs_entity solid = add(
         GAME_COMPONENT_GameTransform.id,
@@ -88,6 +94,7 @@ static void add_solid(CF_V3 center, GameGeometry3D shape, unsigned color)
         ecs_world_record_add(world, solid, GAME_COMPONENT_GameMaterial.id, &material, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
+    return solid;
 }
 
 static void add_solid_at(float x, GameGeometry3D shape, unsigned color)
@@ -1235,19 +1242,25 @@ static CF_Pixel pixel(int x, int y)
     return pixels[y * SIDE + x];
 }
 
-/* A sky colored by the octant each texel looks into: red where it looks
- * toward +X, green toward +Y and blue toward +Z. Row 0 looks up, the middle
+/* The direction sky texel (x, y) looks along. Row 0 looks up, the middle
  * column along -Z and the column three quarters across along +X. */
+static CF_V3 sky_ray(int x, int y)
+{
+    float elevation = (.5f - (y + .5f) / SKY_HEIGHT) * 3.14159265f;
+    float azimuth = ((x + .5f) / SKY_WIDTH - .5f) * 2 * 3.14159265f;
+    return (CF_V3){ cosf(elevation) * sinf(azimuth),
+                    sinf(elevation),
+                    -cosf(elevation) * cosf(azimuth) };
+}
+
+/* A sky colored by the octant each texel looks into: red where it looks
+ * toward +X, green toward +Y and blue toward +Z. */
 static void publish_octant_sky()
 {
     static unsigned char texels[SKY_HEIGHT][SKY_WIDTH][4];
     for (int y = 0; y < SKY_HEIGHT; y++) {
-        float elevation = (.5f - (y + .5f) / SKY_HEIGHT) * 3.14159265f;
         for (int x = 0; x < SKY_WIDTH; x++) {
-            float azimuth = ((x + .5f) / SKY_WIDTH - .5f) * 2 * 3.14159265f;
-            CF_V3 ray = { cosf(elevation) * sinf(azimuth),
-                          sinf(elevation),
-                          -cosf(elevation) * cosf(azimuth) };
+            CF_V3 ray = sky_ray(x, y);
             unsigned char rgbe[4] = { ray.x > 0 ? 128 : 0,
                                       ray.y > 0 ? 128 : 0,
                                       ray.z > 0 ? 128 : 0,
@@ -1258,15 +1271,46 @@ static void publish_octant_sky()
     publish_sky(texels);
 }
 
+/* The axes the quadratic sky brightens toward, one per channel: +X, +Y and
+ * the diagonal between +X and +Z. */
+static const CF_V3 quadratic_axes[] = { { 1, 0, 0 },
+                                        { 0, 1, 0 },
+                                        { .70710678f, 0, .70710678f } };
+
+/* A sky whose channel c holds (a_c . d)^2 toward direction d. */
+static void publish_quadratic_sky()
+{
+    static unsigned char texels[SKY_HEIGHT][SKY_WIDTH][4];
+    for (int y = 0; y < SKY_HEIGHT; y++) {
+        for (int x = 0; x < SKY_WIDTH; x++) {
+            CF_V3 ray = sky_ray(x, y);
+            for (int c = 0; c < 3; c++) {
+                float cosine = cf_dot_v3(quadratic_axes[c], ray);
+                /* Mantissa over 256 under exponent 128, capped at 255. */
+                texels[y][x][c] = (unsigned char)fminf(roundf(cosine * cosine * 256), 255);
+            }
+            texels[y][x][3] = 128;
+        }
+    }
+    publish_sky(texels);
+}
+
+/* Where world direction d points in the sky turned `quarters` quarter turns
+ * counterclockwise from above. */
+static CF_V3 sky_frame(CF_V3 d, int quarters)
+{
+    for (int i = 0; i < quarters; i++) {
+        d = (CF_V3){ -d.z, d.y, d.x };
+    }
+    return d;
+}
+
 /* Whether the pixel at (x, y) shows the octant its view ray looks into, with
- * the sky turned `quarters` quarter turns counterclockwise from above. */
+ * the sky turned `quarters` quarter turns. */
 static bool shows_octant(int x, int y, int quarters)
 {
     CF_V2 ndc = { (x + .5f) * 2 / SIDE - 1, 1 - (y + .5f) * 2 / SIDE };
-    CF_V3 ray = render_scene3d_ray(&lens, ndc).d;
-    for (int i = 0; i < quarters; i++) {
-        ray = (CF_V3){ -ray.z, ray.y, ray.x };
-    }
+    CF_V3 ray = sky_frame(render_scene3d_ray(&lens, ndc).d, quarters);
     CF_Pixel shown = pixel(x, y);
     REQUIRE(ray.x > 0 ? shown.colors.r > 100 : !shown.colors.r);
     REQUIRE(ray.y > 0 ? shown.colors.g > 100 : !shown.colors.g);
@@ -1300,26 +1344,84 @@ TEST_CASE(sky_fills_the_view_in_its_directions)
     return true;
 }
 
-/* The sky lies on the far plane: surfaces keep every pixel they cover. */
+/* The pixel center's view ray, offset so `center` lies at the origin. */
+static CF_Ray3 pixel_ray(int x, int y, CF_V3 center)
+{
+    CF_V2 ndc = { (x + .5f) * 2 / SIDE - 1, 1 - (y + .5f) * 2 / SIDE };
+    CF_Ray3 ray = render_scene3d_ray(&lens, ndc);
+    ray.p = cf_sub_v3(ray.p, center);
+    return ray;
+}
+
+/* Whether the ray meets a cube of half size `half` at the origin, and where
+ * it enters which axis's face. */
+static bool meets_cube(CF_Ray3 ray, float half, float *enter, int *axis)
+{
+    float p[3] = { ray.p.x, ray.p.y, ray.p.z }, d[3] = { ray.d.x, ray.d.y, ray.d.z };
+    float leave = INFINITY;
+    *enter = -INFINITY;
+    for (int i = 0; i < 3; i++) {
+        float a = (-half - p[i]) / d[i], b = (half - p[i]) / d[i];
+        if (fminf(a, b) > *enter) {
+            *enter = fminf(a, b);
+            *axis = i;
+        }
+        leave = fminf(leave, fmaxf(a, b));
+    }
+    return *enter <= leave;
+}
+
+/* Which face of the two-unit box at `center` pixel (x, y) shows: its outward
+ * normal, or zero where the pixel shows what lies beyond. False within a
+ * tenth of a unit of an edge, where the pixel could show either side. */
+static bool box_face(int x, int y, CF_V3 center, CF_V3 *normal)
+{
+    CF_Ray3 ray = pixel_ray(x, y, center);
+    float enter;
+    int axis;
+    *normal = (CF_V3){ 0 };
+    if (!meets_cube(ray, 1.1f, &enter, &axis)) {
+        return true;
+    }
+    if (!meets_cube(ray, .9f, &enter, &axis)) {
+        return false;
+    }
+    meets_cube(ray, 1, &enter, &axis);
+    CF_V3 hit = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, enter));
+    float at[3] = { hit.x, hit.y, hit.z };
+    if (fabsf(at[(axis + 1) % 3]) > .9f || fabsf(at[(axis + 2) % 3]) > .9f) {
+        return false;
+    }
+    float n[3] = { 0 };
+    n[axis] = at[axis] > 0 ? 1 : -1;
+    *normal = (CF_V3){ n[0], n[1], n[2] };
+    return true;
+}
+
+/* The sky lies on the far plane: it fills only pixels no surface covers. A
+ * black box shows only its dim reflection of the sky. */
 TEST_CASE(sky_shows_only_where_no_surface_is)
 {
     look_level();
-    add_solid((CF_V3){ 0, 0, -6 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
-    GameEnvironment environment = sky_environment();
-    environment.sky = NULL;
-    REQUIRE(render(&environment));
-    static CF_Pixel bare[PIXELS];
-    memcpy(bare, pixels, sizeof pixels);
+    CF_V3 center = { 0, 0, -6 };
+    add_solid(center, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0x000000ffu);
     publish_uniform_sky((const unsigned char[4]){ 128, 128, 128, 128 });
-    environment.sky = sky_key;
+    GameEnvironment environment = sky_environment();
     REQUIRE(render(&environment));
-    int covered = 0;
-    for (int i = 0; i < PIXELS; i++) {
-        bool open = !bare[i].colors.r && !bare[i].colors.g && !bare[i].colors.b;
-        covered += !open;
-        REQUIRE(open ? pixels[i].colors.r > 100 : pixels[i].val == bare[i].val);
+    int covered = 0, open = 0;
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < SIDE; x++) {
+            CF_V3 normal;
+            if (!box_face(x, y, center, &normal)) {
+                continue;
+            }
+            bool face = cf_len_sq_v3(normal) > 0;
+            covered += face;
+            open += !face;
+            REQUIRE(face ? pixel(x, y).colors.r < 60 : pixel(x, y).colors.r > 160);
+        }
     }
-    REQUIRE(covered > 100 && covered < PIXELS / 2);
+    REQUIRE(covered > 100 && open > PIXELS / 2);
     return true;
 }
 
@@ -1327,16 +1429,13 @@ TEST_CASE(sky_shows_only_where_no_surface_is)
 TEST_CASE(translucent_surfaces_blend_over_the_sky)
 {
     look_level();
-    publish_uniform_sky((const unsigned char[4]){ 0, 0, 128, 128 });
+    publish_uniform_sky((const unsigned char[4]){ 128, 0, 128, 128 });
     add_solid((CF_V3){ 0, 0, -6 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xff000080u);
     GameEnvironment environment = sky_environment();
     REQUIRE(render(&environment));
     CF_Pixel open = pixel(4, 4), behind = pixel(SIDE / 2, SIDE / 2);
-    REQUIRE(!open.colors.r && open.colors.b > 100);
-    REQUIRE(
-        behind.colors.r > 20 && behind.colors.b > 20 &&
-        behind.colors.b < open.colors.b
-    );
+    REQUIRE(open.colors.r > 100 && open.colors.b > 100);
+    REQUIRE(behind.colors.b > 20 && behind.colors.b + 20 < open.colors.b);
     return true;
 }
 
@@ -1364,10 +1463,13 @@ TEST_CASE(sky_rotation_turns_it_counterclockwise_from_above)
     return true;
 }
 
-/* Each stop of sky exposure doubles it, exactly as doubled texels would. */
+/* Each stop of sky exposure doubles it and the light it casts, exactly as
+ * doubled texels would. */
 TEST_CASE(sky_exposure_scales_it_in_stops)
 {
     look_level();
+    add_solid((CF_V3){ 0, 0, -6 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    int box = SIDE / 2 * SIDE + SIDE / 2;
     publish_uniform_sky((const unsigned char[4]){ 128, 64, 32, 127 });
     GameEnvironment environment = sky_environment();
     environment.sky_exposure = 1;
@@ -1377,10 +1479,12 @@ TEST_CASE(sky_exposure_scales_it_in_stops)
     publish_uniform_sky((const unsigned char[4]){ 128, 64, 32, 128 });
     environment.sky_exposure = 0;
     REQUIRE(render(&environment));
-    REQUIRE(pixels[0].colors.r > 100 && !memcmp(pixels, exposed, sizeof pixels));
+    REQUIRE(pixels[0].colors.r > 100 && pixels[box].colors.r > 100);
+    REQUIRE(!memcmp(pixels, exposed, sizeof pixels));
     environment.sky_exposure = -1;
     REQUIRE(render(&environment));
     REQUIRE(pixels[0].colors.r < exposed[0].colors.r);
+    REQUIRE(pixels[box].colors.r < exposed[box].colors.r);
     return true;
 }
 
@@ -1407,6 +1511,219 @@ TEST_CASE(sky_settings_must_be_valid)
     REQUIRE(render(&environment));
     return true;
 }
+
+/* Looks at the two-unit box at the origin from above a corner, so its +X, +Y
+ * and +Z faces show. */
+static void look_at_corner()
+{
+    lens.view = cf_look_at((CF_V3){ 3, 2.5f, 4 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
+}
+
+static void channels(CF_Pixel shown, int values[3])
+{
+    values[0] = shown.colors.r;
+    values[1] = shown.colors.g;
+    values[2] = shown.colors.b;
+}
+
+/* A white surface takes each channel of the octant sky from the half of the
+ * sky that channel's axis points into: all of it where the surface faces
+ * along the axis, half where it faces across, and only a faint reflection
+ * where it faces away. The ambient colors give way to the sky. */
+TEST_CASE(sky_lights_surfaces_from_its_directions)
+{
+    look_at_corner();
+    publish_octant_sky();
+    add_box(0xffffffffu);
+    GameEnvironment environment = sky_environment();
+    environment.ambient_sky = environment.ambient_ground = 0x00ff00ffu;
+    static const CF_V3 faces[] = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } };
+    for (int quarters = 0; quarters < 2; quarters++) {
+        environment.sky_rotation = 90.0f * quarters;
+        REQUIRE(render(&environment));
+        for (int i = 0; i < 3; i++) {
+            CF_V3 facing = sky_frame(faces[i], quarters);
+            float axes[3] = { facing.x, facing.y, facing.z };
+            int shown[3];
+            channels(pixel_at(faces[i]), shown);
+            for (int c = 0; c < 3; c++) {
+                REQUIRE(
+                    axes[c] > 0   ? shown[c] > 165
+                    : axes[c] < 0 ? shown[c] < 40
+                                  : shown[c] > 100 && shown[c] < 150
+                );
+            }
+        }
+    }
+    return true;
+}
+
+/* A sky's broad gradients light surfaces too: radiance (a . d)^2 gives
+ * irradiance pi (1 + (a . n)^2) / 4, twice as much facing along a as across
+ * it. An eighth of a turn brings the diagonal axis onto +X. */
+TEST_CASE(sky_lights_surfaces_by_its_gradients)
+{
+    look_at_corner();
+    publish_quadratic_sky();
+    add_box(0xffffffffu);
+    GameEnvironment environment = sky_environment();
+    static const CF_V3 faces[] = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } };
+    for (int eighths = 0; eighths < 2; eighths++) {
+        environment.sky_rotation = 45.0f * eighths;
+        REQUIRE(render(&environment));
+        float turn = eighths * 3.14159265f / 4, c = cosf(turn), s = sinf(turn);
+        for (int i = 0; i < 3; i++) {
+            CF_V3 n = faces[i],
+                  facing = { c * n.x - s * n.z, n.y, s * n.x + c * n.z };
+            int shown[3];
+            channels(pixel_at(n), shown);
+            for (int k = 0; k < 3; k++) {
+                float along = cf_dot_v3(quadratic_axes[k], facing);
+                along *= along;
+                REQUIRE(
+                    along > .75f   ? shown[k] > 168
+                    : along > .25f ? shown[k] > 145 && shown[k] < 166
+                                   : shown[k] < 143
+                );
+            }
+        }
+    }
+    return true;
+}
+
+#if CHIBI_TEST_MATERIAL_GRAPHS
+static const node_desc *pack_node(const char *name)
+{
+    for (int i = 0; i < SHADER_PACK.node_count; i++) {
+        if (!strcmp(SHADER_PACK.nodes[i]->name, name)) {
+            return SHADER_PACK.nodes[i];
+        }
+    }
+    return NULL;
+}
+
+/* Registers a material with a white base and constant roughness and metallic.
+ * A Vector3 node supplies the white: this dispatcher's type catalog lacks the
+ * shader types that a color default needs. */
+static bool register_surface(const char *name, float roughness, float metallic)
+{
+    behavior_asset *material = behavior_asset_new(name);
+    material->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    node *white = graph_add_node(g, pack_node("Shader Vector3"));
+    pin_value one = { .type = PIN_F32, .f = 1 };
+    pin_value values[] = { { .type = PIN_F32, .f = roughness },
+                           { .type = PIN_F32, .f = metallic } };
+    bool built = white && !graph_connect_data(g, white, 0, output, 0) &&
+                 !graph_set_pin_default(g, output, 0, 2, &values[0]) &&
+                 !graph_set_pin_default(g, output, 0, 3, &values[1]);
+    for (int i = 0; i < 3; i++) {
+        built = built && !graph_set_pin_default(g, white, 0, i, &one);
+    }
+    shader_error error = { 0 };
+    built = built && render_shader_upsert(material, &error);
+    behavior_asset_free(material);
+    return built;
+}
+
+/* The two-unit box at the origin, drawn with surface material `name`. */
+static ecs_entity add_surface_box(const char *name)
+{
+    ecs_entity box = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    GameShader binding = { .material = name };
+    assert(ecs_world_record_add(world, box, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    return box;
+}
+
+/* The direction the view ray through pixel (x, y) leaves a face with outward
+ * `normal`, in the sky turned `quarters` quarter turns. */
+static CF_V3 reflection(int x, int y, CF_V3 normal, int quarters)
+{
+    CF_V3 d = cf_norm_v3(pixel_ray(x, y, (CF_V3){ 0 }).d);
+    return sky_frame(cf_sub_v3(d, cf_mul_v3_f(normal, 2 * cf_dot_v3(d, normal))), quarters);
+}
+
+/* A white mirror shows on each face the octant its reflected view rays look
+ * into, unturned and turned a quarter. Reflections near an octant's edge are
+ * left out, where the cube's filtering blends neighbors. */
+TEST_CASE(mirrors_reflect_the_sky_in_its_directions)
+{
+    look_at_corner();
+    publish_octant_sky();
+    REQUIRE(register_surface("Mirror", 0, 1));
+    add_surface_box("Mirror");
+    GameEnvironment environment = sky_environment();
+    for (int quarters = 0; quarters < 2; quarters++) {
+        environment.sky_rotation = 90.0f * quarters;
+        REQUIRE(render(&environment));
+        int checked[3] = { 0 };
+        for (int y = 0; y < SIDE; y++) {
+            for (int x = 0; x < SIDE; x++) {
+                CF_V3 normal;
+                if (!box_face(x, y, (CF_V3){ 0 }, &normal) || !cf_len_sq_v3(normal)) {
+                    continue;
+                }
+                CF_V3 r = reflection(x, y, normal, quarters);
+                float axes[3] = { r.x, r.y, r.z };
+                if (fabsf(r.x) < .3f || fabsf(r.y) < .3f || fabsf(r.z) < .3f) {
+                    continue;
+                }
+                int shown[3];
+                channels(pixel(x, y), shown);
+                for (int c = 0; c < 3; c++) {
+                    REQUIRE(axes[c] > 0 ? shown[c] > 160 : shown[c] < 10);
+                }
+                checked[normal.x ? 0 : normal.y ? 1 : 2]++;
+            }
+        }
+        REQUIRE(checked[0] > 20 && checked[1] > 20 && checked[2] > 20);
+    }
+    return true;
+}
+
+/* Rougher surfaces reflect the sky over a wider lobe. Every view ray that
+ * meets a mirror's +Z face reflects into the octant toward -X, -Y and +Z, so
+ * the face shows only blue; a fully rough face gathers red and green from the
+ * neighboring octants. */
+TEST_CASE(rough_surfaces_blur_the_sky_they_reflect)
+{
+    look_at_corner();
+    publish_octant_sky();
+    REQUIRE(register_surface("Mirror", 0, 1));
+    REQUIRE(register_surface("Rough", 1, 1));
+    ecs_entity box = add_surface_box("Mirror");
+    GameEnvironment environment = sky_environment();
+    int mean[2][3] = { 0 };
+    for (int i = 0; i < 2; i++) {
+        GAME_GameShader_get(world, box)->material = i ? "Rough" : "Mirror";
+        REQUIRE(render(&environment));
+        int count = 0, sums[3] = { 0 };
+        for (int y = 0; y < SIDE; y++) {
+            for (int x = 0; x < SIDE; x++) {
+                CF_V3 normal;
+                if (!box_face(x, y, (CF_V3){ 0 }, &normal) || normal.z <= 0) {
+                    continue;
+                }
+                int shown[3];
+                channels(pixel(x, y), shown);
+                for (int c = 0; c < 3; c++) {
+                    sums[c] += shown[c];
+                }
+                count++;
+            }
+        }
+        REQUIRE(count > 100);
+        for (int c = 0; c < 3; c++) {
+            mean[i][c] = sums[c] / count;
+        }
+    }
+    REQUIRE(mean[0][0] < 10 && mean[0][1] < 10 && mean[0][2] > 160);
+    REQUIRE(mean[1][0] > 25 && mean[1][1] > 25 && mean[1][2] + 40 < mean[0][2]);
+    return true;
+}
+#endif
 
 void test_render_scene3d()
 {
@@ -1451,6 +1768,12 @@ void test_render_scene3d()
     RUN_TEST_CASE(sky_rotation_turns_it_counterclockwise_from_above);
     RUN_TEST_CASE(sky_exposure_scales_it_in_stops);
     RUN_TEST_CASE(sky_settings_must_be_valid);
+    RUN_TEST_CASE(sky_lights_surfaces_from_its_directions);
+    RUN_TEST_CASE(sky_lights_surfaces_by_its_gradients);
+#if CHIBI_TEST_MATERIAL_GRAPHS
+    RUN_TEST_CASE(mirrors_reflect_the_sky_in_its_directions);
+    RUN_TEST_CASE(rough_surfaces_blur_the_sky_they_reflect);
+#endif
     pu_clear_setup();
     cf_destroy_app();
 }

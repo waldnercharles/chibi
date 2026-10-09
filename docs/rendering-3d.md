@@ -26,8 +26,8 @@ into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
   point light.
 - **Environment** (`GameEnvironment`): exposure, bloom, a sky (see Sky), and a
   hemisphere ambient that blends `ambient_ground` below to `ambient_sky` above,
-  scaled by `ambient_intensity`. Without an Environment the scene uses
-  `game_environment_defaults()`.
+  scaled by `ambient_intensity`. A sky's light replaces the hemisphere ambient.
+  Without an Environment the scene uses `game_environment_defaults()`.
 
 Omitted KDL fields are zero, so author every lighting field you need. Studio adds
 both components with their defaults filled in.
@@ -157,7 +157,7 @@ drawn on the far plane, so it fills every pixel no surface covers, and an empty
   quarter of its width; values past 65504 saturate. It rebuilds the cube only
   when the sky's texels change, so preparing the same file again costs no
   rebuild, but the frame that first shows a 4096-wide sky pays for six
-  1024-texel faces.
+  1024-texel faces and for integrating its light over all of its texels.
 - **Order**: the sky draws after opaque surfaces and before trails and
   translucent surfaces, which blend over it.
 - **Import**: the `import_sky` controller operation checks that a file decodes
@@ -171,8 +171,18 @@ drawn on the far plane, so it fills every pixel no surface covers, and an empty
 
   The response's `path` is the key to put in `sky`; `destination` picks another
   `content/... .hdr` path.
-- **Not covered**: the sky lights nothing yet. Ambient light still comes from
-  the hemisphere colors.
+- **Light**: a sky lights every surface in place of the hemisphere ambient,
+  turned by `sky_rotation` and scaled by `sky_exposure` like the sky itself.
+  Diffuse light comes from nine spherical-harmonic irradiance terms
+  ([Ramamoorthi and Hanrahan](https://graphics.stanford.edu/papers/envmap/envmap.pdf)),
+  integrated on the CPU over every texel. Reflections read a 128-texel
+  half-float cube with six mips, prefiltered on the GPU with the GGX lobe for
+  roughness 0 at the first mip to 1 at the last, and scale it by a 32x32
+  split-sum table
+  ([Karis](https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf)).
+  Both are redone whenever the cube is.
+- **Not covered**: nothing blocks sky light, so a surface inside a closed box
+  is lit as if it stood in the open.
 
 ## Optional material inputs
 
@@ -208,19 +218,29 @@ full strength, and angles out of range are rejected. Near the edge of a
 hard-edged cone 160 degrees across, lookups stay on the spot light's face
 rather than reading the shadows of the light before it. Looking along each
 axis, unturned and turned a quarter, every corner of the view shows the sky
-in the direction it looks; a box in front of the sky keeps every pixel it
-covered without one, and a translucent box blends over it; a quarter turn of
-rotation brings +X ahead; one stop of exposure matches texels twice as
-bright; and missing skies, exposure out of range and rotation that isn't
-finite are rejected. It runs `test_tools`
+in the direction it looks; a black box hides the sky where it stands and
+leaves it showing around it, and a translucent box blends over it; a quarter
+turn of rotation brings +X ahead; one stop of exposure matches texels twice as
+bright, both in the sky and in the light it casts; and missing skies, exposure
+out of range and rotation that isn't finite are rejected. Under an octant sky,
+unturned and turned a quarter, each face of a white box takes each channel
+from the half of the sky it faces, the hemisphere ambient gives way, and a
+mirror box shows the octant each view ray reflects into; a rough box gathers
+the neighboring octants. A sky brightening toward an axis lights the faces
+along it more than those across it, unturned and turned an eighth, which
+reaches every irradiance term but the xy and yz ones; render-resources checks
+those on the CPU. It runs `test_tools`
 from the desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 35 cases and 4646 assertions in 5.2 seconds on 2026-10-09.
+Vulkan llvmpipe passed 39 cases and 9194 assertions in 7.4 seconds on 2026-10-09.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half
-floats, and that skies publish, and are charged, with a prepared generation, and
+floats; that the irradiance terms give the exact cosine integral of an even
+sky, an octant sky and skies quadratic along three axes; that the split-sum
+table matches a fine numerical integral of the GGX lobe; and that skies
+publish, and are charged, with a prepared generation, and
 `python3 tools/test_policy.py tool sky-files` decodes flat and run-length
 files, rejects malformed ones, prepares skies from mounted content and imports
 them without replacing a file. Both need the in-tree build above.

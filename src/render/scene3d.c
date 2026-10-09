@@ -1024,6 +1024,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     render_influences_bind(scene3d->influences);
     render_scene3d_shadow_bind(scene3d->shadow, cascades);
     render_scene3d_light_shadow_bind(scene3d->light_shadow);
+    render_scene3d_sky_bind(scene3d->sky);
     cf_draw3d_set_texture("scene_parameters", scene3d->parameters);
     cf_draw3d_push_projection(camera->projection);
     cf_draw3d_push_view(camera->view);
@@ -1077,6 +1078,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     cf_draw3d_set_texture("scene_parameters", (CF_Texture){ 0 });
     render_scene3d_shadow_unbind();
     render_scene3d_light_shadow_unbind();
+    render_scene3d_sky_unbind();
     cf_draw3d_pop_view();
     cf_draw3d_pop_projection();
     if (!transparent) {
@@ -1309,6 +1311,14 @@ bool render_scene3d_preview_material(
     GameEnvironment environment = game_environment_defaults();
     set_sun(scene3d, &sun);
     set_ambient(scene3d, &environment);
+    if (!render_scene3d_sky_prepare(
+            scene3d->sky,
+            &environment,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        )) {
+        return false;
+    }
     render_scene3d_reset(scene3d);
     render_influences_preview(scene3d->influences, activity->influence, RENDER_SCENE3D_PREVIEW_RADIUS);
     if (!material || render_shader_is_shape(material)) {

@@ -122,10 +122,12 @@ TOOLS = {
     'compile-space-cadet': [str(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/bin/chibi-compile'),
                             '--project-root', '/Users/cwaldner/Personal/chibi-space-cadet',
                             '--output', str(ROOT / '.chibi/architecture/player-space-cadet/project.chibip')],
-    # Five reviewed CPU-only renderer cases: typed transaction/lifetime, sprite image sets, sky face
-    # layout and halves, and sky publication; no window, GPU, fonts or files.
+    # Seven reviewed CPU-only renderer cases: typed transaction/lifetime, sprite image sets, sky face
+    # layout and halves, sky irradiance, the split-sum table, and sky publication; no window, GPU,
+    # fonts or files.
     'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--render-resources'],
-    # Hidden-app 64x64 3D renders: rhythm, ambient, lights, shadows, exposure and the Environment sky.
+    # Hidden-app 64x64 3D renders: rhythm, ambient, lights, shadows, exposure, and the Environment
+    # sky and its light.
     'scene3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene3d'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene-prepared'],

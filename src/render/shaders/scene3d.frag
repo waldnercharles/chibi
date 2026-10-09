@@ -6,6 +6,14 @@ layout(set = 2, binding = 0) uniform sampler2D scene_parameters;
 layout(set = 2, binding = SG_SHADOW_BINDING) uniform sampler2DShadow scene_shadow_map;
 layout(set = 2, binding = SG_SHADOW_BLOCKERS_BINDING) uniform sampler2D scene_shadow_blockers;
 layout(set = 2, binding = SG_LIGHT_SHADOW_BINDING) uniform sampler2DShadow scene_light_shadow_map;
+layout(set = 2, binding = SG_SKY_SPECULAR_BINDING) uniform samplerCube scene_sky_specular;
+layout(set = 2, binding = SG_SKY_BRDF_BINDING) uniform sampler2D scene_sky_brdf;
+// SDL's Vulkan backend binds only the first 4 KB of each uniform block, which
+// the scene's lights fill, so the sky's light has a block of its own.
+layout(set = 3, binding = 1) uniform sky_block {
+    vec4 scene_sky_light;
+    vec4 scene_sky_irradiance[9];
+};
 const float PI = 3.141592653589793;
 // Taps per blocker search and per soft filter, and the widest radius of each,
 // in texels of the cascade; scene3d_shadow.c widens cascades by that radius.
@@ -240,11 +248,52 @@ float light_shadow(int i)
     return lit / 9.0;
 }
 
+// A world direction in the sky's own frame, turned back by its rotation.
+vec3 sky_direction(vec3 d)
+{
+    float c = scene_sky_light.z, s = scene_sky_light.w;
+    return vec3(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
+}
+
+// The sky's irradiance on a surface facing n, from its nine spherical
+// harmonics (runtime/images/sky.h). Their ringing can dip below zero.
+vec3 sky_irradiance(vec3 n)
+{
+    vec3 result = scene_sky_irradiance[0].rgb + scene_sky_irradiance[1].rgb * n.x +
+        scene_sky_irradiance[2].rgb * n.y + scene_sky_irradiance[3].rgb * n.z +
+        scene_sky_irradiance[4].rgb * (n.x * n.y) + scene_sky_irradiance[5].rgb * (n.y * n.z) +
+        scene_sky_irradiance[6].rgb * (3.0 * n.y * n.y - 1.0) + scene_sky_irradiance[7].rgb * (n.x * n.z) +
+        scene_sky_irradiance[8].rgb * (n.x * n.x - n.z * n.z);
+    return max(result, vec3(0));
+}
+
+// Light from the sky: its irradiance for diffuse, and its prefiltered cube at
+// the surface's roughness for specular, scaled by the split-sum terms.
+// Reference: https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf
+vec3 sky_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 view)
+{
+    float nv = max(dot(normal, view), 0.0001);
+    vec2 split = textureLod(scene_sky_brdf, vec2(nv, roughness), 0.0).rg;
+    vec3 reflectance = mix(vec3(0.04), base, metallic) * split.x + split.y;
+    vec3 diffuse = base * (1.0 - metallic) * (1.0 - reflectance) *
+                   sky_irradiance(sky_direction(normal)) / PI;
+    vec3 reflected = textureLod(scene_sky_specular, sky_direction(reflect(-view, normal)),
+                                roughness * scene_sky_light.y).rgb;
+    return (diffuse + reflected * reflectance) * scene_sky_light.x;
+}
+
+// A sky lights the scene in place of the ambient colors, which blend from
+// ground below to sky above.
+vec3 ambient_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 view)
+{
+    if (scene_sky_light.x > 0.0) return sky_light(base, roughness, metallic, normal, view);
+    float sky = 0.5 + 0.5 * normal.y;
+    return base * (1.0 - metallic) * mix(scene_ambient_ground.rgb, scene_ambient_sky.rgb, sky);
+}
+
 vec3 direct_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 view)
 {
-    float sky = 0.5 + 0.5 * normal.y;
-    vec3 ambient = mix(scene_ambient_ground.rgb, scene_ambient_sky.rgb, sky);
-    vec3 result = base * (1.0 - metallic) * ambient;
+    vec3 result = ambient_light(base, roughness, metallic, normal, view);
     if (dot(scene_sun_color.rgb, scene_sun_color.rgb) > 0.0) {
         result += surface_light(base, roughness, metallic, normal, view, scene_sun_direction.xyz) *
                   scene_sun_color.rgb * sun_shadow();

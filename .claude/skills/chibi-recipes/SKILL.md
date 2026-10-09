@@ -78,10 +78,25 @@ it; there are no compatibility aliases (see the first rule in `AGENTS.md`).
 2. Cover the step with a pico_unit case that migrates a small old-format
    source and checks the result (see `program_version_11_references_migrate_to_values`
    in `test/language/program.c`).
-3. Migrate every project the change reaches with
+3. Migrate every project in this repository with
    `build/bin/chibi_ctl --project-root <root> --migrate`: every `project.kdl`
-   under `test/fixtures`, and the game and Studio repositories
-   (`chibi-voidweaver`, `chibi-celeste`, `chibi-studio/projects`), each in
-   its own PR that names the engine PR it needs.
+   under `test/fixtures`.
 4. Run `chibi_ctl --format` on each migrated project and compile it with
    `chibi-compile` to prove it still loads.
+
+Don't open version-bump PRs in other repositories (`chibi-studio`,
+`chibi-celeste`). Their projects may lag `main`: Studio, `chibi`,
+`chibi-compile` and `chibi export` upgrade an older project when they open it,
+and Studio CI opens Studio's projects against engine `main` on every run. A
+lagging project takes the new version in the next PR that changes it for
+another reason. Change another repository first only when a step stops on
+something it can't rewrite (a removed component a script names): make that
+edit work with the current engine, merge it before the engine PR, and leave
+its version number alone. Raising `CHIBI_PROJECT_OLDEST_VERSION` is the one
+case that needs those projects migrated first.
+
+Prepared artifact versions (`GAME_PLAYER_PREPARED_VERSION` and the other
+`*_PREPARED_VERSION`s in `sdk/artifact_formats.cmake`) change in the PR that
+changes the format, never in a follow-up. Artifacts are rebuilt from source,
+so they need no migration. If `main` took the same number first, take the
+next one when you merge `main`; git applies two identical bumps silently.

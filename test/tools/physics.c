@@ -1092,6 +1092,12 @@ static void followers_ignore_their_anchor()
     }
     const GameTransform *at = GAME_GameTransform_get_const(f.world, ship);
     assert(at->x == 0 && at->y == 0);
+    ecs_entity *found = NULL;
+    assert(game_physics_contact_entities(f.world, f.entities, ship, 1, &found) == 0);
+    assert(acount(found) == 0);
+    assert(game_physics_contact_entities(f.world, f.entities, hull, 1, &found) == 0);
+    assert(acount(found) == 0);
+    afree(found);
     dispose(&f);
 }
 

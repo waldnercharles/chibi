@@ -159,7 +159,7 @@ typedef struct
     const asset_family *family;
     char filename[256];
     char relative[512];
-    char name[256]; /* once read; see asset_name */
+    char name[GAME_PROTOTYPE_NAME_MAX + 1]; /* once read; see asset_name */
 } asset_ref;
 
 typedef struct
@@ -5453,14 +5453,16 @@ static int load_asset(
     size_t error_size
 )
 {
+    /* A prototype's name need not be one a file could take. */
+    const asset_family *family = family_by_kind(request_string(request, "kind"));
+    if (!request_string(request, "path") && family && family->loader == ASSET_PROTOTYPE) {
+        const char *name = request_string(request, "name");
+        return load_named_asset(root, family, name, ref, json, bytes, hash, error, error_size);
+    }
     int ref_status = resolve_asset_ref(request, ref, error, error_size);
     if (ref_status != 0) {
         return ref_status == -2 ? CHIBI_AUTOMATION_NOT_FOUND
                                 : CHIBI_AUTOMATION_INVALID_REQUEST;
-    }
-    if (ref->family->loader == ASSET_PROTOTYPE && !request_string(request, "path")) {
-        const char *name = request_string(request, "name");
-        return load_named_asset(root, ref->family, name, ref, json, bytes, hash, error, error_size);
     }
     return read_asset_file(root, ref, json, bytes, hash, error, error_size);
 }

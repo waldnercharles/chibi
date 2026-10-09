@@ -484,6 +484,19 @@ TEST_CASE(prototypes_are_found_by_declared_name)
     REQUIRE(yyjson_get_int(result("components")) == 2);
     REQUIRE(reads(yyjson_get_str(result("path")), "content/prototypes/Hull.kdl"));
     REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"enemies/grunt\"}") ==
+        0
+    );
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/prototypes/grunt.kdl"));
+    /* Or one longer than a file name can be. */
+    char long_name[301], text[400], request[600];
+    memset(long_name, 'L', sizeof long_name - 1);
+    long_name[sizeof long_name - 1] = '\0';
+    snprintf(text, sizeof text, "name \"%s\"\n", long_name);
+    write_file("game/content/prototypes/long.kdl", text);
+    snprintf(request, sizeof request, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"%s\"}", long_name);
+    REQUIRE(ctl(true, request) == 0 && reads(yyjson_get_str(result("name")), long_name));
+    REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
         0
     );
@@ -512,6 +525,13 @@ TEST_CASE(prototypes_are_found_by_declared_name)
     );
     REQUIRE(failure() && strstr(failure(), "both declare the prototype 'Hull'"));
     REQUIRE(validate() != 0);
+    /* Even when one of them is the file named after it, which a lookup
+     * reads first, the project is refused. */
+    char copy[256];
+    path(copy, sizeof copy, "game/content/prototypes/hull_copy.kdl");
+    REQUIRE(unlink(copy) == 0);
+    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n");
+    REQUIRE(validate() != 0 && errors() == 1);
     return true;
 }
 

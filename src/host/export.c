@@ -15,6 +15,9 @@
 
 #define EXPORT_ARTIFACT "game.chibip"
 #define EXPORT_MANIFEST EXPORT_ARTIFACT ".resources.json"
+/* Bytes kept of a long project name, well under any file system's limit on a
+ * file name. */
+#define EXECUTABLE_NAME_MAX 128
 /* An empty file in the data folder that only this exporter writes, so that
  * replacing an output never deletes a folder it did not make. */
 #define EXPORT_MARKER ".chibi-export"
@@ -175,7 +178,8 @@ static bool copy_external(const char *project, const char *data)
 }
 
 /* The executable's file name: the project name with path and shell
- * metacharacters replaced, and never the data folder's name. */
+ * metacharacters replaced, cut to EXECUTABLE_NAME_MAX bytes, and never the
+ * data folder's name. */
 static char *executable_name(const char *name)
 {
     char *file = xstrdup(name && name[0] && strcasecmp(name, "data") ? name : "game");
@@ -186,6 +190,9 @@ static char *executable_name(const char *name)
         if (!plain) {
             *c = '_';
         }
+    }
+    if (strlen(file) > EXECUTABLE_NAME_MAX) {
+        file[EXECUTABLE_NAME_MAX] = 0;
     }
     return file;
 }

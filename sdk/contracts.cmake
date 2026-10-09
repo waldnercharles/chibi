@@ -235,3 +235,15 @@ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
             chibi_declared_components)
     endif()
 endif()
+
+# Consumers select exported targets as package components, so ChibiConfig
+# must list each one for check_required_components to accept it.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/ChibiConfig.cmake.in" chibi_config)
+string(REGEX MATCH "foreach\\(component ([^)]*)\\)" chibi_component_list "${chibi_config}")
+string(REGEX REPLACE "[ \n]+" ";" chibi_components "${CMAKE_MATCH_1}")
+foreach(target IN LISTS CHIBI_SDK_TARGETS)
+    get_target_property(component ${target} EXPORT_NAME)
+    if(NOT component IN_LIST chibi_components)
+        message(FATAL_ERROR "ChibiConfig.cmake.in does not list ${target}'s component ${component}")
+    endif()
+endforeach()

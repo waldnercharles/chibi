@@ -11,6 +11,7 @@ void test_tool_collab();
 void test_tool_test_policy();
 void test_tool_validation_plan();
 void test_tool_publish();
+void test_tool_web_storage();
 void test_tool_types();
 void test_tool_ecs();
 void test_tool_ecs_relationships();
@@ -101,6 +102,7 @@ int main(int argc, char **argv)
     bool read = argc == 3 && !strcmp(argv[1], "--prepared-read");
     bool package = argc == 2 && !strcmp(argv[1], "--package");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
+    bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
@@ -169,18 +171,20 @@ int main(int argc, char **argv)
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
     if (argc != 1 && !corpus && !shader_parameters && !source_edit && !new_asset &&
-        !package && !unit && !query_benchmark && !prepared && !read && !scene &&
-        !scene_prepared && !native && !native_values && !native_catalog &&
-        !physics && !transforms && !render_resources && !interior_border &&
-        !viewport_resize && !sdf_visibility && !scene3d && !material_ramps &&
-        !box3d && !sky_files && !persistent_store && !whole_alias && !whole_math &&
-        !whole_integer && !whole_conversion && !whole_select && !owned_tick &&
-        !parallel_tick && !source_features && !source_numeric && !source_material &&
-        !source_presentation && !system_schedule && !source_systems &&
-        !validate_project && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
+        !package && !unit && !web_storage && !query_benchmark && !prepared &&
+        !read && !scene && !scene_prepared && !native && !native_values &&
+        !native_catalog && !physics && !transforms && !render_resources &&
+        !interior_border && !viewport_resize && !sdf_visibility && !scene3d &&
+        !material_ramps && !box3d && !sky_files && !persistent_store &&
+        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
+        !whole_select && !owned_tick && !parallel_tick && !source_features &&
+        !source_numeric && !source_material && !source_presentation &&
+        !system_schedule && !source_systems && !validate_project &&
+        (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
         fprintf(
             stderr,
-            "Usage: %s [--package | --unit | --ecs-query-benchmark | "
+            "Usage: %s [--package | --unit | --web-storage | "
+            "--ecs-query-benchmark | "
             "--studio-selectors test_suite | --validate-project chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
@@ -337,6 +341,8 @@ int main(int argc, char **argv)
         test_tool_studio_selectors(argv[2]);
     } else if (unit) {
         test_tool_execution_policy();
+    } else if (web_storage) {
+        test_tool_web_storage();
     } else if (query_benchmark) {
         test_tool_ecs_query_benchmark();
     } else {

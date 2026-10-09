@@ -3225,9 +3225,9 @@ static int handle_catalog(const char *root, yyjson_val *request, response *resul
     uint64_t revision = 0;
     uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
-        0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, cataloged, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -3270,9 +3270,9 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
     uint64_t revision = 0;
     uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
-        0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, cataloged, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -3373,9 +3373,9 @@ static int handle_asset_dependencies(const char *root, yyjson_val *request, resp
     uint64_t revision = 0;
     uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
-        0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, cataloged, error);
         return -1;
     }
     int count = acount(assets);
@@ -3534,9 +3534,9 @@ static int handle_navigation(const char *root, yyjson_val *request, response *re
     catalog_asset *assets = NULL;
     uint64_t revision = 0, content_hash = 0;
     char error[256] = { 0 };
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash, error, sizeof error) !=
-        0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash, error, sizeof error);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, cataloged, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -5173,9 +5173,9 @@ static int handle_list_assets(const char *root, yyjson_val *request, response *r
     uint64_t revision = 0;
     uint64_t content_hash_value = 0;
     char error[256] = { 0 };
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error) !=
-        0) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash_value, error, sizeof error);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, cataloged, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
@@ -10109,8 +10109,9 @@ static int attached_ui_documents(
 {
     catalog_asset *assets;
     uint64_t revision, content_hash;
-    if (catalog_snapshot_get(root, &assets, &revision, &content_hash, error, error_size)) {
-        return CHIBI_AUTOMATION_IO_ERROR;
+    int cataloged = catalog_snapshot_get(root, &assets, &revision, &content_hash, error, error_size);
+    if (cataloged != CHIBI_AUTOMATION_OK) {
+        return cataloged;
     }
     const reference_index *index = CATALOG_SNAPSHOT.references;
     int at = reference_index_find_name(index, REFERENCE_ASSET_BEHAVIOR, behavior);

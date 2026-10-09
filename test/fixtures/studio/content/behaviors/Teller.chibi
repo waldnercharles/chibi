@@ -1,3 +1,2 @@
 behavior "Teller" {
-    owner "ecs.entity";
 }

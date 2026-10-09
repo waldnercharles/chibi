@@ -263,10 +263,10 @@ TEST_CASE(source_connections_reference_retained_results_and_reject_repeated_effe
     REQUIRE(!edit(r) && error[0] && !result.text);
     cleanup();
     REQUIRE(
-        project("behavior Edit { count:double=0; function Next()->(answer:double) { count+=1; return count; } value repeated=Next(); on Tick { count=7; } }")
+        project("behavior Edit { count:double=0; function Next()->(answer:double) { count+=1; return count; } on Tick { count=7; count=Next()+1; } }")
     );
     target = find(SOURCE_PRESENTATION_EXPRESSION, "7;");
-    producer = find(SOURCE_PRESENTATION_EXPRESSION, "Next(); on");
+    producer = find(SOURCE_PRESENTATION_EXPRESSION, "Next()+1;");
     REQUIRE(target && producer);
     r = request(AUTHORING_EDIT_CONNECT, target);
     r.producer = producer->identity;
@@ -348,25 +348,25 @@ TEST_CASE(source_selection_transactions_preserve_names_and_comments)
     r.fragment = "} } behavior Escaped {";
     REQUIRE(!edit(r) && error[0]);
     cleanup();
-    REQUIRE(project("behavior Edit { value old=1; on Tick { current:=old; } }"));
+    REQUIRE(project("behavior Edit { local old=1; on Tick { current:=old; } }"));
     const source_presentation_origin *named = find(SOURCE_PRESENTATION_SYMBOL, "old=1;");
     REQUIRE(named);
     r = request(AUTHORING_EDIT_RENAME_DECLARATION, named);
     r.name = "renamed";
     REQUIRE(edit(r));
-    REQUIRE(strstr(result.text, "value renamed=1") && strstr(result.text, "current:=renamed"));
+    REQUIRE(strstr(result.text, "local renamed=1") && strstr(result.text, "current:=renamed"));
     authoring_edit_result_free(&result);
     r.kind = AUTHORING_EDIT_SET_DISABLED;
     r.disabled = true;
     REQUIRE(edit(r));
-    REQUIRE(strstr(result.text, "disabled value old=1;"));
+    REQUIRE(strstr(result.text, "disabled local old=1;"));
     authoring_edit_result_free(&result);
     r.kind = AUTHORING_EDIT_CREATE_FUNCTION;
     r.name = "Helper";
     REQUIRE(edit(r));
     REQUIRE(strstr(result.text, "function \"Helper\"()->() {}"));
     cleanup();
-    REQUIRE(project("behavior Edit { value old=1; on Tick { renamed:=2; current:=old; } }"));
+    REQUIRE(project("behavior Edit { local old=1; on Tick { renamed:=2; current:=old; } }"));
     named = find(SOURCE_PRESENTATION_SYMBOL, "old=1;");
     REQUIRE(named);
     r = request(AUTHORING_EDIT_RENAME_DECLARATION, named);

@@ -17,7 +17,7 @@ typedef struct
 {
     TSNode node;
     int start, end;
-    bool open, close, end_line;
+    bool open, close, end_line, nest_open, nest_close;
 } token;
 
 static bool kind(TSNode node, const char *name)
@@ -30,6 +30,14 @@ static bool block(TSNode node)
     return kind(node, "block") || kind(node, "declaration_body") ||
            kind(node, "system_body") || kind(node, "callable_body") ||
            kind(node, "match_statement") || kind(node, "sequence_statement");
+}
+
+/* Brackets whose contents may continue on later lines. */
+static bool nest(TSNode node)
+{
+    return kind(node, "argument_list") || kind(node, "parameter_list") ||
+           kind(node, "array_expression") || kind(node, "struct_expression") ||
+           kind(node, "parenthesized_expression");
 }
 
 static bool end_line(TSNode node)
@@ -49,6 +57,10 @@ static token leaf(TSNode node)
     TSNode parent = ts_node_parent(node);
     t.open = kind(node, "{") && block(parent);
     t.close = kind(node, "}") && block(parent);
+    t.nest_open = (kind(node, "(") || kind(node, "[") || kind(node, "{")) &&
+                  nest(parent);
+    t.nest_close = (kind(node, ")") || kind(node, "]") || kind(node, "}")) &&
+                   nest(parent);
     for (TSNode p = parent;
          !ts_node_is_null(p) && ts_node_end_byte(p) == (uint32_t)t.end;
          p = ts_node_parent(p)) {
@@ -102,11 +114,12 @@ static bool tight_before(token t)
 {
     TSNode n = t.node, p = ts_node_parent(n);
     return kind(n, ",") || kind(n, ";") || kind(n, ":") || kind(n, ".") ||
-           kind(n, ")") || kind(n, "]") ||
+           kind(n, "..") || kind(n, ")") || kind(n, "]") ||
            (kind(n, "(") && (kind(p, "parameter_list") || kind(p, "cast_expression") ||
                              (kind(p, "argument_list") &&
                               !kind(ts_node_parent(p), "return_statement")))) ||
-           (kind(n, "[") && (kind(p, "type") || kind(p, "index_expression"))) ||
+           (kind(n, "[") && (kind(p, "type") || kind(p, "index_expression") ||
+                             kind(p, "engine_reference"))) ||
            ((kind(n, "<") || kind(n, ">")) &&
             (kind(p, "type_argument_list") || kind(p, "type_parameter_list") ||
              kind(p, "cast_expression"))) ||
@@ -116,7 +129,7 @@ static bool tight_before(token t)
 static bool tight_after(token t)
 {
     TSNode n = t.node, p = ts_node_parent(n);
-    return kind(n, "(") || kind(n, "[") || kind(n, ".") ||
+    return kind(n, "(") || kind(n, "[") || kind(n, ".") || kind(n, "..") ||
            (kind(p, "unary_expression") && ts_node_start_byte(p) == (uint32_t)t.start) ||
            (kind(n, "<") &&
             (kind(p, "type_argument_list") || kind(p, "type_parameter_list") ||
@@ -196,6 +209,7 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
     }
     token *list = NULL;
     char *out = NULL;
+    bool *nested = NULL; /* Whether each open bracket indented its lines. */
     if (ts_node_end_byte(ts_tree_root_node(source->tree)) > FORMAT_MAX_BYTES ||
         !tokens(source->tree, &list)) {
         goto limit;
@@ -206,6 +220,10 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
         if (current.close) {
             indent--;
         }
+        if (current.nest_close && acount(nested)) {
+            indent -= nested[acount(nested) - 1];
+            asetlen(nested, acount(nested) - 1);
+        }
         if (i) {
             token previous = list[i - 1];
             int lines = 0;
@@ -215,9 +233,11 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
             bool comment = kind(current.node, "comment");
             bool inline_comment = comment && !lines;
             bool empty_block = previous.open && current.close;
-            bool newline = lines || (!inline_comment && !empty_block &&
-                                     (previous.open || previous.close ||
-                                      previous.end_line || current.close));
+            bool chained = previous.close && kind(current.node, "else");
+            bool newline = (lines && !chained) ||
+                           (!inline_comment && !empty_block && !chained &&
+                            (previous.open || previous.close ||
+                             previous.end_line || current.close));
             if (newline) {
                 if (!append(&out, lines > 1 ? "\n\n" : "\n", lines > 1 ? 2 : 1)) {
                     goto limit;
@@ -227,7 +247,10 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
                         goto limit;
                     }
                 }
-            } else if (!empty_block && !tight_before(current) && !tight_after(previous)) {
+            } else if (
+                !empty_block && ((!tight_before(current) && !tight_after(previous)) ||
+                                 kind(previous.node, "->"))
+            ) {
                 if (!append(&out, " ", 1)) {
                     goto limit;
                 }
@@ -239,7 +262,17 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
         if (current.open) {
             indent++;
         }
+        if (current.nest_open) {
+            bool wraps = false;
+            for (int p = current.end; i + 1 < acount(list) && p < list[i + 1].start;
+                 p++) {
+                wraps |= source->text[p] == '\n';
+            }
+            apush(nested, wraps);
+            indent += wraps;
+        }
     }
+    afree(nested);
     if (!append(&out, "\n", 1) || !append(&out, "", 1)) {
         goto limit;
     }
@@ -264,6 +297,7 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
     return result;
 
 limit:
+    afree(nested);
     afree(list);
     afree(out);
     if (size) {

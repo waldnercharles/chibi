@@ -1,7 +1,7 @@
 #ifndef CHIBI_RENDER_ARENA_PARTS_H
 #define CHIBI_RENDER_ARENA_PARTS_H
 
-#define RENDER_PARTS_PREPARED_VERSION 1
+#define RENDER_PARTS_PREPARED_VERSION 2
 
 #include "runtime/components.h"
 

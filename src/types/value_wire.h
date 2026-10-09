@@ -3,8 +3,8 @@
 #include "support/arena.h"
 #include "types/value.h"
 
-/* Bounded field-wise format helpers. Writer bytes use support/array.h; reader
- * bytes are borrowed. Decoded strings and aggregates belong to storage. Errors
+/* Bounded field-wise format helpers. Integers are variable-length. Writer bytes
+ * use support/array.h; reader bytes are borrowed. Decoded strings and aggregates belong to storage. Errors
  * are sticky; callers discard the whole generation on failure. */
 enum
 {
@@ -32,7 +32,8 @@ void execution_wire_int(execution_wire *, int *);
 void execution_wire_size(execution_wire *, size_t *);
 void execution_wire_bool(execution_wire *, bool *);
 void execution_wire_string(execution_wire *, const char **);
-void execution_wire_count(execution_wire *, int *, size_t minimum_bytes);
+/* minimum_fields bounds a decoded count by the bytes left: each field is at least one. */
+void execution_wire_count(execution_wire *, int *, size_t minimum_fields);
 /* Struct names/layouts must resolve in the supplied global type catalog. No
  * process pointer is encoded; HANDLE values must be zero. Collections preserve
  * ordered items, including maps' existing typed item representation. */

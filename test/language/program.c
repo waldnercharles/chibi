@@ -3395,30 +3395,56 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
         REQUIRE(!strcmp(text, expected[i]));
     }
 
-    /* Only a person can remove a script's use, so one stops the migration
-     * before any asset changes. */
-    const char *uses[][2] = {
-        { CHIBI_PROJECT_MANIFEST, manifest },
-        { "content/prototypes/Enemy.kdl", prototype },
-        { "content/Wobble.chibi", "behavior Wobble {\n    on Tick(dt) {\n        self.GameSdfMotion.time += dt\n    }\n}\n" },
+    /* Only a person can remove any other use, so a script that names the
+     * component, by name or in a string, or another asset that still names
+     * it stops the migration before any asset changes. */
+    static const struct
+    {
+        const char *path, *text, *message;
+    } uses[] = {
+        { "content/Wobble.chibi",
+          "behavior Wobble {\n    on Tick(dt) {\n        "
+          "self.GameSdfMotion.time += dt\n    }\n}\n",
+          "Wobble.chibi uses GameSdfMotion, which version 18 removes" },
+        { "content/Probe.chibi",
+          "behavior Probe {\n    on Tick(dt) {\n        moving := "
+          "has_component(Component: "
+          "\"GAME.GameSdfMotion\", Entity: 0)\n    }\n}\n",
+          "Probe.chibi uses GAME.GameSdfMotion" },
+        { "content/Scenario.kdl",
+          "name \"Wobble\"\ncomponent \"GAME.GameSdfMotion\"\n",
+          "Scenario.kdl uses GameSdfMotion" },
     };
-    for (int i = 0; i < 3; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, uses[i][0]);
-        FILE *file = fopen(path, "wb");
-        fputs(uses[i][1], file);
-        fclose(file);
-    }
-    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
-    REQUIRE(strstr(error, "Wobble.chibi uses GameSdfMotion, which version 18 removes"));
-    for (int i = 0; i < 3; i++) {
-        snprintf(path, sizeof path, "%s/%s", root, uses[i][0]);
-        char text[1024];
-        FILE *file = fopen(path, "rb");
-        text[fread(text, 1, sizeof text - 1, file)] = 0;
-        fclose(file);
-        REQUIRE(!strcmp(text, uses[i][1]));
+    for (size_t u = 0; u < sizeof uses / sizeof *uses; u++) {
+        const char *kept[][2] = {
+            { CHIBI_PROJECT_MANIFEST, manifest },
+            { "content/prototypes/Enemy.kdl", prototype },
+            { uses[u].path, uses[u].text },
+        };
+        for (int i = 0; i < 3; i++) {
+            snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
+            FILE *file = fopen(path, "wb");
+            fputs(kept[i][1], file);
+            fclose(file);
+        }
+        REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
+        if (!strstr(error, uses[u].message)) {
+            fprintf(stderr, "migration error: %s\n", error);
+        }
+        REQUIRE(strstr(error, uses[u].message));
+        for (int i = 0; i < 3; i++) {
+            snprintf(path, sizeof path, "%s/%s", root, kept[i][0]);
+            char text[1024];
+            FILE *file = fopen(path, "rb");
+            text[fread(text, 1, sizeof text - 1, file)] = 0;
+            fclose(file);
+            REQUIRE(!strcmp(text, kept[i][1]));
+        }
+        snprintf(path, sizeof path, "%s/%s", root, uses[u].path);
         unlink(path);
     }
+    snprintf(path, sizeof path, "%s/%s", root, CHIBI_PROJECT_MANIFEST);
+    unlink(path);
     for (int i = 1; i < 4; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         unlink(path);

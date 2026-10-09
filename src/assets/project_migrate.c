@@ -2534,21 +2534,53 @@ static char *drop_motions(const char *asset)
     av_doc_free(document);
     return migrated;
 }
-/* Version 18 removes GameSdfMotion from every scene and prototype. A script
- * that names it stops the migration for a person to remove that use. */
+/* The first of `words` that a string literal in `source` holds whole, or
+ * NULL. */
+static const char *quoted_use(const char *source, const char *const *words, size_t count)
+{
+    for (const char *p = source; *p;) {
+        const char *end = skip_literal(p);
+        if (end == p) {
+            p++;
+            continue;
+        }
+        char text[32];
+        size_t length = (size_t)(end - p);
+        if (*p == '"' && length >= 2 && end[-1] == '"' && length - 2 < sizeof text) {
+            memcpy(text, p + 1, length - 2);
+            text[length - 2] = '\0';
+            for (size_t i = 0; i < count; i++) {
+                if (names_match(text, words[i])) {
+                    return words[i];
+                }
+            }
+        }
+        p = end;
+    }
+    return NULL;
+}
+/* Version 18 removes GameSdfMotion from every scene and prototype. Any other
+ * use, by name or in a string in a script or as text left in another asset,
+ * stops the migration for a person to remove it. */
 static char **migrate_motions(char **sources, char **paths, int count, char *error, size_t error_size)
 {
-    static const char *const words[] = { "SdfMotion", "GameSdfMotion" };
+    static const char *const words[] = { "SdfMotion", "GameSdfMotion", "GAME.GameSdfMotion" };
     char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
     for (int i = 0; i < count; i++) {
-        const char *word = code_path(paths[i]) ? word_use(sources[i], words, 2) : NULL;
-        if (word) {
-            snprintf(error, error_size, "%s uses %s, which version 18 removes; remove that use, then migrate", paths[i], word);
+        const char *use;
+        if (code_path(paths[i])) {
+            use = word_use(sources[i], words, 2);
+            use = use ? use : quoted_use(sources[i], words, 3);
+        } else {
+            migrated[i] = drop_motions(sources[i]);
+            use = strstr(migrated[i] ? migrated[i] : sources[i], "SdfMotion")
+                    ? words[1]
+                    : NULL;
+        }
+        if (use) {
+            snprintf(error, error_size, "%s uses %s, which version 18 removes; remove that use, then migrate", paths[i], use);
             return migrated;
         }
-    }
-    for (int i = 0; i < count; i++) {
-        migrated[i] = code_path(paths[i]) ? NULL : drop_motions(sources[i]);
     }
     return migrated;
 }

@@ -34,7 +34,10 @@ Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
 `problems` list only the assets with errors or warnings, each diagnostic naming
 what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
 model and a shape share a name there is no catalog, so it lists no asset
-problems until one is renamed.
+problems until one is renamed. A prototype's `(array)includes` names other
+prototypes, which `chibi_ctl` finds by file name, so name each prototype's file
+after it. `--format` checks such a prototype but keeps its text as written
+instead of folding the included components in.
 
 ## Edit and verify
 

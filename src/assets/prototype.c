@@ -475,6 +475,17 @@ static game_prototype *load_value_document(
                 return NULL;
             }
             game_prototype *base = load_document(source, registry, next_stack, stack_count + 1, error, error_size);
+            if (base && strcmp(base->name, av_get_str(include))) {
+                set_error(
+                    error,
+                    error_size,
+                    "prototype include %s is named %s",
+                    av_get_str(include),
+                    base->name
+                );
+                game_prototype_free(base);
+                base = NULL;
+            }
             if (!base) {
                 game_prototype_free(prototype);
                 return NULL;

@@ -212,6 +212,53 @@ TEST_CASE(missing_ui_documents_are_reported)
     return true;
 }
 
+TEST_CASE(prototype_includes_resolve)
+{
+    char folder[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    GameHealth current=3 maximum=3\n}\n");
+    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Hull\"\ncomponents {\n    GameTransform x=1 y=2\n}\n");
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Drone\" prototype=\"Drone\"\n}\n");
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Drone\"}") ==
+        0
+    );
+    REQUIRE(yyjson_get_int(result("components")) == 2);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
+        0
+    );
+    /* The formatter keeps the include instead of folding Hull's components in. */
+    const char *args[] = { program, "--project-root", "game", "--format", NULL };
+    REQUIRE(tool_run(args, root, log_path) == 0);
+    char drone[256];
+    path(drone, sizeof drone, "game/content/prototypes/Drone.kdl");
+    char *text = tool_read(drone);
+    bool kept = text && strstr(text, "(array)includes \"Hull\"") &&
+                !strstr(text, "GameHealth");
+    free(text);
+    REQUIRE(kept);
+
+    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Nope\"\n");
+    REQUIRE(validate() != 0 && errors() == 2 && yyjson_arr_size(result("problems")) == 2);
+    yyjson_val *problem;
+    size_t index, count;
+    yyjson_arr_foreach(result("problems"), index, count, problem)
+    {
+        const char *message = first_message(yyjson_obj_get(problem, "diagnostics"));
+        REQUIRE(!strcmp(message, "prototype include Nope is unavailable"));
+    }
+    /* An include names a prototype, not its file. */
+    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n(array)includes \"Hull.kdl\"\n");
+    REQUIRE(validate() != 0 && errors() == 2);
+    problem = yyjson_arr_get_first(result("problems"));
+    const char *message = first_message(yyjson_obj_get(problem, "diagnostics"));
+    REQUIRE(!strcmp(message, "prototype include Hull.kdl is named Hull"));
+    return true;
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -224,5 +271,6 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(start_scene_outside_scenes_is_parsed);
     RUN_TEST_CASE(cataloged_start_scene_is_reported_once);
     RUN_TEST_CASE(missing_ui_documents_are_reported);
+    RUN_TEST_CASE(prototype_includes_resolve);
     pu_clear_setup();
 }

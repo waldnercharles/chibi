@@ -1569,7 +1569,70 @@ static void catalog_add_report(catalog_asset *asset, const compile_report *repor
     }
 }
 
+static int load_named_asset(
+    const char *root,
+    const asset_family *family,
+    const char *name,
+    asset_ref *ref,
+    char **json,
+    size_t *bytes,
+    uint64_t *hash,
+    char *error,
+    size_t error_size
+);
+
+/* Prototype includes name other prototypes, found by file name as scene
+ * entities find theirs. Each is read once and kept until the includes are
+ * freed. */
+typedef struct
+{
+    const char *root;
+    char **names, **texts;
+} prototype_includes;
+
+static const char *include_prototype(const char *name, void *user)
+{
+    prototype_includes *includes = user;
+    for (int i = 0; i < acount(includes->names); i++) {
+        if (!strcmp(includes->names[i], name)) {
+            return includes->texts[i];
+        }
+    }
+    asset_ref ref;
+    char *text = NULL, error[256];
+    const asset_family *family = family_by_kind("prototype");
+    if (load_named_asset(includes->root, family, name, &ref, &text, NULL, NULL, error, sizeof error) !=
+        CHIBI_AUTOMATION_OK) {
+        free(text);
+        return NULL;
+    }
+    apush(includes->names, xstrdup(name));
+    apush(includes->texts, text);
+    return text;
+}
+
+static game_prototype_registry prototype_registry(prototype_includes *includes)
+{
+    return (game_prototype_registry){
+        .components = GAME_REGISTRY_COMPONENTS,
+        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+        .include = include_prototype,
+        .include_user = includes,
+    };
+}
+
+static void prototype_includes_free(prototype_includes *includes)
+{
+    for (int i = 0; i < acount(includes->texts); i++) {
+        free(includes->names[i]);
+        free(includes->texts[i]);
+    }
+    afree(includes->names);
+    afree(includes->texts);
+}
+
 static void catalog_validate_asset(
+    const char *root,
     const catalog_links *links,
     catalog_asset *asset,
     const char *json,
@@ -1631,10 +1694,8 @@ static void catalog_validate_asset(
         }
         behavior_asset_free(behavior);
     } else if (family->loader == ASSET_PROTOTYPE) {
-        game_prototype_registry registry = {
-            .components = GAME_REGISTRY_COMPONENTS,
-            .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-        };
+        prototype_includes includes = { root };
+        game_prototype_registry registry = prototype_registry(&includes);
         char error[256] = { 0 };
         game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
         if (!prototype) {
@@ -1643,6 +1704,7 @@ static void catalog_validate_asset(
         } else {
             game_prototype_free(prototype);
         }
+        prototype_includes_free(&includes);
     } else if (family->loader == ASSET_EDITOR || family->loader == ASSET_SCENARIO) {
         char error[256] = { 0 };
         bool ok = family->loader == ASSET_EDITOR
@@ -1742,7 +1804,7 @@ static char *manifest_string(const char *root, const char *key)
 /* Adds what an asset holds to the index, with `page` the project's default
  * page. An asset its loader rejects holds nothing; its diagnostics say why. */
 static void catalog_add_content(
-    const char *,
+    const char *root,
     reference_index *index,
     const catalog_asset *asset,
     const char *text,
@@ -1753,10 +1815,6 @@ static void catalog_add_content(
         return;
     }
     char error[256];
-    game_prototype_registry registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
     switch (asset->asset.family->loader) {
         case ASSET_GRAPH: {
             behavior_asset *graph = behavior_asset_load(text);
@@ -1769,11 +1827,14 @@ static void catalog_add_content(
         case ASSET_SYSTEM:
             return; /* Executable declarations were indexed through canonical facts. */
         case ASSET_PROTOTYPE: {
+            prototype_includes includes = { root };
+            game_prototype_registry registry = prototype_registry(&includes);
             game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
             if (prototype) {
                 reference_index_add_prototype(index, asset->reference, prototype);
                 game_prototype_free(prototype);
             }
+            prototype_includes_free(&includes);
             return;
         }
         case ASSET_SCENE: {
@@ -2527,7 +2588,7 @@ static int load_catalog_asset(
         }
         catalog_scan_members(asset, json_root);
         yyjson_doc_free(document);
-        catalog_validate_asset(links, asset, json, path);
+        catalog_validate_asset(root, links, asset, json, path);
     }
     free(path);
     free(json);
@@ -5359,6 +5420,7 @@ static char *canonical_source(const char *text, const char *path, char **metadat
 /* Owned canonical file text for one asset, produced by its native loader and
  * saver. */
 static char *canonical_asset(
+    const char *root,
     const asset_family *family,
     const char *json,
     const char *path,
@@ -5392,16 +5454,18 @@ static char *canonical_asset(
         case ASSET_SYSTEM:
             return canonical_source(json, path, metadata, error, error_size);
         case ASSET_PROTOTYPE: {
-            game_prototype_registry registry = {
-                .components = GAME_REGISTRY_COMPONENTS,
-                .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-            };
+            prototype_includes includes = { root };
+            game_prototype_registry registry = prototype_registry(&includes);
             game_prototype *prototype = game_prototype_load(json, &registry, error, error_size);
-            if (!prototype) {
-                return NULL;
+            char *text = NULL;
+            if (prototype) {
+                /* Saving folds included components in, so a prototype that
+                 * includes others keeps its text as written. */
+                text = acount(includes.texts) ? xstrdup(json)
+                                              : game_prototype_save(prototype);
             }
-            char *text = game_prototype_save(prototype);
             game_prototype_free(prototype);
+            prototype_includes_free(&includes);
             return text;
         }
         case ASSET_SCENE: {
@@ -5451,7 +5515,7 @@ int chibi_automation_format_assets(const char *root, bool check)
         char *json = read_file(path, &bytes, &hash, error, sizeof error);
         char *metadata = NULL;
         char *text = json
-                       ? canonical_asset(entries[i].family, json, path, &metadata, error, sizeof error)
+                       ? canonical_asset(root, entries[i].family, json, path, &metadata, error, sizeof error)
                        : NULL;
         if (text && strcmp(entries[i].family->extension, CODE_ASSET_EXTENSION)) {
             char *disk = asset_text_to_disk(text, error, sizeof error);
@@ -5870,10 +5934,8 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             behavior_asset_free(asset);
         }
     } else if (ref.family->loader == ASSET_PROTOTYPE) {
-        game_prototype_registry registry = {
-            .components = GAME_REGISTRY_COMPONENTS,
-            .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-        };
+        prototype_includes includes = { root };
+        game_prototype_registry registry = prototype_registry(&includes);
         char load_error[256] = { 0 };
         game_prototype *prototype = game_prototype_load(json, &registry, load_error, sizeof load_error);
         if (!prototype) {
@@ -5894,6 +5956,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
                 add_load_diagnostic(result->doc, diagnostics, load_error);
             }
         }
+        prototype_includes_free(&includes);
     } else if (ref.family->loader == ASSET_UI) {
         char *name = asset_name_from_filename(ref.filename);
         errors = validate_ui(root, name, json, result->doc, diagnostics);
@@ -6519,6 +6582,7 @@ typedef struct
     size_t prototype_bytes;
     uint64_t prototype_hash;
     game_prototype_registry registry;
+    prototype_includes includes;
     game_prototype *prototype;
     game_scene_document *scene;
     game_prototype **scene_prototypes;
@@ -6756,6 +6820,7 @@ static void scenario_context_free(scenario_context *context)
     }
     afree(context->scene_prototypes);
     afree(context->scene_entities);
+    prototype_includes_free(&context->includes);
     game_scene_document_free(context->scene);
     if (context->owns_file_system) {
         authoring_shader_catalog_clear();
@@ -6901,10 +6966,8 @@ static int prepare_scenario(
         return status;
     }
 
-    context->registry = (game_prototype_registry){
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
+    context->includes = (prototype_includes){ root };
+    context->registry = prototype_registry(&context->includes);
     char *scenario_json = scenario_prototype_text(prototype_json, context->prototype_hash);
     context->prototype = scenario_json
                            ? game_prototype_load(scenario_json, &context->registry, error, error_size)
@@ -6991,10 +7054,8 @@ static int prepare_scene_scenario(
         set_error(error, error_size, "scene has no entities");
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    context->registry = (game_prototype_registry){
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
+    context->includes = (prototype_includes){ root };
+    context->registry = prototype_registry(&context->includes);
     context->preview = game_prototype_preview_new(&context->registry);
     if (!context->preview) {
         scenario_context_free(context);
@@ -11203,12 +11264,11 @@ static int validate_ui_binding(const char *root, const GameUi *ui, char *error, 
 /* A prototype's shader binding and UI document resolve. */
 static int validate_prototype_bindings(const char *root, const char *text, char *error, size_t error_size)
 {
-    game_prototype_registry registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
+    prototype_includes includes = { root };
+    game_prototype_registry registry = prototype_registry(&includes);
     game_prototype *prototype = game_prototype_load(text, &registry, error, error_size);
     if (!prototype) {
+        prototype_includes_free(&includes);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     int status = CHIBI_AUTOMATION_OK;
@@ -11222,6 +11282,7 @@ static int validate_prototype_bindings(const char *root, const char *text, char 
         }
     }
     game_prototype_free(prototype);
+    prototype_includes_free(&includes);
     return status;
 }
 
@@ -11333,10 +11394,8 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
         game_scene_document_free(scene);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    game_prototype_registry registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
-    };
+    prototype_includes includes = { root };
+    game_prototype_registry registry = prototype_registry(&includes);
     int status = CHIBI_AUTOMATION_OK;
     bool fallout = false;
     for (int i = 0; i < acount(scene->entities) && status == CHIBI_AUTOMATION_OK; i++) {
@@ -11426,6 +11485,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
         }
     }
     game_scene_document_free(scene);
+    prototype_includes_free(&includes);
     return status != CHIBI_AUTOMATION_OK
              ? status
              : fallout_status(fallout, error, error_size);

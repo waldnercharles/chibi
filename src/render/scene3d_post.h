@@ -6,7 +6,6 @@
 
 typedef struct render_scene3d_post render_scene3d_post;
 
-GameEnvironment render_scene3d_post_defaults();
 render_scene3d_post *render_scene3d_post_new();
 void render_scene3d_post_free(render_scene3d_post *post);
 /* Exposure is EV [-16,16], strength [0,8], scene-linear threshold [0,65504],

@@ -7,6 +7,10 @@
 layout(set = 3, binding = 0) uniform uniform_block {
     vec4 scene_camera_time;
     vec4 scene_rhythm;
+    vec4 scene_sun_direction;
+    vec4 scene_sun_color;
+    vec4 scene_ambient_sky;
+    vec4 scene_ambient_ground;
     vec4 scene_light_count;
     vec4 scene_light_positions[32];
     vec4 scene_light_colors[32];

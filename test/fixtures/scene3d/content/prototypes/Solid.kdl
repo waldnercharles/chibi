@@ -1,0 +1,6 @@
+name "Solid"
+components {
+    GAME.GameGeometry3D depth=100.0 elevation=50.0 height=100.0 width=100.0
+    GAME.GameMaterial scene=0xffffffff
+    (object)GAME.GameTransform
+}

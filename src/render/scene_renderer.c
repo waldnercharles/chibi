@@ -253,7 +253,7 @@ static bool entity_shown(
 
 static bool scene3d_environment(app_scene_renderer *renderer, ecs_world *world, GameEnvironment *settings)
 {
-    *settings = render_scene3d_post_defaults();
+    *settings = game_environment_defaults();
     if (!ecs_world_component(world, GAME_COMPONENT_GameEnvironment.id)) {
         return true;
     }
@@ -367,6 +367,7 @@ bool app_scene_renderer_draw3d(
             camera,
             renderer->time,
             runtime,
+            &settings,
             skip
         )
     );

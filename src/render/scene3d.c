@@ -59,6 +59,8 @@ struct render_scene3d
     CF_Mesh particle_quad;
     CF_Mesh polygons[4];
     CF_V4 rhythm;
+    /* Direction toward the sun, sun radiance, and hemisphere ambient radiance. */
+    CF_V4 sun_direction, sun_color, ambient_sky, ambient_ground;
     CF_Texture parameters;
     int texture_height;
     draw_buffer buffer, *chunks;
@@ -474,6 +476,64 @@ static void collect_lights(
     scene3d->lights_dropped = dropped;
 }
 
+static CF_V4 radiance(unsigned color, float intensity)
+{
+    return (CF_V4){ ((color >> 24) & 255u) / 255.0f * intensity,
+                    ((color >> 16) & 255u) / 255.0f * intensity,
+                    ((color >> 8) & 255u) / 255.0f * intensity,
+                    0 };
+}
+
+static void set_sun(render_scene3d *scene3d, const GameDirectionalLight *light)
+{
+    CF_V3 direction = light->direction;
+    float length = cf_len_v3(direction);
+    scene3d->sun_color = (CF_V4){ 0 };
+    if (!isfinite(length) || length <= 0 || !isfinite(light->intensity) ||
+        light->intensity <= 0) {
+        return;
+    }
+    direction = cf_div_v3_f(direction, -length);
+    scene3d->sun_direction = (CF_V4){ direction.x, direction.y, direction.z, 0 };
+    scene3d->sun_color = radiance(light->color, light->intensity);
+}
+
+static void set_ambient(render_scene3d *scene3d, const GameEnvironment *environment)
+{
+    float intensity = isfinite(environment->ambient_intensity)
+                        ? fmaxf(environment->ambient_intensity, 0)
+                        : 0;
+    scene3d->ambient_sky = radiance(environment->ambient_sky, intensity);
+    scene3d->ambient_ground = radiance(environment->ambient_ground, intensity);
+}
+
+/* At most one visible directional light shades the scene. */
+static bool collect_sun(render_scene3d *scene3d, ecs_world *world, const engine *runtime)
+{
+    scene3d->sun_color = (CF_V4){ 0 };
+    ecs_component_id required[] = { GAME_COMPONENT_GameDirectionalLight.id };
+    ecs_query query;
+    if (ecs_query_begin(world, &query, required, 1) != ECS_OK) {
+        return true;
+    }
+    int count = 0;
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        if (count++) {
+            break;
+        }
+        if (engine_entity_visible(runtime, world, entity)) {
+            set_sun(scene3d, GAME_GameDirectionalLight_get_const(world, entity));
+        }
+    }
+    ecs_query_end(&query);
+    if (count > 1) {
+        snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "A 3D scene can have only one Directional Light.");
+        return false;
+    }
+    return true;
+}
+
 static int compare_draws(const void *left, const void *right)
 {
     const scene3d_draw *a = left, *b = right;
@@ -567,6 +627,10 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     CF_V4 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14], time };
     cf_draw3d_set_uniform("scene_camera_time", &eye, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_rhythm", &scene3d->rhythm, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_sun_direction", &scene3d->sun_direction, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_sun_color", &scene3d->sun_color, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_ambient_sky", &scene3d->ambient_sky, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_ambient_ground", &scene3d->ambient_ground, CF_UNIFORM_TYPE_FLOAT4, 1);
     CF_V4 light_count = { .x = (float)scene3d->light_count };
     cf_draw3d_set_uniform("scene_light_count", &light_count, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_light_positions", scene3d->light_positions, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
@@ -755,6 +819,7 @@ bool render_scene3d_draw(
     const render_scene3d_camera *camera,
     float time,
     const struct engine *runtime,
+    const GameEnvironment *environment,
     render_skip skip
 )
 {
@@ -762,15 +827,17 @@ bool render_scene3d_draw(
     scene3d->binding_error[0] = 0;
     aclear(scene3d->buffer.pixels);
     aclear(scene3d->buffer.draws);
-    game_beat beat;
-    if (!game_rhythm_sample(world, time, &beat)) {
-        snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "Scene needs one valid rhythm clock.");
-        return false;
-    }
+    /* Rhythm is an optional material input; without a valid clock it rests at zero. */
+    game_beat beat = { 0 };
+    game_rhythm_sample(world, time, &beat);
     scene3d->rhythm = (CF_V4){ (float)beat.phase,
                                (float)beat.pulse,
                                (float)beat.period,
                                (float)beat.duration };
+    set_ambient(scene3d, environment);
+    if (!collect_sun(scene3d, world, runtime)) {
+        return false;
+    }
     collect_lights(scene3d, world, camera, runtime);
     render_influences_collect(scene3d->influences, world, runtime, time);
     render_scene3d_trails_collect(scene3d->trails, world, runtime, time);
@@ -828,6 +895,10 @@ bool render_scene3d_preview_material(
     aclear(scene3d->buffer.draws);
     scene3d->light_count = 0;
     scene3d->rhythm = (CF_V4){ .x = activity->beat_phase, .y = activity->beat_pulse };
+    GameDirectionalLight sun = game_directional_light_defaults();
+    GameEnvironment environment = game_environment_defaults();
+    set_sun(scene3d, &sun);
+    set_ambient(scene3d, &environment);
     render_scene3d_reset(scene3d);
     render_influences_preview(scene3d->influences, activity->influence, RENDER_SCENE3D_PREVIEW_RADIUS);
     if (!material || render_shader_is_shape(material)) {

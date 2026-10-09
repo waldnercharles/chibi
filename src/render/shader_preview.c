@@ -69,7 +69,7 @@ static bool prepare_material_preview(render_shader_preview *preview, int width, 
         preview->span_width,
         preview->span_height
     );
-    GameEnvironment settings = render_scene3d_post_defaults();
+    GameEnvironment settings = game_environment_defaults();
     if (!render_scene3d_post_prepare(preview->post, width, height, &settings)) {
         set_error(error, render_scene3d_post_error(preview->post));
         return false;

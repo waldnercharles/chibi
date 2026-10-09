@@ -20,6 +20,7 @@ void test_tool_scene();
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
+void test_render_scene3d();
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
@@ -70,7 +71,7 @@ int main(int argc, char **argv)
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool native = false, native_values = false, native_catalog = false,
-         render_resources = false;
+         render_resources = false, scene3d = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -106,15 +107,16 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
+    scene3d = argc == 2 && !strcmp(argv[1], "--scene3d");
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     native_catalog = argc == 2 && !strcmp(argv[1], "--native-catalog");
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
     native = argc == 2 && !strcmp(argv[1], "--native");
 #endif
-    if (argc != 1 && !corpus && !shader_parameters && !source_edit &&
-        !package && !unit && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !render_resources &&
+    if (argc != 1 && !corpus && !shader_parameters && !source_edit && !package &&
+        !unit && !prepared && !read && !scene && !scene_prepared && !native &&
+        !native_values && !native_catalog && !render_resources && !scene3d &&
         !persistent_store && !whole_alias && !whole_math && !whole_integer &&
         !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
         !source_features && !source_numeric && !source_material &&
@@ -126,7 +128,8 @@ int main(int argc, char **argv)
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
-            "| --render-resources | --persistent-store | --whole-alias | "
+            "| --render-resources | --scene3d | --persistent-store | "
+            "--whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
             "--whole-select | --owned-tick | "
             "--parallel-tick | --source-native-features | "
@@ -195,8 +198,12 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
-    if (render_resources) {
-        test_render_resources();
+    if (render_resources || scene3d) {
+        if (scene3d) {
+            test_render_scene3d();
+        } else {
+            test_render_resources();
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

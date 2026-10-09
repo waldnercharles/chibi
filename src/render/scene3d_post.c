@@ -41,11 +41,6 @@ struct render_scene3d_post
     char error[512];
 };
 
-GameEnvironment render_scene3d_post_defaults()
-{
-    return (GameEnvironment){ 0, 0.18f, 1, 0.012f };
-}
-
 render_scene3d_post *render_scene3d_post_new()
 {
     return xcalloc(1, sizeof(render_scene3d_post));

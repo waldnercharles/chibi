@@ -60,11 +60,13 @@ vec3 surface_light(vec3 base, float roughness, float metallic, vec3 normal, vec3
 
 vec3 direct_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 view)
 {
-    vec3 key = normalize(vec3(-0.45, 0.85, 0.4));
     float sky = 0.5 + 0.5 * normal.y;
-    vec3 ambient = mix(vec3(0.06, 0.07, 0.10), vec3(0.17, 0.20, 0.27), sky);
-    vec3 result = surface_light(base, roughness, metallic, normal, view, key) * 2.8 +
-                  base * (1.0 - metallic) * ambient;
+    vec3 ambient = mix(scene_ambient_ground.rgb, scene_ambient_sky.rgb, sky);
+    vec3 result = base * (1.0 - metallic) * ambient;
+    if (dot(scene_sun_color.rgb, scene_sun_color.rgb) > 0.0) {
+        result += surface_light(base, roughness, metallic, normal, view, scene_sun_direction.xyz) *
+                  scene_sun_color.rgb;
+    }
     for (int i = 0; i < int(scene_light_count.x); i++) {
         vec3 delta = scene_light_positions[i].xyz - v_world;
         float radius = scene_light_positions[i].w;

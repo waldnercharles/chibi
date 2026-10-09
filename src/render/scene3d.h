@@ -65,6 +65,7 @@ bool render_scene3d_draw(
     const render_scene3d_camera *camera,
     float time,
     const struct engine *runtime,
+    const GameEnvironment *environment,
     render_skip skip
 );
 #define RENDER_SCENE3D_PREVIEW_RADIUS 50.0f

@@ -1,0 +1,33 @@
+version 1
+name "Shapes"
+presentation "3d"
+(array)entities {
+    - name="Sun" prototype="Sun"
+    - {
+        name "Box"
+        prototype "Solid"
+        components {
+            GAME.GameTransform x=200.0 y=-180.0
+            GAME.GameGeometry3D primitive=0 width=100.0 depth=100.0 height=100.0 elevation=50.0
+            GAME.GameMaterial scene=0xd04030ff
+        }
+    }
+    - {
+        name "Sphere"
+        prototype "Solid"
+        components {
+            GAME.GameTransform x=440.0 y=-180.0
+            GAME.GameGeometry3D primitive=1 width=110.0 depth=110.0 height=110.0 elevation=55.0
+            GAME.GameMaterial scene=0x40a0e0ff
+        }
+    }
+    - {
+        name "Floor"
+        prototype "Solid"
+        components {
+            GAME.GameTransform x=320.0 y=-180.0
+            GAME.GameGeometry3D primitive=0 width=600.0 depth=400.0 height=4.0 elevation=-2.0
+            GAME.GameMaterial scene=0x808080ff
+        }
+    }
+}

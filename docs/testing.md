@@ -464,15 +464,6 @@ shader graphs, so it needs a compiler build, and it reads the shaders from
 `src/render/shaders`. Build and run it like `interior-border`
 with `AGENT_SELECTOR=--sdf-visibility`. On lavapipe it passes in 8.9 seconds
 with Mesa's shader cache disabled and 2.9 seconds warm.
-`sdf-coverage` draws the production warped-SDF shape from `src/render/sdf_shapes.c`
-into a hidden 128 x 128 canvas at three warp and pluck phases, plain and with an
-interior border, through Cute's instanced and tiled draw paths. Every pixel whose
-neighborhood lies more than two pixels from the CPU field's edge, to first order,
-must be untouched background outside and fill inside. That catches wrong
-parameter packing, bounds that clip the warp, and background erased by a false
-opaque-cover claim. Cute owns the antialiased band between. Build and run it like
-`interior-border` with `AGENT_SELECTOR=--sdf-coverage`. On lavapipe it passes
-2 assertions in 4.6 seconds with Mesa's shader cache disabled and 1.3 seconds warm.
 `sky-files` selects four in-tree Radiance `.hdr` cases: flat and run-length
 decoding, fourteen malformed files, preparation from mounted content (read
 once, with an identity that follows the texels) and import that never replaces

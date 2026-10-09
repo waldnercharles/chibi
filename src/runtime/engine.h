@@ -73,7 +73,6 @@ typedef struct
     void *context;
     void (*boundary)(void *, double now, double delta);
     bool (*paused)(void *);
-    int (*sdf_motion)(ecs_world *, double delta);
 } engine_modules;
 typedef struct
 {

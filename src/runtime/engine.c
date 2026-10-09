@@ -1059,11 +1059,6 @@ static int continue_step(engine *engine)
                    ? game_particles_tick(live->particles, ENGINE_FIXED_SECONDS)
                    : FLOW_OK;
         if (result >= 0 && live->rendering) {
-            result = live->sdf_motion
-                       ? live->sdf_motion(engine->world, ENGINE_FIXED_SECONDS)
-                       : FLOW_OK;
-        }
-        if (result >= 0 && live->rendering) {
             result = update_visual_motion(engine, (float)ENGINE_FIXED_SECONDS);
         }
         if (clock_now(&end) != 0) {

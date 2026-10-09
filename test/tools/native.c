@@ -779,8 +779,11 @@ TEST_CASE(native_player_reads_declared_components)
     scene = game_scene_prepare(&scene_spec, error, sizeof error);
     REQUIRE(scene);
     game_player_spec spec = { .declared = declared, .scene = scene };
+    game_player_application application = { 0 };
     size_t length;
-    REQUIRE(game_player_prepared_write(&spec, &player_bytes, &length, error, sizeof error));
+    REQUIRE(
+        game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
     game_scene_free(scene);
     scene = NULL;
     declared_components_free(declared);

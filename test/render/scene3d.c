@@ -852,7 +852,7 @@ enum
 /* The box's roof and front face, which nothing shades. */
 static const CF_V3 box_faces[] = { { 0, 2, 0 }, { 0, 1, 1 } };
 
-TEST_CASE(point_lights_cast_shadows_from_every_face)
+TEST_CASE(point_lights_cast_shadows_across_faces)
 {
     add_box_on_floor();
     ecs_entity lamp = add_lamp(lamp_spots[0], 2, 20);
@@ -877,6 +877,25 @@ TEST_CASE(point_lights_cast_shadows_from_every_face)
             REQUIRE(distance(pixels[at], open[0][at]) <= 3);
         }
     }
+    return true;
+}
+
+/* A sphere lit from between three of the lamp's faces keeps all its light:
+ * its surface turns away from each face's axis, and nothing shadows itself. */
+TEST_CASE(point_lights_leave_curved_surfaces_lit)
+{
+    add_solid((CF_V3){ 0, 1, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_SPHERE, 2, 2, 2 }, 0xffffffffu);
+    ecs_entity lamp = add_lamp((CF_V3){ 1.5f, 2.5f, 2.5f }, 2, 20);
+    static CF_Pixel open[1][PIXELS];
+    REQUIRE(render_lamps(&lamp, 1, open));
+    /* Within two levels a channel: the sphere's flat facets stray a little
+     * from the smooth normals the lift follows. */
+    int lit = 0, darker = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        lit += open[0][i].colors.g > 10;
+        darker += distance(pixels[i], open[0][i]) > 6;
+    }
+    REQUIRE(lit > 300 && darker == 0);
     return true;
 }
 
@@ -994,7 +1013,8 @@ void test_render_scene3d()
     RUN_TEST_CASE(empty_depth_ranges_take_no_cascade);
     RUN_TEST_CASE(shadow_cascades_cover_only_what_the_view_shows);
     RUN_TEST_CASE(sun_size_softens_shadows_away_from_casters);
-    RUN_TEST_CASE(point_lights_cast_shadows_from_every_face);
+    RUN_TEST_CASE(point_lights_cast_shadows_across_faces);
+    RUN_TEST_CASE(point_lights_leave_curved_surfaces_lit);
     RUN_TEST_CASE(point_lights_cast_shadows_from_their_own_maps);
     RUN_TEST_CASE(point_light_shadows_stop_at_four_lights);
     RUN_TEST_CASE(long_solids_cast_for_point_lights_near_one_end);

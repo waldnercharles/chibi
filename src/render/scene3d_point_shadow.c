@@ -189,8 +189,9 @@ void render_scene3d_point_shadow_end(render_scene3d_point_shadow *shadow, int li
 void render_scene3d_point_shadow_bind(render_scene3d_point_shadow *shadow)
 {
     render_scene3d_depth_map_prepare(&shadow->atlas, 1, 1);
-    /* Casting lights, a face's spread, and its near plane's share of the radius. */
-    CF_V4 settings = { (float)shadow->count, spread(), near_share, 0 };
+    /* Casting lights, a face's spread, its near plane's share of the radius,
+     * and its texels per side. */
+    CF_V4 settings = { (float)shadow->count, spread(), near_share, (float)FACE };
     cf_draw3d_set_uniform("scene_light_shadow", &settings, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_texture("scene_light_shadow_map", shadow->atlas.map);
 }

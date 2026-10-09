@@ -165,6 +165,12 @@ float sun_shadow()
     return 1.0;
 }
 
+int major_axis(vec3 v)
+{
+    vec3 a = abs(v);
+    return a.x >= a.y && a.x >= a.z ? 0 : a.y >= a.z ? 1 : 2;
+}
+
 // Point light i's visibility from the one of its six faces whose 90 degrees
 // hold the lookup, lifted along the geometric normal like the sun's by that
 // face's texels at the point's distance, then compared on a 3x3 grid. Faces
@@ -175,14 +181,15 @@ float point_shadow(int i)
     vec4 light = scene_light_positions[i];
     vec3 normal = safe_normal(v_normal, vec3(0, 1, 0));
     vec3 delta = v_world - light.xyz;
-    float facing = clamp(-dot(normal, safe_normal(delta, -normal)), 0.0, 1.0);
     vec2 size = vec2(textureSize(scene_light_shadow_map, 0));
-    float face_texels = size.x / 6.0, spread = scene_light_shadow.y;
-    vec3 axis = abs(delta);
-    float texel = 2.0 * spread * max(axis.x, max(axis.y, axis.z)) / face_texels;
+    float spread = scene_light_shadow.y, face_texels = scene_light_shadow.w;
+    int along = major_axis(delta);
+    float texel = 2.0 * spread * abs(delta[along]) / face_texels;
+    // A face's depth runs along its axis, so a surface turned from the axis
+    // needs the lift even where it faces the light.
+    float facing = min(clamp(-dot(normal, safe_normal(delta, -normal)), 0.0, 1.0), abs(normal[along]));
     delta += normal * (0.5 + 2.0 * sqrt(1.0 - facing * facing)) * texel;
-    axis = abs(delta);
-    int along = axis.x >= axis.y && axis.x >= axis.z ? 0 : axis.y >= axis.z ? 1 : 2;
+    along = major_axis(delta);
     vec3 forward = vec3(0);
     forward[along] = delta[along] >= 0.0 ? 1.0 : -1.0;
     int face = 2 * along + (delta[along] >= 0.0 ? 0 : 1);

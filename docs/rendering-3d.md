@@ -76,7 +76,7 @@ A Point Light with `shadows` renders opaque solids' depth from the light into
 six 512x512 faces of one depth atlas (`render/scene3d_point_shadow.c`), one
 row of faces per light. At most four point lights cast shadows in a view: the
 ones that rank highest among those with `shadows`; the rest light without
-them.
+them. Ranks follow the camera, so which lights cast can change as it moves.
 
 - **Faces**: each face looks along one axis, +x, -x, +y, -y, +z or -z, across
   a little more than 90 degrees, so lookups near its edge stay on it. The lit
@@ -89,7 +89,9 @@ them.
   lamp's own bulb leaves it lit. Solids nearer the light than 1% of its radius
   cast nothing.
 - **Bias**: each lookup lifts the surface point along its geometric normal by
-  half a texel of its face at the point's distance, up to 2.5 texels edge on.
+  half a texel of its face at the point's distance, up to 2.5 texels for a
+  surface edge on to the light or turned from the face's axis, since a face's
+  depth runs along its axis rather than toward the light.
 - **Memory**: the atlas grows to the most shadowed lights a view has needed,
   3072 texels wide and 512 tall per light, so four lights take at most 24 MB
   at 32-bit depth.
@@ -138,12 +140,13 @@ cascade, and from a caster just outside the view. Point light shadows are
 checked across a grid of floor against the box between it and each lamp, for
 one lamp in four spots whose shadows cross between faces, and for two lamps
 outranked by a brighter light that casts nothing; five lamps that cast give
-shadows to the four ranked highest; a long wall casts for a lamp near one end;
-and a slab the camera culls casts too. It runs `test_tools`
+shadows to the four ranked highest; a sphere lit from between three faces
+keeps its light; a long wall casts for a lamp near one end; and a slab the
+camera culls casts too. It runs `test_tools`
 from the desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 23 cases and 184 assertions in 3.5 seconds on 2026-10-09.
+Vulkan llvmpipe passed 24 cases and 186 assertions in 3.8 seconds on 2026-10-09.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

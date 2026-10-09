@@ -340,8 +340,9 @@ TEST_CASE(default_clips_stay_ordered_for_close_framings)
 TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use)
 {
     static const float lenses[][3] = {
-        { -.1f, 0, 0 }, { CF_PI, 0, 0 }, { NAN, 0, 0 }, { 0, 1, 0 },
-        { 0, 0, 1 },    { 0, 2, 2 },     { 0, 2, 1 },   { 0, 1, INFINITY },
+        { -.1f, 0, 0 }, { 1e-37f, 0, 0 }, { CF_PI, 0, 0 },
+        { NAN, 0, 0 },  { 0, 1, 0 },      { 0, 0, 1 },
+        { 0, 2, 2 },    { 0, 2, 1 },      { 0, 1, INFINITY },
     };
     ecs_entity entity = add_camera_3d(cf_quat_identity());
     GameCamera *camera = GAME_GameCamera_get(world, entity);

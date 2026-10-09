@@ -6,6 +6,10 @@
 
 #include <math.h>
 
+/* Unity's smallest field of view, 0.00001 degrees. Narrower ones push the
+ * default clips past float range at any usable span. */
+static const float narrowest_fov = 1.745329e-7f;
+
 /* The 3D lens of a camera, looking along its global -Z with +Y up from its
  * offset position when it has a Transform3D. False for values the 3D path
  * can't use. */
@@ -17,7 +21,9 @@ static bool camera_lens(const GameCamera *camera, const GameGlobalTransform3D *p
                                     .far_clip = farthest };
     bool clips = (closest == 0 && farthest == 0) ||
                  (closest > 0 && farthest > closest && isfinite(farthest));
-    if (!(camera->fov >= 0 && camera->fov < CF_PI && clips)) {
+    bool fov = camera->fov == 0 ||
+               (camera->fov >= narrowest_fov && camera->fov < CF_PI);
+    if (!(fov && clips)) {
         return false;
     }
     if (!pose) {

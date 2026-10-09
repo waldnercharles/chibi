@@ -272,6 +272,10 @@ TEST_CASE(export_assembles_a_runnable_folder)
     REQUIRE(has("win/Game/data/game.chibip", "artifact"));
     REQUIRE(!has("win/Game/my-game-2.desktop", NULL));
     REQUIRE(export_to("win/Game")); /* replaces a Windows export */
+    game = "Con.1";                 /* a device name Windows reserves */
+    REQUIRE(export_as("win/Con", CHIBI_EXPORT_WINDOWS, false));
+    REQUIRE(has("win/Con/game.exe", "player"));
+    game = "My Game/2";
     icon = "art/icon.png";
 
     /* A failed compile or a missing resource leaves no partial folder. */

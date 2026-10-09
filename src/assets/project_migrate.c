@@ -2,6 +2,7 @@
 
 #include "language/syntax.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -1360,7 +1361,27 @@ static bool has_suffix(const char *name, const char *suffix)
     size_t length = strlen(name), suffix_length = strlen(suffix);
     return length > suffix_length && !strcmp(name + length - suffix_length, suffix);
 }
-static int collect_sources(const char *directory, char ***paths, char *error, size_t error_size)
+char *chibi_migrate_scene_behaviors(const char *scene)
+{
+    char error[128];
+    av_doc *document = asset_text_read(scene, error, sizeof error);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    av_value *entities = av_is_obj(root) ? av_obj_get(root, "entities") : NULL;
+    bool changed = false;
+    for (size_t i = 0; av_is_arr(entities) && i < av_arr_size(entities); i++) {
+        av_value *entity = av_arr_get(entities, i);
+        /* Only scene entities name a prototype. */
+        if (av_is_obj(entity) && av_is_str(av_obj_get(entity, "prototype")) &&
+            !av_obj_get(entity, "behaviors")) {
+            av_obj_add_arr(document, entity, "behaviors");
+            changed = true;
+        }
+    }
+    char *migrated = changed ? asset_text_write(root) : NULL;
+    av_doc_free(document);
+    return migrated;
+}
+static int collect_sources(const char *directory, const char *suffix, char ***paths, char *error, size_t error_size)
 {
     DIR *dir = opendir(directory);
     if (!dir) {
@@ -1381,8 +1402,8 @@ static int collect_sources(const char *directory, char ***paths, char *error, si
             snprintf(error, error_size, "Cannot inspect %s", path);
             status = -1;
         } else if (S_ISDIR(info.st_mode)) {
-            status = collect_sources(path, paths, error, error_size);
-        } else if (S_ISREG(info.st_mode) && has_suffix(entry->d_name, ".chibi")) {
+            status = collect_sources(path, suffix, paths, error, error_size);
+        } else if (S_ISREG(info.st_mode) && has_suffix(entry->d_name, suffix)) {
             apush(*paths, path);
             continue;
         }
@@ -1391,10 +1412,41 @@ static int collect_sources(const char *directory, char ***paths, char *error, si
     closedir(dir);
     return status;
 }
-int chibi_project_migrate_content(const char *content, int from, char *error, size_t error_size)
+static bool collected(char **paths, const char *path)
+{
+    for (int i = 0; i < acount(paths); i++) {
+        if (!strcmp(paths[i], path)) {
+            return true;
+        }
+    }
+    return false;
+}
+int chibi_project_migrate_content(
+    const char *content,
+    const char *start_scene,
+    int from,
+    char *error,
+    size_t error_size
+)
 {
     char **paths = NULL;
-    int status = collect_sources(content, &paths, error, error_size);
+    /* Version 15 changes scenes, wherever the project keeps them; every
+     * earlier step changes scripts. */
+    bool scenes = from == 14;
+    int status = collect_sources(
+        content,
+        scenes ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
+        &paths,
+        error,
+        error_size
+    );
+    /* The scan skips hidden entries, and the start scene may lie outside the
+     * content, so add it unless the scan found it. */
+    struct stat info;
+    if (!status && scenes && start_scene && !collected(paths, start_scene) &&
+        !stat(start_scene, &info) && S_ISREG(info.st_mode)) {
+        apush(paths, xstrdup(start_scene));
+    }
     int count = acount(paths);
     char **sources = xmalloc((size_t)(count + 1) * sizeof *sources);
     for (int i = 0; i < count; i++) {
@@ -1428,6 +1480,12 @@ int chibi_project_migrate_content(const char *content, int from, char *error, si
                     error[0] = '\0';
                     migrated[i] = chibi_migrate_values(sources[i], error, error_size);
                     status = error[0] ? -1 : 0;
+                }
+                break;
+            case 14:
+                migrated = xmalloc((size_t)(count + 1) * sizeof *migrated);
+                for (int i = 0; i < count; i++) {
+                    migrated[i] = chibi_migrate_scene_behaviors(sources[i]);
                 }
                 break;
             default: assert(false);

@@ -46,6 +46,7 @@ void run_prototype_preview_lifetime_check(void)
         .components = components,
         .behaviors = missing_behavior,
         .behavior_count = 1,
+        .own_behaviors = true,
     };
     assert(
         game_prototype_preview_launch_scene(preview, &entity, 1, error, sizeof error) == ECS_ERR_COMMAND

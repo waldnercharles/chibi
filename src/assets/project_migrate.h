@@ -27,5 +27,9 @@ char *chibi_migrate_results(const char *source);
  * a value is read would capture a name the value reads, returns NULL and
  * sets `error`. */
 char *chibi_migrate_values(const char *source, char *error, size_t error_size);
+/* Version 15 scene entities without a `behaviors` list keep their
+ * prototype's behaviors. Returns an owned copy of a version 14 scene in which
+ * every such entity lists none, or NULL when the scene does not change. */
+char *chibi_migrate_scene_behaviors(const char *scene);
 
 #endif

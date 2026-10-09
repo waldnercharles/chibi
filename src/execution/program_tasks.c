@@ -299,13 +299,27 @@ void program_task_finished(execution_activation *a, bool cancelled)
     afree(waiters);
 }
 
+/* Whether the task or one of its descendants is the running caller. */
+static bool running(execution_instance *instance, const execution_task *t)
+{
+    if (t->activation && t->activation->running) {
+        return true;
+    }
+    for (execution_task *c = slot(instance, t->child); c; c = slot(instance, c->next)) {
+        if (running(instance, c)) {
+            return true;
+        }
+    }
+    return false;
+}
 static int cancel(execution_instance *instance, uint64_t handle)
 {
     execution_task *t = find(instance, handle);
     if (!t || !t->activation) {
         return FLOW_OK;
     }
-    if (t->activation->running) {
+    /* Checked before anything is cancelled, so a refusal changes nothing. */
+    if (running(instance, t)) {
         return FLOW_ERR_STATE;
     }
     /* Cancelling a child retires it from this list. */

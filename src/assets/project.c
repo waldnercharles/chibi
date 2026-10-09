@@ -5,6 +5,7 @@
 #include "support/asset_value.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -308,66 +309,6 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
     return 0;
 }
 
-/* Skips a quoted string or comment at `p`, or returns `p` unchanged. */
-static const char *skip_text(const char *p)
-{
-    size_t hashes = strspn(p, "#");
-    if (p[hashes] == '"') {
-        /* KDL strings: "a", raw #"a"#, and multi-line """a""" or #"""a"""#. */
-        size_t quotes = strncmp(p + hashes, "\"\"\"", 3) ? 1 : 3;
-        for (p += hashes + quotes; *p; p++) {
-            if (!hashes && *p == '\\' && p[1]) {
-                p++;
-            } else if (!strncmp(p, "\"\"\"", quotes) && strspn(p + quotes, "#") >= hashes) {
-                return p + quotes + hashes;
-            }
-        }
-        return p;
-    }
-    if (p[0] == '/' && p[1] == '-') {
-        /* `/-` discards what follows; skipping to the node's end is enough. */
-        int depth = 0;
-        for (p += 2 + strspn(p + 2, " \t\r\n"); *p && (depth || !strchr("\n;", *p));) {
-            const char *next = skip_text(p);
-            depth += next == p ? (*p == '{') - (*p == '}') : 0;
-            p = next == p ? p + 1 : next;
-        }
-        return p;
-    }
-    if (p[0] == '/' && p[1] == '/') {
-        return p + strcspn(p, "\n");
-    }
-    if (p[0] == '/' && p[1] == '*') {
-        const char *end = strstr(p + 2, "*/");
-        return end ? end + 2 : p + strlen(p);
-    }
-    return p;
-}
-
-/* The digits of a top-level `version <from>` node, or NULL. */
-static const char *version_digits(const char *text, int from)
-{
-    int depth = 0;
-    bool start = true;
-    for (const char *p = text; *p;) {
-        const char *next = skip_text(p);
-        if (next != p) {
-            p = next;
-            continue;
-        }
-        if (start && depth == 0 && !strncmp(p, "version", 7) && strchr(" \t", p[7])) {
-            const char *digits = p + 7 + strspn(p + 7, " \t");
-            char *end;
-            if (strtol(digits, &end, 10) == from && end != digits) {
-                return digits;
-            }
-        }
-        start = *p == '\n' || *p == ';' || (start && strchr(" \t\r", *p));
-        depth += (*p == '{') - (*p == '}');
-        p++;
-    }
-    return NULL;
-}
 /* Runs each step from `from` and then records the new version. The manifest
  * is written last, so an interrupted upgrade reruns from the old version. */
 static int upgrade(const char *manifest, const char *content, int from, char *error, size_t error_size)
@@ -376,23 +317,29 @@ static int upgrade(const char *manifest, const char *content, int from, char *er
     if (!text) {
         return -1;
     }
-    const char *digits = version_digits(text, from);
-    if (!digits) {
-        free(text);
-        set_errorf(error, error_size, "Cannot find the version node in %s", manifest);
-        return -1;
-    }
+    /* KDL itself locates the version, so comments and spellings match. */
+    char parse_error[128];
+    av_doc *document = asset_text_read(text, parse_error, sizeof parse_error);
+    assert(document); /* read_manifest already parsed it. */
+    av_source version = av_get_source(av_obj_get(av_doc_root(document), "version"));
+    av_doc_free(document);
     for (int version = from; version < CHIBI_PROJECT_VERSION; version++) {
         if (chibi_project_migrate_content(content, version, error, error_size)) {
             free(text);
             return -1;
         }
     }
-    char *rest;
-    strtol(digits, &rest, 10); /* The whole token, sign included. */
     size_t size = strlen(text) + 32;
     char *updated = xmalloc(size);
-    snprintf(updated, size, "%.*s%d%s", (int)(digits - text), text, CHIBI_PROJECT_VERSION, rest);
+    snprintf(
+        updated,
+        size,
+        "%.*s%d%s",
+        (int)version.start,
+        text,
+        CHIBI_PROJECT_VERSION,
+        text + version.end
+    );
     free(text);
     /* Replace the manifest only once the new one is fully written. */
     size_t length = strlen(manifest) + sizeof ".migrating";
@@ -400,6 +347,13 @@ static int upgrade(const char *manifest, const char *content, int from, char *er
     snprintf(staged, length, "%s.migrating", manifest);
     remove(staged); /* Never write through a link left at the staging path. */
     int status = write_asset_file(staged, updated, error, error_size);
+    struct stat original;
+    if (!status &&
+        (stat(manifest, &original) || chmod(staged, original.st_mode & 07777))) {
+        set_errorf(error, error_size, "Cannot keep the permissions of %s", manifest);
+        remove(staged);
+        status = -1;
+    }
     if (!status && rename(staged, manifest)) {
         set_errorf(error, error_size, "Cannot replace %s", manifest);
         remove(staged);

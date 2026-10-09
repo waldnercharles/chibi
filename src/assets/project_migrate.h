@@ -23,7 +23,9 @@ char *chibi_migrate_references(const char *source);
 char *chibi_migrate_results(const char *source);
 /* Version 14 removes `value` declarations: each read of one becomes its
  * expression, which a typed declaration casts. Returns an owned
- * copy of `source`, or NULL when it declares none. */
-char *chibi_migrate_values(const char *source);
+ * copy of `source`, or NULL when it declares none. When a declaration where
+ * a value is read would capture a name the value reads, returns NULL and
+ * sets `error`. */
+char *chibi_migrate_values(const char *source, char *error, size_t error_size);
 
 #endif

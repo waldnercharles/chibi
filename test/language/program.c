@@ -1698,6 +1698,32 @@ TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
     }
     return true;
 }
+TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings)
+{
+    /* C cancels its own parent, which is refused before the newer sibling A
+     * is touched. */
+    const char *source = "behavior K { kept: double = 0; worker: task;"
+                         "function A() -> () { await Delay(1); kept += 1; }"
+                         "function C() -> () { yield; cancel worker; }"
+                         "function P() -> () { C(); A(); await Delay(5); }"
+                         "on Impulse(amount, enabled) { worker = P() } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 0.1, 0, 1000) != FLOW_OK);
+        execution_program_update(program, 2, 0, 1000);
+        REQUIRE(number_state(instance, "kept", 1));
+    }
+    return true;
+}
 TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
 {
     const char *source = "behavior Many { done: double = 0; kept: double = 0; "
@@ -1901,43 +1927,51 @@ TEST_CASE(program_version_11_references_migrate_to_values)
 }
 TEST_CASE(program_version_12_results_migrate_to_returns)
 {
-    const char
-        *source = "behavior R { n: double = 0\n"
-                  "    function Pair(x: double) -> (Sum: double, Twice: "
-                  "double, Kept: double) {\n"
-                  "        result Sum: double = x + 1\n"
-                  "        Kept = 4\n"
-                  "        result Twice: double = (x) * 2\n"
-                  "        if x > 10 {\n"
-                  "            return\n"
-                  "        }\n"
-                  "        return\n"
-                  "    }\n"
-                  "    pure function Seven() -> (Result: double) { "
-                  "result Result: double = 7; }\n"
-                  "    function Half(x: double) -> (Out: double) {\n"
-                  "        result Out: double = x / 2\n"
-                  "        if x > 100 {\n"
-                  "            Out := 3\n"
-                  "            Out = 4\n"
-                  "            return\n"
-                  "        }\n"
-                  "    }\n"
-                  "    function Set(x: double) -> (Value: double) {\n"
-                  "        result Value: double = x\n"
-                  "        if x > 1 {\n"
-                  "            Value = 10\n"
-                  "        }\n"
-                  "        return\n"
-                  "    }\n"
-                  "    function List(x: double) -> (Values: double[]) {\n"
-                  "        result Values: double[] = [x]\n"
-                  "        Values[0] = 2\n"
-                  "        return\n"
-                  "    }\n"
-                  "    on Impulse(amount, enabled) { p := Pair(2); n = "
-                  "p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
-                  "}\n";
+    const char *
+        source = "behavior R { n: double = 0\n"
+                 "    function Pair(x: double) -> (Sum: double, Twice: "
+                 "double, Kept: double) {\n"
+                 "        result Sum: double = x + 1\n"
+                 "        Kept = 4\n"
+                 "        result Twice: double = (x) * 2\n"
+                 "        if x > 10 {\n"
+                 "            return\n"
+                 "        }\n"
+                 "        return\n"
+                 "    }\n"
+                 "    pure function Seven() -> (Result: double) { "
+                 "result Result: double = 7; }\n"
+                 "    function Half(x: double) -> (Out: double) {\n"
+                 "        result Out: double = x / 2\n"
+                 "        if x > 100 {\n"
+                 "            Out := 3\n"
+                 "            Out = 4\n"
+                 "            return\n"
+                 "        }\n"
+                 "    }\n"
+                 "    function Set(x: double) -> (Value: double) {\n"
+                 "        result Value: double = x\n"
+                 "        if x > 1 {\n"
+                 "            Value = 10\n"
+                 "        }\n"
+                 "        return\n"
+                 "    }\n"
+                 "    function List(x: double) -> (Values: double[]) {\n"
+                 "        result Values: double[] = [x]\n"
+                 "        Values[0] = 2\n"
+                 "        return\n"
+                 "    }\n"
+                 "    function Bump(x: ref double) { x += 1 }\n"
+                 "    function Bumped(x: double) -> (Total: double) {\n"
+                 "        result Total: double = x\n"
+                 "        Bump(Total)\n"
+                 "        return\n"
+                 "    }\n"
+                 "    function Outer() -> (X: double) { if n > 0 {} /* lead */ "
+                 "result X: double = 1; function Inner() { return } return }\n"
+                 "    on Impulse(amount, enabled) { p := Pair(2); n = "
+                 "p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
+                 "}\n";
     const char *
         expected = "behavior R { n: double = 0\n"
                    "    function Pair(x: double) -> (Sum: double, "
@@ -1970,6 +2004,15 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                    "        Values[0] = 2\n"
                    "        return Values\n"
                    "    }\n"
+                   "    function Bump(x: ref double) { x += 1 }\n"
+                   "    function Bumped(x: double) -> (Total: double) {\n"
+                   "        Total = x\n"
+                   "        Bump(Total)\n"
+                   "        return Total\n"
+                   "    }\n"
+                   "    function Outer() -> (X: double) { if n > 0 {} /* lead "
+                   "*/ "
+                   "function Inner() { return } return 1 }\n"
                    "    on Impulse(amount, enabled) { p := Pair(2); n "
                    "= p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
                    "}\n";
@@ -2000,13 +2043,14 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(manifest, "wb");
     fputs(
         "meta {\n    version 12\n}\n/-\nversion 12\n/- x {\n}\n// metadata "
-        "{\nname #\"P\\\"#; version "
-        "+12\ncontent "
+        "{\nname #\"P\\\"#; /* a /* b */ { */ \"version\" "
+        "0xc\ncontent "
         "\"content\"\n"
         "start_scene \"scenes/Start.kdl\"\n",
         file
     );
     fclose(file);
+    REQUIRE(!chmod(manifest, 0640) && !chmod(path, 0600));
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 2);
     char text[2048];
     file = fopen(outside, "rb");
@@ -2015,6 +2059,8 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     REQUIRE(!strcmp(text, "keep"));
     struct stat info;
     REQUIRE(!lstat(manifest, &info) && S_ISREG(info.st_mode));
+    REQUIRE((info.st_mode & 07777) == 0640);
+    REQUIRE(!stat(path, &info) && (info.st_mode & 07777) == 0600);
     file = fopen(manifest, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
@@ -2181,7 +2227,7 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
     const char *source = "behavior V { n: double = 0\n"
                          "    value twice = n * 2\n"
                          "    value more = twice + 1\n"
-                         "    value who: entity = self\n"
+                         "    /* who */ value who: entity = self\n"
                          "    function Add(x: double) {\n"
                          "        value sum: double = x + more\n"
                          "        local X = entry.x\n"
@@ -2194,7 +2240,7 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                          "Shadow(5) + twice }\n"
                          "}\n";
     const char *expected = "behavior V { n: double = 0\n"
-                           "    function Add(x: double) {\n"
+                           "    /* who */ function Add(x: double) {\n"
                            "        local X = entry.x\n"
                            "        return Keep(Value: cast<double>(x + ((n * "
                            "2) + 1)) + local.X)\n"
@@ -2205,9 +2251,17 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                            "cast<entity>(self); n = Add(amount) "
                            "+ Shadow(5) + (n * 2) }\n"
                            "}\n";
-    char *migrated = chibi_migrate_values(source);
-    REQUIRE(migrated && !strcmp(migrated, expected));
-    REQUIRE(!chibi_migrate_values(expected));
+    char error[256] = "";
+    char *migrated = chibi_migrate_values(source, error, sizeof error);
+    REQUIRE(migrated && !strcmp(migrated, expected) && !error[0]);
+    REQUIRE(!chibi_migrate_values(expected, error, sizeof error) && !error[0]);
+    /* Expanding `twice` where a local `n` is declared would read the local. */
+    const char *shadowed = "behavior V { n: double = 0\n"
+                           "    value twice = n * 2\n"
+                           "    on Impulse(amount, enabled) { n := amount; m "
+                           ":= twice }\n"
+                           "}\n";
+    REQUIRE(!chibi_migrate_values(shadowed, error, sizeof error) && strstr(error, "`n`"));
     free(migrated);
     prepare();
     REQUIRE(compile(expected, BEHAVIOR_BYTECODE));
@@ -2741,6 +2795,7 @@ void test_language_program()
     RUN_TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches);
     RUN_TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller);
     RUN_TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters);
+    RUN_TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings);
     RUN_TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);

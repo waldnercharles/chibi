@@ -231,12 +231,12 @@ void script_analyzer_callable_definition(analyzer *a, int index, TSNode body)
     asetlen(a->narrowed, 0);
 }
 /* Whether `node` calls `symbol`, resolving each call where `node` sees it. */
-static bool calls(const analyzer *a, TSNode node, int symbol)
+static bool calls(analyzer *a, TSNode node, int symbol)
 {
     if (script_analyzer_is(node, "call_expression")) {
-        char *target = script_analyzer_text_copy(a, script_analyzer_field(node, "function"));
-        const char *dot = strrchr(target, '.');
-        bool match = script_analyzer_callable_symbol(a, dot ? dot + 1 : target) == symbol;
+        /* Spelled as call analysis resolves it, so `Lib.F` is not `F`. */
+        char *target = script_analyzer_qualified_name(a, script_analyzer_field(node, "function"));
+        bool match = script_analyzer_callable_symbol(a, target) == symbol;
         free(target);
         if (match) {
             return true;

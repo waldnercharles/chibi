@@ -31,7 +31,9 @@ typedef enum
     GAME_SOUND_WAV,
     GAME_SOUND_OGG
 } game_sound_format;
-/* Identifies an encoded sound file by its header. */
+/* Identifies an encoded sound file the playback host can decode, from its
+ * headers: a mono or stereo integer or float WAV with all its samples, or mono
+ * or stereo Ogg Vorbis. A Vorbis stream cut short is only found when it plays. */
 game_sound_format game_sound_format_of(const void *data, size_t length);
 game_audio *game_audio_new();
 void game_audio_free(game_audio *audio);

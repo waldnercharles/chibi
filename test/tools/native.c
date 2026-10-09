@@ -796,7 +796,13 @@ TEST_CASE(native_player_plays_sounds)
                                    .object_count = 1 };
     scene = game_scene_prepare(&scene_spec, error, sizeof error);
     REQUIRE(scene);
-    static const unsigned char wav[] = "RIFF\x24\0\0\0WAVEfmt ";
+    /* Mono 16-bit PCM at 44.1 kHz with two samples. */
+    static const unsigned char wav[] = {
+        'R',  'I',  'F', 'F', 40,   0,    0, 0, 'W', 'A', 'V', 'E',
+        'f',  'm',  't', ' ', 16,   0,    0, 0, 1,   0,   1,   0,
+        0x44, 0xAC, 0,   0,   0x88, 0x58, 1, 0, 2,   0,   16,  0,
+        'd',  'a',  't', 'a', 4,    0,    0, 0, 0,   0,   0,   0
+    };
     game_player_asset sound = { .name = "Jump",
                                 .kind = GAME_PLAYER_ASSET_SOUND,
                                 .data = wav,
@@ -885,6 +891,44 @@ TEST_CASE(native_player_plays_sounds)
                                  .data = text,
                                  .length = sizeof text };
     REQUIRE(!game_player_asset_valid(&sound));
+    /* Players only take sounds they can decode: not WAVE_FORMAT_EXTENSIBLE,
+     * surround, 12-bit samples, or less than one whole frame. */
+    static const struct
+    {
+        int at, value;
+    } undecodable[] = { { 20, 0xFFFE }, { 22, 6 }, { 34, 12 }, { 40, 1 } };
+    for (size_t i = 0; i < sizeof undecodable / sizeof *undecodable; i++) {
+        unsigned char edited[sizeof wav];
+        memcpy(edited, wav, sizeof wav);
+        edited[undecodable[i].at] = undecodable[i].value & 0xFF;
+        edited[undecodable[i].at + 1] = undecodable[i].value >> 8;
+        REQUIRE(!game_sound_format_of(edited, sizeof edited));
+    }
+    REQUIRE(!game_sound_format_of(wav, sizeof wav - 1)); /* samples cut short */
+    unsigned char real[sizeof wav];
+    memcpy(real, wav, sizeof wav);
+    real[20] = 3, real[34] = 32; /* one float sample */
+    REQUIRE(game_sound_format_of(real, sizeof real) == GAME_SOUND_WAV);
+    /* Chunks pad to even sizes, and samples only count after the format. */
+    unsigned char padded[sizeof wav + 10] = { 0 };
+    memcpy(padded, wav, 36);
+    memcpy(padded + 36, "LIST\1\0\0\0", 8);
+    memcpy(padded + 46, wav + 36, 12);
+    REQUIRE(game_sound_format_of(padded, sizeof padded) == GAME_SOUND_WAV);
+    unsigned char early[sizeof wav];
+    memcpy(early, wav, 12);
+    memcpy(early + 12, wav + 36, 12);
+    memcpy(early + 24, wav + 12, 24);
+    REQUIRE(!game_sound_format_of(early, sizeof early));
+    unsigned char ogg[40] = { 'O', 'g', 'g', 'S' };
+    ogg[26] = 1, ogg[27] = 30, ogg[28] = 1, ogg[39] = 2;
+    memcpy(ogg + 29, "vorbis", 6);
+    REQUIRE(game_sound_format_of(ogg, sizeof ogg) == GAME_SOUND_OGG);
+    ogg[39] = 6;
+    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
+    memcpy(ogg + 28, "OpusHead", 8);
+    ogg[39] = 2;
+    REQUIRE(!game_sound_format_of(ogg, sizeof ogg));
     sound = (game_player_asset){ .name = "Jump",
                                  .kind = GAME_PLAYER_ASSET_SOUND,
                                  .length = sizeof wav,

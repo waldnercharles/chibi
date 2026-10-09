@@ -79,14 +79,77 @@ static int find(const game_audio *audio, const char *name)
     }
     return -1;
 }
+static uint32_t le32(const unsigned char *p)
+{
+    return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 |
+           (uint32_t)p[3] << 24;
+}
+static int le16(const unsigned char *p)
+{
+    return p[0] | p[1] << 8;
+}
+/* The offset of the body of the first chunk named `id` at or after `at`, or 0
+ * when there is none or a chunk runs past the file. Chunks pad to even sizes. */
+static size_t wav_chunk(const unsigned char *bytes, size_t length, size_t at, const char *id, uint32_t *size)
+{
+    while (at + 8 <= length) {
+        uint32_t n = le32(bytes + at + 4);
+        if (n > length - at - 8) {
+            return 0;
+        }
+        if (!memcmp(bytes + at, id, 4)) {
+            *size = n;
+            return at + 8;
+        }
+        at += 8 + (size_t)n + (n & 1);
+    }
+    return 0;
+}
+/* What the playback host decodes: a plain PCM (8 to 32-bit) or float (32 or
+ * 64-bit) format, not WAVE_FORMAT_EXTENSIBLE, with one or two channels, then a
+ * data chunk holding at least one whole frame. */
+static bool wav_playable(const unsigned char *bytes, size_t length)
+{
+    uint32_t size;
+    size_t fmt = wav_chunk(bytes, length, 12, "fmt ", &size);
+    if (!fmt || size < 16) {
+        return false;
+    }
+    int format = le16(bytes + fmt), channels = le16(bytes + fmt + 2),
+        bits = le16(bytes + fmt + 14);
+    bool integer = format == 1 &&
+                   (bits == 8 || bits == 16 || bits == 24 || bits == 32);
+    bool real = format == 3 && (bits == 32 || bits == 64);
+    if ((channels != 1 && channels != 2) || !(integer || real)) {
+        return false;
+    }
+    /* The host looks for samples only after the format. */
+    size_t data = wav_chunk(bytes, length, fmt + size + (size & 1), "data", &size);
+    return data && size >= (uint32_t)(channels * bits / 8);
+}
+/* An Ogg stream whose first packet identifies mono or stereo Vorbis; Opus and
+ * surround streams are not decoded. */
+static bool ogg_vorbis(const unsigned char *bytes, size_t length)
+{
+    if (length < 27) {
+        return false;
+    }
+    size_t packet = 27 + (size_t)bytes[26];
+    if (length < packet + 12 || bytes[packet] != 1 ||
+        memcmp(bytes + packet + 1, "vorbis", 6)) {
+        return false;
+    }
+    int channels = bytes[packet + 11];
+    return channels == 1 || channels == 2;
+}
 game_sound_format game_sound_format_of(const void *data, size_t length)
 {
     const unsigned char *bytes = data;
     if (length > 4 && !memcmp(bytes, "OggS", 4)) {
-        return GAME_SOUND_OGG;
+        return ogg_vorbis(bytes, length) ? GAME_SOUND_OGG : GAME_SOUND_INVALID;
     }
     if (length > 12 && !memcmp(bytes, "RIFF", 4) && !memcmp(bytes + 8, "WAVE", 4)) {
-        return GAME_SOUND_WAV;
+        return wav_playable(bytes, length) ? GAME_SOUND_WAV : GAME_SOUND_INVALID;
     }
     return GAME_SOUND_INVALID;
 }

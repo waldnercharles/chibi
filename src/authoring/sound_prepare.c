@@ -86,9 +86,10 @@ static bool add_sound(
     ) {
         reason = "cannot be read within the resource limit";
     } else if (game_sound_format_of(bytes, length) != format(file)) {
-        /* A file must hold what its extension says. */
-        reason = format(file) == GAME_SOUND_OGG ? "is not an OGG file"
-                                                : "is not a WAV file";
+        /* A file must hold what its extension says, in a form players decode. */
+        reason = format(file) == GAME_SOUND_OGG
+                   ? "is not a mono or stereo Ogg Vorbis file"
+                   : "is not a plain mono or stereo PCM or float WAV file";
     }
     if (reason) {
         snprintf(error, size, "sounds/%s: %s", file, reason);

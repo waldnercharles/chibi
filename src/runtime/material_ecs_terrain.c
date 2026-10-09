@@ -2,6 +2,7 @@
 #include "runtime/material_ecs.h"
 #include "runtime/material_terrain.h"
 #include "runtime/task_pool.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -155,12 +156,12 @@ static const char *stream_terrain(
             if (camera->disabled) {
                 continue;
             }
-            const GameTransform *p = GAME_GameTransform_get_const(world, e);
+            CF_V2 p = game_transform_world_2d(world, e).position;
             float seen = fmaxf(camera->width, camera->height) * .5f;
             apush(
                 materials->terrain_views,
-                ((material_stream_view){ p->x + camera->offset.x - origin.x,
-                                         p->y + camera->offset.y - origin.y,
+                ((material_stream_view){ p.x + camera->offset.x - origin.x,
+                                         p.y + camera->offset.y - origin.y,
                                          terrain.stream_radius + seen,
                                          materials->stream_deferred ? 0 : seen })
             );
@@ -189,11 +190,11 @@ static const char *stream_terrain(
             if (fabsf(velocity->x) + fabsf(velocity->y) < 1) {
                 continue;
             }
-            const GameTransform *p = GAME_GameTransform_get_const(world, e);
+            CF_V2 p = game_transform_world_2d(world, e).position;
             apush(
                 materials->terrain_views,
-                ((material_stream_view){ p->x - origin.x,
-                                         p->y - origin.y,
+                ((material_stream_view){ p.x - origin.x,
+                                         p.y - origin.y,
                                          128,
                                          materials->stream_deferred ? 0 : 64 })
             );
@@ -266,10 +267,14 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
 {
     ecs_world *world = materials->world;
     MaterialTerrain terrain = *GAME_MaterialTerrain_get_const(world, source);
-    const GameTransform *position = GAME_GameTransform_get_const(world, source);
+    if (!GAME_GameTransform_get_const(world, source)) {
+        return "Terrain requires a Transform";
+    }
+    /* Tiles are placed in the world, at their source's world position. */
+    CF_V2 position = game_transform_world_2d(world, source).position;
     bool unbounded = terrain.stream_radius > 0 && terrain.width == 0 &&
                      terrain.height == 0;
-    if (!position || !isfinite(position->x) || !isfinite(position->y) ||
+    if (!isfinite(position.x) || !isfinite(position.y) ||
         !isfinite(terrain.width) || !isfinite(terrain.height) ||
         !isfinite(terrain.cell_size) || terrain.cell_size <= 0 ||
         (!unbounded && (terrain.width < terrain.cell_size ||
@@ -298,7 +303,7 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
     if (!revision) {
         return "Terrain references an unavailable procedural field";
     }
-    float dimensions[] = { position->x,       position->y,
+    float dimensions[] = { position.x,        position.y,
                            terrain.width,     terrain.height,
                            terrain.cell_size, terrain.stream_radius };
     unsigned settings[] = { terrain.seed,
@@ -316,7 +321,7 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
     if (terrain.parameters) {
         hash = hash_bytes(hash, terrain.parameters, strlen(terrain.parameters));
     }
-    GameTransform origin = *position;
+    GameTransform origin = { position.x, position.y };
     if (terrain.stream_radius > 0) {
         return stream_terrain(materials, source, terrain, origin, hash);
     }

@@ -1040,6 +1040,35 @@ static void followers()
     dispose(&f);
 }
 
+/* A destructible under a placed parent breaks where its parent places it. */
+static void followed_material()
+{
+    fixture f = create();
+    assert(ecs_world_register_component(f.world, &GAME_COMPONENT_GameDestructible, NULL) == ECS_OK);
+    ecs_entity parent = body(&f, 100, 0, GAME_BODY_KINEMATIC, 1, 0);
+    GAME_GameOrientation_get(f.world, parent)->radians = 1.57079633f;
+    ecs_entity slab = body(&f, 0, 0, GAME_BODY_STATIC, 8, 1);
+    *GAME_GameCollider_get(f.world, slab) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                            .width = 32,
+                                                            .height = 16,
+                                                            .category = 8,
+                                                            .mask = 1 };
+    GameDestructible material = { .cell_size = 1, .min_fragment_cells = 1 };
+    assert(
+        ecs_world_record_add(f.world, slab, GAME_COMPONENT_GameDestructible.id, &material, 0) == ECS_OK
+    );
+    assert(ecs_world_record_add_pair(f.world, slab, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(!game_materials_prepare(f.materials));
+    /* The slab's local (0, 7) sits at world (93, 0) under the turned parent. */
+    game_materials_damage(f.materials, slab, (fluid_vec){ 93, 0 }, 7, 1, 0, (material_impact){ 0 });
+    assert(!game_materials_prepare(f.materials));
+    const material_mask *mask = game_materials_mask(f.materials, slab);
+    assert(!material_mask_contains(mask, 0, 5));
+    assert(material_mask_contains(mask, 10, 5));
+    dispose(&f);
+}
+
 static void current_contact_query()
 {
     fixture f = create();
@@ -1272,6 +1301,7 @@ static void physics_cases()
     lifecycle_and_validation();
     interpolation();
     followers();
+    followed_material();
     current_contact_query();
     ordered_contacts();
 }

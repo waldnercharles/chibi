@@ -178,6 +178,16 @@ static int pump_sources(engine *e)
     }
     return status;
 }
+/* Unbinds before the engine frees its input, since sources outlive it. */
+static void bind_input(engine *e, engine_input *input)
+{
+    if (!e->modules.sources) {
+        return;
+    }
+    int status = game_source_bind_service(e->modules.sources, GAME_INPUT_SERVICE, input);
+    assert(!status);
+    (void)status;
+}
 
 engine *engine_new(ecs_world *world, const engine_modules *modules)
 {
@@ -209,6 +219,7 @@ engine *engine_new(ecs_world *world, const engine_modules *modules)
                                    ? game_source_input_host(&result->source_input)
                                    : (engine_input_host){ 0 };
         result->input = engine_input_new(world, &host, result->systems);
+        bind_input(result, result->input);
     }
     boundary(result);
     if (result->modules.sources && sync_authored_systems(result) < 0) {
@@ -236,6 +247,7 @@ void engine_free(engine *engine)
     afree(engine->recorded);
     afree(engine->replay);
     if (engine->input) {
+        bind_input(engine, NULL);
         engine_input_free(engine->input);
     }
     free(engine);
@@ -656,7 +668,7 @@ void engine_replay_input(engine *engine, const input_keyframe *keys, int count, 
     srand(seed);
     aclear(engine->replay);
     for (int i = 0; i < count; i++) {
-        assert(!i || keys[i].step > keys[i - 1].step);
+        assert(!i || keys[i].step >= keys[i - 1].step);
         apush(engine->replay, keys[i]);
     }
 }
@@ -672,8 +684,8 @@ bool engine_replaying_input(const engine *engine)
     return engine->replay != NULL;
 }
 
-/* The key in effect at `step`: the last one at or before it. */
-static const input_keyframe *replay_key(const engine *engine, int step)
+/* The index of the key in effect at `step`: the last one at or before it. */
+static int replay_key(const engine *engine, int step)
 {
     int low = 0, high = acount(engine->replay) - 1;
     while (low < high) {
@@ -684,12 +696,48 @@ static const input_keyframe *replay_key(const engine *engine, int step)
             high = middle - 1;
         }
     }
-    return &engine->replay[low];
+    return low;
 }
 
-/* Hold the replayed key for this step, or record the held input where it
- * changes. A replayed key is held every step, which live samples also do, so
- * a pause or focus change that clears input cannot drop it. */
+/* Sample the keys recorded at this step in order, then hold the last one. */
+static int replay_step(engine *engine, int step)
+{
+    int last = replay_key(engine, step), first = last;
+    while (engine->replay[last].step == step && first > 0 &&
+           engine->replay[first - 1].step == step) {
+        first--;
+    }
+    int result = FLOW_OK;
+    for (int i = first; i <= last && result >= 0; i++) {
+        result = engine_input_hold(engine->input, &engine->replay[i]);
+    }
+    return result;
+}
+
+/* Record the held input where it changes, after the control changes since the
+ * last step when there were several, since they may press and release an
+ * action that the held controls alone would not show. */
+static void record_step(engine *engine, int step)
+{
+    input_keyframe held = engine_input_held(engine->input);
+    held.step = step;
+    const uint64_t *trail;
+    int changes = engine_input_trail(engine->input, &trail);
+    for (int i = 0; i + 1 < changes; i++) {
+        input_keyframe key = held;
+        key.controls = trail[i];
+        apush(engine->recorded, key);
+    }
+    int count = acount(engine->recorded);
+    if (changes > 1 || !count ||
+        !input_keyframe_same(&engine->recorded[count - 1], &held)) {
+        apush(engine->recorded, held);
+    }
+}
+
+/* Replay or record this step's input. A replayed key is held every step, which
+ * live samples also do, so a pause or focus change that clears input cannot
+ * drop it. */
 static int follow_input(engine *engine)
 {
     if (!engine->input) {
@@ -697,16 +745,10 @@ static int follow_input(engine *engine)
     }
     int step = (int)engine->timing.simulation_steps - 1;
     if (engine->replay) {
-        return engine_input_hold(engine->input, replay_key(engine, step));
+        return replay_step(engine, step);
     }
-    if (!engine->recording_input) {
-        return FLOW_OK;
-    }
-    input_keyframe held = engine_input_held(engine->input);
-    int count = acount(engine->recorded);
-    if (!count || !input_keyframe_same(&engine->recorded[count - 1], &held)) {
-        held.step = step;
-        apush(engine->recorded, held);
+    if (engine->recording_input) {
+        record_step(engine, step);
     }
     return FLOW_OK;
 }

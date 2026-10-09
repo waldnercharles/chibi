@@ -1322,7 +1322,6 @@ bool render_mesh_material_draw(
     }
     pass->has_depth = false;
     bool clear = true;
-    int samples = pass->quality.resolution == GAME_SURFACE_FULL ? 1 : 2;
     int last_sdf = -1;
     for (int i = 0; i < count; i++) {
         if (staged[i].program) {
@@ -1345,25 +1344,11 @@ bool render_mesh_material_draw(
             break;
         }
         if (pass->hidden_rejection && i + n <= last_sdf) {
-            render_pixel_rect copied = bounds;
-            if (pass->has_depth) {
-                copied = pass->actor_rects[i];
-                for (int j = 1; j < n; j++) {
-                    copied = joined(copied, pass->actor_rects[i + j]);
-                }
-            }
-            int w = (copied.right - copied.x) * samples;
-            int h = (copied.bottom - copied.y) * samples;
-            cf_canvas_copy_depth(
-                pass->canvas,
-                pass->depth_snapshot,
-                (copied.x - x) * samples,
-                (copied.y - y) * samples,
-                w,
-                h
-            );
+            // Depth copies are whole-canvas: D3D12 and WebGPU copy depth only as a whole texture.
+            cf_canvas_copy_depth(pass->depth_snapshot, pass->canvas);
             pass->work.depth_copies++;
-            pass->work.depth_copy_pixels += (size_t)w * h;
+            pass->work.depth_copy_pixels += (size_t)pass->scratch_width *
+                                            pass->scratch_height;
             pass->has_depth = true;
         }
         i += n;

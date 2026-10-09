@@ -412,6 +412,11 @@ consumer passes 43 assertions in 0.403 seconds, without files, processes or GPU.
 the copy Cute pins). A box falls onto static ground and comes to rest, then
 closest raycasts hit the box, hit the ground and miss. It needs a native tools
 build and passes 14 assertions in 0.052 seconds, without files, processes or GPU.
+`interior-border` draws a circle and a diamond with Cute's interior border into
+a hidden 64 x 64 canvas, opaque and translucent, through Cute's instanced and
+tiled draw paths, and compares every pixel with an analytic reference. On
+lavapipe it passes 8 assertions in 6.1 seconds, including app startup. A
+backend without Cute's compute renderer skips the tiled case.
 `graph-model` selects two independently reviewed public consumer cases for nested
 value copies, opaque artifact replacement/destruction and topology mutation
 rules. They pass 25 assertions in 0.355 seconds under ASan/UBSan. The consumer

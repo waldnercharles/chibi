@@ -1,8 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 4649419f..d095afed 100644
+index 5957df1d..9f9ae2e2 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -325,17 +325,9 @@ if(EMSCRIPTEN)
+@@ -448,17 +448,9 @@ if(EMSCRIPTEN)
  		-sFULL_ES3=1
  		-sALLOW_MEMORY_GROWTH=1
  		-sFILESYSTEM=1
@@ -21,47 +21,3 @@ index 4649419f..d095afed 100644
  endif()
  
  if(ANDROID)
-diff --git a/src/cute_graphics_gles.cpp b/src/cute_graphics_gles.cpp
-index 0b3c1d18..46f475a9 100644
---- a/src/cute_graphics_gles.cpp
-+++ b/src/cute_graphics_gles.cpp
-@@ -555,6 +555,16 @@ static inline CF_GL_Slot* s_force_slot(CF_GL_Ring* ring, uint32_t frame, int* ou
- 	if (!ring->count) return NULL;
- 	int index = ring->head;
- 	CF_GL_Slot& slot = ring->slots[index];
-+#ifdef CF_EMSCRIPTEN
-+	// WebGL fences signal only once control returns to the browser, and WebGL
-+	// orders each upload after the draws already issued, so reuse the slot now
-+	// rather than yield mid-frame.
-+	if (slot.fence) {
-+		glDeleteSync(slot.fence);
-+		slot.fence = 0;
-+	}
-+	slot.in_flight_frame = 0;
-+#else
- 	if (!s_slot_ready(slot)) {
- 		// Block the CPU until the GPU is done with this slot.
- 		// If you're seeing this on the hot-path of a profile or flame-graph it means you're GPU bound.
-@@ -563,12 +573,6 @@ static inline CF_GL_Slot* s_force_slot(CF_GL_Ring* ring, uint32_t frame, int* ou
- 			slot.fence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
- 			glFlush();
- 		}
--#ifdef CF_EMSCRIPTEN
--		while (!s_slot_ready(slot)) {
--			// We can't block in glClientWaitSync on WebGL, so poll and yield to simulate it.
--			cf_sleep(0);
--		}
--#else
- 		if (slot.fence) {
- 			glClientWaitSync(slot.fence, GL_SYNC_FLUSH_COMMANDS_BIT, GL_TIMEOUT_IGNORED);
- 			glDeleteSync(slot.fence);
-@@ -576,8 +580,8 @@ static inline CF_GL_Slot* s_force_slot(CF_GL_Ring* ring, uint32_t frame, int* ou
- 			slot.in_flight_frame = 0;
- 		}
- 		while (!s_slot_ready(slot)) cf_sleep(0);
--#endif
- 	}
-+#endif
- 	slot.last_use_frame = frame;
- 	ring->head = (index + 1) % ring->count;
- 	if (out_index) *out_index = index;

@@ -526,7 +526,7 @@ static bool depth_snapshot_backend()
         cf_apply_viewport(0, 0, SIDE, SIDE);
         cf_apply_scissor(3, 3, 2, 2);
         cf_draw_elements();
-        cf_canvas_copy_depth(source, destination, 0, 0, SIDE, SIDE);
+        cf_canvas_copy_depth(destination, source);
         value[0] = .125f;
         cf_apply_canvas(source, false);
         cf_apply_mesh(mesh);

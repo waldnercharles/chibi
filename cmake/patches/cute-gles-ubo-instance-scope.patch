@@ -1,8 +1,8 @@
 diff --git a/libraries/cute/cute_spirv.h b/libraries/cute/cute_spirv.h
-index d4d8c4f6..3c4c1f46 100644
+index 3d2c8f30..1bd976ff 100644
 --- a/libraries/cute/cute_spirv.h
 +++ b/libraries/cute/cute_spirv.h
-@@ -7906,7 +7906,9 @@ static void cspv_emit_glsl300(cspv_ctx* ctx)
+@@ -8027,7 +8027,9 @@ static void cspv_emit_glsl300(cspv_ctx* ctx)
  		if (d->kind != CSPV_D_BLOCK || d->instance_name) continue;
  		for (int j = 0; j < d->num_members; j++) {
  			char* nm = (char*)cspv_arena_alloc(&ctx->arena, 192);
@@ -13,7 +13,7 @@ index d4d8c4f6..3c4c1f46 100644
  			cspv_tp_rename(g, d->member_names[j], nm);
  		}
  	}
-@@ -7995,7 +7997,9 @@ static void cspv_emit_glsl300(cspv_ctx* ctx)
+@@ -8116,7 +8118,9 @@ static void cspv_emit_glsl300(cspv_ctx* ctx)
  				sappend(ctx->tp_out, ";\n");
  			}
  			if (d->instance_name) sfmt_append(ctx->tp_out, "} %s;\n", d->instance_name);

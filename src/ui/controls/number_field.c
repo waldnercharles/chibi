@@ -38,6 +38,7 @@ typedef struct number_field
     bool dirty, value_dirty;
     /* The gesture. */
     double value, start, step_next;
+    double scrub_step; /* the step as the scrub began, which its owner may change */
     int step_dir;
     unsigned step_modifiers;
     float press_x;
@@ -281,13 +282,13 @@ static double scrub_value(const number_field *f, float dx, unsigned modifiers)
     bool slider = is_slider(f);
     float width = rml_element_box_size(f->el, RML_BOX_BORDER).x / control_dp(f->el);
     double range = f->max - f->min;
-    double per_dp = slider ? range / math_max(width, 1.f) : step_size(f) / 2;
+    double per_dp = slider ? range / math_max(width, 1.f) : f->scrub_step / 2;
     double m = modifiers & RML_KM_ALT                ? 0.1
              : (modifiers & RML_KM_SHIFT) && !slider ? 10
                                                      : 1;
     double v = f->start + dx * per_dp * m;
     if (modifiers & RML_KM_CTRL) {
-        double snap = slider ? range / 10 : step_size(f) * 10;
+        double snap = slider ? range / 10 : f->scrub_step * 10;
         v = round(v / snap) * snap;
     }
     return round(v * 1e6) / 1e6;
@@ -386,6 +387,7 @@ static void drag(number_field *f, const rml_event *e)
         f->scrubbing = true;
         f->suppress_click = true;
         f->start = f->value;
+        f->scrub_step = step_size(f);
     }
     if (f->scrubbing) {
         set_value(f, scrub_value(f, dx, e->modifiers));

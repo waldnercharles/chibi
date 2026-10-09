@@ -62,6 +62,11 @@ bool input_map_read(const char *text, input_action **out, char *error, size_t si
         return fail(error, size, NULL, message);
     }
     const av_value *root = av_doc_root(document);
+    if (av_obj_size(root) > INPUT_ACTION_MAX) {
+        av_doc_free(document);
+        snprintf(message, sizeof message, "a map holds at most %d actions", INPUT_ACTION_MAX);
+        return fail(error, size, NULL, message);
+    }
     bool valid = true;
     for (size_t i = 0; valid && i < av_obj_size(root); i++) {
         input_action action;

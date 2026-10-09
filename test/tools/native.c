@@ -549,24 +549,44 @@ static bool jump_world(engine **out)
     const input_action actions[] = {
         { "Jump", (UINT64_C(1) << GAME_CONTROL_Z) | (UINT64_C(1) << GAME_CONTROL_X), false },
     };
-    /* A count without actions, an unnamed or empty-named action, or one
-     * action listed twice is rejected. */
+    /* A count without actions, an unnamed or empty-named action, one action
+     * listed twice, an action without controls or with one outside
+     * GameControl, or more than the most actions a map holds is rejected. */
     const input_action unnamed = { NULL, UINT64_C(1) << GAME_CONTROL_Z, false };
     const input_action empty = { "", UINT64_C(1) << GAME_CONTROL_Z, false };
     const input_action twice[] = {
         { "Jump", UINT64_C(1) << GAME_CONTROL_Z, false },
         { "Jump", UINT64_C(1) << GAME_CONTROL_X, false },
     };
+    const input_action uncontrolled = { "Jump", 0, false };
+    const input_action none = { "Jump", UINT64_C(1) << GAME_CONTROL_NONE, false };
+    const input_action beyond = { "Jump", UINT64_C(1) << GAME_CONTROL_COUNT, false };
+    static char names[INPUT_ACTION_MAX + 1][8];
+    static input_action many[INPUT_ACTION_MAX + 1];
+    for (int i = 0; i <= INPUT_ACTION_MAX; i++) {
+        snprintf(names[i], sizeof names[i], "A%d", i);
+        many[i] = (input_action){ names[i], UINT64_C(1) << GAME_CONTROL_Z, false };
+    }
     game_world_options invalid[] = {
         { .modules = GAME_WORLD_INPUT, .action_count = 1 },
         { .modules = GAME_WORLD_INPUT, .actions = &unnamed, .action_count = 1 },
         { .modules = GAME_WORLD_INPUT, .actions = twice, .action_count = 2 },
         { .modules = GAME_WORLD_INPUT, .actions = &empty, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &uncontrolled, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &none, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = &beyond, .action_count = 1 },
+        { .modules = GAME_WORLD_INPUT, .actions = many, .action_count = INPUT_ACTION_MAX + 1 },
     };
-    for (int i = 0; i < 4; i++) {
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
         REQUIRE(!game_world_new(&invalid[i], error, sizeof error));
         REQUIRE(!strcmp(error, "Invalid runtime world options"));
     }
+    game_world_options most = { .modules = GAME_WORLD_INPUT,
+                                .actions = many,
+                                .action_count = INPUT_ACTION_MAX };
+    game_world *full = game_world_new(&most, error, sizeof error);
+    REQUIRE(full);
+    game_world_free(full);
     game_world_options options = { .modules = GAME_WORLD_INPUT,
                                    .actions = actions,
                                    .action_count = 1 };
@@ -1064,10 +1084,14 @@ TEST_CASE(native_player_reads_declared_components)
     size_t length;
     /* A count without actions is rejected before it is written. */
     spec.world.actions = NULL;
-    REQUIRE(!game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error));
+    REQUIRE(
+        !game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
     REQUIRE(strstr(error, "Invalid prepared player record metadata") && !player_bytes);
     spec.world.actions = &jump_map;
-    REQUIRE(game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error));
+    REQUIRE(
+        game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
     game_scene_free(scene);
     scene = NULL;
     declared_components_free(declared);

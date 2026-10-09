@@ -62,14 +62,22 @@ static bool install(ecs_world *world, const ecs_component_desc *desc)
     }
     return ecs_world_register_component(world, desc, NULL) == ECS_OK;
 }
+static bool valid_controls(uint64_t controls)
+{
+    _Static_assert(GAME_CONTROL_COUNT < 64, "control bitset");
+    const uint64_t all = ((UINT64_C(1) << GAME_CONTROL_COUNT) - 1) &
+                         ~(UINT64_C(1) << GAME_CONTROL_NONE);
+    return controls && !(controls & ~all);
+}
 static bool valid_actions(const game_world_options *options)
 {
-    if (options->action_count < 0 || (options->action_count && !options->actions)) {
+    if (options->action_count < 0 || options->action_count > INPUT_ACTION_MAX ||
+        (options->action_count && !options->actions)) {
         return false;
     }
     for (int i = 0; i < options->action_count; i++) {
         const char *name = options->actions[i].name;
-        if (!name || !name[0]) {
+        if (!name || !name[0] || !valid_controls(options->actions[i].controls)) {
             return false;
         }
         for (int j = 0; j < i; j++) {

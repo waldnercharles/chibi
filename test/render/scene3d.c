@@ -7,6 +7,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -51,9 +52,9 @@ static ecs_entity add(ecs_component_id component, const void *data)
     return entity;
 }
 
-static void add_solid(GameGeometry3D shape, unsigned color)
+static void add_solid_at(float x, GameGeometry3D shape, unsigned color)
 {
-    ecs_entity solid = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 0 });
+    ecs_entity solid = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ x, 0 });
     GameMaterial material = { .scene = color };
     assert(
         ecs_world_record_add(world, solid, GAME_COMPONENT_GameGeometry3D.id, &shape, 0) == ECS_OK
@@ -66,13 +67,13 @@ static void add_solid(GameGeometry3D shape, unsigned color)
 
 static void add_box(unsigned color)
 {
-    add_solid((GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 0 }, color);
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 0 }, color);
 }
 
 /* A floor whose top face fills the whole view. */
 static void add_floor()
 {
-    add_solid((GameGeometry3D){ GAME_PRIMITIVE_BOX, 400, 400, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 400, 400, .2f, -.1f }, 0xffffffffu);
 }
 
 static GameDirectionalLight *add_sun(unsigned color, CF_V3 direction)
@@ -202,6 +203,10 @@ TEST_CASE(neutral_tone_mapping_keeps_saturated_colors)
     environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL + 1;
     REQUIRE(!render(&environment));
     REQUIRE(strstr(render_scene3d_post_error(post), "tone mapping"));
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.adaptation_speed = 101;
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_post_error(post), "adaptation speed"));
     return true;
 }
 
@@ -237,6 +242,32 @@ TEST_CASE(auto_exposure_meters_the_frame_to_middle_gray)
     REQUIRE(distance(dim, bright) <= 6);
     /* sRGB of middle gray after Neutral's toe, 0.14, is about 105. */
     REQUIRE(abs(dim.colors.g - 105) <= 10);
+    return true;
+}
+
+/* Neutral leaves values from 0.08 to its 0.76 knee at c - 0.04. */
+static int neutral_srgb(float linear)
+{
+    float c = linear - .04f;
+    return (int)lroundf((1.055f * powf(c, 1 / 2.4f) - .055f) * 255);
+}
+
+TEST_CASE(auto_exposure_meters_the_geometric_mean)
+{
+    /* Each half of the symmetric view sees one floor, four times apart in albedo. */
+    add_solid_at(-100, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 200, 400, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(100, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 200, 400, .2f, -.1f }, 0x404040ffu);
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
+    GameEnvironment environment = game_environment_defaults();
+    environment.ambient_intensity = 0;
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.auto_exposure = true;
+    REQUIRE(render(&environment));
+    float ratio = 255 / 64.0f;
+    CF_Pixel bright = pixels[(SIDE / 2) * SIDE + SIDE / 4];
+    CF_Pixel dark = pixels[(SIDE / 2) * SIDE + SIDE * 3 / 4];
+    REQUIRE(abs(bright.colors.g - neutral_srgb(.18f * sqrtf(ratio))) <= 6);
+    REQUIRE(abs(dark.colors.g - neutral_srgb(.18f / sqrtf(ratio))) <= 6);
     return true;
 }
 
@@ -276,6 +307,13 @@ TEST_CASE(auto_exposure_adapts_over_scene_time)
     sun->intensity /= 8;
     REQUIRE(render_at(&environment, 0));
     REQUIRE(distance(top(), settled) <= 6);
+    /* Turning auto exposure back on snaps, even with no time passing. */
+    environment.auto_exposure = false;
+    REQUIRE(render_at(&environment, 0));
+    sun->intensity *= 8;
+    environment.auto_exposure = true;
+    REQUIRE(render_at(&environment, 0));
+    REQUIRE(distance(top(), settled) <= 6);
     return true;
 }
 
@@ -293,6 +331,7 @@ void test_render_scene3d()
     RUN_TEST_CASE(scene_rejects_a_second_directional_light);
     RUN_TEST_CASE(neutral_tone_mapping_keeps_saturated_colors);
     RUN_TEST_CASE(auto_exposure_meters_the_frame_to_middle_gray);
+    RUN_TEST_CASE(auto_exposure_meters_the_geometric_mean);
     RUN_TEST_CASE(auto_exposure_ignores_an_empty_background);
     RUN_TEST_CASE(auto_exposure_adapts_over_scene_time);
     pu_clear_setup();

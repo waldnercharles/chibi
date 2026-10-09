@@ -68,7 +68,7 @@ static void scene(fixture *f, int width, int height, GameEnvironment settings, i
 
 static CF_Pixel *finish(fixture *f, int width, int height)
 {
-    assert(render_scene3d_post_process(f->post, 0));
+    assert(render_scene3d_post_process(f->post));
     cf_app_draw_onto_screen(false);
     return read_canvas(render_scene3d_post_output(f->post), width * height * (int)sizeof(CF_Pixel));
 }
@@ -96,7 +96,7 @@ static bool hdr_and_tonemap(fixture *f)
     GameEnvironment settings = render_scene3d_post_defaults();
     settings.bloom_strength = 0;
     scene(f, 32, 32, settings, 2);
-    assert(render_scene3d_post_process(f->post, 0));
+    assert(render_scene3d_post_process(f->post));
     cf_app_draw_onto_screen(false);
     uint16_t *hdr = read_canvas(render_scene3d_post_target(f->post), 32 * 32 * 8);
     int center = (16 * 32 + 16) * 4;
@@ -280,7 +280,7 @@ static bool state_and_retention(fixture *f)
     cf_draw_push_scissor((CF_Rect){ 3, 4, 10, 11 });
     cf_draw_push_viewport((CF_Rect){ 6, 7, 12, 13 });
     CF_V2 before = cf_world_to_screen((CF_V2){ 20, 30 });
-    assert(render_scene3d_post_process(f->post, 0));
+    assert(render_scene3d_post_process(f->post));
     CF_V2 after = cf_world_to_screen((CF_V2){ 20, 30 });
     CF_Rect viewport = cf_draw_peek_viewport(), scissor = cf_draw_peek_scissor();
     bool ok = fabsf(before.x - after.x) < 0.001f &&
@@ -306,7 +306,7 @@ static bool state_and_retention(fixture *f)
                                 invalid[i][3] };
         ok &= !render_scene3d_post_prepare(f->post, 129, 75, &bad) &&
               render_scene3d_post_error(f->post)[0] &&
-              !render_scene3d_post_process(f->post, 0) &&
+              !render_scene3d_post_process(f->post) &&
               render_scene3d_post_output(f->post).id == saved.id;
     }
     CF_Pixel *retained = read_canvas(saved, 33 * 17 * (int)sizeof(CF_Pixel));

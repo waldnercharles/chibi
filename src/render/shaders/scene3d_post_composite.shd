@@ -23,7 +23,7 @@ vec4 shader(vec4 color, ShaderParams params)
     }
     float ev = exposure;
     if (auto_exposure != 0) {
-        ev += log2(0.18) - texture(adapted, vec2(0.5)).r;
+        ev += log2(0.18) - texelFetch(adapted, ivec2(0), 0).r;
     }
     vec3 hdr = (scene + bloom * strength) * exp2(ev);
     vec3 mapped = tone_mapping == 0 ? agx(hdr) : srgb_encode(pbr_neutral(hdr));

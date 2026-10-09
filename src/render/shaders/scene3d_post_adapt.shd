@@ -17,7 +17,7 @@ vec4 shader(vec4 color, ShaderParams params)
     }
     float current = total.y > 0.0 ? total.x / total.y : log2(0.18);
     if (rate < 1.0) {
-        current = mix(texture(previous, vec2(0.5)).r, current, rate);
+        current = mix(texelFetch(previous, ivec2(0), 0).r, current, rate);
     }
     return vec4(current, 0, 0, 1);
 }

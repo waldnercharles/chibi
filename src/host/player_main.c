@@ -197,6 +197,10 @@ static void render(void *context)
     player_host *host = context;
     game_world *world = game_player_world(host->player);
     const engine_modules *modules = game_world_modules(world);
+    app_scene_renderer_set_time(
+        host->renderer,
+        (float)engine_last_timing(game_world_engine(world))->simulation_time
+    );
     if (engine_viewport_perspective(host->viewport)) {
         render_scene3d_camera camera;
         engine_viewport_get_camera3d(host->viewport, &camera);

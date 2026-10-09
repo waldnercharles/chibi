@@ -1129,7 +1129,7 @@ static void draw(fixture *f, const behavior_asset *preview, float time, CF_Pixel
     }
     assert(ok);
     cf_render_to(f->canvas, true);
-    assert(render_scene3d_post_process(f->post, 0));
+    assert(render_scene3d_post_process(f->post));
     cf_app_draw_onto_screen(false);
     f->stats = cf_draw3d_stats();
     read_canvas(f, pixels);

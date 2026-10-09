@@ -46,12 +46,12 @@ has them. A scene without a valid rhythm clock draws with the beat at rest.
 
 `python3 tools/test_policy.py tool scene3d` renders a box or a floor in a hidden
 64x64 app. It checks ambient, the directional light, the one-light limit,
-drawing without a rhythm clock, both tone maps, and auto exposure's metering,
-background rejection, easing and snapping. It runs `test_tools` from the
+drawing without a rhythm clock, both tone maps, and auto exposure's geometric
+mean, background rejection, easing, snapping and settings checks. It runs `test_tools` from the
 desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`. llvmpipe leaks
 112 bytes from its own worker threads, so LeakSanitizer hosts on llvmpipe need
 `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with Vulkan llvmpipe
-passed 8 cases and 35 assertions in 0.97 seconds on 2026-10-09.
+passed 9 cases and 43 assertions in 0.97 seconds on 2026-10-09.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

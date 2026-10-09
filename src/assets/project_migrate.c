@@ -912,6 +912,7 @@ typedef struct
     TSNode node;
     char *name, *expansion;
     bool expanding;
+    bool alias; /* Names storage, which each read and write reaches. */
 } lazy;
 typedef struct
 {
@@ -919,10 +920,6 @@ typedef struct
     char *text;
     int order; /* Breaks ties between edits at one offset. */
 } replacement;
-/* Rewrites `value Name = e` as `Name := e` and `value Name: T = e` as
- * `Name: T = e`, which parse as states at the root and locals in callables.
- * `keyword` is `value` or `local`, both five letters. A multi-result type
- * `(a: T, b: U)` is dropped, since such a local is inferred. */
 /* Skips the whitespace and comments the grammar allows between tokens. */
 static const char *gap(const char *p)
 {
@@ -937,6 +934,10 @@ static const char *gap(const char *p)
         p = skip;
     }
 }
+/* Rewrites `value Name = e` as `Name := e` and `value Name: T = e` as
+ * `Name: T = e`, which parse as states at the root and locals in callables.
+ * `keyword` is `value` or `local`, both five letters. A multi-result type
+ * `(a: T, b: U)` is dropped, since such a local is inferred. */
 static char *strip_lazy(const char *source, const char *keyword_text, lazy **out)
 {
     char *text = xmalloc(strlen(source) + 1), *at = text;
@@ -1148,7 +1149,8 @@ static char *expansion(const char *text, lazy *all, lazy *l)
     assert(!l->expanding);
     l->expanding = true;
     TSNode value = ts_node_child_by_field_name(l->node, "value", 5);
-    TSNode type = ts_node_child_by_field_name(l->node, "type", 4);
+    TSNode type = l->alias ? (TSNode){ 0 }
+                           : ts_node_child_by_field_name(l->node, "type", 4);
     while (!ts_node_is_null(type) && is(value, "parenthesized_expression")) {
         value = ts_node_child_by_field_name(value, "expression", 10);
     }
@@ -1421,8 +1423,10 @@ static void local_text(const char *text, lazy *all, TSNode node, char **out, int
     lazy *read = local_read(text, all, node);
     if (read) {
         apush(*depends, lazy_index(all, read));
-        if (is(node, "member_expression")) {
-            for (const char *c = read->name; *c; c++) {
+        if (read->alias || is(node, "member_expression")) {
+            for (const char *c = read->alias ? expansion(text, all, read) : read->name;
+                 *c;
+                 c++) {
                 apush(*out, *c);
             }
             return;
@@ -1559,7 +1563,7 @@ static int inline_local(
         }
     }
     /* Each run evaluated the local once; an expansion runs at every read. */
-    if (reads > 1 && !constant(value)) {
+    if (reads > 1 && !constant(value) && !all[index].alias) {
         return local_fail(
             error,
             error_size,
@@ -1640,6 +1644,44 @@ static bool always_reads(const char *text, TSNode read, TSNode block)
     }
     return true;
 }
+/* Whether an action in `node` is named like the identifier `name`. */
+static bool names_action(const char *text, TSNode node, TSNode name)
+{
+    if (is(node, "action_declaration")) {
+        return same_name(text, ts_node_child_by_field_name(node, "name", 4), text, name);
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (names_action(text, ts_node_named_child(node, i), name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Whether `node` names storage, as a state, component, parameter or local
+ * path, which version 16 read and wrote through a local initialized with it. */
+static bool storage_path(const char *text, lazy *all, TSNode root, TSNode node)
+{
+    lazy *read = local_read(text, all, node);
+    if (read) {
+        return read->alias;
+    }
+    if (is(node, "member_expression") || is(node, "index_expression")) {
+        return storage_path(text, all, root, ts_node_child_by_field_name(node, "object", 6));
+    }
+    if (is(node, "parenthesized_expression")) {
+        return storage_path(text, all, root, ts_node_child_by_field_name(node, "expression", 10));
+    }
+    if (is(node, "call_expression")) {
+        TSNode callee = ts_node_child_by_field_name(node, "function", 8);
+        uint32_t start = ts_node_start_byte(callee);
+        return ts_node_end_byte(callee) - start == 13 &&
+               !strncmp(text + start, "get_component", 13);
+    }
+    if (!is(node, "identifier")) {
+        return is(node, "builtin_reference");
+    }
+    return !names_action(text, root, node);
+}
 /* Whether `node` calls something that runs before `read` is evaluated. */
 static bool calls_before(TSNode node, TSNode read)
 {
@@ -1670,6 +1712,9 @@ static int place_local(
 )
 {
     lazy *l = &all[index];
+    if (l->alias) {
+        return inline_local(text, all, index, unit, uses, out, error, error_size);
+    }
     TSNode first = { 0 }, block = { 0 };
     for (int i = 0; i < acount(*uses); i++) {
         local_use *u = &(*uses)[i];
@@ -1767,7 +1812,9 @@ static int place_local(
     /* What it reads is placed later, so a later edit at this offset sorts
      * first and declares it before this one. */
     for (int i = 0; i < acount(depends); i++) {
-        apush(*uses, ((local_use){ depends[i], statement, unit }));
+        if (!all[depends[i]].alias) {
+            apush(*uses, ((local_use){ depends[i], statement, unit }));
+        }
     }
     afree(depends);
     return 0;
@@ -1879,6 +1926,10 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
         }
     }
     free(seen);
+    for (int k = 0; !status && k < acount(order); k++) {
+        lazy *l = &all[order[k]];
+        l->alias = storage_path(text, all, root, ts_node_child_by_field_name(l->node, "value", 5));
+    }
     replacement *edits = NULL;
     local_use *uses = NULL;
     if (!status) {

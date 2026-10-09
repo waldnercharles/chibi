@@ -2620,6 +2620,30 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
         REQUIRE(unchanged && !strstr(unchanged, "local") && strstr(unchanged, "X := 1; n = X"));
         free(unchanged);
     }
+    /* A local naming storage reads and writes it; an action's output is
+     * read once. */
+    const char *alias = "behavior L { n: double = 0\n"
+                        "    local alias = n\n"
+                        "    local typed: double = alias\n"
+                        "    action wait = timer(1)\n"
+                        "    local done = wait.Done\n"
+                        "    local hp = get_component(self).Value\n"
+                        "    on Tick() { alias = 2; m := typed; typed = 3; n = "
+                        "done; hp = 4 }\n"
+                        "}\n";
+    REQUIRE(!chibi_migrate_locals(alias, &unchanged, error, sizeof error));
+    REQUIRE(
+        unchanged && !strcmp(
+                         unchanged,
+                         "behavior L { n: double = 0\n"
+                         "    action wait = timer(1)\n"
+                         "    on Tick() { n = 2; m := n; n = 3; done := "
+                         "wait.Done; n = done; "
+                         "get_component(self).Value = 4 }\n"
+                         "}\n"
+                     )
+    );
+    free(unchanged);
     /* `local.X` names the root local past a nearer `X`. */
     const char *qualified = "behavior L { n: double = 0\n"
                             "    local X = n + 1\n"

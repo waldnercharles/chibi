@@ -108,7 +108,10 @@ jobs:
     # The Windows port is new; keep this row advisory until it has passed once.
     continue-on-error: true
     steps:
+      # Keep tokens off disk while the third-party actions below run.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: ilammy/msvc-dev-cmd@v1
       - uses: lukka/get-cmake@latest
       - name: Put LLVM on PATH
@@ -127,7 +130,10 @@ jobs:
     # Studio on Windows is new; keep this row advisory until it has passed once.
     continue-on-error: true
     steps:
+      # Keep tokens off disk while the third-party actions below run.
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Require Studio checkout access
         env:
           TOKEN: ${{ secrets.CHIBI_STUDIO_TOKEN }}
@@ -142,6 +148,7 @@ jobs:
           repository: waldnercharles/chibi-studio
           token: ${{ secrets.CHIBI_STUDIO_TOKEN }}
           path: chibi-studio
+          persist-credentials: false
       - uses: ilammy/msvc-dev-cmd@v1
       - uses: lukka/get-cmake@latest
       - name: Put LLVM on PATH

@@ -1508,6 +1508,31 @@ static bool redeclares(const char *text, TSNode scope, TSNode name, TSNode own)
     }
     return false;
 }
+/* Whether `node` evaluates to the same value wherever and however often it
+ * runs: it reads no names and calls nothing. */
+static bool constant(TSNode node)
+{
+    if (is(node, "identifier") || is(node, "call_expression") ||
+        is(node, "await_expression")) {
+        return false;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (!constant(ts_node_named_child(node, i))) {
+            return false;
+        }
+    }
+    return true;
+}
+static bool in_loop(TSNode node, TSNode unit)
+{
+    for (; !ts_node_eq(node, unit); node = ts_node_parent(node)) {
+        if (is(node, "while_statement") || is(node, "for_statement") ||
+            is(node, "foreach_statement")) {
+            return true;
+        }
+    }
+    return false;
+}
 /* Replaces each read of local `index` in `unit` with its expression, where a
  * declaration of its name would clash with another. */
 static int inline_local(
@@ -1521,12 +1546,30 @@ static int inline_local(
     size_t error_size
 )
 {
+    TSNode value = ts_node_child_by_field_name(all[index].node, "value", 5);
+    int reads = 0;
+    for (int i = 0; i < acount(*uses); i++) {
+        local_use u = (*uses)[i];
+        if (u.local == index && ts_node_eq(u.unit, unit)) {
+            reads += in_loop(u.node, unit) ? 2 : 1;
+        }
+    }
+    /* Each run evaluated the local once; an expansion runs at every read. */
+    if (reads > 1 && !constant(value)) {
+        return local_fail(
+            error,
+            error_size,
+            text,
+            ts_node_child_by_field_name(all[index].node, "name", 4),
+            "Local `%.*s` is read more than once where another declaration "
+            "has its name; rename one before migrating"
+        );
+    }
     for (int i = 0; i < acount(*uses); i++) {
         local_use u = (*uses)[i];
         if (u.local != index || !ts_node_eq(u.unit, unit)) {
             continue;
         }
-        TSNode value = ts_node_child_by_field_name(all[index].node, "value", 5);
         TSNode shadowed = captured(text, all, value, all[index].node, u.node);
         if (!ts_node_is_null(shadowed)) {
             return local_fail(error, error_size, text, shadowed, "A local reads `%.*s`, which another declaration shadows where the local is read; rename one");
@@ -1560,18 +1603,6 @@ static int inline_local(
         );
     }
     return 0;
-}
-static bool calls(TSNode node)
-{
-    if (is(node, "call_expression") || is(node, "await_expression")) {
-        return true;
-    }
-    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        if (calls(ts_node_named_child(node, i))) {
-            return true;
-        }
-    }
-    return false;
 }
 /* Whether reaching the statement of `block` that holds `read` always reaches
  * `read`: a condition or loop header is always read, a branch or loop body
@@ -1652,22 +1683,24 @@ static int place_local(
         block = ts_node_parent(block);
     }
     TSNode value = ts_node_child_by_field_name(l->node, "value", 5);
-    if (calls(value) && !always_reads(text, first, block)) {
-        return local_fail(
-            error,
-            error_size,
-            text,
-            ts_node_child_by_field_name(l->node, "name", 4),
-            "Local `%.*s` calls a function and is first read in a branch or "
-            "loop; declare it where it should run before migrating"
-        );
-    }
     TSNode name = ts_node_child_by_field_name(l->node, "name", 4);
     for (TSNode scope = block; !ts_node_eq(scope, ts_node_parent(unit));
          scope = ts_node_parent(scope)) {
         if (scope_node(scope) && redeclares(text, scope, name, l->node)) {
             return inline_local(text, all, index, unit, uses, out, error, error_size);
         }
+    }
+    /* A local was evaluated at its first read, which a branch or loop
+     * body might skip or reach after the state it reads changed. */
+    if (!constant(value) && !always_reads(text, first, block)) {
+        return local_fail(
+            error,
+            error_size,
+            text,
+            ts_node_child_by_field_name(l->node, "name", 4),
+            "Local `%.*s` is first read in a branch or loop; declare it "
+            "where it should run before migrating"
+        );
     }
     TSNode shadowed = captured(text, all, value, l->node, statement);
     if (!ts_node_is_null(shadowed)) {

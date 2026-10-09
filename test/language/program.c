@@ -2447,7 +2447,7 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
                          "    local twice: double = local.base * 2\n"
                          "    function Add(x: double) {\n"
                          "        local X = x + 1\n"
-                         "        if x > 0 { hits += local.X }\n"
+                         "        if local.X > 1 { hits += X }\n"
                          "        return twice + X\n"
                          "    }\n"
                          "    on Impulse(amount, enabled) {\n"
@@ -2457,7 +2457,7 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
     const char *expected = "behavior L { n: double = 0; hits: double = 0\n"
                            "    function Add(x: double) {\n"
                            "        X := x + 1\n"
-                           "        if x > 0 { hits += X }\n"
+                           "        if X > 1 { hits += X }\n"
                            "        base := n + 1\n"
                            "        twice: double = base * 2\n"
                            "        return twice + X\n"
@@ -2499,7 +2499,7 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
     free(unchanged);
     /* Each run evaluates a local once, so a loop does not re-evaluate it. */
     const char *loop = "behavior L { n: double = 0\n"
-                       "    local base = n + 1\n"
+                       "    local base = 1 + 1\n"
                        "    on Impulse(amount, enabled) {\n"
                        "        i: double = 0\n"
                        "        while i < 2 { i += 1; n += base }\n"
@@ -2512,7 +2512,7 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
                          "behavior L { n: double = 0\n"
                          "    on Impulse(amount, enabled) {\n"
                          "        i: double = 0\n"
-                         "        base := n + 1\n"
+                         "        base := 1 + 1\n"
                          "        while i < 2 { i += 1; n += base }\n"
                          "    }\n"
                          "}\n"
@@ -2533,19 +2533,40 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
         unchanged = NULL;
         REQUIRE(chibi_migrate_locals(names[i], &unchanged, error, sizeof error) && !unchanged);
     }
-    /* A call first read in a branch might never have run. */
-    const char
-        *branch = "behavior L { n: double = 0\n"
-                  "    function One() { return 1 }\n"
-                  "    local hit = One()\n"
-                  "    on Impulse(amount, enabled) { if enabled { n = hit } }\n"
-                  "    on Tick() { if n > 0 { n = hit }; if n > 1 { n = hit } "
-                  "}\n"
-                  "}\n";
-    REQUIRE(
-        chibi_migrate_locals(branch, &unchanged, error, sizeof error) &&
-        !unchanged && strstr(error, "`hit`")
-    );
+    /* A branch might skip the first read, or a loop reach it after the state
+     * it reads changed, and an expansion runs at every read. */
+    const char *later[] = {
+        "behavior L { n: double = 0\n"
+        "    function One() { return 1 }\n"
+        "    local hit = One()\n"
+        "    on Tick() { if n > 0 { n = hit }; if n > 1 { n = hit } }\n"
+        "}\n",
+        "behavior L { n: double = 0\n"
+        "    local hit = n + 1\n"
+        "    on Tick() { if n > 0 { n = hit }; n = 10; if n > 1 { n = hit } "
+        "}\n"
+        "}\n",
+        "behavior L { n: double = 0\n"
+        "    local hit = n + 1\n"
+        "    on Tick() { i: double = 0; while i < 2 { i += 1; n += hit } }\n"
+        "}\n",
+        "behavior L { n: double = 0\n"
+        "    function One() { return 1 }\n"
+        "    local hit = One()\n"
+        "    on Tick() { hit := 0; a := local.hit; b := local.hit }\n"
+        "}\n",
+        "behavior L { n: double = 0\n"
+        "    local hit = n + 1\n"
+        "    on Tick() { hit := 0; while n < 2 { n += local.hit } }\n"
+        "}\n",
+    };
+    for (int i = 0; i < 5; i++) {
+        unchanged = NULL;
+        REQUIRE(
+            chibi_migrate_locals(later[i], &unchanged, error, sizeof error) &&
+            !unchanged && strstr(error, "`hit`")
+        );
+    }
     /* Read in one branch only, it is declared inside that branch. */
     const char
         *one = "behavior L { n: double = 0\n"

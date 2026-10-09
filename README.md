@@ -32,6 +32,28 @@ files or the compiler changed since the last run, then starts `chibi-player`
 beside it. Options after the project go to the player. Studio's `chibi-dev`
 opens a project the same way.
 
+To use Studio and `chibi` in any project without a checkout's build folders,
+install them from the engine checkout, with `chibi-studio` checked out beside it:
+
+```sh
+make install                    # into ~/.local; PREFIX=/elsewhere to change it
+cd ~/games/neon-swarm && chibi-dev
+```
+
+`make install` builds a Release SDK and Studio in their own build folders and
+installs `chibi-dev`, `chibi`, `chibi-compile` and `chibi-player` into
+`PREFIX/bin`, with their shaders, UI and licenses in `PREFIX/share/chibi`. Add
+`PREFIX/bin` to `PATH` if it is not there already; macOS does not include
+`~/.local/bin`. The executables find their resources relative to themselves, so
+the folder can be moved. To uninstall, delete those four executables and
+`PREFIX/share/chibi`. On Windows, which has no make wrappers, build Studio with
+CMake as its README describes and install both of its components:
+
+```bat
+cmake --install build --prefix "%LOCALAPPDATA%/Programs/Chibi"
+cmake --install build --prefix "%LOCALAPPDATA%/Programs/Chibi" --component sdk_tools
+```
+
 To ship a game, export it with an installed SDK's `chibi`:
 
 ```sh
@@ -98,11 +120,13 @@ make studio-build STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolu
 make studio-run STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk PROJECT_ROOT=/absolute/game
 make studio-dev STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk PROJECT_ROOT=/absolute/game
 make package-studio STUDIO_SOURCE=/absolute/chibi-studio STUDIO_SDK_PREFIX=/absolute/sdk
+make install [PREFIX=/absolute/prefix]
 make prepare-project PROJECT_ROOT=/absolute/game ARTIFACT=/absolute/output/game.chibip
 make player-run ARTIFACT=/absolute/output/game.chibip RESOURCE_ROOT=/absolute/resources
 make controller-run PROJECT_ROOT=/absolute/game
 ```
 
+`STUDIO_SOURCE` defaults to the `chibi-studio` checkout beside the engine's.
 `studio-build` uses Ninja and `STUDIO_CMAKE_FLAGS` (Debug by default).
 `studio-dev` restores `STUDIO_CHECKPOINT`, defaulting to the Studio build's
 `workspace.json`. Source edits remain owned by the game; native changes require

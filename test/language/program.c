@@ -2692,6 +2692,10 @@ TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
                         "source=\"Z\"\n"
                         "            GAME.GameInput\n"
                         "        }\n"
+                        "        retained_components {\n"
+                        "            GAME.GameActionBinding action=\"Slide\" "
+                        "source=\"X\"\n"
+                        "        }\n"
                         "    }\n"
                         "}\n";
     const char
@@ -2761,25 +2765,33 @@ TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
             fprintf(stderr, "migrated %s:\n%s", files[i][0], text);
         }
         REQUIRE(!expected[i] || !strcmp(text, expected[i]));
+    }
+
+    /* Which action a script's binding read meant depends on its entity, so
+     * one stops the migration. */
+    const char *scripts[][2] = {
+        { CHIBI_PROJECT_MANIFEST, "version 15\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n" },
+        { "content/Move.chibi", "behavior Move {\n    // ActionBinding\n    on PressedChanged(pressed) {\n    }\n}\n" },
+    };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, scripts[i][0]);
+        FILE *file = fopen(path, "wb");
+        fputs(scripts[i][1], file);
+        fclose(file);
+    }
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == -1);
+    REQUIRE(strstr(error, "Move.chibi reads PressedChanged"));
+    for (int i = 0; i < 4; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         unlink(path);
     }
+    snprintf(path, sizeof path, "%s/%s", root, scripts[1][0]);
+    unlink(path);
     for (int i = 2; i >= 0; i--) {
         snprintf(path, sizeof path, "%s/%s", root, directories[i]);
         rmdir(path);
     }
     rmdir(root);
-
-    /* A control the build does not know stops the migration. */
-    input_action *map = NULL;
-    error[0] = 0;
-    REQUIRE(!chibi_migrate_action_bindings(
-        "name \"P\"\ncomponents {\n    GAME.GameActionBinding action=\"Jump\" "
-        "source=\"Nope\"\n}\n",
-        &map,
-        error,
-        sizeof error
-    ));
-    REQUIRE(strstr(error, "Unknown input control Nope") && !map);
     return true;
 }
 TEST_CASE(program_single_result_call_fields_read_the_result)

@@ -7,13 +7,13 @@ modules; visual editors consume their authoring projections.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 15. Scenes, prototypes, event
+Project manifests are `project.kdl`, version 16. Scenes, prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 15
+version 16
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -410,6 +410,12 @@ for a tap released before that step. Action names are typed members, so
 map's actions. A pause or focus change keeps held actions, so resuming with the
 same controls held presses nothing again.
 
+Migrating a version 15 project moves its GameActionBinding components into the
+map, leaving out disabled and retained ones. Which action a script's
+`ActionBinding` or `PressedChanged` meant depended on its entity, so a script
+that still uses one stops the migration until it is rewritten with
+`input.<Action>`.
+
 ### Maintained ECS relationships
 
 A root-level `bind` maintains a writable component field from a deterministic
@@ -455,7 +461,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 15. Executable files contain no generated identity
+Project manifests use version 16. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently

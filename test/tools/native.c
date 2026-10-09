@@ -996,6 +996,11 @@ TEST_CASE(native_player_reads_declared_components)
                               .declared = declared,
                               .scene = scene };
     size_t length;
+    /* A count without actions is rejected before it is written. */
+    spec.world.actions = NULL;
+    REQUIRE(!game_player_prepared_write(&spec, &player_bytes, &length, error, sizeof error));
+    REQUIRE(strstr(error, "Invalid prepared player record metadata") && !player_bytes);
+    spec.world.actions = &jump_map;
     REQUIRE(game_player_prepared_write(&spec, &player_bytes, &length, error, sizeof error));
     game_scene_free(scene);
     scene = NULL;

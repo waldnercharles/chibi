@@ -10,6 +10,7 @@
 #include "authoring/source_catalog.h"
 #include "runtime/behaviors/entities_definition.h"
 #include "runtime/component_catalog.h"
+#include "runtime/components.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
@@ -40,6 +41,11 @@ typedef enum
 } entry_kind;
 
 static const char *const KIND_NAMES[ENTRY_KIND_COUNT] = { "component", "function", "event" };
+static const char *const PROGRAM_KINDS[] = {
+    [SCRIPT_PROGRAM_BEHAVIOR] = "behavior",
+    [SCRIPT_PROGRAM_LIBRARY] = "library",
+    [SCRIPT_PROGRAM_SYSTEM] = "system",
+};
 
 typedef struct
 {
@@ -52,7 +58,7 @@ typedef struct
 typedef struct
 {
     char *name;
-    char **behaviors, **includes;
+    char **behaviors, **includes, **systems;
 } prototype_entry;
 
 static char project_root[PATH_MAX], content_root[PATH_MAX];
@@ -63,11 +69,11 @@ static entry *entries;
 static int problems; /* Reported failures; the coverage case fails on any. */
 static prototype_entry *prototypes;
 static script_analysis **analyses; /* One per project source, in catalog order. */
-/* Names a scene reaches: its entities' prototypes and behaviors, the
+/* Names a scene reaches: its entities' prototypes, behaviors and systems, the
  * prototypes and libraries that running sources spawn or call, and the
  * behaviors of spawned prototypes. */
 static char **reached_prototypes, **spawned_prototypes, **reached_behaviors,
-    **reached_libraries;
+    **reached_libraries, **reached_systems;
 
 /* Language library categories; their functions are not engine features. */
 static const char *const LANGUAGE_CATEGORIES[] = { "Array", "Set", "Flow Control", "Conversion" };
@@ -151,13 +157,16 @@ static void use_id(entry_kind kind, uint64_t id)
     }
 }
 
-static void use_component_name(const char *name)
+/* A component's catalog name, without the GAME. prefix documents may use. */
+static const char *component_name(const char *name)
 {
     const char *prefix = "GAME.";
-    if (!strncmp(name, prefix, strlen(prefix))) {
-        name += strlen(prefix);
-    }
-    entry *found = find_name(ENTRY_COMPONENT, name);
+    return strncmp(name, prefix, strlen(prefix)) ? name : name + strlen(prefix);
+}
+
+static void use_component_name(const char *name)
+{
+    entry *found = find_name(ENTRY_COMPONENT, component_name(name));
     if (found) {
         found->used = true;
     }
@@ -286,6 +295,14 @@ static void reach_behavior(const char *name)
     }
 }
 
+/* The engine runs a system only while an entity's EngineSystem names it. */
+static void reach_system(const char *name)
+{
+    if (!listed(reached_systems, name)) {
+        apush(reached_systems, xstrdup(name));
+    }
+}
+
 /* Reaches the named prototype and the prototypes it includes. A spawn also
  * runs its behaviors, which already hold its includes' behaviors; a scene
  * placement runs the entity's own list instead. Returns whether it reached
@@ -302,6 +319,9 @@ static bool reach_prototype(const char *name, bool spawned)
             apush(reached_prototypes, xstrdup(name));
             for (int j = 0; j < acount(prototype->includes); j++) {
                 reach_prototype(prototype->includes[j], false);
+            }
+            for (int j = 0; j < acount(prototype->systems); j++) {
+                reach_system(prototype->systems[j]);
             }
         }
         if (spawned && !listed(spawned_prototypes, name)) {
@@ -349,15 +369,20 @@ static void use_prototypes()
         if (!prototype) { /* Loading stopped at an earlier failure. */
             continue;
         }
-        for (int j = 0; j < acount(prototype->components); j++) {
-            use_component_name(prototype->components[j].desc->name);
-        }
         prototype_entry item = {
             .name = xstrdup(prototype->name),
             .includes = prototype_includes(values[i].text),
         };
         for (int j = 0; j < acount(prototype->graphs); j++) {
             apush(item.behaviors, xstrdup(prototype->graphs[j]));
+        }
+        for (int j = 0; j < acount(prototype->components); j++) {
+            const game_prototype_component *component = &prototype->components[j];
+            use_component_name(component->desc->name);
+            const EngineSystem *system = component->data;
+            if (component->desc->id == GAME_COMPONENT_EngineSystem.id && system->asset) {
+                apush(item.systems, xstrdup(system->asset));
+            }
         }
         apush(prototypes, item);
     }
@@ -367,7 +392,12 @@ static void use_prototypes()
 static void use_scene_components(const av_value *components)
 {
     for (size_t i = 0; components && i < av_obj_size(components); i++) {
-        use_component_name(av_get_str(av_obj_key_at(components, i)));
+        const char *name = av_get_str(av_obj_key_at(components, i));
+        use_component_name(name);
+        const char *system = av_get_str(av_obj_get(av_obj_value_at(components, i), "asset"));
+        if (!strcmp(component_name(name), "EngineSystem") && system) {
+            reach_system(system);
+        }
     }
 }
 
@@ -398,8 +428,8 @@ static void use_scenes()
     free_paths(paths);
 }
 
-/* Systems run in every scene; a behavior or library runs once a scene
- * reaches it. An invalid source never runs; analyze_sources reported it. */
+/* A source runs once a scene reaches it. An invalid source never runs;
+ * analyze_sources reported it. */
 static bool runs(const script_analysis *analysis)
 {
     if (!analysis->valid) {
@@ -410,7 +440,8 @@ static bool runs(const script_analysis *analysis)
             return listed(reached_behaviors, analysis->name);
         case SCRIPT_PROGRAM_LIBRARY:
             return listed(reached_libraries, analysis->name);
-        case SCRIPT_PROGRAM_SYSTEM: return true;
+        case SCRIPT_PROGRAM_SYSTEM:
+            return listed(reached_systems, analysis->name);
     }
     return false;
 }
@@ -528,11 +559,11 @@ static void use_reachable()
             use_analysis(catalog, analysis);
             continue;
         }
-        if (analysis->valid && analysis->kind != SCRIPT_PROGRAM_SYSTEM) {
+        if (analysis->valid) {
             fprintf(
                 stderr,
                 "%s %s: no scene runs it\n",
-                analysis->kind == SCRIPT_PROGRAM_BEHAVIOR ? "behavior" : "library",
+                PROGRAM_KINDS[analysis->kind],
                 analysis->name
             );
             problems++;
@@ -546,12 +577,14 @@ static void free_reach()
         free(prototypes[i].name);
         free_paths(prototypes[i].behaviors);
         free_paths(prototypes[i].includes);
+        free_paths(prototypes[i].systems);
     }
     afree(prototypes);
     free_paths(reached_prototypes);
     free_paths(spawned_prototypes);
     free_paths(reached_behaviors);
     free_paths(reached_libraries);
+    free_paths(reached_systems);
     for (int i = 0; i < acount(analyses); i++) {
         script_analysis_free(analyses[i]);
     }

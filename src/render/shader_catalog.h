@@ -122,9 +122,9 @@ bool render_shader_sample(
 unsigned render_shader_revision();
 unsigned render_shader_ramp_revision();
 /* Leaves room within GLES3's 16 fragment units for Cute's atlas, the ramp
- * table, the scene's maps or the raster's storage textures. An accumulating
- * raster batch also samples the five previous targets, which leaves GLES room
- * for only six images; a batch with more fails to link there. */
+ * table, the scene's maps or the raster's storage textures. Later raster
+ * batches also sample the previous batch's five targets, so on GLES the raster
+ * splits them sooner; see render_program_samplers. */
 enum
 {
     RENDER_SHADER_IMAGE_MAX = 8,

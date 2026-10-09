@@ -3,6 +3,7 @@
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
+#include "render/shader_program.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
@@ -174,6 +175,24 @@ TEST_CASE(every_program_kind_compiles_ramps)
     return true;
 }
 
+/* A later raster batch samples its images, the previous batch's five targets
+ * and the ramp table. GLES3 binds the raster's four storage buffers among a
+ * fragment shader's 16 samplers, so seven images and a ramp need 17 there and
+ * the raster splits the batch. */
+TEST_CASE(ramp_tables_count_among_program_samplers)
+{
+    render_shader_set set = { 0 };
+    for (int image = 1; image <= 7; image++) {
+        REQUIRE(render_shader_set_add_image(&set, image, NULL));
+    }
+    REQUIRE(render_program_samplers(RENDER_PROGRAM_RASTER_ACCUMULATE, &set) == 12);
+    REQUIRE(register_ramps());
+    REQUIRE(render_program_samplers(RENDER_PROGRAM_RASTER_ACCUMULATE, &set) == 13);
+    REQUIRE(render_program_samplers(RENDER_PROGRAM_RASTER, &set) == 8);
+    REQUIRE(render_program_samplers(RENDER_PROGRAM_SCENE3D, &set) == 14);
+    return true;
+}
+
 void test_render_material_ramps()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -194,6 +213,7 @@ void test_render_material_ramps()
     RUN_TEST_CASE(draw_shader_ramps_read_their_whole_table);
     RUN_TEST_CASE(raster_ramps_read_their_whole_table);
     RUN_TEST_CASE(every_program_kind_compiles_ramps);
+    RUN_TEST_CASE(ramp_tables_count_among_program_samplers);
     pu_clear_setup();
     cf_destroy_app();
 }

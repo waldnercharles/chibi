@@ -150,30 +150,52 @@ static void upload_ramps(program *entry)
     entry->ramp_revision = render_shader_ramp_revision();
 }
 
+/* The previous batch's targets, which a later raster batch samples. */
+static int previous_targets(render_program_kind kind)
+{
+    return kind == RENDER_PROGRAM_RASTER_MESH       ? 10
+         : kind == RENDER_PROGRAM_RASTER_ACCUMULATE ? 5
+                                                    : 0;
+}
+
+/* Cute's atlas or the scene's parameters come ahead of the images. */
+static int first_image(render_program_kind kind)
+{
+    return kind == RENDER_PROGRAM_SCENE3D || kind == RENDER_PROGRAM_FRAGMENT ? 1 : 0;
+}
+
+static bool sdf_kind(render_program_kind kind)
+{
+    return kind == RENDER_PROGRAM_SDF_MATERIAL || kind == RENDER_PROGRAM_SDF_PREVIEW;
+}
+
+/* Set 2 holds the samplers, then the storage buffers. The scene's maps, SDF
+ * depth or the previous batch's targets follow the images, and the ramp table
+ * comes last. */
+static int ramp_binding(render_program_kind kind, int images)
+{
+    return first_image(kind) + images +
+           (kind == RENDER_PROGRAM_SCENE3D ? SCENE3D_MAPS
+            : sdf_kind(kind)               ? 1
+                                           : previous_targets(kind));
+}
+
+int render_program_samplers(render_program_kind kind, const render_shader_set *set)
+{
+    return ramp_binding(kind, set->count) + (render_shader_ramp_vec4_count(set) > 0);
+}
+
 static bool compile(render_programs *programs, program *entry)
 {
     shader_compile_count++;
     bool raster = programs->kind == RENDER_PROGRAM_RASTER ||
                   programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE ||
                   programs->kind == RENDER_PROGRAM_RASTER_MESH;
-    bool scene3d = programs->kind == RENDER_PROGRAM_SCENE3D,
-         fragment = programs->kind == RENDER_PROGRAM_FRAGMENT,
-         sdf = programs->kind == RENDER_PROGRAM_SDF_MATERIAL ||
-               programs->kind == RENDER_PROGRAM_SDF_PREVIEW;
-    /* Set 2 holds the samplers, then the storage buffers. Cute's atlas or the
-     * scene's parameters come ahead of the images. The scene's maps, SDF depth
-     * or the previous raster batch's targets follow them, and the ramp table
-     * comes last. */
-    int previous = programs->kind == RENDER_PROGRAM_RASTER_MESH       ? 10
-                 : programs->kind == RENDER_PROGRAM_RASTER_ACCUMULATE ? 5
-                                                                      : 0;
-    int first = scene3d || fragment ? 1 : 0;
-    int samplers = first + entry->set.count +
-                   (scene3d ? SCENE3D_MAPS
-                    : sdf   ? 1
-                            : previous);
+    bool sdf = sdf_kind(programs->kind);
+    int previous = previous_targets(programs->kind);
+    int ramp_at = ramp_binding(programs->kind, entry->set.count);
     int ramp_vec4_count = render_shader_ramp_vec4_count(&entry->set);
-    int buffers = samplers + (ramp_vec4_count > 0);
+    int buffers = ramp_at + (ramp_vec4_count > 0);
     char ramps[160] = "";
     if (ramp_vec4_count) {
         int length = snprintf(
@@ -181,11 +203,11 @@ static bool compile(render_programs *programs, program *entry)
             sizeof ramps,
             "layout(set=2,binding=%d) uniform sampler2D sg_ramps;\n"
             "vec4 sg_ramp(int i){return texelFetch(sg_ramps,ivec2(i,0),0);}\n",
-            samplers
+            ramp_at
         );
         assert(length < (int)sizeof ramps);
     }
-    char *graphs = render_shader_glsl(&entry->set, 2, first);
+    char *graphs = render_shader_glsl(&entry->set, 2, first_image(programs->kind));
     if (programs->kind == RENDER_PROGRAM_SDF_PREVIEW && entry->preview_part >= 0) {
         shader_error error = { 0 };
         char *preview = render_shader_model_preview_glsl(
@@ -209,8 +231,9 @@ static bool compile(render_programs *programs, program *entry)
                                                                             : "#define SG_MODEL_PREVIEW 1\n")
                                                                      : "";
     const char *uniforms =
-        fragment ? "layout(set=3,binding=1) uniform shd_uniforms { "
-                   "vec2 sg_lighting; vec4 sg_entity[85]; };\n"
+        programs->kind == RENDER_PROGRAM_FRAGMENT
+            ? "layout(set=3,binding=1) uniform shd_uniforms { "
+              "vec2 sg_lighting; vec4 sg_entity[85]; };\n"
         : sdf
             ? "layout(set=3,binding=0) uniform uniform_block { "
               "vec4 u_eye; vec4 u_camera[4]; vec2 u_depth; vec4 u_shape; vec4 "

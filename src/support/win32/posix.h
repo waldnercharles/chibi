@@ -79,6 +79,7 @@ ssize_t posix_win32_getdelim(char **line, size_t *size, int delimiter, FILE *fil
 int posix_win32_clock_gettime(int clock, struct timespec *time);
 char *posix_win32_stpcpy(char *to, const char *from);
 char *posix_win32_stpncpy(char *to, const char *from, size_t size);
+char *posix_win32_strndup(const char *text, size_t size);
 
 /* Object-like, so members named open are renamed alike where they are
  * declared and called. */
@@ -98,6 +99,7 @@ char *posix_win32_stpncpy(char *to, const char *from, size_t size);
 #define clock_gettime(clock, time) posix_win32_clock_gettime(clock, time)
 #define stpcpy(to, from) posix_win32_stpcpy(to, from)
 #define stpncpy(to, from, size) posix_win32_stpncpy(to, from, size)
+#define strndup(text, size) posix_win32_strndup(text, size)
 /* Windows files have no POSIX modes to copy. */
 #define fchmod(fd, mode) 0
 

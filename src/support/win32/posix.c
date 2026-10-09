@@ -233,6 +233,15 @@ char *posix_win32_stpncpy(char *to, const char *from, size_t size)
     return to + length;
 }
 
+char *posix_win32_strndup(const char *text, size_t size)
+{
+    size_t length = strnlen(text, size);
+    char *copy = xmalloc(length + 1);
+    memcpy(copy, text, length);
+    copy[length] = 0;
+    return copy;
+}
+
 int posix_win32_flock(int fd, int operation)
 {
     HANDLE file = (HANDLE)_get_osfhandle(fd);

@@ -61,7 +61,7 @@ static const void *blob(execution_wire *wire, const void *data, size_t *length)
 }
 static void count(execution_wire *wire, int *value)
 {
-    execution_wire_count(wire, value, 8);
+    execution_wire_count(wire, value, 1);
     if (!wire->error && *value > GAME_PACKAGE_MAX_MODULES) {
         wire->error = "Prepared player record count exceeds limit";
     }
@@ -75,7 +75,7 @@ static void wire_name(execution_wire *wire, const char **value)
 }
 static void assets(execution_wire *wire, game_player_asset **records, int *count)
 {
-    execution_wire_count(wire, count, 40);
+    execution_wire_count(wire, count, 5);
     if (!wire->error && *count > GAME_PLAYER_MAX_ASSETS) {
         wire->error = "Prepared player resource count exceeds limit";
     }

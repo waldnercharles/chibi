@@ -82,6 +82,9 @@ typedef struct
 // Reverse array in-place.
 #define arev(a)       ((a) ? dyna_rev(a, sizeof(*(a))) : (void *)0)
 
+// Sort in place with a qsort comparator. An empty (NULL) array is a no-op.
+#define asort(a, cmp) ((a) ? qsort((a), (size_t)alen(a), sizeof *(a), (cmp)) : (void)0)
+
 // Free array memory and set pointer to NULL
 #define afree(a)      do { DYNA_CANARY(a); if (a) free(DYNA_HDR(a)); (a) = NULL; } while (0)
 // clang-format on

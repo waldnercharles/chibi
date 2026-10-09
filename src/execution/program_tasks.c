@@ -164,10 +164,6 @@ static execution_box *box_for(behavior_function_context *owner, pin_value *slot)
 /* The box keeps the local's value once its frame no longer does. */
 static void box_detach(execution_box *box)
 {
-    behavior_function_context *owner = box->owner;
-    if (owner->initialize_local) {
-        owner->initialize_local(owner, box->value, false);
-    }
     int status = pin_value_snapshot_to_arena(&box->storage, &box->kept, box->value);
     assert(!status);
     (void)status;

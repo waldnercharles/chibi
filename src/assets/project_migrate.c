@@ -918,10 +918,13 @@ typedef struct
 {
     int start, end;
     char *text;
+    int order; /* Breaks ties between edits at one offset. */
 } replacement;
 /* Rewrites `value Name = e` as `Name := e` and `value Name: T = e` as
- * `Name: T = e`, which parse as states at the root and locals in callables. */
-static char *strip_lazy(const char *source, lazy **out)
+ * `Name: T = e`, which parse as states at the root and locals in callables.
+ * `keyword` is `value` or `local`, both five letters. A multi-result type
+ * `(a: T, b: U)` is dropped, since such a local is inferred. */
+static char *strip_lazy(const char *source, const char *keyword_text, lazy **out)
 {
     char *text = xmalloc(strlen(source) + 1), *at = text;
     for (const char *p = source; *p;) {
@@ -931,7 +934,7 @@ static char *strip_lazy(const char *source, lazy **out)
             p = skip;
             continue;
         }
-        size_t keyword = strncmp(p, "value", 5) ? 0 : 5;
+        size_t keyword = strncmp(p, keyword_text, 5) ? 0 : 5;
         const char *name = p + keyword;
         while (keyword && (*name == ' ' || *name == '\t')) {
             name++;
@@ -953,6 +956,21 @@ static char *strip_lazy(const char *source, lazy **out)
         }
         apush(*out, ((lazy){ .offset = (int)(at - text) }));
         at = stpncpy(at, name, (size_t)(after - name));
+        const char *tuple = sign + 1;
+        while (*sign == ':' && (*tuple == ' ' || *tuple == '\t')) {
+            tuple++;
+        }
+        if (*sign == ':' && *tuple == '(') {
+            int depth = 0;
+            do {
+                depth += (*tuple == '(') - (*tuple == ')');
+                tuple++;
+            } while (depth && *tuple);
+            while (*tuple == ' ' || *tuple == '\t') {
+                tuple++;
+            }
+            sign = *tuple == '=' ? tuple : sign;
+        }
         if (*sign == '=') {
             at = stpcpy(at, " :=");
             p = sign + 1;
@@ -990,8 +1008,7 @@ static bool declares_name(const char *text, TSNode scope, TSNode name)
         if (is(child, "parameter_list") && declares_name(text, child, name)) {
             return true;
         }
-        if ((is(child, "local_declaration") ||
-             is(child, "lazy_local_declaration") || is(child, "parameter")) &&
+        if ((is(child, "local_declaration") || is(child, "parameter")) &&
             same_name(text, ts_node_child_by_field_name(child, "name", 4), text, name)) {
             return true;
         }
@@ -1096,9 +1113,10 @@ static bool primary(TSNode node)
 }
 static char *expansion(const char *text, lazy *all, lazy *l);
 /* The text of `node` with each lazy read replaced by its expansion. */
+static lazy *local_read(const char *text, lazy *all, TSNode node);
 static void expand_into(const char *text, lazy *all, TSNode node, char **out)
 {
-    lazy *read = lazy_read(text, all, node);
+    lazy *read = local_read(text, all, node);
     if (read) {
         const char *value = expansion(text, all, read);
         for (const char *c = value; *c; c++) {
@@ -1181,7 +1199,8 @@ static TSNode lazy_reads(const char *text, lazy *all, TSNode node, replacement *
             *out,
             ((replacement){ (int)ts_node_start_byte(node),
                             (int)ts_node_end_byte(node),
-                            xstrdup(expansion(text, all, read)) })
+                            xstrdup(expansion(text, all, read)),
+                            0 })
         );
         return (TSNode){ 0 };
     }
@@ -1200,7 +1219,7 @@ static int by_start(const void *a, const void *b)
 int chibi_migrate_values(const char *source, char **migrated, char *error, size_t error_size)
 {
     lazy *all = NULL;
-    char *text = strip_lazy(source, &all);
+    char *text = strip_lazy(source, "value", &all);
     *migrated = NULL;
     if (!acount(all)) {
         free(text);
@@ -1267,7 +1286,7 @@ int chibi_migrate_values(const char *source, char **migrated, char *error, size_
         } else if (!ended && text[end] == '\n') {
             end++;
         }
-        apush(edits, ((replacement){ start, end, xstrdup("") }));
+        apush(edits, ((replacement){ start, end, xstrdup(""), 0 }));
     }
     qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
     char *result = NULL;
@@ -1296,6 +1315,457 @@ int chibi_migrate_values(const char *source, char **migrated, char *error, size_
     script_syntax_free(syntax);
     free(text);
     return 0;
+}
+
+/* A read of a version 16 local: `X`, or `local.X`, which `node` spans. */
+typedef struct
+{
+    int local;
+    TSNode node, unit;
+} local_use;
+/* The local `node` reads, if any. */
+static lazy *local_read(const char *text, lazy *all, TSNode node)
+{
+    if (is(node, "member_expression")) {
+        TSNode object = ts_node_child_by_field_name(node, "object", 6);
+        TSNode member = ts_node_child_by_field_name(node, "member", 6);
+        uint32_t start = ts_node_start_byte(object);
+        return is(object, "identifier") && ts_node_end_byte(object) - start == 5 &&
+                       !strncmp(text + start, "local", 5)
+                 ? resolve_lazy(text, all, node, member)
+                 : NULL;
+    }
+    return lazy_read(text, all, node);
+}
+/* The handler, callable or system whose activation evaluates `node`, or
+ * null for an action argument or binding, which is evaluated on its own. */
+static TSNode unit_of(TSNode node)
+{
+    for (; !ts_node_is_null(node); node = ts_node_parent(node)) {
+        if (is(node, "action_declaration") || is(node, "event_declaration") ||
+            is(node, "bind_declaration")) {
+            return (TSNode){ 0 };
+        }
+        if (is(node, "handler") || is(node, "function_declaration") ||
+            is(node, "macro_declaration") || is(node, "entry_declaration") ||
+            is(node, "system_body")) {
+            return node;
+        }
+    }
+    return node;
+}
+static bool container(TSNode node)
+{
+    return is(node, "block") || is(node, "callable_body") || is(node, "system_body");
+}
+static int lazy_index(const lazy *all, const lazy *l)
+{
+    return l ? (int)(l - all) : -1;
+}
+/* Collects reads outside local declarations, and rewrites `local.X` as `X`. */
+static void local_uses(const char *text, lazy *all, TSNode node, local_use **uses, replacement **out)
+{
+    for (int i = 0; i < acount(all); i++) {
+        if (ts_node_eq(all[i].node, node)) {
+            return;
+        }
+    }
+    lazy *read = local_read(text, all, node);
+    if (read && ts_node_is_null(unit_of(node))) {
+        /* An action argument or binding reads it where it is evaluated. */
+        apush(
+            *out,
+            ((replacement){ (int)ts_node_start_byte(node),
+                            (int)ts_node_end_byte(node),
+                            xstrdup(expansion(text, all, read)),
+                            0 })
+        );
+        return;
+    }
+    if (read) {
+        apush(*uses, ((local_use){ lazy_index(all, read), node, unit_of(node) }));
+        if (is(node, "member_expression")) {
+            apush(
+                *out,
+                ((replacement){ (int)ts_node_start_byte(node),
+                                (int)ts_node_end_byte(node),
+                                xstrdup(read->name),
+                                0 })
+            );
+        }
+        return;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        local_uses(text, all, ts_node_named_child(node, i), uses, out);
+    }
+}
+/* The declaration text of `l` with `local.X` reads spelled `X`, and the
+ * locals it reads in `depends`. */
+static void local_text(const char *text, lazy *all, TSNode node, char **out, int **depends)
+{
+    lazy *read = local_read(text, all, node);
+    if (read) {
+        apush(*depends, lazy_index(all, read));
+        if (is(node, "member_expression")) {
+            for (const char *c = read->name; *c; c++) {
+                apush(*out, *c);
+            }
+            return;
+        }
+    }
+    uint32_t at = ts_node_start_byte(node);
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        TSNode child = ts_node_child(node, i);
+        for (; at < ts_node_start_byte(child); at++) {
+            apush(*out, text[at]);
+        }
+        if (read) {
+            for (; at < ts_node_end_byte(child); at++) {
+                apush(*out, text[at]);
+            }
+            continue;
+        }
+        local_text(text, all, child, out, depends);
+        at = ts_node_end_byte(child);
+    }
+    for (; at < ts_node_end_byte(node); at++) {
+        apush(*out, text[at]);
+    }
+}
+/* The local's name as an identifier: `"Remaining Health"` reads as
+ * `RemainingHealth`, since a quoted name in an expression is a string. */
+static char *local_name(const char *text, TSNode name)
+{
+    const char *from = text + ts_node_start_byte(name),
+               *to = text + ts_node_end_byte(name);
+    if (*from != '"') {
+        return copy_text(from, to);
+    }
+    char *out = xmalloc((size_t)(to - from) + 2), *at = out;
+    if (isdigit((unsigned char)from[1])) {
+        *at++ = '_';
+    }
+    for (const char *c = from + 1; c < to - 1; c++) {
+        if (isalnum((unsigned char)*c) || *c == '_') {
+            *at++ = *c;
+        }
+    }
+    *at = '\0';
+    return out;
+}
+static int by_start_order(const void *a, const void *b)
+{
+    const replacement *x = a, *y = b;
+    return x->start != y->start ? x->start - y->start : x->order - y->order;
+}
+static int local_fail(char *error, size_t error_size, const char *text, TSNode node, const char *format)
+{
+    uint32_t start = ts_node_start_byte(node);
+    if (error_size) {
+        snprintf(error, error_size, format, (int)(ts_node_end_byte(node) - start), text + start);
+    }
+    return -1;
+}
+/* Whether a parameter or local other than `own` in `scope` is named `name`. */
+static bool redeclares(const char *text, TSNode scope, TSNode name, TSNode own)
+{
+    for (uint32_t i = 0; i < ts_node_named_child_count(scope); i++) {
+        TSNode child = ts_node_named_child(scope, i);
+        if (is(child, "parameter_list") && redeclares(text, child, name, own)) {
+            return true;
+        }
+        if ((is(child, "local_declaration") || is(child, "parameter")) &&
+            !ts_node_eq(child, own) &&
+            same_name(text, ts_node_child_by_field_name(child, "name", 4), text, name)) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Replaces each read of local `index` in `unit` with its expression, where a
+ * declaration of its name would clash with another. */
+static int inline_local(
+    const char *text,
+    lazy *all,
+    int index,
+    TSNode unit,
+    local_use **uses,
+    replacement **out,
+    char *error,
+    size_t error_size
+)
+{
+    for (int i = 0; i < acount(*uses); i++) {
+        local_use u = (*uses)[i];
+        if (u.local != index || !ts_node_eq(u.unit, unit)) {
+            continue;
+        }
+        TSNode value = ts_node_child_by_field_name(all[index].node, "value", 5);
+        TSNode shadowed = captured(text, all, value, all[index].node, u.node);
+        if (!ts_node_is_null(shadowed)) {
+            return local_fail(error, error_size, text, shadowed, "A local reads `%.*s`, which another declaration shadows where the local is read; rename one");
+        }
+        /* Another local placed here reads this one by its name. */
+        if (!is(u.node, "identifier") && !is(u.node, "member_expression")) {
+            return local_fail(
+                error,
+                error_size,
+                text,
+                ts_node_child_by_field_name(all[index].node, "name", 4),
+                "Another declaration where local `%.*s` is read has its name; "
+                "rename one"
+            );
+        }
+        for (int j = 0; j < acount(*out); j++) {
+            if ((*out)[j].start == (int)ts_node_start_byte(u.node) &&
+                (*out)[j].end == (int)ts_node_end_byte(u.node)) {
+                free((*out)[j].text);
+                (*out)[j] = (*out)[acount(*out) - 1];
+                asetlen(*out, acount(*out) - 1);
+                break;
+            }
+        }
+        apush(
+            *out,
+            ((replacement){ (int)ts_node_start_byte(u.node),
+                            (int)ts_node_end_byte(u.node),
+                            xstrdup(expansion(text, all, &all[index])),
+                            0 })
+        );
+    }
+    return 0;
+}
+/* Declares `l` in `unit` before the first statement that reads it. */
+static int place_local(
+    const char *text,
+    lazy *all,
+    int index,
+    TSNode unit,
+    local_use **uses,
+    replacement **out,
+    char *error,
+    size_t error_size
+)
+{
+    lazy *l = &all[index];
+    TSNode first = { 0 }, block = { 0 };
+    for (int i = 0; i < acount(*uses); i++) {
+        local_use *u = &(*uses)[i];
+        if (u->local != index || !ts_node_eq(u->unit, unit)) {
+            continue;
+        }
+        if (ts_node_is_null(first) ||
+            ts_node_start_byte(u->node) < ts_node_start_byte(first)) {
+            first = u->node;
+        }
+        if (ts_node_is_null(block)) {
+            block = ts_node_parent(u->node);
+        }
+        while (!container(block) || !encloses(block, u->node)) {
+            block = ts_node_parent(block);
+        }
+    }
+    TSNode statement = first;
+    while (!ts_node_eq(ts_node_parent(statement), block)) {
+        statement = ts_node_parent(statement);
+    }
+    TSNode name = ts_node_child_by_field_name(l->node, "name", 4);
+    for (TSNode scope = block; !ts_node_eq(scope, ts_node_parent(unit));
+         scope = ts_node_parent(scope)) {
+        if (scope_node(scope) && redeclares(text, scope, name, l->node)) {
+            return inline_local(text, all, index, unit, uses, out, error, error_size);
+        }
+    }
+    TSNode value = ts_node_child_by_field_name(l->node, "value", 5);
+    TSNode shadowed = captured(text, all, value, l->node, statement);
+    if (!ts_node_is_null(shadowed)) {
+        return local_fail(error, error_size, text, shadowed, "A local reads `%.*s`, which another declaration shadows where the local is read; rename one");
+    }
+    char *declaration = NULL;
+    int *depends = NULL;
+    for (const char *c = l->name; *c; c++) {
+        apush(declaration, *c);
+    }
+    local_text(text, all, l->node, &declaration, &depends);
+    /* The spelling of `name` gives way to the identifier. */
+    uint32_t spelled = ts_node_end_byte(name) - ts_node_start_byte(name);
+    memmove(
+        declaration + strlen(l->name),
+        declaration + strlen(l->name) + spelled,
+        acount(declaration) - strlen(l->name) - spelled
+    );
+    asetlen(declaration, acount(declaration) - (int)spelled);
+    while (acount(declaration) &&
+           (declaration[acount(declaration) - 1] == ';' ||
+            isspace((unsigned char)declaration[acount(declaration) - 1]))) {
+        asetlen(declaration, acount(declaration) - 1);
+    }
+    uint32_t at = ts_node_start_byte(statement), line = at;
+    while (line > 0 && (text[line - 1] == ' ' || text[line - 1] == '\t')) {
+        line--;
+    }
+    bool own_line = line == 0 || text[line - 1] == '\n';
+    if (own_line) {
+        apush(declaration, '\n');
+        for (uint32_t i = line; i < at; i++) {
+            apush(declaration, text[i]);
+        }
+    } else {
+        apush(declaration, ';');
+        apush(declaration, ' ');
+    }
+    apush(declaration, '\0');
+    apush(*out, ((replacement){ (int)at, (int)at, xstrdup(declaration), -acount(*out) - 1 }));
+    afree(declaration);
+    /* What it reads is placed later, so a later edit at this offset sorts
+     * first and declares it before this one. */
+    for (int i = 0; i < acount(depends); i++) {
+        apush(*uses, ((local_use){ depends[i], statement, unit }));
+    }
+    afree(depends);
+    return 0;
+}
+static void depends_first(const char *text, lazy *all, int index, bool *visited, int **order)
+{
+    if (visited[index]) {
+        return;
+    }
+    visited[index] = true;
+    char *ignored = NULL;
+    int *depends = NULL;
+    local_text(text, all, ts_node_child_by_field_name(all[index].node, "value", 5), &ignored, &depends);
+    afree(ignored);
+    for (int i = 0; i < acount(depends); i++) {
+        depends_first(text, all, depends[i], visited, order);
+    }
+    afree(depends);
+    apush(*order, index);
+}
+int chibi_migrate_locals(const char *source, char **migrated, char *error, size_t error_size)
+{
+    lazy *all = NULL;
+    char *text = strip_lazy(source, "local", &all);
+    *migrated = NULL;
+    if (!acount(all)) {
+        free(text);
+        afree(all);
+        return 0;
+    }
+    script_syntax *syntax = script_parse(text);
+    TSNode root = ts_tree_root_node(syntax->tree);
+    int status = 0;
+    for (int i = 0; i < acount(all); i++) {
+        TSNode node = ts_node_descendant_for_byte_range(
+            root,
+            (uint32_t)all[i].offset,
+            (uint32_t)all[i].offset
+        );
+        while (!ts_node_is_null(node) && !is(node, "state_declaration") &&
+               !is(node, "local_declaration")) {
+            node = ts_node_parent(node);
+        }
+        assert(
+            !ts_node_is_null(node) &&
+            ts_node_start_byte(node) == (uint32_t)all[i].offset
+        );
+        all[i].node = node;
+        all[i].name = local_name(text, ts_node_child_by_field_name(node, "name", 4));
+        int before = all[i].offset;
+        while (before > 0 && isspace((unsigned char)text[before - 1])) {
+            before--;
+        }
+        if (!status && before >= 8 && !strncmp(text + before - 8, "disabled", 8)) {
+            status = local_fail(
+                error,
+                error_size,
+                text,
+                ts_node_child_by_field_name(node, "name", 4),
+                "Local `%.*s` is disabled; enable or remove it before migrating"
+            );
+        }
+    }
+    replacement *edits = NULL;
+    local_use *uses = NULL;
+    local_uses(text, all, root, &uses, &edits);
+    /* Each local is placed after the locals that read it, so their
+     * declarations count as its reads. */
+    bool *visited = xcalloc((size_t)acount(all), sizeof *visited);
+    int *order = NULL;
+    for (int i = 0; i < acount(all); i++) {
+        depends_first(text, all, i, visited, &order);
+    }
+    free(visited);
+    for (int k = acount(order) - 1; !status && k >= 0; k--) {
+        int index = order[k];
+        TSNode *units = NULL;
+        for (int i = 0; i < acount(uses); i++) {
+            bool seen = uses[i].local != index;
+            for (int j = 0; !seen && j < acount(units); j++) {
+                seen = ts_node_eq(units[j], uses[i].unit);
+            }
+            if (!seen) {
+                apush(units, uses[i].unit);
+            }
+        }
+        for (int j = 0; !status && j < acount(units); j++) {
+            status = place_local(text, all, index, units[j], &uses, &edits, error, error_size);
+        }
+        afree(units);
+    }
+    afree(order);
+    afree(uses);
+    for (int i = 0; !status && i < acount(all); i++) {
+        /* A declaration alone on its lines goes with them. */
+        int start = all[i].offset, end = (int)ts_node_end_byte(all[i].node);
+        while (start > 0 && (text[start - 1] == ' ' || text[start - 1] == '\t')) {
+            start--;
+        }
+        while (text[end] == ' ' || text[end] == '\t' || text[end] == ';') {
+            end++;
+        }
+        bool ended = text[end - 1] == '\n';
+        bool alone = (start == 0 || text[start - 1] == '\n') &&
+                     (ended || text[end] == '\n' || !text[end]);
+        if (!alone) {
+            start = all[i].offset;
+            end -= ended;
+        } else if (!ended && text[end] == '\n') {
+            end++;
+        }
+        apush(edits, ((replacement){ start, end, xstrdup(""), 0 }));
+    }
+    char *result = NULL;
+    if (!status) {
+        qsort(edits, (size_t)acount(edits), sizeof *edits, by_start_order);
+        int from = 0;
+        for (int i = 0; i < acount(edits); i++) {
+            for (; from < edits[i].start; from++) {
+                apush(result, text[from]);
+            }
+            for (const char *c = edits[i].text; *c; c++) {
+                apush(result, *c);
+            }
+            from = edits[i].end;
+        }
+        for (; text[from]; from++) {
+            apush(result, text[from]);
+        }
+        apush(result, '\0');
+        *migrated = xstrdup(result);
+    }
+    afree(result);
+    for (int i = 0; i < acount(edits); i++) {
+        free(edits[i].text);
+    }
+    afree(edits);
+    for (int i = 0; i < acount(all); i++) {
+        free(all[i].name);
+        free(all[i].expansion);
+    }
+    afree(all);
+    script_syntax_free(syntax);
+    free(text);
+    return status;
 }
 
 static char *read_text(const char *path)
@@ -1627,6 +2097,12 @@ int chibi_project_migrate_content(
                 error[0] = '\0';
                 migrated = migrate_bindings(sources, paths, count, map, error, error_size);
                 status = error[0] ? -1 : 0;
+                break;
+            case 16:
+                migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+                for (int i = 0; i < count && !status; i++) {
+                    status = chibi_migrate_locals(sources[i], &migrated[i], error, error_size);
+                }
                 break;
             default: assert(false);
         }

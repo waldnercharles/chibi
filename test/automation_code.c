@@ -214,7 +214,8 @@ static void project_library_context()
         fputs("library Shared { pure function Seven() -> (Result: int) { return 7 } }", file);
         fclose(file);
     }
-    const char *source = "behavior Unsaved { local chosen = Shared.Seven(); }";
+    const char
+        *source = "behavior Unsaved { on Tick { chosen := Shared.Seven(); } }";
     int status;
     yyjson_doc *response = analyze_project(project, source, (int)(strstr(source, "Seven") - source), &status);
     yyjson_val *result = yyjson_obj_get(yyjson_doc_get_root(response), "result");

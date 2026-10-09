@@ -72,7 +72,6 @@ void program_activation_free(execution_activation *activation)
     }
     afree(activation->requests);
     afree(activation->actions);
-    afree(activation->locals);
     behavior_function_activation_free(&activation->activation);
     behavior_function_release_host(&activation->context);
     arena_free(&activation->storage);
@@ -86,13 +85,6 @@ static void leave_context(behavior_function_context *ctx, int result)
     program_commit_instance(ctx);
     cancel_continuations(ctx);
     program_boxes_detach(a, ctx);
-    for (int i = 0; i < acount(a->locals);) {
-        if (a->locals[i].context == ctx) {
-            adel(a->locals, i);
-        } else {
-            i++;
-        }
-    }
     for (int i = 0; i < acount(a->requests);) {
         if (a->requests[i]->context != ctx) {
             i++;
@@ -144,32 +136,28 @@ execution_activation *program_activation_new(
     if (resumable) {
         behavior_function_activation_init(function, &a->activation);
     }
-    a->context = (behavior_function_context){
-        .activation = resumable ? &a->activation : NULL,
-        .variables = instance->values,
-        .states = instance->node_states,
-        .variable_storage = instance->layouts,
-        .value_owner = instance,
-        .value_storage = &a->payload,
+    a->context = (behavior_function_context){ .activation = resumable ? &a->activation
+                                                                      : NULL,
+                                              .variables = instance->values,
+                                              .states = instance->node_states,
+                                              .variable_storage = instance->layouts,
+                                              .value_owner = instance,
+                                              .value_storage = &a->payload,
 
-        .arguments = args,
-        .argument_count = declared,
-        .results = results,
-        .now = now,
-        .delta_seconds = delta,
-        .instance_time = &instance->time,
-        .budget = budget,
-        .services = instance->program->services,
-        .owner = instance->owner,
-        .owner_type_name = "ecs.entity",
+                                              .arguments = args,
+                                              .argument_count = declared,
+                                              .results = results,
+                                              .now = now,
+                                              .delta_seconds = delta,
+                                              .instance_time = &instance->time,
+                                              .budget = budget,
+                                              .services = instance->program->services,
+                                              .owner = instance->owner,
+                                              .owner_type_name = "ecs.entity",
 
-        .call_leave = leave_context,
+                                              .call_leave = leave_context,
 
-        .initialize_local = program_initialize_local,
-        .store_local_group = program_store_local_group,
-
-        .inspection_user = a
-    };
+                                              .inspection_user = a };
     program_bind_world_callbacks(&a->context);
     program_bind_commands(&a->context);
     program_bind_tasks(&a->context);
@@ -190,7 +178,7 @@ execution_activation *program_activation_new(
 }
 void program_continuation_finish(execution_activation *a)
 {
-    if (a->initializer || !a->continuation_owner || !a->finished) {
+    if (!a->continuation_owner || !a->finished) {
         return;
     }
     behavior_function_context *ctx = a->continuation_context;

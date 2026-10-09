@@ -7,13 +7,13 @@ modules; visual editors consume their authoring projections.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 15. Scenes, prototypes, event
+Project manifests are `project.kdl`, version 17. Scenes, prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 15
+version 17
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -198,8 +198,7 @@ Capturing a shared action instance is rejected because later invocations could
 replace its output. Scopes with explicit labels cannot declare awaited results,
 because a jump could bypass their initialization. An ordinary block declaration
 such as `x := calculation;` evaluates once at that execution point using a native
-Snapshot node. Later reads use the captured value; a root-level `local`
-remains a lazy computation.
+Snapshot node. Later reads use the captured value.
 
 ### Tasks
 
@@ -267,17 +266,12 @@ arguments. Explicit types are needed for polymorphic values that reflection
 cannot infer. Multiple results use named projections, such as
 `nearest.Entity`. No result is selected by guessing the first output.
 
-A root-level `local` names a computation that each activation evaluates once,
-when it is first read, and keeps until the activation ends:
+A value computed once per run is declared where it is needed, as in
+`nearest := find_nearest_entity(Owner: self, Radius: 500)` inside a handler or
+function. A computation that should be recomputed at every read is written where
+it is read, or as a function. Assignments belong in executable blocks.
 
-```code
-local nearest = find_nearest_entity(Owner: self, Radius: 500);
-```
-
-A computation that should be recomputed at every read is written where it is
-read, or as a function. Assignments belong in executable blocks.
-
-A local is not an eager snapshot. Stateful capabilities shared by several paths
+Stateful capabilities shared by several paths
 have one named action instance. Methods invoke its named entries, and handlers
 consume its named outcomes. The instance keeps its state across method calls and
 events. An invocation runs any emitted outcome handler before its next statement.
@@ -457,7 +451,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 15. Executable files contain no generated identity
+Project manifests use version 17. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently

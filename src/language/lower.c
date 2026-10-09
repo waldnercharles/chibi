@@ -460,7 +460,6 @@ static int linked_host(
                     case EXECUTION_INTRINSIC_REFERENCE_FIELD:
                     case EXECUTION_INTRINSIC_REFERENCE_READ:
                     case EXECUTION_INTRINSIC_REFERENCE_WRITE:
-                    case EXECUTION_INTRINSIC_LOCAL_GROUP_STORE:
                     case EXECUTION_INTRINSIC_LOCAL_RELEASE:
                         kind = BEHAVIOR_REFERENCE;
                         break;
@@ -2456,41 +2455,6 @@ static int condition_value(lower *l, int index)
         e->range
     );
 }
-static bool storage_alias(lower *l, int index, int depth)
-{
-    while (index >= 0 && depth++ <= l->a->expression_count) {
-        const script_expression *expression = &l->a->expressions[index];
-        if (expression->kind == SCRIPT_EXPR_SYMBOL && expression->symbol >= 0) {
-            const script_symbol *symbol = &l->a->symbols[expression->symbol];
-            if (symbol->lazy_local) {
-                index = symbol->initializer;
-                continue;
-            }
-            return !(symbol->type.flags & SCRIPT_TYPE_RESULTS) &&
-                   (symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
-                    symbol->kind == SCRIPT_COMPONENT || symbol->kind == SCRIPT_PARAMETER ||
-                    symbol->kind == SCRIPT_LOCAL || symbol->kind == SCRIPT_RESULT);
-        }
-        if (expression->kind == SCRIPT_EXPR_COMPONENT) {
-            return true;
-        }
-        if (expression->kind == SCRIPT_EXPR_MEMBER ||
-            expression->kind == SCRIPT_EXPR_INDEX) {
-            index = expression->left;
-            continue;
-        }
-        if (expression->kind == SCRIPT_EXPR_CALL) {
-            const script_catalog_capability *capability = script_catalog_capability_by_id(
-                l->catalog,
-                expression->capability
-            );
-            return capability &&
-                   capability->component_access == SCRIPT_COMPONENT_ACCESS_READ;
-        }
-        return false;
-    }
-    return false;
-}
 static const script_expression *tuple_signature(lower *l, int source)
 {
     int depth = 0;
@@ -2530,19 +2494,6 @@ static int symbol_value(lower *l, const script_expression *e)
 {
     const script_symbol *s = &l->a->symbols[e->symbol];
     if ((s->type.flags & SCRIPT_TYPE_RESULTS) && l->locals[e->symbol] >= 0) {
-        if (s->lazy_local) {
-            const script_expression *signature = tuple_signature(l, s->initializer);
-            if (!signature || !signature->result_count) {
-                error(l, e->range, "Lazy tuple has no resolved field signature");
-                return -1;
-            }
-            reference_read(
-                l,
-                bank_reference(l, l->locals[e->symbol], signature->results[0], e->range),
-                signature->results[0],
-                e->range
-            );
-        }
         return l->locals[e->symbol];
     }
     if ((s->type.flags & SCRIPT_TYPE_RESULTS) && l->captured &&
@@ -2572,9 +2523,6 @@ static int symbol_value(lower *l, const script_expression *e)
         }
         return first;
     }
-    if (s->lazy_local && s->initializer >= 0 && storage_alias(l, s->initializer, 0)) {
-        return expression(l, s->initializer);
-    }
     if (e->symbol == l->a->owner_symbol) {
         if (l->initializing) {
             error(l, e->range, "State initializer cannot depend on an entity owner");
@@ -2597,13 +2545,6 @@ static int symbol_value(lower *l, const script_expression *e)
             &(script_expression){ .capability = s->type.nominal, .left = -1, .range = e->range }
         );
         return retain_value(l, value, s->type, e->range);
-    }
-    if (s->lazy_local && l->function < 0) {
-        int value = expression(l, s->initializer);
-        return convert(l, value, l->a->expressions[s->initializer].type, s->type, e->range);
-    }
-    if (s->lazy_local && !(l->captured && l->captured[e->symbol] >= 0)) {
-        return reference_read(l, reference(l, (int)(e - l->a->expressions)), s->type, e->range);
     }
     if (l->variables[e->symbol] >= 0) {
         if (s->type.container != PIN_CONTAINER_SINGLE || s->type.storage == PIN_STRUCT) {
@@ -2878,10 +2819,6 @@ static int reference_expression(lower *l, const script_expression *e)
     const script_symbol *symbol = e->kind == SCRIPT_EXPR_SYMBOL
                                     ? &l->a->symbols[e->symbol]
                                     : NULL;
-    if (symbol && symbol->lazy_local && symbol->initializer >= 0 &&
-        storage_alias(l, symbol->initializer, 0)) {
-        return reference(l, symbol->initializer);
-    }
     if (symbol &&
         ((symbol->type.flags & SCRIPT_TYPE_REFERENCE) ||
          (l->captured && l->captured[e->symbol] >= 0)) &&
@@ -3468,34 +3405,13 @@ static void store_tuple(lower *l, int symbol, int value, int source, script_rang
         l->addresses[symbol] = l->locals[symbol];
         afree(defaults);
     }
-    pin_value *group_headers = NULL;
-    int *group_slots = NULL;
-    bool grouped = l->a->symbols[symbol].lazy_local;
-    if (grouped) {
-        int descriptor = captured
-                           ? value_op(
-                                 l,
-                                 (behavior_function_instruction){
-                                     .op = BF_ARGUMENT,
-                                     .type = BF_POINTER_TYPE,
-                                     .left = l->parameters[symbol],
-                                     .value = { .type = BF_POINTER_TYPE } },
-                                 range
-                             )
-                           : bank_reference(l, l->locals[symbol], target->results[0], range);
-        apush(group_headers, ((pin_value){ .type = BF_POINTER_TYPE }));
-        apush(group_slots, descriptor);
-    }
     for (int i = 0; i < expression->result_count; i++) {
         script_type source_type = expression->results[i], type = target->results[i];
         int field = command_bank ? command_result(l, value + i, source_type, range)
                                  : host_result(l, value + i, source_type, range);
         field = convert(l, field, source_type, type, range);
         field = retain_value(l, field, type, range);
-        if (grouped) {
-            apush(group_headers, initial(l, type));
-            apush(group_slots, field);
-        } else if (captured) {
+        if (captured) {
             int descriptor = value_op(
                 l,
                 (behavior_function_instruction){ .op = BF_ARGUMENT,
@@ -3509,20 +3425,6 @@ static void store_tuple(lower *l, int symbol, int value, int source, script_rang
             host_argument(l, l->locals[symbol] + i, field, type, range);
         }
     }
-    if (grouped) {
-        primitive(
-            l,
-            &EXECUTION_local_group_store_call,
-            &EXECUTION_assignment_access,
-            group_headers,
-            group_slots,
-            acount(group_headers),
-            (script_type){ .storage = PIN_BOOL },
-            range
-        );
-    }
-    afree(group_headers);
-    afree(group_slots);
 }
 static int local_address(lower *l, int symbol)
 {
@@ -3582,21 +3484,6 @@ static void store_symbol(lower *l, int symbol, int value, script_range range)
     debug_point(l, SCRIPT_RECORD_SYMBOL, symbol, range);
     if (s->type.flags & SCRIPT_TYPE_RESULTS) {
         store_tuple(l, symbol, value, s->initializer, range);
-        return;
-    }
-    if (s->lazy_local && s->initializer >= 0 && storage_alias(l, s->initializer, 0)) {
-        reference_write(l, reference(l, s->initializer), value, s->type, range);
-        return;
-    }
-    if (s->lazy_local && l->addresses[symbol] >= 0) {
-        for (int i = 0; i < l->a->expression_count; i++) {
-            if (l->a->expressions[i].kind == SCRIPT_EXPR_SYMBOL &&
-                l->a->expressions[i].symbol == symbol) {
-                reference_write(l, reference(l, i), value, s->type, range);
-                return;
-            }
-        }
-        error(l, range, "Local assignment has no declared reference expression");
         return;
     }
     if (((s->type.flags & SCRIPT_TYPE_REFERENCE) ||
@@ -3729,8 +3616,7 @@ static bool direct_target(lower *l, const script_expression *e)
         return false;
     }
     const script_symbol *s = &l->a->symbols[e->symbol];
-    if (s->lazy_local ||
-        (s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS)) ||
+    if ((s->type.flags & (SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_RESULTS)) ||
         (l->captured && l->captured[e->symbol] >= 0)) {
         return false;
     }
@@ -4012,9 +3898,6 @@ static void statement(lower *l, int index)
             return;
         }
         case SCRIPT_STMT_DECLARE: {
-            if (l->a->symbols[s->symbol].lazy_local) {
-                return;
-            }
             int value = expression(l, s->expression);
             value = convert(
                 l,
@@ -4313,10 +4196,6 @@ static void discard_bodies(execution_module_plan *module)
         module->functions[i].body = NULL;
         behavior_function_free(module->functions[i].subscription);
         module->functions[i].subscription = NULL;
-        for (int j = 0; j < module->functions[i].local_count; j++) {
-            behavior_function_free(module->functions[i].locals[j].initializer);
-            module->functions[i].locals[j].initializer = NULL;
-        }
     }
     for (int i = 0; i < module->binding_count; i++) {
         behavior_function_free(module->bindings[i].body);
@@ -4359,12 +4238,8 @@ static void dependency_expressions(lower *l, int index, bool *visited, int **out
     }
     if (e->kind == SCRIPT_EXPR_SYMBOL) {
         const script_symbol *symbol = &l->a->symbols[e->symbol];
-        if (symbol->lazy_local) {
-            dependency_expressions(l, symbol->initializer, visited, out);
-        } else if (
-            symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
-            symbol->kind == SCRIPT_GLOBAL || symbol->kind == SCRIPT_COMPONENT
-        ) {
+        if (symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
+            symbol->kind == SCRIPT_GLOBAL || symbol->kind == SCRIPT_COMPONENT) {
             apush(*out, index);
         }
         return;
@@ -4531,9 +4406,7 @@ static void binding_fields(lower *l, execution_module_binding *binding, int inde
     }
     if (e->kind == SCRIPT_EXPR_SYMBOL) {
         const script_symbol *symbol = &l->a->symbols[e->symbol];
-        if (symbol->lazy_local) {
-            binding_fields(l, binding, symbol->initializer, visited);
-        } else if (symbol->kind == SCRIPT_COMPONENT) {
+        if (symbol->kind == SCRIPT_COMPONENT) {
             const script_catalog_type
                 *type = script_catalog_type_by_id(l->catalog, symbol->type.nominal);
             if (type && type->component_id) {
@@ -4564,17 +4437,15 @@ static void binding_fields(lower *l, execution_module_binding *binding, int inde
         binding_fields(l, binding, e->arguments[i].value, visited);
     }
 }
-static behavior_function *value_evaluator_context(
+static behavior_function *value_evaluator(
     lower *l,
     const int *expressions,
     const script_type *types,
     int count,
-    script_range range,
-    int owner_index,
-    const execution_module_local *local
+    script_range range
 )
 {
-    l->function = owner_index;
+    l->function = -1;
     l->builder = behavior_function_builder_new();
     l->pc = 0;
     l->payload_first = 0;
@@ -4583,39 +4454,7 @@ static behavior_function *value_evaluator_context(
     l->addresses = indices(l->a->symbol_count);
     l->parameters = indices(l->a->symbol_count);
     l->results = indices(l->a->symbol_count);
-    pin_value *arguments = NULL;
     l->captured = indices(l->a->symbol_count);
-    if (local) {
-        int argument_count;
-        const pin_value *formal = behavior_function_arguments(
-            l->module->functions[owner_index].body,
-            &argument_count
-        );
-        for (int i = 0; i < argument_count; i++) {
-            apush(arguments, formal[i]);
-        }
-        const script_function *owner = &l->a->functions[owner_index];
-        for (int i = 0; i < owner->parameter_count; i++) {
-            l->parameters[owner->parameters[i]] = i;
-        }
-        if (owner->kind == SCRIPT_FUNCTION_MACRO_ENTRY && owner->parent >= 0) {
-            owner = &l->a->functions[owner->parent];
-            for (int i = 0; i < owner->parameter_count; i++) {
-                l->parameters[owner->parameters[i]] = i;
-            }
-        }
-        for (int i = 0; i < local->local_capture_count; i++) {
-            for (int j = 0; j < l->a->symbol_count; j++) {
-                if (l->a->symbols[j].id == local->captures[i].id) {
-                    if (l->captured[j] < 0) {
-                        l->captured[j] = l->parameters[j] = acount(arguments);
-                    }
-                    break;
-                }
-            }
-            apush(arguments, ((pin_value){ .type = BF_POINTER_TYPE }));
-        }
-    }
     pin_value *variables = NULL, *results = NULL;
     for (int i = 0; i < l->module->state_count; i++) {
         apush(variables, l->module->states[i].initial);
@@ -4623,43 +4462,13 @@ static behavior_function *value_evaluator_context(
     for (int i = 0; i < count; i++) {
         apush(results, initial(l, types[i]));
     }
-    behavior_function_builder_signature(
-        l->builder,
-        arguments,
-        acount(arguments),
-        results,
-        count,
-        variables,
-        acount(variables)
-    );
-    if (local) {
-        const behavior_function *owner_body = l->module->functions[owner_index].body;
-        for (int i = 0; i < local->capture_count; i++) {
-            set_kind(l, BEHAVIOR_BANK_ARGUMENT, i, behavior_function_kind(owner_body, BEHAVIOR_BANK_ARGUMENT, i));
-        }
-        for (int i = local->capture_count; i < acount(arguments); i++) {
-            set_kind(l, BEHAVIOR_BANK_ARGUMENT, i, BEHAVIOR_REFERENCE);
-        }
-    }
-    afree(arguments);
+    behavior_function_builder_signature(l->builder, NULL, 0, results, count, variables, acount(variables));
     afree(variables);
     afree(results);
-    const script_expression *tuple = local && (l->a->expressions[expressions[0]]
-                                                   .type.flags &
-                                               SCRIPT_TYPE_RESULTS)
-                                       ? tuple_signature(l, expressions[0])
-                                       : NULL;
-    int tuple_bank = tuple ? expression(l, expressions[0]) : -1;
-    bool command_bank = tuple &&
-                        command_tuple(l, &l->a->expressions[expressions[0]]);
     for (int i = 0; i < count; i++) {
         script_type type = types[i];
-        script_type source_type = tuple ? tuple->results[i]
-                                        : l->a->expressions[expressions[i]].type;
-        int value = tuple ? command_bank
-                              ? command_result(l, tuple_bank + i, source_type, range)
-                              : host_result(l, tuple_bank + i, source_type, range)
-                          : expression(l, expressions[i]);
+        script_type source_type = l->a->expressions[expressions[i]].type;
+        int value = expression(l, expressions[i]);
         value = convert(l, value, source_type, type, range);
         if (type.storage == PIN_STRUCT || type.container != PIN_CONTAINER_SINGLE ||
             behavior_scalar_string(type.storage)) {
@@ -4712,112 +4521,6 @@ static behavior_function *value_evaluator_context(
     free(l->results);
     return function;
 }
-static behavior_function *value_evaluator(
-    lower *l,
-    const int *expressions,
-    const script_type *types,
-    int count,
-    script_range range
-)
-{
-    return value_evaluator_context(l, expressions, types, count, range, -1, NULL);
-}
-static bool computed_local(lower *l, int index)
-{
-    const script_symbol *symbol = &l->a->symbols[index];
-    return symbol->lazy_local && symbol->initializer >= 0 &&
-           !storage_alias(l, symbol->initializer, 0);
-}
-static bool visible_scope(const script_analysis *a, int scope, int declaration)
-{
-    while (scope >= 0) {
-        if (scope == declaration) {
-            return true;
-        }
-        scope = a->scopes[scope].parent;
-    }
-    return false;
-}
-static void local_initializers(lower *l, int index)
-{
-    execution_module_function *definition = &l->module->functions[index];
-    const script_function *function = &l->a->functions[index];
-    int *banks = l->function_addresses[index];
-    if (!definition->body || !banks || function->kind == SCRIPT_FUNCTION_CONTINUATION) {
-        return;
-    }
-    for (int i = 0; i < l->a->symbol_count; i++) {
-        if (banks[i] >= 0 && computed_local(l, i)) {
-            definition->local_count++;
-        }
-    }
-    definition
-        ->locals = xcalloc((size_t)definition->local_count, sizeof *definition->locals);
-    int ordinal = 0;
-    for (int i = 0; i < l->a->symbol_count && !l->failed; i++) {
-        if (banks[i] < 0 || !computed_local(l, i)) {
-            continue;
-        }
-        const script_symbol *symbol = &l->a->symbols[i];
-        execution_module_local *local = &definition->locals[ordinal++];
-        local->id = symbol->id;
-        local->value = banks[i];
-        const script_expression *signature = symbol->type.flags & SCRIPT_TYPE_RESULTS
-                                               ? tuple_signature(l, symbol->initializer)
-                                               : NULL;
-        local->result_count = signature ? signature->result_count : 1;
-        behavior_function_arguments(definition->body, &local->capture_count);
-        for (int j = 0; j < l->a->symbol_count; j++) {
-            if (banks[j] >= 0 && l->a->symbols[j].kind == SCRIPT_LOCAL) {
-                const script_expression
-                    *tuple = l->a->symbols[j].type.flags & SCRIPT_TYPE_RESULTS
-                               ? tuple_signature(l, l->a->symbols[j].initializer)
-                               : NULL;
-                local->local_capture_count += tuple ? tuple->result_count : 1;
-            }
-        }
-        local->captures = xcalloc(
-            (size_t)local->local_capture_count,
-            sizeof *local->captures
-        );
-        int capture = 0;
-        for (int j = 0; j < l->a->symbol_count; j++) {
-            if (banks[j] < 0 || l->a->symbols[j].kind != SCRIPT_LOCAL) {
-                continue;
-            }
-            const script_expression
-                *tuple = l->a->symbols[j].type.flags & SCRIPT_TYPE_RESULTS
-                           ? tuple_signature(l, l->a->symbols[j].initializer)
-                           : NULL;
-            int count = tuple ? tuple->result_count : 1;
-            for (int field = 0; field < count; field++) {
-                pin_value type,
-                    original = initial(
-                        l,
-                        tuple ? tuple->results[field] : l->a->symbols[j].type
-                    );
-                if (pin_value_snapshot_to_arena(&l->module->storage, &type, &original)) {
-                    error(l, symbol->declaration, "Cannot retain lazy local capture type");
-                    type = original;
-                }
-                local->captures[capture++] = (execution_module_capture){
-                    .id = l->a->symbols[j].id,
-                    .value = banks[j] + field,
-                    .type = type
-                };
-            }
-        }
-        local->initializer = value_evaluator_context(
-            l,
-            &symbol->initializer,
-            signature ? signature->results : &symbol->type,
-            local->result_count,
-            symbol->declaration,
-            index,
-            local
-        );
-    }
-}
 static void lower_function(lower *l, int index)
 {
     const script_function *f = &l->a->functions[index];
@@ -4836,36 +4539,6 @@ static void lower_function(lower *l, int index)
     l->async_emitted = false;
     l->locals = indices(l->a->symbol_count);
     l->addresses = indices(l->a->symbol_count);
-    if (!closure) {
-        for (int i = 0; i < l->a->symbol_count; i++) {
-            if (!computed_local(l, i) ||
-                !visible_scope(l->a, f->scope, l->a->symbols[i].scope)) {
-                continue;
-            }
-            const script_symbol *symbol = &l->a->symbols[i];
-            const script_expression *signature = symbol->type.flags & SCRIPT_TYPE_RESULTS
-                                                   ? tuple_signature(l, symbol->initializer)
-                                                   : NULL;
-            if ((symbol->type.flags & SCRIPT_TYPE_RESULTS) &&
-                (!signature || !signature->result_count)) {
-                error(l, symbol->declaration, "Lazy tuple has no resolved field signature");
-                continue;
-            }
-            pin_value *defaults = NULL;
-            int count = signature ? signature->result_count : 1;
-            for (int j = 0; j < count; j++) {
-                apush(
-                    defaults,
-                    initial(l, signature ? signature->results[j] : symbol->type)
-                );
-            }
-            l->addresses[i] = behavior_function_builder_values(l->builder, defaults, count);
-            if (signature) {
-                l->locals[i] = l->addresses[i];
-            }
-            afree(defaults);
-        }
-    }
     l->parameters = indices(l->a->symbol_count);
     l->results = indices(l->a->symbol_count);
     l->labels = indices(l->a->symbol_count);
@@ -4923,56 +4596,6 @@ static void lower_function(lower *l, int index)
                     .id = l->a->symbols[i].id,
                     .value = banks[i] + j,
                     .type = owned
-                };
-                apush(args, ((pin_value){ .type = BF_POINTER_TYPE }));
-            }
-        }
-    }
-    if (closure && f->parent < 0) {
-        execution_module_function *definition = &l->module->functions[index];
-        for (int i = 0; i < l->a->symbol_count; i++) {
-            if (computed_local(l, i) &&
-                visible_scope(l->a, f->scope, l->a->symbols[i].scope)) {
-                const script_symbol *symbol = &l->a->symbols[i];
-                const script_expression
-                    *signature = symbol->type.flags & SCRIPT_TYPE_RESULTS
-                                   ? tuple_signature(l, symbol->initializer)
-                                   : NULL;
-                definition->local_capture_count += signature ? signature->result_count
-                                                             : 1;
-            }
-        }
-        definition->captures = xcalloc(
-            (size_t)definition->local_capture_count,
-            sizeof *definition->captures
-        );
-        int ordinal = 0;
-        for (int i = 0; i < l->a->symbol_count; i++) {
-            if (!computed_local(l, i) ||
-                !visible_scope(l->a, f->scope, l->a->symbols[i].scope)) {
-                continue;
-            }
-            l->captured[i] = l->parameters[i] = acount(args);
-            const script_symbol *symbol = &l->a->symbols[i];
-            const script_expression *signature = symbol->type.flags & SCRIPT_TYPE_RESULTS
-                                                   ? tuple_signature(l, symbol->initializer)
-                                                   : NULL;
-            int count = signature ? signature->result_count : 1;
-            for (int j = 0; j < count; j++) {
-                pin_value type;
-                pin_value original = initial(
-                    l,
-                    signature ? signature->results[j] : symbol->type
-                );
-                if (pin_value_snapshot_to_arena(&l->module->storage, &type, &original)) {
-                    error(l, f->range, "Cannot retain root capture type");
-                    type = original;
-                }
-                definition->captures[ordinal++] = (execution_module_capture){
-                    .id = symbol->id,
-                    .value = -1,
-                    .field = j,
-                    .type = type
                 };
                 apush(args, ((pin_value){ .type = BF_POINTER_TYPE }));
             }
@@ -5609,7 +5232,6 @@ execution_module_plan *script_lower(
         behavior_function_builder_free(l.builders[i]);
     }
     for (int i = 0; i < a->function_count && !l.failed; i++) {
-        local_initializers(&l, i);
     }
     for (int i = 0; i < a->function_count && !l.failed; i++) {
         const script_function *f = &a->functions[i];

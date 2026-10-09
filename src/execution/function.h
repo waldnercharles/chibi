@@ -126,7 +126,6 @@ typedef struct behavior_function_context
     const behavior_source_point *source_points;
     const behavior_source_watch *source_watches;
     void *source_debug_user;
-    bool source_debug_suppressed;
     int (*source_pause)(void *, struct behavior_function_context *, const behavior_source_point *);
     void (*source_capture)(
         void *,
@@ -183,8 +182,6 @@ typedef struct behavior_function_context
     );
     int (*request_action_break)(struct behavior_function_context *, uint64_t action);
     int (*take_action_break)(struct behavior_function_context *, uint64_t action, bool *requested);
-    int (*initialize_local)(struct behavior_function_context *, pin_value *, bool stored);
-    int (*store_local_group)(struct behavior_function_context *, pin_value *, int count, bool stored);
     int (*component_membership)(
         struct behavior_function_context *,
         uint64_t entity,

@@ -567,7 +567,7 @@ static void authoring()
     behavior_asset_free(f.asset);
 
     assert(
-        !behavior_asset_load("behavior \"Unknown\" { local v = get_component(Component: \"GameNothing\"); }\n")
+        !behavior_asset_load("behavior \"Unknown\" { on Tick { v := get_component(Component: \"GameNothing\"); } }\n")
     );
     assert(strstr(graph_last_error(), "Unknown component 'GameNothing'"));
     assert(
@@ -715,11 +715,11 @@ static void struct_authoring()
     behavior_asset_free(loaded);
     behavior_asset_free(f.asset);
 
-    behavior_asset *named = behavior_asset_load("behavior \"Named\" { local v = break_struct(Type: name = \"CF_V2\"); }\n");
+    behavior_asset *named = behavior_asset_load("behavior \"Named\" { on Tick { v := break_struct(Type: name = \"CF_V2\"); } }\n");
     assert(named && named->graph->nodes[0]->output_count == 2);
     behavior_asset_free(named);
     assert(
-        !behavior_asset_load("behavior \"Unknown\" { local v = make_struct(Type: name = \"GameNothing\"); }\n")
+        !behavior_asset_load("behavior \"Unknown\" { on Tick { v := make_struct(Type: name = \"GameNothing\"); } }\n")
     );
     assert(strstr(graph_last_error(), "Unknown struct type 'GameNothing'"));
     puts("component node structs: Make and Break reshape by type; Add and Remove keep their wires");

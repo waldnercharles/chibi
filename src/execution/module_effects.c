@@ -429,15 +429,11 @@ static void plan(effects *e, const execution_module_plan *p)
     for (int i = 0; i < p->function_count; i++) {
         const execution_module_function *f = &p->functions[i];
         e->function = f->id;
-        if (!e->counting && (f->kind != EXECUTION_FUNCTION_SYSTEM ||
-                             f->local_count || f->subscription)) {
+        if (!e->counting && (f->kind != EXECUTION_FUNCTION_SYSTEM || f->subscription)) {
             e->summary->parallel_safe = false;
         }
         function(e, f->body, 0);
         function(e, f->subscription, 0);
-        for (int j = 0; j < f->local_count; j++) {
-            function(e, f->locals[j].initializer, 0);
-        }
     }
     for (int i = 0; i < p->binding_count; i++) {
         e->function = 0;

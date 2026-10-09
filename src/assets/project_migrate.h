@@ -47,5 +47,13 @@ char *chibi_migrate_scene_behaviors(const char *scene);
  * has none. Sets `error` and returns NULL when a binding names an unknown
  * control. */
 char *chibi_migrate_action_bindings(const char *asset, input_action **map, char *error, size_t error_size);
+/* Version 17 removes `local` declarations: each handler, function or system
+ * that reads one declares it with `:=` before its first statement that reads
+ * it, in the innermost block holding those reads, and `local.X` reads become
+ * `X`. Sets `migrated` to an owned copy of `source`, or NULL when it declares
+ * none. A read outside any handler, such as an action argument, becomes the
+ * local's expression. Returns -1 and describes the problem in `error` when a
+ * declaration would capture a name the local reads. */
+int chibi_migrate_locals(const char *source, char **migrated, char *error, size_t error_size);
 
 #endif

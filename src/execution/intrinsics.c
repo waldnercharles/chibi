@@ -343,10 +343,6 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
     (void)count;
     language_reference view,
         *ref = unbox((language_reference *)(uintptr_t)args[0].u64, &view);
-    if (ref->kind == LANGUAGE_REFERENCE_VALUE && ref->owner->initialize_local &&
-        ref->owner->initialize_local(ref->owner, ref->value, false) < 0) {
-        return "Cannot initialize referenced local";
-    }
     pin_value root;
     void *data = reference_data(ref, &root);
     if (ref->path && ref->path->element) {
@@ -374,11 +370,6 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
 }
 static const char *write_reference_value(arena *owner_storage, language_reference *ref, const pin_value *args)
 {
-    if (ref->path && ref->kind == LANGUAGE_REFERENCE_VALUE &&
-        ref->owner->initialize_local &&
-        ref->owner->initialize_local(ref->owner, ref->value, false) < 0) {
-        return "Cannot initialize referenced local";
-    }
     pin_value root;
     void *current = reference_data(ref, &root);
     bool element = ref->path && ref->path->element;
@@ -429,10 +420,6 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
         ref->owner->store_value(ref->owner->value_owner, ref->variable, &retained);
     } else {
         *ref->value = retained;
-        if (ref->owner->initialize_local &&
-            ref->owner->initialize_local(ref->owner, ref->value, true) < 0) {
-            return "Cannot retain local initialization state";
-        }
     }
     return NULL;
 }
@@ -583,49 +570,6 @@ static const char *event_read_value(arena *storage, const pin_value *args, int c
     return NULL;
 }
 const node_host_call EXECUTION_event_read_call = { .value = event_read_value };
-static const char *local_group_store_value(arena *storage, const pin_value *args, int count, pin_value *out)
-{
-    (void)storage;
-    assert(count >= 2);
-    language_reference view,
-        *reference = unbox((language_reference *)(uintptr_t)args[0].u64, &view);
-    if (!reference || reference->kind != LANGUAGE_REFERENCE_VALUE || reference->path ||
-        !reference->owner->store_local_group || !reference->owner->value_storage) {
-        return "Local group replacement requires an owned value bank";
-    }
-    behavior_function_context *owner = reference->owner;
-    int fields = count - 1;
-    if (owner->store_local_group(owner, reference->value, fields, false)) {
-        return "Local group replacement differs from its declaration";
-    }
-    pin_value *values = xcalloc((size_t)fields, sizeof *values);
-    for (int i = 0; i < fields; i++) {
-        const pin_value *type = &reference->value[i], *value = &args[i + 1];
-        if (type->type != value->type || type->container != value->container ||
-            ((type->type_name || value->type_name) &&
-             (!type->type_name || !value->type_name ||
-              strcmp(type->type_name, value->type_name)))) {
-            free(values);
-            return "Local group replacement field differs from its declared "
-                   "type";
-        }
-        if (pin_value_snapshot_to_arena(owner->value_storage, &values[i], value)) {
-            free(values);
-            return "Cannot retain local group replacement";
-        }
-    }
-    int status = owner->store_local_group(owner, reference->value, fields, true);
-    if (!status) {
-        memcpy(reference->value, values, (size_t)fields * sizeof *values);
-    }
-    free(values);
-    if (status) {
-        return "Cannot complete local group replacement";
-    }
-    *out = (pin_value){ .type = PIN_BOOL, .b = true };
-    return NULL;
-}
-const node_host_call EXECUTION_local_group_store_call = { .value = local_group_store_value };
 static const char *state_demand_value(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     (void)storage;
@@ -702,8 +646,6 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
             return &EXECUTION_break_request_call;
         case EXECUTION_INTRINSIC_BREAK_TAKE: return &EXECUTION_break_take_call;
         case EXECUTION_INTRINSIC_EVENT_READ: return &EXECUTION_event_read_call;
-        case EXECUTION_INTRINSIC_LOCAL_GROUP_STORE:
-            return &EXECUTION_local_group_store_call;
         case EXECUTION_INTRINSIC_LOCAL_RELEASE:
             return &EXECUTION_local_release_call;
         default: return NULL;
@@ -758,9 +700,6 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
     }
     if (call == &EXECUTION_event_read_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_EVENT_READ;
-    }
-    if (call == &EXECUTION_local_group_store_call) {
-        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_LOCAL_GROUP_STORE;
     }
     if (call == &EXECUTION_local_release_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_LOCAL_RELEASE;

@@ -3380,6 +3380,20 @@ static int expression(lower *l, int index)
     }
     return value;
 }
+/* The local tuple's field slots, made on first use. */
+static void tuple_bank(lower *l, int symbol, const script_expression *signature)
+{
+    if (l->locals[symbol] >= 0) {
+        return;
+    }
+    pin_value *defaults = NULL;
+    for (int i = 0; i < signature->result_count; i++) {
+        apush(defaults, initial(l, signature->results[i]));
+    }
+    l->locals[symbol] = behavior_function_builder_values(l->builder, defaults, acount(defaults));
+    l->addresses[symbol] = l->locals[symbol];
+    afree(defaults);
+}
 static void store_tuple(lower *l, int symbol, int value, int source, script_range range)
 {
     const script_expression *expression = source >= 0 ? &l->a->expressions[source]
@@ -3396,14 +3410,8 @@ static void store_tuple(lower *l, int symbol, int value, int source, script_rang
         return;
     }
     bool captured = l->captured && l->captured[symbol] >= 0;
-    if (!captured && l->locals[symbol] < 0) {
-        pin_value *defaults = NULL;
-        for (int i = 0; i < expression->result_count; i++) {
-            apush(defaults, initial(l, target->results[i]));
-        }
-        l->locals[symbol] = behavior_function_builder_values(l->builder, defaults, acount(defaults));
-        l->addresses[symbol] = l->locals[symbol];
-        afree(defaults);
+    if (!captured) {
+        tuple_bank(l, symbol, target);
     }
     for (int i = 0; i < expression->result_count; i++) {
         script_type source_type = expression->results[i], type = target->results[i];
@@ -3443,6 +3451,34 @@ static int local_address(lower *l, int symbol)
     }
     return l->addresses[symbol];
 }
+static void release(lower *l, int descriptor, script_range range)
+{
+    pin_value header = { .type = BF_POINTER_TYPE };
+    primitive(
+        l,
+        &EXECUTION_local_release_call,
+        &EXECUTION_assignment_access,
+        &header,
+        &descriptor,
+        1,
+        (script_type){ .storage = PIN_BOOL },
+        range
+    );
+}
+/* Each declaration of a tuple whose fields a task keeps starts new fields;
+ * the task keeps the old ones in their boxes. */
+static void release_tuple(lower *l, int symbol, script_range range)
+{
+    const script_symbol *s = &l->a->symbols[symbol];
+    const script_expression *signature = tuple_signature(l, s->initializer);
+    if (!s->boxed || !signature || (l->captured && l->captured[symbol] >= 0)) {
+        return;
+    }
+    tuple_bank(l, symbol, signature);
+    for (int i = 0; i < signature->result_count; i++) {
+        release(l, bank_reference(l, l->locals[symbol] + i, signature->results[i], range), range);
+    }
+}
 /* Each declaration of a local that a task keeps starts a new one; the task
  * keeps the old one in its box. */
 static void declare_symbol(lower *l, int symbol, int value, script_range range)
@@ -3451,7 +3487,6 @@ static void declare_symbol(lower *l, int symbol, int value, script_range range)
     if (s->boxed && s->writable && l->variables[symbol] < 0 &&
         l->parameters[symbol] < 0) {
         local_address(l, symbol);
-        pin_value header = { .type = BF_POINTER_TYPE };
         int descriptor = reference_expression(
             l,
             &(script_expression){ .kind = SCRIPT_EXPR_SYMBOL,
@@ -3461,16 +3496,7 @@ static void declare_symbol(lower *l, int symbol, int value, script_range range)
                                   .type = s->type,
                                   .range = range }
         );
-        primitive(
-            l,
-            &EXECUTION_local_release_call,
-            &EXECUTION_assignment_access,
-            &header,
-            &descriptor,
-            1,
-            (script_type){ .storage = PIN_BOOL },
-            range
-        );
+        release(l, descriptor, range);
     }
     store_symbol(l, symbol, value, range);
 }
@@ -3907,6 +3933,7 @@ static void statement(lower *l, int index)
                 s->range
             );
             if (l->a->symbols[s->symbol].type.flags & SCRIPT_TYPE_RESULTS) {
+                release_tuple(l, s->symbol, s->range);
                 store_tuple(l, s->symbol, value, s->expression, s->range);
             } else {
                 declare_symbol(l, s->symbol, value, s->range);

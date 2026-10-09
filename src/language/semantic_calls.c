@@ -250,6 +250,11 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                                  .right = -1,
                                  .type = script_analyzer_bad_type(),
                                  .effects = receiver.effects };
+    if (receiver.type.flags & SCRIPT_TYPE_TASK) {
+        script_analyzer_diagnostic(a, member, "Await this task to read '%s'", name);
+        free(name);
+        return script_analyzer_expr_add(a, result);
+    }
     const script_expression *initializer = script_analyzer_result_source(a, left);
     int receiver_function = receiver.symbol >= 0
                               ? a->out->symbols[receiver.symbol].function
@@ -605,6 +610,7 @@ static int state_access(analyzer *a, TSNode node, const script_catalog_capabilit
     script_analyzer_require(a, argument, result.type, value_type);
     int right = script_analyzer_expression(a, value, value_type);
     script_analyzer_require(a, value, result.type, script_analyzer_expr_type(a, right));
+    script_analyzer_infer_task(a, symbol, script_analyzer_expr_type(a, right));
     script_analyzer_use(a, name_node, symbol, SCRIPT_WRITE, 0);
     script_expression store = { .kind = SCRIPT_EXPR_STORE,
                                 .type = result.type,

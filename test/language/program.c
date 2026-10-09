@@ -1925,11 +1925,18 @@ TEST_CASE(program_nested_functions_wait_for_themselves)
     const char *source = "behavior N { n: double = 0;"
                          "action later = (Outer());"
                          "function Outer() -> () { function Inner() -> () { "
-                         "await Delay(1); } Inner(); n += 1; } }";
+                         "await Delay(1); } Inner(); n += 1; }"
+                         "function Pause() -> () { await Delay(1); }"
+                         "function Start() -> () { action Pause = timer(1); "
+                         "Pause(); } }";
+    /* A nested action shadows the waiting function of the same name. */
     const char *expected = "behavior N { n: double = 0;"
                            "action later = (Outer());"
                            "function Outer() -> () { function Inner() -> () { "
-                           "await Delay(1); } await Inner(); n += 1; } }";
+                           "await Delay(1); } await Inner(); n += 1; }"
+                           "function Pause() -> () { await Delay(1); }"
+                           "function Start() -> () { action Pause = timer(1); "
+                           "Pause(); } }";
     char **all = chibi_migrate_task_calls(&source, 1);
     REQUIRE(all[0] && !strcmp(all[0], expected));
     free(all[0]);
@@ -2964,6 +2971,15 @@ TEST_CASE(program_task_with_several_results_awaits_a_tuple)
         }
         REQUIRE(number_state(instance, "n", 23));
     }
+    /* A task has no result fields until it is awaited. */
+    prepare();
+    REQUIRE(!compile(
+        "behavior B { n: double = 0;"
+        "function P(x: double) -> (a: double, b: double) { "
+        "yield; return(x, x * 10); }"
+        "on Impulse(amount, enabled) { t := P(amount); n = t.a } }",
+        BEHAVIOR_BYTECODE
+    ));
     return true;
 }
 
@@ -3174,6 +3190,62 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     );
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(!analysis->valid);
+    /* So does a state write of another function's task, before or after
+     * the await. */
+    const char *writes[] = {
+        "behavior P { pulse: task; power: double = 0;"
+        "function Charge(time: double) -> (power: double) { yield; "
+        "return(time) }"
+        "function Other() -> (name: string) { yield; return(\"x\") }"
+        "on Impulse(amount, enabled) { pulse = Charge(amount); power = await "
+        "pulse }"
+        "function Swap() { set_variable<\"pulse\">(Other()) } }",
+        "behavior P { pulse: task; power: double = 0;"
+        "function Charge(time: double) -> (power: double) { yield; "
+        "return(time) }"
+        "function Other() -> (name: string) { yield; return(\"x\") }"
+        "function Swap() { set_variable<\"pulse\">(Other()) }"
+        "on Impulse(amount, enabled) { pulse = Charge(amount); power = await "
+        "pulse } }"
+    };
+    for (int i = 0; i < 4; i++) {
+        prepare();
+        REQUIRE(!compile_state(writes[i / 2], i % 2 ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+    }
+    return true;
+}
+TEST_CASE(program_task_handles_belong_to_their_instance)
+{
+    const char *source = "behavior P { pulse: task; alive: double = 0;"
+                         "function Charge(time: double) -> (power: double) { "
+                         "yield; return(time) }"
+                         "on Impulse(amount, enabled) { if enabled { pulse = "
+                         "Charge(amount) } else { alive = 0; if pulse { alive "
+                         "= 1 } } } }";
+    prepare();
+    REQUIRE(compile(source, BEHAVIOR_BYTECODE));
+    execution_instance *a = execution_program_attach(
+        program,
+        ecs_entity_to_u64(ecs_world_create_entity(world))
+    );
+    execution_instance *b = execution_program_attach(
+        program,
+        ecs_entity_to_u64(ecs_world_create_entity(world))
+    );
+    const pin_value start[] = { { .type = PIN_F64, .d = 1 },
+                                { .type = PIN_BOOL, .b = true } };
+    const pin_value check[] = { { .type = PIN_F64, .d = 0 },
+                                { .type = PIN_BOOL, .b = false } };
+    REQUIRE(execution_instance_dispatch(a, 11, start, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(execution_instance_dispatch(b, 11, start, 2, 0, 0, 1000) == FLOW_OK);
+    pin_value handle = *execution_instance_state(a, state_id("pulse"));
+    REQUIRE(handle.u64 != execution_instance_state(b, state_id("pulse"))->u64);
+    /* B running its own task does not make A's handle live in B. */
+    REQUIRE(execution_instance_set_state(b, state_id("pulse"), handle) == 0);
+    REQUIRE(execution_instance_dispatch(b, 11, check, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(number_state(b, "alive", 0));
+    REQUIRE(execution_instance_dispatch(a, 11, check, 2, 0, 0, 1000) == FLOW_OK);
+    REQUIRE(number_state(a, "alive", 1));
     return true;
 }
 TEST_CASE(program_component_paths_test_presence)
@@ -3285,14 +3357,18 @@ TEST_CASE(program_task_shares_boxed_locals)
                          "function Keep(x: ref double) -> () { yield; x += 1; "
                          "yield; kept += x; }"
                          "function Relay(x: ref double) -> () { Keep(x); }"
+                         "function Pair(x: double) -> (a: double, b: double) "
+                         "{ return(a: x * 1000 + 5, b: 0) }"
                          "on Impulse(amount, enabled) {"
                          "if amount == 0 { v := 1.0; t := Bump(v); v += 100; "
                          "await t; seen = v; }"
                          "else if amount == 1 { w := 5.0; Keep(w); }"
                          "else if amount == 2 { i := 0.0; while i < 2 { u := "
                          "i * 10; Keep(u); i += 1; } }"
-                         "else { j := 0.0; while j < 2 { z := j * 100 + 2; "
-                         "Relay(z); j += 1; } } } }";
+                         "else if amount == 3 { j := 0.0; while j < 2 { z := "
+                         "j * 100 + 2; Relay(z); j += 1; } }"
+                         "else { k := 0.0; while k < 2 { p := Pair(k); "
+                         "Keep(p.a); k += 1; } } } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -3300,7 +3376,7 @@ TEST_CASE(program_task_shares_boxed_locals)
         ecs_entity owner = ecs_world_create_entity(world);
         execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
         REQUIRE(instance != NULL);
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             const pin_value args[] = { { .type = PIN_F64, .d = i },
                                        { .type = PIN_BOOL, .b = true } };
             REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
@@ -3308,10 +3384,11 @@ TEST_CASE(program_task_shares_boxed_locals)
         for (int i = 1; i <= 3; i++) {
             REQUIRE(execution_program_update(program, i, 0, 1000) == FLOW_OK);
         }
-        /* The caller and its task share v; each declaration of u, and of z
-         * through Relay, is its own; w and z outlive their callers. */
+        /* The caller and its task share v; each declaration of u, of z
+         * through Relay, and of the tuple p is its own; w and z outlive
+         * their callers. */
         REQUIRE(number_state(instance, "seen", 112));
-        REQUIRE(number_state(instance, "kept", 6 + 1 + 11 + 3 + 103));
+        REQUIRE(number_state(instance, "kept", 6 + 1 + 11 + 3 + 103 + 6 + 1006));
         REQUIRE(execution_instance_pending(instance) == 0);
     }
     return true;
@@ -3389,6 +3466,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_keeps_state_and_component_references);
     RUN_TEST_CASE(program_yield_resumes_on_the_next_update_without_time);
     RUN_TEST_CASE(program_task_state_awaits_its_function_results);
+    RUN_TEST_CASE(program_task_handles_belong_to_their_instance);
     RUN_TEST_CASE(program_component_paths_test_presence);
     RUN_TEST_CASE(program_branch_completes_inside_action_continuation);
     RUN_TEST_CASE(program_parameters_defaults_and_contextual_words);

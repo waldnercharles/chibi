@@ -94,7 +94,8 @@ static void collect(TSNode node, int file, TSNode library, function **functions)
     if (is(node, "library")) {
         library = ts_node_child_by_field_name(node, "name", 4);
     }
-    if (is(node, "function_declaration")) {
+    /* An action has no body; it never waits and shadows functions. */
+    if (is(node, "function_declaration") || is(node, "action_declaration")) {
         apush(
             *functions,
             ((function){ .file = file,
@@ -146,7 +147,7 @@ static const function *callee(const corpus *c, int file, TSNode target)
         const function *f = &c->functions[i];
         const char *defined = c->sources[f->file];
         if (!local) {
-            if (!ts_node_is_null(f->library) &&
+            if (!ts_node_is_null(f->body) && !ts_node_is_null(f->library) &&
                 similar_name(source, library, defined, f->library) &&
                 similar_name(source, name, defined, f->name)) {
                 return f;
@@ -244,7 +245,7 @@ char **chibi_migrate_task_calls(const char *const *sources, int count)
         changed = false;
         for (int i = 0; i < acount(c.functions); i++) {
             function *f = &c.functions[i];
-            if (!f->waits && waits(&c, f->file, f->body)) {
+            if (!f->waits && !ts_node_is_null(f->body) && waits(&c, f->file, f->body)) {
                 f->waits = changed = true;
             }
         }

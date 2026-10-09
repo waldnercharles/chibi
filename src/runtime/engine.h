@@ -6,6 +6,7 @@
 #include "runtime/behaviors/entities.h"
 #include "runtime/behaviors/source.h"
 #include "runtime/components.h"
+#include "runtime/input_action.h"
 #include "runtime/input_timeline.h"
 #include "runtime/materials.h"
 #include "runtime/particles.h"
@@ -83,6 +84,9 @@ engine *engine_new(ecs_world *world, const engine_modules *);
 void engine_free(engine *engine);
 /* Reset time and input before recreating authored entities and their Begin runs. */
 void engine_reset(engine *engine);
+/* Reset per-scene state for a scene change; time, input, recordings and
+ * audio go on. */
+void engine_reset_scene(engine *engine);
 int engine_register_system(engine *engine, const game_schedule_desc *desc);
 const game_schedule *engine_system_schedule(const engine *engine);
 void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user);
@@ -101,7 +105,10 @@ int engine_dispatch_input(engine *engine, const char *action, double value, int 
 /* Host input ingress: hold the latest movement/aim sample across fixed steps. */
 int engine_sample_movement(engine *engine, float x, float y);
 int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point);
-/* Held physical controls interpreted through authored GameActionBinding entities. */
+/* Copies the project's input map. Without input the engine ignores it. */
+void engine_set_input_actions(engine *engine, const input_action *actions, int count);
+/* Held physical controls interpreted through the input map. Ignored while
+ * replaying, and while stopped unless a step is requested. */
 int engine_sample_controls(engine *engine, uint64_t controls, bool *firing);
 /* Gameplay input recording and replay count fixed steps from the last reset,
  * so both follow a scene from its start. Recording keeps a key wherever held

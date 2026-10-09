@@ -4,6 +4,9 @@
 #include "authoring/source_prepare.h"
 
 typedef struct authoring_sources authoring_sources;
+/* Every source's diagnostic while the declaration catalog has diagnostics. */
+#define AUTHORING_SOURCES_CATALOG_INCOMPLETE                                   \
+    "Project declaration catalog is incomplete"
 /* Prepares the project's bounded declaration snapshot and every source without
  * executing or registering it. Native declarations are borrowed during this
  * call. The returned collection owns declarations, analyzed sources and imported modules. */
@@ -21,6 +24,8 @@ authoring_sources *authoring_sources_prepare_catalog(
     behavior_backend
 );
 const script_catalog *authoring_sources_catalog(const authoring_sources *);
+/* The project's input map, an array.h vector owned by the collection. */
+const input_action *authoring_sources_input(const authoring_sources *);
 int authoring_sources_definition_count(const authoring_sources *);
 const source_catalog_definition *authoring_sources_definitions(const authoring_sources *);
 int authoring_sources_reference_count(const authoring_sources *);

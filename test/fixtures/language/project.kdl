@@ -1,4 +1,4 @@
-version 15
+version 16
 name "Language contracts"
 content "content"
 start_scene "scenes/Start.kdl"

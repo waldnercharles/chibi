@@ -464,8 +464,15 @@ if(CHIBI_SDK_BUILD_COMPILER)
 endif()
 # `chibi PROJECT` prepares a changed project and plays it with its siblings.
 if(TARGET chibi-compile AND TARGET chibi-player)
-    add_executable(chibi "${CHIBI_SDK_ROOT}/src/host/chibi_main.c")
-    target_link_libraries(chibi PRIVATE chibi_project_document chibi_support)
+    add_executable(chibi "${CHIBI_SDK_ROOT}/src/host/chibi_main.c"
+        "${CHIBI_SDK_ROOT}/src/host/export.c" "${CHIBI_SDK_ROOT}/src/host/process.c")
+    foreach(header export process)
+        configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
+            "${CMAKE_CURRENT_BINARY_DIR}/private/launcher/host/${header}.h" COPYONLY)
+    endforeach()
+    target_include_directories(chibi PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/launcher"
+        "${CHIBI_SDK_ROOT}/third_party/yyjson")
+    target_link_libraries(chibi PRIVATE chibi_project_document chibi_support chibi_json)
     target_compile_options(chibi PRIVATE -Wall -Wextra -Werror)
     add_dependencies(chibi chibi-compile chibi-player)
     install(TARGETS chibi RUNTIME DESTINATION bin)

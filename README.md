@@ -32,6 +32,29 @@ files or the compiler changed since the last run, then starts `chibi-player`
 beside it. Options after the project go to the player. Studio's `chibi-dev`
 opens a project the same way.
 
+To ship a game, export it with an installed SDK's `chibi`:
+
+```sh
+dist/sdk/bin/chibi export ~/games/neon-swarm --output ~/builds/NeonSwarm
+~/builds/NeonSwarm/"Neon Swarm"     # runs the exported game
+```
+
+The folder holds the player, named after the project, and `data/` with the
+compiled game and its resources. `data/engine/` holds the shaders, licenses and
+engine identity. Exporting again replaces an earlier export, including files
+added to it. The exporter recognizes its own output by the empty
+`.chibi-export` it writes beside the compiled game; any other existing folder
+is left alone. `--archive` also writes
+`NeonSwarm.tar.gz` (`NeonSwarm.app.tar.gz` on macOS).
+
+On macOS the export is an app, `NeonSwarm.app`, with an `Info.plist`, the
+project icon as an `.icns`, and an ad hoc signature. Its icon must be a square
+PNG of 16, 32, 64, 128, 256, 512 or 1024 pixels. Elsewhere the folder also holds
+a desktop entry, `neon-swarm.desktop`, which runs `Neon Swarm` from `PATH` with
+the `neon-swarm` theme icon. To install it, symlink the folder's executable into
+a directory on `PATH`, put the project icon in your icon theme as
+`neon-swarm.png`, and the entry in `~/.local/share/applications`.
+
 Both SDK product builds prepare a standalone host reflection tool. `SDK_PREFIX`,
 `RUNTIME_SDK_PREFIX`, and `PLAYER_OUTPUT` select their outputs. Packaging leaves
 registered games untouched; `make update-game-runtime` explicitly verifies and

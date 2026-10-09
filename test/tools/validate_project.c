@@ -11,6 +11,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/* The longest prototype name the player takes, GAME_PROTOTYPE_NAME_MAX. */
+#define PROTOTYPE_NAME_MAX 1024
+
 static char program[4096];
 static char root[64], log_path[96];
 static yyjson_doc *reply;
@@ -70,6 +73,13 @@ static const char *failure()
 {
     yyjson_val *error = yyjson_obj_get(yyjson_doc_get_root(reply), "error");
     return yyjson_get_str(yyjson_obj_get(error, "message"));
+}
+
+/* The code of the last reply's error. */
+static const char *failure_code()
+{
+    yyjson_val *error = yyjson_obj_get(yyjson_doc_get_root(reply), "error");
+    return yyjson_get_str(yyjson_obj_get(error, "code"));
 }
 
 /* The message of the diagnostic at `index` in `diagnostics`. */
@@ -300,7 +310,7 @@ TEST_CASE(catalog_errors_are_reported_once)
     return true;
 }
 
-TEST_CASE(old_projects_are_not_upgraded)
+TEST_CASE(other_project_versions_are_not_opened)
 {
     char manifest[256];
     path(manifest, sizeof manifest, "game/project.kdl");
@@ -319,6 +329,13 @@ TEST_CASE(old_projects_are_not_upgraded)
     bool kept = text && !strcmp(text, old);
     free(text);
     REQUIRE(kept);
+    /* A newer build's project needs that build, whatever its fields mean
+     * there. */
+    snprintf(old, sizeof old, "version %d\nname 5\n", version + 1);
+    tool_write(manifest, old);
+    REQUIRE(validate() != 0 && errors() == 1);
+    message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "needs a newer build"));
     return true;
 }
 
@@ -513,6 +530,26 @@ TEST_CASE(prototypes_are_found_by_declared_name)
     write_file("game/content/prototypes/long.kdl", text);
     snprintf(request, sizeof request, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"%s\"}", long_name);
     REQUIRE(ctl(true, request) == 0 && reads(yyjson_get_str(result("name")), long_name));
+    /* But not one longer than the player takes, which a shorter copy would
+     * misname. */
+    char huge[PROTOTYPE_NAME_MAX + 2], huge_text[PROTOTYPE_NAME_MAX + 16],
+        huge_file[256];
+    memset(huge, 'H', sizeof huge - 1);
+    huge[sizeof huge - 1] = '\0';
+    snprintf(huge_text, sizeof huge_text, "name \"%s\"\n", huge);
+    write_file("game/content/prototypes/huge.kdl", huge_text);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"path\":\"content/prototypes/huge.kdl\"}") !=
+        0
+    );
+    REQUIRE(reads(failure(), "content/prototypes/huge.kdl declares a name longer than 1024 bytes"));
+    /* And a new prototype waits until every prototype can be read. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Wing\"}") != 0
+    );
+    REQUIRE(reads(failure_code(), "validation_failed"));
+    path(huge_file, sizeof huge_file, "game/content/prototypes/huge.kdl");
+    REQUIRE(unlink(huge_file) == 0);
     REQUIRE(
         ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
         0
@@ -541,6 +578,7 @@ TEST_CASE(prototypes_are_found_by_declared_name)
         0
     );
     REQUIRE(failure() && strstr(failure(), "both declare the prototype 'Hull'"));
+    REQUIRE(reads(failure_code(), "asset_conflict"));
     REQUIRE(validate() != 0);
     /* Even when one of them is the file named after it, which a lookup
      * reads first, the project is refused. */
@@ -658,6 +696,37 @@ TEST_CASE(manifest_content_folder_is_used)
     return true;
 }
 
+TEST_CASE(scenes_run_under_their_own_name)
+{
+    /* A request may name a scene's file, but its scripts see the scene's
+     * name, so reloading it restarts the scene that is running. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Dot\"}") == 0
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Again\"}") == 0
+    );
+    write_file("game/content/behaviors/Again.chibi", "behavior \"Again\" {\n    on Tick {\n        reload_scene()\n    }\n}\n");
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\" {\n        (array)behaviors \"Again\"\n    }\n}\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start.kdl\",\"frames\":2}") ==
+        0
+    );
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/scenes/Start.kdl"));
+
+    /* Only a name that ends with the extension names the file. */
+    char start[256], boss[256];
+    path(start, sizeof start, "game/content/scenes/Start.kdl");
+    path(boss, sizeof boss, "game/content/scenes/Boss.kdl.v2.kdl");
+    REQUIRE(rename(start, boss) == 0);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Boss.kdl.v2\",\"frames\":2}") ==
+        0
+    );
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/scenes/Boss.kdl.v2.kdl"));
+    return true;
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -671,11 +740,12 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(cataloged_start_scene_is_reported_once);
     RUN_TEST_CASE(missing_ui_documents_are_reported);
     RUN_TEST_CASE(catalog_errors_are_reported_once);
-    RUN_TEST_CASE(old_projects_are_not_upgraded);
+    RUN_TEST_CASE(other_project_versions_are_not_opened);
     RUN_TEST_CASE(application_settings_are_checked);
     RUN_TEST_CASE(prototype_includes_resolve);
     RUN_TEST_CASE(prototypes_are_found_by_declared_name);
     RUN_TEST_CASE(scenarios_load_graph_assets);
     RUN_TEST_CASE(manifest_content_folder_is_used);
+    RUN_TEST_CASE(scenes_run_under_their_own_name);
     pu_clear_setup();
 }

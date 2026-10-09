@@ -21,10 +21,10 @@ typedef struct
  * no authored text, source compiler or process pointers are saved.
  * Input bytes are capped at 64 MiB. One caller-selected decoded budget (default
  * 64 MiB) bounds retained canonical scenes, events, field catalogs, executable
- * module closures and staged resource generations. Decoder scratch is bounded
- * separately and released before return. Generated backend code and mutable
- * simulation state, registry bookkeeping and fixed bounded envelope tables are
- * outside this canonical artifact storage budget. */
+ * module closures, copied sounds and staged resource generations. Decoder
+ * scratch is bounded separately and released before return. Generated backend
+ * code and mutable simulation state, registry bookkeeping and fixed bounded
+ * envelope tables are outside this canonical artifact storage budget. */
 bool game_player_prepared_write(
     const game_player_spec *,
     unsigned char **data,

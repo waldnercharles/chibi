@@ -824,6 +824,11 @@ TEST_CASE(native_player_plays_sounds)
     game_audio *audio = game_world_modules(game_player_world(player))->audio;
     REQUIRE(game_audio_sound_count(audio) == 1);
     REQUIRE(!memcmp(game_audio_sound(audio, 0, &length), wav, sizeof wav) && length == sizeof wav);
+    /* The copied sounds count against the retained storage budget. */
+    size_t budget = sizeof wav - 1;
+    spec.decoded_remaining = &budget;
+    REQUIRE(!game_player_new(&spec, error, sizeof error) && budget == sizeof wav - 1);
+    REQUIRE(!strcmp(error, "Prepared player retained storage budget exceeded"));
 
     pin_value jump = { .type = PIN_STR, .str = "Jump" },
               missing = { .type = PIN_STR, .str = "Missing" };

@@ -269,14 +269,16 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
     const engine_modules *services = game_world_modules(p->world);
     for (int i = 0; services->audio && i < spec->asset_count; i++) {
         const game_player_asset *asset = &spec->assets[i];
-        if (asset->kind == GAME_PLAYER_ASSET_SOUND) {
-            game_audio_add_sound(
-                services->audio,
-                asset->name,
-                asset->data,
-                asset->length
-            );
+        if (asset->kind != GAME_PLAYER_ASSET_SOUND) {
+            continue;
         }
+        /* The library keeps its own copy of each sound. */
+        if (asset->length > *remaining) {
+            fail(error, size, "Prepared player retained storage budget exceeded");
+            goto reject;
+        }
+        *remaining -= asset->length;
+        game_audio_add_sound(services->audio, asset->name, asset->data, asset->length);
     }
     if (services->physics &&
         game_physics_configure(services->physics, game_scene_physics(spec->scene)) < 0) {

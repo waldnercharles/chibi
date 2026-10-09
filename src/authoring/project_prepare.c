@@ -1,4 +1,5 @@
 #include "assets/project.h"
+#include "authoring/component_declarations.h"
 #include "authoring/image_prepare.h"
 #include "authoring/language_catalog.h"
 #include "authoring/material_prepare.h"
@@ -303,6 +304,53 @@ void authoring_project_artifact_free(authoring_project_artifact *artifact)
     free(artifact->manifest);
     *artifact = (authoring_project_artifact){ 0 };
 }
+/* The window shows the project name unless a title replaces it, so a name
+ * longer than the artifact holds needs a title. */
+static bool application_title_valid(const chibi_project *project, char *error, size_t size)
+{
+    bool valid = project->application.title ||
+                 strlen(project->name) <= GAME_PLAYER_APPLICATION_TEXT_MAX;
+    if (!valid && size) {
+        snprintf(error, size, "Project name is longer than %d bytes; set a shorter application title", GAME_PLAYER_APPLICATION_TEXT_MAX);
+    }
+    return valid;
+}
+/* The window icon ships beside the artifact, so it must decode as a PNG. Its
+ * size and hash fill `icon` for the manifest's external records. */
+static bool application_icon_read(
+    const chibi_project *project,
+    game_player_asset *icon,
+    char *error,
+    size_t size
+)
+{
+    const char *path = project->application.icon;
+    if (!path) {
+        return true;
+    }
+    size_t length = strlen(project->root) + strlen(path) + 2;
+    char *file = xmalloc(length);
+    snprintf(file, length, "%s/%s", project->root, path);
+    char reason[128];
+    int bytes = 0;
+    void *data = image_prepare_png_read(file, &bytes, reason, sizeof reason);
+    free(file);
+    if (!data) {
+        if (size) {
+            snprintf(error, size, "Application icon is not a readable PNG: %s: %s", path, reason);
+        }
+        return false;
+    }
+    *icon = (game_player_asset){
+        .name = path,
+        .path = path,
+        .external = true,
+        .length = (size_t)bytes,
+        .content_hash = game_player_asset_fingerprint(data, (size_t)bytes)
+    };
+    free(data);
+    return true;
+}
 static uint64_t content_hash(const void *data, size_t size)
 {
     const unsigned char *bytes = data;
@@ -312,7 +360,32 @@ static uint64_t content_hash(const void *data, size_t size)
     }
     return hash;
 }
-static char *manifest(const game_player_asset *assets, const authoring_project_artifact *artifact)
+static void add_record(yyjson_mut_doc *doc, yyjson_mut_val *records, const char *kind, const game_player_asset *asset)
+{
+    yyjson_mut_val *record = yyjson_mut_arr_add_obj(doc, records);
+    yyjson_mut_obj_add_str(doc, record, "kind", kind);
+    yyjson_mut_obj_add_str(doc, record, "key", asset->name);
+    yyjson_mut_obj_add_uint(doc, record, "bytes", asset->length);
+    if (asset->path) {
+        yyjson_mut_obj_add_str(doc, record, "path", asset->path);
+    }
+    char hash[17];
+    snprintf(
+        hash,
+        sizeof hash,
+        "%016" PRIx64,
+        asset->external ? asset->content_hash
+                        : game_player_asset_fingerprint(asset->data, asset->length)
+    );
+    yyjson_mut_obj_add_strcpy(doc, record, "content_hash", hash);
+}
+/* The artifact's resource closure: embedded assets, and the external files,
+ * the window icon among them, that must ship beside it. */
+static char *manifest(
+    const game_player_asset *assets,
+    const game_player_asset *icon,
+    const authoring_project_artifact *artifact
+)
 {
     static const char *const kinds[] = { "shader", "model",         "mesh",
                                          "image",  "shader-values", "parts",
@@ -333,22 +406,15 @@ static char *manifest(const game_player_asset *assets, const authoring_project_a
     yyjson_mut_val *embedded = yyjson_mut_obj_add_arr(doc, root, "embedded");
     yyjson_mut_val *external = yyjson_mut_obj_add_arr(doc, root, "external");
     for (int i = 0; i < acount(assets); i++) {
-        yyjson_mut_val *record = yyjson_mut_arr_add_obj(doc, assets[i].external ? external : embedded);
-        yyjson_mut_obj_add_str(doc, record, "kind", kinds[assets[i].kind]);
-        yyjson_mut_obj_add_str(doc, record, "key", assets[i].name);
-        yyjson_mut_obj_add_uint(doc, record, "bytes", assets[i].length);
-        if (assets[i].path) {
-            yyjson_mut_obj_add_str(doc, record, "path", assets[i].path);
-        }
-        snprintf(
-            hash,
-            sizeof hash,
-            "%016" PRIx64,
-            assets[i].external
-                ? assets[i].content_hash
-                : game_player_asset_fingerprint(assets[i].data, assets[i].length)
+        add_record(
+            doc,
+            assets[i].external ? external : embedded,
+            kinds[assets[i].kind],
+            &assets[i]
         );
-        yyjson_mut_obj_add_strcpy(doc, record, "content_hash", hash);
+    }
+    if (icon->path) {
+        add_record(doc, external, "icon", icon);
     }
     char *text = yyjson_mut_write(doc, YYJSON_WRITE_PRETTY, NULL);
     yyjson_mut_doc_free(doc);
@@ -389,18 +455,40 @@ bool authoring_project_prepare(
     const execution_module **definitions = NULL;
     game_player_prototype *prepared = NULL;
     game_player_asset *assets = NULL;
+    game_player_asset icon = { 0 };
     const game_scene **visual_scenes = NULL;
+    declared_components *declared = NULL;
+    const ecs_component_desc **components = NULL;
     size_t module_bytes = 0;
     char *scene_path = NULL, *start = NULL;
-    if (chibi_project_open(&project, options->project, error, size)) {
+    if (chibi_project_open(&project, options->project, error, size) ||
+        !application_title_valid(&project, error, size) ||
+        !application_icon_read(&project, &icon, error, size)) {
         goto done;
     }
     if (!render_image_mount_content(project.content, error, size) ||
         !authoring_mesh_mount_content(project.content, error, size)) {
         goto done;
     }
+    if (!authoring_component_declarations_load(
+            project.content,
+            native_capabilities_catalog(options->native),
+            &declared,
+            error,
+            size
+        )) {
+        goto done;
+    }
     for (int i = 0; i < options->components.component_count; i++) {
-        if (ecs_world_register_component(schemas, options->components.components[i], NULL)) {
+        apush(components, options->components.components[i]);
+    }
+    ecs_component_catalog extra = declared ? declared_components_ecs(declared)
+                                           : (ecs_component_catalog){ 0 };
+    for (int i = 0; i < extra.component_count; i++) {
+        apush(components, extra.components[i]);
+    }
+    for (int i = 0; i < acount(components); i++) {
+        if (ecs_world_register_component(schemas, components[i], NULL)) {
             fail(error, size, "Project component schema installation failed");
             goto done;
         }
@@ -427,15 +515,15 @@ bool authoring_project_prepare(
         goto done;
     }
     native_prepared_context event_context = { .native = options->native };
-    execution_prepared_linker event_types = native_capabilities_prepared_linker(&event_context);
+    execution_prepared_linker native_types = native_capabilities_prepared_linker(&event_context);
+    declared_components_linking event_linking = { declared, &native_types };
+    execution_prepared_linker event_types = declared_components_linker(&event_linking);
     events = events_prepare(authoring_sources_catalog(sources), &event_types, error, size);
     if (!events) {
         goto done;
     }
-    game_prototype_registry registry = {
-        .components = options->components.components,
-        .component_count = options->components.component_count
-    };
+    game_prototype_registry registry = { .components = components,
+                                         .component_count = acount(components) };
     if (!project_prepare_prototypes(project.content, &registry, &prototypes, error, size)) {
         goto done;
     }
@@ -498,7 +586,9 @@ bool authoring_project_prepare(
     authoring_language_catalog_free(native);
     native = NULL;
     native_prepared_context context = { .native = options->native, .events = events };
-    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+    execution_prepared_linker native_linker = native_capabilities_prepared_linker(&context);
+    declared_components_linking linking = { declared, &native_linker };
+    execution_prepared_linker linker = declared_components_linker(&linking);
     size_t remaining = GAME_PACKAGE_MAX_BYTES;
     collection = game_package_read_budget(
         modules,
@@ -546,6 +636,7 @@ bool authoring_project_prepare(
         .world = { .modules = options->modules,
                    .fields = (options->modules & GAME_WORLD_MATERIALS) ? fields : NULL,
                    .events = events },
+        .declared = declared,
         .modules = modules,
         .module_count = acount(modules),
         .prototypes = prepared,
@@ -557,9 +648,23 @@ bool authoring_project_prepare(
         .scenes = scenes,
         .scene_count = acount(scenes)
     };
-    valid = game_player_prepared_write(&spec, &artifact->data, &artifact->size, error, size);
+    char *title = project.application.title ? project.application.title
+                                            : project.name;
+    game_player_application application = { .title = title,
+                                            .width = project.application.width,
+                                            .height = project.application.height,
+                                            .fullscreen = project.application.fullscreen,
+                                            .icon = project.application.icon };
+    valid = game_player_prepared_write(
+        &spec,
+        &application,
+        &artifact->data,
+        &artifact->size,
+        error,
+        size
+    );
     if (valid) {
-        artifact->manifest = manifest(assets, artifact);
+        artifact->manifest = manifest(assets, &icon, artifact);
         if (!artifact->manifest) {
             authoring_project_artifact_free(artifact);
             valid = fail(error, size, "Prepared resource manifest encoding failed");
@@ -595,6 +700,8 @@ done:
     game_event_catalog_free(events);
     authoring_sources_free(sources);
     authoring_language_catalog_free(native);
+    afree(components);
+    declared_components_free(declared);
     chibi_project_free(&project);
     authoring_mesh_unmount_content();
     clear_visuals();

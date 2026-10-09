@@ -71,7 +71,9 @@ authoring_language_catalog *authoring_language_catalog_new(
     const script_catalog *native = native_capabilities_catalog(c->native);
     c->view.entity_type = native->entity_type;
     c->view.tick_event = native->tick_event;
-    if (!append(c, native) || (input->project && !append(c, input->project))) {
+    const script_catalog *declared = script_catalog_project();
+    if (!append(c, native) || (input->project && !append(c, input->project)) ||
+        (declared && !append(c, declared))) {
         if (size) {
             snprintf(error, size, "Conflicting or unretainable project declarations");
         }

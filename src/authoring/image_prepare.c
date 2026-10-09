@@ -14,6 +14,8 @@
 #define CUTE_JPG_IMPLEMENTATION
 #include "vendor/image_jpg.h"
 #define IMAGE_BYTES_MAX (64 * 1024 * 1024)
+#define IMAGE_SIDES_MESSAGE                                                    \
+    "Image dimensions must be between 1 and 2048 pixels per side"
 static char **roots;
 static void clear(void *)
 {
@@ -29,6 +31,31 @@ static bool failure(char *error, size_t size, const char *message)
     }
     return false;
 }
+/* Closes `file` and returns its contents when it holds 1 to IMAGE_BYTES_MAX
+ * bytes. */
+static void *read_file(FILE *file, int *length)
+{
+    bool valid = !fseek(file, 0, SEEK_END);
+    long bytes = valid ? ftell(file) : -1;
+    valid = bytes > 0 && bytes <= IMAGE_BYTES_MAX && !fseek(file, 0, SEEK_SET);
+    unsigned char *data = valid ? xmalloc((size_t)bytes) : NULL;
+    if (valid) {
+        valid = fread(data, 1, (size_t)bytes, file) == (size_t)bytes &&
+                fgetc(file) == EOF;
+    }
+    valid = fclose(file) == 0 && valid;
+    if (!valid) {
+        free(data);
+        return NULL;
+    }
+    *length = (int)bytes;
+    return data;
+}
+static bool sides_valid(int width, int height)
+{
+    return width >= 1 && height >= 1 && width <= RENDER_IMAGE_SIDE_MAX &&
+           height <= RENDER_IMAGE_SIDE_MAX;
+}
 static void *read_bytes(const char *key, int *length)
 {
     if (!key || strncmp(key, "content/", 8) || strstr(key, "..") || strchr(key, '\\')) {
@@ -40,24 +67,9 @@ static void *read_bytes(const char *key, int *length)
         snprintf(path, size, "%s/%s", roots[i], key + 8);
         FILE *file = fopen(path, "rb");
         free(path);
-        if (!file) {
-            continue;
+        if (file) {
+            return read_file(file, length);
         }
-        bool valid = !fseek(file, 0, SEEK_END);
-        long bytes = valid ? ftell(file) : -1;
-        valid = bytes > 0 && bytes <= IMAGE_BYTES_MAX && !fseek(file, 0, SEEK_SET);
-        unsigned char *data = valid ? xmalloc((size_t)bytes) : NULL;
-        if (valid) {
-            valid = fread(data, 1, (size_t)bytes, file) == (size_t)bytes &&
-                    fgetc(file) == EOF;
-        }
-        valid = fclose(file) == 0 && valid;
-        if (!valid) {
-            free(data);
-            return NULL;
-        }
-        *length = (int)bytes;
-        return data;
     }
     return NULL;
 }
@@ -81,10 +93,9 @@ static bool decode(void *, const char *key, shader_image_view *out, char *error,
     } else {
         chibi_image_cj_load_jpg_wh(bytes, length, &width, &height);
     }
-    if (width < 1 || height < 1 || width > RENDER_IMAGE_SIDE_MAX ||
-        height > RENDER_IMAGE_SIDE_MAX) {
+    if (!sides_valid(width, height)) {
         free(bytes);
-        return failure(error, size, "Image dimensions must be between 1 and 2048 pixels per side");
+        return failure(error, size, IMAGE_SIDES_MESSAGE);
     }
     unsigned char *pixels = NULL;
     if (png) {
@@ -104,6 +115,30 @@ static bool decode(void *, const char *key, shader_image_view *out, char *error,
     }
     *out = (shader_image_view){ pixels, width, height };
     return true;
+}
+void *image_prepare_png_read(const char *path, int *length, char *error, size_t size)
+{
+    FILE *file = fopen(path, "rb");
+    void *bytes = file ? read_file(file, length) : NULL;
+    if (!bytes) {
+        failure(error, size, "Cannot read bounded image file");
+        return NULL;
+    }
+    int width = 0, height = 0;
+    chibi_image_cp_load_png_wh(bytes, *length, &width, &height);
+    if (!sides_valid(width, height)) {
+        free(bytes);
+        failure(error, size, IMAGE_SIDES_MESSAGE);
+        return NULL;
+    }
+    chibi_image_cp_image_t image = chibi_image_cp_load_png_mem(bytes, *length);
+    if (!image.pix) {
+        free(bytes);
+        failure(error, size, chibi_image_cp_error_reason);
+        return NULL;
+    }
+    chibi_image_cp_free_png(&image);
+    return bytes;
 }
 bool render_image_mount_content(const char *root, char *error, size_t size)
 {

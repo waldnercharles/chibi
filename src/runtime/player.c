@@ -17,6 +17,7 @@ struct game_player
     /* Owned names and retained scenes Load Scene can start, the start first. */
     game_player_named_scene *scenes;
     game_player_resource_host resources;
+    declared_components *declared;
     void *generation;
     bool committed;
 };
@@ -34,7 +35,7 @@ uint64_t game_player_asset_fingerprint(const void *data, size_t length)
     }
     return hash;
 }
-static bool relative_path(const char *path)
+bool game_player_relative_path(const char *path)
 {
     if (!path || !path[0] || strnlen(path, 1025) > 1024 || path[0] == '/' ||
         strchr(path, '\\') || strchr(path, ':')) {
@@ -61,7 +62,7 @@ bool game_player_asset_valid(const game_player_asset *asset)
     if (!asset || !asset->name || !asset->name[0] || strnlen(asset->name, 1025) > 1024 ||
         asset->kind < 0 || asset->kind >= GAME_PLAYER_ASSET_COUNT ||
         !asset->length || asset->length > GAME_PLAYER_MAX_ASSET_BYTES ||
-        (asset->path && !relative_path(asset->path))) {
+        (asset->path && !game_player_relative_path(asset->path))) {
         return false;
     }
     /* Sounds travel inside the artifact. */
@@ -224,6 +225,7 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
         *remaining = field_budget;
     }
     game_player *p = xcalloc(1, sizeof *p);
+    p->declared = spec->declared ? declared_components_retain(spec->declared) : NULL;
     p->resources = spec->resources;
     if (p->resources.stage) {
         p->generation = p->resources.stage(
@@ -238,6 +240,7 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
             if (options.fields) {
                 material_fields_free(options.fields);
             }
+            declared_components_free(p->declared);
             free(p);
             *remaining = initial_budget;
             return NULL;
@@ -407,6 +410,7 @@ void game_player_free(game_player *p)
             p->resources.discard(p->resources.context, p->generation);
         }
     }
+    declared_components_free(p->declared);
     free(p);
 }
 game_world *game_player_world(const game_player *p)

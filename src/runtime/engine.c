@@ -56,6 +56,7 @@ struct engine
     engine_input *input;
     step_phase phase;
     engine_frame_timing timing;
+    uint64_t scene_steps; /* simulation_steps when the scene started */
     double last_time;
     double accumulator;
     double time_scale;
@@ -217,7 +218,7 @@ engine *engine_new(ecs_world *world, const engine_modules *modules)
         engine_input_host host = result->modules.sources
                                    ? game_source_input_host(&result->source_input)
                                    : (engine_input_host){ 0 };
-        result->input = engine_input_new(world, &host, result->systems);
+        result->input = engine_input_new(world, &host);
         bind_input(result, result->input);
     }
     boundary(result);
@@ -559,21 +560,32 @@ void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user)
 
 void engine_reset(engine *engine)
 {
-    if (engine->emitters) {
-        game_particle_emitters_reset(engine->emitters);
-    }
     engine->timing = (engine_frame_timing){ .alpha = 1 };
     engine->last_time = 0;
     engine->accumulator = 0;
     engine->has_time = false;
     engine->debug_paused = false;
     engine->step_requested = false;
-    engine->phase = STEP_IDLE;
-    engine->error[0] = 0;
     /* Recording and replay follow a scene from its start. */
     aclear(engine->recorded);
     if (engine->input) {
         engine_input_reset(engine->input);
+    }
+    /* Only a restart clears audio; it carries on across scene changes. */
+    if (engine_audio(engine)) {
+        game_audio_reset(engine_audio(engine));
+    }
+    engine_reset_scene(engine);
+}
+
+void engine_reset_scene(engine *engine)
+{
+    /* A step waiting on the old scene's initializers ends with it. */
+    engine->phase = STEP_IDLE;
+    engine->error[0] = 0;
+    engine->scene_steps = engine->timing.simulation_steps;
+    if (engine->emitters) {
+        game_particle_emitters_reset(engine->emitters);
     }
     if (has_simulation(engine)) {
         if (engine->modules.save) {
@@ -588,9 +600,6 @@ void engine_reset(engine *engine)
         }
         if (engine->modules.visibility) {
             game_visibility_reset(engine->modules.visibility);
-        }
-        if (engine_audio(engine)) {
-            game_audio_reset(engine_audio(engine));
         }
         if (engine_ui(engine)) {
             game_ui_reset(engine_ui(engine));
@@ -621,12 +630,21 @@ engine_focus engine_get_focus(const engine *engine)
     return engine ? engine->focus : ENGINE_FOCUS_NONE;
 }
 
+void engine_set_input_actions(engine *engine, const input_action *actions, int count)
+{
+    if (engine->input) {
+        engine_input_set_actions(engine->input, actions, count);
+    }
+}
+
 int engine_sample_controls(engine *engine, uint64_t controls, bool *firing)
 {
     if (!engine->input) {
         return FLOW_ERR_STATE;
     }
-    if (engine->replay) {
+    /* A stopped transport keeps the controls held when it stopped, so hosts
+     * that sample nothing while paused never press them again on resume. */
+    if (engine->replay || (!engine->playing && !engine->step_requested)) {
         *firing = false;
         return FLOW_OK;
     }
@@ -1222,7 +1240,8 @@ static int advance_frame(engine *engine, double monotonic_time)
         engine->accumulator = 0;
     }
     engine->debug_paused = engine_paused(engine);
-    if (engine->modules.visibility && engine->timing.simulation_steps == 0) {
+    if (engine->modules.visibility &&
+        engine->timing.simulation_steps == engine->scene_steps) {
         const char *error = game_visibility_update(engine->modules.visibility, 0);
         if (error) {
             snprintf(engine->error, sizeof engine->error, "%s", error);

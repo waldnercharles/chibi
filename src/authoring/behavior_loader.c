@@ -3,6 +3,7 @@
 #include "authoring/graph_loader_internal.h"
 #include "authoring/preview_source.h"
 
+#include <assert.h>
 #include <stdio.h>
 
 static void load_error(const char *path, const char *stage, const char *message)
@@ -16,7 +17,7 @@ static int load_sources(game_preview_world *world, game_preview_world *second, c
     game_preview_source_staging *stages[2] = { 0 };
     char error[256];
     for (int i = 0; i < 2; i++) {
-        if (!worlds[i] || (i && worlds[i] == worlds[0])) {
+        if (!worlds[i]) {
             continue;
         }
         if (game_preview_sources_prepare(worlds[i], root, behavior_default_backend(), error, sizeof error)) {
@@ -25,7 +26,7 @@ static int load_sources(game_preview_world *world, game_preview_world *second, c
         }
     }
     for (int i = 0; i < 2; i++) {
-        if (!worlds[i] || (i && worlds[i] == worlds[0])) {
+        if (!worlds[i]) {
             continue;
         }
         stages[i] = game_preview_sources_stage(worlds[i], NULL, error, sizeof error);
@@ -52,6 +53,8 @@ fail:
 
 int app_behavior_fixtures_load(game_preview_world *world, game_prototype_preview *preview, const char *root)
 {
+    /* Each world takes each definition once. */
+    assert(!preview || game_prototype_preview_live(preview) != world);
     int graphs = authoring_graphs_prepare(world, preview, root);
     if (graphs < 0) {
         return -1;

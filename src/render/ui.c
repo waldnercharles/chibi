@@ -539,12 +539,16 @@ bool ui_activation_send(const render_ui_host *host, ecs_entity entity, const ui_
     pin_value values[PAYLOAD_MAX];
     float pointer[2];
     count = ui_activation_payload(a, fields, count, primary, pointer, values, PAYLOAD_MAX);
-    return count >= 0 && host->dispatch(
-                             host->context,
-                             ecs_entity_to_u64(entity),
-                             a->event,
-                             (execution_arguments){ .values = values, .count = count }
-                         ) >= 0;
+    if (count < 0) {
+        return false;
+    }
+    host->dispatch(
+        host->context,
+        ecs_entity_to_u64(entity),
+        a->event,
+        (execution_arguments){ .values = values, .count = count }
+    );
+    return true;
 }
 
 static void escape_text(char *out, size_t size, const char *text)
@@ -1590,13 +1594,23 @@ static void send_activations(render_ui *ui, const ui_world *world)
                 snprintf(selector, sizeof selector, "#%s", a.id);
                 game_ui_set_value(model, view->entity, selector, a.value);
             }
-            if (host->dispatch &&
-                !ui_activation_send(host, ecs_entity_from_u64(view->entity), &a, GAME_PRIMARY)) {
+            if (!host->dispatch) {
+                continue;
+            }
+            if (!ui_activation_send(host, ecs_entity_from_u64(view->entity), &a, GAME_PRIMARY)) {
                 snprintf(
                     ui->failure,
                     sizeof ui->failure,
                     "%s declares a payload a UI event cannot carry",
                     a.event
+                );
+            } else if (host->failure && host->failure(host->context)[0]) {
+                snprintf(
+                    ui->failure,
+                    sizeof ui->failure,
+                    "%s failed: %s",
+                    a.event,
+                    host->failure(host->context)
                 );
             }
         }

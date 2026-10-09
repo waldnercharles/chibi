@@ -2,6 +2,7 @@
 
 #include "execution/ecs_reader.h"
 #include "runtime/behaviors/entities_source.h"
+#include "runtime/behaviors/scene_flow.h"
 #include "runtime/component_catalog.h"
 #include "support/xalloc.h"
 
@@ -19,6 +20,7 @@ struct game_world
     eval_component_reader reader;
     execution_log_service log;
     engine_modules modules;
+    game_scene_flow *scenes;
     engine *runtime;
 };
 static void boundary(void *context, double now, double delta)
@@ -62,10 +64,36 @@ static bool install(ecs_world *world, const ecs_component_desc *desc)
     }
     return ecs_world_register_component(world, desc, NULL) == ECS_OK;
 }
+static bool valid_controls(uint64_t controls)
+{
+    _Static_assert(GAME_CONTROL_COUNT < 64, "control bitset");
+    const uint64_t all = ((UINT64_C(1) << GAME_CONTROL_COUNT) - 1) &
+                         ~(UINT64_C(1) << GAME_CONTROL_NONE);
+    return controls && !(controls & ~all);
+}
+static bool valid_actions(const game_world_options *options)
+{
+    if (options->action_count < 0 || options->action_count > INPUT_ACTION_MAX ||
+        (options->action_count && !options->actions)) {
+        return false;
+    }
+    for (int i = 0; i < options->action_count; i++) {
+        const char *name = options->actions[i].name;
+        if (!name || !name[0] || !valid_controls(options->actions[i].controls)) {
+            return false;
+        }
+        for (int j = 0; j < i; j++) {
+            if (!strcmp(options->actions[j].name, name)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
 game_world *game_world_new(const game_world_options *options, char *error, size_t size)
 {
     assert(options && (!size || error));
-    if (options->modules & ~GAME_WORLD_MODULES_ALL ||
+    if (options->modules & ~GAME_WORLD_MODULES_ALL || !valid_actions(options) ||
         (options->fields && !(options->modules & GAME_WORLD_MATERIALS)) ||
         options->components.component_count < 0 ||
         options->components.component_count > 1024 ||
@@ -100,6 +128,7 @@ game_world *game_world_new(const game_world_options *options, char *error, size_
     w->modules.rendering = (options->modules & GAME_WORLD_VISUAL_MOTION) != 0;
     w->modules.sdf_motion = options->sdf_motion;
     w->modules.save = game_save_new();
+    w->scenes = game_scene_flow_new();
     if (options->modules & GAME_WORLD_AUDIO) {
         w->modules.audio = game_audio_new();
     }
@@ -129,6 +158,7 @@ game_world *game_world_new(const game_world_options *options, char *error, size_
     bind(w, EVAL_COMPONENT_READER_SERVICE, &w->reader);
     bind(w, "game.entities", w->modules.entities);
     bind(w, "game.save", w->modules.save);
+    bind(w, "game.scenes", w->scenes);
     bind(w, "game.audio", w->modules.audio);
     bind(w, "game.ui", w->modules.ui);
     bind(w, "game.particles", w->modules.particles);
@@ -139,6 +169,7 @@ game_world *game_world_new(const game_world_options *options, char *error, size_
     }
     w->runtime = engine_new(w->ecs, &w->modules);
     assert(w->runtime);
+    engine_set_input_actions(w->runtime, options->actions, options->action_count);
     return w;
 fail:
     snprintf(error, size, "Runtime component registration failed");
@@ -177,6 +208,7 @@ void game_world_free(game_world *w)
         game_ui_free(w->modules.ui);
     }
     game_save_free(w->modules.save);
+    game_scene_flow_free(w->scenes);
     if (w->owns_ecs) {
         ecs_world_free(w->ecs);
     }
@@ -205,6 +237,11 @@ game_materials *game_world_materials(const game_world *w)
 material_fields *game_world_fields(const game_world *w)
 {
     return w->modules.materials ? game_materials_fields(w->modules.materials) : NULL;
+}
+
+game_scene_flow *game_world_scenes(const game_world *w)
+{
+    return w->scenes;
 }
 
 const engine_modules *game_world_modules(const game_world *w)

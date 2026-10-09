@@ -1,0 +1,66 @@
+#include "runtime/behaviors/scene_flow_definition.h"
+
+#include "runtime/behaviors/scene_flow.h"
+
+#define PORT(NAME, KIND, STORAGE, TYPE_NAME, CONTAINER, FLAGS, GROUP, REFERENCE, OWNER, VALUE) \
+    { .name = NAME,                                                                            \
+      .kind = KIND,                                                                            \
+      .storage = STORAGE,                                                                      \
+      .type_name = TYPE_NAME,                                                                  \
+      .container = CONTAINER,                                                                  \
+      .type_flags = FLAGS,                                                                     \
+      .generic_group = GROUP,                                                                  \
+      .reference_kind = REFERENCE,                                                             \
+      .has_default = true,                                                                     \
+      .default_owner = OWNER,                                                                  \
+      .default_value = VALUE },
+static const native_parameter_definition LOAD_IN[] = { GAME_SCENE_LOAD_INPUTS(PORT) };
+static const native_parameter_definition EXEC[] = { GAME_SCENE_EXEC(PORT) };
+static const native_parameter_definition THEN[] = { GAME_SCENE_THEN(PORT) };
+static const native_parameter_definition CURRENT_OUT[] = {
+    GAME_SCENE_CURRENT_OUTPUTS(PORT)
+};
+#undef PORT
+#define COUNT(ARRAY) ((int)(sizeof ARRAY / sizeof *ARRAY))
+#define ACTION(KEY, NAME, SOURCE, INPUTS)                                      \
+    { .canonical_name = NAME,                                                  \
+      KEY##_PRESENTATION,                                                      \
+      .source_name = SOURCE,                                                   \
+      .kind = SCRIPT_CAPABILITY_ACTION,                                        \
+      .inputs = INPUTS,                                                        \
+      .input_count = COUNT(INPUTS),                                            \
+      .outputs = THEN,                                                         \
+      .output_count = COUNT(THEN),                                             \
+      .completion_output = 0,                                                  \
+      .effects = SCRIPT_EFFECT_HOST }
+static const native_capability_definition DEFINITIONS[] = {
+    ACTION(GAME_SCENE_LOAD, GAME_SCENE_LOAD_NAME, "load_scene", LOAD_IN),
+    ACTION(GAME_SCENE_RELOAD, GAME_SCENE_RELOAD_NAME, "reload_scene", EXEC),
+    { .canonical_name = GAME_SCENE_CURRENT_NAME,
+      GAME_SCENE_CURRENT_PRESENTATION,
+      .source_name = "current_scene",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .pure = true,
+      .outputs = CURRENT_OUT,
+      .output_count = COUNT(CURRENT_OUT),
+      .completion_output = -1,
+      .effects = SCRIPT_EFFECT_READ },
+};
+#define BIND(NAME, CALL, ACCESS)                                               \
+    {                                                                          \
+        .canonical_name = NAME, .implementation = {                            \
+            .call = &CALL,                                                     \
+            .access = &ACCESS                                                  \
+        }                                                                      \
+    }
+static const native_definition_binding BINDINGS[] = {
+    BIND(GAME_SCENE_LOAD_NAME, GAME_SCENE_LOAD_CALL, GAME_SCENE_REQUEST_ACCESS),
+    BIND(GAME_SCENE_RELOAD_NAME, GAME_SCENE_RELOAD_CALL, GAME_SCENE_REQUEST_ACCESS),
+    BIND(GAME_SCENE_CURRENT_NAME, GAME_SCENE_CURRENT_CALL, GAME_SCENE_READ_ACCESS),
+};
+const native_definition_pack GAME_SCENE_DEFINITION_PACK = {
+    .definitions = DEFINITIONS,
+    .definition_count = COUNT(DEFINITIONS),
+    .bindings = BINDINGS,
+    .binding_count = COUNT(BINDINGS),
+};

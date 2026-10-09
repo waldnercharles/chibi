@@ -14,13 +14,13 @@ target_link_libraries(chibi_shader_preparation PUBLIC chibi_visual_catalog chibi
     PRIVATE chibi_graph_compilation chibi_graph_authoring chibi_asset_text chibi_json chibi_image_catalog)
 
 add_library(chibi_project_compilation STATIC)
-foreach(unit project_prepare project_prepare_assets project_compile renderer_catalog prototype_prepare
+foreach(unit component_declarations project_prepare project_prepare_assets project_compile renderer_catalog prototype_prepare
     graph_sources native_graph_prepare material_prepare scene_prepare ui_prepare ui_prepare_assets)
     target_sources(chibi_project_compilation PRIVATE "${CHIBI_SDK_ROOT}/src/authoring/${unit}.c")
 endforeach()
 add_library(Chibi::project_compilation ALIAS chibi_project_compilation)
 set_target_properties(chibi_project_compilation PROPERTIES EXPORT_NAME project_compilation)
-chibi_sdk_headers(chibi_project_compilation PUBLIC authoring/project_compile.h authoring/renderer_catalog.h
+chibi_sdk_headers(chibi_project_compilation PUBLIC authoring/component_declarations.h authoring/project_compile.h authoring/renderer_catalog.h
     authoring/project_prepare.h authoring/prototype_prepare.h authoring/material_prepare.h authoring/scene_prepare.h)
 foreach(header project_prepare_internal graph_sources native_graph_prepare ui_prepare)
     configure_file("${CHIBI_SDK_ROOT}/src/authoring/${header}.h"

@@ -7,13 +7,13 @@ modules; visual editors consume their authoring projections.
 
 ## Declarative documents
 
-Project manifests are `project.kdl`, version 13. Scenes, prototypes, event
+Project manifests are `project.kdl`, version 14. Scenes, prototypes, event
 declarations, models, shapes, materials, fields, shader libraries, scenarios and
 editor configuration use KDL 2. Behaviors, behavior libraries and systems use
 readable `.chibi` source. RML and RCSS remain separate markup formats.
 
 ```kdl
-version 13
+version 14
 name "My Game"
 content "content"
 start_scene "scenes/Main.kdl"
@@ -114,6 +114,8 @@ by a local value. Missing, ambiguous and wrong-kind symbols are errors.
 Values include booleans, numbers, strings, arrays, sets, maps, nominal handles and
 reflected structs. Arrays use `number[]`; collection types use `set<int>` or
 `map<int>`. Literal arrays use `[1, 2]`; reflected struct literals use `{x: 1, y: 2}`.
+Collection natives such as `array_add` return a new value: write
+`hair = array_add(hair, h)`. A pure native called as a statement is an error.
 Runtime strings cannot contain embedded NUL bytes. Explicit scalar conversions use
 `cast<number>(value)` or `cast<float>(value)`. They remain available at numeric
 boundaries; ordinary arithmetic uses its inferred or expected type. A cast to a
@@ -441,7 +443,7 @@ independent editable graph operation.
 
 ### Authoring metadata and reconciliation
 
-Project manifests use version 13. Executable files contain no generated identity
+Project manifests use version 14. Executable files contain no generated identity
 annotations or embedded authoring footer. Optional `<asset>.chibi.meta` JSON stores
 identities, layout, comments, watches and breakpoint settings. It cannot supply
 executable values or connections. Deleting it leaves the code independently

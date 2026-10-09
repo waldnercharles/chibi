@@ -1,5 +1,6 @@
 #pragma once
 #include "runtime/behaviors/package.h"
+#include "runtime/declared_components.h"
 #include "runtime/scenes/scene.h"
 #include "runtime/world.h"
 
@@ -59,6 +60,9 @@ typedef struct
 typedef struct
 {
     game_world_options world;
+    /* Optional project-declared components, retained by the player. World
+     * components and the linker must already include them. */
+    declared_components *declared;
     const game_package_module *modules;
     int module_count;
     const execution_prepared_linker *linker;

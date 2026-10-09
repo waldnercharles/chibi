@@ -5,6 +5,18 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* A pure native returns a new value, so a call statement drops all it did,
+ * including when a named action invokes it. */
+static bool discards_result(const analyzer *a, const script_expression *call)
+{
+    if (call->kind != SCRIPT_EXPR_CALL || call->right >= 0 || !call->result_count) {
+        return false;
+    }
+    const script_catalog_capability
+        *native = script_catalog_capability_by_id(a->catalog, call->capability);
+    return native && native->pure;
+}
+
 int script_analyzer_statement_add(analyzer *a, script_statement statement)
 {
     statement.child_count = acount(statement.children);
@@ -103,7 +115,7 @@ int script_analyzer_statement_block(analyzer *a, TSNode node)
 /* A task symbol declared without its function takes the function of the
  * tasks assigned to it, so awaiting it gives that function's results. Tasks
  * of different or unknown functions leave it awaitable only for completion. */
-static void infer_task(analyzer *a, int symbol, script_type value)
+void script_analyzer_infer_task(analyzer *a, int symbol, script_type value)
 {
     script_symbol *s = &a->out->symbols[symbol];
     if (!(s->type.flags & SCRIPT_TYPE_TASK) || !(value.flags & SCRIPT_TYPE_TASK) ||
@@ -178,35 +190,88 @@ static int task_target(analyzer *a, TSNode node)
     return symbol >= 0 && !shadowed(a, node, a->out->symbols[symbol].name) ? symbol
                                                                            : -1;
 }
-static void task_hints(analyzer *a, TSNode node)
+/* Whether a callable between `node` and the program `body` declares a
+ * function or macro named like the call's function, which the prepass cannot
+ * resolve yet. */
+static bool nested_callee(analyzer *a, TSNode body, TSNode node, TSNode call)
 {
-    if (script_analyzer_is(node, "assignment") &&
-        script_analyzer_is(script_analyzer_field(node, "operator"), "=")) {
-        TSNode value = script_analyzer_field(node, "value");
-        while (script_analyzer_is(value, "parenthesized_expression")) {
-            value = script_analyzer_field(value, "expression");
-        }
-        int symbol = script_analyzer_is(value, "call_expression")
-                       ? task_target(a, node)
-                       : -1;
-        if (symbol >= 0 && (a->out->symbols[symbol].type.flags & SCRIPT_TYPE_TASK)) {
-            script_type task = { .storage = PIN_U64,
-                                 .nominal = task_function(a, value),
-                                 .flags = SCRIPT_TYPE_TASK };
-            infer_task(a, symbol, task);
+    TSNode callee = script_analyzer_field(call, "function");
+    if (!script_analyzer_is(callee, "identifier")) {
+        return false;
+    }
+    char *name = script_analyzer_name_copy(a, callee);
+    bool found = false;
+    for (; !found && !ts_node_eq(node, body); node = ts_node_parent(node)) {
+        for (uint32_t i = 0; !found && i < script_analyzer_named_count(node); i++) {
+            TSNode child = ts_node_named_child(node, i);
+            if (!script_analyzer_is(child, "function_declaration") &&
+                !script_analyzer_is(child, "macro_declaration")) {
+                continue;
+            }
+            char *declared = script_analyzer_name_copy(a, script_analyzer_field(child, "name"));
+            found = !strcmp(declared, name);
+            free(declared);
         }
     }
+    free(name);
+    return found;
+}
+/* The state `set_variable<"name">(value)` writes, or -1. */
+static int state_write(analyzer *a, TSNode call, TSNode *value)
+{
+    char *name = script_analyzer_qualified_name(a, script_analyzer_field(call, "function"));
+    int index = script_catalog_find_capability(a->catalog, name, SCRIPT_CAPABILITY_FUNCTION);
+    free(name);
+    TSNode types = script_analyzer_field(call, "type_arguments");
+    TSNode arguments = script_analyzer_field(call, "arguments");
+    if (index < 0 ||
+        a->catalog->capabilities[index].state_access != SCRIPT_STATE_ACCESS_WRITE ||
+        script_analyzer_named_count(types) != 1 ||
+        script_analyzer_named_count(arguments) != 1) {
+        return -1;
+    }
+    TSNode argument = ts_node_named_child(arguments, 0);
+    *value = script_analyzer_field(argument, "value");
+    if (ts_node_is_null(*value)) {
+        *value = argument;
+    }
+    TSNode type = ts_node_named_child(types, 0);
+    return script_analyzer_lookup_storage(a, script_analyzer_field(type, "name"), SCRIPT_STATE);
+}
+static void task_hints(analyzer *a, TSNode body, TSNode node)
+{
+    TSNode value = { 0 };
+    int symbol = -1;
+    if (script_analyzer_is(node, "assignment") &&
+        script_analyzer_is(script_analyzer_field(node, "operator"), "=")) {
+        value = script_analyzer_field(node, "value");
+        symbol = task_target(a, node);
+    } else if (script_analyzer_is(node, "call_expression")) {
+        symbol = state_write(a, node, &value);
+    }
+    while (script_analyzer_is(value, "parenthesized_expression")) {
+        value = script_analyzer_field(value, "expression");
+    }
+    if (symbol >= 0 && (a->out->symbols[symbol].type.flags & SCRIPT_TYPE_TASK) &&
+        script_analyzer_is(value, "call_expression") &&
+        !nested_callee(a, body, node, value)) {
+        script_type task = { .storage = PIN_U64,
+                             .nominal = task_function(a, value),
+                             .flags = SCRIPT_TYPE_TASK };
+        script_analyzer_infer_task(a, symbol, task);
+    }
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-        task_hints(a, ts_node_named_child(node, i));
+        task_hints(a, body, ts_node_named_child(node, i));
     }
 }
 /* Infers task states from every `state = Call()` before any body is analyzed,
  * so an `await` reads the same type whichever handler comes first. A name
- * that a local or parameter of the same callable also uses is left to the
- * in-order inference, which resolves it in its own scope. */
+ * that a local or parameter of the same callable also uses, or a call to a
+ * nested callable, is left to the in-order inference, which resolves it in
+ * its own scope. */
 void script_analyzer_task_hints(analyzer *a, TSNode body)
 {
-    task_hints(a, body);
+    task_hints(a, body, body);
 }
 /* The first `return` of an inferred function declares its results: one
  * `Result`, or the labels of `return(Hit: h, Distance: d)`. */
@@ -234,10 +299,11 @@ static void infer_results(analyzer *a, script_function *function, TSNode values)
     }
     a->scope = old_scope;
 }
+/* A literal settles to its number, so later returns convert to it. */
 static void infer_type(analyzer *a, int symbol, int expression)
 {
     script_type type = script_analyzer_expr_type(a, expression);
-    type.flags &= ~SCRIPT_TYPE_REFERENCE;
+    type.flags &= ~(SCRIPT_TYPE_REFERENCE | SCRIPT_TYPE_UNTYPED);
     a->out->symbols[symbol].type = type;
 }
 int script_analyzer_statement_inner(analyzer *a, TSNode node)
@@ -294,7 +360,11 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             );
         }
         a->out->symbols[result.symbol].initializer = result.expression;
-        infer_task(a, result.symbol, script_analyzer_expr_type(a, result.expression));
+        script_analyzer_infer_task(
+            a,
+            result.symbol,
+            script_analyzer_expr_type(a, result.expression)
+        );
         result.effects = script_analyzer_expr_effects(a, result.expression);
         if (a->out->expressions[result.expression].awaited) {
             for (int i = 0; i < acount(a->out->symbols); i++) {
@@ -352,14 +422,19 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
         }
         if (address.symbol >= 0) {
             script_analyzer_use(a, target, address.symbol, SCRIPT_WRITE, address.member);
-            infer_task(a, address.symbol, script_analyzer_expr_type(a, result.second));
+            script_analyzer_infer_task(
+                a,
+                address.symbol,
+                script_analyzer_expr_type(a, result.second)
+            );
         }
         return script_analyzer_statement_add(a, result);
     }
     if (script_analyzer_is(node, "expression_statement")) {
         result.kind = SCRIPT_STMT_EXPRESSION;
+        TSNode value = { 0 };
         for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-            TSNode value = ts_node_named_child(node, i);
+            value = ts_node_named_child(node, i);
             if (!ts_node_is_extra(value)) {
                 result.expression = script_analyzer_expression(
                     a,
@@ -376,6 +451,12 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             script_analyzer_diagnostic(a, node, "Expression statements must invoke a callable");
         }
         result.effects = script_analyzer_expr_effects(a, result.expression);
+        if (result.expression >= 0 &&
+            discards_result(a, &a->out->expressions[result.expression])) {
+            char *name = script_analyzer_text_copy(a, script_analyzer_field(value, "function"));
+            script_analyzer_diagnostic(a, node, "%s returns a new value and changes nothing; assign its result", name);
+            free(name);
+        }
         return script_analyzer_statement_add(a, result);
     }
     if (script_analyzer_is(node, "if_statement")) {

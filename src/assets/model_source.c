@@ -56,7 +56,7 @@ static bool load_folder(
     closedir(dir);
     free(directory);
     if (acount(paths) > 1) {
-        qsort(paths, (size_t)acount(paths), sizeof *paths, compare_paths);
+        asort(paths, compare_paths);
     }
     bool valid = true;
     for (int i = 0; i < acount(paths); i++) {

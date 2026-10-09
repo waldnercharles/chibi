@@ -91,7 +91,8 @@ static void collect(TSNode node, int file, TSNode library, function **functions)
     if (is(node, "library")) {
         library = ts_node_child_by_field_name(node, "name", 4);
     }
-    if (is(node, "function_declaration")) {
+    /* An action has no body; it never waits and shadows functions. */
+    if (is(node, "function_declaration") || is(node, "action_declaration")) {
         apush(
             *functions,
             ((function){ .file = file,
@@ -143,7 +144,7 @@ static const function *callee(const corpus *c, int file, TSNode target)
         const function *f = &c->functions[i];
         const char *defined = c->sources[f->file];
         if (!local) {
-            if (!ts_node_is_null(f->library) &&
+            if (!ts_node_is_null(f->body) && !ts_node_is_null(f->library) &&
                 similar_name(source, library, defined, f->library) &&
                 similar_name(source, name, defined, f->name)) {
                 return f;
@@ -241,7 +242,7 @@ char **chibi_migrate_task_calls(const char *const *sources, int count)
         changed = false;
         for (int i = 0; i < acount(c.functions); i++) {
             function *f = &c.functions[i];
-            if (!f->waits && waits(&c, f->file, f->body)) {
+            if (!f->waits && !ts_node_is_null(f->body) && waits(&c, f->file, f->body)) {
                 f->waits = changed = true;
             }
         }
@@ -623,6 +624,75 @@ static TSNode written(TSNode target)
     }
     return target;
 }
+static bool ref_parameter(TSNode parameter)
+{
+    TSNode type = ts_node_child_by_field_name(parameter, "type", 4);
+    for (uint32_t i = 0; !ts_node_is_null(type) && i < ts_node_child_count(type); i++) {
+        if (is(ts_node_child(type, i), "ref")) {
+            return true;
+        }
+    }
+    return false;
+}
+/* The function, macro or action declared directly in `scope` and named like
+ * `name`, if any. */
+static TSNode callable_in(const char *text, TSNode scope, TSNode name)
+{
+    for (uint32_t i = 0; i < ts_node_named_child_count(scope); i++) {
+        TSNode child = ts_node_named_child(scope, i);
+        if ((is(child, "function_declaration") ||
+             is(child, "macro_declaration") || is(child, "action_declaration")) &&
+            same_name(text, ts_node_child_by_field_name(child, "name", 4), text, name)) {
+            return child;
+        }
+    }
+    return (TSNode){ 0 };
+}
+/* Whether the callable `declaration` takes the `index`th or `label`ed
+ * argument by `ref`. An action may write any argument. */
+static bool takes_ref(const char *source, TSNode declaration, int index, TSNode label)
+{
+    if (is(declaration, "action_declaration")) {
+        return true;
+    }
+    TSNode parameters = ts_node_child_by_field_name(declaration, "parameters", 10);
+    for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
+        TSNode parameter = ts_node_named_child(parameters, i);
+        bool matches = ts_node_is_null(label)
+                         ? (int)i == index
+                         : same_name(
+                               source,
+                               ts_node_child_by_field_name(parameter, "name", 4),
+                               source,
+                               label
+                           );
+        if (matches) {
+            return ref_parameter(parameter);
+        }
+    }
+    return false;
+}
+/* Whether `call` may write `argument`: the callee visible at the call takes
+ * it by `ref`, or the callee is declared elsewhere and may. */
+static bool by_reference(const char *source, TSNode call, TSNode argument, int index)
+{
+    TSNode callee = ts_node_child_by_field_name(call, "function", 8);
+    if (!is_name(callee)) {
+        return true;
+    }
+    TSNode label = (TSNode){ 0 };
+    if (is(argument, "named_argument")) {
+        label = ts_node_named_child(ts_node_child_by_field_name(argument, "name", 4), 0);
+    }
+    for (TSNode scope = ts_node_parent(call); !ts_node_is_null(scope);
+         scope = ts_node_parent(scope)) {
+        TSNode declaration = callable_in(source, scope, callee);
+        if (!ts_node_is_null(declaration)) {
+            return takes_ref(source, declaration, index, label);
+        }
+    }
+    return true;
+}
 /* Whether the function's own statements write `name` before a local of the
  * same name shadows it. */
 static bool assigns(const char *source, TSNode node, const char *name)
@@ -632,13 +702,14 @@ static bool assigns(const char *source, TSNode node, const char *name)
         return true;
     }
     if (is(node, "argument_list")) {
-        /* A `ref` parameter may write any argument it is given. */
+        /* A `ref` parameter may write the argument it is given. */
         for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-            TSNode value = ts_node_named_child(node, i);
+            TSNode argument = ts_node_named_child(node, i), value = argument;
             if (is(value, "named_argument")) {
                 value = ts_node_child_by_field_name(value, "value", 5);
             }
-            if (names(source, written(value), name)) {
+            if (names(source, written(value), name) &&
+                by_reference(source, ts_node_parent(node), argument, (int)i)) {
                 return true;
             }
         }
@@ -925,19 +996,6 @@ static bool declares_name(const char *text, TSNode scope, TSNode name)
     }
     return false;
 }
-/* Whether a function or macro declared directly in `scope` is named like
- * `name`. */
-static bool declares_callable(const char *text, TSNode scope, TSNode name)
-{
-    for (uint32_t i = 0; i < ts_node_named_child_count(scope); i++) {
-        TSNode child = ts_node_named_child(scope, i);
-        if ((is(child, "function_declaration") || is(child, "macro_declaration")) &&
-            same_name(text, ts_node_child_by_field_name(child, "name", 4), text, name)) {
-            return true;
-        }
-    }
-    return false;
-}
 /* The lazy declaration a read of `name` at `node` resolves to, if any. */
 static lazy *resolve_lazy(const char *text, lazy *all, TSNode node, TSNode name)
 {
@@ -993,7 +1051,7 @@ static TSNode captured(const char *text, lazy *all, TSNode node, TSNode home, TS
         for (TSNode scope = ts_node_parent(site);
              !ts_node_is_null(scope) && !encloses(scope, home);
              scope = ts_node_parent(scope)) {
-            bool shadows = callee ? declares_callable(text, scope, node)
+            bool shadows = callee ? !ts_node_is_null(callable_in(text, scope, node))
                                   : declares_name(text, scope, node) ||
                                         lazy_in(text, all, scope, node);
             if (scope_node(scope) && shadows) {

@@ -83,7 +83,7 @@ static void settings(execution_wire *wire, game_physics_settings *p)
 }
 static void count(execution_wire *wire, int *value, int *records)
 {
-    execution_wire_count(wire, value, 8);
+    execution_wire_count(wire, value, 1);
     if (wire->error) {
         return;
     }

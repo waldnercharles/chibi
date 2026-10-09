@@ -15,6 +15,10 @@ typedef struct
  * their strings outlive all programs and values resolved against them. */
 int type_catalog_pack_count();
 type_catalog_pack type_catalog_pack_at(int index);
+/* The loaded project's declared types follow the final target's packs. The
+ * owner sets the slot while no project is loaded and clears it (NULL) before
+ * its descriptors are freed. */
+void type_catalog_set_project(const type_catalog_pack *);
 
 int type_catalog_count();
 const type_desc *type_catalog_at(int index);

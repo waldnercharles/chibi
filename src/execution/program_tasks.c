@@ -9,6 +9,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 
 /* Finished slots keep their results for later awaits until this many have
@@ -53,6 +54,18 @@ uint64_t execution_task_command_id(const node_command *command)
     return 0;
 }
 
+/* Generations come from one counter for every instance, so a handle names
+ * one task in the whole program and another instance never finds it. */
+static _Atomic uint32_t generations;
+
+static uint32_t generation_new()
+{
+    uint32_t g;
+    do {
+        g = atomic_fetch_add_explicit(&generations, 1, memory_order_relaxed) + 1;
+    } while (!g);
+    return g;
+}
 static uint64_t handle_of(const execution_instance *instance, const execution_task *t)
 {
     return (uint64_t)t->generation << 32 | (uint64_t)(t - instance->tasks + 1);
@@ -60,7 +73,7 @@ static uint64_t handle_of(const execution_instance *instance, const execution_ta
 static execution_task *find(execution_instance *instance, uint64_t handle)
 {
     int slot = (int)(handle & UINT32_MAX) - 1;
-    if (slot < 0 || slot >= acount(instance->tasks) ||
+    if (slot < 0 || slot >= acount(instance->tasks) || !(handle >> 32) ||
         instance->tasks[slot].generation != handle >> 32) {
         return NULL;
     }
@@ -83,23 +96,21 @@ static void evict(execution_instance *instance)
     instance->finished_last = t->next ? instance->finished_last : 0;
     instance->finished_count--;
     arena_free(&t->storage);
-    *t = (execution_task){ .generation = t->generation + 1, .next = instance->spare };
+    *t = (execution_task){ .next = instance->spare };
     instance->spare = link;
 }
-/* Reuses an evicted slot, or the oldest finished one once TASK_RETAINED have
- * finished. */
+/* Reuses an evicted slot. Finishing evicts, so starting a task never
+ * expires a result early. */
 static execution_task *task_new(execution_instance *instance)
 {
-    if (!instance->spare && instance->finished_count < TASK_RETAINED) {
-        apush(instance->tasks, ((execution_task){ .generation = 1 }));
-        return &instance->tasks[acount(instance->tasks) - 1];
-    }
     if (!instance->spare) {
-        evict(instance);
+        apush(instance->tasks, ((execution_task){ .generation = generation_new() }));
+        return &instance->tasks[acount(instance->tasks) - 1];
     }
     execution_task *t = slot(instance, instance->spare);
     instance->spare = t->next;
     t->next = 0;
+    t->generation = generation_new();
     return t;
 }
 static void adopt(execution_instance *instance, execution_task *parent, execution_task *t)

@@ -53,3 +53,4 @@ content/*/.authoring-*.tmp
 projects/local-game
 .playwright-mcp/
 build-sdk-reflect/
+build-studio/

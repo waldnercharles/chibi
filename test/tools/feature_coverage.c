@@ -63,10 +63,11 @@ static entry *entries;
 static int problems; /* Reported failures; the coverage case fails on any. */
 static prototype_entry *prototypes;
 static script_analysis **analyses; /* One per project source, in catalog order. */
-/* Names a scene reaches: its entities' prototypes and behaviors, their
- * prototypes' behaviors, and the prototypes and libraries that running
- * sources spawn or call. */
-static char **reached_prototypes, **reached_behaviors, **reached_libraries;
+/* Names a scene reaches: its entities' prototypes and behaviors, the
+ * prototypes and libraries that running sources spawn or call, and the
+ * behaviors of spawned prototypes. */
+static char **reached_prototypes, **spawned_prototypes, **reached_behaviors,
+    **reached_libraries;
 
 /* Language library categories; their functions are not engine features. */
 static const char *const LANGUAGE_CATEGORIES[] = { "Array", "Set", "Flow Control", "Conversion" };
@@ -285,26 +286,32 @@ static void reach_behavior(const char *name)
     }
 }
 
-/* Reaches the named prototype with its behaviors and the prototypes it
- * includes. Returns whether it reached it now. */
-static bool reach_prototype(const char *name)
+/* Reaches the named prototype and the prototypes it includes. A spawn also
+ * runs its behaviors, which already hold its includes' behaviors; a scene
+ * placement runs the entity's own list instead. Returns whether it reached
+ * anything new. */
+static bool reach_prototype(const char *name, bool spawned)
 {
     for (int i = 0; i < acount(prototypes); i++) {
         prototype_entry *prototype = &prototypes[i];
         if (strcmp(prototype->name, name)) {
             continue;
         }
-        if (listed(reached_prototypes, name)) {
-            return false;
+        bool reached = !listed(reached_prototypes, name);
+        if (reached) {
+            apush(reached_prototypes, xstrdup(name));
+            for (int j = 0; j < acount(prototype->includes); j++) {
+                reach_prototype(prototype->includes[j], false);
+            }
         }
-        apush(reached_prototypes, xstrdup(prototype->name));
-        for (int j = 0; j < acount(prototype->behaviors); j++) {
-            reach_behavior(prototype->behaviors[j]);
+        if (spawned && !listed(spawned_prototypes, name)) {
+            apush(spawned_prototypes, xstrdup(name));
+            for (int j = 0; j < acount(prototype->behaviors); j++) {
+                reach_behavior(prototype->behaviors[j]);
+            }
+            reached = true;
         }
-        for (int j = 0; j < acount(prototype->includes); j++) {
-            reach_prototype(prototype->includes[j]);
-        }
-        return true;
+        return reached;
     }
     return false;
 }
@@ -379,7 +386,7 @@ static void use_scenes()
             const game_scene_entity *entity = &scene->entities[j];
             use_scene_components(entity->components);
             if (entity->prototype) {
-                reach_prototype(entity->prototype);
+                reach_prototype(entity->prototype, false);
             }
             for (int k = 0; k < acount(entity->behaviors); k++) {
                 reach_behavior(entity->behaviors[k]);
@@ -462,7 +469,7 @@ static bool reach_spawned(
             argument->range.end - argument->range.start - 2,
             source->text + argument->range.start + 1
         );
-        reached |= reach_prototype(name);
+        reached |= reach_prototype(name, true);
     }
     return reached;
 }
@@ -542,6 +549,7 @@ static void free_reach()
     }
     afree(prototypes);
     free_paths(reached_prototypes);
+    free_paths(spawned_prototypes);
     free_paths(reached_behaviors);
     free_paths(reached_libraries);
     for (int i = 0; i < acount(analyses); i++) {

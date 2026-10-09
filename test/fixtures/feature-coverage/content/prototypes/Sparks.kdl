@@ -17,4 +17,3 @@ components {
     GAME.GameTrail lifetime=0.5 width=2.0
     (object)GAME.GameTransform
 }
-(array)behaviors "SparkProbe"

@@ -6,4 +6,3 @@ components {
     (object)GAME.GameMovement
     (object)GAME.GameTransform
 }
-(array)behaviors "InputProbe"

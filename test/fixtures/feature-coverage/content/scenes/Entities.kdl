@@ -1,5 +1,9 @@
 version 1
 name "Entities"
 (array)entities {
-    - name="Spawner" prototype="Spawner"
+    - {
+        name "Spawner"
+        prototype "Spawner"
+        (array)behaviors "EntityProbe"
+    }
 }

@@ -1,5 +1,9 @@
 version 1
 name "Ui"
 (array)entities {
-    - name="Panel" prototype="Panel"
+    - {
+        name "Panel"
+        prototype "Panel"
+        (array)behaviors "PanelProbe"
+    }
 }

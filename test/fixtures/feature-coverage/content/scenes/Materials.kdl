@@ -1,5 +1,9 @@
 version 1
 name "Materials"
 (array)entities {
-    - name="Crate" prototype="Crate"
+    - {
+        name "Crate"
+        prototype "Crate"
+        (array)behaviors "MaterialProbe"
+    }
 }

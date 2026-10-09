@@ -4,4 +4,3 @@ components {
     GAME.GameHealth current=3 maximum=3
     (object)GAME.GameTransform
 }
-(array)behaviors "EntityProbe"

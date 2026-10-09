@@ -6,4 +6,3 @@ components {
     (object)GAME.GameTransform
     GAME.GameVelocity x=60.0
 }
-(array)behaviors "PhysicsProbe"

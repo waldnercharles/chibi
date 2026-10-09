@@ -2,4 +2,3 @@ name "Profile"
 components {
     (object)GAME.GameTransform
 }
-(array)behaviors "SaveProbe"

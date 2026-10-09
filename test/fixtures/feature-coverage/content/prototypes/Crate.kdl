@@ -6,4 +6,3 @@ components {
     (object)GAME.GameMaterial
     (object)GAME.GameTransform
 }
-(array)behaviors "MaterialProbe"

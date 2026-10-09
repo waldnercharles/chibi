@@ -22,6 +22,7 @@
 #include "authoring/prototype_preview.h"
 #include "authoring/reference_index.h"
 #include "authoring/shader_prepare.h"
+#include "authoring/source_catalog.h"
 #include "authoring/source_collection.h"
 #include "authoring/source_format.h"
 #include "authoring/source_intelligence.h"
@@ -281,6 +282,15 @@ static const contract_field CONTRACT_ASSET_REFERENCE[] = {
     { "path", "string", false, "Content-relative asset path, alternatively use kind and name." },
     { "kind", "string", false, "Asset family, required with name when path is omitted." },
     { "name", "string", false, "Asset name, required with kind when path is omitted." },
+};
+static const contract_field CONTRACT_NEW_PROJECT[] = {
+    { "path", "string", true, "New project directory; it must not exist and its parent must." },
+    { "name", "string", true, "Project name written to project.kdl." },
+};
+static const contract_field CONTRACT_NEW_ASSET[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "kind", "string", true, "scene, prototype, behavior, event, system, library, material, shape, field, shader-library or model." },
+    { "name", "string", true, "Asset name: a letter, then letters, digits, - and _." },
 };
 static const contract_field CONTRACT_BAKE_MODEL[] = {
     { "project_root", "string", false, "Saved project directory; defaults to the controller root." },
@@ -599,6 +609,39 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         1,
         true,
         true,
+        false,
+    },
+    {
+        "validate_project",
+        "Validate the manifest, start scene and every asset, listing only "
+        "assets with problems.",
+        CONTRACT_PROJECT_ROOT,
+        CONTRACT_FIELD_COUNT(CONTRACT_PROJECT_ROOT),
+        1,
+        true,
+        true,
+        false,
+    },
+    {
+        "new_project",
+        "Create a project directory with project.kdl and an empty start "
+        "scene.",
+        CONTRACT_NEW_PROJECT,
+        CONTRACT_FIELD_COUNT(CONTRACT_NEW_PROJECT),
+        1,
+        false,
+        false,
+        false,
+    },
+    {
+        "new_asset",
+        "Write an empty asset of a kind in its content folder, the form "
+        "Studio's New menu starts from.",
+        CONTRACT_NEW_ASSET,
+        CONTRACT_FIELD_COUNT(CONTRACT_NEW_ASSET),
+        1,
+        false,
+        false,
         false,
     },
     {
@@ -5827,6 +5870,252 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     return 0;
 }
 
+/* The manifest opens at this build's version and names a start scene that
+   exists; adds a diagnostic and returns 1 when it does not. */
+static int validate_manifest(const char *root, yyjson_mut_doc *doc, yyjson_mut_val *diagnostics)
+{
+    chibi_project project = { 0 };
+    char error[512] = { 0 };
+    if (chibi_project_open(&project, root, error, sizeof error) != 0) {
+        add_load_diagnostic(doc, diagnostics, error);
+        return 1;
+    }
+    char *scene = chibi_project_scene_path(&project, NULL);
+    struct stat info;
+    bool found = scene && stat(scene, &info) == 0 && S_ISREG(info.st_mode);
+    if (!found) {
+        snprintf(
+            error,
+            sizeof error,
+            "start scene not found: %s",
+            project.start_scene ? project.start_scene : "(none)"
+        );
+        add_load_diagnostic(doc, diagnostics, error);
+    }
+    free(scene);
+    chibi_project_free(&project);
+    return !found;
+}
+
+/* What validate_asset checks beyond the catalog: a scene's prototypes and
+   behaviors, and a prototype's shader binding. */
+static int validate_asset_dependencies(const char *root, const catalog_asset *asset, char *error, size_t size)
+{
+    int loader = asset->asset.family->loader;
+    if (asset->errors || (loader != ASSET_SCENE && loader != ASSET_PROTOTYPE)) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    size_t bytes = strlen(root) + strlen(asset->asset.relative) + 2;
+    char *path = xmalloc(bytes);
+    snprintf(path, bytes, "%s/%s", root, asset->asset.relative);
+    char *json = read_file(path, NULL, NULL, error, size);
+    free(path);
+    if (!json) {
+        return CHIBI_AUTOMATION_IO_ERROR;
+    }
+    int status = loader == ASSET_SCENE
+                   ? validate_scene_dependencies(root, json, error, size)
+                   : validate_prototype_shader(root, json, error, size);
+    free(json);
+    return status;
+}
+
+static void add_range_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, const source_catalog_diagnostic *diagnostic)
+{
+    yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
+    yyjson_mut_obj_add_strcpy(doc, object, "severity", "error");
+    yyjson_mut_obj_add_strcpy(doc, object, "rule_name", "CATALOG");
+    yyjson_mut_obj_add_strcpy(doc, object, "message", diagnostic->message);
+    if (diagnostic->range.line) {
+        yyjson_mut_obj_add_int(doc, object, "line", diagnostic->range.line);
+        yyjson_mut_obj_add_int(doc, object, "column", diagnostic->range.column);
+    }
+}
+
+/* The project's declaration catalog, whose diagnostics name the file they are
+   about, such as a scene naming a missing prototype. Without it every source
+   reports only that the catalog is incomplete. NULL with why in `error`. */
+static source_catalog *declaration_catalog(const char *root, char *error, size_t size)
+{
+    authoring_language_catalog *native = source_native_catalog(root, error, size);
+    if (!native) {
+        return NULL;
+    }
+    size_t bytes = strlen(root) + sizeof "/content";
+    char *content = xmalloc(bytes);
+    snprintf(content, bytes, "%s/content", root);
+    source_catalog *catalog = source_catalog_new(content, authoring_language_catalog_view(native));
+    free(content);
+    authoring_language_catalog_free(native);
+    return catalog;
+}
+
+static int handle_validate_project(const char *root, response *result, int *exit_code)
+{
+    catalog_asset *assets = NULL;
+    uint64_t revision = 0;
+    uint64_t hash = 0;
+    char error[256] = { 0 };
+    if (catalog_snapshot_get(root, &assets, &revision, &hash, error, sizeof error) != 0) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
+        return -1;
+    }
+    source_catalog *catalog = declaration_catalog(root, error, sizeof error);
+    if (!catalog) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
+        return -1;
+    }
+    int declarations = source_catalog_diagnostic_count(catalog);
+    bool *placed = xcalloc((size_t)declarations + 1, sizeof *placed);
+    yyjson_mut_doc *doc = result->doc;
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, result->root, "result");
+    yyjson_mut_val *project = yyjson_mut_obj_add_arr(doc, value, "project");
+    int errors = validate_manifest(root, doc, project);
+    int warnings = 0;
+    yyjson_mut_val *problems = yyjson_mut_obj_add_arr(doc, value, "problems");
+    for (int i = 0; i < acount(assets); i++) {
+        const catalog_asset *asset = &assets[i];
+        error[0] = '\0';
+        int asset_errors = asset->errors;
+        asset_errors += validate_asset_dependencies(root, asset, error, sizeof error) !=
+                        CHIBI_AUTOMATION_OK;
+        bool dependencies = asset_errors > asset->errors;
+        size_t bytes = strlen(root) + strlen(asset->asset.relative) + 2;
+        char *path = xmalloc(bytes);
+        snprintf(path, bytes, "%s/%s", root, asset->asset.relative);
+        for (int j = 0; j < declarations; j++) {
+            const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, j);
+            if (diagnostic->path && !strcmp(diagnostic->path, path)) {
+                placed[j] = true;
+                asset_errors++;
+            }
+        }
+        errors += asset_errors;
+        warnings += asset->warnings;
+        if (!asset_errors && !asset->warnings) {
+            free(path);
+            continue;
+        }
+        yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, problems);
+        yyjson_mut_obj_add_strcpy(doc, object, "kind", asset->asset.family->kind);
+        yyjson_mut_obj_add_strcpy(doc, object, "name", asset->name);
+        yyjson_mut_obj_add_strcpy(doc, object, "path", asset->asset.relative);
+        yyjson_mut_obj_add_int(doc, object, "errors", asset_errors);
+        yyjson_mut_obj_add_int(doc, object, "warnings", asset->warnings);
+        add_catalog_diagnostics(doc, object, asset);
+        yyjson_mut_val *diagnostics = yyjson_mut_obj_get(object, "diagnostics");
+        for (int j = 0; j < declarations; j++) {
+            const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(catalog, j);
+            if (diagnostic->path && !strcmp(diagnostic->path, path)) {
+                add_range_diagnostic(doc, diagnostics, diagnostic);
+            }
+        }
+        if (dependencies) {
+            add_load_diagnostic(doc, diagnostics, error);
+        }
+        free(path);
+    }
+    /* A catalog diagnostic about a file no asset family lists stays visible. */
+    for (int j = 0; j < declarations; j++) {
+        if (!placed[j]) {
+            add_range_diagnostic(doc, project, source_catalog_diagnostic_at(catalog, j));
+            errors++;
+        }
+    }
+    free(placed);
+    source_catalog_free(catalog);
+    yyjson_mut_obj_add_bool(doc, value, "valid", errors == 0);
+    yyjson_mut_obj_add_int(doc, value, "assets", acount(assets));
+    yyjson_mut_obj_add_int(doc, value, "errors", errors);
+    yyjson_mut_obj_add_int(doc, value, "warnings", warnings);
+    if (errors) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "project validation failed");
+        return -1;
+    }
+    return 0;
+}
+
+static int handle_new_project(yyjson_val *request, response *result, int *exit_code)
+{
+    const char *path = request_string(request, "path");
+    char error[512] = { 0 };
+    struct stat info;
+    if (path && stat(path, &info) == 0) {
+        snprintf(error, sizeof error, "Project already exists: %s", path);
+        response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, error);
+        return -1;
+    }
+    chibi_project project = { 0 };
+    if (chibi_project_create(path, request_string(request, "name"), error, sizeof error) != 0 ||
+        chibi_project_open(&project, path, error, sizeof error) != 0) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
+        return -1;
+    }
+    char *scene = chibi_project_scene_path(&project, NULL);
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_strcpy(result->doc, value, "project_root", project.root);
+    yyjson_mut_obj_add_str(result->doc, value, "manifest", CHIBI_PROJECT_MANIFEST);
+    yyjson_mut_obj_add_strcpy(
+        result->doc,
+        value,
+        "start_scene",
+        scene + strlen(project.root) + 1
+    );
+    free(scene);
+    chibi_project_free(&project);
+    return 0;
+}
+
+/* The new-asset kind whose folder is the family's, or -1 when the family has
+   no new form. */
+static int new_asset_kind_of(const asset_family *family)
+{
+    for (int i = 0; family && i < NEW_ASSET_KIND_COUNT; i++) {
+        if (!strcmp(new_asset_folder((new_asset_kind)i), family->folder)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int handle_new_asset(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *name = request_string(request, "name");
+    const asset_family *family = family_by_kind(request_string(request, "kind"));
+    int kind = new_asset_kind_of(family);
+    if (kind < 0 || !name) {
+        response_error(
+            result,
+            exit_code,
+            CHIBI_AUTOMATION_INVALID_REQUEST,
+            kind < 0 ? "kind must name an asset family that has a new form" : "name is required"
+        );
+        return -1;
+    }
+    size_t bytes = strlen(root) + sizeof "/content";
+    char *content = xmalloc(bytes);
+    snprintf(content, bytes, "%s/content", root);
+    char error[512] = { 0 };
+    errno = 0;
+    char *path = new_asset_create(content, (new_asset_kind)kind, name, error, sizeof error);
+    free(content);
+    if (!path) {
+        response_error(
+            result,
+            exit_code,
+            errno == EEXIST ? CHIBI_AUTOMATION_CONFLICT : CHIBI_AUTOMATION_INVALID_REQUEST,
+            error
+        );
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_strcpy(result->doc, value, "kind", family->kind);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "name", name);
+    yyjson_mut_obj_add_strcpy(result->doc, value, "path", path + strlen(root) + 1);
+    free(path);
+    return 0;
+}
+
 static void free_behavior_assets(behavior_asset **assets)
 {
     for (int i = 0; i < acount(assets); i++) {
@@ -10990,7 +11279,9 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "profile_scenario") || !strcmp(operation, "status") ||
            !strcmp(operation, "list_assets") || !strcmp(operation, "read_asset") ||
            !strcmp(operation, "validate_asset") ||
-           !strcmp(operation, "bake_model") || !strcmp(operation, "preview_field") ||
+           !strcmp(operation, "validate_project") ||
+           !strcmp(operation, "new_asset") || !strcmp(operation, "bake_model") ||
+           !strcmp(operation, "preview_field") ||
            !strcmp(operation, "search_nodes") || !strcmp(operation, "catalog") ||
            !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
@@ -11050,6 +11341,7 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
     }
     scenario_context image_context = { 0 };
     bool needs_images = root && (!strcmp(operation, "validate_asset") ||
+                                 !strcmp(operation, "validate_project") ||
                                  !strcmp(operation, "inspect_graph") ||
                                  !strcmp(operation, "bake_model"));
     if (needs_images) {
@@ -11104,6 +11396,12 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_read_asset(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "validate_asset")) {
         handle_validate_asset(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "validate_project")) {
+        handle_validate_project(root, &result, exit_code);
+    } else if (!strcmp(operation, "new_project")) {
+        handle_new_project(root_value, &result, exit_code);
+    } else if (!strcmp(operation, "new_asset")) {
+        handle_new_asset(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "catalog")) {
         handle_catalog(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "search_assets")) {

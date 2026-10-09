@@ -158,6 +158,11 @@ selector currently fails: the migrated invalid-source case exposed a NULL progra
 identity in lowering. The supervised debugger located the failure; its completion
 is diagnostic evidence, not a passing test.
 
+`--new-asset` admits one case: `new_asset_create` writes a behavior and a scene
+into one temporary content folder, creating the missing folders, and refuses an
+existing file, a model named like a shape and an invalid name. CPU only; the
+folder is removed afterwards.
+
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,
 effectful result reuse, lexical capture rejection, statement deletion/reordering,

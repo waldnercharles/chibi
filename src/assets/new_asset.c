@@ -15,9 +15,12 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 enum
 {
@@ -170,4 +173,65 @@ char *new_asset_text(new_asset_kind kind, const char *name)
     }
     assert(!"a new asset kind");
     return NULL;
+}
+
+char *new_asset_create(const char *content, new_asset_kind kind, const char *name, char *error, size_t size)
+{
+    if (!new_asset_name_valid(name, error, size)) {
+        return NULL;
+    }
+    size_t bytes = strlen(content) + strlen("shader-libraries") + strlen(name) + 16;
+    char *path = xmalloc(bytes);
+    snprintf(path, bytes, "%s/%s", content, FOLDERS[kind]);
+    if (mkdir(path, 0755) != 0 && errno != EEXIST) {
+        snprintf(error, size, "Cannot create %s: %s", path, strerror(errno));
+        free(path);
+        return NULL;
+    }
+    errno = 0;
+    /* Models are drawn as shapes, so the two kinds share one namespace. */
+    int rival = kind == NEW_ASSET_MODEL ? NEW_ASSET_SHAPE
+              : kind == NEW_ASSET_SHAPE ? NEW_ASSET_MODEL
+                                        : -1;
+    if (rival >= 0) {
+        snprintf(path, bytes, "%s/%s/%s%s", content, FOLDERS[rival], name, DECLARATIVE_ASSET_EXTENSION);
+        if (access(path, F_OK) == 0) {
+            snprintf(error, size, "%s%s already exists", name, DECLARATIVE_ASSET_EXTENSION);
+            errno = EEXIST;
+            free(path);
+            return NULL;
+        }
+    }
+    snprintf(path, bytes, "%s/%s/%s%s", content, FOLDERS[kind], name, new_asset_extension(kind));
+    char *text = new_asset_text(kind, name);
+    if (!text) {
+        snprintf(error, size, "Cannot build an empty asset named %s", name);
+        free(path);
+        return NULL;
+    }
+    /* "x" refuses a file that is already there, so nothing is overwritten. */
+    FILE *file = fopen(path, "wbx");
+    if (!file) {
+        snprintf(
+            error,
+            size,
+            errno == EEXIST ? "%s%s already exists" : "Cannot create %s%s",
+            name,
+            new_asset_extension(kind)
+        );
+        free(text);
+        free(path);
+        return NULL;
+    }
+    size_t length = strlen(text);
+    bool written = fwrite(text, 1, length, file) == length;
+    written = fclose(file) == 0 && written;
+    free(text);
+    if (!written) {
+        snprintf(error, size, "Cannot finish writing %s", path);
+        unlink(path);
+        free(path);
+        return NULL;
+    }
+    return path;
 }

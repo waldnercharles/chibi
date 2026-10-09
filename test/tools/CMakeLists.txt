@@ -81,13 +81,14 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     add_library(chibi_source_runtime_consumer OBJECT
         ../runtime/whole_math.c ../runtime/whole_integer.c ../runtime/whole_conversion.c
         ../runtime/owned_tick.c ../runtime/parallel_tick.c ../runtime/whole_alias.c ../runtime/persistent_store.c
+        ../authoring/new_asset.c
         ../support/reflected_types.c)
     target_include_directories(chibi_source_runtime_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-    target_link_libraries(chibi_source_runtime_consumer PRIVATE Chibi::authoring
+    target_link_libraries(chibi_source_runtime_consumer PRIVATE Chibi::authoring Chibi::asset_authoring
         Chibi::behavior_runtime Chibi::arithmetic_capabilities Chibi::host_native_default)
     target_compile_options(chibi_source_runtime_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_source_runtime_consumer>)
-    target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::arithmetic_capabilities)
+    target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::asset_authoring Chibi::arithmetic_capabilities)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SOURCE_RUNTIME=1)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_RUNTIME=1)
     target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::native_types)

@@ -38,5 +38,11 @@ bool new_asset_name_valid(const char *name, char *error, size_t size);
 behavior_asset *new_asset_graph(behavior_domain domain, const char *name);
 /* The owned code source of an empty `kind` named `name`, as its loader reads it. */
 char *new_asset_text(new_asset_kind kind, const char *name);
+/* Writes the empty `kind` named `name` into its folder under `content`,
+ * creating the folder when it is missing, and returns the owned file path.
+ * NULL with why in `error` when the name is invalid or taken: errno is then
+ * EEXIST for its file, or for a model or shape of that name, since the two
+ * kinds share names. */
+char *new_asset_create(const char *content, new_asset_kind kind, const char *name, char *error, size_t size);
 
 #endif

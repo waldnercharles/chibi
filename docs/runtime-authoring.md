@@ -13,6 +13,25 @@ Games use separate repositories such as `chibi-arena3d`, `chibi-space-cadet` and
 its starter and shell assets in `chibi-studio`. Pass the project root to an
 installed authoring tool rather than mounting a game under the engine checkout.
 
+## Start a project
+
+Scaffold files with the controller instead of copying another project. `new_project`
+writes `project.kdl` and an empty `content/scenes/Start.kdl`; `new_asset` writes an
+empty asset of one kind in its content folder, the same form Studio's New menu
+starts from, and never overwrites a file:
+
+```sh
+printf '%s\n' '{"contract":1,"operation":"new_project","path":"tetris","name":"Tetris"}' | chibi_ctl
+printf '%s\n' '{"contract":1,"operation":"new_asset","kind":"behavior","name":"Board"}' | \
+  chibi_ctl --project-root tetris
+```
+
+Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
+`material`, `shape`, `field`, `shader-library` and `model`. Before running content,
+`validate_project` checks the manifest, its start scene and every asset. Its
+`problems` list only the assets with errors or warnings, each diagnostic naming
+what is missing (`Unknown prototype 'Block'`) and, when known, its line.
+
 ## Edit and verify
 
 1. Read the existing asset and its dependencies. Use the shared SDK's reflected
@@ -57,7 +76,8 @@ printf '%s\n' '{"contract":1,"operation":"validate_asset","path":"behaviors/Proj
 
 Change the path to an asset in your project. A request failure returns a nonzero
 exit status. Inspect the response's diagnostics as well as its status. Retained
-operations include `read_asset`, `validate_asset`, `catalog`, `inspect_graph`,
+operations include `read_asset`, `validate_asset`, `validate_project`,
+`new_project`, `new_asset`, `catalog`, `inspect_graph`,
 `inspect_system`, `inspect_ui`, `find_references`, `call_hierarchy`,
 `run_scenario`, and `runtime_snapshot`. The native contract definitions in
 `src/automation/controller.c` describe each operation's fields. The controller

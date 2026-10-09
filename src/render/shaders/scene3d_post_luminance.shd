@@ -1,4 +1,5 @@
-// Meters this texel's footprint in the scene with an 8x8 grid of bilinear taps.
+// Meters this texel's footprint in the scene with an 8x8 grid of point taps,
+// which sanitize each raw texel so one NaN cannot spoil its neighbors' taps.
 // Red is the sum of log2 luminance over lit taps and green the lit count, both
 // divided by the tap count. Taps darker than 2^-10, such as an empty
 // background, are left out so they cannot brighten the frame.

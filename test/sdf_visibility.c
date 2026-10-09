@@ -716,8 +716,9 @@ void test_render_sdf_visibility()
         setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
     }
 #endif
-    /* The tools binary is not installed beside the engine's resources. */
-    setenv("CHIBI_RENDER_SHADER_DIR", CHIBI_SOURCE_ROOT "/src/render/shaders", 0);
+    /* The tools binary is not installed beside the engine's resources, and the
+     * check must cover this tree's shaders whatever the caller exported. */
+    setenv("CHIBI_RENDER_SHADER_DIR", CHIBI_SOURCE_ROOT "/src/render/shaders", 1);
     CF_Result made = cf_make_app(
         "sdf-visibility",
         0,

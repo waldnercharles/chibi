@@ -178,7 +178,33 @@ static int task_target(analyzer *a, TSNode node)
     return symbol >= 0 && !shadowed(a, node, a->out->symbols[symbol].name) ? symbol
                                                                            : -1;
 }
-static void task_hints(analyzer *a, TSNode node)
+/* Whether a callable between `node` and the program `body` declares a
+ * function or macro named like the call's function, which the prepass cannot
+ * resolve yet. */
+static bool nested_callee(analyzer *a, TSNode body, TSNode node, TSNode call)
+{
+    TSNode callee = script_analyzer_field(call, "function");
+    if (!script_analyzer_is(callee, "identifier")) {
+        return false;
+    }
+    char *name = script_analyzer_name_copy(a, callee);
+    bool found = false;
+    for (; !found && !ts_node_eq(node, body); node = ts_node_parent(node)) {
+        for (uint32_t i = 0; !found && i < script_analyzer_named_count(node); i++) {
+            TSNode child = ts_node_named_child(node, i);
+            if (!script_analyzer_is(child, "function_declaration") &&
+                !script_analyzer_is(child, "macro_declaration")) {
+                continue;
+            }
+            char *declared = script_analyzer_name_copy(a, script_analyzer_field(child, "name"));
+            found = !strcmp(declared, name);
+            free(declared);
+        }
+    }
+    free(name);
+    return found;
+}
+static void task_hints(analyzer *a, TSNode body, TSNode node)
 {
     if (script_analyzer_is(node, "assignment") &&
         script_analyzer_is(script_analyzer_field(node, "operator"), "=")) {
@@ -186,7 +212,8 @@ static void task_hints(analyzer *a, TSNode node)
         while (script_analyzer_is(value, "parenthesized_expression")) {
             value = script_analyzer_field(value, "expression");
         }
-        int symbol = script_analyzer_is(value, "call_expression")
+        int symbol = script_analyzer_is(value, "call_expression") &&
+                             !nested_callee(a, body, node, value)
                        ? task_target(a, node)
                        : -1;
         if (symbol >= 0 && (a->out->symbols[symbol].type.flags & SCRIPT_TYPE_TASK)) {
@@ -197,16 +224,17 @@ static void task_hints(analyzer *a, TSNode node)
         }
     }
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-        task_hints(a, ts_node_named_child(node, i));
+        task_hints(a, body, ts_node_named_child(node, i));
     }
 }
 /* Infers task states from every `state = Call()` before any body is analyzed,
  * so an `await` reads the same type whichever handler comes first. A name
- * that a local or parameter of the same callable also uses is left to the
- * in-order inference, which resolves it in its own scope. */
+ * that a local or parameter of the same callable also uses, or a call to a
+ * nested callable, is left to the in-order inference, which resolves it in
+ * its own scope. */
 void script_analyzer_task_hints(analyzer *a, TSNode body)
 {
-    task_hints(a, body);
+    task_hints(a, body, body);
 }
 /* The first `return` of an inferred function declares its results: one
  * `Result`, or the labels of `return(Hit: h, Distance: d)`. */

@@ -623,19 +623,6 @@ static TSNode written(TSNode target)
     }
     return target;
 }
-static bool declares_function(const char *source, TSNode node, TSNode callee)
-{
-    if ((is(node, "function_declaration") || is(node, "macro_declaration")) &&
-        same_name(source, ts_node_child_by_field_name(node, "name", 4), source, callee)) {
-        return true;
-    }
-    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        if (declares_function(source, ts_node_named_child(node, i), callee)) {
-            return true;
-        }
-    }
-    return false;
-}
 static bool ref_parameter(TSNode parameter)
 {
     TSNode type = ts_node_child_by_field_name(parameter, "type", 4);
@@ -646,55 +633,64 @@ static bool ref_parameter(TSNode parameter)
     }
     return false;
 }
-/* Whether a callable declared in `node` or below, named like `callee`, takes
- * the `index`th or `label`ed argument by `ref`. */
-static bool takes_ref(const char *source, TSNode node, TSNode callee, int index, TSNode label)
+/* The function, macro or action declared directly in `scope` and named like
+ * `name`, if any. */
+static TSNode callable_in(const char *text, TSNode scope, TSNode name)
 {
-    if ((is(node, "function_declaration") || is(node, "macro_declaration")) &&
-        same_name(source, ts_node_child_by_field_name(node, "name", 4), source, callee)) {
-        TSNode parameters = ts_node_child_by_field_name(node, "parameters", 10);
-        for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
-            TSNode parameter = ts_node_named_child(parameters, i);
-            bool matches = ts_node_is_null(label)
-                             ? (int)i == index
-                             : same_name(
-                                   source,
-                                   ts_node_child_by_field_name(parameter, "name", 4),
-                                   source,
-                                   label
-                               );
-            if (matches && ref_parameter(parameter)) {
-                return true;
-            }
+    for (uint32_t i = 0; i < ts_node_named_child_count(scope); i++) {
+        TSNode child = ts_node_named_child(scope, i);
+        if ((is(child, "function_declaration") ||
+             is(child, "macro_declaration") || is(child, "action_declaration")) &&
+            same_name(text, ts_node_child_by_field_name(child, "name", 4), text, name)) {
+            return child;
         }
     }
-    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        if (takes_ref(source, ts_node_named_child(node, i), callee, index, label)) {
-            return true;
+    return (TSNode){ 0 };
+}
+/* Whether the callable `declaration` takes the `index`th or `label`ed
+ * argument by `ref`. An action may write any argument. */
+static bool takes_ref(const char *source, TSNode declaration, int index, TSNode label)
+{
+    if (is(declaration, "action_declaration")) {
+        return true;
+    }
+    TSNode parameters = ts_node_child_by_field_name(declaration, "parameters", 10);
+    for (uint32_t i = 0; i < ts_node_named_child_count(parameters); i++) {
+        TSNode parameter = ts_node_named_child(parameters, i);
+        bool matches = ts_node_is_null(label)
+                         ? (int)i == index
+                         : same_name(
+                               source,
+                               ts_node_child_by_field_name(parameter, "name", 4),
+                               source,
+                               label
+                           );
+        if (matches) {
+            return ref_parameter(parameter);
         }
     }
     return false;
 }
-/* Whether `call` may write `argument`: an authored callee takes it by `ref`,
- * or the callee is declared elsewhere and may. */
+/* Whether `call` may write `argument`: the callee visible at the call takes
+ * it by `ref`, or the callee is declared elsewhere and may. */
 static bool by_reference(const char *source, TSNode call, TSNode argument, int index)
 {
     TSNode callee = ts_node_child_by_field_name(call, "function", 8);
     if (!is_name(callee)) {
         return true;
     }
-    TSNode root = call;
-    while (!ts_node_is_null(ts_node_parent(root))) {
-        root = ts_node_parent(root);
-    }
-    if (!declares_function(source, root, callee)) {
-        return true;
-    }
     TSNode label = (TSNode){ 0 };
     if (is(argument, "named_argument")) {
         label = ts_node_named_child(ts_node_child_by_field_name(argument, "name", 4), 0);
     }
-    return takes_ref(source, root, callee, index, label);
+    for (TSNode scope = ts_node_parent(call); !ts_node_is_null(scope);
+         scope = ts_node_parent(scope)) {
+        TSNode declaration = callable_in(source, scope, callee);
+        if (!ts_node_is_null(declaration)) {
+            return takes_ref(source, declaration, index, label);
+        }
+    }
+    return true;
 }
 /* Whether the function's own statements write `name` before a local of the
  * same name shadows it. */
@@ -999,19 +995,6 @@ static bool declares_name(const char *text, TSNode scope, TSNode name)
     }
     return false;
 }
-/* Whether a function or macro declared directly in `scope` is named like
- * `name`. */
-static bool declares_callable(const char *text, TSNode scope, TSNode name)
-{
-    for (uint32_t i = 0; i < ts_node_named_child_count(scope); i++) {
-        TSNode child = ts_node_named_child(scope, i);
-        if ((is(child, "function_declaration") || is(child, "macro_declaration")) &&
-            same_name(text, ts_node_child_by_field_name(child, "name", 4), text, name)) {
-            return true;
-        }
-    }
-    return false;
-}
 /* The lazy declaration a read of `name` at `node` resolves to, if any. */
 static lazy *resolve_lazy(const char *text, lazy *all, TSNode node, TSNode name)
 {
@@ -1067,7 +1050,7 @@ static TSNode captured(const char *text, lazy *all, TSNode node, TSNode home, TS
         for (TSNode scope = ts_node_parent(site);
              !ts_node_is_null(scope) && !encloses(scope, home);
              scope = ts_node_parent(scope)) {
-            bool shadows = callee ? declares_callable(text, scope, node)
+            bool shadows = callee ? !ts_node_is_null(callable_in(text, scope, node))
                                   : declares_name(text, scope, node) ||
                                         lazy_in(text, all, scope, node);
             if (scope_node(scope) && shadows) {

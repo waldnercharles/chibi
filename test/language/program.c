@@ -2040,6 +2040,8 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                  "    }\n"
                  "    function Bump(x: ref double) { x += 1 }\n"
                  "    function Observe(x: double) { return x }\n"
+                 "    function Wrap() { function Observe(x: ref double) { "
+                 "x = 1 } }\n"
                  "    function Bumped(x: double) -> (Total: double) {\n"
                  "        result Total: double = x\n"
                  "        Bump(Total)\n"
@@ -2089,6 +2091,8 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                    "    }\n"
                    "    function Bump(x: ref double) { x += 1 }\n"
                    "    function Observe(x: double) { return x }\n"
+                   "    function Wrap() { function Observe(x: ref double) { "
+                   "x = 1 } }\n"
                    "    function Bumped(x: double) -> (Total: double) {\n"
                    "        Total = x\n"
                    "        Bump(Total)\n"
@@ -2359,6 +2363,15 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                            "}\n";
     error[0] = '\0';
     REQUIRE(!chibi_migrate_values(callable, error, sizeof error) && strstr(error, "`F`"));
+    /* An action is a callable too. */
+    const char *action = "behavior V { n: double = 0\n"
+                         "    function F() { return 1 }\n"
+                         "    value x = F()\n"
+                         "    function Outer() { action F = timer(1)\n"
+                         "        return x }\n"
+                         "}\n";
+    error[0] = '\0';
+    REQUIRE(!chibi_migrate_values(action, error, sizeof error) && strstr(error, "`F`"));
     free(migrated);
     prepare();
     REQUIRE(compile(expected, BEHAVIOR_BYTECODE));
@@ -2673,10 +2686,17 @@ TEST_CASE(program_task_state_awaits_its_function_results)
                           "if (time > 99) { pulse := 1 } pulse = Charge(time) }"
                           "function Charge(time: double) -> (power: double) { "
                           "yield; return(time * 2); } }";
-    const char *sources[] = { source,    reordered, local,  wrapped,
-                              qualified, nested,    sibling };
+    /* A nested callee types the state for awaits analyzed after it. */
+    const char *inner = "behavior P { pulse: task; power: double = 0;"
+                        "on Impulse(amount, enabled) { Start(amount) }"
+                        "function Start(time: double) { "
+                        "function Charge(time: double) -> (power: double) { "
+                        "yield; return(time * 2); } "
+                        "pulse = Charge(time); power = await pulse } }";
+    const char *sources[] = { source,    reordered, local,   wrapped,
+                              qualified, nested,    sibling, inner };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
-    for (int b = 0; b < 14; b++) {
+    for (int b = 0; b < 16; b++) {
         prepare();
         REQUIRE(compile(sources[b / 2], backends[b % 2]));
         ecs_entity owner = ecs_world_create_entity(world);

@@ -8,6 +8,8 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <spawn.h>
+#include <stdio.h>
+#include <string.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -84,6 +86,24 @@ bool chibi_process_start(chibi_process *process, const char *const *argv, const 
     }
     *process = (chibi_process){ .pid = pid };
     return true;
+}
+
+int chibi_process_run(char *const *argv)
+{
+    pid_t pid;
+    int error = posix_spawn(&pid, argv[0], NULL, NULL, argv, environ);
+    if (error) {
+        fprintf(stderr, "Cannot run %s: %s\n", argv[0], strerror(error));
+        return 1;
+    }
+    int status;
+    while (waitpid(pid, &status, 0) < 0) {
+        if (errno != EINTR) {
+            perror("waitpid");
+            return 1;
+        }
+    }
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
 }
 
 bool chibi_process_poll(chibi_process *process)

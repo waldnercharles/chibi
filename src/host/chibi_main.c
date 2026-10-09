@@ -1,28 +1,27 @@
 #include "assets/project.h"
+#include "host/export.h"
+#include "host/process.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
 
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <spawn.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
 /* chibi [PROJECT] [PLAYER OPTIONS]: prepares the project when its sources or
- * the compiler changed since the last preparation, then plays it. */
+ * the compiler changed since the last preparation, then plays it.
+ * chibi export [PROJECT] --output DIR: builds a runnable game folder. */
 
 #define CHIBI_BUILD_DIR ".chibi/build"
 #define CHIBI_ARTIFACT CHIBI_BUILD_DIR "/game.chibip"
 #define CHIBI_COMPILER_STAMP CHIBI_BUILD_DIR "/compiler"
-
-extern char **environ;
 
 static char *join(const char *base, const char *name)
 {
@@ -116,31 +115,17 @@ static bool changed_since(const char *directory, int64_t since)
     return walk_changed(directory, since, NULL);
 }
 
-static int run(char *const *argv)
-{
-    pid_t pid;
-    int error = posix_spawn(&pid, argv[0], NULL, NULL, argv, environ);
-    if (error) {
-        fprintf(stderr, "Cannot run %s: %s\n", argv[0], strerror(error));
-        return 1;
-    }
-    int status;
-    while (waitpid(pid, &status, 0) < 0) {
-        if (errno != EINTR) {
-            perror("waitpid");
-            return 1;
-        }
-    }
-    return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
-}
-
 static int usage(const char *program)
 {
     printf(
         "Usage: %s [PROJECT] [PLAYER OPTIONS]\n"
+        "       %s export [PROJECT] --output DIR\n"
         "PROJECT is a project directory or its project.kdl. Without one, the\n"
-        "nearest project.kdl at or above the working directory is played.\n"
-        "Player options are passed to chibi-player; see chibi-player --help.\n",
+        "nearest project.kdl at or above the working directory is used.\n"
+        "Player options are passed to chibi-player; see chibi-player --help.\n"
+        "export compiles the project into DIR with the player, its resources\n"
+        "and engine files, ready to run and ship.\n",
+        program,
         program
     );
     return 0;
@@ -232,7 +217,7 @@ static int prepare(const char *bin, const chibi_project *project, const char *ar
         struct timespec started[2];
         clock_gettime(CLOCK_REALTIME, &started[0]);
         started[1] = started[0];
-        result = run(argv);
+        result = chibi_process_run(argv);
         if (!result) {
             utimensat(AT_FDCWD, artifact, started, 0);
             record_compiler(stamp, identity);
@@ -246,10 +231,49 @@ static int prepare(const char *bin, const chibi_project *project, const char *ar
     return result;
 }
 
+static int export_game(int argc, char **argv)
+{
+    const char *requested = NULL, *output = NULL;
+    for (int i = 2; i < argc; i++) {
+        if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
+            return usage(argv[0]);
+        }
+        if (!strcmp(argv[i], "--output") && i + 1 < argc && !output) {
+            output = argv[++i];
+        } else if (argv[i][0] != '-' && !requested) {
+            requested = argv[i];
+        } else {
+            fprintf(stderr, "Invalid export option: %s; use --help.\n", argv[i]);
+            return 2;
+        }
+    }
+    if (!output || !output[0]) {
+        fprintf(stderr, "Export needs --output DIR\n");
+        return 2;
+    }
+    chibi_project project = { 0 };
+    if (!open_project(&project, requested)) {
+        return 2;
+    }
+    char *bin = file_executable_dir();
+    chibi_export_spec spec = { .project = project.root,
+                               .name = project.name,
+                               .icon = project.application.icon,
+                               .bin = bin,
+                               .output = output };
+    bool exported = chibi_export(&spec);
+    free(bin);
+    chibi_project_free(&project);
+    return exported ? 0 : 1;
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h"))) {
         return usage(argv[0]);
+    }
+    if (argc > 1 && !strcmp(argv[1], "export")) {
+        return export_game(argc, argv);
     }
     int first = argc > 1 && argv[1][0] != '-' ? 2 : 1;
     chibi_project project = { 0 };

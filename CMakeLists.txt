@@ -248,13 +248,17 @@ if(CHIBI_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         add_subdirectory(test/language)
     endif()
     add_subdirectory(test/tools)
-    add_executable(test_host test/host/main.c test/host/process.c test/host/state_file.c
-        src/host/process.c src/host/state_file.c)
+    add_executable(test_host test/host/main.c test/host/export.c test/host/process.c
+        test/host/state_file.c src/host/export.c src/host/process.c src/host/state_file.c
+        src/support/xalloc.c third_party/yyjson/yyjson.c)
     set(host_test_headers "${CMAKE_CURRENT_BINARY_DIR}/testing/host/include")
-    foreach(header process state_file)
+    foreach(header export process state_file)
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/host/${header}.h"
             "${host_test_headers}/host/${header}.h" COPYONLY)
     endforeach()
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/support/xalloc.h"
+        "${host_test_headers}/support/xalloc.h" COPYONLY)
+    target_include_directories(test_host PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/third_party/pico_headers/pico_unit.h"
         "${host_test_headers}/third_party/pico_headers/pico_unit.h" COPYONLY)
     target_include_directories(test_host PRIVATE "${host_test_headers}")

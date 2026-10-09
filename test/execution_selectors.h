@@ -50,3 +50,6 @@ CHIBI_GPU_SELECTOR("--studio-source-edit")
 /* Cute's interior border on two shapes in a hidden 64x64 app, through the
  * instanced and tiled draw paths, with readback. */
 CHIBI_GPU_SELECTOR("--interior-border")
+/* Meshes and SDFs hiding each other in a hidden 96x80 app, with and without
+ * hidden-surface rejection and its depth snapshot copies, with readback. */
+CHIBI_GPU_SELECTOR("--sdf-visibility")

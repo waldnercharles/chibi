@@ -65,6 +65,15 @@
       "wall_seconds_warm": 0.8
     },
     {
+      "command": "make agent-gpu-test AGENT_SELECTOR=--sdf-visibility",
+      "backend": "Vulkan (lavapipe)",
+      "status": "passed",
+      "scenes": 14,
+      "wall_seconds_cold": 8.9,
+      "wall_seconds_warm": 2.9,
+      "notes": "Fails on 4 scenes when the whole-canvas depth copy's arguments are swapped."
+    },
+    {
       "command": "build/test/tools/test_tools --interior-border with CF_APP_OPTIONS_GFX_OPENGL_BIT, one local run",
       "backend": "GLES 3.2 (Mesa, Xvfb)",
       "status": "passed",
@@ -106,7 +115,6 @@
   ],
   "not_run": [
     "full native and render aggregate tests, quarantined by repository policy",
-    "the hidden-surface depth copy in src/render/mesh_material.c at run time: no content or admitted check draws imported meshes with SDFs",
     "Windows, macOS and D3D12 or Metal backends",
     "chibi's renderer on browser WebGPU: headless Chromium here offers only a 32-byte SwiftShader adapter, which the page sends to WebGL 2"
   ]

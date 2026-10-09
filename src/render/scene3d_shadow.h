@@ -1,9 +1,24 @@
 #ifndef CHIBI_RENDER_SCENE3D_SHADOW_H
 #define CHIBI_RENDER_SCENE3D_SHADOW_H
 
+#include "platform/cute.h"
 #include "render/scene3d.h"
 
 #include <stddef.h>
+
+/* A depth-only texture and its canvas, which shadow passes draw into on one
+ * layer and the lit pass compares against. Zeroed, it holds nothing. */
+typedef struct
+{
+    CF_Texture map;
+    CF_Canvas canvas;
+    int width, height;
+} render_scene3d_depth_map;
+/* Grows the map to at least the given size, cleared to the far plane. */
+void render_scene3d_depth_map_prepare(render_scene3d_depth_map *depth, int width, int height);
+void render_scene3d_depth_map_free(render_scene3d_depth_map *depth);
+/* Loads the depth-only shader shadow passes draw with, once. */
+bool render_scene3d_depth_shader(CF_Shader *shader, char *error, size_t size);
 
 /* One directional light's cascaded shadow map: depth-only squares of one
  * atlas, each covering a farther range of the view, that the lit pass samples

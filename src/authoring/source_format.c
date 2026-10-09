@@ -114,7 +114,7 @@ static bool tight_before(token t)
 {
     TSNode n = t.node, p = ts_node_parent(n);
     return kind(n, ",") || kind(n, ";") || kind(n, ":") || kind(n, ".") ||
-           kind(n, ")") || kind(n, "]") ||
+           kind(n, "..") || kind(n, ")") || kind(n, "]") ||
            (kind(n, "(") && (kind(p, "parameter_list") || kind(p, "cast_expression") ||
                              (kind(p, "argument_list") &&
                               !kind(ts_node_parent(p), "return_statement")))) ||
@@ -129,7 +129,7 @@ static bool tight_before(token t)
 static bool tight_after(token t)
 {
     TSNode n = t.node, p = ts_node_parent(n);
-    return kind(n, "(") || kind(n, "[") || kind(n, ".") ||
+    return kind(n, "(") || kind(n, "[") || kind(n, ".") || kind(n, "..") ||
            (kind(p, "unary_expression") && ts_node_start_byte(p) == (uint32_t)t.start) ||
            (kind(n, "<") &&
             (kind(p, "type_argument_list") || kind(p, "type_parameter_list") ||

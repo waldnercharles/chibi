@@ -58,7 +58,8 @@ parameter, literal arguments equal to their defaults, inferable declaration and
 argument types, redundant parentheses and casts, handler aliases (the payload is
 `event`), empty `else` blocks, `-> ()` and `return()`, and writes `return(x)` as `return x`. Each rewrite is kept only
 when the re-analyzed program is unchanged; source that does not analyze is only
-re-indented.
+re-indented. Parentheses that group `&&` under `||`, or one bitwise operator under another,
+stay. Ranges are written `0..n - 1`.
 
 Named call arguments use `Value: expression`. An explicit argument type includes
 its value or source, for example `Value: float = amount` or

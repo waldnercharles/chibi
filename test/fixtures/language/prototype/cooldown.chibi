@@ -4,7 +4,7 @@ behavior Cooldown {
 
     on Tick(dt) {
         remaining = clamp(remaining - dt, 0, 2)
-        if (remaining == 0) {
+        if remaining == 0 {
             ready = true
         } else {
             ready = false

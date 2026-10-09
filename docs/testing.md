@@ -165,15 +165,16 @@ by a file. Each refusal's errno tells a bad request from a taken name and a
 storage failure. CPU only; the folder is removed afterwards.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-six cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+seven cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
 start scene inside them is reported once; a UI document named by the
-manifest or a scene must exist; and a prototype that includes another
-validates, runs in a scene and keeps its include through `--format`, while a
-missing include is reported. A few short `chibi_ctl` runs, CPU only; the
-project is removed afterwards.
+manifest or a scene must exist; a scene's missing prototype or behavior is
+one error; and a prototype that includes another validates, runs in a scene
+and keeps its include through `--format`, while a missing include is reported.
+A few short `chibi_ctl` runs, CPU only; the project is removed
+afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,

@@ -27,6 +27,7 @@
 #include "authoring/source_format.h"
 #include "authoring/source_intelligence.h"
 #include "authoring/source_metadata.h"
+#include "authoring/source_minimize.h"
 #include "authoring/source_presentation.h"
 #include "authoring/source_references.h"
 #include "authoring/source_rename.h"
@@ -1358,7 +1359,7 @@ static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
         }
     }
     if (acount(asset->members) > 1) {
-        qsort(asset->members, (size_t)acount(asset->members), sizeof *asset->members, catalog_member_compare);
+        asort(asset->members, catalog_member_compare);
     }
 }
 
@@ -1913,10 +1914,10 @@ static void catalog_link_references(catalog_asset *assets, const reference_index
         catalog_reference *dependencies = assets[i].dependencies;
         catalog_reference *dependents = assets[i].dependents;
         if (acount(dependencies) > 1) {
-            qsort(dependencies, (size_t)acount(dependencies), sizeof *dependencies, catalog_reference_compare);
+            asort(dependencies, catalog_reference_compare);
         }
         if (acount(dependents) > 1) {
-            qsort(dependents, (size_t)acount(dependents), sizeof *dependents, catalog_reference_compare);
+            asort(dependents, catalog_reference_compare);
         }
     }
 }
@@ -2781,7 +2782,7 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
         free(directory_path);
     }
     if (acount(entries) > 1) {
-        qsort(entries, (size_t)acount(entries), sizeof *entries, asset_entry_compare);
+        asort(entries, asset_entry_compare);
     }
     *out = entries;
     return 0;
@@ -3370,7 +3371,7 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
         }
     }
     if (acount(found) > 1) {
-        qsort(found, (size_t)acount(found), sizeof *found, compare_matches);
+        asort(found, compare_matches);
     }
     int total = acount(found);
     uint64_t start = page.cursor < (uint64_t)total ? page.cursor : (uint64_t)total;
@@ -5388,14 +5389,33 @@ static bool save_code_metadata(const char *path, const char *text, const char *m
 
 /* Formatting and optional identity remapping consume exact syntax snapshots. */
 #define CANONICAL_SOURCE_MAX_BYTES (8 * 1024 * 1024)
-static char *canonical_source(const char *text, const char *path, char **metadata, char *error, size_t error_size)
+static char *canonical_source(
+    const source_catalog *sources,
+    const char *text,
+    const char *path,
+    char **metadata,
+    char *error,
+    size_t error_size
+)
 {
     if (strlen(text) > CANONICAL_SOURCE_MAX_BYTES) {
         set_error(error, error_size, "source exceeds formatter byte limit");
         return NULL;
     }
     script_syntax *source = script_parse(text);
-    char *saved = authoring_source_format(source, error, error_size);
+    const char *identity = NULL;
+    for (int i = 0; i < source_catalog_source_count(sources); i++) {
+        const source_catalog_source *entry = source_catalog_source_at(sources, i);
+        if (!strcmp(entry->path, path)) {
+            identity = entry->identity;
+        }
+    }
+    char *minimal = identity
+                      ? authoring_source_minimize(text, source_catalog_view(sources), identity)
+                      : xstrdup(text);
+    script_syntax *shortened = script_parse(minimal);
+    free(minimal);
+    char *saved = authoring_source_format(shortened, error, error_size);
     if (saved) {
         size_t length = strlen(path) + sizeof ".meta";
         char *sidecar_path = xmalloc(length);
@@ -5413,6 +5433,7 @@ static char *canonical_source(const char *text, const char *path, char **metadat
         }
         free(sidecar);
     }
+    script_syntax_free(shortened);
     script_syntax_free(source);
     return saved;
 }
@@ -5421,6 +5442,7 @@ static char *canonical_source(const char *text, const char *path, char **metadat
  * saver. */
 static char *canonical_asset(
     const char *root,
+    const source_catalog *sources,
     const asset_family *family,
     const char *json,
     const char *path,
@@ -5433,7 +5455,7 @@ static char *canonical_asset(
     switch (family->loader) {
         case ASSET_GRAPH: {
             if (!strcmp(family->extension, CODE_ASSET_EXTENSION)) {
-                return canonical_source(json, path, metadata, error, error_size);
+                return canonical_source(sources, json, path, metadata, error, error_size);
             }
             behavior_asset *asset = behavior_asset_load(json);
             if (!asset) {
@@ -5452,7 +5474,7 @@ static char *canonical_asset(
             return text;
         }
         case ASSET_SYSTEM:
-            return canonical_source(json, path, metadata, error, error_size);
+            return canonical_source(sources, json, path, metadata, error, error_size);
         case ASSET_PROTOTYPE: {
             prototype_includes includes = { root };
             game_prototype_registry registry = prototype_registry(&includes);
@@ -5502,6 +5524,17 @@ int chibi_automation_format_assets(const char *root, bool check)
         fprintf(stderr, "chibi_ctl --format: %s\n", error);
         return -1;
     }
+    authoring_language_catalog *native = source_native_catalog(root, error, sizeof error);
+    if (!native) {
+        fprintf(stderr, "chibi_ctl --format: %s\n", error);
+        free_asset_entries(entries);
+        return -1;
+    }
+    size_t length = strlen(root) + sizeof "/content";
+    char *content = xmalloc(length);
+    snprintf(content, length, "%s/content", root);
+    source_catalog *sources = source_catalog_new(content, authoring_language_catalog_view(native));
+    free(content);
     int differing = 0;
     for (int i = 0; i < acount(entries) && differing >= 0; i++) {
         if (entries[i].family->loader == ASSET_UI) {
@@ -5515,7 +5548,7 @@ int chibi_automation_format_assets(const char *root, bool check)
         char *json = read_file(path, &bytes, &hash, error, sizeof error);
         char *metadata = NULL;
         char *text = json
-                       ? canonical_asset(root, entries[i].family, json, path, &metadata, error, sizeof error)
+                       ? canonical_asset(root, sources, entries[i].family, json, path, &metadata, error, sizeof error)
                        : NULL;
         if (text && strcmp(entries[i].family->extension, CODE_ASSET_EXTENSION)) {
             char *disk = asset_text_to_disk(text, error, sizeof error);
@@ -5557,6 +5590,8 @@ int chibi_automation_format_assets(const char *root, bool check)
         free(json);
         free(path);
     }
+    source_catalog_free(sources);
+    authoring_language_catalog_free(native);
     free_asset_entries(entries);
     return differing;
 }
@@ -6201,7 +6236,6 @@ static int handle_validate_project(const char *root, response *result, int *exit
         bool dependencies = validate_asset_dependencies(root, asset, error, sizeof error) !=
                                 CHIBI_AUTOMATION_OK &&
                             !catalog_fallout(error);
-        asset_errors += dependencies;
         /* Kept apart until the asset turns out to have problems. */
         yyjson_mut_val *ui = yyjson_mut_arr(doc);
         asset_errors += validate_catalog_ui(root, asset, doc, ui);
@@ -6211,8 +6245,11 @@ static int handle_validate_project(const char *root, response *result, int *exit
             if (diagnostic->path && !strcmp(diagnostic->path, path)) {
                 placed[j] = true;
                 asset_errors++;
+                /* The catalog already names this missing prototype or behavior, with its line. */
+                dependencies = dependencies && strcmp(diagnostic->message, error);
             }
         }
+        asset_errors += dependencies;
         errors += asset_errors;
         warnings += asset->warnings;
         if (!asset_errors && !asset->warnings) {
@@ -11140,7 +11177,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         apush(matches, match);
     }
     if (acount(matches) > 1) {
-        qsort(matches, (size_t)acount(matches), sizeof *matches, node_match_compare);
+        asort(matches, node_match_compare);
     }
     yyjson_mut_val *nodes = yyjson_mut_obj_add_arr(result->doc, value, "nodes");
     int total = acount(matches);
@@ -11374,7 +11411,8 @@ static int validate_scene_behavior(const char *root, const char *name, char *err
         }
     }
     if (!found) {
-        snprintf(error, error_size, "Unknown behavior source %s", name);
+        /* The catalog's words, so validate_project counts it once. */
+        snprintf(error, error_size, "Unknown behavior or system '%s'", name);
     } else if (!valid && !error[0]) {
         set_error(error, error_size, "Project source preparation failed");
     }
@@ -11413,6 +11451,9 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
             error,
             error_size
         );
+        if (status == CHIBI_AUTOMATION_NOT_FOUND) {
+            set_errorf(error, error_size, "Unknown prototype '%s'", entity->prototype);
+        }
         if (status != CHIBI_AUTOMATION_OK) {
             free(prototype_json);
             break;

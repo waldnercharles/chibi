@@ -894,7 +894,7 @@ av_value *game_prototype_to_value(const game_prototype *prototype)
         for (int i = 0; i < acount(prototype->graphs); i++) {
             apush(graphs, prototype->graphs[i]);
         }
-        qsort(graphs, (size_t)acount(graphs), sizeof *graphs, compare_strings);
+        asort(graphs, compare_strings);
         av_value *array = av_arr(doc);
         for (int i = 0; i < acount(graphs); i++) {
             av_arr_add_strcpy(doc, array, graphs[i]);

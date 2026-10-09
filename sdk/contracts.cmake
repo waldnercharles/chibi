@@ -188,7 +188,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_compiler "${CHIBI_SDK_ROOT}/src/language"
         chibi_language chibi_execution)
     chibi_sdk_contract(chibi_authoring "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_compiler chibi_native_capabilities chibi_reference_index chibi_json chibi_asset_text)
+        chibi_compiler chibi_native_capabilities chibi_reference_index chibi_json chibi_asset_text chibi_input_action)
 endif()
 
 if(CHIBI_SDK_BUILD_DESKTOP)

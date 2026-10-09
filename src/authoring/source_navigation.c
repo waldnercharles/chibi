@@ -1,5 +1,6 @@
 #include "authoring/source_navigation.h"
 
+#include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -235,10 +236,22 @@ static bool member_written(const script_analysis *analysis, const script_express
     return false;
 }
 
+/* `input.<Action>` folds to the action's name, and an action is the event
+ * of that name, which the input map defines. */
+static authoring_target action_target(const authoring_navigation *index, const char *name)
+{
+    int event = script_catalog_find_capability(index->catalog, name, SCRIPT_CAPABILITY_EVENT);
+    return (authoring_target){ AUTHORING_CALLABLE,
+                               -1,
+                               event >= 0 ? index->catalog->capabilities[event].id : 0,
+                               0 };
+}
+
 static void expressions(authoring_navigation *index, int document)
 {
     const authoring_document *source = &index->documents[document];
     const script_analysis *analysis = source->analysis;
+    const uint64_t action_type = script_catalog_id("type", INPUT_ACTION_TYPE);
     for (int i = 0; i < analysis->expression_count; i++) {
         const script_expression *expression = &analysis->expressions[i];
         TSNode node = expression_node(source->syntax, expression->range);
@@ -292,6 +305,13 @@ static void expressions(authoring_navigation *index, int document)
         } else if (expression->kind == SCRIPT_EXPR_COMPONENT && expression->capability && !strcmp(ts_node_type(node), "member_expression")) {
             node = name_node(node);
             target = (authoring_target){ AUTHORING_TYPE, -1, expression->capability, 0 };
+        } else if (
+            expression->kind == SCRIPT_EXPR_CONSTANT && expression->member &&
+            expression->type.nominal == action_type &&
+            !strcmp(ts_node_type(node), "member_expression")
+        ) {
+            node = name_node(node);
+            target = action_target(index, expression->constant.str);
         } else {
             continue;
         }

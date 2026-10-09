@@ -1,3 +1,5 @@
+#include "assets/input_map.h"
+#include "authoring/source_catalog.h"
 #include "authoring/source_intelligence.h"
 #include "authoring/source_rename.h"
 #include "support/xalloc.h"
@@ -6,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static authoring_document documents[3];
 static script_analysis *declarations[3];
@@ -19,6 +22,7 @@ static char error[192];
 static char *edited;
 static authoring_completions completions;
 static authoring_highlight *highlights;
+static source_catalog *input_catalog;
 static const script_catalog_field fields[] = {
     { .id = 20, .name = "x", .type = { .storage = PIN_I32 }, .writable = true },
     { .id = 21, .name = "y", .type = { .storage = PIN_I32 }, .offset = sizeof(int), .writable = true },
@@ -51,6 +55,8 @@ static void cleanup()
     }
     memset(documents, 0, sizeof documents);
     memset(declarations, 0, sizeof declarations);
+    source_catalog_free(input_catalog);
+    input_catalog = NULL;
     navigation = NULL;
     plan = NULL;
     edited = NULL;
@@ -951,6 +957,136 @@ TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
     return true;
 }
 
+/* The project catalog reads content/input.kdl, so `input.Jump`, `on Jump` and
+ * the map's `Jump` node name one action. */
+static bool input_map_project()
+{
+    static const char source[] = "behavior Jumper {\n"
+                                 "    held: bool = false;\n"
+                                 "    on Jump {\n"
+                                 "        held = input.Jump.held;\n"
+                                 "        held = input.jump.pressed;\n"
+                                 "    }\n"
+                                 "}\n";
+    static const script_catalog_parameter action = { .name = "Action",
+                                                     .type = { .storage = PIN_STR } };
+    static const script_catalog_parameter value = { .name = "Value",
+                                                    .type = { .storage = PIN_BOOL } };
+    for (int i = 0; i < 2; i++) {
+        const char *name = i ? INPUT_ACTION_PRESSED : INPUT_ACTION_HELD;
+        capabilities[i] = (script_catalog_capability){
+            .id = script_catalog_id("capability", name),
+            .name = name,
+            .kind = SCRIPT_CAPABILITY_FUNCTION,
+            .parameters = &action,
+            .parameter_count = 1,
+            .results = &value,
+            .result_count = 1,
+            .effects = SCRIPT_EFFECT_READ,
+            .completion_outcome = -1,
+        };
+    }
+    catalog = (script_catalog){ .capabilities = capabilities, .capability_count = 2 };
+    char root[] = "/tmp/chibi-input-navigation-XXXXXX", path[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/" INPUT_MAP_FILE, root);
+    FILE *file = fopen(path, "wb");
+    REQUIRE(file);
+    fputs("Jump {\n    (array)sources \"Space\"\n}\nDash {\n    (array)sources \"X\"\n}\n", file);
+    fclose(file);
+    input_catalog = source_catalog_new(root, &catalog);
+    unlink(path);
+    rmdir(root);
+    REQUIRE(!source_catalog_diagnostic_count(input_catalog));
+    const script_catalog *view = source_catalog_view(input_catalog);
+    document_count = 1;
+    documents[0] = (authoring_document){ .path = "behaviors/Jumper.chibi",
+                                         .syntax = script_parse(source) };
+    documents[0].analysis = script_analyze_document(
+        documents[0].syntax,
+        view,
+        documents[0].path
+    );
+    for (int i = 0; i < documents[0].analysis->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "input navigation: %s\n",
+            documents[0].analysis->diagnostics[i].message
+        );
+    }
+    REQUIRE(documents[0].analysis->valid);
+    navigation = authoring_navigation_new_project(
+        documents,
+        1,
+        view,
+        source_catalog_definitions(input_catalog),
+        source_catalog_definition_count(input_catalog),
+        source_catalog_references(input_catalog),
+        source_catalog_reference_count(input_catalog)
+    );
+    return true;
+}
+TEST_CASE(navigation_connects_input_actions_to_the_input_map)
+{
+    REQUIRE(input_map_project());
+    const authoring_reference *use = at(0, "Jump.held");
+    REQUIRE(use && use->kind == AUTHORING_READ);
+    REQUIRE(
+        use->target.kind == AUTHORING_CALLABLE &&
+        use->target.id == script_catalog_id("event", "Jump")
+    );
+    REQUIRE(use->location.range.end - use->location.range.start == 4);
+    const authoring_reference *handler = at(0, "Jump {"),
+                              *other = at(0, "jump.pressed");
+    REQUIRE(handler && authoring_target_equal(handler->target, use->target));
+    REQUIRE(other && authoring_target_equal(other->target, use->target));
+    const authoring_reference *definition = authoring_navigation_definition(navigation, use->target);
+    REQUIRE(definition && definition->location.document == 1);
+    const char *map = authoring_navigation_document_text(navigation, 1);
+    REQUIRE(authoring_navigation_document_kind(navigation, 1) == SOURCE_TEXT_KDL);
+    REQUIRE(definition->location.range.start == 0 && definition->location.range.end == 4);
+    REQUIRE(definition->location.range.line == 1 && definition->location.range.column == 1);
+    REQUIRE(!strncmp(map, "Jump {", 6));
+    const authoring_reference
+        *dash = authoring_navigation_at(navigation, 1, (int)(strstr(map, "Dash") - map));
+    REQUIRE(dash && dash->kind == AUTHORING_DEFINE && dash->location.range.line == 4);
+    REQUIRE(references(use->target) == 4);
+    return true;
+}
+TEST_CASE(rename_input_action_edits_the_input_map_and_scripts)
+{
+    REQUIRE(input_map_project());
+    authoring_target jump = at(0, "Jump.held")->target;
+    REQUIRE(!plan_rename(jump, "Dash"));
+    REQUIRE(plan_rename(jump, "Leap"));
+    REQUIRE(plan->count == 4);
+    edited = apply(0);
+    REQUIRE(
+        edited && !strcmp(
+                      edited,
+                      "behavior Jumper {\n"
+                      "    held: bool = false;\n"
+                      "    on Leap {\n"
+                      "        held = input.Leap.held;\n"
+                      "        held = input.Leap.pressed;\n"
+                      "    }\n"
+                      "}\n"
+                  )
+    );
+    free(edited);
+    edited = authoring_rename_document(
+        plan,
+        1,
+        authoring_navigation_document_text(navigation, 1),
+        error,
+        sizeof error
+    );
+    REQUIRE(
+        edited && !strcmp(edited, "Leap {\n    (array)sources \"Space\"\n}\nDash {\n    (array)sources \"X\"\n}\n")
+    );
+    return true;
+}
+
 void test_language_navigation()
 {
     pu_setup(NULL, cleanup);
@@ -971,5 +1107,7 @@ void test_language_navigation()
     RUN_TEST_CASE(navigation_resolves_external_definitions_and_selected_references);
     RUN_TEST_CASE(rename_external_declaration_uses_exact_source_and_catalog_identity);
     RUN_TEST_CASE(rename_declared_events_preserves_exact_rml_tokens);
+    RUN_TEST_CASE(navigation_connects_input_actions_to_the_input_map);
+    RUN_TEST_CASE(rename_input_action_edits_the_input_map_and_scripts);
     pu_setup(NULL, NULL);
 }

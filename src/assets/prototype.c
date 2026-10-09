@@ -382,6 +382,18 @@ static void move_strings(game_prototype *dst, game_prototype *src)
     afree(src->strings);
 }
 
+/* Counts what `src` read toward `dst`'s load; false once the load reads too
+ * many documents. */
+static bool expand(game_prototype *dst, const game_prototype *src, char *error, size_t error_size)
+{
+    dst->expanded += 1 + src->expanded;
+    if (dst->expanded < GAME_PROTOTYPE_EXPANSION_MAX) {
+        return true;
+    }
+    set_error(error, error_size, "prototype %s reads more than %d prototypes through its includes and children", dst->name, GAME_PROTOTYPE_EXPANSION_MAX);
+    return false;
+}
+
 /* An include's children come before the including prototype's own. */
 static bool merge_children(game_prototype *dst, game_prototype *src, char *error, size_t error_size)
 {
@@ -479,7 +491,8 @@ static bool merge_include(
         error,
         error_size
     );
-    bool merged = base && merge_prototype(prototype, base, error, error_size);
+    bool merged = base && expand(prototype, base, error, error_size) &&
+                  merge_prototype(prototype, base, error, error_size);
     game_prototype_free(base);
     return merged;
 }
@@ -560,6 +573,9 @@ static bool read_children(
             return false;
         }
         apush(prototype->child_prototypes, child);
+        if (!expand(prototype, child, error, error_size)) {
+            return false;
+        }
     }
     return true;
 }

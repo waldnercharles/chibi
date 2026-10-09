@@ -7,6 +7,7 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -487,6 +488,43 @@ TEST_CASE(prototype_children_spawn_with_it)
     return true;
 }
 
+/* FanN has two children using FanN+1, down to a childless Fan20, so Fan0's
+ * load would read two million documents. */
+static const char *find_fan(const char *name, void *)
+{
+    static char texts[21][160];
+    int level = atoi(name + 3);
+    assert(!strncmp(name, "Fan", 3) && level >= 0 && level <= 20);
+    if (level == 20) {
+        return "name \"Fan20\"\n";
+    }
+    snprintf(
+        texts[level],
+        sizeof texts[level],
+        "name \"Fan%d\"\n(array)children {\n    - name=\"A\" "
+        "prototype=\"Fan%d\"\n"
+        "    - name=\"B\" prototype=\"Fan%d\"\n}\n",
+        level,
+        level + 1,
+        level + 1
+    );
+    return texts[level];
+}
+
+/* A load stops once includes and children have read too many documents. */
+TEST_CASE(prototype_expansion_is_bounded)
+{
+    char error[256];
+    const game_prototype_registry registry = { .components = components,
+                                               .component_count = 2,
+                                               .include = find_fan };
+    prototype = game_prototype_load(find_fan("Fan10", NULL), &registry, error, sizeof error);
+    REQUIRE(prototype && prototype->expanded == 2046);
+    loaded = game_prototype_load(find_fan("Fan0", NULL), &registry, error, sizeof error);
+    REQUIRE(!loaded && strstr(error, "reads more than 65536 prototypes"));
+    return true;
+}
+
 void test_prototype_document()
 {
     pu_setup(NULL, cleanup);
@@ -497,5 +535,6 @@ void test_prototype_document()
     RUN_TEST_CASE(derived_components_are_never_authored_or_captured);
     RUN_TEST_CASE(prototype_children_resolve_and_save_nested);
     RUN_TEST_CASE(prototype_children_spawn_with_it);
+    RUN_TEST_CASE(prototype_expansion_is_bounded);
     pu_clear_setup();
 }

@@ -9,6 +9,9 @@
 
 /* The longest name a prototype may declare, in bytes. */
 #define GAME_PROTOTYPE_NAME_MAX 1024
+/* The most prototype documents one load may read through includes and
+ * children, so a small set of documents cannot expand without bound. */
+#define GAME_PROTOTYPE_EXPANSION_MAX 65536
 
 typedef const char *(*game_prototype_include_fn)(const char *name, void *user);
 
@@ -80,6 +83,7 @@ typedef struct game_prototype
      * spawns: its prototype with the child's components and behaviors, named
      * as the child. Empty for an authored load. */
     struct game_prototype **child_prototypes;
+    int expanded; /* the other documents its load read, at most GAME_PROTOTYPE_EXPANSION_MAX */
     char **strings;
 } game_prototype;
 

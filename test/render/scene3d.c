@@ -156,6 +156,25 @@ static CF_V3 pixel_floor(CF_V3 world)
     return (CF_V3){ ground.x, 0, ground.y };
 }
 
+/* Post-processes the scene target and reads back the tone-mapped output. */
+static bool finish(float time)
+{
+    bool processed = render_scene3d_post_process(post, time);
+    cf_app_draw_onto_screen(false);
+    if (!processed) {
+        return false;
+    }
+    CF_Readback readback = cf_canvas_readback(render_scene3d_post_output(post));
+    assert(readback.id);
+    while (!cf_readback_ready(readback)) {
+        cf_sleep(1);
+    }
+    int bytes = (int)sizeof pixels;
+    bool read = cf_readback_data(readback, pixels, bytes) == bytes;
+    cf_destroy_readback(readback);
+    return read;
+}
+
 static bool render_at(const GameEnvironment *environment, float time)
 {
     GameEnvironment settings = *environment;
@@ -171,20 +190,7 @@ static bool render_at(const GameEnvironment *environment, float time)
     }
     bool drawn = render_scene3d_draw(scene3d, world, particles, &lens, 0, runtime, &settings, (render_skip){ 0 });
     cf_render_to(canvas, true);
-    bool processed = render_scene3d_post_process(post, time);
-    cf_app_draw_onto_screen(false);
-    if (!drawn || !processed) {
-        return false;
-    }
-    CF_Readback readback = cf_canvas_readback(render_scene3d_post_output(post));
-    assert(readback.id);
-    while (!cf_readback_ready(readback)) {
-        cf_sleep(1);
-    }
-    int bytes = (int)sizeof pixels;
-    bool read = cf_readback_data(readback, pixels, bytes) == bytes;
-    cf_destroy_readback(readback);
-    return read;
+    return finish(time) && drawn;
 }
 
 static bool render(const GameEnvironment *environment)
@@ -368,6 +374,36 @@ TEST_CASE(auto_exposure_ignores_an_empty_background)
     /* Only the sunlit top face is metered, so it lands on middle gray. */
     REQUIRE(abs(top().colors.g - 105) <= 10);
     REQUIRE(pixels[0].colors.g == 0);
+    return true;
+}
+
+TEST_CASE(auto_exposure_meters_around_non_finite_texels)
+{
+    GameEnvironment environment = game_environment_defaults();
+    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.auto_exposure = true;
+    environment.adaptation_speed = 0;
+    environment.bloom_strength = 0;
+    REQUIRE(render_scene3d_post_prepare(post, SIDE, SIDE, &environment));
+    /* A material can write NaN. Here every odd column is NaN and the rest 0.5,
+     * as half floats, so filtering raw texels would spoil every metered tap. */
+    enum
+    {
+        HALF_NAN = 0x7e00,
+        HALF_0_5 = 0x3800,
+        HALF_1 = 0x3c00
+    };
+    static unsigned short texels[PIXELS][4];
+    for (int i = 0; i < PIXELS; i++) {
+        unsigned short value = i % SIDE % 2 ? HALF_NAN : HALF_0_5;
+        memcpy(texels[i], (unsigned short[]){ value, value, value, HALF_1 }, sizeof texels[i]);
+    }
+    cf_app_update(NULL);
+    CF_Texture scene = cf_canvas_get_target(render_scene3d_post_target(post));
+    cf_texture_update(scene, texels, (int)sizeof texels);
+    REQUIRE(finish(0));
+    /* The finite columns meter to middle gray, not the empty frame's fallback. */
+    REQUIRE(abs(pixels[(SIDE / 2) * SIDE + SIDE / 2].colors.g - neutral_srgb(.18f)) <= 6);
     return true;
 }
 
@@ -1754,6 +1790,7 @@ void test_render_scene3d()
     RUN_TEST_CASE(auto_exposure_meters_the_frame_to_middle_gray);
     RUN_TEST_CASE(auto_exposure_meters_the_geometric_mean);
     RUN_TEST_CASE(auto_exposure_ignores_an_empty_background);
+    RUN_TEST_CASE(auto_exposure_meters_around_non_finite_texels);
     RUN_TEST_CASE(auto_exposure_adapts_over_scene_time);
     RUN_TEST_CASE(slow_auto_exposure_eases_past_half_float_steps);
     RUN_TEST_CASE(directional_light_casts_shadows);

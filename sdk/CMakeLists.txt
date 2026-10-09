@@ -200,6 +200,11 @@ add_library(Chibi::tasks ALIAS chibi_tasks)
 set_target_properties(chibi_tasks PROPERTIES EXPORT_NAME tasks)
 chibi_sdk_headers(chibi_tasks INTERFACE runtime/tasks.h)
 
+add_library(chibi_input_action INTERFACE)
+add_library(Chibi::input_action ALIAS chibi_input_action)
+set_target_properties(chibi_input_action PROPERTIES EXPORT_NAME input_action)
+chibi_sdk_headers(chibi_input_action INTERFACE runtime/input_action.h)
+
 # The language requires only Tree-sitter's C runtime, independently of the
 # HTML/CSS grammars and UI dependencies in the Studio build.
 include(FetchContent)
@@ -283,7 +288,7 @@ add_library(chibi_native_prepared STATIC "${CHIBI_SDK_ROOT}/src/runtime/native_p
 add_library(Chibi::native_prepared ALIAS chibi_native_prepared)
 set_target_properties(chibi_native_prepared PROPERTIES EXPORT_NAME native_prepared)
 chibi_sdk_headers(chibi_native_prepared PUBLIC runtime/native_prepared.h)
-target_link_libraries(chibi_native_prepared PUBLIC chibi_native_capabilities chibi_behavior_runtime)
+target_link_libraries(chibi_native_prepared PUBLIC chibi_native_capabilities chibi_behavior_runtime PRIVATE chibi_input_action)
 add_library(chibi_scene_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/scenes/scene.c"
     "${CHIBI_SDK_ROOT}/src/runtime/scenes/prototypes.c"
     "${CHIBI_SDK_ROOT}/src/runtime/scenes/prepared.c")
@@ -313,7 +318,7 @@ set_target_properties(chibi_field_catalog PROPERTIES EXPORT_NAME field_catalog)
 chibi_sdk_headers(chibi_field_catalog PUBLIC runtime/material_field.h runtime/material_field_prepared.h)
 target_link_libraries(chibi_field_catalog PUBLIC chibi_fields)
 set(CHIBI_SDK_TARGETS chibi_support chibi_types chibi_execution_contract chibi_ecs
-    chibi_execution chibi_core_capabilities chibi_array_capabilities chibi_field_capabilities chibi_state_capabilities chibi_selection_capabilities chibi_behavior_runtime chibi_events chibi_asset_values chibi_value_document chibi_capabilities chibi_native_capabilities chibi_scene_runtime chibi_scheduling chibi_fields chibi_field_catalog chibi_tasks)
+    chibi_execution chibi_core_capabilities chibi_array_capabilities chibi_field_capabilities chibi_state_capabilities chibi_selection_capabilities chibi_behavior_runtime chibi_events chibi_asset_values chibi_value_document chibi_capabilities chibi_native_capabilities chibi_scene_runtime chibi_scheduling chibi_fields chibi_field_catalog chibi_tasks chibi_input_action)
 list(APPEND CHIBI_SDK_TARGETS chibi_set_capabilities chibi_host_native_catalog chibi_native_prepared
     chibi_comparison_capabilities chibi_conversion_capabilities chibi_text_capabilities chibi_fmt)
 add_library(chibi_ui_documents STATIC "${CHIBI_SDK_ROOT}/src/runtime/ui/documents.c"
@@ -413,12 +418,20 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_headers(chibi_component_presentation PUBLIC authoring/component_presentation.h)
     target_link_libraries(chibi_component_presentation PUBLIC chibi_ecs PRIVATE chibi_asset_text)
     list(APPEND CHIBI_SDK_TARGETS chibi_component_presentation)
+    add_library(chibi_input_map STATIC "${CHIBI_SDK_ROOT}/src/assets/input_map.c")
+    add_library(Chibi::input_map ALIAS chibi_input_map)
+    set_target_properties(chibi_input_map PROPERTIES EXPORT_NAME input_map)
+    chibi_sdk_headers(chibi_input_map PUBLIC assets/input_map.h)
+    target_link_libraries(chibi_input_map PUBLIC chibi_input_action
+        PRIVATE chibi_types chibi_asset_values chibi_asset_text chibi_support)
+    list(APPEND CHIBI_SDK_TARGETS chibi_input_map)
     add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c"
         "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
     chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h)
-    target_link_libraries(chibi_project_document PRIVATE chibi_asset_text chibi_language_syntax chibi_support)
+    target_link_libraries(chibi_project_document PRIVATE chibi_input_action chibi_asset_text
+        chibi_language_syntax chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_project_document)
     add_library(chibi_reference_index STATIC "${CHIBI_SDK_ROOT}/src/authoring/reference_index.c")
     add_library(Chibi::reference_index ALIAS chibi_reference_index)
@@ -491,7 +504,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     target_include_directories(chibi_authoring PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/authoring"
         "${CHIBI_SDK_ROOT}/third_party/yyjson")
     target_link_libraries(chibi_authoring PUBLIC chibi_compiler chibi_native_capabilities chibi_reference_index
-        PRIVATE chibi_json chibi_asset_text)
+        PRIVATE chibi_json chibi_asset_text chibi_input_action)
     list(APPEND CHIBI_SDK_TARGETS chibi_syntax_runtime chibi_language_syntax
         chibi_language chibi_compiler chibi_authoring)
     include(source_authoring.cmake)
@@ -520,7 +533,7 @@ if(TARGET chibi-compile AND TARGET chibi-player)
     install(TARGETS chibi RUNTIME DESTINATION bin)
 endif()
 foreach(target IN LISTS CHIBI_SDK_TARGETS)
-    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
+    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_input_action|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
             target_compile_options(${target} PRIVATE -Wno-experimental)

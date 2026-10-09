@@ -287,13 +287,6 @@ extern int GAME_GameCamera_has(const ecs_world *, ecs_entity);
 extern int GAME_GameCamera_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameCamera_remove(ecs_world *, ecs_entity, uint64_t);
 
-extern const ecs_component_desc GAME_COMPONENT_GameActionBinding;
-extern GameActionBinding *GAME_GameActionBinding_get(ecs_world *, ecs_entity);
-extern const GameActionBinding *GAME_GameActionBinding_get_const(const ecs_world *, ecs_entity);
-extern int GAME_GameActionBinding_has(const ecs_world *, ecs_entity);
-extern int GAME_GameActionBinding_add(ecs_world *, ecs_entity, uint64_t);
-extern int GAME_GameActionBinding_remove(ecs_world *, ecs_entity, uint64_t);
-
 extern const ecs_component_desc GAME_COMPONENT_GameUi;
 extern GameUi *GAME_GameUi_get(ecs_world *, ecs_entity);
 extern const GameUi *GAME_GameUi_get_const(const ecs_world *, ecs_entity);

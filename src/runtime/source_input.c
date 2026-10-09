@@ -40,29 +40,10 @@ static int dispatch(
         size
     );
 }
-static int field_changed(
-    void *context,
-    ecs_entity entity,
-    ecs_component_id component,
-    size_t offset,
-    pin_value value,
-    char *message,
-    size_t size
-)
-{
-    game_source_input *host = context;
-    return result(
-        host,
-        game_source_field_changed(host->sources, entity, component, offset, value, host->now, host->delta),
-        message,
-        size
-    );
-}
 engine_input_host game_source_input_host(game_source_input *host)
 {
     assert(host && host->sources);
     return (engine_input_host){ .context = host,
                                 .has_event = has_event,
-                                .dispatch = dispatch,
-                                .field_changed = field_changed };
+                                .dispatch = dispatch };
 }

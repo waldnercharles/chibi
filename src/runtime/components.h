@@ -849,18 +849,6 @@ typedef enum
     GAME_CONTROL_COUNT,
 } GameControl;
 
-/* Multiple sources for the same action are combined before dispatch. Actions
- * target GameInput owners; firing also controls the continuous Aim state. */
-typedef NODE_COMPONENT_TYPE_DENSE(GameActionBinding)
-{
-    GameControl source;
-    const char *action;
-    bool firing;
-    bool disabled;
-    bool pressed;
-}
-GameActionBinding;
-
 /* Shows the ui asset content/ui/<document>.rml over the game view, above
  * documents with a lower order. An element's emit('Event') binding, as in
  * data-event-click="emit('Resume')", sends that event to this entity; an

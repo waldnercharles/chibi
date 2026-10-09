@@ -293,13 +293,48 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
     }
     bool float_conversion = (from.storage == PIN_F32 && to.storage == PIN_F64) ||
                             (from.storage == PIN_F64 && to.storage == PIN_F32);
+    if (float_conversion) {
+        return value_op(
+            l,
+            (behavior_function_instruction){ .op = BF_CONVERT,
+                                             .type = to.storage,
+                                             .left = slot },
+            range
+        );
+    }
+    /* Integers reach float through double, which holds every int32 exactly. */
+    if (to.storage == PIN_F32 && behavior_scalar_cast_supported(from.storage, PIN_F64)) {
+        script_type wide = { .storage = PIN_F64 };
+        return convert(l, convert(l, slot, from, wide, range), wide, to, range);
+    }
+    if (!behavior_scalar_cast_supported(slot_type(from), slot_type(to))) {
+        char message[128];
+        snprintf(
+            message,
+            sizeof message,
+            "Cannot convert %s to %s",
+            script_scalar_name(from.storage),
+            script_scalar_name(to.storage)
+        );
+        error(l, range, message);
+        return -1;
+    }
     return value_op(
         l,
-        (behavior_function_instruction){ .op = float_conversion ? BF_CONVERT : BF_CAST,
-                                         .type = slot_type(to),
-                                         .left = slot },
+        (behavior_function_instruction){ .op = BF_CAST, .type = slot_type(to), .left = slot },
         range
     );
+}
+/* A fractional value, such as a `number`, truncates to the int an array index
+ * or a range bound takes. Integers keep their width: casts only narrow floats. */
+static int int_slot(lower *l, int value, script_range range)
+{
+    script_type from = l->a->expressions[value].type;
+    int slot = expression(l, value);
+    if (from.storage != PIN_F32 && from.storage != PIN_F64) {
+        return slot;
+    }
+    return convert(l, slot, from, (script_type){ .storage = PIN_I32 }, range);
 }
 static behavior_function_op binary_op(script_operator op)
 {
@@ -786,9 +821,51 @@ static int constructor_from(lower *l, const script_expression *e, int base)
     );
     return host_result(l, behavior_function_builder_host_results(l->builder, host), e->type, e->range);
 }
+/* Plain scalar and string literals that need no conversion; nominal types keep
+ * the constructor. */
+static bool literal_array(lower *l, const script_expression *e)
+{
+    pin_type storage = e->type.storage;
+    if (e->kind != SCRIPT_EXPR_ARRAY || !e->argument_count || e->type.nominal ||
+        storage == PIN_HANDLE) {
+        return false;
+    }
+    for (int i = 0; i < e->argument_count; i++) {
+        const script_expression *value = &l->a->expressions[e->arguments[i].value];
+        if (value->kind != SCRIPT_EXPR_CONSTANT || value->constant.type != storage ||
+            value->constant.container != PIN_CONTAINER_SINGLE ||
+            value->type.storage != storage || value->type.nominal ||
+            (value->type.flags & SCRIPT_TYPE_OPTIONAL)) {
+            return false;
+        }
+    }
+    return true;
+}
+/* An array of literals is one data constant instead of one instruction and host
+ * argument per element. Stores copy it, like catalog default arrays. */
+static int array_constant(lower *l, const script_expression *e)
+{
+    pin_value value = initial(l, e->type);
+    pin_array *items = pin_array_snapshot_allocate(&l->module->storage, e->type.storage, NULL, e->argument_count);
+    for (int i = 0; i < e->argument_count; i++) {
+        const pin_value *item = &l->a->expressions[e->arguments[i].value].constant;
+        int result = pin_value_snapshot_to_arena(&l->module->storage, &items->items[i], item);
+        assert(result == 0);
+        (void)result;
+    }
+    value.ptr = items;
+    return value_op(
+        l,
+        (behavior_function_instruction){ .op = BF_ARRAY,
+                                         .type = BF_POINTER_TYPE,
+                                         .target = BF_CONSTANT,
+                                         .value = value },
+        e->range
+    );
+}
 static int constructor(lower *l, const script_expression *e)
 {
-    return constructor_from(l, e, -1);
+    return literal_array(l, e) ? array_constant(l, e) : constructor_from(l, e, -1);
 }
 static bool concrete_function(const script_analysis *a, const script_function *f)
 {
@@ -1045,6 +1122,23 @@ static const script_catalog_parameter *call_parameter(const script_catalog_capab
     assert(index >= 0 && cap->parameter_count > 0);
     return &cap->parameters[index < cap->parameter_count ? index : cap->parameter_count - 1];
 }
+/* A wildcard parameter takes its argument's type, except that the scalar
+ * operands of a numeric aggregate such as clamp share the call's unified type. */
+static script_type wildcard_type(
+    lower *l,
+    const script_expression *e,
+    const script_catalog_capability *cap,
+    int value
+)
+{
+    script_type type = l->a->expressions[value].type;
+    if (cap->numeric_aggregate && type.storage != PIN_STRUCT &&
+        e->type.storage != PIN_STRUCT && script_type_numeric(type) &&
+        script_type_numeric(e->type)) {
+        type.storage = e->type.storage;
+    }
+    return type;
+}
 static pin_value *argument_defaults(lower *l, const script_expression *e, const script_catalog_capability *cap)
 {
     pin_value *values = NULL;
@@ -1056,7 +1150,7 @@ static pin_value *argument_defaults(lower *l, const script_expression *e, const 
         if (wildcard) {
             for (int j = 0; j < e->argument_count; j++) {
                 if (e->arguments[j].parameter == i) {
-                    type = l->a->expressions[e->arguments[j].value].type;
+                    type = wildcard_type(l, e, cap, e->arguments[j].value);
                 }
             }
         }
@@ -1077,7 +1171,7 @@ static void command_arguments(lower *l, int first, const script_expression *e, c
         }
         script_type expected = call_parameter(cap, arg->parameter)->type;
         if (expected.storage == PIN_FLOW || (expected.flags & SCRIPT_TYPE_UNTYPED)) {
-            expected = l->a->expressions[arg->value].type;
+            expected = wildcard_type(l, e, cap, arg->value);
         }
         int value = expression(l, arg->value);
         value = convert(l, value, l->a->expressions[arg->value].type, expected, arg->range);
@@ -2330,7 +2424,7 @@ static int call(lower *l, const script_expression *e)
         }
         script_type expected = call_parameter(cap, arg->parameter)->type;
         if (expected.storage == PIN_FLOW || (expected.flags & SCRIPT_TYPE_UNTYPED)) {
-            expected = l->a->expressions[arg->value].type;
+            expected = wildcard_type(l, e, cap, arg->value);
         }
         int value = expression(l, arg->value);
         value = convert(l, value, l->a->expressions[arg->value].type, expected, arg->range);
@@ -2838,7 +2932,7 @@ static int reference_expression(lower *l, const script_expression *e)
         int slots[] = { reference(l, e->left), -1, -1, -1 };
         if (e->kind == SCRIPT_EXPR_INDEX) {
             headers[2] = (pin_value){ .type = PIN_I32 };
-            slots[2] = expression(l, e->right);
+            slots[2] = int_slot(l, e->right, e->range);
         }
         return primitive(
             l,
@@ -3133,8 +3227,8 @@ static int expression_value(lower *l, int index)
             return value;
         }
         case SCRIPT_EXPR_INDEX: {
-            int array = expression(l, e->left), index = expression(l, e->right);
-            return array_item(l, array, index, e->type, e->range);
+            int array = expression(l, e->left);
+            return array_item(l, array, int_slot(l, e->right, e->range), e->type, e->range);
         }
         case SCRIPT_EXPR_FALLBACK: return expression(l, e->left);
         case SCRIPT_EXPR_NIL:
@@ -3701,6 +3795,16 @@ static void assign_value(lower *l, const script_statement *s, int value)
 {
     int symbol = s->symbol;
     if (s->expression < 0) {
+        /* A `return` stores into its result, which may be wider. */
+        if (symbol >= 0 && symbol < l->a->symbol_count) {
+            value = convert(
+                l,
+                value,
+                l->a->expressions[s->second].type,
+                l->a->symbols[symbol].type,
+                s->range
+            );
+        }
         store_symbol(l, symbol, value, s->range);
         return;
     }
@@ -4094,7 +4198,8 @@ static void statement(lower *l, int index)
             return;
         }
         case SCRIPT_STMT_FOR: {
-            int first = expression(l, s->expression), last = expression(l, s->second);
+            int first = int_slot(l, s->expression, s->range),
+                last = int_slot(l, s->second, s->range);
             store_symbol(l, s->symbol, first, s->range);
             int bound = behavior_function_builder_local(l->builder, (pin_value){ .type = PIN_I32 });
             emit(

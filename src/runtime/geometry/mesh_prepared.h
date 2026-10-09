@@ -1,7 +1,7 @@
 #ifndef CHIBI_MESH_PREPARED_H
 #define CHIBI_MESH_PREPARED_H
 #include "runtime/geometry/mesh_asset.h"
-#define RENDER_MESH_PREPARED_VERSION UINT64_C(1)
+#define RENDER_MESH_PREPARED_VERSION UINT64_C(2)
 /* Portable field-wise triangle/part/material payload. Resident identity is
  * assigned by the catalog after publication, never persisted as a process ID.
  * Writer bytes use free(); initialized result and budget survive failed reads. */

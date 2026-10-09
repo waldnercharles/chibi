@@ -307,6 +307,38 @@ TEST_CASE(source_minimize_reaches_a_fixed_point)
     return true;
 }
 
+TEST_CASE(source_minimize_keeps_argument_order)
+{
+    /* Arguments run in source order, so out-of-order labels stay. */
+    REQUIRE(minimize(
+        "library Demo {\n"
+        "    function Pair(a: float = 0.0, b: float = 0.0) -> (r: float = 0.0) "
+        "{\n"
+        "        return a - b\n"
+        "    }\n"
+        "    function Next() -> (r: float = 0.0) {\n"
+        "        return 1.0\n"
+        "    }\n"
+        "    function Use() -> (r: float = 0.0) {\n"
+        "        return Pair(b: Next(), a: Next())\n"
+        "    }\n"
+        "}\n",
+        "library Demo {\n"
+        "    function Pair(a: float = 0.0, b: float = 0.0) -> (r: float = 0.0) "
+        "{\n"
+        "        return a - b\n"
+        "    }\n"
+        "    function Next() -> (r: float = 0.0) {\n"
+        "        return 1.0\n"
+        "    }\n"
+        "    function Use() -> (r: float = 0.0) {\n"
+        "        return Pair(b: Next(), a: Next())\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
+
 TEST_CASE(source_minimize_keeps_invalid_source)
 {
     const char
@@ -483,6 +515,8 @@ TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators)
         "        if less(get_velocity().Value.x, 1.0) {\n"
         "            set_velocity_x(multiply(2.0, 3.0), self)\n"
         "        }\n"
+        "        e := self\n"
+        "        set_velocity_x(2.0, e)\n"
         "        lifted := has_velocity()\n"
         "        narrowed := less_float(get_velocity().Value.x, "
         "get_velocity().Value.x)\n"
@@ -496,6 +530,8 @@ TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators)
         "        if self.Velocity.x < 1.0 {\n"
         "            self.Velocity.x = 2.0 * 3.0\n"
         "        }\n"
+        "        e := self\n"
+        "        set_velocity_x(2.0, e)\n"
         "        lifted := has_velocity()\n"
         "        narrowed := less_float(self.Velocity.x, self.Velocity.x)\n"
         "    }\n"
@@ -518,6 +554,7 @@ void test_language_format()
     RUN_TEST_CASE(source_format_keeps_else_and_arrow_spacing);
     RUN_TEST_CASE(source_minimize_drops_redundant_text);
     RUN_TEST_CASE(source_minimize_reaches_a_fixed_point);
+    RUN_TEST_CASE(source_minimize_keeps_argument_order);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);
     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);
     RUN_TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators);

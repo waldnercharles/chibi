@@ -4,7 +4,16 @@ layout(location = 2) flat in vec4 v_material;
 layout(location = 0) out vec4 result;
 layout(set = 2, binding = 0) uniform sampler2D scene_parameters;
 layout(set = 2, binding = SG_SHADOW_BINDING) uniform sampler2DShadow scene_shadow_map;
+layout(set = 2, binding = SG_SHADOW_BLOCKERS_BINDING) uniform sampler2D scene_shadow_blockers;
 const float PI = 3.141592653589793;
+// Taps per blocker search and per soft filter, and the widest radius of each,
+// in texels of the cascade.
+const int SEARCH_TAPS = 16;
+const int FILTER_TAPS = 32;
+const float SOFT_TEXELS = 128.0;
+// The surface's world-space derivatives across the screen.
+vec3 world_dx;
+vec3 world_dy;
 
 vec4 material_value(int slot)
 {
@@ -59,10 +68,76 @@ vec3 surface_light(vec3 base, float roughness, float metallic, vec3 normal, vec3
     return (diffuse + specular) * nl;
 }
 
+// Nine hardware 2x2 comparisons around coord, a texel apart.
+float hard_shadow(vec3 coord, vec2 texel)
+{
+    float lit = 0.0;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            lit += textureLod(scene_shadow_map, vec3(coord.xy + vec2(x, y) * texel, coord.z), 0.0);
+        }
+    }
+    return lit / 9.0;
+}
+
+// How a cascade's depth changes across its atlas UV along the surface's plane,
+// so that wide filters compare each tap against the surface's own depth there
+// rather than the center's (receiver plane depth bias).
+vec2 depth_slope(mat4 matrix)
+{
+    vec2 scale = vec2(0.5, -0.5) * scene_shadow.zw;
+    vec3 dx = (matrix * vec4(world_dx, 0.0)).xyz, dy = (matrix * vec4(world_dy, 0.0)).xyz;
+    dx.xy *= scale;
+    dy.xy *= scale;
+    float determinant = dx.x * dy.y - dx.y * dy.x;
+    if (determinant == 0.0) return vec2(0);
+    return vec2(dy.y * dx.z - dx.y * dy.z, dx.x * dy.z - dy.x * dx.z) / determinant;
+}
+
+// Tap i of count on a unit Vogel disc turned by angle.
+vec2 vogel_tap(int i, int count, float angle)
+{
+    float theta = float(i) * 2.39996323 + angle;
+    return sqrt((float(i) + 0.5) / float(count)) * vec2(cos(theta), sin(theta));
+}
+
+// Percentage-closer soft shadows: the farther the receiver lies past the
+// blockers around it, the wider its filter, by the sun's angular size. The
+// blocker search reads the nearest depth of each 2x2 block of texels, then
+// the filter spreads hardware comparisons over a Vogel disc that each pixel
+// turns differently. Taps stay inside the cascade's square, low to high.
+// Reference: https://developer.download.nvidia.com/shaderlibrary/docs/shadow_PCSS.pdf
+float soft_shadow(int cascade, vec3 coord, vec2 low, vec2 high)
+{
+    vec2 texel = scene_shadow.y * scene_shadow.zw;
+    vec2 slope = depth_slope(scene_shadow_matrices[cascade]);
+    float per_depth = scene_shadow_soft.x * scene_shadow_ranges[cascade] / scene_shadow_texels[cascade];
+    float angle = 2.0 * PI * fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    // A block's nearest texel can lie two texels off the tap, and half floats
+    // hold depths near the far plane only to a 2048th.
+    float tolerance = 2.0 * dot(abs(slope), texel) + coord.z / 1024.0;
+    float search = clamp(per_depth * coord.z, 1.0, SOFT_TEXELS), blockers = 0.0, count = 0.0;
+    for (int i = 0; i < SEARCH_TAPS; i++) {
+        vec2 uv = clamp(coord.xy + vogel_tap(i, SEARCH_TAPS, angle) * search * texel, low, high);
+        float depth = texelFetch(scene_shadow_blockers, ivec2(uv / texel) / 2, 0).r;
+        if (depth >= coord.z + dot(slope, uv - coord.xy) - tolerance) continue;
+        blockers += depth;
+        count += 1.0;
+    }
+    float radius = count > 0.0 ? min(per_depth * (coord.z - blockers / count), SOFT_TEXELS) : 0.0;
+    if (radius < 1.5) return hard_shadow(coord, texel);
+    float lit = 0.0;
+    for (int i = 0; i < FILTER_TAPS; i++) {
+        vec2 uv = clamp(coord.xy + vogel_tap(i, FILTER_TAPS, angle) * radius * texel, low, high);
+        lit += textureLod(scene_shadow_map, vec3(uv, coord.z + dot(slope, uv - coord.xy)), 0.0);
+    }
+    return lit / float(FILTER_TAPS);
+}
+
 // The sun's visibility from the first cascade, finest first, whose square
-// holds the lookup: a 3x3 grid of hardware 2x2 comparisons around the surface
-// point, lifted along its geometric normal by up to 2.5 of that cascade's
-// texels so that sloped surfaces stay in front of their own stored depth.
+// holds the lookup, lifted along its geometric normal by up to 2.5 of that
+// cascade's texels so that sloped surfaces stay in front of their own stored
+// depth. A sun without angular size compares a 3x3 grid around the point.
 float sun_shadow()
 {
     vec3 normal = safe_normal(v_normal, vec3(0, 1, 0));
@@ -74,14 +149,10 @@ float sun_shadow()
         vec4 clip = scene_shadow_matrices[i] * vec4(v_world + normal * lift * scene_shadow_texels[i], 1.0);
         vec2 uv = vec2(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5);
         if (any(lessThan(uv, vec2(edge))) || any(greaterThan(uv, vec2(1.0 - edge))) || clip.z >= 1.0) continue;
-        uv = (uv + vec2(i & 1, i >> 1)) * scene_shadow.zw;
-        float lit = 0.0;
-        for (int y = -1; y <= 1; y++) {
-            for (int x = -1; x <= 1; x++) {
-                lit += textureLod(scene_shadow_map, vec3(uv + vec2(x, y) * texel, clip.z), 0.0);
-            }
-        }
-        return lit / 9.0;
+        vec2 square = vec2(i & 1, i >> 1);
+        vec3 coord = vec3((uv + square) * scene_shadow.zw, clip.z);
+        if (scene_shadow_soft.x <= 0.0) return hard_shadow(coord, texel);
+        return soft_shadow(i, coord, square * scene_shadow.zw + texel, (square + 1.0) * scene_shadow.zw - texel);
     }
     return 1.0;
 }
@@ -160,6 +231,8 @@ void main()
     sg_context.object_from_world[2]=inverse_z.xyz;
     for(int i=0;i<3;i++) sg_context.part_from_world[i]=sg_context.object_from_world[i];
     vec3 dx=dFdx(v_world),dy=dFdy(v_world);
+    world_dx = dx;
+    world_dy = dy;
     vec2 du=dFdx(sg_context.uv),dv=dFdy(sg_context.uv);
     float xx=dot(dx,dx),yy=dot(dy,dy),xy=dot(dx,dy),determinant=xx*yy-xy*xy;
     for(int i=0;i<2;i++) sg_context.uv_from_world[i]=vec3(0);

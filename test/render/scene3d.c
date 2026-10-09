@@ -604,6 +604,71 @@ TEST_CASE(shadow_cascades_cover_only_what_the_view_shows)
     return true;
 }
 
+/* A thin wall 4 units tall runs along z from -3 to 3 on a floor. Sunlight
+ * travels along +x and down at 45 degrees, so the wall shades the floor where
+ * 0 < x < 4, and the floor at x lies under the wall's end at height x. The
+ * camera looks straight down at that end, z = 3. */
+static GameDirectionalLight *add_wall_scene()
+{
+    lens = (render_scene3d_camera){
+        .view = cf_look_at((CF_V3){ 2, 10, 3 }, (CF_V3){ 2, 0, 3 }, (CF_V3){ 0, 0, -1 }),
+        .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
+    };
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 40, 40, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, 6, 4, 2 }, 0xffffffffu);
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->intensity = 1;
+    return sun;
+}
+
+/* Floor just inside and just outside the shadow's side, near the wall's foot
+ * and near its top, then deep inside the shadow. */
+static const CF_V3 wall_edges[] = {
+    { .5f, 0, 2.85f },  { .5f, 0, 3.15f }, { 3.5f, 0, 2.85f },
+    { 3.5f, 0, 3.15f }, { 3.5f, 0, 1 },
+};
+enum
+{
+    WALL_EDGES = sizeof wall_edges / sizeof *wall_edges
+};
+
+TEST_CASE(sun_size_softens_shadows_away_from_casters)
+{
+    GameDirectionalLight *sun = add_wall_scene();
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    CF_Pixel open[WALL_EDGES];
+    for (int i = 0; i < WALL_EDGES; i++) {
+        open[i] = pixel_at(wall_edges[i]);
+        REQUIRE(open[i].colors.g > 60);
+    }
+    /* A point-sized sun casts hard edges everywhere. */
+    sun->shadows = true;
+    REQUIRE(render(&environment));
+    for (int i = 0; i < WALL_EDGES; i++) {
+        bool lit = i % 2 && i < 4;
+        REQUIRE(
+            lit ? distance(pixel_at(wall_edges[i]), open[i]) <= 3
+                : pixel_at(wall_edges[i]).colors.g == 0
+        );
+    }
+    /* A 10-degree sun spreads each edge by 0.25 of the caster's height: the
+     * edge stays hard at the wall's foot and blurs past 0.15 near its top,
+     * while the shadow's core stays dark. */
+    sun->angular_diameter = 10;
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(pixel_at(wall_edges[0]).colors.g == 0);
+    REQUIRE(distance(pixel_at(wall_edges[1]), open[1]) <= 3);
+    REQUIRE(pixel_at(wall_edges[2]).colors.g > 10);
+    REQUIRE(pixel_at(wall_edges[3]).colors.g < open[3].colors.g - 10);
+    REQUIRE(pixel_at(wall_edges[4]).colors.g == 0);
+    sun->angular_diameter = 21;
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_error(scene3d), "angular diameter"));
+    return true;
+}
+
 void test_render_scene3d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -629,6 +694,7 @@ void test_render_scene3d()
     RUN_TEST_CASE(deep_views_split_sun_shadows_into_cascades);
     RUN_TEST_CASE(empty_depth_ranges_take_no_cascade);
     RUN_TEST_CASE(shadow_cascades_cover_only_what_the_view_shows);
+    RUN_TEST_CASE(sun_size_softens_shadows_away_from_casters);
     pu_clear_setup();
     cf_destroy_app();
 }

@@ -51,7 +51,20 @@ typedef struct
     CF_M4x4 projection;
     CF_Aabb area; /* Light-space XY the cascade covers. */
     float texel;  /* World units per map texel. */
+    float range;  /* World units from its near depth to its far depth. */
 } cascade;
+
+/* The nearest depth in each 2x2 block of the map, read raw by the lit pass's
+ * blocker search, which the map's comparison sampler can't serve. */
+typedef struct
+{
+    CF_Canvas canvas;
+    int width, height;
+    CF_Shader shader;
+    CF_Material material;
+    CF_Sampler raw;
+    CF_Mesh triangle;
+} blocker_map;
 
 struct render_scene3d_shadow
 {
@@ -59,6 +72,8 @@ struct render_scene3d_shadow
     CF_Canvas canvas;
     CF_Shader shader;
     int width, height;
+    blocker_map blockers;
+    float spread;
     CF_M4x4 view;
     cascade cascades[CASCADE_LIMIT];
     int count;
@@ -80,9 +95,24 @@ static void destroy_map(render_scene3d_shadow *shadow)
     cf_destroy_texture(shadow->map);
 }
 
+static void free_blockers(blocker_map *blockers)
+{
+    if (blockers->width) {
+        cf_destroy_canvas(blockers->canvas);
+    }
+    if (!blockers->shader.id) {
+        return;
+    }
+    cf_destroy_shader(blockers->shader);
+    cf_destroy_material(blockers->material);
+    cf_destroy_sampler(blockers->raw);
+    cf_destroy_mesh(blockers->triangle);
+}
+
 void render_scene3d_shadow_free(render_scene3d_shadow *shadow)
 {
     destroy_map(shadow);
+    free_blockers(&shadow->blockers);
     if (shadow->shader.id) {
         cf_destroy_shader(shadow->shader);
     }
@@ -122,6 +152,74 @@ static void prepare_map(render_scene3d_shadow *shadow, int width, int height)
     cf_canvas_set_clear_depth_stencil(shadow->canvas, 1, 0);
     /* The placeholder map is only ever bound, never drawn into. */
     cf_clear_canvas(shadow->canvas);
+}
+
+/* A blocker map of at least the given size. */
+static void prepare_blockers(blocker_map *blockers, int width, int height)
+{
+    if (blockers->width >= width && blockers->height >= height) {
+        return;
+    }
+    if (blockers->width) {
+        cf_destroy_canvas(blockers->canvas);
+    }
+    blockers->width = width > blockers->width ? width : blockers->width;
+    blockers->height = height > blockers->height ? height : blockers->height;
+    CF_CanvasParams params = cf_canvas_defaults(blockers->width, blockers->height);
+    /* Depths for the blocker search only size penumbrae, so half floats do,
+     * and every device the HDR pass runs on can render them. */
+    params.target.pixel_format = CF_PIXEL_FORMAT_R16_FLOAT;
+    params.target.filter = CF_FILTER_NEAREST;
+    blockers->canvas = cf_make_canvas(params);
+}
+
+static bool load_blocker_pass(blocker_map *blockers, char *error, size_t size)
+{
+    if (blockers->shader.id) {
+        return true;
+    }
+    char *vertex = render_shader_source("hrc/pass.vert");
+    char *fragment = render_shader_source("scene3d_shadow_blockers.frag");
+    if (vertex && fragment) {
+        blockers->shader = cf_make_shader_from_source(vertex, fragment);
+    }
+    free(vertex);
+    free(fragment);
+    if (!blockers->shader.id) {
+        snprintf(error, size, "Shadow blocker shader: %s", cf_shader_compile_error());
+        return false;
+    }
+    blockers->material = cf_make_material();
+    CF_SamplerParams raw = cf_sampler_defaults();
+    raw.filter = CF_FILTER_NEAREST;
+    raw.mip_filter = CF_MIP_FILTER_NEAREST;
+    raw.wrap_u = raw.wrap_v = raw.wrap_w = CF_WRAP_MODE_CLAMP_TO_EDGE;
+    blockers->raw = cf_make_sampler(raw);
+    CF_VertexAttribute position = { .name = "in_pos", .format = CF_VERTEX_FORMAT_FLOAT2 };
+    const float corners[] = { -1, -1, 3, -1, -1, 3 };
+    blockers->triangle = cf_make_mesh((int)sizeof corners, &position, 1, 2 * (int)sizeof(float));
+    cf_mesh_update_vertex_data(blockers->triangle, (void *)corners, 3);
+    return true;
+}
+
+/* Writes the nearest of each 2x2 block of the map's depths. */
+static void reduce_blockers(render_scene3d_shadow *shadow)
+{
+    blocker_map *blockers = &shadow->blockers;
+    int width = shadow->width / 2, height = shadow->height / 2;
+    prepare_blockers(blockers, width, height);
+    cf_material_set_texture_fs_sampler(
+        blockers->material,
+        "map",
+        shadow->map,
+        blockers->raw
+    );
+    cf_apply_canvas(blockers->canvas, false);
+    cf_apply_mesh(blockers->triangle);
+    cf_apply_shader(blockers->shader, blockers->material);
+    cf_apply_viewport(0, 0, width, height);
+    cf_apply_scissor(0, 0, width, height);
+    cf_draw_elements();
 }
 
 static bool load_shader(render_scene3d_shadow *shadow, char *error, size_t size)
@@ -383,17 +481,20 @@ static void fit_depth(render_scene3d_shadow *shadow, cascade *cascade, int recei
     float pad = cascade->texel * MARGIN_TEXELS;
     CF_Aabb area = cascade->area;
     cascade->projection = cf_ortho(area.min.x, area.max.x, area.min.y, area.max.y, -high - pad, -low + pad);
+    cascade->range = high - low + 2 * pad;
 }
 
 int render_scene3d_shadow_fit(
     render_scene3d_shadow *shadow,
     CF_V3 toward_light,
+    float spread,
     const CF_M4x4 *boxes,
     int count,
     int receivers,
     const render_scene3d_camera *camera
 )
 {
+    shadow->spread = spread;
     CF_V3 up = fabsf(toward_light.y) > .99f ? (CF_V3){ 0, 0, 1 } : (CF_V3){ 0, 1, 0 };
     shadow->view = cf_look_at((CF_V3){ 0 }, cf_neg_v3(toward_light), up);
     shadow->count = 0;
@@ -441,7 +542,8 @@ bool render_scene3d_shadow_reaches(const render_scene3d_shadow *shadow, int casc
 bool render_scene3d_shadow_begin(render_scene3d_shadow *shadow, int cascade, char *error, size_t size)
 {
     assert(cascade < shadow->count);
-    if (!load_shader(shadow, error, size)) {
+    if (!load_shader(shadow, error, size) ||
+        (shadow->spread > 0 && !load_blocker_pass(&shadow->blockers, error, size))) {
         return false;
     }
     /* Cascades fill a 2x2 grid of squares row by row. */
@@ -468,8 +570,12 @@ void render_scene3d_shadow_end(render_scene3d_shadow *shadow, int cascade)
     cf_draw3d_pop_render_state();
     cf_draw_pop_viewport();
     cf_draw_pop_layer();
-    if (cascade == shadow->count - 1) {
-        cf_render_layers_to(shadow->canvas, SHADOW_LAYER, SHADOW_LAYER, true);
+    if (cascade < shadow->count - 1) {
+        return;
+    }
+    cf_render_layers_to(shadow->canvas, SHADOW_LAYER, SHADOW_LAYER, true);
+    if (shadow->spread > 0) {
+        reduce_blockers(shadow);
     }
 }
 
@@ -477,12 +583,15 @@ void render_scene3d_shadow_bind(render_scene3d_shadow *shadow, int count)
 {
     assert(count <= shadow->count);
     prepare_map(shadow, 1, 1);
+    prepare_blockers(&shadow->blockers, 1, 1);
     CF_M4x4 matrices[CASCADE_LIMIT] = { 0 };
-    float texels[CASCADE_LIMIT] = { 0 };
+    float texels[CASCADE_LIMIT] = { 0 }, ranges[CASCADE_LIMIT] = { 0 };
     for (int i = 0; i < count; i++) {
         matrices[i] = cf_mul_m4(shadow->cascades[i].projection, shadow->view);
         texels[i] = shadow->cascades[i].texel;
+        ranges[i] = shadow->cascades[i].range;
     }
+    CF_V4 soft = { count ? shadow->spread : 0 };
     /* Cascades, a square's texel in its own UV, and a square's size in atlas UV. */
     CF_V4 settings = { (float)count,
                        1.0f / TILE,
@@ -491,10 +600,17 @@ void render_scene3d_shadow_bind(render_scene3d_shadow *shadow, int count)
     cf_draw3d_set_uniform("scene_shadow_matrices", matrices, CF_UNIFORM_TYPE_MAT4, CASCADE_LIMIT);
     cf_draw3d_set_uniform("scene_shadow_texels", texels, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_shadow", &settings, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_shadow_ranges", ranges, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_shadow_soft", &soft, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_texture("scene_shadow_map", shadow->map);
+    cf_draw3d_set_texture(
+        "scene_shadow_blockers",
+        cf_canvas_get_target(shadow->blockers.canvas)
+    );
 }
 
 void render_scene3d_shadow_unbind()
 {
     cf_draw3d_set_texture("scene_shadow_map", (CF_Texture){ 0 });
+    cf_draw3d_set_texture("scene_shadow_blockers", (CF_Texture){ 0 });
 }

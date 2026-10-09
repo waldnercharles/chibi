@@ -20,6 +20,8 @@ layout(set = 3, binding = 0) uniform uniform_block {
     mat4 scene_shadow_matrices[4];
     vec4 scene_shadow;
     vec4 scene_shadow_texels;
+    vec4 scene_shadow_ranges;
+    vec4 scene_shadow_soft;
     vec4 sg_ramp_data[SG_RAMP_COUNT];
 };
 

@@ -13,11 +13,14 @@ render_scene3d_shadow *render_scene3d_shadow_new();
 void render_scene3d_shadow_free(render_scene3d_shadow *shadow);
 /* Fits orthographic light views to boxes, unit cubes placed around solids in
  * the world. The first `receivers` boxes are in view and set the areas the
- * cascades cover; the rest only cast into them. Returns the cascade count,
- * zero when the camera sees none of the receivers. */
+ * cascades cover; the rest only cast into them. Spread, the tangent of half
+ * the light's angular diameter, softens shadows with distance from their
+ * caster; zero keeps them hard. Returns the cascade count, zero when the
+ * camera sees none of the receivers. */
 int render_scene3d_shadow_fit(
     render_scene3d_shadow *shadow,
     CF_V3 toward_light,
+    float spread,
     const CF_M4x4 *boxes,
     int count,
     int receivers,

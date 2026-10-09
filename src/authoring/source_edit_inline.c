@@ -173,8 +173,8 @@ bool source_edit_inline(
     }
     for (int i = 0; i < a->symbol_count; i++) {
         if (source_refactor_contains(function->range, a->symbols[i].declaration) &&
-            (a->symbols[i].kind == SCRIPT_STATE || a->symbols[i].kind == SCRIPT_ACTION ||
-             a->symbols[i].kind == SCRIPT_LAZY || a->symbols[i].lazy_local)) {
+            (a->symbols[i].kind == SCRIPT_STATE ||
+             a->symbols[i].kind == SCRIPT_ACTION || a->symbols[i].lazy_local)) {
             return source_refactor_fail(error, size, "Inlining must retain callable-owned persistent or deferred storage");
         }
     }
@@ -298,15 +298,7 @@ bool source_edit_inline(
             size
         );
         char *value = source_refactor_slice(a->text, a->expressions[arg->value].range);
-        source_refactor_append(
-            &replacement,
-            " = %s(%s);\n",
-            (symbol->type.flags & SCRIPT_TYPE_REFERENCE) &&
-                    !(a->expressions[arg->value].type.flags & SCRIPT_TYPE_REFERENCE)
-                ? "&"
-                : "",
-            value
-        );
+        source_refactor_append(&replacement, " = (%s);\n", value);
         free(value);
     }
     for (int i = 0; valid && i < function->parameter_count; i++) {
@@ -410,8 +402,7 @@ bool source_edit_inline(
             }
             free(text);
         }
-        if (!strcmp(kind, "result_declaration") ||
-            !strcmp(kind, "metadata_declaration")) {
+        if (!strcmp(kind, "metadata_declaration")) {
             script_range range = script_node_range(node);
             apush(returns, ((text_edit){ range.start - body.start, range.end - body.start, xstrdup("") }));
         }

@@ -22,8 +22,8 @@ To play a game while developing it, put `chibi` on your `PATH` and run it from t
 game's directory or with the game's directory or `project.kdl`:
 
 ```sh
-make build BUILD_TARGET=chibi
-ln -s "$PWD/build/sdk/chibi" ~/.local/bin/chibi
+make build
+ln -sf "$PWD/build/sdk/chibi" ~/.local/bin/chibi
 chibi ~/games/neon-swarm            # or: cd ~/games/neon-swarm && chibi
 ```
 

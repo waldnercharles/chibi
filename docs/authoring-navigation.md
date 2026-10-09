@@ -14,6 +14,10 @@ Invalid drafts keep the facts that can be resolved.
 
 `authoring/source_catalog.h` discovers project declarations, including external
 KDL event and prototype definitions and selected KDL/RML asset references.
+Each input map action is defined by its exact node name in `content/input.kdl`.
+An action is the event of that name, so `input.<Action>` reads, `on <Action>`
+handlers and the map's node resolve to one identity for definitions, references
+and rename.
 `authoring/source_collection.h` owns a complete project generation: its catalog,
 syntax, analysis, preparation diagnostics and finalized execution modules.
 Document identity comes from the content-relative asset path, independently of
@@ -32,7 +36,8 @@ Consumers use these shared APIs:
   syntax.
 - `authoring/source_rename.h` creates project edits with exact expected bytes.
   It rejects collisions, scope capture, invalid project facts and native
-  declarations without editable source. Applying a plan does not publish it;
+  declarations without editable source. Bare KDL names, such as input map
+  action nodes, stay bare when the new name is an identifier. Applying a plan does not publish it;
   consumers validate the complete candidate and check stale bytes before commit.
 - `authoring/source_prototype_flow.h` finds the string constants that reach a
   prototype parameter, such as Spawn Prototype's, through locals, state, authored

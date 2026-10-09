@@ -1371,10 +1371,13 @@ GameGlobalTransform2D engine_render_transform(const engine *engine, const ecs_wo
 
 GameGlobalTransform3D engine_render_transform_3d(const engine *engine, const ecs_world *world, ecs_entity entity)
 {
+    if (!engine) {
+        return game_transform_world_3d(world, entity);
+    }
     const GameGlobalTransform3D *global = GAME_GameGlobalTransform3D_get_const(world, entity);
     assert(global);
     GameGlobalTransform3D shown = *global;
-    if (!engine || !engine->modules.physics3d) {
+    if (!engine->modules.physics3d) {
         return shown;
     }
     for (ecs_entity at = entity; at.slot; at = ecs_parent(world, at)) {

@@ -171,6 +171,9 @@ TEST_CASE(transforms_compose_3d_matrices)
     REQUIRE(game_transform_parent_3d(world, leaf).slot == child.slot);
     GameGlobalTransform3D walked = game_transform_world_3d(world, leaf);
     REQUIRE(!memcmp(&walked, GAME_GameGlobalTransform3D_get_const(world, leaf), sizeof walked));
+    /* With no engine, presentation places it exactly before propagation. */
+    GAME_GameTransform3D_get(world, root)->position.x = 11;
+    REQUIRE(near_3d(engine_render_transform_3d(NULL, world, leaf).position, 13, 4, 3));
     return true;
 }
 

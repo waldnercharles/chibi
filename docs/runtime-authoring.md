@@ -38,8 +38,9 @@ what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
 model and a shape share a name there is no catalog, so it lists no asset
 problems until one is renamed. It never changes files: a project saved by an
 earlier build fails until `chibi_ctl --project-root <root> --migrate` upgrades it.
-A prototype's `(array)includes` names other prototypes, which `chibi_ctl` finds
-by file name, so name each prototype's file after it. `--format` checks such a
+Scenes and a prototype's `(array)includes` name prototypes, which `chibi_ctl`
+finds by file name, so `validate_project` reports a prototype whose file is
+named otherwise. `--format` checks such a
 prototype but keeps its text as written instead of folding the included
 components in.
 

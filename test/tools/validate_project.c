@@ -432,6 +432,14 @@ TEST_CASE(prototype_includes_resolve)
     problem = yyjson_arr_get_first(result("problems"));
     const char *message = first_message(yyjson_obj_get(problem, "diagnostics"));
     REQUIRE(!strcmp(message, "prototype include Hull.kdl is named Hull"));
+    /* A prototype is found by its file name, so the two must agree. */
+    write_file("game/content/prototypes/Drone.kdl", "name \"Drone\"\n");
+    write_file("game/content/prototypes/hull_base.kdl", "name \"Base\"\n");
+    REQUIRE(validate() != 0 && errors() == 1);
+    problem = yyjson_arr_get_first(result("problems"));
+    REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(problem, "name")), "hull_base"));
+    message = first_message(yyjson_obj_get(problem, "diagnostics"));
+    REQUIRE(!strcmp(message, "Prototype 'Base' must be in a file named Base.kdl"));
     return true;
 }
 

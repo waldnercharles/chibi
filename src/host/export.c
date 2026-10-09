@@ -15,6 +15,9 @@
 
 #define EXPORT_ARTIFACT "game.chibip"
 #define EXPORT_MANIFEST EXPORT_ARTIFACT ".resources.json"
+/* An empty file in the data folder that only this exporter writes, so that
+ * replacing an output never deletes a folder it did not make. */
+#define EXPORT_MARKER ".chibi-export"
 
 static char *join(const char *base, const char *name)
 {
@@ -187,6 +190,29 @@ static char *executable_name(const char *name)
     return file;
 }
 
+static bool write_marker(const char *data)
+{
+    char *marker = join(data, EXPORT_MARKER);
+    FILE *file = fopen(marker, "wb");
+    bool written = (file && fclose(file) == 0) || failed(strerror(errno), marker);
+    free(marker);
+    return written;
+}
+
+/* Whether `output` is a folder this exporter made: real folders down to the
+ * marker it writes, which is a regular file. */
+static bool exported_folder(const char *output)
+{
+    char *data = join(output, "data");
+    char *marker = join(data, EXPORT_MARKER);
+    struct stat info;
+    bool exported = is_directory(output) && is_directory(data) &&
+                    lstat(marker, &info) == 0 && S_ISREG(info.st_mode);
+    free(marker);
+    free(data);
+    return exported;
+}
+
 static bool assemble(const chibi_export_spec *spec, const char *staging)
 {
     char *data = join(staging, "data");
@@ -200,17 +226,11 @@ static bool assemble(const chibi_export_spec *spec, const char *staging)
     char *argv[] = { compiler,   "--project-root", (char *)spec->project,
                      "--output", artifact,         NULL };
     bool assembled = mkdir(data, 0755) == 0 || failed(strerror(errno), data);
+    assembled = assembled && write_marker(data);
     if (assembled && chibi_process_run(argv) != 0) {
         assembled = failed("the project did not compile", spec->project);
     }
     assembled = assembled && copy_external(spec->project, data);
-    if (assembled && spec->icon) {
-        char *from = join(spec->project, spec->icon);
-        char *to = join(data, spec->icon);
-        assembled = copy_file(from, to, 0644);
-        free(from);
-        free(to);
-    }
     static const char *const engine_files[] = { "shaders", "licenses", "engine.json" };
     for (size_t i = 0; assembled && i < sizeof engine_files / sizeof *engine_files;
          i++) {
@@ -241,10 +261,7 @@ static bool publish(const char *staging, const char *output)
     if (lstat(output, &info) != 0) {
         return rename(staging, output) == 0 || failed(strerror(errno), output);
     }
-    char *marker = join(output, "data/" EXPORT_ARTIFACT);
-    bool exported = S_ISDIR(info.st_mode) && access(marker, F_OK) == 0;
-    free(marker);
-    if (!exported) {
+    if (!exported_folder(output)) {
         return failed("the output exists and is not an exported game", output);
     }
     size_t size = strlen(output) + sizeof ".old-XXXXXX";

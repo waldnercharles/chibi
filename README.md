@@ -42,7 +42,8 @@ dist/sdk/bin/chibi export ~/games/neon-swarm --output ~/builds/NeonSwarm
 The folder holds the player, named after the project, and `data/` with the
 compiled game and its resources. `data/engine/` holds the shaders, licenses and
 engine identity. Exporting again replaces an earlier export, including files
-added to it; any other existing folder is left alone.
+added to it. The exporter recognizes its own output by the empty
+`data/.chibi-export` it writes; any other existing folder is left alone.
 
 Both SDK product builds prepare a standalone host reflection tool. `SDK_PREFIX`,
 `RUNTIME_SDK_PREFIX`, and `PLAYER_OUTPUT` select their outputs. Packaging leaves

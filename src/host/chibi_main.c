@@ -258,7 +258,6 @@ static int export_game(int argc, char **argv)
     char *bin = file_executable_dir();
     chibi_export_spec spec = { .project = project.root,
                                .name = project.name,
-                               .icon = project.application.icon,
                                .bin = bin,
                                .output = output };
     bool exported = chibi_export(&spec);

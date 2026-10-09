@@ -1760,6 +1760,40 @@ TEST_CASE(program_task_owns_tasks_started_by_its_continuations)
     }
     return true;
 }
+TEST_CASE(program_task_continuation_cannot_cancel_or_await_its_task)
+{
+    /* The continuation resumes on its own, so P is suspended while it runs. */
+    const char *bodies[] = { "cancel worker", "await worker" };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int c = 0; c < 2; c++) {
+        char source[EXAMPLE_SOURCE_CAPACITY];
+        int length = snprintf(
+            source,
+            sizeof source,
+            "behavior S { worker: task;"
+            "function Count() -> (shown: double) { return 1 }"
+            "action act = Count();"
+            "function P() -> () { act(); await Delay(10) }"
+            "after act { yield; %s }"
+            "on Impulse(amount, enabled) { worker = P() } }",
+            bodies[c]
+        );
+        REQUIRE(length > 0 && (size_t)length < sizeof source);
+        for (int b = 0; b < 2; b++) {
+            prepare();
+            REQUIRE(compile(source, backends[b]));
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(ecs_world_create_entity(world))
+            );
+            const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                       { .type = PIN_BOOL, .b = true } };
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, 1, 0, 1000) != FLOW_OK);
+        }
+    }
+    return true;
+}
 TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
 {
     const char *source = "behavior Many { done: double = 0; kept: double = 0; "
@@ -2298,6 +2332,15 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                            ":= twice }\n"
                            "}\n";
     REQUIRE(!chibi_migrate_values(shadowed, error, sizeof error) && strstr(error, "`n`"));
+    /* Expanding `x` inside Outer would call Outer's own F. */
+    const char *callable = "behavior V { n: double = 0\n"
+                           "    function F() { return 1 }\n"
+                           "    value x = F()\n"
+                           "    function Outer() { function F() { return 2 }\n"
+                           "        return x }\n"
+                           "}\n";
+    error[0] = '\0';
+    REQUIRE(!chibi_migrate_values(callable, error, sizeof error) && strstr(error, "`F`"));
     free(migrated);
     prepare();
     REQUIRE(compile(expected, BEHAVIOR_BYTECODE));
@@ -2833,6 +2876,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters);
     RUN_TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings);
     RUN_TEST_CASE(program_task_owns_tasks_started_by_its_continuations);
+    RUN_TEST_CASE(program_task_continuation_cannot_cancel_or_await_its_task);
     RUN_TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);

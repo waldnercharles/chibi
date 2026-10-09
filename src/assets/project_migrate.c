@@ -925,6 +925,19 @@ static bool declares_name(const char *text, TSNode scope, TSNode name)
     }
     return false;
 }
+/* Whether a function or macro declared directly in `scope` is named like
+ * `name`. */
+static bool declares_callable(const char *text, TSNode scope, TSNode name)
+{
+    for (uint32_t i = 0; i < ts_node_named_child_count(scope); i++) {
+        TSNode child = ts_node_named_child(scope, i);
+        if ((is(child, "function_declaration") || is(child, "macro_declaration")) &&
+            same_name(text, ts_node_child_by_field_name(child, "name", 4), text, name)) {
+            return true;
+        }
+    }
+    return false;
+}
 /* The lazy declaration a read of `name` at `node` resolves to, if any. */
 static lazy *resolve_lazy(const char *text, lazy *all, TSNode node, TSNode name)
 {
@@ -973,12 +986,17 @@ static TSNode captured(const char *text, lazy *all, TSNode node, TSNode home, TS
     if (read) {
         return captured(text, all, ts_node_child_by_field_name(read->node, "value", 5), read->node, site);
     }
-    if (read_name(node)) {
+    TSNode parent = ts_node_parent(node);
+    bool callee = is(node, "identifier") && is(parent, "call_expression") &&
+                  child_is(parent, "function", node);
+    if (read_name(node) || callee) {
         for (TSNode scope = ts_node_parent(site);
              !ts_node_is_null(scope) && !encloses(scope, home);
              scope = ts_node_parent(scope)) {
-            if (scope_node(scope) && (declares_name(text, scope, node) ||
-                                      lazy_in(text, all, scope, node))) {
+            bool shadows = callee ? declares_callable(text, scope, node)
+                                  : declares_name(text, scope, node) ||
+                                        lazy_in(text, all, scope, node);
+            if (scope_node(scope) && shadows) {
                 return node;
             }
         }

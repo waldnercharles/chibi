@@ -15,6 +15,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <yyjson.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #define EXPORT_ARTIFACT "game.chibip"
 #define EXPORT_MANIFEST EXPORT_ARTIFACT ".resources.json"
@@ -176,11 +179,16 @@ static bool copy_external(const char *project, const char *data)
 }
 
 /* The executable's file name: the project name with path and shell
- * metacharacters replaced, and never the data folder's name. */
-static char *executable_name(const char *name)
+ * metacharacters replaced, never the data folder's name, and then the
+ * layout's suffix. */
+static char *executable_name(const char *name, const char *suffix)
 {
-    char *file = xstrdup(name && name[0] && strcasecmp(name, "data") ? name : "game");
-    for (char *c = file; *c; c++) {
+    const char *base = name && name[0] && strcasecmp(name, "data") ? name : "game";
+    size_t length = strlen(base);
+    char *file = xmalloc(length + strlen(suffix) + 1);
+    memcpy(file, base, length);
+    strcpy(file + length, suffix);
+    for (char *c = file; c < file + length; c++) {
         bool plain = (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') ||
                      (*c >= '0' && *c <= '9') || *c == ' ' || *c == '-' ||
                    *c == '_' || (*c == '.' && c != file);
@@ -194,10 +202,11 @@ static char *executable_name(const char *name)
 /* Where each layout keeps the game's data and the player, inside the output. */
 static const struct
 {
-    const char *data, *executables;
+    const char *data, *executables, *suffix;
 } LAYOUTS[] = {
-    [CHIBI_EXPORT_FOLDER] = { "data", NULL },
-    [CHIBI_EXPORT_APP] = { "Contents/Resources", "Contents/MacOS" },
+    [CHIBI_EXPORT_FOLDER] = { "data", NULL, "" },
+    [CHIBI_EXPORT_APP] = { "Contents/Resources", "Contents/MacOS", "" },
+    [CHIBI_EXPORT_WINDOWS] = { "data", NULL, ".exe" },
 };
 
 static bool write_text(const char *path, const char *text)
@@ -297,6 +306,17 @@ static void put_big_endian(FILE *file, uint32_t value)
     fwrite(bytes, 1, 4, file);
 }
 
+/* The side of a square PNG, or 0 for anything else. */
+static uint32_t square_side(const unsigned char *png, size_t size)
+{
+    if (size < 24 || memcmp(png, "\x89PNG\r\n\x1a\n", 8) ||
+        memcmp(png + 12, "IHDR", 4)) {
+        return 0;
+    }
+    uint32_t width = big_endian(png + 16);
+    return big_endian(png + 20) == width ? width : 0;
+}
+
 /* The .icns type that holds a square PNG of this size, or NULL when macOS has
  * no icon of its size. */
 static const char *icns_type(const unsigned char *png, size_t size)
@@ -308,28 +328,27 @@ static const char *icns_type(const unsigned char *png, size_t size)
     } TYPES[] = { { 16, "icp4" },  { 32, "icp5" },  { 64, "icp6" },
                   { 128, "ic07" }, { 256, "ic08" }, { 512, "ic09" },
                   { 1024, "ic10" } };
-    if (size < 24 || memcmp(png, "\x89PNG\r\n\x1a\n", 8) ||
-        memcmp(png + 12, "IHDR", 4)) {
-        return NULL;
-    }
-    uint32_t width = big_endian(png + 16);
+    uint32_t side = square_side(png, size);
     for (size_t i = 0; i < sizeof TYPES / sizeof *TYPES; i++) {
-        if (width == TYPES[i].size && big_endian(png + 20) == width) {
+        if (side == TYPES[i].size) {
             return TYPES[i].type;
         }
     }
     return NULL;
 }
 
-/* Checks an app's icon before the project compiles. */
-static bool app_icon_valid(const chibi_export_spec *spec)
+/* Checks the icon an app or Windows executable embeds before the project
+ * compiles. */
+static bool icon_valid(const chibi_export_spec *spec)
 {
     char *path = join(spec->project, spec->icon);
     size_t size = 0;
     unsigned char *png = (unsigned char *)read_bytes(path, &size);
-    bool valid = png && icns_type(png, size);
+    bool app = spec->layout == CHIBI_EXPORT_APP;
+    bool valid = png &&
+                 (app ? icns_type(png, size) != NULL : square_side(png, size) > 0);
     if (!valid) {
-        failed("a macOS app icon must be a square PNG of 16, 32, 64, 128, 256, 512 or 1024 pixels", path);
+        failed(app ? "a macOS app icon must be a square PNG of 16, 32, 64, 128, 256, 512 or 1024 pixels" : "a Windows icon must be a square PNG", path);
     }
     free(png);
     free(path);
@@ -355,6 +374,70 @@ static bool write_icns(const char *png, const char *icns)
     free(bytes);
     return written || failed("cannot write", icns);
 }
+
+#ifdef _WIN32
+/* An icon group naming one PNG image, as Explorer reads it from an .exe. */
+#pragma pack(push, 2)
+typedef struct
+{
+    WORD reserved, type, count;
+    BYTE width, height, colors, unused;
+    WORD planes, bits;
+    DWORD bytes;
+    WORD id;
+} icon_group;
+#pragma pack(pop)
+#define ICON_ID 1
+#define ICON_LANGUAGE MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL)
+
+/* Adds the PNG to the executable's resources as its icon. */
+static bool embed_icon(const char *executable, const char *png)
+{
+    size_t size = 0;
+    unsigned char *bytes = (unsigned char *)read_bytes(png, &size);
+    uint32_t side = bytes ? square_side(bytes, size) : 0;
+    /* A side of 0 means 256 pixels or more. */
+    BYTE stored = side < 256 ? (BYTE)side : 0;
+    icon_group group = { .type = 1,
+                         .count = 1,
+                         .width = stored,
+                         .height = stored,
+                         .planes = 1,
+                         .bits = 32,
+                         .bytes = (DWORD)size,
+                         .id = ICON_ID };
+    HANDLE update = side ? BeginUpdateResourceA(executable, FALSE) : NULL;
+    bool embedded = update &&
+                    UpdateResourceA(
+                        update,
+                        RT_ICON,
+                        MAKEINTRESOURCEA(ICON_ID),
+                        ICON_LANGUAGE,
+                        bytes,
+                        (DWORD)size
+                    ) &&
+                    UpdateResourceA(
+                        update,
+                        RT_GROUP_ICON,
+                        MAKEINTRESOURCEA(ICON_ID),
+                        ICON_LANGUAGE,
+                        &group,
+                        sizeof group
+                    );
+    if (update) {
+        embedded = EndUpdateResourceA(update, !embedded) && embedded;
+    }
+    free(bytes);
+    return embedded || failed("cannot add the icon to", executable);
+}
+#else
+/* chibi_export refuses a Windows icon before anything is built. */
+static bool embed_icon(const char *, const char *)
+{
+    assert(false);
+    return false;
+}
+#endif
 
 /* The name people see: the title, else the project name, else the
  * executable's. */
@@ -467,15 +550,39 @@ static bool finish_app(const chibi_export_spec *spec, const char *staging, const
     return true;
 }
 
+/* Adds what the layout needs beside the player and data. */
+static bool finish(
+    const chibi_export_spec *spec,
+    const char *staging,
+    const char *data,
+    const char *name,
+    const char *executable
+)
+{
+    switch (spec->layout) {
+        case CHIBI_EXPORT_FOLDER:
+            return write_desktop_entry(spec, staging, name);
+        case CHIBI_EXPORT_APP: return finish_app(spec, staging, data, name);
+        case CHIBI_EXPORT_WINDOWS: break;
+    }
+    if (!spec->icon) {
+        return true;
+    }
+    char *png = join(data, spec->icon);
+    bool embedded = embed_icon(executable, png);
+    free(png);
+    return embedded;
+}
+
 static bool assemble(const chibi_export_spec *spec, const char *staging)
 {
     char *data = join(staging, LAYOUTS[spec->layout].data);
     char *artifact = join(data, EXPORT_ARTIFACT);
     char *engine_files_dir = join(data, "engine");
-    char *compiler = join(spec->bin, "chibi-compile");
-    char *player = join(spec->bin, "chibi-player");
+    char *compiler = join(spec->bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
+    char *player = join(spec->bin, "chibi-player" CHIBI_EXECUTABLE_SUFFIX);
     char *engine = join(spec->bin, "../share/chibi");
-    char *name = executable_name(spec->name);
+    char *name = executable_name(spec->name, LAYOUTS[spec->layout].suffix);
     const char *executables = LAYOUTS[spec->layout].executables;
     char *executable_dir = executables ? join(staging, executables) : xstrdup(staging);
     char *executable = join(executable_dir, name);
@@ -505,9 +612,7 @@ static bool assemble(const chibi_export_spec *spec, const char *staging)
     }
     assembled = assembled && copy_file(player, executable, 0755);
     if (assembled) {
-        assembled = spec->layout == CHIBI_EXPORT_APP
-                      ? finish_app(spec, staging, data, name)
-                      : write_desktop_entry(spec, staging, name);
+        assembled = finish(spec, staging, data, name, executable);
     }
     free(executable);
     free(executable_dir);
@@ -560,7 +665,6 @@ static bool publish(const char *staging, const char *output)
     return published;
 }
 
-/* Writes <output>.tar.gz holding the output folder under its own name. */
 /* Writes <output>.tar.gz through a partial file, so a failed tar leaves an
  * earlier archive in place. */
 static bool archive(const char *output)
@@ -610,12 +714,19 @@ static bool archive(const char *output)
  * when its last component does not name a folder. */
 static char *output_path(const chibi_export_spec *spec)
 {
-    size_t length = strlen(spec->output);
-    while (length > 1 && spec->output[length - 1] == '/') {
+    char *output = xmalloc(strlen(spec->output) + sizeof ".app");
+    strcpy(output, spec->output);
+#ifdef _WIN32
+    for (char *c = output; *c; c++) {
+        if (*c == '\\') {
+            *c = '/';
+        }
+    }
+#endif
+    size_t length = strlen(output);
+    while (length > 1 && output[length - 1] == '/') {
         length--;
     }
-    char *output = xmalloc(length + sizeof ".app");
-    memcpy(output, spec->output, length);
     output[length] = 0;
     const char *slash = strrchr(output, '/');
     const char *last = slash ? slash + 1 : output;
@@ -634,12 +745,18 @@ static char *output_path(const chibi_export_spec *spec)
 
 bool chibi_export(const chibi_export_spec *spec)
 {
-    assert(spec->layout == CHIBI_EXPORT_FOLDER || spec->layout == CHIBI_EXPORT_APP);
+    assert(spec->layout >= CHIBI_EXPORT_FOLDER && spec->layout <= CHIBI_EXPORT_WINDOWS);
     char *output = output_path(spec);
     if (!output) {
         return failed("the output must name a folder", spec->output);
     }
-    if (spec->layout == CHIBI_EXPORT_APP && spec->icon && !app_icon_valid(spec)) {
+#ifndef _WIN32
+    if (spec->layout == CHIBI_EXPORT_WINDOWS && spec->icon) {
+        free(output);
+        return failed("only Windows can add the icon to a Windows export", spec->icon);
+    }
+#endif
+    if (spec->layout != CHIBI_EXPORT_FOLDER && spec->icon && !icon_valid(spec)) {
         free(output);
         return false;
     }

@@ -71,6 +71,7 @@ static int entries(const char *relative)
 }
 
 static const char *title = "My <Game> \\ & Co";
+static const char *icon = "art/icon.png";
 
 static bool export_as(const char *relative, chibi_export_layout layout, bool archive)
 {
@@ -81,7 +82,7 @@ static bool export_as(const char *relative, chibi_export_layout layout, bool arc
     chibi_export_spec spec = { .project = project,
                                .name = "My Game/2",
                                .title = title,
-                               .icon = "art/icon.png",
+                               .icon = icon,
                                .bin = bin,
                                .output = output,
                                .layout = layout,
@@ -233,13 +234,25 @@ TEST_CASE(export_assembles_a_runnable_folder)
     REQUIRE(!export_as("apps/.app", CHIBI_EXPORT_APP, false));
     REQUIRE(!has("apps/Odd.app/Contents/Info.plist", NULL));
 
+    /* A Windows export names the player <name>.exe and writes no desktop
+     * entry. Only a Windows host can put the icon in its resources. */
+    REQUIRE(!export_as("win/Game", CHIBI_EXPORT_WINDOWS, false));
+    REQUIRE(!has("win/Game/My Game_2.exe", NULL));
+    icon = NULL;
+    REQUIRE(export_as("win/Game", CHIBI_EXPORT_WINDOWS, false));
+    REQUIRE(has("win/Game/My Game_2.exe", "player"));
+    REQUIRE(has("win/Game/data/game.chibip", "artifact"));
+    REQUIRE(!has("win/Game/my-game-2.desktop", NULL));
+    REQUIRE(export_to("win/Game")); /* replaces a Windows export */
+    icon = "art/icon.png";
+
     /* A failed compile or a missing resource leaves no partial folder. */
     write_at("project/fail", "", 0644);
     REQUIRE(!export_to("broken"));
     remove_at("project/fail");
     remove_at("project/art/sheet.bin");
     REQUIRE(!export_to("broken"));
-    REQUIRE(entries(".") == 5); /* sdk, project, out, apps and mine */
+    REQUIRE(entries(".") == 6); /* sdk, project, out, apps, mine and win */
 
     char command[600];
     snprintf(command, sizeof command, "rm -rf '%s'", root);

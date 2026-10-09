@@ -53,6 +53,11 @@ the `neon-swarm` theme icon. To install it, symlink the folder's executable into
 a directory on `PATH`, put the project icon in your icon theme as
 `neon-swarm.png`, and the entry in `~/.local/share/applications`.
 
+On Windows the folder holds `Neon Swarm.exe` beside `data/`, with the project
+icon, which must be a square PNG, in the executable's resources. The SDK links
+the C runtime statically, so the folder runs without the Visual C++
+redistributable.
+
 Both SDK product builds prepare a standalone host reflection tool. `SDK_PREFIX`,
 `RUNTIME_SDK_PREFIX`, and `PLAYER_OUTPUT` select their outputs. Packaging leaves
 registered games untouched; `make update-game-runtime` explicitly verifies and
@@ -113,7 +118,9 @@ cmake --build build --target chibi chibi-compile chibi-player chibi_ctl
 Reflection loads `libclang.dll`, so LLVM's `bin` folder must be on `PATH`. C
 sources that link `Chibi::support` get the POSIX calls the Microsoft runtime
 lacks from `src/support/win32`. The C tests still need POSIX, so Windows builds
-skip them.
+skip them. Executables embed `src/host/windows/chibi.manifest`, which makes the
+runtime's file names UTF-8; installed consumers add
+`share/chibi/windows/chibi.rc` to theirs.
 
 ## Browser Studio
 

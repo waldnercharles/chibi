@@ -137,9 +137,9 @@ static int usage(const char *program)
         "nearest project.kdl at or above the working directory is used.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
         "export compiles the project into DIR with the player, its resources\n"
-        "and engine files, ready to run and ship: a DIR.app on macOS, and a\n"
-        "folder with a .desktop entry elsewhere. --archive also writes\n"
-        "DIR.tar.gz.\n",
+        "and engine files, ready to run and ship: a DIR.app on macOS, a\n"
+        "folder with an .exe on Windows, and a folder with a .desktop entry\n"
+        "elsewhere. --archive also writes DIR.tar.gz.\n",
         program,
         program
     );
@@ -287,8 +287,10 @@ static int export_game(int argc, char **argv)
                                .icon = project.application.icon,
                                .bin = bin,
                                .output = output,
-#ifdef __APPLE__
+#if defined(__APPLE__)
                                .layout = CHIBI_EXPORT_APP,
+#elif defined(_WIN32)
+                               .layout = CHIBI_EXPORT_WINDOWS,
 #endif
                                .archive = archive };
     bool exported = chibi_export(&spec);

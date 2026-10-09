@@ -131,6 +131,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     target_link_libraries(chibi-player PRIVATE Chibi::render Chibi::player
         Chibi::native_prepared Chibi::host_native_default)
     set_target_properties(chibi-player PROPERTIES LINKER_LANGUAGE CXX)
+    chibi_windows_manifest(chibi-player)
     install(TARGETS chibi-player RUNTIME DESTINATION bin)
 endif()
 

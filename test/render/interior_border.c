@@ -161,8 +161,11 @@ void test_render_interior_border()
 {
 #ifdef __linux__
     /* Linux agents may have no display, and the offscreen driver still reaches
-     * Vulkan. Metal and D3D12 need the platform's own window. */
-    setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+     * Vulkan. Metal and D3D12 need the platform's own window. A caller's
+     * driver wins, under either of SDL's names. */
+    if (!getenv("SDL_VIDEODRIVER")) {
+        setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+    }
 #endif
     CF_Result made = cf_make_app(
         "interior-border",

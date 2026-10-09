@@ -135,6 +135,17 @@ static CF_Pixel pixel_at(CF_V3 world)
     return pixels[pixel_index(world)];
 }
 
+/* The floor point at the center of the pixel that shows a floor point. */
+static CF_V3 pixel_floor(CF_V3 world)
+{
+    int i = pixel_index(world);
+    CF_V2 ndc = { (i % SIDE + .5f) * 2 / SIDE - 1, 1 - (i / SIDE + .5f) * 2 / SIDE };
+    CF_V2 ground;
+    bool hit = render_scene3d_ground(&lens, ndc, &ground);
+    assert(hit);
+    return (CF_V3){ ground.x, 0, ground.y };
+}
+
 /* Post-processes the scene target and reads back the tone-mapped output. */
 static bool finish(float time)
 {
@@ -842,6 +853,23 @@ static bool floor_matches(const CF_V3 *casting, int count, CF_Pixel *const *show
     return true;
 }
 
+/* A point or spot lamp's intensity, and whether it casts shadows. */
+static float *lamp_intensity(ecs_entity lamp)
+{
+    if (GAME_GamePointLight_has(world, lamp)) {
+        return &GAME_GamePointLight_get(world, lamp)->intensity;
+    }
+    return &GAME_GameSpotLight_get(world, lamp)->intensity;
+}
+
+static bool *lamp_shadows(ecs_entity lamp)
+{
+    if (GAME_GamePointLight_has(world, lamp)) {
+        return &GAME_GamePointLight_get(world, lamp)->shadows;
+    }
+    return &GAME_GameSpotLight_get(world, lamp)->shadows;
+}
+
 /* Renders each set of lamps without shadows into frames[mask], with the
  * lamps whose bits the mask sets turned off, then every lamp with shadows.
  * With every lamp off the frame is black, so it is left out. */
@@ -851,13 +879,11 @@ static bool render_lamps(const ecs_entity *lamps, int count, CF_Pixel (*frames)[
     float intensities[2];
     assert(count <= 2);
     for (int i = 0; i < count; i++) {
-        intensities[i] = GAME_GamePointLight_get(world, lamps[i])->intensity;
+        intensities[i] = *lamp_intensity(lamps[i]);
     }
     for (int mask = 0; mask < (1 << count) - 1; mask++) {
         for (int i = 0; i < count; i++) {
-            GAME_GamePointLight_get(world, lamps[i])->intensity = mask >> i & 1
-                                                                    ? 0
-                                                                    : intensities[i];
+            *lamp_intensity(lamps[i]) = mask >> i & 1 ? 0 : intensities[i];
         }
         if (!render(&environment)) {
             return false;
@@ -865,9 +891,8 @@ static bool render_lamps(const ecs_entity *lamps, int count, CF_Pixel (*frames)[
         memcpy(frames[mask], pixels, sizeof pixels);
     }
     for (int i = 0; i < count; i++) {
-        GamePointLight *light = GAME_GamePointLight_get(world, lamps[i]);
-        light->intensity = intensities[i];
-        light->shadows = true;
+        *lamp_intensity(lamps[i]) = intensities[i];
+        *lamp_shadows(lamps[i]) = true;
     }
     return render(&environment);
 }
@@ -903,7 +928,7 @@ TEST_CASE(point_lights_cast_shadows_across_faces)
         GAME_GamePointLight_get(world, lamp)->shadows = false;
         REQUIRE(render_lamps(&lamp, 1, open));
         REQUIRE(!render_scene3d_error(scene3d)[0]);
-        REQUIRE(render_scene3d_last_work(scene3d).point_shadows == 1);
+        REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 1);
         int checked[2] = { 0 };
         REQUIRE(floor_matches(&lamp_spots[spot], 1, shown, checked));
         REQUIRE(checked[0] > 10 && checked[1] > 10);
@@ -946,7 +971,7 @@ TEST_CASE(point_lights_cast_shadows_from_their_own_maps)
     static CF_Pixel frames[3][PIXELS];
     CF_Pixel *shown[] = { frames[0], frames[1], frames[2], NULL };
     REQUIRE(render_lamps(lamps, 2, frames));
-    REQUIRE(render_scene3d_last_work(scene3d).point_shadows == 2);
+    REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 2);
     int checked[4] = { 0 };
     REQUIRE(floor_matches(spots, 2, shown, checked));
     for (int i = 0; i < 4; i++) {
@@ -978,7 +1003,7 @@ TEST_CASE(point_light_shadows_stop_at_four_lights)
         GAME_GamePointLight_get(world, lamps[i])->shadows = true;
     }
     REQUIRE(render(&environment));
-    REQUIRE(render_scene3d_last_work(scene3d).point_shadows == 4);
+    REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 4);
     CF_Pixel *shown[] = { frames[0], frames[1] };
     int checked[2] = { 0 };
     REQUIRE(floor_matches(lamp_spots, 1, shown, checked));
@@ -1023,6 +1048,178 @@ TEST_CASE(solids_outside_the_view_cast_for_point_lights)
     return true;
 }
 
+/* A white spot light pointing from `at` toward `target`. */
+static ecs_entity add_spot(CF_V3 at, CF_V3 target, float inner, float outer)
+{
+    ecs_entity spot = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ at.x, at.z });
+    GameSpotLight light = { .color = 0xffffffffu,
+                            .intensity = 2,
+                            .radius = 20,
+                            .elevation = at.y,
+                            .direction = cf_sub_v3(target, at),
+                            .inner_angle = inner,
+                            .outer_angle = outer };
+    assert(ecs_world_record_add(world, spot, GAME_COMPONENT_GameSpotLight.id, &light, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    return spot;
+}
+
+/* A spot light pointing down lights the floor inside its inner angle like a
+ * point light in its place, fades across its edge, and leaves the floor past
+ * its outer angle dark. */
+TEST_CASE(spot_lights_light_their_cone)
+{
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    CF_V3 at = { 0, 2, 0 };
+    ecs_entity lamp = add_lamp(at, 2, 20);
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    static CF_Pixel point[PIXELS];
+    memcpy(point, pixels, sizeof pixels);
+    GAME_GamePointLight_get(world, lamp)->intensity = 0;
+    /* 30 and 60 degrees across: full strength out to 15 degrees off its
+     * axis, and none past 30. */
+    ecs_entity spot = add_spot(at, (CF_V3){ 0 }, 30, 60);
+    REQUIRE(render(&environment));
+    CF_V3 inside[] = { { 0, 0, 0 }, { .4f, 0, 0 }, { -.4f, 0, 0 } };
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(point[pixel_index(inside[i])].colors.g > 10);
+        REQUIRE(distance(pixel_at(inside[i]), point[pixel_index(inside[i])]) <= 3);
+    }
+    /* 39 degrees off: dark. */
+    CF_V3 outside = { -1.6f, 0, 0 };
+    REQUIRE(
+        point[pixel_index(outside)].colors.g > 10 && pixel_at(outside).colors.g == 0
+    );
+    /* About 23 degrees off, the light falls off with the square of how far
+     * the point lies into the edge: a point lamp dimmed by that much matches. */
+    CF_V3 edge = pixel_floor((CF_V3){ .85f, 0, 0 });
+    float cosine = -cf_norm_v3(cf_sub_v3(edge, at)).y, inner = cosf(CF_PI / 12),
+          outer = cosf(CF_PI / 6);
+    float share = (cosine - outer) / (inner - outer);
+    REQUIRE(share > .2f && share < .8f);
+    CF_Pixel faded = pixel_at(edge);
+    GAME_GameSpotLight_get(world, spot)->intensity = 0;
+    GAME_GamePointLight_get(world, lamp)->intensity = 2 * share * share;
+    REQUIRE(render(&environment));
+    REQUIRE(faded.colors.g > 10 && distance(pixel_at(edge), faded) <= 3);
+    return true;
+}
+
+/* A spot light aimed across the box casts its shadow on the floor, from a cone
+ * at a slant and from one pointing straight down. */
+TEST_CASE(spot_lights_cast_shadows)
+{
+    add_box_on_floor();
+    CF_V3 spots[][2] = { { { -3, 4, -1 }, { 1, 0, .5f } },
+                         { { -1.6f, 5, .4f }, { -1.6f, 0, .4f } } };
+    static CF_Pixel open[1][PIXELS];
+    CF_Pixel *shown[] = { open[0], NULL };
+    for (int i = 0; i < 2; i++) {
+        ecs_entity lamp = add_spot(spots[i][0], spots[i][1], 90, 120);
+        REQUIRE(render_lamps(&lamp, 1, open));
+        REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 1);
+        int checked[2] = { 0 };
+        REQUIRE(floor_matches(spots[i], 1, shown, checked));
+        REQUIRE(checked[0] > 10 && checked[1] > 10);
+        assert(ecs_world_destroy_entity(world, lamp) == ECS_OK);
+        assert(ecs_world_apply_commands(world) == ECS_OK);
+    }
+    return true;
+}
+
+/* A spot light and a point light each cast from their own atlas rows. */
+TEST_CASE(spot_and_point_lights_share_shadow_maps)
+{
+    add_box_on_floor();
+    CF_V3 spots[] = { lamp_spots[0], { -2.5f, 3, 2 } };
+    ecs_entity lamps[] = { add_spot(spots[0], (CF_V3){ 1, 0, .5f }, 90, 120),
+                           add_lamp(spots[1], 2, 20) };
+    static CF_Pixel frames[3][PIXELS];
+    CF_Pixel *shown[] = { frames[0], frames[1], frames[2], NULL };
+    REQUIRE(render_lamps(lamps, 2, frames));
+    REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 2);
+    int checked[4] = { 0 };
+    REQUIRE(floor_matches(spots, 2, shown, checked));
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(checked[i] > 5);
+    }
+    return true;
+}
+
+/* Floor straight below a spot light high above it, with full strength at
+ * every outer angle the light accepts, even at its narrowest with a hard edge;
+ * angles out of range are errors. */
+TEST_CASE(spot_light_angles_must_be_in_range)
+{
+    add_floor();
+    CF_V3 at = { 0, 50, 0 }, below = pixel_floor((CF_V3){ 0 });
+    ecs_entity lamp = add_lamp(at, 2, 100);
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    CF_Pixel point = pixel_at(below);
+    REQUIRE(point.colors.g > 10);
+    GAME_GamePointLight_get(world, lamp)->intensity = 0;
+    GameSpotLight *spot = GAME_GameSpotLight_get(world, add_spot(at, below, 2, 2));
+    spot->radius = 100;
+    float accepted[][2] = { { 2, 2 }, { 0, 2 }, { 160, 160 } };
+    for (int i = 0; i < 3; i++) {
+        spot->inner_angle = accepted[i][0];
+        spot->outer_angle = accepted[i][1];
+        REQUIRE(render(&environment));
+        REQUIRE(distance(pixel_at(below), point) <= 3);
+    }
+    spot->inner_angle = 0;
+    float outer[] = { 1.9f, 161, NAN };
+    for (int i = 0; i < 3; i++) {
+        spot->outer_angle = outer[i];
+        REQUIRE(!render(&environment));
+        REQUIRE(strstr(render_scene3d_error(scene3d), "Spot Light outer angle"));
+    }
+    spot->outer_angle = 160;
+    float inner[] = { -1, 161, NAN };
+    for (int i = 0; i < 3; i++) {
+        spot->inner_angle = inner[i];
+        REQUIRE(!render(&environment));
+        REQUIRE(strstr(render_scene3d_error(scene3d), "Spot Light inner angle"));
+    }
+    return true;
+}
+
+/* Near the edge of a hard-edged spot light 160 degrees across, the bias lifts
+ * lookups past its face. They read that face's edge, not the row of the point
+ * light before it, whose faces a box beside the lamp fills with near depths. */
+TEST_CASE(wide_spot_lights_read_only_their_face)
+{
+    add_floor();
+    add_solid((CF_V3){ 7.5f, 1, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 6, 6 }, 0xffffffffu);
+    ecs_entity lamp = add_lamp((CF_V3){ 6, 1, 0 }, 2, 20);
+    GAME_GamePointLight_get(world, lamp)->shadows = true;
+    CF_V3 at = { 0, .6f, -2.5f };
+    GameSpotLight *spot = GAME_GameSpotLight_get(
+        world,
+        add_spot(at, (CF_V3){ at.x, 0, at.z }, 160, 160)
+    );
+    spot->radius = 4;
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    static CF_Pixel open[PIXELS];
+    memcpy(open, pixels, sizeof pixels);
+    spot->shadows = true;
+    REQUIRE(render(&environment));
+    REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 2);
+    /* The cone's edge toward the camera lies 3.4 past the light along z, and
+     * lookups from 3.25 on lift past the face. */
+    for (float x = -.6f; x <= .6f; x += .1f) {
+        for (float z = .78f; z <= .9f; z += .04f) {
+            CF_V3 point = { x, 0, z };
+            REQUIRE(open[pixel_index(point)].colors.g > 10);
+            REQUIRE(distance(pixel_at(point), open[pixel_index(point)]) <= 3);
+        }
+    }
+    return true;
+}
+
 void test_render_scene3d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -1056,6 +1253,11 @@ void test_render_scene3d()
     RUN_TEST_CASE(point_light_shadows_stop_at_four_lights);
     RUN_TEST_CASE(long_solids_cast_for_point_lights_near_one_end);
     RUN_TEST_CASE(solids_outside_the_view_cast_for_point_lights);
+    RUN_TEST_CASE(spot_lights_light_their_cone);
+    RUN_TEST_CASE(spot_lights_cast_shadows);
+    RUN_TEST_CASE(spot_and_point_lights_share_shadow_maps);
+    RUN_TEST_CASE(spot_light_angles_must_be_in_range);
+    RUN_TEST_CASE(wide_spot_lights_read_only_their_face);
     pu_clear_setup();
     cf_destroy_app();
 }

@@ -1605,7 +1605,16 @@ static char **migrate_bindings(char **sources, char **paths, int count, int targ
             moved |= migrated[i] != NULL;
         }
     }
-    if (moved && av_obj_size(av_doc_root(map))) {
+    if (av_obj_size(av_doc_root(map)) > INPUT_ACTION_MAX) {
+        snprintf(
+            error,
+            error_size,
+            "Moving the bindings into %s gives it more than %d actions; "
+            "remove some bindings or actions, then migrate",
+            paths[target],
+            INPUT_ACTION_MAX
+        );
+    } else if (moved && av_obj_size(av_doc_root(map))) {
         migrated[target] = asset_text_write(av_doc_root(map));
     }
     av_doc_free(map);

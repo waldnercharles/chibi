@@ -449,7 +449,10 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             script_analyzer_diagnostic(a, node, "Cannot capture an awaited shared action result");
         }
         call->awaited = true;
-        call->effects |= SCRIPT_EFFECT_SUSPEND;
+        /* Component accessors complete in place, awaited or not. */
+        if (!capability || capability->component_access == SCRIPT_COMPONENT_ACCESS_NONE) {
+            call->effects |= SCRIPT_EFFECT_SUSPEND;
+        }
         asetlen(a->narrowed, 0);
         return value;
     }

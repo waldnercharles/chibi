@@ -6,21 +6,21 @@ behavior "WaveBehavior" {
     state Spawned: int = 0
     state Side: float = -1.0
     on Tick {
-        if find_nearest_entity(get_game_transform(), 1000000.0, 1, engine["Self"]()).Found {
-            await set_variable<"Elapsed">(add(get_variable<"Elapsed">(), delta_time()))
-            await "Spawn Within Wave Limit"(find_nearest_entity(get_game_transform(), 1000000.0, 1, engine["Self"]()).Position)
+        if find_nearest_entity(self.Transform, 1000000.0, 1, engine["Self"]()).Found {
+            state."Elapsed" = state."Elapsed" + delta_time()
+            await "Spawn Within Wave Limit"(find_nearest_entity(self.Transform, 1000000.0, 1, engine["Self"]()).Position)
         }
     }
     function "Spawn Within Wave Limit"("Player Position": struct<"CF_V2"> = null) {
         after entry {
-            while greater_or_equal(get_variable<"Elapsed">(), max(get_variable<"Interval">(), B: float = 0.01)) {
-                if integer_greater_or_equal(get_variable<"Spawned">(), get_variable<"CountLimit">()) {
+            while state."Elapsed" >= max(state."Interval", B: float = 0.01) {
+                if state."Spawned" >= state."CountLimit" {
                     return
                 } else {
-                    await set_variable<"Elapsed">(subtract(get_variable<"Elapsed">(), max(get_variable<"Interval">(), B: float = 0.01)))
+                    state."Elapsed" = state."Elapsed" - max(state."Interval", B: float = 0.01)
                     await "Spawn Enemy"(entry."Player Position")
-                    await set_variable<"Spawned">(add(get_variable<"Spawned">(), B: int = 1))
-                    set_variable<"Side">(multiply(get_variable<"Side">(), B: float = -1.0))
+                    state."Spawned" = add(state."Spawned", B: int = 1)
+                    state."Side" = state."Side" * -1.0
                 }
             }
             return
@@ -32,7 +32,7 @@ behavior "WaveBehavior" {
             spawn_prototype()
         }
         after spawn_prototype {
-            await set_entity_game_transform(spawn_prototype.Entity, make_game_transform(add(entry."Player Position".x, multiply(get_variable<"Side">(), get_variable<"SpawnDistance">())), entry."Player Position".y))
+            spawn_prototype.Entity.Transform = make_game_transform(entry."Player Position".x + state."Side" * state."SpawnDistance", entry."Player Position".y)
             return
         }
     }

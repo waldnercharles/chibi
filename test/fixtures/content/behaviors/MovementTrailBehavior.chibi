@@ -2,7 +2,7 @@ behavior "MovementTrailBehavior" {
     state "Particle Carry": float = 0.0
     on Input {
         if "Is Stationary"(event.Direction) {
-            set_variable<"Particle Carry">(0.0)
+            state."Particle Carry" = 0.0
         } else {
             await "Emit Movement Trail"(event.Direction)
         }
@@ -10,19 +10,19 @@ behavior "MovementTrailBehavior" {
     function "Emit Movement Trail"(Direction: struct<"CF_V2"> = null) {
         depth_limit 32
         after entry {
-            await set_variable<"Particle Carry">(add(get_variable<"Particle Carry">(), "Emission Budget"(delta_time())))
-            while greater_or_equal(get_variable<"Particle Carry">(), 1.0) {
-                await emit_directed_particles(add(convert<"game_transform_to_cf">(get_game_transform()), multiply(multiply(vec2_norm(entry.Direction), B: plain float = -1.0), B: plain float = 9.0)), multiply(vec2_norm(entry.Direction), B: plain float = -1.0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
-                set_variable<"Particle Carry">(subtract(get_variable<"Particle Carry">(), B: plain float = 1.0))
+            state."Particle Carry" = state."Particle Carry" + "Emission Budget"(delta_time())
+            while state."Particle Carry" >= 1.0 {
+                await emit_directed_particles(convert<"game_transform_to_cf">(self.Transform) + multiply(multiply(vec2_norm(entry.Direction), B: plain float = -1.0), B: plain float = 9.0), multiply(vec2_norm(entry.Direction), B: plain float = -1.0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
+                state."Particle Carry" = state."Particle Carry" - 1.0
             }
             return
         }
     }
     pure function "Emission Budget"<T0: float, T1: float>(dt: T0 = 0.0) -> (Result: T1 = 0.0) {
-        return multiply(clamp(entry, real(0.0), real(0.10000000149011612)), real(64.0))
+        return clamp(entry, real(0.0), real(0.10000000149011612)) * real(64.0)
     }
     pure function "Is Stationary"(Direction: struct<"CF_V2"> = null) -> (Stationary: bool = false) {
         depth_limit 32
-        return greater_or_equal(0.0, add(multiply(entry.Direction.x, entry.Direction.x), multiply(entry.Direction.y, entry.Direction.y)))
+        return 0.0 >= entry.Direction.x * entry.Direction.x + entry.Direction.y * entry.Direction.y
     }
 }

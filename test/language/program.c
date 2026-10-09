@@ -9,6 +9,7 @@
 #include "language/identity.h"
 #include "language/lower.h"
 #include "runtime/arithmetic_definition.h"
+#include "runtime/core_definition.h"
 #include "runtime/native_definitions.h"
 #include "runtime/state_definition.h"
 #include "support/arena.h"
@@ -406,7 +407,8 @@ static bool compile_pack(const char *source, behavior_backend backend, const nat
         .layout_count = 2,
     };
     char error[256];
-    state_native = native_capabilities_from_definition_packs(&base, 1, pack, 1, error, sizeof error);
+    const native_definition_pack packs[] = { *pack, CORE_DEFINITION_PACK };
+    state_native = native_capabilities_from_definition_packs(&base, 1, packs, 2, error, sizeof error);
     if (!state_native) {
         fprintf(stderr, "state catalog: %s\n", error);
         return false;
@@ -1732,6 +1734,102 @@ TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
     }
     return true;
 }
+TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings)
+{
+    /* C cancels its own parent, which is refused before the newer sibling A
+     * is touched. */
+    const char *source = "behavior K { kept: double = 0; worker: task;"
+                         "function A() -> () { await Delay(1); kept += 1; }"
+                         "function C() -> () { yield; cancel worker; }"
+                         "function P() -> () { C(); A(); await Delay(5); }"
+                         "on Impulse(amount, enabled) { worker = P() } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 0.1, 0, 1000) != FLOW_OK);
+        execution_program_update(program, 2, 0, 1000);
+        REQUIRE(number_state(instance, "kept", 1));
+    }
+    return true;
+}
+TEST_CASE(program_task_owns_tasks_started_by_its_continuations)
+{
+    /* P's outcome continuation resumes on its own and starts Spin, which
+     * still belongs to P, so cancelling P stops it. */
+    const char
+        *source = "behavior C { ticks: double = 0; worker: task;"
+                  "function Spin() -> () { while true { ticks += 1; yield } }"
+                  "function Count() -> (shown: double) { return 1 }"
+                  "action act = Count();"
+                  "function P() -> () { act(); await Delay(10) }"
+                  "after act { yield; Spin() }"
+                  "on Impulse(amount, enabled) { if enabled { worker = P() } "
+                  "else { cancel worker } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                             { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "ticks", 2));
+        args[1].b = false;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 4, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "ticks", 2));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+TEST_CASE(program_task_continuation_cannot_cancel_or_await_its_task)
+{
+    /* The continuation resumes on its own, so P is suspended while it runs. */
+    const char *bodies[] = { "cancel worker", "await worker" };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int c = 0; c < 2; c++) {
+        char source[EXAMPLE_SOURCE_CAPACITY];
+        int length = snprintf(
+            source,
+            sizeof source,
+            "behavior S { worker: task;"
+            "function Count() -> (shown: double) { return 1 }"
+            "action act = Count();"
+            "function P() -> () { act(); await Delay(10) }"
+            "after act { yield; %s }"
+            "on Impulse(amount, enabled) { worker = P() } }",
+            bodies[c]
+        );
+        REQUIRE(length > 0 && (size_t)length < sizeof source);
+        for (int b = 0; b < 2; b++) {
+            prepare();
+            REQUIRE(compile(source, backends[b]));
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(ecs_world_create_entity(world))
+            );
+            const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                       { .type = PIN_BOOL, .b = true } };
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, 1, 0, 1000) != FLOW_OK);
+        }
+    }
+    return true;
+}
 TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
 {
     const char *source = "behavior Many { done: double = 0; kept: double = 0; "
@@ -1935,43 +2033,51 @@ TEST_CASE(program_version_11_references_migrate_to_values)
 }
 TEST_CASE(program_version_12_results_migrate_to_returns)
 {
-    const char
-        *source = "behavior R { n: double = 0\n"
-                  "    function Pair(x: double) -> (Sum: double, Twice: "
-                  "double, Kept: double) {\n"
-                  "        result Sum: double = x + 1\n"
-                  "        Kept = 4\n"
-                  "        result Twice: double = (x) * 2\n"
-                  "        if x > 10 {\n"
-                  "            return\n"
-                  "        }\n"
-                  "        return\n"
-                  "    }\n"
-                  "    pure function Seven() -> (Result: double) { "
-                  "result Result: double = 7; }\n"
-                  "    function Half(x: double) -> (Out: double) {\n"
-                  "        result Out: double = x / 2\n"
-                  "        if x > 100 {\n"
-                  "            Out := 3\n"
-                  "            Out = 4\n"
-                  "            return\n"
-                  "        }\n"
-                  "    }\n"
-                  "    function Set(x: double) -> (Value: double) {\n"
-                  "        result Value: double = x\n"
-                  "        if x > 1 {\n"
-                  "            Value = 10\n"
-                  "        }\n"
-                  "        return\n"
-                  "    }\n"
-                  "    function List(x: double) -> (Values: double[]) {\n"
-                  "        result Values: double[] = [x]\n"
-                  "        Values[0] = 2\n"
-                  "        return\n"
-                  "    }\n"
-                  "    on Impulse(amount, enabled) { p := Pair(2); n = "
-                  "p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
-                  "}\n";
+    const char *
+        source = "behavior R { n: double = 0\n"
+                 "    function Pair(x: double) -> (Sum: double, Twice: "
+                 "double, Kept: double) {\n"
+                 "        result Sum: double = x + 1\n"
+                 "        Kept = 4\n"
+                 "        result Twice: double = (x) * 2\n"
+                 "        if x > 10 {\n"
+                 "            return\n"
+                 "        }\n"
+                 "        return\n"
+                 "    }\n"
+                 "    pure function Seven() -> (Result: double) { "
+                 "result Result: double = 7; }\n"
+                 "    function Half(x: double) -> (Out: double) {\n"
+                 "        result Out: double = x / 2\n"
+                 "        if x > 100 {\n"
+                 "            Out := 3\n"
+                 "            Out = 4\n"
+                 "            return\n"
+                 "        }\n"
+                 "    }\n"
+                 "    function Set(x: double) -> (Value: double) {\n"
+                 "        result Value: double = x\n"
+                 "        if x > 1 {\n"
+                 "            Value = 10\n"
+                 "        }\n"
+                 "        return\n"
+                 "    }\n"
+                 "    function List(x: double) -> (Values: double[]) {\n"
+                 "        result Values: double[] = [x]\n"
+                 "        Values[0] = 2\n"
+                 "        return\n"
+                 "    }\n"
+                 "    function Bump(x: ref double) { x += 1 }\n"
+                 "    function Bumped(x: double) -> (Total: double) {\n"
+                 "        result Total: double = x\n"
+                 "        Bump(Total)\n"
+                 "        return\n"
+                 "    }\n"
+                 "    function Outer() -> (X: double) { if n > 0 {} /* lead */ "
+                 "result X: double = 1; function Inner() { return } return }\n"
+                 "    on Impulse(amount, enabled) { p := Pair(2); n = "
+                 "p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
+                 "}\n";
     const char *
         expected = "behavior R { n: double = 0\n"
                    "    function Pair(x: double) -> (Sum: double, "
@@ -2004,6 +2110,15 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
                    "        Values[0] = 2\n"
                    "        return Values\n"
                    "    }\n"
+                   "    function Bump(x: ref double) { x += 1 }\n"
+                   "    function Bumped(x: double) -> (Total: double) {\n"
+                   "        Total = x\n"
+                   "        Bump(Total)\n"
+                   "        return Total\n"
+                   "    }\n"
+                   "    function Outer() -> (X: double) { if n > 0 {} /* lead "
+                   "*/ "
+                   "function Inner() { return } return 1 }\n"
                    "    on Impulse(amount, enabled) { p := Pair(2); n "
                    "= p.Sum + p.Twice + p.Kept + Seven() + Half(4) + Set(4) }\n"
                    "}\n";
@@ -2034,13 +2149,14 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(manifest, "wb");
     fputs(
         "meta {\n    version 12\n}\n/-\nversion 12\n/- x {\n}\n// metadata "
-        "{\nname #\"P\\\"#; version "
-        "+12\ncontent "
+        "{\nname #\"P\\\"#; /* a /* b */ { */ \"version\" "
+        "0xc\ncontent "
         "\"content\"\n"
         "start_scene \"scenes/Start.kdl\"\n",
         file
     );
     fclose(file);
+    REQUIRE(!chmod(manifest, 0640) && !chmod(path, 0600));
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 2);
     char text[2048];
     file = fopen(outside, "rb");
@@ -2049,6 +2165,8 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     REQUIRE(!strcmp(text, "keep"));
     struct stat info;
     REQUIRE(!lstat(manifest, &info) && S_ISREG(info.st_mode));
+    REQUIRE((info.st_mode & 07777) == 0640);
+    REQUIRE(!stat(path, &info) && (info.st_mode & 07777) == 0600);
     file = fopen(manifest, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
@@ -2215,7 +2333,7 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
     const char *source = "behavior V { n: double = 0\n"
                          "    value twice = n * 2\n"
                          "    value more = twice + 1\n"
-                         "    value who: entity = self\n"
+                         "    /* who */ value who: entity = self\n"
                          "    function Add(x: double) {\n"
                          "        value sum: double = x + more\n"
                          "        local X = entry.x\n"
@@ -2228,7 +2346,7 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                          "Shadow(5) + twice }\n"
                          "}\n";
     const char *expected = "behavior V { n: double = 0\n"
-                           "    function Add(x: double) {\n"
+                           "    /* who */ function Add(x: double) {\n"
                            "        local X = entry.x\n"
                            "        return Keep(Value: cast<double>(x + ((n * "
                            "2) + 1)) + local.X)\n"
@@ -2239,9 +2357,26 @@ TEST_CASE(program_version_13_values_migrate_to_their_expressions)
                            "cast<entity>(self); n = Add(amount) "
                            "+ Shadow(5) + (n * 2) }\n"
                            "}\n";
-    char *migrated = chibi_migrate_values(source);
-    REQUIRE(migrated && !strcmp(migrated, expected));
-    REQUIRE(!chibi_migrate_values(expected));
+    char error[256] = "";
+    char *migrated = chibi_migrate_values(source, error, sizeof error);
+    REQUIRE(migrated && !strcmp(migrated, expected) && !error[0]);
+    REQUIRE(!chibi_migrate_values(expected, error, sizeof error) && !error[0]);
+    /* Expanding `twice` where a local `n` is declared would read the local. */
+    const char *shadowed = "behavior V { n: double = 0\n"
+                           "    value twice = n * 2\n"
+                           "    on Impulse(amount, enabled) { n := amount; m "
+                           ":= twice }\n"
+                           "}\n";
+    REQUIRE(!chibi_migrate_values(shadowed, error, sizeof error) && strstr(error, "`n`"));
+    /* Expanding `x` inside Outer would call Outer's own F. */
+    const char *callable = "behavior V { n: double = 0\n"
+                           "    function F() { return 1 }\n"
+                           "    value x = F()\n"
+                           "    function Outer() { function F() { return 2 }\n"
+                           "        return x }\n"
+                           "}\n";
+    error[0] = '\0';
+    REQUIRE(!chibi_migrate_values(callable, error, sizeof error) && strstr(error, "`F`"));
     free(migrated);
     prepare();
     REQUIRE(compile(expected, BEHAVIOR_BYTECODE));
@@ -2665,6 +2800,46 @@ TEST_CASE(program_component_paths_test_presence)
     }
     return true;
 }
+TEST_CASE(program_branch_completes_inside_action_continuation)
+{
+    /* The inner continuations capture the root local Shown, which the outer
+     * continuation holds only by reference, before and after resuming. */
+    const char *bodies[] = { "n += 1\n inner()", "n += 1\n await Wait()\n inner()" };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int c = 0; c < 2; c++) {
+        char source[EXAMPLE_SOURCE_CAPACITY];
+        int length = snprintf(
+            source,
+            sizeof source,
+            "behavior B { n: double = 0\n"
+            "function Count() -> (shown: double) { return 2 }\n"
+            "function Wait() { yield }\n"
+            "action outer = Count()\n"
+            "local Shown = outer.shown\n"
+            "action inner = engine[\"Branch\"](Condition: Shown > 0)\n"
+            "on Impulse(amount, enabled) { outer() }\n"
+            "after outer { %s }\n"
+            "after inner.True { n += 10 }\n"
+            "after inner.False { n += 100 } }",
+            bodies[c]
+        );
+        REQUIRE(length > 0 && (size_t)length < sizeof source);
+        for (int b = 0; b < 2; b++) {
+            prepare();
+            REQUIRE(compile_pack(source, backends[b], &NATIVE_STATE_DEFINITION_PACK));
+            execution_instance *instance = execution_program_attach(
+                program,
+                ecs_entity_to_u64(positioned(1, 1))
+            );
+            const pin_value args[] = { { .type = PIN_F64, .d = 1 },
+                                       { .type = PIN_BOOL, .b = true } };
+            REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+            REQUIRE(number_state(instance, "n", 11));
+        }
+    }
+    return true;
+}
 TEST_CASE(program_parameters_defaults_and_contextual_words)
 {
     const char *source = "behavior V { n: double = 0\n"
@@ -2793,6 +2968,9 @@ void test_language_program()
     RUN_TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches);
     RUN_TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller);
     RUN_TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters);
+    RUN_TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings);
+    RUN_TEST_CASE(program_task_owns_tasks_started_by_its_continuations);
+    RUN_TEST_CASE(program_task_continuation_cannot_cancel_or_await_its_task);
     RUN_TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);
@@ -2812,6 +2990,7 @@ void test_language_program()
     RUN_TEST_CASE(program_yield_resumes_on_the_next_update_without_time);
     RUN_TEST_CASE(program_task_state_awaits_its_function_results);
     RUN_TEST_CASE(program_component_paths_test_presence);
+    RUN_TEST_CASE(program_branch_completes_inside_action_continuation);
     RUN_TEST_CASE(program_parameters_defaults_and_contextual_words);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);

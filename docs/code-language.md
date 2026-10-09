@@ -163,6 +163,12 @@ A component path used as a condition tests presence instead: `if self.GameDash`,
 `!self.GameDash`, `self.GameDash == nil` and `&&`/`||` operands ask whether the
 entity has the component, so `if self.GameDash && self.GameDash.remaining > 0`
 reads the field only when it exists.
+`chibi_ctl --format` spells reflected accessor calls as paths: `get_dash().Value`
+becomes `self.Dash`, `has_dash()` in a condition becomes `self.Dash`, and a
+statement `set_dash_remaining(v)` becomes `self.Dash.remaining = v`. It also
+spells `get_variable<"x">()` as `state."x"` and operator functions such as
+`add(a, b)` and `less(a, b)` as operators. Each rewrite is kept only when the
+program analyzes the same. Awaiting a component accessor does not wait.
 
 Ordinary blocks support assignments, compound assignments, `if`/`else`, `match`, `while`,
 `for (i in first..last)` with inclusive bounds, `foreach (item in array)`,

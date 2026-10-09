@@ -212,7 +212,14 @@ void program_bind_world_callbacks(behavior_function_context *);
 void program_bind_commands(behavior_function_context *);
 int program_complete_action(behavior_function_context *, uint64_t, const pin_value *, int);
 void program_continuation_finish(execution_activation *);
-pin_value *program_capture_value(behavior_function_context *, const execution_module_capture *);
+/* The task an activation, or the activation it continues, belongs to. */
+uint64_t program_owning_task(const execution_activation *);
+bool program_capture_reference(
+    arena *,
+    behavior_function_context *,
+    const execution_module_capture *,
+    pin_value *
+);
 int program_initialize_local(behavior_function_context *, pin_value *, bool);
 int program_store_local_group(behavior_function_context *, pin_value *, int, bool);
 void program_collect_payloads(execution_program *, execution_activation *extra);

@@ -1,7 +1,7 @@
 library "Weapons" {
     function "Ignore Shooter"(Shooter: handle<"ecs.entity"> = 0, Projectile: handle<"ecs.entity"> = 0) {
         after entry {
-            await set_game_collider_ignore_entity(entry.Shooter, entry.Projectile)
+            entry.Projectile.Collider.ignore_entity = entry.Shooter
             return
         }
     }

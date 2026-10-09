@@ -1,8 +1,8 @@
 behavior "ReplayInput" {
     on Fire {
-        set_game_velocity({
+        self.Velocity = {
             x: 1.0,
             y: 0.0
-        })
+        }
     }
 }

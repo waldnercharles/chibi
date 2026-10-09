@@ -1,8 +1,8 @@
 behavior "InputBehavior" {
-    action set_gamevelocity = set_game_velocity("MovementActions"."Movement Velocity"(input.Direction, get_game_movement()))
+    action set_gamevelocity = set_game_velocity("MovementActions"."Movement Velocity"(input.Direction, self.Movement))
     on Input as input {
-        if has_game_dash() {
-            if less(0.0, get_game_dash().Value.remaining) {
+        if self.Dash {
+            if 0.0 < self.Dash.remaining {
             } else {
                 set_gamevelocity()
             }
@@ -15,11 +15,11 @@ behavior "InputBehavior" {
     }
     function "Face Direction"(Direction: struct<"CF_V2"> = null) {
         after entry {
-            if has_game_orientation() {
-                if greater_or_equal(0.0, add(abs(entry.Direction.x), abs(entry.Direction.y))) {
+            if self.Orientation {
+                if 0.0 >= abs(entry.Direction.x) + abs(entry.Direction.y) {
                     return
                 } else {
-                    await set_game_orientation("DirectionMath"."Direction Orientation"(entry.Direction.x, entry.Direction.y))
+                    self.Orientation = "DirectionMath"."Direction Orientation"(entry.Direction.x, entry.Direction.y)
                     return
                 }
             } else {

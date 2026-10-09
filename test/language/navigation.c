@@ -411,6 +411,13 @@ TEST_CASE(library_signatures_infer_results_from_returns)
                        documents[1].syntax->text);
     edited = authoring_source_hover(navigation, 1, cursor);
     REQUIRE(edited && !strcmp(edited, "Math.Twice(input: int) -> (Result: int)"));
+    /* A's Math.Twice is the library's, not the behavior's Twice, which calls A. */
+    const char *qualified[] = {
+        "library Math { function Twice(input:int) { return input * 2 } }",
+        "behavior App { score:=0; function A(x:int) { return Math.Twice(x) }"
+        " function Twice(x:int) { return A(x) } on Tick { score=Twice(3); } }"
+    };
+    REQUIRE(project(qualified, 2));
     return true;
 }
 

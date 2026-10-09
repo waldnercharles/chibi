@@ -32,6 +32,7 @@ typedef struct
     const char *text;
     const script_analysis *analysis;
     const script_catalog *catalog;
+    const TSTree *tree;
     rewrite *rewrites;
 } collector;
 
@@ -54,8 +55,14 @@ static int end(TSNode node)
 
 /* Equivalence ignores source positions, the spelling of payload aliases and
  * reference markers, which lower to the same reads. */
-static bool same_expression(const script_analysis *, int, const script_analysis *, int);
-static bool same_statement(const script_analysis *, int, const script_analysis *, int);
+/* An original analysis, a rewritten one and the catalog both resolve. */
+typedef struct
+{
+    const script_analysis *a, *b;
+    const script_catalog *catalog;
+} pair;
+static bool same_expression(const pair *, int, int);
+static bool same_statement(const pair *, int, int);
 
 static bool payload(const script_symbol *s)
 {
@@ -79,8 +86,9 @@ static bool same_text(const char *x, const char *y)
 {
     return !strcmp(x ? x : "", y ? y : "");
 }
-static bool same_symbol(const script_analysis *a, int i, const script_analysis *b, int j)
+static bool same_symbol(const pair *p, int i, int j)
 {
+    const script_analysis *a = p->a, *b = p->b;
     if (i < 0 || j < 0) {
         return i == j;
     }
@@ -95,12 +103,7 @@ static bool same_symbol(const script_analysis *a, int i, const script_analysis *
            x->outcome == y->outcome && x->lazy_local == y->lazy_local &&
            ((payload(x) && payload(y)) || same_text(x->name, y->name));
 }
-static bool same_arguments(
-    const script_expression *x,
-    const script_analysis *a,
-    const script_expression *y,
-    const script_analysis *b
-)
+static bool same_arguments(const pair *p, const script_expression *x, const script_expression *y)
 {
     if (x->argument_count != y->argument_count) {
         return false;
@@ -118,7 +121,7 @@ static bool same_arguments(
             }
         }
         same = match >= 0 &&
-               same_expression(a, left->value, b, y->arguments[match].value);
+               same_expression(p, left->value, y->arguments[match].value);
         if (same) {
             used[match] = true;
         }
@@ -132,36 +135,192 @@ static bool component_path(const script_expression *e)
 {
     return e->kind == SCRIPT_EXPR_COMPONENT || e->kind == SCRIPT_EXPR_MEMBER;
 }
-static bool same_expression(const script_analysis *a, int i, const script_analysis *b, int j)
+static const script_catalog_capability *capability(const pair *p, const script_expression *e)
 {
+    return e->kind == SCRIPT_EXPR_CALL
+             ? script_catalog_capability_by_id(p->catalog, e->capability)
+             : NULL;
+}
+/* A call to a script function lowers its results from the callee, whatever
+ * results the call site recorded. */
+static bool script_call(const pair *p, const script_expression *e)
+{
+    return e->kind == SCRIPT_EXPR_CALL && e->right >= 0 && !capability(p, e);
+}
+/* The value bound to a capability parameter ordinal, or -1. */
+static int argument(const script_expression *e, int parameter)
+{
+    for (int i = 0; parameter >= 0 && i < e->argument_count; i++) {
+        if (e->arguments[i].parameter == parameter) {
+            return e->arguments[i].value;
+        }
+    }
+    return -1;
+}
+/* A whole-component accessor call such as `get_dash()`, `get_entity_dash(e)`
+ * or `has_dash()`, read directly or through its single `.Value` result. */
+static const script_catalog_capability *accessor(
+    const pair *p,
+    const script_analysis *a,
+    int *i,
+    script_component_access access
+)
+{
+    const script_expression *e = &a->expressions[*i];
+    if (e->kind == SCRIPT_EXPR_MEMBER && e->left >= 0) {
+        const script_catalog_capability *c = capability(p, &a->expressions[e->left]);
+        if (c && c->result_count == 1 &&
+            e->member == script_catalog_id("port", c->results[0].name)) {
+            *i = e->left;
+            e = &a->expressions[*i];
+        }
+    }
+    const script_catalog_capability *c = capability(p, e);
+    return c && c->component_access == access && !c->component_field ? c : NULL;
+}
+/* An entity argument and a path root name the same entity; an omitted
+ * argument addresses the owner. */
+static bool same_entity(const pair *p, int entity, int root)
+{
+    if (entity >= 0) {
+        return same_expression(p, entity, root);
+    }
+    const script_expression *r = &p->b->expressions[root];
+    return r->kind == SCRIPT_EXPR_SYMBOL && r->symbol == p->b->owner_symbol;
+}
+/* `get_dash()` reads `self.Dash`; `has_dash()` tests it as a condition. */
+static bool same_component(const pair *p, int i, int j)
+{
+    const script_expression *y = &p->b->expressions[j];
+    if (y->kind != SCRIPT_EXPR_COMPONENT) {
+        return false;
+    }
+    bool presence = (y->type.flags & SCRIPT_TYPE_OPTIONAL) != 0;
+    const script_catalog_capability
+        *c = accessor(p, p->a, &i, presence ? SCRIPT_COMPONENT_ACCESS_HAS : SCRIPT_COMPONENT_ACCESS_READ);
+    return c && c->component == y->capability &&
+           same_entity(p, argument(&p->a->expressions[i], c->component_entity), y->left);
+}
+static script_operator operator_of(const char *name)
+{
+    static const struct
+    {
+        const char *name;
+        script_operator op;
+    } operators[] = {
+        { "+", SCRIPT_OP_ADD }, { "-", SCRIPT_OP_SUB }, { "*", SCRIPT_OP_MUL },
+        { "/", SCRIPT_OP_DIV }, { "<", SCRIPT_OP_LT },  { "<=", SCRIPT_OP_LE },
+        { ">", SCRIPT_OP_GT },  { ">=", SCRIPT_OP_GE }, { "==", SCRIPT_OP_EQ },
+        { "!=", SCRIPT_OP_NE },
+    };
+    for (size_t i = 0; name && i < sizeof operators / sizeof *operators; i++) {
+        if (!strcmp(operators[i].name, name)) {
+            return operators[i].op;
+        }
+    }
+    return SCRIPT_OP_NONE;
+}
+static bool real(script_type type)
+{
+    return (type.storage == PIN_F32 || type.storage == PIN_F64) &&
+           type.container == PIN_CONTAINER_SINGLE;
+}
+static bool integer(script_type type)
+{
+    return type.storage == PIN_I32 && type.container == PIN_CONTAINER_SINGLE;
+}
+/* The operator a call to `add`, `less`, `not`, `and` or `or` spells, when
+ * the operator lowers to the same operation on these operands. */
+static script_operator operator_call(const pair *p, const script_expression *x)
+{
+    const script_catalog_capability *c = capability(p, x);
+    if (!c || c->result_count != 1) {
+        return SCRIPT_OP_NONE;
+    }
+    int first = argument(x, 0), second = argument(x, 1);
+    if (c->parameter_count == 1 && first >= 0 && script_name_matches(c->name, "not")) {
+        return SCRIPT_OP_NOT;
+    }
+    if (c->parameter_count != 2 || first < 0 || second < 0) {
+        return SCRIPT_OP_NONE;
+    }
+    const script_expression *right = &p->a->expressions[second];
+    /* `&&` and `||` skip their right operand, which must not act. */
+    bool quiet = !(right->effects & ~SCRIPT_EFFECT_READ);
+    if (quiet && script_name_matches(c->name, "and")) {
+        return SCRIPT_OP_AND;
+    }
+    if (quiet && script_name_matches(c->name, "or")) {
+        return SCRIPT_OP_OR;
+    }
+    script_type l = p->a->expressions[first].type, r = right->type;
+    /* A typed parameter converts its operand first: `less` compares doubles
+     * as floats, while `<` compares them as doubles. */
+    script_type pa = c->parameters[0].type, pb = c->parameters[1].type;
+    if ((!(pa.flags & SCRIPT_TYPE_UNTYPED) && pa.storage != l.storage) ||
+        (!(pb.flags & SCRIPT_TYPE_UNTYPED) && pb.storage != r.storage)) {
+        return SCRIPT_OP_NONE;
+    }
+    script_operator op = operator_of(c->operator_name);
+    /* Integer comparisons agree; integer arithmetic may not. */
+    bool ints = integer(l) && integer(r) && op >= SCRIPT_OP_EQ && op <= SCRIPT_OP_GE;
+    return (real(l) && real(r)) || ints ? op : SCRIPT_OP_NONE;
+}
+static bool same_operator(const pair *p, int i, int j)
+{
+    const script_expression *x = &p->a->expressions[i], *y = &p->b->expressions[j];
+    const script_catalog_capability *c = capability(p, x);
+    /* An operator on other operands resolves to the capability's own call. */
+    if (c && y->kind == SCRIPT_EXPR_CALL && y->capability == x->capability &&
+        y->op != SCRIPT_OP_NONE && y->op == operator_of(c->operator_name)) {
+        return same_value_type(x->type, y->type) && same_arguments(p, x, y);
+    }
+    script_operator op = operator_call(p, x);
+    if (op == SCRIPT_OP_NONE || op != y->op ||
+        (y->kind != SCRIPT_EXPR_BINARY && y->kind != SCRIPT_EXPR_UNARY) ||
+        !same_value_type(x->type, y->type)) {
+        return false;
+    }
+    return same_expression(p, argument(x, 0), y->left) &&
+           (op == SCRIPT_OP_NOT || same_expression(p, argument(x, 1), y->right));
+}
+static bool same_expression(const pair *p, int i, int j)
+{
+    if (i >= 0 && j >= 0 && (same_component(p, i, j) || same_operator(p, i, j))) {
+        return true;
+    }
+    const script_analysis *a = p->a, *b = p->b;
     if (i < 0 || j < 0) {
         return i == j;
     }
     const script_expression *x = &a->expressions[i], *y = &b->expressions[j];
-    if (x->kind != y->kind || x->op != y->op ||
+    /* A call records the operator that resolved it only for presentation. */
+    if (x->kind != y->kind || (x->kind != SCRIPT_EXPR_CALL && x->op != y->op) ||
         !same_value_type(x->type, y->type) || x->capability != y->capability ||
         x->member != y->member || x->read != y->read || x->write != y->write ||
-        x->instance != y->instance || x->entry != y->entry || x->offset != y->offset ||
-        x->effects != y->effects || x->writable != y->writable ||
-        x->awaited != y->awaited || x->constant_snapshot != y->constant_snapshot ||
-        x->partial != y->partial || x->result_count != y->result_count ||
-        (!component_path(x) && !same_symbol(a, x->symbol, b, y->symbol)) ||
-        !same_expression(a, x->left, b, y->left)) {
+        x->instance != y->instance || x->entry != y->entry ||
+        x->offset != y->offset || x->effects != y->effects ||
+        (x->kind != SCRIPT_EXPR_MEMBER && x->writable != y->writable) ||
+        x->awaited != y->awaited ||
+        x->constant_snapshot != y->constant_snapshot || x->partial != y->partial ||
+        (!script_call(p, x) && x->result_count != y->result_count) ||
+        (!component_path(x) && !same_symbol(p, x->symbol, y->symbol)) ||
+        !same_expression(p, x->left, y->left)) {
         return false;
     }
     if (x->kind == SCRIPT_EXPR_CONSTANT &&
         !pin_value_equal(&x->constant, &y->constant)) {
         return false;
     }
-    for (int r = 0; r < x->result_count; r++) {
+    for (int r = 0; !script_call(p, x) && r < x->result_count; r++) {
         if (!same_value_type(x->results[r], y->results[r])) {
             return false;
         }
     }
     bool right = x->kind == SCRIPT_EXPR_CALL
                    ? x->right == y->right
-                   : same_expression(a, x->right, b, y->right);
-    return right && same_arguments(x, a, y, b);
+                   : same_expression(p, x->right, y->right);
+    return right && same_arguments(p, x, y);
 }
 /* An empty else block and an absent one run the same statements. */
 static int alternative(const script_analysis *a, int i)
@@ -172,49 +331,83 @@ static int alternative(const script_analysis *a, int i)
     }
     return i;
 }
-static bool same_statement(const script_analysis *a, int i, const script_analysis *b, int j)
+/* Statement and function effects only report what their expressions do; a
+ * path assignment also reads the component it writes, which lowers to no
+ * read. Expression effects stay exact: bindings depend on reading calls. */
+static bool same_effects(unsigned x, unsigned y)
 {
+    return !((x ^ y) & ~(unsigned)SCRIPT_EFFECT_READ);
+}
+/* `set_variable<"x">(v)` assigns `state.x = v`, `set_dash(v)` assigns
+ * `self.Dash = v` and `set_dash_remaining(v)` assigns
+ * `self.Dash.remaining = v`. A partial struct merges into the old value,
+ * which an assignment does not. */
+static bool same_write(const pair *p, const script_statement *x, const script_statement *y)
+{
+    if (x->kind != SCRIPT_STMT_EXPRESSION || y->kind != SCRIPT_STMT_ASSIGN ||
+        y->op != SCRIPT_OP_NONE || x->expression < 0 || y->expression < 0) {
+        return false;
+    }
+    const script_expression *call = &p->a->expressions[x->expression];
+    const script_expression *target = &p->b->expressions[y->expression];
+    if (call->kind == SCRIPT_EXPR_STORE) {
+        return target->kind == SCRIPT_EXPR_SYMBOL && !call->instance &&
+               same_symbol(p, call->symbol, target->symbol) &&
+               same_expression(p, call->right, y->second);
+    }
+    const script_catalog_capability *c = capability(p, call);
+    if (!c || c->component_access != SCRIPT_COMPONENT_ACCESS_WRITE) {
+        return false;
+    }
+    int value = argument(call, c->component_value);
+    if (c->component_field) {
+        if (target->kind != SCRIPT_EXPR_MEMBER || target->member != c->component_field) {
+            return false;
+        }
+        target = &p->b->expressions[target->left];
+    }
+    return value >= 0 && !call->instance && !p->a->expressions[value].partial &&
+           target->kind == SCRIPT_EXPR_COMPONENT &&
+           target->capability == c->component &&
+           same_entity(p, argument(call, c->component_entity), target->left) &&
+           same_expression(p, value, y->second);
+}
+static bool same_statement(const pair *p, int i, int j)
+{
+    const script_analysis *a = p->a, *b = p->b;
     if (i < 0 || j < 0) {
         return i == j;
     }
     const script_statement *x = &a->statements[i], *y = &b->statements[j];
-    if (x->kind != y->kind || x->op != y->op || x->effects != y->effects ||
-        x->child_count != y->child_count || !same_symbol(a, x->symbol, b, y->symbol) ||
-        !same_expression(a, x->expression, b, y->expression) ||
-        !same_expression(a, x->second, b, y->second) ||
-        !same_expression(a, x->third, b, y->third) ||
-        !same_statement(a, x->body, b, y->body) ||
-        !same_statement(a, alternative(a, x->alternative), b, alternative(b, y->alternative))) {
+    if (same_write(p, x, y)) {
+        return true;
+    }
+    if (x->kind != y->kind || x->op != y->op || !same_effects(x->effects, y->effects) ||
+        x->child_count != y->child_count || !same_symbol(p, x->symbol, y->symbol) ||
+        !same_expression(p, x->expression, y->expression) ||
+        !same_expression(p, x->second, y->second) ||
+        !same_expression(p, x->third, y->third) ||
+        !same_statement(p, x->body, y->body) ||
+        !same_statement(p, alternative(a, x->alternative), alternative(b, y->alternative))) {
         return false;
     }
     for (int c = 0; c < x->child_count; c++) {
-        if (!same_statement(a, x->children[c], b, y->children[c])) {
+        if (!same_statement(p, x->children[c], y->children[c])) {
             return false;
         }
     }
     return true;
 }
-static bool same_symbols(
-    const script_analysis *a,
-    const int *x,
-    const script_analysis *b,
-    const int *y,
-    int count
-)
+static bool same_symbols(const pair *p, const int *x, const int *y, int count)
 {
     for (int i = 0; i < count; i++) {
-        if (!same_symbol(a, x[i], b, y[i])) {
+        if (!same_symbol(p, x[i], y[i])) {
             return false;
         }
     }
     return true;
 }
-static bool same_function(
-    const script_analysis *a,
-    const script_function *x,
-    const script_analysis *b,
-    const script_function *y
-)
+static bool same_function(const pair *p, const script_function *x, const script_function *y)
 {
     return x->kind == y->kind && x->receiver == y->receiver &&
            x->parent == y->parent && x->parameter_count == y->parameter_count &&
@@ -222,12 +415,12 @@ static bool same_function(
            x->type_parameter_count == y->type_parameter_count &&
            x->depth_limit == y->depth_limit && x->event == y->event &&
            x->action == y->action && same_text(x->entry, y->entry) &&
-           x->effects == y->effects && x->pure == y->pure &&
-           x->disabled == y->disabled && same_symbol(a, x->symbol, b, y->symbol) &&
-           same_symbols(a, x->parameters, b, y->parameters, x->parameter_count) &&
-           same_symbols(a, x->results, b, y->results, x->result_count) &&
-           same_symbols(a, x->type_parameters, b, y->type_parameters, x->type_parameter_count) &&
-           same_statement(a, x->body, b, y->body);
+           same_effects(x->effects, y->effects) && x->pure == y->pure &&
+           x->disabled == y->disabled && same_symbol(p, x->symbol, y->symbol) &&
+           same_symbols(p, x->parameters, y->parameters, x->parameter_count) &&
+           same_symbols(p, x->results, y->results, x->result_count) &&
+           same_symbols(p, x->type_parameters, y->type_parameters, x->type_parameter_count) &&
+           same_statement(p, x->body, y->body);
 }
 /* Declared symbols in order, without payload aggregates and their aliases. */
 static int next_declared(const script_analysis *a, int i)
@@ -237,20 +430,22 @@ static int next_declared(const script_analysis *a, int i)
     }
     return i;
 }
-static bool same_declarations(const script_analysis *a, const script_analysis *b)
+static bool same_declarations(const pair *p)
 {
+    const script_analysis *a = p->a, *b = p->b;
     int i = next_declared(a, 0), j = next_declared(b, 0);
     for (; i < a->symbol_count && j < b->symbol_count;
          i = next_declared(a, i + 1), j = next_declared(b, j + 1)) {
-        if (!same_symbol(a, i, b, j) ||
-            !same_expression(a, a->symbols[i].initializer, b, b->symbols[j].initializer)) {
+        if (!same_symbol(p, i, j) ||
+            !same_expression(p, a->symbols[i].initializer, b->symbols[j].initializer)) {
             return false;
         }
     }
     return i == a->symbol_count && j == b->symbol_count;
 }
-static bool same_query(const script_analysis *a, int i, const script_analysis *b, int j)
+static bool same_query(const pair *p, int i, int j)
 {
+    const script_analysis *a = p->a, *b = p->b;
     if (i < 0 || j < 0) {
         return i == j;
     }
@@ -260,7 +455,7 @@ static bool same_query(const script_analysis *a, int i, const script_analysis *b
         return false;
     }
     for (int c = 0; c < x->child_count; c++) {
-        if (!same_query(a, x->children[c], b, y->children[c])) {
+        if (!same_query(p, x->children[c], y->children[c])) {
             return false;
         }
     }
@@ -270,25 +465,25 @@ static bool same_ids(const uint64_t *x, int n, const uint64_t *y, int m)
 {
     return n == m && (!n || !memcmp(x, y, sizeof *x * (size_t)n));
 }
-static bool same_program(const script_analysis *a, const script_analysis *b)
+static bool same_program(const pair *p)
 {
+    const script_analysis *a = p->a, *b = p->b;
     if (!a->valid || !b->valid || a->diagnostic_count || b->diagnostic_count ||
         a->kind != b->kind || a->owner_type != b->owner_type ||
         !same_text(a->name, b->name) || a->function_count != b->function_count ||
-        a->binding_count != b->binding_count || !same_query(a, a->query, b, b->query) ||
-        !same_symbol(a, a->owner_symbol, b, b->owner_symbol) ||
-        !same_declarations(a, b)) {
+        a->binding_count != b->binding_count || !same_query(p, a->query, b->query) ||
+        !same_symbol(p, a->owner_symbol, b->owner_symbol) || !same_declarations(p)) {
         return false;
     }
     for (int i = 0; i < a->function_count; i++) {
-        if (!same_function(a, &a->functions[i], b, &b->functions[i])) {
+        if (!same_function(p, &a->functions[i], &b->functions[i])) {
             return false;
         }
     }
     for (int i = 0; i < a->binding_count; i++) {
         const script_binding *x = &a->bindings[i], *y = &b->bindings[i];
-        if (!same_expression(a, x->target, b, y->target) ||
-            !same_expression(a, x->value, b, y->value) ||
+        if (!same_expression(p, x->target, y->target) ||
+            !same_expression(p, x->value, y->value) ||
             !same_ids(x->reads, x->read_count, y->reads, y->read_count) ||
             !same_ids(x->writes, x->write_count, y->writes, y->write_count)) {
             return false;
@@ -573,6 +768,293 @@ static void component_call(collector *c, TSNode node, TSNode call)
     }
     free(path);
 }
+/* The analyzed expression of this kind that a node spells, or NULL. */
+static const script_expression *expression_at(const collector *c, TSNode node, script_expression_kind kind)
+{
+    for (int i = 0; i < c->analysis->expression_count; i++) {
+        const script_expression *e = &c->analysis->expressions[i];
+        if (e->kind == kind && e->range.start == start(node) &&
+            e->range.end == end(node)) {
+            return e;
+        }
+    }
+    return NULL;
+}
+/* An argument written in the call's own list. Defaults span the whole list;
+ * an action's configured arguments lie at its declaration. */
+static int written_argument(const collector *c, TSNode node, const script_expression *call, int parameter)
+{
+    int value = argument(call, parameter);
+    TSNode list = field(node, "arguments");
+    if (value < 0) {
+        return -1;
+    }
+    script_range range = c->analysis->expressions[value].range;
+    bool inside = range.start > start(list) && range.end < end(list);
+    return inside ? value : -1;
+}
+static script_range value_range(const collector *c, int value)
+{
+    return c->analysis->expressions[value].range;
+}
+/* Operands that need no parentheses before a `.` or as an operand. */
+static bool primary_at(const collector *c, script_range range)
+{
+    TSNode root = ts_tree_root_node(c->tree);
+    TSNode node = ts_node_named_descendant_for_byte_range(
+        root,
+        (uint32_t)range.start,
+        (uint32_t)range.end
+    );
+    if (start(node) != range.start || end(node) != range.end) {
+        return false;
+    }
+    static const char *const primaries[] = { "identifier",
+                                             "member_expression",
+                                             "call_expression",
+                                             "index_expression",
+                                             "parenthesized_expression",
+                                             "builtin_reference",
+                                             "number",
+                                             "string",
+                                             "boolean" };
+    for (size_t i = 0; i < sizeof primaries / sizeof *primaries; i++) {
+        if (is(node, primaries[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+static void append_text(char **out, const char *text, int length)
+{
+    for (int i = 0; i < length; i++) {
+        apush(*out, text[i]);
+    }
+}
+/* `.Dash` or `.Dash.remaining`: the component's source name and the
+ * field's reflected name, after a `)` that closes a grouped entity. */
+static char *component_suffix(const collector *c, const script_catalog_capability *cap, bool close)
+{
+    const script_catalog_type *type = script_catalog_type_by_id(c->catalog, cap->component);
+    const char *name = type->source_name ? type->source_name : type->name;
+    const char *field_name = "";
+    for (int i = 0; cap->component_field && i < type->field_count; i++) {
+        if (type->fields[i].id == cap->component_field) {
+            field_name = type->fields[i].name;
+        }
+    }
+    size_t size = strlen(name) + strlen(field_name) + 4;
+    char *text = xmalloc(size);
+    snprintf(text, size, "%s.%s%s%s", close ? ")" : "", name, *field_name ? "." : "", field_name);
+    return text;
+}
+/* Replaces [from, to) with a path to the component, keeping an entity
+ * argument's own text in place so rewrites inside it still apply. */
+static void path_edits(rewrite *r, const collector *c, int from, int to, int entity, const script_catalog_capability *cap)
+{
+    if (entity < 0) {
+        char *suffix = component_suffix(c, cap, false);
+        size_t size = strlen(suffix) + sizeof "self";
+        char *text = xmalloc(size);
+        snprintf(text, size, "self%s", suffix);
+        edit(r, from, to, text);
+        free(text);
+        free(suffix);
+        return;
+    }
+    script_range range = value_range(c, entity);
+    bool bare = primary_at(c, range);
+    char *suffix = component_suffix(c, cap, !bare);
+    edit(r, from, range.start, bare ? "" : "(");
+    edit(r, range.end, to, suffix);
+    free(suffix);
+}
+/* Whether a node's value is read as a condition, which tests presence. */
+static bool condition(const collector *c, TSNode node)
+{
+    TSNode parent = ts_node_parent(node);
+    if (is(parent, "if_statement") || is(parent, "while_statement")) {
+        TSNode tested = field(parent, "condition");
+        return start(tested) == start(node) && end(tested) == end(node);
+    }
+    if (is(parent, "unary_expression")) {
+        return c->text[start(field(parent, "operator"))] == '!';
+    }
+    return is(parent, "binary_expression") && operator_group(c, parent) == 1;
+}
+/* `get_dash().Value` reads `self.Dash`; `has_dash()` tests `self.Dash`. */
+static void accessor_read(collector *c, TSNode node, const script_expression *call, const script_catalog_capability *cap)
+{
+    TSNode parent = ts_node_parent(node), read = node;
+    if (cap->component_access == SCRIPT_COMPONENT_ACCESS_READ &&
+        is(parent, "member_expression") &&
+        start(field(parent, "object")) == start(node) &&
+        end(field(parent, "object")) == end(node)) {
+        TSNode member = field(parent, "member");
+        const char *result = cap->results[0].name;
+        if ((size_t)(end(member) - start(member)) == strlen(result) &&
+            !strncmp(c->text + start(member), result, strlen(result))) {
+            read = parent;
+        }
+    }
+    if (cap->component_access == SCRIPT_COMPONENT_ACCESS_HAS && !condition(c, node)) {
+        return;
+    }
+    rewrite r = { 0 };
+    path_edits(&r, c, start(read), end(read), written_argument(c, node, call, cap->component_entity), cap);
+    apush(c->rewrites, r);
+}
+/* `set_dash(v)` becomes `self.Dash = v`; the value keeps its text. */
+static void accessor_write(
+    collector *c,
+    TSNode node,
+    const script_expression *call,
+    const script_catalog_capability *cap
+)
+{
+    TSNode statement = ts_node_parent(node);
+    if (is(statement, "await_expression")) {
+        statement = ts_node_parent(statement);
+    }
+    int value = written_argument(c, node, call, cap->component_value),
+        entity = written_argument(c, node, call, cap->component_entity);
+    if (!is(statement, "expression_statement") || value < 0) {
+        return;
+    }
+    script_range v = value_range(c, value);
+    int from = start(ts_node_named_child(statement, 0)), to = end(node);
+    rewrite r = { 0 };
+    if (entity >= 0 && value_range(c, entity).start < v.start) {
+        path_edits(&r, c, from, v.start, entity, cap);
+        text_edit *last = &r.edits[acount(r.edits) - 1];
+        size_t size = strlen(last->text) + sizeof " = ";
+        char *text = xmalloc(size);
+        snprintf(text, size, "%s = ", last->text);
+        free((char *)last->text);
+        last->text = text;
+    } else {
+        char *root = NULL;
+        if (entity < 0) {
+            append_text(&root, "self", 4);
+        } else {
+            script_range e = value_range(c, entity);
+            bool bare = primary_at(c, e);
+            append_text(&root, "(", !bare);
+            append_text(&root, c->text + e.start, e.end - e.start);
+            append_text(&root, ")", !bare);
+        }
+        char *suffix = component_suffix(c, cap, false);
+        append_text(&root, suffix, (int)strlen(suffix));
+        append_text(&root, " = ", 3);
+        apush(root, 0);
+        edit(&r, from, v.start, root);
+        free(suffix);
+        afree(root);
+    }
+    edit(&r, v.end, to, "");
+    apush(c->rewrites, r);
+}
+static const char *spelling(script_operator op)
+{
+    static const char *const spellings[] = {
+        [SCRIPT_OP_ADD] = "+", [SCRIPT_OP_SUB] = "-",  [SCRIPT_OP_MUL] = "*",
+        [SCRIPT_OP_DIV] = "/", [SCRIPT_OP_LT] = "<",   [SCRIPT_OP_LE] = "<=",
+        [SCRIPT_OP_GT] = ">",  [SCRIPT_OP_GE] = ">=",  [SCRIPT_OP_EQ] = "==",
+        [SCRIPT_OP_NE] = "!=", [SCRIPT_OP_AND] = "&&", [SCRIPT_OP_OR] = "||",
+    };
+    return spellings[op];
+}
+/* `add(a, b)` becomes `(a + b)` and `not(x)` becomes `!(x)`; a later round
+ * drops the parentheses that precedence makes redundant. */
+static void operator_rewrite(collector *c, TSNode node, const script_expression *call)
+{
+    script_operator op = operator_call(&(pair){ c->analysis, NULL, c->catalog }, call);
+    const script_catalog_capability *cap = script_catalog_capability_by_id(c->catalog, call->capability);
+    /* Other operands resolve the operator through the catalog. */
+    if (op == SCRIPT_OP_NONE && cap && cap->parameter_count == 2) {
+        op = operator_of(cap->operator_name);
+    }
+    if (op == SCRIPT_OP_NONE) {
+        return;
+    }
+    int a = written_argument(c, node, call, 0),
+        b = written_argument(c, node, call, 1);
+    if (a < 0 || (op != SCRIPT_OP_NOT && b < 0)) {
+        return;
+    }
+    script_range first = value_range(c, a);
+    rewrite r = { 0 };
+    if (op == SCRIPT_OP_NOT) {
+        edit(&r, start(node), first.start, "!(");
+        edit(&r, first.end, end(node), ")");
+        apush(c->rewrites, r);
+        return;
+    }
+    script_range second = value_range(c, b);
+    if (second.start < first.end) {
+        return;
+    }
+    size_t size = strlen(spelling(op)) + 3;
+    char *between = xmalloc(size);
+    snprintf(between, size, " %s ", spelling(op));
+    edit(&r, start(node), first.start, "(");
+    edit(&r, first.end, second.start, between);
+    edit(&r, second.end, end(node), ")");
+    free(between);
+    apush(c->rewrites, r);
+}
+/* `get_variable<"Lift">()` reads `state."Lift"`; a statement
+ * `set_variable<"Lift">(v)` assigns it. */
+static void state_rewrite(collector *c, TSNode node)
+{
+    TSNode types = field(node, "type_arguments");
+    if (ts_node_is_null(types) || ts_node_named_child_count(types) != 1) {
+        return;
+    }
+    TSNode name = field(ts_node_named_child(types, 0), "name");
+    if (ts_node_is_null(name)) {
+        return;
+    }
+    char *path = NULL;
+    append_text(&path, "state.", 6);
+    append_text(&path, c->text + start(name), end(name) - start(name));
+    const script_expression *store = expression_at(c, node, SCRIPT_EXPR_STORE);
+    TSNode statement = ts_node_parent(node);
+    if (is(statement, "await_expression")) {
+        statement = ts_node_parent(statement);
+    }
+    if (store && is(statement, "expression_statement")) {
+        script_range value = value_range(c, store->right);
+        append_text(&path, " = ", 3);
+        apush(path, 0);
+        rewrite r = { 0 };
+        edit(&r, start(ts_node_named_child(statement, 0)), value.start, path);
+        edit(&r, value.end, end(node), "");
+        apush(c->rewrites, r);
+    } else if (!store && expression_at(c, node, SCRIPT_EXPR_SYMBOL)) {
+        apush(path, 0);
+        add(c, start(node), end(node), path);
+    }
+    afree(path);
+}
+static void call_rewrites(collector *c, TSNode node)
+{
+    const script_expression *call = expression_at(c, node, SCRIPT_EXPR_CALL);
+    if (!call) {
+        state_rewrite(c, node);
+        return;
+    }
+    const script_catalog_capability *cap = script_catalog_capability_by_id(c->catalog, call->capability);
+    if (cap && !cap->component_field &&
+        (cap->component_access == SCRIPT_COMPONENT_ACCESS_READ ||
+         cap->component_access == SCRIPT_COMPONENT_ACCESS_HAS)) {
+        accessor_read(c, node, call, cap);
+    } else if (cap && cap->component_access == SCRIPT_COMPONENT_ACCESS_WRITE) {
+        accessor_write(c, node, call, cap);
+    } else {
+        operator_rewrite(c, node, call);
+    }
+}
 /* `state.x` and `local.x` name their symbol directly. */
 static void storage_path(collector *c, TSNode node)
 {
@@ -637,6 +1119,7 @@ static void collect(collector *c, TSNode node, pass phase)
         storage_path(c, node);
     } else if (!strcmp(type, "call_expression")) {
         component_call(c, node, node);
+        call_rewrites(c, node);
     }
     if (phase == PASS_SHAPE && !strcmp(type, "argument_list")) {
         TSNode parent = ts_node_parent(node);
@@ -702,7 +1185,7 @@ static bool accepts(const oracle *o, const char *text)
                 !ts_node_has_error(ts_tree_root_node(syntax->tree));
     if (same) {
         script_analysis *analysis = script_analyze_document(syntax, o->catalog, o->identity);
-        same = same_program(o->original, analysis);
+        same = same_program(&(pair){ o->original, analysis, o->catalog });
         script_analysis_free(analysis);
     }
     script_syntax_free(syntax);
@@ -713,7 +1196,10 @@ static char *round_text(const oracle *o, const char *text, pass phase)
 {
     script_syntax *syntax = script_parse(text);
     script_analysis *analysis = script_analyze_document(syntax, o->catalog, o->identity);
-    collector c = { .text = text, .analysis = analysis, .catalog = o->catalog };
+    collector c = { .text = text,
+                    .analysis = analysis,
+                    .catalog = o->catalog,
+                    .tree = syntax->tree };
     collect(&c, ts_tree_root_node(syntax->tree), phase);
     int count = acount(c.rewrites);
     bool *accepted = xcalloc((size_t)(count ? count : 1), sizeof *accepted);

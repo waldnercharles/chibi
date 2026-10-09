@@ -9,7 +9,7 @@ behavior "Weapon" {
             elapsed_dt()
         } else {
             if find_nearest_entity(self.Transform, 2000.0, 2, engine["Self"]()).Found {
-                await set_game_aim_direction(convert<"game_transform_to_cf">(direction_to(self.Transform, convert<"game_transform_to_cf">(find_nearest_entity(self.Transform, 2000.0, 2, engine["Self"]()).Position))))
+                self.Aim.direction = convert<"game_transform_to_cf">(direction_to(self.Transform, convert<"game_transform_to_cf">(find_nearest_entity(self.Transform, 2000.0, 2, engine["Self"]()).Position)))
                 elapsed_dt()
             } else {
                 elapsed_dt()
@@ -18,7 +18,7 @@ behavior "Weapon" {
     }
     after elapsed_dt {
         if self.Aim.Firing {
-            while greater_or_equal(elapsed, self.Weapon.Cooldown) {
+            while elapsed >= self.Weapon.Cooldown {
                 await "WeaponActions"."Fire Projectile"("position + offset"(self.Transform, transform_visual_offset({
                     x: 16.0,
                     y: 0.0

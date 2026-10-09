@@ -1,5 +1,5 @@
 library "MovementActions" {
     pure function "Movement Velocity"<T0: struct<"CF_V2">, T1: struct<"GameMovement">, T2: struct<"CF_V2">>(direction: T0 = null, speed: T1 = null) -> (Velocity: T2 = null) {
-        return multiply(entry.direction, convert<"Unwrap_GameMovement">(entry.speed))
+        return entry.direction * convert<"Unwrap_GameMovement">(entry.speed)
     }
 }

@@ -241,8 +241,15 @@ declared_components *declared_components_new(
     c->desc_list = xcalloc((size_t)count + 1, sizeof *c->desc_list);
     c->script_types = xcalloc((size_t)count + 1, sizeof *c->script_types);
     c->spellings = xcalloc((size_t)count + 1, sizeof *c->spellings);
+    /* A new set replaces the newest one, so it may reuse that set's names. */
+    if (acount(alive)) {
+        publish(NULL);
+    }
     for (int i = 0; i < count; i++) {
         if (!build(c, i, &components[i], error, size)) {
+            if (acount(alive)) {
+                publish(alast(alive));
+            }
             c->count = 0;
             declared_components_free(c);
             return NULL;
@@ -254,9 +261,6 @@ declared_components *declared_components_new(
     }
     for (int i = 0; i < count; i++) {
         apush(c->project, c->desc_list[i]);
-    }
-    if (acount(alive)) {
-        publish(NULL);
     }
     apush(alive, c);
     publish(c);
@@ -356,7 +360,8 @@ void declared_components_wire(execution_wire *wire, declared_components **out)
         }
         component->fields = fields[i];
     }
-    if (wire->reading && !wire->error && count) {
+    /* An empty set still replaces the sets of other projects. */
+    if (wire->reading && !wire->error) {
         char message[256];
         *out = declared_components_new(components, count, message, sizeof message);
         if (!*out) {

@@ -710,6 +710,19 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(type->fields[2].offset == offsetof(charge, full));
     REQUIRE(type->fields[3].offset == offsetof(charge, source));
     REQUIRE(type->fields[4].offset == offsetof(charge, drift));
+    /* A replacement may reuse the names of the set it replaces, and a failed
+     * one leaves that set published. */
+    declared_components *replacement = declared_components_new(&component, 1, error, sizeof error);
+    REQUIRE(replacement && type_catalog_find("Charge") != type);
+    declared_components_free(replacement);
+    REQUIRE(rejected("Charge", "vec9", "unknown type vec9"));
+    REQUIRE(type_catalog_find("Charge") == type);
+    /* A project that declares nothing still hides the other project's set. */
+    declared_components *none = declared_components_new(NULL, 0, error, sizeof error);
+    REQUIRE(none && !type_catalog_find("Charge"));
+    REQUIRE(project_components().component_count == GAME_REGISTRY_COMPONENT_COUNT);
+    declared_components_free(none);
+    REQUIRE(type_catalog_find("Charge") == type);
     ecs_component_catalog components = declared_components_ecs(declared);
     REQUIRE(components.component_count == 1 && components.components[0]->type == type);
     ecs_component_catalog project = project_components();

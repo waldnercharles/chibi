@@ -90,9 +90,12 @@ bool authoring_component_declarations_load(
         return fail(error, size, content, "component folder path is too long");
     }
     DIR *dir = opendir(directory);
+    if (!dir && errno != ENOENT) {
+        return fail(error, size, directory, "cannot open the component folder");
+    }
     if (!dir) {
-        return errno == ENOENT ||
-               fail(error, size, directory, "cannot open the component folder");
+        *out = declared_components_new(NULL, 0, error, size);
+        return true;
     }
     char **names = NULL;
     struct dirent *entry;
@@ -138,7 +141,7 @@ bool authoring_component_declarations_load(
             apush(components, c);
         }
     }
-    if (valid && acount(components)) {
+    if (valid) {
         *out = declared_components_new(components, acount(components), error, size);
         valid = *out != NULL;
     }

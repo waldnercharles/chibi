@@ -1456,7 +1456,7 @@ static authoring_language_catalog *source_native_catalog(const char *root, char 
 }
 
 /* Installs the components the project declares in content/components until
- * *out is freed; *out stays NULL when it declares none. */
+ * *out is freed, as an empty set when it declares none. */
 static bool load_declared(const char *root, declared_components **out, char *error, size_t size)
 {
     *out = NULL;
@@ -11031,7 +11031,6 @@ static int operation_requires_root(const char *operation)
     return !strcmp(operation, "execution_status") ||
            !strcmp(operation, "describe_components") ||
            !strcmp(operation, "describe_registry") ||
-           !strcmp(operation, "analyze_code") ||
            !strcmp(operation, "profile_scenario") || !strcmp(operation, "status") ||
            !strcmp(operation, "list_assets") || !strcmp(operation, "read_asset") ||
            !strcmp(operation, "validate_asset") ||
@@ -11084,10 +11083,12 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         return response_finish(&result);
     }
     char *root = NULL;
-    if (operation_requires_root(operation)) {
+    /* Unsaved source analysis needs no project, but sees its components. */
+    bool optional_root = !strcmp(operation, "analyze_code");
+    if (operation_requires_root(operation) || optional_root) {
         char error[256] = { 0 };
         root = root_path(request_string(root_value, "project_root"), default_root, error, sizeof error);
-        if (!root) {
+        if (!root && !optional_root) {
             response_error(&result, exit_code, CHIBI_AUTOMATION_IO_ERROR, error);
             yyjson_doc_free(document);
             return response_finish(&result);

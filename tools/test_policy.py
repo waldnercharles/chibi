@@ -28,7 +28,6 @@ NATIVE = {
     ('--player-space-cadet-sljit',): 'Reviewed first GPU measurement: fixed prepared SpaceCadet UI/font manifest, SLJIT, four hidden 1280x720 frames at fixed dt, whole process under 60 seconds; tools/agent.py preflight required',
     ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
-    ('--sdf-coverage',): 'Reviewed hidden 128x128 app: production warped-SDF shape, plain and bordered, three phases, instanced and tiled draw paths against its CPU field, readback; GPU; docs/testing.md',
     ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky and ramps with readback; GPU; docs/rendering-3d.md',
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
     ('--material-ramps',): 'Reviewed hidden 64x64 app: four color ramp table cases through 2D and material raster shaders; GPU; docs/testing.md',
@@ -145,9 +144,6 @@ TOOLS = {
     # Fourteen reviewed hidden-app scenes of meshes and SDFs hiding each other, compared with
     # hidden-surface rejection on and off, plus Cute's whole-canvas depth copy on its own.
     'sdf-visibility': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--sdf-visibility'],
-    # One reviewed hidden-app case: the production warped-SDF shape through both draw paths,
-    # checked against its CPU field outside the antialiased edge.
-    'sdf-coverage': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--sdf-coverage'],
     # Hidden-app 64x64 3D renders: rhythm, ambient, lights, shadows, exposure, the Environment
     # sky and its light, and color ramps.
     'scene3d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d'],
@@ -481,7 +477,7 @@ def main():
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
         if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'player-space-cadet-vm', 'player-space-cadet-sljit', 'studio-starter-startup', 'studio-source-edit',
-                            'interior-border', 'sdf-visibility', 'sdf-coverage', 'scene3d', 'scene3d-gles',
+                            'interior-border', 'sdf-visibility', 'scene3d', 'scene3d-gles',
                             'material-ramps'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])

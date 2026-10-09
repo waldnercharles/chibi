@@ -17,6 +17,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <yyjson.h>
 
 typedef struct
 {
@@ -2341,13 +2342,10 @@ char *chibi_migrate_action_bindings(const char *asset, av_doc *map)
     av_doc_free(document);
     return migrated;
 }
-/* The binding name a word in `source` spells, outside strings and comments,
- * or NULL. */
-static const char *binding_use(const char *source)
+/* The first of `words` that a word in `source` spells, outside strings and
+ * comments, or NULL. */
+static const char *word_use(const char *source, const char *const *words, size_t count)
 {
-    static const char *const words[] = { "ActionBinding",
-                                         "GameActionBinding",
-                                         "PressedChanged" };
     for (const char *p = source; *p;) {
         const char *skipped = skip_literal(p);
         if (skipped != p || !word_char(*p)) {
@@ -2360,8 +2358,7 @@ static const char *binding_use(const char *source)
         }
         char word[32];
         size_t length = (size_t)(end - p);
-        for (size_t i = 0; length < sizeof word && i < sizeof words / sizeof *words;
-             i++) {
+        for (size_t i = 0; length < sizeof word && i < count; i++) {
             memcpy(word, p, length);
             word[length] = '\0';
             if (names_match(word, words[i])) {
@@ -2371,6 +2368,13 @@ static const char *binding_use(const char *source)
         p = end;
     }
     return NULL;
+}
+static const char *binding_use(const char *source)
+{
+    static const char *const words[] = { "ActionBinding",
+                                         "GameActionBinding",
+                                         "PressedChanged" };
+    return word_use(source, words, sizeof words / sizeof *words);
 }
 static av_doc *empty_map()
 {
@@ -2490,6 +2494,93 @@ static char **migrate_bindings(char **sources, char **paths, int count, int targ
     av_doc_free(map);
     return migrated;
 }
+/* Removes GameSdfMotion from `owner`'s components object `key`, and drops the
+ * object when nothing else is left in it unless `keep` is set. Returns
+ * whether it was there. */
+static bool drop_motion(av_value *owner, const char *key, bool keep)
+{
+    av_value *components = av_obj_get(owner, key);
+    if (!av_is_obj(components)) {
+        return false;
+    }
+    bool changed = av_obj_remove_key(components, "GAME.GameSdfMotion");
+    changed |= av_obj_remove_key(components, "GameSdfMotion");
+    if (changed && !keep && !av_obj_size(components)) {
+        av_obj_remove_key(owner, key);
+    }
+    return changed;
+}
+/* Returns an owned copy of a scene or prototype `asset` without
+ * GameSdfMotion, or NULL when it has none. */
+static char *drop_motions(const char *asset)
+{
+    char message[128];
+    av_doc *document = asset_text_read(asset, message, sizeof message);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    if (!av_is_obj(root)) {
+        av_doc_free(document);
+        return NULL;
+    }
+    bool changed = drop_motion(root, "components", true);
+    changed |= drop_motion(root, "detached_components", false);
+    av_value *entities = av_obj_get(root, "entities");
+    for (size_t i = 0; av_is_arr(entities) && i < av_arr_size(entities); i++) {
+        av_value *entity = av_arr_get(entities, i);
+        if (av_is_obj(entity)) {
+            changed |= drop_motion(entity, "components", false);
+            changed |= drop_motion(entity, "retained_components", false);
+        }
+    }
+    char *migrated = changed ? asset_text_write(root) : NULL;
+    av_doc_free(document);
+    return migrated;
+}
+/* The first of `words` that a string literal in `source` holds whole, decoded
+ * as the language decodes strings, or NULL. */
+static const char *quoted_use(const char *source, const char *const *words, size_t count)
+{
+    const char *use = NULL;
+    for (const char *p = source; *p && !use;) {
+        const char *end = skip_literal(p);
+        if (end == p) {
+            p++;
+            continue;
+        }
+        yyjson_doc *document = *p == '"' ? yyjson_read(p, (size_t)(end - p), 0) : NULL;
+        const char *text = yyjson_get_str(yyjson_doc_get_root(document));
+        for (size_t i = 0; text && !use && i < count; i++) {
+            use = names_match(text, words[i]) ? words[i] : NULL;
+        }
+        yyjson_doc_free(document);
+        p = end;
+    }
+    return use;
+}
+/* Version 18 removes GameSdfMotion from every scene and prototype. Any other
+ * use, by name or in a string in a script or as text left in another asset,
+ * stops the migration for a person to remove it. */
+static char **migrate_motions(char **sources, char **paths, int count, char *error, size_t error_size)
+{
+    static const char *const words[] = { "SdfMotion", "GameSdfMotion", "GAME.GameSdfMotion" };
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count; i++) {
+        const char *use;
+        if (code_path(paths[i])) {
+            use = word_use(sources[i], words, 2);
+            use = use ? use : quoted_use(sources[i], words, 3);
+        } else {
+            migrated[i] = drop_motions(sources[i]);
+            use = strstr(migrated[i] ? migrated[i] : sources[i], "SdfMotion")
+                    ? words[1]
+                    : NULL;
+        }
+        if (use) {
+            snprintf(error, error_size, "%s uses %s, which version 18 removes; remove that use, then migrate", paths[i], use);
+            return migrated;
+        }
+    }
+    return migrated;
+}
 static int collect_sources(const char *directory, const char *suffix, char ***paths, char *error, size_t error_size)
 {
     DIR *dir = opendir(directory);
@@ -2539,9 +2630,9 @@ int chibi_project_migrate_content(
 )
 {
     char **paths = NULL;
-    /* Versions 15 and 16 change scenes and prototypes, wherever the project
-     * keeps them; every earlier step changes scripts. */
-    bool scenes = from == 14 || from == 15;
+    /* Versions 15, 16 and 18 change scenes and prototypes, wherever the
+     * project keeps them; every other step changes scripts. */
+    bool scenes = from == 14 || from == 15 || from == 17;
     int status = collect_sources(
         content,
         scenes ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
@@ -2549,8 +2640,8 @@ int chibi_project_migrate_content(
         error,
         error_size
     );
-    /* Version 16 also checks scripts for binding reads. */
-    if (!status && from == 15) {
+    /* Versions 16 and 18 also check scripts for names they remove. */
+    if (!status && (from == 15 || from == 17)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
     }
     /* The scan skips hidden entries, and the start scene may lie outside the
@@ -2629,6 +2720,11 @@ int chibi_project_migrate_content(
                 for (int i = 0; i < count && !status; i++) {
                     status = chibi_migrate_locals(sources[i], &migrated[i], error, error_size);
                 }
+                break;
+            case 17:
+                error[0] = '\0';
+                migrated = migrate_motions(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
                 break;
             default: assert(false);
         }

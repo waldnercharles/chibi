@@ -9,7 +9,7 @@ Of 17 patches, 11 are now upstream, most adapted from Chibi's own patches. Six r
 | Patch | Upstream replacement |
 | --- | --- |
 | `cute-installed-sdl` | [7e20a238](https://github.com/RandyGaul/cute_framework/commit/7e20a238) adds `CF_USE_SYSTEM_SDL`, which finds an installed SDL3 through `SDL3_DIR` or `CMAKE_PREFIX_PATH`, and [735891b5](https://github.com/RandyGaul/cute_framework/commit/735891b5) pins the SDL archive's hash. Chibi's unused `CHIBI_SDL3_PACKAGE_PREFIX` setting is gone. |
-| `cute-custom-coverage` | [41fb1e8c](https://github.com/RandyGaul/cute_framework/commit/41fb1e8c) makes every custom shape safe in the tiled path: user fields bin by their bounds, never claim opaque cover, and antialias from the field's slope. `src/render/sdf_shapes.c` registers with `cf_make_custom_shape`. |
+| `cute-custom-coverage` | [41fb1e8c](https://github.com/RandyGaul/cute_framework/commit/41fb1e8c) makes every custom shape safe in the tiled path: user fields bin by their bounds, never claim opaque cover, and antialias from the field's slope. |
 | `cute-custom-shape-cache` | [eadb6967](https://github.com/RandyGaul/cute_framework/commit/eadb6967) returns the existing id for an identical source. |
 | `cute-gles-buffer-streaming` | [05b57ada](https://github.com/RandyGaul/cute_framework/commit/05b57ada). |
 | `cute-zero-size-window` | [1175b052](https://github.com/RandyGaul/cute_framework/commit/1175b052). |

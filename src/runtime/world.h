@@ -27,7 +27,6 @@ typedef struct
     const input_action *actions; /* The input map, copied during creation. */
     int action_count;
     execution_log_service log; /* Copied callback; its user outlives the world. */
-    int (*sdf_motion)(ecs_world *, double);
 } game_world_options;
 /* Owns its source registry, actual optional simulation services and
  * engine. Final application supplies its immutable type_catalog composition

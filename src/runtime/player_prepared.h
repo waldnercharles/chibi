@@ -20,7 +20,6 @@ typedef struct
     ecs_component_catalog components;
     const execution_prepared_linker *linker;
     execution_log_service log;
-    int (*sdf_motion)(ecs_world *, double);
     game_player_resource_host resources;
     size_t decoded_budget; /* Zero selects 64 MiB; otherwise caller-selected. */
 } game_player_host;

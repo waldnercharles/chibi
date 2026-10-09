@@ -83,7 +83,7 @@ endif()
 
 if(TARGET Chibi::render)
     add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/scene3d.c
-        device_controls.c ../render/interior_border.c ../sdf_coverage.c ../draw_backend.cpp)
+        device_controls.c ../render/interior_border.c ../draw_backend.cpp)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
     target_link_libraries(chibi_render_consumer PRIVATE Chibi::render)

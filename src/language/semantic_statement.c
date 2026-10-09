@@ -5,6 +5,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* A pure native returns a new value, so a call statement drops all it did.
+ * Invoking an action runs its flow outputs instead. */
+static bool discards_result(const analyzer *a, const script_expression *call)
+{
+    if (call->kind != SCRIPT_EXPR_CALL || call->right >= 0 || !call->result_count ||
+        (call->symbol >= 0 && a->out->symbols[call->symbol].kind == SCRIPT_ACTION)) {
+        return false;
+    }
+    const script_catalog_capability
+        *native = script_catalog_capability_by_id(a->catalog, call->capability);
+    return native && native->pure;
+}
+
 int script_analyzer_statement_add(analyzer *a, script_statement statement)
 {
     statement.child_count = acount(statement.children);
@@ -420,8 +433,9 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
     }
     if (script_analyzer_is(node, "expression_statement")) {
         result.kind = SCRIPT_STMT_EXPRESSION;
+        TSNode value = { 0 };
         for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
-            TSNode value = ts_node_named_child(node, i);
+            value = ts_node_named_child(node, i);
             if (!ts_node_is_extra(value)) {
                 result.expression = script_analyzer_expression(
                     a,
@@ -438,6 +452,12 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
             script_analyzer_diagnostic(a, node, "Expression statements must invoke a callable");
         }
         result.effects = script_analyzer_expr_effects(a, result.expression);
+        if (result.expression >= 0 &&
+            discards_result(a, &a->out->expressions[result.expression])) {
+            char *name = script_analyzer_text_copy(a, script_analyzer_field(value, "function"));
+            script_analyzer_diagnostic(a, node, "%s returns a new value and changes nothing; assign its result", name);
+            free(name);
+        }
         return script_analyzer_statement_add(a, result);
     }
     if (script_analyzer_is(node, "if_statement")) {

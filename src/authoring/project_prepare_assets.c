@@ -194,7 +194,9 @@ game_prototype *project_prepare_object(
     }
     free(object->name);
     object->name = xstrdup(entity->name);
-    /* Scene attachment lists replace the prototype list, including empty. */
+    if (!entity->own_behaviors) {
+        return object;
+    }
     aclear(object->graphs);
     for (int i = 0; i < acount(entity->behaviors); i++) {
         game_prototype_add_graph(object, entity->behaviors[i]);

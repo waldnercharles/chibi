@@ -307,6 +307,9 @@ int game_prototype_preview_launch_scene(
             clear_entity(preview);
             return ECS_ERR_COMPONENT;
         }
+        if (!entities[i].own_behaviors) {
+            continue;
+        }
         game_source_detach_entity(preview->live->runtime->sources, entity);
         for (int behavior = 0; behavior < entities[i].behavior_count; behavior++) {
             if (game_source_attach(

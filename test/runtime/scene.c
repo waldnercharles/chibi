@@ -381,8 +381,8 @@ void run_scene_document_checks(void)
     game_scene_document *document = game_scene_document_new("CombatScene");
     test_check(
         document &&
-            game_scene_document_add_entity(document, "Player", "PlayerPrototype", behaviors, 2) ==
-                0,
+            game_scene_document_add_entity(document, "Player", "PlayerPrototype") == 0 &&
+            game_scene_document_set_entity_behaviors(document, 0, behaviors, 2) == 0,
         "a scene entity stores its prototype and behavior assets"
     );
     av_value *component_values = test_read_asset_value("GameHealth current=7 maximum=9\n");
@@ -486,8 +486,8 @@ void run_scene_document_checks(void)
     test_check(saved && resaved && strcmp(saved, resaved) == 0, "scene document save output is deterministic");
     game_scene_document *duplicate = game_scene_document_new("Duplicate");
     test_check(
-        duplicate && game_scene_document_add_entity(duplicate, "A", "P", NULL, 0) == 0 &&
-            game_scene_document_add_entity(duplicate, "A", "P", NULL, 0) != 0,
+        duplicate && game_scene_document_add_entity(duplicate, "A", "P") == 0 &&
+            game_scene_document_add_entity(duplicate, "A", "P") != 0,
         "duplicate scene entity names are rejected"
     );
     game_scene_document *invalid = game_scene_document_load(

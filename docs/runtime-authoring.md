@@ -13,6 +13,22 @@ Games use separate repositories such as `chibi-arena3d`, `chibi-space-cadet` and
 its starter and shell assets in `chibi-studio`. Pass the project root to an
 installed authoring tool rather than mounting a game under the engine checkout.
 
+## Scene entities
+
+A scene entity starts from its prototype's components and behaviors. Its
+`components` override the prototype's values. A `behaviors` list replaces the
+prototype's behaviors, and an empty `(array)behaviors` removes them all; leave
+the list out to keep the prototype's behaviors.
+
+```kdl
+(array)entities {
+    - name="Player" prototype="Player"
+    - name="Decoy" prototype="Player" {
+        (array)behaviors
+    }
+}
+```
+
 ## Edit and verify
 
 1. Read the existing asset and its dependencies. Use the shared SDK's reflected

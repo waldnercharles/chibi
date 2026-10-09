@@ -47,6 +47,7 @@ typedef struct render_scene3d render_scene3d;
 typedef struct
 {
     int entities, tasks, workers;
+    int cascades; /* Sun shadow cascades drawn. */
 } render_scene3d_work;
 render_scene3d *render_scene3d_new();
 void render_scene3d_set_parallel(render_scene3d *scene3d, bool enabled);

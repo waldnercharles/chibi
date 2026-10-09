@@ -21,10 +21,20 @@ enum
 
 static ecs_world *world;
 static bool backdrop; /* Queue a white 2D fill before each 3D draw. */
+static render_scene3d_camera lens; /* What each render sees. */
 static render_scene3d *scene3d;
 static render_scene3d_post *post;
 static game_particles *particles;
 static CF_Pixel pixels[PIXELS];
+
+/* Looks down at the origin from 45 degrees. */
+static render_scene3d_camera camera()
+{
+    return (render_scene3d_camera){
+        .view = cf_look_at((CF_V3){ 0, 4, 4 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 }),
+        .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
+    };
+}
 
 static void setup()
 {
@@ -35,6 +45,7 @@ static void setup()
     scene3d = render_scene3d_new();
     post = render_scene3d_post_new();
     particles = game_particles_new();
+    lens = camera();
 }
 
 static void teardown()
@@ -54,9 +65,14 @@ static ecs_entity add(ecs_component_id component, const void *data)
     return entity;
 }
 
-static void add_solid_at(float x, GameGeometry3D shape, unsigned color)
+/* A solid centered on a world point. */
+static void add_solid(CF_V3 center, GameGeometry3D shape, unsigned color)
 {
-    ecs_entity solid = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ x, 0 });
+    ecs_entity solid = add(
+        GAME_COMPONENT_GameTransform.id,
+        &(GameTransform){ center.x, center.z }
+    );
+    shape.elevation = center.y;
     GameMaterial material = { .scene = color };
     assert(
         ecs_world_record_add(world, solid, GAME_COMPONENT_GameGeometry3D.id, &shape, 0) == ECS_OK
@@ -65,6 +81,11 @@ static void add_solid_at(float x, GameGeometry3D shape, unsigned color)
         ecs_world_record_add(world, solid, GAME_COMPONENT_GameMaterial.id, &material, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
+}
+
+static void add_solid_at(float x, GameGeometry3D shape, unsigned color)
+{
+    add_solid((CF_V3){ x, shape.elevation, 0 }, shape, color);
 }
 
 static void add_box(unsigned color)
@@ -96,19 +117,10 @@ static CF_Pixel front()
     return pixels[(SIDE / 2 + 10) * SIDE + SIDE / 2];
 }
 
-static render_scene3d_camera camera()
-{
-    return (render_scene3d_camera){
-        .view = cf_look_at((CF_V3){ 0, 4, 4 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 }),
-        .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
-    };
-}
-
 /* The pixel showing a world point. */
 static CF_Pixel pixel_at(CF_V3 world)
 {
-    render_scene3d_camera view = camera();
-    CF_V3 ndc = render_scene3d_project(&view, world);
+    CF_V3 ndc = render_scene3d_project(&lens, world);
     int x = (int)((ndc.x + 1) * SIDE / 2), y = (int)((1 - ndc.y) * SIDE / 2);
     assert(x >= 0 && x < SIDE && y >= 0 && y < SIDE);
     return pixels[y * SIDE + x];
@@ -123,12 +135,11 @@ static bool render_at(const GameEnvironment *environment, float time)
     }
     CF_Canvas canvas = render_scene3d_post_target(post);
     cf_canvas_set_clear_color(canvas, (CF_Color){ 0, 0, 0, 1 });
-    render_scene3d_camera view = camera();
     cf_app_update(NULL);
     if (backdrop) {
         cf_draw_quad_fill(cf_make_aabb((CF_V2){ -SIDE, -SIDE }, (CF_V2){ SIDE, SIDE }), 0);
     }
-    bool drawn = render_scene3d_draw(scene3d, world, particles, &view, 0, NULL, &settings, (render_skip){ 0 });
+    bool drawn = render_scene3d_draw(scene3d, world, particles, &lens, 0, NULL, &settings, (render_skip){ 0 });
     cf_render_to(canvas, true);
     bool processed = render_scene3d_post_process(post, time);
     cf_app_draw_onto_screen(false);
@@ -420,6 +431,120 @@ TEST_CASE(shadow_pass_leaves_earlier_draws_queued)
     return true;
 }
 
+/* Four walls face the camera across a deep view, each a fifth as far as the
+ * next and filling one column of the image. Sunlight travels away from the
+ * camera and down at 45 degrees, so a cube in front of each wall shades the
+ * wall's middle. The cubes alternate between just above the view and in it,
+ * so both culled casters and solids in view cast past the first cascade. */
+static const float wall_depths[] = { 2, 10, 50, 250 };
+enum
+{
+    WALLS = sizeof wall_depths / sizeof *wall_depths
+};
+
+/* A point on a wall's face, centered in its column, `height` wall depths above
+ * the line of sight. 0.414 is the tangent of half the field of view. */
+static CF_V3 on_wall(int wall, float height)
+{
+    float depth = wall_depths[wall];
+    return (CF_V3){ (-.75f + .5f * wall) * .414f * depth, height * depth, -.99f * depth };
+}
+
+/* Adds the walls whose bits are set in `walls`. */
+static GameDirectionalLight *add_walls(unsigned walls)
+{
+    lens = (render_scene3d_camera){
+        .view = cf_look_at((CF_V3){ 0 }, (CF_V3){ 0, 0, -1 }, (CF_V3){ 0, 1, 0 }),
+        .projection = cf_perspective(0.7853981634f, 1, 0.1f, 1000),
+    };
+    for (int i = 0; i < WALLS; i++) {
+        if (!(walls >> i & 1)) {
+            continue;
+        }
+        float depth = wall_depths[i];
+        CF_V3 wall = on_wall(i, 0);
+        wall.z = -depth;
+        add_solid(
+            wall,
+            (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f * depth, .02f * depth, .5f * depth },
+            0xffffffffu
+        );
+        float gap = i % 2 ? .25f : .4f;
+        CF_V3 cube = { wall.x, gap * depth, -(1 - gap) * depth };
+        add_solid(
+            cube,
+            (GameGeometry3D){ GAME_PRIMITIVE_BOX, .1f * depth, .1f * depth, .1f * depth },
+            0xffffffffu
+        );
+    }
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 });
+    sun->intensity = 1;
+    return sun;
+}
+
+TEST_CASE(deep_views_split_sun_shadows_into_cascades)
+{
+    GameDirectionalLight *sun = add_walls(0xf);
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    CF_Pixel open[WALLS][2];
+    for (int i = 0; i < WALLS; i++) {
+        open[i][0] = pixel_at(on_wall(i, -.15f));
+        open[i][1] = pixel_at(on_wall(i, .15f));
+    }
+    sun->shadows = true;
+    REQUIRE(render(&environment));
+    REQUIRE(render_scene3d_last_work(scene3d).cascades == WALLS);
+    /* A single map across the whole view would blur the nearest shadow away. */
+    for (int i = 0; i < WALLS; i++) {
+        REQUIRE(pixel_at(on_wall(i, 0)).colors.g == 0);
+        REQUIRE(
+            open[i][0].colors.g > 60 &&
+            distance(pixel_at(on_wall(i, -.15f)), open[i][0]) <= 3
+        );
+        REQUIRE(distance(pixel_at(on_wall(i, .15f)), open[i][1]) <= 3);
+    }
+    return true;
+}
+
+/* With nothing between the nearest and farthest walls, the middle depth ranges
+ * take no cascade, so two squares sit side by side in the atlas. */
+TEST_CASE(empty_depth_ranges_take_no_cascade)
+{
+    GameDirectionalLight *sun = add_walls(0x9);
+    sun->shadows = true;
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    REQUIRE(render_scene3d_last_work(scene3d).cascades == 2);
+    for (int i = 0; i < WALLS; i += WALLS - 1) {
+        REQUIRE(pixel_at(on_wall(i, 0)).colors.g == 0);
+        REQUIRE(pixel_at(on_wall(i, -.15f)).colors.g > 60);
+    }
+    /* Turning shadows off lights the walls again. */
+    sun->shadows = false;
+    REQUIRE(render(&environment));
+    REQUIRE(render_scene3d_last_work(scene3d).cascades == 0);
+    REQUIRE(distance(pixel_at(on_wall(0, 0)), pixel_at(on_wall(0, -.15f))) <= 3);
+    return true;
+}
+
+/* The floor reaches far past the view, but only the depths the view shows
+ * count, so one cascade covers them. */
+TEST_CASE(shadow_cascades_cover_only_what_the_view_shows)
+{
+    add_floor();
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->intensity = 1;
+    sun->shadows = true;
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    REQUIRE(render_scene3d_last_work(scene3d).cascades == 1);
+    REQUIRE(pixel_at(shaded).colors.g == 0);
+    REQUIRE(pixel_at(sunlit[0]).colors.g > 60);
+    return true;
+}
+
 void test_render_scene3d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -440,6 +565,9 @@ void test_render_scene3d()
     RUN_TEST_CASE(directional_light_casts_shadows);
     RUN_TEST_CASE(solids_outside_the_view_cast_shadows_into_it);
     RUN_TEST_CASE(shadow_pass_leaves_earlier_draws_queued);
+    RUN_TEST_CASE(deep_views_split_sun_shadows_into_cascades);
+    RUN_TEST_CASE(empty_depth_ranges_take_no_cascade);
+    RUN_TEST_CASE(shadow_cascades_cover_only_what_the_view_shows);
     pu_clear_setup();
     cf_destroy_app();
 }

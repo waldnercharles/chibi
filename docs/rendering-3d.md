@@ -24,22 +24,31 @@ both components with their defaults filled in.
 ## Shadows
 
 A Directional Light with `shadows` renders opaque solids' depth from the light
-into one 2048x2048 depth map (`render/scene3d_shadow.c`), then the lit pass
-compares against it with a 3x3 grid of hardware 2x2 comparisons.
+into up to four cascades (`render/scene3d_shadow.c`), each a 2048x2048 square
+of one depth atlas. The lit pass uses the first cascade, nearest first, whose
+square holds the lookup, and compares against it with a 3x3 grid of hardware
+2x2 comparisons.
 
-- **Fit**: an orthographic light view covers the solids in view, clipped to the
-  camera frustum between their nearest and farthest depths, plus a 4-texel
-  margin. Its depth range also takes in opaque solids the camera culls, which
-  still cast into the view when they reach the covered area. The map's size
-  steps by quarter octaves and its origin snaps to whole texels, so edges hold
-  still while the camera pans, apart from a resolution step when the covered
-  area crosses a size.
+- **Cascades**: the view depths the solids in view actually show, clipped to
+  the camera frustum, are split at equal ratios, one cascade per factor of four
+  up to four cascades. Anything nearer than the cascades reach shares the
+  first. A view that spans less than a factor of four, such as the default
+  near-overhead camera over a floor, uses one cascade and one square.
+- **Fit**: each cascade's orthographic light view covers what the solids in
+  view show within its depths, plus a 4-texel margin. Its depth range also
+  takes in opaque solids the camera culls, which still cast into the view when
+  they reach the covered area. Each square's size steps by quarter octaves and
+  its origin snaps to whole texels, so edges hold still while the camera pans,
+  apart from a resolution step when the covered area crosses a size.
 - **Bias**: each lookup lifts the surface point along its geometric normal by
-  half a texel facing the light, up to 2.5 texels edge on. Contact shadows start
-  that far from the caster.
+  half a texel of its cascade facing the light, up to 2.5 texels edge on.
+  Contact shadows start that far from the caster.
+- **Memory**: the atlas grows to fit the most cascades a view has needed: one
+  square, two side by side, or a 2x2 grid. Depth ranges with nothing in view
+  take no square. It stores 32-bit float depth where the device can, then
+  24-bit, then 16-bit, so four cascades take at most 64 MB.
 - **Not covered**: transparent surfaces, particles and trails cast nothing;
-  point lights cast nothing. A view much deeper than the scene's detail spreads
-  the map thin; cascades are the planned fix.
+  point lights cast nothing. Cascade edges change resolution without a blend.
 
 The material preview sphere draws without shadows.
 
@@ -72,12 +81,15 @@ has them. A scene without a valid rhythm clock draws with the beat at rest.
 drawing without a rhythm clock, both tone maps, auto exposure's geometric
 mean, background rejection, easing, snapping and settings checks, and sun
 shadows: a box's shadow, no self-shadowing on lit faces, a solid the camera
-culls casting into the view (collected across workers), and the depth pass
-leaving earlier queued draws alone. It runs `test_tools` from the
+culls casting into the view (collected across workers), the depth pass
+leaving earlier queued draws alone, four cascades across a deep view each
+keeping a small shadow sharp, two cascades side by side when the depths
+between hold nothing, and one cascade for a floor that reaches far past a
+shallow view. It runs `test_tools` from the
 desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`. llvmpipe leaks
 112 bytes from its own worker threads, so LeakSanitizer hosts on llvmpipe need
 `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with Vulkan llvmpipe
-passed 12 cases and 58 assertions in 1.8 seconds on 2026-10-09.
+passed 15 cases and 86 assertions in 2.8 seconds on 2026-10-09.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

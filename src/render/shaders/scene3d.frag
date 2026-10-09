@@ -59,25 +59,31 @@ vec3 surface_light(vec3 base, float roughness, float metallic, vec3 normal, vec3
     return (diffuse + specular) * nl;
 }
 
-// The sun's visibility: a 3x3 grid of hardware 2x2 comparisons around the
-// surface point, lifted along its geometric normal by up to 2.5 map texels so
-// that sloped surfaces stay in front of their own stored depth.
+// The sun's visibility from the first cascade, finest first, whose square
+// holds the lookup: a 3x3 grid of hardware 2x2 comparisons around the surface
+// point, lifted along its geometric normal by up to 2.5 of that cascade's
+// texels so that sloped surfaces stay in front of their own stored depth.
 float sun_shadow()
 {
-    if (scene_shadow.x <= 0.0) return 1.0;
     vec3 normal = safe_normal(v_normal, vec3(0, 1, 0));
     float facing = clamp(dot(normal, scene_sun_direction.xyz), 0.0, 1.0);
-    float lift = scene_shadow.z * (0.5 + 2.0 * sqrt(1.0 - facing * facing));
-    vec4 clip = scene_shadow_matrix * vec4(v_world + normal * lift, 1.0);
-    vec2 uv = vec2(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5);
-    if (any(lessThan(uv, vec2(0))) || any(greaterThan(uv, vec2(1))) || clip.z >= 1.0) return 1.0;
-    float lit = 0.0;
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            lit += textureLod(scene_shadow_map, vec3(uv + vec2(x, y) * scene_shadow.y, clip.z), 0.0);
+    float lift = 0.5 + 2.0 * sqrt(1.0 - facing * facing);
+    float edge = 1.5 * scene_shadow.y;
+    vec2 texel = scene_shadow.y * scene_shadow.zw;
+    for (int i = 0; i < int(scene_shadow.x); i++) {
+        vec4 clip = scene_shadow_matrices[i] * vec4(v_world + normal * lift * scene_shadow_texels[i], 1.0);
+        vec2 uv = vec2(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5);
+        if (any(lessThan(uv, vec2(edge))) || any(greaterThan(uv, vec2(1.0 - edge))) || clip.z >= 1.0) continue;
+        uv = (uv + vec2(i & 1, i >> 1)) * scene_shadow.zw;
+        float lit = 0.0;
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                lit += textureLod(scene_shadow_map, vec3(uv + vec2(x, y) * texel, clip.z), 0.0);
+            }
         }
+        return lit / 9.0;
     }
-    return lit / 9.0;
+    return 1.0;
 }
 
 vec3 direct_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 view)

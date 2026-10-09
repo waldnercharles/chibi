@@ -346,10 +346,14 @@ TEST_CASE(ecs_with_adds_implied_components_once)
     REQUIRE(*(const int *)ecs_component_data_const(world, weighed, weight_desc.id) == 9);
     REQUIRE(*(const int *)ecs_component_data_const(world, both, weight_desc.id) == 9);
     REQUIRE(*(const int *)ecs_component_data_const(world, both, armor_desc.id) == 4);
+    /* A plain implied component stays when its source goes. */
+    REQUIRE(ecs_world_record_remove(world, bare, armor_desc.id, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_component_has(world, bare, weight_desc.id));
     return true;
 }
 
-TEST_CASE(ecs_derived_components_come_with_their_source_and_reject_writes)
+TEST_CASE(ecs_derived_components_follow_their_source_and_reject_writes)
 {
     REQUIRE(ecs_world_register_component(world, &total_desc, NULL) == ECS_OK);
     REQUIRE(ecs_world_register_component(world, &cover_desc, NULL) == ECS_OK);
@@ -374,6 +378,9 @@ TEST_CASE(ecs_derived_components_come_with_their_source_and_reject_writes)
     REQUIRE(ecs_component_write_field(world, armored, total_desc.id, 0, number) == ECS_ERR_ARGUMENT);
     *(int *)ecs_component_data(world, armored, total_desc.id) = 7;
     REQUIRE(*(const int *)ecs_component_data_const(world, armored, total_desc.id) == 7);
+    REQUIRE(ecs_world_record_remove(world, armored, armor_desc.id, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(!ecs_component_has(world, armored, total_desc.id));
     return true;
 }
 
@@ -390,6 +397,6 @@ void test_tool_ecs_relationships()
     RUN_TEST_CASE(ecs_pairs_target_entities_created_in_the_same_sync_point);
     RUN_TEST_CASE(ecs_pairs_survive_entity_growth_and_feed_the_world_hash);
     RUN_TEST_CASE(ecs_with_adds_implied_components_once);
-    RUN_TEST_CASE(ecs_derived_components_come_with_their_source_and_reject_writes);
+    RUN_TEST_CASE(ecs_derived_components_follow_their_source_and_reject_writes);
     pu_clear_setup();
 }

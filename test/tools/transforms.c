@@ -107,6 +107,11 @@ TEST_CASE(transforms_follow_moves_and_reparenting)
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     REQUIRE(game_transform_propagate(world) == ECS_OK);
     REQUIRE(at(child, 1, 2));
+    /* A global leaves with its local, so nothing reads a stale placement. */
+    REQUIRE(GAME_GameTransform_remove(world, child, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(!GAME_GameGlobalTransform2D_get_const(world, child));
+    REQUIRE(game_transform_propagate(world) == ECS_OK);
     return true;
 }
 

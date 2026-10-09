@@ -701,6 +701,24 @@ static int apply_add(ecs_world *world, const ecs_command *command)
     return ECS_OK;
 }
 
+/* Removes the row, then the components derived from it, which only their
+ * source keeps meaningful. */
+static void remove_component(ecs_world *world, ecs_component *component, ecs_entity entity)
+{
+    flush_modified(world, component, entity);
+    if (observes(component, ECS_ON_REMOVE)) {
+        notify(world, ECS_ON_REMOVE, entity, component->desc.id);
+    }
+    occupancy_remove(world, component, entity.slot);
+    for (int i = 0; i < acount(component->with); i++) {
+        ecs_component *implied = find_component(world, component->with[i]);
+        if (implied->desc.derived_from == component->desc.id &&
+            component_matches(implied, entity.slot)) {
+            remove_component(world, implied, entity);
+        }
+    }
+}
+
 static int apply_remove(ecs_world *world, const ecs_command *command)
 {
     ecs_component *component = find_component(world, command->component);
@@ -713,11 +731,7 @@ static int apply_remove(ecs_world *world, const ecs_command *command)
     if (!ecs_component_has(world, command->entity, command->component)) {
         return ECS_ERR_COMPONENT;
     }
-    flush_modified(world, component, command->entity);
-    if (observes(component, ECS_ON_REMOVE)) {
-        notify(world, ECS_ON_REMOVE, command->entity, command->component);
-    }
-    occupancy_remove(world, component, command->entity.slot);
+    remove_component(world, component, command->entity);
     return ECS_OK;
 }
 

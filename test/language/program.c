@@ -2412,22 +2412,24 @@ TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors)
     char *migrated = chibi_migrate_scene_behaviors(source);
     REQUIRE(migrated && !strcmp(migrated, expected));
     REQUIRE(!chibi_migrate_scene_behaviors(expected));
+    REQUIRE(!chibi_migrate_scene_behaviors(
+        "name \"Camera\"\n(array)entities {\n    - name=\"A\"\n}\n"
+    ));
     free(migrated);
 
     char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/content", root);
     REQUIRE(!mkdir(path, 0700));
-    snprintf(path, sizeof path, "%s/content/scenes", root);
-    REQUIRE(!mkdir(path, 0700));
+    /* A start scene outside content/scenes migrates too. */
     char scene[256];
-    snprintf(scene, sizeof scene, "%s/content/scenes/Start.kdl", root);
+    snprintf(scene, sizeof scene, "%s/content/Start.kdl", root);
     FILE *file = fopen(scene, "wb");
     fputs(source, file);
     fclose(file);
     snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
     file = fopen(path, "wb");
-    fputs("version 14\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n", file);
+    fputs("version 14\ncontent \"content\"\nstart_scene \"Start.kdl\"\n", file);
     fclose(file);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 1);
     char text[1024];
@@ -2437,8 +2439,6 @@ TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors)
     REQUIRE(!strcmp(text, expected));
     unlink(scene);
     unlink(path);
-    snprintf(path, sizeof path, "%s/content/scenes", root);
-    rmdir(path);
     snprintf(path, sizeof path, "%s/content", root);
     rmdir(path);
     rmdir(root);

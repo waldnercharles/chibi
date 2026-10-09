@@ -1369,7 +1369,9 @@ char *chibi_migrate_scene_behaviors(const char *scene)
     bool changed = false;
     for (size_t i = 0; av_is_arr(entities) && i < av_arr_size(entities); i++) {
         av_value *entity = av_arr_get(entities, i);
-        if (av_is_obj(entity) && !av_obj_get(entity, "behaviors")) {
+        /* Only scene entities name a prototype. */
+        if (av_is_obj(entity) && av_is_str(av_obj_get(entity, "prototype")) &&
+            !av_obj_get(entity, "behaviors")) {
             av_obj_add_arr(document, entity, "behaviors");
             changed = true;
         }
@@ -1412,16 +1414,10 @@ static int collect_sources(const char *directory, const char *suffix, char ***pa
 int chibi_project_migrate_content(const char *content, int from, char *error, size_t error_size)
 {
     char **paths = NULL;
-    /* Version 15 changes scenes; every earlier step changes scripts. */
-    bool scenes = from == 14;
-    size_t size = strlen(content) + sizeof "/scenes";
-    char *directory = xmalloc(size);
-    snprintf(directory, size, "%s%s", content, scenes ? "/scenes" : "");
-    struct stat info;
-    int status = scenes && stat(directory, &info) && errno == ENOENT
-                   ? 0
-                   : collect_sources(directory, scenes ? ".kdl" : ".chibi", &paths, error, error_size);
-    free(directory);
+    /* Version 15 changes scenes, wherever the content keeps them; every
+     * earlier step changes scripts. */
+    const char *suffix = from == 14 ? DECLARATIVE_ASSET_EXTENSION : ".chibi";
+    int status = collect_sources(content, suffix, &paths, error, error_size);
     int count = acount(paths);
     char **sources = xmalloc((size_t)(count + 1) * sizeof *sources);
     for (int i = 0; i < count; i++) {

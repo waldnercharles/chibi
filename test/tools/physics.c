@@ -2,6 +2,7 @@
 
 #include "execution/status.h"
 #include "runtime/behaviors/entities.h"
+#include "runtime/behaviors/entities_native.h"
 #include "runtime/component_catalog.h"
 #include "runtime/events.h"
 #include "runtime/materials.h"
@@ -808,6 +809,23 @@ static void separated_solved_contacts()
     dispose(&f);
 }
 
+/* Nearest positions are world placements, which a parent's Orientation turns,
+ * so a behavior that writes Orientation cannot run beside the query. */
+static void nearest_reads_world_placement()
+{
+    const ecs_component_id components[] = { GAME_COMPONENT_GameTransform.id,
+                                            GAME_COMPONENT_GameOrientation.id,
+                                            GAME_COMPONENT_GameCollider.id };
+    for (int i = 0; i < 3; i++) {
+        bool read = false;
+        for (const uint64_t *const *ref = GAME_ENTITY_NEAREST_ACCESS.read_refs; *ref;
+             ref++) {
+            read |= **ref == components[i];
+        }
+        assert(read);
+    }
+}
+
 static void nearest_and_filters()
 {
     fixture f = create();
@@ -1314,6 +1332,7 @@ static void physics_cases()
     empty_mask_shapes();
     separated_solved_contacts();
     nearest_and_filters();
+    nearest_reads_world_placement();
     moving_target_and_box();
     sweep_tree_lifetime();
     repeated_moving_sweeps();

@@ -135,7 +135,7 @@ const reference_asset *reference_index_asset_at(const reference_index *index, in
 /* Finds a named asset or adds its unresolved record. */
 int reference_index_named_asset(reference_index *, reference_asset_kind, const char *name);
 /* The kind of asset a component field's text names, as GameUi.document names
- * a ui asset and GameActionBinding.action an event; REFERENCE_ASSET_KIND_COUNT
+ * a ui asset and GameSpawnRequest.prototype a prototype; REFERENCE_ASSET_KIND_COUNT
  * for a field that names none. `component` is its type's name, as GameUi. */
 reference_asset_kind reference_named_field_kind(const char *component, const char *field);
 typedef struct

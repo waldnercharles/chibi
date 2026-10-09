@@ -143,12 +143,27 @@ static void assets(execution_wire *wire, game_player_asset **records, int *count
         }
     }
 }
+static void actions(execution_wire *wire, input_action **records, int *count)
+{
+    execution_wire_count(wire, count, 3);
+    for (int i = 0; i < *count && !wire->error; i++) {
+        input_action action = wire->reading ? (input_action){ 0 } : (*records)[i];
+        wire_name(wire, &action.name);
+        execution_wire_u64(wire, &action.controls);
+        execution_wire_bool(wire, &action.firing);
+        if (wire->reading && !wire->error) {
+            apush(*records, action);
+        }
+    }
+}
+/* Refuses a scene the player would refuse to enter, so compiling catches it. */
 static void scene_write(execution_wire *wire, const game_scene *scene, char *error, size_t size)
 {
     unsigned char *data = NULL;
     size_t length = 0;
     if (!wire->error &&
-        (!scene || !game_scene_prepared_write(scene, &data, &length, error, size))) {
+        (!scene || !game_player_scene_bindings_valid(scene, error, size) ||
+         !game_scene_prepared_write(scene, &data, &length, error, size))) {
         wire->error = "Prepared player scene encoding failed";
     }
     if (!wire->error) {
@@ -171,13 +186,17 @@ bool game_player_prepared_write(
     if (size) {
         error[0] = 0;
     }
-    if (spec->module_count < 0 || spec->module_count > GAME_PACKAGE_MAX_MODULES ||
+    if (!spec->scene || spec->module_count < 0 ||
+        spec->module_count > GAME_PACKAGE_MAX_MODULES ||
         (spec->module_count && !spec->modules) || spec->prototype_count < 0 ||
         spec->prototype_count > GAME_PACKAGE_MAX_MODULES ||
-        (spec->prototype_count && !spec->prototypes) || spec->world.ecs ||
+        (spec->prototype_count && !spec->prototypes) || spec->scene_count < 0 ||
+        spec->scene_count > GAME_PACKAGE_MAX_MODULES ||
+        (spec->scene_count && !spec->scenes) || spec->world.ecs ||
         (spec->world.modules & ~GAME_WORLD_MODULES_ALL) ||
         spec->asset_count < 0 || spec->asset_count > GAME_PLAYER_MAX_ASSETS ||
-        (spec->asset_count && !spec->assets)) {
+        (spec->asset_count && !spec->assets) || spec->world.action_count < 0 ||
+        (spec->world.action_count && !spec->world.actions)) {
         return fail(error, size, "Invalid prepared player record metadata");
     }
     execution_wire wire = { 0 };
@@ -189,6 +208,9 @@ bool game_player_prepared_write(
     declared_components *declared = spec->declared;
     declared_components_wire(&wire, &declared);
     scene_write(&wire, spec->scene, error, size);
+    const char *start = spec->scene_name ? spec->scene_name
+                                         : game_scene_name(spec->scene);
+    wire_name(&wire, &start);
     unsigned char *fields = NULL;
     size_t field_length = 0;
     if (!wire.error && spec->world.fields &&
@@ -209,6 +231,9 @@ bool game_player_prepared_write(
         blob(&wire, events, &event_length);
     }
     free(events);
+    input_action *input = (input_action *)spec->world.actions;
+    int action_count = spec->world.action_count;
+    actions(&wire, &input, &action_count);
     int modules = spec->module_count;
     count(&wire, &modules);
     for (int i = 0; i < modules && !wire.error; i++) {
@@ -235,6 +260,13 @@ bool game_player_prepared_write(
         }
         wire_name(&wire, &name);
         scene_write(&wire, p->scene, error, size);
+    }
+    int scenes = spec->scene_count;
+    count(&wire, &scenes);
+    for (int i = 0; i < scenes && !wire.error; i++) {
+        const char *name = spec->scenes[i].name;
+        wire_name(&wire, &name);
+        scene_write(&wire, spec->scenes[i].scene, error, size);
     }
     game_player_asset *asset_records = (game_player_asset *)spec->assets;
     int asset_count = spec->asset_count;
@@ -330,12 +362,14 @@ game_player *game_player_prepared_read(
     game_player *player = NULL;
     game_package_module *modules = NULL;
     game_player_prototype *prototypes = NULL;
+    game_player_named_scene *scenes = NULL;
     game_player_asset *asset_records = NULL;
     spec.resources = host->resources;
     size_t decoded_budget = host->decoded_budget ? host->decoded_budget
                                                  : GAME_PLAYER_PREPARED_MAX_BYTES;
     spec.decoded_remaining = &decoded_budget;
     spec.scene = scene_read(&wire, catalog, &decoded_budget, error, size);
+    wire_name(&wire, &spec.scene_name);
     size_t field_length = 0;
     const void *fields = blob(&wire, NULL, &field_length);
     if (!wire.error && field_length) {
@@ -365,6 +399,9 @@ game_player *game_player_prepared_read(
             wire.error = "Prepared player event catalog decoding failed";
         }
     }
+    input_action *input = NULL;
+    actions(&wire, &input, &spec.world.action_count);
+    spec.world.actions = input;
     count(&wire, &spec.module_count);
     for (int i = 0; i < spec.module_count && !wire.error; i++) {
         game_package_module m = { 0 };
@@ -386,6 +423,16 @@ game_player *game_player_prepared_read(
         }
     }
     spec.prototypes = prototypes;
+    count(&wire, &spec.scene_count);
+    for (int i = 0; i < spec.scene_count && !wire.error; i++) {
+        game_player_named_scene named = { 0 };
+        wire_name(&wire, &named.name);
+        named.scene = scene_read(&wire, catalog, &decoded_budget, error, size);
+        if (named.scene) {
+            apush(scenes, named);
+        }
+    }
+    spec.scenes = scenes;
     assets(&wire, &asset_records, &spec.asset_count);
     spec.assets = asset_records;
     if (!wire.error && wire.offset != wire.size) {
@@ -401,8 +448,13 @@ game_player *game_player_prepared_read(
         game_scene_free(prototypes[i].scene);
     }
     afree(prototypes);
+    for (int i = 0; i < acount(scenes); i++) {
+        game_scene_free(scenes[i].scene);
+    }
+    afree(scenes);
     afree(modules);
     afree(asset_records);
+    afree(input);
     if (spec.world.fields) {
         material_fields_free(spec.world.fields);
     }

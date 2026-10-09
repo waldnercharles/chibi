@@ -301,12 +301,16 @@ static int convert(lower *l, int slot, script_type from, script_type to, script_
         range
     );
 }
-/* Any numeric value, such as a `number`, truncates to the int an array index
- * or a range bound takes. */
+/* A fractional value, such as a `number`, truncates to the int an array index
+ * or a range bound takes. Integers keep their width: casts only narrow floats. */
 static int int_slot(lower *l, int value, script_range range)
 {
     script_type from = l->a->expressions[value].type;
-    return convert(l, expression(l, value), from, (script_type){ .storage = PIN_I32 }, range);
+    int slot = expression(l, value);
+    if (from.storage != PIN_F32 && from.storage != PIN_F64) {
+        return slot;
+    }
+    return convert(l, slot, from, (script_type){ .storage = PIN_I32 }, range);
 }
 static behavior_function_op binary_op(script_operator op)
 {

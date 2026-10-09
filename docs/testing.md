@@ -157,7 +157,7 @@ of the project. Each refusal's errno tells a bad request from a taken name and
 a storage failure. CPU only; the folder is removed afterwards.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-thirteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+fifteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
@@ -172,13 +172,16 @@ reported and the included prototype's behaviors stay its own references; a
 prototype is found by the name it declares, even when another file bears that
 name or the name could not name a file, `new_asset` refuses a declared name,
 two declarations of one name are a conflict, and a file the search cannot read,
-or one declaring a name longer than the player takes, fails it; a scene runs as a scenario in a project that has a material; a
-scene requested by its file name runs, and reloads, under its own name; and in
-a project whose manifest names another content folder, assets are
-scaffolded, validated, run, formatted, found and reported there under their
-`content/` paths, and `status` names that folder even once the project is too
-old to open. A few short `chibi_ctl` runs, CPU only; the project is removed
-afterwards.
+or one declaring a name longer than the player takes, fails it; a scene runs as
+a scenario in a project that has a material; a scene requested by its file name
+runs, and reloads, under its own name; a scenario and validation accept a real
+Ogg Vorbis sound, but refuse copies whose headers or audio packets players
+cannot decode; sounds that fit the player's resource count alone, but not with
+the project's other resources, fail validation as they fail compiling; and in a
+project whose manifest names another content folder, assets are scaffolded,
+validated, run, formatted, found and reported there under their `content/`
+paths, and `status` names that folder even once the project is too old to open.
+A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,
@@ -396,19 +399,11 @@ backend has one, so there a failure means Cute's tile shaders did not load.
 near clipping, a mixed 2D layer, and a later frame without the occluder) with
 hidden-surface rejection on and off, and requires the same pixels both ways and
 the expected depth snapshot copies. It also checks Cute's whole-canvas depth copy
-on its own: a cropped draw after the copy must not reach the snapshot. It reads
-the shaders from `src/render/shaders`. Build and run it like `interior-border`
+on its own: a cropped draw after the copy must not reach the snapshot. It builds
+shader graphs, so it needs a compiler build, and it reads the shaders from
+`src/render/shaders`. Build and run it like `interior-border`
 with `AGENT_SELECTOR=--sdf-visibility`. On lavapipe it passes in 8.9 seconds
 with Mesa's shader cache disabled and 2.9 seconds warm.
-`sdf-coverage` draws the production warped-SDF shape from `src/render/sdf_shapes.c`
-into a hidden 128 x 128 canvas at three warp and pluck phases, plain and with an
-interior border, through Cute's instanced and tiled draw paths. Every pixel whose
-neighborhood lies more than two pixels from the CPU field's edge, to first order,
-must be untouched background outside and fill inside. That catches wrong
-parameter packing, bounds that clip the warp, and background erased by a false
-opaque-cover claim. Cute owns the antialiased band between. Build and run it like
-`interior-border` with `AGENT_SELECTOR=--sdf-coverage`. On lavapipe it passes
-2 assertions in 4.6 seconds with Mesa's shader cache disabled and 1.3 seconds warm.
 `sky-files` selects four in-tree Radiance `.hdr` cases: flat and run-length
 decoding, fourteen malformed files, preparation from mounted content (read
 once, with an identity that follows the texels) and import that never replaces
@@ -421,10 +416,11 @@ lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp
 must show its color through a 2D draw shader and in the material raster's
 scene target. The third case only compiles every program kind with the table,
 which cannot catch a binding collision, and the fourth counts the ramp table
-among the samplers a raster batch binds, which GLES3 limits to 16. It needs the
-desktop build with material graphs that `make test-build` makes, and passes 32
-assertions in 2.5 seconds under ASan/UBSan on Vulkan llvmpipe, whose worker
-threads leak 112 bytes, so it runs with `detect_leaks=0`.
+among the samplers a raster batch binds, which GLES3 limits to 16. Build and run
+it like `interior-border` with `AGENT_SELECTOR=--material-ramps`; it needs the
+material graphs of the main build. It passes 32 assertions in 2.5 seconds under
+ASan/UBSan on Vulkan llvmpipe, whose worker threads leak 112 bytes, so it runs
+with `detect_leaks=0`.
 `graph-model` selects two independently reviewed public consumer cases for nested
 value copies, opaque artifact replacement/destruction and topology mutation
 rules. They pass 25 assertions in 0.355 seconds under ASan/UBSan. The consumer

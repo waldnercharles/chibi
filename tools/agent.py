@@ -38,7 +38,8 @@ PLAYER_SELECTORS = {
 }
 STUDIO_SELECTORS = {'--studio-source-edit': 'studio-source-edit'}
 RENDER_SELECTORS = {'--interior-border': 'interior-border', '--sdf-visibility': 'sdf-visibility',
-                    '--sdf-coverage': 'sdf-coverage'}
+                    '--scene3d': 'scene3d', '--scene3d-gles': 'scene3d-gles',
+                    '--material-ramps': 'material-ramps'}
 GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS
 PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
     ('font', f'font/Inter/{weight}/normal') for weight in (400, 500, 600, 700)
@@ -131,7 +132,7 @@ def studio_source_edit_preflight():
         raise ValueError('studio_acceptance_sdk_changed')
     fixture = source / 'tests/acceptance/project'
     expected = {
-        'project.kdl': b'version 17\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
+        'project.kdl': b'version 18\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
         'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n',
         'content/behaviors/Counter.chibi': b'behavior Counter {\n    state count: int = 1\n    on Tick {\n        count = count + 1\n    }\n}\n',
     }
@@ -441,6 +442,11 @@ def main():
             if not Path(command[0]).is_file():
                 return report('blocked', 'render_tools_not_built', selector=args.selector,
                               build_command=f'make build BUILD_DIR={args.build_dir} BUILD_TARGET=test_tools')
+            if args.selector == '--scene3d-gles':
+                # GLES needs a display, and Xvfb provides one on Linux.
+                if not shutil.which('xvfb-run'):
+                    return report('blocked', 'gles_requires_xvfb_run', selector=args.selector)
+                command = ['xvfb-run', '-a'] + command
         execution_evidence = None
         scratch_context = tempfile.TemporaryDirectory(prefix='chibi-studio-source-edit-') if args.selector == '--studio-source-edit' else nullcontext(None)
         with scratch_context as scratch:

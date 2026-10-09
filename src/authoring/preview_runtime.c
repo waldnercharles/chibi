@@ -1,6 +1,5 @@
 #include "authoring/preview_runtime.h"
 
-#include "render/sdf_motion.h"
 #include "runtime/declared_components.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -33,8 +32,7 @@ game_preview_runtime *game_preview_runtime_new(ecs_world *ecs)
                                    .modules = GAME_WORLD_MODULES_ALL,
                                    .components = project_components(),
                                    .fields = material_fields_new(),
-                                   .log = { .emit = log_message, .user = r },
-                                   .sdf_motion = game_sdf_motion_tick };
+                                   .log = { .emit = log_message, .user = r } };
     char error[256];
     r->owner = game_world_new(&options, error, sizeof error);
     if (!r->owner) {

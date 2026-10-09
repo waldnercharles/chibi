@@ -234,7 +234,7 @@ static bool compile(render_programs *programs, program *entry)
     const char *uniforms =
         programs->kind == RENDER_PROGRAM_FRAGMENT
             ? "layout(set=3,binding=1) uniform shd_uniforms { "
-              "vec2 sg_lighting; vec4 sg_entity[85]; };\n"
+              "vec2 sg_lighting; vec4 sg_entity[83]; };\n"
         : sdf
             ? "layout(set=3,binding=0) uniform uniform_block { "
               "vec4 u_eye; vec4 u_camera[4]; vec2 u_depth; vec4 u_shape; vec4 "

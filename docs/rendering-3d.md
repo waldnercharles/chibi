@@ -191,8 +191,8 @@ has them. A scene without a valid rhythm clock draws with the beat at rest.
 
 ## Tests
 
-`python3 tools/test_policy.py tool scene3d` renders a box or a floor in a hidden
-64x64 app. It checks ambient, the directional light, the one-light limit
+`make agent-gpu-test AGENT_SELECTOR=--scene3d` renders a box or a floor in a
+hidden 64x64 app. It checks ambient, the directional light, the one-light limit
 (hidden lights left out), drawing without a rhythm clock, both tone maps, auto
 exposure's geometric mean, background rejection, easing (including slow easing
 finer than a half-float step), snapping and settings checks, and sun shadows: a
@@ -232,16 +232,17 @@ along it more than those across it, unturned and turned an eighth, which
 reaches every irradiance term but the xy and yz ones; render-resources checks
 those on the CPU. Unlit color ramps show their color whether their stops start
 the program's ramp table or lie past the first 4 KB of it, and a stop color
-edit shows without a recompile. It runs `test_tools`
-from the desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`.
+edit shows without a recompile. It is a GPU check that runs the main build's
+`test/tools/test_tools` after the agent's device preflight, so build it first
+with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
 Vulkan llvmpipe passed 42 cases and 9218 assertions in 7.4 seconds on 2026-10-09.
 
-`python3 tools/test_policy.py tool scene3d-gles` runs the same cases on GLES,
+`make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
-than SDL's offscreen driver, so the command runs under `xvfb-run` and needs a
-Linux host with Xvfb. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 42
+than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 42
 cases and 9218 assertions in 6.0 seconds on 2026-10-09.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the

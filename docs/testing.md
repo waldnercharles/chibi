@@ -19,7 +19,8 @@ requirements or clear a PR hold. The broad suites below still need migration.
 
 The engine build compiles the full test drivers, `test_tools` and
 `test_language`, with every native, compiler and renderer package. CI runs each
-group below on every pull request.
+group below on every pull request, and `make build` links `chibi`,
+`chibi-compile` and `chibi-player` in the same tree.
 
 ```sh
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)

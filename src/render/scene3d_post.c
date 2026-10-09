@@ -186,24 +186,12 @@ static bool resize(render_scene3d_post *post, int width, int height)
     return true;
 }
 
-/* Slow easing moves the adapted value by less than a half-float step, so it
- * is kept in 32-bit float where the device can render to it. */
+/* The adapted value is a half-float pair; see scene3d_post_adapt.shd. */
 static CF_Canvas make_adapted_canvas()
 {
     CF_CanvasParams params = cf_canvas_defaults(1, 1);
-    params.target.pixel_format = CF_PIXEL_FORMAT_R32_FLOAT;
+    params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
     params.target.filter = CF_FILTER_NEAREST;
-    bool float32 = cf_texture_supports_format(
-        params.target.pixel_format,
-        params.target.usage
-    );
-#ifdef __EMSCRIPTEN__
-    float32 = float32 &&
-              emscripten_webgl_enable_extension(emscripten_webgl_get_current_context(), "EXT_color_buffer_float");
-#endif
-    if (!float32) {
-        params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
-    }
     return cf_make_canvas(params);
 }
 

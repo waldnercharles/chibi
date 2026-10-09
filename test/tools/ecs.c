@@ -544,6 +544,36 @@ TEST_CASE(ecs_rows_destroyed_later_in_the_batch_still_report_their_set)
     return true;
 }
 
+static void seed_label(ecs_world *w, ecs_event, ecs_entity entity, ecs_component_id component, void *)
+{
+    pin_value label = { .type = PIN_STR, .str = "seed" };
+    size_t offset = offsetof(sdk_record, label);
+    assert(ecs_component_write_value(w, entity, component, offset, label, label) == ECS_OK);
+}
+
+/* An explicit add over a row With implied replaces its owned strings too. */
+TEST_CASE(ecs_explicit_adds_replace_implied_rows_and_their_storage)
+{
+    REQUIRE(ecs_world_register_component(world, &tag_desc, NULL) == ECS_OK);
+    REQUIRE(ecs_world_add_with(world, tag_desc.id, record_desc.id) == ECS_OK);
+    REQUIRE(ecs_world_observe(world, ECS_ON_ADD, record_desc.id, seed_label, NULL) > 0);
+    ecs_entity entity = ecs_world_create_entity(world);
+    char mine[] = "mine";
+    sdk_record explicit = { .amount = 2, .label = mine };
+    REQUIRE(ecs_world_record_add(world, entity, tag_desc.id, NULL, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add(world, entity, record_desc.id, &explicit, 1) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    const sdk_record *row = ecs_component_data_const(world, entity, record_desc.id);
+    REQUIRE(row->amount == 2 && row->label == mine);
+    pin_value label = { .type = PIN_STR, .str = mine };
+    size_t offset = offsetof(sdk_record, label);
+    REQUIRE(
+        ecs_component_write_value(world, entity, record_desc.id, offset, label, label) == ECS_OK
+    );
+    REQUIRE(row->label != mine && !strcmp(row->label, "mine"));
+    return true;
+}
+
 static ecs_entity follower;
 
 static void tag_on_add(ecs_world *w, ecs_event, ecs_entity entity, ecs_component_id, void *)
@@ -712,6 +742,7 @@ void test_tool_ecs()
     RUN_TEST_CASE(ecs_observers_see_add_set_and_remove_at_the_sync_point);
     RUN_TEST_CASE(ecs_destroy_notifies_the_entity_and_each_component_before_removal);
     RUN_TEST_CASE(ecs_rows_destroyed_later_in_the_batch_still_report_their_set);
+    RUN_TEST_CASE(ecs_explicit_adds_replace_implied_rows_and_their_storage);
     RUN_TEST_CASE(ecs_observer_commands_apply_in_the_same_sync_point);
     RUN_TEST_CASE(ecs_observer_queries_skip_rows_removed_earlier_in_the_batch);
     RUN_TEST_CASE(ecs_set_marks_coalesce_in_slot_order_until_unobserved);

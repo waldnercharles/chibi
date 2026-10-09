@@ -29,7 +29,7 @@ void test_render_resources();
 void test_render_interior_border();
 void test_render_sdf_visibility();
 void test_render_sdf_coverage();
-void test_render_scene3d();
+void test_render_scene3d(bool gles);
 void test_device_controls();
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
@@ -147,7 +147,8 @@ int main(int argc, char **argv)
     interior_border = argc == 2 && !strcmp(argv[1], "--interior-border");
     sdf_visibility = argc == 2 && !strcmp(argv[1], "--sdf-visibility");
     sdf_coverage = argc == 2 && !strcmp(argv[1], "--sdf-coverage");
-    scene3d = argc == 2 && !strcmp(argv[1], "--scene3d");
+    bool scene3d_gles = argc == 2 && !strcmp(argv[1], "--scene3d-gles");
+    scene3d = scene3d_gles || (argc == 2 && !strcmp(argv[1], "--scene3d"));
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
     material_ramps = argc == 2 && !strcmp(argv[1], "--material-ramps");
     material_graphs = scene3d || material_ramps;
@@ -184,7 +185,8 @@ int main(int argc, char **argv)
             "--scene-prepared | --native | --native-values | --native-catalog "
             "| --physics "
             "| --render-resources | --interior-border | --sdf-visibility | "
-            "--sdf-coverage | --scene3d | --material-ramps | --box3d | "
+            "--sdf-coverage | --scene3d | --scene3d-gles | --material-ramps | "
+            "--box3d | "
             "--sky-files | "
             "--persistent-store | "
             "--whole-alias | "
@@ -267,7 +269,7 @@ int main(int argc, char **argv)
         } else if (sdf_coverage) {
             test_render_sdf_coverage();
         } else if (scene3d) {
-            test_render_scene3d();
+            test_render_scene3d(scene3d_gles);
         } else {
             test_render_resources();
             test_device_controls();

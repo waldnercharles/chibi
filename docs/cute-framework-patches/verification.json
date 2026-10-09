@@ -5,8 +5,8 @@
   "host": "Linux x86_64 container, lavapipe (llvmpipe) Vulkan and Mesa GLES 3.2 under Xvfb",
   "patch_applicability": {
     "status": "passed",
-    "independent_patches": 7,
-    "ordered_series_patches": 7,
+    "independent_patches": 8,
+    "ordered_series_patches": 8,
     "patched_source_diff_check": "passed",
     "series_matches_rebased_branch": true
   },
@@ -51,6 +51,12 @@
         "backend": "WebGPU (SwiftShader, 32 color bytes per sample)",
         "status": "expected failure",
         "notes": "Cute adopts the page device without an Asyncify abort, then cf_make_canvas asserts that 6 color targets exceed the device's 4. This is the case the page's gate avoids."
+      },
+      {
+        "command": "chibi export test/fixtures/scene3d --web dist/web-player, served from localhost to headless Chromium",
+        "backend": "WebGL 2 (SwiftShader)",
+        "status": "passed",
+        "notes": "Matches the desktop Vulkan preview except for 22 of 230,400 pixels (mean difference 0.06 levels). Without cute-gles-range-draw-state, the point light's shadows darkened most of the floor and the sphere's lit side."
       }
     ]
   },
@@ -115,9 +121,17 @@
       "command": "build/test/tools/test_tools --scene3d",
       "backend": "Vulkan (lavapipe)",
       "status": "passed",
-      "tests": 41,
-      "assertions": 9215,
+      "tests": 42,
+      "assertions": 9218,
       "notes": "The 3D renderer stack's cases, merged from main, on this pin."
+    },
+    {
+      "command": "python3 tools/test_policy.py tool scene3d-gles",
+      "backend": "GLES 3.2 (Mesa llvmpipe, Xvfb)",
+      "status": "passed",
+      "tests": 42,
+      "assertions": 9218,
+      "notes": "point_lights_cast_from_mixed_primitives fails without cute-gles-range-draw-state."
     },
     {
       "command": "build/test/tools/test_tools --material-ramps",

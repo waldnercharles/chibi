@@ -3,25 +3,13 @@ behavior "Weapon" {
         elapsed = cast<float>(cast<double>(elapsed) + dt)
     }
     state elapsed: float = 0.125
-    value self_2 = engine["Self"]()
-    value find_nearest_entity = find_nearest_entity(self.Transform, 2000.0, 2, self_2)
     action elapsed_dt = AdvanceElapsed(elapsed, delta)
-    value transform_visual_offset = transform_visual_offset({
-        x: 16.0,
-        y: 0.0
-    }, 0.0, self.Orientation.Radians, {
-        pitch: 0.0,
-        yaw: 0.0,
-        roll: 0.0,
-        scale: 1.0
-    })
-    value self_3 = engine["Self"]()
     on Tick {
         if self.Aim.Manual {
             elapsed_dt()
         } else {
-            if find_nearest_entity.Found {
-                await set_game_aim_direction(convert<"game_transform_to_cf">(direction_to(self.Transform, convert<"game_transform_to_cf">(find_nearest_entity.Position))))
+            if find_nearest_entity(self.Transform, 2000.0, 2, engine["Self"]()).Found {
+                await set_game_aim_direction(convert<"game_transform_to_cf">(direction_to(self.Transform, convert<"game_transform_to_cf">(find_nearest_entity(self.Transform, 2000.0, 2, engine["Self"]()).Position))))
                 elapsed_dt()
             } else {
                 elapsed_dt()
@@ -31,7 +19,15 @@ behavior "Weapon" {
     after elapsed_dt {
         if self.Aim.Firing {
             while greater_or_equal(elapsed, self.Weapon.Cooldown) {
-                await "WeaponActions"."Fire Projectile"("position + offset"(self.Transform, transform_visual_offset.Offset), self.Aim.Direction, self.Weapon.Damage, "Projectile", self_3)
+                await "WeaponActions"."Fire Projectile"("position + offset"(self.Transform, transform_visual_offset({
+        x: 16.0,
+        y: 0.0
+    }, 0.0, self.Orientation.Radians, {
+        pitch: 0.0,
+        yaw: 0.0,
+        roll: 0.0,
+        scale: 1.0
+    }).Offset), self.Aim.Direction, self.Weapon.Damage, "Projectile", engine["Self"]())
                 elapsed -= cast<double>(self.Weapon.Cooldown)
             }
         } else {
@@ -39,7 +35,6 @@ behavior "Weapon" {
         }
     }
     pure function "position + offset"<T0: struct<"CF_V2">, T1: struct<"CF_V2">, T2: struct<"CF_V2">>(position: T0 = null, offset: T1 = null) -> (Result: T2 = null) {
-        value add = add(entry.position, entry.offset)
-        return add
+        return add(entry.position, entry.offset)
     }
 }

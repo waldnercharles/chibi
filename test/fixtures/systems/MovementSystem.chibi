@@ -1,11 +1,5 @@
 system "MovementSystem" {
-    value get_gameinput = get_game_input()
-    value get_gamemovement = get_game_movement()
-    value multiply = multiply(convert<"Unwrap_GameInput">(get_gameinput), convert<"Unwrap_GameMovement">(get_gamemovement))
-    value multiply_2 = multiply(multiply, event.DeltaSeconds)
-    value get_gametransform = get_game_transform()
-    value add = add(get_gametransform, multiply_2)
     on Tick {
-        set_game_transform(add)
+        set_game_transform(add(get_game_transform(), multiply(multiply(convert<"Unwrap_GameInput">(get_game_input()), convert<"Unwrap_GameMovement">(get_game_movement())), event.DeltaSeconds)))
     }
 }

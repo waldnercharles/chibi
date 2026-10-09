@@ -116,9 +116,8 @@ bool source_refactor_type(
 }
 static bool lexical_value(const script_symbol *symbol)
 {
-    return symbol->kind == SCRIPT_LOCAL || symbol->kind == SCRIPT_LAZY ||
-           symbol->kind == SCRIPT_PARAMETER || symbol->kind == SCRIPT_RESULT ||
-           symbol->kind == SCRIPT_COMPONENT ||
+    return symbol->kind == SCRIPT_LOCAL || symbol->kind == SCRIPT_PARAMETER ||
+           symbol->kind == SCRIPT_RESULT || symbol->kind == SCRIPT_COMPONENT ||
            (symbol->kind == SCRIPT_STATE && symbol->scope > 0);
 }
 static bool used_in(const script_analysis *a, int symbol, script_range range)
@@ -231,10 +230,6 @@ static bool extract(
                 apush(outputs, i);
             }
         } else if (lexical_value(symbol) && used_in(a, i, range)) {
-            if (symbol->kind == SCRIPT_LAZY) {
-                valid = source_refactor_fail(error, size, "Extraction must retain repeated lazy computation timing");
-                break;
-            }
             apush(inputs, i);
         }
     }

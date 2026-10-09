@@ -8,7 +8,6 @@ const K = Object.fromEntries(
     "state",
     "shared",
     "action",
-    "value",
     "local",
     "event",
     "disabled",
@@ -62,7 +61,7 @@ const K = Object.fromEntries(
   ].map((word) => [word, word]),
 );
 
-const CONTEXTUAL = ["value", "from", "split"];
+const CONTEXTUAL = ["from", "split"];
 
 const P = {
   or: 1,
@@ -133,7 +132,7 @@ module.exports = grammar({
     _common_declaration: ($) =>
       choice(
         $.action_declaration,
-        $.value_declaration,
+        $.lazy_local_declaration,
         $.event_declaration,
         $.bind_declaration,
         $.handler,
@@ -175,12 +174,8 @@ module.exports = grammar({
       ),
     action_declaration: ($) =>
       seq(optional(K.disabled), K.action, $._computation_declaration),
-    value_declaration: ($) =>
-      seq(
-        optional(K.disabled),
-        choice(K.value, K.local),
-        $._computation_declaration,
-      ),
+    lazy_local_declaration: ($) =>
+      seq(optional(K.disabled), K.local, $._computation_declaration),
     event_declaration: ($) => seq(K.event, $._computation_declaration),
     _computation_declaration: ($) =>
       seq(

@@ -244,7 +244,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "value_declaration"
+          "name": "lazy_local_declaration"
         },
         {
           "type": "SYMBOL",
@@ -499,7 +499,7 @@
         }
       ]
     },
-    "value_declaration": {
+    "lazy_local_declaration": {
       "type": "SEQ",
       "members": [
         {
@@ -515,17 +515,8 @@
           ]
         },
         {
-          "type": "CHOICE",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "value"
-            },
-            {
-              "type": "STRING",
-              "value": "local"
-            }
-          ]
+          "type": "STRING",
+          "value": "local"
         },
         {
           "type": "SYMBOL",

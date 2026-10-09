@@ -798,7 +798,7 @@ char *chibi_migrate_results(const char *source)
     free(stripped);
     return migrated;
 }
-/* A version 13 lazy `value Name = e` or `local Name = e` declaration. */
+/* A version 13 `value Name = e` declaration. */
 typedef struct
 {
     int offset; /* Of its name, in the rewritten source. */
@@ -823,9 +823,7 @@ static char *strip_lazy(const char *source, lazy **out)
             p = skip;
             continue;
         }
-        size_t keyword = !strncmp(p, "value", 5) ? 5
-                       : !strncmp(p, "local", 5) ? 5
-                                                 : 0;
+        size_t keyword = strncmp(p, "value", 5) ? 0 : 5;
         const char *name = p + keyword;
         while (keyword && (*name == ' ' || *name == '\t')) {
             name++;
@@ -884,7 +882,8 @@ static bool declares_name(const char *text, TSNode scope, TSNode name)
         if (is(child, "parameter_list") && declares_name(text, child, name)) {
             return true;
         }
-        if ((is(child, "local_declaration") || is(child, "parameter")) &&
+        if ((is(child, "local_declaration") ||
+             is(child, "lazy_local_declaration") || is(child, "parameter")) &&
             same_name(text, ts_node_child_by_field_name(child, "name", 4), text, name)) {
             return true;
         }
@@ -911,19 +910,10 @@ static bool child_is(TSNode parent, const char *field, TSNode node)
     TSNode child = ts_node_child_by_field_name(parent, field, (uint32_t)strlen(field));
     return !ts_node_is_null(child) && ts_node_eq(child, node);
 }
-/* The lazy declaration `node` reads: an identifier in expression position or
- * `local.Name`. */
+/* The lazy declaration `node` reads, as an identifier in expression position. */
 static lazy *lazy_read(const char *text, lazy *all, TSNode node)
 {
     TSNode parent = ts_node_parent(node);
-    if (is(node, "member_expression")) {
-        TSNode object = ts_node_child_by_field_name(node, "object", 6);
-        TSNode member = ts_node_child_by_field_name(node, "member", 6);
-        bool local = is(object, "builtin_reference") &&
-                     ts_node_end_byte(object) - ts_node_start_byte(object) == 5 &&
-                     !strncmp(text + ts_node_start_byte(object), "local", 5);
-        return local ? resolve_lazy(text, all, node, member) : NULL;
-    }
     if (!is(node, "identifier") || ts_node_is_null(parent) || is(parent, "type") ||
         is(parent, "argument_name") || child_is(parent, "name", node) ||
         child_is(parent, "member", node) || child_is(parent, "alias", node) ||

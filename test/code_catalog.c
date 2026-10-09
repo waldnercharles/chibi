@@ -224,7 +224,7 @@ static void snapshot_library_metadata()
     test_check(signature && signature->graph_id == 1000, "Snapshot library catalogs retain restored callable identities before loading consumers");
     char error[256];
     behavior_asset *consumer = restored
-                                 ? code_catalog_load_behavior(catalog, "behavior Consumer { value chosen = Shared.Seven(); }", error, sizeof error)
+                                 ? code_catalog_load_behavior(catalog, "behavior Consumer { local chosen = Shared.Seven(); }", error, sizeof error)
                                  : NULL;
     bool resolved = false;
     for (int i = 0; consumer && i < acount(consumer->graph->nodes); i++) {
@@ -286,7 +286,7 @@ static void typed_references()
     );
     context.reference_count = 1;
     source = code_source_parse_context(
-        "behavior ComponentRef { value read = get_component(Component: "
+        "behavior ComponentRef { local read = get_component(Component: "
         "GameVelocity, Entity: self); }",
         NULL,
         &context
@@ -308,15 +308,15 @@ void run_code_catalog_checks()
     cross_library_rename();
     const char
         *alpha = "library Alpha { pure function Forward() -> (Result: int) { "
-                 "value chosen = Zulu.Seven(); return "
+                 "local chosen = Zulu.Seven(); return "
                  "chosen.Result } }";
     const char
         *zulu = "library Zulu { pure function Seven() -> (Result: int) { "
                 "return 7 } }";
     const char
-        *consumer = "behavior Consumer { value chosen = Alpha.Forward(); }";
+        *consumer = "behavior Consumer { local chosen = Alpha.Forward(); }";
     const char
-        *system = "system ConsumerSystem { value chosen = Alpha.Forward(); }";
+        *system = "system ConsumerSystem { local chosen = Alpha.Forward(); }";
     char root[] = "/tmp/chibi-code-catalog-XXXXXX";
     assert(mkdtemp(root));
     const char *folders[] = { "libraries", "behaviors", "systems" };

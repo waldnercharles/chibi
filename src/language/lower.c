@@ -2485,7 +2485,7 @@ static bool storage_alias(lower *l, int index, int depth)
         const script_expression *expression = &l->a->expressions[index];
         if (expression->kind == SCRIPT_EXPR_SYMBOL && expression->symbol >= 0) {
             const script_symbol *symbol = &l->a->symbols[expression->symbol];
-            if (symbol->kind == SCRIPT_LAZY || symbol->lazy_local) {
+            if (symbol->lazy_local) {
                 index = symbol->initializer;
                 continue;
             }
@@ -2621,7 +2621,7 @@ static int symbol_value(lower *l, const script_expression *e)
         );
         return retain_value(l, value, s->type, e->range);
     }
-    if (s->kind == SCRIPT_LAZY || (s->lazy_local && l->function < 0)) {
+    if (s->lazy_local && l->function < 0) {
         int value = expression(l, s->initializer);
         return convert(l, value, l->a->expressions[s->initializer].type, s->type, e->range);
     }
@@ -2901,8 +2901,8 @@ static int reference_expression(lower *l, const script_expression *e)
     const script_symbol *symbol = e->kind == SCRIPT_EXPR_SYMBOL
                                     ? &l->a->symbols[e->symbol]
                                     : NULL;
-    if (symbol && (symbol->lazy_local || symbol->kind == SCRIPT_LAZY) &&
-        symbol->initializer >= 0 && storage_alias(l, symbol->initializer, 0)) {
+    if (symbol && symbol->lazy_local && symbol->initializer >= 0 &&
+        storage_alias(l, symbol->initializer, 0)) {
         return reference(l, symbol->initializer);
     }
     if (symbol &&
@@ -4393,7 +4393,7 @@ static void dependency_expressions(lower *l, int index, bool *visited, int **out
     }
     if (e->kind == SCRIPT_EXPR_SYMBOL) {
         const script_symbol *symbol = &l->a->symbols[e->symbol];
-        if (symbol->kind == SCRIPT_LAZY || symbol->lazy_local) {
+        if (symbol->lazy_local) {
             dependency_expressions(l, symbol->initializer, visited, out);
         } else if (
             symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
@@ -4565,7 +4565,7 @@ static void binding_fields(lower *l, execution_module_binding *binding, int inde
     }
     if (e->kind == SCRIPT_EXPR_SYMBOL) {
         const script_symbol *symbol = &l->a->symbols[e->symbol];
-        if (symbol->kind == SCRIPT_LAZY || symbol->lazy_local) {
+        if (symbol->lazy_local) {
             binding_fields(l, binding, symbol->initializer, visited);
         } else if (symbol->kind == SCRIPT_COMPONENT) {
             const script_catalog_type

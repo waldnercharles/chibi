@@ -73,8 +73,7 @@ void script_analyzer_finish_effects(analyzer *a)
                 effects |= out->expressions[expression->right].effects;
             }
             if (expression->kind == SCRIPT_EXPR_SYMBOL && expression->symbol >= 0 &&
-                (out->symbols[expression->symbol].kind == SCRIPT_LAZY ||
-                 out->symbols[expression->symbol].lazy_local) &&
+                out->symbols[expression->symbol].lazy_local &&
                 out->symbols[expression->symbol].initializer >= 0) {
                 effects |= out->expressions[out->symbols[expression->symbol].initializer]
                                .effects;

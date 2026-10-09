@@ -85,7 +85,7 @@ TEST_CASE(language_declarations_actions_and_bindings)
         "behavior Demo {\n"
         "owner \"ecs.entity\"; description \"fixture\";\n"
         "state count: int = 0; shared enabled := true;\n"
-        "value velocity = self.Velocity; local target = velocity.Parent;\n"
+        "local target = self.Velocity.Parent;\n"
         "action pending = delay(Duration: 1);\n"
         "event changed = self.ActionBinding.PressedChanged;\n"
         "bind self.ParticleEmitter.Active = enabled;\n"
@@ -96,8 +96,8 @@ TEST_CASE(language_declarations_actions_and_bindings)
     );
     REQUIRE(original->diagnostic_count == 0);
     TSNode body = declaration_body();
-    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 6)), "action_declaration"));
-    TSNode handler = ts_node_named_child(body, 9);
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 5)), "action_declaration"));
+    TSNode handler = ts_node_named_child(body, 8);
     REQUIRE(!strcmp(ts_node_type(handler), "handler"));
     REQUIRE(node_text(field(handler, "kind"), "on"));
     REQUIRE(node_text(field(handler, "alias"), "frame"));
@@ -113,8 +113,8 @@ TEST_CASE(language_callable_types_entries_and_results)
         "function Apply(amount: int) -> () { entry Run { return(); } exit "
         "Done; }\n"
         "macro Route(key: name) -> (Success: bool) { return.Success(true); }\n"
-        "value converted = engine[\"To Real\"](Value: int = 3);\n"
-        "value chosen = Identity<int>(source: ref int from state.count, "
+        "local converted = engine[\"To Real\"](Value: int = 3);\n"
+        "local chosen = Identity<int>(source: ref int from state.count, "
         "item: 2);\n"
         "}"
     );
@@ -167,8 +167,8 @@ TEST_CASE(language_expressions_precedence_and_continuation)
         "difference := 9 - 3 - 1\n"
         "vector := {x: 1, y: 2}\n"
         "items := [1,\n2, 3,]\n"
-        "value selected = items[1]\n"
-        "value fallback_value = fallback(default: 0)\n"
+        "local selected = items[1]\n"
+        "local fallback_value = fallback(default: 0)\n"
         "on Begin {\n"
         "computed := 1 // newline continuation\n+ 2\n"
         "other := 3 + /* operator continuation */\n4\n"

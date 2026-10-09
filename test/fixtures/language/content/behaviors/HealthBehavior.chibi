@@ -24,7 +24,9 @@ behavior "HealthBehavior" {
     }
     function "Apply Damage"(Current: int = 0, Maximum: int = 0, Amount: int = 0, Source: handle<"ecs.entity"> = 0) -> () {
         depth_limit 0;
-        action current_remaininghealth = HealthChanged(Current: plain double = convert<"To Real">(entry.Current), RemainingHealth: plain double = cast<double>(clamp(convert<"To Real">(entry.Current) - clamp(convert<"To Real">(entry.Amount), 0, convert<"To Real">(entry.Current)), 0, convert<"To Real">(entry.Maximum))));
+        action current_remaininghealth = HealthChanged(Current: plain double = convert<"To Real">(entry.Current), RemainingHealth: plain double = cast<double>(clamp(convert<"To Real">(local.Current) - clamp(convert<"To Real">(entry.Amount), 0, convert<"To Real">(local.Current)), 0, convert<"To Real">(entry.Maximum))));
+        local Current = entry.Current;
+        local "Remaining Health" = cast<double>(clamp(convert<"To Real">(local.Current) - clamp(convert<"To Real">(entry.Amount), 0, convert<"To Real">(local.Current)), 0, convert<"To Real">(entry.Maximum)));
         after entry {
             if (convert<"To Real">(entry.Current) > 0) {
                 if (has_game_dash()) {
@@ -41,9 +43,9 @@ behavior "HealthBehavior" {
             }
         }
         after current_remaininghealth.True {
-            await set_game_health_current(Value: convert<"To Integer">(cast<double>(clamp(convert<"To Real">(entry.Current) - clamp(convert<"To Real">(entry.Amount), 0, convert<"To Real">(entry.Current)), 0, convert<"To Real">(entry.Maximum)))), Target: 0);
-            await send_event<"Damaged">(Entity: engine["Self"](), Amount: int = subtract(A: int = entry.Current, B: int = convert<"To Integer">(cast<double>(clamp(convert<"To Real">(entry.Current) - clamp(convert<"To Real">(entry.Amount), 0, convert<"To Real">(entry.Current)), 0, convert<"To Real">(entry.Maximum))))), Source: entry.Source);
-            if (cast<double>(clamp(convert<"To Real">(entry.Current) - clamp(convert<"To Real">(entry.Amount), 0, convert<"To Real">(entry.Current)), 0, convert<"To Real">(entry.Maximum))) <= 0) {
+            await set_game_health_current(Value: convert<"To Integer">(local."Remaining Health"), Target: 0);
+            await send_event<"Damaged">(Entity: engine["Self"](), Amount: int = subtract(A: int = local.Current, B: int = convert<"To Integer">(local."Remaining Health")), Source: entry.Source);
+            if (cast<double>(clamp(convert<"To Real">(local.Current) - clamp(convert<"To Real">(entry.Amount), 0, convert<"To Real">(local.Current)), 0, convert<"To Real">(entry.Maximum))) <= 0) {
                 await send_event<"Died">(Entity: engine["Self"](), Source: entry.Source);
                 return ();
             } else {

@@ -21,8 +21,8 @@ char *chibi_migrate_references(const char *source);
  * without a `return` ends with one. Returns an owned copy of `source`, or NULL
  * when it declares no results. */
 char *chibi_migrate_results(const char *source);
-/* Version 14 removes lazy `value` and `local` declarations: each read of one
- * becomes its expression, which a typed declaration casts. Returns an owned
+/* Version 14 removes `value` declarations: each read of one becomes its
+ * expression, which a typed declaration casts. Returns an owned
  * copy of `source`, or NULL when it declares none. */
 char *chibi_migrate_values(const char *source);
 

@@ -181,6 +181,10 @@ TEST_CASE(language_discarded_pure_result_rejected)
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
     REQUIRE(diagnostic("VectorAdd returns a new value and changes nothing; assign its result"));
+    parse("system Motion(position: Position) { action sum = VectorAdd(position, position); sum(); mutate(); }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
+    REQUIRE(diagnostic("sum returns a new value and changes nothing; assign its result"));
     parse("library Values { function One() -> (count: int) { return 1; } function Use() -> () { One(); } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);

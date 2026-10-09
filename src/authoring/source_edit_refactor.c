@@ -317,9 +317,12 @@ static bool extract(
     afree(capture_edits);
     source_refactor_append(&definition, "%s\nreturn%s(", selected, macro ? ".Then" : "");
     for (int i = 0; i < acount(outputs); i++) {
-        char *output = source_refactor_quote(catalog, a->symbols[outputs[i]].name);
-        source_refactor_append(&definition, "%slocal.%s", i ? ", " : "", output);
-        free(output);
+        source_refactor_append(
+            &definition,
+            "%s%s",
+            i ? ", " : "",
+            a->symbols[outputs[i]].name
+        );
     }
     source_refactor_append(&definition, ");\n%s}\n", macro ? "}\nexit Then;\n" : "");
     char retained[64];

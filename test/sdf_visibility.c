@@ -1,5 +1,6 @@
 #include "authoring/shader_prepare.h"
 #include "graph/authoring/graph_edit.h"
+#include "graph/model/registry.h"
 #include "graph/shader/shader_graph.h"
 #include "platform/cute.h"
 #include "render/fullscreen.h"
@@ -9,6 +10,7 @@
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
 #include "support/xalloc.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -526,7 +528,7 @@ static bool depth_snapshot_backend()
         cf_apply_viewport(0, 0, SIDE, SIDE);
         cf_apply_scissor(3, 3, 2, 2);
         cf_draw_elements();
-        cf_canvas_copy_depth(source, destination, 0, 0, SIDE, SIDE);
+        cf_canvas_copy_depth(destination, source);
         value[0] = .125f;
         cf_apply_canvas(source, false);
         cf_apply_mesh(mesh);
@@ -698,24 +700,40 @@ bool test_sdf_visibility()
     behavior_asset_free(material);
     return ok && backend_ok;
 }
-int sdf_visibility_run(const char *program, bool gles)
+TEST_CASE(meshes_and_sdfs_hide_each_other)
 {
-    CF_Result result = cf_make_app(
-        "SDF visibility regression",
+    REQUIRE(test_sdf_visibility());
+    return true;
+}
+
+void test_render_sdf_visibility()
+{
+#ifdef __linux__
+    /* Linux agents may have no display, and the offscreen driver still reaches
+     * Vulkan. Metal and D3D12 need the platform's own window. A caller's
+     * driver wins, under either of SDL's names. */
+    if (!getenv("SDL_VIDEODRIVER")) {
+        setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+    }
+#endif
+    /* The tools binary is not installed beside the engine's resources, and the
+     * check must cover this tree's shaders whatever the caller exported. */
+    setenv("CHIBI_RENDER_SHADER_DIR", CHIBI_SOURCE_ROOT "/src/render/shaders", 1);
+    CF_Result made = cf_make_app(
+        "sdf-visibility",
         0,
         0,
         0,
         WIDTH,
         HEIGHT,
-        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT |
-            (gles ? CF_APP_OPTIONS_GFX_OPENGL_BIT : 0),
-        program
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        NULL
     );
-    if (cf_is_error(result)) {
-        return 1;
-    }
+    assert(!cf_is_error(made));
     app_scene_renderer_initialize();
-    bool ok = test_sdf_visibility();
+    const registry_pack *packs[] = { &SHADER_PACK };
+    registry_set_packs(packs, 1);
+    RUN_TEST_CASE(meshes_and_sdfs_hide_each_other);
+    registry_set_packs(NULL, 0);
     cf_destroy_app();
-    return !ok;
 }

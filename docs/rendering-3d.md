@@ -207,8 +207,9 @@ checked across a grid of floor against the box between it and each lamp, for
 one lamp in four spots whose shadows cross between faces, and for two lamps
 outranked by a brighter light that casts nothing; five lamps that cast give
 shadows to the four ranked highest; a sphere lit from between three faces
-keeps its light; a long wall casts for a lamp near one end; and a slab the
-camera culls casts too. A spot light matches a point light inside its inner
+keeps its light; a long wall casts for a lamp near one end; a slab the camera
+culls casts too; and a sphere drawn into the same face as the box and the floor
+stays in that face. A spot light matches a point light inside its inner
 angle, matches a point light dimmed by the square of the fade partway across
 its edge, and leaves the floor dark past its outer angle. Its shadows are
 checked across the same grid, from a slanted cone and from one pointing
@@ -235,7 +236,13 @@ edit shows without a recompile. It runs `test_tools`
 from the desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 40 cases and 9212 assertions in 8.5 seconds on 2026-10-09.
+Vulkan llvmpipe passed 42 cases and 9218 assertions in 7.4 seconds on 2026-10-09.
+
+`python3 tools/test_policy.py tool scene3d-gles` runs the same cases on GLES,
+the backend of the web player's WebGL 2 fallback. GLES needs a display rather
+than SDL's offscreen driver, so the command runs under `xvfb-run` and needs a
+Linux host with Xvfb. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 42
+cases and 9218 assertions in 6.0 seconds on 2026-10-09.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

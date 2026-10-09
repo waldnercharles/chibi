@@ -1,35 +1,63 @@
+diff --git a/docs/topics/low_level_graphics.md b/docs/topics/low_level_graphics.md
+index 7fa3bd98..82ad70ea 100644
+--- a/docs/topics/low_level_graphics.md
++++ b/docs/topics/low_level_graphics.md
+@@ -298,7 +298,7 @@ How many targets depends on the device. `CF_MAX_CANVAS_TARGETS` (8) is the most
+ | Backend | Limit |
+ | --- | --- |
+ | D3D12, Metal | 8 |
+-| Vulkan | 4 -- the spec guarantee; SDL_GPU doesn't expose the device's real `maxColorAttachments` |
++| Vulkan | 8 -- the spec only guarantees 4 and SDL_GPU doesn't expose the device's real `maxColorAttachments`, but desktop drivers report 8 |
+ | GLES / WebGL2 | min(`GL_MAX_DRAW_BUFFERS`, `GL_MAX_COLOR_ATTACHMENTS`, 8); the spec guarantees 4 |
+ | WebGPU | min(`maxColorAttachments`, `maxColorAttachmentBytesPerSample` / 8, 8), since an RGBA8 target costs 8 bytes per sample; the spec guarantees 4. Wider formats cost more |
+ 
 diff --git a/include/cute_graphics.h b/include/cute_graphics.h
-index 54e4e586..bc27fb30 100644
+index 126758c8..26587d47 100644
 --- a/include/cute_graphics.h
 +++ b/include/cute_graphics.h
-@@ -1557,11 +1557,11 @@ CF_INLINE const char* cf_samplecount_string(CF_SampleCount count) {
-  * @function CF_MAX_CANVAS_TARGETS
-  * @category graphics
-  * @brief    The maximum number of color targets a single canvas may have.
-- * @remarks  Four is the portable guarantee: both SDL_GPU and WebGL2/GLES 3.0 support at least
-- *           four simultaneous color attachments.
-+ * @remarks  SDL_GPU supports eight. WebGL2/GLES 3.0 guarantee only four; there, a canvas with more
-+ *           targets than the device's GL_MAX_DRAW_BUFFERS fails to create.
-  * @related  CF_CanvasParams cf_make_canvas cf_canvas_get_target2
-  */
--#define CF_MAX_CANVAS_TARGETS 4
-+#define CF_MAX_CANVAS_TARGETS 8
+@@ -1402,9 +1402,8 @@ CF_INLINE const char* cf_samplecount_string(CF_SampleCount count) {
+  * @remarks  `cf_make_canvas` fails with an assert and returns an invalid canvas when `target_count` exceeds
+  *           this. Per backend:
+  *
+- *           - D3D12 and Metal: 8.
+- *           - Vulkan: 4. Vulkan only guarantees four color attachments, and SDL_GPU doesn't expose the
+- *             device's real limit, so CF reports the guarantee.
++ *           - D3D12, Metal and Vulkan: 8. Vulkan only guarantees four color attachments and SDL_GPU
++ *             doesn't expose the device's real limit, but desktop drivers report eight.
+  *           - GLES/WebGL2: the smaller of `GL_MAX_DRAW_BUFFERS` and `GL_MAX_COLOR_ATTACHMENTS`, capped at 8.
+  *             GLES 3.0 and WebGL2 only guarantee four.
+  *           - WebGPU: the smaller of `maxColorAttachments` and `maxColorAttachmentBytesPerSample / 8` (an
+diff --git a/src/cute_graphics_sdlgpu.cpp b/src/cute_graphics_sdlgpu.cpp
+index bfe81267..baaef7db 100644
+--- a/src/cute_graphics_sdlgpu.cpp
++++ b/src/cute_graphics_sdlgpu.cpp
+@@ -1478,11 +1478,10 @@ static bool s_sdl_format_is_depth(SDL_GPUTextureFormat format)
  
- /**
-  * @struct   CF_CanvasParams
-diff --git a/src/cute_graphics_gles.cpp b/src/cute_graphics_gles.cpp
-index 8155aa35..a925ac0f 100644
---- a/src/cute_graphics_gles.cpp
-+++ b/src/cute_graphics_gles.cpp
-@@ -1398,6 +1398,11 @@ CF_Canvas cf_gles_make_canvas(CF_CanvasParams params)
- 	int target_count = params.target_count > 1 ? params.target_count : 1;
- 	if (target_count > CF_MAX_CANVAS_TARGETS) target_count = CF_MAX_CANVAS_TARGETS;
- 	CF_ASSERT(target_count == 1 || params.sample_count == CF_SAMPLE_COUNT_1);
-+	// GLES 3.0 guarantees four draw buffers; more depend on the device.
-+	GLint max_buffers = 0, max_attachments = 0;
-+	glGetIntegerv(GL_MAX_DRAW_BUFFERS, &max_buffers);
-+	glGetIntegerv(GL_MAX_COLOR_ATTACHMENTS, &max_attachments);
-+	if (target_count > max_buffers || target_count > max_attachments) return CF_Canvas{};
- 	for (int i = 0; i < target_count; ++i) {
- 		if (!cf_gles_texture_supports_format(params.targets[i].pixel_format, (CF_TextureUsageBits)params.targets[i].usage)) {
- 			CF_ASSERT(!"Unsupported color target format for GLES backend.");
+ int cf_sdlgpu_query_max_canvas_targets()
+ {
+-	// SDL_GPU exposes no color attachment limit. D3D12 and Metal guarantee eight. Vulkan only
+-	// guarantees four (maxColorAttachments), and SDL doesn't surface the device's real value.
+-	CF_BackendType backend = s_query_backend();
+-	if (backend == CF_BACKEND_TYPE_D3D12 || backend == CF_BACKEND_TYPE_METAL) return CF_MAX_CANVAS_TARGETS;
+-	return 4;
++	// SDL_GPU binds eight color targets but exposes no device limit. D3D12 and Metal guarantee
++	// eight. Vulkan only guarantees four (maxColorAttachments), but desktop drivers, lavapipe
++	// and MoltenVK report eight, so Vulkan gets eight as well.
++	return CF_MAX_CANVAS_TARGETS;
+ }
+ 
+ CF_Canvas cf_sdlgpu_make_canvas(CF_CanvasParams params)
+diff --git a/test/test_mrt.cpp b/test/test_mrt.cpp
+index 13758152..9b6623ff 100644
+--- a/test/test_mrt.cpp
++++ b/test/test_mrt.cpp
+@@ -204,8 +204,7 @@ TEST_CASE(test_mrt_query_limit)
+ 	int max_targets = cf_query_max_canvas_targets();
+ 	REQUIRE(max_targets >= 4 && max_targets <= CF_MAX_CANVAS_TARGETS);
+ 	CF_BackendType backend = cf_query_backend();
+-	if (backend == CF_BACKEND_TYPE_D3D12 || backend == CF_BACKEND_TYPE_METAL) REQUIRE(max_targets == 8);
+-	if (backend == CF_BACKEND_TYPE_VULKAN) REQUIRE(max_targets == 4);
++	if (backend == CF_BACKEND_TYPE_D3D12 || backend == CF_BACKEND_TYPE_METAL || backend == CF_BACKEND_TYPE_VULKAN) REQUIRE(max_targets == 8);
+ 	test_destroy_app();
+ 	return true;
+ }

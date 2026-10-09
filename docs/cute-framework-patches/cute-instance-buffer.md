@@ -1,12 +1,10 @@
 # Expose shared instance staging through the public C header
 
-Retain this patch. Upstream already implements standalone instance buffers and one-draw overrides for GLES and SDL_GPU, but declares those functions only in an internal header.
+Keep this patch. Upstream implements standalone instance buffers and one-draw overrides for GLES, SDL_GPU and WebGPU, but declares them only in an internal header.
 
-The patch moves four declarations to `include/cute_graphics.h` and gives them the public API calling convention. It adds no new upload or draw implementation.
+The patch moves the four declarations to `include/cute_graphics.h` with the public calling convention. It adds no implementation.
 
-Chibi uploads all scheduled SDF instance records once in `src/render/mesh_material.c`. Its draw batches then bind ordered byte ranges from that shared buffer. Without public declarations, C application code cannot use this existing capability through the supported header.
-
-Illustrative C excerpt. It assumes `mesh` declares matching per-instance attributes and `Instance` has the same stride. It has not been reproduced separately in this audit.
+Chibi uploads all scheduled SDF instance records once in `src/render/mesh_material.c`, then binds ordered byte ranges of that buffer per draw batch.
 
 ```c
 uint64_t staging = cf_make_instance_buffer(count * sizeof(Instance), sizeof(Instance));
@@ -21,17 +19,11 @@ cf_draw_elements();
 cf_destroy_instance_buffer(staging);
 ```
 
-Upload before beginning the render pass. Each override applies to one draw and must precede `cf_apply_shader`. Set it again for each batch. Offsets must be stride multiples and the requested range must fit the uploaded data. The API uses an opaque integer handle and does not introduce application-level range validation.
-
-This patch relies on implementations already present in the audited revision. It does not depend on the GLES buffer-streaming patch, which changes a different upload path.
-
-[Internal declarations](https://github.com/RandyGaul/cute_framework/blob/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d/src/internal/cute_graphics_internal.h#L315-L336), [dispatch implementations](https://github.com/RandyGaul/cute_framework/blob/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d/src/cute_graphics.cpp#L1275-L1278), [GLES implementation](https://github.com/RandyGaul/cute_framework/blob/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d/src/cute_graphics_gles.cpp#L1693-L1736), and [SDL_GPU implementation](https://github.com/RandyGaul/cute_framework/blob/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d/src/cute_graphics_sdlgpu.cpp#L1817-L1860).
-
-Validation here is source comparison. The example does not claim a new draw or capture.
+Upload before beginning the render pass. Each override applies to one draw and must precede `cf_apply_shader`. Offsets must be stride multiples and the range must fit the uploaded data.
 
 ## Apply the patch
 
-This diff targets Cute Framework commit [`7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d`](https://github.com/RandyGaul/cute_framework/commit/7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d). Run these commands from a checkout of that commit.
+This diff targets Cute Framework commit [`96e6034aa6bc44665856ee480962a9ddab0b87cc`](https://github.com/RandyGaul/cute_framework/commit/96e6034aa6bc44665856ee480962a9ddab0b87cc). Run these commands from a checkout of that commit.
 
 This patch can be applied independently.
 
@@ -40,4 +32,4 @@ git apply --check cute-instance-buffer.patch
 git apply cute-instance-buffer.patch
 ```
 
-Patch SHA-256: `36450d9db54a5ac55c4a8365742be9a4627d0136fdd9c5bae7e8bcdc8023f8a3`.
+Patch SHA-256: `a81f73cee98c7b606156cb72c7139d827122c8c11a7aa1c419d309f61980af82`.

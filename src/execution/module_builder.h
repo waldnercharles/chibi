@@ -23,19 +23,8 @@ typedef struct
 {
     uint64_t id;
     int value;
-    int field; /* Ordinal within a stable-ID lazy group; concrete values use zero. */
     pin_value type;
 } execution_module_capture;
-typedef struct
-{
-    uint64_t id;
-    int value;
-    int result_count; /* One initialization owns this contiguous typed value bank. */
-    behavior_function *initializer;
-    int capture_count;
-    execution_module_capture *captures;
-    int local_capture_count;
-} execution_module_local;
 typedef struct
 {
     uint64_t component, layout, field;
@@ -49,8 +38,6 @@ typedef struct
     int capture_count;
     execution_module_capture *captures; /* Owned malloc buffer. */
     int local_capture_count;
-    execution_module_local *locals; /* Owned malloc buffer. */
-    int local_count;
     bool continuation_wait;
     char *entry, *event_name; /* Owned malloc strings. */
     execution_function_kind kind;

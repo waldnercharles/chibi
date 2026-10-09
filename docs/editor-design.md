@@ -958,13 +958,14 @@ maximum displacement: positive standing amplitude plus twice active pluck
 amplitude. Two overlapping packets can exceed the source CPU bound of one pluck
 amplitude, so the editor uses the conservative bound.
 
-`cmake/patches/cute-custom-coverage.patch` adds an explicit coverage registration
-API. Warped fields are not Lipschitz distance bounds; Cute therefore bins them
-using their supplied AABB and skips distance-based tile rejection and opaque
-cover claims. Fragment distance is unchanged, preserving source antialiasing
-and interior-border widths. Coverage shapes cannot participate in smooth CSG
-shape groups, whose bounds rely on a true distance bound. Ordinary Cute custom
-shapes retain their original contract.
+Warped fields are not Lipschitz distance bounds. Cute bins every custom shape
+by its supplied AABB and never lets one claim opaque cover, so the tiled path
+neither drops tiles the warp reaches nor erases background it does not cover.
+Cute antialiases a custom field from its local slope, d / |grad d|, so the edge
+stays about a pixel wide and the interior border keeps its width where the warp
+stretches the field. The runtime entity raster antialiases the raw field, so
+where the warp stretches the field, Studio's preview draws softer edges and
+wider borders than the game.
 
 The optional component's clocks advance in both simulation hosts alongside
 particles. Pause freezes them; step advances them; restart restores authored

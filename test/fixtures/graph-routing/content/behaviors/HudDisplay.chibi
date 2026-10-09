@@ -1,16 +1,16 @@
 behavior "HudDisplay" {
     owner "ecs.entity";
-    local player = cast<handle<"ecs.entity">>(get_global_variable(Name: "Player"));
-    local hull = "current / max(maximum, 1)"(current: int = local.current, maximum: int = local.maximum);
-    local current = get_component(Component: "GAME.GameHealth", Entity: local.player).Value.current;
-    local maximum = get_component(Component: "GAME.GameHealth", Entity: local.player).Value.maximum;
-    local alive = has_component(Component: "GAME.GameHealth", Entity: local.player);
     on Tick as tick(DeltaSeconds: float = 0.0) {
-        if (local.alive) {
-            await set_ui_value(Entity: 0, Element: "#hull .bar", Value: local.hull);
-            await set_ui_text(Entity: 0, Element: "#hull .readout", Text: format_text(Format: "{} / {}", Arg0: int = local.current, Arg1: plain int = local.maximum));
-            await set_ui_value(Entity: 0, Element: "#speed", Value: "length(vec2(velocity.x, velocity.y))"(velocity: struct<"GameVelocity"> = get_component(Component: "GAME.GameVelocity", Entity: local.player)));
-            if (local.hull < 0.3) {
+        player := cast<handle<"ecs.entity">>(get_global_variable(Name: "Player"))
+        alive := has_component(Component: "GAME.GameHealth", Entity: player)
+        if (alive) {
+            current := get_component(Component: "GAME.GameHealth", Entity: player).Value.current
+            maximum := get_component(Component: "GAME.GameHealth", Entity: player).Value.maximum
+            hull := "current / max(maximum, 1)"(current: int = current, maximum: int = maximum)
+            await set_ui_value(Entity: 0, Element: "#hull .bar", Value: hull);
+            await set_ui_text(Entity: 0, Element: "#hull .readout", Text: format_text(Format: "{} / {}", Arg0: int = current, Arg1: plain int = maximum));
+            await set_ui_value(Entity: 0, Element: "#speed", Value: "length(vec2(velocity.x, velocity.y))"(velocity: struct<"GameVelocity"> = get_component(Component: "GAME.GameVelocity", Entity: player)));
+            if (hull < 0.3) {
                 set_ui_class(Entity: 0, Element: "#hull", Class: "critical", On: true);
             } else {
                 set_ui_class(Entity: 0, Element: "#hull", Class: "critical", On: false);
@@ -21,8 +21,11 @@ behavior "HudDisplay" {
         }
     }
     on Repair as repair() {
-        if (local.alive) {
-            set_component(Component: "GAME.GameHealth", Entity: local.player, Value.current: int = local.maximum);
+        player := cast<handle<"ecs.entity">>(get_global_variable(Name: "Player"))
+        alive := has_component(Component: "GAME.GameHealth", Entity: player)
+        if (alive) {
+            maximum := get_component(Component: "GAME.GameHealth", Entity: player).Value.maximum
+            set_component(Component: "GAME.GameHealth", Entity: player, Value.current: int = maximum);
         } else {
         }
     }

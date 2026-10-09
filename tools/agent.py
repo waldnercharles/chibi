@@ -37,7 +37,9 @@ PLAYER_SELECTORS = {
     '--player-installed-space-cadet-sljit': 'player-installed-space-cadet-sljit',
 }
 STUDIO_SELECTORS = {'--studio-source-edit': 'studio-source-edit'}
-GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS
+RENDER_SELECTORS = {'--interior-border': 'interior-border', '--sdf-visibility': 'sdf-visibility',
+                    '--sdf-coverage': 'sdf-coverage'}
+GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS
 PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
     ('font', f'font/Inter/{weight}/normal') for weight in (400, 500, 600, 700)
 }
@@ -129,7 +131,7 @@ def studio_source_edit_preflight():
         raise ValueError('studio_acceptance_sdk_changed')
     fixture = source / 'tests/acceptance/project'
     expected = {
-        'project.kdl': b'version 16\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
+        'project.kdl': b'version 17\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
         'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n',
         'content/behaviors/Counter.chibi': b'behavior Counter {\n    state count: int = 1\n    on Tick {\n        count = count + 1\n    }\n}\n',
     }
@@ -433,6 +435,12 @@ def main():
             command, preflight, installed_artifact = installed_space_cadet(args.selector)
         elif args.selector == '--studio-source-edit':
             acceptance_binary, acceptance_fixture, preflight = studio_source_edit_preflight()
+        elif args.selector in RENDER_SELECTORS:
+            # Render consumers link the desktop SDK, so only the main build has them.
+            command = [str(ROOT / args.build_dir / 'test/tools/test_tools'), args.selector]
+            if not Path(command[0]).is_file():
+                return report('blocked', 'render_tools_not_built', selector=args.selector,
+                              build_command=f'make build BUILD_DIR={args.build_dir} BUILD_TARGET=test_tools')
         execution_evidence = None
         scratch_context = tempfile.TemporaryDirectory(prefix='chibi-studio-source-edit-') if args.selector == '--studio-source-edit' else nullcontext(None)
         with scratch_context as scratch:

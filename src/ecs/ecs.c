@@ -1430,14 +1430,6 @@ int ecs_world_record_name(ecs_world *world, ecs_entity entity, const char *name,
         dying(world, entity)) {
         return ECS_ERR_ENTITY;
     }
-    if (hierarchy_name_taken(
-            world,
-            hierarchy_parent(world, entity.slot),
-            name,
-            entity.slot
-        )) {
-        return ECS_ERR_DUPLICATE;
-    }
     size_t size = strlen(name) + 1;
     ecs_command command = {
         .sort_key = sort_key,

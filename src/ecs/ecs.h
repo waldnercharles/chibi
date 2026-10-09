@@ -197,9 +197,9 @@ int ecs_world_record_remove_pair(
     uint64_t sort_key
 );
 /* Names must be nonempty and contain no '.', the path separator. Like other
- * records, the entity must already exist. Uniqueness is checked again
- * when each command applies, so a rename that frees a name for a reparent must
- * apply first (an earlier sort key). */
+ * records, the entity must already exist. Uniqueness is checked when each
+ * command applies, so a rename or reparent that frees a name must apply first
+ * (an earlier sort key). */
 int ecs_world_record_name(ecs_world *, ecs_entity, const char *name, uint64_t sort_key);
 /* Moves a child to index among its parent's children, clamped to the end. */
 int ecs_world_record_child_index(ecs_world *, ecs_entity child, int index, uint64_t sort_key);

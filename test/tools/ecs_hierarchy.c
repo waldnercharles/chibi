@@ -96,6 +96,18 @@ TEST_CASE(ecs_child_of_keeps_order_and_depth_across_reparenting)
     return true;
 }
 
+TEST_CASE(ecs_renames_may_take_names_freed_earlier_in_the_batch)
+{
+    ecs_entity alpha = spawn_child((ecs_entity){ 0 }, "Alpha");
+    ecs_entity beta = spawn_child((ecs_entity){ 0 }, "Beta");
+    REQUIRE(ecs_world_record_name(world, alpha, "Gamma", 0) == ECS_OK);
+    REQUIRE(ecs_world_record_name(world, beta, "Alpha", 1) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(same(ecs_lookup(world, (ecs_entity){ 0 }, "Gamma"), alpha));
+    REQUIRE(same(ecs_lookup(world, (ecs_entity){ 0 }, "Alpha"), beta));
+    return true;
+}
+
 TEST_CASE(ecs_names_resolve_paths_and_stay_unique_among_siblings)
 {
     ecs_entity level = spawn_child((ecs_entity){ 0 }, "Level");
@@ -110,7 +122,8 @@ TEST_CASE(ecs_names_resolve_paths_and_stay_unique_among_siblings)
     REQUIRE(!ecs_lookup(world, (ecs_entity){ 0 }, "Level..Gun").slot);
     REQUIRE(!ecs_lookup(world, (ecs_entity){ 0 }, "Level.Gun").slot);
     REQUIRE(!strcmp(ecs_entity_name(world, gun), "Gun"));
-    REQUIRE(ecs_world_record_name(world, other, "Level", 0) == ECS_ERR_DUPLICATE);
+    REQUIRE(ecs_world_record_name(world, other, "Level", 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_ERR_DUPLICATE);
     REQUIRE(ecs_world_record_name(world, other, "A.B", 0) == ECS_ERR_ARGUMENT);
     REQUIRE(ecs_world_record_name(world, other, "", 0) == ECS_ERR_ARGUMENT);
     REQUIRE(ecs_world_record_add(world, other, ECS_NAME, NULL, 0) == ECS_ERR_ARGUMENT);
@@ -265,6 +278,7 @@ void test_tool_ecs_hierarchy()
 {
     pu_setup(prepare_world, release_world);
     RUN_TEST_CASE(ecs_child_of_keeps_order_and_depth_across_reparenting);
+    RUN_TEST_CASE(ecs_renames_may_take_names_freed_earlier_in_the_batch);
     RUN_TEST_CASE(ecs_names_resolve_paths_and_stay_unique_among_siblings);
     RUN_TEST_CASE(ecs_destroying_a_parent_destroys_its_named_subtree);
     RUN_TEST_CASE(ecs_disabled_entities_leave_queries_that_do_not_name_them);

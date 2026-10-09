@@ -1,4 +1,5 @@
 #include "assets/project.h"
+#include "authoring/component_declarations.h"
 #include "authoring/image_prepare.h"
 #include "authoring/language_catalog.h"
 #include "authoring/material_prepare.h"
@@ -270,6 +271,8 @@ bool authoring_project_prepare(
     game_player_prototype *prepared = NULL;
     game_player_asset *assets = NULL;
     const game_scene **visual_scenes = NULL;
+    declared_components *declared = NULL;
+    const ecs_component_desc **components = NULL;
     size_t module_bytes = 0;
     char *scene_path = NULL, *text = NULL;
     if (chibi_project_open(&project, options->project, error, size)) {
@@ -279,8 +282,25 @@ bool authoring_project_prepare(
         !authoring_mesh_mount_content(project.content, error, size)) {
         goto done;
     }
+    if (!authoring_component_declarations_load(
+            project.content,
+            native_capabilities_catalog(options->native),
+            &declared,
+            error,
+            size
+        )) {
+        goto done;
+    }
     for (int i = 0; i < options->components.component_count; i++) {
-        if (ecs_world_register_component(schemas, options->components.components[i], NULL)) {
+        apush(components, options->components.components[i]);
+    }
+    ecs_component_catalog extra = declared ? declared_components_ecs(declared)
+                                           : (ecs_component_catalog){ 0 };
+    for (int i = 0; i < extra.component_count; i++) {
+        apush(components, extra.components[i]);
+    }
+    for (int i = 0; i < acount(components); i++) {
+        if (ecs_world_register_component(schemas, components[i], NULL)) {
             fail(error, size, "Project component schema installation failed");
             goto done;
         }
@@ -307,15 +327,15 @@ bool authoring_project_prepare(
         goto done;
     }
     native_prepared_context event_context = { .native = options->native };
-    execution_prepared_linker event_types = native_capabilities_prepared_linker(&event_context);
+    execution_prepared_linker native_types = native_capabilities_prepared_linker(&event_context);
+    declared_components_linking event_linking = { declared, &native_types };
+    execution_prepared_linker event_types = declared_components_linker(&event_linking);
     events = events_prepare(authoring_sources_catalog(sources), &event_types, error, size);
     if (!events) {
         goto done;
     }
-    game_prototype_registry registry = {
-        .components = options->components.components,
-        .component_count = options->components.component_count
-    };
+    game_prototype_registry registry = { .components = components,
+                                         .component_count = acount(components) };
     if (!project_prepare_prototypes(project.content, &registry, &prototypes, error, size)) {
         goto done;
     }
@@ -397,7 +417,9 @@ bool authoring_project_prepare(
     authoring_language_catalog_free(native);
     native = NULL;
     native_prepared_context context = { .native = options->native, .events = events };
-    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+    execution_prepared_linker native_linker = native_capabilities_prepared_linker(&context);
+    declared_components_linking linking = { declared, &native_linker };
+    execution_prepared_linker linker = declared_components_linker(&linking);
     size_t remaining = GAME_PACKAGE_MAX_BYTES;
     collection = game_package_read_budget(
         modules,
@@ -439,6 +461,7 @@ bool authoring_project_prepare(
         .world = { .modules = options->modules,
                    .fields = (options->modules & GAME_WORLD_MATERIALS) ? fields : NULL,
                    .events = events },
+        .declared = declared,
         .modules = modules,
         .module_count = acount(modules),
         .prototypes = prepared,
@@ -485,6 +508,8 @@ done:
     game_event_catalog_free(events);
     authoring_sources_free(sources);
     authoring_language_catalog_free(native);
+    afree(components);
+    declared_components_free(declared);
     chibi_project_free(&project);
     authoring_mesh_unmount_content();
     clear_visuals();

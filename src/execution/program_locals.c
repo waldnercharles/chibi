@@ -83,7 +83,7 @@ const pin_value *program_event_argument(behavior_function_context *ctx, uint64_t
     }
     return &function->body->argument_defaults[ordinal];
 }
-pin_value *program_capture_value(behavior_function_context *ctx, const execution_module_capture *capture)
+static pin_value *capture_value(behavior_function_context *ctx, const execution_module_capture *capture)
 {
     if (!ctx->data) {
         return NULL;
@@ -107,6 +107,30 @@ pin_value *program_capture_value(behavior_function_context *ctx, const execution
     return value >= 0 && value < acount(ctx->data->function->data_values)
              ? &ctx->data->values[value]
              : NULL;
+}
+/* A frame references the locals it owns. A root local it only captured is
+ * forwarded through the reference the frame was given. */
+bool program_capture_reference(
+    arena *storage,
+    behavior_function_context *ctx,
+    const execution_module_capture *capture,
+    pin_value *out
+)
+{
+    pin_value *value = capture_value(ctx, capture);
+    if (value) {
+        *out = execution_reference_value(storage, ctx, value, capture->type);
+        return true;
+    }
+    const execution_module_function *fn = context_function(ctx);
+    for (int i = 0; fn && capture->value < 0 && i < fn->local_capture_count; i++) {
+        const execution_module_capture *own = &fn->captures[i];
+        if (own->id == capture->id && own->field == capture->field) {
+            *out = ctx->arguments[fn->capture_count + i];
+            return true;
+        }
+    }
+    return false;
 }
 static int local_index(execution_activation *owner, behavior_function_context *ctx, int value)
 {
@@ -189,19 +213,16 @@ int program_initialize_local(behavior_function_context *ctx, pin_value *header, 
         apush(arguments, ctx->arguments[i]);
     }
     for (int i = 0; i < plan->local_capture_count; i++) {
-        const execution_module_capture *capture = &plan->captures[i];
-        pin_value *value = program_capture_value(ctx, capture);
-        if (!value) {
+        pin_value reference;
+        if (!program_capture_reference(&owner->payload, ctx, &plan->captures[i], &reference)) {
             afree(arguments);
             owner->locals[index].initializing = false;
             return FLOW_ERR_STATE;
         }
-        apush(
-            arguments,
-            execution_reference_value(&owner->payload, ctx, value, capture->type)
-        );
+        apush(arguments, reference);
     }
     execution_program *p = owner->instance->program;
+    program_commit_instance(ctx);
     execution_activation *a = program_activation_new(
         owner->instance,
         plan->initializer,

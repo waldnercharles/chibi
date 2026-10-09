@@ -13,6 +13,7 @@ struct game_player
     game_world *world;
     game_scene_instance *scene;
     game_player_resource_host resources;
+    declared_components *declared;
     void *generation;
     bool committed;
 };
@@ -172,6 +173,7 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
         *remaining = field_budget;
     }
     game_player *p = xcalloc(1, sizeof *p);
+    p->declared = spec->declared ? declared_components_retain(spec->declared) : NULL;
     p->resources = spec->resources;
     if (p->resources.stage) {
         p->generation = p->resources.stage(
@@ -186,6 +188,7 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
             if (options.fields) {
                 material_fields_free(options.fields);
             }
+            declared_components_free(p->declared);
             free(p);
             *remaining = initial_budget;
             return NULL;
@@ -301,6 +304,7 @@ void game_player_free(game_player *p)
             p->resources.discard(p->resources.context, p->generation);
         }
     }
+    declared_components_free(p->declared);
     free(p);
 }
 game_world *game_player_world(const game_player *p)

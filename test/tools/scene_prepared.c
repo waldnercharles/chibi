@@ -379,10 +379,45 @@ TEST_CASE(prepared_integers_roundtrip_in_shortest_form)
     REQUIRE(reader.error);
     return true;
 }
+TEST_CASE(prepared_wire_bounds_use_encoded_width)
+{
+    /* A one-byte value fits in the last free byte of an artifact. */
+    uint64_t hash = 0, zero = 0;
+    execution_wire last = { .hash = &hash, .size = EXECUTION_WIRE_MAX_BYTES - 1 };
+    last.offset = last.size;
+    execution_wire_u64(&last, &zero);
+    REQUIRE(!last.error && last.size == EXECUTION_WIRE_MAX_BYTES);
+
+    /* A trailing collection of one-byte scalars decodes after writing. */
+    pin_value items[4] = { 0 };
+    for (int i = 0; i < 4; i++) {
+        items[i] = (pin_value){ .type = PIN_I32, .i = i };
+    }
+    pin_array array = { .element_type = PIN_I32, .count = 4, .capacity = 4, .items = items };
+    pin_value list = { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY, .ptr = &array };
+    execution_wire writer = { 0 };
+    execution_wire_value(&writer, &list);
+    REQUIRE(!writer.error);
+    arena storage = { 0 };
+    execution_wire reader = { .data = writer.data,
+                              .size = writer.size,
+                              .reading = true,
+                              .storage = &storage };
+    pin_value read = { 0 };
+    execution_wire_value(&reader, &read);
+    const pin_array *decoded_array = read.ptr;
+    bool same = !reader.error && reader.offset == writer.size && decoded_array &&
+                decoded_array->count == 4 && decoded_array->items[3].i == 3;
+    arena_free(&storage);
+    afree(writer.data);
+    REQUIRE(same);
+    return true;
+}
 void test_scene_prepared()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(prepared_integers_roundtrip_in_shortest_form);
+    RUN_TEST_CASE(prepared_wire_bounds_use_encoded_width);
     RUN_TEST_CASE(prepared_scene_survives_input_retirement_and_instantiation);
     RUN_TEST_CASE(prepared_scene_rejects_incompatible_and_malformed_records);
     RUN_TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_structs);

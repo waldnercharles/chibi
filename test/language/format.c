@@ -289,6 +289,24 @@ TEST_CASE(source_minimize_drops_redundant_text)
     return true;
 }
 
+TEST_CASE(source_minimize_reaches_a_fixed_point)
+{
+    /* Each round drops only the outermost of nested redundant parentheses. */
+    REQUIRE(minimize(
+        "library Demo {\n"
+        "    function Use(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "        return ((((((((((((a))))))))))))\n"
+        "    }\n"
+        "}\n",
+        "library Demo {\n"
+        "    function Use(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "        return a\n"
+        "    }\n"
+        "}\n"
+    ));
+    return true;
+}
+
 TEST_CASE(source_minimize_keeps_invalid_source)
 {
     const char
@@ -499,6 +517,7 @@ void test_language_format()
     RUN_TEST_CASE(source_metadata_distinguishes_repeated_statement_anchors);
     RUN_TEST_CASE(source_format_keeps_else_and_arrow_spacing);
     RUN_TEST_CASE(source_minimize_drops_redundant_text);
+    RUN_TEST_CASE(source_minimize_reaches_a_fixed_point);
     RUN_TEST_CASE(source_minimize_keeps_invalid_source);
     RUN_TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges);
     RUN_TEST_CASE(source_minimize_spells_accessors_as_paths_and_operators);

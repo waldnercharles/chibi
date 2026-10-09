@@ -263,7 +263,7 @@ TEST_CASE(source_connections_reference_retained_results_and_reject_repeated_effe
     REQUIRE(!edit(r) && error[0] && !result.text);
     cleanup();
     REQUIRE(
-        project("behavior Edit { count:double=0; function Next()->(answer:double) { count+=1; return count; } on Tick { count=7; repeated:=Next()+1; } }")
+        project("behavior Edit { count:double=0; function Next()->(answer:double) { count+=1; return count; } on Tick { count=7; count=Next()+1; } }")
     );
     target = find(SOURCE_PRESENTATION_EXPRESSION, "7;");
     producer = find(SOURCE_PRESENTATION_EXPRESSION, "Next()+1;");

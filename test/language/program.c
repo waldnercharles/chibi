@@ -2516,6 +2516,15 @@ TEST_CASE(program_task_with_several_results_awaits_a_tuple)
         }
         REQUIRE(number_state(instance, "n", 23));
     }
+    /* A task has no result fields until it is awaited. */
+    prepare();
+    REQUIRE(!compile(
+        "behavior B { n: double = 0;"
+        "function P(x: double) -> (a: double, b: double) { "
+        "yield; return(x, x * 10); }"
+        "on Impulse(amount, enabled) { t := P(amount); n = t.a } }",
+        BEHAVIOR_BYTECODE
+    ));
     return true;
 }
 
@@ -2726,6 +2735,28 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     );
     analysis = script_analyze(syntax, &catalog);
     REQUIRE(!analysis->valid);
+    /* So does a state write of another function's task, before or after
+     * the await. */
+    const char *writes[] = {
+        "behavior P { pulse: task; power: double = 0;"
+        "function Charge(time: double) -> (power: double) { yield; "
+        "return(time) }"
+        "function Other() -> (name: string) { yield; return(\"x\") }"
+        "on Impulse(amount, enabled) { pulse = Charge(amount); power = await "
+        "pulse }"
+        "function Swap() { set_variable<\"pulse\">(Other()) } }",
+        "behavior P { pulse: task; power: double = 0;"
+        "function Charge(time: double) -> (power: double) { yield; "
+        "return(time) }"
+        "function Other() -> (name: string) { yield; return(\"x\") }"
+        "function Swap() { set_variable<\"pulse\">(Other()) }"
+        "on Impulse(amount, enabled) { pulse = Charge(amount); power = await "
+        "pulse } }"
+    };
+    for (int i = 0; i < 4; i++) {
+        prepare();
+        REQUIRE(!compile_state(writes[i / 2], i % 2 ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+    }
     return true;
 }
 TEST_CASE(program_component_paths_test_presence)

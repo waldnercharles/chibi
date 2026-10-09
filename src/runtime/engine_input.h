@@ -21,7 +21,8 @@ typedef struct
 } engine_input_host;
 engine_input *engine_input_new(ecs_world *world, const engine_input_host *);
 void engine_input_free(engine_input *input);
-/* Copies the project's input map, which controls hold each action. */
+/* Copies the project's input map, which controls hold each action. Each
+ * action is listed once. */
 void engine_input_set_actions(engine_input *input, const input_action *actions, int count);
 void engine_input_clear(engine_input *input);
 void engine_input_reset(engine_input *input);

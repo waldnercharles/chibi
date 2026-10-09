@@ -181,6 +181,20 @@ TEST_CASE(prepared_scene_rejects_incompatible_and_malformed_records)
         game_scene_prepared_read(bytes, length, (ecs_component_catalog){ duplicates, 2 }, error, sizeof error) ==
         NULL
     );
+    /* A derived component is computed from its source, so a scene that
+     * authors one is refused before it can be written. */
+    ecs_component_desc derived = component;
+    derived.derived_from = component.id + 1;
+    record value = { 0 };
+    game_scene_object object = { .name = "Derived",
+                                 .components = &(game_scene_component){ &derived, &value },
+                                 .component_count = 1 };
+    game_scene_spec spec = { .name = "DerivedScene",
+                             .physics = game_physics_defaults(),
+                             .objects = &object,
+                             .object_count = 1 };
+    REQUIRE(game_scene_prepare(&spec, error, sizeof error) == NULL);
+    REQUIRE(strstr(error, "derived"));
     /* Rejection never changed the retained source generation or valid record. */
     decoded = game_scene_prepared_read(bytes, length, catalog, error, sizeof error);
     REQUIRE(decoded != NULL && game_scene_object_count(decoded) == 3);

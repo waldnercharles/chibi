@@ -1,0 +1,4 @@
+name "FireKey"
+components {
+    GAME.GameActionBinding action="Fire" source="Space"
+}

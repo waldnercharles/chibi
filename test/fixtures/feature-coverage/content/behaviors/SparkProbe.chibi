@@ -1,0 +1,6 @@
+behavior SparkProbe {
+    on Tick(dt) {
+        await emit_particles(Position: self.Transform, Color: 4294967295, Count: 2, Speed: 40.0, Lifetime: 0.3);
+        await emit_directed_particles(Position: self.Transform, Direction: vec2(1, 0), Count: 1, Color: 4288223999, "End Color": 1291911040, "Min Speed": 30.0, "Max Speed": 60.0, "Min Lifetime": 0.2, "Max Lifetime": 0.4, "Min Size": 2.0, "Max Size": 4.0, Spread: 1.571, "Min Drag": 4.0, "Max Drag": 8.0, "Min Emission": 0.2, "Max Emission": 0.4, "Size Exponent": 1.5, Elevation: 0.0, Shape: 0);
+    }
+}

@@ -34,6 +34,22 @@ make agent-test AGENT_SELECTOR=--source-edit
 that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 
+## Feature coverage
+
+`test/fixtures/feature-coverage` is the all-features project: one scene per
+area (2D physics, UI, particles, audio, save, rhythm, materials, input and
+entities). `test_tools --feature-coverage <project>` compares the engine
+catalog (components, native functions and events) with what the project's
+scripts, prototypes and scenes use, prints each gap, and runs every scene for
+four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
+failure. Run it on any project to list what that project leaves unused.
+
+For the fixture, `coverage-gaps.txt` lists the entries no scene uses yet, each
+with a reason. The check fails when a catalog entry is in neither the scenes nor
+that list, and when a listed entry becomes used. A PR that adds a component,
+native function or event uses it in a feature-coverage scene; it lists the
+entry as a gap only with a reason. The `native` group, and so CI, runs it.
+
 ## Temporary 60-second policy
 
 The retired frontend experiment's five source inputs are preserved as historical

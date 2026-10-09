@@ -48,6 +48,9 @@ int run_language_prepare_corpora_sljit(const char *);
 void test_source_native_numeric_queries();
 void test_source_native_material_features();
 #endif
+#ifdef CHIBI_TEST_FEATURE_COVERAGE
+int run_feature_coverage(const char *project);
+#endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
 void test_tool_native();
 void test_tool_native_values();
@@ -77,6 +80,10 @@ int main(int argc, char **argv)
          source_material = false, source_presentation = false,
          system_schedule = false, source_systems = false, source_edit = false;
     int corpus = 0;
+    bool coverage = false;
+#ifdef CHIBI_TEST_FEATURE_COVERAGE
+    coverage = argc == 3 && !strcmp(argv[1], "--feature-coverage");
+#endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     whole_math = argc == 2 && !strcmp(argv[1], "--whole-math");
     whole_integer = argc == 2 && !strcmp(argv[1], "--whole-integer");
@@ -111,7 +118,7 @@ int main(int argc, char **argv)
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
     native = argc == 2 && !strcmp(argv[1], "--native");
 #endif
-    if (argc != 1 && !corpus && !shader_parameters && !source_edit &&
+    if (argc != 1 && !corpus && !coverage && !shader_parameters && !source_edit &&
         !package && !unit && !prepared && !read && !scene && !scene_prepared &&
         !native && !native_values && !native_catalog && !render_resources &&
         !persistent_store && !whole_alias && !whole_math && !whole_integer &&
@@ -132,7 +139,7 @@ int main(int argc, char **argv)
             "--source-presentation | --system-schedule | --source-systems | "
             "--source-edit | --shader-parameters-prepared | --semantic-corpora "
             "manifest | --prepare-corpora manifest | --prepare-corpora-sljit "
-            "manifest]\n",
+            "manifest | --feature-coverage project]\n",
             argv[0]
         );
         return 2;
@@ -140,13 +147,18 @@ int main(int argc, char **argv)
     tool_init();
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = corpus || shader_parameters || source_edit ||
-                            system_schedule || source_systems || persistent_store ||
-                            source_presentation || whole_alias || whole_math ||
-                            whole_integer || whole_conversion || whole_select ||
-                            owned_tick || parallel_tick || source_features ||
-                            source_numeric || source_material;
+    source_runtime_active = corpus || coverage || shader_parameters ||
+                            source_edit || system_schedule || source_systems ||
+                            persistent_store || source_presentation || whole_alias ||
+                            whole_math || whole_integer || whole_conversion ||
+                            whole_select || owned_tick || parallel_tick ||
+                            source_features || source_numeric || source_material;
     if (source_runtime_active) {
+#ifdef CHIBI_TEST_FEATURE_COVERAGE
+        if (coverage) {
+            return run_feature_coverage(argv[2]);
+        }
+#endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
         if (corpus) {
             return corpus == 1 ? run_language_semantic_corpora(argv[2])

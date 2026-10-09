@@ -1,0 +1,17 @@
+behavior PanelProbe {
+    on Tick(dt) {
+        await set_ui_text(Element: "#title", Text: "Running");
+        await set_ui_class(Element: "#panel", Class: "active", On: true);
+        await set_ui_style(Element: "#panel", Property: "opacity", Value: "0.9");
+        await set_ui_visible(Element: "#meter", Visible: true);
+        await set_ui_value(Element: "#meter", Value: 0.75);
+        await set_ui_data(Name: "score", Value: int = 3);
+        await focus_ui_element(Element: "#item");
+        await move_ui_focus(Element: "#panel", Step: 1);
+        await click_ui_element(Element: "#item");
+        await show_ui_popover(Element: "#item", At: vec2(0, 0));
+        await reveal_ui_list_row(Element: "#panel", Row: 0);
+        meter := get_ui_value(Element: "#meter");
+        scroll := get_ui_scroll(Element: "#panel");
+    }
+}

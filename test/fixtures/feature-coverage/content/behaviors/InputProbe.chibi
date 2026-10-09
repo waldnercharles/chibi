@@ -1,0 +1,13 @@
+behavior InputProbe {
+    on Input(Direction) {
+        self.Transform += Direction;
+    }
+    on Fire {
+        self.Aim.firing = true;
+    }
+    on Dash {
+        self.Aim.firing = false;
+    }
+    on PressedChanged {
+    }
+}

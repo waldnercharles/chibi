@@ -1,0 +1,6 @@
+name "Panel"
+components {
+    (object)GAME.GameTransform
+    GAME.GameUi document="Panel"
+}
+(array)behaviors "PanelProbe"

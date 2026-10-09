@@ -25,9 +25,10 @@ several games reuse. For one of those:
 3. Read the component where it acts: a system in `src/runtime`, or script
    through the generated get/set. Keep it optional, so scenes without it
    still work.
-4. Use it in a fixture scene or prototype (KDL key `GAME.<Name>`, see
-   `test/fixtures/content/prototypes/Enemy.kdl`) and cover its behavior with
-   a pico_unit case.
+4. Use it in a `test/fixtures/feature-coverage` scene or prototype (KDL key
+   `GAME.<Name>`) and cover its behavior with a pico_unit case.
+   `make test-native` fails until the component is used there or listed in
+   that fixture's `coverage-gaps.txt` with a reason.
 5. If saved projects change meaning, also follow "Change saved projects".
 
 ## Add a native script function
@@ -47,14 +48,17 @@ The smallest complete example is Play Sound:
 5. Test it from source in a tool selector (for example
    `test/runtime/source_features.c`, run with
    `python3 tools/test_policy.py tool source-native-features`), on both the VM
-   and SLJIT backends, and call it from a fixture behavior.
+   and SLJIT backends, and call it from a behavior in the
+   `test/fixtures/feature-coverage` scene for its area.
 
 ## Add a test scene or scenario
 
 1. Pick the fixture project under `test/fixtures` that matches the area, or
    add one with `project.kdl` (`version`, `name`, `content`, `start_scene`)
    and a `content/` tree. Don't add game rules to engine fixtures; keep
-   content minimal and independent of any one game.
+   content minimal and independent of any one game. A scene that exercises
+   an engine feature area belongs in `test/fixtures/feature-coverage`, where
+   `make test-native` runs every scene for four frames.
 2. Add `content/scenes/<Name>.kdl` (`version 1`, `name`, `(array)entities`
    of `- name=... prototype=...`) and the prototypes it uses. A scenario in
    `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.

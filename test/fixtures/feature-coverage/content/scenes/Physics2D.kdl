@@ -1,0 +1,6 @@
+version 1
+name "Physics2D"
+(array)entities {
+    - name="Ball" prototype="Ball"
+    - name="Wall" prototype="Wall"
+}

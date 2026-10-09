@@ -1,0 +1,5 @@
+behavior ToneProbe {
+    on Begin {
+        await play_sound(Frequency: 440.0, "End Frequency": 220.0, Duration: 0.1, Volume: 0.2, Pan: 0.0, Noise: 0.0);
+    }
+}

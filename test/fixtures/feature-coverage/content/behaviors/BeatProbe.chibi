@@ -1,0 +1,6 @@
+behavior BeatProbe {
+    on Tick(dt) {
+        beat := scene_rhythm();
+        self.Transform = vec2(beat.Pulse * 4, 0);
+    }
+}

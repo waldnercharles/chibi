@@ -1234,7 +1234,9 @@ void ui_document_event_ranges(const char *rml, ui_document_event_range **ranges)
 {
     name_span *spans = NULL;
     event_spans(rml, &spans);
-    qsort(spans, (size_t)acount(spans), sizeof *spans, span_order);
+    if (spans) { /* qsort requires a valid pointer even for zero elements. */
+        qsort(spans, (size_t)acount(spans), sizeof *spans, span_order);
+    }
     for (int i = 0; i < acount(spans); i++) {
         int start = (int)(spans[i].at - rml);
         apush(*ranges, ((ui_document_event_range){ start, start + (int)spans[i].length }));

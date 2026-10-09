@@ -105,6 +105,13 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)
         target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::studio_capabilities)
         target_link_libraries(test_tools PRIVATE Chibi::studio_capabilities)
+        # Feature coverage runs each fixture scene through chibi_ctl's run_scenario.
+        if(TARGET chibi_ctl)
+            target_sources(test_tools PRIVATE feature_coverage.c)
+            target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FEATURE_COVERAGE=1
+                CHIBI_CTL_PATH="$<TARGET_FILE:chibi_ctl>")
+            add_dependencies(test_tools chibi_ctl)
+        endif()
     endif()
 endif()
 

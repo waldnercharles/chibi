@@ -1,0 +1,9 @@
+name "Crate"
+components {
+    (object)GAME.GameBody
+    GAME.GameCollider category=1 height=32.0 mask=1 shape="Box" width=32.0
+    GAME.GameDestructible cell_size=4.0 min_fragment_cells=2
+    (object)GAME.GameMaterial
+    (object)GAME.GameTransform
+}
+(array)behaviors "MaterialProbe"

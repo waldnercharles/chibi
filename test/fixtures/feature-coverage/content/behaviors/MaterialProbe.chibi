@@ -1,0 +1,8 @@
+behavior MaterialProbe {
+    on Tick(dt) {
+        damage_material(Entity: self, Point: self.Transform, Radius: 6.0, Energy: 1.0, Cause: 0, Source: self);
+        if (is_material_fragment(Entity: self) || is_pierceable_material_fragment(Entity: self)) {
+            release_material(Entity: self);
+        }
+    }
+}

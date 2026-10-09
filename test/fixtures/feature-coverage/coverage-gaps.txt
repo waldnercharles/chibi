@@ -1,0 +1,67 @@
+# Catalog entries no feature-coverage scene uses yet, one "<kind> <name>" per
+# line. `test_tools --feature-coverage` fails when a catalog entry is missing
+# from both the scenes and this list, and when a listed entry becomes used.
+# A feature PR covers its new entries in a scene; list one here only with a
+# reason, and remove lines as scenes start using them.
+
+# Material simulation: fluids, destruction worlds, heat and combustion need a
+# material field and solver scene.
+component MaterialFluidWorld
+component MaterialDestructionWorld
+component MaterialBreakProfile
+component MaterialThermal
+component MaterialConstitutive
+component MaterialTerrain
+component GameCombustion
+component GameFuel
+component GameIgniter
+component GameSubstance
+component GameMaterialCavity
+component GameFragmentGlow
+component GameMaterialFrame
+component GameFluidVolume
+
+# 3D rendering and surfaces: owned by the 3D renderer roadmap (R items).
+component GameGeometry3D
+component GameSdfSurface3D
+component GameSdfMotion
+component GameSurfaceQuality
+component GameSurfaceInfluence
+component GameMeshAsset
+component GameMeshParts
+component GameMeshSurface2D
+component GameShader
+component GamePointLight
+component GameEnvironment
+component GameFog
+component GameReflection
+component GameVisualTransform
+component GameVisualMotion
+component GameRenderState
+function Primitive Part
+function Transform Visual Offset
+function Trigger Visual Reaction
+
+# 2D lighting, sky and camera.
+component GameHRC2D
+component GameStarfield2D
+component GameCamera
+component GameOrientation
+
+# Visibility and fog of war.
+component GameVision
+function Visibility At
+
+# Combat, encounters and pickups: gameplay modules a combat scene would cover.
+component GameWeapon
+component GameProjectile
+component GameSpawnRequest
+component GameEncounter
+component GameEncounterMember
+component GameExperience
+component GamePickup
+function Count Matching Entities
+
+# Engine internals that scenes don't author directly.
+component GameDrive
+component EngineSystem

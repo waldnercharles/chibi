@@ -691,9 +691,16 @@ static void create_body(game_physics *physics, physics_body *body, b2Vec2 positi
         case GAME_BODY_DYNAMIC: def.type = b2_dynamicBody; break;
         case GAME_BODY_KINEMATIC: def.type = b2_kinematicBody; break;
     }
+    /* A follower moves and turns with its anchor through each step, which
+     * Box2D allows only kinematic bodies. A static and a kinematic body touch
+     * the same bodies. */
+    if (body->follower) {
+        def.type = b2_kinematicBody;
+    }
     def.position = position;
     def.rotation = b2MakeRot(angle);
-    def.fixedRotation = body->settings.type != GAME_BODY_KINEMATIC &&
+    def.fixedRotation = !body->follower &&
+                        body->settings.type != GAME_BODY_KINEMATIC &&
                         !body->settings.allow_rotation;
     /* Box2D excludes bullet targets from CCD, so static/kinematic colliders
      * must stay eligible even when their authored Continuous flag is set. */
@@ -804,9 +811,9 @@ static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
         game_entities_materials(physics->entities),
         entity
     );
-    if (body->body.index1 &&
-        (!same_entity(body->entity, entity) || body->masked != (mask != NULL) ||
-         !same_configuration(body, &collider, &settings))) {
+    if (body->body.index1 && (!same_entity(body->entity, entity) ||
+                              body->masked != (mask != NULL) || body->follower != follower ||
+                              !same_configuration(body, &collider, &settings))) {
         remove_body(physics, body);
     }
     if (body->body.index1 &&
@@ -879,6 +886,55 @@ static int sync_entity(game_physics *physics, ecs_entity entity, float delta)
     }
     body->start = b2Body_GetTransform(body->body);
     return FLOW_OK;
+}
+
+/* The body a follower moves with: its nearest ancestor body that is not a
+ * follower itself, or NULL when no body places its parents. */
+static const physics_body *anchor(const game_physics *physics, ecs_entity entity)
+{
+    for (ecs_entity at = ecs_parent(physics->world, entity); at.slot;
+         at = ecs_parent(physics->world, at)) {
+        const physics_body *body = at.slot < (unsigned)acount(physics->bodies)
+                                     ? &physics->bodies[at.slot]
+                                     : NULL;
+        if (body && body->body.index1 && body->seen && !body->follower &&
+            same_entity(body->entity, at)) {
+            return body;
+        }
+    }
+    return NULL;
+}
+
+/* Before the step, each follower takes the velocity of the point of its
+ * anchor it is attached to, so contacts during the step see it move. After
+ * it, the follower lands exactly where the anchor's new pose places it and
+ * rests until the next step. */
+static void follow_anchors(game_physics *physics, bool stepped)
+{
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        physics_body *body = &physics->bodies[i];
+        if (!body->body.index1 || !body->seen || !body->follower) {
+            continue;
+        }
+        const physics_body *with = anchor(physics, body->entity);
+        if (stepped) {
+            if (with) {
+                b2Transform relative = b2InvMulTransforms(with->start, body->start);
+                b2Transform end = b2MulTransforms(b2Body_GetTransform(with->body), relative);
+                b2Body_SetTransform(body->body, end.p, end.q);
+            }
+            b2Body_SetLinearVelocity(body->body, b2Vec2_zero);
+            b2Body_SetAngularVelocity(body->body, 0);
+        } else if (with) {
+            float spin = b2Body_GetAngularVelocity(with->body);
+            b2Vec2 arm = b2Sub(body->start.p, b2Body_GetWorldCenterOfMass(with->body));
+            b2Body_SetLinearVelocity(
+                body->body,
+                b2Add(b2Body_GetLinearVelocity(with->body), b2CrossSV(spin, arm))
+            );
+            b2Body_SetAngularVelocity(body->body, spin);
+        }
+    }
 }
 
 static int synchronize(game_physics *physics, float delta)
@@ -1789,7 +1845,9 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
                                 ? physics->tasks.workers
                                 : 1;
     CHIBI_TRACE_ZONE_BEGIN(solve_zone, "Physics solve");
+    follow_anchors(physics, false);
     b2World_Step(physics->simulation, delta_seconds, physics->configuration.substeps);
+    follow_anchors(physics, true);
     CHIBI_TRACE_ZONE_END(solve_zone);
     if (physics->profiling) {
         b2Profile profile = b2World_GetProfile(physics->simulation);

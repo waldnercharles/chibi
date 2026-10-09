@@ -237,6 +237,42 @@ TEST_CASE(picking_and_bounds_place_children_under_their_parent)
     return true;
 }
 
+#if CHIBI_TEST_MATERIAL_GRAPHS
+/* Model surfaces take the same exact placement before propagation. */
+TEST_CASE(picking_and_bounds_place_child_models_under_their_parent)
+{
+    REQUIRE(test_register_model_sphere("ChildSphere", .5f));
+    ecs_entity parent = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 1.5f, 0 });
+    ecs_entity child = add_solid(
+        (CF_V3){ 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1, 0 },
+        0xffffffffu
+    );
+    GameSdfSurface3D surface = { .enabled = true };
+    GameShader binding = { .shape = "ChildSphere" };
+    REQUIRE(
+        ecs_world_record_add(world, child, GAME_COMPONENT_GameSdfSurface3D.id, &surface, 0) == ECS_OK
+    );
+    REQUIRE(
+        ecs_world_record_add(world, child, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
+    );
+    REQUIRE(ecs_world_record_add_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    CF_V3 placed = render_scene3d_project(&lens, (CF_V3){ 1.5f, 0, 0 });
+    CF_V3 origin = render_scene3d_project(&lens, (CF_V3){ 0 });
+    REQUIRE(
+        render_scene3d_pick(world, &lens, (CF_V2){ placed.x, placed.y }, (render_skip){ 0 })
+            .slot == child.slot
+    );
+    REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ origin.x, origin.y }, (render_skip){ 0 })
+                 .slot);
+    CF_V3 corners[8];
+    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    REQUIRE(fabsf(corners[0].x - 1) < 1e-3f && fabsf(corners[7].x - 2) < 1e-3f);
+    return true;
+}
+#endif
+
 TEST_CASE(environment_ambient_lights_unlit_faces)
 {
     add_box(0xffffffffu);
@@ -1833,6 +1869,9 @@ void test_render_scene3d(bool gles)
     pu_setup(setup, teardown);
     RUN_TEST_CASE(scene_draws_without_a_valid_rhythm_clock);
     RUN_TEST_CASE(picking_and_bounds_place_children_under_their_parent);
+#if CHIBI_TEST_MATERIAL_GRAPHS
+    RUN_TEST_CASE(picking_and_bounds_place_child_models_under_their_parent);
+#endif
     RUN_TEST_CASE(environment_ambient_lights_unlit_faces);
     RUN_TEST_CASE(directional_light_shades_faces_it_faces);
     RUN_TEST_CASE(scene_rejects_a_second_directional_light);

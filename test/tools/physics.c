@@ -2,6 +2,7 @@
 
 #include "execution/status.h"
 #include "runtime/behaviors/entities.h"
+#include "runtime/behaviors/entities_native.h"
 #include "runtime/component_catalog.h"
 #include "runtime/events.h"
 #include "runtime/materials.h"
@@ -808,6 +809,23 @@ static void separated_solved_contacts()
     dispose(&f);
 }
 
+/* Nearest positions are world placements, which a parent's Orientation turns,
+ * so a behavior that writes Orientation cannot run beside the query. */
+static void nearest_reads_world_placement()
+{
+    const ecs_component_id components[] = { GAME_COMPONENT_GameTransform.id,
+                                            GAME_COMPONENT_GameOrientation.id,
+                                            GAME_COMPONENT_GameCollider.id };
+    for (int i = 0; i < 3; i++) {
+        bool read = false;
+        for (const uint64_t *const *ref = GAME_ENTITY_NEAREST_ACCESS.read_refs; *ref;
+             ref++) {
+            read |= **ref == components[i];
+        }
+        assert(read);
+    }
+}
+
 static void nearest_and_filters()
 {
     fixture f = create();
@@ -1037,6 +1055,25 @@ static void followers()
     GAME_GameBody_get(f.world, child)->type = GAME_BODY_DYNAMIC;
     assert(game_physics_tick(f.physics, 1.0f / 60) < 0);
     assert(strstr(game_physics_error(f.physics), "root entity"));
+    dispose(&f);
+}
+
+/* A child of a moving body moves with it within the same step, so it touches
+ * what lies where its parent carries it, not only where it started. */
+static void followers_move_with_their_body()
+{
+    fixture f = create();
+    ecs_entity parent = body(&f, 0, 200, GAME_BODY_DYNAMIC, 1, 0);
+    *GAME_GameVelocity_get(f.world, parent) = (GameVelocity){ 1200, 0 };
+    ecs_entity child = sensor(&f, 10, 0);
+    assert(ecs_world_record_add_pair(f.world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    /* The child starts over 8..12 and ends over 28..32; the target covers
+     * 30..38. */
+    ecs_entity target = body(&f, 34, 200, GAME_BODY_KINEMATIC, 2, 4);
+    assert(step(&f, 1.0f / 60) == 2);
+    assert(other(&f, child) == ecs_entity_to_u64(target));
+    assert(fabsf(GAME_GameTransform_get_const(f.world, parent)->x - 20) < .001f);
     dispose(&f);
 }
 
@@ -1295,12 +1332,14 @@ static void physics_cases()
     empty_mask_shapes();
     separated_solved_contacts();
     nearest_and_filters();
+    nearest_reads_world_placement();
     moving_target_and_box();
     sweep_tree_lifetime();
     repeated_moving_sweeps();
     lifecycle_and_validation();
     interpolation();
     followers();
+    followers_move_with_their_body();
     followed_material();
     current_contact_query();
     ordered_contacts();

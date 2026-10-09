@@ -1,8 +1,8 @@
 #ifndef CHIBI_APP_SCENE_RENDERER_H
 #define CHIBI_APP_SCENE_RENDERER_H
-#include "render/arena3d.h"
 #include "render/material_raster.h"
 #include "render/radiance.h"
+#include "render/scene3d.h"
 #include "render/viewport.h"
 #include "runtime/engine.h"
 #include "runtime/particles.h"
@@ -14,7 +14,7 @@ void app_scene_renderer_initialize();
 app_scene_renderer *app_scene_renderer_new();
 void app_scene_renderer_free(app_scene_renderer *renderer);
 void app_scene_renderer_set_parallel(app_scene_renderer *renderer, bool enabled);
-render_arena_work app_scene_renderer_last_work(const app_scene_renderer *renderer);
+render_scene3d_work app_scene_renderer_last_work(const app_scene_renderer *renderer);
 void app_scene_renderer_set_model_inspection(
     app_scene_renderer *renderer,
     ecs_entity entity,
@@ -69,7 +69,7 @@ bool app_scene_renderer_draw3d(
     app_scene_renderer *renderer,
     ecs_world *world,
     const game_particles *particles,
-    const render_arena_camera *camera,
+    const render_scene3d_camera *camera,
     engine_viewport *viewport,
     const engine *runtime,
     render_skip skip

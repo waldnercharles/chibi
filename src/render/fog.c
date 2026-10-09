@@ -35,7 +35,7 @@ bool render_fog_draw(
     render_fog *fog,
     const game_visibility *visibility,
     const engine_viewport_camera *frame,
-    const render_arena_camera *camera,
+    const render_scene3d_camera *camera,
     float time
 )
 {

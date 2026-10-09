@@ -71,19 +71,18 @@ static bool valid_controls(uint64_t controls)
                          ~(UINT64_C(1) << GAME_CONTROL_NONE);
     return controls && !(controls & ~all);
 }
-static bool valid_actions(const game_world_options *options)
+bool game_world_actions_valid(const input_action *actions, int count)
 {
-    if (options->action_count < 0 || options->action_count > INPUT_ACTION_MAX ||
-        (options->action_count && !options->actions)) {
+    if (count < 0 || count > INPUT_ACTION_MAX || (count && !actions)) {
         return false;
     }
-    for (int i = 0; i < options->action_count; i++) {
-        const char *name = options->actions[i].name;
-        if (!name || !name[0] || !valid_controls(options->actions[i].controls)) {
+    for (int i = 0; i < count; i++) {
+        const char *name = actions[i].name;
+        if (!name || !name[0] || !valid_controls(actions[i].controls)) {
             return false;
         }
         for (int j = 0; j < i; j++) {
-            if (!strcmp(options->actions[j].name, name)) {
+            if (!strcmp(actions[j].name, name)) {
                 return false;
             }
         }
@@ -93,7 +92,8 @@ static bool valid_actions(const game_world_options *options)
 game_world *game_world_new(const game_world_options *options, char *error, size_t size)
 {
     assert(options && (!size || error));
-    if (options->modules & ~GAME_WORLD_MODULES_ALL || !valid_actions(options) ||
+    if (options->modules & ~GAME_WORLD_MODULES_ALL ||
+        !game_world_actions_valid(options->actions, options->action_count) ||
         (options->fields && !(options->modules & GAME_WORLD_MATERIALS)) ||
         options->components.component_count < 0 ||
         options->components.component_count > 1024 ||

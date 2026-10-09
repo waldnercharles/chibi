@@ -111,7 +111,8 @@ bool project_prepare_prototypes(
         char *text = project_prepare_read(path, &budget, error, size);
         av_doc *document = text ? av_doc_read(text, error, size) : NULL;
         av_value *name = document ? av_obj_get(av_doc_root(document), "name") : NULL;
-        if (!name || !av_is_str(name) || !av_get_len(name) || av_get_len(name) > 1024) {
+        if (!name || !av_is_str(name) || !av_get_len(name) ||
+            av_get_len(name) > GAME_PROTOTYPE_NAME_MAX) {
             free(text);
             av_doc_free(document);
             valid = fail(error, size, "Prototype declaration has no bounded name");

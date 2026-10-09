@@ -1223,12 +1223,17 @@ TEST_CASE(native_player_reads_declared_components)
     declared_components_free(newer);
     game_player_application application = { 0 };
     size_t length;
-    /* A count without actions is rejected before it is written. */
-    spec.world.actions = NULL;
-    REQUIRE(
-        !game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
-    );
-    REQUIRE(strstr(error, "Invalid prepared player record metadata") && !player_bytes);
+    /* A map the world would reject, such as a count without actions or an
+     * action without controls, is rejected before it is written. */
+    const input_action loose = { "Jump", 0, false };
+    const input_action *rejected[] = { NULL, &loose };
+    for (int i = 0; i < 2; i++) {
+        spec.world.actions = rejected[i];
+        REQUIRE(
+            !game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+        );
+        REQUIRE(strstr(error, "Invalid prepared player record metadata") && !player_bytes);
+    }
     spec.world.actions = &jump_map;
     REQUIRE(
         game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)

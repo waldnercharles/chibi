@@ -347,25 +347,35 @@ static int read_application(
     return 0;
 }
 
-static int read_manifest(const char *path, chibi_project *project, int *opened, char *error, size_t error_size)
+/* The manifest at `path` parsed, or NULL with why in `error`. */
+static av_doc *manifest_document(const char *path, char *error, size_t error_size)
 {
     char *text = read_file(path, error, error_size);
     if (!text) {
-        return -1;
+        return NULL;
     }
     char parse_error[128];
     av_doc *document = asset_text_read(text, parse_error, sizeof parse_error);
     free(text);
     if (!document) {
         snprintf(error, error_size, "Invalid project manifest %s: %s", path, parse_error);
+        return NULL;
+    }
+    if (!av_is_obj(av_doc_root(document))) {
+        av_doc_free(document);
+        set_errorf(error, error_size, "Project manifest must contain a code asset object: %s", path);
+        return NULL;
+    }
+    return document;
+}
+
+static int read_manifest(const char *path, chibi_project *project, int *opened, char *error, size_t error_size)
+{
+    av_doc *document = manifest_document(path, error, error_size);
+    if (!document) {
         return -1;
     }
     av_value *root = av_doc_root(document);
-    if (!av_is_obj(root)) {
-        av_doc_free(document);
-        set_errorf(error, error_size, "Project manifest must contain a code asset object: %s", path);
-        return -1;
-    }
     av_value *version = av_obj_get(root, "version");
     if (!av_is_int(version)) {
         av_doc_free(document);
@@ -373,6 +383,7 @@ static int read_manifest(const char *path, chibi_project *project, int *opened, 
         return -1;
     }
     int found = (int)av_get_int(version);
+    /* Checked first: another version's fields may mean something else. */
     if (found < CHIBI_PROJECT_OLDEST_VERSION || found > CHIBI_PROJECT_VERSION) {
         av_doc_free(document);
         snprintf(
@@ -692,6 +703,31 @@ int chibi_project_open(chibi_project *project, const char *path, char *error, si
 int chibi_project_read(chibi_project *project, const char *path, char *error, size_t error_size)
 {
     return open_project(project, path, false, error, error_size);
+}
+
+char *chibi_project_content(const char *root, char *error, size_t error_size)
+{
+    char *manifest = join_path(root, CHIBI_PROJECT_MANIFEST);
+    if (!is_file(manifest)) {
+        free(manifest);
+        return join_path(root, "content");
+    }
+    /* Only the content folder has to be readable here, so validate_manifest
+     * can list the manifest's other problems alongside the project's. */
+    av_doc *document = manifest_document(manifest, error, error_size);
+    if (!document) {
+        free(manifest);
+        return NULL;
+    }
+    av_value *value = av_obj_get(av_doc_root(document), "content");
+    const char *folder = value ? av_get_str(value) : "content";
+    char *content = folder && folder[0] ? join_path(root, folder) : NULL;
+    if (!content) {
+        set_errorf(error, error_size, "Project manifest content must be a folder name: %s", manifest);
+    }
+    av_doc_free(document);
+    free(manifest);
+    return content;
 }
 
 char *chibi_project_scene_path(const chibi_project *project, const char *requested)

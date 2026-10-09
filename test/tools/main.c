@@ -25,7 +25,11 @@ void test_tool_scene();
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
+void test_render_scene3d();
 void test_device_controls();
+#endif
+#ifdef CHIBI_TEST_MATERIAL_GRAPHS
+void test_render_material_ramps();
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
@@ -59,6 +63,9 @@ void test_source_native_material_features();
 #ifdef CHIBI_TEST_BOX3D
 void test_box3d();
 #endif
+#ifdef CHIBI_TEST_IMAGE_PREPARATION
+void test_sky_files();
+#endif
 #ifdef CHIBI_TEST_REFLECT
 void test_tool_reflect();
 #endif
@@ -75,6 +82,14 @@ bool test_shader_parameters_active()
     return shader_parameters;
 }
 
+#ifdef CHIBI_TEST_MATERIAL_GRAPHS
+static bool material_graphs;
+bool test_material_graphs_active()
+{
+    return material_graphs;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared");
@@ -86,7 +101,8 @@ int main(int argc, char **argv)
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
     bool native = false, native_values = false, native_catalog = false,
-         physics = false, render_resources = false, box3d = false;
+         physics = false, render_resources = false, scene3d = false,
+         material_ramps = false, box3d = false, sky_files = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -123,9 +139,17 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
+    scene3d = argc == 2 && !strcmp(argv[1], "--scene3d");
+#ifdef CHIBI_TEST_MATERIAL_GRAPHS
+    material_ramps = argc == 2 && !strcmp(argv[1], "--material-ramps");
+    material_graphs = scene3d || material_ramps;
+#endif
 #endif
 #ifdef CHIBI_TEST_BOX3D
     box3d = argc == 2 && !strcmp(argv[1], "--box3d");
+#endif
+#ifdef CHIBI_TEST_IMAGE_PREPARATION
+    sky_files = argc == 2 && !strcmp(argv[1], "--sky-files");
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     native_catalog = argc == 2 && !strcmp(argv[1], "--native-catalog");
@@ -133,10 +157,11 @@ int main(int argc, char **argv)
     native = argc == 2 && !strcmp(argv[1], "--native");
     physics = argc == 2 && !strcmp(argv[1], "--physics");
 #endif
-    if (argc != 1 && !corpus && !shader_parameters && !source_edit && !new_asset &&
-        !package && !unit && !query_benchmark && !prepared && !read && !scene &&
-        !scene_prepared && !native && !native_values && !native_catalog &&
-        !physics && !render_resources && !box3d && !persistent_store &&
+    if (argc != 1 && !corpus && !shader_parameters && !source_edit &&
+        !new_asset && !package && !unit && !query_benchmark && !prepared &&
+        !read && !scene && !scene_prepared && !native && !native_values &&
+        !native_catalog && !physics && !render_resources && !scene3d &&
+        !material_ramps && !box3d && !sky_files && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
         !source_numeric && !source_material && !source_presentation &&
@@ -149,7 +174,9 @@ int main(int argc, char **argv)
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
             "| --physics "
-            "| --render-resources | --box3d | --persistent-store | "
+            "| --render-resources | --scene3d | --material-ramps | --box3d | "
+            "--sky-files | "
+            "--persistent-store | "
             "--whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
             "--whole-select | --owned-tick | "
@@ -222,9 +249,20 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
-    if (render_resources) {
-        test_render_resources();
-        test_device_controls();
+    if (render_resources || scene3d) {
+        if (scene3d) {
+            test_render_scene3d();
+        } else {
+            test_render_resources();
+            test_device_controls();
+        }
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
+#ifdef CHIBI_TEST_MATERIAL_GRAPHS
+    if (material_ramps) {
+        test_render_material_ramps();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
@@ -232,6 +270,13 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_BOX3D
     if (box3d) {
         test_box3d();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
+#ifdef CHIBI_TEST_IMAGE_PREPARATION
+    if (sky_files) {
+        test_sky_files();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

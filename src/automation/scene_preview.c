@@ -42,8 +42,8 @@ static void draw_scene(void *user)
     engine *runtime = game_prototype_preview_runtime(scene->preview);
     const game_particles *particles = game_prototype_preview_particles(scene->preview);
     if (engine_viewport_perspective(scene->viewport)) {
-        render_arena_camera camera;
-        engine_viewport_get_arena_camera(scene->viewport, &camera);
+        render_scene3d_camera camera;
+        engine_viewport_get_camera3d(scene->viewport, &camera);
         scene->failed = !app_scene_renderer_draw3d(
             scene->renderer,
             world,
@@ -111,7 +111,6 @@ static double seconds()
 static void show_scene(scene_preview *scene, const chibi_preview_run *run, ui_world *ui, const char *content_root)
 {
     engine_viewport_reset_camera(scene->viewport);
-    engine_viewport_clear_arena_camera(scene->viewport);
     app_scene_renderer_reset(scene->renderer);
     engine_viewport_set_perspective(scene->viewport, chibi_preview_perspective(run));
     ui->page = chibi_preview_page(run);
@@ -169,7 +168,7 @@ static bool render_scene(
     scene_preview scene = { 0 };
     chibi_preview_run *run = NULL;
     ui_world ui;
-    char content_root[1024];
+    const char *content_root = NULL;
     bool ok = chibi_automation_preview(root, request, &run, error, size) ==
               CHIBI_AUTOMATION_OK;
     if (ok) {
@@ -200,7 +199,7 @@ static bool render_scene(
         app_scene_renderer_set_hidden_rejection(scene.renderer, options->hidden_rejection);
         app_scene_renderer_set_spatial_scratch(scene.renderer, options->spatial_scratch);
         engine *preview_runtime = game_prototype_preview_runtime(scene.preview);
-        snprintf(content_root, sizeof content_root, "%s/content", root);
+        content_root = chibi_automation_content(root);
         ui = (ui_world){
             .ecs = game_prototype_preview_world(scene.preview),
             .model = engine_ui(preview_runtime),

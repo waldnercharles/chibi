@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <limits.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -326,6 +327,62 @@ static char *field_description(CXCursor c)
     return NULL;
 }
 
+static void dispose_fields(field_info *fields)
+{
+    for (int i = 0; i < acount(fields); i++) {
+        free(fields[i].name);
+        free(fields[i].spelling);
+        free(fields[i].handle);
+        free(fields[i].description);
+        free(fields[i].unit);
+    }
+    afree(fields);
+}
+
+static bool numeric_pin(const char *pin)
+{
+    static const char *const pins[] = { "PIN_I8",  "PIN_U8",  "PIN_I16",
+                                        "PIN_U16", "PIN_I32", "PIN_U32",
+                                        "PIN_I64", "PIN_U64", "PIN_F32",
+                                        "PIN_F64" };
+    for (int i = 0; i < (int)(sizeof pins / sizeof *pins); i++) {
+        if (!strcmp(pin, pins[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Reads a field's unit and range annotations into `f`; false after reporting
+ * an invalid one. */
+static bool field_presentation(CXCursor c, field_info *f)
+{
+    f->unit = annotation_value(c, "node:unit:");
+    f->min = f->max = 0;
+    char *range = annotation_value(c, "node:range:");
+    if (!f->unit && !range) {
+        return true;
+    }
+    bool ok = !f->color && numeric_pin(f->pin);
+    if (!ok) {
+        reflect_error(c, "unit and range require a numeric field");
+    } else if (f->unit && !f->unit[0]) {
+        reflect_error(c, "unit must not be empty");
+        ok = false;
+    } else if (range) {
+        char *middle, *end;
+        f->min = strtod(range, &middle);
+        f->max = strtod(middle, &end);
+        ok = middle != range && end != middle && !*end && isfinite(f->min) &&
+             isfinite(f->max) && f->min < f->max;
+        if (!ok) {
+            reflect_error(c, "range requires a minimum below its maximum");
+        }
+    }
+    free(range);
+    return ok;
+}
+
 static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData data)
 {
     if (clang_getCursorKind(c) != CXCursor_FieldDecl) {
@@ -384,6 +441,13 @@ static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData 
         free(f.name);
         free(f.spelling);
         free(f.handle);
+        return CXChildVisit_Continue;
+    }
+    if (!field_presentation(c, &f)) {
+        free(f.name);
+        free(f.spelling);
+        free(f.handle);
+        free(f.unit);
         return CXChildVisit_Continue;
     }
     f.description = field_description(c);
@@ -462,7 +526,7 @@ static void collect_alias(collect_ctx *ctx, CXCursor c, const char *name, int co
         free(s.file);
         free(s.alias_of);
         free(s.constructor_name);
-        afree(s.fields);
+        dispose_fields(s.fields);
         return;
     }
     apush(ctx->structs, s);
@@ -509,7 +573,7 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
                 free(s.file);
                 free(s.alias_of);
                 free(s.constructor_name);
-                afree(s.fields);
+                dispose_fields(s.fields);
             } else {
                 apush(ctx->structs, s);
             }
@@ -610,17 +674,6 @@ static void free_strings(char **strings)
         free(strings[i]);
     }
     afree(strings);
-}
-
-static void dispose_fields(field_info *fields)
-{
-    for (int i = 0; i < acount(fields); i++) {
-        free(fields[i].name);
-        free(fields[i].spelling);
-        free(fields[i].handle);
-        free(fields[i].description);
-    }
-    afree(fields);
 }
 
 void reflect_dispose(collect_ctx *ctx)

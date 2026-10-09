@@ -21,6 +21,71 @@ static const char *const ICON_NAMES[COMPONENT_ICON_COUNT] = {
     "gamepad", "keyboard", "projectile", "health",  "diamond", "shape",
 };
 
+#define D(KEY, TAB, ICON)                                                      \
+    { "GAME." KEY, COMPONENT_TAB_##TAB, COMPONENT_ICON_##ICON }
+const presentation_default PRESENTATION_DEFAULTS[] = {
+    D("EngineSystem", OBJECT, SYSTEM),
+    D("GameAim", GAMEPLAY, NONE),
+    D("GameAppearance", OBJECT, SHAPE),
+    D("GameBody", PHYSICS, NONE),
+    D("GameCamera", OBJECT, CAMERA),
+    D("GameCollider", PHYSICS, NONE),
+    D("GameCombustion", GAMEPLAY, NONE),
+    D("GameDash", GAMEPLAY, NONE),
+    D("GameDestructible", PHYSICS, DIAMOND),
+    D("GameDirectionalLight", MATERIAL, LIGHT),
+    D("GameDrive", PHYSICS, NONE),
+    D("GameEncounter", GAMEPLAY, NONE),
+    D("GameEncounterMember", GAMEPLAY, NONE),
+    D("GameEnvironment", MATERIAL, NONE),
+    D("GameExperience", GAMEPLAY, NONE),
+    D("GameFluidVolume", PHYSICS, WATER),
+    D("GameFog", MATERIAL, NONE),
+    D("GameFragmentGlow", MATERIAL, NONE),
+    D("GameFuel", GAMEPLAY, NONE),
+    D("GameGeometry3D", MATERIAL, NONE),
+    D("GameHRC2D", MATERIAL, LIGHT),
+    D("GameHealth", GAMEPLAY, HEALTH),
+    D("GameIgniter", GAMEPLAY, NONE),
+    D("GameInput", GAMEPLAY, GAMEPAD),
+    D("GameMaterial", MATERIAL, NONE),
+    D("GameMaterialCavity", PHYSICS, NONE),
+    D("GameMaterialFrame", PHYSICS, NONE),
+    D("GameMeshAsset", MATERIAL, NONE),
+    D("GameMeshParts", MATERIAL, NONE),
+    D("GameMeshSurface2D", MATERIAL, NONE),
+    D("GameMovement", GAMEPLAY, NONE),
+    D("GameParticleEmitter", OBJECT, EMITTER),
+    D("GamePickup", GAMEPLAY, NONE),
+    D("GamePointLight", MATERIAL, LIGHT),
+    D("GameProjectile", GAMEPLAY, PROJECTILE),
+    D("GameReflection", MATERIAL, NONE),
+    D("GameRhythm", GAMEPLAY, NONE),
+    D("GameSdfSurface3D", MATERIAL, NONE),
+    D("GameSensorContact", PHYSICS, NONE),
+    D("GameShader", MATERIAL, NONE),
+    D("GameSpawnRequest", GAMEPLAY, NONE),
+    D("GameSpotLight", MATERIAL, LIGHT),
+    D("GameSprite", MATERIAL, NONE),
+    D("GameStarfield2D", MATERIAL, NONE),
+    D("GameSubstance", PHYSICS, NONE),
+    D("GameSurfaceInfluence", MATERIAL, NONE),
+    D("GameSurfaceQuality", MATERIAL, NONE),
+    D("GameTrail", MATERIAL, NONE),
+    D("GameVelocity", PHYSICS, NONE),
+    D("GameVision", GAMEPLAY, NONE),
+    D("GameWeapon", GAMEPLAY, NONE),
+    D("MaterialBreakProfile", PHYSICS, NONE),
+    D("MaterialConstitutive", PHYSICS, NONE),
+    D("MaterialDestructionWorld", PHYSICS, NONE),
+    D("MaterialFluidWorld", PHYSICS, NONE),
+    D("MaterialTerrain", MATERIAL, TERRAIN),
+    D("MaterialThermal", PHYSICS, NONE),
+};
+#undef D
+const int PRESENTATION_DEFAULT_COUNT = (int)(sizeof PRESENTATION_DEFAULTS /
+                                             sizeof *PRESENTATION_DEFAULTS);
+
 static const char *const DOCUMENT_KEYS[] = { "components" };
 static const char *const COMPONENT_KEYS[] = { "tab", "icon", "fields" };
 static const char *const FIELD_KEYS[] = { "range", "unit" };
@@ -77,6 +142,19 @@ static const presented_field *find_field(const component_presentation *p, uint64
     return NULL;
 }
 
+/* The engine's presentation of `desc`, or Object without an icon. */
+static presented_component default_component(const ecs_component_desc *desc)
+{
+    for (int i = 0; desc->key && i < PRESENTATION_DEFAULT_COUNT; i++) {
+        if (!strcmp(PRESENTATION_DEFAULTS[i].component, desc->key)) {
+            return (presented_component){ desc->id,
+                                          PRESENTATION_DEFAULTS[i].tab,
+                                          PRESENTATION_DEFAULTS[i].icon };
+        }
+    }
+    return (presented_component){ desc->id, COMPONENT_TAB_OBJECT, COMPONENT_ICON_NONE };
+}
+
 static int field_index(const type_desc *type, const char *name)
 {
     for (int i = 0; i < type->field_count; i++) {
@@ -117,10 +195,11 @@ static bool read_field(
     if (extra) {
         return fail(error, size, "%s.%s: unknown key %s", component, name, extra);
     }
-    if (!numeric(desc->type->fields[index].type)) {
+    if (!numeric(desc->type->fields[index].type) || desc->type->fields[index].color) {
         return fail(error, size, "%s.%s: range and unit need a numeric field", component, name);
     }
-    presented_field field = { .component = desc->id, .field = index };
+    const type_field *reflected = &desc->type->fields[index];
+    presented_field field = { desc->id, index, reflected->min, reflected->max, NULL };
     av_value *range = av_obj_get(value, "range");
     if (range) {
         av_value *min = av_arr_get(range, 0), *max = av_arr_get(range, 1);
@@ -135,7 +214,8 @@ static bool read_field(
     if (unit && (!av_is_str(unit) || !av_get_len(unit))) {
         return fail(error, size, "%s.%s: unit must not be empty", component, name);
     }
-    field.unit = unit ? xstrdup(av_get_str(unit)) : NULL;
+    const char *text = unit ? av_get_str(unit) : reflected->unit;
+    field.unit = text ? xstrdup(text) : NULL;
     apush(out->fields, field);
     return true;
 }
@@ -168,15 +248,14 @@ static bool read_component(
     if (extra) {
         return fail(error, size, "%s: unknown key %s", name, extra);
     }
-    presented_component component = { .id = desc->id, .icon = COMPONENT_ICON_NONE };
+    presented_component component = default_component(desc);
     av_value *tab = av_obj_get(value, "tab");
     if (tab) {
-        /* Object is where untabbed components go, not a tab to name. */
-        int index = name_index(av_get_str(tab), COMPONENT_TAB_NAMES + 1, COMPONENT_TAB_COUNT - 1);
+        int index = name_index(av_get_str(tab), COMPONENT_TAB_NAMES, COMPONENT_TAB_COUNT);
         if (index < 0) {
             return fail(error, size, "%s: unknown tab %s", name, av_is_str(tab) ? av_get_str(tab) : "");
         }
-        component.tab = (component_tab)(index + 1);
+        component.tab = (component_tab)index;
     }
     av_value *icon = av_obj_get(value, "icon");
     if (icon) {
@@ -271,7 +350,7 @@ component_tab component_presentation_tab(
 )
 {
     const presented_component *component = find_component(presentation, desc->id);
-    return component ? component->tab : COMPONENT_TAB_OBJECT;
+    return component ? component->tab : default_component(desc).tab;
 }
 
 component_icon component_presentation_icon(
@@ -280,14 +359,19 @@ component_icon component_presentation_icon(
 )
 {
     const presented_component *component = find_component(presentation, desc->id);
-    return component ? component->icon : COMPONENT_ICON_NONE;
+    return component ? component->icon : default_component(desc).icon;
 }
 
-const presented_field *component_presentation_field(
+field_hint component_presentation_field(
     const component_presentation *presentation,
     const ecs_component_desc *desc,
     int field
 )
 {
-    return find_field(presentation, desc->id, field);
+    const presented_field *listed = find_field(presentation, desc->id, field);
+    if (listed) {
+        return (field_hint){ listed->min, listed->max, listed->unit };
+    }
+    const type_field *reflected = &desc->type->fields[field];
+    return (field_hint){ reflected->min, reflected->max, reflected->unit };
 }

@@ -45,4 +45,11 @@
 /* Nominal graph handle stored in a uint64_t component field. */
 #define NODE_HANDLE(T) __attribute__((annotate("node:handle:" #T)))
 
+/* Unit an editor shows after a numeric field's value, such as "u/s". */
+#define NODE_UNIT(TEXT) __attribute__((annotate("node:unit:" TEXT)))
+/* Range an editor offers a numeric field as a slider; values outside it stay
+ * valid. */
+#define NODE_RANGE(MIN, MAX)                                                   \
+    __attribute__((annotate("node:range:" #MIN " " #MAX)))
+
 #endif

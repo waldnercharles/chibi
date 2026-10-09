@@ -14,6 +14,8 @@ typedef struct
     const char *type_name; /* C spelling, or a nominal handle type such as "ecs.entity". */
     const char *description; /* First paragraph of the field's comment, or NULL. */
     bool color;              /* Packed RGBA presentation for PIN_U32. */
+    const char *unit;        /* Numeric presentation unit, or NULL. */
+    double min, max;         /* Presentation range; unbounded when equal. */
 } type_field;
 
 typedef struct

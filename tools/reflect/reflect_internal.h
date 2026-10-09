@@ -18,6 +18,8 @@ typedef struct
     long long offset;  /* bytes */
     long long size;    /* bytes */
     bool color;        /* Explicit packed RGBA semantic. */
+    char *unit;        /* Numeric presentation unit, or NULL. */
+    double min, max;   /* Numeric presentation range; equal when unbounded. */
 } field_info;
 
 static inline const char *field_type_name(const field_info *field)

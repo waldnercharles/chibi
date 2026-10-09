@@ -151,6 +151,9 @@ in 0.650 seconds with ASan/UBSan after the typed catalog extraction.
 CPU cases: dedicated clone ownership after compiler retirement, explicit source
 edits, exact-source layout metadata and invalid drafts. Its first snapshot passed
 37 assertions in 0.364 seconds. Later document/Studio integrations are unverified.
+It also runs two component presentation cases on two fixed in-memory documents:
+the engine's tabs, icons and reflected units and ranges, and a document
+overriding them key by key.
 `--system-schedule` admits only `test_system_schedule`: fixed access/order cases,
 62 small CPU engine frames and a serial/parallel 128-entity, 20-frame comparison.
 The scheduler benchmark and broad material aggregates remain quarantined. This

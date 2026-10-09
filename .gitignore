@@ -54,4 +54,6 @@ projects/local-game
 .playwright-mcp/
 build-sdk-reflect/
 build-studio/
+build-install-sdk/
+build-install-studio/
 build-web-player/

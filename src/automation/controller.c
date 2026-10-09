@@ -37,6 +37,7 @@
 #include "authoring/source_rename.h"
 #include "authoring/studio_project.h"
 #include "authoring/studio_schema.h"
+#include "authoring/visual_prepare.h"
 #include "automation/content_hash.h"
 #include "automation/field_preview.h"
 #include "automation/navigation.h"
@@ -6304,6 +6305,20 @@ static int validate_ui_folder(const char *root, yyjson_mut_doc *doc, yyjson_mut_
     return errors;
 }
 
+/* Sounds are not cataloged assets, so the first one preparation refuses is
+   a problem of the project; returns how many, at most one. */
+static int validate_sounds(const char *root, yyjson_mut_doc *doc, yyjson_mut_val *project)
+{
+    game_player_asset *sounds = NULL;
+    char error[512];
+    bool valid = authoring_sounds_prepare(chibi_automation_content(root), &sounds, error, sizeof error);
+    authoring_visual_prepared_free(sounds);
+    if (!valid) {
+        add_load_diagnostic(doc, project, error);
+    }
+    return !valid;
+}
+
 /* The manifest opens at this build's version and names a start scene that
    exists and loads, a UI document that exists, and a title and icon that
    preparation accepts, and the ui folder holds only regular markup files;
@@ -6444,7 +6459,8 @@ static int handle_validate_project(const char *root, response *result, int *exit
     yyjson_mut_doc *doc = result->doc;
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, result->root, "result");
     yyjson_mut_val *project = yyjson_mut_obj_add_arr(doc, value, "project");
-    int errors = validate_manifest(root, assets, doc, project);
+    int errors = validate_manifest(root, assets, doc, project) +
+                 validate_sounds(root, doc, project);
     if (cataloged != CHIBI_AUTOMATION_OK) {
         add_load_diagnostic(doc, project, catalog_error);
         errors++;

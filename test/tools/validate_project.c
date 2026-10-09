@@ -494,7 +494,8 @@ static const char *tone_refusal()
 TEST_CASE(sounds_must_decode)
 {
     /* Players decode an Ogg sound before they play it, so a scenario, like
-     * preparation, refuses one whose Vorbis audio they cannot decode. */
+     * preparation and validation, refuses one whose Vorbis audio they cannot
+     * decode. */
     static const char refusal[] = "sounds/Tone.ogg: holds no Vorbis audio that "
                                   "players can decode";
     char fixture[4096];
@@ -514,6 +515,7 @@ TEST_CASE(sounds_must_decode)
     write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\"\n}\n");
     write_bytes("game/content/sounds/Tone.ogg", tone, length);
     REQUIRE(!tone_refusal());
+    REQUIRE(validate() == 0);
 
     /* Its first page, then one that ends the stream: whole pages, but no
      * comment or setup header and no audio. */
@@ -523,6 +525,10 @@ TEST_CASE(sounds_must_decode)
     bare[OGG_FIRST_PAGE + 5] = OGG_END_OF_STREAM;
     write_bytes("game/content/sounds/Tone.ogg", bare, sizeof bare);
     const char *message = tone_refusal();
+    REQUIRE(message && !strcmp(message, refusal));
+    /* Validation lists it too, as a problem of the project. */
+    REQUIRE(validate() != 0 && errors() == 1);
+    message = first_message(result("project"));
     REQUIRE(message && !strcmp(message, refusal));
 
     /* Every header intact, but its one audio page, the last ~200 bytes,

@@ -178,9 +178,9 @@ upgraded; the application icon must decode as a PNG and a long project name
 needs a title; a prototype that includes another validates, runs in a scene
 and keeps its include through `--format`, while a missing include is
 reported and the included prototype's behaviors stay its own references;
-a scene runs as a scenario in a project that has a material; a scenario runs
-with a real Ogg Vorbis sound but refuses copies whose headers or audio packets
-players cannot decode; and in a project whose manifest names another content
+a scene runs as a scenario in a project that has a material; a scenario and
+validation accept a real Ogg Vorbis sound, but refuse copies whose headers or
+audio packets players cannot decode; and in a project whose manifest names another content
 folder, assets are scaffolded, validated, run, formatted, found and reported
 there under their `content/` paths, and `status` names that folder even once
 the project is too old to open. A few short `chibi_ctl` runs, CPU only; the

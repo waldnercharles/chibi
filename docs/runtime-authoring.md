@@ -173,7 +173,8 @@ Put mono or stereo WAV and Ogg Vorbis files sampled at 44.1 kHz in
 WAVE_FORMAT_EXTENSIBLE, surround, Opus, other sample rates and cut-short files
 fail preparation, since the mixer plays files at 44.1 kHz without resampling.
 Preparation and scenarios also decode every Ogg file with the players' Vorbis
-decoder and refuse one that yields no audio. A sound's name is its file name
+decoder and refuse one that yields no audio. `validate_project` lists the first
+sound they would refuse as a project problem. A sound's name is its file name
 without the extension, so `content/sounds/jump.ogg` is `"jump"`. Scripts play
 one with `play_sound(Sound: "jump")`, and set its Volume and Pan from 0 to 1.
 `play_music(Music: "theme", Fade: 1)` loops a track and fades it in. Asking for

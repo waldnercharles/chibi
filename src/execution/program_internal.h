@@ -61,7 +61,8 @@ struct execution_activation
     uint64_t debug_previous, debug_module, debug_function;
     bool debug_paused;
     int status;
-    bool finished, running, initializer, has_run;
+    /* Cancelled while running: stops when control returns to it. */
+    bool finished, running, initializer, has_run, stopping;
 };
 typedef struct
 {

@@ -270,6 +270,10 @@ static int start_task(behavior_function_context *ctx, int index)
     } else {
         program_activation_free(a);
     }
+    /* The started task cancelled its caller. */
+    if (caller->stopping) {
+        return FLOW_SUSPENDED_RESULT;
+    }
     return status < 0 ? status : FLOW_OK;
 }
 void program_bind_tasks(behavior_function_context *ctx)
@@ -305,53 +309,26 @@ void program_task_finished(execution_activation *a, bool cancelled)
     afree(waiters);
 }
 
-/* Whether the task or one of its descendants is the running caller. */
-static bool running(execution_instance *instance, const execution_task *t)
-{
-    if (t->activation && t->activation->running) {
-        return true;
-    }
-    for (execution_task *c = slot(instance, t->child); c; c = slot(instance, c->next)) {
-        if (running(instance, c)) {
-            return true;
-        }
-    }
-    return false;
-}
-/* Whether `caller` works for `t` or one of its descendants, as an outcome
- * continuation that resumed on its own does. */
-static bool works_for(execution_instance *instance, const execution_activation *caller, const execution_task *t)
-{
-    for (execution_task *c = find(instance, program_owning_task(caller)); c;
-         c = slot(instance, c->parent)) {
-        if (c == t) {
-            return true;
-        }
-    }
-    return false;
-}
-static int cancel(execution_instance *instance, const execution_activation *caller, uint64_t handle)
+/* Cancels the task and every task it started. A running one, such as the
+ * caller or the task that started it, stops when control returns to it. */
+static void cancel(execution_instance *instance, uint64_t handle)
 {
     execution_task *t = find(instance, handle);
     if (!t || !t->activation) {
-        return FLOW_OK;
+        return;
     }
-    /* Checked before anything is cancelled, so a refusal changes nothing. */
-    if (running(instance, t) || works_for(instance, caller, t)) {
-        return FLOW_ERR_STATE;
+    /* Cancelling a child may retire it from this list, so read ahead. */
+    for (execution_task *c = slot(instance, t->child), *next; c; c = next) {
+        next = slot(instance, c->next);
+        cancel(instance, handle_of(instance, c));
     }
-    /* Cancelling a child retires it from this list. */
-    for (execution_task *c = slot(instance, t->child); c; c = slot(instance, t->child)) {
-        int status = cancel(instance, caller, handle_of(instance, c));
-        if (status < 0) {
-            return status;
-        }
+    execution_activation *a = find(instance, handle)->activation;
+    if (a->running) {
+        a->stopping = true;
+        return;
     }
-    t = find(instance, handle);
-    execution_activation *a = t->activation;
     program_activation_cancel(a);
     program_task_finished(a, true);
-    return FLOW_OK;
 }
 
 int program_task_command(
@@ -370,16 +347,14 @@ int program_task_command(
         case NODE_COMMAND_TASK_RUNNING:
             program_request_deliver(request, &(pin_value){ .type = PIN_BOOL, .b = running }, 1);
             break;
-        case NODE_COMMAND_TASK_CANCEL: {
-            int status = cancel(instance, a, handle);
-            if (status < 0) {
-                ctx->error_message = "a task cannot cancel itself or a task "
-                                     "that is running it";
-                return status;
+        case NODE_COMMAND_TASK_CANCEL:
+            cancel(instance, handle);
+            /* A caller that cancelled itself stops here. */
+            if (a->stopping) {
+                return FLOW_OK;
             }
             program_request_deliver(request, NULL, 0);
             break;
-        }
         case NODE_COMMAND_TASK_JOIN:
             if (running) {
                 if (program_owning_task(a) == handle) {

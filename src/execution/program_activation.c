@@ -37,7 +37,11 @@ static void cancel_continuations(behavior_function_context *ctx)
         if (child->continuation_context != ctx) {
             continue;
         }
-        assert(!child->running);
+        /* A running continuation stops when control returns to it. */
+        if (child->running) {
+            child->stopping = true;
+            continue;
+        }
         unlink_continuation(child);
         behavior_function_visit_contexts(&child->context, cancel_continuations);
         while (acount(child->requests)) {
@@ -321,10 +325,13 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         }
     }
     program_commit_instance(&a->context);
+    if (a->stopping) {
+        program_activation_cancel(a);
+    }
     a->finished = a->status != FLOW_SUSPENDED_RESULT && a->status != FLOW_PAUSED_RESULT;
     if (a->finished) {
         program_boxes_detach(a, NULL);
-        program_task_finished(a, false);
+        program_task_finished(a, a->stopping);
     }
     program_inspection_finish(a);
     program_continuation_finish(a);

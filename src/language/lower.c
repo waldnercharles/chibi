@@ -1198,7 +1198,8 @@ static int task_command(lower *l, const node_command *command, int handle, const
         );
     }
     emit(l, (behavior_function_instruction){ .op = BF_COMMAND_BEGIN, .target = index, .node_id = action }, range);
-    if (command == &EXECUTION_Yield || command == &EXECUTION_TaskJoin) {
+    /* A cancel waits so a task that cancels itself stops there. */
+    if (command != &EXECUTION_TaskRunning) {
         await_command(l, action, range);
     }
     int first = behavior_function_builder_command_results(l->builder, index);

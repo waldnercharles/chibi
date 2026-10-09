@@ -1733,15 +1733,24 @@ TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
     }
     return true;
 }
-TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings)
+TEST_CASE(program_task_cancelling_itself_stops_at_once)
 {
-    /* C cancels its own parent, which is refused before the newer sibling A
-     * is touched. */
-    const char *source = "behavior K { kept: double = 0; worker: task;"
-                         "function A() -> () { await Delay(1); kept += 1; }"
-                         "function C() -> () { yield; cancel worker; }"
-                         "function P() -> () { C(); A(); await Delay(5); }"
-                         "on Impulse(amount, enabled) { worker = P() } }";
+    /* C cancels the task that started it: P, its sibling A and C itself stop
+     * at the cancel. Q cancels itself, and R's C cancels R while R is still
+     * running the call that started C. */
+    const char *
+        source = "behavior K { kept: double = 0; worker: task; self_task: task;"
+                 "inline: task; got: double = 0;"
+                 "function A() -> () { await Delay(1); kept += 1; }"
+                 "function C() -> () { yield; cancel worker; kept += 10 }"
+                 "function P() -> () { C(); A(); await Delay(5); kept += 100 }"
+                 "function Q() -> (v: double) { yield; cancel self_task; kept "
+                 "+= 1000; return 7 }"
+                 "function D() -> () { cancel inline; kept += 10000 }"
+                 "function R() -> () { yield; D(); kept += 100000 }"
+                 "function Wait() -> () { got = 1 + await self_task }"
+                 "on Impulse(amount, enabled) { worker = P(); self_task = Q(); "
+                 "Wait(); inline = R() } }";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -1753,9 +1762,13 @@ TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings)
         const pin_value args[] = { { .type = PIN_F64, .d = 0 },
                                    { .type = PIN_BOOL, .b = true } };
         REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-        REQUIRE(execution_program_update(program, 0.1, 0, 1000) != FLOW_OK);
-        execution_program_update(program, 2, 0, 1000);
-        REQUIRE(number_state(instance, "kept", 1));
+        REQUIRE(execution_program_update(program, 0.1, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_update(program, 6, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "kept", 0));
+        /* A cancelled task gives its awaiters default results. */
+        REQUIRE(number_state(instance, "got", 1));
+        REQUIRE(execution_instance_pending(instance) == 0);
     }
     return true;
 }
@@ -1795,17 +1808,18 @@ TEST_CASE(program_task_owns_tasks_started_by_its_continuations)
     }
     return true;
 }
-TEST_CASE(program_task_continuation_cannot_cancel_or_await_its_task)
+TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task)
 {
-    /* The continuation resumes on its own, so P is suspended while it runs. */
-    const char *bodies[] = { "cancel worker", "await worker" };
+    /* The continuation resumes on its own, so P is suspended while it runs.
+     * Cancelling P stops P and the continuation; awaiting P never ends. */
+    const char *bodies[] = { "cancel worker; hit = 1", "await worker" };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int c = 0; c < 2; c++) {
         char source[EXAMPLE_SOURCE_CAPACITY];
         int length = snprintf(
             source,
             sizeof source,
-            "behavior S { worker: task;"
+            "behavior S { worker: task; hit: double = 0;"
             "function Count() -> (shown: double) { return 1 }"
             "action act = Count();"
             "function P() -> () { act(); await Delay(10) }"
@@ -1824,7 +1838,13 @@ TEST_CASE(program_task_continuation_cannot_cancel_or_await_its_task)
             const pin_value args[] = { { .type = PIN_F64, .d = 0 },
                                        { .type = PIN_BOOL, .b = true } };
             REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000) == FLOW_OK);
-            REQUIRE(execution_program_update(program, 1, 0, 1000) != FLOW_OK);
+            if (c) {
+                REQUIRE(execution_program_update(program, 1, 0, 1000) != FLOW_OK);
+                continue;
+            }
+            REQUIRE(execution_program_update(program, 1, 0, 1000) == FLOW_OK);
+            REQUIRE(execution_instance_pending(instance) == 0);
+            REQUIRE(number_state(instance, "hit", 0));
         }
     }
     return true;
@@ -3330,9 +3350,9 @@ void test_language_program()
     RUN_TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches);
     RUN_TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller);
     RUN_TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters);
-    RUN_TEST_CASE(program_task_refused_ancestor_cancel_keeps_siblings);
+    RUN_TEST_CASE(program_task_cancelling_itself_stops_at_once);
     RUN_TEST_CASE(program_task_owns_tasks_started_by_its_continuations);
-    RUN_TEST_CASE(program_task_continuation_cannot_cancel_or_await_its_task);
+    RUN_TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task);
     RUN_TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);

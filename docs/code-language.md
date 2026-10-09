@@ -233,7 +233,9 @@ behavior Turret {
 
 - `yield` resumes on the next update.
 - `cancel t` stops a running task and the tasks it started; anything awaiting it
-  wakes with default results. Cancelling a finished task does nothing.
+  wakes with default results. Cancelling a finished task does nothing. A task
+  may cancel itself or a task that started it; the cancelled code stops at once,
+  at the `cancel` or at the call that is running the canceller.
 - A finished task keeps its results until 32 more of its owner's tasks finish.
   Awaiting it after that is a runtime error, so keep a result you need longer in
   a state.

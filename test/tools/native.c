@@ -549,9 +549,10 @@ static bool jump_world(engine **out)
     const input_action actions[] = {
         { "Jump", (UINT64_C(1) << GAME_CONTROL_Z) | (UINT64_C(1) << GAME_CONTROL_X), false },
     };
-    /* A count without actions, an unnamed action, or one action listed
-     * twice is rejected. */
+    /* A count without actions, an unnamed or empty-named action, or one
+     * action listed twice is rejected. */
     const input_action unnamed = { NULL, UINT64_C(1) << GAME_CONTROL_Z, false };
+    const input_action empty = { "", UINT64_C(1) << GAME_CONTROL_Z, false };
     const input_action twice[] = {
         { "Jump", UINT64_C(1) << GAME_CONTROL_Z, false },
         { "Jump", UINT64_C(1) << GAME_CONTROL_X, false },
@@ -560,8 +561,9 @@ static bool jump_world(engine **out)
         { .modules = GAME_WORLD_INPUT, .action_count = 1 },
         { .modules = GAME_WORLD_INPUT, .actions = &unnamed, .action_count = 1 },
         { .modules = GAME_WORLD_INPUT, .actions = twice, .action_count = 2 },
+        { .modules = GAME_WORLD_INPUT, .actions = &empty, .action_count = 1 },
     };
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         REQUIRE(!game_world_new(&invalid[i], error, sizeof error));
         REQUIRE(!strcmp(error, "Invalid runtime world options"));
     }
@@ -1015,6 +1017,7 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(type_catalog_find("Charge") == type);
     ecs_component_catalog components = declared_components_ecs(declared);
     REQUIRE(components.component_count == 1 && components.components[0]->type == type);
+    REQUIRE(components.components[0]->layout_hash == type_layout_hash(type));
     ecs_component_catalog project = project_components();
     REQUIRE(script_catalog_project() == declared_components_catalog(declared));
     REQUIRE(project.component_count == GAME_REGISTRY_COMPONENT_COUNT + 1);
@@ -1041,9 +1044,22 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(scene);
     /* The input map travels with the package. */
     const input_action jump_map = { "Jump", UINT64_C(1) << GAME_CONTROL_Z, false };
-    game_player_spec spec = { .world = { .actions = &jump_map, .action_count = 1 },
+    game_player_spec spec = { .world = { .components = components,
+                                         .actions = &jump_map,
+                                         .action_count = 1 },
                               .declared = declared,
                               .scene = scene };
+    /* A player keeps its own set's layout while a newer set is published. */
+    declared_component smaller = { .name = "Charge", .fields = &level, .field_count = 1 };
+    declared_components *newer = declared_components_new(&smaller, 1, error, sizeof error);
+    REQUIRE(newer && type_catalog_find("Charge")->size != type->size);
+    player = game_player_new(&spec, error, sizeof error);
+    REQUIRE(player);
+    ecs_world *own = game_world_ecs(game_player_world(player));
+    REQUIRE(ecs_world_component(own, charge_id)->type == type);
+    game_player_free(player);
+    player = NULL;
+    declared_components_free(newer);
     game_player_application application = { 0 };
     size_t length;
     /* A count without actions is rejected before it is written. */

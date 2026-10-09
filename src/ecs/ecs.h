@@ -11,7 +11,6 @@
 
 typedef struct ecs_world ecs_world;
 typedef struct ecs_query ecs_query;
-typedef struct ecs_query_expr ecs_query_expr;
 struct ecs_execution_view;
 
 typedef struct
@@ -111,42 +110,81 @@ typedef enum
 
 typedef void (*ecs_observer)(ecs_world *, ecs_event, ecs_entity, ecs_component_id, void *user);
 
-/* Query expressions are deliberately independent of the graph/editor layer.
- * A term matches component presence; groups provide the boolean vocabulary
- * used by authored system queries. */
+/* Query terms, after Flecs's query language. A query is a list of terms that
+ * all hold for each result:
+ * - A term tests a component, or a pair when id names a relationship. A pair
+ *   matches a fixed target, a variable's target, or any target (ECS_WILDCARD).
+ * - The source is the result entity ($this), a fixed entity, or a variable.
+ *   ECS_UP looks for the id on the nearest ancestor along an exclusive
+ *   traversable relationship (ChildOf unless trav_rel names another), and
+ *   ECS_SELF_UP checks the source first. cascade orders results by depth
+ *   along that relationship, parents first; a query's cascade terms must all
+ *   use the same relationship.
+ * - Operators: ECS_NOT inverts a term, ECS_OPTIONAL always holds, and
+ *   consecutive ECS_OR terms hold when any of them does. ECS_TERM_OPEN and
+ *   ECS_TERM_CLOSE bracket a scope that acts as one term with the open's
+ *   operator, so any boolean expression can be written.
+ * - Variables are numbered from 1. An AND pair term on a known source binds
+ *   an unbound target variable to each target in turn; later terms can use it
+ *   as a source or target. A query yields one result per binding. Variables
+ *   are bound only by top-level terms and must be bound before other use. */
+#define ECS_QUERY_VARS 8
+#define ECS_WILDCARD (-1)
+
 typedef enum
 {
-    ECS_QUERY_ALL,
-    ECS_QUERY_ANY,
-    ECS_QUERY_NOT,
-    ECS_QUERY_HAS,
-} ecs_query_expr_kind;
+    ECS_AND,
+    ECS_OR,
+    ECS_NOT,
+    ECS_OPTIONAL,
+} ecs_oper;
 
-ecs_query_expr *ecs_query_expr_new(ecs_query_expr_kind kind);
-ecs_query_expr *ecs_query_expr_has(ecs_component_id component);
-ecs_query_expr *ecs_query_expr_clone(const ecs_query_expr *expr);
-int ecs_query_expr_add(ecs_query_expr *parent, ecs_query_expr *child);
-ecs_query_expr_kind ecs_query_expr_get_kind(const ecs_query_expr *expr);
-ecs_component_id ecs_query_expr_get_component(const ecs_query_expr *expr);
-int ecs_query_expr_child_count(const ecs_query_expr *expr);
-const ecs_query_expr *ecs_query_expr_child(const ecs_query_expr *expr, int index);
-void ecs_query_expr_free(ecs_query_expr *expr);
+typedef enum
+{
+    ECS_TERM_ID,
+    ECS_TERM_OPEN,
+    ECS_TERM_CLOSE,
+} ecs_term_kind;
+
+typedef enum
+{
+    ECS_SELF,
+    ECS_UP,
+    ECS_SELF_UP,
+} ecs_trav;
+
+typedef struct
+{
+    ecs_term_kind kind;
+    ecs_oper oper;
+    ecs_component_id id;
+    ecs_entity target; /* Pair target, unless target_var is set. */
+    int target_var;    /* Variable, ECS_WILDCARD, or zero. */
+    ecs_entity src;    /* Fixed source, unless src_var is set. */
+    int src_var;       /* Variable source; zero with no src means $this. */
+    ecs_trav trav;
+    ecs_component_id trav_rel;
+    bool cascade;
+} ecs_term;
+
+#define ECS_QUERY_INLINE 4
 
 struct ecs_query
 {
     ecs_world *world;
-    int component_count;
     uint32_t cursor;
     uint32_t limit;
-    const uint32_t *dense;
-    int dense_count;
-    int dense_cursor;
-    int dense_index;
-    const ecs_query_expr *expression;
-    void *component_refs;         /* private query plan */
-    const void *single_component; /* Inline plan for a single-component query. */
-    void *expression_plan;        /* private expression candidate plan */
-    const void *disabled; /* Disabled column to skip, unless the query names it */
+    const uint32_t *candidates;
+    int candidate_count; /* -1 when the query scans instead. */
+    int candidate_cursor;
+    const uint64_t *scan; /* Occupancy words to scan, or NULL for every slot. */
+    uint64_t scan_bits;
+    int candidate_ref; /* Inline ref that supplied candidates, or -1. */
+    int ref_count;     /* Inline AND components on $this. */
+    const void *refs[ECS_QUERY_INLINE];
+    const void *disabled; /* Disabled column to skip, unless a term names it. */
+    ecs_entity current;
+    void *plan; /* Term plan, or NULL for inline components. */
 };
 
 /* Entity storage grows automatically. Component rows remain contiguous, but a
@@ -276,13 +314,19 @@ bool ecs_component_accepts_value(const ecs_world *, ecs_component_id, size_t off
 /* Retain reflected string values until the world is freed. */
 const char *ecs_world_intern_string(ecs_world *world, const char *text);
 
-/* Simple component lists visit their intersection in ascending slot order.
- * Expression queries also visit in ascending slot order and support boolean
- * component presence tests. Both skip Disabled entities unless they name
- * ECS_DISABLED. */
+/* Queries visit results in a deterministic order: ascending slot, the
+ * smallest dense component list, or a pair target's sources in the order they
+ * were added, then by depth under cascade. They skip Disabled entities unless
+ * a term names ECS_DISABLED. ecs_query_begin is the AND of components on
+ * $this. Terms are copied, so they may be freed after begin. */
 int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *components, int component_count);
-int ecs_query_begin_expression(ecs_world *world, ecs_query *query, const ecs_query_expr *expression);
+int ecs_query_begin_terms(ecs_world *, ecs_query *, const ecs_term *terms, int term_count);
 int ecs_query_next(ecs_query *query, ecs_entity *out_entity);
+/* The current result's variable binding, or zero when unbound. */
+ecs_entity ecs_query_var(const ecs_query *, int var);
+/* The entity that matched the term for the current result, or zero. Only
+ * valid between a successful ecs_query_next and the next call. */
+ecs_entity ecs_query_src(const ecs_query *, int term);
 void ecs_query_end(ecs_query *query);
 int ecs_world_iteration_begin(ecs_world *world);
 int ecs_world_iteration_end(ecs_world *world);

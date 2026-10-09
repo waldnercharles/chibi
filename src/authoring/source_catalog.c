@@ -614,6 +614,17 @@ static void input_declarations(source_catalog *c)
             .read = id,
         };
     }
+    if (script_catalog_find_type(&c->view, INPUT_ACTION_TYPE) >= 0 ||
+        script_catalog_find_type(&c->view, INPUT_MAP_TYPE) >= 0) {
+        error(
+            c,
+            path,
+            (script_range){ 0 },
+            "Input actions need the type names " INPUT_ACTION_TYPE
+            " and " INPUT_MAP_TYPE "; rename the type that uses one"
+        );
+        return;
+    }
     uint64_t action_type = script_catalog_id("type", INPUT_ACTION_TYPE);
     uint64_t map_type = script_catalog_id("type", INPUT_MAP_TYPE);
     int count = acount(c->input);

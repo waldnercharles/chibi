@@ -61,7 +61,7 @@ void relationship_free(ecs_relationship *relationship, uint32_t slots)
     free((char *)relationship->desc.key);
 }
 
-static int target_count(const ecs_relationship *relationship, uint32_t slot)
+int relationship_target_count(const ecs_relationship *relationship, uint32_t slot)
 {
     if (exclusive(relationship)) {
         return relationship->target[slot].slot != 0;
@@ -69,7 +69,7 @@ static int target_count(const ecs_relationship *relationship, uint32_t slot)
     return acount(relationship->targets[slot]);
 }
 
-static ecs_entity target_at(const ecs_relationship *relationship, uint32_t slot, int index)
+ecs_entity relationship_target(const ecs_relationship *relationship, uint32_t slot, int index)
 {
     return exclusive(relationship) ? relationship->target[slot]
                                    : relationship->targets[slot][index];
@@ -178,8 +178,8 @@ void relationship_detach(ecs_world *world, uint32_t slot)
 {
     for (int r = 0; r < acount(world->relationships); r++) {
         ecs_relationship *relationship = &world->relationships[r];
-        while (target_count(relationship, slot)) {
-            relationship_unlink(relationship, slot, target_at(relationship, slot, 0));
+        while (relationship_target_count(relationship, slot)) {
+            relationship_unlink(relationship, slot, relationship_target(relationship, slot, 0));
         }
         uint32_t *sources = relationship->sources[slot];
         for (int i = 0; i < acount(sources); i++) {
@@ -203,11 +203,11 @@ static uint64_t hash_pair(uint64_t hash, ecs_component_id id, uint64_t other)
 /* Hashes the slot's targets and, in order, its sources, so child order counts. */
 uint64_t relationship_hash(const ecs_relationship *relationship, uint32_t slot, uint64_t hash)
 {
-    for (int i = 0; i < target_count(relationship, slot); i++) {
+    for (int i = 0; i < relationship_target_count(relationship, slot); i++) {
         hash = hash_pair(
             hash,
             relationship->desc.id,
-            ecs_entity_to_u64(target_at(relationship, slot, i))
+            ecs_entity_to_u64(relationship_target(relationship, slot, i))
         );
     }
     for (int i = 0; i < acount(relationship->sources[slot]); i++) {
@@ -256,8 +256,8 @@ bool ecs_has_pair(const ecs_world *world, ecs_entity entity, ecs_component_id id
     if (!relationship || !entity_matches(world, entity)) {
         return false;
     }
-    for (int i = 0; i < target_count(relationship, entity.slot); i++) {
-        ecs_entity candidate = target_at(relationship, entity.slot, i);
+    for (int i = 0; i < relationship_target_count(relationship, entity.slot); i++) {
+        ecs_entity candidate = relationship_target(relationship, entity.slot, i);
         if (ecs_entity_to_u64(candidate) == ecs_entity_to_u64(target)) {
             return true;
         }
@@ -269,14 +269,14 @@ int ecs_pair_target_count(const ecs_world *world, ecs_entity entity, ecs_compone
 {
     const ecs_relationship *relationship = world_relationship(world, id);
     return relationship && entity_matches(world, entity)
-             ? target_count(relationship, entity.slot)
+             ? relationship_target_count(relationship, entity.slot)
              : 0;
 }
 
 ecs_entity ecs_pair_target(const ecs_world *world, ecs_entity entity, ecs_component_id id, int index)
 {
     assert(index >= 0 && index < ecs_pair_target_count(world, entity, id));
-    return target_at(world_relationship(world, id), entity.slot, index);
+    return relationship_target(world_relationship(world, id), entity.slot, index);
 }
 
 int ecs_pair_source_count(const ecs_world *world, ecs_component_id id, ecs_entity target)

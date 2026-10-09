@@ -51,8 +51,12 @@ int game_scene_document_rename_entity(
     char *error,
     size_t error_size
 );
-/* Appends a child of parent, or a root when parent is -1. The new entity keeps
- * its prototype's behaviors until it sets its own. */
+/* Objects nest at most this many levels deep, a root being the first, so
+ * loading, saving and paths stay bounded. */
+#define GAME_SCENE_DEPTH_MAX 256
+/* Appends a child of parent, or a root when parent is -1, unless that would
+ * nest it deeper than GAME_SCENE_DEPTH_MAX. The new entity keeps its
+ * prototype's behaviors until it sets its own. */
 int game_scene_document_add_entity(
     game_scene_document *document,
     int parent,

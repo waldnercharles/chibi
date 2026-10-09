@@ -216,6 +216,16 @@ int game_scene_document_rename_entity(
     return 0;
 }
 
+/* How many levels deep a child of parent would nest. */
+static int child_depth(const game_scene_document *document, int parent)
+{
+    int depth = 1;
+    for (int at = parent; at >= 0; at = document->entities[at].parent) {
+        depth++;
+    }
+    return depth;
+}
+
 int game_scene_document_add_entity(
     game_scene_document *document,
     int parent,
@@ -224,6 +234,7 @@ int game_scene_document_add_entity(
 )
 {
     if (parent < -1 || parent >= acount(document->entities) ||
+        child_depth(document, parent) > GAME_SCENE_DEPTH_MAX ||
         game_scene_entity_validate_name(name, false, NULL, 0) ||
         child_named(document, parent, name, strlen(name)) >= 0 || !prototype ||
         !prototype[0]) {
@@ -486,6 +497,16 @@ static bool read_entities(
             (components && !av_is_obj(components)) ||
             (children && !av_is_arr(children))) {
             set_error(error, error_size, "invalid scene entity at index %d", *index);
+            return false;
+        }
+        if (child_depth(document, parent) > GAME_SCENE_DEPTH_MAX) {
+            set_error(
+                error,
+                error_size,
+                "scene entity at index %d nests deeper than %d levels",
+                *index,
+                GAME_SCENE_DEPTH_MAX
+            );
             return false;
         }
         if (game_scene_document_add_entity(document, parent, av_get_str(name), av_get_str(prototype)) !=

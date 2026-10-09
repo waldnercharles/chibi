@@ -2,6 +2,7 @@
 
 #include "assets/scene_document.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stddef.h>
@@ -284,12 +285,56 @@ TEST_CASE(scene_children_nest_by_path)
     return true;
 }
 
+/* A chain of one object per level, `depth` levels deep. */
+static char *nested_scene(int depth)
+{
+    static const char
+        header[] = "version 1\nname \"Deep\"\n(array)entities {\n",
+        open[] = "- name=\"N\" prototype=\"P\" { (array)children {\n",
+        leaf[] = "- name=\"N\" prototype=\"P\"\n", close[] = "}\n}\n";
+    size_t size = sizeof header + (size_t)depth * (sizeof open + sizeof close) +
+                  sizeof leaf + 2;
+    char *text = xmalloc(size);
+    strcpy(text, header);
+    for (int i = 1; i < depth; i++) {
+        strcat(text, open);
+    }
+    strcat(text, leaf);
+    for (int i = 1; i < depth; i++) {
+        strcat(text, close);
+    }
+    strcat(text, "}\n");
+    return text;
+}
+
+TEST_CASE(scene_children_nest_at_most_the_depth_limit)
+{
+    char error[192];
+    char *deepest = nested_scene(GAME_SCENE_DEPTH_MAX),
+         *deeper = nested_scene(GAME_SCENE_DEPTH_MAX + 1);
+    scene = game_scene_document_load(deepest, error, sizeof error);
+    reloaded = game_scene_document_load(deeper, error, sizeof error);
+    free(deepest);
+    free(deeper);
+    REQUIRE(scene && acount(scene->entities) == GAME_SCENE_DEPTH_MAX);
+    REQUIRE(!reloaded && strstr(error, "nests deeper than 256 levels"));
+    REQUIRE(game_scene_document_add_entity(scene, GAME_SCENE_DEPTH_MAX - 1, "M", "P") != 0);
+    REQUIRE(game_scene_document_add_entity(scene, GAME_SCENE_DEPTH_MAX - 2, "M", "P") == 0);
+    char *path = game_scene_document_entity_path(scene, GAME_SCENE_DEPTH_MAX - 1);
+    bool long_path = strlen(path) == 2 * GAME_SCENE_DEPTH_MAX - 1;
+    free(path);
+    REQUIRE(long_path);
+    saved = game_scene_document_save(scene, (ecs_component_catalog){ 0 });
+    return saved != NULL;
+}
+
 void test_prototype_document()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence);
     RUN_TEST_CASE(scene_entities_keep_prototype_behaviors_until_they_list_their_own);
     RUN_TEST_CASE(scene_children_nest_by_path);
+    RUN_TEST_CASE(scene_children_nest_at_most_the_depth_limit);
     RUN_TEST_CASE(derived_components_are_never_authored_or_captured);
     pu_clear_setup();
 }

@@ -11,7 +11,7 @@
 /* The manifest version this build opens. Bump it when an asset contract
    change alters what projects saved by earlier builds mean or stops them from
    loading, and add the step that upgrades them in project_migrate.c. */
-#define CHIBI_PROJECT_VERSION 14
+#define CHIBI_PROJECT_VERSION 15
 /* Opening a project from this version on upgrades it in place first. */
 #define CHIBI_PROJECT_OLDEST_VERSION 10
 

@@ -7,6 +7,7 @@
 
 #ifndef strcasecmp
 #define strcasecmp _stricmp
+#define strncasecmp _strnicmp
 #endif
 
 #endif

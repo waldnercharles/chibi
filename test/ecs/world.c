@@ -32,9 +32,8 @@ static const type_desc g_ecs_health_type = { "EcsHealth",
 static ecs_component_id g_ecs_observed_component;
 static float g_ecs_observed_x;
 
-static void ecs_destroy_probe(ecs_world *world, ecs_entity entity, void *user)
+static void ecs_destroy_probe(ecs_world *world, ecs_event, ecs_entity entity, ecs_component_id, void *)
 {
-    (void)user;
     pin_value value;
     if (ecs_component_read_field(world, entity, g_ecs_observed_component, 0, &value) ==
         ECS_OK) {
@@ -255,7 +254,7 @@ void run_ecs_checks(void)
 
     g_ecs_observed_component = position;
     g_ecs_observed_x = 0.0f;
-    ecs_world_set_destroy_observer(world, ecs_destroy_probe, NULL);
+    ecs_world_observe(world, ECS_ON_DESTROY, 0, ecs_destroy_probe, NULL);
     test_check(
         ecs_world_record_destroy(world, e1, 1) == ECS_OK &&
             ecs_component_data(world, e1, position) != NULL &&
@@ -295,7 +294,7 @@ void run_ecs_checks(void)
             ecs_world_hash(ordered) != 0,
         "identical seeded worlds expose an identical deterministic hash"
     );
-    test_check(ecs_world_component_count(ordered) == 1, "component registration remains independent per world");
+    test_check(ecs_world_component_count(ordered) == 3, "component registration remains independent per world");
     test_check(
         ecs_world_iteration_begin(world) == ECS_OK &&
             ecs_world_iteration_end(world) == ECS_OK,

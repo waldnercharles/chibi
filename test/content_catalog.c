@@ -33,12 +33,12 @@ static const char *version_error(const char *version, char *error, size_t error_
 static void check_project_versions()
 {
     char older[32], newer[32], error[256];
-    snprintf(older, sizeof older, "version %d", CHIBI_PROJECT_VERSION - 1);
+    snprintf(older, sizeof older, "version %d", CHIBI_PROJECT_OLDEST_VERSION - 1);
     snprintf(newer, sizeof newer, "version %d", CHIBI_PROJECT_VERSION + 1);
     bool valid = strstr(version_error(older, error, sizeof error), "needs an older build") &&
                  strstr(version_error(newer, error, sizeof error), "needs a newer build") &&
                  strstr(version_error("", error, sizeof error), "needs an integer version");
-    test_check(valid, "project manifests open only at this build's project version");
+    test_check(valid, "project manifests open only from the oldest version this build upgrades");
 }
 
 static void check_project_creation()

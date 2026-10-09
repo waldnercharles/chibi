@@ -1,5 +1,6 @@
 #pragma once
 #include "runtime/behaviors/package.h"
+#include "runtime/declared_components.h"
 #include "runtime/scenes/scene.h"
 #include "runtime/world.h"
 
@@ -30,6 +31,9 @@ typedef struct
     bool external;
 } game_player_asset;
 uint64_t game_player_asset_fingerprint(const void *, size_t);
+/* A normalized path under a resource root: no empty, `.` or `..` parts, no
+ * leading slash, backslash or colon, and at most 1024 bytes. */
+bool game_player_relative_path(const char *path);
 bool game_player_asset_valid(const game_player_asset *);
 #define GAME_PLAYER_MAX_ASSETS 4096
 #define GAME_PLAYER_MAX_ASSET_BYTES (64 * 1024 * 1024)
@@ -56,6 +60,9 @@ typedef struct
 typedef struct
 {
     game_world_options world;
+    /* Optional project-declared components, retained by the player. World
+     * components and the linker must already include them. */
+    declared_components *declared;
     const game_package_module *modules;
     int module_count;
     const execution_prepared_linker *linker;

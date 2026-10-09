@@ -1,11 +1,11 @@
 behavior ContactRegistry {
-  state set<entity> contacted = [];
+    state set<entity> contacted = [];
 
-  on ContactBegin() {
-    if (contacted.contains(event.other)) {
-      // Already recorded for this behavior instance.
-    } else {
-      contacted.add(event.other);
+    on ContactBegin() {
+        if (contacted.contains(event.other)) {
+            // Already recorded for this behavior instance.
+        } else {
+            contacted.add(event.other);
+        }
     }
-  }
 }

@@ -6,7 +6,7 @@ editor's own UI and graph contracts governed the implementation.
 
 The requested [Laws of UX guide](https://raw.githubusercontent.com/keysjoao/laws-of-ux-skills/refs/heads/main/laws-of-ux/references/ux-laws-complete.md)
 informed this audit. All 30 laws are included directly in the generic
-[UX laws skill](../../../.agents/skills/ux-laws/SKILL.md).
+[UX laws skill](https://github.com/waldnercharles/chibi-studio/blob/main/.claude/skills/ux-laws/SKILL.md), now in chibi-studio.
 The table below records how those principles affected concrete decisions.
 
 ## Changes

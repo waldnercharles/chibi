@@ -47,19 +47,16 @@ node_desc NODE_Clamp = { .name = NATIVE_ARITHMETIC_Clamp_NAME,
                          .access = &NATIVE_ARITHMETIC_ACCESS,
                          .pure_kind = NODE_PURE_CALL,
                          .jit_kind = NODE_JIT_CLAMP,
-                         .jit_flags = NODE_JIT_FLAG_FAST_MATH,
                          .fn = native_arithmetic_clamp,
                          .execution_call = &NATIVE_ARITHMETIC_Clamp_CALL,
                          .numeric_aggregate = true,
-                         .direct = { .three = native_arithmetic_clamp_direct },
-                         .direct_count = 4,
                          .display_class = NODE_DISPLAY_PURE,
                          .category = "Math",
                          .keywords = "clamp bound constrain limit",
                          .description = "Limits Value to the range from Min to "
                                         "Max, per component for vectors." };
 
-#define GENERIC_BINARY_DESC(VAR, NAME, FN, KEYWORDS, DESCRIPTION, JIT, FAST, DIRECT)           \
+#define GENERIC_BINARY_DESC(VAR, NAME, FN, KEYWORDS, DESCRIPTION, JIT)                         \
     static pin_spec NODE_##VAR##_inputs[] = {                                                  \
         NATIVE_ARITHMETIC_BINARY_INPUTS(GRAPH_NATIVE_PORT)                                     \
     };                                                                                         \
@@ -75,12 +72,8 @@ node_desc NODE_Clamp = { .name = NATIVE_ARITHMETIC_Clamp_NAME,
         .access = &NATIVE_ARITHMETIC_ACCESS,                                                   \
         .pure_kind = NODE_PURE_CALL,                                                           \
         .jit_kind = JIT,                                                                       \
-        .jit_flags = NODE_JIT_FLAG_FAST_MATH,                                                  \
         .fn = FN,                                                                              \
         .execution_call = &NATIVE_ARITHMETIC_##VAR##_CALL,                                     \
-        .fast = FAST,                                                                          \
-        .direct = { .two = DIRECT },                                                           \
-        .direct_count = 3,                                                                     \
         .display_class = NODE_DISPLAY_PURE,                                                    \
         .category = "Math",                                                                    \
         .keywords = KEYWORDS,                                                                  \
@@ -94,9 +87,7 @@ GENERIC_BINARY_DESC(
     "add plus vector",
     "Sums A and B as reals, integers or vectors; a scalar applies to every "
     "vector component.",
-    NODE_JIT_ADD,
-    native_arithmetic_add_fast,
-    native_arithmetic_add_direct
+    NODE_JIT_ADD
 )
 GENERIC_BINARY_DESC(
     Multiply,
@@ -105,9 +96,7 @@ GENERIC_BINARY_DESC(
     "multiply mul times vector",
     "Multiplies A by B as reals, integers or vectors; a scalar scales every "
     "vector component.",
-    NODE_JIT_MUL,
-    native_arithmetic_multiply_fast,
-    native_arithmetic_multiply_direct
+    NODE_JIT_MUL
 )
 GENERIC_BINARY_DESC(
     Subtract,
@@ -116,9 +105,7 @@ GENERIC_BINARY_DESC(
     "subtract minus vector",
     "Takes B from A as reals, integers or vectors; a scalar applies to every "
     "vector component.",
-    NODE_JIT_SUB,
-    native_arithmetic_subtract_fast,
-    native_arithmetic_subtract_direct
+    NODE_JIT_SUB
 )
 GENERIC_BINARY_DESC(
     Divide,
@@ -127,9 +114,7 @@ GENERIC_BINARY_DESC(
     "divide over vector",
     "Divides A by B as reals, integers or vectors; integers truncate toward "
     "zero and fail when B is 0.",
-    NODE_JIT_DIV,
-    native_arithmetic_divide_fast,
-    native_arithmetic_divide_direct
+    NODE_JIT_DIV
 )
 GENERIC_BINARY_DESC(
     Min,
@@ -137,9 +122,7 @@ GENERIC_BINARY_DESC(
     native_arithmetic_min,
     "min minimum vector",
     "Returns the smaller of A and B, per component for vectors.",
-    NODE_JIT_MIN,
-    native_arithmetic_min_fast,
-    native_arithmetic_min_direct
+    NODE_JIT_MIN
 )
 GENERIC_BINARY_DESC(
     Max,
@@ -147,9 +130,7 @@ GENERIC_BINARY_DESC(
     native_arithmetic_max,
     "max maximum vector",
     "Returns the larger of A and B, per component for vectors.",
-    NODE_JIT_MAX,
-    native_arithmetic_max_fast,
-    native_arithmetic_max_direct
+    NODE_JIT_MAX
 )
 GENERIC_BINARY_DESC(
     Modulo,
@@ -158,9 +139,7 @@ GENERIC_BINARY_DESC(
     "mod modulo remainder",
     "Returns the remainder of A divided by B, taking the sign of A; fails when "
     "an integer B is 0.",
-    NODE_JIT_NONE,
-    native_arithmetic_modulo_fast,
-    native_arithmetic_modulo_direct
+    NODE_JIT_NONE
 )
 GENERIC_UNARY_DESC(
     Negate,

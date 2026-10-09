@@ -107,14 +107,12 @@ void test_automation_preview_registration()
     free(library);
 
     chibi_preview_run *run = NULL;
-    bool perspective = false;
     char error[256] = { 0 };
     int status = chibi_automation_preview(
         root,
         "{\"contract\":1,\"kind\":\"scene\",\"name\":\"PreviewScene\","
         "\"frames\":0}",
         &run,
-        &perspective,
         error,
         sizeof error
     );
@@ -122,7 +120,7 @@ void test_automation_preview_registration()
         printf("  scene preview: %s\n", error);
     }
     test_check(
-        status == CHIBI_AUTOMATION_OK && run && !perspective,
+        status == CHIBI_AUTOMATION_OK && run && !chibi_preview_perspective(run),
         "headless scene preview registers a shared shader library once"
     );
     chibi_preview_free(run);

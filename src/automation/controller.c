@@ -6053,12 +6053,14 @@ typedef struct
 {
     bool scene_target;
     bool owns_file_system;
+    char *root; /* a scene target's project, for the scenes scripts load */
     asset_ref prototype_ref;
     size_t prototype_bytes;
     uint64_t prototype_hash;
     game_prototype_registry registry;
     game_prototype *prototype;
     game_scene_document *scene;
+    int loads; /* scenes started by Load Scene */
     game_prototype **scene_prototypes;
     game_prototype_preview_scene_entity *scene_entities;
     game_prototype_preview *preview;
@@ -6280,6 +6282,17 @@ static int advance_request_scenario(
     size_t error_size
 );
 
+static void clear_scenario_scene(scenario_context *context)
+{
+    for (int i = 0; i < acount(context->scene_prototypes); i++) {
+        game_prototype_free(context->scene_prototypes[i]);
+    }
+    afree(context->scene_prototypes);
+    afree(context->scene_entities);
+    game_scene_document_free(context->scene);
+    context->scene = NULL;
+}
+
 static void scenario_context_free(scenario_context *context)
 {
     if (!context) {
@@ -6289,12 +6302,8 @@ static void scenario_context_free(scenario_context *context)
     free_asset_entries(context->runtime_assets);
     game_prototype_preview_free(context->preview);
     game_prototype_free(context->prototype);
-    for (int i = 0; i < acount(context->scene_prototypes); i++) {
-        game_prototype_free(context->scene_prototypes[i]);
-    }
-    afree(context->scene_prototypes);
-    afree(context->scene_entities);
-    game_scene_document_free(context->scene);
+    clear_scenario_scene(context);
+    free(context->root);
     if (context->owns_file_system) {
         authoring_shader_catalog_clear();
         cf_fs_destroy();
@@ -6345,8 +6354,7 @@ static bool scenario_runtime_asset(const scenario_context *context, const asset_
     return !strcmp(kind, "prototype") || !strcmp(kind, "behavior") ||
            !strcmp(kind, "library") || !strcmp(kind, "event") ||
            !strcmp(kind, "field") || !strcmp(kind, "system") ||
-           (context->scene_target &&
-            !strcmp(entry->relative, context->prototype_ref.relative));
+           (context->scene_target && !strcmp(kind, "scene"));
 }
 
 static int register_scenario_prototypes(const char *root, scenario_context *context, char *error, size_t error_size)
@@ -6493,6 +6501,115 @@ static int prepare_scenario(
     return status;
 }
 
+static game_scene_flow *scenario_scenes(const scenario_context *context)
+{
+    return game_world_scenes(
+        game_prototype_preview_live(context->preview)->runtime->owner
+    );
+}
+
+/* Reads a scene document and readies the entities it starts with. */
+static int enter_scenario_scene(scenario_context *context, const char *json, char *error, size_t error_size)
+{
+    context->scene = game_scene_document_load(json, error, error_size);
+    if (!context->scene) {
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    if (!acount(context->scene->entities)) {
+        set_error(error, error_size, "scene has no entities");
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    for (int i = 0; i < acount(context->scene->entities); i++) {
+        game_scene_entity *entity = &context->scene->entities[i];
+        asset_ref prototype_ref = { 0 };
+        char *prototype_json = NULL;
+        uint64_t prototype_hash = 0;
+        int status = load_named_asset(
+            context->root,
+            family_by_kind("prototype"),
+            entity->prototype,
+            &prototype_ref,
+            &prototype_json,
+            NULL,
+            &prototype_hash,
+            error,
+            error_size
+        );
+        if (status != CHIBI_AUTOMATION_OK) {
+            free(prototype_json);
+            return status;
+        }
+        char *scenario_json = scenario_prototype_text(prototype_json, prototype_hash);
+        game_prototype *
+            prototype = scenario_json
+                          ? game_prototype_load(scenario_json, &context->registry, error, error_size)
+                          : NULL;
+        free(scenario_json);
+        free(prototype_json);
+        if (!prototype) {
+            return CHIBI_AUTOMATION_VALIDATION_ERROR;
+        }
+        if (game_prototype_preview_register_prototype(context->preview, prototype) != 0) {
+            game_prototype_free(prototype);
+            set_error(error, error_size, "could not register scene prototype");
+            return CHIBI_AUTOMATION_EXECUTION_ERROR;
+        }
+        apush(context->scene_prototypes, prototype);
+        apush(
+            context->scene_entities,
+            ((game_prototype_preview_scene_entity){
+                .prototype = prototype,
+                .components = entity->components,
+                .behaviors = (const char *const *)entity->behaviors,
+                .behavior_count = acount(entity->behaviors),
+            })
+        );
+        for (int behavior = 0; behavior < acount(prototype->graphs); behavior++) {
+            status = register_preview_behavior_name(
+                context->root,
+                context->preview,
+                prototype->graphs[behavior],
+                error,
+                error_size
+            );
+            if (status != CHIBI_AUTOMATION_OK) {
+                return status;
+            }
+        }
+        for (int behavior = 0; behavior < acount(entity->behaviors); behavior++) {
+            status = register_preview_behavior_name(
+                context->root,
+                context->preview,
+                entity->behaviors[behavior],
+                error,
+                error_size
+            );
+            if (status != CHIBI_AUTOMATION_OK) {
+                return status;
+            }
+        }
+    }
+    return CHIBI_AUTOMATION_OK;
+}
+
+/* Load Scene can start any scene in the project, as in the player. */
+static void list_scenario_scenes(scenario_context *context, const char *start)
+{
+    char **names = NULL;
+    for (int i = 0; i < acount(context->runtime_assets); i++) {
+        if (!strcmp(context->runtime_assets[i].family->kind, "scene")) {
+            apush(names, asset_name_from_filename(context->runtime_assets[i].filename));
+        }
+    }
+    game_scene_flow *flow = scenario_scenes(context);
+    game_scene_flow_set(flow, (const char *const *)names, acount(names));
+    game_scene_flow_enter(flow, start);
+    for (int i = 0; i < acount(names); i++) {
+        free(names[i]);
+    }
+    afree(names);
+}
+
 static int prepare_scene_scenario(
     const char *root,
     const char *name,
@@ -6518,23 +6635,14 @@ static int prepare_scene_scenario(
         free(scene_json);
         return status;
     }
-    context->scene = game_scene_document_load(scene_json, error, error_size);
-    free(scene_json);
-    if (!context->scene) {
-        scenario_context_free(context);
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
-    }
-    if (!acount(context->scene->entities)) {
-        scenario_context_free(context);
-        set_error(error, error_size, "scene has no entities");
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
-    }
+    context->root = xstrdup(root);
     context->registry = (game_prototype_registry){
         .components = GAME_REGISTRY_COMPONENTS,
         .component_count = GAME_REGISTRY_COMPONENT_COUNT,
     };
     context->preview = game_prototype_preview_new(&context->registry);
     if (!context->preview) {
+        free(scene_json);
         scenario_context_free(context);
         set_error(error, error_size, "could not create scene preview");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
@@ -6543,89 +6651,18 @@ static int prepare_scene_scenario(
     if (status == CHIBI_AUTOMATION_OK) {
         status = register_shared_assets(root, context->preview, error, error_size);
     }
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = enter_scenario_scene(context, scene_json, error, error_size);
+    }
+    free(scene_json);
+    if (status == CHIBI_AUTOMATION_OK) {
+        status = register_scenario_prototypes(root, context, error, error_size);
+    }
     if (status != CHIBI_AUTOMATION_OK) {
         scenario_context_free(context);
         return status;
     }
-    for (int i = 0; i < acount(context->scene->entities); i++) {
-        game_scene_entity *entity = &context->scene->entities[i];
-        asset_ref prototype_ref = { 0 };
-        char *prototype_json = NULL;
-        uint64_t prototype_hash = 0;
-        status = load_named_asset(
-            root,
-            family_by_kind("prototype"),
-            entity->prototype,
-            &prototype_ref,
-            &prototype_json,
-            NULL,
-            &prototype_hash,
-            error,
-            error_size
-        );
-        if (status != CHIBI_AUTOMATION_OK) {
-            free(prototype_json);
-            scenario_context_free(context);
-            return status;
-        }
-        char *scenario_json = scenario_prototype_text(prototype_json, prototype_hash);
-        game_prototype *
-            prototype = scenario_json
-                          ? game_prototype_load(scenario_json, &context->registry, error, error_size)
-                          : NULL;
-        free(scenario_json);
-        free(prototype_json);
-        if (!prototype) {
-            scenario_context_free(context);
-            return CHIBI_AUTOMATION_VALIDATION_ERROR;
-        }
-        if (game_prototype_preview_register_prototype(context->preview, prototype) != 0) {
-            game_prototype_free(prototype);
-            scenario_context_free(context);
-            set_error(error, error_size, "could not register scene prototype");
-            return CHIBI_AUTOMATION_EXECUTION_ERROR;
-        }
-        apush(context->scene_prototypes, prototype);
-        apush(
-            context->scene_entities,
-            ((game_prototype_preview_scene_entity){
-                .prototype = prototype,
-                .components = entity->components,
-                .behaviors = (const char *const *)entity->behaviors,
-                .behavior_count = acount(entity->behaviors),
-            })
-        );
-        for (int behavior = 0; behavior < acount(prototype->graphs); behavior++) {
-            status = register_preview_behavior_name(
-                root,
-                context->preview,
-                prototype->graphs[behavior],
-                error,
-                error_size
-            );
-            if (status != CHIBI_AUTOMATION_OK) {
-                scenario_context_free(context);
-                return status;
-            }
-        }
-        for (int behavior = 0; behavior < acount(entity->behaviors); behavior++) {
-            status = register_preview_behavior_name(
-                root,
-                context->preview,
-                entity->behaviors[behavior],
-                error,
-                error_size
-            );
-            if (status != CHIBI_AUTOMATION_OK) {
-                scenario_context_free(context);
-                return status;
-            }
-        }
-    }
-    status = register_scenario_prototypes(root, context, error, error_size);
-    if (status != CHIBI_AUTOMATION_OK) {
-        scenario_context_free(context);
-    }
+    list_scenario_scenes(context, name);
     return status;
 }
 
@@ -6842,13 +6879,7 @@ static bool runtime_snapshot_limit(
     return request_uint(request, key, out) && *out > 0 && *out <= maximum;
 }
 
-static int advance_scenario(
-    scenario_context *context,
-    uint64_t frames,
-    double fixed_dt,
-    char *error,
-    size_t error_size
-)
+static int launch_scenario(scenario_context *context, char *error, size_t error_size)
 {
     char launch_error[256] = { 0 };
     int launch = context->scene_target ? game_prototype_preview_launch_scene(
@@ -6865,25 +6896,93 @@ static int advance_scenario(
                                              sizeof launch_error
                                          );
     if (launch != ECS_OK) {
-        set_error(error, error_size, launch_error[0] ? launch_error : "could not launch prototype");
+        set_error(error, error_size, launch_error[0] ? launch_error : "could not launch scenario");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    return CHIBI_AUTOMATION_OK;
+}
+
+/* Starts the scene a script asked for during the last frame, as the player
+ * does between frames: the clock, input and recordings go on. */
+static int follow_scenario_scene(scenario_context *context, char *error, size_t error_size)
+{
+    char *next = context->scene_target
+                   ? game_scene_flow_take(scenario_scenes(context))
+                   : NULL;
+    if (!next) {
+        return CHIBI_AUTOMATION_OK;
+    }
+    char *json = NULL;
+    asset_ref ref;
+    char reason[256] = { 0 };
+    int status = load_named_asset(
+        context->root,
+        family_by_kind("scene"),
+        next,
+        &ref,
+        &json,
+        NULL,
+        NULL,
+        reason,
+        sizeof reason
+    );
+    if (status == CHIBI_AUTOMATION_OK) {
+        /* Begin runs inside start, so the new name must be current first. */
+        game_scene_flow_enter(scenario_scenes(context), next);
+        game_prototype_preview_end_scene(context->preview);
+        clear_scenario_scene(context);
+        status = enter_scenario_scene(context, json, reason, sizeof reason);
+    }
+    if (status == CHIBI_AUTOMATION_OK && game_prototype_preview_start_scene(
+                                             context->preview,
+                                             context->scene_entities,
+                                             acount(context->scene_entities),
+                                             reason,
+                                             sizeof reason
+                                         ) != ECS_OK) {
+        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    if (status != CHIBI_AUTOMATION_OK) {
+        snprintf(error, error_size, "scene %s: %s", next, reason[0] ? reason : "could not start");
+    }
+    context->loads += status == CHIBI_AUTOMATION_OK;
+    free(json);
+    free(next);
+    return status;
+}
+
+static int tick_scenario(scenario_context *context, double now, char *error, size_t error_size)
+{
+    if (game_prototype_preview_tick(context->preview, now) != 0) {
+        const char *message = engine_error(
+            game_prototype_preview_runtime(context->preview)
+        );
+        set_error(error, error_size, message ? message : "scenario frame failed");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    return follow_scenario_scene(context, error, error_size);
+}
+
+static int advance_scenario(
+    scenario_context *context,
+    uint64_t frames,
+    double fixed_dt,
+    char *error,
+    size_t error_size
+)
+{
+    int status = launch_scenario(context, error, error_size);
+    if (status != CHIBI_AUTOMATION_OK) {
+        return status;
     }
     if (game_prototype_preview_tick(context->preview, 0) != 0) {
         set_error(error, error_size, "could not initialize scenario clock");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    for (uint64_t frame = 0; frame < frames; frame++) {
-        if (game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
-            0) {
-            set_error(
-                error,
-                error_size,
-                engine_error(game_prototype_preview_runtime(context->preview))
-            );
-            return CHIBI_AUTOMATION_EXECUTION_ERROR;
-        }
+    for (uint64_t frame = 0; frame < frames && status == CHIBI_AUTOMATION_OK; frame++) {
+        status = tick_scenario(context, (double)(frame + 1) * fixed_dt, error, error_size);
     }
-    return CHIBI_AUTOMATION_OK;
+    return status;
 }
 
 #define SCENARIO_PROFILE_MAX_TOTAL SCENARIO_RUN_MAX_FRAMES
@@ -7423,24 +7522,7 @@ static int profile_scenario(
     scenario_profile_frame *samples = NULL;
     scenario_profile_allocations allocations = { 0 };
     if (status == CHIBI_AUTOMATION_OK) {
-        char launch_error[256] = { 0 };
-        int launch = context.scene_target ? game_prototype_preview_launch_scene(
-                                                context.preview,
-                                                context.scene_entities,
-                                                acount(context.scene_entities),
-                                                launch_error,
-                                                sizeof launch_error
-                                            )
-                                          : game_prototype_preview_launch(
-                                                context.preview,
-                                                context.prototype,
-                                                launch_error,
-                                                sizeof launch_error
-                                            );
-        if (launch != ECS_OK) {
-            snprintf(error, sizeof error, "%s", launch_error[0] ? launch_error : "could not launch scenario");
-            status = CHIBI_AUTOMATION_EXECUTION_ERROR;
-        }
+        status = launch_scenario(&context, error, sizeof error);
     }
     if (status == CHIBI_AUTOMATION_OK) {
         engine_set_behavior_profiling(game_prototype_preview_runtime(context.preview), behavior_details);
@@ -7474,9 +7556,8 @@ static int profile_scenario(
             int step_status = CHIBI_AUTOMATION_OK;
             if (sampled_inputs) {
                 step_status = step_sequence(&context, &sequence, fixed_dt, error, sizeof error);
-            } else if (game_prototype_preview_tick(context.preview, (double)(frame + 1) * fixed_dt) != 0) {
-                snprintf(error, sizeof error, "scenario profiling failed");
-                step_status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+            } else {
+                step_status = tick_scenario(&context, (double)(frame + 1) * fixed_dt, error, sizeof error);
             }
             if (step_status != CHIBI_AUTOMATION_OK) {
                 status = step_status;
@@ -8052,14 +8133,12 @@ static int run_scenario_inputs(
         return launch;
     }
     for (uint64_t frame = 0; frame < frames; frame++) {
-        if (apply_scenario_input(context, &inputs[frame], error, error_size) !=
-                CHIBI_AUTOMATION_OK ||
-            game_prototype_preview_tick(context->preview, (double)(frame + 1) * fixed_dt) !=
-                0) {
-            if (!error[0]) {
-                snprintf(error, error_size, "prototype scenario failed");
-            }
-            return CHIBI_AUTOMATION_EXECUTION_ERROR;
+        int status = apply_scenario_input(context, &inputs[frame], error, error_size);
+        if (status == CHIBI_AUTOMATION_OK) {
+            status = tick_scenario(context, (double)(frame + 1) * fixed_dt, error, error_size);
+        }
+        if (status != CHIBI_AUTOMATION_OK) {
+            return status;
         }
         observations->world_hash[frame] = scenario_state_hash(context);
         observations->live_entities[frame] = ecs_world_live_count(
@@ -8140,16 +8219,7 @@ static int step_sequence(
     if (status != CHIBI_AUTOMATION_OK) {
         return status;
     }
-    if (game_prototype_preview_tick(context->preview, (double)(++sequence->frame) * fixed_dt) !=
-        0) {
-        set_error(
-            error,
-            error_size,
-            engine_error(game_prototype_preview_runtime(context->preview))
-        );
-        return CHIBI_AUTOMATION_EXECUTION_ERROR;
-    }
-    return CHIBI_AUTOMATION_OK;
+    return tick_scenario(context, (double)(++sequence->frame) * fixed_dt, error, error_size);
 }
 
 static int advance_request_scenario(
@@ -8187,7 +8257,8 @@ struct chibi_preview_run
     scenario_context context;
     scenario_sequence sequence;
     yyjson_doc *request;
-    char *page; /* the root ui document its UI shows on, or NULL */
+    char *page;       /* the project's default root ui document, or NULL */
+    bool perspective; /* at launch */
 };
 
 game_prototype_preview *chibi_preview_runtime(chibi_preview_run *run)
@@ -8197,13 +8268,18 @@ game_prototype_preview *chibi_preview_runtime(chibi_preview_run *run)
 
 const char *chibi_preview_page(const chibi_preview_run *run)
 {
-    return run->page;
+    const game_scene_document *scene = run->context.scene;
+    return scene && scene->ui ? scene->ui : run->page;
 }
 
-/* The scene's root ui document, else the default in the manifest at `root`. */
-static char *preview_page(const char *root, const game_scene_document *scene)
+bool chibi_preview_perspective(const chibi_preview_run *run)
 {
-    return scene && scene->ui ? xstrdup(scene->ui) : manifest_string(root, "ui");
+    return run->context.scene ? run->context.scene->perspective : run->perspective;
+}
+
+int chibi_preview_loads(const chibi_preview_run *run)
+{
+    return run->context.loads;
 }
 
 int chibi_preview_step(chibi_preview_run *run, char *error, size_t size)
@@ -8240,13 +8316,11 @@ int chibi_automation_preview(
     const char *root,
     const char *request,
     chibi_preview_run **out,
-    bool *perspective,
     char *error,
     size_t error_size
 )
 {
     *out = NULL;
-    *perspective = false;
     yyjson_doc *doc = yyjson_read(request, strlen(request), 0);
     yyjson_val *value = doc ? yyjson_doc_get_root(doc) : NULL;
     const char *kind = request_string(value, "kind"),
@@ -8287,13 +8361,13 @@ int chibi_automation_preview(
         }
     }
     if (status == CHIBI_AUTOMATION_OK) {
-        *perspective = context->scene
-                         ? context->scene->perspective
-                         : GAME_GameGeometry3D_has(
-                               game_prototype_preview_world(context->preview),
-                               game_prototype_preview_entity(context->preview)
-                           );
-        run->page = preview_page(root, context->scene);
+        run->page = manifest_string(root, "ui");
+        run->perspective = context->scene
+                             ? context->scene->perspective
+                             : GAME_GameGeometry3D_has(
+                                   game_prototype_preview_world(context->preview),
+                                   game_prototype_preview_entity(context->preview)
+                               );
         *out = run;
         return status;
     }

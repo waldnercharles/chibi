@@ -4,6 +4,7 @@
 #include "runtime/arrays_definition.h"
 #include "runtime/audio_definition.h"
 #include "runtime/behaviors/entities_definition.h"
+#include "runtime/behaviors/scene_flow_definition.h"
 #include "runtime/comparison_definition.h"
 #include "runtime/conversion_definition.h"
 #include "runtime/core_definition.h"
@@ -61,6 +62,7 @@ native_capabilities *host_native_default_catalog_new(
     apush(selected, NATIVE_CONVERSION_DEFINITION_PACK);
     apush(selected, NATIVE_TEXT_DEFINITION_PACK);
     apush(selected, GAME_SAVE_DEFINITION_PACK);
+    apush(selected, GAME_SCENE_DEFINITION_PACK);
     apush(selected, GAME_PARTICLES_DEFINITION_PACK);
     apush(selected, GAME_UI_DEFINITION_PACK);
     apush(selected, GAME_PHYSICS_DEFINITION_PACK);

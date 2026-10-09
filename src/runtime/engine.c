@@ -56,6 +56,7 @@ struct engine
     engine_input *input;
     step_phase phase;
     engine_frame_timing timing;
+    uint64_t scene_steps; /* simulation_steps when the scene started */
     double last_time;
     double accumulator;
     double time_scale;
@@ -547,21 +548,28 @@ void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user)
 
 void engine_reset(engine *engine)
 {
-    if (engine->emitters) {
-        game_particle_emitters_reset(engine->emitters);
-    }
     engine->timing = (engine_frame_timing){ .alpha = 1 };
     engine->last_time = 0;
     engine->accumulator = 0;
     engine->has_time = false;
     engine->debug_paused = false;
     engine->step_requested = false;
-    engine->phase = STEP_IDLE;
-    engine->error[0] = 0;
     /* Recording and replay follow a scene from its start. */
     aclear(engine->recorded);
     if (engine->input) {
         engine_input_reset(engine->input);
+    }
+    engine_reset_scene(engine);
+}
+
+void engine_reset_scene(engine *engine)
+{
+    /* A step waiting on the old scene's initializers ends with it. */
+    engine->phase = STEP_IDLE;
+    engine->error[0] = 0;
+    engine->scene_steps = engine->timing.simulation_steps;
+    if (engine->emitters) {
+        game_particle_emitters_reset(engine->emitters);
     }
     if (has_simulation(engine)) {
         if (engine->modules.save) {
@@ -1180,7 +1188,8 @@ static int advance_frame(engine *engine, double monotonic_time)
         engine->accumulator = 0;
     }
     engine->debug_paused = engine_paused(engine);
-    if (engine->modules.visibility && engine->timing.simulation_steps == 0) {
+    if (engine->modules.visibility &&
+        engine->timing.simulation_steps == engine->scene_steps) {
         const char *error = game_visibility_update(engine->modules.visibility, 0);
         if (error) {
             snprintf(engine->error, sizeof engine->error, "%s", error);

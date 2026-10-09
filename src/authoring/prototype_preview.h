@@ -56,6 +56,17 @@ int game_prototype_preview_launch_scene(
     char *error,
     size_t error_size
 );
+/* Scene changes during play: end destroys the scene's entities and per-scene
+ * state while time, input and recordings go on; start spawns the next scene
+ * and runs its Begin. */
+void game_prototype_preview_end_scene(game_prototype_preview *preview);
+int game_prototype_preview_start_scene(
+    game_prototype_preview *preview,
+    const game_prototype_preview_scene_entity *entities,
+    int entity_count,
+    char *error,
+    size_t error_size
+);
 int game_prototype_preview_register_prototype(
     game_prototype_preview *preview,
     const game_prototype *prototype

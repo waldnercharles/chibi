@@ -2734,7 +2734,12 @@ static int catalog_snapshot_get(
     }
     catalog_asset *assets = NULL;
     reference_index *references = NULL;
-    if (build_catalog_from_entries(root, entries, CATALOG_SNAPSHOT.assets, &assets, &references, error, error_size) !=
+    /* Validity and graphs depend on the component schemas, so reuse nothing
+     * built against other ones. */
+    catalog_asset *previous = CATALOG_SNAPSHOT.components == components
+                                ? CATALOG_SNAPSHOT.assets
+                                : NULL;
+    if (build_catalog_from_entries(root, entries, previous, &assets, &references, error, error_size) !=
         0) {
         free_asset_entries(entries);
         free_catalog_snapshot(&CATALOG_SNAPSHOT);

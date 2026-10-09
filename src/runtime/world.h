@@ -37,6 +37,9 @@ typedef struct
  * and spawned entities, but leaves other borrowed-world entities alive.
  * On failure no field catalog ownership transfers. */
 game_world *game_world_new(const game_world_options *, char *error, size_t size);
+/* Whether game_world_new accepts this input map: at most INPUT_ACTION_MAX
+ * uniquely named actions, each with at least one known control. */
+bool game_world_actions_valid(const input_action *actions, int count);
 void game_world_free(game_world *);
 ecs_world *game_world_ecs(const game_world *);
 game_source_registry *game_world_sources(const game_world *);

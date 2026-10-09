@@ -10,12 +10,20 @@ into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
 - **Directional Light** (`GameDirectionalLight`): color, intensity and the world
   direction the light travels. A scene shows at most one; a second visible one is
   an error, and hidden ones are left out. Fog never culls it. With none, only
-  ambient and point lights shade the scene. `shadows` lets opaque solids block
-  it, and `angular_diameter`, the sun's apparent size from 0 to 20 degrees,
-  softens their shadows (see Shadows).
+  ambient, point and spot lights shade the scene. `shadows` lets opaque solids
+  block it, and `angular_diameter`, the sun's apparent size from 0 to 20
+  degrees, softens their shadows (see Shadows).
 - **Point Light** (`GamePointLight`): up to 32 per view, ranked by estimated
   influence on the camera. `shadows` lets opaque solids within its radius
-  block it (see Point light shadows).
+  block it (see Point and spot light shadows).
+- **Spot Light** (`GameSpotLight`): a point light that shines along
+  `direction` in a cone. It has full strength out to `inner_angle` across and
+  fades to nothing at `outer_angle`, falling off with the square of how far a
+  point lies into that edge. The outer angle can be 2 to 160 degrees, and the
+  inner angle 0 up to the outer; angles out of range are an error, even on a
+  hidden light. Spot and point lights share the 32-light ranking, and a spot
+  light without a direction lights nothing. `shadows` works as it does for a
+  point light.
 - **Environment** (`GameEnvironment`): exposure, bloom, and a hemisphere ambient
   that blends `ambient_ground` below to `ambient_sky` above, scaled by
   `ambient_intensity`. Without an Environment the scene uses
@@ -70,19 +78,24 @@ square holds the lookup, and compares against it with a 3x3 grid of hardware
   A penumbra's radius stops at 128 texels of its cascade, and a caster
   thinner than the disc's tap spacing shades its penumbra unevenly.
 
-### Point light shadows
+### Point and spot light shadows
 
-A Point Light with `shadows` renders opaque solids' depth from the light into
-six 512x512 faces of one depth atlas (`render/scene3d_point_shadow.c`), one
-row of faces per light. At most four point lights cast shadows in a view: the
-ones that rank highest among those with `shadows`; the rest light without
-them. Ranks follow the camera, so which lights cast can change as it moves.
+A Point Light or Spot Light with `shadows` renders opaque solids' depth from
+the light into 512x512 faces of one depth atlas
+(`render/scene3d_light_shadow.c`), one row per light: six faces for a point
+light, and one along its cone for a spot light. At most four point and spot
+lights cast shadows in a view: the ones that rank highest among those with
+`shadows`; the rest light without them. Ranks follow the camera, so which
+lights cast can change as it moves.
 
-- **Faces**: each face looks along one axis, +x, -x, +y, -y, +z or -z, across
-  a little more than 90 degrees, so lookups near its edge stay on it. The lit
-  pass reads the face that holds the direction from the light to the surface
-  point, comparing a 3x3 grid of hardware 2x2 comparisons like a sun without
-  angular size.
+- **Faces**: each of a point light's faces looks along one axis, +x, -x, +y,
+  -y, +z or -z, across a little more than 90 degrees, so lookups near its edge
+  stay on it. A spot light's face looks along its axis across a little more
+  than its outer angle, so a wider cone spreads the same texels thinner and
+  casts coarser shadows. Near a wide cone's edge, lookups that the bias below
+  lifts past the face read its edge. The lit pass reads the face that holds
+  the direction from the light to the surface point, comparing a 3x3 grid of
+  hardware 2x2 comparisons like a sun without angular size.
 - **Casters**: a solid casts for a light when its bounds reach within the
   light's radius, into each face whose view they reach, including solids the
   camera culls. A solid whose box holds the light casts nothing for it, so a
@@ -94,9 +107,9 @@ them. Ranks follow the camera, so which lights cast can change as it moves.
   depth runs along its axis rather than toward the light.
 - **Memory**: the atlas grows to the most shadowed lights a view has needed,
   3072 texels wide and 512 tall per light, so four lights take at most 24 MB
-  at 32-bit depth.
-- **Not covered**: point light shadows have hard edges, since a point light
-  has no size.
+  at 32-bit depth. A spot light uses one face of its row.
+- **Not covered**: point and spot light shadows have hard edges, since neither
+  light has a size.
 
 The material preview sphere draws without shadows.
 
@@ -142,11 +155,19 @@ one lamp in four spots whose shadows cross between faces, and for two lamps
 outranked by a brighter light that casts nothing; five lamps that cast give
 shadows to the four ranked highest; a sphere lit from between three faces
 keeps its light; a long wall casts for a lamp near one end; and a slab the
-camera culls casts too. It runs `test_tools`
+camera culls casts too. A spot light matches a point light inside its inner
+angle, matches a point light dimmed by the square of the fade partway across
+its edge, and leaves the floor dark past its outer angle. Its shadows are
+checked across the same grid, from a slanted cone and from one pointing
+straight down, and beside a point light's in the same atlas. Every accepted
+outer angle, from 2 degrees with a hard edge to 160, lights the floor below at
+full strength, and angles out of range are rejected. Near the edge of a
+hard-edged cone 160 degrees across, lookups stay on the spot light's face
+rather than reading the shadows of the light before it. It runs `test_tools`
 from the desktop build, so set `CHIBI_TOOLS_BUILD_DIR=build/test/tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 24 cases and 186 assertions in 3.8 seconds on 2026-10-09.
+Vulkan llvmpipe passed 29 cases and 314 assertions in 4.5 seconds on 2026-10-09.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

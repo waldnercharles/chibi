@@ -14,6 +14,7 @@ layout(set = 3, binding = 0) uniform uniform_block {
     vec4 scene_light_count;
     vec4 scene_light_positions[32];
     vec4 scene_light_colors[32];
+    vec4 scene_light_cones[32];
     vec4 scene_influence_count;
     vec4 scene_influence_positions[64];
     vec4 scene_influence_colors[64];

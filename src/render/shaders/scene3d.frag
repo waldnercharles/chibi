@@ -171,32 +171,62 @@ int major_axis(vec3 v)
     return a.x >= a.y && a.x >= a.z ? 0 : a.y >= a.z ? 1 : 2;
 }
 
-// Point light i's visibility from the one of its six faces whose 90 degrees
-// hold the lookup, lifted along the geometric normal like the sun's by that
-// face's texels at the point's distance, then compared on a 3x3 grid. Faces
-// look along +x, -x, +y, -y, +z and -z, with up along +y, or +z for the faces
-// along y, and each light takes one atlas row of them.
-float point_shadow(int i)
+// The face of light i that holds a point at delta from the light: a spot
+// light's one face along its cone, or the one of a point light's six faces
+// whose 90 degrees hold it. Faces look along +x, -x, +y, -y, +z and -z, with
+// up along +y, or +z for the faces along y, and a spot light's face looks
+// along its axis with up along +y, or +z for an axis near y.
+void light_face(int i, vec3 delta, out int face, out vec3 forward, out vec3 up, out float spread)
+{
+    vec4 cone = scene_light_cones[i];
+    float scale = length(cone.xyz);
+    if (scale > 0.0) {
+        // The axis carries the cone's fade width, and the offset its outer
+        // edge's cosine.
+        float cosine = -cone.w / scale;
+        face = 0;
+        forward = cone.xyz / scale;
+        up = abs(forward.y) > 0.99 ? vec3(0, 0, 1) : vec3(0, 1, 0);
+        spread = sqrt(1.0 - cosine * cosine) / cosine * scene_light_shadow.y;
+        return;
+    }
+    int along = major_axis(delta);
+    face = 2 * along + (delta[along] >= 0.0 ? 0 : 1);
+    forward = vec3(0);
+    forward[along] = delta[along] >= 0.0 ? 1.0 : -1.0;
+    up = along == 1 ? vec3(0, 0, 1) : vec3(0, 1, 0);
+    spread = scene_light_shadow.y;
+}
+
+// Light i's visibility from the face that holds the lookup, lifted along the
+// geometric normal like the sun's by that face's texels at the point's
+// distance, then compared on a 3x3 grid. Each light takes one atlas row of
+// faces.
+float light_shadow(int i)
 {
     vec4 light = scene_light_positions[i];
     vec3 normal = safe_normal(v_normal, vec3(0, 1, 0));
     vec3 delta = v_world - light.xyz;
     vec2 size = vec2(textureSize(scene_light_shadow_map, 0));
-    float spread = scene_light_shadow.y, face_texels = scene_light_shadow.w;
-    int along = major_axis(delta);
-    float texel = 2.0 * spread * abs(delta[along]) / face_texels;
+    float face_texels = scene_light_shadow.w;
+    int face;
+    vec3 forward, up;
+    float spread;
+    light_face(i, delta, face, forward, up, spread);
+    float texel = 2.0 * spread * dot(delta, forward) / face_texels;
     // A face's depth runs along its axis, so a surface turned from the axis
     // needs the lift even where it faces the light.
-    float facing = min(clamp(-dot(normal, safe_normal(delta, -normal)), 0.0, 1.0), abs(normal[along]));
+    float facing = min(clamp(-dot(normal, safe_normal(delta, -normal)), 0.0, 1.0), abs(dot(normal, forward)));
     delta += normal * (0.5 + 2.0 * sqrt(1.0 - facing * facing)) * texel;
-    along = major_axis(delta);
-    vec3 forward = vec3(0);
-    forward[along] = delta[along] >= 0.0 ? 1.0 : -1.0;
-    int face = 2 * along + (delta[along] >= 0.0 ? 0 : 1);
-    vec3 side = cross(forward, along == 1 ? vec3(0, 0, 1) : vec3(0, 1, 0));
+    light_face(i, delta, face, forward, up, spread);
+    vec3 side = normalize(cross(forward, up));
     vec3 above = cross(side, forward);
     float ahead = dot(delta, forward);
     vec2 uv = vec2(dot(delta, side), -dot(delta, above)) / (ahead * spread) * 0.5 + 0.5;
+    // Near a wide spot light's edge the lift can carry a lookup past its one
+    // face, so every tap stays within the face, reading its edge. A point
+    // light picks the face that holds the lifted point, so this never moves it.
+    uv = clamp(uv, 1.5 / face_texels, 1.0 - 1.5 / face_texels);
     // Perspective depth with the near plane at a share of the radius.
     float near = scene_light_shadow.z;
     float depth = (1.0 - near * light.w / ahead) / (1.0 - near);
@@ -226,8 +256,12 @@ vec3 direct_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 
         if (distance_squared >= radius * radius || dot(normal, delta) < 0.0) continue;
         float fade = 1.0 - distance_squared / (radius * radius);
         vec3 light = safe_normal(delta, normal);
-        vec3 radiance = scene_light_colors[i].rgb * scene_light_colors[i].w * fade * fade;
-        if (i < int(scene_light_shadow.x)) radiance *= point_shadow(i);
+        // A spot light fades across its cone's edge; a point light's cone
+        // leaves it whole.
+        float edge = clamp(dot(-light, scene_light_cones[i].xyz) + scene_light_cones[i].w, 0.0, 1.0);
+        if (edge <= 0.0) continue;
+        vec3 radiance = scene_light_colors[i].rgb * scene_light_colors[i].w * fade * fade * edge * edge;
+        if (i < int(scene_light_shadow.x)) radiance *= light_shadow(i);
         result += surface_light(base, roughness, metallic, normal, view, light) * radiance;
     }
     return result;

@@ -4,7 +4,7 @@
 #include "render/material.h"
 #include "render/scene3d_geometry.h"
 #include "render/scene3d_influence.h"
-#include "render/scene3d_point_shadow.h"
+#include "render/scene3d_light_shadow.h"
 #include "render/scene3d_shadow.h"
 #include "render/scene3d_trail.h"
 #include "render/scene3d_visual.h"
@@ -28,8 +28,21 @@ enum
 {
     PARAMETER_TEXTURE_WIDTH = 2048,
     MATERIAL_TEXELS = 38,
-    POINT_LIGHT_LIMIT = 32
+    LIGHT_LIMIT = 32
 };
+
+/* A point or spot light kept for the lit pass. */
+typedef struct
+{
+    CF_V4 position; /* World center and radius. */
+    CF_V4 color;    /* Linear color and intensity. */
+    /* The cone's axis over its fade width, and its outer edge's offset, so
+     * that the lit pass's falloff is dot(direction, axis) + offset. A point
+     * light's has no axis and an offset of one. */
+    CF_V4 cone;
+    float score; /* Estimated influence on the camera. */
+    bool shadows;
+} scene3d_light;
 
 typedef struct
 {
@@ -75,9 +88,9 @@ struct render_scene3d
     bool sun_shadows;
     float sun_spread; /* Tangent of half the sun's angular diameter. */
     render_scene3d_shadow *shadow;
-    render_scene3d_point_shadow *point_shadow;
+    render_scene3d_light_shadow *light_shadow;
     CF_M4x4 *shadow_boxes;
-    int *near_boxes; /* Boxes that can cast into the current point light. */
+    int *near_boxes; /* Boxes that can cast into the current light. */
     CF_Texture parameters;
     int texture_height;
     draw_buffer buffer, *chunks;
@@ -85,10 +98,10 @@ struct render_scene3d
     game_task_pool *pool;
     bool parallel_disabled;
     render_scene3d_work work;
-    CF_V4 light_positions[POINT_LIGHT_LIMIT];
-    CF_V4 light_colors[POINT_LIGHT_LIMIT];
-    float light_scores[POINT_LIGHT_LIMIT];
-    bool light_shadows[POINT_LIGHT_LIMIT];
+    scene3d_light lights[LIGHT_LIMIT];
+    /* The kept lights as the lit pass reads them. */
+    CF_V4 light_positions[LIGHT_LIMIT], light_colors[LIGHT_LIMIT],
+        light_cones[LIGHT_LIMIT];
     int light_count, lights_dropped;
     int shadowed_lights; /* The first lights, which cast shadows. */
     int simulation_particles;
@@ -126,7 +139,7 @@ render_scene3d *render_scene3d_new()
     scene3d->programs = render_programs_new(RENDER_PROGRAM_SCENE3D);
     scene3d->influences = render_influences_new();
     scene3d->shadow = render_scene3d_shadow_new();
-    scene3d->point_shadow = render_scene3d_point_shadow_new();
+    scene3d->light_shadow = render_scene3d_light_shadow_new();
     scene3d->trails = render_scene3d_trails_new();
     scene3d->emitters = game_particle_emitters_new(NULL);
     scene3d->prism = render_scene3d_prism_mesh();
@@ -171,7 +184,7 @@ void render_scene3d_free(render_scene3d *scene3d)
     render_programs_free(scene3d->programs);
     render_influences_free(scene3d->influences);
     render_scene3d_shadow_free(scene3d->shadow);
-    render_scene3d_point_shadow_free(scene3d->point_shadow);
+    render_scene3d_light_shadow_free(scene3d->light_shadow);
     afree(scene3d->shadow_boxes);
     afree(scene3d->near_boxes);
     render_scene3d_trails_free(scene3d->trails);
@@ -426,33 +439,198 @@ static void collect_particles(
 }
 
 /* Moves the highest-ranked lights that cast shadows, up to the shadow limit,
- * ahead of the rest, which keep their order. */
-static void order_shadowed_lights(render_scene3d *scene3d)
+ * ahead of the rest, which keep their order, and lays them all out for the
+ * lit pass. */
+static void order_lights(render_scene3d *scene3d)
 {
+    scene3d_light *lights = scene3d->lights;
     int shadowed = 0;
     for (int i = 0;
-         i < scene3d->light_count && shadowed < RENDER_SCENE3D_POINT_SHADOW_LIMIT;
+         i < scene3d->light_count && shadowed < RENDER_SCENE3D_LIGHT_SHADOW_LIMIT;
          i++) {
-        if (!scene3d->light_shadows[i]) {
+        if (!lights[i].shadows) {
             continue;
         }
-        CF_V4 position = scene3d->light_positions[i],
-              color = scene3d->light_colors[i];
-        size_t moved = (size_t)(i - shadowed);
-        memmove(
-            &scene3d->light_positions[shadowed + 1],
-            &scene3d->light_positions[shadowed],
-            moved * sizeof position
-        );
-        memmove(&scene3d->light_colors[shadowed + 1], &scene3d->light_colors[shadowed], moved * sizeof color);
-        scene3d->light_positions[shadowed] = position;
-        scene3d->light_colors[shadowed] = color;
-        shadowed++;
+        scene3d_light light = lights[i];
+        memmove(&lights[shadowed + 1], &lights[shadowed], (size_t)(i - shadowed) * sizeof light);
+        lights[shadowed++] = light;
     }
     scene3d->shadowed_lights = shadowed;
+    for (int i = 0; i < scene3d->light_count; i++) {
+        scene3d->light_positions[i] = lights[i].position;
+        scene3d->light_colors[i] = lights[i].color;
+        scene3d->light_cones[i] = lights[i].cone;
+    }
 }
 
-static void collect_lights(
+/* Where a light entity shines from this frame, or false when it is hidden. */
+static bool place_light(ecs_world *world, const engine *runtime, ecs_entity entity, GameTransform *position)
+{
+    if (!engine_entity_visible(runtime, world, entity)) {
+        return false;
+    }
+    *position = *GAME_GameTransform_get_const(world, entity);
+    if (runtime) {
+        engine_render_position(runtime, entity, position);
+    }
+    return true;
+}
+
+/* Keeps a light, a point light's fields with a cone, among the lights with the
+ * most estimated influence on the camera, if it lights anything. Returns
+ * whether it counted. */
+static bool rank_light(
+    render_scene3d *scene3d,
+    CF_V3 eye,
+    GameTransform position,
+    const GamePointLight *light,
+    CF_V4 cone
+)
+{
+    if (!isfinite(position.x) || !isfinite(position.y) || !isfinite(light->intensity) ||
+        !isfinite(light->radius) || !isfinite(light->elevation) ||
+        light->intensity <= 0 || light->radius <= 0 || !(light->color >> 8)) {
+        return false;
+    }
+    double dx = position.x - (double)eye.x,
+           dy = light->elevation - (double)eye.y, dz = position.y - (double)eye.z,
+           radius2 = (double)light->radius * light->radius;
+    /* Packed component colors use the same linear channel convention as Material. */
+    CF_V4 color = { ((light->color >> 24) & 255u) / 255.0f,
+                    ((light->color >> 16) & 255u) / 255.0f,
+                    ((light->color >> 8) & 255u) / 255.0f,
+                    light->intensity };
+    float peak = fmaxf(color.x, fmaxf(color.y, color.z));
+    scene3d_light kept = {
+        .position = { position.x, light->elevation, position.y, light->radius },
+        .color = color,
+        .cone = cone,
+        .score = (float)(light->intensity * peak * radius2 /
+                         (dx * dx + dy * dy + dz * dz + radius2)),
+        .shadows = light->shadows,
+    };
+    int slot = scene3d->light_count;
+    if (slot == LIGHT_LIMIT) {
+        slot--;
+        if (kept.score <= scene3d->lights[slot].score) {
+            return true;
+        }
+    } else {
+        scene3d->light_count++;
+    }
+    for (; slot > 0 && kept.score > scene3d->lights[slot - 1].score; slot--) {
+        scene3d->lights[slot] = scene3d->lights[slot - 1];
+    }
+    scene3d->lights[slot] = kept;
+    return true;
+}
+
+static void collect_point_lights(
+    render_scene3d *scene3d,
+    ecs_world *world,
+    CF_V3 eye,
+    const engine *runtime,
+    int *candidates
+)
+{
+    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
+                                    GAME_COMPONENT_GamePointLight.id };
+    ecs_query query;
+    if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
+        return;
+    }
+    ecs_entity entity;
+    GameTransform position;
+    while (ecs_query_next(&query, &entity)) {
+        *candidates += place_light(world, runtime, entity, &position) &&
+                       rank_light(
+                           scene3d,
+                           eye,
+                           position,
+                           GAME_GamePointLight_get_const(world, entity),
+                           (CF_V4){ .w = 1 }
+                       );
+    }
+    ecs_query_end(&query);
+}
+
+/* The narrowest fade across a spot light's edge, in cosine, which keeps a
+ * hard edge's width finite when its angles are equal. */
+static const float hardest_fade = 1e-4f;
+/* Spot Light outer angles in degrees. A narrower cone would leave even its
+ * axis inside the hardest fade, and a wider one would need a shadow face past
+ * 180 degrees. */
+static const float narrowest_spot = 2, widest_spot = 160;
+
+/* A spot light's cone as the lit pass reads it, or false with a binding error
+ * when its angles are out of range. A cone with no direction lights nothing. */
+static bool spot_cone(render_scene3d *scene3d, const GameSpotLight *spot, CF_V4 *cone)
+{
+    if (!(spot->outer_angle >= narrowest_spot && spot->outer_angle <= widest_spot)) {
+        snprintf(
+            scene3d->binding_error,
+            sizeof scene3d->binding_error,
+            "Spot Light outer angle must be %g to %g degrees.",
+            narrowest_spot,
+            widest_spot
+        );
+        return false;
+    }
+    if (!(spot->inner_angle >= 0 && spot->inner_angle <= spot->outer_angle)) {
+        snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "Spot Light inner angle must be 0 to its outer angle.");
+        return false;
+    }
+    float length = cf_len_v3(spot->direction);
+    float outer = cosf(spot->outer_angle * CF_PI / 360),
+          inner = cosf(spot->inner_angle * CF_PI / 360);
+    float scale = 1 / fmaxf(inner - outer, hardest_fade);
+    *cone = (CF_V4){ 0 };
+    if (isfinite(length) && length > 0) {
+        CF_V3 axis = cf_mul_v3_f(spot->direction, scale / length);
+        *cone = (CF_V4){ axis.x, axis.y, axis.z, -outer * scale };
+    }
+    return true;
+}
+
+static bool collect_spot_lights(
+    render_scene3d *scene3d,
+    ecs_world *world,
+    CF_V3 eye,
+    const engine *runtime,
+    int *candidates
+)
+{
+    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
+                                    GAME_COMPONENT_GameSpotLight.id };
+    ecs_query query;
+    if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
+        return true;
+    }
+    bool valid = true;
+    ecs_entity entity;
+    GameTransform position;
+    while (valid && ecs_query_next(&query, &entity)) {
+        const GameSpotLight *spot = GAME_GameSpotLight_get_const(world, entity);
+        CF_V4 cone;
+        valid = spot_cone(scene3d, spot, &cone);
+        if (!valid || (!cone.x && !cone.y && !cone.z) ||
+            !place_light(world, runtime, entity, &position)) {
+            continue;
+        }
+        GamePointLight light = { .color = spot->color,
+                                 .intensity = spot->intensity,
+                                 .radius = spot->radius,
+                                 .elevation = spot->elevation,
+                                 .shadows = spot->shadows };
+        *candidates += rank_light(scene3d, eye, position, &light, cone);
+    }
+    ecs_query_end(&query);
+    return valid;
+}
+
+/* Keeps the point and spot lights with the most estimated influence on the
+ * camera. Returns false with a binding error for a spot light out of range. */
+static bool collect_lights(
     render_scene3d *scene3d,
     ecs_world *world,
     const render_scene3d_camera *camera,
@@ -461,84 +639,27 @@ static void collect_lights(
 {
     scene3d->light_count = 0;
     scene3d->shadowed_lights = 0;
-    int candidates = 0;
     CF_M4x4 inverse = cf_m4_invert(camera->view);
     CF_V3 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14] };
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GamePointLight.id };
-    ecs_query query;
-    if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
-        return;
+    int candidates = 0;
+    collect_point_lights(scene3d, world, eye, runtime, &candidates);
+    if (!collect_spot_lights(scene3d, world, eye, runtime, &candidates)) {
+        return false;
     }
-    ecs_entity entity;
-    while (ecs_query_next(&query, &entity)) {
-        if (!engine_entity_visible(runtime, world, entity)) {
-            continue;
-        }
-        const GamePointLight *light = GAME_GamePointLight_get_const(world, entity);
-        GameTransform position = *GAME_GameTransform_get_const(world, entity);
-        if (runtime) {
-            engine_render_position(runtime, entity, &position);
-        }
-        if (!isfinite(position.x) || !isfinite(position.y) ||
-            !isfinite(light->intensity) || !isfinite(light->radius) ||
-            !isfinite(light->elevation) || light->intensity <= 0 ||
-            light->radius <= 0 || !(light->color >> 8)) {
-            continue;
-        }
-        double dx = position.x - (double)eye.x,
-               dy = light->elevation - (double)eye.y,
-               dz = position.y - (double)eye.z,
-               radius2 = (double)light->radius * light->radius;
-        unsigned red = (light->color >> 24) & 255u,
-                 green = (light->color >> 16) & 255u,
-                 blue = (light->color >> 8) & 255u;
-        float peak = fmaxf((float)red, fmaxf((float)green, (float)blue)) / 255;
-        float score = (float)(light->intensity * peak * radius2 /
-                              (dx * dx + dy * dy + dz * dz + radius2));
-        int slot = scene3d->light_count;
-        candidates++;
-        if (slot == POINT_LIGHT_LIMIT) {
-            slot--;
-            if (score <= scene3d->light_scores[slot]) {
-                continue;
-            }
-        } else {
-            scene3d->light_count++;
-        }
-        while (slot > 0 && score > scene3d->light_scores[slot - 1]) {
-            scene3d->light_scores[slot] = scene3d->light_scores[slot - 1];
-            scene3d->light_positions[slot] = scene3d->light_positions[slot - 1];
-            scene3d->light_colors[slot] = scene3d->light_colors[slot - 1];
-            scene3d->light_shadows[slot] = scene3d->light_shadows[slot - 1];
-            slot--;
-        }
-        scene3d->light_scores[slot] = score;
-        scene3d->light_shadows[slot] = light->shadows;
-        scene3d->light_positions[slot] = (CF_V4){ position.x,
-                                                  light->elevation,
-                                                  position.y,
-                                                  light->radius };
-        /* Packed component colors use the same linear channel convention as Material. */
-        scene3d->light_colors[slot] = (CF_V4){ ((light->color >> 24) & 255u) / 255.0f,
-                                               ((light->color >> 16) & 255u) / 255.0f,
-                                               ((light->color >> 8) & 255u) / 255.0f,
-                                               light->intensity };
-    }
-    ecs_query_end(&query);
     int dropped = candidates - scene3d->light_count;
     if ((dropped > 0) != (scene3d->lights_dropped > 0)) {
         fprintf(
             stderr,
-            "3D point lights: %d active, %d omitted by the %d-light camera "
+            "3D lights: %d active, %d omitted by the %d-light camera "
             "influence budget.\n",
             scene3d->light_count,
             dropped,
-            POINT_LIGHT_LIMIT
+            LIGHT_LIMIT
         );
     }
     scene3d->lights_dropped = dropped;
-    order_shadowed_lights(scene3d);
+    order_lights(scene3d);
+    return true;
 }
 
 static CF_V4 radiance(unsigned color, float intensity)
@@ -749,12 +870,17 @@ static void draw_boxed(const render_scene3d *scene3d, int i, int receivers)
     draw_caster(scene3d, caster->frame, &caster->shape);
 }
 
-/* Opaque solids in view and the casters near each shadowed point light write
- * their depth from it into each face they reach. */
-static bool draw_point_shadows(render_scene3d *scene3d, int receivers)
+/* Opaque solids in view and the casters near each shadowed point or spot
+ * light write their depth from it into each face they reach. */
+static bool draw_light_shadows(render_scene3d *scene3d, int receivers)
 {
-    render_scene3d_point_shadow *shadow = scene3d->point_shadow;
-    render_scene3d_point_shadow_set(shadow, scene3d->light_positions, scene3d->shadowed_lights);
+    render_scene3d_light_shadow *shadow = scene3d->light_shadow;
+    render_scene3d_light_shadow_set(
+        shadow,
+        scene3d->light_positions,
+        scene3d->light_cones,
+        scene3d->shadowed_lights
+    );
     int opaque = 0;
     while (opaque < receivers && !scene3d->buffer.draws[opaque].transparent) {
         opaque++;
@@ -764,12 +890,13 @@ static bool draw_point_shadows(render_scene3d *scene3d, int receivers)
         for (int i = 0; i < acount(scene3d->shadow_boxes); i++) {
             bool solid = i < opaque || i >= receivers;
             if (solid &&
-                render_scene3d_point_shadow_near(shadow, light, scene3d->shadow_boxes[i])) {
+                render_scene3d_light_shadow_near(shadow, light, scene3d->shadow_boxes[i])) {
                 apush(scene3d->near_boxes, i);
             }
         }
-        for (int face = 0; face < RENDER_SCENE3D_POINT_SHADOW_FACES; face++) {
-            if (!render_scene3d_point_shadow_begin(
+        for (int face = 0; face < render_scene3d_light_shadow_faces(shadow, light);
+             face++) {
+            if (!render_scene3d_light_shadow_begin(
                     shadow,
                     light,
                     face,
@@ -780,7 +907,7 @@ static bool draw_point_shadows(render_scene3d *scene3d, int receivers)
             }
             for (int i = 0; i < acount(scene3d->near_boxes); i++) {
                 int box = scene3d->near_boxes[i];
-                if (render_scene3d_point_shadow_reaches(
+                if (render_scene3d_light_shadow_reaches(
                         shadow,
                         light,
                         face,
@@ -789,7 +916,7 @@ static bool draw_point_shadows(render_scene3d *scene3d, int receivers)
                     draw_boxed(scene3d, box, receivers);
                 }
             }
-            render_scene3d_point_shadow_end(shadow, light, face);
+            render_scene3d_light_shadow_end(shadow, light, face);
         }
     }
     return true;
@@ -864,9 +991,9 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     int receivers = casts_shadows(scene3d) ? collect_shadow_boxes(scene3d) : 0;
     int cascades = fit_shadow(scene3d, camera, receivers);
     scene3d->work.cascades = cascades;
-    scene3d->work.point_shadows = scene3d->shadowed_lights;
+    scene3d->work.light_shadows = scene3d->shadowed_lights;
     if (!draw_shadow(scene3d, cascades, receivers) ||
-        !draw_point_shadows(scene3d, receivers)) {
+        !draw_light_shadows(scene3d, receivers)) {
         return false;
     }
     CF_M4x4 inverse = cf_m4_invert(camera->view);
@@ -879,11 +1006,12 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     cf_draw3d_set_uniform("scene_ambient_ground", &scene3d->ambient_ground, CF_UNIFORM_TYPE_FLOAT4, 1);
     CF_V4 light_count = { .x = (float)scene3d->light_count };
     cf_draw3d_set_uniform("scene_light_count", &light_count, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw3d_set_uniform("scene_light_positions", scene3d->light_positions, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
-    cf_draw3d_set_uniform("scene_light_colors", scene3d->light_colors, CF_UNIFORM_TYPE_FLOAT4, POINT_LIGHT_LIMIT);
+    cf_draw3d_set_uniform("scene_light_positions", scene3d->light_positions, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
+    cf_draw3d_set_uniform("scene_light_colors", scene3d->light_colors, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
+    cf_draw3d_set_uniform("scene_light_cones", scene3d->light_cones, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
     render_influences_bind(scene3d->influences);
     render_scene3d_shadow_bind(scene3d->shadow, cascades);
-    render_scene3d_point_shadow_bind(scene3d->point_shadow);
+    render_scene3d_light_shadow_bind(scene3d->light_shadow);
     cf_draw3d_set_texture("scene_parameters", scene3d->parameters);
     cf_draw3d_push_projection(camera->projection);
     cf_draw3d_push_view(camera->view);
@@ -936,7 +1064,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     /* Later meshes would otherwise keep the parameters bound past their resize or free. */
     cf_draw3d_set_texture("scene_parameters", (CF_Texture){ 0 });
     render_scene3d_shadow_unbind();
-    render_scene3d_point_shadow_unbind();
+    render_scene3d_light_shadow_unbind();
     cf_draw3d_pop_view();
     cf_draw3d_pop_projection();
     if (!transparent) {
@@ -1095,7 +1223,9 @@ bool render_scene3d_draw(
     if (!collect_sun(scene3d, world, runtime)) {
         return false;
     }
-    collect_lights(scene3d, world, camera, runtime);
+    if (!collect_lights(scene3d, world, camera, runtime)) {
+        return false;
+    }
     render_influences_collect(scene3d->influences, world, runtime, time);
     render_scene3d_trails_collect(scene3d->trails, world, runtime, time);
     if (!runtime && !game_particle_emitters_collect(

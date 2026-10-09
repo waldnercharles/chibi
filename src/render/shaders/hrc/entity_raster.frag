@@ -39,6 +39,7 @@ layout(set = 2, binding = 9) uniform sampler2D u_mesh_normal;
 void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,vec4 object_frame,float time,vec4 values[32],out vec4 result[8]) {
  for(int i=0;i<8;i++) result[i]=vec4(0);
 }
+vec4 sg_image_sample(int id,vec2 uv) { return vec4(0); }
 layout(set = 3, binding = 0) uniform uniform_block {
     float u_world_min_x;
     float u_world_max_y;
@@ -222,7 +223,7 @@ vec2 shader_half_size(Entity e)
         return vec2(e.radius + e.thickness * 0.5);
     if (e.shape_type == SHAPE_DIAMOND)
         return vec2(e.radius + e.chubbiness + e.thickness * 0.5);
-    if (e.shape_type == SHAPE_BOX)
+    if (e.shape_type == SHAPE_BOX || e.shape_type == SHAPE_SPRITE)
         return abs(e.points_01.xy) + e.thickness * 0.5;
     vec2 bounds = max(abs(e.points_01.xy), abs(e.points_01.zw));
     if (e.shape_type == SHAPE_CAPSULE) return bounds + e.radius + e.thickness * 0.5;
@@ -250,7 +251,7 @@ float evaluate_sdf(vec2 local_p, Entity e)
     // All other shapes: compute filled SDF, then optionally stroke.
     if (shape == SHAPE_CIRCLE) {
         d = sdf_circle(local_p, e.radius);
-    } else if (shape == SHAPE_BOX) {
+    } else if (shape == SHAPE_BOX || shape == SHAPE_SPRITE) {
         d = sdf_box(local_p, abs(e.points_01.xy), e.chubbiness);
         if (e.points_23.w > 0.0) d = max(d, dot(e.points_23.xy, local_p) - e.points_23.z);
     } else if (shape == SHAPE_CAPSULE) {
@@ -270,6 +271,16 @@ float evaluate_sdf(vec2 local_p, Entity e)
         d = abs(d) - e.thickness * 0.5;
 
     return d;
+}
+
+// The sprite's texel under a point inside its box. points_45 is the frame's
+// uv rect and points_67.x its image variant. The top clamp keeps an edge
+// pixel inside the frame rather than on its neighbour.
+vec4 sprite_texel(vec2 local_p, Entity e)
+{
+    vec2 t = vec2(local_p.x, -local_p.y) / (2.0 * abs(e.points_01.xy)) + 0.5;
+    t = clamp(t, vec2(0.0), vec2(0.9999));
+    return sg_image_sample(int(e.points_67.x), mix(e.points_45.xy, e.points_45.zw, t));
 }
 
 #include "color.shd"
@@ -727,6 +738,16 @@ void main()
         // Uncovered pixels need no material; metaballs still blend beyond their edge.
         if (e.metaball_group == 0u && sdf >= reach &&
             (!filtered_circle_emission || !may_emit || sdf >= emission_half_width)) continue;
+        // A sprite's texel alpha is its edge, so its box covers fully.
+        if (e.shape_type == SHAPE_SPRITE) {
+            vec4 texel = sprite_texel(local_p, e);
+            if (sdf > 0.0 || texel.a <= 0.0) continue;
+            sdf = -reach;
+            e.scene *= texel;
+            e.albedo *= texel;
+            e.emission.a *= texel.a;
+            e.absorption *= texel.a;
+        }
         vec4 surface = vec4(0.0, 0.0, e.reserved2, 0.0);
         float height = 0.0;
         if (e.reserved0 > 0.0) {

@@ -1,6 +1,6 @@
 #pragma once
 
-#define GAME_EVENT_CATALOG_VERSION 2
+#define GAME_EVENT_CATALOG_VERSION 3
 #include "execution/prepared.h"
 
 typedef struct game_event_catalog game_event_catalog;

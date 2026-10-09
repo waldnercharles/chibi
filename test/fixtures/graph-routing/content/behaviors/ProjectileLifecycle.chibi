@@ -1,13 +1,11 @@
 behavior "ProjectileLifecycle" {
-    owner "ecs.entity";
-    on Tick as tick(DeltaSeconds: float = 0.0) {
-        &component("GAME.GameProjectile", "age") += cast<double>(&delta);
-        if (cast<double>(&component("GAME.GameProjectile", "age")) >= cast<double>(&component("GAME.GameProjectile", "lifetime"))) {
-            destroy_entity(Entity: self);
+    on Tick {
+        self.Projectile.Age += cast<double>(delta)
+        if cast<double>(self.Projectile.Age) >= cast<double>(self.Projectile.Lifetime) {
+            destroy_entity(self)
         } else {
-            if (length(&component("GAME.GameVelocity")) > 0.0001) {
-                &component("GAME.GameOrientation", "radians") = atan2(&component("GAME.GameVelocity").y, &component("GAME.GameVelocity").x);
-            } else {
+            if length(self.Velocity) > 0.0001 {
+                self.Orientation.Radians = atan2(self.Velocity.y, self.Velocity.x)
             }
         }
     }

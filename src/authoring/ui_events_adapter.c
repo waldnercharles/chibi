@@ -71,11 +71,16 @@ static bool initializing(void *context)
 {
     return game_entities_initializing(((game_preview_world *)context)->runtime->entities);
 }
+static const char *failure(void *context)
+{
+    return game_source_error(((game_preview_world *)context)->runtime->sources);
+}
 render_ui_host authoring_ui_events(game_preview_world *world)
 {
     return world ? (render_ui_host){ .context = world,
                                      .payload = payload,
                                      .dispatch = dispatch,
-                                     .initializing = initializing }
+                                     .initializing = initializing,
+                                     .failure = failure }
                  : (render_ui_host){ 0 };
 }

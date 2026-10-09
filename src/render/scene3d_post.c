@@ -337,7 +337,10 @@ static void meter(render_scene3d_post *post, float time)
     exposure->valid = true;
     cf_draw_push_shader(exposure->measure);
     cf_draw_set_uniform_v2("footprint", (CF_V2){ 1.0f / LUMINANCE_SIDE, 1.0f / LUMINANCE_SIDE });
+    // Point taps let the shader sanitize each raw HDR texel, as the first bloom downsample does.
+    cf_draw_push_filter(CF_DRAW_FILTER_NEAREST);
     pass(post->targets.scene, exposure->luminance);
+    cf_draw_pop_filter();
     cf_draw_pop_shader();
     CF_Canvas previous = exposure->adapted[exposure->latest];
     exposure->latest ^= 1;

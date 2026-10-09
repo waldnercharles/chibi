@@ -91,7 +91,7 @@ bool chibi_process_start(chibi_process *process, const char *const *argv, const 
 int chibi_process_run(char *const *argv)
 {
     pid_t pid;
-    int error = posix_spawn(&pid, argv[0], NULL, NULL, argv, environ);
+    int error = posix_spawnp(&pid, argv[0], NULL, NULL, argv, environ);
     if (error) {
         fprintf(stderr, "Cannot run %s: %s\n", argv[0], strerror(error));
         return 1;

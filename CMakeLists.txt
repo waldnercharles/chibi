@@ -256,8 +256,10 @@ if(CHIBI_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/host/${header}.h"
             "${host_test_headers}/host/${header}.h" COPYONLY)
     endforeach()
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/support/xalloc.h"
-        "${host_test_headers}/support/xalloc.h" COPYONLY)
+    foreach(header array xalloc)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/src/support/${header}.h"
+            "${host_test_headers}/support/${header}.h" COPYONLY)
+    endforeach()
     target_include_directories(test_host PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson")
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/third_party/pico_headers/pico_unit.h"
         "${host_test_headers}/third_party/pico_headers/pico_unit.h" COPYONLY)

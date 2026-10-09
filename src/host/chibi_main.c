@@ -119,12 +119,14 @@ static int usage(const char *program)
 {
     printf(
         "Usage: %s [PROJECT] [PLAYER OPTIONS]\n"
-        "       %s export [PROJECT] --output DIR\n"
+        "       %s export [PROJECT] --output DIR [--archive]\n"
         "PROJECT is a project directory or its project.kdl. Without one, the\n"
         "nearest project.kdl at or above the working directory is used.\n"
         "Player options are passed to chibi-player; see chibi-player --help.\n"
         "export compiles the project into DIR with the player, its resources\n"
-        "and engine files, ready to run and ship.\n",
+        "and engine files, ready to run and ship: a DIR.app on macOS, and a\n"
+        "folder with a .desktop entry elsewhere. --archive also writes\n"
+        "DIR.tar.gz.\n",
         program,
         program
     );
@@ -234,11 +236,14 @@ static int prepare(const char *bin, const chibi_project *project, const char *ar
 static int export_game(int argc, char **argv)
 {
     const char *requested = NULL, *output = NULL;
+    bool archive = false;
     for (int i = 2; i < argc; i++) {
         if (!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) {
             return usage(argv[0]);
         }
-        if (!strcmp(argv[i], "--output") && i + 1 < argc && !output) {
+        if (!strcmp(argv[i], "--archive")) {
+            archive = true;
+        } else if (!strcmp(argv[i], "--output") && i + 1 < argc && !output) {
             output = argv[++i];
         } else if (argv[i][0] != '-' && !requested) {
             requested = argv[i];
@@ -258,8 +263,14 @@ static int export_game(int argc, char **argv)
     char *bin = file_executable_dir();
     chibi_export_spec spec = { .project = project.root,
                                .name = project.name,
+                               .title = project.application.title,
+                               .icon = project.application.icon,
                                .bin = bin,
-                               .output = output };
+                               .output = output,
+#ifdef __APPLE__
+                               .layout = CHIBI_EXPORT_APP,
+#endif
+                               .archive = archive };
     bool exported = chibi_export(&spec);
     free(bin);
     chibi_project_free(&project);

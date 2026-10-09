@@ -55,10 +55,13 @@ static bool executable(const char *relative)
     return access(path, X_OK) == 0;
 }
 
-/* Only the named entries remain in the root: no staging folder is left. */
-static int entries()
+/* Entries in a folder under the root, to show no staging or partial file is
+ * left. */
+static int entries(const char *relative)
 {
-    DIR *dir = opendir(root);
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s", root, relative);
+    DIR *dir = opendir(path);
     int count = 0;
     struct dirent *entry;
     while ((entry = readdir(dir))) {
@@ -68,14 +71,73 @@ static int entries()
     return count;
 }
 
-static bool export_to(const char *relative)
+static const char *title = "My <Game> \\ & Co";
+
+static bool export_as(const char *relative, chibi_export_layout layout, bool archive)
 {
     char project[512], bin[512], output[512];
     snprintf(project, sizeof project, "%s/project", root);
     snprintf(bin, sizeof bin, "%s/sdk/bin", root);
     snprintf(output, sizeof output, "%s/%s", root, relative);
-    chibi_export_spec spec = { .project = project, .name = game, .bin = bin, .output = output };
+    chibi_export_spec spec = { .project = project,
+                               .name = game,
+                               .title = title,
+                               .icon = "art/icon.png",
+                               .bin = bin,
+                               .output = output,
+                               .layout = layout,
+                               .archive = archive };
     return chibi_export(&spec);
+}
+
+static bool export_to(const char *relative)
+{
+    return export_as(relative, CHIBI_EXPORT_FOLDER, false);
+}
+
+/* A PNG header for a `width` by `height` image is all the .icns writer reads. */
+static void write_png(int width, int height)
+{
+    char path[512];
+    snprintf(path, sizeof path, "%s/project/art/icon.png", root);
+    unsigned char header[26] = "\x89PNG\r\n\x1a\n\0\0\0\rIHDR";
+    header[18] = (unsigned char)(width >> 8);
+    header[19] = (unsigned char)width;
+    header[22] = (unsigned char)(height >> 8);
+    header[23] = (unsigned char)height;
+    header[24] = 8;
+    header[25] = 6;
+    FILE *icon = fopen(path, "wb");
+    fwrite(header, 1, sizeof header, icon);
+    fclose(icon);
+}
+
+static bool starts_with(const char *relative, const void *bytes, size_t size)
+{
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s", root, relative);
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        return false;
+    }
+    char contents[64] = { 0 };
+    size_t read = fread(contents, 1, sizeof contents, file);
+    fclose(file);
+    return read >= size && !memcmp(contents, bytes, size);
+}
+
+static bool contains(const char *relative, const char *text)
+{
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s", root, relative);
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        return false;
+    }
+    char contents[4096] = { 0 };
+    fread(contents, 1, sizeof contents - 1, file);
+    fclose(file);
+    return strstr(contents, text) != NULL;
 }
 
 TEST_CASE(export_assembles_a_runnable_folder)
@@ -97,7 +159,8 @@ TEST_CASE(export_assembles_a_runnable_folder)
     write_at("sdk/share/chibi/engine.json", "{}", 0644);
     write_at("sdk/share/chibi/shaders/nested/a.glsl", "shader", 0644);
     write_at("sdk/share/chibi/licenses/LICENSE.txt", "license", 0644);
-    write_at("project/art/icon.png", "icon", 0644);
+    write_at("project/art/icon.png", "", 0644);
+    write_png(64, 64);
     write_at("project/art/sheet.bin", "sheet", 0644);
 
     REQUIRE(export_to("out/Game/"));
@@ -106,7 +169,8 @@ TEST_CASE(export_assembles_a_runnable_folder)
     REQUIRE(!has("out/Game/data/game.chibip.resources.json", NULL));
     REQUIRE(has("out/Game/data/.chibi-export", ""));
     REQUIRE(has("out/Game/data/art/sheet.bin", "sheet"));
-    REQUIRE(has("out/Game/data/art/icon.png", "icon"));
+    REQUIRE(contains("out/Game/data/art/icon.png", "PNG"));
+    REQUIRE(contains("out/Game/my-game-2.desktop", "Name=My <Game> \\\\ & Co\nExec=\"My Game_2\"\n"));
     REQUIRE(has("out/Game/data/engine/engine.json", "{}"));
     REQUIRE(has("out/Game/data/engine/shaders/nested/a.glsl", "shader"));
     REQUIRE(has("out/Game/data/engine/licenses/LICENSE.txt", "license"));
@@ -144,13 +208,66 @@ TEST_CASE(export_assembles_a_runnable_folder)
     REQUIRE(has(cut, "player"));
     game = "My Game/2";
 
+    /* A macOS app keeps the same data in Contents/Resources, and an archive
+     * holds the export under its own name. */
+    REQUIRE(export_as("apps/Game", CHIBI_EXPORT_APP, true));
+    REQUIRE(has("apps/Game.app/Contents/MacOS/My Game_2", "player"));
+    REQUIRE(has("apps/Game.app/Contents/Resources/game.chibip", "artifact"));
+    REQUIRE(has("apps/Game.app/Contents/Resources/engine/engine.json", "{}"));
+    REQUIRE(
+        contains("apps/Game.app/Contents/Info.plist", "<string>My &lt;Game&gt; \\ &amp; Co</string>")
+    );
+    REQUIRE(contains("apps/Game.app/Contents/Info.plist", "games.chibi.my-game-2"));
+    /* The .icns holds the 26-byte PNG as its 64-pixel icon. */
+    REQUIRE(starts_with(
+        "apps/Game.app/Contents/Resources/My Game_2.icns",
+        "icns\0\0\0\x2a"
+        "icp6\0\0\0\x22\x89PNG",
+        20
+    ));
+    REQUIRE(has("apps/Game.app.tar.gz", NULL));
+    int archived_entries = entries("apps");
+    /* A tar that cannot run leaves the earlier archive in place. */
+    char path[4096];
+    snprintf(path, sizeof path, "%s", getenv("PATH"));
+    setenv("PATH", "", 1);
+    bool archived = export_as("apps/Game", CHIBI_EXPORT_APP, true);
+    setenv("PATH", path, 1);
+    REQUIRE(!archived && has("apps/Game.app.tar.gz", NULL));
+    REQUIRE(entries("apps") == archived_entries);
+
+    /* Without a title, people see the project name. */
+    title = NULL;
+    REQUIRE(export_as("apps/Game.app", CHIBI_EXPORT_APP, false));
+    REQUIRE(
+        contains("apps/Game.app/Contents/Info.plist", "<key>CFBundleName</key><string>My Game/2</string>")
+    );
+    REQUIRE(export_to("out/Game"));
+    REQUIRE(contains("out/Game/my-game-2.desktop", "Name=My Game/2\n"));
+
+    /* An app's icon must be a size macOS has, and its output must name a
+     * folder; both fail before anything is built. */
+    write_png(48, 48);
+    REQUIRE(!export_as("apps/Odd", CHIBI_EXPORT_APP, false));
+    write_png(64, 32);
+    REQUIRE(!export_as("apps/Odd", CHIBI_EXPORT_APP, false));
+    write_png(64, 64);
+    char icon_path[512];
+    snprintf(icon_path, sizeof icon_path, "%s/project/art/icon.png", root);
+    REQUIRE(truncate(icon_path, 65 * 1024 * 1024) == 0); /* sparse, over the bound */
+    REQUIRE(!export_as("apps/Odd", CHIBI_EXPORT_APP, false));
+    write_png(64, 64);
+    REQUIRE(!export_as("apps/.", CHIBI_EXPORT_APP, false));
+    REQUIRE(!export_as("apps/.app", CHIBI_EXPORT_APP, false));
+    REQUIRE(!has("apps/Odd.app/Contents/Info.plist", NULL));
+
     /* A failed compile or a missing resource leaves no partial folder. */
     write_at("project/fail", "", 0644);
     REQUIRE(!export_to("broken"));
     remove_at("project/fail");
     remove_at("project/art/sheet.bin");
     REQUIRE(!export_to("broken"));
-    REQUIRE(entries() == 5); /* sdk, project, out, mine and linked */
+    REQUIRE(entries(".") == 6); /* sdk, project, out, apps, mine and linked */
 
     char command[600];
     snprintf(command, sizeof command, "rm -rf '%s'", root);

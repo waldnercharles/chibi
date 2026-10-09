@@ -1,10 +1,13 @@
 #include "host/export.h"
 
 #include "host/process.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <dirent.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +18,7 @@
 
 #define EXPORT_ARTIFACT "game.chibip"
 #define EXPORT_MANIFEST EXPORT_ARTIFACT ".resources.json"
+#define ICON_BYTES_MAX (64 * 1024 * 1024)
 /* Bytes kept of a long project name, well under any file system's limit on a
  * file name. */
 #define EXECUTABLE_NAME_MAX 128
@@ -197,6 +201,15 @@ static char *executable_name(const char *name)
     return file;
 }
 
+/* Where each layout keeps the game's data and the player, inside the output. */
+static const struct
+{
+    const char *data, *executables;
+} LAYOUTS[] = {
+    [CHIBI_EXPORT_FOLDER] = { "data", NULL },
+    [CHIBI_EXPORT_APP] = { "Contents/Resources", "Contents/MacOS" },
+};
+
 static bool write_marker(const char *data)
 {
     char *marker = join(data, EXPORT_MARKER);
@@ -206,33 +219,309 @@ static bool write_marker(const char *data)
     return written;
 }
 
-/* Whether `output` is a folder this exporter made: real folders down to the
- * marker it writes, which is a regular file. */
-static bool exported_folder(const char *output)
+/* Whether `output` is a folder this exporter made in `layout`: real folders
+ * down to its data folder, holding the marker as a regular file. */
+static bool exported_folder(const char *output, chibi_export_layout layout)
 {
-    char *data = join(output, "data");
+    char *data = join(output, LAYOUTS[layout].data);
+    bool exported = true;
+    for (char *slash = data + strlen(output); exported && slash;
+         slash = strchr(slash + 1, '/')) {
+        *slash = 0;
+        exported = is_directory(data);
+        *slash = '/';
+    }
     char *marker = join(data, EXPORT_MARKER);
     struct stat info;
-    bool exported = is_directory(output) && is_directory(data) &&
-                    lstat(marker, &info) == 0 && S_ISREG(info.st_mode);
+    exported = exported && is_directory(data) && lstat(marker, &info) == 0 &&
+               S_ISREG(info.st_mode);
     free(marker);
     free(data);
     return exported;
 }
 
+static bool write_text(const char *path, const char *text)
+{
+    FILE *file = make_parents(path) ? fopen(path, "wb") : NULL;
+    bool written = file && fputs(text, file) >= 0;
+    written = file && fclose(file) == 0 && written;
+    return written || failed("cannot write", path);
+}
+
+/* An icon file, or NULL when it is missing or larger than the compiler
+ * accepts for an image. */
+static char *read_bytes(const char *path, size_t *size)
+{
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        return NULL;
+    }
+    char *bytes = NULL;
+    long length = fseek(file, 0, SEEK_END) == 0 ? ftell(file) : -1;
+    if (length >= 0 && length <= ICON_BYTES_MAX && fseek(file, 0, SEEK_SET) == 0) {
+        bytes = xmalloc((size_t)length);
+        *size = fread(bytes, 1, (size_t)length, file);
+    }
+    fclose(file);
+    return bytes;
+}
+
+/* A reverse-DNS and desktop-entry identifier: lowercase letters, digits and
+ * dashes. */
+static char *identifier(const char *name)
+{
+    char *id = xstrdup(name);
+    for (char *c = id; *c; c++) {
+        if (*c >= 'A' && *c <= 'Z') {
+            *c = (char)(*c - 'A' + 'a');
+            continue;
+        }
+        if ((*c < 'a' || *c > 'z') && (*c < '0' || *c > '9')) {
+            *c = '-';
+        }
+    }
+    return id;
+}
+
+static void put(char **out, const char *text)
+{
+    for (const char *c = text; *c; c++) {
+        apush(*out, *c);
+    }
+}
+
+/* An XML string: markup characters become entities and control characters,
+ * which XML forbids, become spaces. */
+static void put_xml(char **out, const char *text)
+{
+    for (const char *c = text; *c; c++) {
+        switch (*c) {
+            case '&': put(out, "&amp;"); break;
+            case '<': put(out, "&lt;"); break;
+            case '>': put(out, "&gt;"); break;
+            case '"': put(out, "&quot;"); break;
+            default: apush(*out, (unsigned char)*c < ' ' ? ' ' : *c);
+        }
+    }
+}
+
+/* A desktop entry string: one line, with backslashes escaped. */
+static void put_line(char **out, const char *text)
+{
+    for (const char *c = text; *c; c++) {
+        if (*c == '\\') {
+            put(out, "\\\\");
+            continue;
+        }
+        apush(*out, (unsigned char)*c < ' ' ? ' ' : *c);
+    }
+}
+
+static bool write_built(const char *path, char **text)
+{
+    apush(*text, 0);
+    bool written = write_text(path, *text);
+    afree(*text);
+    return written;
+}
+
+static uint32_t big_endian(const unsigned char *bytes)
+{
+    return (uint32_t)bytes[0] << 24 | (uint32_t)bytes[1] << 16 |
+           (uint32_t)bytes[2] << 8 | bytes[3];
+}
+
+static void put_big_endian(FILE *file, uint32_t value)
+{
+    unsigned char bytes[4] = { value >> 24, value >> 16, value >> 8, value };
+    fwrite(bytes, 1, 4, file);
+}
+
+/* The .icns type that holds a square PNG of this size, or NULL when macOS has
+ * no icon of its size. */
+static const char *icns_type(const unsigned char *png, size_t size)
+{
+    static const struct
+    {
+        uint32_t size;
+        const char *type;
+    } TYPES[] = { { 16, "icp4" },  { 32, "icp5" },  { 64, "icp6" },
+                  { 128, "ic07" }, { 256, "ic08" }, { 512, "ic09" },
+                  { 1024, "ic10" } };
+    if (size < 24 || memcmp(png, "\x89PNG\r\n\x1a\n", 8) ||
+        memcmp(png + 12, "IHDR", 4)) {
+        return NULL;
+    }
+    uint32_t width = big_endian(png + 16);
+    for (size_t i = 0; i < sizeof TYPES / sizeof *TYPES; i++) {
+        if (width == TYPES[i].size && big_endian(png + 20) == width) {
+            return TYPES[i].type;
+        }
+    }
+    return NULL;
+}
+
+/* Checks an app's icon before the project compiles. */
+static bool app_icon_valid(const chibi_export_spec *spec)
+{
+    char *path = join(spec->project, spec->icon);
+    size_t size = 0;
+    unsigned char *png = (unsigned char *)read_bytes(path, &size);
+    bool valid = png && icns_type(png, size);
+    if (!valid) {
+        failed("a macOS app icon must be a square PNG of 16, 32, 64, 128, 256, 512 or 1024 pixels", path);
+    }
+    free(png);
+    free(path);
+    return valid;
+}
+
+/* An .icns that embeds the PNG as the one icon size it matches. */
+static bool write_icns(const char *png, const char *icns)
+{
+    size_t size = 0;
+    unsigned char *bytes = (unsigned char *)read_bytes(png, &size);
+    const char *type = bytes ? icns_type(bytes, size) : NULL;
+    FILE *file = type && make_parents(icns) ? fopen(icns, "wb") : NULL;
+    bool written = file != NULL;
+    if (file) {
+        fwrite("icns", 1, 4, file);
+        put_big_endian(file, (uint32_t)(16 + size));
+        fwrite(type, 1, 4, file);
+        put_big_endian(file, (uint32_t)(8 + size));
+        written = fwrite(bytes, 1, size, file) == size;
+        written = fclose(file) == 0 && written;
+    }
+    free(bytes);
+    return written || failed("cannot write", icns);
+}
+
+/* The name people see: the title, else the project name, else the
+ * executable's. */
+static const char *display_name(const chibi_export_spec *spec, const char *name)
+{
+    if (spec->title) {
+        return spec->title;
+    }
+    return spec->name ? spec->name : name;
+}
+
+static bool write_info_plist(const chibi_export_spec *spec, const char *staging, const char *name)
+{
+    const char *title = display_name(spec, name);
+    char *id = identifier(name);
+    char *text = NULL;
+    put(&text,
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
+        "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
+        "<plist version=\"1.0\">\n<dict>\n"
+        "\t<key>CFBundleDevelopmentRegion</key><string>en</string>\n"
+        "\t<key>CFBundleExecutable</key><string>");
+    put_xml(&text, name);
+    put(&text, "</string>\n\t<key>CFBundleIdentifier</key><string>games.chibi.");
+    put(&text, id);
+    put(&text,
+        "</string>\n"
+        "\t<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>\n"
+        "\t<key>CFBundleName</key><string>");
+    put_xml(&text, title);
+    put(&text, "</string>\n\t<key>CFBundleDisplayName</key><string>");
+    put_xml(&text, title);
+    put(&text,
+        "</string>\n"
+        "\t<key>CFBundlePackageType</key><string>APPL</string>\n"
+        "\t<key>CFBundleShortVersionString</key><string>1.0</string>\n"
+        "\t<key>CFBundleVersion</key><string>1</string>\n"
+        "\t<key>LSApplicationCategoryType</"
+        "key><string>public.app-category.games</string>\n"
+        "\t<key>NSHighResolutionCapable</key><true/>\n");
+    if (spec->icon) {
+        put(&text, "\t<key>CFBundleIconFile</key><string>");
+        put_xml(&text, name);
+        put(&text, ".icns</string>\n");
+    }
+    put(&text, "</dict>\n</plist>\n");
+    char *path = join(staging, "Contents/Info.plist");
+    bool written = write_built(path, &text);
+    free(path);
+    free(id);
+    return written;
+}
+
+/* A desktop entry for installing the game: it names the executable on PATH and
+ * the icon by its theme name, both the game's identifier. */
+static bool write_desktop_entry(const chibi_export_spec *spec, const char *staging, const char *name)
+{
+    char *id = identifier(name);
+    char *text = NULL;
+    put(&text, "[Desktop Entry]\nType=Application\nName=");
+    put_line(&text, display_name(spec, name));
+    put(&text, "\nExec=\"");
+    put(&text, name);
+    put(&text, "\"\nIcon=");
+    put(&text, id);
+    put(&text, "\nTerminal=false\nCategories=Game;\n");
+    size_t size = strlen(staging) + strlen(id) + sizeof "/.desktop";
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s.desktop", staging, id);
+    bool written = write_built(path, &text);
+    free(path);
+    free(id);
+    return written;
+}
+
+/* Signs a macOS app ad hoc, so it runs after its contents changed. Other
+ * hosts cannot sign and keep the app as built. */
+static bool sign(const char *staging)
+{
+#ifdef __APPLE__
+    char *argv[] = { "/usr/bin/codesign", "--force", "--sign", "-",
+                     (char *)staging,     NULL };
+    return chibi_process_run(argv) == 0 ||
+           failed("the app could not be signed", staging);
+#else
+    (void)staging;
+    return true;
+#endif
+}
+
+/* Adds an app's Info.plist and icon, then signs it. */
+static bool finish_app(const chibi_export_spec *spec, const char *staging, const char *data, const char *name)
+{
+    if (!write_info_plist(spec, staging, name)) {
+        return false;
+    }
+    if (spec->icon) {
+        char *png = join(data, spec->icon);
+        size_t size = strlen(data) + strlen(name) + sizeof "/.icns";
+        char *icns = xmalloc(size);
+        snprintf(icns, size, "%s/%s.icns", data, name);
+        bool written = write_icns(png, icns);
+        free(icns);
+        free(png);
+        if (!written) {
+            return false;
+        }
+    }
+    return sign(staging);
+}
+
 static bool assemble(const chibi_export_spec *spec, const char *staging)
 {
-    char *data = join(staging, "data");
+    char *data = join(staging, LAYOUTS[spec->layout].data);
     char *artifact = join(data, EXPORT_ARTIFACT);
     char *engine_files_dir = join(data, "engine");
     char *compiler = join(spec->bin, "chibi-compile");
     char *player = join(spec->bin, "chibi-player");
     char *engine = join(spec->bin, "../share/chibi");
     char *name = executable_name(spec->name);
-    char *executable = join(staging, name);
+    const char *executables = LAYOUTS[spec->layout].executables;
+    char *executable_dir = executables ? join(staging, executables) : xstrdup(staging);
+    char *executable = join(executable_dir, name);
     char *argv[] = { compiler,   "--project-root", (char *)spec->project,
                      "--output", artifact,         NULL };
-    bool assembled = mkdir(data, 0755) == 0 || failed(strerror(errno), data);
+    bool assembled = make_parents(artifact) || failed(strerror(errno), data);
     assembled = assembled && write_marker(data);
     if (assembled && chibi_process_run(argv) != 0) {
         assembled = failed("the project did not compile", spec->project);
@@ -249,7 +538,13 @@ static bool assemble(const chibi_export_spec *spec, const char *staging)
         free(to);
     }
     assembled = assembled && copy_file(player, executable, 0755);
+    if (assembled) {
+        assembled = spec->layout == CHIBI_EXPORT_APP
+                      ? finish_app(spec, staging, data, name)
+                      : write_desktop_entry(spec, staging, name);
+    }
     free(executable);
+    free(executable_dir);
     free(name);
     free(engine);
     free(player);
@@ -268,7 +563,11 @@ static bool publish(const char *staging, const char *output)
     if (lstat(output, &info) != 0) {
         return rename(staging, output) == 0 || failed(strerror(errno), output);
     }
-    if (!exported_folder(output)) {
+    bool exported = false;
+    for (size_t i = 0; i < sizeof LAYOUTS / sizeof *LAYOUTS; i++) {
+        exported |= exported_folder(output, (chibi_export_layout)i);
+    }
+    if (!exported) {
         return failed("the output exists and is not an exported game", output);
     }
     size_t size = strlen(output) + sizeof ".old-XXXXXX";
@@ -290,39 +589,105 @@ static bool publish(const char *staging, const char *output)
     return published;
 }
 
-/* The output's last path component, which must name a new folder. */
-static bool plain_output(const char *output)
+/* Writes <output>.tar.gz holding the output folder under its own name. */
+/* Writes <output>.tar.gz through a partial file, so a failed tar leaves an
+ * earlier archive in place. */
+static bool archive(const char *output)
 {
-    const char *slash = strrchr(output, '/');
-    const char *last = slash ? slash + 1 : output;
-    return strcmp(last, ".") && strcmp(last, "..") && last[0];
+    size_t size = strlen(output) + sizeof ".tar.gz.XXXXXX";
+    char *path = xmalloc(size), *partial = xmalloc(size);
+    snprintf(path, size, "%s.tar.gz", output);
+    /* A new file of its own, so concurrent exports and a planted link
+     * cannot receive this archive. */
+    snprintf(partial, size, "%s.tar.gz.XXXXXX", output);
+    int fd = mkstemp(partial);
+    if (fd < 0) {
+        failed(strerror(errno), partial);
+        free(partial);
+        free(path);
+        return false;
+    }
+    fchmod(fd, 0644);
+    close(fd);
+    char *parent = xstrdup(output);
+    char *slash = strrchr(parent, '/');
+    const char *base = slash ? slash + 1 : output;
+    if (slash) {
+        *slash = 0;
+    }
+    /* ./ keeps a name that starts with a dash from reading as an option. */
+    char *member = join(".", base);
+    char *argv[] = {
+        "tar",  "-czf", partial, "-C", slash ? (parent[0] ? parent : "/") : ".",
+        member, NULL
+    };
+    bool archived = chibi_process_run(argv) == 0 && rename(partial, path) == 0;
+    if (archived) {
+        printf("Archived %s\n", path);
+    } else {
+        unlink(partial);
+        failed("tar could not archive the export", path);
+    }
+    free(member);
+    free(parent);
+    free(partial);
+    free(path);
+    return archived;
 }
 
-bool chibi_export(const chibi_export_spec *spec)
+/* The output without trailing slashes, with .app added to an app's, or NULL
+ * when its last component does not name a folder. */
+static char *output_path(const chibi_export_spec *spec)
 {
     size_t length = strlen(spec->output);
     while (length > 1 && spec->output[length - 1] == '/') {
         length--;
     }
-    char *output = xmalloc(length + 1);
+    char *output = xmalloc(length + sizeof ".app");
     memcpy(output, spec->output, length);
     output[length] = 0;
-    char *staging = xmalloc(length + sizeof ".partial-XXXXXX");
-    snprintf(staging, length + sizeof ".partial-XXXXXX", "%s.partial-XXXXXX", output);
+    const char *slash = strrchr(output, '/');
+    const char *last = slash ? slash + 1 : output;
+    size_t last_length = strlen(last);
+    bool app = last_length >= 4 && !strcasecmp(last + last_length - 4, ".app");
+    if (!last[0] || !strcmp(last, ".") || !strcmp(last, "..") ||
+        (app && last_length == 4)) {
+        free(output);
+        return NULL;
+    }
+    if (spec->layout == CHIBI_EXPORT_APP && !app) {
+        strcat(output, ".app");
+    }
+    return output;
+}
+
+bool chibi_export(const chibi_export_spec *spec)
+{
+    assert(spec->layout == CHIBI_EXPORT_FOLDER || spec->layout == CHIBI_EXPORT_APP);
+    char *output = output_path(spec);
+    if (!output) {
+        return failed("the output must name a folder", spec->output);
+    }
+    if (spec->layout == CHIBI_EXPORT_APP && spec->icon && !app_icon_valid(spec)) {
+        free(output);
+        return false;
+    }
+    size_t size = strlen(output) + sizeof ".partial-XXXXXX";
+    char *staging = xmalloc(size);
+    snprintf(staging, size, "%s.partial-XXXXXX", output);
     bool exported = false;
-    if (!plain_output(output)) {
-        failed("the output must name a folder", output);
-    } else if (!make_parents(output) || !mkdtemp(staging)) {
+    if (!make_parents(output) || !mkdtemp(staging)) {
         failed(strerror(errno), output);
     } else {
         exported = chmod(staging, 0755) == 0 && assemble(spec, staging) &&
                    publish(staging, output);
         remove_tree(staging);
     }
+    free(staging);
     if (exported) {
         printf("Exported %s\n", output);
     }
-    free(staging);
+    exported = exported && (!spec->archive || archive(output));
     free(output);
     return exported;
 }

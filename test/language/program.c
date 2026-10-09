@@ -2574,8 +2574,14 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
         "    on Tick() { n = hit }\n}\n",
         "behavior L { n: double = 0; local hit = other; local other = hit\n"
         "    on Tick() { n = hit }\n}\n",
+        "behavior L { n: double = 0; items: double = 0\n"
+        "    function One() { return 1 }\n"
+        "    local index = One(); local hit = items[index]\n"
+        "    on Tick() { n = hit; hit = 2 }\n}\n",
+        "behavior L { n: double = 0; local hit = [0]\n"
+        "    on Tick() { hit := 0; a := local.hit[0]; b := local.hit[0] }\n}\n",
     };
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < 10; i++) {
         unchanged = NULL;
         REQUIRE(
             chibi_migrate_locals(later[i], &unchanged, error, sizeof error) &&

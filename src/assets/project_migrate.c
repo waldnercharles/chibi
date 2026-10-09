@@ -1517,11 +1517,13 @@ static bool redeclares(const char *text, TSNode scope, TSNode name, TSNode own)
     return false;
 }
 /* Whether `node` evaluates to the same value wherever and however often it
- * runs: it reads no names and calls nothing. */
+ * runs: it reads no names, calls nothing and builds no fresh array or
+ * struct. */
 static bool constant(TSNode node)
 {
     if (is(node, "identifier") || is(node, "call_expression") ||
-        is(node, "await_expression")) {
+        is(node, "await_expression") || is(node, "array_expression") ||
+        is(node, "struct_expression")) {
         return false;
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
@@ -1692,6 +1694,33 @@ static bool storage_path(const char *text, lazy *all, TSNode node)
     }
     return is(node, "builtin_reference") ||
            (is(node, "identifier") && names_storage(text, node));
+}
+/* Whether a storage path reads a local evaluated once or calls something,
+ * which expanding it at each use would evaluate again. */
+static bool computed(const char *text, lazy *all, TSNode node)
+{
+    lazy *read = local_read(text, all, node);
+    if (read) {
+        return !read->alias;
+    }
+    if (is(node, "await_expression")) {
+        return true;
+    }
+    if (is(node, "call_expression")) {
+        TSNode callee = ts_node_child_by_field_name(node, "function", 8);
+        uint32_t start = ts_node_start_byte(callee);
+        if (ts_node_end_byte(callee) - start != 13 ||
+            strncmp(text + start, "get_component", 13)) {
+            return true;
+        }
+        node = ts_node_child_by_field_name(node, "arguments", 9);
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (computed(text, all, ts_node_named_child(node, i))) {
+            return true;
+        }
+    }
+    return false;
 }
 /* Whether `node` calls something that runs before `read` is evaluated. */
 static bool calls_before(TSNode node, TSNode read)
@@ -1939,7 +1968,18 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
     free(seen);
     for (int k = 0; !status && k < acount(order); k++) {
         lazy *l = &all[order[k]];
-        l->alias = storage_path(text, all, ts_node_child_by_field_name(l->node, "value", 5));
+        TSNode value = ts_node_child_by_field_name(l->node, "value", 5);
+        l->alias = storage_path(text, all, value);
+        if (l->alias && computed(text, all, value)) {
+            status = local_fail(
+                error,
+                error_size,
+                text,
+                ts_node_child_by_field_name(l->node, "name", 4),
+                "Local `%.*s` names storage through a computed value; declare "
+                "that value where it should run before migrating"
+            );
+        }
     }
     replacement *edits = NULL;
     local_use *uses = NULL;

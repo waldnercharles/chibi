@@ -1,5 +1,7 @@
 #include "authoring/source_navigation.h"
 
+#include "authoring/source_prototype_flow.h"
+#include "runtime/input_action.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -235,10 +237,22 @@ static bool member_written(const script_analysis *analysis, const script_express
     return false;
 }
 
+/* `input.<Action>` folds to the action's name, and an action is the event
+ * of that name, which the input map defines. */
+static authoring_target action_target(const authoring_navigation *index, const char *name)
+{
+    int event = script_catalog_find_capability(index->catalog, name, SCRIPT_CAPABILITY_EVENT);
+    return (authoring_target){ AUTHORING_CALLABLE,
+                               -1,
+                               event >= 0 ? index->catalog->capabilities[event].id : 0,
+                               0 };
+}
+
 static void expressions(authoring_navigation *index, int document)
 {
     const authoring_document *source = &index->documents[document];
     const script_analysis *analysis = source->analysis;
+    const uint64_t action_type = script_catalog_id("type", INPUT_ACTION_TYPE);
     for (int i = 0; i < analysis->expression_count; i++) {
         const script_expression *expression = &analysis->expressions[i];
         TSNode node = expression_node(source->syntax, expression->range);
@@ -292,6 +306,13 @@ static void expressions(authoring_navigation *index, int document)
         } else if (expression->kind == SCRIPT_EXPR_COMPONENT && expression->capability && !strcmp(ts_node_type(node), "member_expression")) {
             node = name_node(node);
             target = (authoring_target){ AUTHORING_TYPE, -1, expression->capability, 0 };
+        } else if (
+            expression->kind == SCRIPT_EXPR_CONSTANT && expression->member &&
+            expression->type.nominal == action_type &&
+            !strcmp(ts_node_type(node), "member_expression")
+        ) {
+            node = name_node(node);
+            target = action_target(index, expression->constant.str);
         } else {
             continue;
         }
@@ -394,6 +415,26 @@ static void document_references(authoring_navigation *index, int document)
     expressions(index, document);
 }
 
+/* Constants that reach a prototype parameter through values reference it. */
+static void prototype_names(authoring_navigation *index)
+{
+    authoring_prototype_name *names = authoring_prototype_names(
+        index->documents,
+        acount(index->documents),
+        index->catalog
+    );
+    for (int i = 0; i < acount(names); i++) {
+        add_reference(
+            index,
+            (authoring_reference){ { AUTHORING_PROTOTYPE, -1, names[i].prototype, 0 },
+                                   { names[i].document, names[i].range },
+                                   AUTHORING_HANDLE,
+                                   { .storage = PIN_NAME } }
+        );
+    }
+    afree(names);
+}
+
 authoring_navigation *authoring_navigation_new(
     const authoring_document *documents,
     int count,
@@ -455,6 +496,7 @@ authoring_navigation *authoring_navigation_new_project(
     for (int i = 0; i < count; i++) {
         document_references(index, i);
     }
+    prototype_names(index);
     for (int i = 0; i < definition_count; i++) {
         const source_catalog_definition *definition = &definitions[i];
         assert(definition->path && definition->text);

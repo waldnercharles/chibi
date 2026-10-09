@@ -1,6 +1,5 @@
 name "Player"
 components {
-    (object)GAME.GameActionBinding
     (object)GAME.GameAim
     GAME.GameAppearance height=18.0 width=20.0
     (object)GAME.GameCollider

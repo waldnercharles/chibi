@@ -53,39 +53,61 @@ int posix_win32_open(const char *path, int flags, ...)
 
 int posix_win32_lstat(const char *path, struct stat *info)
 {
-    if (stat(path, info) != 0) {
-        return -1;
-    }
     DWORD attributes = GetFileAttributesA(path);
-    if (attributes != INVALID_FILE_ATTRIBUTES &&
-        attributes & FILE_ATTRIBUTE_REPARSE_POINT) {
-        info->st_mode = (info->st_mode & ~S_IFMT) | S_IFLNK;
+    if (attributes == INVALID_FILE_ATTRIBUTES ||
+        !(attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        return stat(path, info);
     }
+    /* A link reports itself even when its target is missing. */
+    if (stat(path, info) != 0) {
+        *info = (struct stat){ 0 };
+    }
+    info->st_mode = (info->st_mode & ~S_IFMT) | S_IFLNK;
     return 0;
 }
 
 char *posix_win32_realpath(const char *path, char *resolved)
 {
-    char *full = _fullpath(resolved, path, PATH_MAX);
-    if (!full) {
-        return NULL;
-    }
-    if (GetFileAttributesA(full) == INVALID_FILE_ATTRIBUTES) {
+    HANDLE file = CreateFileA(
+        path,
+        0,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS,
+        NULL
+    );
+    if (file == INVALID_HANDLE_VALUE) {
         errno = errno_from_windows();
-        if (!resolved) {
-            free(full);
-        }
         return NULL;
     }
+    char final[PATH_MAX];
+    DWORD length = GetFinalPathNameByHandleA(file, final, sizeof final, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    if (!length || length >= sizeof final) {
+        errno = length ? ENAMETOOLONG : errno_from_windows();
+        CloseHandle(file);
+        return NULL;
+    }
+    CloseHandle(file);
+    /* Drop the \\?\ prefix; a share keeps its leading \\. */
+    char *start = final;
+    if (!strncmp(final, "\\\\?\\UNC\\", 8)) {
+        final[6] = '\\';
+        start = final + 6;
+    } else if (!strncmp(final, "\\\\?\\", 4)) {
+        start = final + 4;
+    }
+    char *full = resolved ? resolved : xmalloc(PATH_MAX);
+    strcpy(full, start);
     for (char *c = full; *c; c++) {
         if (*c == '\\') {
             *c = '/';
         }
     }
     /* Drop a trailing separator, except a drive root's. */
-    size_t length = strlen(full);
-    if (length > 3 && full[length - 1] == '/') {
-        full[length - 1] = 0;
+    size_t end = strlen(full);
+    if (end > 3 && full[end - 1] == '/') {
+        full[end - 1] = 0;
     }
     return full;
 }
@@ -273,17 +295,27 @@ DIR *posix_win32_opendir(const char *path)
     }
     DIR *dir = xmalloc(sizeof *dir);
     dir->find = FindFirstFileA(pattern, &dir->found);
-    if (dir->find == INVALID_HANDLE_VALUE) {
-        errno = errno_from_windows();
+    dir->pending = dir->find != INVALID_HANDLE_VALUE;
+    int error = dir->pending ? 0 : errno_from_windows();
+    /* A folder without even . and .., such as an empty drive root, opens with
+     * no entries. */
+    DWORD attributes = error == ENOENT ? GetFileAttributesA(path)
+                                       : INVALID_FILE_ATTRIBUTES;
+    bool empty = attributes != INVALID_FILE_ATTRIBUTES &&
+                 attributes & FILE_ATTRIBUTE_DIRECTORY;
+    if (error && !empty) {
+        errno = error;
         free(dir);
         return NULL;
     }
-    dir->pending = true;
     return dir;
 }
 
 struct dirent *posix_win32_readdir(DIR *dir)
 {
+    if (dir->find == INVALID_HANDLE_VALUE) {
+        return NULL;
+    }
     if (!dir->pending && !FindNextFileA(dir->find, &dir->found)) {
         if (GetLastError() != ERROR_NO_MORE_FILES) {
             errno = errno_from_windows();
@@ -297,7 +329,9 @@ struct dirent *posix_win32_readdir(DIR *dir)
 
 int posix_win32_closedir(DIR *dir)
 {
-    FindClose(dir->find);
+    if (dir->find != INVALID_HANDLE_VALUE) {
+        FindClose(dir->find);
+    }
     free(dir);
     return 0;
 }

@@ -46,7 +46,7 @@ PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
 }
 PLAYER_EMPTY_CATALOGS = {
     ('shader-values', 'parameters'): (12, '0ba1d1fcd4761fcb'),
-    ('parts', 'parts'): (11, '9af61f71205c3be9'),
+    ('parts', 'parts'): (11, '9af98571205f1f12'),
 }
 PLAYER_RESOURCES |= PLAYER_EMPTY_CATALOGS.keys()
 

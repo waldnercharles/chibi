@@ -2533,6 +2533,53 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
         unchanged = NULL;
         REQUIRE(chibi_migrate_locals(names[i], &unchanged, error, sizeof error) && !unchanged);
     }
+    /* A call first read in a branch might never have run. */
+    const char
+        *branch = "behavior L { n: double = 0\n"
+                  "    function One() { return 1 }\n"
+                  "    local hit = One()\n"
+                  "    on Impulse(amount, enabled) { if enabled { n = hit } }\n"
+                  "    on Tick() { if n > 0 { n = hit }; if n > 1 { n = hit } "
+                  "}\n"
+                  "}\n";
+    REQUIRE(
+        chibi_migrate_locals(branch, &unchanged, error, sizeof error) &&
+        !unchanged && strstr(error, "`hit`")
+    );
+    /* Read in one branch only, it is declared inside that branch. */
+    const char
+        *one = "behavior L { n: double = 0\n"
+               "    function One() { return 1 }\n"
+               "    local hit = One()\n"
+               "    on Impulse(amount, enabled) { if enabled { n = hit } }\n"
+               "}\n";
+    REQUIRE(!chibi_migrate_locals(one, &unchanged, error, sizeof error));
+    REQUIRE(unchanged && strstr(unchanged, "if enabled { hit := One(); n = hit }"));
+    free(unchanged);
+    /* A condition is always read, so the local goes before its statement. */
+    const char *condition = "behavior L { n: double = 0\n"
+                            "    function One() { return 1 }\n"
+                            "    local hit = One()\n"
+                            "    on Impulse(amount, enabled) { if hit > 0 { n "
+                            "= hit } }\n"
+                            "}\n";
+    REQUIRE(!chibi_migrate_locals(condition, &unchanged, error, sizeof error));
+    REQUIRE(unchanged && strstr(unchanged, "{ hit := One(); if hit > 0 { n = hit } }"));
+    free(unchanged);
+    const char *disabled = "behavior L { disabled local X = 1 }\n";
+    REQUIRE(
+        chibi_migrate_locals(disabled, &unchanged, error, sizeof error) &&
+        !unchanged && strstr(error, "disabled")
+    );
+    /* `local.X` names the root local past a nearer `X`. */
+    const char *qualified = "behavior L { n: double = 0\n"
+                            "    local X = n + 1\n"
+                            "    on Impulse(amount, enabled) { X := 0; n = "
+                            "local.X + X }\n"
+                            "}\n";
+    REQUIRE(!chibi_migrate_locals(qualified, &unchanged, error, sizeof error));
+    REQUIRE(unchanged && !strstr(unchanged, "local") && strstr(unchanged, "n = (n + 1) + X"));
+    free(unchanged);
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
     for (int b = 0; b < 2; b++) {
         prepare();

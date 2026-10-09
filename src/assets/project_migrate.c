@@ -1322,6 +1322,18 @@ typedef struct
     int local;
     TSNode node, unit;
 } local_use;
+/* `local.X` names the root local despite any nearer `X`. */
+static lazy *qualified(const char *text, lazy *all, TSNode node, TSNode name)
+{
+    for (TSNode scope = ts_node_parent(node); !ts_node_is_null(scope);
+         scope = ts_node_parent(scope)) {
+        lazy *found = scope_node(scope) ? lazy_in(text, all, scope, name) : NULL;
+        if (found) {
+            return found;
+        }
+    }
+    return NULL;
+}
 /* The local `node` reads, if any. */
 static lazy *local_read(const char *text, lazy *all, TSNode node)
 {
@@ -1331,7 +1343,7 @@ static lazy *local_read(const char *text, lazy *all, TSNode node)
         uint32_t start = ts_node_start_byte(object);
         return is(object, "identifier") && ts_node_end_byte(object) - start == 5 &&
                        !strncmp(text + start, "local", 5)
-                 ? resolve_lazy(text, all, node, member)
+                 ? qualified(text, all, node, member)
                  : NULL;
     }
     return lazy_read(text, all, node);
@@ -1549,6 +1561,50 @@ static int inline_local(
     }
     return 0;
 }
+static bool calls(TSNode node)
+{
+    if (is(node, "call_expression") || is(node, "await_expression")) {
+        return true;
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        if (calls(ts_node_named_child(node, i))) {
+            return true;
+        }
+    }
+    return false;
+}
+/* Whether reaching the statement of `block` that holds `read` always reaches
+ * `read`: a condition or loop header is always read, a branch or loop body
+ * or the right side of `&&` and `||` is not. */
+static bool always_reads(const char *text, TSNode read, TSNode block)
+{
+    static const char *const branching[] = {
+        "if_statement",      "while_statement", "for_statement",
+        "foreach_statement", "match_statement", "branch_statement",
+        "label_statement"
+    };
+    static const char *const headers[] = { "condition", "value", "first", "last" };
+    for (TSNode child = read, at = ts_node_parent(read); !ts_node_eq(at, block);
+         child = at, at = ts_node_parent(at)) {
+        bool header = false;
+        for (size_t i = 0; i < sizeof headers / sizeof *headers; i++) {
+            header |= child_is(at, headers[i], child);
+        }
+        for (size_t i = 0; !header && i < sizeof branching / sizeof *branching; i++) {
+            if (is(at, branching[i])) {
+                return false;
+            }
+        }
+        TSNode op = ts_node_child_by_field_name(at, "operator", 8);
+        if (is(at, "binary_expression") && child_is(at, "right", child) &&
+            !ts_node_is_null(op) &&
+            (!strncmp(text + ts_node_start_byte(op), "&&", 2) ||
+             !strncmp(text + ts_node_start_byte(op), "||", 2))) {
+            return false;
+        }
+    }
+    return true;
+}
 /* Declares `l` in `unit` before the first statement that reads it. */
 static int place_local(
     const char *text,
@@ -1595,6 +1651,17 @@ static int place_local(
         statement = block;
         block = ts_node_parent(block);
     }
+    TSNode value = ts_node_child_by_field_name(l->node, "value", 5);
+    if (calls(value) && !always_reads(text, first, block)) {
+        return local_fail(
+            error,
+            error_size,
+            text,
+            ts_node_child_by_field_name(l->node, "name", 4),
+            "Local `%.*s` calls a function and is first read in a branch or "
+            "loop; declare it where it should run before migrating"
+        );
+    }
     TSNode name = ts_node_child_by_field_name(l->node, "name", 4);
     for (TSNode scope = block; !ts_node_eq(scope, ts_node_parent(unit));
          scope = ts_node_parent(scope)) {
@@ -1602,7 +1669,6 @@ static int place_local(
             return inline_local(text, all, index, unit, uses, out, error, error_size);
         }
     }
-    TSNode value = ts_node_child_by_field_name(l->node, "value", 5);
     TSNode shadowed = captured(text, all, value, l->node, statement);
     if (!ts_node_is_null(shadowed)) {
         return local_fail(error, error_size, text, shadowed, "A local reads `%.*s`, which another declaration shadows where the local is read; rename one");
@@ -1669,9 +1735,32 @@ static void depends_first(const char *text, lazy *all, int index, bool *visited,
 }
 int chibi_migrate_locals(const char *source, char **migrated, char *error, size_t error_size)
 {
+    *migrated = NULL;
+    for (const char *p = source; *p;) {
+        const char *skip = skip_literal(p);
+        if (skip != p) {
+            p = skip;
+            continue;
+        }
+        if (strncmp(p, "disabled", 8)) {
+            p++;
+            continue;
+        }
+        const char *word = p + 8;
+        while (*word == ' ' || *word == '\t') {
+            word++;
+        }
+        if (word > p + 8 && !strncmp(word, "local", 5) && !word_char(word[5]) &&
+            (p == source || !word_char(p[-1])) && statement_start(source, p)) {
+            if (error_size) {
+                snprintf(error, error_size, "%s", "A local is disabled; enable or remove it before migrating");
+            }
+            return -1;
+        }
+        p++;
+    }
     lazy *all = NULL;
     char *text = strip_lazy(source, "local", &all);
-    *migrated = NULL;
     if (!acount(all)) {
         free(text);
         afree(all);
@@ -1696,10 +1785,6 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
         );
         all[i].node = node;
         all[i].name = local_name(text, ts_node_child_by_field_name(node, "name", 4));
-        int before = all[i].offset;
-        while (before > 0 && isspace((unsigned char)text[before - 1])) {
-            before--;
-        }
         TSNode quoted = ts_node_child_by_field_name(node, "name", 4);
         bool unique = *all[i].name && !spells(text, root, all[i].name);
         for (int j = 0; unique && j < i; j++) {
@@ -1713,15 +1798,6 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
                 quoted,
                 "Local %.*s has no identifier of its own; rename it before "
                 "migrating"
-            );
-        }
-        if (!status && before >= 8 && !strncmp(text + before - 8, "disabled", 8)) {
-            status = local_fail(
-                error,
-                error_size,
-                text,
-                ts_node_child_by_field_name(node, "name", 4),
-                "Local `%.*s` is disabled; enable or remove it before migrating"
             );
         }
     }

@@ -36,6 +36,30 @@ what is missing (`Unknown prototype 'Block'`) and, when known, its line. While a
 model and a shape share a name there is no catalog, so it lists no asset
 problems until one is renamed.
 
+## Declare components
+
+A game declares its own component types under `content/components`, one KDL file
+per component. Fields are laid out in order with natural alignment and start
+zeroed. A field type is a script scalar (`bool`, `int`, `float`, `double`,
+`string`, `entity`, ...) or an engine struct such as `CF_V2`:
+
+```kdl
+name "Charge"
+description "Stored energy that refills over time."
+(array)fields {
+    - name="level" type="float"
+    - name="capacity" type="float"
+    - name="full" type="bool"
+    - name="drift" type="CF_V2"
+}
+```
+
+Prototypes, scenes, behaviors and systems then use `Charge` like an engine
+component. A name may not reuse an engine type. The compiler stores the
+declarations in the prepared artifact, so the player needs no source.
+`chibi_ctl` formats, validates, describes and runs them like engine components.
+Studio does not read declarations yet.
+
 ## Edit and verify
 
 1. Read the existing asset and its dependencies. Use the shared SDK's reflected

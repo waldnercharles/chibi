@@ -29,7 +29,7 @@ graph layout and debug metadata never define execution.
 5. **Structure pass.** Apply every rule under Reference that the graph
    violates. Done when each rule is either satisfied or its exception is
    noted in the graph or asset description.
-6. **Verify.** After hand edits run `build/chibi_ctl --project-root <root>
+6. **Verify.** After hand edits run `build/bin/chibi_ctl --project-root <root>
    --format`, inspect its result, and rerun the selected admitted check. For
    layout changes, compare a rendered view when the permitted inspection path
    supports it. Report checks run and any unverified behavior separately.

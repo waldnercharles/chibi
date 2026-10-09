@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.25)
 set(CHIBI_SDK_VERSION 0.1.0)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(ChibiSDK VERSION ${CHIBI_SDK_VERSION} LANGUAGES C)
+    if(WIN32)
+        enable_language(RC)
+        set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
+    endif()
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -43,6 +47,22 @@ if(CHIBI_SDK_BUILD_DESKTOP AND NOT CHIBI_SDK_BUILD_NATIVE)
 endif()
 set(CHIBI_SDK_NEEDS_THREADS OFF)
 
+# Windows executables read and write file names as UTF-8, as elsewhere.
+# Installed consumers add share/chibi/windows/chibi.rc themselves.
+function(chibi_windows_manifest target)
+    if(WIN32)
+        set(windows "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../src/host/windows")
+        target_sources(${target} PRIVATE "${windows}/chibi.rc")
+        # The resource compiler reports no dependencies, so name the manifest.
+        set_source_files_properties("${windows}/chibi.rc" TARGET_DIRECTORY ${target}
+            PROPERTIES OBJECT_DEPENDS "${windows}/chibi.manifest")
+    endif()
+endfunction()
+if(WIN32)
+    install(FILES "${CHIBI_SDK_ROOT}/src/host/windows/chibi.rc"
+        "${CHIBI_SDK_ROOT}/src/host/windows/chibi.manifest" DESTINATION share/chibi/windows)
+endif()
+
 # Both source and installed consumers see only headers owned by their declared
 # dependency closure. Keep include spellings stable while isolating search roots.
 function(chibi_sdk_headers target visibility)
@@ -80,8 +100,21 @@ if(CHIBI_WEB_THREADS)
         "-sPTHREAD_POOL_SIZE=${CHIBI_WEB_POOL_SIZE}" -sPTHREAD_POOL_SIZE_STRICT=2
         -sALLOW_MEMORY_GROWTH=1)
 endif()
-chibi_sdk_headers(chibi_support PUBLIC support/arena.h support/array.h support/xalloc.h
-    support/rcss_map.h support/enum.h support/cos_sin.h support/file_io.h support/math.h)
+set(support_headers support/arena.h support/array.h support/xalloc.h support/rcss_map.h
+    support/enum.h support/cos_sin.h support/file_io.h support/math.h)
+if(WIN32)
+    # C sources that use the SDK get the POSIX calls the Microsoft runtime lacks.
+    target_sources(chibi_support PRIVATE "${CHIBI_SDK_ROOT}/src/support/win32/posix.c")
+    list(APPEND support_headers support/win32/posix.h support/win32/unistd.h
+        support/win32/dirent.h support/win32/strings.h support/win32/sys/file.h)
+    set(posix "support/support/win32")
+    target_include_directories(chibi_support PUBLIC
+        "$<$<COMPILE_LANGUAGE:C>:$<BUILD_INTERFACE:${CHIBI_SDK_HEADER_ROOT}/${posix}>>"
+        "$<$<COMPILE_LANGUAGE:C>:$<INSTALL_INTERFACE:include/chibi/${posix}>>")
+    target_compile_options(chibi_support PUBLIC
+        "$<$<COMPILE_LANGUAGE:C>:-include$<BUILD_INTERFACE:${CHIBI_SDK_HEADER_ROOT}/${posix}/posix.h>$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/include/chibi/${posix}/posix.h>>")
+endif()
+chibi_sdk_headers(chibi_support PUBLIC ${support_headers})
 if(UNIX)
     target_link_libraries(chibi_support PUBLIC m)
 endif()
@@ -144,10 +177,14 @@ chibi_sdk_headers(chibi_native_capabilities PUBLIC runtime/native_capabilities.h
 target_link_libraries(chibi_native_capabilities PUBLIC chibi_capabilities chibi_execution_contract)
 
 add_library(chibi_ecs STATIC "${CHIBI_SDK_ROOT}/src/ecs/ecs.c"
+    "${CHIBI_SDK_ROOT}/src/ecs/relationship.c" "${CHIBI_SDK_ROOT}/src/ecs/hierarchy.c"
     "${CHIBI_SDK_ROOT}/src/ecs/component_catalog.c")
 add_library(Chibi::ecs ALIAS chibi_ecs)
 set_target_properties(chibi_ecs PROPERTIES EXPORT_NAME ecs)
 chibi_sdk_headers(chibi_ecs PUBLIC ecs/ecs.h ecs/execution.h ecs/component_catalog.h)
+configure_file("${CHIBI_SDK_ROOT}/src/ecs/ecs_internal.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/ecs/ecs/ecs_internal.h" COPYONLY)
+target_include_directories(chibi_ecs PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/ecs")
 target_link_libraries(chibi_ecs PUBLIC chibi_types)
 
 add_library(chibi_events STATIC "${CHIBI_SDK_ROOT}/src/runtime/events.c")
@@ -464,14 +501,22 @@ if(CHIBI_SDK_BUILD_COMPILER)
 endif()
 # `chibi PROJECT` prepares a changed project and plays it with its siblings.
 if(TARGET chibi-compile AND TARGET chibi-player)
-    add_executable(chibi "${CHIBI_SDK_ROOT}/src/host/chibi_main.c")
-    target_link_libraries(chibi PRIVATE chibi_project_document chibi_support)
+    add_executable(chibi "${CHIBI_SDK_ROOT}/src/host/chibi_main.c"
+        "${CHIBI_SDK_ROOT}/src/host/export.c" "${CHIBI_SDK_ROOT}/src/host/process.c")
+    foreach(header export process)
+        configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
+            "${CMAKE_CURRENT_BINARY_DIR}/private/launcher/host/${header}.h" COPYONLY)
+    endforeach()
+    target_include_directories(chibi PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/launcher"
+        "${CHIBI_SDK_ROOT}/third_party/yyjson")
+    target_link_libraries(chibi PRIVATE chibi_project_document chibi_support chibi_json)
     target_compile_options(chibi PRIVATE -Wall -Wextra -Werror)
     add_dependencies(chibi chibi-compile chibi-player)
+    chibi_windows_manifest(chibi)
     install(TARGETS chibi RUNTIME DESTINATION bin)
 endif()
 foreach(target IN LISTS CHIBI_SDK_TARGETS)
-    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_task_scheduler|chibi_asset_kdl)$")
+    if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror)
         if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
             target_compile_options(${target} PRIVATE -Wno-experimental)
@@ -485,6 +530,8 @@ install(TARGETS ${CHIBI_SDK_TARGETS}
     EXPORT ChibiTargets ARCHIVE DESTINATION lib)
 install(EXPORT ChibiTargets NAMESPACE Chibi:: DESTINATION lib/cmake/Chibi)
 include(CMakePackageConfigHelpers)
+# Installed consumers must link the C runtime these libraries were built with.
+set(CHIBI_MSVC_RUNTIME MultiThreaded)
 configure_package_config_file("${CMAKE_CURRENT_SOURCE_DIR}/ChibiConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/ChibiConfig.cmake"
     INSTALL_DESTINATION lib/cmake/Chibi)

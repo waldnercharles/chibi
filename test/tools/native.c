@@ -4,17 +4,20 @@
 #include "runtime/behaviors/entities_native.h"
 #include "runtime/behaviors/entities_source.h"
 #include "runtime/component_catalog.h"
+#include "runtime/declared_components.h"
 #include "runtime/material_field_prepared.h"
 #include "runtime/player.h"
 #include "runtime/player_prepared.h"
 #include "runtime/world.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/catalog.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static game_world *simulation;
 static game_scene_instance *scene_instance;
@@ -504,8 +507,10 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         module = NULL;
         GameTransform transform = { .x = 4 };
         GameGlobalBinding binding = { .name = "Player" };
-        game_scene_component components[] = { { &GAME_COMPONENT_GameTransform, &transform },
-                                              { &GAME_COMPONENT_GameGlobalBinding, &binding } };
+        game_scene_component components[] = {
+            { &GAME_COMPONENT_GameTransform, &transform },
+            { &GAME_COMPONENT_GameGlobalBinding, &binding }
+        };
         const char *behavior = "Initial";
         game_scene_object object = { .name = "Initial",
                                      .components = components,
@@ -552,9 +557,37 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         REQUIRE(ticks == 0 && game_scene_object_count(scene) == 1);
         record.name = "Initial";
         size_t player_length;
+        game_player_application application = { .title = "Native",
+                                                .width = 640,
+                                                .height = 360,
+                                                .fullscreen = true,
+                                                .icon = "art/icon.png" };
         REQUIRE(
-            game_player_prepared_write(&spec, &player_bytes, &player_length, error, sizeof error)
+            game_player_prepared_write(&spec, &application, &player_bytes, &player_length, error, sizeof error)
         );
+        char artifact_path[] = "/tmp/chibi-native-player-XXXXXX";
+        int artifact_fd = mkstemp(artifact_path);
+        REQUIRE(artifact_fd >= 0);
+        bool written = write(artifact_fd, player_bytes, player_length) ==
+                       (ssize_t)player_length;
+        close(artifact_fd);
+        game_player_application read = { 0 };
+        bool read_back = written &&
+                         game_player_application_read(artifact_path, &read, error, sizeof error);
+        unlink(artifact_path);
+        REQUIRE(read_back);
+        REQUIRE(!strcmp(read.title, "Native") && !strcmp(read.icon, "art/icon.png"));
+        REQUIRE(read.width == 640 && read.height == 360 && read.fullscreen);
+        game_player_application_free(&read);
+        /* An icon outside the resource root is refused, as on reading. */
+        application.icon = "../outside.png";
+        unsigned char *unsafe = NULL;
+        size_t unsafe_length = 0;
+        REQUIRE(
+            !game_player_prepared_write(&spec, &application, &unsafe, &unsafe_length, error, sizeof error)
+        );
+        REQUIRE(!unsafe);
+        application.icon = "art/icon.png";
         game_player_host player_host_context = {
             .components = { .components = GAME_REGISTRY_COMPONENTS,
                             .component_count = GAME_REGISTRY_COMPONENT_COUNT },
@@ -654,6 +687,139 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
     }
     return true;
 }
+typedef struct
+{
+    float level;
+    int cycles;
+    bool full;
+    uint64_t source;
+    CF_V2 drift;
+} charge;
+static const declared_field charge_fields[] = {
+    { .name = "level", .type = "float" },
+    { .name = "cycles", .type = "int" },
+    { .name = "full", .type = "bool" },
+    { .name = "source", .type = "entity" },
+    { .name = "drift", .type = "CF_V2" },
+};
+static bool rejected(const char *name, const char *type, const char *message)
+{
+    char error[192];
+    declared_field field = { .name = "value", .type = type };
+    declared_component component = { .name = name, .fields = &field, .field_count = 1 };
+    declared_components *set = declared_components_new(&component, 1, error, sizeof error);
+    declared_components_free(set);
+    return !set && strstr(error, message);
+}
+TEST_CASE(native_player_reads_declared_components)
+{
+    char error[192];
+    REQUIRE(rejected("CF_V2", "float", "already an engine type"));
+    REQUIRE(rejected("float", "float", "built-in script type"));
+    REQUIRE(rejected("task", "float", "built-in script type"));
+    REQUIRE(rejected("Charge", "vec9", "unknown type vec9"));
+    REQUIRE(rejected("Charge", "handle", "unknown type handle"));
+    REQUIRE(rejected("2Charge", "float", "identifier"));
+    declared_component component = { .name = "Charge",
+                                     .fields = charge_fields,
+                                     .field_count = 5 };
+    declared_component twice[] = { component, component };
+    REQUIRE(!declared_components_new(twice, 2, error, sizeof error));
+    REQUIRE(strstr(error, "declared twice"));
+    declared_field level = { .name = "level", .type = "float" };
+    declared_component other = { .name = "Battery", .fields = &level, .field_count = 1 };
+    declared_components *older = declared_components_new(&other, 1, error, sizeof error);
+    REQUIRE(older && type_catalog_find("Battery"));
+    declared_components *declared = declared_components_new(&component, 1, error, sizeof error);
+    REQUIRE(declared);
+    REQUIRE(!type_catalog_find("Battery"));
+    const type_desc *type = type_catalog_find("Charge");
+    REQUIRE(type && type->size == sizeof(charge));
+    REQUIRE(type->fields[1].offset == offsetof(charge, cycles));
+    REQUIRE(type->fields[2].offset == offsetof(charge, full));
+    REQUIRE(type->fields[3].offset == offsetof(charge, source));
+    REQUIRE(type->fields[4].offset == offsetof(charge, drift));
+    /* A replacement may reuse the names of the set it replaces, and a failed
+     * one leaves that set published. */
+    declared_components *replacement = declared_components_new(&component, 1, error, sizeof error);
+    REQUIRE(replacement && type_catalog_find("Charge") != type);
+    declared_components_free(replacement);
+    REQUIRE(rejected("Charge", "vec9", "unknown type vec9"));
+    REQUIRE(type_catalog_find("Charge") == type);
+    /* A project that declares nothing still hides the other project's set. */
+    declared_components *none = declared_components_new(NULL, 0, error, sizeof error);
+    REQUIRE(none && !type_catalog_find("Charge"));
+    REQUIRE(project_components().component_count == GAME_REGISTRY_COMPONENT_COUNT);
+    declared_components_free(none);
+    REQUIRE(type_catalog_find("Charge") == type);
+    ecs_component_catalog components = declared_components_ecs(declared);
+    REQUIRE(components.component_count == 1 && components.components[0]->type == type);
+    ecs_component_catalog project = project_components();
+    REQUIRE(script_catalog_project() == declared_components_catalog(declared));
+    REQUIRE(project.component_count == GAME_REGISTRY_COMPONENT_COUNT + 1);
+    REQUIRE(project.components[GAME_REGISTRY_COMPONENT_COUNT] == components.components[0]);
+    const script_catalog_type *script = &declared_components_catalog(declared)->types[0];
+    REQUIRE(
+        script->component && script->component_id == components.components[0]->id
+    );
+    ecs_component_id charge_id = script->component_id;
+    REQUIRE(
+        script->fields[4].type.storage == PIN_STRUCT &&
+        script->fields[4].type.nominal == script_catalog_id("type", "CF_V2")
+    );
+    charge row = { .level = 1.25f, .cycles = 2, .full = true, .drift = { 1, -1 } };
+    game_scene_component data = { components.components[0], &row };
+    game_scene_object object = { .name = "Cell",
+                                 .components = &data,
+                                 .component_count = 1 };
+    game_scene_spec scene_spec = { .name = "Declared",
+                                   .physics = game_physics_defaults(),
+                                   .objects = &object,
+                                   .object_count = 1 };
+    scene = game_scene_prepare(&scene_spec, error, sizeof error);
+    REQUIRE(scene);
+    game_player_spec spec = { .declared = declared, .scene = scene };
+    game_player_application application = { 0 };
+    size_t length;
+    REQUIRE(
+        game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
+    game_scene_free(scene);
+    scene = NULL;
+    declared_components_free(declared);
+    REQUIRE(!type_catalog_find("Charge") && type_catalog_find("Battery"));
+    REQUIRE(script_catalog_project() == declared_components_catalog(older));
+    declared_components_free(older);
+    REQUIRE(!type_catalog_find("Battery") && !script_catalog_project());
+    REQUIRE(project_components().component_count == GAME_REGISTRY_COMPONENT_COUNT);
+    game_player_host player_host_context = {
+        .components = { .components = GAME_REGISTRY_COMPONENTS,
+                        .component_count = GAME_REGISTRY_COMPONENT_COUNT }
+    };
+    player = game_player_prepared_read(
+        player_bytes,
+        length,
+        &player_host_context,
+        BEHAVIOR_BYTECODE,
+        error,
+        sizeof error
+    );
+    if (!player) {
+        fprintf(stderr, "prepared player: %s\n", error);
+    }
+    REQUIRE(player);
+    REQUIRE(type_catalog_find("Charge"));
+    ecs_world *ecs = game_world_ecs(game_player_world(player));
+    ecs_entity cell = game_scene_instance_entity(game_player_scene(player), 0);
+    const charge *read = ecs_component_data_const(ecs, cell, charge_id);
+    REQUIRE(read && read->level == 1.25f && read->cycles == 2 && read->full);
+    REQUIRE(read->drift.x == 1 && read->drift.y == -1);
+    REQUIRE(project_components().component_count == GAME_REGISTRY_COMPONENT_COUNT + 1);
+    game_player_free(player);
+    player = NULL;
+    REQUIRE(!type_catalog_find("Charge"));
+    return true;
+}
 void test_tool_native()
 {
     test_native_catalog_enable();
@@ -661,5 +827,6 @@ void test_tool_native()
     RUN_TEST_CASE(native_prepared_spawn_generations);
     RUN_TEST_CASE(native_prepared_world_runs_source_and_real_physics);
     RUN_TEST_CASE(native_player_loads_package_and_retires_producers);
+    RUN_TEST_CASE(native_player_reads_declared_components);
     pu_clear_setup();
 }

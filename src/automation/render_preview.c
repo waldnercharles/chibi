@@ -392,7 +392,7 @@ static char *read_ref(const char *root, preview_ref *ref, char *error, size_t er
     }
     long size = ftell(file);
     rewind(file);
-    if (size < 0 || (unsigned long)size > SIZE_MAX - 1) {
+    if (size < 0) {
         fclose(file);
         set_error(error, error_size, "asset size is invalid");
         return NULL;

@@ -1,12 +1,12 @@
 #ifndef CHIBI_RENDER_MESH_SURFACE_H
 #define CHIBI_RENDER_MESH_SURFACE_H
-#include "render/arena_visual.h"
+#include "render/scene3d_visual.h"
 #include "runtime/geometry/mesh_asset.h"
 #include "runtime/models/model_program.h"
 
 typedef struct
 {
-    arena_visual visual;
+    scene3d_visual visual;
     CF_V3 sdf_center; /* Model-local bound center; raw shapes remain centered. */
     /* Primitive-local triangle list. Owned array; model includes dimensions. */
     render_mesh_surface_vertex *vertices;

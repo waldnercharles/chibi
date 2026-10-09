@@ -34,6 +34,14 @@ _Static_assert(offsetof(render_material_entity, time) == 304, "entity clock offs
 _Static_assert(GPU_ENTITY_BYTES == 336, "entity GPU size");
 _Static_assert(PARAMETER_BYTES == 1024, "material and shape parameters");
 
+/* A fragment shader binds at most 16 samplers. On GLES3, Cute binds the
+ * raster's four storage buffers as textures among them. */
+enum
+{
+    FRAGMENT_SAMPLERS = 16,
+    GLES_STORAGE_TEXTURES = 4
+};
+
 typedef struct
 {
     int first, last, group, program;
@@ -635,6 +643,28 @@ static bool add_images(render_shader_set *set, const render_material_entity *ent
             render_shader_set_add_image(set, (int)entity->points[12], error));
 }
 
+/* Whether the next batch can sample `set`. Later batches also sample the
+ * previous batch's targets. */
+static bool fits(const render_material_raster *r, const render_shader_set *set, shader_error *error)
+{
+    render_program_kind kind = acount(r->batches) ? RENDER_PROGRAM_RASTER_ACCUMULATE
+                                                  : RENDER_PROGRAM_RASTER;
+    int samplers = render_program_samplers(kind, set) +
+                   (cf_query_backend() == CF_BACKEND_TYPE_GLES3 ? GLES_STORAGE_TEXTURES
+                                                                : 0);
+    if (samplers <= FRAGMENT_SAMPLERS) {
+        return true;
+    }
+    snprintf(
+        error->message,
+        sizeof error->message,
+        "Needs %d fragment samplers, over the %d a shader may bind",
+        samplers,
+        FRAGMENT_SAMPLERS
+    );
+    return false;
+}
+
 static bool prepare_batches(render_material_raster *r)
 {
     aclear(r->batches);
@@ -661,13 +691,14 @@ static bool prepare_batches(render_material_raster *r)
             continue;
         }
         render_shader_set set = ordinary.set;
-        if (!add_images(&set, entity, &error)) {
+        if (!add_images(&set, entity, &error) ||
+            (set.count > ordinary.set.count && !fits(r, &set, &error))) {
             if (ordinary.last > ordinary.first) {
                 apush(r->batches, ordinary);
             }
             ordinary = (material_batch){ .first = i };
             set = (render_shader_set){ 0 };
-            if (!add_images(&set, entity, &error)) {
+            if (!add_images(&set, entity, &error) || !fits(r, &set, &error)) {
                 snprintf(r->error, sizeof r->error, "Entity %d: %s", i, error.message);
                 return false;
             }
@@ -681,22 +712,23 @@ static bool prepare_batches(render_material_raster *r)
     /* Each smooth-union group is evaluated in full, then composited in group order. */
     for (int group = 1; group <= 4; group++) {
         material_batch batch = { .last = acount(r->sorted), .group = group };
-        bool found = false;
+        bool found = false, valid = true;
         for (int i = 0; i < acount(r->sorted); i++) {
             if (r->sorted[i].metaball_group != (unsigned)group) {
                 continue;
             }
             found = true;
-            if (!add_images(&batch.set, &r->sorted[i], &error)) {
-                snprintf(
-                    r->error,
-                    sizeof r->error,
-                    "Metaball group %d: %s",
-                    group,
-                    error.message
-                );
-                return false;
-            }
+            valid = valid && add_images(&batch.set, &r->sorted[i], &error);
+        }
+        if (found && !(valid && fits(r, &batch.set, &error))) {
+            snprintf(
+                r->error,
+                sizeof r->error,
+                "Metaball group %d: %s",
+                group,
+                error.message
+            );
+            return false;
         }
         if (found) {
             apush(r->batches, batch);

@@ -106,6 +106,13 @@ static bool load(const char *const *source, int count)
                 const script_symbol *p = &a->symbols[f->parameters[j]];
                 parameters[at][j] = (script_catalog_parameter){ .name = p->name,
                                                                 .type = p->type };
+                /* Constant defaults travel with the signature, as in a project catalog. */
+                if (p->initializer >= 0 &&
+                    a->expressions[p->initializer].kind == SCRIPT_EXPR_CONSTANT) {
+                    parameters[at][j].has_default = true;
+                    parameters[at][j]
+                        .default_value = a->expressions[p->initializer].constant;
+                }
             }
             for (int j = 0; j < f->result_count; j++) {
                 const script_symbol *r = &a->symbols[f->results[j]];
@@ -949,6 +956,22 @@ TEST_CASE(navigation_follows_prototype_names_into_spawn)
     REQUIRE(strstr(edited, "Effects.Burst(kind:\"Bright Spark\")"));
     return true;
 }
+/* A call that omits a defaulted parameter references the prototype only at its default. */
+TEST_CASE(prototype_rename_skips_omitted_defaults)
+{
+    const char *sources[] = {
+        "library Effects { function Burst(kind:name=\"Spark\"){ Spawn(kind); } "
+        "}",
+        "behavior App { on Tick { Effects.Burst(); } }",
+    };
+    REQUIRE(spawn_project(sources, 2));
+    const authoring_reference *spark = at(0, "\"Spark\"){");
+    REQUIRE(spark && references(spark->target) == 2); /* The default and the prototype. */
+    REQUIRE(plan_rename(spark->target, "Bright Spark"));
+    edited = apply(0);
+    REQUIRE(edited && strstr(edited, "kind:name=\"Bright Spark\""));
+    return true;
+}
 TEST_CASE(rename_declared_events_preserves_exact_rml_tokens)
 {
     static const script_catalog_capability pulse = { .id = 401,
@@ -1191,6 +1214,7 @@ void test_language_navigation()
     RUN_TEST_CASE(intelligence_prototype_arguments_use_declared_reference_context);
     RUN_TEST_CASE(navigation_resolves_external_definitions_and_selected_references);
     RUN_TEST_CASE(navigation_follows_prototype_names_into_spawn);
+    RUN_TEST_CASE(prototype_rename_skips_omitted_defaults);
     RUN_TEST_CASE(rename_external_declaration_uses_exact_source_and_catalog_identity);
     RUN_TEST_CASE(rename_declared_events_preserves_exact_rml_tokens);
     RUN_TEST_CASE(navigation_connects_input_actions_to_the_input_map);

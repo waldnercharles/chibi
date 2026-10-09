@@ -195,8 +195,8 @@ bool game_player_prepared_write(
         (spec->scene_count && !spec->scenes) || spec->world.ecs ||
         (spec->world.modules & ~GAME_WORLD_MODULES_ALL) ||
         spec->asset_count < 0 || spec->asset_count > GAME_PLAYER_MAX_ASSETS ||
-        (spec->asset_count && !spec->assets) || spec->world.action_count < 0 ||
-        (spec->world.action_count && !spec->world.actions)) {
+        (spec->asset_count && !spec->assets) ||
+        !game_world_actions_valid(spec->world.actions, spec->world.action_count)) {
         return fail(error, size, "Invalid prepared player record metadata");
     }
     execution_wire wire = { 0 };

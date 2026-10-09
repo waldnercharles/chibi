@@ -1,5 +1,6 @@
 #include "authoring/prototype_prepare.h"
 
+#include "authoring/image_prepare.h"
 #include "authoring/material_prepare.h"
 #include "authoring/mesh_prepare.h"
 #include "authoring/parts_prepare.h"
@@ -45,6 +46,17 @@ bool authoring_prototype_resources(const game_prototype *prototype, char *error,
                         "Sprite: %s",
                         sprite->image ? diagnostic.message : "no image"
                     );
+                }
+                return false;
+            }
+        }
+        if (component->desc->id == GAME_COMPONENT_GameEnvironment.id) {
+            const char *sky = ((const GameEnvironment *)component->data)->sky;
+            char diagnostic[256];
+            if (sky && sky[0] &&
+                !image_prepare_sky(sky, diagnostic, sizeof diagnostic)) {
+                if (size) {
+                    snprintf(error, size, "Environment sky %s: %s", sky, diagnostic);
                 }
                 return false;
             }

@@ -53,8 +53,9 @@ static void mark_value(flow *f, int document, int expression)
     switch (e->kind) {
         case SCRIPT_EXPR_SYMBOL: mark_symbol(f, document, e->symbol); return;
         case SCRIPT_EXPR_CONSTANT:
-            /* A constant with a capability is already a direct reference. */
-            if (!e->capability &&
+            /* A constant with a capability is already a direct reference, and a
+             * snapshot of an omitted default is edited at its declaration. */
+            if (!e->capability && !e->constant_snapshot &&
                 (e->constant.type == PIN_STR || e->constant.type == PIN_NAME) &&
                 e->constant.str) {
                 add_name(f, document, e);

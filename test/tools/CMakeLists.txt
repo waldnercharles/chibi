@@ -82,13 +82,38 @@ if(TARGET chibi_box3d)
 endif()
 
 if(TARGET Chibi::render)
-    add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c device_controls.c)
+    add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/scene3d.c
+        device_controls.c)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
     target_link_libraries(chibi_render_consumer PRIVATE Chibi::render)
     target_compile_options(chibi_render_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_render_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::render)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_RUNTIME=1)
+    # Surface materials with roughness and metallic come from material graphs.
+    if(TARGET Chibi::shader_preparation)
+        target_link_libraries(chibi_render_consumer PRIVATE Chibi::shader_preparation
+            Chibi::graph_compilation Chibi::graph_authoring)
+        target_sources(chibi_render_consumer PRIVATE ../render/material_graphs.c ../render/material_ramps.c)
+        target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
+        target_link_libraries(test_tools PRIVATE Chibi::shader_preparation
+            Chibi::graph_compilation Chibi::graph_authoring)
+        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
+        target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
+    endif()
+endif()
+
+# Image preparation decodes and imports files, so only compiler builds have it.
+if(TARGET Chibi::image_preparation)
+    add_library(chibi_image_preparation_consumer OBJECT ../authoring/sky_files.c)
+    target_include_directories(chibi_image_preparation_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_compile_definitions(chibi_image_preparation_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
+    target_link_libraries(chibi_image_preparation_consumer PRIVATE Chibi::image_preparation)
+    target_compile_options(chibi_image_preparation_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_image_preparation_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::image_preparation)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_IMAGE_PREPARATION=1)
 endif()
 
 if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)

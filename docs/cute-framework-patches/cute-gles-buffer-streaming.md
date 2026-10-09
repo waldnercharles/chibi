@@ -8,7 +8,7 @@ The patch appends each upload after the active slot's previous data when enough 
 
 This affects the GLES mesh upload path. It does not change the SDL_GPU backend or the separate standalone instance-buffer implementation. Orphaning avoids this explicit CPU wait, but does not guarantee that every driver will allocate without stalling. No performance claim follows from source inspection alone.
 
-Chibi repeatedly uploads mesh data for rendering, including UI quad uploads in `src/ui/rml_gpu.c` and trail vertex and index uploads in `src/render/arena_trail.c`. Its shared SDF staging buffer uses a separate upstream instance-buffer API, so that staging path is not the reason to keep this patch.
+Chibi repeatedly uploads mesh data for rendering, including UI quad uploads in `src/ui/rml_gpu.c` and trail vertex and index uploads in `src/render/scene3d_trail.c`. Its shared SDF staging buffer uses a separate upstream instance-buffer API, so that staging path is not the reason to keep this patch.
 
 Illustrative C excerpt, with a configured mesh, shader, material, and canvas. This sequence has not been reproduced as part of this audit.
 

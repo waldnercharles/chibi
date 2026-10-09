@@ -174,12 +174,12 @@ Direct lighting uses GGX, Smith visibility and Schlick Fresnel, following
 [Filament's standard model](https://google.github.io/filament/main/filament.html#materialsystem/standardmodelsummary).
 The current key light and hemisphere ambient establish material response.
 Opaque and transparent surfaces now accumulate scene-linear color in an RGBA16F
-canvas. Bloom and exposure run after transparency, followed by Reinhard tone
-mapping and one exact sRGB display conversion. This retains bright emission for
-the glow pass and blends transparent materials before tone mapping. RGB is
-limited to the finite half-float storage range. Environment reflections and
-authored lights/shadows remain roadmap work. Emission and bloom do not illuminate
-other 3D objects.
+canvas. Bloom and exposure run after transparency, followed by the Environment's
+tone map (AgX or Khronos PBR Neutral; see `docs/rendering-3d.md`). This retains
+bright emission for the glow pass and blends transparent materials before tone
+mapping. RGB is limited to the finite half-float storage range. Environment
+reflections and authored lights/shadows remain roadmap work. Emission and bloom
+do not illuminate other 3D objects.
 
 A scene can contain one **Environment** component. Arena3D includes an Environment
 actor with Exposure, Bloom Strength, Bloom Threshold and Bloom Radius. Exposure

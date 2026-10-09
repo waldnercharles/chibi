@@ -1,11 +1,12 @@
 #include "authoring/visual_prepare.h"
 
-#include "render/arena_parts.h"
+#include "render/scene3d_parts.h"
 #include "render/shader_catalog_records.h"
 #include "render/shader_values.h"
 #include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_prepared.h"
 #include "runtime/images/catalog.h"
+#include "runtime/images/sky.h"
 #include "runtime/models/prepared.h"
 #include "runtime/shaders/prepared.h"
 #include "support/array.h"
@@ -61,6 +62,24 @@ static bool contains(const game_player_asset *assets, const char *name, game_pla
         }
     }
     return false;
+}
+/* Adds the resident sky at `key` unless it is empty or already added. */
+static bool append_sky(game_player_asset **assets, const char *key, size_t *total, char *error, size_t size)
+{
+    if (!key || !key[0] || contains(*assets, key, GAME_PLAYER_ASSET_SKY)) {
+        return true;
+    }
+    const render_sky *sky = render_sky_find(key);
+    if (!sky) {
+        if (size) {
+            snprintf(error, size, "Sky %s has not been prepared", key);
+        }
+        return false;
+    }
+    unsigned char *bytes = NULL;
+    size_t length = 0;
+    return render_sky_prepared_write(sky, &bytes, &length, error, size) &&
+           append(assets, key, GAME_PLAYER_ASSET_SKY, bytes, length, total, error, size);
 }
 bool authoring_visual_prepare(
     const game_scene *const *scenes,
@@ -125,7 +144,7 @@ bool authoring_visual_prepare(
         goto fail;
     }
     unsigned char *parts = NULL;
-    if (!render_arena_parts_save(&parts, &length, error, size) ||
+    if (!render_scene3d_parts_save(&parts, &length, error, size) ||
         !append(result, "parts", GAME_PLAYER_ASSET_PARTS, parts, length, &total, error, size)) {
         goto fail;
     }
@@ -147,6 +166,16 @@ bool authoring_visual_prepare(
         for (int j = 0; j < game_scene_object_count(scenes[i]); j++) {
             for (int k = 0; k < game_scene_object_component_count(scenes[i], j); k++) {
                 game_scene_component component = game_scene_object_component_at(scenes[i], j, k);
+                if (component.desc->id == GAME_COMPONENT_GameEnvironment.id &&
+                    !append_sky(
+                        result,
+                        ((const GameEnvironment *)component.data)->sky,
+                        &total,
+                        error,
+                        size
+                    )) {
+                    goto fail;
+                }
                 if (component.desc->id != GAME_COMPONENT_GameMeshAsset.id) {
                     continue;
                 }

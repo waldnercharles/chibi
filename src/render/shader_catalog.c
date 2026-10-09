@@ -1,12 +1,13 @@
 #include "render/shader_catalog.h"
 
-#include "render/arena_parts.h"
 #include "render/catalog_publication.h"
+#include "render/scene3d_parts.h"
 #include "render/shader_catalog_internal.h"
 #include "render/shader_values.h"
 #include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_asset.h"
 #include "runtime/images/catalog.h"
+#include "runtime/images/sky.h"
 #include "runtime/models/model_program.h"
 #include "runtime/shaders/volume.h"
 #include "support/array.h"
@@ -1629,13 +1630,14 @@ void render_shader_catalog_clear()
 {
     assert(!prepared_publication);
     shader_values_clear();
-    render_arena_parts_clear();
+    render_scene3d_parts_clear();
     for (int i = 0; i < acount(shader_catalog_assets); i++) {
         shader_catalog_free_asset(&shader_catalog_assets[i]);
     }
     afree(shader_catalog_assets);
     render_image_catalog_clear();
     render_mesh_assets_clear();
+    render_skies_clear();
     shader_catalog_resources_changed();
 }
 const char *shader_catalog_write_parameter_value(void *service, const pin_value *inputs, bool shape)

@@ -159,6 +159,7 @@ typedef struct
     const asset_family *family;
     char filename[256];
     char relative[512];
+    char name[256]; /* once read; see asset_name */
 } asset_ref;
 
 typedef struct
@@ -166,6 +167,7 @@ typedef struct
     const asset_family *family;
     char *filename;
     char *relative;
+    char *name; /* see asset_name */
     size_t bytes;
     uint64_t hash;
 } asset_entry;
@@ -1265,6 +1267,7 @@ static void free_asset_entries(asset_entry *entries)
     for (int i = 0; i < acount(entries); i++) {
         free(entries[i].filename);
         free(entries[i].relative);
+        free(entries[i].name);
     }
     afree(entries);
 }
@@ -1279,6 +1282,24 @@ static char *asset_name_from_filename(const char *filename)
     memcpy(name, filename, length);
     name[length] = '\0';
     return name;
+}
+
+/* An asset's name: the one a prototype declares, which is how the player
+ * finds it, and otherwise its file name before the extension. A prototype
+ * that declares none is named by its file, where its error is reported. */
+static char *asset_name(const asset_family *family, const char *filename, const char *text)
+{
+    if (family->loader == ASSET_PROTOTYPE) {
+        char error[160];
+        av_doc *document = av_doc_read(text, error, sizeof error);
+        const char *declared = av_get_str(av_obj_get(av_doc_root(document), "name"));
+        char *name = declared && declared[0] ? xstrdup(declared) : NULL;
+        av_doc_free(document);
+        if (name) {
+            return name;
+        }
+    }
+    return asset_name_from_filename(filename);
 }
 
 static void free_catalog_references(catalog_reference *references)
@@ -1296,6 +1317,7 @@ static void free_catalog_assets(catalog_asset *assets)
         catalog_asset *asset = &assets[i];
         free(asset->asset.filename);
         free(asset->asset.relative);
+        free(asset->asset.name);
         free(asset->name);
         free(asset->description);
         for (int j = 0; j < acount(asset->members); j++) {
@@ -1633,9 +1655,9 @@ static int load_named_asset(
     size_t error_size
 );
 
-/* Prototype includes name other prototypes, found by file name as scene
- * entities find theirs. Each is read once and kept until the includes are
- * freed. */
+/* Prototype includes name other prototypes, found by the names they declare
+ * as scene entities find theirs. Each is read once and kept until the
+ * includes are freed. */
 typedef struct
 {
     const char *root;
@@ -2554,10 +2576,11 @@ static int load_catalog_asset(
             .family = entry->family,
             .filename = xstrdup(entry->filename),
             .relative = xstrdup(entry->relative),
+            .name = xstrdup(entry->name),
             .bytes = entry->bytes,
             .hash = entry->hash,
         },
-        .name = asset_name_from_filename(entry->filename),
+        .name = xstrdup(entry->name),
         .valid = true,
     };
     char *path = content_path(root, entry->relative);
@@ -2782,7 +2805,6 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
             uint64_t hash = 0;
             char read_error[160] = { 0 };
             char *contents = read_file(full_path, &bytes, &hash, read_error, sizeof read_error);
-            free(contents);
             if (!contents) {
                 free(full_path);
                 closedir(directory);
@@ -2796,9 +2818,11 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
                 .relative = xmalloc(
                     strlen("content/") + strlen(family->folder) + strlen(entry->d_name) + 2
                 ),
+                .name = asset_name(family, entry->d_name, contents),
                 .bytes = bytes,
                 .hash = hash,
             };
+            free(contents);
             snprintf(
                 item.relative,
                 strlen("content/") + strlen(family->folder) + strlen(entry->d_name) + 2,
@@ -2909,13 +2933,11 @@ static void add_hash(yyjson_mut_doc *doc, yyjson_mut_val *object, uint64_t hash)
 static yyjson_mut_val *add_asset_entry(yyjson_mut_doc *doc, yyjson_mut_val *array, const asset_entry *entry)
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
-    char *name = asset_name_from_filename(entry->filename);
     yyjson_mut_obj_add_strcpy(doc, object, "kind", entry->family->kind);
-    yyjson_mut_obj_add_strcpy(doc, object, "name", name);
+    yyjson_mut_obj_add_strcpy(doc, object, "name", entry->name);
     yyjson_mut_obj_add_strcpy(doc, object, "path", entry->relative);
     yyjson_mut_obj_add_uint(doc, object, "bytes", entry->bytes);
     add_hash(doc, object, entry->hash);
-    free(name);
     return object;
 }
 
@@ -3114,17 +3136,15 @@ static void add_asset_identity(
     uint64_t hash
 )
 {
-    char *name = asset_name_from_filename(ref->filename);
     yyjson_mut_obj_put(
         object,
         yyjson_mut_str(doc, "kind"),
         yyjson_mut_strcpy(doc, ref->family->kind)
     );
-    yyjson_mut_obj_put(object, yyjson_mut_str(doc, "name"), yyjson_mut_strcpy(doc, name));
+    yyjson_mut_obj_put(object, yyjson_mut_str(doc, "name"), yyjson_mut_strcpy(doc, ref->name));
     yyjson_mut_obj_add_strcpy(doc, object, "path", ref->relative);
     yyjson_mut_obj_add_uint(doc, object, "bytes", bytes);
     add_hash(doc, object, hash);
-    free(name);
 }
 
 static yyjson_mut_val *add_catalog_reference(
@@ -5389,6 +5409,39 @@ static int handle_list_assets(const char *root, yyjson_val *request, response *r
     return 0;
 }
 
+/* Reads the file `ref` names, and names it as asset_name does. */
+static int read_asset_file(
+    const char *root,
+    asset_ref *ref,
+    char **json,
+    size_t *bytes,
+    uint64_t *hash,
+    char *error,
+    size_t error_size
+)
+{
+    int directory_status = verify_asset_directory(root, ref->family, error, error_size);
+    if (directory_status < 0) {
+        return CHIBI_AUTOMATION_IO_ERROR;
+    }
+    char *path = content_path(root, ref->relative);
+    struct stat info;
+    if (!directory_status || lstat(path, &info) != 0 || !S_ISREG(info.st_mode)) {
+        free(path);
+        return set_errorf(error, error_size, "asset not found: %s", ref->relative),
+               CHIBI_AUTOMATION_NOT_FOUND;
+    }
+    *json = read_file(path, bytes, hash, error, error_size);
+    free(path);
+    if (!*json) {
+        return CHIBI_AUTOMATION_IO_ERROR;
+    }
+    char *name = asset_name(ref->family, ref->filename, *json);
+    snprintf(ref->name, sizeof ref->name, "%s", name);
+    free(name);
+    return CHIBI_AUTOMATION_OK;
+}
+
 static int load_asset(
     const char *root,
     yyjson_val *request,
@@ -5405,26 +5458,93 @@ static int load_asset(
         return ref_status == -2 ? CHIBI_AUTOMATION_NOT_FOUND
                                 : CHIBI_AUTOMATION_INVALID_REQUEST;
     }
-    int directory_status = verify_asset_directory(root, ref->family, error, error_size);
-    if (directory_status <= 0) {
-        if (directory_status == 0) {
-            set_errorf(error, error_size, "asset not found: %s", ref->relative);
-            return CHIBI_AUTOMATION_NOT_FOUND;
-        }
-        return CHIBI_AUTOMATION_IO_ERROR;
+    if (ref->family->loader == ASSET_PROTOTYPE && !request_string(request, "path")) {
+        const char *name = request_string(request, "name");
+        return load_named_asset(root, ref->family, name, ref, json, bytes, hash, error, error_size);
     }
-    char *path = content_path(root, ref->relative);
-    struct stat info;
-    if (lstat(path, &info) != 0 || !S_ISREG(info.st_mode)) {
-        free(path);
-        return set_errorf(error, error_size, "asset not found: %s", ref->relative),
-               CHIBI_AUTOMATION_NOT_FOUND;
-    }
-    *json = read_file(path, bytes, hash, error, error_size);
-    free(path);
-    return *json ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
+    return read_asset_file(root, ref, json, bytes, hash, error, error_size);
 }
 
+/* The prototype that declares `name` when the file named after it doesn't.
+ * Two that declare it are refused, as the player refuses them. */
+static int find_prototype(
+    const char *root,
+    const char *name,
+    asset_ref *ref,
+    char **json,
+    size_t *bytes,
+    uint64_t *hash,
+    char *error,
+    size_t error_size
+)
+{
+    const asset_family *family = ref->family;
+    const char *content = chibi_automation_content(root);
+    size_t size = strlen(content) + strlen(family->folder) + 2;
+    char *folder = xmalloc(size);
+    snprintf(folder, size, "%s/%s", content, family->folder);
+    DIR *directory = opendir(folder);
+    free(folder);
+    int status = CHIBI_AUTOMATION_NOT_FOUND;
+    for (struct dirent *entry; directory && (entry = readdir(directory));) {
+        asset_ref candidate = { .family = family };
+        if (!valid_asset_filename(family, entry->d_name) ||
+            strlen(entry->d_name) >= sizeof candidate.filename) {
+            continue;
+        }
+        snprintf(candidate.filename, sizeof candidate.filename, "%s", entry->d_name);
+        snprintf(
+            candidate.relative,
+            sizeof candidate.relative,
+            "content/%s/%s",
+            family->folder,
+            entry->d_name
+        );
+        char *text = NULL, ignored[256];
+        size_t candidate_bytes;
+        uint64_t candidate_hash;
+        if (read_asset_file(root, &candidate, &text, &candidate_bytes, &candidate_hash, ignored, sizeof ignored) !=
+                CHIBI_AUTOMATION_OK ||
+            strcmp(candidate.name, name)) {
+            free(text);
+            continue;
+        }
+        if (status == CHIBI_AUTOMATION_OK) {
+            snprintf(
+                error,
+                error_size,
+                "%s and %s both declare the prototype '%s'",
+                ref->relative,
+                candidate.relative,
+                name
+            );
+            free(text);
+            free(*json);
+            *json = NULL;
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            break;
+        }
+        *ref = candidate;
+        *json = text;
+        if (bytes) {
+            *bytes = candidate_bytes;
+        }
+        if (hash) {
+            *hash = candidate_hash;
+        }
+        status = CHIBI_AUTOMATION_OK;
+    }
+    if (directory) {
+        closedir(directory);
+    }
+    if (status == CHIBI_AUTOMATION_NOT_FOUND) {
+        set_errorf(error, error_size, "no prototype is named '%s'", name);
+    }
+    return status;
+}
+
+/* An asset by name. A prototype's name is the one it declares, as the
+ * player finds it, so it need not name a file; its file usually bears it. */
 static int load_named_asset(
     const char *root,
     const asset_family *family,
@@ -5437,36 +5557,32 @@ static int load_named_asset(
     size_t error_size
 )
 {
-    if (!family || !name || !name[0] || strchr(name, '/') ||
-        strchr(name, '\\') || strstr(name, "..")) {
+    if (!family || !name || !name[0]) {
         return set_error(error, error_size, "asset name is invalid"),
                CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     memset(ref, 0, sizeof *ref);
     ref->family = family;
-    const char *refused = name_asset_file(ref, name);
-    if (refused) {
+    *json = NULL;
+    bool prototype = family->loader == ASSET_PROTOTYPE;
+    const char *refused = strchr(name, '/') || strchr(name, '\\') || strstr(name, "..")
+                            ? "asset name is invalid"
+                            : name_asset_file(ref, name);
+    if (refused && !prototype) {
         return set_error(error, error_size, refused), CHIBI_AUTOMATION_INVALID_REQUEST;
     }
-    snprintf(ref->relative, sizeof ref->relative, "content/%s/%s", family->folder, ref->filename);
-    int directory_status = verify_asset_directory(root, family, error, error_size);
-    if (directory_status <= 0) {
-        if (directory_status == 0) {
-            return set_errorf(error, error_size, "asset not found: %s", ref->relative),
-                   CHIBI_AUTOMATION_NOT_FOUND;
+    if (!refused) {
+        snprintf(ref->relative, sizeof ref->relative, "content/%s/%s", family->folder, ref->filename);
+        int status = read_asset_file(root, ref, json, bytes, hash, error, error_size);
+        bool found = status == CHIBI_AUTOMATION_OK && !strcmp(ref->name, name);
+        if (!prototype || found ||
+            (status != CHIBI_AUTOMATION_OK && status != CHIBI_AUTOMATION_NOT_FOUND)) {
+            return status;
         }
-        return CHIBI_AUTOMATION_IO_ERROR;
+        free(*json);
+        *json = NULL;
     }
-    char *path = content_path(root, ref->relative);
-    struct stat info;
-    if (lstat(path, &info) != 0 || !S_ISREG(info.st_mode)) {
-        free(path);
-        return set_errorf(error, error_size, "asset not found: %s", ref->relative),
-               CHIBI_AUTOMATION_NOT_FOUND;
-    }
-    *json = read_file(path, bytes, hash, error, error_size);
-    free(path);
-    return *json ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_IO_ERROR;
+    return find_prototype(root, name, ref, json, bytes, hash, error, error_size);
 }
 
 static bool save_code_metadata(const char *path, const char *text, const char *metadata)
@@ -5799,7 +5915,7 @@ static int read_asset_complete(
     }
     char **names = NULL;
     for (int i = 0; i < acount(entries); i++) {
-        apush(names, asset_name_from_filename(entries[i].filename));
+        apush(names, xstrdup(entries[i].name));
     }
     asset_source *source = asset_source_parse(text);
     asset_source_completions completions = { 0 };
@@ -6516,8 +6632,23 @@ static int handle_new_asset(const char *root, yyjson_val *request, response *res
         );
         return -1;
     }
-    const char *content = chibi_automation_content(root);
     char error[512] = { 0 };
+    /* A prototype's name is the one it declares, which a file named
+     * otherwise may already hold. */
+    if (family->loader == ASSET_PROTOTYPE) {
+        asset_ref ref;
+        char *text = NULL;
+        int found = load_named_asset(root, family, name, &ref, &text, NULL, NULL, error, sizeof error);
+        free(text);
+        if (found == CHIBI_AUTOMATION_OK) {
+            snprintf(error, sizeof error, "%s already declares the prototype '%s'", ref.relative, name);
+        }
+        if (found == CHIBI_AUTOMATION_OK || found == CHIBI_AUTOMATION_VALIDATION_ERROR) {
+            response_error(result, exit_code, CHIBI_AUTOMATION_CONFLICT, error);
+            return -1;
+        }
+    }
+    const char *content = chibi_automation_content(root);
     errno = 0;
     char *path = new_asset_create(content, (new_asset_kind)kind, name, error, sizeof error);
     if (!path) {
@@ -7071,9 +7202,7 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
         char *json = NULL;
         asset_ref ref;
         uint64_t hash;
-        char *name = asset_name_from_filename(entries[i].filename);
-        status = load_named_asset(root, entries[i].family, name, &ref, &json, NULL, &hash, error, error_size);
-        free(name);
+        status = load_named_asset(root, entries[i].family, entries[i].name, &ref, &json, NULL, &hash, error, error_size);
         if (status != CHIBI_AUTOMATION_OK) {
             free(json);
             break;
@@ -9158,9 +9287,7 @@ static yyjson_mut_val *add_recording(
                        : "";
     yyjson_mut_obj_add_strcpy(doc, recording, "id", id);
     yyjson_mut_obj_add_strcpy(doc, recording, "kind", context->scene_target ? "scene" : "prototype");
-    char *name = asset_name_from_filename(context->prototype_ref.filename);
-    yyjson_mut_obj_add_strcpy(doc, recording, "name", name);
-    free(name);
+    yyjson_mut_obj_add_strcpy(doc, recording, "name", context->prototype_ref.name);
     add_hash_named(doc, recording, "content_hash", context->prototype_hash);
     add_hash_named(doc, recording, "runtime_content_hash", context->runtime_hash);
     yyjson_doc *saved = yyjson_read(context->initial_saved_state, strlen(context->initial_saved_state), 0);

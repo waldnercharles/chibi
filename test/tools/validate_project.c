@@ -65,6 +65,13 @@ static int errors()
     return (int)yyjson_get_int(result("errors"));
 }
 
+/* The message of the last reply's error. */
+static const char *failure()
+{
+    yyjson_val *error = yyjson_obj_get(yyjson_doc_get_root(reply), "error");
+    return yyjson_get_str(yyjson_obj_get(error, "message"));
+}
+
 /* The message of the diagnostic at `index` in `diagnostics`. */
 static const char *message_at(yyjson_val *diagnostics, size_t index)
 {
@@ -438,7 +445,7 @@ TEST_CASE(prototype_includes_resolve)
     REQUIRE(validate() != 0 && errors() == 2);
     problem = yyjson_arr_get_first(result("problems"));
     const char *message = first_message(yyjson_obj_get(problem, "diagnostics"));
-    REQUIRE(!strcmp(message, "prototype include Hull.kdl is named Hull"));
+    REQUIRE(!strcmp(message, "prototype include Hull.kdl is unavailable"));
     return true;
 }
 
@@ -454,6 +461,58 @@ static int format(const char *check)
     const char *args[] = { program, "--project-root", "game", "--format", check,
                            NULL };
     return tool_run(args, root, log_path);
+}
+
+TEST_CASE(prototypes_are_found_by_declared_name)
+{
+    /* The player finds a prototype by the name it declares, whatever its
+     * file is called, and so does chibi_ctl. A file named after one
+     * prototype may even declare another. */
+    char folder[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file("game/content/prototypes/hull_base.kdl", "name \"Hull\"\ncomponents {\n    GameHealth current=3 maximum=3\n}\n");
+    write_file("game/content/prototypes/Hull.kdl", "name \"Drone\"\n(array)includes \"Hull\"\ncomponents {\n    GameTransform x=1 y=2\n}\n");
+    /* Nor need a name be one a file could take. */
+    write_file("game/content/prototypes/grunt.kdl", "name \"enemies/grunt\"\n(array)includes \"Hull\"\n");
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Hull\" prototype=\"Hull\"\n    - name=\"Drone\" prototype=\"Drone\"\n    - name=\"Grunt\" prototype=\"enemies/grunt\"\n}\n");
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Drone\"}") ==
+        0
+    );
+    REQUIRE(yyjson_get_int(result("components")) == 2);
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/prototypes/Hull.kdl"));
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
+        0
+    );
+    REQUIRE(ctl(true, "{\"contract\":1,\"operation\":\"list_assets\"}") == 0);
+    yyjson_val *asset;
+    size_t index, count;
+    int listed = 0;
+    yyjson_arr_foreach(result("assets"), index, count, asset)
+    {
+        const char *name = yyjson_get_str(yyjson_obj_get(asset, "name"));
+        listed += reads(yyjson_get_str(yyjson_obj_get(asset, "path")), "content/prototypes/hull_base.kdl") &&
+                  reads(name, "Hull");
+    }
+    REQUIRE(listed == 1);
+
+    /* A new prototype cannot take a name a file already declares. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Hull\"}") != 0
+    );
+    REQUIRE(reads(failure(), "content/prototypes/hull_base.kdl already declares the prototype 'Hull'"));
+    /* Two that declare one name are refused, as the player refuses them. */
+    write_file("game/content/prototypes/hull_copy.kdl", "name \"Hull\"\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Hull\"}") !=
+        0
+    );
+    REQUIRE(failure() && strstr(failure(), "both declare the prototype 'Hull'"));
+    REQUIRE(validate() != 0);
+    return true;
 }
 
 TEST_CASE(manifest_content_folder_is_used)
@@ -533,6 +592,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(old_projects_are_not_upgraded);
     RUN_TEST_CASE(application_settings_are_checked);
     RUN_TEST_CASE(prototype_includes_resolve);
+    RUN_TEST_CASE(prototypes_are_found_by_declared_name);
     RUN_TEST_CASE(manifest_content_folder_is_used);
     pu_clear_setup();
 }

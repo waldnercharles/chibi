@@ -185,11 +185,20 @@ static bool copy_external(const char *project, const char *data)
     return copied;
 }
 
-/* Names an executable cannot take: the data folder's, and the devices Windows
- * reserves whatever follows a dot. */
-static bool reserved_name(const char *name)
+/* Where each layout keeps the game's data and the player, inside the output. */
+static const struct
 {
-    static const char *const NAMES[] = { "data", "con", "prn", "aux", "nul" };
+    const char *data, *executables, *suffix;
+} LAYOUTS[] = {
+    [CHIBI_EXPORT_FOLDER] = { "data", NULL, "" },
+    [CHIBI_EXPORT_APP] = { "Contents/Resources", "Contents/MacOS", "" },
+    [CHIBI_EXPORT_WINDOWS] = { "data", NULL, ".exe" },
+};
+
+/* A device name Windows reserves whatever follows a dot. */
+static bool windows_device(const char *name)
+{
+    static const char *const NAMES[] = { "con", "prn", "aux", "nul" };
     size_t stem = strcspn(name, ".");
     for (size_t i = 0; i < sizeof NAMES / sizeof *NAMES; i++) {
         if (stem == strlen(NAMES[i]) && !strncasecmp(name, NAMES[i], stem)) {
@@ -202,11 +211,15 @@ static bool reserved_name(const char *name)
 }
 
 /* The executable's file name: the project name with path and shell
- * metacharacters replaced and cut to EXECUTABLE_NAME_MAX bytes, never a
- * reserved name, and then the layout's suffix. */
-static char *executable_name(const char *name, const char *suffix)
+ * metacharacters replaced and cut to EXECUTABLE_NAME_MAX bytes, never the
+ * data folder's name or, on Windows, a device's, and then the layout's
+ * suffix. */
+static char *executable_name(const char *name, chibi_export_layout layout)
 {
-    const char *base = name && name[0] && !reserved_name(name) ? name : "game";
+    bool reserved = !name || !name[0] || !strcasecmp(name, "data") ||
+                    (layout == CHIBI_EXPORT_WINDOWS && windows_device(name));
+    const char *base = reserved ? "game" : name;
+    const char *suffix = LAYOUTS[layout].suffix;
     size_t length = strnlen(base, EXECUTABLE_NAME_MAX);
     char *file = xmalloc(length + strlen(suffix) + 1);
     memcpy(file, base, length);
@@ -221,16 +234,6 @@ static char *executable_name(const char *name, const char *suffix)
     }
     return file;
 }
-
-/* Where each layout keeps the game's data and the player, inside the output. */
-static const struct
-{
-    const char *data, *executables, *suffix;
-} LAYOUTS[] = {
-    [CHIBI_EXPORT_FOLDER] = { "data", NULL, "" },
-    [CHIBI_EXPORT_APP] = { "Contents/Resources", "Contents/MacOS", "" },
-    [CHIBI_EXPORT_WINDOWS] = { "data", NULL, ".exe" },
-};
 
 static bool write_marker(const char *data)
 {
@@ -641,7 +644,7 @@ static bool assemble(const chibi_export_spec *spec, const char *staging)
     char *compiler = join(spec->bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
     char *player = join(spec->bin, "chibi-player" CHIBI_EXECUTABLE_SUFFIX);
     char *engine = join(spec->bin, "../share/chibi");
-    char *name = executable_name(spec->name, LAYOUTS[spec->layout].suffix);
+    char *name = executable_name(spec->name, spec->layout);
     const char *executables = LAYOUTS[spec->layout].executables;
     char *executable_dir = executables ? join(staging, executables) : xstrdup(staging);
     char *executable = join(executable_dir, name);

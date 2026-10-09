@@ -275,6 +275,7 @@ TEST_CASE(export_assembles_a_runnable_folder)
     game = "Con.1";                 /* a device name Windows reserves */
     REQUIRE(export_as("win/Con", CHIBI_EXPORT_WINDOWS, false));
     REQUIRE(has("win/Con/game.exe", "player"));
+    REQUIRE(export_to("out/Con") && has("out/Con/Con.1", "player"));
     game = "My Game/2";
     icon = "art/icon.png";
 

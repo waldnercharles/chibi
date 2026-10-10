@@ -31,7 +31,6 @@ Configuration and compilation remain separate from test execution.
 | --- | --- |
 | `test-full`, `test-slow`: native `all_checks` aggregate and audit | Native suite measurements exceed 60 seconds. |
 | `test-render`: scene/shader/Studio/RmlUi/Arena GPU and window checks | Measured render aggregates exceed 60 seconds; other components are unadmitted. |
-| Full `--studio-documents`, `--studio-panels`, `--studio-shell` | Measured aggregates exceed 60 seconds; only exact tuples below are admitted. |
 | `--editor-checkpoint`: workspace recovery assertions | Unadmitted runtime; retained native assertions are not execution evidence. |
 | Build-integrated runtime checks: `check-generation`, `check-host`, `check-assets`, `check-behavior-backend` | No admission for their complete execution; compilation alone is not a pass. |
 | `test-compiler-parity`, no-SLJIT rejection checks, web backend execution | Unadmitted runtime; retained smoke compilation is not assertion coverage. |
@@ -52,48 +51,12 @@ The default pure C mode and complete tooling group have separate coverage and
 execution results. Historical timings do not certify either current mode.
 Record fresh results on the reviewed source before claiming validation.
 
-The exact native admission table is:
-
-| Exact native arguments | Existing execution evidence |
-| --- | --- |
-| `--graph-optimize` | 0.5s |
-| `--ui-tab-list` | 1.743s initial supervised Debug ASan+UBSan admission, all 10 input/layout checks, no window or rendering. |
-| `--iframe-updates` | 2.379s for the targeted CUT61 command, Debug ASan+UBSan; 3 pico cases/385 assertions plus 12 existing checks. No profile loop. |
-| `--kit-documents` | 0.469–0.551s at CUT61 `7b0389ea`, Debug ASan+UBSan, all 10 checks and 49 frames. |
-| `--compiled-behaviors` | 47.2s |
-| `--automation-search` | 17.2s |
-| `--automation-profile-scenario-inputs` | 15.8s |
-| `--editor-commands` | 12.5s |
-| `--material-thermal` | 4.8s |
-| `--material-mpm` | 3.6s |
-| `--whole-function-audit` | 1.3s |
-| `--studio-documents tabs` | 8s |
-| `--studio-shell document-tabs` | 9.2s initial supervised admission, all 17 authored tab checks, Debug ASan+UBSan with native Metal. |
-| `--studio-shell readout_follows_camera` | 3s |
-| `--bench-arena-scene-scale 2048 240 0` | 1.4s |
-
-
-These measurements are historical and host/configuration specific. They do not
-certify current runs. Retain existing hardware/display/sanitizer requirements
-and the Arena combat/parallel environment and optimized configuration. Each
-independently requested command has a maximum 60-second deadline. Do not combine
-the table into a reconstructed full suite. `make test-fast` checks its exact
-`TEST_ARGS` tuple before building.
-
-The two CUT61 CPU-only tuples were independently reviewed for scoped admission.
-Their complete logs, binary identity, configuration and fresh supervised runs
-are retained in [the iframe completion record](research/cut61-iframe-profile/finish/README.md).
-The dedicated 2016-frame `--studio-panel-lifecycle` capture entrypoint is now
-retired. Its original authored-panel assertions remain in `--studio-panels`,
-which stays quarantined, as do all other unadmitted UI/native tuples. The optional
-1,000-frame blank-document measurement loop was also removed from
-`--iframe-updates`; deterministic replacement/binding, animation and callback
-contracts are now part of that focused command. See
-[fast, targeted tests](testing.md#fast-targeted-tests).
-
-`make test-studio-selectors` runs the C CLI process driver under the supervisor
-against a separately built native `test_suite`; it does not render Studio.
-The original 3.71-second script measurement does not certify the new C driver.
+`make test-native` and `make test-language-all` run every selector of the full
+drivers under one 60-second deadline each; `tools/test_policy.py` lists them in
+`GROUPS`. Under Debug ASan and UBSan on a 4-core Linux container the native group
+took 4.7 seconds and the language group 5.3 seconds (2026-10-09). The selectors
+of the retired `test_suite` (Studio, iframe, material and Arena tuples) are gone
+with it; Studio's checks belong to `chibi-studio`.
 
 The planner accepts `--tools` or `--tool=native-tools` for `make test-tools`.
 Other former tool choices are retired. The plan records unavailable coverage
@@ -103,8 +66,9 @@ affected-contract checks determine publication requirements; see
 
 ## CI and restoration
 
-CI labels partial coverage and runs only admitted bounded commands alongside
-retained build/configure/format jobs. Their configuration is not execution
+CI runs the tooling group, the full engine build with the native and language
+groups, a Studio build with two hidden frames, and clang-format on every pull
+request. Their configuration is not execution
 proof. Required server checks, independent review, PR/ticket holds and existing
 approval rules remain binding. Local evidence is sufficient when CI is disabled
 unless actual server rules require CI. Short passes certify only their affected

@@ -19,7 +19,7 @@ reusable capability:
    entity reference. Comment what it means and its units, and mark a numeric
    field's unit and editing range with `NODE_UNIT("u/s")` and
    `NODE_RANGE(0, 1)` so editors show them. Give it a Properties tab or icon
-   in `PRESENTATION_DEFAULTS` (`src/authoring/component_presentation.c`).
+   in `src/authoring/engine_components.kdl`.
 2. Build (`make build`). The reflect step regenerates the native type tables
    and adds the component's row to `src/runtime/component_ids.tsv`. Commit
    that row with the header change; never edit the ID by hand. Resolve a
@@ -75,6 +75,14 @@ Opening a project saved at an older version (`chibi_project_open`) upgrades
 it in place, and `chibi_ctl --migrate` does the same explicitly. The
 `validate_project` operation refuses an older project until one of them has
 run. There are no compatibility aliases (see the first rule in `AGENTS.md`).
+
+Bump the version only when you can name a project in this repository,
+`chibi-studio` or `chibi-celeste` that would otherwise load wrong or fail, and
+the step would rewrite it. Skip the steps below for additive changes, a
+contract no project uses yet, a change to what the engine does with a value
+(a physics or rendering fix), or old data that loading already handles (a step
+that would only write what the runtime does anyway). The PR then says how to
+fix a hand-made project.
 
 1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and add the step
    that upgrades the previous version to the `switch` in

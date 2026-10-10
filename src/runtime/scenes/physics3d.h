@@ -13,8 +13,8 @@ typedef struct game_physics3d game_physics3d;
  * per step. Lengths are project units, 32 per meter. */
 game_physics3d *game_physics3d_new(ecs_world *world, struct game_entities *entities);
 void game_physics3d_free(game_physics3d *physics);
-/* Drops the Box3D world, its bodies and contacts without events; keeps the
- * settings. */
+/* Drops the Box3D world, its bodies, contacts and pushes without events;
+ * keeps the settings. */
 void game_physics3d_reset(game_physics3d *physics);
 /* Applies the workers, substeps, sleep, continuous and contact settings;
  * force_drive is 2D only. Worker changes require a reset world. Invalid
@@ -28,6 +28,15 @@ int game_physics3d_configure(game_physics3d *physics, game_physics_settings sett
  * contacts without advancing. */
 int game_physics3d_tick(game_physics3d *physics, float delta_seconds);
 const char *game_physics3d_error(const game_physics3d *physics);
+/* Push entity's dynamic Body3D through its center of mass in the next step
+ * that advances. An impulse changes its velocity by impulse over its mass at
+ * once; a force accelerates it by force over its mass through that step.
+ * Bodies weigh 1000 kg per cubic meter, Box3D's density of water. Pushes add
+ * up, and a push on a body destroyed or no longer dynamic by then is dropped.
+ * FLOW_ERR_ARGUMENT for a non-finite vector or an entity without a dynamic
+ * Body3D. */
+int game_physics3d_apply_impulse(game_physics3d *physics, ecs_entity entity, CF_V3 impulse);
+int game_physics3d_apply_force(game_physics3d *physics, ecs_entity entity, CF_V3 force);
 /* How presentation moves the entity's own body from its solved pose at alpha:
  * shown = rotation * solved + translation, in world space. The identity when
  * the entity's Transform3D changed after the step. False when the entity has

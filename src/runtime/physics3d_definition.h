@@ -8,6 +8,10 @@
 #define PHYSICS3D_CAST_SOURCE "shape_cast_3d"
 #define PHYSICS3D_CONTACT_NAME "Contact Entities 3D"
 #define PHYSICS3D_CONTACT_SOURCE "contact_entities_3d"
+#define PHYSICS3D_IMPULSE_NAME "Apply Impulse 3D"
+#define PHYSICS3D_IMPULSE_SOURCE "apply_impulse_3d"
+#define PHYSICS3D_FORCE_NAME "Apply Force 3D"
+#define PHYSICS3D_FORCE_SOURCE "apply_force_3d"
 #define PHYSICS3D_PORT(X, NAME, TYPE, NOMINAL, CONTAINER)                      \
     X(NAME,                                                                    \
       NATIVE_PARAMETER_DATA,                                                   \
@@ -41,6 +45,22 @@
     PHYSICS3D_PORT(X, "Categories", PIN_U32, "unsigned int", PIN_CONTAINER_SINGLE)
 #define PHYSICS3D_CONTACT_OUTPUTS(X)                                           \
     PHYSICS3D_PORT(X, "Entities", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_ARRAY)
+#define PHYSICS3D_EXEC(X, NAME)                                                \
+    X(NAME,                                                                    \
+      NATIVE_PARAMETER_EXEC,                                                   \
+      PIN_FLOW,                                                                \
+      NULL,                                                                    \
+      PIN_CONTAINER_SINGLE,                                                    \
+      0,                                                                       \
+      0,                                                                       \
+      SCRIPT_REFERENCE_NONE,                                                   \
+      false,                                                                   \
+      ((pin_value){ .type = PIN_FLOW }))
+#define PHYSICS3D_PUSH_INPUTS(X, AMOUNT)                                        \
+    PHYSICS3D_EXEC(X, "Exec")                                                   \
+    PHYSICS3D_PORT(X, "Entity", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE) \
+    PHYSICS3D_PORT(X, AMOUNT, PIN_STRUCT, "CF_V3", PIN_CONTAINER_SINGLE)
+#define PHYSICS3D_PUSH_OUTPUTS(X) PHYSICS3D_EXEC(X, "Then")
 extern const native_definition_pack GAME_PHYSICS3D_DEFINITION_PACK;
 
 #define PHYSICS3D_RAY_PRESENTATION                                                  \
@@ -59,5 +79,14 @@ extern const native_definition_pack GAME_PHYSICS3D_DEFINITION_PACK;
     .keywords = "contact overlap touching collider entities query 3d",         \
     .description = "Lists 3D colliders in Categories touching Entity right "   \
                    "now; empty if Entity is dead or being destroyed."
+#define PHYSICS3D_IMPULSE_PRESENTATION                                         \
+    .category = "Physics",                                                     \
+    .keywords = "push kick knockback hit jump launch velocity body 3d",        \
+    .description = "Changes Entity's dynamic 3D body's velocity by Impulse "   \
+                   "over its mass at its next physics step."
+#define PHYSICS3D_FORCE_PRESENTATION                                           \
+    .category = "Physics", .keywords = "push thrust wind accelerate body 3d",  \
+    .description = "Accelerates Entity's dynamic 3D body by Force over its "   \
+                   "mass through its next physics step."
 
 #endif

@@ -65,6 +65,13 @@ const game_host_event_desc GAME_HOST_EVENTS[GAME_HOST_EVENT_COUNT] = {
                                                         "Other's.",
                                          .payload = CONTACT_3D_PAYLOAD,
                                          .payload_count = 1 },
+    [GAME_HOST_EVENT_CONTACT_END] = { .name = "Contact End",
+                                      .keywords = "separate leave exit "
+                                                  "release collision",
+                                      .description = "Runs when this entity "
+                                                     "stops touching Other.",
+                                      .payload = CONTACT_PAYLOAD,
+                                      .payload_count = 1 },
 };
 
 const char *game_host_event_name(game_host_event event)

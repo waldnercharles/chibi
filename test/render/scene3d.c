@@ -2069,6 +2069,34 @@ static void import_mesh(ecs_entity entity)
     assert(ecs_world_apply_commands(world) == ECS_OK);
 }
 
+/* Publishes the unit box mesh with its vertices moved by `offset`. */
+static void publish_moved_box(CF_V3 offset)
+{
+    render_mesh_asset box = box_mesh();
+    for (int i = 0; i < acount(box.vertices); i++) {
+        box.vertices[i].position = cf_add_v3(box.vertices[i].position, offset);
+    }
+    box.min = cf_add_v3(box.min, offset);
+    box.max = cf_add_v3(box.max, offset);
+    publish_mesh(&box);
+}
+
+/* Every pixel matches the frame `expected` saved. */
+static bool matches(const CF_Pixel *expected)
+{
+    for (int i = 0; i < PIXELS; i++) {
+        REQUIRE(distance(pixels[i], expected[i]) <= 3);
+    }
+    return true;
+}
+
+/* Moves a solid that add_solid made to center its shape on `center`. */
+static void place_solid(ecs_entity solid, CF_V3 center)
+{
+    *GAME_GameTransform_get(world, solid) = (GameTransform){ center.x, center.z };
+    GAME_GameGeometry3D_get(world, solid)->elevation = center.y;
+}
+
 /* The shadow scene's box and a pillar beyond the view's left edge draw first
  * as shapes, then as the unit box mesh. Every pixel matches: imported meshes
  * light, shade and cast from outside the view as shapes do. */
@@ -2095,9 +2123,7 @@ TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy)
     REQUIRE(!render_scene3d_error(scene3d)[0]);
     REQUIRE(pixel_at(shaded).colors.g == 0 && pixel_at(sunlit[0]).colors.g == 0);
     REQUIRE(pixel_at(sunlit[4]).colors.g > 60);
-    for (int i = 0; i < PIXELS; i++) {
-        REQUIRE(distance(pixels[i], shapes[i]) <= 3);
-    }
+    REQUIRE(matches(shapes));
     return true;
 }
 
@@ -2150,13 +2176,7 @@ TEST_CASE(republished_meshes_replace_their_gpu_copies)
     CF_Pixel drawn = top();
     REQUIRE(drawn.colors.r > 60 && render_scene3d_last_work(scene3d).meshes == 1);
     /* Moved a box width to the right, the mesh leaves the center empty. */
-    box = box_mesh();
-    for (int i = 0; i < acount(box.vertices); i++) {
-        box.vertices[i].position.x += 1;
-    }
-    box.min.x += 1;
-    box.max.x += 1;
-    publish_mesh(&box);
+    publish_moved_box((CF_V3){ 1, 0, 0 });
     REQUIRE(render(&environment));
     REQUIRE(top().colors.r < 10 && render_scene3d_last_work(scene3d).meshes == 1);
     render_mesh_assets_clear();
@@ -2167,6 +2187,55 @@ TEST_CASE(republished_meshes_replace_their_gpu_copies)
     GAME_GameMeshAsset_get(world, solid)->source = "";
     REQUIRE(render(&environment));
     REQUIRE(distance(top(), drawn) <= 3 && render_scene3d_last_work(scene3d).meshes == 0);
+    return true;
+}
+
+static const CF_V3 eyeward = { 0, 2, 2 }; /* Up and toward the eye. */
+static const GameGeometry3D unit_box = { GAME_PRIMITIVE_BOX, 1, 1, 1 };
+
+/* A translucent blue unit box nearer the eye than a translucent red one
+ * blends over it, drawn first as a shape and then as a mesh whose vertices
+ * sit at the shape's place while its origin lies behind the red box. Every
+ * pixel matches: the mesh sorts by its bounds, not its origin. */
+TEST_CASE(translucent_meshes_sort_by_their_bounds)
+{
+    add_solid((CF_V3){ 0, 1, 1 }, unit_box, 0xff000080u);
+    ecs_entity blue = add_solid(eyeward, unit_box, 0x0000ff80u);
+    GameEnvironment environment = game_environment_defaults();
+    REQUIRE(render(&environment));
+    static CF_Pixel shapes[PIXELS];
+    memcpy(shapes, pixels, sizeof pixels);
+    publish_moved_box(eyeward);
+    place_solid(blue, (CF_V3){ 0 });
+    import_mesh(blue);
+    REQUIRE(render(&environment));
+    REQUIRE(matches(shapes));
+    return true;
+}
+
+/* Two translucent copies of that mesh draw in one batch, in the order the
+ * scene submits them: a blue copy at the origin, and a red one turned half
+ * around whose box sits behind the blue one, though its origin is nearer
+ * the eye. Every pixel matches two shape boxes in their places. */
+TEST_CASE(translucent_copies_of_a_mesh_sort_by_their_bounds)
+{
+    ecs_entity red = add_solid((CF_V3){ 0, 1, 1 }, unit_box, 0xff000080u);
+    ecs_entity blue = add_solid(eyeward, unit_box, 0x0000ff80u);
+    GameEnvironment environment = game_environment_defaults();
+    REQUIRE(render(&environment));
+    static CF_Pixel shapes[PIXELS];
+    memcpy(shapes, pixels, sizeof pixels);
+    publish_moved_box(eyeward);
+    place_solid(red, (CF_V3){ 0, -1, 3 });
+    GameVisualTransform turned = { .yaw = CF_PI, .scale = 1 };
+    assert(
+        ecs_world_record_add(world, red, GAME_COMPONENT_GameVisualTransform.id, &turned, 0) == ECS_OK
+    );
+    place_solid(blue, (CF_V3){ 0 });
+    import_mesh(red);
+    import_mesh(blue);
+    REQUIRE(render(&environment));
+    REQUIRE(matches(shapes));
     return true;
 }
 
@@ -2478,6 +2547,8 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy);
     RUN_TEST_CASE(picking_and_bounds_follow_imported_triangles);
     RUN_TEST_CASE(republished_meshes_replace_their_gpu_copies);
+    RUN_TEST_CASE(translucent_meshes_sort_by_their_bounds);
+    RUN_TEST_CASE(translucent_copies_of_a_mesh_sort_by_their_bounds);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(mirrors_reflect_the_sky_in_its_directions);
     RUN_TEST_CASE(rough_surfaces_blur_the_sky_they_reflect);

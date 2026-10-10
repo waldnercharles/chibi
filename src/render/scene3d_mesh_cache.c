@@ -3,6 +3,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -56,13 +57,27 @@ static const CF_VertexAttribute attributes[] = {
       .offset = offsetof(render_mesh_surface_vertex, part_from_object[2]) },
 };
 
-CF_Mesh render_scene3d_mesh_cache_get(render_scene3d_mesh_cache *cache, const render_mesh_asset *mesh)
+/* The point the GPU copy's positions are measured from: the center of the
+ * mesh's bounds. Cute sorts translucent draws back to front by the
+ * translation of their transform, so a draw translated here sorts by where
+ * its triangles are rather than by its origin. */
+static CF_V3 center(const render_mesh_asset *mesh)
+{
+    return cf_mul_v3_f(cf_add_v3(mesh->min, mesh->max), .5f);
+}
+
+static CF_Mesh find(const render_scene3d_mesh_cache *cache, uint64_t identity)
 {
     for (int i = 0; i < acount(cache->meshes); i++) {
-        if (cache->meshes[i].identity == mesh->identity) {
+        if (cache->meshes[i].identity == identity) {
             return cache->meshes[i].mesh;
         }
     }
+    return (CF_Mesh){ 0 };
+}
+
+static CF_Mesh upload(const render_mesh_asset *mesh)
+{
     int vertices = acount(mesh->vertices), indices = acount(mesh->indices);
     CF_Mesh result = cf_make_mesh(
         vertices * (int)sizeof *mesh->vertices,
@@ -73,11 +88,45 @@ CF_Mesh render_scene3d_mesh_cache_get(render_scene3d_mesh_cache *cache, const re
     if (!result.id) {
         return result;
     }
-    cf_mesh_update_vertex_data(result, (void *)mesh->vertices, vertices);
+    render_mesh_surface_vertex *centered = xmalloc((size_t)vertices * sizeof *centered);
+    CF_V3 offset = center(mesh);
+    for (int i = 0; i < vertices; i++) {
+        centered[i] = mesh->vertices[i];
+        centered[i].position = cf_sub_v3(centered[i].position, offset);
+    }
+    cf_mesh_update_vertex_data(result, centered, vertices);
+    free(centered);
     cf_mesh_set_index_buffer(result, indices * (int)sizeof *mesh->indices, 32);
     cf_mesh_update_index_data(result, (void *)mesh->indices, indices);
-    apush(cache->meshes, ((uploaded){ mesh->identity, result }));
     return result;
+}
+
+bool render_scene3d_mesh_cache_upload(render_scene3d_mesh_cache *cache, const render_mesh_asset *mesh)
+{
+    if (find(cache, mesh->identity).id) {
+        return true;
+    }
+    CF_Mesh gpu = upload(mesh);
+    if (!gpu.id) {
+        return false;
+    }
+    apush(cache->meshes, ((uploaded){ mesh->identity, gpu }));
+    return true;
+}
+
+void render_scene3d_mesh_cache_draw(
+    const render_scene3d_mesh_cache *cache,
+    const render_mesh_asset *mesh,
+    int first,
+    int count
+)
+{
+    CF_Mesh gpu = find(cache, mesh->identity);
+    assert(gpu.id);
+    cf_draw3d_push();
+    cf_draw3d_translate(center(mesh));
+    cf_draw3d_mesh_range(gpu, first, count);
+    cf_draw3d_pop();
 }
 
 int render_scene3d_mesh_cache_count(const render_scene3d_mesh_cache *cache)

@@ -263,6 +263,22 @@ static void draw_shape(const render_scene3d *scene3d, const GameGeometry3D *shap
     }
 }
 
+/* The box around a solid, as a transform of the unit cube: a mesh's bounds,
+ * or a shape's, whose triangles reach 2/3 along x. */
+static CF_M4x4 solid_box(const scene3d_solid *solid)
+{
+    if (solid->mesh) {
+        return render_scene3d_mesh_box(solid->mesh, solid->frame);
+    }
+    const GameGeometry3D *shape = &solid->shape;
+    CF_V3 size = { shape->width, shape->height, shape->depth };
+    if (shape->primitive == GAME_PRIMITIVE_TRIANGLE ||
+        shape->primitive == GAME_PRIMITIVE_TRIANGLE_OUTLINE) {
+        size.x *= 4.0f / 3;
+    }
+    return cf_mul_m4(solid->frame, cf_m4_scale(size));
+}
+
 static bool transparent_surface(int material, const game_material_coefficients *color)
 {
     return material ? render_shader_may_be_transparent(material)
@@ -281,11 +297,10 @@ static void append_draw(
     draw.transparent = draw.particle_shape ||
                        transparent_surface(draw.material, color);
     const scene3d_solid *solid = &draw.solid;
-    CF_V4 origin = { solid->frame.elements[12],
-                     solid->frame.elements[13],
-                     solid->frame.elements[14],
-                     1 };
-    draw.depth = -cf_mul_m4_v4(camera->view, origin).z;
+    /* A mesh's vertices may lie away from its origin, so depth is its box's center. */
+    CF_M4x4 box = solid_box(solid);
+    CF_V4 center = { box.elements[12], box.elements[13], box.elements[14], 1 };
+    draw.depth = -cf_mul_m4_v4(camera->view, center).z;
     int start = acount(buffer->pixels);
     asetlen(buffer->pixels, start + MATERIAL_TEXELS);
     CF_V4 *row = &buffer->pixels[start];
@@ -879,22 +894,6 @@ static int compare_draws(const void *left, const void *right)
     return geometry ? geometry : (a->row > b->row) - (a->row < b->row);
 }
 
-/* The box around a solid, as a transform of the unit cube: a mesh's bounds,
- * or a shape's, whose triangles reach 2/3 along x. */
-static CF_M4x4 solid_box(const scene3d_solid *solid)
-{
-    if (solid->mesh) {
-        return render_scene3d_mesh_box(solid->mesh, solid->frame);
-    }
-    const GameGeometry3D *shape = &solid->shape;
-    CF_V3 size = { shape->width, shape->height, shape->depth };
-    if (shape->primitive == GAME_PRIMITIVE_TRIANGLE ||
-        shape->primitive == GAME_PRIMITIVE_TRIANGLE_OUTLINE) {
-        size.x *= 4.0f / 3;
-    }
-    return cf_mul_m4(solid->frame, cf_m4_scale(size));
-}
-
 /* Whether any light casts shadows, so solids outside the view still count. */
 static bool casts_shadows(const render_scene3d *scene3d)
 {
@@ -946,8 +945,12 @@ static void draw_solid(const render_scene3d *scene3d, const scene3d_solid *solid
     cf_draw3d_push();
     cf_draw3d_transform(solid->frame);
     if (solid->mesh) {
-        CF_Mesh mesh = render_scene3d_mesh_cache_get(scene3d->meshes, solid->mesh);
-        cf_draw3d_mesh_range(mesh, solid->first, solid->count);
+        render_scene3d_mesh_cache_draw(
+            scene3d->meshes,
+            solid->mesh,
+            solid->first,
+            solid->count
+        );
     } else {
         draw_shape(scene3d, &solid->shape);
     }
@@ -1066,8 +1069,7 @@ static render_programs *solid_programs(const render_scene3d *scene3d, const scen
 /* Uploads a solid's mesh, or returns false with a binding error. */
 static bool upload(render_scene3d *scene3d, const scene3d_solid *solid)
 {
-    if (!solid->mesh ||
-        render_scene3d_mesh_cache_get(scene3d->meshes, solid->mesh).id) {
+    if (!solid->mesh || render_scene3d_mesh_cache_upload(scene3d->meshes, solid->mesh)) {
         return true;
     }
     snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "Cannot upload an imported mesh.");

@@ -1077,27 +1077,41 @@ static void followers_move_with_their_body()
     dispose(&f);
 }
 
-/* A body and the colliders it carries move as one, so they never touch. */
+/* A body and the sensors it carries move as one, so they never touch. */
 static void followers_ignore_their_anchor()
 {
     fixture f = create();
-    ecs_entity ship = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 1);
-    ecs_entity hull = body(&f, 2, 0, GAME_BODY_KINEMATIC, 1, 1);
-    ecs_entity mast = body(&f, -2, 0, GAME_BODY_KINEMATIC, 1, 1);
+    ecs_entity ship = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 4);
+    ecs_entity hull = sensor(&f, 2, 0);
+    ecs_entity mast = sensor(&f, -2, 0);
+    GAME_GameCollider_get(f.world, hull)->mask |= 1 | 4;
+    GAME_GameCollider_get(f.world, mast)->mask |= 1 | 4;
     assert(ecs_world_record_add_pair(f.world, hull, ECS_CHILD_OF, ship, 0) == ECS_OK);
     assert(ecs_world_record_add_pair(f.world, mast, ECS_CHILD_OF, ship, 0) == ECS_OK);
     assert(ecs_world_apply_commands(f.world) == ECS_OK);
     for (int i = 0; i < 4; i++) {
         assert(step(&f, 1.0f / 60) == 0);
     }
-    const GameTransform *at = GAME_GameTransform_get_const(f.world, ship);
-    assert(at->x == 0 && at->y == 0);
     ecs_entity *found = NULL;
-    assert(game_physics_contact_entities(f.world, f.entities, ship, 1, &found) == 0);
+    assert(game_physics_contact_entities(f.world, f.entities, ship, 4, &found) == 0);
     assert(acount(found) == 0);
-    assert(game_physics_contact_entities(f.world, f.entities, hull, 1, &found) == 0);
+    assert(game_physics_contact_entities(f.world, f.entities, hull, 1 | 4, &found) == 0);
     assert(acount(found) == 0);
     afree(found);
+    dispose(&f);
+}
+
+/* A carried solid is a kinematic body of its own, which Box2D never lets
+ * push its dynamic carrier, so a dynamic body carries only sensors. */
+static void dynamic_bodies_carry_only_sensors()
+{
+    fixture f = create();
+    ecs_entity ship = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 1);
+    ecs_entity hull = body(&f, 6, 0, GAME_BODY_KINEMATIC, 1, 1);
+    assert(ecs_world_record_add_pair(f.world, hull, ECS_CHILD_OF, ship, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(game_physics_tick(f.physics, 1.0f / 60) == FLOW_ERR_ARGUMENT);
+    assert(strstr(game_physics_error(f.physics), "can carry only sensors"));
     dispose(&f);
 }
 
@@ -1379,6 +1393,7 @@ static void physics_cases()
     followers();
     followers_move_with_their_body();
     followers_ignore_their_anchor();
+    dynamic_bodies_carry_only_sensors();
     continuous_sensors_carry_no_colliders();
     followed_material();
     current_contact_query();
@@ -1507,6 +1522,39 @@ static void authored_bounce_and_drive()
     dispose(&f);
 }
 
+/* Terrain tiles are laid out along the world's axes, so terrain under a
+ * rotated parent, which would turn them, is refused. */
+static void rotated_terrain()
+{
+    fixture f = create();
+    assert(ecs_world_register_component(f.world, &GAME_COMPONENT_MaterialTerrain, NULL) == ECS_OK);
+    ecs_entity parent = ecs_world_create_entity(f.world);
+    ecs_entity source = ecs_world_create_entity(f.world);
+    assert(GAME_GameTransform_add(f.world, parent, 0) == ECS_OK);
+    assert(GAME_GameOrientation_add(f.world, parent, 0) == ECS_OK);
+    assert(GAME_GameTransform_add(f.world, source, 0) == ECS_OK);
+    assert(ecs_world_record_add_pair(f.world, source, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    MaterialTerrain terrain = { .width = 64,
+                                .height = 64,
+                                .cell_size = 2,
+                                .field = "Cave",
+                                .min_fragment_cells = 1 };
+    assert(
+        ecs_world_record_add(f.world, source, GAME_COMPONENT_MaterialTerrain.id, &terrain, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    GAME_GameOrientation_get(f.world, parent)->radians = 0.5f;
+    const char *error = game_materials_prepare(f.materials);
+    assert(error && strstr(error, "unrotated"));
+    dispose(&f);
+}
+
+TEST_CASE(physics_rotated_terrain_is_refused)
+{
+    rotated_terrain();
+    return true;
+}
+
 TEST_CASE(physics_task_pool_runs_every_range)
 {
     test_task_pool();
@@ -1554,6 +1602,7 @@ void test_tool_physics()
 {
     test_native_catalog_enable(); /* Contact payloads copy a CF_V2. */
     RUN_TEST_CASE(physics_task_pool_runs_every_range);
+    RUN_TEST_CASE(physics_rotated_terrain_is_refused);
     RUN_TEST_CASE(physics_authored_motion);
     RUN_TEST_CASE(physics_contacts_and_queries_at_each_substep_count);
     RUN_TEST_CASE(physics_parallel_collection_matches_serial);

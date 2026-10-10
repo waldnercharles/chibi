@@ -57,3 +57,7 @@ build-studio/
 build-install-sdk/
 build-install-studio/
 build-web-player/
+build-web-sdk/
+build-web-sdk-threads/
+build-studio-web/
+build-studio-web-threads/

@@ -1000,7 +1000,10 @@ static int finish_systems(engine *engine)
     }
     CHIBI_TRACE_ZONE_BEGIN(systems_zone, "ECS systems");
     if (!has_simulation(engine)) {
+        /* PostPhysics sees the placements PrePhysics left, as it does when
+         * physics runs between them. */
         if ((result = run_system_phase(engine, SYSTEM_PRE_PHYSICS)) < 0 ||
+            (result = propagate_transforms(engine)) < 0 ||
             (result = run_system_phase(engine, SYSTEM_POST_PHYSICS)) < 0) {
             return result;
         }
@@ -1326,10 +1329,13 @@ void engine_set_behavior_profiling(engine *engine, bool enabled)
 
 GameGlobalTransform2D engine_render_transform(const engine *engine, const ecs_world *world, ecs_entity entity)
 {
+    if (!engine) {
+        return game_transform_world_2d(world, entity);
+    }
     const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
     assert(global);
     GameGlobalTransform2D shown = *global;
-    if (!engine || !engine->modules.physics) {
+    if (!engine->modules.physics) {
         return shown;
     }
     for (ecs_entity at = entity; at.slot; at = ecs_parent(world, at)) {

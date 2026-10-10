@@ -2581,6 +2581,270 @@ static char **migrate_motions(char **sources, char **paths, int count, char *err
     }
     return migrated;
 }
+static bool spelled(const char *text, bool dotted)
+{
+    if (!text || !(isalpha((unsigned char)*text) || *text == '_')) {
+        return false;
+    }
+    for (const char *c = text; *c; c++) {
+        bool dot = dotted && *c == '.' && c[1] && c[-1] != '.';
+        if (!(isalnum((unsigned char)*c) || *c == '_' || dot)) {
+            return false;
+        }
+    }
+    return true;
+}
+static void append(char **out, const char *text)
+{
+    for (; *text; text++) {
+        apush(*out, *text);
+    }
+}
+/* Writes `description` as `//` lines at `indent`, one per line, so an empty
+ * line, a trailing one or an empty description reads back the same. */
+static void comment(char **out, const char *indent, const char *description)
+{
+    for (const char *line = description; line;) {
+        const char *end = strchr(line, '\n');
+        size_t length = end ? (size_t)(end - line) : strlen(line);
+        append(out, indent);
+        append(out, "//");
+        if (length) {
+            apush(*out, ' ');
+        }
+        for (size_t i = 0; i < length; i++) {
+            apush(*out, line[i]);
+        }
+        apush(*out, '\n');
+        line = end ? end + 1 : NULL;
+    }
+}
+static const char *text_of(const av_value *object, const char *key)
+{
+    const av_value *value = av_obj_get(object, key);
+    return av_is_str(value) ? av_get_str(value) : NULL;
+}
+char *chibi_migrate_component(const char *kdl, char *error, size_t error_size)
+{
+    av_doc *document = asset_text_read(kdl, error, error_size);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    av_value *fields = av_is_obj(root) ? av_obj_get(root, "fields") : NULL;
+    const char *name = av_is_obj(root) ? text_of(root, "name") : NULL;
+    bool valid = spelled(name, false) && av_is_arr(fields);
+    char *out = NULL;
+    if (valid) {
+        comment(&out, "", text_of(root, "description"));
+        append(&out, "component ");
+        append(&out, name);
+        append(&out, " {\n");
+    }
+    for (size_t i = 0; valid && i < av_arr_size(fields); i++) {
+        av_value *field = av_arr_get(fields, i);
+        const char *field_name = av_is_obj(field) ? text_of(field, "name") : NULL;
+        const char *type = av_is_obj(field) ? text_of(field, "type") : NULL;
+        valid = spelled(field_name, false) && spelled(type, true);
+        if (valid) {
+            comment(&out, "    ", text_of(field, "description"));
+            append(&out, "    ");
+            append(&out, field_name);
+            append(&out, ": ");
+            append(&out, type);
+            apush(out, '\n');
+        }
+    }
+    if (document && !valid) {
+        snprintf(error, error_size, "A component needs a name and fields with names and types");
+    }
+    av_doc_free(document);
+    if (!valid) {
+        afree(out);
+        return NULL;
+    }
+    append(&out, "}\n");
+    apush(out, 0);
+    char *migrated = xstrdup(out);
+    afree(out);
+    /* A name KDL allowed may be a reserved word in .chibi. */
+    script_syntax *syntax = script_parse(migrated);
+    if (syntax->diagnostic_count) {
+        const char *line = migrated;
+        for (int i = 1; i < syntax->diagnostics[0].range.line; i++) {
+            line = strchr(line, '\n') + 1;
+        }
+        int length = (int)strcspn(line, "\n");
+        while (*line == ' ') {
+            line++;
+            length--;
+        }
+        snprintf(error, error_size, "'%.*s' is not valid .chibi; a name may be a reserved word such as state; rename it, then migrate", length, line);
+        free(migrated);
+        migrated = NULL;
+    }
+    script_syntax_free(syntax);
+    return migrated;
+}
+/* Version 20: each content/components/X.kdl becomes X.chibi. Every source is
+ * staged before any is replaced, and rerunning after an interruption writes
+ * the same sources again. */
+static int migrate_components(const char *content, char *error, size_t error_size)
+{
+    size_t size = strlen(content) + sizeof "/components";
+    char *folder = xmalloc(size);
+    snprintf(folder, size, "%s/components", content);
+    DIR *dir = opendir(folder);
+    if (!dir) {
+        int status = errno == ENOENT ? 0 : -1;
+        if (status) {
+            snprintf(error, error_size, "Cannot open %s: %s", folder, strerror(errno));
+        }
+        free(folder);
+        return status;
+    }
+    char **paths = NULL, **targets = NULL;
+    for (struct dirent *entry; (entry = readdir(dir));) {
+        if (entry->d_name[0] != '.' &&
+            has_suffix(entry->d_name, DECLARATIVE_ASSET_EXTENSION)) {
+            size_t length = strlen(folder) + strlen(entry->d_name) + sizeof "/.chibi";
+            char *path = xmalloc(length), *target = xmalloc(length);
+            snprintf(path, length, "%s/%s", folder, entry->d_name);
+            int stem = (int)(strlen(entry->d_name) - strlen(DECLARATIVE_ASSET_EXTENSION));
+            snprintf(target, length, "%s/%.*s.chibi", folder, stem, entry->d_name);
+            apush(paths, path);
+            apush(targets, target);
+        }
+    }
+    closedir(dir);
+    free(folder);
+    int status = 0, staged = 0;
+    for (; !status && staged < acount(paths); staged++) {
+        char *kdl = read_text(paths[staged]);
+        char message[256] = { 0 };
+        char *source = kdl ? chibi_migrate_component(kdl, message, sizeof message)
+                           : NULL;
+        if (!source) {
+            snprintf(error, error_size, "%s: %s", paths[staged], kdl ? message : "cannot read the file");
+            status = -1;
+        }
+        /* A rerun finds its own earlier output; anything else is kept. */
+        char *existing = status ? NULL : read_text(targets[staged]);
+        if (existing && strcmp(existing, source)) {
+            snprintf(error, error_size, "%s already exists; move it, then migrate", targets[staged]);
+            status = -1;
+        }
+        free(existing);
+        status = status ? status
+                        : stage_text(targets[staged], source, error, error_size);
+        free(kdl);
+        free(source);
+    }
+    for (int i = 0; i < staged; i++) {
+        char *from = staged_path(targets[i]);
+        if (status) {
+            remove(from);
+        } else if (rename(from, targets[i]) || remove(paths[i])) {
+            snprintf(error, error_size, "Cannot replace %s with %s", paths[i], targets[i]);
+            status = -1;
+        }
+        free(from);
+    }
+    for (int i = 0; i < acount(paths); i++) {
+        free(paths[i]);
+        free(targets[i]);
+    }
+    afree(paths);
+    afree(targets);
+    return status;
+}
+/* The name of the `index`th object in a scene's `entities`, or NULL. */
+static av_value *object_name(av_value *entities, size_t index)
+{
+    av_value *entity = av_arr_get(entities, index);
+    av_value *name = av_is_obj(entity) ? av_obj_get(entity, "name") : NULL;
+    return av_is_str(name) ? name : NULL;
+}
+/* Puts '_' in place of each '.' in a string value, returning whether it
+ * had one. */
+static bool undot(av_value *value)
+{
+    if (!av_is_str(value) || !strchr(av_get_str(value), '.')) {
+        return false;
+    }
+    char *undotted = xstrdup(av_get_str(value));
+    for (char *dot = strchr(undotted, '.'); dot; dot = strchr(dot, '.')) {
+        *dot = '_';
+    }
+    av_set_str(value, undotted);
+    free(undotted);
+    return true;
+}
+/* A saved scenario names scene objects in its inputs' event targets, entity
+ * payloads and UI targets. Before version 19 no name was a path, so a '.'
+ * there named an object the scene renames the same way. */
+static bool undot_targets(av_value *root)
+{
+    bool changed = false;
+    av_value *inputs = av_obj_get(root, "inputs");
+    for (size_t i = 0; i < av_arr_size(inputs); i++) {
+        av_value *input = av_arr_get(inputs, i);
+        av_value *events = av_obj_get(input, "events"), *ui = av_obj_get(input, "ui");
+        for (size_t j = 0; j < av_arr_size(events); j++) {
+            av_value *event = av_arr_get(events, j);
+            changed |= undot(av_obj_get(event, "target"));
+            av_value *values = av_obj_get(event, "values");
+            for (size_t k = 0; k < av_arr_size(values); k++) {
+                av_value *payload = av_arr_get(values, k);
+                av_value *type = av_obj_get(payload, "type");
+                if (av_is_str(type) && !strcmp(av_get_str(type), "entity")) {
+                    changed |= undot(av_obj_get(payload, "value"));
+                }
+            }
+        }
+        for (size_t j = 0; j < av_arr_size(ui); j++) {
+            changed |= undot(av_obj_get(av_arr_get(ui, j), "target"));
+        }
+    }
+    return changed;
+}
+/* Version 19 names nested scene objects by '.'-separated paths, so an
+ * object name holding '.' takes '_' in its place, as does a saved scenario's
+ * reference to it. Earlier scenes are flat, so a renamed object that would
+ * share a name with another stops the migration for a person to rename one
+ * of them. Returns an owned copy of `asset` with the new names, or NULL when
+ * no name changes. */
+static char *undot_names(const char *asset, const char *path, char *error, size_t error_size)
+{
+    char message[128];
+    av_doc *document = asset_text_read(asset, message, sizeof message);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    av_value *entities = av_obj_get(root, "entities");
+    size_t count = av_arr_size(entities);
+    bool changed = undot_targets(root);
+    bool renamed = false;
+    for (size_t i = 0; i < count; i++) {
+        renamed |= undot(object_name(entities, i));
+    }
+    for (size_t i = 0; renamed && i < count; i++) {
+        av_value *a = object_name(entities, i);
+        for (size_t j = i + 1; a && j < count; j++) {
+            av_value *b = object_name(entities, j);
+            if (b && !strcmp(av_get_str(a), av_get_str(b))) {
+                snprintf(
+                    error,
+                    error_size,
+                    "%s has two objects that version 19 names %s, because '.' "
+                    "separates paths; rename one, then migrate",
+                    path,
+                    av_get_str(a)
+                );
+                av_doc_free(document);
+                return NULL;
+            }
+        }
+    }
+    char *migrated = changed || renamed ? asset_text_write(root) : NULL;
+    av_doc_free(document);
+    return migrated;
+}
 static int collect_sources(const char *directory, const char *suffix, char ***paths, char *error, size_t error_size)
 {
     DIR *dir = opendir(directory);
@@ -2629,10 +2893,13 @@ int chibi_project_migrate_content(
     size_t error_size
 )
 {
+    if (from == 19) {
+        return migrate_components(content, error, error_size);
+    }
     char **paths = NULL;
-    /* Versions 15, 16 and 18 change scenes and prototypes, wherever the
+    /* Versions 15, 16, 18 and 19 change scenes and prototypes, wherever the
      * project keeps them; every other step changes scripts. */
-    bool scenes = from == 14 || from == 15 || from == 17;
+    bool scenes = from == 14 || from == 15 || from == 17 || from == 18;
     int status = collect_sources(
         content,
         scenes ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
@@ -2724,6 +2991,14 @@ int chibi_project_migrate_content(
             case 17:
                 error[0] = '\0';
                 migrated = migrate_motions(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 18:
+                error[0] = '\0';
+                migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+                for (int i = 0; i < count && !error[0]; i++) {
+                    migrated[i] = undot_names(sources[i], paths[i], error, error_size);
+                }
                 status = error[0] ? -1 : 0;
                 break;
             default: assert(false);

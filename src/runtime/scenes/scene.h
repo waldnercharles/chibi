@@ -26,6 +26,9 @@ typedef struct
     game_physics_settings physics;
     const game_scene_object *objects;
     int object_count;
+    /* Each object's parent, an earlier object's index or -1 for a root; NULL
+     * when every object is a root. Names are unique among siblings. */
+    const int *parents;
 } game_scene_spec;
 
 /* Snapshots all values/names. Reflected type descriptors remain host-owned and
@@ -40,6 +43,8 @@ bool game_scene_perspective(const game_scene *);
 game_physics_settings game_scene_physics(const game_scene *);
 int game_scene_object_count(const game_scene *);
 const char *game_scene_object_name(const game_scene *, int);
+/* The object's parent index, or -1 for a root. */
+int game_scene_object_parent(const game_scene *, int);
 int game_scene_object_behavior_count(const game_scene *, int);
 const char *game_scene_object_behavior(const game_scene *, int object, int behavior);
 /* Retained arena capacity plus the owning generation, for package budgets. */
@@ -50,9 +55,10 @@ game_scene_component game_scene_object_component_at(const game_scene *, int obje
 /* Explicit schema installation, outside ECS iteration and pending commands. */
 int game_scene_register_components(const game_scene *, ecs_world *, char *error, size_t size);
 /* Components must already be installed. Takes a scene reference and borrows
- * world/registry until free. All entities/components exist before any behavior
- * is attached; Begin remains deferred until the host's initialization boundary.
- * Failure removes created entities and cancels their attachments. */
+ * world/registry until free. Each child is ChildOf its parent's entity. All
+ * entities/components exist before any behavior is attached; Begin remains
+ * deferred until the host's initialization boundary. Failure removes created
+ * entities and cancels their attachments. */
 game_scene_instance *game_scene_instantiate(
     game_scene *,
     ecs_world *,

@@ -3224,17 +3224,17 @@ static int square_light(ecs_entity square, const char *name)
 /* Normal maps turn with a mesh's tangents. A sun shines down and toward -z.
  * A map tilted along u lights a square whose u runs along +z more than a
  * flat map does, and a square whose u runs along +x but whose authored
- * tangents point along +z shades the same. A map tilted along v follows the
- * tangents' handedness: it faces the sun when v runs along +z and turns away
- * when v is mirrored. Box-projected UVs keep their own frame, along +x, and
- * authored tangents turn with the square, across the sun. */
+ * tangents point along +z shades the same. A DirectX map tilted along v
+ * follows the tangents' handedness: it faces the sun when v runs along +z
+ * and turns away when v is mirrored. Box-projected UVs keep their own frame,
+ * along +x, and authored tangents turn with the square, across the sun. */
 TEST_CASE(normal_maps_follow_mesh_tangents)
 {
     static const float flat[] = { .5f, .5f, 1 }, along_u[] = { .85f, .5f, .85f },
                        along_v[] = { .5f, .85f, .85f };
-    REQUIRE(test_register_normal_map("Flat", flat));
-    REQUIRE(test_register_normal_map("AlongU", along_u));
-    REQUIRE(test_register_normal_map("AlongV", along_v));
+    REQUIRE(test_register_normal_map("Flat", flat, SHADER_NORMAL_DIRECTX));
+    REQUIRE(test_register_normal_map("AlongU", along_u, SHADER_NORMAL_DIRECTX));
+    REQUIRE(test_register_normal_map("AlongV", along_v, SHADER_NORMAL_DIRECTX));
     static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 }, back = { 0, 0, -1 };
     publish_square(z, x, (CF_V4){ 0 }, false);
     ecs_entity square = add_surface_box("Flat");
@@ -3265,14 +3265,14 @@ TEST_CASE(normal_maps_follow_mesh_tangents)
 }
 
 /* A Transform3D that mirrors the ground square along z keeps it lit from
- * above, and turns its bitangent with its surface: a map tilted along v,
- * which faces the sun while v runs along +z, then shades as it does with v
- * along -z. */
+ * above, and turns its bitangent with its surface: a DirectX map tilted
+ * along v, which faces the sun while v runs along +z, then shades as it does
+ * with v along -z. */
 TEST_CASE(mirroring_transform3d_turns_mesh_bitangents)
 {
     static const float flat[] = { .5f, .5f, 1 }, along_v[] = { .5f, .85f, .85f };
-    REQUIRE(test_register_normal_map("Flat", flat));
-    REQUIRE(test_register_normal_map("AlongV", along_v));
+    REQUIRE(test_register_normal_map("Flat", flat, SHADER_NORMAL_DIRECTX));
+    REQUIRE(test_register_normal_map("AlongV", along_v, SHADER_NORMAL_DIRECTX));
     static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 }, back = { 0, 0, -1 };
     publish_square(x, back, (CF_V4){ 0 }, false);
     ecs_entity square = add_surface_box("Flat");
@@ -3288,6 +3288,28 @@ TEST_CASE(mirroring_transform3d_turns_mesh_bitangents)
     return true;
 }
 
+/* Images put (0, 0) at their top-left. A sun shines down and toward -z on a
+ * square whose image runs up toward +z, so a map Studio labels OpenGL, whose
+ * green tilts up the image, faces the sun, and one labelled DirectX, whose
+ * green tilts down it, turns away. */
+TEST_CASE(normal_map_green_tilts_up_the_image_in_opengl)
+{
+    static const float flat[] = { .5f, .5f, 1 }, green[] = { .5f, .85f, .85f };
+    shader_normal_convention opengl = test_normal_convention("OpenGL (+Y)"),
+                             directx = test_normal_convention("DirectX (-Y)");
+    REQUIRE(test_register_normal_map("Flat", flat, opengl));
+    REQUIRE(test_register_normal_map("OpenGL", green, opengl));
+    REQUIRE(test_register_normal_map("DirectX", green, directx));
+    publish_square((CF_V3){ 1, 0, 0 }, (CF_V3){ 0, 0, -1 }, (CF_V4){ 0 }, false);
+    ecs_entity square = add_surface_box("Flat");
+    import_mesh(square);
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
+    int level = square_light(square, "Flat");
+    REQUIRE(level > 0 && square_light(square, "OpenGL") > level + 10);
+    REQUIRE(square_light(square, "DirectX") + 10 < level);
+    return true;
+}
+
 /* A Transform3D that stretches the ground square ten million times along
  * its normal leaves it as it was, tangents included: with authored tangents
  * along +z, a map tilted along u still faces the sun, though the frame's
@@ -3295,7 +3317,7 @@ TEST_CASE(mirroring_transform3d_turns_mesh_bitangents)
 TEST_CASE(stretched_transform3d_keeps_mesh_tangents)
 {
     static const float along_u[] = { .85f, .5f, .85f };
-    REQUIRE(test_register_normal_map("AlongU", along_u));
+    REQUIRE(test_register_normal_map("AlongU", along_u, SHADER_NORMAL_DIRECTX));
     static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 };
     publish_square(x, z, (CF_V4){ 0, 0, 1, 1 }, false);
     ecs_entity square = add_surface_box("AlongU");
@@ -3931,6 +3953,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_mesh_groups_take_their_own_materials);
     RUN_TEST_CASE(imported_meshes_carry_texture_and_part_coordinates);
     RUN_TEST_CASE(normal_maps_follow_mesh_tangents);
+    RUN_TEST_CASE(normal_map_green_tilts_up_the_image_in_opengl);
     RUN_TEST_CASE(mirroring_transform3d_turns_mesh_bitangents);
     RUN_TEST_CASE(stretched_transform3d_keeps_mesh_tangents);
     RUN_TEST_CASE(occlusion_dims_only_ambient_light);

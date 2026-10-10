@@ -364,7 +364,7 @@ static node_desc image_node = {
 };
 NODE(planar_node, "Planar Mapping", 4, projection_in, uv_out, "Projects Position, defaulting to PartPosition, onto the selected axis plane, then scales and offsets UV.");
 NODE(cylindrical_node, "Cylindrical Mapping", 4, projection_in, uv_out, "Maps Position, defaulting to PartPosition, around the selected axis; U wraps one revolution and V follows the axis.");
-NODE(normal_map_node, "Normal Map", 5, normal_map_in, vector3_out, "Decodes linear RGB normal data into a world-space normal using the UV expression; Distance is world-unit derivative spacing. OpenGL uses +green, DirectX -green.");
+NODE(normal_map_node, "Normal Map", 5, normal_map_in, vector3_out, "Decodes linear RGB normal data into a world-space normal using the UV expression; Distance is world-unit derivative spacing. OpenGL's green tilts up the image, DirectX's down.");
 NODE(bump_node, "Bump", 4, bump_in, vector3_out, "Perturbs the world normal from six nearby evaluations of Height; Height and Distance are world units. Nested sampled derivative expressions are unsupported.");
 NODE(decal_node, "Decal Mask", 4, decal_in, scalar_out, "Masks Position inside Half Size with an inward Feather. Facing -1 disables face rejection; otherwise keeps normals facing mapped +Z above the threshold.");
 static node_desc triplanar_node = {
@@ -384,8 +384,8 @@ static const enum_value_desc mapping_axes[] = { { 0, "SHADER_MAPPING_X", "X" },
                                                 { 1, "SHADER_MAPPING_Y", "Y" },
                                                 { 2, "SHADER_MAPPING_Z", "Z" } };
 static const enum_value_desc normal_conventions[] = {
-    { 0, "SHADER_NORMAL_OPENGL", "OpenGL (+Y)" },
-    { 1, "SHADER_NORMAL_DIRECTX", "DirectX (-Y)" }
+    { SHADER_NORMAL_DIRECTX, "SHADER_NORMAL_DIRECTX", "DirectX (-Y)" },
+    { SHADER_NORMAL_OPENGL, "SHADER_NORMAL_OPENGL", "OpenGL (+Y)" }
 };
 static const enum_value_desc image_spaces[] = {
     { SHADER_IMAGE_SRGB, "SHADER_IMAGE_SRGB", "sRGB color" },

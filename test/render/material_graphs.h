@@ -19,8 +19,10 @@ bool test_register_ramp(const char *name, int count, const float from[4], const 
  * coordinate node `input`, such as "Shader UV". */
 bool test_register_coordinate(const char *name, const char *input);
 /* A lit material with the output's white base whose Normal is a Normal Map
- * of the constant linear `color`. */
-bool test_register_normal_map(const char *name, const float color[3]);
+ * of the constant linear `color` in `convention`. */
+bool test_register_normal_map(const char *name, const float color[3], shader_normal_convention convention);
+/* The Normal Map convention whose label Studio shows is `label`. */
+shader_normal_convention test_normal_convention(const char *label);
 /* A lit material with the output's white base and constant `occlusion`. */
 bool test_register_occlusion(const char *name, float occlusion);
 /* An unlit white material with constant `opacity` drawn by alpha `mode` with

@@ -200,19 +200,20 @@ static CF_V3 tangent_of(const render_mesh_surface_vertex *v)
     return (CF_V3){ v->tangent.x, v->tangent.y, v->tangent.z };
 }
 
-/* cross(normal, tangent) * w, the direction normal maps' green tilts toward. */
-static CF_V3 bitangent_of(const render_mesh_surface_vertex *v)
+/* Where an OpenGL normal image's green tilts: against the bitangent,
+ * cross(normal, tangent) * w, which points toward +v. */
+static CF_V3 green_of(const render_mesh_surface_vertex *v)
 {
-    return cf_mul_v3_f(cf_cross_v3(v->normal, tangent_of(v)), v->tangent.w);
+    return cf_mul_v3_f(cf_cross_v3(v->normal, tangent_of(v)), -v->tangent.w);
 }
 
-/* Whether every vertex has `tangent` and `bitangent`, and every triangle
- * winds counterclockwise around its vertex normals. */
-static bool frames_are(CF_V3 tangent, CF_V3 bitangent)
+/* Whether every vertex has `tangent` and tilts green toward `green`, and
+ * every triangle winds counterclockwise around its vertex normals. */
+static bool frames_are(CF_V3 tangent, CF_V3 green)
 {
     for (int i = 0; i < acount(mesh.vertices); i++) {
         const render_mesh_surface_vertex *v = &mesh.vertices[i];
-        if (!near_v3(tangent_of(v), tangent) || !near_v3(bitangent_of(v), bitangent)) {
+        if (!near_v3(tangent_of(v), tangent) || !near_v3(green_of(v), green)) {
             return false;
         }
     }
@@ -1101,11 +1102,12 @@ static bool frames(gltf_fixture *f, const char *name, const char *nodes, const c
 }
 
 /* A normal map's green tilts toward the top of its image, as glTF's does:
- * generated bitangents point up the image, toward -v, and authored tangents
- * keep their handedness. A mirroring node turns both and the winding with
- * it, and a primitive without normals takes each triangle's own. A parent
- * that flattens a turned square onto the ground keeps it, facing up or down
- * as its normals did, mirrored or not. */
+ * generated bitangents point down the image, toward +v, as Chibi's do, and
+ * authored tangents keep their handedness against glTF's bitangent, which
+ * points up it. A mirroring node turns both and the winding with it, and a
+ * primitive without normals takes each triangle's own. A parent that
+ * flattens a turned square onto the ground keeps it, facing up or down as
+ * its normals did, mirrored or not. */
 TEST_CASE(model_imports_keep_gltf_tangent_frames)
 {
     static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 };
@@ -1146,8 +1148,8 @@ TEST_CASE(model_imports_keep_gltf_tangent_frames)
         REQUIRE(acount(mesh.indices) == 6 && frames_are(pressed[i].tangent, z));
         REQUIRE(near_v3(mesh.vertices[0].normal, pressed[i].normal));
     }
-    /* Authored tangents along -z and twice unit length point bitangents
-     * along -x. */
+    /* Authored tangents along -z and twice unit length tilt green along
+     * -x. */
     int tangents = gltf_fixture_floats(
         &f,
         (const float[16]){ 0, 0, -2, 1, 0, 0, -2, 1, 0, 0, -2, 1, 0, 0, -2, 1 },
@@ -1215,7 +1217,7 @@ TEST_CASE(model_imports_keep_gltf_tangent_frames)
     }
     gltf_fixture_free(&vast);
 
-    /* The image's u running along -x keeps the bitangent up the image. */
+    /* The image's u running along -x keeps green tilting up the image. */
     gltf_fixture flipped = { 0 };
     gltf_fixture_square(&flipped, (const float[]){ 1, 1, 1, 0, 0, 0, 0, 1 });
     REQUIRE(

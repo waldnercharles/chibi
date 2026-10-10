@@ -572,12 +572,12 @@ vertices only a left-out triangle used; a primitive whose accessors carry
 more vertices than a `.mesh` file holds, of which its triangle uses three; a
 model whose nodes copy a primitive past what a `.mesh` file holds, refused
 while it bakes, and a primitive past it, refused before its vertices are
-built; and tangent frames
-generated toward image-up, authored, turned, mirrored by a node, flat at any
-size, flattened onto the ground by a parent, and scaled past float's volume
-or square or carried past its range. It
-needs a compiler build, uses one temporary folder and passes 176 assertions
-under ASan/UBSan with leak checks, without processes or GPU.
+built; and tangent frames whose OpenGL green tilts up the image: generated,
+authored, turned, mirrored by a node, flat at any size, flattened onto the
+ground by a parent, scaled past float's volume or square, and carried past
+its range. It needs a compiler build, uses one temporary folder and passes
+176 assertions under ASan/UBSan with leak checks, without processes or
+GPU.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

@@ -605,11 +605,11 @@ static int key_of(const CM_Primitive *p, const kept_part *k, int corner)
     return k->flat ? corner : (int)p->indices[corner];
 }
 
-/* The kept part of `p` in its node's frame, with glTF's tangent frame: each
- * authored tangent, or else one along +u whose bitangent points up the
- * image, toward -v, where Chibi's generated one points toward +v. Without
- * normals, each triangle's corners get its own flat normal, as glTF
- * requires. */
+/* The kept part of `p` in its node's frame, with Chibi's tangent frame,
+ * whose bitangent points toward +v, down the image: generated, or each
+ * authored tangent with its w negated, since glTF's bitangent points up the
+ * image. Without normals, each triangle's corners get its own flat normal, as
+ * glTF requires. */
 static void primitive_part(const CM_Primitive *p, yyjson_val *json, const kept_part *k, render_mesh_asset *part)
 {
     for (int i = 0; i < acount(k->keys); i++) {
@@ -646,14 +646,13 @@ static void primitive_part(const CM_Primitive *p, yyjson_val *json, const kept_p
     bool authored = !k->flat && has_attribute(json, "TANGENT") && p->tangents;
     for (int i = 0; i < acount(part->vertices); i++) {
         render_mesh_surface_vertex *vertex = &part->vertices[i];
-        vertex->tangent.w = -vertex->tangent.w;
         const float *t = authored ? p->tangents + k->keys[i] * 4 : NULL;
         CF_V3 direction = t ? unit(v3(t), (CF_V3){ 0 }) : (CF_V3){ 0 };
         if (cf_len_v3(direction) > 0) {
             vertex->tangent = (CF_V4){ direction.x,
                                        direction.y,
                                        direction.z,
-                                       t[3] < 0 ? -1.0f : 1.0f };
+                                       t[3] < 0 ? 1.0f : -1.0f };
         }
     }
 }

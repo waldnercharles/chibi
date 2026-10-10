@@ -16,6 +16,8 @@ enum
     NORMAL_MAP_COLOR,
     NORMAL_MAP_UV,
     NORMAL_MAP_STRENGTH,
+    NORMAL_MAP_DISTANCE,
+    NORMAL_MAP_CONVENTION,
 };
 enum
 {
@@ -142,6 +144,7 @@ static void normal(graph *g, node *output, const standard_material *material)
         return;
     }
     node *map = add(g, "Shader Normal Map");
+    set(g, map, NORMAL_MAP_CONVENTION, (pin_value){ .type = PIN_I32, .i = SHADER_NORMAL_OPENGL });
     wire(g, image, IMAGE_COLOR, map, NORMAL_MAP_COLOR);
     wire(g, scalar(g, STANDARD_NORMAL_SCALE, material->normal_scale), 0, map, NORMAL_MAP_STRENGTH);
     wire(g, map, 0, output, SHADER_SURFACE_NORMAL);

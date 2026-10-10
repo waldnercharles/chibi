@@ -2,7 +2,9 @@
 #include "runtime/behaviors/entities.h"
 #include "runtime/material_ecs.h"
 #include "runtime/particles.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <math.h>
@@ -221,12 +223,10 @@ static bool in_solid(game_materials *materials, fluid_vec point)
         if (!record.mask) {
             continue;
         }
-        const GameTransform
-            *p = GAME_GameTransform_get_const(materials->world, record.entity);
-        const GameOrientation
-            *heading = GAME_GameOrientation_get_const(materials->world, record.entity);
-        float angle = heading ? heading->radians : 0, c = cosf(angle), s = sinf(angle);
-        float x = point.x - p->x, y = point.y - p->y;
+        GameGlobalTransform2D
+            pose = game_transform_world_2d(materials->world, record.entity);
+        float c = cosf(pose.radians), s = sinf(pose.radians);
+        float x = point.x - pose.position.x, y = point.y - pose.position.y;
         if (material_mask_contains(record.mask, c * x + s * y, -s * x + c * y)) {
             return true;
         }
@@ -266,8 +266,12 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
         (igniter && (!isfinite(igniter->heat) || igniter->heat < 0))) {
         return "Fuel and heat must be finite and nonnegative";
     }
-    const GameTransform *origin = GAME_GameTransform_get_const(materials->world, entity);
-    if (!origin || !isfinite(origin->x + origin->y) ||
+    if (!GAME_GameTransform_get_const(materials->world, entity)) {
+        return "Fluid volume needs Transform";
+    }
+    GameGlobalTransform2D pose = game_transform_world_2d(materials->world, entity);
+    CF_V2 origin = pose.position;
+    if (!isfinite(origin.x + origin.y) ||
         (v.kind != FLUID_GAS && v.kind != FLUID_LIQUID) ||
         !isfinite(
             v.width + v.height + v.spacing + v.mass + v.absorption +
@@ -280,18 +284,16 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
         v.absorption < 0 || v.emission < 0 || v.visibility < 0 ||
         v.visibility > 1 || v.refraction < 0 || v.refraction > 16 ||
         v.grain_radius < 0 || v.grain_radius > materials->settings.kernel) {
-        return "Fluid volume needs Transform, gas/liquid kind, positive "
-               "dimensions up to 8192, spacing 0.3..1 kernels, positive mass "
+        return "Fluid volume needs a finite position, gas/liquid kind, "
+               "positive dimensions up to 8192, spacing 0.3..1 kernels, "
+               "positive mass "
                "and nonnegative lighting; grain radius must be 0..1 kernels";
     }
     material_record *record = material_ecs_record(materials, entity);
     if (record->volume) {
         return NULL;
     }
-    const GameOrientation
-        *orientation = GAME_GameOrientation_get_const(materials->world, entity);
-    float angle = orientation ? orientation->radians : 0, c = cosf(angle),
-          s = sinf(angle);
+    float c = cosf(pose.radians), s = sinf(pose.radians);
     int nx = (int)ceilf(v.width / v.spacing), ny = (int)ceilf(v.height / v.spacing);
     int required = 0, existing;
     material_fluid_particles(materials->fluid, &existing);
@@ -299,8 +301,8 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
         for (int x = 0; x < nx; x++) {
             float px = (x + .5f - nx * .5f) * v.spacing;
             float py = (y + .5f - ny * .5f) * v.spacing;
-            fluid_vec position = { origin->x + c * px - s * py,
-                                   origin->y + s * px + c * py };
+            fluid_vec position = { origin.x + c * px - s * py,
+                                   origin.y + s * px + c * py };
             required += volume_density(v, px, py) > 0 &&
                         !in_solid(materials, position);
         }
@@ -315,8 +317,8 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
             float px = (x + .5f - nx * .5f) * v.spacing;
             float py = (y + .5f - ny * .5f) * v.spacing;
             float fill = volume_density(v, px, py);
-            fluid_vec position = { origin->x + c * px - s * py,
-                                   origin->y + s * px + c * py };
+            fluid_vec position = { origin.x + c * px - s * py,
+                                   origin.y + s * px + c * py };
             if (fill <= 0 || in_solid(materials, position)) {
                 continue;
             }
@@ -335,7 +337,7 @@ const char *material_ecs_fill_volume(game_materials *materials, ecs_entity entit
                 py += (((hash >> 16) / 65535.f) - .5f) * v.spacing * .65f;
             }
             fluid_particle p = {
-                .position = { origin->x + c * px - s * py, origin->y + s * px + c * py },
+                .position = { origin.x + c * px - s * py, origin.y + s * px + c * py },
                 .velocity = { c * v.velocity.x - s * v.velocity.y,
                               s * v.velocity.x + c * v.velocity.y },
                 .mass = v.mass,
@@ -382,12 +384,12 @@ static void camera_regions(game_materials *materials)
         if (camera->disabled) {
             continue;
         }
-        const GameTransform *position = GAME_GameTransform_get_const(materials->world, entity);
+        CF_V2 position = game_transform_world_2d(materials->world, entity).position;
         float buffer = materials->settings.buffer;
         apush(
             materials->regions,
-            ((fluid_region){ position->x + camera->offset.x - camera->width * .5f - buffer,
-                             position->y + camera->offset.y - camera->height * .5f - buffer,
+            ((fluid_region){ position.x + camera->offset.x - camera->width * .5f - buffer,
+                             position.y + camera->offset.y - camera->height * .5f - buffer,
                              camera->width + 2 * buffer,
                              camera->height + 2 * buffer })
         );
@@ -405,7 +407,13 @@ static void blasts(
 {
     int count;
     const fluid_blast *events = material_fluid_blasts(materials->fluid, &count);
+    if (!count) {
+        return;
+    }
     GameCombustion settings = materials->combustion;
+    /* The push each body takes from one blast: it moves once, as its part
+     * nearest the blast that the blast reaches. */
+    fluid_vec *push = xcalloc(body_count, sizeof *push);
     for (int e = 0; e < count; e++) {
         fluid_blast event = events[e];
         float density = fminf(1, event.ignitions / 8.f);
@@ -433,8 +441,10 @@ static void blasts(
             }
             float impulse = settings.blast_speed * density *
                             (1 - distance / radius) / b->inverse_mass;
-            b->impulse.x += dx / distance * impulse;
-            b->impulse.y += dy / distance * impulse;
+            fluid_vec *moved = &push[material_fluid_response(bodies, i)];
+            if (impulse > hypotf(moved->x, moved->y)) {
+                *moved = (fluid_vec){ dx / distance * impulse, dy / distance * impulse };
+            }
             ecs_entity entity = ecs_entity_from_u64(b->owner);
             if (!game_materials_mask(materials, entity)) {
                 material_destruction_emit_event(
@@ -447,6 +457,11 @@ static void blasts(
                         .cause = MATERIAL_DAMAGE_BLAST }
                 );
             }
+        }
+        for (int i = 0; i < body_count; i++) {
+            bodies[i].impulse.x += push[i].x;
+            bodies[i].impulse.y += push[i].y;
+            push[i] = (fluid_vec){ 0 };
         }
         /* Trace spokes to the first surviving cell. A blast chips the facing
          * wall but cannot damage a second wall/body through it in this tick. */
@@ -463,16 +478,11 @@ static void blasts(
                         !ecs_entity_is_alive(materials->world, record.entity)) {
                         continue;
                     }
-                    const GameTransform *p = GAME_GameTransform_get_const(
-                        materials->world,
-                        record.entity
-                    );
-                    const GameOrientation *o = GAME_GameOrientation_get_const(
-                        materials->world,
-                        record.entity
-                    );
-                    float c = o ? cosf(o->radians) : 1, s = o ? sinf(o->radians) : 0;
-                    float x = point.x - p->x, y = point.y - p->y;
+                    GameGlobalTransform2D
+                        pose = game_transform_world_2d(materials->world, record.entity);
+                    float c = cosf(pose.radians), s = sinf(pose.radians);
+                    float x = point.x - pose.position.x,
+                          y = point.y - pose.position.y;
                     if (!material_mask_contains(record.mask, c * x + s * y, -s * x + c * y)) {
                         continue;
                     }
@@ -492,6 +502,7 @@ static void blasts(
             }
         }
     }
+    free(push);
 }
 
 static float clamp01(float value)

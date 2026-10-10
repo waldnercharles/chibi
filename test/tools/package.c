@@ -378,6 +378,64 @@ TEST_CASE(package_installation_preserves_game_and_rejects_corruption)
     return true;
 }
 
+TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions)
+{
+    char source[1024], bin[1024], filename[1024], original[1024], search[8192];
+    path(source, directory, "web-recipe");
+    assert(!mkdir(source, 0700));
+    path(filename, source, "tools");
+    assert(!mkdir(filename, 0700));
+    path(bin, source, "bin");
+    assert(!mkdir(bin, 0700));
+    path(original, tool_root(), "Makefile");
+    path(filename, source, "Makefile");
+    const char *copy[] = { "cp", original, filename, NULL };
+    REQUIRE(tool_run(copy, source, log_path) == 0);
+    path(original, tool_root(), "tools/web_env.sh");
+    path(filename, source, "tools/web_env.sh");
+    REQUIRE(tool_run(copy, source, log_path) == 0);
+    path(filename, source, "tools/quiet.sh");
+    tool_write(filename, "#!/bin/sh\nshift 2\nexec \"$@\"\n");
+    path(filename, source, "tools/configure.sh");
+    tool_write(
+        filename,
+        "#!/bin/sh\nset -eu\n"
+        "test \"$1\" = sdk-web\ntest \"$2\" = web-sdk\nshift 2\n"
+        "for argument do\n case $argument in -D*=*) ;; *) exit 1 ;; "
+        "esac\ndone\n"
+        "printf '%s\\n' \"$@\" > configure-arguments\n"
+    );
+    path(filename, bin, "cmake");
+    tool_write(filename, "#!/bin/sh\nprintf '%s\\n' \"$@\" > build-arguments\n");
+    assert(!chmod(filename, 0700));
+    snprintf(search, sizeof search, "PATH=%s:%s", bin, getenv("PATH"));
+    const char *args[] = { "env",
+                           search,
+                           "make",
+                           "-o",
+                           "sdk-reflect-build",
+                           "web-sdk-build",
+                           "QUIET=sh tools/quiet.sh",
+                           "WEB_SDK_BUILD_DIR=web-sdk",
+                           "WEB_SDK_CMAKE_FLAGS=-DPROBE=present",
+                           "WEB_THREADS=0",
+                           "JOBS=2",
+                           NULL };
+    REQUIRE(tool_run(args, source, log_path) == 0);
+    path(filename, source, "configure-arguments");
+    char *arguments = tool_read(filename);
+    REQUIRE(arguments);
+    bool definitions = strstr(arguments, "-DPROBE=present\n") &&
+                       strstr(arguments, "-DCMAKE_BUILD_TYPE=Release\n") &&
+                       strstr(arguments, "-DCHIBI_WEB_THREADS=OFF\n") &&
+                       strstr(arguments, "-DCHIBI_REFLECT_EXECUTABLE=");
+    free(arguments);
+    REQUIRE(definitions);
+    path(filename, source, "build-arguments");
+    REQUIRE(file_equals(filename, "--build\nweb-sdk\n--parallel\n2\n"));
+    return true;
+}
+
 TEST_CASE(serial_web_package_disables_stale_threaded_entrypoints)
 {
     char serial[1024], threads[1024], script[1024], filename[1024], entry[1024],
@@ -465,6 +523,7 @@ void test_tool_package()
     RUN_TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages);
     RUN_TEST_CASE(package_installation_preserves_game_and_rejects_corruption);
     RUN_TEST_CASE(warm_configuration_preserves_input_invalidation);
+    RUN_TEST_CASE(web_sdk_recipe_passes_only_configuration_definitions);
     RUN_TEST_CASE(serial_web_package_disables_stale_threaded_entrypoints);
     tool_remove_tree(directory);
 }

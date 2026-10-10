@@ -36,6 +36,7 @@ struct engine_viewport
     int requested_height;
     int resize_pending;
     int stable_resize_frames;
+    bool sized; /* the canvas has taken a size the host asked for */
     int focused;
     bool host;
     engine_viewport_host_input host_input;
@@ -229,12 +230,17 @@ int engine_viewport_request_resize(engine_viewport *viewport, int width, int hei
         viewport->stable_resize_frames = 0;
     }
     viewport->resize_pending = width != viewport->width || height != viewport->height;
+    viewport->sized |= !viewport->resize_pending;
     return 0;
 }
 
-static int commit_resize(engine_viewport *viewport)
+/* A new size replaces the canvas once the host has asked for it two frames
+   running, so a drag does not reallocate it every frame. The first replaces
+   the placeholder at once, which the image would otherwise stretch. */
+static int settle_resize(engine_viewport *viewport)
 {
-    if (!viewport->resize_pending) {
+    if (!viewport->resize_pending ||
+        (viewport->sized && viewport->stable_resize_frames < 2)) {
         return 0;
     }
     CF_Canvas replacement = viewport_canvas(viewport->requested_width, viewport->requested_height);
@@ -247,6 +253,7 @@ static int commit_resize(engine_viewport *viewport)
     viewport->height = viewport->requested_height;
     viewport->resize_pending = 0;
     viewport->stable_resize_frames = 0;
+    viewport->sized = true;
     return 0;
 }
 
@@ -613,7 +620,7 @@ int engine_viewport_render(engine_viewport *viewport, float width, float height)
         return -1;
     }
     engine_viewport_request_resize(viewport, (int)width, (int)height);
-    if (viewport->stable_resize_frames >= 2 && commit_resize(viewport) != 0) {
+    if (settle_resize(viewport) != 0) {
         return -1;
     }
     draw_viewport_canvas(viewport);
@@ -685,7 +692,7 @@ int engine_viewport_draw(engine_viewport *viewport, const engine_viewport_contro
         cancel_viewport_pointer(viewport);
         return 0;
     }
-    if (viewport->stable_resize_frames >= 2 && commit_resize(viewport) != 0) {
+    if (settle_resize(viewport) != 0) {
         return -1;
     }
     draw_viewport_canvas(viewport);

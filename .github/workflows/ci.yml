@@ -3,8 +3,17 @@ name: CI
 on:
   workflow_dispatch:
   pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.claude/**'
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - '.claude/**'
 
 permissions:
   contents: read
@@ -24,6 +33,7 @@ jobs:
   native:
     name: Engine build and native tests
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies
@@ -40,18 +50,29 @@ jobs:
       - name: Identify dependency sources
         id: deps
         run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
-      - name: Cache dependencies
-        uses: actions/cache@v4
+      # Only main saves the caches; pull requests restore them.
+      - name: Restore dependencies
+        id: dependency-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cache/chibi-fetchcontent
             ~/.cache/chibi-dependency-packages
           key: native-deps-${{ runner.os }}-clang18-${{ steps.deps.outputs.key }}
+          restore-keys: native-deps-${{ runner.os }}-clang18-
       - name: Build chibi_ctl and the test drivers (ASan and UBSan)
         run: make test-build LIBCLANG_ROOT=/usr/lib/llvm-18
       # The only engine build on fork pull requests, which skip the Studio job.
       - name: Build chibi, chibi-compile and chibi-player
         run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Save dependencies
+        if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/chibi-fetchcontent
+            ~/.cache/chibi-dependency-packages
+          key: ${{ steps.dependency-cache.outputs.cache-primary-key }}
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Tooling and process integrations (one 60-second deadline)
         run: make test-tools TOOLS_C_COMPILER=clang-18
@@ -67,6 +88,7 @@ jobs:
       github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Require Studio checkout access
@@ -96,15 +118,26 @@ jobs:
       - name: Identify dependency sources
         id: deps
         run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
-      - name: Cache dependencies
-        uses: actions/cache@v4
+      # Only main saves the caches; pull requests restore them.
+      - name: Restore dependencies
+        id: dependency-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cache/chibi-fetchcontent
             ~/.cache/chibi-dependency-packages
           key: studio-deps-${{ runner.os }}-clang18-${{ steps.deps.outputs.key }}
+          restore-keys: studio-deps-${{ runner.os }}-clang18-
       - name: Package the SDK
         run: make package-sdk SDK_PREFIX=dist/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Save dependencies
+        if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/chibi-fetchcontent
+            ~/.cache/chibi-dependency-packages
+          key: ${{ steps.dependency-cache.outputs.cache-primary-key }}
       - name: Build Studio against the packaged SDK
         run: make studio-build STUDIO_SOURCE="$PWD/chibi-studio" STUDIO_SDK_PREFIX=dist/sdk
       - name: Two hidden Studio frames
@@ -117,6 +150,7 @@ jobs:
   format:
     name: clang-format
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - name: Install clang-format

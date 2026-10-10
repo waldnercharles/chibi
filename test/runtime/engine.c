@@ -489,10 +489,9 @@ static void presentation_checks()
     assert(engine_frame(f.runtime, .1) == FLOW_OK);
     float solved = GAME_GameTransform_get_const(f.world, f.entity)->x;
     assert(engine_frame(f.runtime, .1 + ENGINE_FIXED_SECONDS * .5) == FLOW_OK);
-    GameTransform displayed;
+    CF_V2 displayed = engine_render_transform(f.runtime, f.world, f.entity).position;
     test_check(
-        engine_render_position(f.runtime, f.entity, &displayed) &&
-            fabs(displayed.x - (solved - ENGINE_FIXED_SECONDS * .5)) < .00001f &&
+        fabs(displayed.x - (solved - ENGINE_FIXED_SECONDS * .5)) < .00001f &&
             GAME_GameTransform_get_const(f.world, f.entity)->x == solved &&
             engine_last_timing(f.runtime)->steps == 0,
         "fractional display frames interpolate physics poses without changing "
@@ -500,7 +499,7 @@ static void presentation_checks()
     );
     assert(engine_set_playing(f.runtime, false) == 0);
     test_check(
-        engine_render_position(f.runtime, f.entity, &displayed) && displayed.x == solved,
+        engine_render_transform(f.runtime, f.world, f.entity).position.x == solved,
         "Pause displays the latest solved pose immediately"
     );
     clock_free(&f);

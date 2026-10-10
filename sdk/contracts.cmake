@@ -100,26 +100,30 @@ if(CHIBI_SDK_BUILD_NATIVE)
         chibi_native_types chibi_native_capabilities)
     chibi_sdk_contract(chibi_save_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities chibi_json)
     chibi_sdk_contract(chibi_ui_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_asset_values chibi_native_capabilities chibi_value_document chibi_math)
-    chibi_sdk_contract(chibi_input_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_input_action chibi_native_types chibi_native_capabilities chibi_execution_contract chibi_behavior_runtime chibi_scheduling chibi_events)
+    chibi_sdk_contract(chibi_input_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_input_action chibi_native_types chibi_native_capabilities chibi_execution_contract chibi_behavior_runtime chibi_scheduling chibi_events chibi_spatial_runtime)
     chibi_sdk_contract(chibi_declared_components "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_native_types chibi_capabilities chibi_execution chibi_types chibi_support)
     chibi_sdk_contract(chibi_player "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_engine chibi_behavior_runtime chibi_scene_runtime chibi_field_catalog chibi_declared_components)
     chibi_sdk_contract(chibi_visibility_runtime "${CHIBI_SDK_ROOT}/src/runtime"
-        chibi_entity_runtime chibi_native_types chibi_native_capabilities chibi_physics_runtime chibi_support)
+        chibi_entity_runtime chibi_native_types chibi_native_capabilities chibi_physics_runtime chibi_spatial_runtime chibi_support)
     chibi_sdk_contract(chibi_engine "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_behavior_runtime chibi_entity_runtime chibi_native_types chibi_scheduling
-        chibi_physics_runtime chibi_material_runtime chibi_visibility_runtime chibi_particle_runtime chibi_audio_runtime
+        chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime chibi_visibility_runtime chibi_particle_runtime chibi_audio_runtime
         chibi_ui_runtime chibi_save_runtime chibi_input_runtime chibi_task_pool_runtime
         chibi_spatial_runtime chibi_visual_motion_runtime chibi_execution chibi_support)
     chibi_sdk_contract(chibi_visual_motion_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_ecs chibi_native_capabilities chibi_native_types)
     chibi_sdk_contract(chibi_material_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_ecs chibi_tasks chibi_field_catalog chibi_native_capabilities chibi_native_types
-        chibi_entity_runtime chibi_particle_runtime chibi_task_pool_runtime chibi_execution chibi_support)
+        chibi_entity_runtime chibi_particle_runtime chibi_spatial_runtime chibi_task_pool_runtime
+        chibi_execution chibi_support)
     chibi_sdk_contract(chibi_physics_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_native_types chibi_entity_runtime chibi_material_runtime chibi_task_pool_runtime
-        chibi_native_capabilities chibi_execution chibi_support chibi_box2d)
+        chibi_native_capabilities chibi_spatial_runtime chibi_execution chibi_support chibi_box2d)
+    chibi_sdk_contract(chibi_physics3d_runtime "${CHIBI_SDK_ROOT}/src/runtime"
+        chibi_native_types chibi_entity_runtime chibi_native_capabilities chibi_task_pool_runtime
+        chibi_spatial_runtime chibi_execution chibi_support chibi_box3d)
     chibi_sdk_contract(chibi_task_pool_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_tasks chibi_support chibi_task_scheduler Tracy::TracyClient)
     chibi_sdk_contract(chibi_host_native_default "${CHIBI_SDK_ROOT}/src/host"
@@ -128,12 +132,13 @@ if(CHIBI_SDK_BUILD_NATIVE)
         chibi_conversion_capabilities chibi_text_capabilities chibi_native_bindings chibi_entity_runtime
         chibi_audio_runtime chibi_rhythm_runtime chibi_vector_capabilities chibi_math_capabilities
         chibi_arithmetic_capabilities chibi_particle_runtime chibi_save_runtime chibi_ui_runtime
-        chibi_visual_motion_runtime chibi_physics_runtime chibi_material_runtime chibi_visibility_runtime
-        chibi_input_runtime)
+        chibi_visual_motion_runtime chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime
+        chibi_visibility_runtime chibi_input_runtime)
     if(CHIBI_SDK_BUILD_COMPILER)
         chibi_sdk_contract(chibi_studio_catalog "${CHIBI_SDK_ROOT}/src/authoring"
             chibi_native_capabilities chibi_studio_capabilities chibi_host_native_default)
     endif()
+    chibi_sdk_contract(chibi_tilemap_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_math chibi_support)
     chibi_sdk_contract(chibi_spatial_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_types)
     get_filename_component(native_generated "${CHIBI_NATIVE_TYPES_SOURCE}" DIRECTORY)
     chibi_sdk_contract(chibi_native_types "${native_generated}"
@@ -141,7 +146,8 @@ if(CHIBI_SDK_BUILD_NATIVE)
     chibi_sdk_contract(chibi_native_bindings "${native_generated}"
         chibi_native_types chibi_native_capabilities chibi_spatial_runtime)
     chibi_sdk_contract(chibi_entity_runtime "${CHIBI_SDK_ROOT}/src/runtime/behaviors"
-        chibi_native_types chibi_execution chibi_scene_runtime chibi_behavior_runtime chibi_native_capabilities)
+        chibi_native_types chibi_execution chibi_scene_runtime chibi_behavior_runtime chibi_native_capabilities
+        chibi_spatial_runtime chibi_tilemap_runtime)
 endif()
 
 if(CHIBI_SDK_BUILD_COMPILER)
@@ -170,7 +176,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     chibi_sdk_contract(chibi_scene_document "${CHIBI_SDK_ROOT}/src/assets"
         chibi_ecs chibi_asset_values chibi_scene_runtime chibi_asset_text chibi_support)
     chibi_sdk_contract(chibi_prototype_document "${CHIBI_SDK_ROOT}/src/assets"
-        chibi_ecs chibi_asset_values chibi_asset_text)
+        chibi_ecs chibi_asset_values chibi_scene_document chibi_asset_text)
     chibi_sdk_contract(chibi_reference_index "${CHIBI_SDK_ROOT}/src/authoring" chibi_support chibi_events)
     chibi_sdk_contract(chibi_input_map "${CHIBI_SDK_ROOT}/src/assets"
         chibi_input_action chibi_types chibi_asset_values chibi_asset_text chibi_support)
@@ -198,7 +204,7 @@ if(CHIBI_SDK_BUILD_DESKTOP)
     chibi_sdk_contract(chibi_renderer "${CHIBI_SDK_ROOT}/src" chibi_platform chibi_ui_host chibi_engine chibi_player
         chibi_shader_runtime chibi_model_runtime chibi_mesh_runtime chibi_native_types chibi_native_capabilities
         chibi_particle_runtime chibi_material_runtime chibi_ui_runtime chibi_save_runtime chibi_ui_document_values chibi_ui_documents chibi_visual_catalog
-        chibi_image_catalog chibi_spatial_runtime chibi_support chibi_json chibi_asset_values chibi_task_pool_runtime chibi_rhythm_runtime
+        chibi_image_catalog chibi_spatial_runtime chibi_support chibi_json chibi_asset_values chibi_task_pool_runtime chibi_rhythm_runtime chibi_tilemap_runtime
         "-framework Metal" "-framework Foundation")
 endif()
 if(CHIBI_SDK_BUILD_NATIVE)
@@ -230,3 +236,15 @@ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
             chibi_declared_components)
     endif()
 endif()
+
+# Consumers select exported targets as package components, so ChibiConfig
+# must list each one for check_required_components to accept it.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/ChibiConfig.cmake.in" chibi_config)
+string(REGEX MATCH "foreach\\(component ([^)]*)\\)" chibi_component_list "${chibi_config}")
+string(REGEX REPLACE "[ \n]+" ";" chibi_components "${CMAKE_MATCH_1}")
+foreach(target IN LISTS CHIBI_SDK_TARGETS)
+    get_target_property(component ${target} EXPORT_NAME)
+    if(NOT component IN_LIST chibi_components)
+        message(FATAL_ERROR "ChibiConfig.cmake.in does not list ${target}'s component ${component}")
+    endif()
+endforeach()

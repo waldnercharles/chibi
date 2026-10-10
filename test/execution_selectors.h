@@ -11,9 +11,13 @@ CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
 CHIBI_GPU_SELECTOR("--player-installed-space-cadet-vm")
 CHIBI_GPU_SELECTOR("--player-installed-space-cadet-sljit")
 CHIBI_GPU_SELECTOR("--studio-source-edit")
+CHIBI_GPU_SELECTOR("--studio-graph-visibility")
 /* Cute's interior border on two shapes in a hidden 64x64 app, through the
  * instanced and tiled draw paths, with readback. */
 CHIBI_GPU_SELECTOR("--interior-border")
+/* An engine viewport in a hidden app takes its first requested size at once
+ * and later sizes after two draws. */
+CHIBI_GPU_SELECTOR("--viewport-resize")
 /* Meshes and SDFs hiding each other in a hidden 96x80 app, with and without
  * hidden-surface rejection and its depth snapshot copies, with readback. */
 CHIBI_GPU_SELECTOR("--sdf-visibility")

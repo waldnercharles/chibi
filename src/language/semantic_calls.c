@@ -350,7 +350,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
             result.capability = type->id;
             result.member = type->id;
             result.effects |= SCRIPT_EFFECT_READ;
-            result.writable = true;
+            result.writable = !type->derived;
             free(name);
             return script_analyzer_expr_add(a, result);
         }
@@ -430,6 +430,7 @@ static int component_reference(analyzer *a, TSNode node)
         result.type = type->type;
         result.type.nominal = type->id;
         result.capability = result.member = type->id;
+        result.writable = !type->derived;
         int owner = a->out->owner_symbol;
         result.left = script_analyzer_expr_add(
             a,

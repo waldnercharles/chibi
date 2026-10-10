@@ -1,9 +1,25 @@
 #include "render/scene3d_visual.h"
 
 #include "runtime/component_catalog.h"
+#include "runtime/transform_propagation.h"
 
 #include <math.h>
 #include <stdio.h>
+
+GameGlobalTransform2D render_scene3d_placement(
+    const ecs_world *world,
+    ecs_entity entity,
+    const GameTransform *position
+)
+{
+    /* Picking and bounds pass no position and may run before any
+     * propagation, so they read the exact world placement. */
+    if (!position) {
+        return game_transform_world_2d(world, entity);
+    }
+    const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
+    return (GameGlobalTransform2D){ *position, global ? global->radians : 0 };
+}
 
 int render_scene3d_visuals(
     const ecs_world *world,
@@ -14,17 +30,15 @@ int render_scene3d_visuals(
     size_t size
 )
 {
-    if (!position) {
-        position = GAME_GameTransform_get_const(world, entity);
-    }
     const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
-    if (!position || !shape) {
+    if (!shape || (!position && !GAME_GameTransform_get_const(world, entity))) {
         return 0;
     }
-    const GameOrientation *heading = GAME_GameOrientation_get_const(world, entity);
+    GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
+    position = &pose.position;
     const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
     const GameMeshParts *mesh = GAME_GameMeshParts_get_const(world, entity);
-    float angle = heading ? heading->radians : 0;
+    float angle = pose.radians;
     float scale = transform ? transform->scale : 1;
     CF_V3 rotation = transform
                        ? (CF_V3){ transform->pitch, transform->yaw, transform->roll }

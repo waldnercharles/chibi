@@ -5,6 +5,7 @@
 #include "execution/status.h"
 #include "runtime/behaviors/entities_native.h"
 #include "runtime/component_catalog.h"
+#include "runtime/transform_propagation.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -115,9 +116,11 @@ game_materials *game_entities_materials(const game_entities *entities)
 
 bool game_entities_queries_preserved(const behavior_function *function)
 {
+    /* Positions are world placements, which parents' Orientation turns. */
     const uint64_t dependencies[] = { GAME_COMPONENT_GameTransform.id,
+                                      GAME_COMPONENT_GameOrientation.id,
                                       GAME_COMPONENT_GameCollider.id };
-    return behavior_function_preserves_components(function, dependencies, 2);
+    return behavior_function_preserves_components(function, dependencies, 3);
 }
 
 void game_entities_query_scope(game_entities *entities, const behavior_function *function)
@@ -155,7 +158,7 @@ bool game_entities_parallel_begin(game_entities *entities, unsigned categories)
             if (!matching || game_entities_is_retiring(entities, entity)) {
                 continue;
             }
-            CF_V2 position = *GAME_GameTransform_get_const(entities->world, entity);
+            CF_V2 position = game_transform_world_2d(entities->world, entity).position;
             if (!isfinite(position.x) || !isfinite(position.y)) {
                 continue;
             }
@@ -953,7 +956,7 @@ static void nearest_candidate(
     if (destroy_requested(entities, entity)) {
         return;
     }
-    CF_V2 position = *GAME_GameTransform_get_const(entities->world, entity);
+    CF_V2 position = game_transform_world_2d(entities->world, entity).position;
     if (!isfinite(position.x) || !isfinite(position.y)) {
         return;
     }
@@ -1058,6 +1061,7 @@ unsigned game_entities_query_categories(const behavior_function *function)
 
 const node_access GAME_ENTITY_QUERY_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
 static const uint64_t *const nearest_reads[] = { &GAME_COMPONENT_GameTransform.id,
+                                                 &GAME_COMPONENT_GameOrientation.id,
                                                  &GAME_COMPONENT_GameCollider.id,
                                                  NULL };
 const node_access GAME_ENTITY_NEAREST_ACCESS = { .read_refs = nearest_reads,

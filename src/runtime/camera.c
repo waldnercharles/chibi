@@ -2,12 +2,14 @@
 
 #include "render/view.h"
 #include "runtime/component_catalog.h"
+#include "runtime/transform_propagation.h"
 
 #include <math.h>
 
 int game_camera_view(ecs_world *world, const engine *runtime, engine_viewport_view *out)
 {
-    if (!ecs_world_component(world, GAME_COMPONENT_GameCamera.id)) {
+    if (!ecs_world_component(world, GAME_COMPONENT_GameCamera.id) ||
+        game_transform_propagate(world) != ECS_OK) {
         return 0;
     }
     ecs_component_id required[] = { GAME_COMPONENT_GameCamera.id };
@@ -22,15 +24,11 @@ int game_camera_view(ecs_world *world, const engine *runtime, engine_viewport_vi
         if (camera->disabled || ecs_entity_is_retiring(world, entity)) {
             continue;
         }
-        const GameTransform *transform = GAME_GameTransform_get_const(world, entity);
-        if (!transform) {
+        if (!GAME_GameTransform_has(world, entity)) {
             found = -1;
             break;
         }
-        GameTransform position = *transform;
-        if (runtime) {
-            engine_render_position(runtime, entity, &position);
-        }
+        CF_V2 position = engine_render_transform(runtime, world, entity).position;
         *out = (engine_viewport_view){ position.x + camera->offset.x,
                                        -position.y - camera->offset.y,
                                        camera->width,

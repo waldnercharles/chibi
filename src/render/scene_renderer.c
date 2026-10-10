@@ -26,6 +26,7 @@
 #include "render/shader_images.h"
 #include "render/viewport.h"
 #include "runtime/component_catalog.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -908,7 +909,7 @@ static bool collect(
             render_skip_has(renderer->skip, entity)) {
             continue;
         }
-        const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
+        GameGlobalTransform2D shown = engine_render_transform(runtime, world, entity);
         const GameShader *binding = GAME_GameShader_get_const(world, entity);
         const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(world, entity);
         const GameSdfSurface3D *sdf = GAME_GameSdfSurface3D_get_const(world, entity);
@@ -917,8 +918,7 @@ static bool collect(
             if (pose && pose->scale == 0) {
                 continue;
             }
-            GameTransform position = *GAME_GameTransform_get_const(world, entity);
-            engine_render_position(runtime, entity, &position);
+            GameTransform position = shown.position;
             model_bounds selected_bounds, *override = NULL;
             if (ecs_entity_to_u64(entity) ==
                     ecs_entity_to_u64(renderer->inspection.entity) &&
@@ -1000,15 +1000,12 @@ static bool collect(
         }
         const GameSprite *sprite = GAME_GameSprite_get_const(world, entity);
         if (sprite) {
-            GameTransform position = *GAME_GameTransform_get_const(world, entity);
-            if (runtime) {
-                engine_render_position(runtime, entity, &position);
-            }
+            GameTransform position = shown.position;
             if (!append_sprite(
                     renderer,
                     &position,
                     sprite,
-                    orientation ? -orientation->radians : 0,
+                    -shown.radians,
                     GAME_GameMaterial_get_const(world, entity)
                 )) {
                 return false;
@@ -1028,7 +1025,7 @@ static bool collect(
                                                         .shape = GAME_SHAPE_BOX,
                                                         .antialias = 1 };
         const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
-        float heading = orientation ? orientation->radians : 0;
+        float heading = shown.radians;
         GameAppearance appearance;
         float angle;
         if (!render_geometry_2d_project(authored ? NULL : geometry, &fallback, visual, heading, &appearance, &angle)) {
@@ -1047,10 +1044,7 @@ static bool collect(
                                                        : bounds[1]) *
                                 scale;
         }
-        GameTransform position = *GAME_GameTransform_get_const(world, entity);
-        if (runtime) {
-            engine_render_position(runtime, entity, &position);
-        }
+        GameTransform position = shown.position;
         const material_mask *mask = game_materials_mask(engine_materials(runtime), entity);
         if (mask) {
             /* Distant masks draw a coarser level, about a piece per pixel. */
@@ -1580,6 +1574,13 @@ bool app_scene_renderer_draw(
     engine_viewport_get_camera(viewport, &camera);
     int width, height;
     renderer->error[0] = 0;
+    /* Hosts may draw edits, loads and hand-built worlds that no engine frame
+     * has propagated yet, so drawing starts from current global transforms. */
+    int propagated = game_transform_propagate(world);
+    if (propagated != ECS_OK) {
+        snprintf(renderer->error, sizeof renderer->error, "Transform propagation failed (%d).", propagated);
+        return false;
+    }
     engine_viewport_pixel_size(viewport, &width, &height);
     /* Material edges and final composition retain viewport pixel resolution.
      * Only the radiance work grid is reduced, inside render_radiance_resize. */

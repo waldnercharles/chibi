@@ -337,4 +337,17 @@ extern int GAME_GameHRC2D_has(const ecs_world *, ecs_entity);
 extern int GAME_GameHRC2D_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameHRC2D_remove(ecs_world *, ecs_entity, uint64_t);
 
+extern const ecs_component_desc GAME_COMPONENT_GameTransform3D;
+extern GameTransform3D *GAME_GameTransform3D_get(ecs_world *, ecs_entity);
+extern const GameTransform3D *GAME_GameTransform3D_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameTransform3D_has(const ecs_world *, ecs_entity);
+extern int GAME_GameTransform3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameTransform3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameGlobalTransform3D;
+extern GameGlobalTransform3D *GAME_GameGlobalTransform3D_get(ecs_world *, ecs_entity);
+extern const GameGlobalTransform3D *GAME_GameGlobalTransform3D_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameGlobalTransform2D;
+extern GameGlobalTransform2D *GAME_GameGlobalTransform2D_get(ecs_world *, ecs_entity);
+extern const GameGlobalTransform2D *GAME_GameGlobalTransform2D_get_const(const ecs_world *, ecs_entity);
+
 #endif

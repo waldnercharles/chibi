@@ -272,10 +272,8 @@ void render_scene3d_trails_collect(scene3d_trails *trails, ecs_world *world, con
             if (!engine_entity_visible(runtime, world, entity)) {
                 continue;
             }
-            GameTransform position = *GAME_GameTransform_get_const(world, entity);
-            if (runtime) {
-                engine_render_position(runtime, entity, &position);
-            }
+            GameTransform position = engine_render_transform(runtime, world, entity)
+                                         .position;
             const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
             float elevation = shape ? shape->elevation : 0;
             GameTrail style = *GAME_GameTrail_get_const(world, entity);

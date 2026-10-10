@@ -24,6 +24,15 @@ static const script_catalog_type types[] = {
       .size = 2 * sizeof(float),
       .component = true,
       .component_id = 501 },
+    { .id = 11,
+      .name = "Placement",
+      .type = { .storage = PIN_STRUCT, .nominal = 11 },
+      .fields = fields,
+      .field_count = 2,
+      .size = 2 * sizeof(float),
+      .component = true,
+      .component_id = 502,
+      .derived = true },
 };
 static const script_catalog_parameter operands[] = {
     { .name = "a", .type = { .storage = PIN_STRUCT, .nominal = 10 } },
@@ -50,7 +59,7 @@ static const script_catalog_capability capabilities[] = {
 };
 static const script_catalog catalog = {
     .types = types,
-    .type_count = 1,
+    .type_count = 2,
     .capabilities = capabilities,
     .capability_count = 3,
     .entity_type = 40,
@@ -123,6 +132,19 @@ TEST_CASE(language_optional_component_requires_presence_guard)
     parse("system Motion(position: Position?) { if (position) { position.x = 1; } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
+    return true;
+}
+TEST_CASE(language_derived_component_is_read_only)
+{
+    parse("system Follow(placement: Placement, position: Position) { position.x = placement.x; }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(analysis->valid);
+    parse("system Follow(placement: Placement) { placement.x = 1; }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(!analysis->valid && diagnostic("Assignment requires a writable value"));
+    parse("behavior Follow { on Tick(dt) { self.Placement.y = dt; } }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(!analysis->valid && diagnostic("Assignment requires a writable value"));
     return true;
 }
 TEST_CASE(language_numeric_literal_storage_limits)
@@ -361,6 +383,7 @@ void test_language_semantic()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
     RUN_TEST_CASE(language_optional_component_requires_presence_guard);
+    RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);
     RUN_TEST_CASE(language_pure_call_chain_rejects_effects);

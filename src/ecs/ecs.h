@@ -36,6 +36,10 @@ typedef struct ecs_component_desc
     const type_desc *type;
     uint64_t layout_hash;
     ecs_index_kind index;
+    /* Nonzero for a component that engine systems compute from this source
+     * component: adding the source adds it (Flecs's With) and value writes
+     * are rejected. */
+    ecs_component_id derived_from;
     void *column_base; /* filled by ecs_world_register_component */
 } ecs_component_desc;
 
@@ -259,6 +263,8 @@ bool ecs_has_pair(const ecs_world *, ecs_entity, ecs_component_id relationship, 
 /* Targets in ascending handle order; an exclusive relationship has at most one. */
 int ecs_pair_target_count(const ecs_world *, ecs_entity, ecs_component_id relationship);
 ecs_entity ecs_pair_target(const ecs_world *, ecs_entity, ecs_component_id relationship, int index);
+/* The entity's ChildOf parent, or a zero handle for a root. */
+ecs_entity ecs_parent(const ecs_world *, ecs_entity);
 /* Sources in the order their pairs were added. */
 int ecs_pair_source_count(const ecs_world *, ecs_component_id relationship, ecs_entity target);
 ecs_entity ecs_pair_source(const ecs_world *, ecs_component_id relationship, ecs_entity target, int index);

@@ -38,6 +38,7 @@ typedef struct
     int dense;
     char *alias_of;
     char *constructor_name;
+    char *derived_from; /* The source component a derived component follows. */
 } struct_info;
 
 typedef struct
@@ -130,6 +131,7 @@ void emit_struct_presentation(
 bool component_unwrap(const struct_info *s);
 void emit_execution_unwrap(FILE *out, const struct_info *s);
 bool component_field_settable(const field_info *field);
+const struct_info *derived_source(const struct_info *s);
 void emit_component_accessors(FILE *out, const struct_info *s);
 void emit_runtime(FILE *out, const collect_ctx *ctx);
 void emit_types(FILE *out, const collect_ctx *ctx);

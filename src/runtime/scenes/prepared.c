@@ -110,7 +110,7 @@ static const ecs_component_desc *resolve(execution_wire *wire, ecs_component_cat
         return NULL;
     }
     if (!id || !found->type || !found->name || !found->element_size ||
-        found->type->size != found->element_size) {
+        found->type->size != found->element_size || found->derived_from) {
         wire->error = "Prepared scene component is unavailable or invalid";
         return NULL;
     }

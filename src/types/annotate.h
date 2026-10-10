@@ -11,6 +11,12 @@
 #define NODE_COMPONENT_TYPE_DENSE(T)                                           \
     struct __attribute__((annotate("node:type")))                              \
     __attribute__((annotate("node:component:index:dense"))) T
+/* A dense component that engine systems compute from SOURCE. Adding SOURCE
+ * adds it; scripts read it, and authored assets and saves leave it out. */
+#define NODE_DERIVED_COMPONENT(T, SOURCE)                                      \
+    struct __attribute__((annotate("node:type")))                              \
+    __attribute__((annotate("node:component:index:dense")))                    \
+    __attribute__((annotate("node:derived-from:" #SOURCE))) T
 /* Explicit authored spelling for the generated aggregate constructor. */
 #define NODE_CONSTRUCTOR(NAME)                                                 \
     __attribute__((annotate("node:constructor:" NAME)))

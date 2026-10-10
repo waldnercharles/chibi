@@ -566,6 +566,7 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
             s.component = is_component;
             s.dense = has_annotate(c, "node:component:index:dense");
             s.constructor_name = annotation_value(c, "node:constructor:");
+            s.derived_from = annotation_value(c, "node:derived-from:");
             s.fields = NULL;
             clang_visitChildren(c, field_visitor, &s.fields);
             if (g_failed) {
@@ -573,6 +574,7 @@ static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData
                 free(s.file);
                 free(s.alias_of);
                 free(s.constructor_name);
+                free(s.derived_from);
                 dispose_fields(s.fields);
             } else {
                 apush(ctx->structs, s);
@@ -684,6 +686,7 @@ void reflect_dispose(collect_ctx *ctx)
         free(s->file);
         free(s->alias_of);
         free(s->constructor_name);
+        free(s->derived_from);
         dispose_fields(s->fields);
     }
     for (int i = 0; i < acount(ctx->fns); i++) {

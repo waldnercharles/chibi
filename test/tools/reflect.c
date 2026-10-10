@@ -36,6 +36,12 @@
     "typedef COMPONENT(Shot) { float speed "                                   \
     "__attribute__((annotate(\"node:unit:u/s\"), "                             \
     "annotate(\"node:range:0 2.5\"))); %s; } Shot;\n"
+#define DERIVED                                                                \
+    "#define DERIVED(T, SOURCE) struct "                                       \
+    "__attribute__((annotate(\"node:type\"), "                                 \
+    "annotate(\"node:component:index:dense\"), "                               \
+    "annotate(\"node:derived-from:\" #SOURCE))) T\n"                           \
+    "typedef DERIVED(Total, %s) { int value; } Total;\n"
 #define HANDLE_PIN "PIN_HANDLE,"
 #define JIT_REJECTION "identity requires one struct argument"
 #define CONCURRENT_RUNS "6"
@@ -402,6 +408,37 @@ TEST_CASE(jit_identity_requires_one_matching_struct_argument)
     return true;
 }
 
+/* A derived component names its source's ID, and scripts get no way to
+ * write, add or remove it. */
+TEST_CASE(derived_component_names_its_source)
+{
+    REQUIRE(generate(&latest, COLLIDER SPEED));
+    REQUIRE(reflectf(COMPONENT SPEED DERIVED, "Speed") == 0);
+    char *types = tool_read(output), *capabilities = tool_read(runtime);
+    char expected[128];
+    snprintf(
+        expected,
+        sizeof expected,
+        ".derived_from = UINT64_C(%llu)",
+        find(latest, "Speed")->id
+    );
+    bool derived = types && strstr(types, expected) && capabilities &&
+                   strstr(capabilities, ".derived = true") &&
+                   strstr(capabilities, "\"Get_Total\"") &&
+                   !strstr(capabilities, "\"Set_Total") &&
+                   !strstr(capabilities, "\"Add_Total\"") &&
+                   !strstr(capabilities, "\"Remove_Total\"");
+    free(types);
+    free(capabilities);
+    REQUIRE(derived);
+    snapshot(&output_before, output);
+    snapshot(&manifest_before, manifest);
+    REQUIRE(reflectf(COMPONENT DERIVED, "Missing") != 0);
+    REQUIRE(log_contains("Total derives from Missing, which is not a component"));
+    REQUIRE(outputs_unchanged());
+    return true;
+}
+
 void test_tool_reflect()
 {
     strcpy(directory, "/tmp/chibi-reflect-test-XXXXXX");
@@ -424,6 +461,7 @@ void test_tool_reflect()
     RUN_TEST_CASE(handle_pins_keep_their_nominal_type);
     RUN_TEST_CASE(numeric_fields_reflect_their_unit_and_range);
     RUN_TEST_CASE(jit_identity_requires_one_matching_struct_argument);
+    RUN_TEST_CASE(derived_component_names_its_source);
     afree(original);
     afree(inserted);
     afree(readded);

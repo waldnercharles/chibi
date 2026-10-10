@@ -351,8 +351,10 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   a material factor beyond float range; primitives that are not triangles; a
   buffer or image named by an absolute path or a scheme other than `data:`,
   or one that `..` or a symbolic link leads outside the model's folder; a
-  model over 256 MiB; a mesh past the `.mesh` limits above; and a content
-  folder, or a folder in it the import writes to, that is a symbolic link.
+  model over 256 MiB; a mesh past the `.mesh` limits above; a material name
+  that another native graph in the project already declares, or a prototype
+  name another prototype does; and a content folder, or a folder in it the
+  import writes to, that is a symbolic link.
 - **Warned and left out**: vertex colors, morph targets, skins, animations,
   cameras, lights and other extensions the model uses. Double-sided
   materials draw single-sided.

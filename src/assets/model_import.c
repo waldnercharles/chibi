@@ -10,6 +10,7 @@
 #include "runtime/geometry/mesh_prepared.h"
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "support/file_io.h"
 #include "support/xalloc.h"
 #include "yyjson.h"
 
@@ -21,6 +22,7 @@
 #undef CKIT_H
 
 #include <assert.h>
+#include <dirent.h>
 #include <errno.h>
 #include <math.h>
 #include <stdarg.h>
@@ -976,6 +978,101 @@ static char *material_text(const char *name, const standard_material *material)
     return text;
 }
 
+/* The name the asset file at `path` declares, owned by the caller, or NULL. */
+static char *declared_name(const char *path)
+{
+    char *text = file_read_text(path);
+    char error[160];
+    av_doc *document = text ? av_doc_read(text, error, sizeof error) : NULL;
+    av_value *name = document ? av_obj_get(av_doc_root(document), "name") : NULL;
+    char *copy = name && av_is_str(name) ? xstrdup(av_get_str(name)) : NULL;
+    av_doc_free(document);
+    free(text);
+    return copy;
+}
+
+/* Whether `file` is `name` with the declarative asset extension. */
+static bool names_file(const char *file, const char *name)
+{
+    size_t length = strlen(name);
+    return !strncmp(file, name, length) &&
+           !strcmp(file + length, DECLARATIVE_ASSET_EXTENSION);
+}
+
+/* Whether `file` is a declarative asset, as the catalogs read them. */
+static bool asset_file(const char *file)
+{
+    size_t length = strlen(file), extension = strlen(DECLARATIVE_ASSET_EXTENSION);
+    return file[0] != '.' && length > extension &&
+           !strcmp(file + length - extension, DECLARATIVE_ASSET_EXTENSION);
+}
+
+/* Whether `file`, an asset of `kind` that declares `name`, declares one of
+ * the import's names in a file other than the one the import writes for it;
+ * write_new refuses to replace that one. */
+static bool clashes(const import *in, new_asset_kind kind, const char *file, const char *name)
+{
+    bool prototype = kind == NEW_ASSET_PROTOTYPE;
+    if (names_file(file, name) && (prototype || kind == NEW_ASSET_MATERIAL)) {
+        return false;
+    }
+    if (prototype) {
+        return !strcmp(name, in->name);
+    }
+    for (int slot = 0; slot <= in->model->material_count; slot++) {
+        if (in->materials[slot] && !strcmp(in->materials[slot], name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Refuses when an asset of `kind` already declares a name the import would
+ * declare too, since preparing the project refuses two declarations of one
+ * prototype or native graph name. */
+static bool undeclared(import *in, new_asset_kind kind)
+{
+    const char *folder = new_asset_folder(kind);
+    size_t bytes = strlen(in->content) + strlen(folder) + 2;
+    char *path = xmalloc(bytes);
+    snprintf(path, bytes, "%s/%s", in->content, folder);
+    DIR *directory = opendir(path);
+    free(path);
+    bool clear = true;
+    for (struct dirent *entry; clear && directory && (entry = readdir(directory));) {
+        const char *file = entry->d_name;
+        if (!asset_file(file)) {
+            continue;
+        }
+        bytes = strlen(in->content) + strlen(folder) + strlen(file) + 3;
+        path = xmalloc(bytes);
+        snprintf(path, bytes, "%s/%s/%s", in->content, folder, file);
+        char *name = declared_name(path);
+        free(path);
+        if (name && clashes(in, kind, file, name)) {
+            clear = fail(in, "content/%s/%s already declares %s", folder, file, name);
+        }
+        free(name);
+    }
+    if (directory) {
+        closedir(directory);
+    }
+    return clear;
+}
+
+/* Whether every name the import declares is still free. Prototypes share
+ * one namespace, and the native graphs, every other declarative kind but
+ * scenes, share another with materials. */
+static bool names_free(import *in)
+{
+    bool clear = true;
+    for (int kind = 0; clear && kind < NEW_ASSET_KIND_COUNT; kind++) {
+        bool declarative = !strcmp(new_asset_extension(kind), DECLARATIVE_ASSET_EXTENSION);
+        clear = !declarative || kind == NEW_ASSET_SCENE || undeclared(in, kind);
+    }
+    return clear;
+}
+
 /* Every image, material, the mesh and the prototype, as new content files. */
 static bool write_files(import *in, const render_mesh_asset *mesh, const standard_material *materials)
 {
@@ -1075,7 +1172,7 @@ static bool run(import *in, const char *path)
     if (ok) {
         warn_unused(in);
     }
-    ok = ok && write_files(in, &mesh, materials);
+    ok = ok && names_free(in) && write_files(in, &mesh, materials);
     render_mesh_asset_free(&mesh);
     free(materials);
     yyjson_doc_free(json);

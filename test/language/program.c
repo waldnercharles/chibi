@@ -3503,8 +3503,8 @@ TEST_CASE(program_version_18_components_move_to_chibi)
         "name \"Charge\"\n"
         "description \"Stored energy.\\n\\nRefills.\"\n"
         "(array)fields {\n"
-        "    - name=\"level\" type=\"float\"\n"
-        "    - name=\"rate\" type=\"float\" description=\"Per second.\"\n"
+        "    - name=\"level\" type=\"float\" description=\"\"\n"
+        "    - name=\"rate\" type=\"float\" description=\"Per second.\\n\"\n"
         "    - name=\"drift\" type=\"CF_V2\"\n"
         "}\n"
     );
@@ -3520,8 +3520,10 @@ TEST_CASE(program_version_18_components_move_to_chibi)
                            "//\n"
                            "// Refills.\n"
                            "component Charge {\n"
+                           "    //\n"
                            "    level: float\n"
                            "    // Per second.\n"
+                           "    //\n"
                            "    rate: float\n"
                            "    drift: CF_V2\n"
                            "}\n";

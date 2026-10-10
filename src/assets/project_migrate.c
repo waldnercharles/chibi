@@ -2600,10 +2600,11 @@ static void append(char **out, const char *text)
         apush(*out, *text);
     }
 }
-/* Writes `description` as `//` lines at `indent`. */
+/* Writes `description` as `//` lines at `indent`, one per line, so an empty
+ * line, a trailing one or an empty description reads back the same. */
 static void comment(char **out, const char *indent, const char *description)
 {
-    for (const char *line = description; line && *line;) {
+    for (const char *line = description; line;) {
         const char *end = strchr(line, '\n');
         size_t length = end ? (size_t)(end - line) : strlen(line);
         append(out, indent);
@@ -2615,7 +2616,7 @@ static void comment(char **out, const char *indent, const char *description)
             apush(*out, line[i]);
         }
         apush(*out, '\n');
-        line = end ? end + 1 : line + length;
+        line = end ? end + 1 : NULL;
     }
 }
 static const char *text_of(const av_value *object, const char *key)

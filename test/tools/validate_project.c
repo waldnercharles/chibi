@@ -899,6 +899,18 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     );
     free(formatted);
     REQUIRE(canonical);
+    /* Formatting never writes through a link out of the project. */
+    char outside[256], link_path[256];
+    path(outside, sizeof outside, "Outside.chibi");
+    path(link_path, sizeof link_path, "game/content/components/Outside.chibi");
+    const char *loose = "component Outside{x:float}\n";
+    write_file("Outside.chibi", loose);
+    REQUIRE(symlink(outside, link_path) == 0);
+    format(NULL);
+    char *kept = tool_read(outside);
+    bool untouched = reads(kept, loose);
+    free(kept);
+    REQUIRE(untouched && unlink(link_path) == 0);
     /* A field's mistake is reported where it is. */
     write_file("game/content/components/Charge.chibi", "component Charge {\n    level: flaot\n}\n");
     REQUIRE(validate() != 0);

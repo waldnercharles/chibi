@@ -5890,23 +5890,35 @@ static int format_component(const char *root, const char *name, bool check)
     free(path);
     return differing;
 }
+/* A regular file, not a link: formatting rewrites it in place. */
+static bool regular_file(const char *folder, const char *name)
+{
+    char *path = xmalloc(strlen(folder) + strlen(name) + 2);
+    sprintf(path, "%s/%s", folder, name);
+    struct stat info;
+    bool regular = !lstat(path, &info) && S_ISREG(info.st_mode);
+    free(path);
+    return regular;
+}
 static int format_components(const char *root, bool check)
 {
     char *folder = content_path(root, "content/components");
     DIR *dir = opendir(folder);
-    free(folder);
     if (!dir) {
+        free(folder);
         return 0;
     }
     char **names = NULL;
     for (struct dirent *entry; (entry = readdir(dir));) {
         size_t n = strlen(entry->d_name);
         if (entry->d_name[0] != '.' && n > strlen(CODE_ASSET_EXTENSION) &&
-            !strcmp(entry->d_name + n - strlen(CODE_ASSET_EXTENSION), CODE_ASSET_EXTENSION)) {
+            !strcmp(entry->d_name + n - strlen(CODE_ASSET_EXTENSION), CODE_ASSET_EXTENSION) &&
+            regular_file(folder, entry->d_name)) {
             apush(names, xstrdup(entry->d_name));
         }
     }
     closedir(dir);
+    free(folder);
     if (names) {
         qsort(names, (size_t)acount(names), sizeof *names, compare_names);
     }

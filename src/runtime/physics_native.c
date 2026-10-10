@@ -157,3 +157,44 @@ const node_host_call GAME_PHYSICS_CONTACTS_CALL = { .service = "game.entities",
                                                     .context = contacts_host,
                                                     .reusable = true };
 const node_access GAME_PHYSICS_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+
+static const char missing_impulse[] = "Apply Impulse requires a physics world";
+static const char missing_force[] = "Apply Force requires a physics world";
+
+static const char *impulse_call(void *service, const pin_value *in, pin_value *)
+{
+    if (!service) {
+        return missing_impulse;
+    }
+    if (!in[1].ptr || game_physics_apply_impulse(
+                          service,
+                          ecs_entity_from_u64(in[0].u64),
+                          *(const CF_V2 *)in[1].ptr
+                      ) < 0) {
+        return "Apply Impulse requires a dynamic Body and a finite Impulse";
+    }
+    return NULL;
+}
+
+static const char *force_call(void *service, const pin_value *in, pin_value *)
+{
+    if (!service) {
+        return missing_force;
+    }
+    if (!in[1].ptr || game_physics_apply_force(
+                          service,
+                          ecs_entity_from_u64(in[0].u64),
+                          *(const CF_V2 *)in[1].ptr
+                      ) < 0) {
+        return "Apply Force requires a dynamic Body and a finite Force";
+    }
+    return NULL;
+}
+
+const node_host_call GAME_PHYSICS_IMPULSE_CALL = { .service = "game.physics",
+                                                   .invoke = impulse_call,
+                                                   .missing_service = missing_impulse };
+const node_host_call GAME_PHYSICS_FORCE_CALL = { .service = "game.physics",
+                                                 .invoke = force_call,
+                                                 .missing_service = missing_force };
+const node_access GAME_PHYSICS_PUSH_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };

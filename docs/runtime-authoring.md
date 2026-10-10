@@ -329,6 +329,15 @@ caller's own body. A shape cast that starts touching something, such as the
 ground a body rests on, hits it at distance zero, so leave the ground's
 category out to sweep along it.
 
+`apply_impulse_3d(entity, impulse)` changes a dynamic body's velocity by the
+impulse over its mass at its next physics step, and
+`apply_force_3d(entity, force)` accelerates it by the force over its mass
+through that step. 2D bodies take `apply_impulse` and `apply_force` with 2D
+vectors. A 3D body weighs 1000 kg per cubic meter, the density of water, and a
+2D body 1 kg per square meter, so an impulse is in kilogram units per second
+and a force in kilogram units per second squared. Pushes act through the
+center of mass and add up, and they fail on an entity without a dynamic body.
+
 ```kdl
 name "Crate"
 components {

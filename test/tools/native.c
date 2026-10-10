@@ -8,6 +8,8 @@
 #include "runtime/declared_components.h"
 #include "runtime/engine_input.h"
 #include "runtime/material_field_prepared.h"
+#include "runtime/physics3d_native.h"
+#include "runtime/physics_native.h"
 #include "runtime/player.h"
 #include "runtime/player_prepared.h"
 #include "runtime/world.h"
@@ -555,11 +557,17 @@ static const char *count_jump(void *, const pin_value *, pin_value *)
     return NULL;
 }
 /* A handler whose body makes one host call. */
-static behavior_function *host_body(const node_host_call *call, const pin_value *in, int count, uint64_t identity)
+static behavior_function *host_body(
+    const node_host_call *call,
+    const node_access *access,
+    const pin_value *in,
+    int count,
+    uint64_t identity
+)
 {
     behavior_function_builder *builder = behavior_function_builder_new();
     behavior_function_builder_signature(builder, in, count, NULL, 0, NULL, 0);
-    int host_call = behavior_function_builder_host(builder, call, &GAME_INPUT_READ_ACCESS, NULL, 0, NULL, 0);
+    int host_call = behavior_function_builder_host(builder, call, access, NULL, 0, NULL, 0);
     bool identified = behavior_function_builder_host_identity(builder, host_call, identity, identity + 1);
     assert(identified);
     (void)identified;
@@ -675,8 +683,8 @@ static bool jump_world(engine **out)
                                          .optional_service = true };
     static const node_host_call press = { .invoke = count_jump };
     const pin_value dt = { .type = PIN_F32 };
-    behavior_function *tick_body = host_body(&tick, &dt, 1, 990);
-    behavior_function *press_body = host_body(&press, NULL, 0, 980);
+    behavior_function *tick_body = host_body(&tick, &GAME_INPUT_READ_ACCESS, &dt, 1, 990);
+    behavior_function *press_body = host_body(&press, &GAME_INPUT_READ_ACCESS, NULL, 0, 980);
     REQUIRE(tick_body && press_body);
     execution_module_plan *plan = execution_module_plan_new();
     plan->id = 992;
@@ -807,6 +815,87 @@ TEST_CASE(native_recorded_taps_replay_per_step)
     afree(keys);
     REQUIRE(run_taps(runtime, replayed));
     REQUIRE(!memcmp(replayed, live, sizeof live));
+    cleanup();
+    return true;
+}
+static ecs_entity crate;
+/* Pushes the crate through the 2D physics the world bound, as Apply Impulse
+ * does. */
+static const char *kick(void *service, const pin_value *, pin_value *)
+{
+    CF_V2 impulse = { 32, 0 };
+    const pin_value in[] = { { .u64 = ecs_entity_to_u64(crate) }, { .ptr = &impulse } };
+    return GAME_PHYSICS_IMPULSE_CALL.invoke(service, in, NULL);
+}
+/* And through its 3D physics, as Apply Impulse 3D does. */
+static const char *kick_3d(void *service, const pin_value *, pin_value *)
+{
+    CF_V3 impulse = { 64000, 0, 0 };
+    const pin_value in[] = { { .u64 = ecs_entity_to_u64(crate) }, { .ptr = &impulse } };
+    return GAME_PHYSICS3D_IMPULSE_CALL.invoke(service, in, NULL);
+}
+/* Registers a source whose Tick makes one host call, and attaches it to the
+ * crate. */
+static bool kicker(const char *name, const node_host_call *call, const node_access *access, uint64_t id)
+{
+    char error[192];
+    const pin_value dt = { .type = PIN_F32 };
+    behavior_function *body = host_body(call, access, &dt, 1, id);
+    REQUIRE(body);
+    execution_module_plan *plan = execution_module_plan_new();
+    plan->id = id + 2;
+    plan->valid = true;
+    handler(plan, "Tick", 993, &dt, 1, body);
+    module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    execution_module_plan_free(plan);
+    REQUIRE(module);
+    REQUIRE(game_source_register(game_world_sources(simulation), name, module, NULL) == 0);
+    execution_module_free(module);
+    module = NULL;
+    REQUIRE(game_source_attach(game_world_sources(simulation), crate, name, false, 0, 0) == 0);
+    return true;
+}
+/* The world binds its 2D and 3D physics as the services the push calls use:
+ * a meter square weighs 1 kg in 2D, and a meter cube 1000 kg in 3D. */
+TEST_CASE(native_world_binds_physics_for_pushes)
+{
+    cleanup();
+    char error[192];
+    game_world_options options = { .modules = GAME_WORLD_PHYSICS | GAME_WORLD_PHYSICS3D };
+    simulation = game_world_new(&options, error, sizeof error);
+    REQUIRE(simulation);
+    ecs_world *ecs = game_world_ecs(simulation);
+    crate = ecs_world_create_entity(ecs);
+    REQUIRE(GAME_GameTransform_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(GAME_GameVelocity_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(GAME_GameBody_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(GAME_GameCollider_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(GAME_GameTransform3D_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(GAME_GameBody3D_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(GAME_GameCollider3D_add(ecs, crate, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
+    GAME_GameBody_get(ecs, crate)->type = GAME_BODY_DYNAMIC;
+    *GAME_GameCollider_get(ecs, crate) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                         .width = 32,
+                                                         .height = 32 };
+    *GAME_GameTransform3D_get(ecs, crate) = (GameTransform3D){
+        .rotation = cf_quat_identity(),
+        .scale = { 1, 1, 1 }
+    };
+    GAME_GameBody3D_get(ecs, crate)->type = GAME_BODY_DYNAMIC;
+    *GAME_GameCollider3D_get(ecs, crate) = (GameCollider3D){ .shape = GAME_COLLIDER3D_BOX,
+                                                             .size = { 32, 32, 32 } };
+    static const node_host_call push = { .service = "game.physics", .invoke = kick };
+    static const node_host_call push_3d = { .service = "game.physics3d",
+                                            .invoke = kick_3d };
+    REQUIRE(kicker("Kick", &push, &GAME_PHYSICS_PUSH_ACCESS, 960));
+    REQUIRE(kicker("Kick3D", &push_3d, &GAME_PHYSICS3D_PUSH_ACCESS, 970));
+    engine *runtime = game_world_engine(simulation);
+    REQUIRE(engine_frame(runtime, 0) == 0);
+    REQUIRE(engine_frame(runtime, 1.5 * ENGINE_FIXED_SECONDS) == 0);
+    REQUIRE(engine_last_timing(runtime)->simulation_steps == 1);
+    REQUIRE(fabsf(GAME_GameVelocity_get_const(ecs, crate)->x - 32) < .01f);
+    REQUIRE(fabsf(GAME_GameBody3D_get_const(ecs, crate)->linear_velocity.x - 64) < .01f);
     cleanup();
     return true;
 }
@@ -1597,5 +1686,6 @@ void test_tool_native()
     RUN_TEST_CASE(native_action_state_combines_sources_per_step);
     RUN_TEST_CASE(native_recorded_taps_replay_per_step);
     RUN_TEST_CASE(native_pause_keeps_held_actions);
+    RUN_TEST_CASE(native_world_binds_physics_for_pushes);
     pu_clear_setup();
 }

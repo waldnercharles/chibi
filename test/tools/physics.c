@@ -1849,6 +1849,65 @@ static void rotated_terrain()
     dispose(&f);
 }
 
+/* A box Body with no Orientation, so a push cannot turn it. */
+static ecs_entity crate(fixture *f, float x, float size, int type)
+{
+    ecs_entity entity = body(f, x, 0, type, 1, 1);
+    *GAME_GameCollider_get(f->world, entity) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                               .width = size,
+                                                               .height = size,
+                                                               .category = 1,
+                                                               .mask = 1 };
+    return entity;
+}
+
+/* Pushes act through the center of mass at the next advancing step: bodies
+ * weigh 1 kg per square meter, so an equal push moves a crate four times as
+ * massive a quarter as fast, a force lasts one step, and only a live dynamic
+ * Body takes one. */
+static void pushes_divide_by_mass()
+{
+    fixture f = create();
+    ecs_entity small = crate(&f, 0, 32, GAME_BODY_DYNAMIC);
+    ecs_entity large = crate(&f, 200, 64, GAME_BODY_DYNAMIC);
+    ecs_entity wall = crate(&f, -200, 32, GAME_BODY_STATIC);
+    ecs_entity mover = crate(&f, 400, 32, GAME_BODY_KINEMATIC);
+    assert(game_physics_apply_impulse(f.physics, small, (CF_V2){ 64, 0 }) == FLOW_OK);
+    assert(game_physics_apply_impulse(f.physics, large, (CF_V2){ 64, 0 }) == FLOW_OK);
+    assert(step(&f, 0) == 0 && GAME_GameVelocity_get(f.world, small)->x == 0);
+    GAME_GameVelocity_get(f.world, small)->y = 5; /* Pushes add to a set velocity. */
+    step(&f, 1.0f / 60);
+    GameVelocity v = *GAME_GameVelocity_get(f.world, small);
+    assert(fabsf(v.x - 64) < .01f && fabsf(v.y - 5) < .01f);
+    assert(fabsf(GAME_GameVelocity_get(f.world, large)->x - 16) < .01f);
+    assert(game_physics_apply_force(f.physics, large, (CF_V2){ 0, 4 * 120 }) == FLOW_OK);
+    assert(game_physics_apply_force(f.physics, large, (CF_V2){ 0, 4 * 120 }) == FLOW_OK);
+    step(&f, 1.0f / 60);
+    assert(fabsf(GAME_GameVelocity_get(f.world, large)->y - 4) < .01f);
+    step(&f, 1.0f / 60);
+    assert(fabsf(GAME_GameVelocity_get(f.world, large)->y - 4) < .01f);
+    assert(game_physics_apply_impulse(f.physics, wall, (CF_V2){ 1, 0 }) == FLOW_ERR_ARGUMENT);
+    assert(game_physics_apply_force(f.physics, mover, (CF_V2){ 1, 0 }) == FLOW_ERR_ARGUMENT);
+    assert(game_physics_apply_impulse(f.physics, small, (CF_V2){ NAN, 0 }) == FLOW_ERR_ARGUMENT);
+    assert(game_physics_apply_impulse(f.physics, small, (CF_V2){ 0, 64 }) == FLOW_OK);
+    game_physics_reset(f.physics); /* A reset drops queued pushes. */
+    step(&f, 1.0f / 60);
+    assert(fabsf(GAME_GameVelocity_get(f.world, small)->y - 5) < .01f);
+    assert(game_physics_apply_impulse(f.physics, small, (CF_V2){ 0, 64 }) == FLOW_OK);
+    assert(ecs_world_destroy_entity(f.world, small) == ECS_OK);
+    ecs_entity reused = crate(&f, 0, 32, GAME_BODY_DYNAMIC);
+    assert(reused.slot == small.slot);
+    step(&f, 1.0f / 60); /* The push named the destroyed crate. */
+    assert(GAME_GameVelocity_get(f.world, reused)->y == 0);
+    dispose(&f);
+}
+
+TEST_CASE(physics_pushes_divide_by_mass)
+{
+    pushes_divide_by_mass();
+    return true;
+}
+
 TEST_CASE(physics_rotated_terrain_is_refused)
 {
     rotated_terrain();
@@ -1904,6 +1963,7 @@ void test_tool_physics()
     RUN_TEST_CASE(physics_task_pool_runs_every_range);
     RUN_TEST_CASE(physics_rotated_terrain_is_refused);
     RUN_TEST_CASE(physics_authored_motion);
+    RUN_TEST_CASE(physics_pushes_divide_by_mass);
     RUN_TEST_CASE(physics_contacts_and_queries_at_each_substep_count);
     RUN_TEST_CASE(physics_parallel_collection_matches_serial);
 }

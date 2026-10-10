@@ -81,6 +81,14 @@ typedef struct
     b2Vec2 force;
 } drive_force;
 
+/* An impulse or force for a dynamic body's next advancing step. */
+typedef struct
+{
+    ecs_entity entity;
+    b2Vec2 amount;
+    bool impulse;
+} push;
+
 struct game_physics
 {
     ecs_world *world;
@@ -94,6 +102,7 @@ struct game_physics
     b2ContactData *contacts;
     unsigned *visited;
     drive_force *forces;
+    push *pushes;
     fluid_body *fluid_bodies;
     fluid_obstacle *fluid_obstacles;
     b2BodyId *fluid_ids;
@@ -313,6 +322,7 @@ void game_physics_free(game_physics *physics)
     afree(physics->contacts);
     afree(physics->visited);
     afree(physics->forces);
+    afree(physics->pushes);
     afree(physics->fluid_bodies);
     afree(physics->fluid_obstacles);
     afree(physics->fluid_ids);
@@ -337,6 +347,7 @@ void game_physics_reset(game_physics *physics)
     physics->active_workers = 1;
     aclear(physics->previous);
     aclear(physics->current);
+    aclear(physics->pushes);
     physics->error[0] = 0;
     create_world(physics);
 }
@@ -2048,6 +2059,52 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
     profile_phase(physics, start, &physics->profile.fluid_impulse_ms);
 }
 
+static int queue_push(game_physics *physics, ecs_entity entity, CF_V2 amount, bool impulse)
+{
+    const GameBody *body = ecs_entity_is_alive(physics->world, entity)
+                             ? GAME_GameBody_get_const(physics->world, entity)
+                             : NULL;
+    if (!body || body->type != GAME_BODY_DYNAMIC || !isfinite(amount.x + amount.y)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    apush(physics->pushes, ((push){ entity, { amount.x, amount.y }, impulse }));
+    return FLOW_OK;
+}
+
+int game_physics_apply_impulse(game_physics *physics, ecs_entity entity, CF_V2 impulse)
+{
+    return queue_push(physics, entity, impulse, true);
+}
+
+int game_physics_apply_force(game_physics *physics, ecs_entity entity, CF_V2 force)
+{
+    return queue_push(physics, entity, force, false);
+}
+
+/* Applies the queued pushes to the dynamic bodies they still name. */
+static void apply_pushes(game_physics *physics)
+{
+    for (int i = 0; i < acount(physics->pushes); i++) {
+        push queued = physics->pushes[i];
+        unsigned slot = queued.entity.slot;
+        const physics_body *body = slot < (unsigned)acount(physics->bodies)
+                                     ? &physics->bodies[slot]
+                                     : NULL;
+        if (!body ||
+            ecs_entity_to_u64(body->entity) != ecs_entity_to_u64(queued.entity) ||
+            !body->body.index1 || body->follower ||
+            body->settings.type != GAME_BODY_DYNAMIC) {
+            continue;
+        }
+        if (queued.impulse) {
+            b2Body_ApplyLinearImpulseToCenter(body->body, queued.amount, true);
+            continue;
+        }
+        b2Body_ApplyForceToCenter(body->body, queued.amount, true);
+    }
+    aclear(physics->pushes);
+}
+
 int game_physics_tick(game_physics *physics, float delta_seconds)
 {
     physics->error[0] = 0;
@@ -2077,6 +2134,9 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     profile_phase(physics, &start, &physics->profile.synchronize_ms);
     if (result < 0) {
         return result;
+    }
+    if (delta_seconds > 0) {
+        apply_pushes(physics);
     }
     bool parallel = physics->body_count >= PARALLEL_BODY_MINIMUM;
     if (physics->pool) {

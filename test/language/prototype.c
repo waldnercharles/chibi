@@ -463,6 +463,18 @@ static const char *const links_library[][2] = {
       "name \"Weight\"\ncomponents {\n    test.Link other=\"Inside\"\n}\n"
       "(array)children {\n    - name=\"Inside\" prototype=\"Plain\"\n}\n" },
     { "Plain", "name \"Plain\"\n" },
+    /* Bob's path names Lure's Inside, not the one Weight's names. */
+    { "Lure",
+      "name \"Lure\"\n(array)children {\n"
+      "    - name=\"Inside\" prototype=\"Plain\"\n"
+      "    - name=\"Bob\" prototype=\"Weight\" {\n"
+      "        components {\n            test.Link other=\"Inside\"\n        "
+      "}\n"
+      "    }\n"
+      "}\n" },
+    /* Parked's Link is detached, so its path doesn't reach Weight's. */
+    { "Parked", "name \"Parked\"\ndetached_components {\n    test.Link other=\"Nowhere\"\n}\n" },
+    { "Composite", "name \"Composite\"\n(array)includes \"Weight\" \"Parked\"\n" },
     { "Stray", "name \"Stray\"\ncomponents {\n    test.Link other=\"Nowhere\"\n}\n" },
     { "Deep", "name \"Deep\"\ncomponents {\n    test.Link {\n        inner entity=\"Plain\"\n    }\n}\n" },
 };
@@ -518,6 +530,16 @@ TEST_CASE(entity_paths_load_and_save_as_written)
     av_value *fields = before ? av_obj_get(before, "test.Link") : NULL;
     REQUIRE(fields && !strcmp(av_get_str(av_obj_get(fields, "other")), "Hook"));
     REQUIRE(after && !av_obj_size(after));
+    av_value_free(before);
+    game_prototype *lure = load_linked("Lure", error, sizeof error);
+    REQUIRE(lure && acount(lure->child_prototypes) == 2);
+    before = game_prototype_overrides_value(weight, lure->child_prototypes[1]);
+    fields = before ? av_obj_get(before, "test.Link") : NULL;
+    REQUIRE(fields && !strcmp(av_get_str(av_obj_get(fields, "other")), "Inside"));
+    game_prototype_free(lure);
+    game_prototype *composite = load_linked("Composite", error, sizeof error);
+    REQUIRE(composite && only_link(composite) && !strcmp(only_link(composite)->path, "Inside"));
+    game_prototype_free(composite);
     /* Writing the handle or removing the component drops the path. */
     REQUIRE(
         !game_prototype_write_field(weight, "Link", "other", (pin_value){ .type = PIN_HANDLE })

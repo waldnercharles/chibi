@@ -502,6 +502,16 @@ static bool merge_prototype(game_prototype *dst, game_prototype *src, char *erro
         return false;
     }
     move_strings(dst, src);
+    /* Only attached components merge, so only their links do. */
+    game_prototype_link *links = NULL;
+    for (int i = 0; i < acount(src->links); i++) {
+        if (find_component(src, src->links[i].component->name)) {
+            apush(links, src->links[i]);
+        } else {
+            free(src->links[i].path);
+        }
+    }
+    aclear(src->links);
     for (int i = 0; i < acount(src->components); i++) {
         game_prototype_component component = src->components[i];
         game_prototype_component *existing = find_component(dst, component.desc->name);
@@ -514,15 +524,10 @@ static bool merge_prototype(game_prototype *dst, game_prototype *src, char *erro
         }
     }
     aclear(src->components);
-    /* Only attached components merge, so only their links do. */
-    for (int i = 0; i < acount(src->links); i++) {
-        if (find_component(dst, src->links[i].component->name)) {
-            apush(dst->links, src->links[i]);
-        } else {
-            free(src->links[i].path);
-        }
+    for (int i = 0; i < acount(links); i++) {
+        apush(dst->links, links[i]);
     }
-    aclear(src->links);
+    afree(links);
     for (int i = 0; i < acount(src->graphs); i++) {
         apush(dst->graphs, src->graphs[i]);
     }
@@ -1363,8 +1368,8 @@ static int field_equal(
 }
 
 /* An entity path override: the current path where it differs from the
- * base's. A current naming none keeps the base's: it may be a captured
- * entity, whose handles never save. */
+ * base's, or names another document's entities. A current naming none keeps
+ * the base's: it may be a captured entity, whose handles never save. */
 static av_value *link_override(
     av_doc *doc,
     const game_prototype *base,
@@ -1378,7 +1383,9 @@ static av_value *link_override(
         return NULL;
     }
     const game_prototype_link *was = find_link(base->links, component, field);
-    return was && !strcmp(was->path, now->path) ? NULL : av_str(doc, now->path);
+    return was && was->outer == now->outer && !strcmp(was->path, now->path)
+             ? NULL
+             : av_str(doc, now->path);
 }
 
 /* `current` holds the entity paths of current_components, or is NULL when

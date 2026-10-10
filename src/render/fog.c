@@ -73,7 +73,7 @@ bool render_fog_draw(
     }
     cf_texture_update(fog->mask, (void *)cells, settings.columns * settings.rows * 4);
     CF_M4x4 rays = camera ? render_scene3d_eye_rays(camera) : cf_m4_identity();
-    CF_V3 eye = camera ? render_scene3d_eye(camera) : (CF_V3){ 0 };
+    CF_V3 eye = camera ? camera->eye : (CF_V3){ 0 };
     unsigned rgba = settings.color ? settings.color : 0x07111AFF;
     CF_Color color = { (rgba >> 24) / 255.0f,
                        ((rgba >> 16) & 255) / 255.0f,

@@ -20,7 +20,9 @@ in float depth, which breaks picking and fog. The span's aspect shapes the image
 either way. Panning or zooming the
 viewport returns it to the overhead framing. Fog conceals view rays that never
 reach the ground ahead, such as those above the horizon, as it does ground past
-its grid.
+its grid. Picking, ground queries and fog unproject view rays about the eye and
+start them at the eye the camera keeps, so they stay precise however far the
+eye is from the origin.
 
 ## Lighting
 
@@ -211,8 +213,9 @@ has them. A scene without a valid rhythm clock draws with the beat at rest.
 `make agent-gpu-test AGENT_SELECTOR=--scene3d` renders a box or a floor in a
 hidden 64x64 app. It checks cameras looking along their Transform3D, field of
 view and clip distances, the lenses a camera rejects, ground rays at the widest
-clip range, panning dropping a lens, and fog concealing rays that miss the
-ground. It checks ambient, the
+clip range, panning dropping a lens, fog concealing rays that miss the ground,
+and ground rays and fog from an eye far from the origin, turned off the axes
+too. It checks ambient, the
 directional light, the one-light limit
 (hidden lights left out), drawing without a rhythm clock, both tone maps, auto
 exposure's geometric mean, background rejection, easing (including slow easing

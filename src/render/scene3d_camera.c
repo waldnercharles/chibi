@@ -4,7 +4,7 @@
 #include <float.h>
 #include <math.h>
 
-static const float camera_fov = 0.6108652382f;  /* 35 degrees vertically. */
+static const float camera_fov = 0.6108652382f; /* 35 degrees vertically by default. */
 static const float camera_tilt = 0.1745329252f; /* 10 degrees from overhead. */
 
 static CF_V3 camera_direction()
@@ -12,21 +12,51 @@ static CF_V3 camera_direction()
     return (CF_V3){ 0, cosf(camera_tilt), sinf(camera_tilt) };
 }
 
+render_scene3d_camera render_scene3d_camera_frame(const engine_viewport_camera *frame)
+{
+    assert(isfinite(frame->center_x) && isfinite(frame->center_y));
+    assert(isfinite(frame->span_width) && isfinite(frame->span_height));
+    assert(frame->span_width > 0 && frame->span_height > 0);
+    engine_viewport_lens lens = frame->lens;
+    float fov = lens.fov > 0 ? lens.fov : camera_fov;
+    bool clipped = lens.near_clip > 0;
+    assert(fov < CF_PI && clipped == (lens.far_clip > 0));
+    assert(!clipped || lens.far_clip > lens.near_clip);
+    float distance = frame->span_height * 0.5f / tanf(fov * 0.5f);
+    if (cf_dot_v3(lens.forward, lens.forward) == 0) {
+        CF_V3 target = { frame->center_x, 0, -frame->center_y };
+        lens.eye = cf_add_v3(target, cf_mul_v3_f(camera_direction(), distance));
+        lens.forward = cf_neg_v3(camera_direction());
+        lens.up = (CF_V3){ 0, 1, 0 };
+    }
+    /* Default clips scale with the framing distance, floored at 10 so close
+     * framings still see 200 ahead. Near stays in front of the framed target,
+     * and far within the widest ratio a camera may author. */
+    float reach = fmaxf(distance, 10);
+    float closest = fminf(reach * 0.001f, distance * 0.5f);
+    return (render_scene3d_camera){
+        /* Turning at the origin keeps a short forward from vanishing into a
+         * distant eye's rounding. */
+        .view = cf_mul_m4(
+            cf_look_at((CF_V3){ 0 }, lens.forward, lens.up),
+            cf_m4_translate(cf_neg_v3(lens.eye))
+        ),
+        .projection = cf_perspective(
+            fov,
+            frame->span_width / frame->span_height,
+            clipped ? lens.near_clip : closest,
+            clipped ? lens.far_clip : fminf(reach * 20, closest * ENGINE_VIEWPORT_CLIP_RATIO_MAX)
+        )
+    };
+}
+
 render_scene3d_camera render_scene3d_camera_make(float center_x, float center_y, float span_width, float span_height)
 {
-    assert(isfinite(center_x) && isfinite(center_y));
-    assert(isfinite(span_width) && isfinite(span_height));
-    assert(span_width > 0 && span_height > 0);
-    float distance = span_height * 0.5f / tanf(camera_fov * 0.5f);
-    CF_V3 target = { center_x, 0, -center_y };
-    CF_V3 eye = cf_add_v3(target, cf_mul_v3_f(camera_direction(), distance));
-    return (render_scene3d_camera){ .view = cf_look_at(eye, target, (CF_V3){ 0, 1, 0 }),
-                                    .projection = cf_perspective(
-                                        camera_fov,
-                                        span_width / span_height,
-                                        fmaxf(distance * 0.001f, 0.01f),
-                                        distance * 20
-                                    ) };
+    return render_scene3d_camera_frame(&(engine_viewport_camera){
+        .center_x = center_x,
+        .center_y = center_y,
+        .span_width = span_width,
+        .span_height = span_height });
 }
 
 CF_Aabb render_scene3d_fit(const CF_V3 *points, int count, float aspect)

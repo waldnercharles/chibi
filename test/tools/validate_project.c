@@ -990,6 +990,18 @@ TEST_CASE(prototype_children_come_with_their_instance)
         yyjson_arr_size(edges) == 1 &&
         reads(yyjson_get_str(yyjson_obj_get(to, "name")), "Hull")
     );
+    /* A child's own behaviors are checked with the scene that spawns it. */
+    write_file(
+        "game/content/prototypes/Ship.kdl",
+        "name \"Ship\"\n(array)children { - name=\"Gun\" prototype=\"Hull\" { "
+        "(array)behaviors \"Missing\"; }; }\n"
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"scene\",\"name\":\"Start\"}") !=
+        0
+    );
+    const char *missing = first_message(result("diagnostics"));
+    REQUIRE(missing && strstr(missing, "Missing"));
     write_file("game/content/prototypes/Ship.kdl", "name \"Ship\"\n(array)children { - name=\"Again\" prototype=\"Ship\"; }\n");
     REQUIRE(validate() != 0);
     return true;

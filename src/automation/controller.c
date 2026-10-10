@@ -11898,37 +11898,47 @@ static int validate_prototype_bindings(const char *root, const char *text, char 
     return status;
 }
 
-static int validate_prototype_behaviors(const char *root, const char *json, char *error, size_t error_size)
+/* Adds each behavior the prototype's spawn attaches, its own and its
+ * children's, to `names` once. */
+static void spawned_behaviors(const game_prototype *prototype, const char ***names)
 {
-    yyjson_doc *document = parse_project_asset_text(root, json);
-    yyjson_val *root_value = document ? yyjson_doc_get_root(document) : NULL;
-    yyjson_val *behaviors = root_value && yyjson_is_obj(root_value)
-                              ? yyjson_obj_get(root_value, "behaviors")
-                              : NULL;
-    if (!document || (behaviors && !yyjson_is_arr(behaviors))) {
-        yyjson_doc_free(document);
-        snprintf(error, error_size, "edited prototype has an invalid behaviors array");
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    for (int i = 0; i < acount(prototype->graphs); i++) {
+        bool seen = false;
+        for (int j = 0; j < acount(*names); j++) {
+            seen |= !strcmp((*names)[j], prototype->graphs[i]);
+        }
+        if (!seen) {
+            apush(*names, prototype->graphs[i]);
+        }
     }
-    if (!behaviors) {
-        yyjson_doc_free(document);
-        return CHIBI_AUTOMATION_OK;
+    for (int i = 0; i < acount(prototype->child_prototypes); i++) {
+        spawned_behaviors(prototype->child_prototypes[i], names);
     }
+}
+
+static int validate_prototype_behaviors(
+    const char *root,
+    const game_prototype *prototype,
+    char *error,
+    size_t error_size
+)
+{
+    const char **names = NULL;
+    spawned_behaviors(prototype, &names);
     bool fallout = false;
-    yyjson_arr_iter iterator = yyjson_arr_iter_with(behaviors);
-    yyjson_val *name;
-    while ((name = yyjson_arr_iter_next(&iterator))) {
-        if (!yyjson_is_str(name) || !yyjson_get_len(name)) {
-            yyjson_doc_free(document);
+    int status = CHIBI_AUTOMATION_OK;
+    for (int i = 0; status == CHIBI_AUTOMATION_OK && i < acount(names); i++) {
+        if (!names[i][0]) {
             snprintf(error, error_size, "prototype behavior names must be non-empty strings");
-            return CHIBI_AUTOMATION_VALIDATION_ERROR;
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            continue;
         }
         asset_ref ref = { 0 };
         char *behavior_json = NULL;
-        int status = load_named_asset(
+        status = load_named_asset(
             root,
             family_by_kind("behavior"),
-            yyjson_get_str(name),
+            names[i],
             &ref,
             &behavior_json,
             NULL,
@@ -11936,24 +11946,18 @@ static int validate_prototype_behaviors(const char *root, const char *json, char
             error,
             error_size
         );
-        if (status != CHIBI_AUTOMATION_OK) {
-            yyjson_doc_free(document);
-            free(behavior_json);
-            return status;
-        }
         free(behavior_json);
-        status = past_fallout(
-            validate_scene_behavior(root, yyjson_get_str(name), error, error_size),
-            error,
-            &fallout
-        );
-        if (status != CHIBI_AUTOMATION_OK) {
-            yyjson_doc_free(document);
-            return status;
+        if (status == CHIBI_AUTOMATION_OK) {
+            status = past_fallout(
+                validate_scene_behavior(root, names[i], error, error_size),
+                error,
+                &fallout
+            );
         }
     }
-    yyjson_doc_free(document);
-    return fallout_status(fallout, error, error_size);
+    afree(names);
+    return status == CHIBI_AUTOMATION_OK ? fallout_status(fallout, error, error_size)
+                                         : status;
 }
 
 static int validate_scene_behavior(const char *root, const char *name, char *error, size_t error_size)
@@ -12036,7 +12040,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
             break;
         }
         status = past_fallout(
-            validate_prototype_behaviors(root, prototype_json, error, error_size),
+            validate_prototype_behaviors(root, prototype, error, error_size),
             error,
             &fallout
         );

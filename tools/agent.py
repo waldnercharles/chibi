@@ -86,6 +86,15 @@ def studio_resource_preflight(build):
             raise ValueError('studio_startup_resource_generation_changed')
 
 
+def clone_project(source, target):
+    """Copies a project to a scratch target, copy-on-write where the filesystem can."""
+    if os.name == 'nt':
+        shutil.copytree(source, target)
+        return
+    clone = '-c' if sys.platform == 'darwin' else '--reflink=auto'
+    subprocess.run(['cp', '-R', clone, str(source), str(target)], check=True)
+
+
 def external_project(data):
     """Whether `data` is Studio's fixture project.kdl at a version the engine
     upgrades when it opens it. Studio's projects lag the engine's version."""
@@ -526,11 +535,11 @@ def main():
             if scratch and args.selector not in STUDIO_ACCEPTANCE:
                 # Opening a project upgrades it in place, so start a copy of the starter.
                 starter_copy = Path(scratch) / 'starter'
-                shutil.copytree(starter, starter_copy)
+                clone_project(starter, starter_copy)
                 command = [str(starter_copy) if part == str(starter) else part for part in command]
             elif scratch:
                 project_copy = Path(scratch) / 'project'
-                shutil.copytree(acceptance_fixture, project_copy)
+                clone_project(acceptance_fixture, project_copy)
                 env['CHIBI_STUDIO_PREFS_PATH'] = str(project_copy / '.acceptance-prefs.json')
                 env['CHIBI_THUMBNAIL_CACHE'] = str(project_copy / '.acceptance-thumbnails')
                 command = [str(acceptance_binary), STUDIO_ACCEPTANCE[args.selector][0], '--project-root', str(project_copy)]

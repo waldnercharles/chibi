@@ -27,7 +27,7 @@ NATIVE_TARGETS = {'visual_catalog', 'json', 'native_types', 'declared_components
 VALUE_TARGETS = {'math', 'vector_capabilities', 'math_capabilities', 'arithmetic_capabilities', 'mesh_runtime', 'model_bake'}
 DESKTOP_TARGETS = {'builtin_fonts', 'platform', 'ui', 'render'}
 NATIVE_AUTHORING_TARGETS = {'shader_preparation', 'project_compilation', 'asset_authoring', 'model_authoring', 'scenario_document'}
-DESKTOP_AUTHORING_TARGETS = {'project_preparation'}
+DESKTOP_AUTHORING_TARGETS = {'project_preparation', 'model_import'}
 
 
 def digest(path):

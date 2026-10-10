@@ -1329,7 +1329,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     asort(scene3d->buffer.draws, compare_draws);
     /* Masked materials read the scene's uniforms and parameters in shadow
      * passes too, each seen from its light. */
-    CF_V4 clock = { time };
+    CF_V4 clock = { time, 0, 0, 0 };
     cf_draw3d_set_uniform("scene_time", &clock, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_rhythm", &scene3d->rhythm, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_sun_direction", &scene3d->sun_direction, CF_UNIFORM_TYPE_FLOAT4, 1);

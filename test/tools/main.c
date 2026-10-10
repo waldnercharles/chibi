@@ -55,6 +55,7 @@ bool test_source_runtime_active()
 #ifdef CHIBI_TEST_SOURCE_FEATURES
 void test_source_native_features();
 void test_source_presentation();
+void test_component_presentation();
 void test_system_schedule();
 void test_code_system_runtime();
 void test_source_edit();
@@ -239,6 +240,7 @@ int main(int argc, char **argv)
             test_code_system_runtime();
         } else if (source_presentation) {
             test_source_presentation();
+            test_component_presentation();
         } else if (source_features) {
             test_source_native_features();
         } else if (source_numeric) {

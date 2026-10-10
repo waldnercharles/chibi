@@ -147,13 +147,16 @@ replacement invalidating an existing session, new default values and a rejected
 wrong parameter type on a fixed 3-by-3 bake. All four cases pass 267 assertions
 in 0.650 seconds with ASan/UBSan after the typed catalog extraction.
 
-`--source-presentation` is an independently admitted native selector for five small
+`--source-presentation` is an independently admitted native selector for seven small
 CPU cases: dedicated clone ownership after compiler retirement, explicit source
 edits, exact-source layout metadata, invalid drafts, native palette declarations,
 callable-local ownership and readable formulas. Formula coverage retains authored
 call origins and effectful operations and reparses expression replacements.
 These cases pass 7,971 assertions in 1.259 seconds under the production deadline.
 Later document/Studio integrations are unverified.
+It also runs two component presentation cases on two fixed in-memory documents:
+the engine's tabs, icons and reflected units and ranges, and a document
+overriding them key by key.
 `--system-schedule` admits only `test_system_schedule`: fixed access/order cases,
 62 small CPU engine frames and a serial/parallel 128-entity, 20-frame comparison.
 The scheduler benchmark and broad material aggregates remain quarantined. This

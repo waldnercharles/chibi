@@ -38,14 +38,14 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameBody)
 {
     GameBodyType type;
     bool continuous;
-    float angular_velocity; /* Kinematic radians/second; requires Orientation. */
+    float angular_velocity NODE_UNIT("rad/s"); /* Kinematic radians/second; requires Orientation. */
     bool allow_rotation;
 }
 GameBody;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameCollider)
 {
-    float radius;
+    float radius NODE_UNIT("u");
     unsigned category;
     unsigned mask;
     GameColliderShape shape;
@@ -54,8 +54,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCollider)
     bool sensor;
     bool pierce_fragments; /* Continuous sensors report debris hits without stopping. */
     uint64_t ignore_entity NODE_HANDLE(ecs.entity);
-    float restitution;
-    float friction;
+    float restitution NODE_RANGE(0, 1);
+    float friction NODE_RANGE(0, 1);
 }
 GameCollider;
 
@@ -63,7 +63,7 @@ GameCollider;
 typedef NODE_COMPONENT_TYPE_DENSE(GameDrive)
 {
     CF_V2 target;
-    float acceleration;
+    float acceleration NODE_UNIT("u/s²");
 }
 GameDrive;
 
@@ -111,14 +111,14 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialFluidWorld)
     float gas_ambient_heat;
     /* Optional transient visual responses to fast fluid/body contacts. Zero
      * count disables that response; particles never add matter to the solver. */
-    float gas_wake_speed; /* Minimum normal closing speed, world units/sec. */
+    float gas_wake_speed NODE_UNIT("u/s"); /* Minimum normal closing speed, world units/sec. */
     float gas_wake_strength; /* Scales puff speed and response intensity. */
     int gas_wake_count;      /* Maximum visual particles per body/patch/tick. */
-    float gas_wake_lifetime; /* Maximum visual particle lifetime, seconds. */
-    float liquid_splash_speed; /* Minimum normal closing speed, world units/sec. */
+    float gas_wake_lifetime NODE_UNIT("s"); /* Maximum visual particle lifetime, seconds. */
+    float liquid_splash_speed NODE_UNIT("u/s"); /* Minimum normal closing speed, world units/sec. */
     float liquid_splash_strength; /* Scales droplet speed and response intensity. */
     int liquid_splash_count; /* Maximum visual particles per body/patch/tick. */
-    float liquid_splash_lifetime; /* Maximum visual particle lifetime, seconds. */
+    float liquid_splash_lifetime NODE_UNIT("s"); /* Maximum visual particle lifetime, seconds. */
 }
 MaterialFluidWorld;
 
@@ -153,13 +153,13 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialBreakProfile)
     float chunk_cells;
     float chunk_size_min, chunk_size_max;
     float chunk_speed_min, chunk_speed_max;
-    float chunk_lifetime;
+    float chunk_lifetime NODE_UNIT("s");
     /* Gas parcels released into the fluid world per crater; zero disables. */
     int smoke_count;
     unsigned smoke_color NODE_COLOR;
-    float smoke_lifetime;
+    float smoke_lifetime NODE_UNIT("s");
     /* Outward drift speed of the released gas in world units per second. */
-    float smoke_speed;
+    float smoke_speed NODE_UNIT("u/s");
 }
 MaterialBreakProfile;
 
@@ -170,14 +170,14 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCombustion)
     float cooling;
     float burn_rate;
     float heat_release;
-    float smoke_lifetime;
+    float smoke_lifetime NODE_UNIT("s");
     unsigned smoke_color NODE_COLOR;
     float smoke_absorption;
     unsigned flame_color NODE_COLOR;
     float flame_emission;
     /* World units a burst of ignitions pushes gas, bodies and debris; at most
      * 1024. */
-    float blast_radius;
+    float blast_radius NODE_RANGE(0, 1024) NODE_UNIT("u");
     float blast_speed;
     float blast_damage;
     /* Heat below this stops burning without consuming the remaining fuel.
@@ -229,7 +229,7 @@ GameSubstance;
 /* Optional circular void in a destructible mask, for finite sealed pockets. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameMaterialCavity)
 {
-    float radius;
+    float radius NODE_UNIT("u");
 }
 GameMaterialCavity;
 
@@ -269,7 +269,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameMaterialFrame)
 {
     float x;
     float y;
-    float radians;
+    float radians NODE_UNIT("rad");
 }
 GameMaterialFrame;
 
@@ -315,15 +315,15 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameFluidVolume)
     float spacing;
     float mass;
     unsigned color NODE_COLOR;
-    float absorption;
+    float absorption NODE_RANGE(0, 1);
     float emission;
     /* Camera-only minimum visibility; contributes no radiance or bounce. */
     float visibility;
     /* Screen-space liquid distortion in pixels; zero disables refraction. */
-    float refraction;
+    float refraction NODE_UNIT("px");
     /* Positive draws individual grains at this world-space radius; zero uses
      * the continuous fluid surface. Does not change collision support. */
-    float grain_radius;
+    float grain_radius NODE_UNIT("u");
     CF_V2 velocity;
 }
 GameFluidVolume;
@@ -337,7 +337,7 @@ GameHealth;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameMovement)
 {
-    float speed;
+    float speed NODE_UNIT("u/s");
 }
 GameMovement;
 
@@ -350,14 +350,14 @@ GameInput;
 typedef NODE_COMPONENT_TYPE_DENSE(GameWeapon)
 {
     int damage;
-    float cooldown;
+    float cooldown NODE_UNIT("s");
 }
 GameWeapon;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameProjectile)
 {
-    float speed;
-    float lifetime;
+    float speed NODE_UNIT("u/s");
+    float lifetime NODE_UNIT("s");
     int damage;
     float age;
 }
@@ -386,7 +386,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameAppearance)
     float glow_radius;
     unsigned glow_color NODE_COLOR;
     float stroke_width;
-    float antialias;
+    float antialias NODE_RANGE(0, 1);
     int layer;
 }
 GameAppearance;
@@ -410,7 +410,7 @@ GameSprite;
  * The 2D canvas flips Y at presentation; 3D maps gameplay Y to world Z. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameOrientation)
 {
-    float radians;
+    float radians NODE_UNIT("rad");
 }
 GameOrientation;
 
@@ -420,16 +420,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameMaterial)
     unsigned albedo NODE_COLOR;
     unsigned filter NODE_COLOR;
     unsigned emission_color NODE_COLOR;
-    float emission_intensity;
+    float emission_intensity NODE_RANGE(0, 4);
     float emission_multiplier;
-    float absorption;
+    float absorption NODE_RANGE(0, 1);
     unsigned border_scene NODE_COLOR;
     unsigned border_emission_color NODE_COLOR;
     unsigned border_albedo NODE_COLOR;
     unsigned border_filter NODE_COLOR;
     /* Gain of light received near the surface of a solid, reaching
      * GameHRC2D.surface_radius into it. Zero disables; no unlit outline. */
-    float edge_light;
+    float edge_light NODE_RANGE(0, 1);
 }
 GameMaterial;
 
@@ -480,9 +480,9 @@ GameAim;
 
 typedef NODE_COMPONENT_TYPE_DENSE(GameDash)
 {
-    float speed;
-    float duration;
-    float cooldown;
+    float speed NODE_UNIT("u/s");
+    float duration NODE_UNIT("s");
+    float cooldown NODE_UNIT("s");
     int damage;
     float remaining;
     float cooldown_remaining;
@@ -505,7 +505,7 @@ enum
 typedef NODE_COMPONENT_TYPE_DENSE(GameSpawnRequest)
 {
     const char *prototype;
-    float delay;
+    float delay NODE_UNIT("s");
 }
 GameSpawnRequest;
 
@@ -547,7 +547,7 @@ typedef enum
  * -20 to 20. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
 {
-    float exposure;
+    float exposure NODE_UNIT("EV");
     float bloom_strength;
     float bloom_threshold;
     float bloom_radius;
@@ -559,7 +559,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
     float adaptation_speed;
     const char *sky;
     float sky_rotation;
-    float sky_exposure;
+    float sky_exposure NODE_UNIT("EV");
 }
 GameEnvironment;
 
@@ -607,7 +607,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GamePointLight)
 {
     unsigned color NODE_COLOR;
     float intensity;
-    float radius;
+    float radius NODE_UNIT("u");
     float elevation;
     bool shadows;
 }
@@ -623,7 +623,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSpotLight)
 {
     unsigned color NODE_COLOR;
     float intensity;
-    float radius;
+    float radius NODE_UNIT("u");
     float elevation;
     CF_V3 direction;
     float inner_angle;
@@ -649,7 +649,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSurfaceInfluence)
 {
     unsigned color NODE_COLOR;
     float strength;
-    float radius;
+    float radius NODE_UNIT("u");
     float linger;
     float inner_radius;
 }
@@ -658,7 +658,7 @@ GameSurfaceInfluence;
 /* Shared simulation rhythm. Pulse width is measured in seconds. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameRhythm)
 {
-    float bpm;
+    float bpm NODE_UNIT("bpm");
     float pulse_width;
 }
 GameRhythm;
@@ -727,7 +727,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSurfaceQuality)
     GameSurfaceResolution resolution;
     /* Projected pixel tolerance for refined SDF tracing; zero uses the
      * original distance-bound tolerance. Supported range is zero to one. */
-    float sdf_pixel_error;
+    float sdf_pixel_error NODE_RANGE(0, 1);
     /* Central uses six field samples; Tetrahedral uses four. */
     GameSdfNormalMode sdf_normal_mode;
     /* Reference comparison retaining each object's full-detail graph. */
@@ -782,7 +782,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameParticleEmitter)
     GameParticleCurve drag;
     GameParticleCurve emission;
     GameParticleCurve antialias;
-    float absorption;
+    float absorption NODE_RANGE(0, 1);
     int metaball_group;
     float metaball_blend;
     bool velocity_align;
@@ -822,7 +822,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameTrail)
 {
     unsigned color NODE_COLOR;
     float width;
-    float lifetime;
+    float lifetime NODE_UNIT("s");
     float emission;
 }
 GameTrail;
@@ -836,7 +836,7 @@ GameExperience;
 typedef NODE_COMPONENT_TYPE_DENSE(GamePickup)
 {
     int value;
-    float lifetime;
+    float lifetime NODE_UNIT("s");
     float age;
     int state;
     float collection_age;
@@ -858,10 +858,10 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
     float focal_distance;
     /* Radians. Yaw turns around world +Y; pitch tilts away from the default
      * top-down view. Transform and offset give the target's gameplay position. */
-    float yaw;
-    float pitch;
+    float yaw NODE_UNIT("rad");
+    float pitch NODE_UNIT("rad");
     /* Turns the image right/down axes around the view direction. */
-    float roll;
+    float roll NODE_UNIT("rad");
     float target_elevation;
 }
 GameCamera;
@@ -964,9 +964,9 @@ GameFog;
  * duration <= 0 is permanent. Only remembering sources update terrain memory. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameVision)
 {
-    float radius;
+    float radius NODE_UNIT("u");
     unsigned occluders;
-    float duration;
+    float duration NODE_UNIT("s");
     float age;
     bool remember;
     bool disabled;
@@ -1088,7 +1088,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * probe per 2x2 pixels. Brightness keeps this detail, and most lighting
      * cost scales with its area. 1, 0.5, 0.25 and 0.125 give whole-pixel
      * cells. With adaptive on, the highest resolution it uses. */
-    float resolution;
+    float resolution NODE_RANGE(0.1, 1);
     /* Color detail relative to resolution. Below Full, a brightness-only
      * transport solves at resolution and color on a grid 2, 4 or 8 times
      * coarser; color then blurs where differently colored lights meet. */
@@ -1103,9 +1103,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * the CPU or vsync keep their lighting. Needs Metal's GPU timestamps. */
     bool adaptive;
     /* Frame rate adaptive keeps the scene's GPU work within. */
-    float target_fps;
+    float target_fps NODE_UNIT("fps");
     /* Lowest resolution adaptive may choose. */
-    float min_resolution;
+    float min_resolution NODE_RANGE(0.1, 1);
     /* Gain of the unlit scene color added to the frame. */
     float ambient;
     /* Brightness of emissive surfaces as drawn; the light they cast is
@@ -1121,16 +1121,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     float falloff;
     /* World-space raster guard around the camera for nearby light transport.
      * The default, zero, leaves offscreen sources and occluders out. */
-    float lighting_margin;
+    float lighting_margin NODE_UNIT("u");
     /* Gain of light that lit surfaces reflect back into the transport; needs
      * feedback. */
     float bounce_intensity;
     /* Current-frame weight of bounce light: 1 disables temporal smoothing, not
      * bounce, and lower values retain more history. Camera movement resets it. */
-    float bounce_hysteresis;
+    float bounce_hysteresis NODE_RANGE(0, 1);
     /* Current-frame weight of received light: 1 disables temporal smoothing,
      * and lower values retain more history. */
-    float radiance_hysteresis;
+    float radiance_hysteresis NODE_RANGE(0, 1);
     /* How received light is upsampled from the transport grid: 0 bilinear,
      * 1 bilinear that turns nearest at absorption edges, 2 joint bilateral on
      * absorption, 3 five-tap cross. Ignored with a luminance transport. */
@@ -1146,13 +1146,13 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     float particle_focal_length;
     /* Cascade levels traced through the scene. Higher levels are extended
      * from the ones below, which is cheaper but less exact. */
-    int trace_levels;
+    int trace_levels NODE_RANGE(1, 5);
     /* Feeds light reflected by lit surfaces back into the transport as bounce
      * light. */
     bool feedback;
     /* World units that light received near a solid's surface reaches into it,
      * scaled by GameMaterial.edge_light. Zero disables surface lighting. */
-    float surface_radius;
+    float surface_radius NODE_UNIT("u");
     /* Blur spreads open-space light; Gather uses bounded visibility probes.
      * Depth thickness gathers visible emission with finite-depth occluders. */
     GameHRCSurfaceMode surface_mode;
@@ -1170,7 +1170,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     /* Refine nearby sources whose directions differ across a source tile. */
     bool surface_depth_near_detail;
     /* Blend visibility bins and reconstruction boundaries, in [0, 1]. */
-    float surface_depth_shadow_softness;
+    float surface_depth_shadow_softness NODE_RANGE(0, 1);
     /* Reproject and validate a short history of the Depth contribution. */
     bool surface_depth_temporal;
     /* Maximum previous-frame weight; zero selects the default of 0.65. */
@@ -1195,9 +1195,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * presents it with bloom, exposure and AgX tone mapping. */
     GameHRCToneMapping tone_mapping;
     /* Exposure in EV before tone mapping. */
-    float exposure;
+    float exposure NODE_UNIT("EV");
     /* Fraction of the blurred image mixed into the frame, in [0, 1]. */
-    float bloom;
+    float bloom NODE_RANGE(0, 1);
 }
 GameHRC2D;
 

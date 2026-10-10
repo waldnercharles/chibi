@@ -473,6 +473,7 @@ native_capabilities *native_capabilities_new(
             fields[j].name = own(n, fields[j].name);
             fields[j].type_name = own(n, fields[j].type_name);
             fields[j].description = own(n, fields[j].description);
+            fields[j].unit = own(n, fields[j].unit);
         }
         copy.fields = fields;
         apush(n->layouts, copy);

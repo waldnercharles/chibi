@@ -31,21 +31,19 @@ bool authoring_prototype_resources(const game_prototype *prototype, char *error,
                 return false;
             }
         }
-        if (component->desc->id == GAME_COMPONENT_GameSprite.id) {
-            const GameSprite *sprite = component->data;
-            shader_image_source source = { .key = (char *)sprite->image,
+        if (component->desc->id == GAME_COMPONENT_GameSprite.id ||
+            component->desc->id == GAME_COMPONENT_GameTilemap.id) {
+            const char *image = component->desc->id == GAME_COMPONENT_GameSprite.id
+                                  ? ((const GameSprite *)component->data)->image
+                                  : ((const GameTilemap *)component->data)->image;
+            shader_image_source source = { .key = (char *)image,
                                            .color_space = SHADER_IMAGE_SRGB,
                                            .filter = SHADER_IMAGE_NEAREST,
                                            .wrap = SHADER_IMAGE_CLAMP };
             shader_error diagnostic = { 0 };
-            if (!sprite->image || !render_image_variant(&source, &diagnostic)) {
+            if (!image || !render_image_variant(&source, &diagnostic)) {
                 if (size) {
-                    snprintf(
-                        error,
-                        size,
-                        "Sprite: %s",
-                        sprite->image ? diagnostic.message : "no image"
-                    );
+                    snprintf(error, size, "Sprite atlas: %s", image ? diagnostic.message : "no image");
                 }
                 return false;
             }

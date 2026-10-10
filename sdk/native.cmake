@@ -62,6 +62,13 @@ if(TARGET chibi_native_reflection)
     add_dependencies(chibi_native_types chibi_native_reflection)
 endif()
 
+add_library(chibi_tilemap_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/tilemap.c")
+add_library(Chibi::tilemap_runtime ALIAS chibi_tilemap_runtime)
+set_target_properties(chibi_tilemap_runtime PROPERTIES EXPORT_NAME tilemap_runtime)
+chibi_sdk_headers(chibi_tilemap_runtime PUBLIC runtime/tilemap.h)
+target_link_libraries(chibi_tilemap_runtime PUBLIC chibi_math PRIVATE chibi_support)
+list(APPEND CHIBI_SDK_TARGETS chibi_tilemap_runtime)
+
 add_library(chibi_spatial_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/systems/access.c"
     "${CHIBI_SDK_ROOT}/src/runtime/visual_transform.c"
     "${CHIBI_SDK_ROOT}/src/runtime/visual_parts.c"
@@ -87,16 +94,17 @@ add_library(chibi_entity_runtime STATIC
     "${CHIBI_SDK_ROOT}/src/runtime/behaviors/entities_source.c"
     "${CHIBI_SDK_ROOT}/src/runtime/behaviors/entity_query.c"
     "${CHIBI_SDK_ROOT}/src/runtime/behaviors/entities_definition.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/behaviors/tilemap_definition.c"
     "${CHIBI_SDK_ROOT}/src/runtime/behaviors/scene_flow.c"
     "${CHIBI_SDK_ROOT}/src/runtime/behaviors/scene_flow_definition.c")
 add_library(Chibi::entity_runtime ALIAS chibi_entity_runtime)
 set_target_properties(chibi_entity_runtime PROPERTIES EXPORT_NAME entity_runtime)
 chibi_sdk_headers(chibi_entity_runtime PUBLIC runtime/behaviors/entities.h
     runtime/behaviors/entities_native.h runtime/behaviors/entities_source.h
-    runtime/behaviors/entities_definition.h runtime/behaviors/entity_query.h
+    runtime/behaviors/entities_definition.h runtime/behaviors/entity_query.h runtime/behaviors/tilemap_definition.h
     runtime/behaviors/scene_flow.h runtime/behaviors/scene_flow_definition.h)
 target_link_libraries(chibi_entity_runtime PUBLIC chibi_native_types chibi_execution
-    chibi_scene_runtime chibi_behavior_runtime chibi_native_capabilities PRIVATE chibi_spatial_runtime)
+    chibi_scene_runtime chibi_behavior_runtime chibi_native_capabilities PRIVATE chibi_spatial_runtime chibi_tilemap_runtime)
 add_library(chibi_audio_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/audio.c"
     "${CHIBI_SDK_ROOT}/src/runtime/audio_definition.c")
 add_library(Chibi::audio_runtime ALIAS chibi_audio_runtime)

@@ -5,6 +5,7 @@
 #include "execution/status.h"
 #include "runtime/behaviors/entities_native.h"
 #include "runtime/component_catalog.h"
+#include "runtime/tilemap.h"
 #include "runtime/transform_propagation.h"
 #include "support/arena.h"
 #include "support/array.h"
@@ -86,7 +87,53 @@ struct game_entities
     bool parallel_queries;
     bool query_scope, profile_queries;
     game_entity_query_profile query_profile;
+    struct tilemap_entry *tilemaps;
 };
+
+typedef struct tilemap_entry
+{
+    ecs_entity entity;
+    tilemap_grid grid;
+} tilemap_entry;
+
+const tilemap_grid *game_entities_tilemap(game_entities *entities, ecs_entity entity, const char **error)
+{
+    *error = NULL;
+    const GameTilemap *map = ecs_entity_is_alive(entities->world, entity) &&
+                                     !game_entities_is_retiring(entities, entity)
+                               ? GAME_GameTilemap_get_const(entities->world, entity)
+                               : NULL;
+    if (!map) {
+        *error = "Tilemap query requires a live GameTilemap entity";
+        return NULL;
+    }
+    for (int i = acount(entities->tilemaps) - 1; i >= 0; i--) {
+        ecs_entity cached = entities->tilemaps[i].entity;
+        if (!ecs_entity_is_alive(entities->world, cached) ||
+            !GAME_GameTilemap_get_const(entities->world, cached)) {
+            tilemap_grid_free(&entities->tilemaps[i].grid);
+            entities->tilemaps[i] = alast(entities->tilemaps);
+            apop(entities->tilemaps);
+        }
+    }
+    tilemap_entry *entry = NULL;
+    for (int i = 0; i < acount(entities->tilemaps); i++) {
+        if (ecs_entity_to_u64(entities->tilemaps[i].entity) ==
+            ecs_entity_to_u64(entity)) {
+            entry = &entities->tilemaps[i];
+            break;
+        }
+    }
+    if (!entry) {
+        apush(entities->tilemaps, ((tilemap_entry){ .entity = entity }));
+        entry = &alast(entities->tilemaps);
+    }
+    if (!tilemap_grid_update(&entry->grid, map->cells, map->columns, map->rows, map->frame_width, map->frame_height)) {
+        *error = entry->grid.error;
+        return NULL;
+    }
+    return &entry->grid;
+}
 
 ecs_world *game_entities_world(const game_entities *entities)
 {
@@ -488,6 +535,10 @@ static void release_event(event_request *event)
 
 void game_entities_reset(game_entities *entities)
 {
+    for (int i = 0; i < acount(entities->tilemaps); i++) {
+        tilemap_grid_free(&entities->tilemaps[i].grid);
+    }
+    aclear(entities->tilemaps);
     game_entities_query_scope(entities, NULL);
     clear_global_bindings(entities);
     clear_global_values(entities);
@@ -525,6 +576,7 @@ void game_entities_free(game_entities *entities)
     afree(entities->global_bindings);
     afree(entities->global_values);
     afree(entities->events);
+    afree(entities->tilemaps);
     for (int i = 0; i < NEAREST_CACHE_MAX; i++) {
         afree(entities->nearest[i].entities);
     }

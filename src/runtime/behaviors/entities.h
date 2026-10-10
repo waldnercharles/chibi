@@ -8,6 +8,9 @@
 typedef struct arena arena;
 
 typedef struct game_entities game_entities;
+typedef struct tilemap_grid tilemap_grid;
+/* Borrowed until the next tilemap query or entity service reset. Serial access only. */
+const tilemap_grid *game_entities_tilemap(game_entities *, ecs_entity, const char **error);
 typedef struct game_materials game_materials;
 void game_entities_bind_materials(game_entities *entities, struct game_materials *materials);
 struct game_materials *game_entities_materials(const game_entities *entities);

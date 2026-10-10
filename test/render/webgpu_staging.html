@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>WebGPU staging regression</title>
+<canvas id="canvas" width="64" height="64"></canvas>
+<pre id="output"></pre>
+<template>{{{ SCRIPT }}}</template>
+<script>
+'use strict';
+const output = document.getElementById('output');
+let completed = false;
+let device;
+const diagnostic = message => fetch('/diagnostic', {
+    method: 'POST', body: String(message).slice(0, 240)
+}).catch(() => {});
+const fail = reason => {
+    console.error(reason);
+    diagnostic(reason);
+    window.chibiStagingResult('1 0 0 0 0 0 0');
+};
+window.addEventListener('error', event => fail(event.message));
+window.addEventListener('unhandledrejection', event => fail(event.reason));
+diagnostic('shell-start');
+const watchdog = setTimeout(() => {
+    fail('startup/execution watchdog expired');
+    if (device) device.destroy();
+}, 50000);
+window.chibiStagingResult = body => {
+    if (completed) return;
+    completed = true;
+    clearTimeout(watchdog);
+    output.textContent += body + '\n';
+    fetch('/result', { method: 'POST', body }).catch(error => {
+        output.textContent += String(error) + '\n';
+    });
+};
+var Module = {
+    canvas: document.getElementById('canvas'),
+    arguments: ['--webgpu-staging'],
+    onRuntimeInitialized: () => diagnostic('runtime-ready'),
+    print: text => { output.textContent += text + '\n'; console.log(text); },
+    printErr: text => { output.textContent += text + '\n'; console.error(text); },
+    onAbort: reason => {
+        output.textContent += String(reason) + '\n';
+        fail(reason);
+        if (device) device.destroy();
+    }
+};
+(async () => {
+    if (@CHIBI_TEST_ADOPT_DEVICE@) {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (!adapter) throw new Error('No WebGPU adapter');
+        device = await adapter.requestDevice();
+        if (completed) {
+            device.destroy();
+            return;
+        }
+        Module.preinitializedWebGPUDevice = device;
+        device.lost.then(info => {
+            output.textContent += info.message + '\n';
+            window.chibiStagingResult('1 0 0 0 0 0 0');
+        });
+    }
+    const script = document.createElement('script');
+    script.src = 'test_tools.js';
+    script.onload = () => diagnostic('script-loaded');
+    script.onerror = () => {
+        fail('test_tools.js failed to load');
+        if (device) device.destroy();
+    };
+    document.body.appendChild(script);
+})().catch(error => {
+    output.textContent += String(error) + '\n';
+    fail(error);
+    if (device) device.destroy();
+});
+</script>
+</html>

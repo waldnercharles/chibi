@@ -18,6 +18,11 @@
 #include <string.h>
 #include <unistd.h>
 
+/* GLSL wrappers size their output arrays by the C contract. */
+#define QUOTE(x) #x
+#define QUOTED(x) QUOTE(x)
+#define OUTPUT_ROWS QUOTED(SHADER_OUTPUT_MAX)
+
 static bool resolve(void *data, const shader_image_source *source, shader_image_view *view)
 {
     *view = *(shader_image_view *)data;
@@ -81,7 +86,7 @@ static float eval(const shader_graph *g, shader_image_view *image, const float p
 {
     shader_sample_context context = { .resolve_image = resolve, .image_userdata = image };
     memcpy(context.object_position, p, 3 * sizeof(float));
-    float values[8][4];
+    float values[SHADER_OUTPUT_MAX][4];
     shader_error error = { 0 };
     assert(shader_graph_eval_outputs(g, &context, NULL, values, &error));
     return values[0][0];
@@ -208,7 +213,7 @@ static void compare_gpu(shader_graph *g, shader_image_view *image, const float h
                 "result_image;\nlayout(set=2,binding=0) uniform Inputs {vec4 "
                 "points[256];};\n"
                 "float sample_at(vec3 q){SGSample s;s.object_position=q;vec4 "
-                "p[32],r[8];for(int "
+                "p[32],r[" OUTPUT_ROWS "];for(int "
                 "k=0;k<32;k++)p[k]=vec4(0);volume_test(s,p,r);return r[0].x;}\n"
                 "void main(){int i=int(gl_GlobalInvocationID.x);vec3 "
                 "p=points[i].xyz;vec3 "
@@ -366,7 +371,7 @@ static void reload_fixture(const shader_node *spec, shader_image_view *image)
     int id = render_shader_find(model->name);
     unsigned revision = render_shader_revision();
     shader_sample_context context = { 0 };
-    float before[8][4], after[8][4];
+    float before[SHADER_OUTPUT_MAX][4], after[SHADER_OUTPUT_MAX][4];
     assert(render_shader_sample(id, &context, NULL, before, &error));
     pin_value invalid_range = { .type = PIN_F32, .f = 200 };
     assert(!graph_set_pin_default(model->graph, model->graph->nodes[0], 0, 3, &invalid_range));

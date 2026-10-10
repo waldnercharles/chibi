@@ -32,8 +32,9 @@ in float depth, which breaks picking and fog. The span's aspect shapes the image
 either way. Panning or zooming the
 viewport returns it to the overhead framing. Fog conceals view rays that never
 reach the ground ahead, such as those above the horizon, as it does ground past
-its grid. Picking, ground queries and fog unproject view rays about the eye, so
-they stay precise however far the eye is from the origin.
+its grid. Picking, ground queries and fog unproject view rays about the eye and
+start them at the eye the camera keeps, so they stay precise however far the
+eye is from the origin.
 
 ## Lighting
 
@@ -261,7 +262,8 @@ vertices lie away from its origin sorts where its triangles are. Cute sorts
 translucent draws by the translation of their transform, so a mesh's GPU copy
 holds its positions about that center and its draws translate to it. A mesh goes to
 the GPU when it first draws and is freed once a reload replaces it or the
-catalog drops it; `render_scene3d_last_work` counts the meshes held.
+catalog drops it; `render_scene3d_last_work` counts the meshes held. The copies
+stay ordered by mesh identity, so each draw finds its own by bisection.
 
 Normal maps and every node that reads the surface UV's gradients follow a
 mesh's interpolated vertex tangent and bitangent, the frame its maps were baked
@@ -297,7 +299,8 @@ hidden 64x64 app. It checks cameras looking along their Transform3D and from a
 moving body's drawn pose between physics steps, field of
 view and clip distances, the lenses a camera rejects, ground rays at the widest
 clip range, panning dropping a lens, fog concealing rays that miss the ground,
-and ground rays and fog from an eye far from the origin. It checks ambient, the
+and ground rays and fog from an eye far from the origin, turned off the axes
+too. It checks ambient, the
 directional light, the one-light limit
 (hidden lights left out), drawing without a rhythm clock, both tone maps, auto
 exposure's geometric mean, background rejection, easing (including slow easing
@@ -346,7 +349,8 @@ graphs read a mesh's vertex UVs, its UVs projected from source bounds, its
 part positions and, without part coordinates, its own positions. Picks and
 bounds follow a single triangle rather than its unit box, and a republished
 mesh draws its new triangles while the GPU copies of replaced and removed
-meshes are freed. A translucent mesh whose vertices sit between the eye and a
+meshes are freed. Copies uploaded out of identity order are each found again.
+A translucent mesh whose vertices sit between the eye and a
 translucent box, while its origin lies behind the box, blends over the box as
 a shape in its place does, alone and as one of two copies drawn in one batch.
 The shadow scene's box and a pillar outside the view draw, shade and cast at

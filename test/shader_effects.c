@@ -11,6 +11,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* GLSL wrappers size their output arrays by the C contract. */
+#define QUOTE(x) #x
+#define QUOTED(x) QUOTE(x)
+#define OUTPUT_ROWS QUOTED(SHADER_OUTPUT_MAX)
+
 static int parameter(shader_graph *g, int slot, int width)
 {
     int i = shader_graph_add(g, SHADER_PARAMETER, width);
@@ -197,7 +202,7 @@ static void authored_context()
     assert(shader_graph_from_graph(a->graph, &ir, &error));
     shader_sample_context sample = { .normal = { 0, 0, 1 },
                                      .view_direction = { 0, 0, 1 } };
-    float result[8][4];
+    float result[SHADER_OUTPUT_MAX][4];
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     assert(fabsf(result[5][0] - .04f) < .00001f);
     sample.view_direction[0] = 1;
@@ -212,7 +217,7 @@ void test_shader_effects_cpu()
     authored_context();
     shader_graph g;
     program(&g, false);
-    float p[32][4], out[8][4];
+    float p[32][4], out[SHADER_OUTPUT_MAX][4];
     inputs(p, 0);
     shader_sample_context sample = { 0 };
     shader_error error = { 0 };
@@ -242,22 +247,24 @@ static void gpu_program(bool ramp)
     shader_error error = { 0 };
     char *function = shader_graph_glsl_named(&ir, "test_effects", &error);
     assert(function);
-    const char *body =
-        "layout(local_size_x=8,local_size_y=1,local_size_z=1) in;\n"
-        "layout(set=1,binding=0,rgba32f) uniform image2D result_image;\n"
-        "layout(set=2,binding=0) uniform Inputs { vec4 values[32]; };\n"
-        "void main(){vec4 result[8],p[32];for(int i=0;i<32;i++)p[i]=values[i];"
-        "SGSample "
-        "sg_test;sg_test.position=vec2(0);sg_test.uv=vec2(0);"
-        "sg_test.object_position=vec3(0);sg_test.part_position=vec3(0);"
-        "sg_test.world_position=vec3(0);sg_test.normal=vec3(0);"
-        "sg_test.view_direction=vec3(0);sg_test.time=0.0;"
-        "for(int i=0;i<3;i++){sg_test.object_from_world[i]=vec3(0);"
-        "sg_test.part_from_world[i]=vec3(0);}"
-        "for(int i=0;i<2;i++)sg_test.uv_from_world[i]=vec3(0);"
-        "test_effects(sg_test,p,result);int "
-        "x=int(gl_GlobalInvocationID.x);imageStore(result_image,ivec2(x,0),"
-        "result[x]);}\n";
+    const char *
+        body = "layout(local_size_x=8,local_size_y=1,local_size_z=1) in;\n"
+               "layout(set=1,binding=0,rgba32f) uniform image2D result_image;\n"
+               "layout(set=2,binding=0) uniform Inputs { vec4 values[32]; };\n"
+               "void main(){vec4 result[" OUTPUT_ROWS
+               "],p[32];for(int i=0;i<32;i++)p[i]=values[i];"
+               "SGSample "
+               "sg_test;sg_test.position=vec2(0);sg_test.uv=vec2(0);"
+               "sg_test.object_position=vec3(0);sg_test.part_position=vec3(0);"
+               "sg_test.world_position=vec3(0);sg_test.normal=vec3(0);"
+               "sg_test.view_direction=vec3(0);sg_test.time=0.0;"
+               "for(int i=0;i<3;i++){sg_test.object_from_world[i]=vec3(0);"
+               "sg_test.part_from_world[i]=vec3(0);}"
+               "for(int i=0;i<2;i++)sg_test.uv_from_world[i]=vec3(0);"
+               "test_effects(sg_test,p,result);int "
+               "x=int(gl_GlobalInvocationID.x);imageStore(result_image,ivec2(x,"
+               "0),"
+               "result[x]);}\n";
     char *source = malloc(strlen(function) + strlen(body) + 1);
     assert(source);
     strcpy(source, function);
@@ -275,7 +282,7 @@ static void gpu_program(bool ramp)
     dispatch.rw_textures = &texture;
     dispatch.rw_texture_count = 1;
     for (int test = 0; test < 7; test++) {
-        float values[32][4], expected[8][4], actual[8][4];
+        float values[32][4], expected[SHADER_OUTPUT_MAX][4], actual[8][4];
         inputs(values, test);
         shader_sample_context sample = { 0 };
         assert(shader_graph_eval_outputs(&ir, &sample, values, expected, &error));

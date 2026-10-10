@@ -32,6 +32,7 @@ struct game_materials
     char error[256];
     game_task_pool *pool;
     MaterialFluidWorld settings;
+    fluid_vec gravity; /* The scene's, from game_materials_set_gravity. */
     GameCombustion combustion;
     material_record *records;
     uint64_t next_mask_generation;

@@ -46,6 +46,14 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameBody)
 }
 GameBody;
 
+/* The scene's 2D gravity in units/second^2, on at most one entity. It pulls
+ * dynamic bodies and material fluids; without one, nothing falls. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameGravity)
+{
+    CF_V2 acceleration;
+}
+GameGravity;
+
 typedef NODE_COMPONENT_TYPE_DENSE(GameCollider)
 {
     float radius NODE_UNIT("u");
@@ -104,7 +112,6 @@ typedef NODE_COMPONENT_TYPE_DENSE(MaterialFluidWorld)
     MaterialSolver solver;
     float mpm_cell_size;
     int mpm_max_substeps;
-    CF_V2 gravity;
     MaterialDebugView debug_view;
     /* Optional gas flow; a zero cell size leaves particles independent. */
     float gas_cell_size;

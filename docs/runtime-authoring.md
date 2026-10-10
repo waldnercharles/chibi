@@ -300,7 +300,9 @@ becomes part of that body: it moves exactly with it, adds its mass (a sensor
 adds none), and its hits push the body while contact events name the child.
 Otherwise the child teleports when a script moves its parents. Moving a body's
 Transform3D from a script teleports it. Gravity is 9.81 meters per second
-squared down Y unless one entity's `GAME.GameGravity3D` sets it. Behaviors
+squared down Y unless one entity's `GAME.GameGravity3D` sets it. 2D bodies
+fall only when one entity's `GAME.GameGravity` sets an `acceleration` in units
+per second squared, which also moves material liquids and gas. Behaviors
 handle `on ContactBegin3D` with `event.Other` and `event.Point`, and
 `on ContactEnd3D` with `event.Other`, as 2D colliders report `on ContactBegin`
 and `on ContactEnd`. A sensor collider reports both without pushing. Hull and triangle-mesh colliders are not available yet, and the 3D

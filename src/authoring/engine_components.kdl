@@ -25,6 +25,7 @@ components {
     GAME.GameFragmentGlow tab="Material"
     GAME.GameFuel tab="Gameplay"
     GAME.GameGeometry3D tab="Material"
+    GAME.GameGravity tab="Physics"
     GAME.GameGravity3D tab="Physics"
     GAME.GameHRC2D tab="Material" icon="light"
     GAME.GameHealth tab="Gameplay" icon="health"

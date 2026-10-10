@@ -53,19 +53,18 @@ static void authored_gravity()
     ecs_world *world;
     ecs_entity config, body;
     game_preview_world *live = fixture(&world, &config, &body, false);
-    assert(game_materials_gravity(live->runtime->materials).y == 0);
     for (int i = 0; i < 6; i++) {
         assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     }
     assert(GAME_GameTransform_get_const(world, body)->y == 0);
-    GAME_MaterialFluidWorld_get(world, config)->gravity = (CF_V2){ 0, -320 };
+    add(world, config, &GAME_COMPONENT_GameGravity, &(GameGravity){ { 0, -320 } });
+    assert(ecs_world_apply_commands(world) == ECS_OK);
     for (int i = 0; i < 6; i++) {
         assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     }
-    assert(game_materials_gravity(live->runtime->materials).y == -320);
     assert(fabsf(GAME_GameVelocity_get_const(world, body)->y + 32) < .01f);
     assert(GAME_GameTransform_get_const(world, body)->y < -1);
-    GAME_MaterialFluidWorld_get(world, config)->gravity = (CF_V2){ 0 };
+    GAME_GameGravity_get(world, config)->acceleration = (CF_V2){ 0 };
     float speed = GAME_GameVelocity_get_const(world, body)->y;
     assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     assert(fabsf(GAME_GameVelocity_get_const(world, body)->y - speed) < .01f);

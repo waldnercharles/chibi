@@ -33,7 +33,9 @@ the material was laid out. World-space material patterns stay attached to the
 piece as it moves.
 
 `MaterialDestructionWorld` bounds retained fragments. `MaterialFluidWorld`
-configures particles, activation regions and fluid chunk size. Either capability
+configures particles, activation regions and fluid chunk size. Liquids fall by
+the scene's `GameGravity`, the gravity that pulls 2D bodies, and hot gas rises
+against it; without one, neither does. Either capability
 works independently; its `debris_limit` also bounds crater rock chunks.
 `MaterialBreakProfile` owns kick speeds and crater effects; missing profiles
 produce no impulses or dust. Everything sprays around the crater's outward

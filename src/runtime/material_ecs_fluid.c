@@ -12,6 +12,8 @@
 enum
 {
     FLUID_CONTACT_PARTICLE_LIMIT = 256,
+    /* The most gravity material fluids accept on either axis. */
+    GRAVITY_MAX = 4096,
     /* Blasts push every active particle and chunk in range. */
     COMBUSTION_BLAST_RADIUS_MAX = 1024
 };
@@ -27,11 +29,10 @@ bool game_materials_emit(game_materials *materials, fluid_particle particle)
     return added;
 }
 
-fluid_vec game_materials_gravity(const game_materials *materials)
+void game_materials_set_gravity(game_materials *materials, fluid_vec gravity)
 {
-    return materials ? (fluid_vec){ materials->settings.gravity.x,
-                                    materials->settings.gravity.y }
-                     : (fluid_vec){ 0 };
+    assert(isfinite(gravity.x) && isfinite(gravity.y));
+    materials->gravity = gravity;
 }
 
 const char *material_ecs_configure_fluid(game_materials *materials)
@@ -47,6 +48,7 @@ const char *material_ecs_configure_fluid(game_materials *materials)
     ecs_entity entity;
     int count = 0;
     MaterialFluidWorld settings = { 0 };
+    fluid_vec gravity = materials->gravity;
     bool reactive = false;
     while (ecs_query_next(&query, &entity)) {
         settings = *GAME_MaterialFluidWorld_get_const(materials->world, entity);
@@ -79,14 +81,13 @@ const char *material_ecs_configure_fluid(game_materials *materials)
     if ((settings.solver != MATERIAL_SOLVER_DDR && settings.solver != MATERIAL_SOLVER_MPM) ||
         settings.debug_view < MATERIAL_VIEW_MATERIAL ||
         settings.debug_view > MATERIAL_VIEW_STRAIN ||
-        !isfinite(settings.gravity.x) || !isfinite(settings.gravity.y) ||
-        fabsf(settings.gravity.x) > 4096 || fabsf(settings.gravity.y) > 4096 ||
+        fabsf(gravity.x) > GRAVITY_MAX || fabsf(gravity.y) > GRAVITY_MAX ||
         (settings.solver == MATERIAL_SOLVER_MPM &&
          (!isfinite(settings.mpm_cell_size) || settings.mpm_cell_size < 1 ||
           settings.mpm_cell_size > 64 || settings.mpm_max_substeps < 1 ||
           settings.mpm_max_substeps > 128))) {
-        return "Material simulation needs a valid solver/debug view, finite "
-               "gravity within +/-4096, "
+        return "Material simulation needs a valid solver/debug view, Gravity "
+               "within +/-4096, "
                "and MPM cell size 1..64 with 1..128 maximum substeps";
     }
     if (settings.solver == MATERIAL_SOLVER_MPM &&
@@ -169,7 +170,7 @@ const char *material_ecs_configure_fluid(game_materials *materials)
         (fluid_flow_settings){ .cell_size = settings.gas_cell_size,
                                .vorticity = settings.gas_vorticity,
                                .drag = settings.gas_drag,
-                               .gravity = { settings.gravity.x, settings.gravity.y },
+                               .gravity = gravity,
                                .buoyancy = settings.gas_buoyancy,
                                .ambient_heat = settings.gas_ambient_heat }
     );
@@ -178,7 +179,7 @@ const char *material_ecs_configure_fluid(game_materials *materials)
         settings.solver,
         (fluid_mpm_settings){ .cell_size = settings.mpm_cell_size,
                               .max_substeps = settings.mpm_max_substeps,
-                              .gravity = { settings.gravity.x, settings.gravity.y } }
+                              .gravity = gravity }
     );
     material_fluid_set_debug_view(materials->fluid, settings.debug_view);
     material_fluid_set_contact_settings(

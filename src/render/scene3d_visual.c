@@ -45,9 +45,14 @@ void render_scene3d_entities(ecs_world *world, render_skip skip, ecs_entity **en
     }
 }
 
-static bool finite_v3(CF_V3 v)
+static bool finite_frame(CF_M4x4 frame)
 {
-    return isfinite(v.x + v.y + v.z);
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(frame.elements[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /* The signed volume of the box a frame's unit axis directions span: one
@@ -103,10 +108,7 @@ scene3d_frame_state render_scene3d_visual_frame(
     float scale = visual ? visual->scale : 1;
     CF_V3 rotation = visual ? (CF_V3){ visual->pitch, visual->yaw, visual->roll }
                             : (CF_V3){ 0 };
-    bool finite;
     if (transform) {
-        finite = finite_v3(transform->x_axis) && finite_v3(transform->y_axis) &&
-                 finite_v3(transform->z_axis) && finite_v3(transform->position);
         *frame = cf_mul_m4(
             game_transform_matrix_3d(transform),
             cf_m4_from_trs((CF_V3){ 0 }, game_visual_rotation(0, rotation), (CF_V3){ scale, scale, scale })
@@ -114,15 +116,15 @@ scene3d_frame_state render_scene3d_visual_frame(
     } else {
         float elevation = GAME_GameGeometry3D_get_const(world, entity)->elevation;
         GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
-        finite = isfinite(pose.position.x + pose.position.y + elevation + pose.radians);
         *frame = cf_m4_from_trs(
             (CF_V3){ pose.position.x, elevation, pose.position.y },
             game_visual_rotation(pose.radians, rotation),
             (CF_V3){ scale, scale, scale }
         );
     }
-    if (!finite || !isfinite(scale + rotation.x + rotation.y + rotation.z) ||
-        scale < 0) {
+    /* A value that is not finite spreads to the frame, and so does a product
+     * of finite ones that overflows. */
+    if (!finite_frame(*frame) || scale < 0) {
         return SCENE3D_FRAME_INVALID;
     }
     bool flat = !direction_volume(*frame) ||

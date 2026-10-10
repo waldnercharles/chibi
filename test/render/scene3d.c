@@ -16,6 +16,7 @@
 #include "runtime/geometry/mesh_prepared.h"
 #include "runtime/images/sky.h"
 #include "runtime/particles.h"
+#include "runtime/transform_propagation.h"
 #include "runtime/visibility.h"
 #include "runtime/world.h"
 #include "support/array.h"
@@ -2630,6 +2631,33 @@ TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
     return true;
 }
 
+/* A frame whose values are each finite but whose product overflows float is
+ * an authoring error, as a value that is not finite is, and never draws. */
+TEST_CASE(overflowing_transform3d_frames_are_authoring_errors)
+{
+    ecs_entity box = add(
+        GAME_COMPONENT_GameGeometry3D.id,
+        &(GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 }
+    );
+    place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1e20f, 1e20f, 1e20f });
+    GameVisualTransform grown = { .scale = 1e20f };
+    REQUIRE(
+        ecs_world_record_add(world, box, GAME_COMPONENT_GameVisualTransform.id, &grown, 0) == ECS_OK
+    );
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    GameGlobalTransform3D transform = game_transform_world_3d(world, box);
+    scene3d_visual visuals[SCENE3D_PART_LIMIT];
+    const render_mesh_asset *mesh;
+    char error[128];
+    int parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    REQUIRE(parts == -1);
+    REQUIRE(!strcmp(error, "Visual transform needs finite values and nonnegative scale."));
+    GAME_GameVisualTransform_get(world, box)->scale = 1;
+    parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    REQUIRE(parts == 1);
+    return true;
+}
+
 /* Fog culls a solid with a Transform3D by the ground under its 3D pose,
  * where it draws, and not by the 2D Transform it also carries: the box
  * shows while its 3D pose is in sight and its 2D position isn't, and hides
@@ -3604,6 +3632,7 @@ void test_render_scene3d(bool gles)
 #endif
     RUN_TEST_CASE(mirroring_transform3d_keeps_faces_outward);
     RUN_TEST_CASE(flattened_transform3d_frames_hide_at_any_scale);
+    RUN_TEST_CASE(overflowing_transform3d_frames_are_authoring_errors);
     RUN_TEST_CASE(fog_culls_transform3d_solids_where_they_draw);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(mirrors_reflect_the_sky_in_its_directions);

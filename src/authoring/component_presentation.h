@@ -7,14 +7,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* How editors present reflected components, authored per content root. A
- * component the document omits shows under Object without an icon, and its
- * numbers are unbounded and unitless. */
+/* How editors present reflected components. The engine presents its own
+ * components (PRESENTATION_DEFAULTS, and the units and ranges its fields
+ * reflect); a content root's document overrides that key by key. Any other
+ * component shows under Object without an icon, and its numbers are unbounded
+ * and unitless. */
 #define COMPONENT_PRESENTATION_PATH "editor/Components.kdl"
 
 typedef enum
 {
-    COMPONENT_TAB_OBJECT, /* the default; documents name the others */
+    COMPONENT_TAB_OBJECT, /* the default */
     COMPONENT_TAB_PHYSICS,
     COMPONENT_TAB_MATERIAL,
     COMPONENT_TAB_GAMEPLAY,
@@ -43,6 +45,17 @@ typedef enum
 
 extern const char *const COMPONENT_TAB_NAMES[COMPONENT_TAB_COUNT];
 
+/* The engine's tab and icon for one of its components, named by key. */
+typedef struct
+{
+    const char *component;
+    component_tab tab;
+    component_icon icon;
+} presentation_default;
+
+extern const presentation_default PRESENTATION_DEFAULTS[];
+extern const int PRESENTATION_DEFAULT_COUNT;
+
 typedef struct
 {
     uint64_t id;
@@ -58,7 +71,14 @@ typedef struct
     char *unit;      /* NULL without one */
 } presented_field;
 
-/* Empty (zero) presents every component generically. */
+/* How an editor shows a numeric field. */
+typedef struct
+{
+    double min, max;  /* equal when unbounded */
+    const char *unit; /* NULL without one */
+} field_hint;
+
+/* What a document lists. Empty (zero) presents the engine's defaults. */
 typedef struct
 {
     presented_component *components;
@@ -66,9 +86,11 @@ typedef struct
 } component_presentation;
 
 /* Parses editor/Components.kdl, naming components as prototype documents do,
- * into `out`, which is empty or holds an earlier read. Returns false with a
- * message in `error` and leaves `out` unchanged when the document is invalid,
- * so a caller keeps the last valid presentation. */
+ * into `out`, which is empty or holds an earlier read. A listed component or
+ * field keeps the engine's value for each key the document leaves out; a
+ * document replaces an engine range or unit but cannot remove one. Returns
+ * false with a message in `error` and leaves `out` unchanged when the document
+ * is invalid, so a caller keeps the last valid presentation. */
 bool component_presentation_read(
     const char *text,
     ecs_component_catalog registry,
@@ -85,8 +107,9 @@ component_icon component_presentation_icon(
     const component_presentation *presentation,
     const ecs_component_desc *desc
 );
-/* NULL when the field is presented generically. */
-const presented_field *component_presentation_field(
+/* A numeric field's range and unit: the document's where it lists the field,
+ * else the reflected field's. `unit` is borrowed from either. */
+field_hint component_presentation_field(
     const component_presentation *presentation,
     const ecs_component_desc *desc,
     int field

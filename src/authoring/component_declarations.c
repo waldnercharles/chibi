@@ -1,11 +1,11 @@
 #include "authoring/component_declarations.h"
 
+#include "language/component.h"
 #include "support/array.h"
-#include "support/asset_text.h"
-#include "support/asset_value.h"
 #include "support/text_file.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
@@ -25,55 +25,62 @@ static int compare(const void *a, const void *b)
 {
     return strcmp(*(char *const *)a, *(char *const *)b);
 }
-static bool only_keys(const av_value *object, const char *const *keys, int count)
+static bool located(char *error, size_t size, const char *path, script_range at, const char *message)
 {
-    for (size_t i = 0; i < av_obj_size(object); i++) {
-        const char *key = av_get_str(av_obj_key_at(object, i));
-        bool known = false;
-        for (int j = 0; j < count && !known; j++) {
-            known = !strcmp(key, keys[j]);
-        }
-        if (!known) {
-            return false;
-        }
-    }
-    return true;
+    char located[256];
+    snprintf(located, sizeof located, "%d:%d: %s", at.line, at.column, message);
+    return fail(error, size, path, located);
 }
-static bool optional_text(const av_value *object, const char *key, const char **out)
+/* Reads the component one source declares, or sets `error`. */
+static script_component *read_source(
+    const char *path,
+    const char *text,
+    const script_catalog *native,
+    char *error,
+    size_t size
+)
 {
-    const av_value *value = av_obj_get(object, key);
-    *out = value ? av_get_str(value) : NULL;
-    return !value || av_is_str(value);
-}
-static bool component(const char *path, const av_value *root, declared_component *out, char *error, size_t size)
-{
-    static const char *const keys[] = { "name", "description", "fields" };
-    static const char *const field_keys[] = { "name", "type", "description" };
-    if (!av_is_obj(root) || !only_keys(root, keys, 3)) {
-        return fail(error, size, path, "a component declares only name, description and fields");
+    script_syntax *syntax = script_parse(text);
+    script_diagnostic *diagnostics = NULL;
+    script_component *source = script_component_read(syntax, native, &diagnostics);
+    script_syntax_free(syntax);
+    if (!source) {
+        assert(acount(diagnostics));
+        located(error, size, path, diagnostics[0].range, diagnostics[0].message);
     }
-    const av_value *fields = av_obj_get(root, "fields");
-    if (!optional_text(root, "name", &out->name) || !out->name ||
-        !optional_text(root, "description", &out->description) || !av_is_arr(fields)) {
-        return fail(error, size, path, "a component needs a name and an array of fields");
-    }
-    declared_field *list = NULL;
-    for (size_t i = 0; i < av_arr_size(fields); i++) {
-        const av_value *f = av_arr_get(fields, i);
-        declared_field field = { 0 };
-        if (!av_is_obj(f) || !only_keys(f, field_keys, 3) ||
-            !optional_text(f, "name", &field.name) ||
-            !optional_text(f, "type", &field.type) ||
-            !optional_text(f, "description", &field.description) ||
-            !field.name || !field.type) {
-            afree(list);
-            return fail(error, size, path, "each field declares a name, a type and an optional description");
+    afree(diagnostics);
+    for (int i = 0; source && i < acount(source->fields); i++) {
+        const script_component_field *f = &source->fields[i];
+        if (!declared_components_field_type(f->type)) {
+            char message[192];
+            snprintf(message, sizeof message, "A component field cannot hold a %s", f->type);
+            located(error, size, path, f->range, message);
+            script_component_free(source);
+            source = NULL;
         }
-        apush(list, field);
     }
-    out->fields = list;
-    out->field_count = acount(list);
-    return true;
+    return source;
+}
+/* The declaration `source` describes; its fields are the caller's to afree. */
+static declared_component declaration(const script_component *source)
+{
+    declared_field *fields = NULL;
+    for (int i = 0; i < acount(source->fields); i++) {
+        const script_component_field *f = &source->fields[i];
+        apush(
+            fields,
+            ((declared_field){ .name = f->name,
+                               .type = f->type,
+                               .description = f->description,
+                               .unit = f->unit,
+                               .min = f->min,
+                               .max = f->max })
+        );
+    }
+    return (declared_component){ .name = source->name,
+                                 .description = source->description,
+                                 .fields = fields,
+                                 .field_count = acount(fields) };
 }
 bool authoring_component_declarations_load(
     const char *content,
@@ -101,7 +108,8 @@ bool authoring_component_declarations_load(
     struct dirent *entry;
     while ((entry = readdir(dir))) {
         size_t n = strlen(entry->d_name);
-        if (entry->d_name[0] != '.' && n > 4 && !strcmp(entry->d_name + n - 4, ".kdl")) {
+        if (entry->d_name[0] != '.' && n > 6 &&
+            !strcmp(entry->d_name + n - 6, ".chibi")) {
             apush(names, xstrdup(entry->d_name));
         }
     }
@@ -116,29 +124,24 @@ bool authoring_component_declarations_load(
     if (names) {
         qsort(names, (size_t)acount(names), sizeof *names, compare);
     }
-    av_doc **documents = NULL;
+    script_component **sources = NULL;
     declared_component *components = NULL;
     bool valid = true;
     for (int i = 0; valid && i < acount(names); i++) {
         char path[4352];
         snprintf(path, sizeof path, "%s/%s", directory, names[i]);
         char *text = text_file_read(path);
-        bool read = text != NULL;
-        char message[256] = { 0 };
-        av_doc *document = read ? av_doc_read(text, message, sizeof message) : NULL;
+        script_component *source = text ? read_source(path, text, native, error, size)
+                                        : NULL;
+        valid = text ? source != NULL
+                     : fail(error, size, path, "cannot read the file");
         free(text);
-        declared_component c = { 0 };
-        valid = document
-                  ? component(path, av_doc_root(document), &c, error, size)
-                  : fail(error, size, path, read ? message : "cannot read the file");
-        if (document) {
-            apush(documents, document);
+        if (source) {
+            apush(sources, source);
+            apush(components, declaration(source));
         }
-        if (valid && script_catalog_find_type(native, c.name) != -1) {
+        if (valid && script_catalog_find_type(native, source->name) != -1) {
             valid = fail(error, size, path, "the name is already an engine type");
-        }
-        if (valid) {
-            apush(components, c);
         }
     }
     if (valid) {
@@ -150,10 +153,10 @@ bool authoring_component_declarations_load(
         afree(fields);
     }
     afree(components);
-    for (int i = 0; i < acount(documents); i++) {
-        av_doc_free(documents[i]);
+    for (int i = 0; i < acount(sources); i++) {
+        script_component_free(sources[i]);
     }
-    afree(documents);
+    afree(sources);
     for (int i = 0; i < acount(names); i++) {
         free(names[i]);
     }

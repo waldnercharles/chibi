@@ -73,6 +73,11 @@ system FreeMotion(position: Transform, velocity: Velocity)
 }
 ```
 
+A file under `content/components` declares one component instead: its fields
+and their types, ranges and units. Scripts check those units, and the engine
+fields' units and `dt`'s seconds, and a mismatch is a warning. See "Declare
+components" in `runtime-authoring.md`.
+
 A behavior, library or system is a readable program. Its declarations and
 statements resolve into an owned typed semantic program. Direct lowering produces
 an immutable verified execution module; backend code and live instances have

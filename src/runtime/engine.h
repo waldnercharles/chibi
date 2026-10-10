@@ -12,6 +12,7 @@
 #include "runtime/particles.h"
 #include "runtime/save.h"
 #include "runtime/scenes/physics.h"
+#include "runtime/scenes/physics3d.h"
 #include "runtime/systems/scheduler.h"
 #include "runtime/ui.h"
 #include "runtime/visibility.h"
@@ -54,7 +55,7 @@ typedef struct
 typedef void (*engine_render_fn)(void *user);
 
 /* Services are borrowed and must outlive the engine. Sources, entities,
- * physics, materials and visibility must use world; particles/audio/UI/save
+ * physics (2D and 3D), materials and visibility must use world; particles/audio/UI/save
  * belong to that same simulation. NULL services omit their optional stages.
  * Boundary updates injected service clocks before any queued work runs.
  * Inspection callbacks may observe but must not mutate during engine work. */
@@ -63,6 +64,7 @@ typedef struct
     game_source_registry *sources;
     game_entities *entities;
     game_physics *physics;
+    game_physics3d *physics3d;
     game_materials *materials;
     game_particles *particles;
     game_visibility *visibility;
@@ -138,5 +140,8 @@ void engine_set_behavior_profiling(engine *engine, bool enabled);
  * physics interpolation of the nearest body at or above it. engine may be NULL,
  * which draws the exact world transform, propagated or not. */
 GameGlobalTransform2D engine_render_transform(const engine *, const ecs_world *, ecs_entity);
+/* The same for a GlobalTransform3D, moved with the nearest 3D body at or above
+ * the entity. */
+GameGlobalTransform3D engine_render_transform_3d(const engine *, const ecs_world *, ecs_entity);
 
 #endif

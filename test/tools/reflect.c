@@ -32,6 +32,10 @@
     "typedef Vector Alias;\n"                                                  \
     "typedef struct TYPE Different { float x; float y; } Different;\n"         \
     "FN %s;\n"
+#define PRESENTED                                                              \
+    "typedef COMPONENT(Shot) { float speed "                                   \
+    "__attribute__((annotate(\"node:unit:u/s\"), "                             \
+    "annotate(\"node:range:0 2.5\"))); %s; } Shot;\n"
 #define DERIVED                                                                \
     "#define DERIVED(T, SOURCE) struct "                                       \
     "__attribute__((annotate(\"node:type\"), "                                 \
@@ -359,6 +363,32 @@ TEST_CASE(handle_pins_keep_their_nominal_type)
     return true;
 }
 
+TEST_CASE(numeric_fields_reflect_their_unit_and_range)
+{
+    REQUIRE(reflectf(COMPONENT PRESENTED, "float damage") == 0);
+    char *types = tool_read(output);
+    bool presented = types && strstr(types, "\"speed\", PIN_F32,") &&
+                     strstr(types, "false, \"u/s\", 0, 2.5 },") &&
+                     strstr(types, "false, NULL, 0, 0 },");
+    free(types);
+    REQUIRE(presented);
+    snapshot(&output_before, output);
+    snapshot(&manifest_before, manifest);
+    const char *invalid[] = {
+        "const char *name __attribute__((annotate(\"node:unit:u\")))",
+        "float empty __attribute__((annotate(\"node:unit:\")))",
+        "float inverted __attribute__((annotate(\"node:range:1 0\")))",
+        "float suffixed __attribute__((annotate(\"node:range:0 1f\")))",
+        "float single __attribute__((annotate(\"node:range:1\")))",
+        "float endless __attribute__((annotate(\"node:range:-inf 0\")))",
+    };
+    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
+        REQUIRE(reflectf(COMPONENT PRESENTED, invalid[i]) != 0);
+        REQUIRE(outputs_unchanged());
+    }
+    return true;
+}
+
 TEST_CASE(jit_identity_requires_one_matching_struct_argument)
 {
     REQUIRE(reflectf(JIT, "Alias convert(Vector value)") == 0);
@@ -429,6 +459,7 @@ void test_tool_reflect()
     RUN_TEST_CASE(unchanged_reflection_keeps_linked_outputs);
     RUN_TEST_CASE(failed_reflection_keeps_linked_outputs);
     RUN_TEST_CASE(handle_pins_keep_their_nominal_type);
+    RUN_TEST_CASE(numeric_fields_reflect_their_unit_and_range);
     RUN_TEST_CASE(jit_identity_requires_one_matching_struct_argument);
     RUN_TEST_CASE(derived_component_names_its_source);
     afree(original);

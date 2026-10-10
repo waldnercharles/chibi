@@ -29,7 +29,8 @@ static bool block(TSNode node)
 {
     return kind(node, "block") || kind(node, "declaration_body") ||
            kind(node, "system_body") || kind(node, "callable_body") ||
-           kind(node, "match_statement") || kind(node, "sequence_statement");
+           kind(node, "component_body") || kind(node, "match_statement") ||
+           kind(node, "sequence_statement");
 }
 
 /* Brackets whose contents may continue on later lines. */
@@ -46,7 +47,8 @@ static bool end_line(TSNode node)
     size_t n = strlen(name);
     return (n >= 12 && !strcmp(name + n - 12, "_declaration")) ||
            (n >= 10 && !strcmp(name + n - 10, "_statement")) ||
-           kind(node, "assignment") || kind(node, "handler");
+           kind(node, "assignment") || kind(node, "handler") ||
+           kind(node, "component_field");
 }
 
 static token leaf(TSNode node)
@@ -110,6 +112,12 @@ static bool append(char **out, const char *text, int n)
     return true;
 }
 
+/* u/s^2 */
+static bool unit_operator(TSNode node)
+{
+    return (kind(node, "/") || kind(node, "^")) && kind(ts_node_parent(node), "unit");
+}
+
 static bool tight_before(token t)
 {
     TSNode n = t.node, p = ts_node_parent(n);
@@ -123,13 +131,14 @@ static bool tight_before(token t)
            ((kind(n, "<") || kind(n, ">")) &&
             (kind(p, "type_argument_list") || kind(p, "type_parameter_list") ||
              kind(p, "cast_expression"))) ||
-           (kind(n, "?") && kind(p, "type"));
+           (kind(n, "?") && kind(p, "type")) || unit_operator(n);
 }
 
 static bool tight_after(token t)
 {
     TSNode n = t.node, p = ts_node_parent(n);
     return kind(n, "(") || kind(n, "[") || kind(n, ".") || kind(n, "..") ||
+           unit_operator(n) ||
            (kind(p, "unary_expression") && ts_node_start_byte(p) == (uint32_t)t.start) ||
            (kind(n, "<") &&
             (kind(p, "type_argument_list") || kind(p, "type_parameter_list") ||

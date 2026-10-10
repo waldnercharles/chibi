@@ -338,7 +338,9 @@ static unit compute(pass *p, const script_expression *e)
         case SCRIPT_EXPR_UNARY:
         case SCRIPT_EXPR_BINARY:
             return operation(p, e->range, e->op, e->left, e->right);
-        case SCRIPT_EXPR_CAST: return expression_unit(p, e->left);
+        case SCRIPT_EXPR_CAST:
+        /* A fallback's left is the value it reads first. */
+        case SCRIPT_EXPR_FALLBACK: return expression_unit(p, e->left);
         case SCRIPT_EXPR_MEMBER: return member(p, e);
         default: return UNKNOWN;
     }

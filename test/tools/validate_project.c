@@ -43,16 +43,11 @@ static void write_file(const char *relative, const char *text)
     tool_write(file, text);
 }
 
-/* Sends requests, one per line, to one chibi_ctl from `root`, inside the
- * project "game" when `scoped`; returns its exit status and keeps the last
- * reply. */
-static int ctl(bool scoped, const char *request)
+/* Runs a shell command from `root` that sees chibi_ctl as $0 and its own
+ * output as $1; returns its exit status and keeps the last reply. */
+static int run(const char *command)
 {
-    write_file("request.json", request);
-    const char *command = scoped
-                            ? "exec \"$0\" --project-root game < request.json"
-                            : "exec \"$0\" < request.json";
-    const char *args[] = { "/bin/sh", "-c", command, program, NULL };
+    const char *args[] = { "/bin/sh", "-c", command, program, log_path, NULL };
     int status = tool_run(args, root, log_path);
     char *output = tool_read(log_path);
     const char *json = output ? strstr(output, "{\"contract\"") : NULL;
@@ -64,6 +59,13 @@ static int ctl(bool scoped, const char *request)
     free(output);
     assert(reply);
     return status;
+}
+/* Sends requests, one per line, to one chibi_ctl, inside the project "game"
+ * when `scoped`. */
+static int ctl(bool scoped, const char *request)
+{
+    write_file("request.json", request);
+    return run(scoped ? "exec \"$0\" --project-root game < request.json" : "exec \"$0\" < request.json");
 }
 
 static int validate()
@@ -1038,6 +1040,18 @@ TEST_CASE(unit_mismatches_are_warnings)
     REQUIRE(errors() == 0 && yyjson_get_int(result("warnings")) == 3);
     diagnostics = result("diagnostics");
     REQUIRE(yyjson_get_int(yyjson_obj_get(yyjson_arr_get(diagnostics, 0), "severity")) == 2);
+    /* One chibi_ctl sees a unit change that leaves the layout as it was. */
+    write_file("Charge.chibi", "component Charge {\n    level: 0..100 charge\n    rate: 0..10 charge\n}\n");
+    write_file("request.json", "{\"contract\":1,\"operation\":\"validate_project\"}\n");
+    REQUIRE(
+        run("{ cat request.json; until grep -q contract \"$1\"; do sleep 0.02; "
+            "done; "
+            "cp Charge.chibi game/content/components/Charge.chibi; cat "
+            "request.json; } | "
+            "exec \"$0\" --project-root game") == 0
+    );
+    diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
+    REQUIRE(!strcmp(message_at(diagnostics, 0), "Units differ: charge += charge·s"));
     return true;
 }
 

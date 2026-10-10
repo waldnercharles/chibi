@@ -527,6 +527,7 @@ TEST_CASE(language_units_warn_on_mismatch)
         "body.speed = body.rate\n"
         "body.x = body.x % body.speed\n"
         "body.x %= body.speed\n"
+        "body.x = fallback(body.speed, default: 0)\n"
     );
     /* Warnings first: the program still runs. */
     REQUIRE(analysis->valid);
@@ -545,7 +546,9 @@ TEST_CASE(language_units_warn_on_mismatch)
     REQUIRE(warning("Units differ: u/s = 1/s"));
     REQUIRE(warning("Units differ: u % u/s"));
     REQUIRE(warning("Units differ: u %= u/s"));
-    REQUIRE(analysis->warning_count == 14);
+    /* A fallback measures what it reads first. */
+    REQUIRE(warning("Units differ: u = u/s"));
+    REQUIRE(analysis->warning_count == 15);
     /* Listed in source order. */
     for (int i = 1; i < analysis->warning_count; i++) {
         REQUIRE(

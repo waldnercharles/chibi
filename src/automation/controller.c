@@ -3392,21 +3392,22 @@ static void catalog_hash_text(uint64_t *hash, const char *text)
 }
 
 /* A project's declarations change its component schemas without changing
- * any asset the catalog lists. */
+ * any asset the catalog lists. Units are not layout, but scripts' unit
+ * warnings depend on them. */
 static uint64_t components_hash()
 {
     uint64_t hash = UINT64_C(1469598103934665603);
     ecs_component_catalog catalog = project_components();
     for (int i = 0; i < catalog.component_count; i++) {
+        const type_desc *type = catalog.components[i]->type;
         char layout[32];
-        snprintf(
-            layout,
-            sizeof layout,
-            ":%016llx;",
-            (unsigned long long)type_layout_hash(catalog.components[i]->type)
-        );
+        snprintf(layout, sizeof layout, ":%016llx;", (unsigned long long)type_layout_hash(type));
         catalog_hash_text(&hash, catalog.components[i]->name);
         catalog_hash_text(&hash, layout);
+        for (int j = 0; j < type->field_count; j++) {
+            catalog_hash_text(&hash, type->fields[j].unit ? type->fields[j].unit : "");
+            catalog_hash_text(&hash, ";");
+        }
     }
     return hash;
 }

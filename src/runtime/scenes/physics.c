@@ -54,6 +54,7 @@ typedef struct
     bool seen, pierceable_fragment, masked;
     bool follower; /* Has a ChildOf parent, so it follows it and never writes back. */
     bool carries; /* Has carried a follower on its body since it was placed. */
+    int fluid_part; /* 1 + the fluid body its body's colliders are parts of this tick, or 0. */
     /* The slot of the body it moves with: its own for a root, its anchor's
      * for a follower carried on that body, or 0 for a follower with none. */
     unsigned group;
@@ -1926,6 +1927,9 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
     aclear(physics->fluid_obstacles);
     aclear(physics->fluid_ids);
     for (int i = 0; i < acount(physics->bodies); i++) {
+        physics->bodies[i].fluid_part = 0;
+    }
+    for (int i = 0; i < acount(physics->bodies); i++) {
         physics_body *body = &physics->bodies[i];
         if (!body->body.index1 ||
             (body->collider.sensor &&
@@ -1933,9 +1937,10 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
             continue;
         }
         /* A carried collider moves with its carrier's body, so what fluid
-         * does to it pushes and turns that body as its carrier allows. */
-        const GameBody *settings = carried(body) ? &physics->bodies[body->group].settings
-                                                 : &body->settings;
+         * does to it pushes and turns that body as its carrier allows, and
+         * every collider on that body shares one response. */
+        physics_body *rigid = carried(body) ? &physics->bodies[body->group] : body;
+        const GameBody *settings = &rigid->settings;
         b2Vec2 p = body->end.p, v = b2Body_GetLinearVelocity(body->body);
         b2Vec2 previous = body->start.p;
         float angle = b2Rot_GetAngle(body->end.q),
@@ -1946,7 +1951,8 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
         float inertia = b2Body_GetRotationalInertia(body->body);
         b2Vec2 center = b2Body_GetWorldCenterOfMass(body->body);
         const GameIgniter *igniter = GAME_GameIgniter_get_const(physics->world, body->entity);
-        int index = acount(physics->fluid_bodies);
+        int index = acount(physics->fluid_bodies), part_of = rigid->fluid_part;
+        rigid->fluid_part = part_of ? part_of : index + 1;
         apush(physics->fluid_ids, body->body);
         apush(
             physics->fluid_bodies,
@@ -1966,7 +1972,8 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
                                            settings->allow_rotation && inertia > 0
                                      ? 1 / inertia
                                      : 0,
-                .inverse_mass = settings->type == GAME_BODY_DYNAMIC && mass > 0 ? 1 / mass : 0 })
+                .inverse_mass = settings->type == GAME_BODY_DYNAMIC && mass > 0 ? 1 / mass : 0,
+                .part_of = part_of })
         );
         for (int part = 0; part < geometry_count(body); part++) {
             b2ShapeProxy geometry = geometry_at(body, part);

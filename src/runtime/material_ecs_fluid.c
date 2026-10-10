@@ -432,8 +432,12 @@ static void blasts(
                 material_fluid_blocked(event.position, b->position, bodies, obstacles, obstacle_count, i)) {
                 continue;
             }
-            float impulse = settings.blast_speed * density *
-                            (1 - distance / radius) / b->inverse_mass;
+            /* A body's parts each take damage, but it moves once, as its
+             * first part. */
+            float impulse = b->part_of
+                              ? 0
+                              : settings.blast_speed * density *
+                                    (1 - distance / radius) / b->inverse_mass;
             b->impulse.x += dx / distance * impulse;
             b->impulse.y += dy / distance * impulse;
             ecs_entity entity = ecs_entity_from_u64(b->owner);

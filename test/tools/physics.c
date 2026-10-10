@@ -1170,8 +1170,9 @@ static void empty_carried_colliders_follow_their_body()
 }
 
 /* Material fluid over a 64 by 64 camera at the origin, with gas flow on a
- * grid of `gas_cell_size` cells when it is not 0. */
-static void enable_fluid(fixture *f, float gas_cell_size)
+ * grid of `gas_cell_size` cells when it is not 0, and liquid moved by
+ * `solver`. */
+static void enable_fluid(fixture *f, float gas_cell_size, MaterialSolver solver)
 {
     assert(ecs_world_register_component(f->world, &GAME_COMPONENT_GameCamera, NULL) == ECS_OK);
     assert(
@@ -1187,7 +1188,10 @@ static void enable_fluid(fixture *f, float gas_cell_size)
                                  .buffer = 32,
                                  .kernel = 10,
                                  .particle_limit = 16,
-                                 .gas_cell_size = gas_cell_size };
+                                 .gas_cell_size = gas_cell_size,
+                                 .solver = solver,
+                                 .mpm_cell_size = 2,
+                                 .mpm_max_substeps = 8 };
     assert(
         ecs_world_record_add(f->world, config, GAME_COMPONENT_MaterialFluidWorld.id, &fluid, 0) == ECS_OK
     );
@@ -1222,7 +1226,7 @@ static void emit_gas(fixture *f, float x, float y, float speed)
 static void carried_colliders_take_fluid_impulses()
 {
     fixture f = create();
-    enable_fluid(&f, 0);
+    enable_fluid(&f, 0, MATERIAL_SOLVER_DDR);
     ecs_entity ship = body(&f, 0, -20, GAME_BODY_DYNAMIC, 1, 0);
     carried_hull(&f, ship);
     assert(step(&f, 0) == 0);
@@ -1233,13 +1237,110 @@ static void carried_colliders_take_fluid_impulses()
     dispose(&f);
 }
 
+/* Fluid striking two colliders on one body pushes it once: the second
+ * contact sees what the first did. Heavy gas, or liquid moved by MPM, carries
+ * the ship at the fluid's own speed, never twice it. */
+static void carried_colliders_share_fluid_response()
+{
+    for (int mpm = 0; mpm < 2; mpm++) {
+        fixture f = create();
+        enable_fluid(&f, 0, mpm ? MATERIAL_SOLVER_MPM : MATERIAL_SOLVER_DDR);
+        ecs_entity ship = body(&f, 0, -20, GAME_BODY_DYNAMIC, 1, 0);
+        for (int i = 0; i < 2; i++) {
+            GAME_GameTransform_get(f.world, carried_hull(&f, ship))->y = 20 + 20 * i;
+        }
+        assert(step(&f, 0) == 0);
+        for (int i = 0; i < 2; i++) {
+            assert(game_materials_emit(
+                f.materials,
+                (fluid_particle){ .position = { -8, 4 + 20 * i },
+                                  .velocity = { 120, 0 },
+                                  .mass = 1000,
+                                  .radius = 1,
+                                  .lifetime = .025f,
+                                  .kind = mpm ? FLUID_LIQUID : FLUID_GAS,
+                                  .constitutive = { 1, 20, 0 } }
+            ));
+        }
+        step(&f, 1.0f / 60);
+        step(&f, 1.0f / 60);
+        float speed = GAME_GameVelocity_get_const(f.world, ship)->x;
+        assert(speed > 110 && speed < 121);
+        dispose(&f);
+    }
+}
+
+/* The impulse a blast of burning fuel at the origin gives two bodies 30 and 34
+ * to its right, parts of one body when `parts`. */
+static float blast_impulse(bool parts)
+{
+    fixture f = create();
+    const ecs_component_desc *components[] = { &GAME_COMPONENT_MaterialFluidWorld,
+                                               &GAME_COMPONENT_GameCombustion,
+                                               &GAME_COMPONENT_GameFluidVolume,
+                                               &GAME_COMPONENT_GameFuel };
+    for (int i = 0; i < 4; i++) {
+        assert(ecs_world_register_component(f.world, components[i], NULL) == ECS_OK);
+    }
+    ecs_entity config = ecs_world_create_entity(f.world);
+    MaterialFluidWorld fluid = { .chunk_size = 64,
+                                 .buffer = 128,
+                                 .kernel = 3,
+                                 .particle_limit = 64 };
+    GameCombustion combustion = { .ignition = .9f,
+                                  .burn_rate = .1f,
+                                  .heat_release = 2,
+                                  .smoke_lifetime = 3,
+                                  .blast_radius = 80,
+                                  .blast_speed = 90 };
+    assert(
+        ecs_world_record_add(f.world, config, GAME_COMPONENT_MaterialFluidWorld.id, &fluid, 0) == ECS_OK
+    );
+    assert(
+        ecs_world_record_add(f.world, config, GAME_COMPONENT_GameCombustion.id, &combustion, 0) == ECS_OK
+    );
+    ecs_entity fuel = ecs_world_create_entity(f.world);
+    GameFluidVolume volume = { .kind = FLUID_GAS,
+                               .width = 6,
+                               .height = 6,
+                               .spacing = 1,
+                               .mass = .001f };
+    assert(GAME_GameTransform_add(f.world, fuel, 0) == ECS_OK);
+    assert(
+        ecs_world_record_add(f.world, fuel, GAME_COMPONENT_GameFluidVolume.id, &volume, 0) == ECS_OK
+    );
+    assert(
+        ecs_world_record_add(f.world, fuel, GAME_COMPONENT_GameFuel.id, &(GameFuel){ 1 }, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(!game_materials_prepare(f.materials));
+    fluid_body bodies[] = {
+        { .velocity = { 2, 0 }, .heat = 2 },
+        { .position = { 30, 0 }, .inverse_mass = 1 },
+        { .position = { 34, 0 }, .inverse_mass = 1, .part_of = parts ? 2 : 0 }
+    };
+    game_materials_tick(f.materials, 1.0f / 60, bodies, 3, NULL, 0);
+    int blasts;
+    material_fluid_blasts(game_materials_fluid(f.materials), &blasts);
+    assert(blasts > 0);
+    dispose(&f);
+    return bodies[1].impulse.x + bodies[2].impulse.x;
+}
+
+/* A blast pushes a body made of parts once, as its first part. */
+static void blasts_push_parts_once()
+{
+    float apart = blast_impulse(false), parts = blast_impulse(true);
+    assert(parts > 0 && parts < apart * .6f);
+}
+
 /* Gas flows with a carried collider's surface as its body turns, though the
  * body's center of mass is still. The hull's left side moves at about -20
  * when the ship, 20 below it, turns at 1 radian a second. */
 static void carried_colliders_move_gas()
 {
     fixture f = create();
-    enable_fluid(&f, 4);
+    enable_fluid(&f, 4, MATERIAL_SOLVER_DDR);
     ecs_entity ship = body(&f, 0, -20, GAME_BODY_KINEMATIC, 1, 0);
     GAME_GameBody_get(f.world, ship)->angular_velocity = 1;
     carried_hull(&f, ship);
@@ -1556,6 +1657,8 @@ static void physics_cases()
     empty_carried_colliders_follow_their_body();
     carried_colliders_take_fluid_impulses();
     carried_colliders_move_gas();
+    carried_colliders_share_fluid_response();
+    blasts_push_parts_once();
     followers_without_a_body();
     continuous_sensors_carry_no_colliders();
     followed_material();

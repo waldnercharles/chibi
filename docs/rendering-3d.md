@@ -26,9 +26,10 @@ with only a `GameTransform` frames its span from 10 degrees off overhead. `fov`
 is the vertical field of view in radians, from 0.00001 degrees (Unity's
 narrowest) to below 180, and zero picks 35 degrees. `near_clip` and `far_clip`
 are set together, with far at most a million times near, or both left at zero,
-which scales them with the span's height (at least 0.01 and 200). Wider ranges
-round the far plane toward infinity in float depth, which breaks picking and
-fog. The span's aspect shapes the image either way. Panning or zooming the
+which scales them with the span's height: far is at least 200, and near stays
+in front of the framed target. Wider ranges round the far plane toward infinity
+in float depth, which breaks picking and fog. The span's aspect shapes the image
+either way. Panning or zooming the
 viewport returns it to the overhead framing. Fog conceals view rays that never
 reach the ground ahead, such as those above the horizon, as it does ground past
 its grid. Picking, ground queries and fog unproject view rays about the eye, so

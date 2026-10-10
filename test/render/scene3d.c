@@ -329,7 +329,8 @@ TEST_CASE(camera_field_of_view_and_clips_shape_the_projection)
 
 /* A small-scale camera far from the origin still looks along its -Z, though
  * its scaled direction is below the precision of its position, and its
- * scaled axes are too short to cross. */
+ * scaled axes are too short to cross. One whose coordinates are each finite
+ * keeps its view though their sum overflows. */
 TEST_CASE(distant_small_scale_cameras_keep_their_view)
 {
     ecs_entity camera = add_camera_3d(cf_quat_identity());
@@ -345,15 +346,27 @@ TEST_CASE(distant_small_scale_cameras_keep_their_view)
     REQUIRE(look_through_camera() == 1);
     ahead = render_scene3d_project(&lens, (CF_V3){ 0, 0, 990 });
     REQUIRE(near_value(ahead.x, 0) && near_value(ahead.y, 0));
+    pose->scale = (CF_V3){ 1, 1, 1 };
+    pose->position = (CF_V3){ 3e38f, 3e38f, 0 };
+    REQUIRE(look_through_camera() == 1);
     return true;
 }
 
-/* Default clips stay in order however close the framing distance gets. */
+/* Default clips stay in order however close the framing distance gets, and
+ * keep the framed target in front of near: from the smallest span, and
+ * through a field of view of 179 degrees. */
 TEST_CASE(default_clips_stay_ordered_for_close_framings)
 {
     render_scene3d_camera close = render_scene3d_camera_make(0, 0, .0001f, .0001f);
     CF_V3 ahead = { 0, -cosf(10 * CF_PI / 180), -sinf(10 * CF_PI / 180) };
     float depth = render_scene3d_project(&close, ahead).z;
+    REQUIRE(depth > 0 && depth < 1);
+    depth = render_scene3d_project(&close, (CF_V3){ 0 }).z;
+    REQUIRE(depth > 0 && depth < 1);
+    render_scene3d_camera wide = render_scene3d_camera_frame(&(
+        engine_viewport_camera
+    ){ .span_width = 2, .span_height = 2, .lens = { .fov = 179 * CF_PI / 180 } });
+    depth = render_scene3d_project(&wide, (CF_V3){ 0 }).z;
     REQUIRE(depth > 0 && depth < 1);
     ecs_entity camera = add_camera_3d(
         cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, -CF_PI / 2)

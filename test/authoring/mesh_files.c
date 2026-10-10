@@ -362,6 +362,7 @@ static bool unreadable(const char *source, const char *message)
 TEST_CASE(mesh_files_refuse_unreadable_files)
 {
     REQUIRE(unreadable("content/meshes/old.mesh.json", "must be a content/... .mesh path"));
+    REQUIRE(unreadable("content/meshes/old.mesh.json", "export the model again"));
     REQUIRE(unreadable("content/../quad.mesh", "must be a content/... .mesh path"));
     REQUIRE(unreadable("meshes/quad.mesh", "must be a content/... .mesh path"));
     REQUIRE(unreadable("content/meshes/missing.mesh", "Cannot read mesh"));

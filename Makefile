@@ -84,7 +84,7 @@ help:
 		'make test / test-short  Six C execution-policy checks, one 60s deadline' \
 		'make test-tools     C tooling integrations, one shared 60s deadline' \
 		'make test-build     Build chibi_ctl and the full test drivers in BUILD_DIR' \
-		'make test-native    Every native test_tools selector, one shared 60s deadline' \
+		'make test-native    Every CPU test_tools selector, one shared 60s deadline' \
 		'make test-language-all  Every test_language selector, one shared 60s deadline' \
 		'make language-build Build the public language C consumer' \
 		'make test-language-{semantic,execution,program,headless,prepared,format}' \
@@ -277,8 +277,12 @@ agent-gpu-test:
 test-build:
 	@$(MAKE) build BUILD_TARGET='chibi_ctl test_tools test_language'
 
+# validate-project starts chibi_ctl dozens of times, and each start builds the
+# authoring catalog, which sanitizers make too slow for one 60-second deadline.
+# It runs against an unsanitized Release chibi_ctl instead.
 test-native: test-build
-	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_CTL="$(BUILD_DIR)/bin/chibi_ctl" python3 tools/test_policy.py group native
+	@$(MAKE) build-release BUILD_TARGET=chibi_ctl
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" python3 tools/test_policy.py group native
 
 test: test-short
 

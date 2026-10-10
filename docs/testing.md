@@ -25,15 +25,21 @@ more than documentation, and `make build` links `chibi`, `chibi-compile` and
 
 ```sh
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
-make test-native         # the CPU test_tools selectors in its group, one 60-second deadline
+make test-native         # every CPU test_tools selector with checked-in inputs, one 60-second deadline
 make test-language-all   # every test_language selector, one 60-second deadline
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
+`make test-native` also builds an unsanitized Release `chibi_ctl` in
+`build-release/` for `validate-project`, which starts `chibi_ctl` dozens of
+times; each start builds the authoring catalog, and under ASan those starts
+alone take longer than the deadline.
+
 `python3 tools/test_policy.py tool <name>` runs one entry of that table against
-the drivers `make test-build` produced; set `CHIBI_TOOLS_BUILD_DIR`,
-`CHIBI_LANGUAGE_BUILD_DIR` or `CHIBI_CTL` to use another build.
+the drivers `make test-build` produced and that Release `chibi_ctl`; set
+`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR` or `CHIBI_CTL` to use another
+build.
 
 `make language-build` builds a standalone, faster `test_language` in
 `build-language/` for the `test-language*` targets. Add a case to the selector
@@ -207,8 +213,9 @@ children use plans a rewrite of each child in its parent's text, and a parent
 that includes another prototype keeps its includes and only its own children.
 Four in-memory prototypes, no files, CPU only.
 
-After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-sixteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
+`python3 tools/test_policy.py tool validate-project` runs its cases against
+`build-release/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
@@ -233,10 +240,7 @@ the project's other resources, fail validation as they fail compiling; and in a
 project whose manifest names another content folder, assets are scaffolded,
 validated, run, formatted, found and reported there under their `content/`
 paths, and `status` names that folder even once the project is too old to open.
-CPU only; the project is removed afterwards. The two prototype expansion cases
-each validate more than 16,000 prototype documents. With the sanitized
-`chibi_ctl` from `make test-build`, the selector takes more than 60 seconds on a
-four-core Linux host, so it is not in the native group and CI does not run it.
+A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,
@@ -379,7 +383,7 @@ make test-list
 | --- | --- |
 | `test`, `test-short` | Six pure C execution-policy unit cases under one deadline. |
 | `test-tools` | Complete C tooling and process integration group under one shared deadline. |
-| `test-native` | Every native `test_tools` selector under one shared deadline. |
+| `test-native` | Every CPU `test_tools` selector with checked-in inputs under one shared deadline. |
 | `test-language-all` | Every `test_language` selector under one shared deadline. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |

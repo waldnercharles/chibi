@@ -19,6 +19,7 @@ const char *game_physics_native_contacts(
     arena *,
     pin_value *
 );
-extern const node_host_call GAME_PHYSICS_RAYCAST_CALL, GAME_PHYSICS_CONTACTS_CALL;
-extern const node_access GAME_PHYSICS_READ_ACCESS;
+extern const node_host_call GAME_PHYSICS_RAYCAST_CALL, GAME_PHYSICS_CONTACTS_CALL,
+    GAME_PHYSICS_IMPULSE_CALL, GAME_PHYSICS_FORCE_CALL;
+extern const node_access GAME_PHYSICS_READ_ACCESS, GAME_PHYSICS_PUSH_ACCESS;
 #endif

@@ -18,19 +18,22 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* 2D physics through its real seams: ECS components in, Contact Begin events
- * out through game_entities. The host records each event in dispatch order. */
+/* 2D physics through its real seams: ECS components in, Contact Begin and
+ * Contact End events out through game_entities. The host records each event in
+ * dispatch order. */
 typedef struct
 {
     ecs_entity owner;
     uint64_t other;
+    int order; /* Among this step's events. */
 } contact;
 
 typedef struct
 {
     ecs_world *world;
-    contact *contacts; /* This step's events. */
-    contact *latest;   /* The last Other each owner saw. */
+    contact *contacts; /* This step's Contact Begin events. */
+    contact *ended;    /* This step's Contact End events. */
+    contact *latest;   /* The last Other each owner began touching. */
 } recorder;
 
 typedef struct
@@ -129,8 +132,15 @@ enum
 static int dispatch(void *context, ecs_entity owner, const char *event, execution_arguments arguments)
 {
     recorder *f = context;
+    contact hit = { owner,
+                    arguments.values[0].u64,
+                    acount(f->contacts) + acount(f->ended) };
+    if (game_host_event_is(event, GAME_HOST_EVENT_CONTACT_END)) {
+        assert(arguments.count == 1);
+        apush(f->ended, hit);
+        return 0;
+    }
     assert(game_host_event_is(event, GAME_HOST_EVENT_CONTACT_BEGIN) && arguments.count == 2);
-    contact hit = { owner, arguments.values[0].u64 };
     apush(f->contacts, hit);
     for (int i = 0; i < acount(f->latest); i++) {
         if (ecs_entity_to_u64(f->latest[i].owner) == ecs_entity_to_u64(owner)) {
@@ -202,6 +212,7 @@ static void dispose(fixture *f)
     game_entities_free(f->entities);
     ecs_world_free(f->world);
     afree(f->events->contacts);
+    afree(f->events->ended);
     afree(f->events->latest);
     free(f->events);
 }
@@ -235,6 +246,7 @@ static ecs_entity sensor(fixture *f, float x, float y)
 static int step(fixture *f, float delta)
 {
     aclear(f->events->contacts);
+    aclear(f->events->ended);
     int result = game_physics_tick(f->physics, delta);
     if (result < 0) {
         fprintf(stderr, "physics: %s\n", game_physics_error(f->physics));
@@ -253,6 +265,18 @@ static uint64_t other(fixture *f, ecs_entity entity)
     for (int i = 0; i < acount(events->latest); i++) {
         if (ecs_entity_to_u64(events->latest[i].owner) == ecs_entity_to_u64(entity)) {
             return events->latest[i].other;
+        }
+    }
+    return 0;
+}
+
+/* The Other of owner's Contact End this step, or 0. */
+static uint64_t ended(fixture *f, ecs_entity owner)
+{
+    const contact *events = f->events->ended;
+    for (int i = 0; i < acount(events); i++) {
+        if (ecs_entity_to_u64(events[i].owner) == ecs_entity_to_u64(owner)) {
+            return events[i].other;
         }
     }
     return 0;
@@ -336,7 +360,7 @@ static void contact_set_changes()
     assert(other(&f, a) == ecs_entity_to_u64(b));
     assert(other(&f, c) == ecs_entity_to_u64(b));
     game_physics_hashes contacts = game_physics_hash(f.physics);
-    assert(step(&f, 0) == 0);
+    assert(step(&f, 0) == 0 && !acount(f.events->ended));
     game_physics_hashes persistent = game_physics_hash(f.physics);
     assert(contacts.contact_pairs == persistent.contact_pairs);
     assert(contacts.contact_events != persistent.contact_events);
@@ -346,6 +370,8 @@ static void contact_set_changes()
     assert(isfinite(profile->box2d.collide_ms) && profile->box2d.collide_ms >= 0);
     GAME_GameTransform_get(f.world, a)->x = -20;
     assert(step(&f, 0) == 0); /* Remove the first sorted pair; keep the second. */
+    assert(acount(f.events->ended) == 2);
+    assert(ended(&f, a) == ecs_entity_to_u64(b) && ended(&f, b) == ecs_entity_to_u64(a));
     game_physics_hashes separated = game_physics_hash(f.physics);
     assert(contacts.body_state != separated.body_state);
     assert(contacts.contact_pairs != separated.contact_pairs);
@@ -364,6 +390,10 @@ static void contact_set_changes()
     assert(replacement.slot == b.slot && replacement.generation != b.generation);
     GAME_GameCollider_get(f.world, replacement)->sensor = true;
     assert(step(&f, 0) == 4); /* Reused slots must generate new contact events. */
+    /* The destroyed entity hears nothing; its partners hear it end first. */
+    assert(acount(f.events->ended) == 2);
+    assert(ended(&f, a) == ecs_entity_to_u64(b) && ended(&f, c) == ecs_entity_to_u64(b));
+    assert(f.events->ended[1].order < f.events->contacts[0].order);
     assert(other(&f, a) == ecs_entity_to_u64(replacement));
     assert(other(&f, c) == ecs_entity_to_u64(replacement));
     game_physics_set_profiling(f.physics, false);
@@ -1121,6 +1151,7 @@ static void carried_colliders_join_their_body()
     assert(step(&f, 0) == 0);
     game_physics_body_state state = inspect_body(&f, ship);
     assert(state.shape_count == 3 && fabsf(state.mass - 2 * alone) < alone * 1e-4f);
+    assert(GAME_GameBody_get(f.world, ship)->mass == state.mass);
     for (int i = 0; i < 30; i++) {
         step(&f, 1.0f / 60);
     }
@@ -1819,6 +1850,68 @@ static void rotated_terrain()
     dispose(&f);
 }
 
+/* A box Body with no Orientation, so a push cannot turn it. */
+static ecs_entity crate(fixture *f, float x, float size, int type)
+{
+    ecs_entity entity = body(f, x, 0, type, 1, 1);
+    *GAME_GameCollider_get(f->world, entity) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                               .width = size,
+                                                               .height = size,
+                                                               .category = 1,
+                                                               .mask = 1 };
+    return entity;
+}
+
+/* Pushes act through the center of mass at the next advancing step: bodies
+ * weigh 1 kg per square meter, so an equal push moves a crate four times as
+ * massive a quarter as fast, a force lasts one step, and only a live dynamic
+ * Body takes one. */
+static void pushes_divide_by_mass()
+{
+    fixture f = create();
+    ecs_entity small = crate(&f, 0, 32, GAME_BODY_DYNAMIC);
+    ecs_entity large = crate(&f, 200, 64, GAME_BODY_DYNAMIC);
+    ecs_entity wall = crate(&f, -200, 32, GAME_BODY_STATIC);
+    ecs_entity mover = crate(&f, 400, 32, GAME_BODY_KINEMATIC);
+    assert(game_physics_apply_impulse(f.physics, small, (CF_V2){ 64, 0 }) == FLOW_OK);
+    assert(game_physics_apply_impulse(f.physics, large, (CF_V2){ 64, 0 }) == FLOW_OK);
+    assert(step(&f, 0) == 0 && GAME_GameVelocity_get(f.world, small)->x == 0);
+    /* Each step writes a dynamic body's mass for scripts to size pushes. */
+    assert(fabsf(GAME_GameBody_get(f.world, small)->mass - 1) < 1e-5f);
+    assert(fabsf(GAME_GameBody_get(f.world, large)->mass - 4) < 1e-5f);
+    GAME_GameVelocity_get(f.world, small)->y = 5; /* Pushes add to a set velocity. */
+    step(&f, 1.0f / 60);
+    GameVelocity v = *GAME_GameVelocity_get(f.world, small);
+    assert(fabsf(v.x - 64) < .01f && fabsf(v.y - 5) < .01f);
+    assert(fabsf(GAME_GameVelocity_get(f.world, large)->x - 16) < .01f);
+    assert(game_physics_apply_force(f.physics, large, (CF_V2){ 0, 4 * 120 }) == FLOW_OK);
+    assert(game_physics_apply_force(f.physics, large, (CF_V2){ 0, 4 * 120 }) == FLOW_OK);
+    step(&f, 1.0f / 60);
+    assert(fabsf(GAME_GameVelocity_get(f.world, large)->y - 4) < .01f);
+    step(&f, 1.0f / 60);
+    assert(fabsf(GAME_GameVelocity_get(f.world, large)->y - 4) < .01f);
+    assert(game_physics_apply_impulse(f.physics, wall, (CF_V2){ 1, 0 }) == FLOW_ERR_ARGUMENT);
+    assert(game_physics_apply_force(f.physics, mover, (CF_V2){ 1, 0 }) == FLOW_ERR_ARGUMENT);
+    assert(game_physics_apply_impulse(f.physics, small, (CF_V2){ NAN, 0 }) == FLOW_ERR_ARGUMENT);
+    assert(game_physics_apply_impulse(f.physics, small, (CF_V2){ 0, 64 }) == FLOW_OK);
+    game_physics_reset(f.physics); /* A reset drops queued pushes. */
+    step(&f, 1.0f / 60);
+    assert(fabsf(GAME_GameVelocity_get(f.world, small)->y - 5) < .01f);
+    assert(game_physics_apply_impulse(f.physics, small, (CF_V2){ 0, 64 }) == FLOW_OK);
+    assert(ecs_world_destroy_entity(f.world, small) == ECS_OK);
+    ecs_entity reused = crate(&f, 0, 32, GAME_BODY_DYNAMIC);
+    assert(reused.slot == small.slot);
+    step(&f, 1.0f / 60); /* The push named the destroyed crate. */
+    assert(GAME_GameVelocity_get(f.world, reused)->y == 0);
+    dispose(&f);
+}
+
+TEST_CASE(physics_pushes_divide_by_mass)
+{
+    pushes_divide_by_mass();
+    return true;
+}
+
 TEST_CASE(physics_rotated_terrain_is_refused)
 {
     rotated_terrain();
@@ -1874,6 +1967,7 @@ void test_tool_physics()
     RUN_TEST_CASE(physics_task_pool_runs_every_range);
     RUN_TEST_CASE(physics_rotated_terrain_is_refused);
     RUN_TEST_CASE(physics_authored_motion);
+    RUN_TEST_CASE(physics_pushes_divide_by_mass);
     RUN_TEST_CASE(physics_contacts_and_queries_at_each_substep_count);
     RUN_TEST_CASE(physics_parallel_collection_matches_serial);
 }

@@ -78,6 +78,14 @@ typedef struct
     void *context;
 } task_slot;
 
+/* An impulse or force for a dynamic body's next advancing step. */
+typedef struct
+{
+    ecs_entity entity;
+    CF_V3 amount;
+    bool impulse;
+} push;
+
 struct game_physics3d
 {
     ecs_world *world;
@@ -92,6 +100,7 @@ struct game_physics3d
     contact_pair *previous, *current;
     b3ContactData *contacts;
     b3ShapeId *shapes; /* Scratch for sensor visitors and a body's shapes. */
+    push *pushes;
     task_slot slots[B3_MAX_TASKS];
     int slot_count;
     char error[256];
@@ -348,6 +357,7 @@ static void destroy_world(game_physics3d *physics)
     physics->body_count = 0;
     aclear(physics->previous);
     aclear(physics->current);
+    aclear(physics->pushes);
 }
 
 /* Box3D's unit configuration is process-wide, and precedes all defaults and
@@ -383,6 +393,7 @@ void game_physics3d_free(game_physics3d *physics)
     afree(physics->current);
     afree(physics->contacts);
     afree(physics->shapes);
+    afree(physics->pushes);
     game_task_pool_release(physics->pool);
     free(physics);
 }
@@ -936,6 +947,7 @@ static void write_back(game_physics3d *physics)
         GameBody3D *body = GAME_GameBody3D_get(physics->world, record->entity);
         body->linear_velocity = from_b3(b3Body_GetLinearVelocity(record->body));
         body->angular_velocity = from_b3(b3Body_GetAngularVelocity(record->body));
+        body->mass = b3Body_GetMass(record->body);
         record->linear_velocity = body->linear_velocity;
         record->angular_velocity = body->angular_velocity;
     }
@@ -1279,6 +1291,28 @@ static void step(game_physics3d *physics, float delta)
     game_task_pool_end(physics->pool);
 }
 
+/* Applies the queued pushes to the dynamic bodies they still name. */
+static void apply_pushes(game_physics3d *physics)
+{
+    for (int i = 0; i < acount(physics->pushes); i++) {
+        push queued = physics->pushes[i];
+        unsigned slot = queued.entity.slot;
+        const body_record *record = slot < (unsigned)acount(physics->bodies)
+                                      ? &physics->bodies[slot]
+                                      : NULL;
+        if (!record || !same_entity(record->entity, queued.entity) ||
+            record->type != GAME_BODY_DYNAMIC || B3_IS_NULL(record->body)) {
+            continue;
+        }
+        if (queued.impulse) {
+            b3Body_ApplyLinearImpulseToCenter(record->body, to_b3(queued.amount), true);
+            continue;
+        }
+        b3Body_ApplyForceToCenter(record->body, to_b3(queued.amount), true);
+    }
+    aclear(physics->pushes);
+}
+
 int game_physics3d_tick(game_physics3d *physics, float delta_seconds)
 {
     physics->error[0] = 0;
@@ -1292,6 +1326,7 @@ int game_physics3d_tick(game_physics3d *physics, float delta_seconds)
         return result;
     }
     if (B3_IS_NULL(physics->simulation)) {
+        aclear(physics->pushes); /* No collider, so no body to push. */
         return FLOW_OK;
     }
     if (!same_v3(acceleration, physics->gravity)) {
@@ -1299,11 +1334,35 @@ int game_physics3d_tick(game_physics3d *physics, float delta_seconds)
     }
     if (delta_seconds > 0) {
         move_characters(physics, delta_seconds, acceleration);
+        apply_pushes(physics);
     }
     step(physics, delta_seconds);
     write_back(physics);
     current_pairs(physics);
     return dispatch_pairs(physics);
+}
+
+static int queue_push(game_physics3d *physics, ecs_entity entity, CF_V3 amount, bool impulse)
+{
+    const GameBody3D *body = ecs_entity_is_alive(physics->world, entity)
+                               ? GAME_GameBody3D_get_const(physics->world, entity)
+                               : NULL;
+    if (!body || body->type != GAME_BODY_DYNAMIC ||
+        !isfinite(amount.x + amount.y + amount.z)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    apush(physics->pushes, ((push){ entity, amount, impulse }));
+    return FLOW_OK;
+}
+
+int game_physics3d_apply_impulse(game_physics3d *physics, ecs_entity entity, CF_V3 impulse)
+{
+    return queue_push(physics, entity, impulse, true);
+}
+
+int game_physics3d_apply_force(game_physics3d *physics, ecs_entity entity, CF_V3 force)
+{
+    return queue_push(physics, entity, force, false);
 }
 
 bool game_physics3d_interpolation(

@@ -533,6 +533,8 @@ TEST_CASE(physics3d_followers_are_part_of_their_body)
     REQUIRE(near(position(crate).y, .75f * METER, 1e-2f * METER));
     REQUIRE(near_v3(body(base)->linear_velocity, (CF_V3){ 0 }, 0));
     REQUIRE(near_v3(body(crate)->linear_velocity, (CF_V3){ 0 }, 0));
+    /* The ball's mass includes the plate's, at 1000 kg per cubic meter. */
+    REQUIRE(near(body(base)->mass, 1000 * (2 + 4 * 3.14159265f / 3 / 64), .1f));
     return true;
 }
 
@@ -866,6 +868,72 @@ TEST_CASE(physics3d_runs_as_a_world_module)
     REQUIRE(engine_frame(runtime, .3) == FLOW_OK);
     REQUIRE(GAME_GameTransform3D_get_const(ecs, entity)->position.x > solved);
     game_world_free(simulation);
+    return true;
+}
+
+/* Pushes act through the center of mass at the next advancing step, so an
+ * equal push moves a cube eight times as massive an eighth as fast. Bodies
+ * weigh 1000 kg per cubic meter, Box3D's density of water. */
+TEST_CASE(physics3d_pushes_divide_by_mass)
+{
+    set_gravity((CF_V3){ 0 });
+    ecs_entity small = collider((ecs_entity){ 0 }, (CF_V3){ 0, 0, 0 }, box(METER, METER, METER), GAME_BODY_DYNAMIC);
+    ecs_entity large = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 0, 0, 8 * METER },
+        box(2 * METER, 2 * METER, 2 * METER),
+        GAME_BODY_DYNAMIC
+    );
+    const float mass = 1000; /* kg, of the one meter cube */
+    REQUIRE(game_physics3d_apply_impulse(physics, small, (CF_V3){ 64 * mass, 0, 0 }) == FLOW_OK);
+    REQUIRE(game_physics3d_apply_impulse(physics, large, (CF_V3){ 64 * mass, 0, 0 }) == FLOW_OK);
+    step(0); /* Only an advancing step pushes. */
+    REQUIRE(body(small)->linear_velocity.x == 0);
+    /* Each step writes a dynamic body's mass for scripts to size pushes. */
+    REQUIRE(near(body(small)->mass, mass, .01f) && near(body(large)->mass, 8 * mass, .1f));
+    body(small)->linear_velocity.z = 5; /* Pushes add to a velocity set now. */
+    step(STEP);
+    REQUIRE(near_v3(body(small)->linear_velocity, (CF_V3){ 64, 0, 5 }, 1e-2f));
+    REQUIRE(near_v3(body(large)->linear_velocity, (CF_V3){ 8, 0, 0 }, 1e-2f));
+    /* A force accelerates through one step; the next step drops it. */
+    REQUIRE(
+        game_physics3d_apply_force(physics, large, (CF_V3){ 0, 8 * mass * 120, 0 }) == FLOW_OK
+    );
+    REQUIRE(
+        game_physics3d_apply_force(physics, large, (CF_V3){ 0, 8 * mass * 120, 0 }) == FLOW_OK
+    );
+    step(STEP);
+    REQUIRE(near_v3(body(large)->linear_velocity, (CF_V3){ 8, 4, 0 }, 1e-2f));
+    step(STEP);
+    REQUIRE(near_v3(body(large)->linear_velocity, (CF_V3){ 8, 4, 0 }, 1e-2f));
+    return true;
+}
+
+/* Only a live dynamic body takes a push, and one that is gone or reset before
+ * the step is dropped. */
+TEST_CASE(physics3d_pushes_need_a_dynamic_body)
+{
+    set_gravity((CF_V3){ 0 });
+    ecs_entity floor = ground();
+    ecs_entity mover = collider((ecs_entity){ 0 }, (CF_V3){ 0, 2 * METER, 0 }, ball(8), GAME_BODY_KINEMATIC);
+    ecs_entity rock = collider((ecs_entity){ 0 }, (CF_V3){ 4 * METER, 2 * METER, 0 }, ball(8), GAME_BODY_DYNAMIC);
+    const CF_V3 kick = { 0, 1000, 0 };
+    REQUIRE(game_physics3d_apply_impulse(physics, floor, kick) == FLOW_ERR_ARGUMENT);
+    REQUIRE(game_physics3d_apply_force(physics, mover, kick) == FLOW_ERR_ARGUMENT);
+    REQUIRE(game_physics3d_apply_impulse(physics, rock, (CF_V3){ NAN, 0, 0 }) == FLOW_ERR_ARGUMENT);
+    REQUIRE(game_physics3d_apply_force(physics, rock, (CF_V3){ INFINITY, 0, 0 }) == FLOW_ERR_ARGUMENT);
+    step(STEP);
+    REQUIRE(game_physics3d_apply_impulse(physics, rock, kick) == FLOW_OK);
+    game_physics3d_reset(physics);
+    step(STEP);
+    REQUIRE(body(rock)->linear_velocity.y == 0);
+    REQUIRE(game_physics3d_apply_impulse(physics, rock, kick) == FLOW_OK);
+    REQUIRE(ecs_world_destroy_entity(world, rock) == ECS_OK);
+    REQUIRE(game_physics3d_apply_impulse(physics, rock, kick) == FLOW_ERR_ARGUMENT);
+    ecs_entity reused = collider((ecs_entity){ 0 }, (CF_V3){ 4 * METER, 2 * METER, 0 }, ball(8), GAME_BODY_DYNAMIC);
+    REQUIRE(reused.slot == rock.slot);
+    step(STEP); /* The push named the destroyed rock, not the slot's new body. */
+    REQUIRE(body(reused)->linear_velocity.y == 0);
     return true;
 }
 
@@ -1290,6 +1358,8 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_characters_land_within_a_short_pass);
     RUN_TEST_CASE(physics3d_characters_meet_each_other);
     RUN_TEST_CASE(physics3d_characters_need_a_kinematic_capsule);
+    RUN_TEST_CASE(physics3d_pushes_divide_by_mass);
+    RUN_TEST_CASE(physics3d_pushes_need_a_dynamic_body);
     RUN_TEST_CASE(physics3d_contacts_end_when_bodies_part_or_go);
     RUN_TEST_CASE(physics3d_masks_and_sensors_filter_contacts);
     RUN_TEST_CASE(physics3d_interpolates_moving_roots_only);

@@ -23,7 +23,6 @@ jobs:
     uses: waldnercharles/chibi-studio/.github/workflows/chibi-merge-policy-reusable.yml@428260c27ac4b84c3017060e17a6e34876b6fa65
     with:
       gate_ready: ${{ vars.CHIBI_REVIEW_GATE_READY == 'true' }}
-      enroll_after: ${{ vars.CHIBI_REVIEW_POLICY_START_AT }}
       post_merge_workflows: >-
         [{"workflow":"ci.yml","ignore":["docs/**","**.md",".claude/**"]},{"workflow":"publish.yml","include":["src/**","include/**","sdk/**","cmake/**","third_party/**","content/**","tools/**","CMakeLists.txt","Makefile",".github/workflows/publish.yml"]}]
     permissions:

@@ -487,7 +487,7 @@ const MENUS = {
     ];
   },
   view: () => [
-    { label: 'Frame Selected', icon: 'frame', kbd: 'F', run: () => App.frame?.('selected') },
+    { label: 'Frame Selected', icon: 'focus', kbd: 'F', run: () => App.frame?.('selected') },
     { label: 'Frame All', kbd: 'Home', run: () => App.frame?.('all') },
     { label: 'Maximize Area', icon: 'maximize', kbd: 'Ctrl+Space', run: () => toggleMaximize(App.hoverArea || areas[0]) },
     '-',
@@ -532,7 +532,7 @@ function commandItems() {
     { label: 'Redo', kbd: 'Shift+Mod+Z', icon: 'redo', run: redo },
     { label: State.runtime?.playing ? 'Pause' : 'Play', kbd: 'Space', icon: 'play', keywords: ['run', 'start', 'preview'], run: play },
     { label: 'Stop', kbd: 'Shift+Space', icon: 'stop', run: stop },
-    { label: 'Frame Selected', kbd: 'F', icon: 'frame', keywords: ['focus', 'zoom'], run: () => App.frame?.('selected') },
+    { label: 'Frame Selected', kbd: 'F', icon: 'focus', keywords: ['focus', 'zoom'], run: () => App.frame?.('selected') },
     { label: 'Frame All', kbd: 'Home', icon: 'frame', run: () => App.frame?.('all') },
     { label: 'Toggle Assets', kbd: 'Mod+Shift+A', icon: 'assets', keywords: ['browser', 'content'], run: () => layout.drawer('assets') },
     { label: 'Toggle Output', kbd: 'Mod+Shift+U', icon: 'output', keywords: ['log', 'console', 'diagnostics'], run: () => layout.drawer('output') },

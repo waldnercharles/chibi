@@ -301,9 +301,14 @@ including controller startup, source preparation and the two simulation frames.
 `python3 tools/test_policy.py tool webgpu-staging` runs a C-owned disposable
 Chrome process against the browser build of the same tooling dispatcher in
 `build-webgpu-test`. It draws one 64-by-64 quad for 120 animation frames, checks
-staging-buffer reuse and a 64 MiB peak ceiling, then destroys the app and waits
-at most one second for retained map callbacks to release their chunks. Startup
-and execution share a 55-second deadline inside the production 60-second limit.
+staging-buffer reuse and a 64 MiB peak ceiling, then checks that destroying a
+pending readback or its app releases the custom-allocator owner immediately. It
+restores the default allocator before draining cancelled callbacks. With an
+imported device it recreates the app, delivers a controlled old loss continuation,
+and verifies that the new app stays healthy. A real validation error must reach
+both CF and the page's listener; a real device destruction must mark the backend
+lost. Each callback phase has at most one second, clipped to the shared 55-second
+startup/execution deadline inside the production 60-second limit.
 The isolated Cute source is selected with `CHIBI_TEST_CUTE_SOURCE`; the comparison
 build's `CHIBI_TEST_WEBGPU_BASELINE=ON` retains CF's ASYNCIFY initialization.
 Callback wall time excludes the first 30 frames and is diagnostic, not a timing

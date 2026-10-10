@@ -25,10 +25,12 @@ if(EMSCRIPTEN)
     endif()
     configure_file("${CHIBI_TOOL_ROOT}/test/render/webgpu_staging.html"
         "${CMAKE_CURRENT_BINARY_DIR}/webgpu_staging.html" @ONLY)
-    add_executable(test_tools main.c ../render/webgpu_staging.c)
+    add_executable(test_tools main.c ../render/webgpu_staging.c ../draw_backend.cpp)
     target_include_directories(test_tools PRIVATE "${CHIBI_TOOL_ROOT}" "${CHIBI_TOOL_ROOT}/src")
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_WEBGPU_STAGING=1)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_WEBGPU_STAGING=1
+        CHIBI_TEST_ADOPT_DEVICE=${CHIBI_TEST_ADOPT_DEVICE})
     target_compile_features(test_tools PRIVATE c_std_11)
+    target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -Wno-experimental -UNDEBUG)
     target_link_libraries(test_tools PRIVATE ${CHIBI_TEST_PLATFORM})
     set_target_properties(test_tools PROPERTIES SUFFIX ".html" LINKER_LANGUAGE CXX
         LINK_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/webgpu_staging.html")

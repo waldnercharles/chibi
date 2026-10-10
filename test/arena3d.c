@@ -56,7 +56,8 @@ static render_scene3d_camera front_camera()
 {
     return (render_scene3d_camera){
         .view = cf_look_at((CF_V3){ 0, 0, 8 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 }),
-        .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100)
+        .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
+        .eye = { 0, 0, 8 },
     };
 }
 
@@ -371,6 +372,7 @@ static bool prism_checks(CF_Pixel *pixels)
     engine *runtime = authoring_engine_new(world, live->runtime);
     render_scene3d_camera camera = front_camera();
     camera.view = cf_look_at((CF_V3){ 0, 8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, -1 });
+    camera.eye = (CF_V3){ 0, 8, 0 };
     /* Wide at the back and narrow at the +X tip; both empty samples are in its box bounds. */
     const CF_V3 samples[] = {
         { -1.2f, 0.9f, 0.75f },
@@ -425,6 +427,7 @@ static bool prism_checks(CF_Pixel *pixels)
     }
     /* The underside closes the extrusion and retains an outward normal. */
     camera.view = cf_look_at((CF_V3){ 0, -8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, 1 });
+    camera.eye = (CF_V3){ 0, -8, 0 };
     ok &= render(world, &camera, pixels);
     int underside = brightness(pixels, &camera, (CF_V3){ 0, -0.1f, 0 });
     if (underside <= 40) {
@@ -472,9 +475,11 @@ static bool octahedron_checks(CF_Pixel *pixels)
         render_scene3d_camera camera = front_camera();
         if (view < 8) {
             camera.view = cf_look_at((CF_V3){ 0, 8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, -1 });
+            camera.eye = (CF_V3){ 0, 8, 0 };
         }
         if (view == 8) {
             camera.view = cf_look_at((CF_V3){ 0, -8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, 1 });
+            camera.eye = (CF_V3){ 0, -8, 0 };
         }
         ok &= render(world, &camera, pixels);
         const CF_V3 *samples = view == 9 ? front_samples : overhead_samples;
@@ -574,6 +579,7 @@ static bool polygon_visuals(CF_Pixel *pixels)
 {
     render_scene3d_camera camera = front_camera();
     camera.view = cf_look_at((CF_V3){ 0, 8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, -1 });
+    camera.eye = (CF_V3){ 0, 8, 0 };
     const int primitives[] = { GAME_PRIMITIVE_CHEVRON_PYRAMID,
                                GAME_PRIMITIVE_BOX_FRAME,
                                GAME_PRIMITIVE_TRIANGLE_OUTLINE,
@@ -640,6 +646,7 @@ static bool centered_triangles()
         assert(ecs_world_apply_commands(world) == ECS_OK);
         render_scene3d_camera camera = front_camera();
         camera.view = cf_look_at((CF_V3){ 0, 8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, -1 });
+        camera.eye = (CF_V3){ 0, 8, 0 };
         for (int step = 0; step < 8; step++) {
             float angle = step * .7853981634f;
             GAME_GameOrientation_get(world, entity)->radians = angle;
@@ -846,6 +853,7 @@ int test_arena3d()
     ecs_world *world = new_world();
     add_shape(world, GAME_PRIMITIVE_BOX, (CF_V3){ 0 }, 0xffffffffu);
     camera.view = cf_look_at((CF_V3){ 5, 4, 7 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
+    camera.eye = (CF_V3){ 5, 4, 7 };
     bool lighting = render(world, &camera, first);
     int top = brightness(first, &camera, (CF_V3){ 0, 1, 0 });
     int side = brightness(first, &camera, (CF_V3){ 1, 0, 0 });

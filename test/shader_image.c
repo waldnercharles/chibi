@@ -10,6 +10,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* GLSL wrappers size their output arrays by the C contract. */
+#define QUOTE(x) #x
+#define QUOTED(x) QUOTE(x)
+#define OUTPUT_ROWS QUOTED(SHADER_OUTPUT_MAX)
+
 static const unsigned char pixels[] = { 128, 0,   0, 64, 255, 255, 255, 255,
                                         0,   255, 0, 0,  0,   0,   255, 128 };
 static bool resolve(void *userdata, const shader_image_source *source, shader_image_view *image)
@@ -56,7 +61,7 @@ static void sampling()
     shader_graph g;
     program(&g, SHADER_IMAGE_SRGB, SHADER_IMAGE_NEAREST, SHADER_IMAGE_REPEAT);
     shader_error error = { 0 };
-    float result[8][4];
+    float result[SHADER_OUTPUT_MAX][4];
     assert(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
     near(result[0][0], .2158605f);
     near(result[1][0], 64.0f / 255);
@@ -159,7 +164,7 @@ static void authoring()
     shader_sample_context sample = { .uv = { .75f, .25f },
                                      .resolve_image = resolve,
                                      .image_userdata = &view };
-    float result[8][4];
+    float result[SHADER_OUTPUT_MAX][4];
     assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
     near(result[0][0], 1);
     near(result[0][1], 1);
@@ -192,21 +197,23 @@ static void gpu_variant(shader_image_color_space color_space, shader_image_filte
                    "vec4 image_test_image_0(vec2 uv){"
                    "if(any(isnan(uv))||any(isinf(uv)))return vec4(0.0);"
                    "return textureLod(image_pixels,%s,0.0);}\n";
-    const char *body =
-        "layout(local_size_x=2,local_size_y=1,local_size_z=1) in;\n"
-        "layout(set=1,binding=0,rgba32f) uniform image2D result_image;\n"
-        "layout(set=2,binding=0) uniform Inputs {vec2 sample_uv;};\n"
-        "void main(){vec4 values[8],p[32];for(int i=0;i<32;i++)p[i]=vec4(0);"
-        "SGSample "
-        "sg_test;sg_test.position=vec2(0);sg_test.uv=sample_uv;"
-        "sg_test.object_position=vec3(0);sg_test.part_position=vec3(0);"
-        "sg_test.world_position=vec3(0);sg_test.normal=vec3(0);"
-        "sg_test.view_direction=vec3(0);sg_test.time=0.0;"
-        "for(int i=0;i<3;i++){sg_test.object_from_world[i]=vec3(0);"
-        "sg_test.part_from_world[i]=vec3(0);}"
-        "for(int i=0;i<2;i++)sg_test.uv_from_world[i]=vec3(0);"
-        "image_test(sg_test,p,values);int x=int(gl_GlobalInvocationID.x);"
-        "imageStore(result_image,ivec2(x,0),values[x]);}\n";
+    const char *
+        body = "layout(local_size_x=2,local_size_y=1,local_size_z=1) in;\n"
+               "layout(set=1,binding=0,rgba32f) uniform image2D result_image;\n"
+               "layout(set=2,binding=0) uniform Inputs {vec2 sample_uv;};\n"
+               "void main(){vec4 values[" OUTPUT_ROWS
+               "],p[32];for(int i=0;i<32;i++)p[i]=vec4(0);"
+               "SGSample "
+               "sg_test;sg_test.position=vec2(0);sg_test.uv=sample_uv;"
+               "sg_test.object_position=vec3(0);sg_test.part_position=vec3(0);"
+               "sg_test.world_position=vec3(0);sg_test.normal=vec3(0);"
+               "sg_test.view_direction=vec3(0);sg_test.time=0.0;"
+               "for(int i=0;i<3;i++){sg_test.object_from_world[i]=vec3(0);"
+               "sg_test.part_from_world[i]=vec3(0);}"
+               "for(int i=0;i<2;i++)sg_test.uv_from_world[i]=vec3(0);"
+               "image_test(sg_test,p,values);int "
+               "x=int(gl_GlobalInvocationID.x);"
+               "imageStore(result_image,ivec2(x,0),values[x]);}\n";
     size_t size = strlen(wrapper) + strlen(function) + strlen(body) + 64;
     char *source = xmalloc(size);
     snprintf(source, size, wrapper, wrap == SHADER_IMAGE_REPEAT ? "fract(uv)" : "clamp(uv,vec2(0),vec2(1))");
@@ -248,7 +255,7 @@ static void gpu_variant(shader_image_color_space color_space, shader_image_filte
         shader_sample_context sample = { .uv = { coordinates[i][0], coordinates[i][1] },
                                          .resolve_image = resolve,
                                          .image_userdata = &image };
-        float expected[8][4], actual[2][4];
+        float expected[SHADER_OUTPUT_MAX][4], actual[2][4];
         assert(shader_graph_eval_outputs(&ir, &sample, NULL, expected, &error));
         cf_app_update(NULL);
         cf_material_set_uniform_cs(material, "sample_uv", sample.uv, CF_UNIFORM_TYPE_FLOAT2, 1);

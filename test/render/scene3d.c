@@ -2,6 +2,7 @@
 
 #include "render/fog.h"
 #include "render/mesh_surface.h"
+#include "render/scene3d_mesh_cache.h"
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
@@ -51,7 +52,15 @@ static render_scene3d_camera camera()
     return (render_scene3d_camera){
         .view = cf_look_at((CF_V3){ 0, 4, 4 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 }),
         .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
+        .eye = { 0, 4, 4 },
     };
+}
+
+/* Turns `lens` to look from `eye` toward `target`. */
+static void look(CF_V3 eye, CF_V3 target, CF_V3 up)
+{
+    lens.view = cf_look_at(eye, target, up);
+    lens.eye = eye;
 }
 
 static void setup()
@@ -496,6 +505,22 @@ TEST_CASE(distant_eyes_keep_precise_ground_rays)
     REQUIRE(render_scene3d_ground(&above, (CF_V2){ 1, 1 }, &corner));
     REQUIRE(fabsf(center.x - 1e5f) < .02f && fabsf(center.y - 1e5f) < .02f);
     REQUIRE(fabsf(corner.x - (1e5f + 4)) < .02f && fabsf(corner.y - (1e5f - 4)) < .02f);
+    return true;
+}
+
+/* A distant eye turned off the axes starts its rays at its own height.
+ * Rebuilt from the rounded view matrix, its distance along the ground leaks
+ * into that height. */
+TEST_CASE(distant_turned_eyes_start_rays_where_they_stand)
+{
+    CF_V3 eye = { 1e7f, 8, -7e6f };
+    CF_V3 forward = cf_norm_v3((CF_V3){ .3f, -.8f, .5f });
+    render_scene3d_camera turned = render_scene3d_camera_frame(&(engine_viewport_camera){
+        .span_width = 2,
+        .span_height = 2,
+        .lens = { .eye = eye, .forward = forward, .up = { 0, 1, 0 } } });
+    CF_Ray3 ray = render_scene3d_ray(&turned, (CF_V2){ 0 });
+    REQUIRE(fabsf(ray.p.y - eye.y) < .02f);
     return true;
 }
 
@@ -973,6 +998,7 @@ static GameDirectionalLight *add_walls(unsigned walls)
     lens = (render_scene3d_camera){
         .view = cf_look_at((CF_V3){ 0 }, (CF_V3){ 0, 0, -1 }, (CF_V3){ 0, 1, 0 }),
         .projection = cf_perspective(0.7853981634f, 1, 0.1f, 1000),
+        .eye = { 0 },
     };
     for (int i = 0; i < WALLS; i++) {
         if (!(walls >> i & 1)) {
@@ -1100,6 +1126,7 @@ static GameDirectionalLight *add_wall_scene()
     lens = (render_scene3d_camera){
         .view = cf_look_at((CF_V3){ 2, 10, 3 }, (CF_V3){ 2, 0, 3 }, (CF_V3){ 0, 0, -1 }),
         .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
+        .eye = { 2, 10, 3 },
     };
     add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 40, 40, .2f, -.1f }, 0xffffffffu);
     add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, 6, 4, 2 }, 0xffffffffu);
@@ -1222,8 +1249,7 @@ static const float edge_slack = .1f;
  * shows lit, or black. */
 static bool floor_matches(const CF_V3 *casting, int count, CF_Pixel *const *shown, int *checked)
 {
-    CF_M4x4 inverse = cf_m4_invert(lens.view);
-    CF_V3 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14] };
+    CF_V3 eye = lens.eye;
     for (float x = -3; x <= 3; x += .25f) {
         for (float z = -3; z <= 3; z += .25f) {
             CF_V3 point = { x, 0, z };
@@ -1671,7 +1697,7 @@ static void publish_uniform_sky(const unsigned char rgbe[4])
 /* Looks level along -Z from the origin: +X lies to the right and up on top. */
 static void look_level()
 {
-    lens.view = cf_look_at((CF_V3){ 0 }, (CF_V3){ 0, 0, -1 }, (CF_V3){ 0, 1, 0 });
+    look((CF_V3){ 0 }, (CF_V3){ 0, 0, -1 }, (CF_V3){ 0, 1, 0 });
 }
 
 static GameEnvironment sky_environment()
@@ -1778,7 +1804,7 @@ TEST_CASE(sky_fills_the_view_in_its_directions)
     for (int quarters = 0; quarters < 2; quarters++) {
         environment.sky_rotation = 90.0f * quarters;
         for (int i = 0; i < 6; i++) {
-            lens.view = cf_look_at((CF_V3){ 0 }, views[i][0], views[i][1]);
+            look((CF_V3){ 0 }, views[i][0], views[i][1]);
             REQUIRE(render(&environment));
             int corners[] = { 8, SIDE - 8 };
             for (int j = 0; j < 4; j++) {
@@ -1961,7 +1987,7 @@ TEST_CASE(sky_settings_must_be_valid)
  * and +Z faces show. */
 static void look_at_corner()
 {
-    lens.view = cf_look_at((CF_V3){ 3, 2.5f, 4 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
+    look((CF_V3){ 3, 2.5f, 4 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
 }
 
 static void channels(CF_Pixel shown, int values[3])
@@ -2206,6 +2232,32 @@ TEST_CASE(republished_meshes_replace_their_gpu_copies)
     GAME_GameMeshAsset_get(world, solid)->source = "";
     REQUIRE(render(&environment));
     REQUIRE(distance(top(), drawn) <= 3 && render_scene3d_last_work(scene3d).meshes == 0);
+    return true;
+}
+
+/* Copies uploaded out of identity order are each found again: uploading
+ * every mesh a second time makes no new copy. */
+TEST_CASE(mesh_copies_are_found_in_any_upload_order)
+{
+    static const uint64_t identities[] = { 20, 10, 30 };
+    render_scene3d_mesh_cache *cache = render_scene3d_mesh_cache_new();
+    render_mesh_asset meshes[3];
+    bool uploaded = true;
+    for (int i = 0; i < 3; i++) {
+        meshes[i] = box_mesh();
+        meshes[i].identity = identities[i];
+        uploaded = uploaded && render_scene3d_mesh_cache_upload(cache, &meshes[i]);
+    }
+    for (int i = 0; i < 3; i++) {
+        uploaded = uploaded &&
+                   render_scene3d_mesh_cache_upload(cache, &meshes[2 - i]);
+    }
+    int copies = render_scene3d_mesh_cache_count(cache);
+    render_scene3d_mesh_cache_free(cache);
+    for (int i = 0; i < 3; i++) {
+        render_mesh_asset_free(&meshes[i]);
+    }
+    REQUIRE(uploaded && copies == 3);
     return true;
 }
 
@@ -2786,6 +2838,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(navigating_drops_an_authored_lens);
     RUN_TEST_CASE(fog_conceals_rays_that_miss_the_ground);
     RUN_TEST_CASE(distant_eyes_keep_precise_ground_rays);
+    RUN_TEST_CASE(distant_turned_eyes_start_rays_where_they_stand);
     RUN_TEST_CASE(distant_eyes_fog_the_ground_they_look_at);
     RUN_TEST_CASE(picking_and_bounds_place_children_under_their_parent);
 #if CHIBI_TEST_MATERIAL_GRAPHS
@@ -2832,6 +2885,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy);
     RUN_TEST_CASE(picking_and_bounds_follow_imported_triangles);
     RUN_TEST_CASE(republished_meshes_replace_their_gpu_copies);
+    RUN_TEST_CASE(mesh_copies_are_found_in_any_upload_order);
     RUN_TEST_CASE(translucent_meshes_sort_by_their_bounds);
     RUN_TEST_CASE(translucent_copies_of_a_mesh_sort_by_their_bounds);
 #if CHIBI_TEST_MATERIAL_GRAPHS

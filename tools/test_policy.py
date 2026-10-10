@@ -183,7 +183,7 @@ TOOLS = {
     'native-tools': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools')],
 
 }
-# Every admitted selector of each built driver, run under one shared deadline.
+# The admitted CPU selectors of each built driver that fit one shared deadline.
 GROUPS = {
     'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'physics3d', 'transforms',
                'box3d', 'sky-files', 'tilemap',
@@ -192,7 +192,7 @@ GROUPS = {
                'owned-tick', 'parallel-tick', 'source-native-features',
                'source-native-numeric-queries', 'source-native-material', 'source-presentation',
                'system-schedule', 'source-systems', 'source-edit', 'new-asset', 'asset-refactor',
-               'validate-project', 'shader-parameters-prepared',
+               'shader-parameters-prepared',
                'language-prepared', 'ecs-query-benchmark'],
     'language': ['language', 'language-semantic', 'language-execution', 'language-program',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',

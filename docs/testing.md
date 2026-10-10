@@ -25,7 +25,7 @@ more than documentation, and `make build` links `chibi`, `chibi-compile` and
 
 ```sh
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
-make test-native         # each CPU test_tools selector with checked-in inputs, one 60-second deadline
+make test-native         # the CPU test_tools selectors in its group, one 60-second deadline
 make test-language-all   # every test_language selector, one 60-second deadline
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
@@ -194,7 +194,10 @@ the project's other resources, fail validation as they fail compiling; and in a
 project whose manifest names another content folder, assets are scaffolded,
 validated, run, formatted, found and reported there under their `content/`
 paths, and `status` names that folder even once the project is too old to open.
-A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
+CPU only; the project is removed afterwards. The two prototype expansion cases
+each validate more than 16,000 prototype documents. With the sanitized
+`chibi_ctl` from `make test-build`, the selector takes more than 60 seconds on a
+four-core Linux host, so it is not in the native group and CI does not run it.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,

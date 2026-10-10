@@ -1241,7 +1241,10 @@ TEST_CASE(physics3d_characters_need_a_kinematic_capsule)
     *GAME_GameCollider3D_get(world, walker) = thin;
     REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
     /* The mover sweeps the capsule as it stands, so physics keeps it from
-     * spinning. */
+     * spinning, even through a tick that does not advance. */
+    body(walker)->angular_velocity = (CF_V3){ 10, 0, 0 };
+    REQUIRE(game_physics3d_tick(physics, 0) == FLOW_OK);
+    REQUIRE(near_v3(body(walker)->angular_velocity, (CF_V3){ 0 }, 0));
     body(walker)->angular_velocity = (CF_V3){ 10, 0, 0 };
     REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
     REQUIRE(near_v3(body(walker)->angular_velocity, (CF_V3){ 0 }, 0));

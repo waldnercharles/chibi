@@ -720,6 +720,11 @@ static int sync_entity(game_physics3d *physics, ecs_entity entity)
     own_body(physics, record, collider, at);
     record->written = *GAME_GameTransform3D_get_const(world, entity);
     record->placed = at.pose;
+    if (character) {
+        /* The mover sweeps the capsule as it stands, so it never spins. */
+        body.angular_velocity = (CF_V3){ 0 };
+        GAME_GameBody3D_get(world, entity)->angular_velocity = body.angular_velocity;
+    }
     set_velocities(record, &body);
     return FLOW_OK;
 }
@@ -1176,8 +1181,7 @@ static GameCharacter3D stand(const character_contact *contact, b3Vec3 up)
 }
 
 /* Moves the character's capsule by its velocity over delta with Box3D's
- * mover, puts its body where the capsule ends, and writes what it stands on.
- * The mover sweeps the capsule as it stands, so the body does not spin. */
+ * mover, puts its body where the capsule ends, and writes what it stands on. */
 static void move_character(game_physics3d *physics, body_record *record, float delta, b3Vec3 up)
 {
     GameBody3D *body = GAME_GameBody3D_get(physics->world, record->entity);
@@ -1221,8 +1225,6 @@ static void move_character(game_physics3d *physics, body_record *record, float d
         b3ClipVector(to_b3(body->linear_velocity), contact.planes, contact.count)
     );
     record->linear_velocity = body->linear_velocity;
-    body->angular_velocity = record->angular_velocity = (CF_V3){ 0 };
-    b3Body_SetAngularVelocity(record->body, b3Vec3_zero);
     b3Body_SetTransform(record->body, b3Add(origin, moved), quat_to_b3(at.rotation));
     *GAME_GameCharacter3D_get(physics->world, record->entity) = stand(&contact, up);
 }

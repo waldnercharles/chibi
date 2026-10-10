@@ -11,8 +11,10 @@ it and scales it, and its `elevation` is ignored. An entity with both transforms
 draws at its Transform3D. Its Visual Transform turns and scales the solid within
 that frame, and a body's drawn pose is interpolated between physics steps as a
 Transform's is. A transform that mirrors a solid draws it mirrored with its
-faces lit from outside, and one that flattens it to zero on any axis hides it.
-Picks and bounds follow the same placement. Point and spot lights, particles,
+faces lit from outside. One that flattens it onto a plane, a line or a point
+hides it, judged by its axes' directions so that rounding cannot keep a sliver
+and a tiny but whole scale cannot vanish. Picks and bounds follow the same
+placement, a model surface's included. Point and spot lights, particles,
 trails and Surface Influences still place from `GameTransform`, and SDF and Mesh
 Surface 2D surfaces belong to the 2D renderer, which ignores Transform3D.
 
@@ -360,8 +362,11 @@ by a Transform3D and a Visual Transform within it, match the upright box their
 turns make. A box under a turned Transform3D parent picks and bounds where the
 parent turns it, before any propagation. A box mirrored by its Transform3D,
 as a shape and as the unit box mesh, matches the unmirrored box, and one
-flattened to zero height disappears. A mirrored ground square's normal maps
-turn their bitangent with it.
+flattened to zero height disappears. A box flattened by its parent's
+Transform3D under turns that leave it a sliver of volume has no bounds, and one
+scaled to 1e-16 keeps them. A model surface picks and
+bounds at its Transform3D pose, with or without a Transform. A mirrored ground
+square's normal maps turn their bitangent with it.
 Normal maps on a ground square tilt toward or away from the sun as its
 tangents say: authored tangents a quarter turn from the UV gradient, mirrored
 UVs, a quarter-turned square, and box-projected UVs that keep their own frame.

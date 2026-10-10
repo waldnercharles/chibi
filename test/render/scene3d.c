@@ -2482,6 +2482,54 @@ TEST_CASE(transform3d_children_pick_and_bound_under_their_parent)
     return true;
 }
 
+#if CHIBI_TEST_MATERIAL_GRAPHS
+/* A model surface picks and bounds where its Transform3D places it, with or
+ * without a Transform it outranks. */
+TEST_CASE(transform3d_models_pick_and_bound_at_their_pose)
+{
+    REQUIRE(test_register_model_sphere("PlacedSphere", .5f));
+    ecs_entity model = add_solid(
+        (CF_V3){ -1.5f, 0, 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 },
+        0xffffffffu
+    );
+    GameSdfSurface3D surface = { .enabled = true };
+    GameShader binding = { .shape = "PlacedSphere" };
+    REQUIRE(
+        ecs_world_record_add(world, model, GAME_COMPONENT_GameSdfSurface3D.id, &surface, 0) == ECS_OK
+    );
+    REQUIRE(
+        ecs_world_record_add(world, model, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
+    );
+    place_3d(model, (CF_V3){ 1.5f, 0, 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    CF_V3 placed = render_scene3d_project(&lens, (CF_V3){ 1.5f, 0, 0 });
+    CF_V3 flat = render_scene3d_project(&lens, (CF_V3){ -1.5f, 0, 0 });
+    for (int alone = 0; alone < 2; alone++) {
+        if (alone) {
+            REQUIRE(
+                ecs_world_record_remove(
+                    world,
+                    model,
+                    GAME_COMPONENT_GameTransform.id,
+                    0
+                ) == ECS_OK
+            );
+            REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        }
+        REQUIRE(
+            render_scene3d_pick(world, &lens, (CF_V2){ placed.x, placed.y }, (render_skip){ 0 })
+                .slot == model.slot
+        );
+        REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ flat.x, flat.y }, (render_skip){ 0 })
+                     .slot);
+        CF_V3 corners[8];
+        REQUIRE(render_scene3d_entity_bounds(world, model, corners));
+        REQUIRE(fabsf(corners[0].x - 1) < 1e-3f && fabsf(corners[7].x - 2) < 1e-3f);
+    }
+    return true;
+}
+#endif
+
 /* A Transform3D that mirrors a box across x shows it as the unmirrored box
  * does, as a shape and as the unit box mesh: the lit pass culls the faces
  * turned away, not the ones in view, and their normals point out. A
@@ -2511,6 +2559,41 @@ TEST_CASE(mirroring_transform3d_keeps_faces_outward)
         REQUIRE(render(&environment));
         REQUIRE(!render_scene3d_error(scene3d)[0] && !top().colors.g);
     }
+    return true;
+}
+
+/* A box whose parent's Transform3D flattens it onto a plane, both turned so
+ * that rounding leaves its frame a sliver of volume, hides and has no
+ * bounds. A box scaled tiny but whole keeps them. */
+TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
+{
+    ecs_entity parent = ecs_world_create_entity(world);
+    place_3d(
+        parent,
+        (CF_V3){ 0 },
+        cf_quat_from_axis_angle(cf_norm_v3((CF_V3){ 1, 2, 3 }), 1.14f),
+        (CF_V3){ 1, 0, 1 }
+    );
+    ecs_entity child = add(
+        GAME_COMPONENT_GameGeometry3D.id,
+        &(GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 }
+    );
+    place_3d(
+        child,
+        (CF_V3){ 0 },
+        cf_quat_from_axis_angle(cf_norm_v3((CF_V3){ 3, -1, 2 }), 2.62f),
+        (CF_V3){ 1, 1, 1 }
+    );
+    REQUIRE(ecs_world_record_add_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    CF_V3 corners[8];
+    REQUIRE(!render_scene3d_entity_bounds(world, child, corners));
+    *GAME_GameTransform3D_get(world, parent) = (GameTransform3D){
+        { 0 },
+        cf_quat_identity(),
+        { 1e-16f, 1e-16f, 1e-16f }
+    };
+    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
     return true;
 }
 
@@ -3119,7 +3202,11 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(translucent_copies_of_a_mesh_sort_by_their_bounds);
     RUN_TEST_CASE(transform3d_places_solids_in_their_pose);
     RUN_TEST_CASE(transform3d_children_pick_and_bound_under_their_parent);
+#if CHIBI_TEST_MATERIAL_GRAPHS
+    RUN_TEST_CASE(transform3d_models_pick_and_bound_at_their_pose);
+#endif
     RUN_TEST_CASE(mirroring_transform3d_keeps_faces_outward);
+    RUN_TEST_CASE(flattened_transform3d_frames_hide_at_any_scale);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(mirrors_reflect_the_sky_in_its_directions);
     RUN_TEST_CASE(rough_surfaces_blur_the_sky_they_reflect);

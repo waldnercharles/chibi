@@ -28,6 +28,27 @@ static void marker(const char *directory, const char *name)
     assert(!fclose(file));
 }
 
+/* A killed descendant adopted by a Linux subreaper stays a zombie until that
+ * subreaper's cleanup reaps it; it has exited all the same. */
+static bool zombie(int pid)
+{
+#ifdef __linux__
+    char path[64];
+    snprintf(path, sizeof path, "/proc/%d/stat", pid);
+    FILE *file = fopen(path, "r");
+    if (!file) {
+        return false;
+    }
+    char state = 0;
+    bool parsed = fscanf(file, "%*d (%*[^)]) %c", &state) == 1;
+    fclose(file);
+    return parsed && state == 'Z';
+#else
+    (void)pid;
+    return false;
+#endif
+}
+
 /* Probe inside the driver's lifetime, before its caller performs group cleanup. */
 static int cleanup_probe(const char *directory)
 {
@@ -47,10 +68,11 @@ static int cleanup_probe(const char *directory)
     struct timespec start, now;
     assert(!clock_gettime(CLOCK_MONOTONIC, &start));
     for (;;) {
-        if (kill(pid, 0)) {
-            if (errno != ESRCH) {
-                return 2;
-            }
+        errno = 0;
+        if (kill(pid, 0) && errno != ESRCH) {
+            return 2;
+        }
+        if (errno == ESRCH || zombie(pid)) {
             snprintf(path, sizeof path, "%s/escaped", directory);
             if (!access(path, F_OK)) {
                 return 1;

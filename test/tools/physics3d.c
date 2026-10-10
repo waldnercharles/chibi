@@ -1191,6 +1191,20 @@ TEST_CASE(physics3d_characters_meet_only_solid_others)
     return true;
 }
 
+/* A character meeting the floor in a pass shorter than the mover's tolerance
+ * stands on it in that step. */
+TEST_CASE(physics3d_characters_land_within_a_short_pass)
+{
+    ground();
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER + METER / 200, 0 });
+    body(walker)->linear_velocity = (CF_V3){ 0, -2 * METER, 0 };
+    step(STEP);
+    REQUIRE(character_state(walker)->on_floor);
+    REQUIRE(near(body(walker)->linear_velocity.y, 0, 1e-3f));
+    REQUIRE(near(position(walker).y, .9f * METER, 2 * SLOP));
+    return true;
+}
+
 /* Characters stop at each other as at walls, even when both move toward each
  * other in the same step. */
 TEST_CASE(physics3d_characters_meet_each_other)
@@ -1225,6 +1239,11 @@ TEST_CASE(physics3d_characters_need_a_kinematic_capsule)
     REQUIRE(failed_with("at least two centimeters in radius"));
     thin.radius = METER / 50;
     *GAME_GameCollider3D_get(world, walker) = thin;
+    REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
+    /* The mover sweeps the capsule as it stands, so it must not spin. */
+    body(walker)->angular_velocity = (CF_V3){ 1, 0, 0 };
+    REQUIRE(failed_with("A Character3D turns by its Transform3D"));
+    body(walker)->angular_velocity = (CF_V3){ 0 };
     REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
     /* Only its capsule moves, so what it carries must be a sensor. */
     ecs_entity pack = collider(walker, (CF_V3){ 0 }, box(METER, METER, METER), GAME_BODY_STATIC);
@@ -1262,6 +1281,7 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_contact_queries_match_what_touches);
     RUN_TEST_CASE(physics3d_characters_slide_along_what_they_meet);
     RUN_TEST_CASE(physics3d_characters_meet_only_solid_others);
+    RUN_TEST_CASE(physics3d_characters_land_within_a_short_pass);
     RUN_TEST_CASE(physics3d_characters_meet_each_other);
     RUN_TEST_CASE(physics3d_characters_need_a_kinematic_capsule);
     RUN_TEST_CASE(physics3d_contacts_end_when_bodies_part_or_go);

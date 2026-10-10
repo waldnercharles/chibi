@@ -2232,8 +2232,9 @@ TEST_CASE(picks_follow_tiny_triangles_scaled_up)
 /* A lit box drawn as a shape, then as the unit box mesh made 2e37 wide around
  * 1.85e38 on each axis, which its Geometry3D scales and its Transform moves
  * back over the shape. Its bounds lie past half the float limit, where adding
- * them overflows, yet it covers the pixels and bounds the shape did. */
-TEST_CASE(meshes_near_the_float_limit_draw_and_bound_in_place)
+ * them overflows, yet it covers the pixels, bounds and picks as the shape
+ * did. */
+TEST_CASE(meshes_near_the_float_limit_draw_bound_and_pick_in_place)
 {
     add_sun(0xffffffffu, (CF_V3){ 1, -1, -.5f })->intensity = 1;
     GameEnvironment environment = unlit_environment();
@@ -2278,6 +2279,14 @@ TEST_CASE(meshes_near_the_float_limit_draw_and_bound_in_place)
         REQUIRE(near_value(bounds[i].y, expected[i].y));
         REQUIRE(near_value(bounds[i].z, expected[i].z));
     }
+    CF_V3 top = render_scene3d_project(&lens, (CF_V3){ 0, 2, 0 });
+    CF_V3 beside = render_scene3d_project(&lens, (CF_V3){ 2, 0, 0 });
+    REQUIRE(
+        render_scene3d_pick(world, &lens, (CF_V2){ top.x, top.y }, (render_skip){ 0 })
+            .slot == box.slot
+    );
+    REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ beside.x, beside.y }, (render_skip){ 0 })
+                 .slot);
     return true;
 }
 
@@ -2765,7 +2774,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy);
     RUN_TEST_CASE(picking_and_bounds_follow_imported_triangles);
     RUN_TEST_CASE(picks_follow_tiny_triangles_scaled_up);
-    RUN_TEST_CASE(meshes_near_the_float_limit_draw_and_bound_in_place);
+    RUN_TEST_CASE(meshes_near_the_float_limit_draw_bound_and_pick_in_place);
     RUN_TEST_CASE(mesh_picks_test_only_the_triangles_near_their_ray);
     RUN_TEST_CASE(republished_meshes_replace_their_gpu_copies);
     RUN_TEST_CASE(mesh_copies_are_found_in_any_upload_order);

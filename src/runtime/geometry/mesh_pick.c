@@ -161,21 +161,45 @@ static const pick_tree *tree_of(const render_mesh_asset *mesh)
     return &trees[acount(trees) - 1];
 }
 
+/* `a - b` in double. */
+static void difference(CF_V3 a, CF_V3 b, double out[3])
+{
+    out[0] = (double)a.x - b.x;
+    out[1] = (double)a.y - b.y;
+    out[2] = (double)a.z - b.z;
+}
+
+static void cross(const double a[3], const double b[3], double out[3])
+{
+    out[0] = a[1] * b[2] - a[2] * b[1];
+    out[1] = a[2] * b[0] - a[0] * b[2];
+    out[2] = a[0] * b[1] - a[1] * b[0];
+}
+
+static double dot(const double a[3], const double b[3])
+{
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+/* Moller-Trumbore in double, where no float's product overflows, so a
+ * triangle near float's range picks like one of ordinary size. */
 float render_triangle_hit(CF_Ray3 ray, const CF_V3 triangle[3])
 {
-    CF_V3 edge1 = cf_sub_v3(triangle[1], triangle[0]);
-    CF_V3 edge2 = cf_sub_v3(triangle[2], triangle[0]);
-    CF_V3 p = cf_cross_v3(ray.d, edge2);
-    float determinant = cf_dot_v3(edge1, p);
-    if (fabsf(determinant) <= 1e-7f * cf_len_v3(edge1) * cf_len_v3(edge2)) {
+    double direction[3] = { ray.d.x, ray.d.y, ray.d.z }, edge1[3], edge2[3], p[3];
+    difference(triangle[1], triangle[0], edge1);
+    difference(triangle[2], triangle[0], edge2);
+    cross(direction, edge2, p);
+    double determinant = dot(edge1, p);
+    if (fabs(determinant) <= 1e-7 * sqrt(dot(edge1, edge1)) * sqrt(dot(edge2, edge2))) {
         return FLT_MAX;
     }
-    CF_V3 delta = cf_sub_v3(ray.p, triangle[0]);
-    float u = cf_dot_v3(delta, p) / determinant;
-    CF_V3 q = cf_cross_v3(delta, edge1);
-    float v = cf_dot_v3(ray.d, q) / determinant;
-    float t = cf_dot_v3(edge2, q) / determinant;
-    return u >= 0 && v >= 0 && u + v <= 1 && t >= 0 && t <= ray.t ? t : FLT_MAX;
+    double delta[3], q[3];
+    difference(ray.p, triangle[0], delta);
+    double u = dot(delta, p) / determinant;
+    cross(delta, edge1, q);
+    double v = dot(direction, q) / determinant;
+    double t = dot(edge2, q) / determinant;
+    return u >= 0 && v >= 0 && u + v <= 1 && t >= 0 && t <= ray.t ? (float)t : FLT_MAX;
 }
 
 render_mesh_hit render_mesh_pick(const render_mesh_asset *mesh, CF_Ray3 ray)

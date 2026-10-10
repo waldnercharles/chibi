@@ -587,6 +587,27 @@ TEST_CASE(mesh_pick_trees_last_until_the_catalog_changes)
     return true;
 }
 
+/* A mesh near float's range picks like one of ordinary size: a quad 2e20
+ * across is hit by a ray from 1e20 above it, 1e20 away, though the products
+ * of its edges pass float's range. */
+TEST_CASE(meshes_near_the_float_limit_pick)
+{
+    quad();
+    for (int i = 0; i < acount(mesh.vertices); i++) {
+        mesh.vertices[i].position = cf_mul_v3_f(mesh.vertices[i].position, 1e20f);
+    }
+    mesh.min = cf_mul_v3_f(mesh.min, 1e20f);
+    mesh.max = cf_mul_v3_f(mesh.max, 1e20f);
+    render_mesh_asset_publish("content/meshes/vast.mesh", &mesh);
+    char error[128];
+    const render_mesh_asset
+        *resident = render_mesh_asset_load("content/meshes/vast.mesh", error, sizeof error);
+    REQUIRE(resident);
+    CF_Ray3 down = { .p = { .5e20f, 1e20f, .5e20f }, .d = { 0, -1, 0 }, .t = 2e20f };
+    REQUIRE(near(render_mesh_pick(resident, down).t / 1e20f, 1));
+    return true;
+}
+
 void test_mesh_files()
 {
     pu_setup(setup, teardown);
@@ -597,5 +618,6 @@ void test_mesh_files()
     RUN_TEST_CASE(mesh_files_hold_the_largest_bake);
     RUN_TEST_CASE(model_exports_write_indexed_meshes);
     RUN_TEST_CASE(mesh_pick_trees_last_until_the_catalog_changes);
+    RUN_TEST_CASE(meshes_near_the_float_limit_pick);
     pu_clear_setup();
 }

@@ -1,6 +1,7 @@
 #ifndef CHIBI_GAME_PROTOTYPE_H
 #define CHIBI_GAME_PROTOTYPE_H
 
+#include "assets/scene_document.h"
 #include "ecs/ecs.h"
 #include "support/asset_value.h"
 
@@ -8,6 +9,15 @@
 
 /* The longest name a prototype may declare, in bytes. */
 #define GAME_PROTOTYPE_NAME_MAX 1024
+/* The most prototype documents one load, or the loads a project prepares
+ * together, may read through includes and children, so a small set of
+ * documents cannot expand without bound. A prepared scene holds at most 4096
+ * records, so no tree that prepares comes near it. */
+#define GAME_PROTOTYPE_EXPANSION_MAX 16384
+/* The most bytes of those documents the same loads may read, the most a
+ * prepared player artifact holds, so many instances of one large document
+ * cannot multiply its size without bound. */
+#define GAME_PROTOTYPE_READ_MAX (64 * 1024 * 1024)
 
 typedef const char *(*game_prototype_include_fn)(const char *name, void *user);
 
@@ -69,6 +79,18 @@ typedef struct game_prototype
     game_prototype_component *detached_components;
     char **graphs;
     char **includes; /* the prototypes its document includes, in order */
+    /* Loaded as authored: it holds only its own content, so saving names its
+     * includes again. */
+    bool authored;
+    /* Its children, nested in the scene entity shape: the document's roots
+     * are this prototype's direct children. NULL when it has none. */
+    game_scene_document *children;
+    /* Loaded with an include resolver, each of `children`'s entities as it
+     * spawns: its prototype with the child's components and behaviors, named
+     * as the child. Empty for an authored load. */
+    struct game_prototype **child_prototypes;
+    int expanded; /* the other documents its load read, at most GAME_PROTOTYPE_EXPANSION_MAX */
+    size_t read; /* their bytes, at most GAME_PROTOTYPE_READ_MAX */
     char **strings;
 } game_prototype;
 
@@ -84,7 +106,8 @@ game_prototype *game_prototype_load(
     size_t error_size
 );
 /* Only what the document itself authors: its includes are named in
- * `includes` but not loaded, so no resolver is needed. For indexing a
+ * `includes`, and its children's prototypes in `children`, but neither is
+ * loaded, so no resolver is needed. For indexing a
  * prototype's direct references; its components are not what it spawns. */
 game_prototype *game_prototype_load_authored(
     const char *text,

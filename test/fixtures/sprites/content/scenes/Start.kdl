@@ -89,4 +89,9 @@ name "Lantern Yard"
         }
         (array)behaviors
     }
+    - {
+        name "Decorative Mosaic"
+        prototype "TileMosaic"
+        (array)behaviors
+    }
 }

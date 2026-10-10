@@ -30,8 +30,8 @@
     NATIVE_MATH_FLOAT(X, "Position", 0)                                        \
     NATIVE_MATH_FLOAT(X, "Velocity", 0)                                        \
     NATIVE_MATH_FLOAT(X, "Target", 0)                                          \
-    NATIVE_MATH_FLOAT(X, "Frequency", 1) NATIVE_MATH_FLOAT(X, "Damping", 1)    \
-        NATIVE_MATH_FLOAT(X, "Delta", 0)
+    NATIVE_MATH_FLOAT(X, "Frequency", 1)                                       \
+    NATIVE_MATH_FLOAT(X, "Damping", 1) NATIVE_MATH_FLOAT(X, "Delta", 0)
 #define NATIVE_MATH_SPRING_OUTPUTS(X)                                          \
     NATIVE_MATH_PORT(X, "Position", PIN_F32, "float", ((pin_value){ 0 }))      \
     NATIVE_MATH_PORT(X, "Velocity", PIN_F32, "float", ((pin_value){ 0 }))

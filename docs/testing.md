@@ -17,6 +17,9 @@ requirements or clear a PR hold. The broad suites below still need migration.
 
 ## Run the checks
 
+Use relevant selectors during iteration and before committing. The groups below
+are for broader changes and CI, not a checklist for every commit.
+
 The engine build compiles the full test drivers, `test_tools` and
 `test_language`, with every native, compiler and renderer package. CI runs each
 group below on every push to `main` and every pull request into it that changes
@@ -54,6 +57,32 @@ Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
 one-minute step timeout (the test supervisor needs POSIX signals) and builds
 Studio against the installed SDK, without running tests. The Windows jobs are
 advisory until they first pass.
+
+## New CPU checks and disposable diagnostics
+
+A new CPU check can make its first supervised run without prior timing evidence
+or separate admission review. Inspect its source and inputs first: the workload
+must be finite, local, and bounded, with no GPU work, network access, or detached
+processes. Run it through the existing supervisor:
+
+```sh
+python3 tools/test_policy.py probe --timeout 10 -- /absolute/path/to/check --case
+```
+
+The timeout defaults to 60 seconds and may only be reduced. The command runs
+from the repository root, inherits any enclosing deadline, and uses the same
+process cleanup as registered checks. `probe` does not classify the workload or
+admit it to routine test groups. Known slow or explicitly quarantined checks and
+GPU workloads still need the admission described in [the inventory](test-quarantine.md).
+Do not use probes to reconstruct quarantined suites.
+
+Permanent regression tests belong in the existing C dispatchers. Disposable
+diagnostics need no dispatcher entry. Keep their scratch in one directory and
+remove generated binaries and project copies afterward; report anything retained
+for investigation. For large project copies use `cp -c` on APFS or
+`cp --reflink=auto` on Linux. Link scratch binaries with dead-code stripping
+(`-Wl,-dead_strip` on macOS, `-Wl,--gc-sections` on Linux) and use sanitizers when
+the diagnostic needs them.
 
 ## Feature coverage
 
@@ -363,9 +392,11 @@ reference events and prototypes they omit or declare their own components. Run
 them on extracted game projects and keep the manifest with the evidence.
 
 Managed test executions, including aggregates, have one hard 60-second ceiling.
-Known slow and unmeasured commands are quarantined; hardware opt-in cannot clear
-it. See [the inventory](test-quarantine.md) for preserved native coverage,
-retired script coverage and exact admitted native tuples.
+Known slow and explicitly quarantined commands remain disabled; hardware opt-in
+cannot clear quarantine. New bounded CPU checks may use the
+[supervised probe](#new-cpu-checks-and-disposable-diagnostics) before admission.
+See [the inventory](test-quarantine.md) for preserved native coverage,
+retired script coverage and registered invocations.
 
 `make test` and `make test-short` run six pure C execution-policy cases through
 `tools/test_policy.py`. This default checks execution-policy decisions only.

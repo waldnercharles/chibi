@@ -25,6 +25,11 @@ do not universally enforce this policy. Do not use them to bypass quarantine,
 reconstruct slow suites through selectors or reset an aggregate budget per child.
 Configuration and compilation remain separate from test execution.
 
+New bounded CPU checks and disposable diagnostics may make their first run through
+[`probe`](testing.md#new-cpu-checks-and-disposable-diagnostics) without prior timing
+evidence or separate admission review. That route retains the supervisor deadline
+and cleanup; it does not re-enable the quarantined coverage below.
+
 ## Quarantined coverage, disabled and not passed
 
 | Coverage | Reason |
@@ -35,7 +40,7 @@ Configuration and compilation remain separate from test execution.
 | Build-integrated runtime checks: `check-generation`, `check-host`, `check-assets`, `check-behavior-backend` | No admission for their complete execution; compilation alone is not a pass. |
 | `test-compiler-parity`, no-SLJIT rejection checks, web backend execution | Unadmitted runtime; retained smoke compilation is not assertion coverage. |
 | Make `benchmark` aggregate and long controller profiles/captures | No complete-command admission. |
-| `agent-gpu-test`, other selector/argument tuples, multi-goal validation | Unmeasured or outside the exact admission inventory. |
+| GPU checks outside `make test-list`, other unclassified workloads, multi-goal validation | Outside the admission inventory and ineligible for the CPU probe route. |
 
 Existing native assertions and fixtures remain. Retired Python/Node suites,
 cloud tooling, MCP script checks and old script benchmark drivers are removed,
@@ -66,9 +71,9 @@ affected-contract checks determine publication requirements; see
 
 ## CI and restoration
 
-CI runs the tooling group, the full engine build with the native and language
-groups, a Studio build with two hidden frames, and clang-format on every pull
-request. Their configuration is not execution
+CI configures the tooling group, the full engine build with the native and language
+groups, a Studio build with two hidden frames, and clang-format, with path filters
+for documentation-only changes. Their configuration is not execution
 proof. Required server checks, independent review, PR/ticket holds and existing
 approval rules remain binding. Local evidence is sufficient when CI is disabled
 unless actual server rules require CI. Short passes certify only their affected

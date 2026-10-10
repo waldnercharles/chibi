@@ -3,7 +3,6 @@ name: chibi-recipes
 description: Step-by-step recipes for the Chibi engine repo. Use when adding a reflected component, a native script function, a test scene or scenario, or a project migration.
 ---
 
-Each recipe ends with the checklist in `AGENTS.md` ("Before every commit").
 Copy the nearest existing example rather than inventing a new shape; the
 smallest ones are named below.
 
@@ -78,7 +77,7 @@ The smallest complete example is Play Sound:
 Opening a project saved at an older version (`chibi_project_open`) upgrades
 it in place, and `chibi_ctl --migrate` does the same explicitly. The
 `validate_project` operation refuses an older project until one of them has
-run. There are no compatibility aliases (see the first rule in `AGENTS.md`).
+run. There are no compatibility aliases (see "Architecture and assets" in `AGENTS.md`).
 
 Bump the version only when you can name a project in this repository,
 `chibi-studio` or `chibi-celeste` that would otherwise load wrong or fail, and

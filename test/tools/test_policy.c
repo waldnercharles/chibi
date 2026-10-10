@@ -172,6 +172,39 @@ static void reset_markers()
     }
 }
 
+static int probe(const char *timeout, const char *mode, const char *argument)
+{
+    char policy[PATH_MAX];
+    int length = snprintf(policy, sizeof policy, "%s/tools/test_policy.py", tool_root());
+    assert(length > 0 && length < (int)sizeof policy);
+    const char *args[] = { "python3",
+                           policy,
+                           "probe",
+                           "--timeout",
+                           timeout,
+                           "--",
+                           mode ? CHIBI_POLICY_WORKER_PATH : NULL,
+                           mode,
+                           argument,
+                           NULL };
+    return tool_run(args, tool_root(), logpath);
+}
+
+TEST_CASE(probe_cli_status_and_bounds)
+{
+    REQUIRE(probe("3", "exit", "0") == 0);
+    REQUIRE(probe("3", "exit", "7") == 7);
+    REQUIRE(probe("0.1", "sleep", "1") == 124);
+    reset_markers();
+    const char *invalid[] = { "0", "-1", "61", "nan", "inf" };
+    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
+        REQUIRE(probe(invalid[i], "mark", directory) == 2);
+        REQUIRE(!exists("last-command"));
+    }
+    REQUIRE(probe("3", NULL, NULL) == 2);
+    return true;
+}
+
 TEST_CASE(studio_acceptance_requires_exact_completion)
 {
     char filename[PATH_MAX];
@@ -312,6 +345,7 @@ void test_tool_test_policy()
     tool_write(driver, driver_source);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(exit_and_aggregate_deadlines);
+    RUN_TEST_CASE(probe_cli_status_and_bounds);
     RUN_TEST_CASE(descendant_cleanup);
     RUN_TEST_CASE(portable_nested_cleanup_preserves_sibling);
     RUN_TEST_CASE(unavailable_discovery_refuses_before_launch);

@@ -2,11 +2,12 @@
 
 **Temporary override:** the [60-second test policy](testing.md#temporary-60-second-policy)
 supersedes test deadlines, full-gate commands and selector admission below.
-Only exact measured invocations in `make test-list` are admitted. CPU classification
-is not timing evidence. Agent test commands now have a 60-second ceiling; full
-hardware opt-in cannot clear quarantine. Preview/MP4 authoring budgets below are
-not permission to run test/profiling captures beyond 60 seconds (including CUT61).
-The remaining text records the underlying capability policy and historical evidence.
+Use `make test-list` for registered invocations. New bounded CPU checks and
+disposable diagnostics may use the [supervised probe](testing.md#new-cpu-checks-and-disposable-diagnostics)
+without prior timing evidence. Agent test commands have a 60-second ceiling;
+hardware opt-in cannot clear quarantine. Preview/MP4 authoring budgets below do
+not extend that ceiling. The remaining text records the underlying capability
+policy and historical evidence.
 
 Use the smallest check that answers the current question. A GPU-heavy game still
 needs GPU evidence for shader, lighting, temporal and rendering changes. Avoid

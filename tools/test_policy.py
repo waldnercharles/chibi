@@ -208,7 +208,7 @@ GROUPS = {
                  'graph-authoring', 'model-runtime'],
 }
 NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render and '
-          'unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')
+          'quarantined checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')
 
 
 def admitted(arguments):
@@ -441,7 +441,7 @@ def run_commands(commands, seconds=LIMIT, env=None, output=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['inventory', 'disabled', 'unit', 'short', 'tool', 'group', 'admit', 'native', 'admit-env', 'native-env', 'agent-env', '_supervise'])
+    parser.add_argument('action', choices=['inventory', 'disabled', 'unit', 'short', 'tool', 'group', 'probe', 'admit', 'native', 'admit-env', 'native-env', 'agent-env', '_supervise'])
     parser.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     arguments = args.arguments
@@ -459,11 +459,23 @@ def main():
         print('ADMITTED: make test-tools (all C tooling and process integrations, one deadline)')
         for name in GROUPS:
             print(f'ADMITTED (60s ceiling): python3 tools/test_policy.py group {name}')
-        print('Retired script suites are absent. Other native commands remain quarantined; see docs/test-quarantine.md.')
+        print('New bounded CPU checks: probe [--timeout SECONDS] -- COMMAND [ARGS...]; see docs/testing.md.')
+        print('Retired script suites are absent. Quarantined coverage remains disabled; see docs/test-quarantine.md.')
         return 0
     if args.action == 'disabled':
         print('DISABLED:', ' '.join(arguments), file=sys.stderr)
         return 2
+    if args.action == 'probe':
+        probe_parser = argparse.ArgumentParser(prog=f'{parser.prog} probe')
+        probe_parser.add_argument('--timeout', type=float, default=LIMIT)
+        probe_parser.add_argument('command', nargs=argparse.REMAINDER)
+        probe = probe_parser.parse_args(arguments)
+        command = probe.command
+        if command[:1] == ['--']:
+            command = command[1:]
+        if not command:
+            probe_parser.error('command required')
+        return run_commands([command], probe.timeout)
     if args.action in ('unit', 'short'):
         if len(arguments) != 1:
             parser.error('unit/short requires the native C tooling test binary')

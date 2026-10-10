@@ -246,7 +246,8 @@ vertices lie away from its origin sorts where its triangles are. Cute sorts
 translucent draws by the translation of their transform, so a mesh's GPU copy
 holds its positions about that center and its draws translate to it. A mesh goes to
 the GPU when it first draws and is freed once a reload replaces it or the
-catalog drops it; `render_scene3d_last_work` counts the meshes held. Tangents
+catalog drops it; `render_scene3d_last_work` counts the meshes held. The copies
+stay ordered by mesh identity, so each draw finds its own by bisection. Tangents
 don't reach the lit pass yet.
 
 ## Optional material inputs
@@ -310,7 +311,8 @@ graphs read a mesh's vertex UVs, its UVs projected from source bounds, its
 part positions and, without part coordinates, its own positions. Picks and
 bounds follow a single triangle rather than its unit box, and a republished
 mesh draws its new triangles while the GPU copies of replaced and removed
-meshes are freed. A translucent mesh whose vertices sit between the eye and a
+meshes are freed. Copies uploaded out of identity order are each found again.
+A translucent mesh whose vertices sit between the eye and a
 translucent box, while its origin lies behind the box, blends over the box as
 a shape in its place does, alone and as one of two copies drawn in one batch. It is a GPU check that runs the main build's
 `test/tools/test_tools` after the agent's device preflight, so build it first

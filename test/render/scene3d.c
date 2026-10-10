@@ -2,6 +2,7 @@
 
 #include "render/fog.h"
 #include "render/mesh_surface.h"
+#include "render/scene3d_mesh_cache.h"
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
@@ -2228,6 +2229,32 @@ TEST_CASE(republished_meshes_replace_their_gpu_copies)
     return true;
 }
 
+/* Copies uploaded out of identity order are each found again: uploading
+ * every mesh a second time makes no new copy. */
+TEST_CASE(mesh_copies_are_found_in_any_upload_order)
+{
+    static const uint64_t identities[] = { 20, 10, 30 };
+    render_scene3d_mesh_cache *cache = render_scene3d_mesh_cache_new();
+    render_mesh_asset meshes[3];
+    bool uploaded = true;
+    for (int i = 0; i < 3; i++) {
+        meshes[i] = box_mesh();
+        meshes[i].identity = identities[i];
+        uploaded = uploaded && render_scene3d_mesh_cache_upload(cache, &meshes[i]);
+    }
+    for (int i = 0; i < 3; i++) {
+        uploaded = uploaded &&
+                   render_scene3d_mesh_cache_upload(cache, &meshes[2 - i]);
+    }
+    int copies = render_scene3d_mesh_cache_count(cache);
+    render_scene3d_mesh_cache_free(cache);
+    for (int i = 0; i < 3; i++) {
+        render_mesh_asset_free(&meshes[i]);
+    }
+    REQUIRE(uploaded && copies == 3);
+    return true;
+}
+
 static const CF_V3 eyeward = { 0, 2, 2 }; /* Up and toward the eye. */
 static const GameGeometry3D unit_box = { GAME_PRIMITIVE_BOX, 1, 1, 1 };
 
@@ -2586,6 +2613,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy);
     RUN_TEST_CASE(picking_and_bounds_follow_imported_triangles);
     RUN_TEST_CASE(republished_meshes_replace_their_gpu_copies);
+    RUN_TEST_CASE(mesh_copies_are_found_in_any_upload_order);
     RUN_TEST_CASE(translucent_meshes_sort_by_their_bounds);
     RUN_TEST_CASE(translucent_copies_of_a_mesh_sort_by_their_bounds);
 #if CHIBI_TEST_MATERIAL_GRAPHS

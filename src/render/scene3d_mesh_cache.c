@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct
 {
@@ -15,7 +16,7 @@ typedef struct
 
 struct render_scene3d_mesh_cache
 {
-    uploaded *meshes;
+    uploaded *meshes; /* Ordered by identity, so draws find theirs by bisection. */
     uint64_t pruned; /* The catalog generation the copies were last pruned at. */
 };
 
@@ -67,14 +68,26 @@ static CF_V3 center(const render_mesh_asset *mesh)
     return cf_mul_v3_f(cf_add_v3(mesh->min, mesh->max), .5f);
 }
 
+/* Where `identity`'s copy is, or would go to keep the order. */
+static int slot(const render_scene3d_mesh_cache *cache, uint64_t identity)
+{
+    int low = 0, high = acount(cache->meshes);
+    while (low < high) {
+        int middle = low + (high - low) / 2;
+        if (cache->meshes[middle].identity < identity) {
+            low = middle + 1;
+            continue;
+        }
+        high = middle;
+    }
+    return low;
+}
+
 static CF_Mesh find(const render_scene3d_mesh_cache *cache, uint64_t identity)
 {
-    for (int i = 0; i < acount(cache->meshes); i++) {
-        if (cache->meshes[i].identity == identity) {
-            return cache->meshes[i].mesh;
-        }
-    }
-    return (CF_Mesh){ 0 };
+    int i = slot(cache, identity);
+    bool held = i < acount(cache->meshes) && cache->meshes[i].identity == identity;
+    return held ? cache->meshes[i].mesh : (CF_Mesh){ 0 };
 }
 
 static CF_Mesh upload(const render_mesh_asset *mesh)
@@ -111,7 +124,11 @@ bool render_scene3d_mesh_cache_upload(render_scene3d_mesh_cache *cache, const re
     if (!gpu.id) {
         return false;
     }
-    apush(cache->meshes, ((uploaded){ mesh->identity, gpu }));
+    int at = slot(cache, mesh->identity), after = acount(cache->meshes) - at;
+    asetlen(cache->meshes, acount(cache->meshes) + 1);
+    uploaded *place = &cache->meshes[at];
+    memmove(place + 1, place, (size_t)after * sizeof *place);
+    *place = (uploaded){ mesh->identity, gpu };
     return true;
 }
 

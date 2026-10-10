@@ -259,8 +259,11 @@ static bool read_component(
     }
     av_value *icon = av_obj_get(value, "icon");
     if (icon) {
-        int index = name_index(av_get_str(icon), ICON_NAMES, COMPONENT_ICON_COUNT);
-        if (index < 0) {
+        /* "none" clears an engine icon, so another component's shows. */
+        bool none = av_is_str(icon) && !strcmp(av_get_str(icon), "none");
+        int index = none ? COMPONENT_ICON_NONE
+                         : name_index(av_get_str(icon), ICON_NAMES, COMPONENT_ICON_COUNT);
+        if (!none && index < 0) {
             return fail(error, size, "%s: unknown icon %s", name, av_is_str(icon) ? av_get_str(icon) : "");
         }
         component.icon = (component_icon)index;

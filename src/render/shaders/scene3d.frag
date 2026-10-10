@@ -21,6 +21,8 @@ layout(set = 2, binding = SG_SHADOW_BLOCKERS_BINDING) uniform sampler2D scene_sh
 layout(set = 2, binding = SG_LIGHT_SHADOW_BINDING) uniform sampler2DShadow scene_light_shadow_map;
 layout(set = 2, binding = SG_SKY_SPECULAR_BINDING) uniform samplerCube scene_sky_specular;
 layout(set = 2, binding = SG_SKY_BRDF_BINDING) uniform sampler2D scene_sky_brdf;
+// The screen's ambient occlusion, one texel per pixel, or one open texel.
+layout(set = 2, binding = SG_OCCLUSION_BINDING) uniform sampler2D scene_occlusion;
 // SDL's Vulkan backend binds only the first 4 KB of each uniform block, which
 // the scene's lights fill, so the sky's light has a block of its own. It takes
 // the name draw3d fills besides uniform_block: GLES matches blocks by name.
@@ -337,10 +339,19 @@ vec3 ambient_light(vec3 base, float roughness, float metallic, vec3 normal, vec3
     return base * (1.0 - metallic) * mix(scene_ambient_ground.rgb, scene_ambient_sky.rgb, sky);
 }
 
+// The screen's ambient occlusion at this pixel.
+float screen_occlusion()
+{
+    vec2 uv = gl_FragCoord.xy / vec2(textureSize(scene_occlusion, 0));
+    return textureLod(scene_occlusion, uv, 0.0).r;
+}
+
 vec3 direct_light(vec3 base, float roughness, float metallic, float occlusion, vec3 normal, vec3 view)
 {
-    // Occlusion dims only the ambient and sky light, which arrive from every side.
-    vec3 result = ambient_light(base, roughness, metallic, normal, view) * occlusion;
+    // Occlusion dims only the ambient and sky light, which arrive from every
+    // side; the surface's own and the screen's overlap, so the stronger holds.
+    float open = min(occlusion, screen_occlusion());
+    vec3 result = ambient_light(base, roughness, metallic, normal, view) * open;
     if (dot(scene_sun_color.rgb, scene_sun_color.rgb) > 0.0) {
         result += surface_light(base, roughness, metallic, normal, view, scene_sun_direction.xyz) *
                   scene_sun_color.rgb * sun_shadow();

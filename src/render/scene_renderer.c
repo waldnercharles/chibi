@@ -376,6 +376,7 @@ bool app_scene_renderer_draw3d(
     if (!scene3d_prepare(renderer, width, height, &settings)) {
         return false;
     }
+    render_scene3d_set_size(renderer->scene3d, width, height);
     bool drawn = scene3d_finish(
         renderer,
         render_scene3d_draw(

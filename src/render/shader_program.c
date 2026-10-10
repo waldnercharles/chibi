@@ -12,11 +12,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* The scene's shadow, shadow blocker, light shadow, sky specular and split-sum
- * maps, which follow its images in set 2. */
+/* The scene's shadow, shadow blocker, light shadow, sky specular, split-sum
+ * and ambient occlusion maps, which follow its images in set 2. */
 enum
 {
-    SCENE3D_MAPS = 5
+    SCENE3D_MAPS = 6
 };
 
 typedef struct
@@ -303,7 +303,8 @@ static bool compile(render_programs *programs, program *entry)
         "%d\n#define SG_SHADOW_BINDING %d\n#define SG_SHADOW_BLOCKERS_BINDING "
         "%d\n#define SG_LIGHT_SHADOW_BINDING %d\n#define "
         "SG_SKY_SPECULAR_BINDING "
-        "%d\n#define SG_SKY_BRDF_BINDING %d\n%s%s%s%s\n%s",
+        "%d\n#define SG_SKY_BRDF_BINDING %d\n#define SG_OCCLUSION_BINDING "
+        "%d\n%s%s%s%s\n%s",
         SHADER_OUTPUT_MAX,
         programs->kind == RENDER_PROGRAM_RASTER_MESH
             ? "#define SG_ACCUMULATE 1\n#define SG_MESH_LAYER 1\n"
@@ -324,6 +325,7 @@ static bool compile(render_programs *programs, program *entry)
         entry->set.count + 3,
         entry->set.count + 4,
         entry->set.count + 5,
+        entry->set.count + 6,
         scene,
         uniforms,
         ramps,

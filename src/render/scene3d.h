@@ -67,6 +67,9 @@ void render_scene3d_set_parallel(render_scene3d *scene3d, bool enabled);
 render_scene3d_work render_scene3d_last_work(const render_scene3d *scene3d);
 void render_scene3d_free(render_scene3d *scene3d);
 void render_scene3d_reset(render_scene3d *scene3d);
+/* The pixel size of the canvas later draws fill, which the Environment's
+ * ambient occlusion works at. A draw with occlusion on needs one. */
+void render_scene3d_set_size(render_scene3d *scene3d, int width, int height);
 const char *render_scene3d_error(const render_scene3d *scene3d);
 /* Retained simulation particles plus renderer emitter tails and attached heads. */
 int render_scene3d_particle_count(const render_scene3d *scene3d);

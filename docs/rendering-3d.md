@@ -62,10 +62,11 @@ eye is from the origin.
   hidden light. Spot and point lights share the 32-light ranking, and a spot
   light without a direction lights nothing. `shadows` works as it does for a
   point light.
-- **Environment** (`GameEnvironment`): exposure, bloom, a sky (see Sky), and a
+- **Environment** (`GameEnvironment`): exposure, bloom, a sky (see Sky), a
   hemisphere ambient that blends `ambient_ground` below to `ambient_sky` above,
-  scaled by `ambient_intensity`. A sky's light replaces the hemisphere ambient.
-  Without an Environment the scene uses `game_environment_defaults()`.
+  scaled by `ambient_intensity`, and ambient occlusion (see Ambient
+  occlusion). A sky's light replaces the hemisphere ambient. Without an
+  Environment the scene uses `game_environment_defaults()`.
 
 Omitted KDL fields are zero, so author every lighting field you need. Studio adds
 both components with their defaults filled in.
@@ -174,6 +175,48 @@ The Environment also sets how scene-linear light reaches the display:
   scene time is paused; zero adapts every frame. The first frame, any jump
   back in scene time, and the frame after `app_scene_renderer_reset` (Studio
   resets on scene load, restart and stop) snap to the metered value.
+
+## Ambient occlusion
+
+The Environment's `occlusion` darkens ambient and sky light where nearby
+surfaces hide the sky from each other: creases, corners and the ground under
+objects. It leaves the sun, point and spot lights alone, and where a
+material's own Occlusion is lower, that holds. `occlusion_radius` is how far,
+in world units, a surface looks for what occludes it; it must be positive and
+finite while occlusion is on. A radius reaching across more than a quarter of
+the frame's height, close to the camera, searches only that far.
+
+`render/scene3d_occlusion.c` draws the opaque solids' depth from the camera,
+culled as the lit pass culls them, with masked materials keeping only the
+pixels they keep. Ground-truth ambient occlusion (GTAO) then searches that
+depth along screen-space slices through each pixel's view direction for the
+highest horizon on either side within the radius, and integrates the
+cosine-weighted sky left open between them. The slices' turn and the steps'
+offsets change over each 4x4 block of texels, and a blur averages each block,
+weighting each texel by how close its point lies to the pixel's surface plane
+so that occlusion stays on its own surface across edges. Translucent surfaces
+neither occlude nor take the occlusion of what lies behind them, and pixels
+past the frame's edge occlude nothing. The quality sets the slices, steps and
+resolution:
+
+| Quality | Slices | Steps per side | Resolution |
+| --- | --- | --- | --- |
+| Off | | | none; no depth pass |
+| Low | 2 | 4 | half |
+| Medium (default) | 3 | 6 | half |
+| High | 4 | 8 | full |
+
+Environments saved before this setting load with it Off. Studio adds an
+Environment with Medium and a radius of 1, and a 3D scene without an
+Environment draws with those defaults. Hosts that draw through
+`render_scene3d_draw` call `render_scene3d_set_size` with the canvas's pixel
+size first; `app_scene_renderer_draw3d` does. Samples snap to pixel centers,
+which can lie just off their slice, so flat surfaces can lose a level or two
+of 8-bit output.
+
+Reference: Jimenez et al., [Practical Real-Time Strategies for Accurate
+Indirect Occlusion](https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accurate_Indirect_Occlusion_NEW%20VERSION_COLOR.pdf),
+and Intel's [XeGTAO](https://github.com/GameTechDev/XeGTAO).
 
 ## Sky
 
@@ -498,7 +541,15 @@ makes the tangents or the model authors them, the square's u runs either way,
 or a node mirrors it, and away with the image upside down or the authored
 bitangents reversed.
 A box's Occlusion dims hemisphere ambient and sky light in proportion and
-leaves a sun's light as it was. At Opacity 0.3 over a purple sky, a Blend box
+leaves a sun's light as it was. Ambient occlusion at Low, Medium and High
+darkens the floor and the box's face where a box meets the floor, under
+uniform ambient light, and leaves open floor and the box's roof within about
+two levels a channel; with only a shadowing sun, the image is the same with it
+on and off. A nearly opaque translucent panel in front of that crease keeps its light,
+and the floor it stands on stays open. A radius of zero, negative or not
+finite and an unknown quality are rejected, and Off accepts a zero radius. A
+masked box cut out entirely occludes nothing, and one that keeps its pixels
+darkens the crease, with no light casting shadows. At Opacity 0.3 over a purple sky, a Blend box
 mixes over it, Opaque and Mask boxes above their cutoff draw whole, and a Mask
 box below its cutoff leaves only the sky; only Blend counts as translucent.
 Opaque and Mask boxes shadow the floor, and a Blend box does not. A box masked
@@ -512,13 +563,13 @@ check that runs the main build's
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 90 cases and 79358 assertions in 17.9 seconds on 2026-10-10.
+Vulkan llvmpipe passed 95 cases and 83503 assertions in 23.3 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 90
-cases and 79358 assertions in 13.1 seconds on 2026-10-10.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 95
+cases and 83503 assertions in 15.2 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

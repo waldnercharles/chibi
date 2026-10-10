@@ -1281,9 +1281,10 @@ GameGlobalTransform2D;
  * without one it is static. A dynamic body must be placed in the world, and
  * physics writes its position, rotation and velocities back. Any other body
  * under a ChildOf parent with a Transform3D follows it and ignores its own
- * velocities: it moves through each step with the moving body above it,
- * never touches the body above it or the others that body carries, and
- * teleports when anything else moves its parents. */
+ * velocities. When the top of its hierarchy has a body, its collider becomes
+ * part of that body: it moves with it through each step, adds its mass (a
+ * sensor adds none) and passes its hits on to it. Otherwise it teleports with
+ * its parents. */
 
 typedef enum
 {

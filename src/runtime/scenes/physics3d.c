@@ -42,23 +42,23 @@ typedef struct
     bool follower; /* Placed by a ChildOf parent with a Transform3D. */
 } placement;
 
-/* One per entity slot while the entity has a body. */
+/* One per entity slot while the entity has a collider. */
 typedef struct
 {
     ecs_entity entity;
-    b3BodyId body;
-    b3ShapeId shape;
+    b3BodyId body; /* Its own, or null while another body carries its shape. */
+    b3ShapeId shape;  /* Null while a follower waits to be placed. */
+    unsigned carrier; /* The slot whose body holds the shape. */
     GameCollider3D collider;
     GameBodyType type;
-    CF_V3 scale; /* The world scale the shape was built at. */
+    CF_V3 scale; /* The scale the shape was built at. */
     bool follower, seen;
-    /* The slot of the body it moves with, its own unless it follows an
-     * anchor, or 0 until grouped. */
-    unsigned group;
     /* A root's local transform as physics last read or wrote it; a change
      * means something else moved it. */
     GameTransform3D written;
-    pose placed; /* A follower's world pose as last placed. */
+    /* A follower's pose on its carrier's body, or in the world when it has a
+     * body of its own. */
+    pose placed;
     CF_V3 linear_velocity, angular_velocity; /* As last set or written back. */
     pose start, end; /* A moving root's solved poses around the last step. */
 } body_record;
@@ -88,7 +88,7 @@ struct game_physics3d
     int body_count;
     contact_pair *previous, *current;
     b3ContactData *contacts;
-    b3ShapeId *visitors;
+    b3ShapeId *shapes; /* Scratch for sensor visitors and a body's shapes. */
     task_slot slots[B3_MAX_TASKS];
     int slot_count;
     char error[256];
@@ -158,6 +158,14 @@ static CF_Quat unit(CF_Quat q)
     return q.x || q.y || q.z || q.w ? cf_quat_norm(q) : cf_quat_identity();
 }
 
+static placement follower_placement(CF_M4x4 m)
+{
+    placement at = { .follower = true };
+    cf_m4_decompose(m, &at.pose.position, &at.pose.rotation, &at.scale);
+    at.scale = cf_abs_v3(at.scale);
+    return at;
+}
+
 static placement place(const ecs_world *world, ecs_entity entity)
 {
     const GameTransform3D *local = GAME_GameTransform3D_get_const(world, entity);
@@ -177,10 +185,26 @@ static placement place(const ecs_world *world, ecs_entity entity)
         m.elements[i * 4 + 1] = columns[i].y;
         m.elements[i * 4 + 2] = columns[i].z;
     }
-    placement at = { .follower = true };
-    cf_m4_decompose(m, &at.pose.position, &at.pose.rotation, &at.scale);
-    at.scale = cf_abs_v3(at.scale);
-    return at;
+    return follower_placement(m);
+}
+
+/* Where a follower sits on its anchor's body: its own and its parents'
+ * Transform3D below the anchor, after the anchor's scale. It stays put while
+ * the anchor moves and turns. */
+static placement carried_placement(const ecs_world *world, ecs_entity entity, ecs_entity anchor)
+{
+    CF_M4x4 m = cf_m4_identity();
+    for (ecs_entity at = entity; !same_entity(at, anchor);
+         at = game_transform_parent_3d(world, at)) {
+        const GameTransform3D *local = GAME_GameTransform3D_get_const(world, at);
+        m = cf_mul_m4(
+            cf_m4_from_trs(local->position, unit(local->rotation), local->scale),
+            m
+        );
+    }
+    const GameTransform3D *top = GAME_GameTransform3D_get_const(world, anchor);
+    m = cf_mul_m4(cf_m4_from_trs(cf_v3(0, 0, 0), cf_quat_identity(), top->scale), m);
+    return follower_placement(m);
 }
 
 /* The capsule's radius and the half length of its segment, after scale. */
@@ -279,19 +303,6 @@ static void finish_task(void *task, void *user)
     physics->tasks.finish(task, physics->tasks.user);
 }
 
-static const body_record *shape_record(const game_physics3d *physics, b3ShapeId shape)
-{
-    return &physics->bodies[(uintptr_t)b3Shape_GetUserData(shape)];
-}
-
-/* Bodies that move together never touch. Box3D asks from its workers during
- * the step, while the records hold still. */
-static bool apart(b3ShapeId a, b3ShapeId b, void *user)
-{
-    const game_physics3d *physics = user;
-    return shape_record(physics, a)->group != shape_record(physics, b)->group;
-}
-
 static void create_world(game_physics3d *physics)
 {
     b3WorldDef def = b3DefaultWorldDef();
@@ -307,7 +318,6 @@ static void create_world(game_physics3d *physics)
         def.userTaskContext = physics;
     }
     physics->simulation = b3CreateWorld(&def);
-    b3World_SetCustomFilterCallback(physics->simulation, apart, physics);
 }
 
 static void destroy_world(game_physics3d *physics)
@@ -348,7 +358,7 @@ void game_physics3d_free(game_physics3d *physics)
     afree(physics->previous);
     afree(physics->current);
     afree(physics->contacts);
-    afree(physics->visitors);
+    afree(physics->shapes);
     game_task_pool_release(physics->pool);
     free(physics);
 }
@@ -423,7 +433,7 @@ static void wake_overlapping(game_physics3d *physics, b3ShapeId shape)
     b3World_OverlapAABB(physics->simulation, bounds, b3DefaultQueryFilter(), wake, NULL);
 }
 
-static b3ShapeId create_shape(body_record *record)
+static b3ShapeId create_shape(const body_record *record, b3BodyId body, b3Transform offset)
 {
     const GameCollider3D *collider = &record->collider;
     CF_V3 scale = record->scale;
@@ -435,60 +445,83 @@ static b3ShapeId create_shape(body_record *record)
     def.filter.maskBits = collider->mask;
     def.isSensor = collider->sensor;
     def.enableSensorEvents = true;
-    /* Only a follower shares its group with other bodies. */
-    def.enableCustomFiltering = record->follower;
+    if (record->follower && collider->sensor) {
+        def.density = 0; /* A carried sensor adds no mass. */
+    }
     float radius, half;
     switch (collider->shape) {
         case GAME_COLLIDER3D_BOX: {
             CF_V3 extent = cf_mul_v3_f(cf_mul_v3(collider->size, scale), .5f);
-            b3BoxHull box = b3MakeBoxHull(extent.x, extent.y, extent.z);
-            return b3CreateHullShape(record->body, &def, &box.base);
+            b3BoxHull box = b3MakeTransformedBoxHull(extent.x, extent.y, extent.z, offset);
+            return b3CreateHullShape(body, &def, &box.base);
         }
         case GAME_COLLIDER3D_SPHERE: {
-            b3Sphere sphere = { .radius = collider->radius *
-                                          fmaxf(scale.x, fmaxf(scale.y, scale.z)) };
-            return b3CreateSphereShape(record->body, &def, &sphere);
+            b3Sphere sphere = { offset.p,
+                                collider->radius *
+                                    fmaxf(scale.x, fmaxf(scale.y, scale.z)) };
+            return b3CreateSphereShape(body, &def, &sphere);
         }
         case GAME_COLLIDER3D_CAPSULE: {
             capsule_extent(collider, scale, &radius, &half);
-            b3Capsule capsule = { { 0, -half, 0 }, { 0, half, 0 }, radius };
-            return b3CreateCapsuleShape(record->body, &def, &capsule);
+            b3Capsule capsule = { b3TransformPoint(offset, (b3Vec3){ 0, -half, 0 }),
+                                  b3TransformPoint(offset, (b3Vec3){ 0, half, 0 }),
+                                  radius };
+            return b3CreateCapsuleShape(body, &def, &capsule);
         }
     }
     assert(false);
     return (b3ShapeId){ 0 };
 }
 
+/* Puts the record's collider at offset on body and wakes what it overlaps. */
+static void add_shape(game_physics3d *physics, body_record *record, b3BodyId body, b3Transform offset)
+{
+    record->shape = create_shape(record, body, offset);
+    wake_overlapping(physics, record->shape);
+}
+
+/* A body of the record's own, with its collider at the body's origin. */
 static void create_body(game_physics3d *physics, body_record *record, pose at)
 {
     b3BodyDef def = b3DefaultBodyDef();
-    /* A follower moves and turns with its anchor through each step, which
-     * Box3D allows only kinematic bodies. A static and a kinematic body touch
-     * the same bodies. */
+    /* A follower without an anchor moves only when its parents do. A static
+     * and a kinematic body touch the same bodies. */
     def.type = record->follower ? b3_kinematicBody : body_type(record->type);
     def.position = to_b3(at.position);
     def.rotation = quat_to_b3(at.rotation);
     record->body = b3CreateBody(physics->simulation, &def);
-    record->shape = create_shape(record);
-    wake_overlapping(physics, record->shape);
+    record->carrier = record->entity.slot;
+    add_shape(physics, record, record->body, b3Transform_identity);
     record->start = record->end = at;
     physics->body_count++;
 }
 
-/* A new shape loses the old one's contacts, which Box3D filtered when they
- * began. */
-static void reshape(game_physics3d *physics, body_record *record)
+/* Destroying a body destroys the shapes of the followers it carries, which
+ * the next placement puts back. */
+static void destroy_body(game_physics3d *physics, body_record *record)
 {
-    b3DestroyShape(record->shape, true);
-    record->shape = create_shape(record);
-    wake_overlapping(physics, record->shape);
+    if (b3Body_GetShapeCount(record->body) > 1) {
+        for (int i = 0; i < acount(physics->bodies); i++) {
+            body_record *carried = &physics->bodies[i];
+            if (B3_IS_NULL(carried->body) && carried->carrier == record->entity.slot) {
+                carried->shape = b3_nullShapeId;
+            }
+        }
+    }
+    b3DestroyBody(record->body);
+    record->body = b3_nullBodyId;
+    record->shape = b3_nullShapeId;
+    physics->body_count--;
 }
 
-static void remove_body(game_physics3d *physics, body_record *record)
+static void remove_record(game_physics3d *physics, body_record *record)
 {
-    b3DestroyBody(record->body);
+    if (B3_IS_NON_NULL(record->body)) {
+        destroy_body(physics, record);
+    } else if (B3_IS_NON_NULL(record->shape)) {
+        b3DestroyShape(record->shape, true);
+    }
     *record = (body_record){ 0 };
-    physics->body_count--;
 }
 
 static bool same_collider(const GameCollider3D *a, const GameCollider3D *b)
@@ -501,8 +534,8 @@ static bool same_collider(const GameCollider3D *a, const GameCollider3D *b)
 }
 
 /* Box3D also leaves bodies asleep when what they rest on moves away, so a
- * teleport wakes the bodies touching the body where it was, then those it
- * overlaps where it lands. */
+ * teleport wakes the bodies touching the body where it was, then those its
+ * shapes overlap where it lands. */
 static void teleport(game_physics3d *physics, body_record *record, pose at)
 {
     int capacity = b3Body_GetContactCapacity(record->body);
@@ -513,11 +546,15 @@ static void teleport(game_physics3d *physics, body_record *record, pose at)
         wake(physics->contacts[i].shapeIdB, NULL);
     }
     b3Body_SetTransform(record->body, to_b3(at.position), quat_to_b3(at.rotation));
-    wake_overlapping(physics, record->shape);
+    asetlen(physics->shapes, b3Body_GetShapeCount(record->body));
+    count = b3Body_GetShapes(record->body, physics->shapes, acount(physics->shapes));
+    for (int i = 0; i < count; i++) {
+        wake_overlapping(physics, physics->shapes[i]);
+    }
 }
 
 /* A root teleports when something other than physics moved its Transform3D,
- * and a follower when its placement changed other than with its anchor. */
+ * and a follower with a body of its own when its parents moved. */
 static void move(game_physics3d *physics, body_record *record, placement at)
 {
     if (at.follower) {
@@ -557,6 +594,28 @@ static void set_velocities(body_record *record, const GameBody3D *body)
     }
 }
 
+/* Gives the record a body of its own at the placement, with a new shape when
+ * its collider or scale changed. */
+static void own_body(game_physics3d *physics, body_record *record, const GameCollider3D *collider, placement at)
+{
+    bool reshaped = !same_collider(collider, &record->collider) ||
+                    !same_scale(at.scale, record->scale);
+    record->collider = *collider;
+    record->scale = at.scale;
+    if (B3_IS_NULL(record->body)) {
+        if (B3_IS_NON_NULL(record->shape)) {
+            b3DestroyShape(record->shape, true);
+        }
+        create_body(physics, record, at.pose);
+        return;
+    }
+    if (reshaped) {
+        b3DestroyShape(record->shape, true);
+        add_shape(physics, record, record->body, b3Transform_identity);
+    }
+    move(physics, record, at);
+}
+
 static int sync_entity(game_physics3d *physics, ecs_entity entity)
 {
     ecs_world *world = physics->world;
@@ -581,32 +640,97 @@ static int sync_entity(game_physics3d *physics, ecs_entity entity)
         );
     }
     body_record *record = &physics->bodies[entity.slot];
-    if (B3_IS_NON_NULL(record->body) &&
+    if (record->entity.slot &&
         (!same_entity(record->entity, entity) || record->type != body.type ||
          record->follower != at.follower)) {
-        remove_body(physics, record);
+        remove_record(physics, record);
     }
-    if (B3_IS_NULL(record->body)) {
+    if (!record->entity.slot) {
         *record = (body_record){ .entity = entity,
-                                 .collider = *collider,
                                  .type = body.type,
-                                 .scale = at.scale,
                                  .follower = at.follower };
-        create_body(physics, record, at.pose);
-    } else {
-        if (!same_collider(collider, &record->collider) ||
-            !same_scale(at.scale, record->scale)) {
-            record->collider = *collider;
-            record->scale = at.scale;
-            reshape(physics, record);
-        }
-        move(physics, record, at);
     }
+    record->seen = true;
+    if (at.follower) {
+        return FLOW_OK; /* Placed once every root has its body. */
+    }
+    own_body(physics, record, collider, at);
     record->written = *GAME_GameTransform3D_get_const(world, entity);
     record->placed = at.pose;
-    record->seen = true;
     set_velocities(record, &body);
     return FLOW_OK;
+}
+
+/* The body a follower rides on: its nearest ancestor with a body that follows
+ * nothing, or NULL when none places it. */
+static const body_record *anchor(const game_physics3d *physics, ecs_entity entity)
+{
+    for (ecs_entity at = game_transform_parent_3d(physics->world, entity); at.slot;
+         at = game_transform_parent_3d(physics->world, at)) {
+        const body_record *record = at.slot < (unsigned)acount(physics->bodies)
+                                      ? &physics->bodies[at.slot]
+                                      : NULL;
+        if (record && B3_IS_NON_NULL(record->body) && !record->follower &&
+            same_entity(record->entity, at)) {
+            return record;
+        }
+    }
+    return NULL;
+}
+
+/* Puts the follower's shape on its anchor's body, so the solver moves it with
+ * that body and its hits act on it. A changed placement gets a new shape. */
+static void carry(game_physics3d *physics, body_record *record, const body_record *with)
+{
+    const GameCollider3D
+        *collider = GAME_GameCollider3D_get_const(physics->world, record->entity);
+    placement at = carried_placement(physics->world, record->entity, with->entity);
+    if (B3_IS_NON_NULL(record->body)) {
+        destroy_body(physics, record);
+    }
+    if (B3_IS_NON_NULL(record->shape) && record->carrier == with->entity.slot &&
+        same_collider(collider, &record->collider) &&
+        same_pose(at.pose, record->placed) && same_scale(at.scale, record->scale)) {
+        return;
+    }
+    if (B3_IS_NON_NULL(record->shape)) {
+        b3DestroyShape(record->shape, true);
+    }
+    record->carrier = with->entity.slot;
+    record->collider = *collider;
+    record->scale = at.scale;
+    record->placed = at.pose;
+    add_shape(
+        physics,
+        record,
+        with->body,
+        (b3Transform){ to_b3(at.pose.position), quat_to_b3(at.pose.rotation) }
+    );
+}
+
+/* Each follower rides on its anchor's body. One without an anchor has a
+ * kinematic body of its own that its parents place. */
+static void place_followers(game_physics3d *physics)
+{
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        body_record *record = &physics->bodies[i];
+        if (!record->entity.slot || !record->follower) {
+            continue;
+        }
+        const body_record *with = anchor(physics, record->entity);
+        if (with) {
+            carry(physics, record, with);
+            continue;
+        }
+        placement at = place(physics->world, record->entity);
+        own_body(
+            physics,
+            record,
+            GAME_GameCollider3D_get_const(physics->world, record->entity),
+            at
+        );
+        record->placed = at.pose;
+    }
 }
 
 static int gravity(game_physics3d *physics, CF_V3 *out)
@@ -670,10 +794,11 @@ static int synchronize(game_physics3d *physics)
     }
     for (int i = 0; i < acount(physics->bodies); i++) {
         body_record *record = &physics->bodies[i];
-        if (B3_IS_NON_NULL(record->body) && !record->seen) {
-            remove_body(physics, record);
+        if (record->entity.slot && !record->seen) {
+            remove_record(physics, record);
         }
     }
+    place_followers(physics);
     return FLOW_OK;
 }
 
@@ -687,83 +812,6 @@ static pose body_pose(b3BodyId body)
 {
     b3WorldTransform transform = b3Body_GetTransform(body);
     return (pose){ from_b3(transform.p), quat_from_b3(transform.q) };
-}
-
-/* The body a follower moves with: its nearest ancestor with a body that
- * follows nothing, or NULL when none places it. */
-static const body_record *anchor(const game_physics3d *physics, ecs_entity entity)
-{
-    for (ecs_entity at = game_transform_parent_3d(physics->world, entity); at.slot;
-         at = game_transform_parent_3d(physics->world, at)) {
-        const body_record *record = at.slot < (unsigned)acount(physics->bodies)
-                                      ? &physics->bodies[at.slot]
-                                      : NULL;
-        if (record && B3_IS_NON_NULL(record->body) && !record->follower &&
-            same_entity(record->entity, at)) {
-            return record;
-        }
-    }
-    return NULL;
-}
-
-/* Groups each body with the one it moves with. Box3D filters a pair of
- * shapes only as they begin to overlap, so a follower that changes groups
- * gets a new shape. */
-static void group_followers(game_physics3d *physics)
-{
-    for (int i = 0; i < acount(physics->bodies); i++) {
-        body_record *record = &physics->bodies[i];
-        if (B3_IS_NULL(record->body)) {
-            continue;
-        }
-        const body_record *with = record->follower ? anchor(physics, record->entity)
-                                                   : NULL;
-        unsigned group = with ? with->entity.slot : record->entity.slot;
-        bool regrouped = record->group && record->group != group;
-        record->group = group;
-        if (regrouped) {
-            reshape(physics, record);
-        }
-    }
-}
-
-/* Before the step, each follower takes the velocity of the point of its
- * anchor it is attached to, so contacts during the step see it move. */
-static void lead_followers(game_physics3d *physics)
-{
-    for (int i = 0; i < acount(physics->bodies); i++) {
-        body_record *record = &physics->bodies[i];
-        if (B3_IS_NULL(record->body) || record->group == record->entity.slot) {
-            continue;
-        }
-        const body_record *with = &physics->bodies[record->group];
-        b3Vec3 spin = b3Body_GetAngularVelocity(with->body);
-        b3Vec3 arm = b3Sub(to_b3(record->placed.position), b3Body_GetWorldCenterOfMass(with->body));
-        b3Body_SetLinearVelocity(
-            record->body,
-            b3Add(b3Body_GetLinearVelocity(with->body), b3Cross(spin, arm))
-        );
-        b3Body_SetAngularVelocity(record->body, spin);
-    }
-}
-
-/* After the step and write-back, each follower lands exactly where its
- * parents now place it and rests until the next step. */
-static void land_followers(game_physics3d *physics)
-{
-    for (int i = 0; i < acount(physics->bodies); i++) {
-        body_record *record = &physics->bodies[i];
-        if (B3_IS_NULL(record->body) || !record->follower) {
-            continue;
-        }
-        pose at = place(physics->world, record->entity).pose;
-        if (!same_pose(at, record->placed)) {
-            b3Body_SetTransform(record->body, to_b3(at.position), quat_to_b3(at.rotation));
-            record->placed = at;
-        }
-        b3Body_SetLinearVelocity(record->body, (b3Vec3){ 0 });
-        b3Body_SetAngularVelocity(record->body, (b3Vec3){ 0 });
-    }
 }
 
 static void write_back(game_physics3d *physics)
@@ -791,7 +839,8 @@ static void write_back(game_physics3d *physics)
 
 static uint64_t shape_entity(const game_physics3d *physics, b3ShapeId shape)
 {
-    return ecs_entity_to_u64(shape_record(physics, shape)->entity);
+    uintptr_t slot = (uintptr_t)b3Shape_GetUserData(shape);
+    return ecs_entity_to_u64(physics->bodies[slot].entity);
 }
 
 static void add_pair(game_physics3d *physics, uint64_t a, uint64_t b, CF_V3 point)
@@ -846,11 +895,11 @@ static void collect_contacts(game_physics3d *physics, const body_record *record)
 static void collect_visitors(game_physics3d *physics, const body_record *record)
 {
     int capacity = b3Shape_GetSensorCapacity(record->shape);
-    asetlen(physics->visitors, capacity);
-    int count = b3Shape_GetSensorData(record->shape, physics->visitors, capacity);
+    asetlen(physics->shapes, capacity);
+    int count = b3Shape_GetSensorData(record->shape, physics->shapes, capacity);
     b3AABB sensor = b3Shape_GetAABB(record->shape);
     for (int i = 0; i < count; i++) {
-        b3ShapeId visitor = physics->visitors[i];
+        b3ShapeId visitor = physics->shapes[i];
         assert(b3Shape_IsValid(visitor)); /* Nothing is destroyed after the step. */
         b3AABB other = b3Shape_GetAABB(visitor);
         CF_V3 low = cf_max_v3(from_b3(sensor.lowerBound), from_b3(other.lowerBound));
@@ -879,12 +928,14 @@ static void current_pairs(game_physics3d *physics)
     aclear(physics->current);
     for (int i = 0; i < acount(physics->bodies); i++) {
         const body_record *record = &physics->bodies[i];
-        if (B3_IS_NULL(record->body)) {
+        if (!record->entity.slot) {
             continue;
         }
         if (record->collider.sensor) {
             collect_visitors(physics, record);
-        } else if (record->type != GAME_BODY_STATIC) {
+        }
+        if (B3_IS_NON_NULL(record->body) &&
+            b3Body_GetType(record->body) != b3_staticBody) {
             collect_contacts(physics, record);
         }
     }
@@ -976,7 +1027,6 @@ static void step(game_physics3d *physics, float delta)
             record->start = body_pose(record->body);
         }
     }
-    lead_followers(physics);
     physics->slot_count = 0;
     game_task_pool_begin(physics->pool, physics->body_count >= PARALLEL_BODY_MINIMUM);
     b3World_Step(physics->simulation, delta, physics->settings.substeps);
@@ -998,13 +1048,11 @@ int game_physics3d_tick(game_physics3d *physics, float delta_seconds)
     if (B3_IS_NULL(physics->simulation)) {
         return FLOW_OK;
     }
-    group_followers(physics);
     if (!same_v3(acceleration, physics->gravity)) {
         set_gravity(physics, acceleration);
     }
     step(physics, delta_seconds);
     write_back(physics);
-    land_followers(physics);
     current_pairs(physics);
     return dispatch_pairs(physics);
 }

@@ -503,28 +503,77 @@ TEST_CASE(physics3d_followers_move_with_their_body)
     return true;
 }
 
-/* A follower moves only when its body does, so what rests on the follower
- * of a resting body falls asleep, which zeroes its velocity. */
-TEST_CASE(physics3d_followers_of_resting_bodies_let_them_sleep)
+/* A child collider is part of its body: it holds the body up, reports its own
+ * hits, and what rests on it falls asleep with the body. */
+TEST_CASE(physics3d_followers_are_part_of_their_body)
 {
-    ground();
-    ecs_entity base = collider(
-        (ecs_entity){ 0 },
-        (CF_V3){ 0, METER / 2, 0 },
-        box(METER, METER, METER),
-        GAME_BODY_DYNAMIC
+    ecs_entity floor = ground();
+    ecs_entity base = collider((ecs_entity){ 0 }, (CF_V3){ 0, 3 * METER, 0 }, ball(METER / 4), GAME_BODY_DYNAMIC);
+    ecs_entity plate = collider(
+        base,
+        (CF_V3){ 0, -METER, 0 },
+        box(2 * METER, METER / 2, 2 * METER),
+        GAME_BODY_STATIC
     );
-    collider(base, (CF_V3){ 2 * METER, 0, 0 }, box(METER, METER / 4, METER), GAME_BODY_STATIC);
     ecs_entity crate = collider(
         (ecs_entity){ 0 },
-        (CF_V3){ 2 * METER, METER, 0 },
+        (CF_V3){ METER / 2, 3 * METER, 0 },
         box(METER / 2, METER / 2, METER / 2),
         GAME_BODY_DYNAMIC
     );
-    steps(240);
+    bool landed = false;
+    for (int i = 0; i < 240; i++) {
+        step(STEP);
+        landed = landed || touched(plate, floor, true);
+        REQUIRE(!touched(base, floor, true));
+    }
+    REQUIRE(landed);
+    /* The plate's bottom rests on the floor 1.25 m below the ball's center. */
+    REQUIRE(near(position(base).y, 1.25f * METER, 1e-2f * METER));
+    REQUIRE(near(position(crate).y, .75f * METER, 1e-2f * METER));
     REQUIRE(near_v3(body(base)->linear_velocity, (CF_V3){ 0 }, 0));
     REQUIRE(near_v3(body(crate)->linear_velocity, (CF_V3){ 0 }, 0));
-    REQUIRE(near(position(crate).y, 7 * METER / 8, 1e-2f * METER));
+    return true;
+}
+
+/* A child goes where the solver takes its body within the step, even when the
+ * body speeds up or is stopped. */
+TEST_CASE(physics3d_followers_move_as_their_body_is_solved)
+{
+    /* Pushed from rest at 600 m/s^2, the body covers 1/6 m in its first step,
+     * which carries the nose's edge from 1.25 m past the mark's at 1.325 m. */
+    ecs_entity push = set_gravity((CF_V3){ 600 * METER, 0, 0 });
+    ecs_entity rocket = collider((ecs_entity){ 0 }, (CF_V3){ 0 }, ball(METER / 4), GAME_BODY_DYNAMIC);
+    GameCollider3D zone = ball(METER / 4);
+    zone.sensor = true;
+    ecs_entity nose = collider(rocket, (CF_V3){ METER, 0, 0 }, zone, GAME_BODY_STATIC);
+    ecs_entity mark = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 1.45f * METER, 0, 0 },
+        ball(METER / 8),
+        GAME_BODY_STATIC
+    );
+    step(STEP);
+    REQUIRE(touched(nose, mark, true));
+    /* A body that would cover 1/2 m stops at a wall after 1/4 m, so its flag
+     * stops short of the mark beyond it. */
+    GAME_GameGravity3D_get(world, push)->acceleration = (CF_V3){ 0 };
+    CF_V3 at = { 0, 0, 20 * METER };
+    ecs_entity ram = collider((ecs_entity){ 0 }, at, ball(METER / 4), GAME_BODY_DYNAMIC);
+    body(ram)->linear_velocity = (CF_V3){ 30 * METER, 0, 0 };
+    ecs_entity flag = collider(ram, (CF_V3){ 0, METER, 0 }, zone, GAME_BODY_STATIC);
+    collider((ecs_entity){ 0 }, cf_add_v3(at, (CF_V3){ METER, 0, 0 }), box(METER, METER, METER), GAME_BODY_STATIC);
+    ecs_entity beyond = collider(
+        (ecs_entity){ 0 },
+        cf_add_v3(at, (CF_V3){ .7f * METER, METER, 0 }),
+        ball(METER / 8),
+        GAME_BODY_STATIC
+    );
+    for (int i = 0; i < 4; i++) {
+        step(STEP);
+        REQUIRE(!touched(flag, beyond, true));
+    }
+    REQUIRE(near(position(ram).x, METER / 4, METER / 64));
     return true;
 }
 
@@ -834,7 +883,8 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_children_follow_their_parent);
     RUN_TEST_CASE(physics3d_followers_use_the_parent_rotation);
     RUN_TEST_CASE(physics3d_followers_move_with_their_body);
-    RUN_TEST_CASE(physics3d_followers_of_resting_bodies_let_them_sleep);
+    RUN_TEST_CASE(physics3d_followers_are_part_of_their_body);
+    RUN_TEST_CASE(physics3d_followers_move_as_their_body_is_solved);
     RUN_TEST_CASE(physics3d_moving_followers_wake_what_they_meet);
     RUN_TEST_CASE(physics3d_followers_never_touch_their_body);
     RUN_TEST_CASE(physics3d_followers_stop_touching_the_body_they_join);

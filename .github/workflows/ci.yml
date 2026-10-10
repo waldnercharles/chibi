@@ -2,11 +2,6 @@ name: CI
 
 on:
   workflow_dispatch:
-    inputs:
-      native:
-        description: Compile native profiles and run admitted native checks
-        type: boolean
-        default: false
   pull_request:
     branches: [main]
     paths-ignore:
@@ -27,85 +22,134 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  tools:
-    name: Fast C regressions
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - name: Essential C regressions (60-second aggregate ceiling)
-        run: make test-tools TOOLS_C_COMPILER=cc
+env:
+  CC: clang-18
+  CXX: clang++-18
+  # Native builds and players need a runtime directory and a silent audio device.
+  XDG_RUNTIME_DIR: /tmp/chibi-runtime
+  SDL_AUDIODRIVER: dummy
 
+jobs:
   native:
-    if: github.event_name == 'workflow_dispatch' && inputs.native
-    name: Native partial coverage (${{ matrix.build_type }})
+    name: Engine build and native tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - build_type: Debug
-            sanitizers: "ON"
-            sljit: "ON"
-          - build_type: RelWithDebInfo
-            sanitizers: "OFF"
-            sljit: "ON"
-    env:
-      # Hardware opt-in still applies to admitted GPU commands; it cannot bypass quarantine.
-      NATIVE_TOOLCHAIN_FLAGS: -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18
-      LOCAL_CMAKE_FLAGS: >-
-        -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
-        -DCHIBI_ENABLE_SANITIZERS=${{ matrix.sanitizers }}
-        -DCHIBI_ENABLE_SJLIT=${{ matrix.sljit }}
-        -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON
-        -DLIBCLANG_ROOT=/usr/lib/llvm-18
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      - name: Identify dependency sources
-        id: deps
-        run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
-      - name: Restore dependency sources
-        id: dependency-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.cache/chibi-fetchcontent
-          key: fetchcontent-v2-${{ runner.os }}-${{ steps.deps.outputs.key }}
-          restore-keys: fetchcontent-v2-${{ runner.os }}-
-      - name: Set up CMake
-        uses: lukka/get-cmake@latest
-      - name: Set up ccache
-        uses: hendrikmuhs/ccache-action@v1.2
-        with:
-          key: native-v1-${{ runner.os }}-${{ runner.arch }}-clang18-${{ matrix.build_type }}
-          save: ${{ github.ref == 'refs/heads/main' }}
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            clang-18 libclang-18-dev libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers \
-            libx11-dev libxcursor-dev \
+          sudo apt-get install -y clang-18 libclang-18-dev libclang-rt-18-dev \
+            libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
             libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
-            libwayland-dev libxkbcommon-dev xvfb
-      - name: Report temporarily disabled coverage (not passed)
-        run: |
-          make test-policy-inventory | tee -a "$GITHUB_STEP_SUMMARY"
-          cat docs/test-quarantine.md >> "$GITHUB_STEP_SUMMARY"
-      - name: Compile owned SDK and CLI products
-        run: make build
-      - name: Save dependency sources
+            libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+          python3 -m venv /tmp/cmake
+          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo /tmp/cmake/bin >> "$GITHUB_PATH"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+      - name: Identify dependency sources
+        id: deps
+        run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
+      # Only main saves the caches; pull requests restore them.
+      - name: Restore dependencies
+        id: dependency-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/chibi-fetchcontent
+            ~/.cache/chibi-dependency-packages
+          # Holds the Debug and Release dependency packages.
+          key: native-deps-debug-release-${{ runner.os }}-clang18-${{ steps.deps.outputs.key }}
+          restore-keys: native-deps-debug-release-${{ runner.os }}-clang18-
+      - name: Build chibi_ctl and the test drivers (ASan and UBSan)
+        run: make test-build LIBCLANG_ROOT=/usr/lib/llvm-18
+      # The only engine build on fork pull requests, which skip the Studio job.
+      - name: Build chibi, chibi-compile and chibi-player
+        run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
+      # validate-project runs chibi_ctl dozens of times, too slowly under sanitizers.
+      - name: Build an unsanitized chibi_ctl (Release)
+        run: make build-release BUILD_TARGET=chibi_ctl LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Save dependencies
         if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4
         with:
-          path: ~/.cache/chibi-fetchcontent
+          path: |
+            ~/.cache/chibi-fetchcontent
+            ~/.cache/chibi-dependency-packages
           key: ${{ steps.dependency-cache.outputs.cache-primary-key }}
-      - name: Essential C regressions with reflection identity (60-second aggregate ceiling)
+      # After make build, whose build/reflect the reflection identity cases run.
+      - name: Tooling and process integrations (one 60-second deadline)
         run: make test-tools TOOLS_C_COMPILER=clang-18
-      - name: Record retired suite ownership
+      - name: Native selectors (one 60-second deadline)
+        run: make test-native LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Language selectors (one 60-second deadline)
+        run: make test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18
+
+  studio:
+    name: Studio build and startup
+    # Pull requests from forks and Dependabot get no secrets, so they can't check out Studio.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require Studio checkout access
+        env:
+          TOKEN: ${{ secrets.CHIBI_STUDIO_TOKEN }}
         run: |
-          printf '%s\n' 'The old test_suite, graph smoke executables and combined chibi app are retired.'
-          printf '%s\n' 'Held oracle sources are recorded in .chibi/architecture/executor-test-retirement.json; no coverage is implied.'
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Add a CHIBI_STUDIO_TOKEN secret that can read waldnercharles/chibi-studio."
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          repository: waldnercharles/chibi-studio
+          token: ${{ secrets.CHIBI_STUDIO_TOKEN }}
+          path: chibi-studio
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 libclang-18-dev xvfb \
+            libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
+            libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+          python3 -m venv /tmp/cmake
+          /tmp/cmake/bin/pip install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo /tmp/cmake/bin >> "$GITHUB_PATH"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+      - name: Identify dependency sources
+        id: deps
+        run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
+      # Only main saves the caches; pull requests restore them.
+      - name: Restore dependencies
+        id: dependency-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cache/chibi-fetchcontent
+            ~/.cache/chibi-dependency-packages
+          key: studio-deps-${{ runner.os }}-clang18-${{ steps.deps.outputs.key }}
+          restore-keys: studio-deps-${{ runner.os }}-clang18-
+      - name: Package the SDK
+        run: make package-sdk SDK_PREFIX=dist/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Save dependencies
+        if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/chibi-fetchcontent
+            ~/.cache/chibi-dependency-packages
+          key: ${{ steps.dependency-cache.outputs.cache-primary-key }}
+      - name: Build Studio against the packaged SDK
+        run: make studio-build STUDIO_SOURCE="$PWD/chibi-studio" STUDIO_SDK_PREFIX=dist/sdk
+      - name: Two hidden Studio frames
+        shell: bash
+        run: |
+          timeout --kill-after=10 60 xvfb-run -a build-studio/bin/chibi-dev \
+            --project-root chibi-studio/projects/starter --headless --frames 2 --fixed-dt 0.0166667 2>&1 | tee studio.log
+          ! grep -E 'Studio UI:|runtime frame failed|Could not initialize' studio.log
 
   format:
     name: clang-format

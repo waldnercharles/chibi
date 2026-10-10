@@ -202,8 +202,18 @@ int render_scene3d_visuals(
             (CF_V3){ 1, 1, 1 }
         );
         visuals[i] = (scene3d_visual){ *part, cf_mul_m4(frame, local) };
+        if (!render_scene3d_visual_finite(&visuals[i])) {
+            snprintf(error, size, "3D Geometry needs a placement within float range.");
+            return -1;
+        }
     }
     return parts.count;
+}
+
+bool render_scene3d_visual_finite(const scene3d_visual *visual)
+{
+    return finite_frame(visual->frame) &&
+           finite_frame(render_scene3d_visual_model(visual));
 }
 
 CF_M4x4 render_scene3d_visual_model(const scene3d_visual *visual)

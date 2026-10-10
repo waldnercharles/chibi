@@ -14,6 +14,7 @@
 #include "runtime/materials_definition.h"
 #include "runtime/math_definition.h"
 #include "runtime/particles_definition.h"
+#include "runtime/physics3d_definition.h"
 #include "runtime/physics_definition.h"
 #include "runtime/rhythm_definition.h"
 #include "runtime/save_definition.h"
@@ -67,6 +68,7 @@ native_capabilities *host_native_default_catalog_new(
     apush(selected, GAME_PARTICLES_DEFINITION_PACK);
     apush(selected, GAME_UI_DEFINITION_PACK);
     apush(selected, GAME_PHYSICS_DEFINITION_PACK);
+    apush(selected, GAME_PHYSICS3D_DEFINITION_PACK);
     apush(selected, GAME_MATERIAL_DEFINITION_PACK);
     apush(selected, GAME_VISUAL_REACTION_DEFINITION_PACK);
     apush(selected, GAME_VISIBILITY_DEFINITION_PACK);

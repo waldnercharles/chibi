@@ -1,6 +1,7 @@
 #include "render/scene3d.h"
 
 #include "render/fog.h"
+#include "render/mesh_pick.h"
 #include "render/mesh_surface.h"
 #include "render/scene3d_mesh_cache.h"
 #include "render/scene3d_post.h"
@@ -2234,6 +2235,79 @@ TEST_CASE(picks_follow_tiny_triangles_scaled_up)
     return true;
 }
 
+enum
+{
+    GRID_CELLS = 64
+};
+
+/* The height of the grid's square at column x and row z, from 0 to 1. */
+static float grid_height(int x, int z)
+{
+    return (float)((x * 7 + z * 3) % 5) / 4;
+}
+
+/* Publishes a ground grid of GRID_CELLS by GRID_CELLS unit squares, each
+ * two triangles of its own at grid_height plus `raise`. */
+static void publish_grid(float raise)
+{
+    render_mesh_asset grid = { .min = { 0, raise, 0 },
+                               .max = { GRID_CELLS, raise + 1, GRID_CELLS } };
+    static const int corners[][2] = { { 0, 0 }, { 0, 1 }, { 1, 1 }, { 1, 0 } };
+    static const int indices[] = { 0, 1, 2, 0, 2, 3 };
+    for (int z = 0; z < GRID_CELLS; z++) {
+        for (int x = 0; x < GRID_CELLS; x++) {
+            int first = acount(grid.vertices);
+            for (int i = 0; i < 4; i++) {
+                render_mesh_surface_vertex vertex = {
+                    .position = { (float)(x + corners[i][0]),
+                                  grid_height(x, z) + raise,
+                                  (float)(z + corners[i][1]) },
+                    .normal = { 0, 1, 0 },
+                };
+                apush(grid.vertices, vertex);
+            }
+            for (int i = 0; i < 6; i++) {
+                apush(grid.indices, first + indices[i]);
+            }
+        }
+    }
+    publish_mesh(&grid);
+}
+
+/* A pick straight down through a cell's center meets its square. */
+static bool picks_cell(int x, int z, float raise)
+{
+    char error[128];
+    const render_mesh_asset *grid = render_mesh_asset_load(mesh_key, error, sizeof error);
+    REQUIRE(grid);
+    CF_V3 above = { x + .5f, 10, z + .5f };
+    render_mesh_hit hit = render_mesh_pick(
+        grid,
+        cf_make_ray3(above, (CF_V3){ x + .5f, -10, z + .5f })
+    );
+    REQUIRE(near_value(hit.t, 10 - grid_height(x, z) - raise));
+    REQUIRE(hit.tested <= 16);
+    return true;
+}
+
+/* A pick through an imported mesh of 8192 triangles tests only the few in
+ * boxes its ray crosses and still meets the nearest; one that misses the
+ * mesh tests none. A republished mesh is picked as it now stands. */
+TEST_CASE(mesh_picks_test_only_the_triangles_near_their_ray)
+{
+    publish_grid(0);
+    REQUIRE(picks_cell(0, 0, 0) && picks_cell(17, 40, 0) && picks_cell(63, 63, 0));
+    char error[128];
+    const render_mesh_asset *grid = render_mesh_asset_load(mesh_key, error, sizeof error);
+    REQUIRE(grid);
+    CF_V3 beside = { -5, 10, 5 };
+    render_mesh_hit miss = render_mesh_pick(grid, cf_make_ray3(beside, (CF_V3){ -5, -10, 5 }));
+    REQUIRE(miss.t == FLT_MAX && !miss.tested);
+    publish_grid(2);
+    REQUIRE(picks_cell(17, 40, 2));
+    return true;
+}
+
 /* A republished source draws its new triangles, and the GPU copies of
  * replaced and removed meshes are freed. */
 TEST_CASE(republished_meshes_replace_their_gpu_copies)
@@ -2911,6 +2985,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy);
     RUN_TEST_CASE(picking_and_bounds_follow_imported_triangles);
     RUN_TEST_CASE(picks_follow_tiny_triangles_scaled_up);
+    RUN_TEST_CASE(mesh_picks_test_only_the_triangles_near_their_ray);
     RUN_TEST_CASE(republished_meshes_replace_their_gpu_copies);
     RUN_TEST_CASE(mesh_copies_are_found_in_any_upload_order);
     RUN_TEST_CASE(translucent_meshes_sort_by_their_bounds);

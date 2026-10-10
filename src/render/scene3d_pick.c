@@ -1,3 +1,4 @@
+#include "render/mesh_pick.h"
 #include "render/mesh_surface.h"
 #include "render/scene3d.h"
 #include "render/scene3d_geometry.h"
@@ -170,26 +171,6 @@ static float cone_hit(CF_Ray3 ray)
     return best;
 }
 
-/* Where a ray meets a triangle from either side, or FLT_MAX. The ray counts
- * as parallel relative to the edges' lengths, so a tiny triangle that a
- * Geometry3D scales up still takes picks. */
-static float triangle_hit(CF_Ray3 ray, const CF_V3 triangle[3])
-{
-    CF_V3 edge1 = cf_sub_v3(triangle[1], triangle[0]);
-    CF_V3 edge2 = cf_sub_v3(triangle[2], triangle[0]);
-    CF_V3 p = cf_cross_v3(ray.d, edge2);
-    float determinant = cf_dot_v3(edge1, p);
-    if (fabsf(determinant) <= 1e-7f * cf_len_v3(edge1) * cf_len_v3(edge2)) {
-        return FLT_MAX;
-    }
-    CF_V3 delta = cf_sub_v3(ray.p, triangle[0]);
-    float u = cf_dot_v3(delta, p) / determinant;
-    CF_V3 q = cf_cross_v3(delta, edge1);
-    float v = cf_dot_v3(ray.d, q) / determinant;
-    float t = cf_dot_v3(edge2, q) / determinant;
-    return u >= 0 && v >= 0 && u + v <= 1 && t >= 0 && t <= ray.t ? t : FLT_MAX;
-}
-
 static float primitive_hit(CF_Ray3 ray, int primitive)
 {
     CF_Raycast3 hit = { 0 };
@@ -218,30 +199,12 @@ static float primitive_hit(CF_Ray3 ray, int primitive)
             int count = render_scene3d_mesh_triangles(primitive, triangles);
             float nearest = FLT_MAX;
             for (int i = 0; i < count; i++) {
-                nearest = fminf(nearest, triangle_hit(ray, triangles[i]));
+                nearest = fminf(nearest, render_triangle_hit(ray, triangles[i]));
             }
             return nearest;
         }
     }
     return hit.hit ? hit.t : FLT_MAX;
-}
-
-/* The nearest of a mesh's triangles along a ray in its coordinates. */
-static float mesh_hit(CF_Ray3 ray, const render_mesh_asset *mesh)
-{
-    CF_Raycast3 bounds = cf_ray3_to_aabb3(ray, (CF_Aabb3){ mesh->min, mesh->max });
-    if (!bounds.hit) {
-        return FLT_MAX;
-    }
-    float nearest = FLT_MAX;
-    for (int i = 0; i < acount(mesh->indices); i += 3) {
-        const int *corner = mesh->indices + i;
-        CF_V3 triangle[3] = { mesh->vertices[corner[0]].position,
-                              mesh->vertices[corner[1]].position,
-                              mesh->vertices[corner[2]].position };
-        nearest = fminf(nearest, triangle_hit(ray, triangle));
-    }
-    return nearest;
 }
 
 /* March authored model space inside the same compiled bounds used for rendering.
@@ -345,7 +308,7 @@ ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *ca
                 cf_m4_transform_point(inverse, ray.p),
                 cf_m4_transform_point(inverse, end)
             );
-            float t = mesh ? mesh_hit(local, mesh)
+            float t = mesh ? render_mesh_pick(mesh, local).t
                            : primitive_hit(local, visuals[i].part.primitive);
             if (t == FLT_MAX) {
                 continue;

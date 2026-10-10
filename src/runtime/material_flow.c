@@ -258,10 +258,13 @@ static void boundaries(
                                 : fabsf(lx) <= o.half_size.x + skin &&
                                       fabsf(ly) <= o.half_size.y + skin;
                 if (inside) {
+                    /* A body's velocity is its center of mass's. */
+                    float rx = (x + .5f) * size - b.position.x - b.center_offset.x,
+                          ry = (y + .5f) * size - b.position.y - b.center_offset.y;
                     grid->cells[at].solid = true;
                     grid->cells[at].boundary = (fluid_vec){
-                        b.velocity.x - b.angular_velocity * dy,
-                        b.velocity.y + b.angular_velocity * dx
+                        b.velocity.x - b.angular_velocity * ry,
+                        b.velocity.y + b.angular_velocity * rx
                     };
                 }
             }

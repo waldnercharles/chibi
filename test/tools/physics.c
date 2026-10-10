@@ -5,6 +5,7 @@
 #include "runtime/behaviors/entities_native.h"
 #include "runtime/component_catalog.h"
 #include "runtime/events.h"
+#include "runtime/material_fluid.h"
 #include "runtime/materials.h"
 #include "runtime/task_pool.h"
 #include "support/array.h"
@@ -1143,6 +1144,114 @@ static void carried_colliders_join_their_body()
     dispose(&f);
 }
 
+/* A carried collider whose mask has no rectangles left still leaves with the
+ * body that carries it, so a rebuilt body takes it back. */
+static void empty_carried_colliders_follow_their_body()
+{
+    fixture f = create();
+    ecs_entity ship = body(&f, 0, 40, GAME_BODY_KINEMATIC, 1, 0);
+    ecs_entity slab = mask_body(&f, GAME_BODY_STATIC, false);
+    assert(!game_materials_prepare(f.materials));
+    material_mask *mask = (material_mask *)game_materials_mask(f.materials, slab);
+    assert(material_mask_carve(mask, 0, 0, 100) == 512);
+    assert(ecs_world_record_add_pair(f.world, slab, ECS_CHILD_OF, ship, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(step(&f, 0) == 0);
+    assert(!material_mask_collision(game_materials_mask(f.materials, slab)).count);
+    assert(inspect_body(&f, slab).shape_count == 1);
+    GAME_GameCollider_get(f.world, ship)->radius = 3;
+    assert(step(&f, 0) == 0);
+    assert(inspect_body(&f, slab).shape_count == 1);
+    assert(GAME_GameCollider_remove(f.world, ship, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(step(&f, 0) == 0);
+    assert(inspect_body(&f, slab).shape_count == 0);
+    dispose(&f);
+}
+
+/* Material fluid over a 64 by 64 camera at the origin, with gas flow on a
+ * grid of `gas_cell_size` cells when it is not 0. */
+static void enable_fluid(fixture *f, float gas_cell_size)
+{
+    assert(ecs_world_register_component(f->world, &GAME_COMPONENT_GameCamera, NULL) == ECS_OK);
+    assert(
+        ecs_world_register_component(f->world, &GAME_COMPONENT_MaterialFluidWorld, NULL) == ECS_OK
+    );
+    ecs_entity config = ecs_world_create_entity(f->world);
+    assert(GAME_GameTransform_add(f->world, config, 0) == ECS_OK);
+    GameCamera camera = { .width = 64, .height = 64 };
+    assert(
+        ecs_world_record_add(f->world, config, GAME_COMPONENT_GameCamera.id, &camera, 0) == ECS_OK
+    );
+    MaterialFluidWorld fluid = { .chunk_size = 64,
+                                 .buffer = 32,
+                                 .kernel = 10,
+                                 .particle_limit = 16,
+                                 .gas_cell_size = gas_cell_size };
+    assert(
+        ecs_world_record_add(f->world, config, GAME_COMPONENT_MaterialFluidWorld.id, &fluid, 0) == ECS_OK
+    );
+}
+
+/* A 12 by 12 hull carried 20 above `ship`, so it spans -6..6 at the origin. */
+static ecs_entity carried_hull(fixture *f, ecs_entity ship)
+{
+    ecs_entity hull = body(f, 0, 20, GAME_BODY_KINEMATIC, 1, 0);
+    *GAME_GameCollider_get(f->world, hull) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                             .width = 12,
+                                                             .height = 12 };
+    assert(ecs_world_record_add_pair(f->world, hull, ECS_CHILD_OF, ship, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f->world) == ECS_OK);
+    return hull;
+}
+
+static void emit_gas(fixture *f, float x, float y, float speed)
+{
+    assert(game_materials_emit(
+        f->materials,
+        (fluid_particle){ .position = { x, y },
+                          .velocity = { speed, 0 },
+                          .mass = .01f,
+                          .radius = 1,
+                          .lifetime = .025f,
+                          .kind = FLUID_GAS }
+    ));
+}
+
+/* Fluid striking a carried collider pushes the body that carries it. */
+static void carried_colliders_take_fluid_impulses()
+{
+    fixture f = create();
+    enable_fluid(&f, 0);
+    ecs_entity ship = body(&f, 0, -20, GAME_BODY_DYNAMIC, 1, 0);
+    carried_hull(&f, ship);
+    assert(step(&f, 0) == 0);
+    emit_gas(&f, -8, 4, 120);
+    step(&f, 1.0f / 60);
+    step(&f, 1.0f / 60);
+    assert(GAME_GameVelocity_get_const(f.world, ship)->x > 0);
+    dispose(&f);
+}
+
+/* Gas flows with a carried collider's surface as its body turns, though the
+ * body's center of mass is still. The hull's left side moves at about -20
+ * when the ship, 20 below it, turns at 1 radian a second. */
+static void carried_colliders_move_gas()
+{
+    fixture f = create();
+    enable_fluid(&f, 4);
+    ecs_entity ship = body(&f, 0, -20, GAME_BODY_KINEMATIC, 1, 0);
+    GAME_GameBody_get(f.world, ship)->angular_velocity = 1;
+    carried_hull(&f, ship);
+    assert(step(&f, 0) == 0);
+    emit_gas(&f, -9, 0, 0);
+    step(&f, 1.0f / 60);
+    int count;
+    const fluid_particle *gas = material_fluid_particles(game_materials_fluid(f.materials), &count);
+    assert(count == 1 && gas[0].velocity.x < -15);
+    dispose(&f);
+}
+
 /* A follower whose parents have no body teleports with them. */
 static void followers_without_a_body()
 {
@@ -1444,6 +1553,9 @@ static void physics_cases()
     followers_move_with_their_body();
     followers_ignore_their_anchor();
     carried_colliders_join_their_body();
+    empty_carried_colliders_follow_their_body();
+    carried_colliders_take_fluid_impulses();
+    carried_colliders_move_gas();
     followers_without_a_body();
     continuous_sensors_carry_no_colliders();
     followed_material();

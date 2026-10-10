@@ -53,6 +53,7 @@ typedef struct
     float angle, stop_fraction;
     bool seen, pierceable_fragment, masked;
     bool follower; /* Has a ChildOf parent, so it follows it and never writes back. */
+    bool carries; /* Has carried a follower on its body since it was placed. */
     /* The slot of the body it moves with: its own for a root, its anchor's
      * for a follower carried on that body, or 0 for a follower with none. */
     unsigned group;
@@ -522,6 +523,7 @@ static void unplace(game_physics *physics, physics_body *body)
     body->proxy = -1;
     body->body = b2_nullBodyId;
     body->shape = b2_nullShapeId;
+    body->carries = false;
     aclear(body->shapes);
 }
 
@@ -549,7 +551,7 @@ static void destroy_body(game_physics *physics, physics_body *body)
     if (physics->profiling) {
         physics->profile.shape_removals += b2Body_GetShapeCount(body->body);
     }
-    if (b2Body_GetShapeCount(body->body) > own_shape_count(body)) {
+    if (body->carries) {
         for (int i = 0; i < acount(physics->bodies); i++) {
             physics_body *other = &physics->bodies[i];
             if (other != body && B2_ID_EQUALS(other->body, body->body)) {
@@ -999,13 +1001,13 @@ static int set_motion(game_physics *physics, physics_body *body, float delta)
 
 /* The body a follower moves with: its nearest ancestor body that is not a
  * follower itself, or NULL when no body places its parents. */
-static const physics_body *anchor(const game_physics *physics, ecs_entity entity)
+static physics_body *anchor(game_physics *physics, ecs_entity entity)
 {
     for (ecs_entity at = ecs_parent(physics->world, entity); at.slot;
          at = ecs_parent(physics->world, at)) {
-        const physics_body *body = at.slot < (unsigned)acount(physics->bodies)
-                                     ? &physics->bodies[at.slot]
-                                     : NULL;
+        physics_body *body = at.slot < (unsigned)acount(physics->bodies)
+                               ? &physics->bodies[at.slot]
+                               : NULL;
         if (body && body->body.index1 && body->seen && !body->follower &&
             same_entity(body->entity, at)) {
             return body;
@@ -1045,7 +1047,7 @@ static b2Transform carried_offset(const ecs_world *world, ecs_entity entity, ecs
 /* Puts the follower's shapes on its anchor's body, so the solver moves them
  * with that body, they add their mass, and what they touch pushes it. A
  * changed placement below the anchor gets new shapes. */
-static void carry(game_physics *physics, physics_body *body, const physics_body *with)
+static void carry(game_physics *physics, physics_body *body, physics_body *with)
 {
     b2Transform offset = carried_offset(physics->world, body->entity, with->entity);
     if (!body->body.index1 || !B2_ID_EQUALS(body->body, with->body) ||
@@ -1058,6 +1060,7 @@ static void carry(game_physics *physics, physics_body *body, const physics_body 
         body->body = with->body;
         body->group = with->entity.slot;
         body->offset = offset;
+        with->carries = true;
         create_shapes(physics, body);
         b2Body_SetAwake(body->body, true);
     }
@@ -1097,7 +1100,7 @@ static int place_followers(game_physics *physics)
         if (!body->seen || !body->follower) {
             continue;
         }
-        const physics_body *with = anchor(physics, body->entity);
+        physics_body *with = anchor(physics, body->entity);
         if (with && continuous_sensor(with)) {
             snprintf(
                 physics->error,
@@ -1929,11 +1932,11 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
              !GAME_GameProjectile_get_const(physics->world, body->entity))) {
             continue;
         }
-        /* A carried collider moves fluid with its carrier's motion at its
-         * place. Fluid never pushes a follower, which is never dynamic. */
-        bool own = !carried(body);
-        b2Vec2 p = body->end.p, v = own ? b2Body_GetLinearVelocity(body->body)
-                                        : b2Body_GetWorldPointVelocity(body->body, p);
+        /* A carried collider moves with its carrier's body, so what fluid
+         * does to it pushes and turns that body as its carrier allows. */
+        const GameBody *settings = carried(body) ? &physics->bodies[body->group].settings
+                                                 : &body->settings;
+        b2Vec2 p = body->end.p, v = b2Body_GetLinearVelocity(body->body);
         b2Vec2 previous = body->start.p;
         float angle = b2Rot_GetAngle(body->end.q),
               previous_angle = b2Rot_GetAngle(body->start.q),
@@ -1941,7 +1944,7 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
         float dx = p.x - previous.x, dy = p.y - previous.y;
         float mass = b2Body_GetMass(body->body);
         float inertia = b2Body_GetRotationalInertia(body->body);
-        b2Vec2 center = own ? b2Body_GetWorldCenterOfMass(body->body) : p;
+        b2Vec2 center = b2Body_GetWorldCenterOfMass(body->body);
         const GameIgniter *igniter = GAME_GameIgniter_get_const(physics->world, body->entity);
         int index = acount(physics->fluid_bodies);
         apush(physics->fluid_ids, body->body);
@@ -1959,13 +1962,11 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
                 .owner = ecs_entity_to_u64(body->entity),
                 .swept = delta > 0 &&
                          (dx * dx + dy * dy > 1e-6f || fabsf(angle_delta) > 1e-4f),
-                .inverse_inertia = body->settings.type == GAME_BODY_DYNAMIC &&
-                                           body->settings.allow_rotation && inertia > 0
+                .inverse_inertia = settings->type == GAME_BODY_DYNAMIC &&
+                                           settings->allow_rotation && inertia > 0
                                      ? 1 / inertia
                                      : 0,
-                .inverse_mass = body->settings.type == GAME_BODY_DYNAMIC && mass > 0
-                                  ? 1 / mass
-                                  : 0 })
+                .inverse_mass = settings->type == GAME_BODY_DYNAMIC && mass > 0 ? 1 / mass : 0 })
         );
         for (int part = 0; part < geometry_count(body); part++) {
             b2ShapeProxy geometry = geometry_at(body, part);

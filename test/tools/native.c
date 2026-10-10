@@ -1065,7 +1065,7 @@ static game_scene *one_object_scene(const char *name, float x, const char *globa
     char error[192];
     return game_scene_prepare(&spec, error, sizeof error);
 }
-/* Two entities bound to one global name. */
+/* A parent and its child bound to one global name. */
 static game_scene *twice_bound_scene(const char *global)
 {
     GameGlobalBinding binding = { .name = global };
@@ -1077,6 +1077,7 @@ static game_scene *twice_bound_scene(const char *global)
     game_scene_spec spec = { .name = "Twice",
                              .physics = game_physics_defaults(),
                              .objects = objects,
+                             .parents = (const int[]){ -1, 0 },
                              .object_count = 2 };
     char error[192];
     return game_scene_prepare(&spec, error, sizeof error);
@@ -1127,8 +1128,16 @@ TEST_CASE(native_player_loads_named_scenes)
         !game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
     );
     REQUIRE(!strcmp(error, "Scene 'Twice' binds two entities to the global 'Player'"));
-    game_scene_free(twice);
+    /* So does a prototype tree that binds it twice, as writing it would. */
     named = (game_player_named_scene){ "Next", other_scene };
+    spec.prototypes = &(game_player_prototype){ "Twice", twice };
+    spec.prototype_count = 1;
+    error[0] = 0;
+    REQUIRE(!game_player_new(&spec, error, sizeof error));
+    REQUIRE(!strcmp(error, "Scene 'Twice' binds two entities to the global 'Player'"));
+    spec.prototypes = NULL;
+    spec.prototype_count = 0;
+    game_scene_free(twice);
     REQUIRE(
         game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
     );

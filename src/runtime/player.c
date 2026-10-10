@@ -197,6 +197,9 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
             fail(error, size, "Prepared player prototype requires a name and one root object");
             return NULL;
         }
+        if (!game_player_scene_bindings_valid(p->scene, error, size)) {
+            return NULL;
+        }
         for (int j = 0; j < i; j++) {
             if (!strcmp(p->name, spec->prototypes[j].name)) {
                 fail(error, size, "Prepared player prototype names are duplicated");

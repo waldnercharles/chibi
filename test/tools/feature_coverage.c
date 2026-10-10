@@ -346,10 +346,17 @@ static void reach_system(const char *name)
     }
 }
 
+static bool reach_prototype(const char *name, bool spawned);
+
 /* An instance a scene runs: its merged components count as used, and its
- * behaviors and the systems its EngineSystem names run. */
+ * behaviors and the systems its EngineSystem names run. Its children spawn
+ * with it, each as its own instance. */
 static void use_instance(const game_prototype *instance)
 {
+    for (int i = 0; i < acount(instance->child_prototypes); i++) {
+        reach_prototype(instance->children->entities[i].prototype, false);
+        use_instance(instance->child_prototypes[i]);
+    }
     for (int i = 0; i < acount(instance->graphs); i++) {
         reach_behavior(instance->graphs[i]);
     }

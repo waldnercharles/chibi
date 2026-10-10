@@ -914,11 +914,24 @@ static bool continuous_sensor(const physics_body *body)
     return body->settings.continuous && body->collider.sensor;
 }
 
-/* Groups each body with the one it moves with. Box2D filters a pair only
- * when it begins to touch, so a body that changes group drops its contacts.
- * A continuous sensor stops where it first meets a blocker, after its
- * followers have been placed and tested at its full sweep, so none may
- * carry a collider. */
+/* Why `carrier` cannot carry `carried`, or NULL when it can. */
+static const char *carry_refusal(const physics_body *carrier, const physics_body *carried)
+{
+    if (continuous_sensor(carrier)) {
+        return "A continuous sensor Body cannot carry colliders";
+    }
+    if (carrier->settings.type == GAME_BODY_DYNAMIC && !carried->collider.sensor) {
+        return "A dynamic Body can carry only sensors";
+    }
+    return NULL;
+}
+
+/* Groups each body with the one it moves with. A follower is a kinematic
+ * body of its own, and Box2D solves no contact between a kinematic body and a
+ * static one, nor pushes the anchor when a follower is struck, so a dynamic
+ * body may carry only sensors. A continuous sensor stops where it first meets
+ * a blocker, after its followers have been placed and tested at its full
+ * sweep, so it may carry none. */
 static int group_followers(game_physics *physics)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -928,18 +941,17 @@ static int group_followers(game_physics *physics)
         }
         const physics_body *with = body->follower ? anchor(physics, body->entity)
                                                   : body;
-        unsigned group = with ? with->entity.slot : 0;
-        if (group != body->group && b2Body_GetContactCapacity(body->body)) {
-            b2Body_Disable(body->body);
-            b2Body_Enable(body->body);
+        body->group = with ? with->entity.slot : 0;
+        if (!body->follower || !with) {
+            continue;
         }
-        body->group = group;
-        if (body->follower && with && continuous_sensor(with)) {
+        const char *refusal = carry_refusal(with, body);
+        if (refusal) {
             snprintf(
                 physics->error,
                 sizeof physics->error,
-                "A continuous sensor Body cannot carry colliders; entity %u is "
-                "under entity %u.",
+                "%s; entity %u is under entity %u.",
+                refusal,
                 body->entity.slot,
                 with->entity.slot
             );

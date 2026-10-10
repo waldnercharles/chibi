@@ -270,8 +270,13 @@ static const char *generate_terrain(game_materials *materials, ecs_entity source
     if (!GAME_GameTransform_get_const(world, source)) {
         return "Terrain requires a Transform";
     }
-    /* Tiles are placed in the world, at their source's world position. */
-    CF_V2 position = game_transform_world_2d(world, source).position;
+    /* Tiles are placed in the world, at their source's world position, and
+     * laid out along the world's axes. */
+    GameGlobalTransform2D pose = game_transform_world_2d(world, source);
+    if (pose.radians != 0) {
+        return "Terrain requires an unrotated placement";
+    }
+    CF_V2 position = pose.position;
     bool unbounded = terrain.stream_radius > 0 && terrain.width == 0 &&
                      terrain.height == 0;
     if (!isfinite(position.x) || !isfinite(position.y) ||

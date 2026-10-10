@@ -1018,7 +1018,10 @@ static int finish_systems(engine *engine)
     }
     CHIBI_TRACE_ZONE_BEGIN(systems_zone, "ECS systems");
     if (!has_simulation(engine)) {
+        /* PostPhysics sees the placements PrePhysics left, as it does when
+         * physics runs between them. */
         if ((result = run_system_phase(engine, SYSTEM_PRE_PHYSICS)) < 0 ||
+            (result = propagate_transforms(engine)) < 0 ||
             (result = run_system_phase(engine, SYSTEM_POST_PHYSICS)) < 0) {
             return result;
         }

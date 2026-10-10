@@ -119,6 +119,50 @@ TEST_CASE(transforms_follow_moves_and_reparenting)
     return true;
 }
 
+typedef struct
+{
+    ecs_entity parent, child;
+    float seen; /* the child's global x when PostPhysics ran */
+} phase_probe;
+
+static int move_parent(ecs_world *, double, double, void *user, game_schedule_error *)
+{
+    phase_probe *probe = user;
+    GAME_GameTransform_get(world, probe->parent)->x += 10;
+    return 0;
+}
+
+static int read_child(ecs_world *, double, double, void *user, game_schedule_error *)
+{
+    phase_probe *probe = user;
+    probe->seen = GAME_GameGlobalTransform2D_get_const(world, probe->child)
+                      ->position.x;
+    return 0;
+}
+
+/* Without physics between them, PostPhysics still sees where PrePhysics
+ * moved things. */
+TEST_CASE(transforms_settle_between_phases_without_physics)
+{
+    phase_probe probe = { .parent = placed((ecs_entity){ 0 }, 0, 0, 0) };
+    probe.child = placed(probe.parent, 1, 0, 0);
+    engine *runtime = engine_new(world, &(engine_modules){ 0 });
+    game_schedule_desc move = { .name = "Move",
+                                .phase = SYSTEM_PRE_PHYSICS,
+                                .run = move_parent,
+                                .user = &probe };
+    game_schedule_desc read = { .name = "Read",
+                                .phase = SYSTEM_POST_PHYSICS,
+                                .run = read_child,
+                                .user = &probe };
+    REQUIRE(!engine_register_system(runtime, &move) && !engine_register_system(runtime, &read));
+    REQUIRE(!engine_frame(runtime, 0) && !engine_frame(runtime, 1.0 / 60));
+    float x = GAME_GameTransform_get_const(world, probe.parent)->x;
+    engine_free(runtime);
+    REQUIRE(x > 0 && near(probe.seen, x + 1));
+    return true;
+}
+
 static ecs_entity placed_3d(ecs_entity parent, GameTransform3D local)
 {
     ecs_entity entity = ecs_world_create_entity(world);
@@ -182,6 +226,7 @@ void test_tool_transforms()
     pu_setup(setup, teardown);
     RUN_TEST_CASE(transforms_compose_parents_first);
     RUN_TEST_CASE(transforms_follow_moves_and_reparenting);
+    RUN_TEST_CASE(transforms_settle_between_phases_without_physics);
     RUN_TEST_CASE(transforms_compose_3d_matrices);
     pu_clear_setup();
 }

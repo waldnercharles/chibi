@@ -506,23 +506,26 @@ mesh a bake can write with one more triangle refused, and a model export whose
 one temporary folder and passes 9,910 assertions in 8.4 seconds under
 ASan/UBSan with leak checks, 8.0 of them writing and reading the largest mesh,
 without processes or GPU.
-`model-import` selects thirteen in-tree glTF import cases: the image, Standard
+`model-import` selects fourteen in-tree glTF import cases: the image, Standard
 materials, mesh and prototype a `.gltf` writes, each once, byte for byte the
 same from a `.glb`, and nothing for a material only a hidden node uses; names
 made unique, ignoring case, and cut to 63 bytes; material names for a model
 named as long as a name may be; an import that would replace a file, or fails
 partway, leaves the content as it was; material and prototype names another
-file in the project already declares, and content folders and folders in them
-that are links, which it refuses; refused extensions, texture transforms,
+file in the project already declares, declaration folders it cannot read,
+and content folders and folders in them that are links, which it refuses;
+refused extensions, texture transforms,
 second UV sets, factors beyond float range, images and primitives; unreadable
 files, names and buffers, buffers that `..` or a link leads outside the model's
 folder, and buffers that together pass the size limit; unlit materials that
 keep only their base color; the warnings for what it leaves out, and the
-vertices only a left-out triangle used; and tangent frames whose OpenGL green
-tilts up the image: generated, authored, turned, mirrored by a node, flat at
-any size, flattened onto the ground by a parent, and scaled past float's volume
-or square. It needs a compiler build, uses one temporary folder and passes 146
-assertions under ASan/UBSan with leak checks, without processes or GPU.
+vertices only a left-out triangle used; a model whose nodes copy a primitive
+past what a `.mesh` file holds, refused while it bakes; and tangent frames
+whose OpenGL green tilts up the image: generated, authored, turned, mirrored
+by a node, flat at any size, flattened onto the ground by a parent, scaled
+past float's volume or square, and carried past its range. It needs a
+compiler build, uses one temporary folder and passes 156 assertions under
+ASan/UBSan with leak checks, without processes or GPU.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

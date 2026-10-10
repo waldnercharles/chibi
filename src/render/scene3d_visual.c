@@ -186,6 +186,7 @@ int render_scene3d_visuals(
         };
         parts.count = 1;
     }
+    int count = 0;
     for (int i = 0; i < parts.count; i++) {
         const scene3d_part *part = &parts.parts[i];
         if (part->primitive < GAME_PRIMITIVE_BOX ||
@@ -201,19 +202,27 @@ int render_scene3d_visuals(
             game_visual_rotation(0, part->rotation),
             (CF_V3){ 1, 1, 1 }
         );
-        visuals[i] = (scene3d_visual){ *part, cf_mul_m4(frame, local) };
-        if (!render_scene3d_visual_finite(&visuals[i])) {
+        visuals[count] = (scene3d_visual){ *part, cf_mul_m4(frame, local) };
+        scene3d_frame_state placed = render_scene3d_visual_state(&visuals[count]);
+        if (placed == SCENE3D_FRAME_INVALID) {
             snprintf(error, size, "3D Geometry needs a placement within float range.");
             return -1;
         }
+        count += placed == SCENE3D_FRAME_WHOLE;
     }
-    return parts.count;
+    if (!count) {
+        *mesh = NULL;
+    }
+    return count;
 }
 
-bool render_scene3d_visual_finite(const scene3d_visual *visual)
+scene3d_frame_state render_scene3d_visual_state(const scene3d_visual *visual)
 {
-    return finite_frame(visual->frame) &&
-           finite_frame(render_scene3d_visual_model(visual));
+    CF_M4x4 model = render_scene3d_visual_model(visual);
+    if (!finite_frame(visual->frame) || !finite_frame(model)) {
+        return SCENE3D_FRAME_INVALID;
+    }
+    return direction_volume(model) ? SCENE3D_FRAME_WHOLE : SCENE3D_FRAME_FLAT;
 }
 
 CF_M4x4 render_scene3d_visual_model(const scene3d_visual *visual)

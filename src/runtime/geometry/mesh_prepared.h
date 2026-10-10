@@ -9,6 +9,10 @@
  * budget survive failed reads. */
 #define RENDER_MESH_PREPARED_VERSION UINT64_C(3)
 #define RENDER_MESH_PREPARED_GROUP_MAX 1024
+/* Whether a mesh of `vertices` and `indices` stays within what a reader
+ * decodes: its vertex limit, and its storage limit before groups. A baker
+ * can check it as a mesh grows, before the mesh outgrows memory. */
+bool render_mesh_prepared_fits(int vertices, int indices);
 bool render_mesh_asset_prepared_write(
     const render_mesh_asset *,
     unsigned char **,

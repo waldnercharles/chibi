@@ -15,7 +15,8 @@ mirrored with its faces lit from outside, judged by its axes' directions so
 that a tiny mirror still turns them. One that flattens it onto a plane, a line
 or a point hides it: a zero scale in its Visual Transform or in a Transform3D
 placing it, however the turns between them round, or axes float cannot keep
-apart at all. A tiny, thin or sheared frame that keeps some volume stays. Picks
+apart at all, such as one a tiny Geometry3D dimension underflows to zero. A
+tiny, thin or sheared frame that keeps some volume stays. Picks
 and bounds follow the same placement, a model surface's included, and a Render
 State's fog culling reads the ground under its drawn pose. Point and spot
 lights, particles, trails and Surface Influences still place from
@@ -263,7 +264,9 @@ names none; a name that is no surface material fails the frame. Surface graphs
 read the vertex texture coordinates, or with source UV bounds the box
 projection the planar pass uses, and the vertex part positions and frames.
 Meshes cast and receive shadows as shapes do, including from outside the view;
-picking meets their triangles, and bounds hold their extents. Translucent
+picking meets their triangles, and bounds hold their extents. A pick tests
+only the triangles in boxes its ray crosses, from a tree of boxes built on a
+mesh's first pick and kept until the mesh catalog changes. Translucent
 meshes sort back to front by the center of their bounds, so a mesh whose
 vertices lie away from its origin sorts where its triangles are. Cute sorts
 translucent draws by the translation of their transform, so a mesh's GPU copy
@@ -276,10 +279,11 @@ Normal maps and every node that reads the surface UV's gradients follow a
 mesh's interpolated vertex tangent and bitangent, the frame its maps were baked
 against, so they shade smoothly across triangles. The gradients keep their
 screen-space lengths, so unequal UV scales still weigh each tangent component.
-Tangents turn and stretch with the mesh's transform, and their w picks the
-bitangent's side, so mirrored UVs work. A mesh whose UVs are box-projected from
-source bounds keeps the screen-space frame, which its tangents don't describe,
-as shapes do.
+Tangents turn with the mesh's transform, and each vertex keeps its tangent's
+direction even along an axis scaled far shorter than another. Their w picks
+the bitangent's side, so mirrored UVs work. A mesh whose UVs are box-projected
+from source bounds keeps the screen-space frame, which its tangents don't
+describe, as shapes do.
 
 ## Importing glTF models
 
@@ -328,6 +332,8 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   normals turned to the plane on the side they faced. Triangles that a
   transform leaves with no area are left out with a warning. Vertices no kept
   triangle uses are left out too, so they don't widen the mesh's bounds.
+  Normals and tangents go through the node frames in double, so a frame near
+  float's range keeps their directions.
 - **Materials**: each factor is a Shader Parameter at a fixed slot, so
   entities can override it: Base Color (0), Opacity (1, unless Opaque),
   Metallic (2), Roughness (3), Emission (4, times
@@ -354,9 +360,11 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   buffer or image named by an absolute path or a scheme other than `data:`, or
   one that `..` or a symbolic link leads outside the model's folder; a model
   over 256 MiB together with the files it names; a mesh past the `.mesh`
-  limits above; a material name that another native graph in the project
-  already declares, or a prototype name another prototype does; and a content
-  folder, or a folder in it the import writes to, that is a symbolic link.
+  limits above, refused as soon as the nodes copying its primitives pass them;
+  a material name that another native graph in the project already declares,
+  or a prototype name another prototype does, and a folder of declarations it
+  cannot read; and a content folder, or a folder in it the import writes to,
+  that is a symbolic link.
 - **Warned and left out**: vertex colors, morph targets, skins, animations,
   cameras, lights and other extensions the model uses. Double-sided
   materials draw single-sided.
@@ -434,7 +442,9 @@ boxes do. A mesh's top face takes its group's material while the other faces
 inherit the entity's, and an unknown group material fails the frame. Surface
 graphs read a mesh's vertex UVs, its UVs projected from source bounds, its
 part positions and, without part coordinates, its own positions. Picks and
-bounds follow a single triangle rather than its unit box, and a republished
+bounds follow a single triangle rather than its unit box, picks follow one a
+hundred-thousandth that size scaled back up, and a pick through a grid of
+8192 triangles tests only the few near its ray. A republished
 mesh draws its new triangles while the GPU copies of replaced and removed
 meshes are freed. Copies uploaded out of identity order are each found again.
 A translucent mesh whose vertices sit between the eye and a
@@ -448,15 +458,21 @@ turns make. A box under a turned Transform3D parent picks and bounds where the
 parent turns it, before any propagation. A box mirrored by its Transform3D,
 as a shape and as the unit box mesh, matches the unmirrored box, as does one
 mirrored at a 1e-16 scale under a Geometry3D as large, or a mesh 2e16 across
-in its own units, and one flattened to zero height disappears. A box flattened
+in its own units, and one flattened to zero height disappears. A box mesh
+1e30 long in x in its own units, drawn at a 1e-30 x scale, matches the unit
+box mesh too, though its normals come from cofactors too short to normalize
+directly. A box flattened
 by its parent's Transform3D under turns that leave it a sliver of volume has
-no bounds, and one scaled to 1e-16 keeps them, as does one turned under a
-parent squashed to 1e-6. A frame whose finite values multiply past float range,
-alone or with a part's position or the Geometry3D's dimensions, is an
+no bounds, as does one 1e-25 wide under a parent scaled 1e-25, whose model
+axis underflows to zero. One scaled to 1e-16 keeps them, as does one turned
+under a parent squashed to 1e-6. A frame whose finite values multiply past
+float range, alone or with a part's position or the Geometry3D's dimensions,
+is an
 authoring error. A model surface picks and bounds at its Transform3D
 pose, with or without a Transform. Fog culls a box
 by the ground under its Transform3D pose, not by its Transform. A mirrored ground
-square's normal maps turn their bitangent with it.
+square's normal maps turn their bitangent with it, and one stretched 1e7 times
+along its normal keeps its authored tangents.
 Normal maps on a ground square tilt toward or away from the sun as its
 tangents say: authored tangents a quarter turn from the UV gradient, mirrored
 UVs, a quarter-turned square, and box-projected UVs that keep their own frame.

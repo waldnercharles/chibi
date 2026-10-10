@@ -555,7 +555,8 @@ static bool declare(const char *relative, const char *name)
 /* An import declares no name that another file in the project declares,
  * since preparing the project refuses two declarations of one name: not a
  * material's among native graphs of any kind, nor its prototype's. It
- * then writes nothing. */
+ * then writes nothing, as it does when it cannot read a folder of
+ * declarations. */
 TEST_CASE(model_imports_refuse_names_the_project_declares)
 {
     gltf_fixture f = { 0 };
@@ -570,6 +571,14 @@ TEST_CASE(model_imports_refuse_names_the_project_declares)
     REQUIRE(!strcmp(error, "content/prototypes/Box.kdl already declares Crate"));
     REQUIRE(entries("content") == 2 && entries("content/prototypes") == 1);
     REQUIRE(declare("content/prototypes/Box.kdl", "Box"));
+    /* A folder it cannot read could hide a clash, so it refuses then too. */
+    char fields[128];
+    inside(fields, sizeof fields, "content/fields");
+    REQUIRE(declare("content/fields", "Fields"));
+    REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
+    REQUIRE(!strcmp(error, "Cannot read content/fields: Not a directory"));
+    REQUIRE(entries("content") == 3 && entries("content/prototypes") == 1);
+    REQUIRE(!unlink(fields));
     REQUIRE(import(&f, "crate.gltf", CRATE, "Crate"));
     gltf_fixture_free(&f);
     return true;
@@ -902,6 +911,55 @@ TEST_CASE(model_imports_leave_out_vertices_only_dropped_triangles_use)
     return true;
 }
 
+/* A model whose nodes copy one primitive past what a .mesh file holds is
+ * refused as soon as its baked mesh outgrows that, before its copies
+ * outgrow memory. */
+TEST_CASE(model_imports_refuse_meshes_a_mesh_file_cannot_hold)
+{
+    enum
+    {
+        TRIANGLES = 21000,
+        CORNERS = TRIANGLES * 3,
+        NODES = 12
+    };
+    float *positions = xmalloc(CORNERS * 3 * sizeof *positions);
+    float *normals = xmalloc(CORNERS * 3 * sizeof *normals);
+    float *uvs = xmalloc(CORNERS * 2 * sizeof *uvs);
+    uint16_t *indices = xmalloc(CORNERS * sizeof *indices);
+    for (int i = 0; i < CORNERS; i++) {
+        int k = i / 3, j = i % 3;
+        memcpy(
+            positions + i * 3,
+            (const float[]){ (float)k + (j == 2), 0, (float)(j == 1) },
+            3 * sizeof *positions
+        );
+        memcpy(normals + i * 3, (const float[]){ 0, 1, 0 }, 3 * sizeof *normals);
+        memcpy(uvs + i * 2, (const float[]){ (float)(j == 2), (float)(j == 1) }, 2 * sizeof *uvs);
+        indices[i] = (uint16_t)i;
+    }
+    gltf_fixture f = { 0 };
+    gltf_fixture_floats(&f, positions, CORNERS, 3);
+    gltf_fixture_floats(&f, normals, CORNERS, 3);
+    gltf_fixture_floats(&f, uvs, CORNERS, 2);
+    gltf_fixture_indices(&f, indices, CORNERS);
+    free(positions);
+    free(normals);
+    free(uvs);
+    free(indices);
+    char members[512] = "\"nodes\":[";
+    for (int i = 0; i < NODES; i++) {
+        strcat(members, i ? ",{\"mesh\":0}" : "{\"mesh\":0}");
+    }
+    strcat(members, "],\"meshes\":[{\"primitives\":[{" SQUARE "}]}]");
+    REQUIRE(!import(&f, "copies.gltf", members, "Copies"));
+    REQUIRE(
+        !strcmp(error, "The model's meshes, copied for each node that draws them, are larger than a .mesh file holds")
+    );
+    REQUIRE(!entries("content"));
+    gltf_fixture_free(&f);
+    return true;
+}
+
 /* Imports the square, its node's members `node` and its primitive's
  * attributes `attributes`, as `name`, and reads its mesh. */
 static bool frames(gltf_fixture *f, const char *name, const char *nodes, const char *attributes)
@@ -979,6 +1037,35 @@ TEST_CASE(model_imports_keep_gltf_tangent_frames)
     /* A scale that stretches them past float's square keeps them. */
     REQUIRE(frames(&f, "Stretched", "{\"mesh\":0,\"scale\":[1e-20,1,1e20]}", authored));
     REQUIRE(acount(mesh.indices) == 6 && frames_are(cf_neg_v3(z), cf_neg_v3(x)));
+    /* So does one whose two parts the frame carries past float range
+     * together, on a square small enough that its corners stay in range. */
+    static const float small[] = { -1e-10f, 0, -1e-10f, -1e-10f, 0, 1e-10f,
+                                   1e-10f,  0, 1e-10f,  1e-10f,  0, -1e-10f };
+    gltf_fixture steep = shape(NULL, 0, small);
+    const float h = .70710678f;
+    char steep_attributes[128];
+    snprintf(
+        steep_attributes,
+        sizeof steep_attributes,
+        "%s,\"TANGENT\":%d",
+        attributes,
+        gltf_fixture_floats(
+            &steep,
+            (const float[16]){ -h, 0, h, 1, -h, 0, h, 1, -h, 0, h, 1, -h, 0, h, 1 },
+            4,
+            4
+        )
+    );
+    REQUIRE(frames(
+        &steep,
+        "Steep",
+        "{\"children\":[1],\"scale\":[1,1,3e38]},"
+        "{\"mesh\":0,\"rotation\":[0,0.38268343,0,0.92387953],\"scale\":[1."
+        "4142135,1,1.4142135]}",
+        steep_attributes
+    ));
+    REQUIRE(acount(mesh.indices) == 6 && frames_are(z, x));
+    gltf_fixture_free(&steep);
     /* Without normals glTF ignores tangents too. */
     snprintf(authored, sizeof authored, "\"POSITION\":0,\"TEXCOORD_0\":2,\"TANGENT\":%d", tangents);
     REQUIRE(frames(&f, "Flat", "{\"mesh\":0}", authored));
@@ -1038,6 +1125,7 @@ void test_model_import()
     RUN_TEST_CASE(model_imports_keep_only_the_base_color_of_unlit_materials);
     RUN_TEST_CASE(model_imports_warn_of_what_they_leave_out);
     RUN_TEST_CASE(model_imports_leave_out_vertices_only_dropped_triangles_use);
+    RUN_TEST_CASE(model_imports_refuse_meshes_a_mesh_file_cannot_hold);
     RUN_TEST_CASE(model_imports_keep_gltf_tangent_frames);
     pu_clear_setup();
 }

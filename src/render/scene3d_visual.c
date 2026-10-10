@@ -56,6 +56,63 @@ float render_scene3d_frame_determinant(CF_M4x4 frame)
            m[4] * (m[1] * m[10] - m[2] * m[9]) + m[8] * (m[1] * m[6] - m[2] * m[5]);
 }
 
+/* The least volume of the box a frame's unit axis directions span, which is
+ * one when they are perpendicular. Rounding leaves a flattened frame well
+ * below it. */
+static const float flat_volume = 1e-5f;
+
+bool render_scene3d_frame_flat(CF_M4x4 frame)
+{
+    CF_V3 axes[3];
+    for (int i = 0; i < 3; i++) {
+        CF_V3 axis = { frame.elements[i * 4],
+                       frame.elements[i * 4 + 1],
+                       frame.elements[i * 4 + 2] };
+        /* Dividing by the largest part first keeps tiny axes from
+         * underflowing on their way to unit length. */
+        float largest = fmaxf(fabsf(axis.x), fmaxf(fabsf(axis.y), fabsf(axis.z)));
+        if (largest == 0) {
+            return true;
+        }
+        axes[i] = cf_norm_v3(cf_div_v3_f(axis, largest));
+    }
+    return fabsf(cf_dot_v3(axes[0], cf_cross_v3(axes[1], axes[2]))) < flat_volume;
+}
+
+bool render_scene3d_visual_frame(
+    const ecs_world *world,
+    ecs_entity entity,
+    const GameTransform *position,
+    const GameGlobalTransform3D *transform,
+    CF_M4x4 *frame
+)
+{
+    const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
+    float scale = visual ? visual->scale : 1;
+    CF_V3 rotation = visual ? (CF_V3){ visual->pitch, visual->yaw, visual->roll }
+                            : (CF_V3){ 0 };
+    bool finite;
+    if (transform) {
+        finite = finite_v3(transform->x_axis) && finite_v3(transform->y_axis) &&
+                 finite_v3(transform->z_axis) && finite_v3(transform->position);
+        *frame = cf_mul_m4(
+            game_transform_matrix_3d(transform),
+            cf_m4_from_trs((CF_V3){ 0 }, game_visual_rotation(0, rotation), (CF_V3){ scale, scale, scale })
+        );
+    } else {
+        float elevation = GAME_GameGeometry3D_get_const(world, entity)->elevation;
+        GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
+        finite = isfinite(pose.position.x + pose.position.y + elevation + pose.radians);
+        *frame = cf_m4_from_trs(
+            (CF_V3){ pose.position.x, elevation, pose.position.y },
+            game_visual_rotation(pose.radians, rotation),
+            (CF_V3){ scale, scale, scale }
+        );
+    }
+    return finite && isfinite(scale + rotation.x + rotation.y + rotation.z) &&
+           scale >= 0;
+}
+
 int render_scene3d_visuals(
     const ecs_world *world,
     ecs_entity entity,
@@ -73,36 +130,14 @@ int render_scene3d_visuals(
         (!transform && !position && !GAME_GameTransform_get_const(world, entity))) {
         return 0;
     }
-    const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
     const GameMeshParts *authored = GAME_GameMeshParts_get_const(world, entity);
     const GameMeshAsset *imported = GAME_GameMeshAsset_get_const(world, entity);
-    float scale = visual ? visual->scale : 1;
-    CF_V3 rotation = visual ? (CF_V3){ visual->pitch, visual->yaw, visual->roll }
-                            : (CF_V3){ 0 };
     CF_M4x4 frame;
-    bool finite;
-    if (transform) {
-        finite = finite_v3(transform->x_axis) && finite_v3(transform->y_axis) &&
-                 finite_v3(transform->z_axis) && finite_v3(transform->position);
-        frame = cf_mul_m4(
-            game_transform_matrix_3d(transform),
-            cf_m4_from_trs((CF_V3){ 0 }, game_visual_rotation(0, rotation), (CF_V3){ scale, scale, scale })
-        );
-    } else {
-        GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
-        finite = isfinite(pose.position.x + pose.position.y + shape->elevation + pose.radians);
-        frame = cf_m4_from_trs(
-            (CF_V3){ pose.position.x, shape->elevation, pose.position.y },
-            game_visual_rotation(pose.radians, rotation),
-            (CF_V3){ scale, scale, scale }
-        );
-    }
-    if (!finite || !isfinite(scale + rotation.x + rotation.y + rotation.z) ||
-        scale < 0) {
+    if (!render_scene3d_visual_frame(world, entity, position, transform, &frame)) {
         snprintf(error, size, "Visual transform needs finite values and nonnegative scale.");
         return -1;
     }
-    if (render_scene3d_frame_determinant(frame) == 0) {
+    if (render_scene3d_frame_flat(frame)) {
         return 0;
     }
     scene3d_parts parts;

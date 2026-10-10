@@ -11,8 +11,10 @@ it and scales it, and its `elevation` is ignored. An entity with both transforms
 draws at its Transform3D. Its Visual Transform turns and scales the solid within
 that frame, and a body's drawn pose is interpolated between physics steps as a
 Transform's is. A transform that mirrors a solid draws it mirrored with its
-faces lit from outside, and one that flattens it to zero on any axis hides it.
-Picks and bounds follow the same placement. Point and spot lights, particles,
+faces lit from outside. One that flattens it onto a plane, a line or a point
+hides it, judged by its axes' directions so that rounding cannot keep a sliver
+and a tiny but whole scale cannot vanish. Picks and bounds follow the same
+placement, a model surface's included. Point and spot lights, particles,
 trails and Surface Influences still place from `GameTransform`, and SDF and Mesh
 Surface 2D surfaces belong to the 2D renderer, which ignores Transform3D.
 
@@ -32,8 +34,9 @@ in float depth, which breaks picking and fog. The span's aspect shapes the image
 either way. Panning or zooming the
 viewport returns it to the overhead framing. Fog conceals view rays that never
 reach the ground ahead, such as those above the horizon, as it does ground past
-its grid. Picking, ground queries and fog unproject view rays about the eye, so
-they stay precise however far the eye is from the origin.
+its grid. Picking, ground queries and fog unproject view rays about the eye and
+start them at the eye the camera keeps, so they stay precise however far the
+eye is from the origin.
 
 ## Lighting
 
@@ -262,7 +265,8 @@ vertices lie away from its origin sorts where its triangles are. Cute sorts
 translucent draws by the translation of their transform, so a mesh's GPU copy
 holds its positions about that center and its draws translate to it. A mesh goes to
 the GPU when it first draws and is freed once a reload replaces it or the
-catalog drops it; `render_scene3d_last_work` counts the meshes held.
+catalog drops it; `render_scene3d_last_work` counts the meshes held. The copies
+stay ordered by mesh identity, so each draw finds its own by bisection.
 
 Normal maps and every node that reads the surface UV's gradients follow a
 mesh's interpolated vertex tangent and bitangent, the frame its maps were baked
@@ -364,7 +368,8 @@ hidden 64x64 app. It checks cameras looking along their Transform3D and from a
 moving body's drawn pose between physics steps, field of
 view and clip distances, the lenses a camera rejects, ground rays at the widest
 clip range, panning dropping a lens, fog concealing rays that miss the ground,
-and ground rays and fog from an eye far from the origin. It checks ambient, the
+and ground rays and fog from an eye far from the origin, turned off the axes
+too. It checks ambient, the
 directional light, the one-light limit
 (hidden lights left out), drawing without a rhythm clock, both tone maps, auto
 exposure's geometric mean, background rejection, easing (including slow easing
@@ -413,7 +418,8 @@ graphs read a mesh's vertex UVs, its UVs projected from source bounds, its
 part positions and, without part coordinates, its own positions. Picks and
 bounds follow a single triangle rather than its unit box, and a republished
 mesh draws its new triangles while the GPU copies of replaced and removed
-meshes are freed. A translucent mesh whose vertices sit between the eye and a
+meshes are freed. Copies uploaded out of identity order are each found again.
+A translucent mesh whose vertices sit between the eye and a
 translucent box, while its origin lies behind the box, blends over the box as
 a shape in its place does, alone and as one of two copies drawn in one batch.
 The shadow scene's box and a pillar outside the view draw, shade and cast at
@@ -423,8 +429,11 @@ by a Transform3D and a Visual Transform within it, match the upright box their
 turns make. A box under a turned Transform3D parent picks and bounds where the
 parent turns it, before any propagation. A box mirrored by its Transform3D,
 as a shape and as the unit box mesh, matches the unmirrored box, and one
-flattened to zero height disappears. A mirrored ground square's normal maps
-turn their bitangent with it.
+flattened to zero height disappears. A box flattened by its parent's
+Transform3D under turns that leave it a sliver of volume has no bounds, and one
+scaled to 1e-16 keeps them. A model surface picks and
+bounds at its Transform3D pose, with or without a Transform. A mirrored ground
+square's normal maps turn their bitangent with it.
 Normal maps on a ground square tilt toward or away from the sun as its
 tangents say: authored tangents a quarter turn from the UV gradient, mirrored
 UVs, a quarter-turned square, and box-projected UVs that keep their own frame.

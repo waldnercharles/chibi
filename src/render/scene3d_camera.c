@@ -46,7 +46,8 @@ render_scene3d_camera render_scene3d_camera_frame(const engine_viewport_camera *
             frame->span_width / frame->span_height,
             clipped ? lens.near_clip : closest,
             clipped ? lens.far_clip : fminf(reach * 20, closest * ENGINE_VIEWPORT_CLIP_RATIO_MAX)
-        )
+        ),
+        .eye = lens.eye,
     };
 }
 
@@ -145,12 +146,6 @@ CF_V3 render_scene3d_project(const render_scene3d_camera *camera, CF_V3 world)
     return cf_m4_transform_point(cf_mul_m4(camera->projection, camera->view), world);
 }
 
-CF_V3 render_scene3d_eye(const render_scene3d_camera *camera)
-{
-    CF_M4x4 frame = cf_m4_invert(camera->view);
-    return (CF_V3){ frame.elements[12], frame.elements[13], frame.elements[14] };
-}
-
 CF_M4x4 render_scene3d_eye_rays(const render_scene3d_camera *camera)
 {
     CF_M4x4 turn = camera->view;
@@ -164,7 +159,7 @@ CF_Ray3 render_scene3d_ray(const render_scene3d_camera *camera, CF_V2 ndc)
     CF_V3 near = cf_m4_transform_point(rays, (CF_V3){ ndc.x, ndc.y, 0 });
     CF_V3 far = cf_m4_transform_point(rays, (CF_V3){ ndc.x, ndc.y, 1 });
     CF_Ray3 ray = cf_make_ray3(near, far);
-    ray.p = cf_add_v3(render_scene3d_eye(camera), near);
+    ray.p = cf_add_v3(camera->eye, near);
     return ray;
 }
 

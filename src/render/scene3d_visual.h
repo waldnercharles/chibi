@@ -24,12 +24,27 @@ GameGlobalTransform2D render_scene3d_placement(
  * Geometry3D and a Transform, then those with a Geometry3D and a Transform3D.
  * An entity with both transforms comes once, with the second. */
 void render_scene3d_entities(ecs_world *world, render_skip skip, ecs_entity **entities);
+/* Where an entity's visual stands, before its parts' own placement. With a
+ * `transform`, a global 3D transform, its center sits there and its
+ * Geometry3D's elevation is ignored. Without one it stands at `position`, as
+ * render_scene3d_placement takes it, raised to that elevation. Its Visual
+ * Transform turns and scales it there. False when a value is not finite or
+ * the scale is negative. */
+bool render_scene3d_visual_frame(
+    const ecs_world *world,
+    ecs_entity entity,
+    const GameTransform *position,
+    const GameGlobalTransform3D *transform,
+    CF_M4x4 *frame
+);
+/* Whether a frame flattens space onto a plane, a line or a point, which
+ * hides a visual. It reads its axes' directions alone, so a frame of any
+ * scale that keeps some volume is whole. */
+bool render_scene3d_frame_flat(CF_M4x4 frame);
 /* Returns parts, zero for an invisible/missing visual, or -1 with an authoring error.
- * With a `transform`, a global 3D transform, the visual's center sits there
- * and its Geometry3D's elevation is ignored. Without one it draws at
- * `position`, as render_scene3d_placement takes it. An entity with a Mesh
- * Asset has one Box part sized by its Geometry3D, whose model places the
- * returned `mesh`; `mesh` is NULL for other entities. */
+ * The parts stand where render_scene3d_visual_frame places them. An entity
+ * with a Mesh Asset has one Box part sized by its Geometry3D, whose model
+ * places the returned `mesh`; `mesh` is NULL for other entities. */
 int render_scene3d_visuals(
     const ecs_world *world,
     ecs_entity entity,
@@ -41,8 +56,7 @@ int render_scene3d_visuals(
     size_t size
 );
 CF_M4x4 render_scene3d_visual_model(const scene3d_visual *visual);
-/* The determinant of a frame's linear part: negative when it mirrors, and
- * zero when it flattens, which hides a visual. */
+/* The determinant of a frame's linear part: negative when it mirrors. */
 float render_scene3d_frame_determinant(CF_M4x4 frame);
 /* Conservative clip test of a box, a transform of the unit cube from -0.5 to
  * 0.5. */

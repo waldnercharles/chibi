@@ -1,4 +1,4 @@
-- When contracts change, migrate our assets directly and remove obsolete implementations; backward compatibility and legacy aliases are not required. When the change alters what projects saved by earlier builds mean or stops them from loading, bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h`, add the step that upgrades them in `src/assets/project_migrate.c`, and migrate this repository's projects with `build/bin/chibi_ctl --project-root <root> --migrate` in the same PR. Projects in other repositories (Studio, games) upgrade when opened; never open a PR whose only change is their version number (see `.claude/skills/chibi-recipes/SKILL.md`).
+- When contracts change, migrate our assets directly and remove obsolete implementations; backward compatibility and legacy aliases are not required. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` only when an existing project would load wrong or fail to load and a migration step would rewrite it: a project in this repository, `chibi-studio` or `chibi-celeste` uses the changed contract. Don't bump for additive changes, for a contract no project uses yet, for a change to what the engine does with a value, or when loading already treats the old data correctly; say in the PR how to fix a hand-made project instead. When you do bump, add the step that upgrades them in `src/assets/project_migrate.c` and migrate this repository's projects with `build/bin/chibi_ctl --project-root <root> --migrate` in the same PR. Projects in other repositories (Studio, games) upgrade when opened; never open a PR whose only change is their version number (see `.claude/skills/chibi-recipes/SKILL.md`).
 - Follow YAGNI principles, and boring solutions.
 - Shared source implements components, nodes, functions, and systems reusable across games. Authored assets own scene composition, game rules, visual choices, and tuning.
 - Name shared modules for their capability. Turn game-specific geometry, camera choreography, and outcome handling into authored data and behaviors; add native capabilities when authoring exposes a concrete gap.
@@ -41,6 +41,10 @@
 3. Build and run the checks CI runs: `make test-native` and `make test-language-all` (both build the drivers with `make test-build`) and `make test-tools`. Say which ran; quarantined coverage is not passed.
 4. Format. The pre-commit hook (`.githooks/pre-commit`, installed by configure) runs clang-format 22 on staged C sources; `make check-format` checks everything. Format hand-edited assets with `chibi_ctl --format`.
 5. Commit messages say what changed and why, in the imperative.
+
+## Review guidelines
+
+- Ask for a project version bump and migration only when you can name a project in this repository, `chibi-studio` or `chibi-celeste` that the change makes load wrong or fail, and the step would rewrite it (see the first rule). A hypothetical project holding a value no project stores is not enough, and neither is a contract that reached `main` without any project using it. The owner has declined those bumps.
 
 ## Editor UI
 

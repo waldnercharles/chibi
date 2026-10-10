@@ -203,6 +203,12 @@ validated, run, formatted, found and reported there under their `content/`
 paths, and `status` names that folder even once the project is too old to open.
 A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
 
+`python3 tools/test_policy.py tool prototype-expansion` runs, the same way, the
+two cases whose projects read past the prototype expansion budget that
+preparation shares: a project's prototypes, each under its own load's limit,
+and a scene's instances of one prototype tree. Each reads tens of thousands of
+small prototype documents, so they have their own selector.
+
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,
 effectful result reuse, lexical capture rejection, statement deletion/reordering,

@@ -213,7 +213,7 @@ static bool render_scene(
             &view
         );
         if (camera < 0) {
-            snprintf(error, size, "GameCamera requires one enabled camera, a transform and positive view dimensions");
+            snprintf(error, size, "GameCamera requires one enabled camera, a transform, positive view dimensions, and a field of view, clips and 3D pose the 3D view can use");
             ok = false;
         }
         if (camera > 0) {

@@ -4,6 +4,7 @@
 #include "execution/status.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/component_catalog.h"
+#include "runtime/events.h"
 #include "runtime/materials.h"
 #include "runtime/task_pool.h"
 #include "runtime/transform_propagation.h"
@@ -1739,19 +1740,30 @@ static int compare_pairs(const void *left, const void *right)
     return (a->second > b->second) - (a->second < b->second);
 }
 
-static int queue_contact(game_physics *physics, uint64_t target, uint64_t other, b2Vec2 point)
+/* Contact Begin or Contact End to both entities of pair; only Begin carries
+ * the point. */
+static int queue_contact(game_physics *physics, game_host_event event, contact_pair pair)
 {
-    CF_V2 position = { point.x, point.y };
-    pin_value values[] = {
-        { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = other },
-        { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &position },
-    };
-    return game_entities_request_event(
-        physics->entities,
-        ecs_entity_from_u64(target),
-        "Contact Begin",
-        (execution_arguments){ .values = values, .count = 2 }
-    );
+    const uint64_t targets[] = { pair.first, pair.second };
+    CF_V2 position = { pair.point.x, pair.point.y };
+    int result = FLOW_OK;
+    for (int i = 0; i < 2; i++) {
+        pin_value values[] = {
+            { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = targets[1 - i] },
+            { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &position },
+        };
+        int queued = game_entities_request_event(
+            physics->entities,
+            ecs_entity_from_u64(targets[i]),
+            game_host_event_name(event),
+            (execution_arguments){ .values = values,
+                                   .count = event == GAME_HOST_EVENT_CONTACT_BEGIN ? 2 : 1 }
+        );
+        if (queued < 0 && result == FLOW_OK) {
+            result = queued;
+        }
+    }
+    return result;
 }
 
 static void sort_pairs(game_physics *physics)
@@ -1809,6 +1821,8 @@ static int compare_hit_times(const void *left, const void *right)
     return compare_pairs(left, right);
 }
 
+/* Queues Contact End for the previous step's pairs that stopped touching,
+ * then Contact Begin for this step's new pairs in travel order. */
 static int dispatch_pairs(game_physics *physics)
 {
     CHIBI_TRACE_ZONE_BEGIN(sort_zone, "Physics sort pairs");
@@ -1817,25 +1831,35 @@ static int dispatch_pairs(game_physics *physics)
     }
     CHIBI_TRACE_ZONE_END(sort_zone);
     CHIBI_TRACE_ZONE_BEGIN(diff_zone, "Physics diff contacts");
-    int count = 0, previous = 0, result = FLOW_OK;
-    aclear(physics->begun);
+    int count = 0, result = FLOW_OK;
     for (int i = 0; i < acount(physics->current); i++) {
-        contact_pair pair = physics->current[i];
-        if (count && !compare_pairs(&pair, &physics->current[count - 1])) {
-            continue;
+        if (!count ||
+            compare_pairs(&physics->current[i], &physics->current[count - 1])) {
+            physics->current[count++] = physics->current[i];
         }
-        physics->current[count++] = pair;
-        /* Both frames are sorted. Advance through the old frame once rather
-         * than searching it separately for every persistent contact. */
-        while (previous < acount(physics->previous) &&
-               compare_pairs(&physics->previous[previous], &pair) < 0) {
-            previous++;
+    }
+    asetlen(physics->current, count);
+    /* Both frames are sorted. Advance through the other frame once rather
+     * than searching it separately for every pair. */
+    const contact_pair *before = physics->previous, *after = physics->current;
+    int before_count = acount(before);
+    for (int i = 0, j = 0; i < before_count; i++) {
+        while (j < count && compare_pairs(&after[j], &before[i]) < 0) {
+            j++;
         }
-        if (previous < acount(physics->previous) &&
-            !compare_pairs(&physics->previous[previous], &pair)) {
-            continue;
+        if (j == count || compare_pairs(&after[j], &before[i])) {
+            int queued = queue_contact(physics, GAME_HOST_EVENT_CONTACT_END, before[i]);
+            result = result == FLOW_OK ? queued : result;
         }
-        apush(physics->begun, pair);
+    }
+    aclear(physics->begun);
+    for (int i = 0, j = 0; i < count; i++) {
+        while (j < before_count && compare_pairs(&before[j], &after[i]) < 0) {
+            j++;
+        }
+        if (j == before_count || compare_pairs(&before[j], &after[i])) {
+            apush(physics->begun, after[i]);
+        }
     }
     /* Deliver swept impacts in travel order so a later blocking hit cannot
      * retire the projectile before earlier debris contacts carve their hulls. */
@@ -1843,14 +1867,13 @@ static int dispatch_pairs(game_physics *physics)
         asort(physics->begun, compare_hit_times);
     }
     for (int i = 0; i < acount(physics->begun); i++) {
-        contact_pair pair = physics->begun[i];
-        int first = queue_contact(physics, pair.first, pair.second, pair.point),
-            second = queue_contact(physics, pair.second, pair.first, pair.point);
-        if (first < 0 || second < 0) {
-            result = first < 0 ? first : second;
-        }
+        int queued = queue_contact(
+            physics,
+            GAME_HOST_EVENT_CONTACT_BEGIN,
+            physics->begun[i]
+        );
+        result = result == FLOW_OK ? queued : result;
     }
-    asetlen(physics->current, count);
     contact_pair *old = physics->previous;
     physics->previous = physics->current;
     physics->current = old;

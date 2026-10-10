@@ -58,10 +58,12 @@ game_physics_settings game_physics_configuration(const game_physics *physics);
 void game_physics_set_tasks(game_physics *physics, const game_task_system *tasks);
 /* Effective worker budget for the last step; 1 before the first step. */
 int game_physics_workers(const game_physics *physics);
-/* Synchronize authored state, integrate, then queue deduplicated Contact Begin.
- * Payload: Other, Point (CF_V2). Sweeps report the cast contact in world
- * units; initial overlaps and ordinary contacts use a representative center.
- * Swept events are delivered in travel order, clipped to the first blocker.
+/* Synchronize authored state, integrate, then queue Contact End (payload:
+ * Other) to both entities of each pair that stopped touching, in pair order,
+ * and deduplicated Contact Begin (payload: Other, Point (CF_V2)) to both of
+ * each pair that started. Sweeps report the cast contact in world units;
+ * initial overlaps and ordinary contacts use a representative center. Swept
+ * Begin events are delivered in travel order, clipped to the first blocker.
  * A zero delta synchronizes and checks overlaps without advancing simulation. */
 int game_physics_tick(game_physics *physics, float delta_seconds);
 const char *game_physics_error(const game_physics *physics);

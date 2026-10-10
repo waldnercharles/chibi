@@ -18,19 +18,22 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* 2D physics through its real seams: ECS components in, Contact Begin events
- * out through game_entities. The host records each event in dispatch order. */
+/* 2D physics through its real seams: ECS components in, Contact Begin and
+ * Contact End events out through game_entities. The host records each event in
+ * dispatch order. */
 typedef struct
 {
     ecs_entity owner;
     uint64_t other;
+    int order; /* Among this step's events. */
 } contact;
 
 typedef struct
 {
     ecs_world *world;
-    contact *contacts; /* This step's events. */
-    contact *latest;   /* The last Other each owner saw. */
+    contact *contacts; /* This step's Contact Begin events. */
+    contact *ended;    /* This step's Contact End events. */
+    contact *latest;   /* The last Other each owner began touching. */
 } recorder;
 
 typedef struct
@@ -129,8 +132,15 @@ enum
 static int dispatch(void *context, ecs_entity owner, const char *event, execution_arguments arguments)
 {
     recorder *f = context;
+    contact hit = { owner,
+                    arguments.values[0].u64,
+                    acount(f->contacts) + acount(f->ended) };
+    if (game_host_event_is(event, GAME_HOST_EVENT_CONTACT_END)) {
+        assert(arguments.count == 1);
+        apush(f->ended, hit);
+        return 0;
+    }
     assert(game_host_event_is(event, GAME_HOST_EVENT_CONTACT_BEGIN) && arguments.count == 2);
-    contact hit = { owner, arguments.values[0].u64 };
     apush(f->contacts, hit);
     for (int i = 0; i < acount(f->latest); i++) {
         if (ecs_entity_to_u64(f->latest[i].owner) == ecs_entity_to_u64(owner)) {
@@ -202,6 +212,7 @@ static void dispose(fixture *f)
     game_entities_free(f->entities);
     ecs_world_free(f->world);
     afree(f->events->contacts);
+    afree(f->events->ended);
     afree(f->events->latest);
     free(f->events);
 }
@@ -235,6 +246,7 @@ static ecs_entity sensor(fixture *f, float x, float y)
 static int step(fixture *f, float delta)
 {
     aclear(f->events->contacts);
+    aclear(f->events->ended);
     int result = game_physics_tick(f->physics, delta);
     if (result < 0) {
         fprintf(stderr, "physics: %s\n", game_physics_error(f->physics));
@@ -253,6 +265,18 @@ static uint64_t other(fixture *f, ecs_entity entity)
     for (int i = 0; i < acount(events->latest); i++) {
         if (ecs_entity_to_u64(events->latest[i].owner) == ecs_entity_to_u64(entity)) {
             return events->latest[i].other;
+        }
+    }
+    return 0;
+}
+
+/* The Other of owner's Contact End this step, or 0. */
+static uint64_t ended(fixture *f, ecs_entity owner)
+{
+    const contact *events = f->events->ended;
+    for (int i = 0; i < acount(events); i++) {
+        if (ecs_entity_to_u64(events[i].owner) == ecs_entity_to_u64(owner)) {
+            return events[i].other;
         }
     }
     return 0;
@@ -336,7 +360,7 @@ static void contact_set_changes()
     assert(other(&f, a) == ecs_entity_to_u64(b));
     assert(other(&f, c) == ecs_entity_to_u64(b));
     game_physics_hashes contacts = game_physics_hash(f.physics);
-    assert(step(&f, 0) == 0);
+    assert(step(&f, 0) == 0 && !acount(f.events->ended));
     game_physics_hashes persistent = game_physics_hash(f.physics);
     assert(contacts.contact_pairs == persistent.contact_pairs);
     assert(contacts.contact_events != persistent.contact_events);
@@ -346,6 +370,8 @@ static void contact_set_changes()
     assert(isfinite(profile->box2d.collide_ms) && profile->box2d.collide_ms >= 0);
     GAME_GameTransform_get(f.world, a)->x = -20;
     assert(step(&f, 0) == 0); /* Remove the first sorted pair; keep the second. */
+    assert(acount(f.events->ended) == 2);
+    assert(ended(&f, a) == ecs_entity_to_u64(b) && ended(&f, b) == ecs_entity_to_u64(a));
     game_physics_hashes separated = game_physics_hash(f.physics);
     assert(contacts.body_state != separated.body_state);
     assert(contacts.contact_pairs != separated.contact_pairs);
@@ -364,6 +390,10 @@ static void contact_set_changes()
     assert(replacement.slot == b.slot && replacement.generation != b.generation);
     GAME_GameCollider_get(f.world, replacement)->sensor = true;
     assert(step(&f, 0) == 4); /* Reused slots must generate new contact events. */
+    /* The destroyed entity hears nothing; its partners hear it end first. */
+    assert(acount(f.events->ended) == 2);
+    assert(ended(&f, a) == ecs_entity_to_u64(b) && ended(&f, c) == ecs_entity_to_u64(b));
+    assert(f.events->ended[1].order < f.events->contacts[0].order);
     assert(other(&f, a) == ecs_entity_to_u64(replacement));
     assert(other(&f, c) == ecs_entity_to_u64(replacement));
     game_physics_set_profiling(f.physics, false);

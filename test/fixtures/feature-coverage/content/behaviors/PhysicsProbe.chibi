@@ -8,4 +8,7 @@ behavior PhysicsProbe {
     on ContactBegin {
         touching := get_contact_entities(self, 1)
     }
+    on ContactEnd {
+        left := Other
+    }
 }

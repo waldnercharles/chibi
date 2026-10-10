@@ -29,8 +29,11 @@ typedef enum
 const char *new_asset_folder(new_asset_kind kind);
 /* Executable definitions use .chibi; declarative documents use .kdl. */
 const char *new_asset_extension(new_asset_kind kind);
+/* The longest name a new asset may have, in bytes. */
+#define NEW_ASSET_NAME_MAX 63
 /* Whether `name` can name a new asset's file: a letter, then letters,
- * digits, - and _; false with why in `error`. */
+ * digits, - and _, at most NEW_ASSET_NAME_MAX bytes; false with why in
+ * `error`. */
 bool new_asset_name_valid(const char *name, char *error, size_t size);
 /* A graph asset of `domain` named `name`: its one event graph holds the
  * output node a material, shape or field needs, and a shape has 32-unit
@@ -38,6 +41,9 @@ bool new_asset_name_valid(const char *name, char *error, size_t size);
 behavior_asset *new_asset_graph(behavior_domain domain, const char *name);
 /* The owned code source of an empty `kind` named `name`, as its loader reads it. */
 char *new_asset_text(new_asset_kind kind, const char *name);
+/* Whether `path` is a folder and not a symbolic link to one, so a file made
+ * inside it stays in the project; false with why in `error`. */
+bool new_asset_real_folder(const char *path, char *error, size_t size);
 /* Writes the empty `kind` named `name` into its folder under `content`,
  * creating the folder when it is missing, and returns the owned file path.
  * NULL with why in `error`: errno is then EINVAL for an invalid name, EEXIST

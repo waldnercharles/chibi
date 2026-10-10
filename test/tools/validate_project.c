@@ -1,6 +1,9 @@
 #include "assets/project.h"
 #include "assets/prototype.h"
 #include "test/tools/fixture.h"
+#if CHIBI_TEST_MODEL_IMPORT
+#include "test/support/gltf_fixture.h"
+#endif
 #include "third_party/pico_headers/pico_unit.h"
 #include "third_party/yyjson/yyjson.h"
 
@@ -806,6 +809,90 @@ TEST_CASE(prototypes_are_found_by_declared_name)
     return true;
 }
 
+#if CHIBI_TEST_MODEL_IMPORT
+/* Whether the project holds the file `relative`. */
+static bool holds(const char *relative)
+{
+    char file[256];
+    path(file, sizeof file, relative);
+    return access(file, F_OK) == 0;
+}
+
+TEST_CASE(models_import_into_the_project)
+{
+    /* chibi_ctl names a model for its file, and what it writes is a valid
+     * project that --format keeps as it is. */
+    static const float uvs[8] = { 0, 1, 0, 0, 1, 0, 1, 1 };
+    static const uint8_t grain[4] = { 200, 150, 100, 255 };
+    static const char members[] = "\"scene\":0,\"scenes\":[{\"nodes\":[0]}],"
+                                  "\"nodes\":[{\"mesh\":0}],"
+                                  "\"meshes\":[{\"primitives\":["
+                                  "{" GLTF_FIXTURE_SQUARE ",\"material\":0}]}],"
+                                  "\"materials\":[{\"name\":\"Wood\","
+                                  "\"pbrMetallicRoughness\":{"
+                                  "\"baseColorTexture\":{\"index\":0}}}],"
+                                  "\"textures\":[{\"source\":0}]";
+    gltf_fixture f = { 0 };
+    gltf_fixture_square(&f, uvs);
+    gltf_fixture_png(&f, "grain.png", 2, 2, grain);
+    char crate[256], barrel[256];
+    path(crate, sizeof crate, "Crate.glb");
+    path(barrel, sizeof barrel, "old barrel.glb");
+    bool written = gltf_fixture_write(&f, crate, members) &&
+                   gltf_fixture_write(&f, barrel, members);
+    gltf_fixture_free(&f);
+    REQUIRE(written);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"import_model\",\"source\":\"Crate.glb\"}") == 0
+    );
+    REQUIRE(reads(yyjson_get_str(result("prototype")), "Crate"));
+    static const char *const files[] = { "content/textures/Crate/grain.png",
+                                         "content/materials/Crate_Wood.kdl",
+                                         "content/meshes/Crate.mesh",
+                                         "content/prototypes/Crate.kdl" };
+    REQUIRE(yyjson_arr_size(result("files")) == 4 && yyjson_arr_size(result("warnings")) == 0);
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(reads(yyjson_get_str(yyjson_arr_get(result("files"), (size_t)i)), files[i]));
+    }
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")) && errors() == 0);
+    const char *check[] = { program,    "--project-root", "game",
+                            "--format", "--check",        NULL };
+    REQUIRE(tool_run(check, root, log_path) == 0);
+
+    /* Importing it again would take the prototype's name. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"import_model\",\"source\":\"Crate.glb\"}") != 0
+    );
+    REQUIRE(reads(failure(), "content/prototypes/Crate.kdl already declares the prototype 'Crate'"));
+    REQUIRE(reads(failure_code(), "asset_conflict"));
+    /* A file name that is no asset name needs a name of its own, which no
+     * prototype may already declare, whatever its file is called. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"import_model\",\"source\":\"old barrel.glb\"}") != 0
+    );
+    REQUIRE(
+        reads(failure(), "Name the import with name; 'old barrel' is not an asset name: Start with a letter; use letters, digits, - and _")
+    );
+    REQUIRE(reads(failure_code(), "invalid_request"));
+    write_file("game/content/prototypes/props.kdl", "name \"Barrel\"\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"import_model\",\"source\":\"old barrel.glb\",\"name\":\"Barrel\"}") !=
+        0
+    );
+    REQUIRE(reads(failure(), "content/prototypes/props.kdl already declares the prototype 'Barrel'"));
+    REQUIRE(!holds("game/content/meshes/Barrel.mesh") && !holds("game/content/textures/Barrel"));
+    /* A model it cannot read writes nothing. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"import_model\",\"source\":\"Drum.glb\",\"name\":\"Drum\"}") !=
+        0
+    );
+    REQUIRE(failure() && !strncmp(failure(), "Cannot read ", strlen("Cannot read ")));
+    REQUIRE(reads(failure_code(), "validation_failed"));
+    REQUIRE(!holds("game/content/meshes/Drum.mesh"));
+    return true;
+}
+#endif
+
 TEST_CASE(manifest_content_folder_is_used)
 {
     char from[256], to[256];
@@ -1309,6 +1396,9 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(application_settings_are_checked);
     RUN_TEST_CASE(prototype_includes_resolve);
     RUN_TEST_CASE(prototypes_are_found_by_declared_name);
+#if CHIBI_TEST_MODEL_IMPORT
+    RUN_TEST_CASE(models_import_into_the_project);
+#endif
     RUN_TEST_CASE(scenarios_load_graph_assets);
     RUN_TEST_CASE(sounds_must_decode);
     RUN_TEST_CASE(resources_are_limited_together);

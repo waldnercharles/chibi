@@ -289,6 +289,92 @@ the bitangent's side, so mirrored UVs work. A mesh whose UVs are box-projected
 from source bounds keeps the screen-space frame, which its tangents don't
 describe, as shapes do.
 
+## Importing glTF models
+
+The `import_model` controller operation copies a glTF 2.0 model, a `.glb` or a
+`.gltf` beside its buffers and images, into the project's content
+(`assets/model_import.c`):
+
+```sh
+printf '%s\n' '{"contract":1,"operation":"import_model","source":"/downloads/crate.glb"}' | \
+  chibi_ctl --project-root "$PWD"
+```
+
+`name` defaults to the file's name without its extension. It must be an asset
+name, a letter and then letters, digits, `-` and `_`, at most 63 bytes, and no
+prototype may already declare it. The response lists the `files` written and
+the `warnings`. An import writes:
+
+- `content/meshes/<name>.mesh`: the triangles of every mesh node, placed by
+  their node transforms, with one material group per glTF material in glTF
+  order and a last one for primitives that name none.
+- `content/materials/<name>_<material>.kdl`: a Standard material for each glTF
+  material the mesh's triangles use, and `<name>_Default` for primitives with
+  none.
+  Characters an asset name refuses become `_`, and a name that matches an
+  earlier one, ignoring case, gets `_2`, `_3` and so on. `<name>` keeps at
+  most its first 47 bytes here, so the material's own name always fits.
+- `content/textures/<name>/<image>.png` or `.jpg`: each image a material uses,
+  copied byte for byte and named for the image, else its file, else
+  `Image<n>`.
+- `content/prototypes/<name>.kdl`: a prototype with Transform3D, Geometry3D of
+  1 by 1 by 1 and a Mesh Asset naming the mesh.
+
+It never replaces a file and removes everything it wrote when a step fails.
+The node tree flattens into one mesh because Studio cannot open prototypes
+with children yet, and nothing reads the nodes until skinning and animation do.
+
+- **Frames**: UVs copy as they are, since glTF and Chibi both put (0, 0) at an
+  image's top left. A primitive with normals keeps its authored tangents;
+  otherwise the import generates tangents whose bitangent points up the image,
+  toward -v, as glTF requires, where the engine's generator points toward +v.
+  A primitive without normals gets each triangle's flat normal. A node that
+  mirrors, by the signs of its and its parents' scales, flips its tangents' w
+  and its triangles' winding. A node whose scale collapses its surfaces onto a
+  line or a point is skipped. One that flattens them onto a plane keeps the
+  triangles with area there, their normals turned to the plane on the side
+  they faced. Triangles that a transform leaves with no area are left out
+  with a warning. Vertices no kept triangle uses, or no index names, are left
+  out too, so they neither widen the mesh's bounds nor count toward its
+  limits. Normals and tangents go through the node
+  frames in double, so a frame near float's range keeps their directions.
+- **Materials**: each factor is a Shader Parameter at a fixed slot, so
+  entities can override it: Base Color (0), Opacity (1, unless Opaque),
+  Metallic (2), Roughness (3), Emission (4, times
+  `KHR_materials_emissive_strength`), Normal Scale (5, with a normal image)
+  and Occlusion Strength (6, with an occlusion image). Each glTF texture adds
+  one Image Texture node that scales its factor. Base color and emission
+  images sample as sRGB color and the others as linear data. Metallic reads
+  the blue channel of the metallic-roughness image and roughness its green;
+  occlusion is `mix(1, red, strength)`; normal images use the OpenGL `+green`
+  convention along the mesh's bitangent. Alpha Mode and Alpha Cutoff carry
+  over, and `KHR_materials_unlit` sets Unlit. An unlit material keeps only its
+  base color and its image, since glTF makes its other properties fallbacks
+  for viewers that light it. An image has one filter, its sampler's
+  `magFilter`: `NEAREST` samples Nearest and anything else Bilinear, with a
+  warning when its `minFilter` differs. Engine images have no mip levels, so
+  a mipmapped `minFilter` reads the full image, as every image does, without
+  a warning. A sampler that clamps both axes samples Clamp; every other wrap
+  repeats, with a warning.
+- **Refused**: a required extension other than `KHR_materials_unlit`,
+  `KHR_materials_emissive_strength` and `KHR_texture_transform`; a texture
+  transform other than the identity; a texture that reads a UV set other than
+  `TEXCOORD_0`; an image that is not a PNG or JPEG of 1 to 2048 pixels a side;
+  a material factor beyond float range; primitives that are not triangles; a
+  buffer or image named by an absolute path or a scheme other than `data:`, or
+  one that `..` or a symbolic link leads outside the model's folder; a model
+  over 256 MiB together with the files it names; a mesh past the `.mesh`
+  limits above, refused before the import builds the vertices of the
+  primitive, or of a node's copy of it, that would pass them;
+  a material name that another native graph in the project already declares,
+  or a prototype name another prototype does, and a folder or file of
+  declarations it cannot read or parse; materials that would bring the
+  project's native graphs past the 1,024 it can prepare; and a content
+  folder, or a folder in it the import writes to, that is a symbolic link.
+- **Warned and left out**: vertex colors, morph targets, skins, animations,
+  cameras, lights and other extensions the model uses. Double-sided
+  materials draw single-sided.
+
 ## Occlusion and alpha modes
 
 A material's Occlusion scales the ambient and sky light it receives, diffuse
@@ -398,6 +484,13 @@ along its normal keeps its authored tangents.
 Normal maps on a ground square tilt toward or away from the sun as its
 tangents say: authored tangents a quarter turn from the UV gradient, mirrored
 UVs, a quarter-turned square, and box-projected UVs that keep their own frame.
+A square imported from glTF with base color, metallic-roughness, emission and
+occlusion images shades as one whose factors hold those images' values, and
+swapping roughness and metallic, or reading the base color as linear, shows.
+A glTF normal image tilts toward the top of the image whether the import
+makes the tangents or the model authors them, the square's u runs either way,
+or a node mirrors it, and away with the image upside down or the authored
+bitangents reversed.
 A box's Occlusion dims hemisphere ambient and sky light in proportion and
 leaves a sun's light as it was. At Opacity 0.3 over a purple sky, a Blend box
 mixes over it, Opaque and Mask boxes above their cutoff draw whole, and a Mask
@@ -413,13 +506,13 @@ check that runs the main build's
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 85 cases and 71027 assertions in 17.0 seconds on 2026-10-10.
+Vulkan llvmpipe passed 87 cases and 75141 assertions in 24.0 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 85
-cases and 71027 assertions in 17.1 seconds on 2026-10-10.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 87
+cases and 75141 assertions in 17.7 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half
@@ -431,7 +524,10 @@ publish, and are charged, with a prepared generation, and
 files, rejects malformed ones, prepares skies from mounted content and imports
 them without replacing a file. Both need the in-tree build above.
 `python3 tools/test_policy.py tool mesh-files` checks `.mesh` tangents,
-preparation and refusals the same way.
+preparation and refusals the same way, and
+`python3 tools/test_policy.py tool model-import` checks the files a glTF
+import writes, its names, refusals, warnings, left-out vertices and tangent
+frames.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

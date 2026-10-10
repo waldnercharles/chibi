@@ -241,6 +241,10 @@ the project's other resources, fail validation as they fail compiling; and in a
 project whose manifest names another content folder, assets are scaffolded,
 validated, run, formatted, found and reported there under their `content/`
 paths, and `status` names that folder even once the project is too old to open.
+In a compiler build, `import_model` names a model for its file, writes files
+that validate and that `--format --check` keeps, and refuses a name that is
+no asset name or that a prototype already declares, and a model it cannot
+read, writing nothing.
 A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
 
 `python3 tools/test_policy.py tool prototype-expansion` runs, the same way, the
@@ -549,6 +553,31 @@ across. It needs a compiler build,
 uses one temporary folder and passes 9,929 assertions in 9.2 seconds under
 ASan/UBSan with leak checks, most of them writing and reading the largest
 mesh, without processes or GPU.
+`model-import` selects seventeen in-tree glTF import cases: the image, Standard
+materials, mesh and prototype a `.gltf` writes, each once, byte for byte the
+same from a `.glb`, and nothing for a material only a hidden node uses; names
+made unique, ignoring case, and cut to 63 bytes; material names for a model
+named as long as a name may be; an import that would replace a file, or fails
+partway, leaves the content as it was; material and prototype names another
+file in the project already declares, declaration folders it cannot read
+and files it cannot parse, materials past the native graphs a project can
+prepare, and content folders and folders in them that are links, which it
+refuses;
+refused extensions, texture transforms,
+second UV sets, factors beyond float range, images and primitives; unreadable
+files, names and buffers, buffers that `..` or a link leads outside the model's
+folder, and buffers that together pass the size limit; unlit materials that
+keep only their base color; the warnings for what it leaves out, and the
+vertices only a left-out triangle used; a primitive whose accessors carry
+more vertices than a `.mesh` file holds, of which its triangle uses three; a
+model whose nodes copy a primitive past what a `.mesh` file holds, refused
+while it bakes, and a primitive past it, refused before its vertices are
+built; and tangent frames
+generated toward image-up, authored, turned, mirrored by a node, flat at any
+size, flattened onto the ground by a parent, and scaled past float's volume
+or square or carried past its range. It
+needs a compiler build, uses one temporary folder and passes 176 assertions
+under ASan/UBSan with leak checks, without processes or GPU.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

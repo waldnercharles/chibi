@@ -27,6 +27,18 @@
 #if CHIBI_TEST_MATERIAL_GRAPHS
 #include "material_graphs.h"
 #endif
+#if CHIBI_TEST_MATERIAL_GRAPHS && CHIBI_TEST_MODEL_IMPORT
+#include "assets/model_import.h"
+#include "authoring/image_prepare.h"
+#include "authoring/shader_prepare.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/shader/shader_graph.h"
+#include "test/support/gltf_fixture.h"
+
+#include <errno.h>
+#include <sys/stat.h>
+#endif
 
 #include <assert.h>
 #include <math.h>
@@ -80,8 +92,15 @@ static void setup()
     lens = camera();
 }
 
+#if CHIBI_TEST_MATERIAL_GRAPHS && CHIBI_TEST_MODEL_IMPORT
+static void remove_imports();
+#endif
+
 static void teardown()
 {
+#if CHIBI_TEST_MATERIAL_GRAPHS && CHIBI_TEST_MODEL_IMPORT
+    remove_imports();
+#endif
     backdrop = false;
     render_shader_catalog_clear();
     render_mesh_assets_clear();
@@ -3514,6 +3533,307 @@ TEST_CASE(masked_solids_outside_the_view_cut_their_shadows)
     REQUIRE(red.colors.r > 60 && red.colors.g == 0);
     return true;
 }
+
+#if CHIBI_TEST_MODEL_IMPORT
+/* The folder models import into, removed with the images they made
+ * resident. */
+static char import_folder[64];
+
+static void remove_imports()
+{
+    if (!import_folder[0]) {
+        return;
+    }
+    render_image_catalog_clear();
+    char command[128];
+    snprintf(command, sizeof command, "rm -rf '%s'", import_folder);
+    if (system(command) != 0) {
+        abort();
+    }
+    import_folder[0] = '\0';
+}
+
+/* The material file `text` loaded with the shader nodes registered, as
+ * Studio and chibi_ctl register them. */
+static behavior_asset *load_material(const char *text)
+{
+    const registry_pack **previous = NULL;
+    for (int i = 0; i < registry_pack_count(); i++) {
+        apush(previous, registry_pack_at(i));
+    }
+    const registry_pack *packs[] = { &SHADER_PACK };
+    registry_set_packs(packs, 1);
+    behavior_asset *asset = behavior_asset_load(text);
+    registry_set_packs(previous, acount(previous));
+    afree(previous);
+    return asset;
+}
+
+/* Makes the imported file `key` drawable: registers a material, or publishes
+ * a mesh under mesh_key. Images load from the mounted content folder. */
+static bool make_drawable(const char *key)
+{
+    bool material = !strncmp(key, "content/materials/", 18),
+         mesh = !strncmp(key, "content/meshes/", 15);
+    if (!material && !mesh) {
+        return true;
+    }
+    char path[256];
+    snprintf(path, sizeof path, "%s/%s", import_folder, key);
+    FILE *file = fopen(path, "rb");
+    assert(file && !fseek(file, 0, SEEK_END));
+    size_t length = (size_t)ftell(file);
+    char *bytes = xmalloc(length + 1);
+    assert(
+        !fseek(file, 0, SEEK_SET) && fread(bytes, 1, length, file) == length &&
+        !fclose(file)
+    );
+    bytes[length] = '\0';
+    bool drawable = false;
+    if (material) {
+        behavior_asset *asset = load_material(bytes);
+        shader_error error = { 0 };
+        drawable = asset && render_shader_upsert(asset, &error);
+        if (asset) {
+            behavior_asset_free(asset);
+        }
+    } else {
+        render_mesh_asset loaded = { 0 };
+        size_t budget = SIZE_MAX;
+        char error[128];
+        drawable = render_mesh_asset_prepared_read_budget(bytes, length, &budget, &loaded, error, sizeof error);
+        assert(drawable);
+        render_mesh_asset_publish(mesh_key, &loaded);
+    }
+    free(bytes);
+    return drawable;
+}
+
+/* Imports model `f`, with the JSON members `members`, as `name`, and makes
+ * what it wrote drawable. */
+static bool import_model(const gltf_fixture *f, const char *name, const char *members)
+{
+    if (!import_folder[0]) {
+        strcpy(import_folder, "/tmp/chibi-scene3d-XXXXXX");
+        assert(mkdtemp(import_folder));
+    }
+    char source[128], content[128], error[256] = "";
+    snprintf(source, sizeof source, "%s/%s.gltf", import_folder, name);
+    snprintf(content, sizeof content, "%s/content", import_folder);
+    assert(!mkdir(content, 0700) || errno == EEXIST);
+    model_import_report report = { 0 };
+    bool imported = gltf_fixture_write(f, source, members) &&
+                    model_import(content, source, name, &report, error, sizeof error) &&
+                    render_image_mount_content(content, error, sizeof error);
+    for (int i = 0; imported && i < acount(report.written); i++) {
+        imported = make_drawable(report.written[i]);
+    }
+    model_import_report_free(&report);
+    return imported;
+}
+
+/* The image's up along +z, u along +x. */
+static const float upright_uvs[] = { 0, 1, 0, 0, 1, 0, 1, 1 };
+
+/* The 8-bit sRGB `value` as linear light. */
+static float linear(int value)
+{
+    float c = value / 255.0f;
+    return c <= .04045f ? c / 12.92f : powf((c + .055f) / 1.055f, 2.4f);
+}
+
+/* The Look material's factors as a format: base color, metallic, roughness
+ * and emission, and the shut image's occlusion strength, since
+ * 1 + strength * (red - 1) matches the open image's occlusion. */
+static const char LOOK_FACTORS
+    [] = "\"materials\":[{\"name\":\"Look\",\"pbrMetallicRoughness\":"
+         "{\"baseColorFactor\":[%.9g,%.9g,%.9g,1],"
+         "\"metallicFactor\":%.9g,\"roughnessFactor\":%.9g},"
+         "\"emissiveFactor\":[%.9g,%.9g,0],"
+         "\"occlusionTexture\":{\"index\":4,\"strength\":%.9g}}]";
+
+/* Standard materials from glTF shade alike whether a factor or an image
+ * gives each value: base color and emission images hold sRGB, roughness
+ * and metallic come from the green and blue of one image, and occlusion
+ * from the red of another scaled by its strength. The view tells a sRGB
+ * image read as linear, and swapped roughness and metallic, apart. */
+TEST_CASE(imported_standard_materials_shade_as_their_factors)
+{
+    gltf_fixture f = { 0 };
+    gltf_fixture_square(&f, upright_uvs);
+    gltf_fixture_png(&f, "base.png", 2, 2, (const uint8_t[]){ 200, 120, 60, 255 });
+    gltf_fixture_png(&f, "packed.png", 2, 2, (const uint8_t[]){ 0, 77, 204, 255 });
+    gltf_fixture_png(&f, "glow.png", 2, 2, (const uint8_t[]){ 120, 60, 0, 255 });
+    gltf_fixture_png(&f, "open.png", 2, 2, (const uint8_t[]){ 128, 0, 255, 255 });
+    gltf_fixture_png(&f, "shut.png", 2, 2, (const uint8_t[]){ 0, 255, 0, 255 });
+    const char *textures = "\"textures\":[{\"source\":0},{\"source\":1},"
+                           "{\"source\":2},{\"source\":3},{\"source\":4}]";
+    char members[2048];
+    snprintf(
+        members,
+        sizeof members,
+        "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":["
+        "{" GLTF_FIXTURE_SQUARE ",\"material\":0}]}],%s,"
+        "\"materials\":[{\"name\":\"Look\",\"pbrMetallicRoughness\":{"
+        "\"baseColorTexture\":{\"index\":0},"
+        "\"metallicRoughnessTexture\":{\"index\":1}},"
+        "\"emissiveFactor\":[1,1,1],\"emissiveTexture\":{\"index\":2},"
+        "\"occlusionTexture\":{\"index\":3}}]",
+        textures
+    );
+    REQUIRE(import_model(&f, "Images", members));
+    ecs_entity square = add_surface_box("Images_Look");
+    import_mesh(square);
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
+    GameEnvironment environment = unlit_environment();
+    environment.ambient_sky = 0xffffffffu;
+    environment.ambient_ground = 0xffffffffu;
+    environment.ambient_intensity = .5f;
+    REQUIRE(render(&environment));
+    static CF_Pixel images[PIXELS];
+    memcpy(images, pixels, sizeof pixels);
+
+    const char *meshes = "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":"
+                         "[{" GLTF_FIXTURE_SQUARE ",\"material\":0}]}]";
+    char format[1024];
+    snprintf(format, sizeof format, "%s,%s,%s", meshes, textures, LOOK_FACTORS);
+    snprintf(
+        members,
+        sizeof members,
+        format,
+        linear(200),
+        linear(120),
+        linear(60),
+        204 / 255.0,
+        77 / 255.0,
+        linear(120),
+        linear(60),
+        127 / 255.0
+    );
+    REQUIRE(import_model(&f, "Factors", members));
+    REQUIRE(render(&environment));
+    REQUIRE(matches(images));
+
+    snprintf(
+        members,
+        sizeof members,
+        format,
+        linear(200),
+        linear(120),
+        linear(60),
+        77 / 255.0,
+        204 / 255.0,
+        linear(120),
+        linear(60),
+        127 / 255.0
+    );
+    REQUIRE(import_model(&f, "Swapped", members));
+    REQUIRE(render(&environment));
+    REQUIRE(distance(pixel_at((CF_V3){ 0 }), images[pixel_index((CF_V3){ 0 })]) > 10);
+    snprintf(
+        members,
+        sizeof members,
+        format,
+        200 / 255.0,
+        120 / 255.0,
+        60 / 255.0,
+        204 / 255.0,
+        77 / 255.0,
+        linear(120),
+        linear(60),
+        127 / 255.0
+    );
+    REQUIRE(import_model(&f, "Raw", members));
+    REQUIRE(render(&environment));
+    REQUIRE(distance(pixel_at((CF_V3){ 0 }), images[pixel_index((CF_V3){ 0 })]) > 10);
+    gltf_fixture_free(&f);
+    return true;
+}
+
+/* How bright the square's center shows after importing it as `name`, with
+ * the nodes `nodes`, the attributes `attributes`, and with the fixture's
+ * image as its normal map unless `flat`. It is a dielectric: with the sun
+ * behind the eye, a rough metal's light would not depend on its normal. */
+static int imported_light(
+    const gltf_fixture *f,
+    const char *name,
+    const char *nodes,
+    const char *attributes,
+    bool flat
+)
+{
+    char members[1024];
+    snprintf(
+        members,
+        sizeof members,
+        "\"nodes\":[%s],\"meshes\":[{\"primitives\":[{\"attributes\":{%s},"
+        "\"indices\":3,\"material\":0}]}],"
+        "\"textures\":[{\"source\":0}],\"materials\":[{\"name\":\"Map\","
+        "\"pbrMetallicRoughness\":{\"metallicFactor\":0}%s}]",
+        nodes,
+        attributes,
+        flat ? "" : ",\"normalTexture\":{\"index\":0}"
+    );
+    if (!import_model(f, name, members)) {
+        return -1;
+    }
+    GameEnvironment environment = unlit_environment();
+    return render(&environment) ? pixel_at((CF_V3){ 0 }).colors.g : -1;
+}
+
+/* A glTF normal image's green tilts toward the top of the image. With the
+ * image's up along +z, toward a sun that shines down toward -z, an image
+ * tilted toward green lights the square more than a flat one does, whether
+ * the import makes its tangents or the model authors them, its u runs
+ * either way, or a node mirrors it. With the image's up along -z, or
+ * authored bitangents along -z, it shades the square. */
+TEST_CASE(imported_normal_maps_tilt_toward_the_top_of_their_image)
+{
+    gltf_fixture f = { 0 };
+    gltf_fixture_square(&f, upright_uvs);
+    gltf_fixture_png(&f, "up.png", 2, 2, (const uint8_t[]){ 128, 217, 217, 255 });
+    int up = gltf_fixture_floats(
+        &f,
+        (const float[16]){ 1, 0, 0, -1, 1, 0, 0, -1, 1, 0, 0, -1, 1, 0, 0, -1 },
+        4,
+        4
+    );
+    int down = gltf_fixture_floats(
+        &f,
+        (const float[16]){ 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1 },
+        4,
+        4
+    );
+    int turned = gltf_fixture_floats(&f, (const float[]){ 1, 1, 1, 0, 0, 0, 0, 1 }, 4, 2);
+    int flipped = gltf_fixture_floats(&f, (const float[]){ 0, 0, 0, 1, 1, 1, 1, 0 }, 4, 2);
+    const char *plain = "\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2",
+               *single = "{\"mesh\":0}";
+    char attributes[4][96];
+    snprintf(attributes[0], sizeof attributes[0], "%s,\"TANGENT\":%d", plain, up);
+    snprintf(attributes[1], sizeof attributes[1], "%s,\"TANGENT\":%d", plain, down);
+    snprintf(attributes[2], sizeof attributes[2], "\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":%d", turned);
+    snprintf(attributes[3], sizeof attributes[3], "\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":%d", flipped);
+    REQUIRE(
+        import_model(&f, "Square", "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[{" GLTF_FIXTURE_SQUARE "}]}]")
+    );
+    import_mesh(add_surface_box("Square_Default"));
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
+    int level = imported_light(&f, "Level", single, plain, true);
+    int made = imported_light(&f, "Made", single, plain, false);
+    REQUIRE(level > 0 && made > level + 10);
+    REQUIRE(abs(imported_light(&f, "Authored", single, attributes[0], false) - made) <= 3);
+    REQUIRE(abs(imported_light(&f, "Turned", single, attributes[2], false) - made) <= 3);
+    REQUIRE(
+        abs(imported_light(&f, "Mirrored", "{\"mesh\":0,\"scale\":[-1,1,1]}", plain, false) -
+            made) <= 3
+    );
+    int away = imported_light(&f, "Flipped", single, attributes[3], false);
+    REQUIRE(away >= 0 && away + 10 < level);
+    REQUIRE(abs(imported_light(&f, "Inverted", single, attributes[1], false) - away) <= 3);
+    gltf_fixture_free(&f);
+    return true;
+}
+#endif
 #endif
 
 void test_render_scene3d(bool gles)
@@ -3620,6 +3940,10 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(masked_surfaces_cast_cut_out_shadows);
     RUN_TEST_CASE(view_dependent_masks_cast_shadows_seen_from_the_light);
     RUN_TEST_CASE(masked_solids_outside_the_view_cut_their_shadows);
+#if CHIBI_TEST_MODEL_IMPORT
+    RUN_TEST_CASE(imported_standard_materials_shade_as_their_factors);
+    RUN_TEST_CASE(imported_normal_maps_tilt_toward_the_top_of_their_image);
+#endif
 #endif
     pu_clear_setup();
     cf_destroy_app();

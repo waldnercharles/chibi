@@ -341,8 +341,10 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   base color and its image, since glTF makes its other properties fallbacks
   for viewers that light it. An image has one filter, its sampler's
   `magFilter`: `NEAREST` samples Nearest and anything else Bilinear, with a
-  warning when its `minFilter` differs. A sampler that clamps both axes
-  samples Clamp; every other wrap repeats, with a warning.
+  warning when its `minFilter` differs. Engine images have no mip levels, so
+  a mipmapped `minFilter` reads the full image, as every image does, without
+  a warning. A sampler that clamps both axes samples Clamp; every other wrap
+  repeats, with a warning.
 - **Refused**: a required extension other than `KHR_materials_unlit`,
   `KHR_materials_emissive_strength` and `KHR_texture_transform`; a texture
   transform other than the identity; a texture that reads a UV set other than

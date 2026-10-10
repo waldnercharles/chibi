@@ -24,7 +24,7 @@ void render_scene3d_mesh_cache_draw(
 /* How many meshes have a GPU copy. */
 int render_scene3d_mesh_cache_count(const render_scene3d_mesh_cache *cache);
 /* Frees the copies of meshes the catalog no longer holds, such as ones a
- * reload replaced. */
+ * reload replaced. Does nothing while the catalog is unchanged. */
 void render_scene3d_mesh_cache_prune(render_scene3d_mesh_cache *cache);
 
 #endif

@@ -23,6 +23,7 @@ struct render_mesh_table
 static render_mesh_table resident;
 
 static uint64_t next_identity = 1;
+static uint64_t generation;
 
 void render_mesh_asset_free(render_mesh_asset *asset)
 {
@@ -117,6 +118,7 @@ void render_mesh_asset_publish(const char *source, render_mesh_asset *asset)
     *loaded = (mesh_source){ .source = xstrdup(source), .asset = *asset };
     loaded->asset.identity = next_identity++;
     *asset = (render_mesh_asset){ 0 };
+    generation++;
     for (int i = 0; i < acount(resident.items); i++) {
         if (!strcmp(resident.items[i]->source, source)) {
             free(resident.items[i]->source);
@@ -137,6 +139,12 @@ void render_mesh_assets_clear()
         free(resident.items[i]);
     }
     afree(resident.items);
+    generation++;
+}
+
+uint64_t render_mesh_assets_generation()
+{
+    return generation;
 }
 
 render_mesh_table *render_mesh_table_new_budget(size_t *remaining)
@@ -203,6 +211,7 @@ void render_mesh_table_exchange(render_mesh_table *table)
     mesh_source **old = resident.items;
     resident.items = table->items;
     table->items = old;
+    generation++;
 }
 void render_mesh_table_free(render_mesh_table *table)
 {

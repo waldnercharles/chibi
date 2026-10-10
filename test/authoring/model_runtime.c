@@ -496,7 +496,9 @@ TEST_CASE(mesh_persistence_transfers_detached_generations)
     REQUIRE(render_mesh_table_add_owned(staged_meshes, path, &decoded_mesh));
     REQUIRE(!decoded_mesh.vertices && render_mesh_table_source_count(staged_meshes) == 1);
     memset(path, 'x', sizeof path - 1);
+    uint64_t generation = render_mesh_assets_generation();
     render_mesh_table_exchange(staged_meshes);
+    REQUIRE(render_mesh_assets_generation() != generation);
     const render_mesh_asset
         *resident = render_mesh_asset_load("content/meshes/triangle.mesh", error, sizeof error);
     REQUIRE(resident && resident->identity && !strcmp(resident->groups[0].name, "Face"));

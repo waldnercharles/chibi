@@ -16,6 +16,7 @@ typedef struct
 struct render_scene3d_mesh_cache
 {
     uploaded *meshes;
+    uint64_t pruned; /* The catalog generation the copies were last pruned at. */
 };
 
 render_scene3d_mesh_cache *render_scene3d_mesh_cache_new()
@@ -147,6 +148,11 @@ static bool resident(uint64_t identity)
 
 void render_scene3d_mesh_cache_prune(render_scene3d_mesh_cache *cache)
 {
+    uint64_t generation = render_mesh_assets_generation();
+    if (cache->pruned == generation) {
+        return;
+    }
+    cache->pruned = generation;
     int kept = 0;
     for (int i = 0; i < acount(cache->meshes); i++) {
         if (resident(cache->meshes[i].identity)) {

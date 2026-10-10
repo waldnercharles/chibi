@@ -38,6 +38,7 @@
 
 1. Review the whole diff as a reviewer would: correctness, ownership and lifetimes, failure paths, the style rules above, and dead code left behind. In Claude Code run `/code-review`; otherwise review it yourself. Fix what you find before committing.
 2. Add or update a pico_unit case for every behavior change, in the dispatcher that owns the area (`test/tools` or `test/language`). A fix needs a case that failed before it.
+   A new component, native function or event is also used in a `test/fixtures/feature-coverage` scene, or listed in its `coverage-gaps.txt` with a reason (see [feature coverage](docs/testing.md#feature-coverage)).
 3. Build and run the checks CI runs: `make test-native` and `make test-language-all` (both build the drivers with `make test-build`) and `make test-tools`. Say which ran; quarantined coverage is not passed.
 4. Format. The pre-commit hook (`.githooks/pre-commit`, installed by configure) runs clang-format 22 on staged C sources; `make check-format` checks everything. Format hand-edited assets with `chibi_ctl --format`.
 5. Commit messages say what changed and why, in the imperative.

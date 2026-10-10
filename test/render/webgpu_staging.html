@@ -10,6 +10,12 @@
 const output = document.getElementById('output');
 let completed = false;
 let device;
+let realLost;
+let resolveOldLoss;
+let oldLossDelivered = false;
+let expectedLoss = false;
+let lossDelivered = false;
+let validationDelivered = false;
 const diagnostic = message => fetch('/diagnostic', {
     method: 'POST', body: String(message).slice(0, 240)
 }).catch(() => {});
@@ -24,7 +30,7 @@ diagnostic('shell-start');
 const watchdog = setTimeout(() => {
     fail('startup/execution watchdog expired');
     if (device) device.destroy();
-}, 50000);
+}, 55000);
 window.chibiStagingResult = body => {
     if (completed) return;
     completed = true;
@@ -46,6 +52,25 @@ var Module = {
         if (device) device.destroy();
     }
 };
+window.chibiStagingRestoreDeviceLoss = () => {
+    Object.defineProperty(device, 'lost', { configurable: true, value: realLost });
+};
+window.chibiStagingResolveOldLoss = () => {
+    resolveOldLoss({ reason: 'unknown', message: 'stale app device loss regression' });
+    queueMicrotask(() => { oldLossDelivered = true; });
+};
+window.chibiStagingOldLossDelivered = () => oldLossDelivered;
+window.chibiStagingValidationDelivered = () => validationDelivered;
+window.chibiStagingLossDelivered = () => lossDelivered;
+window.chibiStagingValidationError = () => {
+    // A real WebGPU validation error, rather than a synthetic DOM event.
+    device.createBuffer({ size: 4, usage: 0 });
+    device.queue.submit([]);
+};
+window.chibiStagingLoseDevice = () => {
+    expectedLoss = true;
+    device.destroy();
+};
 (async () => {
     if (@CHIBI_TEST_ADOPT_DEVICE@) {
         const adapter = await navigator.gpu.requestAdapter();
@@ -55,10 +80,21 @@ var Module = {
             device.destroy();
             return;
         }
+        realLost = device.lost;
+        // The first app subscribes to a loss that we can deliver after teardown.
+        Object.defineProperty(device, 'lost', {
+            configurable: true,
+            value: new Promise(resolve => { resolveOldLoss = resolve; })
+        });
         Module.preinitializedWebGPUDevice = device;
-        device.lost.then(info => {
-            output.textContent += info.message + '\n';
-            window.chibiStagingResult('1 0 0 0 0 0 0');
+        device.addEventListener('uncapturederror', event => {
+            validationDelivered = event.error instanceof GPUValidationError;
+            if (!validationDelivered) fail(event.error.message);
+            event.preventDefault();
+        });
+        realLost.then(info => {
+            lossDelivered = true;
+            if (!expectedLoss) fail('Unexpected device loss: ' + info.message);
         });
     }
     const script = document.createElement('script');

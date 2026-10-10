@@ -1,0 +1,8 @@
+name "Pilot"
+components {
+    (object)GAME.GameAim
+    (object)GAME.GameDash
+    (object)GAME.GameInput
+    (object)GAME.GameMovement
+    (object)GAME.GameTransform
+}

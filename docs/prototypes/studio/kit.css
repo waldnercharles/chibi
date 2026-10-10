@@ -257,8 +257,6 @@ input { border: 0; outline: 0; background: none; padding: 0; margin: 0; min-widt
 .panel > .panel-head .chev { color: var(--fg-3); width: 12px; font-size: 11px; transition: transform var(--pop-ms) var(--ease-out); transform: rotate(-90deg); }
 .panel[data-open] > .panel-head .chev { transform: rotate(0deg); }
 .panel > .panel-head .title { font-weight: 600; font-size: 12px; }
-.panel > .panel-head .grip { color: var(--fg-off); opacity: 0; font-size: 12px; }
-.panel > .panel-head:hover .grip { opacity: 1; }
 .panel > .panel-body { padding: 4px 8px 8px 6px; display: none; }
 .panel[data-open] > .panel-body { display: block; }
 .panel .badge { margin-left: 2px; }

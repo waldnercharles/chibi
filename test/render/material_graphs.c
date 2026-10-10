@@ -185,6 +185,36 @@ bool test_register_view_mask(const char *name)
     );
 }
 
+bool test_register_unknown_opacity(const char *name)
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    node *uv = graph_add_node(g, pack_node("Shader UV"));
+    node *u = graph_add_node(g, pack_node("Shader X"));
+    node *scales[2] = { graph_add_node(g, pack_node("Shader Multiply")),
+                        graph_add_node(g, pack_node("Shader Multiply")) };
+    node *fraction = graph_add_node(g, pack_node("Shader Fract"));
+    pin_value values[] = { { .type = PIN_BOOL, .b = true },
+                           { .type = PIN_I32, .i = SHADER_ALPHA_MASK },
+                           { .type = PIN_F32, .f = .5f },
+                           { .type = PIN_F32, .f = 1e38f } };
+    return publish(
+        material,
+        uv && u && scales[0] && scales[1] && fraction &&
+            !graph_connect_data(g, uv, 0, u, 0) &&
+            !graph_connect_data(g, u, 0, scales[0], 0) &&
+            !graph_set_pin_default(g, scales[0], 0, 1, &values[3]) &&
+            !graph_connect_data(g, scales[0], 0, scales[1], 0) &&
+            !graph_set_pin_default(g, scales[1], 0, 1, &values[3]) &&
+            !graph_connect_data(g, scales[1], 0, fraction, 0) &&
+            !graph_connect_data(g, fraction, 0, output, SHADER_SURFACE_OPACITY) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_UNLIT, &values[0]) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_ALPHA_MODE, &values[1]) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_ALPHA_CUTOFF, &values[2])
+    );
+}
+
 bool test_register_model_sphere(const char *name, float radius)
 {
     behavior_asset *model = behavior_asset_new(name);

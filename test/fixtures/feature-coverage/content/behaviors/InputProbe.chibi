@@ -1,0 +1,11 @@
+behavior InputProbe {
+    on Input {
+        self.Transform += Direction
+        if input.Shoot.held {
+            self.Aim.firing = true
+        }
+        if input.Shoot.pressed {
+            self.Aim.firing = true
+        }
+    }
+}

@@ -103,6 +103,14 @@ typedef enum
     SHADER_IMAGE_REPEAT,
     SHADER_IMAGE_CLAMP
 } shader_image_wrap;
+/* Which way a normal image's green tilts. Images put (0, 0) at their top-left,
+ * so DirectX's +green tilts toward +v, down the image, and OpenGL's toward -v,
+ * up the image. Materials save the value. */
+typedef enum
+{
+    SHADER_NORMAL_DIRECTX,
+    SHADER_NORMAL_OPENGL
+} shader_normal_convention;
 enum
 {
     SHADER_IMAGE_INPUT_UV,

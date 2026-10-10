@@ -223,7 +223,8 @@ drawn on the far plane, so it fills every pixel no surface covers, and an empty
 A `GameMeshAsset` source names a binary `.mesh` file in the content folder,
 such as `content/meshes/Camera.mesh`. The file holds indexed triangles. Each
 vertex has a position, normal, texture coordinate and tangent. The tangent's w
-is 1 or -1, and the bitangent is cross(normal, tangent) times w. Meshes baked
+is 1 or -1, and the bitangent is cross(normal, tangent) times w; normal maps
+take it as the direction of +v, down the image. Meshes baked
 from models also store each vertex's part position and object-to-part frame;
 other meshes read back with their own position and an identity frame. Material
 groups name runs of whole triangles in the index list and cover all of it.
@@ -307,10 +308,10 @@ The node tree flattens into one mesh because Studio cannot open prototypes
 with children yet, and nothing reads the nodes until skinning and animation do.
 
 - **Frames**: UVs copy as they are, since glTF and Chibi both put (0, 0) at an
-  image's top left. A primitive with normals keeps its authored tangents;
-  otherwise the import generates tangents whose bitangent points up the image,
-  toward -v, as glTF requires, where the engine's generator points toward +v.
-  A primitive without normals gets each triangle's flat normal. A node that
+  image's top left. Tangents take the engine's frame, whose bitangent points
+  down the image, toward +v: the import generates them as the engine does,
+  and negates the w of a primitive's authored tangents, since glTF's
+  bitangent points up the image. A primitive without normals gets each triangle's flat normal. A node that
   mirrors flips its tangents' w and its triangles' winding. A node scaled to
   nothing is skipped, and triangles that a transform leaves with no area are
   left out with a warning.
@@ -322,8 +323,8 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   one Image Texture node that scales its factor. Base color and emission
   images sample as sRGB color and the others as linear data. Metallic reads
   the blue channel of the metallic-roughness image and roughness its green;
-  occlusion is `mix(1, red, strength)`; normal images use the OpenGL `+green`
-  convention along the mesh's bitangent. Alpha Mode and Alpha Cutoff carry
+  occlusion is `mix(1, red, strength)`; normal images use the OpenGL
+  convention, whose green tilts up the image. Alpha Mode and Alpha Cutoff carry
   over, and `KHR_materials_unlit` sets Unlit. A sampler that magnifies with
   `NEAREST` samples Nearest, and one that clamps both axes samples Clamp;
   every other wrap repeats, with a warning.
@@ -427,6 +428,8 @@ turn their bitangent with it.
 Normal maps on a ground square tilt toward or away from the sun as its
 tangents say: authored tangents a quarter turn from the UV gradient, mirrored
 UVs, a quarter-turned square, and box-projected UVs that keep their own frame.
+A Normal Map labelled OpenGL tilts toward the top of its image on a mesh with
+generated tangents, and one labelled DirectX toward the bottom.
 A square imported from glTF with base color, metallic-roughness, emission and
 occlusion images shades as one whose factors hold those images' values, and
 swapping roughness and metallic, or reading the base color as linear, shows.
@@ -447,13 +450,13 @@ check that runs the main build's
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 74 cases and 54539 assertions in 14.9 seconds on 2026-10-10.
+Vulkan llvmpipe passed 75 cases and 54544 assertions in 14.9 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 74
-cases and 54539 assertions in 10.0 seconds on 2026-10-10.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 75
+cases and 54544 assertions in 10.0 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

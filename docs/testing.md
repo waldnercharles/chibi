@@ -558,14 +558,15 @@ ASan/UBSan with leak checks, 8.0 of them writing and reading the largest mesh,
 without processes or GPU.
 `model-import` selects eight in-tree glTF import cases: the image, Standard
 materials, mesh and prototype a `.gltf` writes, each once, byte for byte the
-same from a `.glb`, and nothing for a material only a hidden node uses; names made unique, ignoring case, and cut to 63 bytes;
-an import that would replace a file, or fails partway, leaves the content as
-it was; refused extensions, texture transforms, second UV sets, images and
-primitives; unreadable files, names and buffers; the warnings for what it
-leaves out; and tangent frames generated toward image-up, authored, turned,
-mirrored by a node and flat. It needs a compiler build, uses one temporary
-folder and passes 83 assertions under ASan/UBSan with leak checks, without
-processes or GPU.
+same from a `.glb`, and nothing for a material only a hidden node uses; names
+made unique, ignoring case, and cut to 63 bytes; an import that would replace a
+file, or fails partway, leaves the content as it was; refused extensions,
+texture transforms, second UV sets, images and primitives; unreadable files,
+names and buffers; the warnings for what it leaves out; and tangent frames
+whose OpenGL green tilts up the image: generated, authored, turned, mirrored by
+a node and flat. It needs a compiler build, uses one temporary folder and
+passes 83 assertions under ASan/UBSan with leak checks, without processes or
+GPU.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

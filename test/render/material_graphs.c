@@ -103,7 +103,7 @@ bool test_register_coordinate(const char *name, const char *input)
     );
 }
 
-bool test_register_normal_map(const char *name, const float color[3])
+bool test_register_normal_map(const char *name, const float color[3], shader_normal_convention convention)
 {
     behavior_asset *material = new_material(name);
     graph *g = material->graph;
@@ -111,11 +111,30 @@ bool test_register_normal_map(const char *name, const float color[3])
     node *map = graph_add_node(g, pack_node("Shader Normal Map"));
     float rgb[3] = { color[0], color[1], color[2] };
     pin_value value = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = rgb };
+    pin_value green = { .type = PIN_I32, .i = convention };
     return publish(
         material,
         map && !graph_set_pin_default(g, map, 0, 0, &value) &&
+            !graph_set_pin_default(g, map, 0, 4, &green) &&
             !graph_connect_data(g, map, 0, output, 4)
     );
+}
+
+shader_normal_convention test_normal_convention(const char *label)
+{
+    for (int i = 0; i < SHADER_PACK.enum_count; i++) {
+        const enum_desc *conventions = SHADER_PACK.enums[i];
+        if (strcmp(conventions->name, "ShaderNormalConvention")) {
+            continue;
+        }
+        for (int j = 0; j < conventions->value_count; j++) {
+            if (!strcmp(conventions->values[j].label, label)) {
+                return (shader_normal_convention)conventions->values[j].value;
+            }
+        }
+    }
+    assert(false);
+    return SHADER_NORMAL_DIRECTX;
 }
 
 bool test_register_occlusion(const char *name, float occlusion)

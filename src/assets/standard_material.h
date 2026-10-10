@@ -40,8 +40,8 @@ typedef struct
 /* glTF 2.0's metallic-roughness material. Base color and emission are linear;
  * their images hold sRGB color, and the others linear data. Metallic is the
  * metallic-roughness image's blue channel and roughness its green, occlusion
- * is the red channel of its image, and normal images use the OpenGL (+green)
- * convention along the mesh's bitangent. */
+ * is the red channel of its image, and normal images use the OpenGL
+ * convention, whose green tilts up the image. */
 typedef struct
 {
     float base_color[4]; /* RGB and opacity */

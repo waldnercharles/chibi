@@ -1339,7 +1339,8 @@ GameGravity3D;
  * into it, so gravity a script adds does not build up while it stands. on_floor
  * says whether it ended the step on a surface within 45 degrees of up, against
  * gravity, and floor_normal is that surface's normal. Physics writes both. It
- * stops at dynamic bodies as at walls and does not ride moving platforms. */
+ * stops at dynamic bodies and other characters as at walls, does not ride
+ * moving platforms, and carries only sensor colliders under it. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameCharacter3D)
 {
     bool on_floor;

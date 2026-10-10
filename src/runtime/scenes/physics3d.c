@@ -772,8 +772,9 @@ static void carry(game_physics3d *physics, body_record *record, const body_recor
 }
 
 /* Each follower rides on its anchor's body. One without an anchor has a
- * kinematic body of its own that its parents place. */
-static void place_followers(game_physics3d *physics)
+ * kinematic body of its own that its parents place. The mover moves only a
+ * character's capsule, so a character carries only sensors. */
+static int place_followers(game_physics3d *physics)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
         body_record *record = &physics->bodies[i];
@@ -781,6 +782,10 @@ static void place_followers(game_physics3d *physics)
             continue;
         }
         const body_record *with = anchor(physics, record->entity);
+        if (with && with->character &&
+            !GAME_GameCollider3D_get_const(physics->world, record->entity)->sensor) {
+            return fail(physics, record->entity, "A Collider3D under a Character3D must be a sensor");
+        }
         if (with) {
             carry(physics, record, with);
             continue;
@@ -794,6 +799,7 @@ static void place_followers(game_physics3d *physics)
         );
         record->placed = at.pose;
     }
+    return FLOW_OK;
 }
 
 static int gravity(game_physics3d *physics, CF_V3 *out)
@@ -826,6 +832,37 @@ static int gravity(game_physics3d *physics, CF_V3 *out)
     return FLOW_OK;
 }
 
+static bool synced(const game_physics3d *physics, ecs_entity entity)
+{
+    return entity.slot < (unsigned)acount(physics->bodies) &&
+           same_entity(physics->bodies[entity.slot].entity, entity) &&
+           physics->bodies[entity.slot].seen;
+}
+
+/* The collider query skips a character without a Transform3D or Collider3D. */
+static int check_characters(game_physics3d *physics)
+{
+    ecs_component_id id = GAME_COMPONENT_GameCharacter3D.id;
+    if (!ecs_world_component(physics->world, id)) {
+        return FLOW_OK;
+    }
+    ecs_query query;
+    int result = ecs_query_begin(physics->world, &query, &id, 1);
+    if (result != ECS_OK) {
+        return result;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        if (!game_entities_is_retiring(physics->entities, entity) &&
+            !synced(physics, entity)) {
+            result = fail(physics, entity, "A Character3D needs a Transform3D and a Collider3D");
+            break;
+        }
+    }
+    ecs_query_end(&query);
+    return result;
+}
+
 static int synchronize(game_physics3d *physics)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -852,7 +889,7 @@ static int synchronize(game_physics3d *physics)
         }
         ecs_query_end(&query);
     }
-    if (result < 0) {
+    if (result < 0 || (result = check_characters(physics)) < 0) {
         return result;
     }
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -861,8 +898,7 @@ static int synchronize(game_physics3d *physics)
             remove_record(physics, record);
         }
     }
-    place_followers(physics);
-    return FLOW_OK;
+    return place_followers(physics);
 }
 
 static bool moving_root(const body_record *record)
@@ -1138,8 +1174,7 @@ static GameCharacter3D stand(const character_contact *contact, b3Vec3 up)
 }
 
 /* Moves the character's capsule by its velocity over delta with Box3D's
- * mover, then sets its kinematic body's velocity to reach that spot by the
- * end of the step, and writes what it stands on. */
+ * mover, puts its body where the capsule ends, and writes what it stands on. */
 static void move_character(game_physics3d *physics, body_record *record, float delta, b3Vec3 up)
 {
     GameBody3D *body = GAME_GameBody3D_get(physics->world, record->entity);
@@ -1180,12 +1215,19 @@ static void move_character(game_physics3d *physics, body_record *record, float d
         b3ClipVector(to_b3(body->linear_velocity), contact.planes, contact.count)
     );
     record->linear_velocity = body->linear_velocity;
-    b3Body_SetLinearVelocity(record->body, b3MulSV(1 / delta, moved));
+    b3Body_SetTransform(record->body, b3Add(origin, moved), quat_to_b3(at.rotation));
     *GAME_GameCharacter3D_get(physics->world, record->entity) = stand(&contact, up);
 }
 
-/* Moves every character before the step, which carries its body there. Up
- * opposes gravity. */
+static bool moving_character(const body_record *record)
+{
+    return record->character && B3_IS_NON_NULL(record->body);
+}
+
+/* Moves every character before the step, one after another so each meets the
+ * characters before it where they end up. Then each goes back to where the
+ * step starts it, with the velocity that carries it to its end over the step.
+ * Up opposes gravity. */
 static void move_characters(game_physics3d *physics, float delta, CF_V3 acceleration)
 {
     b3Vec3 up = b3LengthSquared(to_b3(acceleration)) > 0
@@ -1193,9 +1235,23 @@ static void move_characters(game_physics3d *physics, float delta, CF_V3 accelera
                   : (b3Vec3){ 0, 1, 0 };
     for (int i = 0; i < acount(physics->bodies); i++) {
         body_record *record = &physics->bodies[i];
-        if (record->character && B3_IS_NON_NULL(record->body)) {
+        if (moving_character(record)) {
+            record->start = body_pose(record->body);
             move_character(physics, record, delta, up);
         }
+    }
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        body_record *record = &physics->bodies[i];
+        if (!moving_character(record)) {
+            continue;
+        }
+        CF_V3 moved = cf_sub_v3(body_pose(record->body).position, record->start.position);
+        b3Body_SetTransform(
+            record->body,
+            to_b3(record->start.position),
+            quat_to_b3(record->start.rotation)
+        );
+        b3Body_SetLinearVelocity(record->body, b3MulSV(1 / delta, to_b3(moved)));
     }
 }
 

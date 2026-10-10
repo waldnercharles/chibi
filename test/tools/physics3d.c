@@ -1171,7 +1171,9 @@ TEST_CASE(physics3d_characters_meet_only_solid_others)
     zone.sensor = true;
     collider((ecs_entity){ 0 }, (CF_V3){ 0, 2 * METER, 3 * METER }, zone, GAME_BODY_STATIC);
     ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
-    collider(walker, (CF_V3){ 0, 0, -.6f * METER }, box(METER / 2, METER / 2, METER / 2), GAME_BODY_STATIC);
+    GameCollider3D pack = box(METER / 2, METER / 2, METER / 2);
+    pack.sensor = true;
+    collider(walker, (CF_V3){ 0, 0, -.6f * METER }, pack, GAME_BODY_STATIC);
     ecs_entity crate = collider(
         (ecs_entity){ 0 },
         (CF_V3){ 0, METER / 2, 8 * METER },
@@ -1186,6 +1188,22 @@ TEST_CASE(physics3d_characters_meet_only_solid_others)
     walk(floater, (CF_V3){ METER, 0, 0 }, false, 1);
     REQUIRE(character_state(floater)->on_floor);
     REQUIRE(near_v3(character_state(floater)->floor_normal, (CF_V3){ -1, 0, 0 }, 1e-3f));
+    return true;
+}
+
+/* Characters stop at each other as at walls, even when both move toward each
+ * other in the same step. */
+TEST_CASE(physics3d_characters_meet_each_other)
+{
+    set_gravity((CF_V3){ 0, 0, 0 });
+    ecs_entity left = character((CF_V3){ 0, METER, 0 });
+    ecs_entity right = character((CF_V3){ 0, METER, 2 * METER });
+    for (int i = 0; i < 30; i++) {
+        body(left)->linear_velocity = (CF_V3){ 0, 0, 4 * METER };
+        body(right)->linear_velocity = (CF_V3){ 0, 0, -4 * METER };
+        step(STEP);
+        REQUIRE(position(right).z - position(left).z >= .8f * METER - 4 * SLOP);
+    }
     return true;
 }
 
@@ -1208,6 +1226,16 @@ TEST_CASE(physics3d_characters_need_a_kinematic_capsule)
     thin.radius = METER / 50;
     *GAME_GameCollider3D_get(world, walker) = thin;
     REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
+    /* Only its capsule moves, so what it carries must be a sensor. */
+    ecs_entity pack = collider(walker, (CF_V3){ 0 }, box(METER, METER, METER), GAME_BODY_STATIC);
+    REQUIRE(failed_with("A Collider3D under a Character3D must be a sensor"));
+    GAME_GameCollider3D_get(world, pack)->sensor = true;
+    REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
+    ecs_entity lost = ecs_world_create_entity(world);
+    assert(GAME_GameTransform3D_add(world, lost, 0) == ECS_OK);
+    assert(GAME_GameCharacter3D_add(world, lost, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(failed_with("A Character3D needs a Transform3D and a Collider3D"));
     return true;
 }
 
@@ -1234,6 +1262,7 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_contact_queries_match_what_touches);
     RUN_TEST_CASE(physics3d_characters_slide_along_what_they_meet);
     RUN_TEST_CASE(physics3d_characters_meet_only_solid_others);
+    RUN_TEST_CASE(physics3d_characters_meet_each_other);
     RUN_TEST_CASE(physics3d_characters_need_a_kinematic_capsule);
     RUN_TEST_CASE(physics3d_contacts_end_when_bodies_part_or_go);
     RUN_TEST_CASE(physics3d_masks_and_sensors_filter_contacts);

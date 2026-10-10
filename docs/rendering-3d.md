@@ -5,10 +5,29 @@ A scene with `presentation "3d"` draws through `render/scene3d.c`. Entities with
 x/z and `elevation` is the center height. The renderer writes scene-linear RGBA16F
 into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
 
+An entity with `GameTransform3D` and `GameGeometry3D` becomes a solid too. Its
+global transform, through any ChildOf parents, places the solid's center, turns
+it and scales it, and its `elevation` is ignored. An entity with both
+transforms draws at its Transform3D. Its Visual Transform turns and scales the
+solid within that frame, and a body's drawn pose is interpolated between
+physics steps as a Transform's is. A transform that mirrors a solid draws it
+mirrored with its faces lit from outside, judged by its axes' directions so
+that a tiny mirror still turns them. One that flattens it onto a plane, a line
+or a point hides it: a zero scale in its Visual Transform or in a Transform3D
+placing it, however the turns between them round, or axes float cannot keep
+apart at all, such as one a tiny Geometry3D dimension underflows to zero. A
+tiny, thin or sheared frame that keeps some volume stays. Picks
+and bounds follow the same placement, a model surface's included, and a Render
+State's fog culling reads the ground under its drawn pose. Point and spot
+lights, particles, trails and Surface Influences still place from
+`GameTransform`, and SDF and Mesh Surface 2D surfaces belong to the 2D
+renderer, which ignores Transform3D.
+
 ## Camera
 
 A `GameCamera` with a `GameTransform3D` looks along its global -Z with +Y up, so
-its local +X points right in the image. Its `offset` moves the eye across the
+its local +X points right in the image. It looks from its drawn pose, so a
+camera riding a body moves between physics steps as the body does. Its `offset` moves the eye across the
 ground (gameplay y is world z), as it moves an overhead camera's target. One
 with only a `GameTransform` frames its span from 10 degrees off overhead. `fov`
 is the vertical field of view in radians, from 0.00001 degrees (Unity's
@@ -214,7 +233,8 @@ drawn on the far plane, so it fills every pixel no surface covers, and an empty
 A `GameMeshAsset` source names a binary `.mesh` file in the content folder,
 such as `content/meshes/Camera.mesh`. The file holds indexed triangles. Each
 vertex has a position, normal, texture coordinate and tangent. The tangent's w
-is 1 or -1, and the bitangent is cross(normal, tangent) times w. Meshes baked
+is 1 or -1, and the bitangent is cross(normal, tangent) times w; normal maps
+take it as the direction of +v, down the image. Meshes baked
 from models also store each vertex's part position and object-to-part frame;
 other meshes read back with their own position and an identity frame. Material
 groups name runs of whole triangles in the index list and cover all of it.
@@ -264,10 +284,98 @@ Normal maps and every node that reads the surface UV's gradients follow a
 mesh's interpolated vertex tangent and bitangent, the frame its maps were baked
 against, so they shade smoothly across triangles. The gradients keep their
 screen-space lengths, so unequal UV scales still weigh each tangent component.
-Tangents turn and stretch with the mesh's transform, and their w picks the
-bitangent's side, so mirrored UVs work. A mesh whose UVs are box-projected from
-source bounds keeps the screen-space frame, which its tangents don't describe,
-as shapes do.
+Tangents turn with the mesh's transform, and each vertex keeps its tangent's
+direction even along an axis scaled far shorter than another. Their w picks
+the bitangent's side, so mirrored UVs work. A mesh whose UVs are box-projected
+from source bounds keeps the screen-space frame, which its tangents don't
+describe, as shapes do.
+
+## Importing glTF models
+
+The `import_model` controller operation copies a glTF 2.0 model, a `.glb` or a
+`.gltf` beside its buffers and images, into the project's content
+(`assets/model_import.c`):
+
+```sh
+printf '%s\n' '{"contract":1,"operation":"import_model","source":"/downloads/crate.glb"}' | \
+  chibi_ctl --project-root "$PWD"
+```
+
+`name` defaults to the file's name without its extension. It must be an asset
+name, a letter and then letters, digits, `-` and `_`, at most 63 bytes, and no
+prototype may already declare it. The response lists the `files` written and
+the `warnings`. An import writes:
+
+- `content/meshes/<name>.mesh`: the triangles of every mesh node, placed by
+  their node transforms, with one material group per glTF material in glTF
+  order and a last one for primitives that name none.
+- `content/materials/<name>_<material>.kdl`: a Standard material for each glTF
+  material the mesh's triangles use, and `<name>_Default` for primitives with
+  none.
+  Characters an asset name refuses become `_`, and a name that matches an
+  earlier one, ignoring case, gets `_2`, `_3` and so on. `<name>` keeps at
+  most its first 47 bytes here, so the material's own name always fits.
+- `content/textures/<name>/<image>.png` or `.jpg`: each image a material uses,
+  copied byte for byte and named for the image, else its file, else
+  `Image<n>`.
+- `content/prototypes/<name>.kdl`: a prototype with Transform3D, Geometry3D of
+  1 by 1 by 1 and a Mesh Asset naming the mesh.
+
+It never replaces a file and removes everything it wrote when a step fails.
+The node tree flattens into one mesh because Studio cannot open prototypes
+with children yet, and nothing reads the nodes until skinning and animation do.
+
+- **Frames**: UVs copy as they are, since glTF and Chibi both put (0, 0) at an
+  image's top left. Tangents take the engine's frame, whose bitangent points
+  down the image, toward +v: the import generates them as the engine does,
+  and negates the w of a primitive's authored tangents, since glTF's
+  bitangent points up the image. A primitive without normals gets each
+  triangle's flat normal. A node that mirrors, by the signs of its and its
+  parents' scales, flips its tangents' w and its triangles' winding. A node
+  whose scale collapses its surfaces onto a line or a point is skipped. One
+  that flattens them onto a plane keeps the triangles with area there, their
+  normals turned to the plane on the side they faced. Triangles that a
+  transform leaves with no area are left out with a warning. Vertices no kept
+  triangle uses, or no index names, are left out too, so they neither widen
+  the mesh's bounds nor count toward its limits. Normals and tangents go
+  through the node frames in double, so a frame near float's range keeps
+  their directions.
+- **Materials**: each factor is a Shader Parameter at a fixed slot, so
+  entities can override it: Base Color (0), Opacity (1, unless Opaque),
+  Metallic (2), Roughness (3), Emission (4, times
+  `KHR_materials_emissive_strength`), Normal Scale (5, with a normal image)
+  and Occlusion Strength (6, with an occlusion image). Each glTF texture adds
+  one Image Texture node that scales its factor. Base color and emission
+  images sample as sRGB color and the others as linear data. Metallic reads
+  the blue channel of the metallic-roughness image and roughness its green;
+  occlusion is `mix(1, red, strength)`; normal images use the OpenGL
+  convention, whose green tilts up the image. Alpha Mode and Alpha Cutoff carry
+  over, and `KHR_materials_unlit` sets Unlit. An unlit material keeps only its
+  base color and its image, since glTF makes its other properties fallbacks
+  for viewers that light it. An image has one filter, its sampler's
+  `magFilter`: `NEAREST` samples Nearest and anything else Bilinear, with a
+  warning when its `minFilter` differs. Engine images have no mip levels, so
+  a mipmapped `minFilter` reads the full image, as every image does, without
+  a warning. A sampler that clamps both axes samples Clamp; every other wrap
+  repeats, with a warning.
+- **Refused**: a required extension other than `KHR_materials_unlit`,
+  `KHR_materials_emissive_strength` and `KHR_texture_transform`; a texture
+  transform other than the identity; a texture that reads a UV set other than
+  `TEXCOORD_0`; an image that is not a PNG or JPEG of 1 to 2048 pixels a side;
+  a material factor beyond float range; primitives that are not triangles; a
+  buffer or image named by an absolute path or a scheme other than `data:`, or
+  one that `..` or a symbolic link leads outside the model's folder; a model
+  over 256 MiB together with the files it names; a mesh past the `.mesh`
+  limits above, refused before the import builds the vertices of the
+  primitive, or of a node's copy of it, that would pass them;
+  a material name that another native graph in the project already declares,
+  or a prototype name another prototype does, and a folder or file of
+  declarations it cannot read or parse; materials that would bring the
+  project's native graphs past the 1,024 it can prepare; and a content
+  folder, or a folder in it the import writes to, that is a symbolic link.
+- **Warned and left out**: vertex colors, morph targets, skins, animations,
+  cameras, lights and other extensions the model uses. Double-sided
+  materials draw single-sided.
 
 ## Occlusion and alpha modes
 
@@ -290,7 +398,8 @@ has them. A scene without a valid rhythm clock draws with the beat at rest.
 ## Tests
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d` renders a box or a floor in a
-hidden 64x64 app. It checks cameras looking along their Transform3D, field of
+hidden 64x64 app. It checks cameras looking along their Transform3D and from a
+moving body's drawn pose between physics steps, field of
 view and clip distances, the lenses a camera rejects, ground rays at the widest
 clip range, panning dropping a lens, fog concealing rays that miss the ground,
 and ground rays and fog from an eye far from the origin, turned off the axes
@@ -351,9 +460,41 @@ meshes are freed. Copies uploaded out of identity order are each found again.
 A translucent mesh whose vertices sit between the eye and a
 translucent box, while its origin lies behind the box, blends over the box as
 a shape in its place does, alone and as one of two copies drawn in one batch.
+The shadow scene's box and a pillar outside the view draw, shade and cast at
+Transform3D poses exactly as they do placed by Transform and elevation, each
+drawn once. A box turned a quarter about x by its Transform3D, and one turned
+by a Transform3D and a Visual Transform within it, match the upright box their
+turns make. A box under a turned Transform3D parent picks and bounds where the
+parent turns it, before any propagation. A box mirrored by its Transform3D,
+as a shape and as the unit box mesh, matches the unmirrored box, as does one
+mirrored at a 1e-16 scale under a Geometry3D as large, or a mesh 2e16 across
+in its own units, and one flattened to zero height disappears. A box mesh
+1e30 long in x in its own units, drawn at a 1e-30 x scale, matches the unit
+box mesh too, though its normals come from cofactors too short to normalize
+directly. A box flattened
+by its parent's Transform3D under turns that leave it a sliver of volume has
+no bounds, as does one 1e-25 wide under a parent scaled 1e-25, whose model
+axis underflows to zero. One scaled to 1e-16 keeps them, as does one turned
+under a parent squashed to 1e-6. A frame whose finite values multiply past
+float range, alone or with a part's position or the Geometry3D's dimensions,
+is an
+authoring error. A model surface picks and bounds at its Transform3D
+pose, with or without a Transform. Fog culls a box
+by the ground under its Transform3D pose, not by its Transform. A mirrored ground
+square's normal maps turn their bitangent with it, and one stretched 1e7 times
+along its normal keeps its authored tangents.
 Normal maps on a ground square tilt toward or away from the sun as its
 tangents say: authored tangents a quarter turn from the UV gradient, mirrored
 UVs, a quarter-turned square, and box-projected UVs that keep their own frame.
+A Normal Map labelled OpenGL tilts toward the top of its image on a mesh with
+generated tangents, and one labelled DirectX toward the bottom.
+A square imported from glTF with base color, metallic-roughness, emission and
+occlusion images shades as one whose factors hold those images' values, and
+swapping roughness and metallic, or reading the base color as linear, shows.
+A glTF normal image tilts toward the top of the image whether the import
+makes the tangents or the model authors them, the square's u runs either way,
+or a node mirrors it, and away with the image upside down or the authored
+bitangents reversed.
 A box's Occlusion dims hemisphere ambient and sky light in proportion and
 leaves a sun's light as it was. At Opacity 0.3 over a purple sky, a Blend box
 mixes over it, Opaque and Mask boxes above their cutoff draw whole, and a Mask
@@ -369,13 +510,13 @@ check that runs the main build's
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 74 cases and 34055 assertions in 18.7 seconds on 2026-10-10.
+Vulkan llvmpipe passed 88 cases and 75146 assertions in 21.0 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 74
-cases and 34055 assertions in 16.0 seconds on 2026-10-10.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 88
+cases and 75146 assertions in 16.0 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half
@@ -387,7 +528,10 @@ publish, and are charged, with a prepared generation, and
 files, rejects malformed ones, prepares skies from mounted content and imports
 them without replacing a file. Both need the in-tree build above.
 `python3 tools/test_policy.py tool mesh-files` checks `.mesh` tangents,
-preparation and refusals the same way.
+preparation and refusals the same way, and
+`python3 tools/test_policy.py tool model-import` checks the files a glTF
+import writes, its names, refusals, warnings, left-out vertices and tangent
+frames.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

@@ -1,8 +1,10 @@
 #include "render/scene3d.h"
 
+#include "execution/status.h"
 #include "render/fog.h"
 #include "render/mesh_surface.h"
 #include "render/scene3d_mesh_cache.h"
+#include "render/scene3d_parts.h"
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
@@ -16,12 +18,26 @@
 #include "runtime/geometry/mesh_prepared.h"
 #include "runtime/images/sky.h"
 #include "runtime/particles.h"
+#include "runtime/transform_propagation.h"
 #include "runtime/visibility.h"
+#include "runtime/world.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #if CHIBI_TEST_MATERIAL_GRAPHS
 #include "material_graphs.h"
+#endif
+#if CHIBI_TEST_MATERIAL_GRAPHS && CHIBI_TEST_MODEL_IMPORT
+#include "assets/model_import.h"
+#include "authoring/image_prepare.h"
+#include "authoring/shader_prepare.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/shader/shader_graph.h"
+#include "test/support/gltf_fixture.h"
+
+#include <errno.h>
+#include <sys/stat.h>
 #endif
 
 #include <assert.h>
@@ -76,8 +92,15 @@ static void setup()
     lens = camera();
 }
 
+#if CHIBI_TEST_MATERIAL_GRAPHS && CHIBI_TEST_MODEL_IMPORT
+static void remove_imports();
+#endif
+
 static void teardown()
 {
+#if CHIBI_TEST_MATERIAL_GRAPHS && CHIBI_TEST_MODEL_IMPORT
+    remove_imports();
+#endif
     backdrop = false;
     render_shader_catalog_clear();
     render_mesh_assets_clear();
@@ -405,6 +428,52 @@ TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use)
     REQUIRE(look_through_camera() == 1);
     GAME_GameTransform3D_get(world, entity)->scale = (CF_V3){ 0 };
     REQUIRE(look_through_camera() == -1);
+    return true;
+}
+
+/* A camera riding a dynamic body looks from where the body draws between
+ * physics steps, not from the pose the last step solved. */
+TEST_CASE(cameras_on_bodies_look_from_their_drawn_pose)
+{
+    char error[256];
+    game_world_options options = { .modules = GAME_WORLD_PHYSICS3D };
+    game_world *simulation = game_world_new(&options, error, sizeof error);
+    REQUIRE(simulation);
+    ecs_world *ecs = game_world_ecs(simulation);
+    engine *runtime = game_world_engine(simulation);
+    ecs_entity body = ecs_world_create_entity(ecs),
+               eye = ecs_world_create_entity(ecs);
+    REQUIRE(GAME_GameTransform3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(GAME_GameCollider3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(GAME_GameBody3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(GAME_GameGravity3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(GAME_GameTransform3D_add(ecs, eye, 0) == ECS_OK);
+    REQUIRE(GAME_GameCamera_add(ecs, eye, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add_pair(ecs, eye, ECS_CHILD_OF, body, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
+    *GAME_GameTransform3D_get(ecs, body) = (GameTransform3D){ .scale = { 1, 1, 1 } };
+    *GAME_GameCollider3D_get(ecs, body) = (GameCollider3D){ .shape = GAME_COLLIDER3D_SPHERE,
+                                                            .radius = 1,
+                                                            .category = 1,
+                                                            .mask = 1 };
+    *GAME_GameBody3D_get(ecs, body) = (GameBody3D){ .type = GAME_BODY_DYNAMIC,
+                                                    .linear_velocity = { 60, 0, 0 } };
+    const CF_V3 behind = { 0, 0, 5 };
+    *GAME_GameTransform3D_get(ecs, eye) = (GameTransform3D){ .position = behind,
+                                                             .scale = { 1, 1, 1 } };
+    *GAME_GameCamera_get(ecs, eye) = (GameCamera){ .width = 320, .height = 180 };
+    REQUIRE(engine_set_playing(runtime, true) == 0);
+    REQUIRE(engine_frame(runtime, 0) == FLOW_OK);
+    REQUIRE(engine_frame(runtime, .1) == FLOW_OK);
+    REQUIRE(engine_frame(runtime, .1 + ENGINE_FIXED_SECONDS * .5) == FLOW_OK);
+    engine_viewport_view view;
+    REQUIRE(game_camera_view(ecs, runtime, &view) == 1);
+    CF_V3 drawn = cf_add_v3(engine_render_transform_3d(runtime, ecs, body).position, behind);
+    CF_V3 offset = cf_sub_v3(view.lens.eye, drawn);
+    REQUIRE(cf_len_v3(offset) < 1e-3f);
+    float solved = GAME_GameGlobalTransform3D_get_const(ecs, eye)->position.x;
+    REQUIRE(fabsf(view.lens.eye.x - (solved - 60 * (float)ENGINE_FIXED_SECONDS * .5f)) < 1e-3f);
+    game_world_free(simulation);
     return true;
 }
 
@@ -2471,6 +2540,403 @@ TEST_CASE(translucent_copies_of_a_mesh_sort_by_their_bounds)
     return true;
 }
 
+/* Places an entity by a Transform3D, which outranks its Transform. */
+static void place_3d(ecs_entity entity, CF_V3 position, CF_Quat rotation, CF_V3 scale)
+{
+    GameTransform3D transform = { position, rotation, scale };
+    assert(
+        ecs_world_record_add(world, entity, GAME_COMPONENT_GameTransform3D.id, &transform, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+}
+
+/* The shadow scene's box and a pillar beyond the view's left edge draw first
+ * in 2D placement, then at Transform3D poses with their Transforms and
+ * elevations moved away. Every pixel matches, with each solid drawn once: a
+ * Transform3D places a solid's center and scales its shape, and its solids
+ * shade and cast as before. A box turned a quarter about x then shows as one
+ * with its height and depth swapped. */
+TEST_CASE(transform3d_places_solids_in_their_pose)
+{
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    ecs_entity box = add_solid(
+        (CF_V3){ 0, 1, 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 },
+        0xffffffffu
+    );
+    ecs_entity pillar = add_solid(
+        (CF_V3){ -8, 4, 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 8 },
+        0xffffffffu
+    );
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->intensity = 1;
+    sun->shadows = true;
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    static CF_Pixel placed[PIXELS];
+    memcpy(placed, pixels, sizeof placed);
+    place_solid(box, (CF_V3){ 5, 7, 5 });
+    place_3d(box, (CF_V3){ 0, 1, 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    place_solid(pillar, (CF_V3){ 5, -7, 5 });
+    *GAME_GameGeometry3D_get(world, pillar) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 4, 1, 4 };
+    place_3d(pillar, (CF_V3){ -8, 4, 0 }, cf_quat_identity(), (CF_V3){ .5f, 2, 2 });
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(render_scene3d_last_work(scene3d).entities == 3);
+    REQUIRE(pixel_at(shaded).colors.g == 0 && pixel_at(sunlit[0]).colors.g == 0);
+    REQUIRE(pixel_at(sunlit[4]).colors.g > 60);
+    REQUIRE(matches(placed));
+    /* A box two wide, one high and 2.4 deep, upright, then turned a quarter
+     * about x from 2.4 high and one deep, shows the same. */
+    *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2.4f, 1 };
+    *GAME_GameTransform3D_get(world, box) = (GameTransform3D){ { 0, .5f, 0 },
+                                                               cf_quat_identity(),
+                                                               { 1, 1, 1 } };
+    REQUIRE(render(&environment));
+    REQUIRE(
+        pixel_at((CF_V3){ 0, 1, 0 }).colors.g > 30 && pixel_at(shaded).colors.g == 0
+    );
+    REQUIRE(pixel_at(sunlit[3]).colors.g > 60);
+    static CF_Pixel upright[PIXELS];
+    memcpy(upright, pixels, sizeof upright);
+    *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 1, 2.4f };
+    GAME_GameTransform3D_get(world, box)
+        ->rotation = cf_quat_from_axis_angle((CF_V3){ 1, 0, 0 }, CF_PI / 2);
+    REQUIRE(render(&environment));
+    REQUIRE(matches(upright));
+    /* A Visual Transform turns the box within its Transform3D: a quarter
+     * about y after a quarter roll about x takes 2.4 wide, one deep and two
+     * high to the upright box. */
+    *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2.4f, 1, 2 };
+    GAME_GameTransform3D_get(world, box)
+        ->rotation = cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, CF_PI / 2);
+    GameVisualTransform rolled = { .roll = CF_PI / 2, .scale = 1 };
+    assert(
+        ecs_world_record_add(world, box, GAME_COMPONENT_GameVisualTransform.id, &rolled, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(render(&environment));
+    REQUIRE(matches(upright));
+    return true;
+}
+
+/* A box under a ChildOf parent with a Transform3D, both without a Transform,
+ * takes the parent's turn: three units deep, it lies along x. Picks and
+ * bounds follow it before any propagation. */
+TEST_CASE(transform3d_children_pick_and_bound_under_their_parent)
+{
+    ecs_entity parent = ecs_world_create_entity(world);
+    place_3d(
+        parent,
+        (CF_V3){ 1, 0, 0 },
+        cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, CF_PI / 2),
+        (CF_V3){ 1, 1, 1 }
+    );
+    ecs_entity child = add(
+        GAME_COMPONENT_GameGeometry3D.id,
+        &(GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 3, 1 }
+    );
+    place_3d(child, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    REQUIRE(ecs_world_record_add_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    const CF_V3 on[] = { { -.2f, 0, 0 }, { 2.2f, 0, 0 } },
+                off[] = { { -1.2f, 0, 0 }, { 1, 0, -1.5f } };
+    for (int i = 0; i < 2; i++) {
+        CF_V3 hit = render_scene3d_project(&lens, on[i]),
+              miss = render_scene3d_project(&lens, off[i]);
+        REQUIRE(
+            render_scene3d_pick(world, &lens, (CF_V2){ hit.x, hit.y }, (render_skip){ 0 })
+                .slot == child.slot
+        );
+        REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ miss.x, miss.y }, (render_skip){ 0 })
+                     .slot);
+    }
+    CF_V3 corners[8];
+    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    CF_V3 low = corners[0], high = corners[0];
+    for (int i = 1; i < 8; i++) {
+        low = cf_min_v3(low, corners[i]);
+        high = cf_max_v3(high, corners[i]);
+    }
+    REQUIRE(fabsf(low.x + .5f) < 1e-4f && fabsf(high.x - 2.5f) < 1e-4f);
+    REQUIRE(fabsf(low.z + .5f) < 1e-4f && fabsf(high.z - .5f) < 1e-4f);
+    return true;
+}
+
+#if CHIBI_TEST_MATERIAL_GRAPHS
+/* A model surface picks and bounds where its Transform3D places it, with or
+ * without a Transform it outranks. */
+TEST_CASE(transform3d_models_pick_and_bound_at_their_pose)
+{
+    REQUIRE(test_register_model_sphere("PlacedSphere", .5f));
+    ecs_entity model = add_solid(
+        (CF_V3){ -1.5f, 0, 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 },
+        0xffffffffu
+    );
+    GameSdfSurface3D surface = { .enabled = true };
+    GameShader binding = { .shape = "PlacedSphere" };
+    REQUIRE(
+        ecs_world_record_add(world, model, GAME_COMPONENT_GameSdfSurface3D.id, &surface, 0) == ECS_OK
+    );
+    REQUIRE(
+        ecs_world_record_add(world, model, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
+    );
+    place_3d(model, (CF_V3){ 1.5f, 0, 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    CF_V3 placed = render_scene3d_project(&lens, (CF_V3){ 1.5f, 0, 0 });
+    CF_V3 flat = render_scene3d_project(&lens, (CF_V3){ -1.5f, 0, 0 });
+    for (int alone = 0; alone < 2; alone++) {
+        if (alone) {
+            REQUIRE(
+                ecs_world_record_remove(
+                    world,
+                    model,
+                    GAME_COMPONENT_GameTransform.id,
+                    0
+                ) == ECS_OK
+            );
+            REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        }
+        REQUIRE(
+            render_scene3d_pick(world, &lens, (CF_V2){ placed.x, placed.y }, (render_skip){ 0 })
+                .slot == model.slot
+        );
+        REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ flat.x, flat.y }, (render_skip){ 0 })
+                     .slot);
+        CF_V3 corners[8];
+        REQUIRE(render_scene3d_entity_bounds(world, model, corners));
+        REQUIRE(fabsf(corners[0].x - 1) < 1e-3f && fabsf(corners[7].x - 2) < 1e-3f);
+    }
+    return true;
+}
+#endif
+
+/* A Transform3D that mirrors a box across x shows it as the unmirrored box
+ * does, as a shape and as the unit box mesh: the lit pass culls the faces
+ * turned away, not the ones in view, and their normals point out. So does
+ * a mirroring scale too tiny for its determinant, under a Geometry3D as
+ * large. A Transform3D that flattens a solid hides it. */
+TEST_CASE(mirroring_transform3d_keeps_faces_outward)
+{
+    ecs_entity box = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    add_sun(0xffffffffu, (CF_V3){ -1, -2, -3 })->intensity = 1;
+    GameEnvironment environment = unlit_environment();
+    render_mesh_asset mesh = box_mesh();
+    publish_mesh(&mesh);
+    for (int imported = 0; imported < 2; imported++) {
+        if (imported) {
+            import_mesh(box);
+        }
+        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1, 1, 1 };
+        REQUIRE(render(&environment));
+        REQUIRE(top().colors.g > 30 && front().colors.g > 30);
+        static CF_Pixel upright[PIXELS];
+        memcpy(upright, pixels, sizeof upright);
+        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ -1, 1, 1 };
+        REQUIRE(render(&environment));
+        REQUIRE(!render_scene3d_error(scene3d)[0]);
+        REQUIRE(matches(upright));
+        GameGeometry3D shape = *GAME_GameGeometry3D_get(world, box);
+        GameGeometry3D huge = { GAME_PRIMITIVE_BOX, 2e16f, 2e16f, 2e16f };
+        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ -1e-16f, 1e-16f, 1e-16f };
+        *GAME_GameGeometry3D_get(world, box) = huge;
+        REQUIRE(render(&environment));
+        REQUIRE(!render_scene3d_error(scene3d)[0]);
+        REQUIRE(matches(upright));
+        if (imported) {
+            /* So does a mesh 2e16 across in its own units, whose model's
+             * determinant underflows float at that scale. */
+            render_mesh_asset vast = box_mesh();
+            for (int i = 0; i < acount(vast.vertices); i++) {
+                vast.vertices[i].position = cf_mul_v3_f(vast.vertices[i].position, 2e16f);
+            }
+            vast.min = cf_mul_v3_f(vast.min, 2e16f);
+            vast.max = cf_mul_v3_f(vast.max, 2e16f);
+            publish_mesh(&vast);
+            *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX,
+                                                                     1,
+                                                                     1,
+                                                                     1 };
+            REQUIRE(render(&environment));
+            REQUIRE(!render_scene3d_error(scene3d)[0]);
+            REQUIRE(matches(upright));
+            mesh = box_mesh();
+            publish_mesh(&mesh);
+        }
+        *GAME_GameGeometry3D_get(world, box) = shape;
+        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1, 0, 1 };
+        REQUIRE(render(&environment));
+        REQUIRE(!render_scene3d_error(scene3d)[0] && !top().colors.g);
+    }
+    return true;
+}
+
+/* A box mesh 1e30 long in x in its own units, drawn at a 1e-30 x scale,
+ * matches the unit box mesh: the cofactors that give its top and front
+ * normals are 1e-30 long, too short to normalize directly. */
+TEST_CASE(lopsided_mesh_models_keep_their_normals)
+{
+    ecs_entity box = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    add_sun(0xffffffffu, (CF_V3){ -1, -2, -3 })->intensity = 1;
+    GameEnvironment environment = unlit_environment();
+    render_mesh_asset mesh = box_mesh();
+    publish_mesh(&mesh);
+    import_mesh(box);
+    REQUIRE(render(&environment));
+    REQUIRE(top().colors.g > 30 && front().colors.g > 30);
+    static CF_Pixel upright[PIXELS];
+    memcpy(upright, pixels, sizeof upright);
+    mesh = box_mesh();
+    for (int i = 0; i < acount(mesh.vertices); i++) {
+        mesh.vertices[i].position.x *= 1e30f;
+    }
+    mesh.min.x *= 1e30f;
+    mesh.max.x *= 1e30f;
+    publish_mesh(&mesh);
+    GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1e-30f, 1, 1 };
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(matches(upright));
+    return true;
+}
+
+/* A box whose parent's Transform3D flattens it onto a plane, both turned so
+ * that rounding leaves its frame a sliver of volume, hides and has no
+ * bounds. A box scaled tiny but whole keeps them, as does one turned within
+ * a parent squashed thin, whose axes nearly meet. One whose Geometry3D
+ * width underflows its whole frame's x axis to zero has none. */
+TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
+{
+    ecs_entity parent = ecs_world_create_entity(world);
+    place_3d(
+        parent,
+        (CF_V3){ 0 },
+        cf_quat_from_axis_angle(cf_norm_v3((CF_V3){ 1, 2, 3 }), 1.14f),
+        (CF_V3){ 1, 0, 1 }
+    );
+    ecs_entity child = add(
+        GAME_COMPONENT_GameGeometry3D.id,
+        &(GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 }
+    );
+    place_3d(
+        child,
+        (CF_V3){ 0 },
+        cf_quat_from_axis_angle(cf_norm_v3((CF_V3){ 3, -1, 2 }), 2.62f),
+        (CF_V3){ 1, 1, 1 }
+    );
+    REQUIRE(ecs_world_record_add_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    CF_V3 corners[8];
+    REQUIRE(!render_scene3d_entity_bounds(world, child, corners));
+    *GAME_GameTransform3D_get(world, parent) = (GameTransform3D){
+        { 0 },
+        cf_quat_identity(),
+        { 1e-16f, 1e-16f, 1e-16f }
+    };
+    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    CF_Quat turn = cf_quat_from_axis_angle((CF_V3){ 0, 0, 1 }, CF_PI / 4);
+    GAME_GameTransform3D_get(world, parent)->scale = (CF_V3){ 1e-6f, 1, 1 };
+    GAME_GameTransform3D_get(world, child)->rotation = turn;
+    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    GAME_GameTransform3D_get(world, parent)->scale = (CF_V3){ 1e-25f, 1, 1 };
+    GAME_GameTransform3D_get(world, child)->rotation = cf_quat_identity();
+    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    GAME_GameGeometry3D_get(world, child)->width = 1e-25f;
+    REQUIRE(!render_scene3d_entity_bounds(world, child, corners));
+    return true;
+}
+
+/* A frame whose values are each finite but whose product overflows float is
+ * an authoring error, as a value that is not finite is, and never draws. */
+TEST_CASE(overflowing_transform3d_frames_are_authoring_errors)
+{
+    ecs_entity box = add(
+        GAME_COMPONENT_GameGeometry3D.id,
+        &(GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 }
+    );
+    place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1e20f, 1e20f, 1e20f });
+    GameVisualTransform grown = { .scale = 1e20f };
+    REQUIRE(
+        ecs_world_record_add(world, box, GAME_COMPONENT_GameVisualTransform.id, &grown, 0) == ECS_OK
+    );
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    GameGlobalTransform3D transform = game_transform_world_3d(world, box);
+    scene3d_visual visuals[SCENE3D_PART_LIMIT];
+    const render_mesh_asset *mesh;
+    char error[128];
+    int parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    REQUIRE(parts == -1);
+    REQUIRE(!strcmp(error, "Visual transform needs finite values and nonnegative scale."));
+    GAME_GameVisualTransform_get(world, box)->scale = 1;
+    parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    REQUIRE(parts == 1);
+    /* So is a Geometry3D, or a part's position, that carries the frame past
+     * it. */
+    const char *beyond = "3D Geometry needs a placement within float range.";
+    GAME_GameGeometry3D_get(world, box)->width = 1e20f;
+    parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    REQUIRE(parts == -1 && !strcmp(error, beyond));
+    GAME_GameGeometry3D_get(world, box)->width = 1;
+    scene3d_parts far = { .count = 1 };
+    far.parts[0] = (scene3d_part){ .primitive = GAME_PRIMITIVE_BOX,
+                                   .dimensions = { 1, 1, 1 },
+                                   .position = { 1e20f, 0, 0 } };
+    REQUIRE(render_scene3d_parts_publish("far", &far, error, sizeof error));
+    GameMeshParts authored = { .parts = "far" };
+    REQUIRE(
+        ecs_world_record_add(world, box, GAME_COMPONENT_GameMeshParts.id, &authored, 0) == ECS_OK
+    );
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    render_scene3d_parts_clear();
+    REQUIRE(parts == -1 && !strcmp(error, beyond));
+    return true;
+}
+
+/* Fog culls a solid with a Transform3D by the ground under its 3D pose,
+ * where it draws, and not by the 2D Transform it also carries: the box
+ * shows while its 3D pose is in sight and its 2D position isn't, and hides
+ * once the eye turns to its 2D position. */
+TEST_CASE(fog_culls_transform3d_solids_where_they_draw)
+{
+    GameFog settings = { .origin = { -8, -8 },
+                         .columns = 16,
+                         .rows = 16,
+                         .cell_size = 1,
+                         .color = 0xff0000ffu };
+    add(GAME_COMPONENT_GameFog.id, &settings);
+    ecs_entity eye = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 0, 0 });
+    GameVision vision = { .radius = 3 };
+    REQUIRE(ecs_world_record_add(world, eye, GAME_COMPONENT_GameVision.id, &vision, 0) == ECS_OK);
+    ecs_entity box = add_solid(
+        (CF_V3){ 6, 0, 6 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 },
+        0xffffffffu
+    );
+    GameRenderState state = { .visibility_culled = true };
+    REQUIRE(
+        ecs_world_record_add(world, box, GAME_COMPONENT_GameRenderState.id, &state, 0) == ECS_OK
+    );
+    place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    add_sun(0xffffffffu, (CF_V3){ -1, -2, -3 })->intensity = 1;
+    game_visibility *visibility = game_visibility_new(world, NULL);
+    runtime = engine_new(world, &(engine_modules){ .visibility = visibility });
+    GameEnvironment environment = unlit_environment();
+    bool seen = !game_visibility_update(visibility, 0) &&
+                render(&environment) && top().colors.g > 30;
+    *GAME_GameTransform_get(world, eye) = (GameTransform){ 6, 6 };
+    bool hidden = !game_visibility_update(visibility, 0) &&
+                  render(&environment) && !top().colors.g;
+    engine_free(runtime);
+    runtime = NULL;
+    game_visibility_free(visibility);
+    REQUIRE(seen && hidden);
+    return true;
+}
+
 #if CHIBI_TEST_MATERIAL_GRAPHS
 /* The two-unit box at the origin, drawn with surface material `name`. */
 static ecs_entity add_surface_box(const char *name)
@@ -2758,17 +3224,17 @@ static int square_light(ecs_entity square, const char *name)
 /* Normal maps turn with a mesh's tangents. A sun shines down and toward -z.
  * A map tilted along u lights a square whose u runs along +z more than a
  * flat map does, and a square whose u runs along +x but whose authored
- * tangents point along +z shades the same. A map tilted along v follows the
- * tangents' handedness: it faces the sun when v runs along +z and turns away
- * when v is mirrored. Box-projected UVs keep their own frame, along +x, and
- * authored tangents turn with the square, across the sun. */
+ * tangents point along +z shades the same. A DirectX map tilted along v
+ * follows the tangents' handedness: it faces the sun when v runs along +z
+ * and turns away when v is mirrored. Box-projected UVs keep their own frame,
+ * along +x, and authored tangents turn with the square, across the sun. */
 TEST_CASE(normal_maps_follow_mesh_tangents)
 {
     static const float flat[] = { .5f, .5f, 1 }, along_u[] = { .85f, .5f, .85f },
                        along_v[] = { .5f, .85f, .85f };
-    REQUIRE(test_register_normal_map("Flat", flat));
-    REQUIRE(test_register_normal_map("AlongU", along_u));
-    REQUIRE(test_register_normal_map("AlongV", along_v));
+    REQUIRE(test_register_normal_map("Flat", flat, SHADER_NORMAL_DIRECTX));
+    REQUIRE(test_register_normal_map("AlongU", along_u, SHADER_NORMAL_DIRECTX));
+    REQUIRE(test_register_normal_map("AlongV", along_v, SHADER_NORMAL_DIRECTX));
     static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 }, back = { 0, 0, -1 };
     publish_square(z, x, (CF_V4){ 0 }, false);
     ecs_entity square = add_surface_box("Flat");
@@ -2795,6 +3261,73 @@ TEST_CASE(normal_maps_follow_mesh_tangents)
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
     REQUIRE(abs(square_light(square, "AlongU") - along) <= 3);
+    return true;
+}
+
+/* A Transform3D that mirrors the ground square along z keeps it lit from
+ * above, and turns its bitangent with its surface: a DirectX map tilted
+ * along v, which faces the sun while v runs along +z, then shades as it does
+ * with v along -z. */
+TEST_CASE(mirroring_transform3d_turns_mesh_bitangents)
+{
+    static const float flat[] = { .5f, .5f, 1 }, along_v[] = { .5f, .85f, .85f };
+    REQUIRE(test_register_normal_map("Flat", flat, SHADER_NORMAL_DIRECTX));
+    REQUIRE(test_register_normal_map("AlongV", along_v, SHADER_NORMAL_DIRECTX));
+    static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 }, back = { 0, 0, -1 };
+    publish_square(x, back, (CF_V4){ 0 }, false);
+    ecs_entity square = add_surface_box("Flat");
+    import_mesh(square);
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
+    int away = square_light(square, "AlongV");
+    publish_square(x, z, (CF_V4){ 0 }, false);
+    int level = square_light(square, "Flat"), facing = square_light(square, "AlongV");
+    REQUIRE(away >= 0 && away + 10 < level && level + 10 < facing);
+    place_3d(square, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, -1 });
+    REQUIRE(abs(square_light(square, "Flat") - level) <= 3);
+    REQUIRE(abs(square_light(square, "AlongV") - away) <= 3);
+    return true;
+}
+
+/* Images put (0, 0) at their top-left. A sun shines down and toward -z on a
+ * square whose image runs up toward +z, so a map Studio labels OpenGL, whose
+ * green tilts up the image, faces the sun, and one labelled DirectX, whose
+ * green tilts down it, turns away. */
+TEST_CASE(normal_map_green_tilts_up_the_image_in_opengl)
+{
+    static const float flat[] = { .5f, .5f, 1 }, green[] = { .5f, .85f, .85f };
+    shader_normal_convention opengl = test_normal_convention("OpenGL (+Y)"),
+                             directx = test_normal_convention("DirectX (-Y)");
+    REQUIRE(test_register_normal_map("Flat", flat, opengl));
+    REQUIRE(test_register_normal_map("OpenGL", green, opengl));
+    REQUIRE(test_register_normal_map("DirectX", green, directx));
+    publish_square((CF_V3){ 1, 0, 0 }, (CF_V3){ 0, 0, -1 }, (CF_V4){ 0 }, false);
+    ecs_entity square = add_surface_box("Flat");
+    import_mesh(square);
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
+    int level = square_light(square, "Flat");
+    REQUIRE(level > 0 && square_light(square, "OpenGL") > level + 10);
+    REQUIRE(square_light(square, "DirectX") + 10 < level);
+    return true;
+}
+
+/* A Transform3D that stretches the ground square ten million times along
+ * its normal leaves it as it was, tangents included: with authored tangents
+ * along +z, a map tilted along u still faces the sun, though the frame's
+ * other axes are ten million times shorter than its y. */
+TEST_CASE(stretched_transform3d_keeps_mesh_tangents)
+{
+    static const float along_u[] = { .85f, .5f, .85f };
+    REQUIRE(test_register_normal_map("AlongU", along_u, SHADER_NORMAL_DIRECTX));
+    static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 };
+    publish_square(x, z, (CF_V4){ 0, 0, 1, 1 }, false);
+    ecs_entity square = add_surface_box("AlongU");
+    import_mesh(square);
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
+    place_3d(square, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    int facing = square_light(square, "AlongU");
+    REQUIRE(facing > 0);
+    GAME_GameTransform3D_get(world, square)->scale = (CF_V3){ 1, 1e7f, 1 };
+    REQUIRE(abs(square_light(square, "AlongU") - facing) <= 3);
     return true;
 }
 
@@ -3022,6 +3555,307 @@ TEST_CASE(masked_solids_outside_the_view_cut_their_shadows)
     REQUIRE(red.colors.r > 60 && red.colors.g == 0);
     return true;
 }
+
+#if CHIBI_TEST_MODEL_IMPORT
+/* The folder models import into, removed with the images they made
+ * resident. */
+static char import_folder[64];
+
+static void remove_imports()
+{
+    if (!import_folder[0]) {
+        return;
+    }
+    render_image_catalog_clear();
+    char command[128];
+    snprintf(command, sizeof command, "rm -rf '%s'", import_folder);
+    if (system(command) != 0) {
+        abort();
+    }
+    import_folder[0] = '\0';
+}
+
+/* The material file `text` loaded with the shader nodes registered, as
+ * Studio and chibi_ctl register them. */
+static behavior_asset *load_material(const char *text)
+{
+    const registry_pack **previous = NULL;
+    for (int i = 0; i < registry_pack_count(); i++) {
+        apush(previous, registry_pack_at(i));
+    }
+    const registry_pack *packs[] = { &SHADER_PACK };
+    registry_set_packs(packs, 1);
+    behavior_asset *asset = behavior_asset_load(text);
+    registry_set_packs(previous, acount(previous));
+    afree(previous);
+    return asset;
+}
+
+/* Makes the imported file `key` drawable: registers a material, or publishes
+ * a mesh under mesh_key. Images load from the mounted content folder. */
+static bool make_drawable(const char *key)
+{
+    bool material = !strncmp(key, "content/materials/", 18),
+         mesh = !strncmp(key, "content/meshes/", 15);
+    if (!material && !mesh) {
+        return true;
+    }
+    char path[256];
+    snprintf(path, sizeof path, "%s/%s", import_folder, key);
+    FILE *file = fopen(path, "rb");
+    assert(file && !fseek(file, 0, SEEK_END));
+    size_t length = (size_t)ftell(file);
+    char *bytes = xmalloc(length + 1);
+    assert(
+        !fseek(file, 0, SEEK_SET) && fread(bytes, 1, length, file) == length &&
+        !fclose(file)
+    );
+    bytes[length] = '\0';
+    bool drawable = false;
+    if (material) {
+        behavior_asset *asset = load_material(bytes);
+        shader_error error = { 0 };
+        drawable = asset && render_shader_upsert(asset, &error);
+        if (asset) {
+            behavior_asset_free(asset);
+        }
+    } else {
+        render_mesh_asset loaded = { 0 };
+        size_t budget = SIZE_MAX;
+        char error[128];
+        drawable = render_mesh_asset_prepared_read_budget(bytes, length, &budget, &loaded, error, sizeof error);
+        assert(drawable);
+        render_mesh_asset_publish(mesh_key, &loaded);
+    }
+    free(bytes);
+    return drawable;
+}
+
+/* Imports model `f`, with the JSON members `members`, as `name`, and makes
+ * what it wrote drawable. */
+static bool import_model(const gltf_fixture *f, const char *name, const char *members)
+{
+    if (!import_folder[0]) {
+        strcpy(import_folder, "/tmp/chibi-scene3d-XXXXXX");
+        assert(mkdtemp(import_folder));
+    }
+    char source[128], content[128], error[256] = "";
+    snprintf(source, sizeof source, "%s/%s.gltf", import_folder, name);
+    snprintf(content, sizeof content, "%s/content", import_folder);
+    assert(!mkdir(content, 0700) || errno == EEXIST);
+    model_import_report report = { 0 };
+    bool imported = gltf_fixture_write(f, source, members) &&
+                    model_import(content, source, name, &report, error, sizeof error) &&
+                    render_image_mount_content(content, error, sizeof error);
+    for (int i = 0; imported && i < acount(report.written); i++) {
+        imported = make_drawable(report.written[i]);
+    }
+    model_import_report_free(&report);
+    return imported;
+}
+
+/* The image's up along +z, u along +x. */
+static const float upright_uvs[] = { 0, 1, 0, 0, 1, 0, 1, 1 };
+
+/* The 8-bit sRGB `value` as linear light. */
+static float linear(int value)
+{
+    float c = value / 255.0f;
+    return c <= .04045f ? c / 12.92f : powf((c + .055f) / 1.055f, 2.4f);
+}
+
+/* The Look material's factors as a format: base color, metallic, roughness
+ * and emission, and the shut image's occlusion strength, since
+ * 1 + strength * (red - 1) matches the open image's occlusion. */
+static const char LOOK_FACTORS
+    [] = "\"materials\":[{\"name\":\"Look\",\"pbrMetallicRoughness\":"
+         "{\"baseColorFactor\":[%.9g,%.9g,%.9g,1],"
+         "\"metallicFactor\":%.9g,\"roughnessFactor\":%.9g},"
+         "\"emissiveFactor\":[%.9g,%.9g,0],"
+         "\"occlusionTexture\":{\"index\":4,\"strength\":%.9g}}]";
+
+/* Standard materials from glTF shade alike whether a factor or an image
+ * gives each value: base color and emission images hold sRGB, roughness
+ * and metallic come from the green and blue of one image, and occlusion
+ * from the red of another scaled by its strength. The view tells a sRGB
+ * image read as linear, and swapped roughness and metallic, apart. */
+TEST_CASE(imported_standard_materials_shade_as_their_factors)
+{
+    gltf_fixture f = { 0 };
+    gltf_fixture_square(&f, upright_uvs);
+    gltf_fixture_png(&f, "base.png", 2, 2, (const uint8_t[]){ 200, 120, 60, 255 });
+    gltf_fixture_png(&f, "packed.png", 2, 2, (const uint8_t[]){ 0, 77, 204, 255 });
+    gltf_fixture_png(&f, "glow.png", 2, 2, (const uint8_t[]){ 120, 60, 0, 255 });
+    gltf_fixture_png(&f, "open.png", 2, 2, (const uint8_t[]){ 128, 0, 255, 255 });
+    gltf_fixture_png(&f, "shut.png", 2, 2, (const uint8_t[]){ 0, 255, 0, 255 });
+    const char *textures = "\"textures\":[{\"source\":0},{\"source\":1},"
+                           "{\"source\":2},{\"source\":3},{\"source\":4}]";
+    char members[2048];
+    snprintf(
+        members,
+        sizeof members,
+        "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":["
+        "{" GLTF_FIXTURE_SQUARE ",\"material\":0}]}],%s,"
+        "\"materials\":[{\"name\":\"Look\",\"pbrMetallicRoughness\":{"
+        "\"baseColorTexture\":{\"index\":0},"
+        "\"metallicRoughnessTexture\":{\"index\":1}},"
+        "\"emissiveFactor\":[1,1,1],\"emissiveTexture\":{\"index\":2},"
+        "\"occlusionTexture\":{\"index\":3}}]",
+        textures
+    );
+    REQUIRE(import_model(&f, "Images", members));
+    ecs_entity square = add_surface_box("Images_Look");
+    import_mesh(square);
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
+    GameEnvironment environment = unlit_environment();
+    environment.ambient_sky = 0xffffffffu;
+    environment.ambient_ground = 0xffffffffu;
+    environment.ambient_intensity = .5f;
+    REQUIRE(render(&environment));
+    static CF_Pixel images[PIXELS];
+    memcpy(images, pixels, sizeof pixels);
+
+    const char *meshes = "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":"
+                         "[{" GLTF_FIXTURE_SQUARE ",\"material\":0}]}]";
+    char format[1024];
+    snprintf(format, sizeof format, "%s,%s,%s", meshes, textures, LOOK_FACTORS);
+    snprintf(
+        members,
+        sizeof members,
+        format,
+        linear(200),
+        linear(120),
+        linear(60),
+        204 / 255.0,
+        77 / 255.0,
+        linear(120),
+        linear(60),
+        127 / 255.0
+    );
+    REQUIRE(import_model(&f, "Factors", members));
+    REQUIRE(render(&environment));
+    REQUIRE(matches(images));
+
+    snprintf(
+        members,
+        sizeof members,
+        format,
+        linear(200),
+        linear(120),
+        linear(60),
+        77 / 255.0,
+        204 / 255.0,
+        linear(120),
+        linear(60),
+        127 / 255.0
+    );
+    REQUIRE(import_model(&f, "Swapped", members));
+    REQUIRE(render(&environment));
+    REQUIRE(distance(pixel_at((CF_V3){ 0 }), images[pixel_index((CF_V3){ 0 })]) > 10);
+    snprintf(
+        members,
+        sizeof members,
+        format,
+        200 / 255.0,
+        120 / 255.0,
+        60 / 255.0,
+        204 / 255.0,
+        77 / 255.0,
+        linear(120),
+        linear(60),
+        127 / 255.0
+    );
+    REQUIRE(import_model(&f, "Raw", members));
+    REQUIRE(render(&environment));
+    REQUIRE(distance(pixel_at((CF_V3){ 0 }), images[pixel_index((CF_V3){ 0 })]) > 10);
+    gltf_fixture_free(&f);
+    return true;
+}
+
+/* How bright the square's center shows after importing it as `name`, with
+ * the nodes `nodes`, the attributes `attributes`, and with the fixture's
+ * image as its normal map unless `flat`. It is a dielectric: with the sun
+ * behind the eye, a rough metal's light would not depend on its normal. */
+static int imported_light(
+    const gltf_fixture *f,
+    const char *name,
+    const char *nodes,
+    const char *attributes,
+    bool flat
+)
+{
+    char members[1024];
+    snprintf(
+        members,
+        sizeof members,
+        "\"nodes\":[%s],\"meshes\":[{\"primitives\":[{\"attributes\":{%s},"
+        "\"indices\":3,\"material\":0}]}],"
+        "\"textures\":[{\"source\":0}],\"materials\":[{\"name\":\"Map\","
+        "\"pbrMetallicRoughness\":{\"metallicFactor\":0}%s}]",
+        nodes,
+        attributes,
+        flat ? "" : ",\"normalTexture\":{\"index\":0}"
+    );
+    if (!import_model(f, name, members)) {
+        return -1;
+    }
+    GameEnvironment environment = unlit_environment();
+    return render(&environment) ? pixel_at((CF_V3){ 0 }).colors.g : -1;
+}
+
+/* A glTF normal image's green tilts toward the top of the image. With the
+ * image's up along +z, toward a sun that shines down toward -z, an image
+ * tilted toward green lights the square more than a flat one does, whether
+ * the import makes its tangents or the model authors them, its u runs
+ * either way, or a node mirrors it. With the image's up along -z, or
+ * authored bitangents along -z, it shades the square. */
+TEST_CASE(imported_normal_maps_tilt_toward_the_top_of_their_image)
+{
+    gltf_fixture f = { 0 };
+    gltf_fixture_square(&f, upright_uvs);
+    gltf_fixture_png(&f, "up.png", 2, 2, (const uint8_t[]){ 128, 217, 217, 255 });
+    int up = gltf_fixture_floats(
+        &f,
+        (const float[16]){ 1, 0, 0, -1, 1, 0, 0, -1, 1, 0, 0, -1, 1, 0, 0, -1 },
+        4,
+        4
+    );
+    int down = gltf_fixture_floats(
+        &f,
+        (const float[16]){ 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1 },
+        4,
+        4
+    );
+    int turned = gltf_fixture_floats(&f, (const float[]){ 1, 1, 1, 0, 0, 0, 0, 1 }, 4, 2);
+    int flipped = gltf_fixture_floats(&f, (const float[]){ 0, 0, 0, 1, 1, 1, 1, 0 }, 4, 2);
+    const char *plain = "\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2",
+               *single = "{\"mesh\":0}";
+    char attributes[4][96];
+    snprintf(attributes[0], sizeof attributes[0], "%s,\"TANGENT\":%d", plain, up);
+    snprintf(attributes[1], sizeof attributes[1], "%s,\"TANGENT\":%d", plain, down);
+    snprintf(attributes[2], sizeof attributes[2], "\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":%d", turned);
+    snprintf(attributes[3], sizeof attributes[3], "\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":%d", flipped);
+    REQUIRE(
+        import_model(&f, "Square", "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[{" GLTF_FIXTURE_SQUARE "}]}]")
+    );
+    import_mesh(add_surface_box("Square_Default"));
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
+    int level = imported_light(&f, "Level", single, plain, true);
+    int made = imported_light(&f, "Made", single, plain, false);
+    REQUIRE(level > 0 && made > level + 10);
+    REQUIRE(abs(imported_light(&f, "Authored", single, attributes[0], false) - made) <= 3);
+    REQUIRE(abs(imported_light(&f, "Turned", single, attributes[2], false) - made) <= 3);
+    REQUIRE(
+        abs(imported_light(&f, "Mirrored", "{\"mesh\":0,\"scale\":[-1,1,1]}", plain, false) -
+            made) <= 3
+    );
+    int away = imported_light(&f, "Flipped", single, attributes[3], false);
+    REQUIRE(away >= 0 && away + 10 < level);
+    REQUIRE(abs(imported_light(&f, "Inverted", single, attributes[1], false) - away) <= 3);
+    gltf_fixture_free(&f);
+    return true;
+}
+#endif
 #endif
 
 void test_render_scene3d(bool gles)
@@ -3044,6 +3878,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(distant_small_scale_cameras_keep_their_view);
     RUN_TEST_CASE(default_clips_stay_ordered_for_close_framings);
     RUN_TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use);
+    RUN_TEST_CASE(cameras_on_bodies_look_from_their_drawn_pose);
     RUN_TEST_CASE(widest_clip_range_keeps_ground_rays);
     RUN_TEST_CASE(navigating_drops_an_authored_lens);
     RUN_TEST_CASE(fog_conceals_rays_that_miss_the_ground);
@@ -3101,6 +3936,16 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(mesh_copies_are_found_in_any_upload_order);
     RUN_TEST_CASE(translucent_meshes_sort_by_their_bounds);
     RUN_TEST_CASE(translucent_copies_of_a_mesh_sort_by_their_bounds);
+    RUN_TEST_CASE(transform3d_places_solids_in_their_pose);
+    RUN_TEST_CASE(transform3d_children_pick_and_bound_under_their_parent);
+#if CHIBI_TEST_MATERIAL_GRAPHS
+    RUN_TEST_CASE(transform3d_models_pick_and_bound_at_their_pose);
+#endif
+    RUN_TEST_CASE(mirroring_transform3d_keeps_faces_outward);
+    RUN_TEST_CASE(lopsided_mesh_models_keep_their_normals);
+    RUN_TEST_CASE(flattened_transform3d_frames_hide_at_any_scale);
+    RUN_TEST_CASE(overflowing_transform3d_frames_are_authoring_errors);
+    RUN_TEST_CASE(fog_culls_transform3d_solids_where_they_draw);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(mirrors_reflect_the_sky_in_its_directions);
     RUN_TEST_CASE(rough_surfaces_blur_the_sky_they_reflect);
@@ -3108,6 +3953,9 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_mesh_groups_take_their_own_materials);
     RUN_TEST_CASE(imported_meshes_carry_texture_and_part_coordinates);
     RUN_TEST_CASE(normal_maps_follow_mesh_tangents);
+    RUN_TEST_CASE(normal_map_green_tilts_up_the_image_in_opengl);
+    RUN_TEST_CASE(mirroring_transform3d_turns_mesh_bitangents);
+    RUN_TEST_CASE(stretched_transform3d_keeps_mesh_tangents);
     RUN_TEST_CASE(occlusion_dims_only_ambient_light);
     RUN_TEST_CASE(alpha_modes_decide_how_opacity_draws);
     RUN_TEST_CASE(masks_drop_pixels_whose_opacity_is_not_a_number);
@@ -3115,6 +3963,10 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(masked_surfaces_cast_cut_out_shadows);
     RUN_TEST_CASE(view_dependent_masks_cast_shadows_seen_from_the_light);
     RUN_TEST_CASE(masked_solids_outside_the_view_cut_their_shadows);
+#if CHIBI_TEST_MODEL_IMPORT
+    RUN_TEST_CASE(imported_standard_materials_shade_as_their_factors);
+    RUN_TEST_CASE(imported_normal_maps_tilt_toward_the_top_of_their_image);
+#endif
 #endif
     pu_clear_setup();
     cf_destroy_app();

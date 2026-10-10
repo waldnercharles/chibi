@@ -35,6 +35,23 @@ target_link_libraries(chibi_model_authoring PUBLIC chibi_graph_model chibi_model
     PRIVATE chibi_image_preparation chibi_shader_preparation chibi_graph_authoring chibi_graph_compilation
     chibi_visual_catalog chibi_asset_text chibi_json chibi_support)
 
+# glTF import reads models through Cute's loader, which only the desktop
+# archive carries.
+if(CHIBI_SDK_BUILD_DESKTOP)
+    add_library(chibi_model_import STATIC
+        "${CHIBI_SDK_ROOT}/src/assets/model_import.c"
+        "${CHIBI_SDK_ROOT}/src/assets/standard_material.c")
+    add_library(Chibi::model_import ALIAS chibi_model_import)
+    set_target_properties(chibi_model_import PROPERTIES EXPORT_NAME model_import)
+    chibi_sdk_headers(chibi_model_import PUBLIC assets/model_import.h assets/standard_material.h)
+    target_include_directories(chibi_model_import PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
+    target_link_libraries(chibi_model_import PUBLIC chibi_graph_model chibi_shader_runtime
+        PRIVATE chibi_platform chibi_asset_authoring chibi_prototype_document chibi_image_preparation
+        chibi_mesh_runtime chibi_native_types chibi_graph_authoring chibi_graph_compilation
+        chibi_asset_text chibi_json chibi_support)
+    list(APPEND CHIBI_SDK_TARGETS chibi_model_import)
+endif()
+
 add_library(chibi_scenario_document STATIC "${CHIBI_SDK_ROOT}/src/assets/scenario_document.c")
 add_library(Chibi::scenario_document ALIAS chibi_scenario_document)
 set_target_properties(chibi_scenario_document PROPERTIES EXPORT_NAME scenario_document)

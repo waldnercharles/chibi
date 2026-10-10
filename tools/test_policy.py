@@ -31,7 +31,7 @@ NATIVE = {
     ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
     ('--viewport-resize',): 'Reviewed hidden 64x64 app: an engine viewport takes its first requested size at once and later sizes after two draws; GPU; docs/testing.md',
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
-    ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky, ramps, imported meshes and their normal maps, occlusion, alpha modes and masked shadows with readback; GPU; docs/rendering-3d.md',
+    ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky, ramps, imported meshes and their normal maps, imported glTF Standard materials and tangent frames, Transform3D placement and mirroring, occlusion, alpha modes and masked shadows with readback; GPU; docs/rendering-3d.md',
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
     ('--material-ramps',): 'Reviewed hidden 64x64 app: four color ramp table cases through 2D and material raster shaders; GPU; docs/testing.md',
     ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
@@ -150,6 +150,10 @@ TOOLS = {
     # mounted content, refused triangles and groups, unreadable files, the largest baked mesh and a
     # model export bundle; one temporary folder, no GPU.
     'mesh-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--mesh-files'],
+    # Fourteen reviewed in-tree glTF import cases: the files a .gltf or .glb writes, names, refusals with
+    # nothing left behind, warnings, left-out vertices, meshes too large to write and baked tangent frames;
+    # one temporary folder, no GPU.
+    'model-import': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--model-import'],
     # Nine reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, sound requests, declared components, per-step action state and recorded taps, and held actions across a pause.
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--native'],
     # 2D physics through ECS and Contact Begin events: motion, contacts, masks, queries and parallel collection.
@@ -198,7 +202,7 @@ TOOLS = {
 # Every admitted selector of each built driver, run under one shared deadline.
 GROUPS = {
     'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'physics3d', 'transforms',
-               'box3d', 'sky-files', 'mesh-files', 'tilemap',
+               'box3d', 'sky-files', 'mesh-files', 'model-import', 'tilemap',
                'runtime-scene', 'scene-prepared', 'render-resources', 'persistent-store',
                'whole-alias', 'whole-integer', 'whole-conversion', 'whole-select', 'whole-math',
                'owned-tick', 'parallel-tick', 'source-native-features',

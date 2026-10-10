@@ -5,6 +5,7 @@
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_pick.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
 
 #include <float.h>
@@ -18,6 +19,40 @@ static int entity_model(const ecs_world *world, ecs_entity entity)
                ? render_shader_find(binding->shape)
                : 0;
     return render_shader_is_model(id) ? id : 0;
+}
+
+/* An entity's visuals at its exact world placement, which picks and bounds
+ * read before any propagation: its Transform3D's when it has one. */
+static int exact_visuals(
+    const ecs_world *world,
+    ecs_entity entity,
+    scene3d_visual visuals[SCENE3D_PART_LIMIT],
+    const render_mesh_asset **mesh,
+    char *error,
+    size_t size
+)
+{
+    if (!GAME_GameTransform3D_has(world, entity)) {
+        return render_scene3d_visuals(world, entity, NULL, NULL, visuals, mesh, error, size);
+    }
+    GameGlobalTransform3D transform = game_transform_world_3d(world, entity);
+    return render_scene3d_visuals(world, entity, NULL, &transform, visuals, mesh, error, size);
+}
+
+/* A model's surface at the same exact placement. */
+static bool exact_surface(
+    const ecs_world *world,
+    ecs_entity entity,
+    render_mesh_surface *surface,
+    char *error,
+    size_t size
+)
+{
+    if (!GAME_GameTransform3D_has(world, entity)) {
+        return render_mesh_surface_build(world, entity, NULL, surface, error, size);
+    }
+    GameGlobalTransform3D transform = game_transform_world_3d(world, entity);
+    return render_mesh_surface_build_with_bounds(world, entity, NULL, &transform, NULL, surface, error, size);
 }
 
 /* The box around a visual: its imported mesh's bounds, or its shape's. */
@@ -43,14 +78,14 @@ bool render_scene3d_entity_bounds(const ecs_world *world, ecs_entity entity, CF_
     int count;
     if (entity_model(world, entity)) {
         render_mesh_surface surface = { 0 };
-        bool ok = render_mesh_surface_build(world, entity, NULL, &surface, error, sizeof error);
+        bool ok = exact_surface(world, entity, &surface, error, sizeof error);
         count = ok ? acount(surface.parts) : 0;
         if (count) {
             visuals[0] = surface.parts[0].visual;
         }
         render_mesh_surface_free(&surface);
     } else {
-        count = render_scene3d_visuals(world, entity, NULL, visuals, &mesh, error, sizeof error);
+        count = exact_visuals(world, entity, visuals, &mesh, error, sizeof error);
     }
     if (count <= 0) {
         return false;
@@ -213,7 +248,7 @@ static float model_ray_hit(ecs_world *world, ecs_entity entity, int id, CF_Ray3 
 {
     render_mesh_surface surface = { 0 };
     char message[128];
-    if (!render_mesh_surface_build(world, entity, NULL, &surface, message, sizeof message) ||
+    if (!exact_surface(world, entity, &surface, message, sizeof message) ||
         !acount(surface.parts)) {
         render_mesh_surface_free(&surface);
         return FLT_MAX;
@@ -340,17 +375,10 @@ ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *ca
     CF_Ray3 ray = render_scene3d_ray(camera, ndc);
     ecs_entity nearest = { 0 };
     float distance = FLT_MAX;
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameGeometry3D.id };
-    ecs_query query;
-    if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
-        return nearest;
-    }
-    ecs_entity entity;
-    while (ecs_query_next(&query, &entity)) {
-        if (render_skip_has(skip, entity)) {
-            continue;
-        }
+    ecs_entity *entities = NULL;
+    render_scene3d_entities(world, skip, &entities);
+    for (int e = 0; e < acount(entities); e++) {
+        ecs_entity entity = entities[e];
         int model = entity_model(world, entity);
         if (model) {
             float t = model_ray_hit(world, entity, model, ray);
@@ -363,7 +391,7 @@ ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *ca
         scene3d_visual visuals[SCENE3D_PART_LIMIT];
         const render_mesh_asset *mesh;
         char error[128];
-        int count = render_scene3d_visuals(world, entity, NULL, visuals, &mesh, error, sizeof error);
+        int count = exact_visuals(world, entity, visuals, &mesh, error, sizeof error);
         for (int i = 0; i < count; i++) {
             CF_M4x4 model = render_scene3d_visual_model(&visuals[i]);
             float world_t = mesh ? mesh_hit(mesh, model, ray)
@@ -374,6 +402,6 @@ ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *ca
             }
         }
     }
-    ecs_query_end(&query);
+    afree(entities);
     return nearest;
 }

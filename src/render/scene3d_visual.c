@@ -2,7 +2,9 @@
 
 #include "runtime/component_catalog.h"
 #include "runtime/transform_propagation.h"
+#include "support/array.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 
@@ -21,10 +23,120 @@ GameGlobalTransform2D render_scene3d_placement(
     return (GameGlobalTransform2D){ *position, global ? global->radians : 0 };
 }
 
+void render_scene3d_entities(ecs_world *world, render_skip skip, ecs_entity **entities)
+{
+    ecs_component_id placements[] = { GAME_COMPONENT_GameTransform.id,
+                                      GAME_COMPONENT_GameTransform3D.id };
+    for (int i = 0; i < 2; i++) {
+        ecs_component_id required[] = { placements[i],
+                                        GAME_COMPONENT_GameGeometry3D.id };
+        ecs_query query;
+        if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
+            continue;
+        }
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            if (!render_skip_has(skip, entity) &&
+                (i || !GAME_GameTransform3D_has(world, entity))) {
+                apush(*entities, entity);
+            }
+        }
+        ecs_query_end(&query);
+    }
+}
+
+static bool finite_frame(CF_M4x4 frame)
+{
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(frame.elements[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* The signed volume of the box a frame's unit axis directions span: one
+ * when they are perpendicular, negative when the frame mirrors and zero
+ * when an axis vanishes. Unlike the determinant, it keeps its sign and size
+ * at any scale. */
+static float direction_volume(CF_M4x4 frame)
+{
+    CF_V3 axes[3];
+    for (int i = 0; i < 3; i++) {
+        CF_V3 axis = { frame.elements[i * 4],
+                       frame.elements[i * 4 + 1],
+                       frame.elements[i * 4 + 2] };
+        /* Dividing by the largest part first keeps tiny axes from
+         * underflowing on their way to unit length. */
+        float largest = fmaxf(fabsf(axis.x), fmaxf(fabsf(axis.y), fabsf(axis.z)));
+        if (largest == 0) {
+            return 0;
+        }
+        axes[i] = cf_norm_v3(cf_div_v3_f(axis, largest));
+    }
+    return cf_dot_v3(axes[0], cf_cross_v3(axes[1], axes[2]));
+}
+
+/* Whether the Transform3D of `entity` or of an ancestor placing it scales
+ * an axis to zero. */
+static bool scaled_to_nothing(const ecs_world *world, ecs_entity entity)
+{
+    for (ecs_entity at = entity; at.slot; at = game_transform_parent_3d(world, at)) {
+        const GameTransform3D *local = GAME_GameTransform3D_get_const(world, at);
+        assert(local);
+        if (!local->scale.x || !local->scale.y || !local->scale.z) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool render_scene3d_frame_mirrors(CF_M4x4 frame)
+{
+    return direction_volume(frame) < 0;
+}
+
+scene3d_frame_state render_scene3d_visual_frame(
+    const ecs_world *world,
+    ecs_entity entity,
+    const GameTransform *position,
+    const GameGlobalTransform3D *transform,
+    CF_M4x4 *frame
+)
+{
+    const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
+    float scale = visual ? visual->scale : 1;
+    CF_V3 rotation = visual ? (CF_V3){ visual->pitch, visual->yaw, visual->roll }
+                            : (CF_V3){ 0 };
+    if (transform) {
+        *frame = cf_mul_m4(
+            game_transform_matrix_3d(transform),
+            cf_m4_from_trs((CF_V3){ 0 }, game_visual_rotation(0, rotation), (CF_V3){ scale, scale, scale })
+        );
+    } else {
+        float elevation = GAME_GameGeometry3D_get_const(world, entity)->elevation;
+        GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
+        *frame = cf_m4_from_trs(
+            (CF_V3){ pose.position.x, elevation, pose.position.y },
+            game_visual_rotation(pose.radians, rotation),
+            (CF_V3){ scale, scale, scale }
+        );
+    }
+    /* A value that is not finite spreads to the frame, and so does a product
+     * of finite ones that overflows. */
+    if (!finite_frame(*frame) || scale < 0) {
+        return SCENE3D_FRAME_INVALID;
+    }
+    bool flat = !direction_volume(*frame) ||
+                (transform && scaled_to_nothing(world, entity));
+    return flat ? SCENE3D_FRAME_FLAT : SCENE3D_FRAME_WHOLE;
+}
+
 int render_scene3d_visuals(
     const ecs_world *world,
     ecs_entity entity,
     const GameTransform *position,
+    const GameGlobalTransform3D *transform,
     scene3d_visual visuals[SCENE3D_PART_LIMIT],
     const render_mesh_asset **mesh,
     char *error,
@@ -33,28 +145,19 @@ int render_scene3d_visuals(
 {
     *mesh = NULL;
     const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
-    if (!shape || (!position && !GAME_GameTransform_get_const(world, entity))) {
+    if (!shape ||
+        (!transform && !position && !GAME_GameTransform_get_const(world, entity))) {
         return 0;
     }
-    GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
-    position = &pose.position;
-    const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
     const GameMeshParts *authored = GAME_GameMeshParts_get_const(world, entity);
     const GameMeshAsset *imported = GAME_GameMeshAsset_get_const(world, entity);
-    float angle = pose.radians;
-    float scale = transform ? transform->scale : 1;
-    CF_V3 rotation = transform
-                       ? (CF_V3){ transform->pitch, transform->yaw, transform->roll }
-                       : (CF_V3){ 0 };
-    if (!isfinite(
-            position->x + position->y + shape->elevation + angle + scale +
-            rotation.x + rotation.y + rotation.z
-        ) ||
-        scale < 0) {
+    CF_M4x4 frame;
+    scene3d_frame_state state = render_scene3d_visual_frame(world, entity, position, transform, &frame);
+    if (state == SCENE3D_FRAME_INVALID) {
         snprintf(error, size, "Visual transform needs finite values and nonnegative scale.");
         return -1;
     }
-    if (scale == 0) {
+    if (state == SCENE3D_FRAME_FLAT) {
         return 0;
     }
     scene3d_parts parts;
@@ -83,11 +186,7 @@ int render_scene3d_visuals(
         };
         parts.count = 1;
     }
-    CF_M4x4 frame = cf_m4_from_trs(
-        (CF_V3){ position->x, shape->elevation, position->y },
-        game_visual_rotation(angle, rotation),
-        (CF_V3){ scale, scale, scale }
-    );
+    int count = 0;
     for (int i = 0; i < parts.count; i++) {
         const scene3d_part *part = &parts.parts[i];
         if (part->primitive < GAME_PRIMITIVE_BOX ||
@@ -103,9 +202,27 @@ int render_scene3d_visuals(
             game_visual_rotation(0, part->rotation),
             (CF_V3){ 1, 1, 1 }
         );
-        visuals[i] = (scene3d_visual){ *part, cf_mul_m4(frame, local) };
+        visuals[count] = (scene3d_visual){ *part, cf_mul_m4(frame, local) };
+        scene3d_frame_state placed = render_scene3d_visual_state(&visuals[count]);
+        if (placed == SCENE3D_FRAME_INVALID) {
+            snprintf(error, size, "3D Geometry needs a placement within float range.");
+            return -1;
+        }
+        count += placed == SCENE3D_FRAME_WHOLE;
     }
-    return parts.count;
+    if (!count) {
+        *mesh = NULL;
+    }
+    return count;
+}
+
+scene3d_frame_state render_scene3d_visual_state(const scene3d_visual *visual)
+{
+    CF_M4x4 model = render_scene3d_visual_model(visual);
+    if (!finite_frame(visual->frame) || !finite_frame(model)) {
+        return SCENE3D_FRAME_INVALID;
+    }
+    return direction_volume(model) ? SCENE3D_FRAME_WHOLE : SCENE3D_FRAME_FLAT;
 }
 
 CF_M4x4 render_scene3d_visual_model(const scene3d_visual *visual)

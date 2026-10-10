@@ -236,6 +236,7 @@ bool render_mesh_surface_build_with_bounds(
     const ecs_world *world,
     ecs_entity entity,
     const GameTransform *position,
+    const GameGlobalTransform3D *transform,
     const model_bounds *override,
     render_mesh_surface *surface,
     char *error,
@@ -244,7 +245,7 @@ bool render_mesh_surface_build_with_bounds(
 {
     clear_surface(surface);
     if (!GAME_GameGeometry3D_get_const(world, entity) ||
-        (!position && !GAME_GameTransform_get_const(world, entity))) {
+        (!transform && !position && !GAME_GameTransform_get_const(world, entity))) {
         snprintf(error, size, "Mesh Surface 2D requires Geometry3D and Transform.");
         return false;
     }
@@ -256,14 +257,8 @@ bool render_mesh_surface_build_with_bounds(
             return false;
         }
         const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
-        const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
-        GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
-        float scale = transform ? transform->scale : 1;
-        CF_V3 rotation = transform ? (CF_V3){ transform->pitch,
-                                              transform->yaw,
-                                              transform->roll }
-                                   : (CF_V3){ 0 };
-        float angle = pose.radians;
+        CF_M4x4 frame;
+        scene3d_frame_state state = render_scene3d_visual_frame(world, entity, position, transform, &frame);
         CF_V3 dimensions = { shape->width, shape->height, shape->depth };
         CF_V3 center = { 0 };
         const GameShader *binding = GAME_GameShader_get_const(world, entity);
@@ -304,34 +299,29 @@ bool render_mesh_surface_build_with_bounds(
                               max[1] * .5f + min[1] * .5f,
                               max[2] * .5f + min[2] * .5f };
         }
-        if (!isfinite(pose.position.x) || !isfinite(pose.position.y) ||
-            !isfinite(shape->elevation) || !isfinite(scale) || !isfinite(angle) ||
-            !isfinite(rotation.x) || !isfinite(rotation.y) || !isfinite(rotation.z) ||
-            !isfinite(dimensions.x) || !isfinite(dimensions.y) ||
-            !isfinite(dimensions.z) || !isfinite(center.x) ||
-            !isfinite(center.y) || !isfinite(center.z) || scale < 0 ||
+        if (state == SCENE3D_FRAME_INVALID || !isfinite(dimensions.x) ||
+            !isfinite(dimensions.y) || !isfinite(dimensions.z) ||
+            !isfinite(center.x) || !isfinite(center.y) || !isfinite(center.z) ||
             dimensions.x <= 0 || dimensions.y <= 0 || dimensions.z <= 0) {
             snprintf(error, size, "SDF surface requires finite transforms and positive bounds.");
             return false;
         }
-        if (scale == 0) {
+        if (state == SCENE3D_FRAME_FLAT) {
             return true;
         }
         render_mesh_surface_part part = {
             .visual = { .part = { .primitive = GAME_PRIMITIVE_BOX, .dimensions = dimensions },
-                        .frame = cf_m4_from_trs(
-                            (CF_V3){ pose.position.x,
-                                     shape->elevation,
-                                     pose.position.y },
-                            game_visual_rotation(angle, rotation),
-                            (CF_V3){ scale, scale, scale }
-                        ) }
+                        .frame = cf_mul_m4(frame, cf_m4_translate(center)) },
+            .sdf_center = center,
         };
-        part.sdf_center = center;
-        part.visual.frame = cf_mul_m4(
-            part.visual.frame,
-            cf_m4_from_trs(center, cf_quat(0, 0, 0, 1), (CF_V3){ 1, 1, 1 })
-        );
+        state = render_scene3d_visual_state(&part.visual);
+        if (state == SCENE3D_FRAME_INVALID) {
+            snprintf(error, size, "SDF surface requires finite transforms and positive bounds.");
+            return false;
+        }
+        if (state == SCENE3D_FRAME_FLAT) {
+            return true;
+        }
         part.vertices = sdf_proxy;
         part.corner_count = 36;
         part.borrowed = true;
@@ -349,7 +339,7 @@ bool render_mesh_surface_build_with_bounds(
     }
     scene3d_visual visuals[SCENE3D_PART_LIMIT];
     const render_mesh_asset *asset;
-    int count = render_scene3d_visuals(world, entity, position, visuals, &asset, error, size);
+    int count = render_scene3d_visuals(world, entity, position, transform, visuals, &asset, error, size);
     if (count < 0) {
         return false;
     }
@@ -389,7 +379,7 @@ bool render_mesh_surface_build(
     size_t size
 )
 {
-    return render_mesh_surface_build_with_bounds(world, entity, position, NULL, surface, error, size);
+    return render_mesh_surface_build_with_bounds(world, entity, position, NULL, NULL, surface, error, size);
 }
 
 bool render_mesh_surface_bounds(

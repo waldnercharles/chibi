@@ -37,10 +37,13 @@ bool render_mesh_surface_vertices(
     char *error,
     size_t size
 );
+/* With a `transform`, a global 3D transform, the surface stands there as
+ * render_scene3d_visual_frame places it; otherwise at `position`. */
 bool render_mesh_surface_build_with_bounds(
     const ecs_world *world,
     ecs_entity entity,
     const GameTransform *position,
+    const GameGlobalTransform3D *transform,
     const model_bounds *bounds,
     render_mesh_surface *surface,
     char *error,

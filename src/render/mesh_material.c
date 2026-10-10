@@ -1254,6 +1254,7 @@ bool render_mesh_material_draw(
                     world,
                     actors[i].entity,
                     &actors[i].position,
+                    NULL,
                     override,
                     &pass->owned_surfaces[i],
                     pass->error,

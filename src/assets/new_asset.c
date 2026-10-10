@@ -24,7 +24,6 @@
 
 enum
 {
-    NAME_MAX_LENGTH = 63,
     SHAPE_HALF_EXTENT = 32,
 };
 
@@ -60,7 +59,7 @@ const char *new_asset_extension(new_asset_kind kind)
 
 bool new_asset_name_valid(const char *name, char *error, size_t size)
 {
-    bool valid = isalpha((unsigned char)name[0]) && strlen(name) <= NAME_MAX_LENGTH;
+    bool valid = isalpha((unsigned char)name[0]) && strlen(name) <= NEW_ASSET_NAME_MAX;
     for (const char *c = name; valid && *c; c++) {
         valid = isalnum((unsigned char)*c) || *c == '_' || *c == '-';
     }
@@ -175,9 +174,8 @@ char *new_asset_text(new_asset_kind kind, const char *name)
     return NULL;
 }
 
-/* A folder, not a symbolic link to one, so a file made inside it stays in
- * the project; like the catalog, writes never follow a link out of it. */
-static bool real_folder(const char *path, char *error, size_t size)
+/* Like the catalog, writes never follow a link out of the project. */
+bool new_asset_real_folder(const char *path, char *error, size_t size)
 {
     struct stat info;
     if (lstat(path, &info) != 0) {
@@ -198,7 +196,7 @@ char *new_asset_create(const char *content, new_asset_kind kind, const char *nam
         errno = EINVAL;
         return NULL;
     }
-    if (!real_folder(content, error, size)) {
+    if (!new_asset_real_folder(content, error, size)) {
         return NULL;
     }
     size_t bytes = strlen(content) + strlen("shader-libraries") + strlen(name) + 16;
@@ -209,7 +207,7 @@ char *new_asset_create(const char *content, new_asset_kind kind, const char *nam
         free(path);
         return NULL;
     }
-    if (!real_folder(path, error, size)) {
+    if (!new_asset_real_folder(path, error, size)) {
         free(path);
         return NULL;
     }

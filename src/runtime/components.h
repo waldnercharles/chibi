@@ -484,7 +484,7 @@ enum
     GAME_PRIMITIVE_COUNT,
 };
 
-/* Full visual extents. Gameplay x/y maps to world x/z; elevation is center Y. */
+/* Full visual extents. Gameplay x/y is world x/z; elevation is center Y without a Transform3D. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameGeometry3D)
 {
     int primitive;

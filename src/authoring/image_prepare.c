@@ -84,20 +84,10 @@ static void *read_bytes(const char *key, int *length)
     }
     return NULL;
 }
-static bool decode(void *, const char *key, shader_image_view *out, char *error, size_t size)
+/* Decodes `length` bytes of a PNG, or else a JPEG, within the resident side
+ * limit. */
+static bool decode_bytes(const void *bytes, int length, bool png, shader_image_view *out, char *error, size_t size)
 {
-    const char *extension = strrchr(key, '.');
-    bool png = extension && !strcasecmp(extension, ".png");
-    bool jpg = extension &&
-               (!strcasecmp(extension, ".jpg") || !strcasecmp(extension, ".jpeg"));
-    if (!png && !jpg) {
-        return failure(error, size, "Expected a PNG, JPG or JPEG image");
-    }
-    int length = 0;
-    void *bytes = read_bytes(key, &length);
-    if (!bytes) {
-        return failure(error, size, "Cannot read bounded image file");
-    }
     int width = 0, height = 0;
     if (png) {
         chibi_image_cp_load_png_wh(bytes, length, &width, &height);
@@ -105,7 +95,6 @@ static bool decode(void *, const char *key, shader_image_view *out, char *error,
         chibi_image_cj_load_jpg_wh(bytes, length, &width, &height);
     }
     if (!sides_valid(width, height)) {
-        free(bytes);
         return failure(error, size, IMAGE_SIDES_MESSAGE);
     }
     unsigned char *pixels = NULL;
@@ -120,12 +109,53 @@ static bool decode(void *, const char *key, shader_image_view *out, char *error,
         width = image.w;
         height = image.h;
     }
-    free(bytes);
     if (!pixels) {
         return failure(error, size, png ? chibi_image_cp_error_reason : chibi_image_cj_error_reason);
     }
     *out = (shader_image_view){ pixels, width, height };
     return true;
+}
+static bool decode(void *, const char *key, shader_image_view *out, char *error, size_t size)
+{
+    const char *extension = strrchr(key, '.');
+    bool png = extension && !strcasecmp(extension, ".png");
+    bool jpg = extension &&
+               (!strcasecmp(extension, ".jpg") || !strcasecmp(extension, ".jpeg"));
+    if (!png && !jpg) {
+        return failure(error, size, "Expected a PNG, JPG or JPEG image");
+    }
+    int length = 0;
+    void *bytes = read_bytes(key, &length);
+    if (!bytes) {
+        return failure(error, size, "Cannot read bounded image file");
+    }
+    bool decoded = decode_bytes(bytes, length, png, out, error, size);
+    free(bytes);
+    return decoded;
+}
+const char *image_prepare_check(const void *bytes, size_t length, char *error, size_t size)
+{
+    static const unsigned char png_magic[] = { 0x89, 'P',  'N',  'G',
+                                               '\r', '\n', 0x1a, '\n' };
+    static const unsigned char jpg_magic[] = { 0xff, 0xd8, 0xff };
+    bool png = length >= sizeof png_magic &&
+               !memcmp(bytes, png_magic, sizeof png_magic);
+    bool jpg = length >= sizeof jpg_magic &&
+               !memcmp(bytes, jpg_magic, sizeof jpg_magic);
+    if (!png && !jpg) {
+        failure(error, size, "Expected a PNG or JPEG image");
+        return NULL;
+    }
+    if (length > IMAGE_BYTES_MAX) {
+        failure(error, size, "Image is over 64 MiB");
+        return NULL;
+    }
+    shader_image_view view;
+    if (!decode_bytes(bytes, (int)length, png, &view, error, size)) {
+        return NULL;
+    }
+    free((void *)view.pixels);
+    return png ? "png" : "jpg";
 }
 void *image_prepare_png_read(const char *path, int *length, char *error, size_t size)
 {
@@ -135,20 +165,12 @@ void *image_prepare_png_read(const char *path, int *length, char *error, size_t 
         failure(error, size, "Cannot read bounded image file");
         return NULL;
     }
-    int width = 0, height = 0;
-    chibi_image_cp_load_png_wh(bytes, *length, &width, &height);
-    if (!sides_valid(width, height)) {
+    shader_image_view view;
+    if (!decode_bytes(bytes, *length, true, &view, error, size)) {
         free(bytes);
-        failure(error, size, IMAGE_SIDES_MESSAGE);
         return NULL;
     }
-    chibi_image_cp_image_t image = chibi_image_cp_load_png_mem(bytes, *length);
-    if (!image.pix) {
-        free(bytes);
-        failure(error, size, chibi_image_cp_error_reason);
-        return NULL;
-    }
-    chibi_image_cp_free_png(&image);
+    free((void *)view.pixels);
     return bytes;
 }
 /* The next header line of a Radiance file, without its newline, at most

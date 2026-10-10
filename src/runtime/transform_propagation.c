@@ -104,7 +104,7 @@ static int propagate_2d(ecs_world *world)
     return ECS_OK;
 }
 
-static CF_M4x4 matrix_3d(const GameGlobalTransform3D *global)
+CF_M4x4 game_transform_matrix_3d(const GameGlobalTransform3D *global)
 {
     CF_M4x4 m = cf_m4_identity();
     const CF_V3 columns[] = { global->x_axis,
@@ -194,7 +194,10 @@ static int propagate_3d(ecs_world *world)
         ecs_entity parent = ecs_query_src(&query, TERM_PARENT);
         CF_M4x4 m = local_matrix(GAME_GameTransform3D_get_const(world, entity));
         if (parent.slot) {
-            m = cf_mul_m4(matrix_3d(GAME_GameGlobalTransform3D_get_const(world, parent)), m);
+            m = cf_mul_m4(
+                game_transform_matrix_3d(GAME_GameGlobalTransform3D_get_const(world, parent)),
+                m
+            );
         }
         *GAME_GameGlobalTransform3D_get(world, entity) = global_3d(m);
     }

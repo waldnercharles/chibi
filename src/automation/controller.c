@@ -3,6 +3,7 @@
 #include "assets/asset_source.h"
 #include "assets/input_map.h"
 #include "assets/model_export.h"
+#include "assets/model_import.h"
 #include "assets/new_asset.h"
 #include "assets/project.h"
 #include "assets/prototype.h"
@@ -315,6 +316,11 @@ static const contract_field CONTRACT_IMPORT_SKY[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "source", "string", true, "Radiance .hdr file to copy into the project, such as a download." },
     { "destination", "string", false, "New content/... .hdr path; defaults to content/skies/ and the source's file name. An existing file is kept and rejected." },
+};
+static const contract_field CONTRACT_IMPORT_MODEL[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "source", "string", true, "glTF 2.0 model to copy into the project: a .glb, or a .gltf beside its buffers and images." },
+    { "name", "string", false, "Name of the prototype, mesh and material prefix; defaults to the source's file name without its extension." },
 };
 static const contract_field CONTRACT_ANALYZE_CODE[] = {
     { "project_root", "string", false, "Optional project directory supplying library/event signatures; defaults to the controller root." },
@@ -680,6 +686,17 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         "into the project's content for Environment's sky.",
         CONTRACT_IMPORT_SKY,
         CONTRACT_FIELD_COUNT(CONTRACT_IMPORT_SKY),
+        1,
+        false,
+        false,
+        false,
+    },
+    {
+        "import_model",
+        "Copy a glTF model into the project's content as one mesh, Standard "
+        "materials, their images and a prototype that draws it.",
+        CONTRACT_IMPORT_MODEL,
+        CONTRACT_FIELD_COUNT(CONTRACT_IMPORT_MODEL),
         1,
         false,
         false,
@@ -4804,6 +4821,74 @@ static int handle_import_sky(const char *root, yyjson_val *request, response *re
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     yyjson_mut_obj_add_strcpy(result->doc, value, "path", key);
     free(key);
+    return 0;
+}
+
+/* The source file's name without its folders or extension. */
+static void file_stem(const char *path, char *stem, size_t size)
+{
+    const char *name = path;
+    for (const char *c = path; *c; c++) {
+        name = *c == '/' || *c == '\\' ? c + 1 : name;
+    }
+    const char *dot = strrchr(name, '.');
+    int length = dot && dot > name ? (int)(dot - name) : (int)strlen(name);
+    snprintf(stem, size, "%.*s", length, name);
+}
+
+static int handle_import_model(const char *root, yyjson_val *request, response *result, int *exit_code)
+{
+    const char *source = request_string(request, "source");
+    const char *name = request_string(request, "name");
+    if (!source || (yyjson_obj_get(request, "name") && !name)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "Invalid import_model source or name.");
+        return -1;
+    }
+    char stem[256], error[512] = { 0 };
+    if (!name) {
+        file_stem(source, stem, sizeof stem);
+        name = stem;
+    }
+    char reason[128];
+    if (!new_asset_name_valid(name, reason, sizeof reason)) {
+        snprintf(error, sizeof error, "Name the import with name; '%s' is not an asset name: %s", name, reason);
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, error);
+        return -1;
+    }
+    /* A prototype's name is the one it declares, which a file named
+     * otherwise may already hold. */
+    asset_ref ref;
+    char *text = NULL;
+    int found = load_named_asset(root, family_by_kind("prototype"), name, &ref, &text, NULL, NULL, error, sizeof error);
+    free(text);
+    if (found == CHIBI_AUTOMATION_OK) {
+        snprintf(error, sizeof error, "%s already declares the prototype '%s'", ref.relative, name);
+    }
+    if (found != CHIBI_AUTOMATION_NOT_FOUND) {
+        response_error(result, exit_code, found == CHIBI_AUTOMATION_OK ? CHIBI_AUTOMATION_CONFLICT : found, error);
+        return -1;
+    }
+    chibi_project project = { 0 };
+    model_import_report report = { 0 };
+    bool imported = chibi_project_open(&project, root, error, sizeof error) == 0 &&
+                    model_import(project.content, source, name, &report, error, sizeof error);
+    chibi_project_free(&project);
+    if (!imported) {
+        model_import_report_free(&report);
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
+        return -1;
+    }
+    yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
+    yyjson_mut_obj_add_strcpy(result->doc, value, "prototype", name);
+    yyjson_mut_val *files = yyjson_mut_obj_add_arr(result->doc, value, "files");
+    for (int i = 0; i < acount(report.written); i++) {
+        yyjson_mut_arr_add_strcpy(result->doc, files, report.written[i]);
+    }
+    yyjson_mut_val *warnings = yyjson_mut_obj_add_arr(result->doc, value, "warnings");
+    for (int i = 0; i < acount(report.warnings); i++) {
+        yyjson_mut_arr_add_strcpy(result->doc, warnings, report.warnings[i]);
+    }
+    model_import_report_free(&report);
     return 0;
 }
 
@@ -12309,8 +12394,9 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "validate_project") ||
            !strcmp(operation, "new_asset") || !strcmp(operation, "bake_model") ||
            !strcmp(operation, "preview_field") ||
-           !strcmp(operation, "import_sky") || !strcmp(operation, "search_nodes") ||
-           !strcmp(operation, "catalog") || !strcmp(operation, "search_assets") ||
+           !strcmp(operation, "import_sky") || !strcmp(operation, "import_model") ||
+           !strcmp(operation, "search_nodes") || !strcmp(operation, "catalog") ||
+           !strcmp(operation, "search_assets") ||
            !strcmp(operation, "asset_dependencies") ||
            !strcmp(operation, "find_references") ||
            !strcmp(operation, "call_hierarchy") ||
@@ -12462,6 +12548,8 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_bake_model(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "import_sky")) {
         handle_import_sky(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "import_model")) {
+        handle_import_model(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_graph")) {
         handle_inspect_graph(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "inspect_system")) {

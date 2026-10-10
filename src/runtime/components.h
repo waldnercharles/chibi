@@ -78,6 +78,44 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameDrive)
 }
 GameDrive;
 
+typedef enum
+{
+    GAME_JOINT_HINGE,
+    GAME_JOINT_SLIDER,
+    GAME_JOINT_WELD,
+    GAME_JOINT_DISTANCE
+} GameJointKind;
+
+/* Joins the body at or above the entity, the nearest one with a Body or a
+ * static collider of its own, to other's (zero: the world), at the entity's
+ * position. A hinge turns about it, a slider moves along the entity's local
+ * Y axis and a weld holds; a dynamic body turns only with allow_rotation.
+ * Each holds the bodies as they were when it was made, and is made again
+ * when its fields change or its entity moves on its body. A distance joint
+ * keeps the entity at its first distance from other's origin. limit keeps a
+ * hinge's angle (within 0.99 pi either way), a slider's offset or a distance
+ * (at least zero) between lower and upper. motor drives a hinge, slider or
+ * distance at speed with at most strength. spring pulls a hinge, slider or
+ * weld back to where it was made at hertz and damping, and makes a distance
+ * joint elastic: its limit and motor act only then. collide lets the two
+ * bodies touch and report contacts. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameJoint)
+{
+    GameJointKind kind;
+    uint64_t other NODE_HANDLE(ecs.entity);
+    bool collide;
+    bool limit;
+    float lower;
+    float upper;
+    bool motor;
+    float speed;
+    float strength;
+    bool spring;
+    float hertz NODE_UNIT("Hz");
+    float damping;
+}
+GameJoint;
+
 /* A Scene-owned reference to a standalone System document. */
 typedef NODE_COMPONENT_TYPE_DENSE(EngineSystem)
 {

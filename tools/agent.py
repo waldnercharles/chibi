@@ -90,10 +90,11 @@ def external_project(data):
     """Whether `data` is Studio's fixture project.kdl at a version the engine
     upgrades when it opens it. Studio's projects lag the engine's version."""
     header = (ROOT / 'src/assets/project.h').read_text()
-    current = int(re.search(r'^#define CHIBI_PROJECT_VERSION (\d+)$', header, re.M)[1])
+    oldest, current = (int(re.search(rf'^#define {name} (\d+)$', header, re.M)[1])
+                       for name in ('CHIBI_PROJECT_OLDEST_VERSION', 'CHIBI_PROJECT_VERSION'))
     line, _, rest = data.partition(b'\n')
     version = re.fullmatch(rb'version ([1-9][0-9]*)', line)
-    return (version is not None and int(version[1]) <= current and
+    return (version is not None and oldest <= int(version[1]) <= current and
             rest == b'name "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n')
 
 
@@ -126,8 +127,8 @@ def studio_startup_preflight():
         if (starter / name).stat().st_size != len(value) or (starter / name).read_bytes() != value:
             raise ValueError('studio_starter_content_changed')
     studio_resource_preflight(build)
-    return dict(starter_files=2, starter_bytes=118, frames=2, window=[1920, 1080],
-                studio_resource_files=261, studio_resource_bytes=436675)
+    return starter, dict(starter_files=2, starter_bytes=118, frames=2, window=[1920, 1080],
+                         studio_resource_files=261, studio_resource_bytes=436675)
 
 
 def bounded_read(path, limit):
@@ -507,7 +508,7 @@ def main():
         elif args.selector in STUDIO_ACCEPTANCE:
             acceptance_binary, acceptance_fixture, preflight = studio_acceptance_preflight(args.selector)
         elif args.selector in STUDIO_SELECTORS:
-            preflight = studio_startup_preflight()
+            starter, preflight = studio_startup_preflight()
         elif args.selector in RENDER_SELECTORS:
             # Render consumers link the desktop SDK, so only the main build has them.
             command = [str(ROOT / args.build_dir / 'test/tools/test_tools'), args.selector]
@@ -520,9 +521,14 @@ def main():
                     return report('blocked', 'gles_requires_xvfb_run', selector=args.selector)
                 command = ['xvfb-run', '-a'] + command
         execution_evidence = None
-        scratch_context = tempfile.TemporaryDirectory(prefix='chibi-studio-acceptance-') if args.selector in STUDIO_ACCEPTANCE else nullcontext(None)
+        scratch_context = tempfile.TemporaryDirectory(prefix='chibi-studio-') if args.selector in STUDIO_SELECTORS else nullcontext(None)
         with scratch_context as scratch:
-            if scratch:
+            if scratch and args.selector not in STUDIO_ACCEPTANCE:
+                # Opening a project upgrades it in place, so start a copy of the starter.
+                starter_copy = Path(scratch) / 'starter'
+                shutil.copytree(starter, starter_copy)
+                command = [str(starter_copy) if part == str(starter) else part for part in command]
+            elif scratch:
                 project_copy = Path(scratch) / 'project'
                 shutil.copytree(acceptance_fixture, project_copy)
                 env['CHIBI_STUDIO_PREFS_PATH'] = str(project_copy / '.acceptance-prefs.json')

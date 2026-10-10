@@ -45,6 +45,8 @@ int game_scene_object_count(const game_scene *);
 const char *game_scene_object_name(const game_scene *, int);
 /* The object's parent index, or -1 for a root. */
 int game_scene_object_parent(const game_scene *, int);
+/* Whether every object descends from the first, as a prototype's do. */
+bool game_scene_is_tree(const game_scene *);
 int game_scene_object_behavior_count(const game_scene *, int);
 const char *game_scene_object_behavior(const game_scene *, int object, int behavior);
 /* Retained arena capacity plus the owning generation, for package budgets. */
@@ -69,9 +71,11 @@ game_scene_instance *game_scene_instantiate(
 /* Allocate component snapshots without attaching behavior modules. The caller
  * may initialize them and attach behavior at its normal initialization boundary. */
 game_scene_instance *game_scene_instantiate_components(game_scene *, ecs_world *, char *error, size_t size);
-/* Consume a component-only, single-object instance, transferring entity teardown
- * to the caller. The entity's managed components remain owned by its ECS world. */
-ecs_entity game_scene_instance_take_entity(game_scene_instance *);
+/* Consume a component-only instance whose objects all descend from the first,
+ * transferring entity teardown to the caller: destroying the first entity
+ * destroys the rest. Returns the entities in object order; the caller afrees
+ * the array. Their managed components remain owned by the ECS world. */
+ecs_entity *game_scene_instance_take_entities(game_scene_instance *);
 void game_scene_instance_free(game_scene_instance *);
 ecs_entity game_scene_instance_entity(const game_scene_instance *, int);
 /* Borrowed immutable scene retained by the instance. */

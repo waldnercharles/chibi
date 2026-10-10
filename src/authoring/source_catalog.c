@@ -414,6 +414,7 @@ static void declarative(source_catalog *c, const char *path, const char *text, b
     );
     if (!event) {
         project_references(c, owned_path, owned_text, root, 0);
+        entity_references(c, owned_path, owned_text, av_obj_get(root, "children"), 1);
     }
     av_doc_free(document);
 }

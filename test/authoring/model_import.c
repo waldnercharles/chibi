@@ -262,7 +262,8 @@ static const char CRATE[] =
     "2}}},"
     "{\"name\":\"Unused\"}],"
     "\"textures\":[{\"source\":0,\"sampler\":0}],"
-    "\"samplers\":[{\"magFilter\":9728,\"wrapS\":33071,\"wrapT\":33071}]";
+    "\"samplers\":[{\"magFilter\":9728,\"minFilter\":9986,\"wrapS\":33071,"
+    "\"wrapT\":33071}]";
 
 static const char *const CRATE_FILES[] = {
     "content/textures/Crate/albedo.png",
@@ -616,6 +617,14 @@ TEST_CASE(model_imports_refuse_what_they_cannot_draw_as_authored)
     REQUIRE(
         !strcmp(refusal(&f, textured("", second)), "Material Bad_M's normalTexture reads TEXCOORD_1; import reads only TEXCOORD_0")
     );
+
+    const char
+        *strong = "{\"name\":\"M\",\"emissiveFactor\":[1,1,1],\"extensions\":{"
+                  "\"KHR_materials_emissive_strength\":{"
+                  "\"emissiveStrength\":1e39}}}";
+    REQUIRE(
+        !strcmp(refusal(&f, textured("", strong)), "Material Bad_M holds a number beyond float range")
+    );
     gltf_fixture_free(&f);
 
     gltf_fixture gif = shape(NULL, 0, NULL);
@@ -691,6 +700,35 @@ TEST_CASE(model_imports_refuse_files_they_cannot_read)
     return true;
 }
 
+/* An unlit material keeps its base color and its image alone. Its emission
+ * and other images are glTF's fallbacks for viewers that light it, so the
+ * import neither applies nor checks them. */
+TEST_CASE(model_imports_keep_only_the_base_color_of_unlit_materials)
+{
+    gltf_fixture f = shape(NULL, 0, NULL);
+    gltf_fixture_png(&f, "albedo.png", 1, 1, WHITE);
+    const char
+        *glow = "{\"name\":\"Glow\",\"pbrMetallicRoughness\":{"
+                "\"baseColorTexture\":{\"index\":0}},"
+                "\"emissiveFactor\":[1,1,1],\"emissiveTexture\":{\"index\":0},"
+                "\"normalTexture\":{\"index\":0,\"texCoord\":1},"
+                "\"extensions\":{\"KHR_materials_unlit\":{}}}";
+    REQUIRE(
+        import(&f, "lamp.gltf", textured("\"extensionsUsed\":[\"KHR_materials_unlit\"],", glow), "Lamp")
+    );
+    REQUIRE(!acount(report.warnings));
+    standard_material unlit = factors();
+    unlit.unlit = true;
+    unlit.textures[STANDARD_TEXTURE_BASE_COLOR] = (standard_texture){
+        "content/textures/Lamp/albedo.png",
+        SHADER_IMAGE_BILINEAR,
+        SHADER_IMAGE_REPEAT
+    };
+    REQUIRE(holds_material("content/materials/Lamp_Glow.kdl", "Lamp_Glow", &unlit));
+    gltf_fixture_free(&f);
+    return true;
+}
+
 /* What the engine cannot draw yet imports without it, each with a warning. */
 TEST_CASE(model_imports_warn_of_what_they_leave_out)
 {
@@ -726,7 +764,7 @@ TEST_CASE(model_imports_warn_of_what_they_leave_out)
         "\"materials\":[{\"name\":\"Cloth\",\"doubleSided\":true,"
         "\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}}],"
         "\"textures\":[{\"source\":0,\"sampler\":0}],\"samplers\":[{\"wrapS\":"
-        "33648}]",
+        "33648,\"minFilter\":9984}]",
         times,
         moves,
         colors
@@ -738,6 +776,8 @@ TEST_CASE(model_imports_warn_of_what_they_leave_out)
         "Ignored morph targets.",
         "Left out 1 triangle with no area.",
         "Material Rug_Cloth draws single-sided.",
+        "Material Rug_Cloth's baseColorTexture shrinks with its magFilter, not "
+        "the model's minFilter.",
         "Material Rug_Cloth's baseColorTexture repeats where the model mirrors "
         "or clamps it.",
         "Ignored 1 skin.",
@@ -853,6 +893,7 @@ void test_model_import()
     RUN_TEST_CASE(model_imports_replace_nothing_and_undo_failures);
     RUN_TEST_CASE(model_imports_refuse_what_they_cannot_draw_as_authored);
     RUN_TEST_CASE(model_imports_refuse_files_they_cannot_read);
+    RUN_TEST_CASE(model_imports_keep_only_the_base_color_of_unlit_materials);
     RUN_TEST_CASE(model_imports_warn_of_what_they_leave_out);
     RUN_TEST_CASE(model_imports_leave_out_vertices_only_dropped_triangles_use);
     RUN_TEST_CASE(model_imports_keep_gltf_tangent_frames);

@@ -12,9 +12,10 @@ draws at its Transform3D. Its Visual Transform turns and scales the solid within
 that frame, and a body's drawn pose is interpolated between physics steps as a
 Transform's is. A transform that mirrors a solid draws it mirrored with its
 faces lit from outside. One that flattens it onto a plane, a line or a point
-hides it, judged by its axes' directions so that rounding cannot keep a sliver
-and a tiny but whole scale cannot vanish. Picks and bounds follow the same
-placement, a model surface's included. Point and spot lights, particles,
+hides it. Both are judged by its axes' directions, so rounding cannot keep a
+sliver, a tiny but whole scale cannot vanish and a tiny mirror still turns its
+faces. Picks and bounds follow the same placement, a model surface's included,
+and a Render State's fog culling reads the ground under its drawn pose. Point and spot lights, particles,
 trails and Surface Influences still place from `GameTransform`, and SDF and Mesh
 Surface 2D surfaces belong to the 2D renderer, which ignores Transform3D.
 
@@ -331,16 +332,19 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   the blue channel of the metallic-roughness image and roughness its green;
   occlusion is `mix(1, red, strength)`; normal images use the OpenGL
   convention, whose green tilts up the image. Alpha Mode and Alpha Cutoff carry
-  over, and `KHR_materials_unlit` sets Unlit. A sampler that magnifies with
-  `NEAREST` samples Nearest, and one that clamps both axes samples Clamp;
-  every other wrap repeats, with a warning.
+  over, and `KHR_materials_unlit` sets Unlit. An unlit material keeps only its
+  base color and its image, since glTF makes its other properties fallbacks
+  for viewers that light it. An image has one filter, its sampler's
+  `magFilter`: `NEAREST` samples Nearest and anything else Bilinear, with a
+  warning when its `minFilter` differs. A sampler that clamps both axes
+  samples Clamp; every other wrap repeats, with a warning.
 - **Refused**: a required extension other than `KHR_materials_unlit`,
   `KHR_materials_emissive_strength` and `KHR_texture_transform`; a texture
   transform other than the identity; a texture that reads a UV set other than
   `TEXCOORD_0`; an image that is not a PNG or JPEG of 1 to 2048 pixels a side;
-  primitives that are not triangles; a buffer or image named by an absolute
-  path or a scheme other than `data:`; a model over 256 MiB; and a mesh past
-  the `.mesh` limits above.
+  a material factor beyond float range; primitives that are not triangles; a
+  buffer or image named by an absolute path or a scheme other than `data:`; a
+  model over 256 MiB; and a mesh past the `.mesh` limits above.
 - **Warned and left out**: vertex colors, morph targets, skins, animations,
   cameras, lights and other extensions the model uses. Double-sided
   materials draw single-sided.
@@ -430,11 +434,13 @@ drawn once. A box turned a quarter about x by its Transform3D, and one turned
 by a Transform3D and a Visual Transform within it, match the upright box their
 turns make. A box under a turned Transform3D parent picks and bounds where the
 parent turns it, before any propagation. A box mirrored by its Transform3D,
-as a shape and as the unit box mesh, matches the unmirrored box, and one
-flattened to zero height disappears. A box flattened by its parent's
+as a shape and as the unit box mesh, matches the unmirrored box, as does one
+mirrored at a 1e-16 scale under a Geometry3D as large, and one flattened to
+zero height disappears. A box flattened by its parent's
 Transform3D under turns that leave it a sliver of volume has no bounds, and one
 scaled to 1e-16 keeps them. A model surface picks and
-bounds at its Transform3D pose, with or without a Transform. A mirrored ground
+bounds at its Transform3D pose, with or without a Transform. Fog culls a box
+by the ground under its Transform3D pose, not by its Transform. A mirrored ground
 square's normal maps turn their bitangent with it.
 Normal maps on a ground square tilt toward or away from the sun as its
 tangents say: authored tangents a quarter turn from the UV gradient, mirrored

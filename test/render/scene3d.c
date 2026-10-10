@@ -2551,8 +2551,9 @@ TEST_CASE(transform3d_models_pick_and_bound_at_their_pose)
 
 /* A Transform3D that mirrors a box across x shows it as the unmirrored box
  * does, as a shape and as the unit box mesh: the lit pass culls the faces
- * turned away, not the ones in view, and their normals point out. A
- * Transform3D that flattens a solid hides it. */
+ * turned away, not the ones in view, and their normals point out. So does
+ * a mirroring scale too tiny for its determinant, under a Geometry3D as
+ * large. A Transform3D that flattens a solid hides it. */
 TEST_CASE(mirroring_transform3d_keeps_faces_outward)
 {
     ecs_entity box = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
@@ -2574,6 +2575,14 @@ TEST_CASE(mirroring_transform3d_keeps_faces_outward)
         REQUIRE(render(&environment));
         REQUIRE(!render_scene3d_error(scene3d)[0]);
         REQUIRE(matches(upright));
+        GameGeometry3D shape = *GAME_GameGeometry3D_get(world, box);
+        GameGeometry3D huge = { GAME_PRIMITIVE_BOX, 2e16f, 2e16f, 2e16f };
+        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ -1e-16f, 1e-16f, 1e-16f };
+        *GAME_GameGeometry3D_get(world, box) = huge;
+        REQUIRE(render(&environment));
+        REQUIRE(!render_scene3d_error(scene3d)[0]);
+        REQUIRE(matches(upright));
+        *GAME_GameGeometry3D_get(world, box) = shape;
         GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1, 0, 1 };
         REQUIRE(render(&environment));
         REQUIRE(!render_scene3d_error(scene3d)[0] && !top().colors.g);
@@ -2613,6 +2622,47 @@ TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
         { 1e-16f, 1e-16f, 1e-16f }
     };
     REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    return true;
+}
+
+/* Fog culls a solid with a Transform3D by the ground under its 3D pose,
+ * where it draws, and not by the 2D Transform it also carries: the box
+ * shows while its 3D pose is in sight and its 2D position isn't, and hides
+ * once the eye turns to its 2D position. */
+TEST_CASE(fog_culls_transform3d_solids_where_they_draw)
+{
+    GameFog settings = { .origin = { -8, -8 },
+                         .columns = 16,
+                         .rows = 16,
+                         .cell_size = 1,
+                         .color = 0xff0000ffu };
+    add(GAME_COMPONENT_GameFog.id, &settings);
+    ecs_entity eye = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 0, 0 });
+    GameVision vision = { .radius = 3 };
+    REQUIRE(ecs_world_record_add(world, eye, GAME_COMPONENT_GameVision.id, &vision, 0) == ECS_OK);
+    ecs_entity box = add_solid(
+        (CF_V3){ 6, 0, 6 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 },
+        0xffffffffu
+    );
+    GameRenderState state = { .visibility_culled = true };
+    REQUIRE(
+        ecs_world_record_add(world, box, GAME_COMPONENT_GameRenderState.id, &state, 0) == ECS_OK
+    );
+    place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    add_sun(0xffffffffu, (CF_V3){ -1, -2, -3 })->intensity = 1;
+    game_visibility *visibility = game_visibility_new(world, NULL);
+    runtime = engine_new(world, &(engine_modules){ .visibility = visibility });
+    GameEnvironment environment = unlit_environment();
+    bool seen = !game_visibility_update(visibility, 0) &&
+                render(&environment) && top().colors.g > 30;
+    *GAME_GameTransform_get(world, eye) = (GameTransform){ 6, 6 };
+    bool hidden = !game_visibility_update(visibility, 0) &&
+                  render(&environment) && !top().colors.g;
+    engine_free(runtime);
+    runtime = NULL;
+    game_visibility_free(visibility);
+    REQUIRE(seen && hidden);
     return true;
 }
 
@@ -3549,6 +3599,7 @@ void test_render_scene3d(bool gles)
 #endif
     RUN_TEST_CASE(mirroring_transform3d_keeps_faces_outward);
     RUN_TEST_CASE(flattened_transform3d_frames_hide_at_any_scale);
+    RUN_TEST_CASE(fog_culls_transform3d_solids_where_they_draw);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(mirrors_reflect_the_sky_in_its_directions);
     RUN_TEST_CASE(rough_surfaces_blur_the_sky_they_reflect);

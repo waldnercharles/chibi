@@ -21,6 +21,7 @@ void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
 void test_tool_studio_selectors(const char *binary);
 void test_tool_validate_project(const char *binary);
+void test_tool_prototype_expansion(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
 void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
@@ -110,6 +111,7 @@ int main(int argc, char **argv)
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
+    bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
          render_resources = false, interior_border = false,
@@ -185,14 +187,15 @@ int main(int argc, char **argv)
         !sdf_visibility && !scene3d && !material_ramps && !box3d && !sky_files &&
         !persistent_store && !whole_alias && !whole_math && !whole_integer &&
         !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
-        !source_features && !source_numeric && !source_material &&
-        !source_presentation && !system_schedule && !source_systems &&
-        !validate_project && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
+        !source_features && !source_numeric && !source_material && !source_presentation &&
+        !system_schedule && !source_systems && !validate_project &&
+        !expansion && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
         fprintf(
             stderr,
             "Usage: %s [--package | --unit | --web-storage | "
             "--ecs-query-benchmark | "
             "--studio-selectors test_suite | --validate-project chibi_ctl | "
+            "--prototype-expansion chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
@@ -351,6 +354,8 @@ int main(int argc, char **argv)
         test_tool_prepared_runtime(argv[2]);
     } else if (validate_project) {
         test_tool_validate_project(argv[2]);
+    } else if (expansion) {
+        test_tool_prototype_expansion(argv[2]);
     } else if (argc == 3) {
         test_tool_studio_selectors(argv[2]);
     } else if (unit) {

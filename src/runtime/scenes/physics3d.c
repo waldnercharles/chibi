@@ -729,7 +729,8 @@ static b3ShapeId create_shape(
     def.filter.categoryBits = collider->category;
     def.filter.maskBits = collider->mask;
     def.isSensor = collider->sensor;
-    def.enableSensorEvents = true;
+    /* Box3D sensors can't visit a mesh; collect_mesh_overlaps pairs them. */
+    def.enableSensorEvents = collider->shape != GAME_COLLIDER3D_MESH;
     if (record->follower && collider->sensor) {
         def.density = 0; /* A carried sensor adds no mass. */
     }
@@ -1248,26 +1249,32 @@ static void collect_contacts(game_physics3d *physics, const body_record *record)
 }
 
 /* A sensor overlap reports the center of the two shapes' overlapping bounds. */
+static CF_V3 overlap_point(b3ShapeId a, b3ShapeId b)
+{
+    b3AABB first = b3Shape_GetAABB(a), second = b3Shape_GetAABB(b);
+    CF_V3 low = cf_max_v3(from_b3(first.lowerBound), from_b3(second.lowerBound));
+    CF_V3 high = cf_min_v3(from_b3(first.upperBound), from_b3(second.upperBound));
+    return cf_mul_v3_f(cf_add_v3(low, high), .5f);
+}
+
 static void collect_visitors(game_physics3d *physics, const body_record *record)
 {
     int capacity = b3Shape_GetSensorCapacity(record->shape);
     asetlen(physics->shapes, capacity);
     int count = b3Shape_GetSensorData(record->shape, physics->shapes, capacity);
-    b3AABB sensor = b3Shape_GetAABB(record->shape);
     for (int i = 0; i < count; i++) {
         b3ShapeId visitor = physics->shapes[i];
         assert(b3Shape_IsValid(visitor)); /* Nothing is destroyed after the step. */
-        b3AABB other = b3Shape_GetAABB(visitor);
-        CF_V3 low = cf_max_v3(from_b3(sensor.lowerBound), from_b3(other.lowerBound));
-        CF_V3 high = cf_min_v3(from_b3(sensor.upperBound), from_b3(other.upperBound));
         add_pair(
             physics,
             ecs_entity_to_u64(record->entity),
             shape_entity(physics, visitor),
-            cf_mul_v3_f(cf_add_v3(low, high), .5f)
+            overlap_point(record->shape, visitor)
         );
     }
 }
+
+static void collect_mesh_overlaps(game_physics3d *physics, const body_record *mesh);
 
 static int compare_pairs(const void *left, const void *right)
 {
@@ -1287,7 +1294,9 @@ static void current_pairs(game_physics3d *physics)
         if (!record->entity.slot) {
             continue;
         }
-        if (record->collider.sensor) {
+        if (record->collider.shape == GAME_COLLIDER3D_MESH) {
+            collect_mesh_overlaps(physics, record);
+        } else if (record->collider.sensor) {
             collect_visitors(physics, record);
         }
         if (B3_IS_NON_NULL(record->body) &&
@@ -1883,6 +1892,48 @@ static bool touching(
     query_proxy other;
     return world_proxy(physics, shape, &other) &&
            overlap(physics, self, &(b3ShapeProxy){ other.points, other.count, other.radius + margin });
+}
+
+/* Whether a sensor, the mesh or the other shape, meets it as Box3D's
+ * sensors would: a convex shape on another body that passes both filters. */
+static bool senses(const body_record *mesh, const body_record *other)
+{
+    const GameCollider3D *a = &mesh->collider, *b = &other->collider;
+    return other->entity.slot && B3_IS_NON_NULL(other->shape) &&
+           b->shape != GAME_COLLIDER3D_MESH && (a->sensor || b->sensor) &&
+           (a->category & b->mask) && (b->category & a->mask) &&
+           !B3_ID_EQUALS(b3Shape_GetBody(mesh->shape), b3Shape_GetBody(other->shape)) &&
+           b3AABB_Overlaps(b3Shape_GetAABB(mesh->shape), b3Shape_GetAABB(other->shape));
+}
+
+/* Box3D sensors visit only convex shapes, so a mesh leaves its sensor events
+ * off and pairs with the sensors it meets, or as a sensor with what meets it,
+ * here. */
+static void collect_mesh_overlaps(game_physics3d *physics, const body_record *mesh)
+{
+    /* The step just synchronized both colliders, so they are valid. */
+    query_shape surface;
+    [[maybe_unused]] bool placed = read_shape(physics, mesh->entity, &surface);
+    assert(placed);
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        const body_record *other = &physics->bodies[i];
+        if (!senses(mesh, other)) {
+            continue;
+        }
+        query_shape shape;
+        query_proxy probe;
+        placed = read_shape(physics, other->entity, &shape) &&
+                 world_proxy(physics, &shape, &probe);
+        assert(placed);
+        if (touching(physics, &shape, &probe, &surface, 0)) {
+            add_pair(
+                physics,
+                ecs_entity_to_u64(mesh->entity),
+                ecs_entity_to_u64(other->entity),
+                overlap_point(mesh->shape, other->shape)
+            );
+        }
+    }
 }
 
 /* Keeps a cast's hit on shape when it is nearer than any so far. Box3D casts

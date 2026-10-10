@@ -1314,6 +1314,45 @@ TEST_CASE(physics3d_meshes_hold_up_convex_bodies)
     return true;
 }
 
+/* Box3D sensors visit only convex shapes, so a sensor passing through a mesh,
+ * or a body through a mesh sensor, still reports both edges once. */
+TEST_CASE(physics3d_sensors_overlap_meshes)
+{
+    set_gravity((CF_V3){ 0 });
+    publish_floor(0);
+    GameCollider3D terrain = meshed(GAME_COLLIDER3D_MESH, "content/meshes/floor.mesh");
+    ecs_entity floor = collider((ecs_entity){ 0 }, (CF_V3){ 0 }, terrain, GAME_BODY_STATIC);
+    terrain.sensor = true;
+    ecs_entity veil = collider((ecs_entity){ 0 }, (CF_V3){ 0, 10 * METER, 0 }, terrain, GAME_BODY_STATIC);
+    GameCollider3D zone = box(METER, METER, METER);
+    zone.sensor = true;
+    ecs_entity probe = collider((ecs_entity){ 0 }, (CF_V3){ 0, 2 * METER, 0 }, zone, GAME_BODY_KINEMATIC);
+    zone.mask = 0;
+    ecs_entity blind = collider((ecs_entity){ 0 }, (CF_V3){ 2 * METER, 2 * METER, 0 }, zone, GAME_BODY_KINEMATIC);
+    ecs_entity rock = collider((ecs_entity){ 0 }, (CF_V3){ 0, 12 * METER, 0 }, ball(METER / 4), GAME_BODY_DYNAMIC);
+    const ecs_entity movers[] = { probe, blind, rock };
+    for (int i = 0; i < 3; i++) {
+        body(movers[i])->linear_velocity = (CF_V3){ 0, -2 * METER, 0 };
+    }
+    int entered = 0, left = 0, crossed = 0;
+    CF_V3 point = { 0 };
+    for (int i = 0; i < 120; i++) {
+        step(STEP);
+        CF_V3 seen;
+        if (saw(probe, floor, true, &seen)) {
+            point = seen;
+        }
+        entered += touched(probe, floor, true);
+        left += touched(probe, floor, false);
+        crossed += touched(rock, veil, true) + touched(rock, veil, false);
+        REQUIRE(!saw(blind, floor, true, NULL) && !saw(probe, veil, true, NULL));
+    }
+    REQUIRE(entered == 1 && left == 1 && crossed == 2);
+    REQUIRE(near_v3(point, (CF_V3){ 0 }, METER / 8));
+    REQUIRE(near(body(rock)->linear_velocity.y, -2 * METER, 1e-3f));
+    return true;
+}
+
 TEST_CASE(physics3d_hulls_and_meshes_need_prepared_meshes)
 {
     GameCollider3D missing = meshed(GAME_COLLIDER3D_HULL, "content/meshes/missing.mesh");
@@ -1556,6 +1595,7 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_contact_queries_match_what_touches);
     RUN_TEST_CASE(physics3d_hulls_wrap_mesh_vertices);
     RUN_TEST_CASE(physics3d_meshes_hold_up_convex_bodies);
+    RUN_TEST_CASE(physics3d_sensors_overlap_meshes);
     RUN_TEST_CASE(physics3d_hulls_and_meshes_need_prepared_meshes);
     RUN_TEST_CASE(physics3d_characters_slide_along_what_they_meet);
     RUN_TEST_CASE(physics3d_characters_meet_only_solid_others);

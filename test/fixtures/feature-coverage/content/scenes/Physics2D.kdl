@@ -7,4 +7,5 @@ name "Physics2D"
         (array)behaviors "PhysicsProbe"
     }
     - name="Wall" prototype="Wall"
+    - name="Gravity" prototype="Gravity"
 }

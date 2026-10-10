@@ -1906,6 +1906,68 @@ static void pushes_divide_by_mass()
     dispose(&f);
 }
 
+/* Ticks once and checks that the tick fails with `message` in its error. */
+static void refuses(fixture *f, const char *message)
+{
+    assert(game_physics_tick(f->physics, 1.0f / 60) == FLOW_ERR_ARGUMENT);
+    assert(strstr(game_physics_error(f->physics), message));
+}
+
+/* One entity's Gravity pulls dynamic bodies and material liquids, and a
+ * change wakes bodies asleep under the old one. Without one, nothing falls. */
+static void gravity_pulls_bodies_and_fluids()
+{
+    fixture f = create();
+    enable_fluid(&f, 0, MATERIAL_SOLVER_DDR);
+    ecs_entity floor = crate(&f, 0, 32, GAME_BODY_STATIC);
+    GAME_GameTransform_get(f.world, floor)->y = -40;
+    GAME_GameCollider_get(f.world, floor)->width = 400;
+    GAME_GameCollider_get(f.world, floor)->height = 8;
+    ecs_entity box = crate(&f, 0, 16, GAME_BODY_DYNAMIC);
+    assert(step(&f, 0) == 0);
+    assert(game_materials_emit(
+        f.materials,
+        (fluid_particle){ .position = { -24, 24 }, .mass = 1, .radius = 1, .kind = FLUID_LIQUID }
+    ));
+    step(&f, 1.0f / 60);
+    int count;
+    const fluid_particle *drop = material_fluid_particles(game_materials_fluid(f.materials), &count);
+    assert(count == 1 && drop->velocity.y == 0);
+    assert(GAME_GameVelocity_get(f.world, box)->y == 0);
+    assert(ecs_world_register_component(f.world, &GAME_COMPONENT_GameGravity, NULL) == ECS_OK);
+    ecs_entity scene = ecs_world_create_entity(f.world);
+    assert(GAME_GameGravity_add(f.world, scene, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    GAME_GameGravity_get(f.world, scene)->acceleration = (CF_V2){ 0, -320 };
+    step(&f, 1.0f / 60);
+    drop = material_fluid_particles(game_materials_fluid(f.materials), &count);
+    assert(count == 1 && fabsf(drop->velocity.y + 320.0f / 60) < .01f);
+    assert(fabsf(GAME_GameVelocity_get(f.world, box)->y + 320.0f / 60) < .01f);
+    for (int i = 0; i < 120; i++) {
+        step(&f, 1.0f / 60);
+    }
+    assert(!inspect_body(&f, box).awake);
+    GAME_GameGravity_get(f.world, scene)->acceleration = (CF_V2){ 320, 0 };
+    step(&f, 1.0f / 60);
+    assert(GAME_GameVelocity_get(f.world, box)->x > 5);
+    GAME_GameGravity_get(f.world, scene)->acceleration = (CF_V2){ 0, -5000 };
+    refuses(&f, "Gravity within +/-4096");
+    GAME_GameGravity_get(f.world, scene)->acceleration = (CF_V2){ NAN, 0 };
+    refuses(&f, "Gravity acceleration must be finite");
+    GAME_GameGravity_get(f.world, scene)->acceleration = (CF_V2){ 0 };
+    ecs_entity second = ecs_world_create_entity(f.world);
+    assert(GAME_GameGravity_add(f.world, second, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    refuses(&f, "Only one entity may have Gravity; 2 do");
+    dispose(&f);
+}
+
+TEST_CASE(physics_gravity_pulls_bodies_and_fluids)
+{
+    gravity_pulls_bodies_and_fluids();
+    return true;
+}
+
 TEST_CASE(physics_pushes_divide_by_mass)
 {
     pushes_divide_by_mass();
@@ -1968,6 +2030,7 @@ void test_tool_physics()
     RUN_TEST_CASE(physics_rotated_terrain_is_refused);
     RUN_TEST_CASE(physics_authored_motion);
     RUN_TEST_CASE(physics_pushes_divide_by_mass);
+    RUN_TEST_CASE(physics_gravity_pulls_bodies_and_fluids);
     RUN_TEST_CASE(physics_contacts_and_queries_at_each_substep_count);
     RUN_TEST_CASE(physics_parallel_collection_matches_serial);
 }

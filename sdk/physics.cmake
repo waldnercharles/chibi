@@ -173,7 +173,8 @@ chibi_sdk_headers(chibi_physics3d_runtime PUBLIC runtime/scenes/physics3d.h
     runtime/physics3d_native.h runtime/physics3d_definition.h)
 # Like Box2D, Box3D stays private: the public header declares none of it.
 target_link_libraries(chibi_physics3d_runtime PUBLIC chibi_native_types chibi_entity_runtime
-    chibi_native_capabilities PRIVATE chibi_task_pool_runtime chibi_spatial_runtime chibi_execution chibi_support chibi_box3d)
+    chibi_native_capabilities PRIVATE chibi_task_pool_runtime chibi_spatial_runtime chibi_mesh_runtime chibi_execution
+    chibi_support chibi_box3d)
 if(COMMAND chibi_enable_tracy)
     chibi_enable_tracy(chibi_task_pool_runtime)
     chibi_enable_tracy(chibi_physics_runtime)

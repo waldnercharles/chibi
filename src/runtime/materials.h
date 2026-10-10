@@ -106,7 +106,8 @@ void game_materials_tick_profiled(
     material_fluid_profile *profile
 );
 const material_fluid *game_materials_fluid(const game_materials *materials);
-fluid_vec game_materials_gravity(const game_materials *materials);
+/* Material fluids use this gravity from the next prepare on. */
+void game_materials_set_gravity(game_materials *materials, fluid_vec gravity);
 /* On-demand inspection includes simulation state outside the ECS columns. */
 game_material_state game_materials_inspect(const game_materials *materials);
 /* Expensive cross-platform diagnostic hashes; compute only when requested. */

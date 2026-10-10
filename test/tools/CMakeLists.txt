@@ -96,7 +96,7 @@ if(TARGET Chibi::entity_runtime)
     target_include_directories(chibi_native_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_native_consumer PRIVATE Chibi::player Chibi::engine Chibi::entity_runtime Chibi::comparison_capabilities Chibi::conversion_capabilities Chibi::host_native_default
         Chibi::physics_runtime Chibi::physics3d_runtime Chibi::material_runtime Chibi::task_pool_runtime
-        Chibi::spatial_runtime Chibi::tilemap_runtime)
+        Chibi::spatial_runtime Chibi::tilemap_runtime Chibi::mesh_runtime)
     if(TARGET Chibi::project_compilation AND TARGET Chibi::image_preparation)
         target_link_libraries(chibi_native_consumer PRIVATE Chibi::project_compilation Chibi::image_preparation)
         target_link_libraries(test_tools PRIVATE Chibi::project_compilation Chibi::image_preparation)
@@ -108,7 +108,7 @@ if(TARGET Chibi::entity_runtime)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_native_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::player Chibi::engine Chibi::entity_runtime Chibi::comparison_capabilities Chibi::conversion_capabilities Chibi::host_native_default
         Chibi::physics_runtime Chibi::physics3d_runtime Chibi::material_runtime Chibi::task_pool_runtime
-        Chibi::spatial_runtime Chibi::tilemap_runtime)
+        Chibi::spatial_runtime Chibi::tilemap_runtime Chibi::mesh_runtime)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_NATIVE_RUNTIME=1)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_NATIVE_RUNTIME=1)
 endif()

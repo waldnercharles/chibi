@@ -4,6 +4,7 @@
 #include "runtime/behaviors/entities.h"
 #include "runtime/component_catalog.h"
 #include "runtime/events.h"
+#include "runtime/geometry/mesh_asset.h"
 #include "runtime/task_pool.h"
 #include "runtime/transform_propagation.h"
 #include "support/array.h"
@@ -19,7 +20,9 @@
 
 enum
 {
-    PARALLEL_BODY_MINIMUM = 256
+    PARALLEL_BODY_MINIMUM = 256,
+    /* A hull keeps this many vertices at most, so it can also be cast. */
+    HULL_VERTICES = B3_MAX_SHAPE_CAST_POINTS
 };
 
 /* In project units. Box3D loses float precision beyond about 16 km. */
@@ -30,6 +33,9 @@ static const float FARTHEST = 100000 * GAME_UNITS_PER_METER;
 static const float SCALE_TOLERANCE = 1e-4f;
 /* The narrowest character; its body gives up a centimeter of radius. */
 static const float CHARACTER_RADIUS = .02f * GAME_UNITS_PER_METER;
+/* A mesh repeats a position at each seam in its normals or UVs; rejoining
+ * positions this close lets Box3D find the edges its triangles share. */
+static const float WELD_TOLERANCE = .001f * GAME_UNITS_PER_METER;
 
 typedef struct
 {
@@ -37,7 +43,8 @@ typedef struct
     CF_Quat rotation;
 } pose;
 
-/* Where an entity's body goes. Shapes are symmetric, so scale is a magnitude. */
+/* Where an entity's body goes. A mirrored scale is negative in x; boxes,
+ * spheres and capsules use its magnitude. */
 typedef struct
 {
     pose pose;
@@ -50,9 +57,10 @@ typedef struct
 {
     ecs_entity entity;
     b3BodyId body; /* Its own, or null while another body carries its shape. */
-    b3ShapeId shape;  /* Null while a follower waits to be placed. */
-    unsigned carrier; /* The slot whose body holds the shape. */
-    GameCollider3D collider;
+    b3ShapeId shape;         /* Null while a follower waits to be placed. */
+    unsigned carrier;        /* The slot whose body holds the shape. */
+    GameCollider3D collider; /* Its mesh is not read; see mesh. */
+    int mesh;                /* 1 + its collision mesh, or 0. */
     GameBodyType type;
     CF_V3 scale; /* The scale the shape was built at. */
     bool follower, seen, character;
@@ -65,6 +73,17 @@ typedef struct
     CF_V3 linear_velocity, angular_velocity; /* As last set or written back. */
     pose start, end; /* A moving root's solved poses around the last step. */
 } body_record;
+
+/* A mesh's collision data, built from the mesh catalog when a hull or mesh
+ * collider first names it and kept until a reset. */
+typedef struct
+{
+    char *source;
+    uint64_t identity; /* The catalog asset's; republishing it builds anew. */
+    CF_V3 extent;      /* The largest coordinate on each axis. */
+    b3HullData *hull;  /* Null until a hull collider uses it. */
+    b3MeshData *mesh;  /* Null until a mesh collider uses it. */
+} collision_mesh;
 
 typedef struct
 {
@@ -101,6 +120,7 @@ struct game_physics3d
     b3ContactData *contacts;
     b3ShapeId *shapes; /* Scratch for sensor visitors and a body's shapes. */
     push *pushes;
+    collision_mesh *meshes;
     task_slot slots[B3_MAX_TASKS];
     int slot_count;
     char error[256];
@@ -174,7 +194,6 @@ static placement follower_placement(CF_M4x4 m)
 {
     placement at = { .follower = true };
     cf_m4_decompose(m, &at.pose.position, &at.pose.rotation, &at.scale);
-    at.scale = cf_abs_v3(at.scale);
     return at;
 }
 
@@ -182,9 +201,7 @@ static placement place(const ecs_world *world, ecs_entity entity)
 {
     const GameTransform3D *local = GAME_GameTransform3D_get_const(world, entity);
     if (!game_transform_parent_3d(world, entity).slot) {
-        return (placement){ { local->position, unit(local->rotation) },
-                            cf_abs_v3(local->scale),
-                            false };
+        return (placement){ { local->position, unit(local->rotation) }, local->scale, false };
     }
     GameGlobalTransform3D global = game_transform_world_3d(world, entity);
     const CF_V3 columns[] = { global.x_axis,
@@ -222,13 +239,14 @@ static placement carried_placement(const ecs_world *world, ecs_entity entity, ec
 /* The capsule's radius and the half length of its segment, after scale. */
 static void capsule_extent(const GameCollider3D *collider, CF_V3 scale, float *radius, float *half)
 {
-    *radius = collider->radius * fmaxf(scale.x, scale.z);
-    *half = collider->height * scale.y / 2 - *radius;
+    *radius = collider->radius * fmaxf(fabsf(scale.x), fabsf(scale.z));
+    *half = collider->height * fabsf(scale.y) / 2 - *radius;
 }
 
 static const char *invalid_shape(const GameCollider3D *collider, CF_V3 scale)
 {
     float radius, half;
+    scale = cf_abs_v3(scale);
     switch (collider->shape) {
         case GAME_COLLIDER3D_BOX:
             return positive(collider->size) &&
@@ -245,6 +263,14 @@ static const char *invalid_shape(const GameCollider3D *collider, CF_V3 scale)
             return collider->radius > 0 && half >= 0 && radius + half <= FARTHEST ? NULL
                                                                                   : "A Collider3D capsule needs a positive radius and a height of at "
                                                                                     "least twice it after scale";
+        case GAME_COLLIDER3D_HULL:
+        case GAME_COLLIDER3D_MESH:
+            /* Box3D raises a smaller scale to its least. */
+            return collider->mesh && collider->mesh[0] &&
+                           fminf(scale.x, fminf(scale.y, scale.z)) >= B3_MIN_SCALE
+                     ? NULL
+                     : "A Collider3D hull or mesh needs a mesh and a scale "
+                       "of at least .01";
     }
     return "Unknown Collider3D shape";
 }
@@ -256,7 +282,7 @@ static const char *invalid(placement at, const GameCollider3D *collider, const G
         return "A 3D body needs a finite Transform3D within 100 km of the "
                "origin";
     }
-    if (!positive(at.scale) || !finite_v3(at.scale)) {
+    if (!positive(cf_abs_v3(at.scale)) || !finite_v3(at.scale)) {
         return "A 3D collider needs a finite, nonzero Transform3D scale";
     }
     if (!isfinite(collider->friction) || collider->friction < 0 ||
@@ -275,6 +301,12 @@ static const char *invalid(placement at, const GameCollider3D *collider, const G
         return "A dynamic Body3D must be placed in the world, not under a "
                "parent "
                "with a Transform3D";
+    }
+    /* Box3D's meshes collide only on static bodies, at the body's origin. */
+    if (collider->shape == GAME_COLLIDER3D_MESH &&
+        (at.follower || body->type != GAME_BODY_STATIC)) {
+        return "A Collider3D mesh must be static and placed in the world, not "
+               "under a parent with a Transform3D";
     }
     return invalid_shape(collider, at.scale);
 }
@@ -371,6 +403,21 @@ static void use_project_units()
     }
 }
 
+static void free_meshes(game_physics3d *physics)
+{
+    for (int i = 0; i < acount(physics->meshes); i++) {
+        collision_mesh *entry = &physics->meshes[i];
+        free(entry->source);
+        if (entry->hull) {
+            b3DestroyHull(entry->hull);
+        }
+        if (entry->mesh) {
+            b3DestroyMesh(entry->mesh);
+        }
+    }
+    aclear(physics->meshes);
+}
+
 game_physics3d *game_physics3d_new(ecs_world *world, game_entities *entities)
 {
     assert(world && entities);
@@ -388,6 +435,8 @@ game_physics3d *game_physics3d_new(ecs_world *world, game_entities *entities)
 void game_physics3d_free(game_physics3d *physics)
 {
     destroy_world(physics);
+    free_meshes(physics);
+    afree(physics->meshes);
     afree(physics->bodies);
     afree(physics->previous);
     afree(physics->current);
@@ -401,6 +450,7 @@ void game_physics3d_free(game_physics3d *physics)
 void game_physics3d_reset(game_physics3d *physics)
 {
     destroy_world(physics);
+    free_meshes(physics);
     physics->error[0] = 0;
 }
 
@@ -468,6 +518,133 @@ static void wake_overlapping(game_physics3d *physics, b3ShapeId shape)
     b3World_OverlapAABB(physics->simulation, bounds, b3DefaultQueryFilter(), wake, NULL);
 }
 
+/* Whether Box3D keeps one of the triangles. It drops those smaller than a
+ * hundredth of its linear slop squared, and leaks a mesh it keeps none of. */
+static bool keeps_triangle(const b3Vec3 *points, const int *indices)
+{
+    const float least = .01f * B3_LINEAR_SLOP * B3_LINEAR_SLOP;
+    for (int i = 0; i + 2 < acount(indices); i += 3) {
+        b3Vec3 a = points[indices[i]];
+        b3Vec3 normal = b3Cross(
+            b3Sub(points[indices[i + 1]], a),
+            b3Sub(points[indices[i + 2]], a)
+        );
+        if (b3Length(normal) / 2 >= least) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Builds the hull or triangle mesh that shape needs from the asset, or
+ * returns why it can't. */
+static const char *build(collision_mesh *entry, GameCollider3DShape shape, const render_mesh_asset *asset)
+{
+    int count = acount(asset->vertices);
+    b3Vec3 *points = xmalloc((size_t)count * sizeof *points);
+    for (int i = 0; i < count; i++) {
+        points[i] = to_b3(asset->vertices[i].position);
+    }
+    const char *problem = NULL;
+    if (shape == GAME_COLLIDER3D_HULL && !entry->hull) {
+        entry->hull = b3CreateHull(points, count, HULL_VERTICES);
+        problem = entry->hull ? NULL
+                              : "A Collider3D hull needs a mesh whose vertices "
+                                "enclose a volume";
+    }
+    if (shape == GAME_COLLIDER3D_MESH && !entry->mesh) {
+        static_assert(sizeof(int) == sizeof(int32_t), "Mesh indices pass through");
+        b3MeshDef def = { .vertices = points,
+                          .indices = (int32_t *)asset->indices,
+                          .vertexCount = count,
+                          .weldTolerance = WELD_TOLERANCE,
+                          .triangleCount = acount(asset->indices) / 3,
+                          .weldVertices = true,
+                          .identifyEdges = true };
+        entry->mesh = keeps_triangle(points, asset->indices)
+                        ? b3CreateMesh(&def, NULL, 0)
+                        : NULL;
+        problem = entry->mesh
+                    ? NULL
+                    : "A Collider3D mesh needs a mesh with a triangle "
+                      "of nonzero area";
+    }
+    free(points);
+    return problem;
+}
+
+static bool uses_mesh(const GameCollider3D *collider)
+{
+    return collider->shape == GAME_COLLIDER3D_HULL ||
+           collider->shape == GAME_COLLIDER3D_MESH;
+}
+
+/* 1 + the collision mesh a hull or mesh collider at scale uses, built on
+ * first use, or 0 for another shape. -1 when it can't, after writing why to
+ * problem. */
+static int collision(
+    game_physics3d *physics,
+    const GameCollider3D *collider,
+    CF_V3 scale,
+    char *problem,
+    size_t size
+)
+{
+    if (!uses_mesh(collider)) {
+        return 0;
+    }
+    const render_mesh_asset *asset = render_mesh_asset_load(collider->mesh, NULL, 0);
+    if (!asset) {
+        snprintf(
+            problem,
+            size,
+            "Collider3D mesh %s is not a prepared content .mesh",
+            collider->mesh
+        );
+        return -1;
+    }
+    int found = 0;
+    for (int i = 0; !found && i < acount(physics->meshes); i++) {
+        const collision_mesh *entry = &physics->meshes[i];
+        if (entry->identity == asset->identity &&
+            !strcmp(entry->source, collider->mesh)) {
+            found = i + 1;
+        }
+    }
+    if (!found) {
+        collision_mesh added = {
+            .source = xstrdup(collider->mesh),
+            .identity = asset->identity,
+            .extent = cf_max_v3(cf_abs_v3(asset->min), cf_abs_v3(asset->max)),
+        };
+        apush(physics->meshes, added);
+        found = acount(physics->meshes);
+    }
+    collision_mesh *entry = &physics->meshes[found - 1];
+    const char *built = within(cf_mul_v3(entry->extent, cf_abs_v3(scale)), FARTHEST)
+                          ? build(entry, collider->shape, asset)
+                          : "A Collider3D hull or mesh must fit within 100 km "
+                            "after scale";
+    if (built) {
+        snprintf(problem, size, "%s", built);
+        return -1;
+    }
+    return found;
+}
+
+/* The collision mesh for the entity's collider, or -1 after failing. */
+static int entity_collision(
+    game_physics3d *physics,
+    ecs_entity entity,
+    const GameCollider3D *collider,
+    CF_V3 scale
+)
+{
+    char problem[160];
+    int mesh = collision(physics, collider, scale, problem, sizeof problem);
+    return mesh < 0 ? fail(physics, entity, problem) : mesh;
+}
+
 /* A collider's shape, scaled, at an offset in the frame of the body or query
  * that holds it. */
 typedef struct
@@ -478,13 +655,18 @@ typedef struct
         b3BoxHull box;
         b3Sphere sphere;
         b3Capsule capsule;
+        const b3HullData *hull; /* Its collision mesh's, or owned. */
+        b3Mesh mesh;
     };
+    b3HullData *owned; /* A transformed hull that release_geometry frees. */
 } geometry;
 
+/* A box, sphere or capsule collider's shape. */
 static geometry make_geometry(const GameCollider3D *collider, CF_V3 scale, b3Transform offset)
 {
     geometry out = { .kind = collider->shape };
     float radius, half;
+    scale = cf_abs_v3(scale);
     switch (collider->shape) {
         case GAME_COLLIDER3D_BOX: {
             CF_V3 extent = cf_mul_v3_f(cf_mul_v3(collider->size, scale), .5f);
@@ -504,12 +686,40 @@ static geometry make_geometry(const GameCollider3D *collider, CF_V3 scale, b3Tra
                 radius
             };
             return out;
+        default: break;
     }
     assert(false);
     return out;
 }
 
-static b3ShapeId create_shape(const body_record *record, b3BodyId body, b3Transform offset)
+static void release_geometry(geometry *shape)
+{
+    if (shape->owned) {
+        b3DestroyHull(shape->owned);
+    }
+}
+
+/* A box's or hull's convex hull, or NULL for another shape. */
+static const b3HullData *geometry_hull(const geometry *shape)
+{
+    switch (shape->kind) {
+        case GAME_COLLIDER3D_BOX: return &shape->box.base;
+        case GAME_COLLIDER3D_HULL: return shape->hull;
+        default: return NULL;
+    }
+}
+
+static const collision_mesh *mesh_data(const game_physics3d *physics, int mesh)
+{
+    return mesh ? &physics->meshes[mesh - 1] : NULL;
+}
+
+static b3ShapeId create_shape(
+    const game_physics3d *physics,
+    const body_record *record,
+    b3BodyId body,
+    b3Transform offset
+)
 {
     const GameCollider3D *collider = &record->collider;
     b3ShapeDef def = b3DefaultShapeDef();
@@ -519,9 +729,25 @@ static b3ShapeId create_shape(const body_record *record, b3BodyId body, b3Transf
     def.filter.categoryBits = collider->category;
     def.filter.maskBits = collider->mask;
     def.isSensor = collider->sensor;
-    def.enableSensorEvents = true;
+    /* Box3D sensors can't visit a mesh; collect_mesh_overlaps pairs them. */
+    def.enableSensorEvents = collider->shape != GAME_COLLIDER3D_MESH;
     if (record->follower && collider->sensor) {
         def.density = 0; /* A carried sensor adds no mass. */
+    }
+    const collision_mesh *data = mesh_data(physics, record->mesh);
+    switch (collider->shape) {
+        case GAME_COLLIDER3D_HULL:
+            /* Box3D shares the transformed hull between shapes that match. */
+            return b3CreateTransformedHullShape(
+                body,
+                &def,
+                data->hull,
+                offset,
+                to_b3(record->scale)
+            );
+        case GAME_COLLIDER3D_MESH:
+            return b3CreateMeshShape(body, &def, data->mesh, to_b3(record->scale));
+        default: break;
     }
     geometry shape = make_geometry(collider, record->scale, offset);
     if (record->character) {
@@ -537,6 +763,7 @@ static b3ShapeId create_shape(const body_record *record, b3BodyId body, b3Transf
             return b3CreateSphereShape(body, &def, &shape.sphere);
         case GAME_COLLIDER3D_CAPSULE:
             return b3CreateCapsuleShape(body, &def, &shape.capsule);
+        default: break;
     }
     assert(false);
     return (b3ShapeId){ 0 };
@@ -545,7 +772,7 @@ static b3ShapeId create_shape(const body_record *record, b3BodyId body, b3Transf
 /* Puts the record's collider at offset on body and wakes what it overlaps. */
 static void add_shape(game_physics3d *physics, body_record *record, b3BodyId body, b3Transform offset)
 {
-    record->shape = create_shape(record, body, offset);
+    record->shape = create_shape(physics, record, body, offset);
     wake_overlapping(physics, record->shape);
 }
 
@@ -642,8 +869,8 @@ static void move(game_physics3d *physics, body_record *record, placement at)
 static bool same_scale(CF_V3 a, CF_V3 b)
 {
     CF_V3 change = cf_abs_v3(cf_sub_v3(a, b));
-    return change.x <= SCALE_TOLERANCE * b.x &&
-           change.y <= SCALE_TOLERANCE * b.y && change.z <= SCALE_TOLERANCE * b.z;
+    CF_V3 limit = cf_mul_v3_f(cf_abs_v3(b), SCALE_TOLERANCE);
+    return change.x <= limit.x && change.y <= limit.y && change.z <= limit.z;
 }
 
 /* Kinematic and dynamic roots take their authored velocities when they
@@ -664,12 +891,19 @@ static void set_velocities(body_record *record, const GameBody3D *body)
 }
 
 /* Gives the record a body of its own at the placement, with a new shape when
- * its collider or scale changed. */
-static void own_body(game_physics3d *physics, body_record *record, const GameCollider3D *collider, placement at)
+ * its collider, collision mesh or scale changed. */
+static void own_body(
+    game_physics3d *physics,
+    body_record *record,
+    const GameCollider3D *collider,
+    int mesh,
+    placement at
+)
 {
     bool reshaped = !same_collider(collider, &record->collider) ||
-                    !same_scale(at.scale, record->scale);
+                    record->mesh != mesh || !same_scale(at.scale, record->scale);
     record->collider = *collider;
+    record->mesh = mesh;
     record->scale = at.scale;
     if (B3_IS_NULL(record->body)) {
         if (B3_IS_NON_NULL(record->shape)) {
@@ -700,6 +934,10 @@ static int sync_entity(game_physics3d *physics, ecs_entity entity)
     if (problem) {
         return fail(physics, entity, problem);
     }
+    int mesh = at.follower ? 0 : entity_collision(physics, entity, collider, at.scale);
+    if (mesh < 0) {
+        return FLOW_ERR_ARGUMENT;
+    }
     if (B3_IS_NULL(physics->simulation)) {
         create_world(physics);
     }
@@ -728,7 +966,7 @@ static int sync_entity(game_physics3d *physics, ecs_entity entity)
     if (at.follower) {
         return FLOW_OK; /* Placed once every root has its body. */
     }
-    own_body(physics, record, collider, at);
+    own_body(physics, record, collider, mesh, at);
     record->written = *GAME_GameTransform3D_get_const(world, entity);
     record->placed = at.pose;
     if (character) {
@@ -757,18 +995,18 @@ static const body_record *anchor(const game_physics3d *physics, ecs_entity entit
     return NULL;
 }
 
-/* Puts the follower's shape on its anchor's body, so the solver moves it with
- * that body and its hits act on it. A changed placement gets a new shape. */
-static void carry(game_physics3d *physics, body_record *record, const body_record *with)
+/* Puts the follower's shape on its anchor's body at its carried placement,
+ * so the solver moves it with that body and its hits act on it. A changed
+ * placement gets a new shape. */
+static void carry(game_physics3d *physics, body_record *record, const body_record *with, int mesh, placement at)
 {
     const GameCollider3D
         *collider = GAME_GameCollider3D_get_const(physics->world, record->entity);
-    placement at = carried_placement(physics->world, record->entity, with->entity);
     if (B3_IS_NON_NULL(record->body)) {
         destroy_body(physics, record);
     }
     if (B3_IS_NON_NULL(record->shape) && record->carrier == with->entity.slot &&
-        same_collider(collider, &record->collider) &&
+        same_collider(collider, &record->collider) && record->mesh == mesh &&
         same_pose(at.pose, record->placed) && same_scale(at.scale, record->scale)) {
         return;
     }
@@ -777,6 +1015,7 @@ static void carry(game_physics3d *physics, body_record *record, const body_recor
     }
     record->carrier = with->entity.slot;
     record->collider = *collider;
+    record->mesh = mesh;
     record->scale = at.scale;
     record->placed = at.pose;
     add_shape(
@@ -797,22 +1036,24 @@ static int place_followers(game_physics3d *physics)
         if (!record->entity.slot || !record->follower) {
             continue;
         }
+        const GameCollider3D
+            *collider = GAME_GameCollider3D_get_const(physics->world, record->entity);
         const body_record *with = anchor(physics, record->entity);
-        if (with && with->character &&
-            !GAME_GameCollider3D_get_const(physics->world, record->entity)->sensor) {
+        if (with && with->character && !collider->sensor) {
             return fail(physics, record->entity, "A Collider3D under a Character3D must be a sensor");
         }
+        placement at = with
+                         ? carried_placement(physics->world, record->entity, with->entity)
+                         : place(physics->world, record->entity);
+        int mesh = entity_collision(physics, record->entity, collider, at.scale);
+        if (mesh < 0) {
+            return FLOW_ERR_ARGUMENT;
+        }
         if (with) {
-            carry(physics, record, with);
+            carry(physics, record, with, mesh, at);
             continue;
         }
-        placement at = place(physics->world, record->entity);
-        own_body(
-            physics,
-            record,
-            GAME_GameCollider3D_get_const(physics->world, record->entity),
-            at
-        );
+        own_body(physics, record, collider, mesh, at);
         record->placed = at.pose;
     }
     return FLOW_OK;
@@ -1008,26 +1249,32 @@ static void collect_contacts(game_physics3d *physics, const body_record *record)
 }
 
 /* A sensor overlap reports the center of the two shapes' overlapping bounds. */
+static CF_V3 overlap_point(b3ShapeId a, b3ShapeId b)
+{
+    b3AABB first = b3Shape_GetAABB(a), second = b3Shape_GetAABB(b);
+    CF_V3 low = cf_max_v3(from_b3(first.lowerBound), from_b3(second.lowerBound));
+    CF_V3 high = cf_min_v3(from_b3(first.upperBound), from_b3(second.upperBound));
+    return cf_mul_v3_f(cf_add_v3(low, high), .5f);
+}
+
 static void collect_visitors(game_physics3d *physics, const body_record *record)
 {
     int capacity = b3Shape_GetSensorCapacity(record->shape);
     asetlen(physics->shapes, capacity);
     int count = b3Shape_GetSensorData(record->shape, physics->shapes, capacity);
-    b3AABB sensor = b3Shape_GetAABB(record->shape);
     for (int i = 0; i < count; i++) {
         b3ShapeId visitor = physics->shapes[i];
         assert(b3Shape_IsValid(visitor)); /* Nothing is destroyed after the step. */
-        b3AABB other = b3Shape_GetAABB(visitor);
-        CF_V3 low = cf_max_v3(from_b3(sensor.lowerBound), from_b3(other.lowerBound));
-        CF_V3 high = cf_min_v3(from_b3(sensor.upperBound), from_b3(other.upperBound));
         add_pair(
             physics,
             ecs_entity_to_u64(record->entity),
             shape_entity(physics, visitor),
-            cf_mul_v3_f(cf_add_v3(low, high), .5f)
+            overlap_point(record->shape, visitor)
         );
     }
 }
+
+static void collect_mesh_overlaps(game_physics3d *physics, const body_record *mesh);
 
 static int compare_pairs(const void *left, const void *right)
 {
@@ -1047,7 +1294,9 @@ static void current_pairs(game_physics3d *physics)
         if (!record->entity.slot) {
             continue;
         }
-        if (record->collider.sensor) {
+        if (record->collider.shape == GAME_COLLIDER3D_MESH) {
+            collect_mesh_overlaps(physics, record);
+        } else if (record->collider.sensor) {
             collect_visitors(physics, record);
         }
         if (B3_IS_NON_NULL(record->body) &&
@@ -1406,56 +1655,61 @@ typedef struct
     ecs_entity entity;
     ecs_entity owner; /* The entity whose body holds it. */
     GameCollider3D collider;
+    int mesh; /* 1 + its collision mesh, or 0. */
     b3Transform transform;
     CF_V3 scale;
 } query_shape;
 
-/* A shape's points and radius in the world, for casting and overlap. */
+/* A convex shape's points and radius in the world, for casting and overlap. */
 typedef struct
 {
-    b3Vec3 points[8];
+    b3Vec3 points[HULL_VERTICES];
     int count;
     float radius;
 } query_proxy;
 
-static bool live_collider(const ecs_world *world, const game_entities *entities, ecs_entity entity)
+static bool live_collider(const game_physics3d *physics, ecs_entity entity)
 {
+    const ecs_world *world = physics->world;
     return ecs_entity_is_alive(world, entity) &&
-           !game_entities_is_retiring(entities, entity) &&
+           !game_entities_is_retiring(physics->entities, entity) &&
            GAME_GameTransform3D_get_const(world, entity) &&
            GAME_GameCollider3D_get_const(world, entity);
 }
 
 /* The top of the entity's Transform3D hierarchy carries it when that has a
  * collider, as anchor() does in the simulation; otherwise it has its own. */
-static ecs_entity body_owner(const ecs_world *world, const game_entities *entities, ecs_entity entity)
+static ecs_entity body_owner(const game_physics3d *physics, ecs_entity entity)
 {
     ecs_entity top = entity;
-    for (ecs_entity at = game_transform_parent_3d(world, entity); at.slot;
-         at = game_transform_parent_3d(world, at)) {
+    for (ecs_entity at = game_transform_parent_3d(physics->world, entity); at.slot;
+         at = game_transform_parent_3d(physics->world, at)) {
         top = at;
     }
-    return live_collider(world, entities, top) ? top : entity;
+    return live_collider(physics, top) ? top : entity;
 }
 
-static bool read_shape(const ecs_world *world, const game_entities *entities, ecs_entity entity, query_shape *out)
+static bool read_shape(game_physics3d *physics, ecs_entity entity, query_shape *out)
 {
-    const GameCollider3D *collider = GAME_GameCollider3D_get_const(world, entity);
-    placement at = place(world, entity);
+    const GameCollider3D *collider = GAME_GameCollider3D_get_const(physics->world, entity);
+    placement at = place(physics->world, entity);
     if (invalid(at, collider, &(GameBody3D){ .type = GAME_BODY_STATIC })) {
         return false;
     }
+    int mesh = collision(physics, collider, at.scale, NULL, 0);
     *out = (query_shape){ entity,
-                          body_owner(world, entities, entity),
+                          body_owner(physics, entity),
                           *collider,
+                          mesh,
                           { to_b3(at.pose.position), quat_to_b3(at.pose.rotation) },
                           at.scale };
-    return true;
+    return mesh >= 0;
 }
 
 /* Every live collider, or FLOW_ERR_ARGUMENT at the first invalid one. */
-static int read_shapes(ecs_world *world, const game_entities *entities, query_shape **out)
+static int read_shapes(game_physics3d *physics, query_shape **out)
 {
+    ecs_world *world = physics->world;
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform3D.id,
                                     GAME_COMPONENT_GameCollider3D.id };
     if (!ecs_world_component(world, required[0]) ||
@@ -1469,11 +1723,11 @@ static int read_shapes(ecs_world *world, const game_entities *entities, query_sh
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        if (game_entities_is_retiring(entities, entity)) {
+        if (game_entities_is_retiring(physics->entities, entity)) {
             continue;
         }
         query_shape shape;
-        if (!read_shape(world, entities, entity, &shape)) {
+        if (!read_shape(physics, entity, &shape)) {
             result = FLOW_ERR_ARGUMENT;
             break;
         }
@@ -1483,83 +1737,203 @@ static int read_shapes(ecs_world *world, const game_entities *entities, query_sh
     return result;
 }
 
-static geometry query_geometry(const query_shape *shape)
+/* The shape in its collider's frame, for release_geometry to free. */
+static geometry query_geometry(const game_physics3d *physics, const query_shape *shape)
 {
-    return make_geometry(&shape->collider, shape->scale, b3Transform_identity);
+    const collision_mesh *data = mesh_data(physics, shape->mesh);
+    geometry out = { .kind = shape->collider.shape };
+    switch (out.kind) {
+        case GAME_COLLIDER3D_HULL:
+            /* Box3D bakes a scale into a copy of the hull. */
+            out.hull = data->hull;
+            if (!same_v3(shape->scale, (CF_V3){ 1, 1, 1 })) {
+                out.hull = out.owned = b3CloneAndTransformHull(
+                    data->hull,
+                    b3Transform_identity,
+                    to_b3(shape->scale)
+                );
+                assert(out.hull);
+            }
+            return out;
+        case GAME_COLLIDER3D_MESH:
+            out.mesh = (b3Mesh){ data->mesh, to_b3(shape->scale) };
+            return out;
+        default:
+            return make_geometry(&shape->collider, shape->scale, b3Transform_identity);
+    }
 }
 
-static query_proxy world_proxy(const query_shape *shape)
+/* The shape in the world, or false for a mesh, which isn't convex. */
+static bool world_proxy(const game_physics3d *physics, const query_shape *shape, query_proxy *out)
 {
-    geometry local = query_geometry(shape);
-    query_proxy out = { 0 };
+    if (shape->collider.shape == GAME_COLLIDER3D_MESH) {
+        return false;
+    }
+    geometry local = query_geometry(physics, shape);
+    const b3HullData *hull = geometry_hull(&local);
+    *out = (query_proxy){ 0 };
+    if (hull) {
+        out->count = hull->vertexCount;
+        assert(out->count <= HULL_VERTICES);
+        memcpy(
+            out->points,
+            b3GetHullPoints(hull),
+            (size_t)out->count * sizeof *out->points
+        );
+    }
+    if (local.kind == GAME_COLLIDER3D_SPHERE) {
+        out->points[0] = local.sphere.center;
+        out->count = 1;
+        out->radius = local.sphere.radius;
+    }
+    if (local.kind == GAME_COLLIDER3D_CAPSULE) {
+        out->points[0] = local.capsule.center1;
+        out->points[1] = local.capsule.center2;
+        out->count = 2;
+        out->radius = local.capsule.radius;
+    }
+    release_geometry(&local);
+    for (int i = 0; i < out->count; i++) {
+        out->points[i] = b3TransformPoint(shape->transform, out->points[i]);
+    }
+    return true;
+}
+
+static b3CastOutput ray_cast(const game_physics3d *physics, const query_shape *shape, const b3RayCastInput *input)
+{
+    geometry local = query_geometry(physics, shape);
+    b3CastOutput out = { 0 };
     switch (local.kind) {
         case GAME_COLLIDER3D_BOX:
-            out.count = local.box.base.vertexCount;
-            assert(out.count == 8);
-            for (int i = 0; i < out.count; i++) {
-                out.points[i] = b3GetHullPoints(&local.box.base)[i];
-            }
+        case GAME_COLLIDER3D_HULL:
+            out = b3RayCastHull(geometry_hull(&local), input);
             break;
         case GAME_COLLIDER3D_SPHERE:
-            out.points[0] = local.sphere.center;
-            out.count = 1;
-            out.radius = local.sphere.radius;
+            out = b3RayCastSphere(&local.sphere, input);
             break;
         case GAME_COLLIDER3D_CAPSULE:
-            out.points[0] = local.capsule.center1;
-            out.points[1] = local.capsule.center2;
-            out.count = 2;
-            out.radius = local.capsule.radius;
+            out = b3RayCastCapsule(&local.capsule, input);
+            break;
+        case GAME_COLLIDER3D_MESH:
+            out = b3RayCastMesh(&local.mesh, input);
             break;
     }
-    for (int i = 0; i < out.count; i++) {
-        out.points[i] = b3TransformPoint(shape->transform, out.points[i]);
-    }
+    release_geometry(&local);
     return out;
 }
 
-static b3CastOutput ray_cast(const query_shape *shape, const b3RayCastInput *input)
+static b3CastOutput shape_cast(
+    const game_physics3d *physics,
+    const query_shape *shape,
+    const b3ShapeCastInput *input
+)
 {
-    geometry local = query_geometry(shape);
-    switch (local.kind) {
-        case GAME_COLLIDER3D_BOX: return b3RayCastHull(&local.box.base, input);
-        case GAME_COLLIDER3D_SPHERE:
-            return b3RayCastSphere(&local.sphere, input);
-        case GAME_COLLIDER3D_CAPSULE:
-            return b3RayCastCapsule(&local.capsule, input);
-    }
-    assert(false);
-    return (b3CastOutput){ 0 };
-}
-
-static b3CastOutput shape_cast(const query_shape *shape, const b3ShapeCastInput *input)
-{
-    geometry local = query_geometry(shape);
+    geometry local = query_geometry(physics, shape);
+    b3CastOutput out = { 0 };
     switch (local.kind) {
         case GAME_COLLIDER3D_BOX:
-            return b3ShapeCastHull(&local.box.base, input);
+        case GAME_COLLIDER3D_HULL:
+            out = b3ShapeCastHull(geometry_hull(&local), input);
+            break;
         case GAME_COLLIDER3D_SPHERE:
-            return b3ShapeCastSphere(&local.sphere, input);
+            out = b3ShapeCastSphere(&local.sphere, input);
+            break;
         case GAME_COLLIDER3D_CAPSULE:
-            return b3ShapeCastCapsule(&local.capsule, input);
+            out = b3ShapeCastCapsule(&local.capsule, input);
+            break;
+        case GAME_COLLIDER3D_MESH:
+            out = b3ShapeCastMesh(&local.mesh, input);
+            break;
     }
-    assert(false);
-    return (b3CastOutput){ 0 };
+    release_geometry(&local);
+    return out;
 }
 
-static bool overlap(const query_shape *shape, const b3ShapeProxy *proxy)
+static bool overlap(const game_physics3d *physics, const query_shape *shape, const b3ShapeProxy *proxy)
 {
-    geometry local = query_geometry(shape);
+    geometry local = query_geometry(physics, shape);
+    bool out = false;
     switch (local.kind) {
         case GAME_COLLIDER3D_BOX:
-            return b3OverlapHull(&local.box.base, shape->transform, proxy);
+        case GAME_COLLIDER3D_HULL:
+            out = b3OverlapHull(geometry_hull(&local), shape->transform, proxy);
+            break;
         case GAME_COLLIDER3D_SPHERE:
-            return b3OverlapSphere(&local.sphere, shape->transform, proxy);
+            out = b3OverlapSphere(&local.sphere, shape->transform, proxy);
+            break;
         case GAME_COLLIDER3D_CAPSULE:
-            return b3OverlapCapsule(&local.capsule, shape->transform, proxy);
+            out = b3OverlapCapsule(&local.capsule, shape->transform, proxy);
+            break;
+        case GAME_COLLIDER3D_MESH:
+            out = b3OverlapMesh(&local.mesh, shape->transform, proxy);
+            break;
     }
-    assert(false);
-    return false;
+    release_geometry(&local);
+    return out;
+}
+
+/* Whether self, convex at probe or a mesh without one, meets shape with
+ * margin added to the convex one's radius. A mesh meets only convex shapes. */
+static bool touching(
+    const game_physics3d *physics,
+    const query_shape *self,
+    const query_proxy *probe,
+    const query_shape *shape,
+    float margin
+)
+{
+    if (probe) {
+        return overlap(
+            physics,
+            shape,
+            &(b3ShapeProxy){ probe->points, probe->count, probe->radius + margin }
+        );
+    }
+    query_proxy other;
+    return world_proxy(physics, shape, &other) &&
+           overlap(physics, self, &(b3ShapeProxy){ other.points, other.count, other.radius + margin });
+}
+
+/* Whether a sensor, the mesh or the other shape, meets it as Box3D's
+ * sensors would: a convex shape on another body that passes both filters. */
+static bool senses(const body_record *mesh, const body_record *other)
+{
+    const GameCollider3D *a = &mesh->collider, *b = &other->collider;
+    return other->entity.slot && B3_IS_NON_NULL(other->shape) &&
+           b->shape != GAME_COLLIDER3D_MESH && (a->sensor || b->sensor) &&
+           (a->category & b->mask) && (b->category & a->mask) &&
+           !B3_ID_EQUALS(b3Shape_GetBody(mesh->shape), b3Shape_GetBody(other->shape)) &&
+           b3AABB_Overlaps(b3Shape_GetAABB(mesh->shape), b3Shape_GetAABB(other->shape));
+}
+
+/* Box3D sensors visit only convex shapes, so a mesh leaves its sensor events
+ * off and pairs with the sensors it meets, or as a sensor with what meets it,
+ * here. */
+static void collect_mesh_overlaps(game_physics3d *physics, const body_record *mesh)
+{
+    /* The step just synchronized both colliders, so they are valid. */
+    query_shape surface;
+    [[maybe_unused]] bool placed = read_shape(physics, mesh->entity, &surface);
+    assert(placed);
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        const body_record *other = &physics->bodies[i];
+        if (!senses(mesh, other)) {
+            continue;
+        }
+        query_shape shape;
+        query_proxy probe;
+        placed = read_shape(physics, other->entity, &shape) &&
+                 world_proxy(physics, &shape, &probe);
+        assert(placed);
+        if (touching(physics, &shape, &probe, &surface, 0)) {
+            add_pair(
+                physics,
+                ecs_entity_to_u64(mesh->entity),
+                ecs_entity_to_u64(other->entity),
+                overlap_point(mesh->shape, other->shape)
+            );
+        }
+    }
 }
 
 /* Keeps a cast's hit on shape when it is nearer than any so far. Box3D casts
@@ -1592,8 +1966,7 @@ static bool queried(const query_shape *shape, unsigned categories, bool sensors,
 }
 
 int game_physics3d_raycast(
-    ecs_world *world,
-    game_entities *entities,
+    game_physics3d *physics,
     CF_V3 start,
     CF_V3 end,
     unsigned categories,
@@ -1602,19 +1975,18 @@ int game_physics3d_raycast(
     game_physics3d_hit *out
 )
 {
-    assert(world && entities && out);
+    assert(physics && out);
     use_project_units();
     *out = (game_physics3d_hit){ 0 };
     if (!within(start, FARTHEST) || !within(end, FARTHEST)) {
         return FLOW_ERR_ARGUMENT;
     }
-    ecs_entity skip = live_collider(world, entities, exclude)
-                        ? body_owner(world, entities, exclude)
-                        : exclude;
+    ecs_entity skip = live_collider(physics, exclude) ? body_owner(physics, exclude)
+                                                      : exclude;
     CF_V3 translation = cf_sub_v3(end, start);
     float length = cf_len_v3(translation), nearest = INFINITY;
     query_shape *shapes = NULL;
-    int result = read_shapes(world, entities, &shapes);
+    int result = read_shapes(physics, &shapes);
     for (int i = 0; result >= 0 && i < acount(shapes); i++) {
         const query_shape *shape = &shapes[i];
         if (!queried(shape, categories, sensors, skip)) {
@@ -1625,7 +1997,7 @@ int game_physics3d_raycast(
             b3InvRotateVector(shape->transform.q, to_b3(translation)),
             1,
         };
-        keep_nearest(shape, ray_cast(shape, &input), length, &nearest, out);
+        keep_nearest(shape, ray_cast(physics, shape, &input), length, &nearest, out);
     }
     afree(shapes);
     if (result < 0) {
@@ -1635,8 +2007,7 @@ int game_physics3d_raycast(
 }
 
 int game_physics3d_shape_cast(
-    ecs_world *world,
-    game_entities *entities,
+    game_physics3d *physics,
     ecs_entity caster,
     CF_V3 translation,
     unsigned categories,
@@ -1644,29 +2015,29 @@ int game_physics3d_shape_cast(
     game_physics3d_hit *out
 )
 {
-    assert(world && entities && out);
+    assert(physics && out);
     use_project_units();
     *out = (game_physics3d_hit){ 0 };
     if (!within(translation, FARTHEST)) {
         return FLOW_ERR_ARGUMENT;
     }
-    if (!live_collider(world, entities, caster)) {
+    if (!live_collider(physics, caster)) {
         return FLOW_OK;
     }
     query_shape self;
-    if (!read_shape(world, entities, caster, &self)) {
+    query_proxy moving;
+    if (!read_shape(physics, caster, &self) || !world_proxy(physics, &self, &moving)) {
         return FLOW_ERR_ARGUMENT;
     }
-    query_proxy moving = world_proxy(&self);
     float length = cf_len_v3(translation), nearest = INFINITY;
     query_shape *shapes = NULL;
-    int result = read_shapes(world, entities, &shapes);
+    int result = read_shapes(physics, &shapes);
     for (int i = 0; result >= 0 && i < acount(shapes); i++) {
         const query_shape *shape = &shapes[i];
         if (!queried(shape, categories, sensors, self.owner)) {
             continue;
         }
-        b3Vec3 points[8];
+        b3Vec3 points[HULL_VERTICES];
         for (int j = 0; j < moving.count; j++) {
             points[j] = b3InvTransformPoint(shape->transform, moving.points[j]);
         }
@@ -1676,7 +2047,7 @@ int game_physics3d_shape_cast(
             1,
             false,
         };
-        keep_nearest(shape, shape_cast(shape, &input), length, &nearest, out);
+        keep_nearest(shape, shape_cast(physics, shape, &input), length, &nearest, out);
     }
     afree(shapes);
     if (result < 0) {
@@ -1686,26 +2057,26 @@ int game_physics3d_shape_cast(
 }
 
 int game_physics3d_contact_entities(
-    ecs_world *world,
-    game_entities *entities,
+    game_physics3d *physics,
     ecs_entity entity,
     unsigned categories,
     ecs_entity **out
 )
 {
-    assert(world && entities && out);
+    assert(physics && out);
     use_project_units();
     aclear(*out);
-    if (!categories || !live_collider(world, entities, entity)) {
+    if (!categories || !live_collider(physics, entity)) {
         return FLOW_OK;
     }
     query_shape self;
-    if (!read_shape(world, entities, entity, &self)) {
+    if (!read_shape(physics, entity, &self)) {
         return FLOW_ERR_ARGUMENT;
     }
-    query_proxy probe = world_proxy(&self);
+    query_proxy probe;
+    bool convex = world_proxy(physics, &self, &probe);
     query_shape *shapes = NULL;
-    int result = read_shapes(world, entities, &shapes);
+    int result = read_shapes(physics, &shapes);
     for (int i = 0; result >= 0 && i < acount(shapes); i++) {
         const query_shape *shape = &shapes[i];
         if (!queried(shape, categories, true, self.owner) ||
@@ -1717,8 +2088,7 @@ int game_physics3d_contact_entities(
         float margin = self.collider.sensor || shape->collider.sensor
                          ? 0
                          : B3_SPECULATIVE_DISTANCE;
-        b3ShapeProxy proxy = { probe.points, probe.count, probe.radius + margin };
-        if (overlap(shape, &proxy)) {
+        if (touching(physics, &self, convex ? &probe : NULL, shape, margin)) {
             apush(*out, shape->entity);
         }
     }

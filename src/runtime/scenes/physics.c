@@ -2105,6 +2105,55 @@ static void apply_pushes(game_physics *physics)
     aclear(physics->pushes);
 }
 
+/* The scene's gravity: one entity's Gravity, or none. */
+static int gravity(game_physics *physics, b2Vec2 *out)
+{
+    *out = (b2Vec2){ 0 };
+    ecs_component_id id = GAME_COMPONENT_GameGravity.id;
+    if (!ecs_world_component(physics->world, id)) {
+        return FLOW_OK;
+    }
+    ecs_query query;
+    int result = ecs_query_begin(physics->world, &query, &id, 1);
+    if (result != ECS_OK) {
+        return result;
+    }
+    int count = 0;
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        CF_V2 acceleration = GAME_GameGravity_get_const(physics->world, entity)->acceleration;
+        *out = (b2Vec2){ acceleration.x, acceleration.y };
+        count++;
+    }
+    ecs_query_end(&query);
+    if (count > 1) {
+        snprintf(physics->error, sizeof physics->error, "Only one entity may have Gravity; %d do.", count);
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (!isfinite(out->x) || !isfinite(out->y)) {
+        snprintf(physics->error, sizeof physics->error, "Gravity acceleration must be finite.");
+        return FLOW_ERR_ARGUMENT;
+    }
+    return FLOW_OK;
+}
+
+/* Box2D leaves sleeping bodies asleep through a gravity change. */
+static void set_gravity(game_physics *physics, b2Vec2 acceleration)
+{
+    b2Vec2 current = b2World_GetGravity(physics->simulation);
+    if (current.x == acceleration.x && current.y == acceleration.y) {
+        return;
+    }
+    b2World_SetGravity(physics->simulation, acceleration);
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        const physics_body *body = &physics->bodies[i];
+        if (body->body.index1 && !body->follower &&
+            body->settings.type == GAME_BODY_DYNAMIC) {
+            b2Body_SetAwake(body->body, true);
+        }
+    }
+}
+
 int game_physics_tick(game_physics *physics, float delta_seconds)
 {
     physics->error[0] = 0;
@@ -2117,19 +2166,29 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
         snprintf(physics->error, sizeof physics->error, "Physics delta must be finite and nonnegative.");
         return FLOW_ERR_ARGUMENT;
     }
+    b2Vec2 acceleration;
+    int result = gravity(physics, &acceleration);
+    if (result < 0) {
+        return result;
+    }
     game_materials *materials = game_entities_materials(physics->entities);
     CHIBI_TRACE_ZONE_BEGIN(material_zone, "Material edits");
-    const char *material_error = materials ? game_materials_prepare(materials) : NULL;
+    const char *material_error = NULL;
+    if (materials) {
+        game_materials_set_gravity(
+            materials,
+            (fluid_vec){ acceleration.x, acceleration.y }
+        );
+        material_error = game_materials_prepare(materials);
+    }
     CHIBI_TRACE_ZONE_END(material_zone);
     if (material_error) {
         snprintf(physics->error, sizeof physics->error, "%s", material_error);
         return FLOW_ERR_ARGUMENT;
     }
-    fluid_vec gravity = materials ? game_materials_gravity(materials)
-                                  : (fluid_vec){ 0 };
-    b2World_SetGravity(physics->simulation, (b2Vec2){ gravity.x, gravity.y });
+    set_gravity(physics, acceleration);
     CHIBI_TRACE_ZONE_BEGIN(sync_zone, "Physics synchronize");
-    int result = synchronize(physics, delta_seconds);
+    result = synchronize(physics, delta_seconds);
     CHIBI_TRACE_ZONE_END(sync_zone);
     profile_phase(physics, &start, &physics->profile.synchronize_ms);
     if (result < 0) {

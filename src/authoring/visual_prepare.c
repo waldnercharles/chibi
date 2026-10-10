@@ -1,5 +1,6 @@
 #include "authoring/visual_prepare.h"
 
+#include "authoring/mesh_prepare.h"
 #include "render/scene3d_parts.h"
 #include "render/shader_catalog_records.h"
 #include "render/shader_values.h"
@@ -177,20 +178,17 @@ bool authoring_visual_prepare(
                     )) {
                     goto fail;
                 }
-                if (component.desc->id != GAME_COMPONENT_GameMeshAsset.id) {
+                const char
+                    *source = authoring_component_mesh(component.desc, component.data);
+                if (!source || contains(*result, source, GAME_PLAYER_ASSET_MESH)) {
                     continue;
                 }
-                const GameMeshAsset *binding = component.data;
-                if (!binding->source || !binding->source[0] ||
-                    contains(*result, binding->source, GAME_PLAYER_ASSET_MESH)) {
-                    continue;
-                }
-                const render_mesh_asset *mesh = render_mesh_asset_load(binding->source, error, size);
+                const render_mesh_asset *mesh = render_mesh_asset_load(source, error, size);
                 unsigned char *bytes = NULL;
                 size_t length = 0;
                 if (!mesh ||
                     !render_mesh_asset_prepared_write(mesh, &bytes, &length, error, size) ||
-                    !append(result, binding->source, GAME_PLAYER_ASSET_MESH, bytes, length, &total, error, size)) {
+                    !append(result, source, GAME_PLAYER_ASSET_MESH, bytes, length, &total, error, size)) {
                     goto fail;
                 }
             }

@@ -17,12 +17,9 @@ bool authoring_prototype_resources(const game_prototype *prototype, char *error,
     assert(prototype);
     for (int i = 0; i < acount(prototype->components); i++) {
         const game_prototype_component *component = &prototype->components[i];
-        if (component->desc->id == GAME_COMPONENT_GameMeshAsset.id) {
-            const GameMeshAsset *mesh = component->data;
-            if (mesh->source && mesh->source[0] &&
-                !authoring_mesh_prepare(mesh->source, error, size)) {
-                return false;
-            }
+        const char *mesh = authoring_component_mesh(component->desc, component->data);
+        if (mesh && !authoring_mesh_prepare(mesh, error, size)) {
+            return false;
         }
         if (component->desc->id == GAME_COMPONENT_GameMeshParts.id) {
             const GameMeshParts *parts = component->data;

@@ -5,6 +5,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
 #include "runtime/events.h"
+#include "runtime/geometry/mesh_asset.h"
 #include "runtime/task_pool.h"
 #include "runtime/world.h"
 #include "support/array.h"
@@ -83,6 +84,7 @@ static void teardown()
     game_entities_free(entities);
     ecs_world_free(world);
     afree(contacts);
+    render_mesh_assets_clear();
 }
 
 static GameCollider3D box(float x, float y, float z)
@@ -101,6 +103,56 @@ static GameCollider3D ball(float radius)
                              .category = 1,
                              .mask = 1,
                              .friction = .6f };
+}
+
+static GameCollider3D meshed(GameCollider3DShape shape, const char *mesh)
+{
+    GameCollider3D collider = { .shape = shape,
+                                .mesh = mesh,
+                                .category = 1,
+                                .mask = 1,
+                                .friction = .6f };
+    return collider;
+}
+
+/* Publishes the points as source's mesh, every three indices a triangle. */
+static void publish_mesh(const char *source, const CF_V3 *points, int count, const int *indices, int index_count)
+{
+    render_mesh_asset mesh = { .min = points[0], .max = points[0] };
+    for (int i = 0; i < count; i++) {
+        apush(mesh.vertices, ((render_mesh_surface_vertex){ .position = points[i] }));
+        mesh.min = cf_min_v3(mesh.min, points[i]);
+        mesh.max = cf_max_v3(mesh.max, points[i]);
+    }
+    for (int i = 0; i < index_count; i++) {
+        apush(mesh.indices, indices[i]);
+    }
+    render_mesh_asset_publish(source, &mesh);
+}
+
+/* A block a meter on each side, from half a meter to one and a half along X,
+ * with a point inside it that its hull leaves out. */
+static void publish_block()
+{
+    CF_V3 points[9];
+    for (int i = 0; i < 8; i++) {
+        points[i] = (CF_V3){ (i & 1 ? 1.5f : .5f) * METER,
+                             (i & 2 ? 1 : 0) * METER,
+                             (i & 4 ? .5f : -.5f) * METER };
+    }
+    points[8] = (CF_V3){ METER, METER / 2, 0 };
+    publish_mesh("content/meshes/block.mesh", points, 9, NULL, 0);
+}
+
+/* A square floor 20 meters across at height, as two triangles that repeat
+ * their shared corners the way a mesh's seams do. */
+static void publish_floor(float height)
+{
+    const float h = 10 * METER;
+    CF_V3 points[] = { { -h, height, -h }, { -h, height, h }, { h, height, h },
+                       { -h, height, -h }, { h, height, h },  { h, height, -h } };
+    int indices[] = { 0, 1, 2, 3, 4, 5 };
+    publish_mesh("content/meshes/floor.mesh", points, 6, indices, 6);
 }
 
 /* A unit-scale, unrotated collider at position, with a Body3D unless static. */
@@ -946,7 +998,7 @@ static bool is(ecs_entity a, ecs_entity b)
 static game_physics3d_hit ray(CF_V3 start, CF_V3 end, unsigned categories, ecs_entity exclude, bool sensors)
 {
     game_physics3d_hit hit;
-    int result = game_physics3d_raycast(world, entities, start, end, categories, exclude, sensors, &hit);
+    int result = game_physics3d_raycast(physics, start, end, categories, exclude, sensors, &hit);
     assert(result == FLOW_OK);
     return hit;
 }
@@ -954,7 +1006,7 @@ static game_physics3d_hit ray(CF_V3 start, CF_V3 end, unsigned categories, ecs_e
 static game_physics3d_hit sweep(ecs_entity caster, CF_V3 translation, bool sensors)
 {
     game_physics3d_hit hit;
-    int result = game_physics3d_shape_cast(world, entities, caster, translation, ~0u, sensors, &hit);
+    int result = game_physics3d_shape_cast(physics, caster, translation, ~0u, sensors, &hit);
     assert(result == FLOW_OK);
     return hit;
 }
@@ -1029,13 +1081,12 @@ TEST_CASE(physics3d_raycasts_find_the_nearest_collider)
     REQUIRE(is(ray(above, below, ~0u, cart, false).entity, floor));
     game_physics3d_hit hit;
     REQUIRE(
-        game_physics3d_raycast(world, entities, (CF_V3){ 0, 1e9f, 0 }, bottom, ~0u, (ecs_entity){ 0 }, false, &hit) ==
+        game_physics3d_raycast(physics, (CF_V3){ 0, 1e9f, 0 }, bottom, ~0u, (ecs_entity){ 0 }, false, &hit) ==
         FLOW_ERR_ARGUMENT
     );
     GAME_GameCollider3D_get(world, mist)->radius = 0;
     REQUIRE(
-        game_physics3d_raycast(world, entities, top, bottom, ~0u, (ecs_entity){ 0 }, false, &hit) ==
-        FLOW_ERR_ARGUMENT
+        game_physics3d_raycast(physics, top, bottom, ~0u, (ecs_entity){ 0 }, false, &hit) == FLOW_ERR_ARGUMENT
     );
     REQUIRE(!hit.found);
     return true;
@@ -1122,11 +1173,11 @@ TEST_CASE(physics3d_contact_queries_match_what_touches)
     }
     REQUIRE(landed && near_v3(body(crate)->linear_velocity, (CF_V3){ 0 }, 0));
     ecs_entity *found = NULL;
-    REQUIRE(game_physics3d_contact_entities(world, entities, crate, ~0u, &found) == FLOW_OK);
+    REQUIRE(game_physics3d_contact_entities(physics, crate, ~0u, &found) == FLOW_OK);
     REQUIRE(acount(found) == 1 && is(found[0], floor));
-    REQUIRE(game_physics3d_contact_entities(world, entities, floor, ~0u, &found) == FLOW_OK);
+    REQUIRE(game_physics3d_contact_entities(physics, floor, ~0u, &found) == FLOW_OK);
     REQUIRE(acount(found) == 2 && is(found[0], crate) && is(found[1], handle));
-    REQUIRE(game_physics3d_contact_entities(world, entities, floor, 2, &found) == FLOW_OK);
+    REQUIRE(game_physics3d_contact_entities(physics, floor, 2, &found) == FLOW_OK);
     REQUIRE(acount(found) == 0);
     /* A hundredth of a meter above a solid is within the margin; a sensor
      * there touches nothing, and neither does a solid it can't collide with. */
@@ -1143,18 +1194,207 @@ TEST_CASE(physics3d_contact_queries_match_what_touches)
     GameCollider3D ghost = ball(METER / 2);
     ghost.mask = 2;
     ecs_entity sunk = collider((ecs_entity){ 0 }, (CF_V3){ -5 * METER, 0, 0 }, ghost, GAME_BODY_STATIC);
-    REQUIRE(game_physics3d_contact_entities(world, entities, near_ball, ~0u, &found) == FLOW_OK);
+    REQUIRE(game_physics3d_contact_entities(physics, near_ball, ~0u, &found) == FLOW_OK);
     REQUIRE(acount(found) == 1 && is(found[0], floor));
-    REQUIRE(game_physics3d_contact_entities(world, entities, near_zone, ~0u, &found) == FLOW_OK);
+    REQUIRE(game_physics3d_contact_entities(physics, near_zone, ~0u, &found) == FLOW_OK);
     REQUIRE(acount(found) == 0);
     GAME_GameTransform3D_get(world, near_zone)->position.y = METER / 4;
-    REQUIRE(game_physics3d_contact_entities(world, entities, near_zone, ~0u, &found) == FLOW_OK);
+    REQUIRE(game_physics3d_contact_entities(physics, near_zone, ~0u, &found) == FLOW_OK);
     REQUIRE(acount(found) == 1 && is(found[0], floor));
-    REQUIRE(game_physics3d_contact_entities(world, entities, sunk, ~0u, &found) == FLOW_OK);
+    REQUIRE(game_physics3d_contact_entities(physics, sunk, ~0u, &found) == FLOW_OK);
     REQUIRE(acount(found) == 0);
-    REQUIRE(game_physics3d_contact_entities(world, entities, crate, 0, &found) == FLOW_OK);
+    REQUIRE(game_physics3d_contact_entities(physics, crate, 0, &found) == FLOW_OK);
     REQUIRE(acount(found) == 0);
     afree(found);
+    return true;
+}
+
+/* A hull collider wraps its mesh's vertices, however many it casts with,
+ * scaled, mirrored and carried like any other shape. */
+TEST_CASE(physics3d_hulls_wrap_mesh_vertices)
+{
+    ecs_entity floor = ground();
+    /* An octagonal drum a meter across and tall, sixteen vertices. */
+    CF_V3 drum[16];
+    for (int i = 0; i < 8; i++) {
+        float angle = (float)i * 3.14159265f / 4;
+        drum[2 * i] = (CF_V3){ cosf(angle) * METER / 2,
+                               METER / 2,
+                               sinf(angle) * METER / 2 };
+        drum[2 * i + 1] = (CF_V3){ drum[2 * i].x, -METER / 2, drum[2 * i].z };
+    }
+    publish_mesh("content/meshes/drum.mesh", drum, 16, NULL, 0);
+    GameCollider3D can = meshed(GAME_COLLIDER3D_HULL, "content/meshes/drum.mesh");
+    ecs_entity barrel = collider((ecs_entity){ 0 }, (CF_V3){ 0, 4 * METER, 0 }, can, GAME_BODY_DYNAMIC);
+    ecs_entity lid = collider(barrel, (CF_V3){ 0, METER, 0 }, can, GAME_BODY_STATIC);
+    game_physics3d_hit hit = sweep(barrel, (CF_V3){ 0, -10 * METER, 0 }, false);
+    REQUIRE(hit.found && is(hit.entity, floor) && near(hit.distance, 3.5f * METER, METER / 100));
+    steps(120);
+    REQUIRE(near_v3(position(barrel), (CF_V3){ 0, METER / 2, 0 }, METER / 64));
+    CF_V3 top = { 0, 10 * METER, 0 }, up = { 0, 1, 0 };
+    REQUIRE(hit_at(
+        ray(top, (CF_V3){ 0 }, ~0u, (ecs_entity){ 0 }, false),
+        lid,
+        (CF_V3){ 0, 2 * METER, 0 },
+        up,
+        8 * METER
+    ));
+    ecs_entity *found = NULL;
+    REQUIRE(game_physics3d_contact_entities(physics, barrel, ~0u, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 1 && is(found[0], floor));
+    afree(found);
+    /* Mirrored in X, a block beside its origin lies on the other side. */
+    publish_block();
+    GameCollider3D block = meshed(GAME_COLLIDER3D_HULL, "content/meshes/block.mesh");
+    ecs_entity mirrored = collider((ecs_entity){ 0 }, (CF_V3){ 0, 0, 5 * METER }, block, GAME_BODY_STATIC);
+    GAME_GameTransform3D_get(world, mirrored)->scale = (CF_V3){ -1, 1, 1 };
+    REQUIRE(hit_at(
+        ray((CF_V3){ 5 * METER, METER / 2, 5 * METER },
+            (CF_V3){ -5 * METER, METER / 2, 5 * METER },
+            ~0u,
+            (ecs_entity){ 0 },
+            false),
+        mirrored,
+        (CF_V3){ -METER / 2, METER / 2, 5 * METER },
+        (CF_V3){ 1, 0, 0 },
+        5.5f * METER
+    ));
+    ecs_entity left = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ -METER, 3 * METER, 5 * METER },
+        ball(METER / 4),
+        GAME_BODY_DYNAMIC
+    );
+    ecs_entity right = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ METER, 3 * METER, 5 * METER },
+        ball(METER / 4),
+        GAME_BODY_DYNAMIC
+    );
+    steps(120);
+    REQUIRE(near(position(left).y, 1.25f * METER, METER / 64));
+    REQUIRE(near(position(right).y, METER / 4, METER / 64));
+    return true;
+}
+
+/* A static mesh collider holds up convex bodies on its triangles, answers
+ * queries, and rebuilds when its mesh is published again. */
+TEST_CASE(physics3d_meshes_hold_up_convex_bodies)
+{
+    publish_floor(0);
+    GameCollider3D terrain = meshed(GAME_COLLIDER3D_MESH, "content/meshes/floor.mesh");
+    ecs_entity floor = collider((ecs_entity){ 0 }, (CF_V3){ 0, METER, 0 }, terrain, GAME_BODY_STATIC);
+    ecs_entity rock = collider((ecs_entity){ 0 }, (CF_V3){ 0, 4 * METER, 0 }, ball(METER / 2), GAME_BODY_DYNAMIC);
+    CF_V3 top = { METER, 10 * METER, 0 }, up = { 0, 1, 0 };
+    REQUIRE(hit_at(
+        ray(top, (CF_V3){ METER, 0, 0 }, ~0u, (ecs_entity){ 0 }, false),
+        floor,
+        (CF_V3){ METER, METER, 0 },
+        up,
+        9 * METER
+    ));
+    bool landed = false;
+    for (int i = 0; i < 120; i++) {
+        step(STEP);
+        landed = landed || touched(rock, floor, true);
+    }
+    REQUIRE(landed && near(position(rock).y, 1.5f * METER, METER / 64));
+    ecs_entity *found = NULL;
+    REQUIRE(game_physics3d_contact_entities(physics, rock, ~0u, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 1 && is(found[0], floor));
+    REQUIRE(game_physics3d_contact_entities(physics, floor, ~0u, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 1 && is(found[0], rock));
+    afree(found);
+    game_physics3d_hit hit;
+    REQUIRE(game_physics3d_shape_cast(physics, floor, up, ~0u, false, &hit) == FLOW_ERR_ARGUMENT);
+    /* The rock sleeps on it; a floor raised into it lifts it. */
+    publish_floor(METER / 4);
+    steps(60);
+    REQUIRE(near(position(rock).y, 1.75f * METER, METER / 64));
+    return true;
+}
+
+/* Box3D sensors visit only convex shapes, so a sensor passing through a mesh,
+ * or a body through a mesh sensor, still reports both edges once. */
+TEST_CASE(physics3d_sensors_overlap_meshes)
+{
+    set_gravity((CF_V3){ 0 });
+    publish_floor(0);
+    GameCollider3D terrain = meshed(GAME_COLLIDER3D_MESH, "content/meshes/floor.mesh");
+    ecs_entity floor = collider((ecs_entity){ 0 }, (CF_V3){ 0 }, terrain, GAME_BODY_STATIC);
+    terrain.sensor = true;
+    ecs_entity veil = collider((ecs_entity){ 0 }, (CF_V3){ 0, 10 * METER, 0 }, terrain, GAME_BODY_STATIC);
+    GameCollider3D zone = box(METER, METER, METER);
+    zone.sensor = true;
+    ecs_entity probe = collider((ecs_entity){ 0 }, (CF_V3){ 0, 2 * METER, 0 }, zone, GAME_BODY_KINEMATIC);
+    zone.mask = 0;
+    ecs_entity blind = collider((ecs_entity){ 0 }, (CF_V3){ 2 * METER, 2 * METER, 0 }, zone, GAME_BODY_KINEMATIC);
+    ecs_entity rock = collider((ecs_entity){ 0 }, (CF_V3){ 0, 12 * METER, 0 }, ball(METER / 4), GAME_BODY_DYNAMIC);
+    const ecs_entity movers[] = { probe, blind, rock };
+    for (int i = 0; i < 3; i++) {
+        body(movers[i])->linear_velocity = (CF_V3){ 0, -2 * METER, 0 };
+    }
+    int entered = 0, left = 0, crossed = 0;
+    CF_V3 point = { 0 };
+    for (int i = 0; i < 120; i++) {
+        step(STEP);
+        CF_V3 seen;
+        if (saw(probe, floor, true, &seen)) {
+            point = seen;
+        }
+        entered += touched(probe, floor, true);
+        left += touched(probe, floor, false);
+        crossed += touched(rock, veil, true) + touched(rock, veil, false);
+        REQUIRE(!saw(blind, floor, true, NULL) && !saw(probe, veil, true, NULL));
+    }
+    REQUIRE(entered == 1 && left == 1 && crossed == 2);
+    REQUIRE(near_v3(point, (CF_V3){ 0 }, METER / 8));
+    REQUIRE(near(body(rock)->linear_velocity.y, -2 * METER, 1e-3f));
+    return true;
+}
+
+TEST_CASE(physics3d_hulls_and_meshes_need_prepared_meshes)
+{
+    GameCollider3D missing = meshed(GAME_COLLIDER3D_HULL, "content/meshes/missing.mesh");
+    ecs_entity entity = collider((ecs_entity){ 0 }, (CF_V3){ 0 }, missing, GAME_BODY_DYNAMIC);
+    REQUIRE(
+        failed_with("Collider3D mesh content/meshes/missing.mesh is not a prepared content .mesh on entity")
+    );
+    game_physics3d_hit hit;
+    REQUIRE(
+        game_physics3d_raycast(physics, (CF_V3){ 0, METER, 0 }, (CF_V3){ 0 }, ~0u, (ecs_entity){ 0 }, false, &hit) ==
+        FLOW_ERR_ARGUMENT
+    );
+    GameCollider3D *shape = GAME_GameCollider3D_get(world, entity);
+    shape->mesh = "";
+    REQUIRE(failed_with("A Collider3D hull or mesh needs a mesh and a scale of at least .01"));
+    CF_V3 flat[] = { { 0 }, { METER, 0, 0 }, { 0, 0, METER }, { METER, 0, METER } };
+    int square[] = { 0, 2, 1, 1, 2, 3 };
+    publish_mesh("content/meshes/flat.mesh", flat, 4, square, 6);
+    shape->mesh = "content/meshes/flat.mesh";
+    REQUIRE(failed_with("A Collider3D hull needs a mesh whose vertices enclose a volume"));
+    publish_block();
+    shape->mesh = "content/meshes/block.mesh";
+    GameTransform3D *placed = GAME_GameTransform3D_get(world, entity);
+    placed->scale = (CF_V3){ .001f, 1, 1 };
+    REQUIRE(failed_with("a scale of at least .01"));
+    placed->scale = (CF_V3){ 1e5f, 1, 1 };
+    REQUIRE(failed_with("A Collider3D hull or mesh must fit within 100 km after scale"));
+    placed->scale = (CF_V3){ 1, 1, 1 };
+    REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
+    shape->shape = GAME_COLLIDER3D_MESH;
+    shape->mesh = "content/meshes/flat.mesh";
+    REQUIRE(failed_with("A Collider3D mesh must be static and placed in the world"));
+    body(entity)->type = GAME_BODY_STATIC;
+    REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
+    CF_V3 sliver[] = { { 0 }, { METER, 0, 0 }, { 2 * METER, 0, 0 } };
+    int line[] = { 0, 1, 2 };
+    publish_mesh("content/meshes/sliver.mesh", sliver, 3, line, 3);
+    shape->mesh = "content/meshes/sliver.mesh";
+    REQUIRE(failed_with("A Collider3D mesh needs a mesh with a triangle of nonzero area"));
+    shape->mesh = "content/meshes/flat.mesh";
+    collider(entity, (CF_V3){ 0, METER, 0 }, meshed(GAME_COLLIDER3D_MESH, "content/meshes/flat.mesh"), GAME_BODY_STATIC);
+    REQUIRE(failed_with("A Collider3D mesh must be static and placed in the world"));
     return true;
 }
 
@@ -1353,6 +1593,10 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_raycasts_find_the_nearest_collider);
     RUN_TEST_CASE(physics3d_shape_casts_sweep_a_collider);
     RUN_TEST_CASE(physics3d_contact_queries_match_what_touches);
+    RUN_TEST_CASE(physics3d_hulls_wrap_mesh_vertices);
+    RUN_TEST_CASE(physics3d_meshes_hold_up_convex_bodies);
+    RUN_TEST_CASE(physics3d_sensors_overlap_meshes);
+    RUN_TEST_CASE(physics3d_hulls_and_meshes_need_prepared_meshes);
     RUN_TEST_CASE(physics3d_characters_slide_along_what_they_meet);
     RUN_TEST_CASE(physics3d_characters_meet_only_solid_others);
     RUN_TEST_CASE(physics3d_characters_land_within_a_short_pass);

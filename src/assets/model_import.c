@@ -836,7 +836,8 @@ static bool bake_mesh(import *in, render_mesh_asset *mesh)
 }
 
 /* Creates the folders of `path` below the content folder, remembering the
- * ones it made. */
+ * ones it made. Each must be a folder, not a link that would carry the file
+ * out of the project; "x" already refuses a link in the file's place. */
 static bool make_folders(import *in, char *path)
 {
     for (char *slash = strchr(path + strlen(in->content) + 1, '/'); slash;
@@ -847,9 +848,14 @@ static bool make_folders(import *in, char *path)
         if (made) {
             apush(in->created, xstrdup(path));
         }
-        *slash = '/';
         if (!made && code != EEXIST) {
+            *slash = '/';
             return fail(in, "Cannot create the folders of %s: %s", path, strerror(code));
+        }
+        bool real = new_asset_real_folder(path, in->error, in->size);
+        *slash = '/';
+        if (!real) {
+            return false;
         }
     }
     return true;
@@ -962,6 +968,9 @@ static char *material_text(const char *name, const standard_material *material)
 /* Every image, material, the mesh and the prototype, as new content files. */
 static bool write_files(import *in, const render_mesh_asset *mesh, const standard_material *materials)
 {
+    if (!new_asset_real_folder(in->content, in->error, in->size)) {
+        return false;
+    }
     const CM_Model *model = in->model;
     for (int i = 0; i < model->image_count; i++) {
         if (in->images[i] && !write_new(

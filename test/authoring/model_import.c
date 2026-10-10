@@ -596,6 +596,29 @@ static const char
 
 static const uint8_t WHITE[4] = { 255, 255, 255, 255 };
 
+/* Every folder an import writes into, the content folder's own included,
+ * must be a folder and not a link to one, so nothing lands outside the
+ * content. A refused import leaves the link's target as it was. */
+TEST_CASE(model_imports_refuse_linked_folders)
+{
+    gltf_fixture f = { 0 };
+    crate(&f);
+    char link[128], target[128];
+    inside(target, sizeof target, "other");
+    inside(link, sizeof link, "content/materials");
+    REQUIRE(!symlink(target, link));
+    REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
+    REQUIRE(strstr(error, "content/materials is not a folder"));
+    REQUIRE(!entries("other") && entries("content") == 1);
+    REQUIRE(!unlink(link));
+    inside(link, sizeof link, "linked");
+    REQUIRE(!symlink(target, link));
+    REQUIRE(!import_into("linked", &f, "crate.gltf", CRATE, "Crate"));
+    REQUIRE(strstr(error, "linked is not a folder") && !entries("other"));
+    gltf_fixture_free(&f);
+    return true;
+}
+
 /* Models the import would draw unlike glTF write nothing. */
 TEST_CASE(model_imports_refuse_what_they_cannot_draw_as_authored)
 {
@@ -917,6 +940,7 @@ void test_model_import()
     RUN_TEST_CASE(model_imports_name_parts_apart);
     RUN_TEST_CASE(model_imports_name_materials_of_the_longest_models);
     RUN_TEST_CASE(model_imports_replace_nothing_and_undo_failures);
+    RUN_TEST_CASE(model_imports_refuse_linked_folders);
     RUN_TEST_CASE(model_imports_refuse_what_they_cannot_draw_as_authored);
     RUN_TEST_CASE(model_imports_refuse_files_they_cannot_read);
     RUN_TEST_CASE(model_imports_keep_only_the_base_color_of_unlit_materials);

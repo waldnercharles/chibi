@@ -16,6 +16,7 @@
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -625,6 +626,88 @@ TEST_CASE(source_native_query_matches_authored_rectangles)
     return true;
 }
 
+static ecs_entity place_collider(CF_V3 position, GameCollider3D collider)
+{
+    ecs_entity entity = ecs_world_create_entity(world);
+    assert(GAME_GameTransform3D_add(world, entity, 0) == 0);
+    assert(GAME_GameCollider3D_add(world, entity, 0) == 0);
+    assert(ecs_world_apply_commands(world) == 0);
+    *GAME_GameTransform3D_get(world, entity) = (GameTransform3D){
+        .position = position,
+        .rotation = cf_quat_identity(),
+        .scale = { 1, 1, 1 }
+    };
+    collider.mask = ~0u;
+    *GAME_GameCollider3D_get(world, entity) = collider;
+    return entity;
+}
+/* The 3D queries read colliders from scripts on both backends, with no 3D
+ * physics world: a ray down meets a rock, the owner's crate slides into a wall
+ * past the floor it rests on, and touches only that floor. Lengths are project
+ * units, 32 per meter, so a cast stops Box3D's linear slop of .16 short. */
+TEST_CASE(source_native_physics3d_queries_read_colliders)
+{
+    const char *
+        text = "behavior Probe { owner \"ecs.entity\"; "
+               "state start:struct<\"CF_V3\">={x:0.0,y:320.0,z:0.0}; "
+               "state finish:struct<\"CF_V3\">={x:0.0,y:-32.0,z:0.0}; "
+               "state push:struct<\"CF_V3\">={x:320.0,y:0.0,z:0.0}; "
+               "state found:bool=false; state target:handle<\"ecs.entity\">=0; "
+               "state distance:float=0.0; state "
+               "normal:struct<\"CF_V3\">={x:0.0,y:0.0,z:0.0}; "
+               "state blocked:handle<\"ecs.entity\">=0; state "
+               "travel:float=0.0; "
+               "state touching:int=0; "
+               "on Tick { found=raycast_3d(start,finish,1,0,false).Found; "
+               "target=raycast_3d(start,finish,1,0,false).Entity; "
+               "distance=raycast_3d(start,finish,1,0,false).Distance; "
+               "normal=raycast_3d(start,finish,1,0,false).Normal; "
+               "blocked=shape_cast_3d(self,push,1,false).Entity; "
+               "travel=shape_cast_3d(self,push,1,false).Distance; "
+               "touching=length(contact_entities_3d(self,2)); } }";
+    for (int backend = 0; backend < 2; backend++) {
+        world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform3D, NULL) == 0);
+        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameCollider3D, NULL) == 0);
+        GameCollider3D slab = { .shape = GAME_COLLIDER3D_BOX,
+                                .size = { 1280, 32, 1280 },
+                                .category = 2 },
+                       cube = { .shape = GAME_COLLIDER3D_BOX,
+                                .size = { 32, 32, 32 },
+                                .category = 1 },
+                       ball = { .shape = GAME_COLLIDER3D_SPHERE,
+                                .radius = 16,
+                                .category = 1 };
+        place_collider((CF_V3){ 0, -16, 0 }, slab);
+        ecs_entity rock = place_collider((CF_V3){ 0, 64, 0 }, ball);
+        ecs_entity crate = place_collider((CF_V3){ 0, 16, 128 }, cube);
+        ecs_entity wall = place_collider((CF_V3){ 160, 16, 128 }, cube);
+        entities = game_entities_new(world, NULL);
+        REQUIRE(entities);
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t tick = execution_module_event(prepared->module, "Tick");
+        uint64_t found = state_id("found"), target = state_id("target"),
+                 distance = state_id("distance"), normal = state_id("normal"),
+                 blocked = state_id("blocked"), travel = state_id("travel"),
+                 touching = state_id("touching");
+        REQUIRE(tick && found && target && distance && normal && blocked && travel && touching);
+        instance = execution_program_attach(program, ecs_entity_to_u64(crate));
+        REQUIRE(instance);
+        retire_producer();
+        REQUIRE(dispatch(tick, 4096) >= 0);
+        REQUIRE(execution_instance_state(instance, found)->b);
+        REQUIRE(execution_instance_state(instance, target)->u64 == ecs_entity_to_u64(rock));
+        REQUIRE(fabsf(execution_instance_state(instance, distance)->f - 240) < .01f);
+        const CF_V3 *up = execution_instance_state(instance, normal)->ptr;
+        REQUIRE(fabsf(up->x) < 1e-3f && fabsf(up->y - 1) < 1e-3f && fabsf(up->z) < 1e-3f);
+        REQUIRE(execution_instance_state(instance, blocked)->u64 == ecs_entity_to_u64(wall));
+        REQUIRE(fabsf(execution_instance_state(instance, travel)->f - 127.84f) < .01f);
+        REQUIRE(execution_instance_state(instance, touching)->i == 1);
+        cleanup();
+    }
+    return true;
+}
+
 static bool publish_material(int width)
 {
     shader_error error = { 0 };
@@ -739,6 +822,51 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
     return true;
 }
 
+TEST_CASE(source_tilemap_queries_use_live_authored_cells)
+{
+    const char
+        *text = "behavior Grid { state frame:int=-1; state count:int=0; "
+                "state point:struct<\"CF_V2\">={x:11,y:-4}; "
+                "state minimum:struct<\"CF_V2\">={x:10,y:-5}; "
+                "state maximum:struct<\"CF_V2\">={x:13,y:0}; "
+                "on Tick { frame=tilemap_frame_at(self,point); "
+                "count=tilemap_occupied_in_box(self,minimum,maximum); } }";
+    for (int backend = 0; backend < 2; backend++) {
+        world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameTilemap, NULL) == ECS_OK);
+        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
+        ecs_entity tilemap = ecs_world_create_entity(world);
+        REQUIRE(GAME_GameTilemap_add(world, tilemap, 0) == ECS_OK);
+        REQUIRE(GAME_GameTransform_add(world, tilemap, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        *GAME_GameTransform_get(world, tilemap) = (GameTransform){ 10, -5 };
+        *GAME_GameTilemap_get(world, tilemap) = (GameTilemap){ .cells = "7 -1",
+                                                               .columns = 2,
+                                                               .rows = 1,
+                                                               .frame_width = 3,
+                                                               .frame_height = 5 };
+        entities = game_entities_new(world, NULL);
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t tick = execution_module_event(prepared->module, "Tick"),
+                 frame = state_id("frame"), count = state_id("count");
+        REQUIRE(tick && frame && count);
+        REQUIRE(execution_program_bind_service(program, "game.entities", entities) == 0);
+        instance = execution_program_attach(program, ecs_entity_to_u64(tilemap));
+        REQUIRE(instance);
+        retire_producer();
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(execution_instance_state(instance, frame)->i == 7);
+        REQUIRE(execution_instance_state(instance, count)->i == 1);
+        GAME_GameTilemap_get(world, tilemap)->cells = "-1 9";
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(execution_instance_state(instance, frame)->i == -1);
+        REQUIRE(execution_instance_state(instance, count)->i == 0);
+        REQUIRE(execution_instance_pending(instance) == 0);
+        cleanup();
+    }
+    return true;
+}
+
 void test_source_native_features()
 {
     pu_setup(NULL, cleanup);
@@ -754,6 +882,8 @@ void test_source_native_numeric_queries()
     RUN_TEST_CASE(source_native_motion_retains_numeric_outputs);
     RUN_TEST_CASE(source_native_query_retains_nested_iteration_and_membership);
     RUN_TEST_CASE(source_native_query_matches_authored_rectangles);
+    RUN_TEST_CASE(source_native_physics3d_queries_read_colliders);
+    RUN_TEST_CASE(source_tilemap_queries_use_live_authored_cells);
     pu_clear_setup();
 }
 

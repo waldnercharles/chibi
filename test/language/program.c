@@ -3009,37 +3009,47 @@ TEST_CASE(program_input_map_validates_actions)
     free(many);
     return true;
 }
-/* The catalog finds a scene's references in nested children as well as in
- * its roots, and reports the ones that name nothing. */
+/* The catalog finds the references in a scene's or prototype's nested
+ * children as well as in its roots, and reports the ones that name nothing. */
 TEST_CASE(program_scene_children_are_referenced)
 {
-    char root[] = "/tmp/chibi-children-XXXXXX", path[256];
+    char root[] = "/tmp/chibi-children-XXXXXX", path[256], ship[256];
     REQUIRE(mkdtemp(root));
     snprintf(path, sizeof path, "%s/scenes/Start.kdl", root);
-    source_catalog_edit edit = {
-        .path = path,
-        .text = "version 1\n"
-                "name \"Start\"\n"
-                "(array)entities {\n"
-                "    - {\n"
-                "        name \"Ship\"\n"
-                "        prototype \"Hull\"\n"
-                "        (array)children {\n"
-                "            - {\n"
-                "                name \"Turret\"\n"
-                "                (array)children {\n"
-                "                    - name=\"Barrel\" prototype=\"Gun\"\n"
-                "                }\n"
-                "            }\n"
-                "        }\n"
-                "    }\n"
-                "}\n",
+    snprintf(ship, sizeof ship, "%s/prototypes/Ship.kdl", root);
+    source_catalog_edit edits[] = {
+        {
+            .path = path,
+            .text = "version 1\n"
+                    "name \"Start\"\n"
+                    "(array)entities {\n"
+                    "    - {\n"
+                    "        name \"Ship\"\n"
+                    "        prototype \"Hull\"\n"
+                    "        (array)children {\n"
+                    "            - {\n"
+                    "                name \"Turret\"\n"
+                    "                (array)children {\n"
+                    "                    - name=\"Barrel\" prototype=\"Gun\"\n"
+                    "                }\n"
+                    "            }\n"
+                    "        }\n"
+                    "    }\n"
+                    "}\n",
+        },
+        {
+            .path = ship,
+            .text = "name \"Ship\"\n"
+                    "(array)children {\n"
+                    "    - name=\"Mast\" prototype=\"Pole\"\n"
+                    "}\n",
+        }
     };
-    source_catalog *project = source_catalog_edited(root, &catalog, &edit, 1);
-    const char *expected[] = { "Hull", "Gun" };
-    REQUIRE(source_catalog_reference_count(project) == 2);
-    REQUIRE(source_catalog_diagnostic_count(project) == 2);
-    for (int i = 0; i < 2; i++) {
+    source_catalog *project = source_catalog_edited(root, &catalog, edits, 2);
+    const char *expected[] = { "Hull", "Gun", "Pole" };
+    REQUIRE(source_catalog_reference_count(project) == 3);
+    REQUIRE(source_catalog_diagnostic_count(project) == 3);
+    for (int i = 0; i < 3; i++) {
         const source_catalog_reference *reference = &source_catalog_references(project)[i];
         REQUIRE(reference->kind == SOURCE_REFERENCE_PROTOTYPE);
         REQUIRE(!strcmp(reference->name, expected[i]));

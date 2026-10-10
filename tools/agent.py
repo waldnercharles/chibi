@@ -86,6 +86,27 @@ def studio_resource_preflight(build):
             raise ValueError('studio_startup_resource_generation_changed')
 
 
+def clone_project(source, target):
+    """Copies a project to a scratch target, copy-on-write where the filesystem can."""
+    if os.name == 'nt':
+        shutil.copytree(source, target)
+        return
+    clone = '-c' if sys.platform == 'darwin' else '--reflink=auto'
+    subprocess.run(['cp', '-R', clone, str(source), str(target)], check=True)
+
+
+def external_project(data):
+    """Whether `data` is Studio's fixture project.kdl at a version the engine
+    upgrades when it opens it. Studio's projects lag the engine's version."""
+    header = (ROOT / 'src/assets/project.h').read_text()
+    oldest, current = (int(re.search(rf'^#define {name} (\d+)$', header, re.M)[1])
+                       for name in ('CHIBI_PROJECT_OLDEST_VERSION', 'CHIBI_PROJECT_VERSION'))
+    line, _, rest = data.partition(b'\n')
+    version = re.fullmatch(rb'version ([1-9][0-9]*)', line)
+    return (version is not None and oldest <= int(version[1]) <= current and
+            rest == b'name "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n')
+
+
 def studio_startup_preflight():
     source = Path('/Users/cwaldner/Personal/chibi-studio')
     build = ROOT / 'build-verify/sdk-migration/external-studio-build'
@@ -106,16 +127,17 @@ def studio_startup_preflight():
                         1024 * 1024) != evidence.get('sdk_config_sha256')):
         raise ValueError('studio_startup_build_provenance_mismatch')
     starter = source / 'projects/starter'
-    expected = {'project.kdl': b'version 21\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
-                'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n'}
-    if {p.relative_to(starter).as_posix() for p in starter.rglob('*') if p.is_file()} != set(expected):
+    expected = {'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n'}
+    if {p.relative_to(starter).as_posix() for p in starter.rglob('*') if p.is_file()} != {'project.kdl', *expected}:
         raise ValueError('studio_starter_membership_changed')
+    if not external_project(bounded_read(starter / 'project.kdl', 1024)):
+        raise ValueError('studio_starter_content_changed')
     for name, value in expected.items():
         if (starter / name).stat().st_size != len(value) or (starter / name).read_bytes() != value:
             raise ValueError('studio_starter_content_changed')
     studio_resource_preflight(build)
-    return dict(starter_files=2, starter_bytes=118, frames=2, window=[1920, 1080],
-                studio_resource_files=261, studio_resource_bytes=436675)
+    return starter, dict(starter_files=2, starter_bytes=118, frames=2, window=[1920, 1080],
+                         studio_resource_files=261, studio_resource_bytes=436675)
 
 
 def bounded_read(path, limit):
@@ -174,13 +196,14 @@ def studio_acceptance_preflight(selector):
         raise ValueError('studio_acceptance_sdk_changed')
     fixture = source / 'tests/acceptance/project'
     expected = {
-        'project.kdl': b'version 21\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
         'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n',
         'content/behaviors/Counter.chibi': b'behavior Counter {\n    state count: int = 1\n    on Tick {\n        count = count + 1\n    }\n}\n',
     }
     paths = list(fixture.rglob('*'))
-    if any(p.is_symlink() for p in paths) or {p.relative_to(fixture).as_posix() for p in paths if p.is_file()} != set(expected):
+    if any(p.is_symlink() for p in paths) or {p.relative_to(fixture).as_posix() for p in paths if p.is_file()} != {'project.kdl', *expected}:
         raise ValueError('studio_acceptance_fixture_membership_changed')
+    if not external_project(bounded_read(fixture / 'project.kdl', 1024)):
+        raise ValueError('studio_acceptance_fixture_changed')
     for name, value in expected.items():
         if (fixture / name).stat().st_size != len(value) or bounded_read(fixture / name, len(value)) != value:
             raise ValueError('studio_acceptance_fixture_changed')
@@ -494,7 +517,7 @@ def main():
         elif args.selector in STUDIO_ACCEPTANCE:
             acceptance_binary, acceptance_fixture, preflight = studio_acceptance_preflight(args.selector)
         elif args.selector in STUDIO_SELECTORS:
-            preflight = studio_startup_preflight()
+            starter, preflight = studio_startup_preflight()
         elif args.selector in RENDER_SELECTORS:
             # Render consumers link the desktop SDK, so only the main build has them.
             command = [str(ROOT / args.build_dir / 'test/tools/test_tools'), args.selector]
@@ -507,11 +530,16 @@ def main():
                     return report('blocked', 'gles_requires_xvfb_run', selector=args.selector)
                 command = ['xvfb-run', '-a'] + command
         execution_evidence = None
-        scratch_context = tempfile.TemporaryDirectory(prefix='chibi-studio-acceptance-') if args.selector in STUDIO_ACCEPTANCE else nullcontext(None)
+        scratch_context = tempfile.TemporaryDirectory(prefix='chibi-studio-') if args.selector in STUDIO_SELECTORS else nullcontext(None)
         with scratch_context as scratch:
-            if scratch:
+            if scratch and args.selector not in STUDIO_ACCEPTANCE:
+                # Opening a project upgrades it in place, so start a copy of the starter.
+                starter_copy = Path(scratch) / 'starter'
+                clone_project(starter, starter_copy)
+                command = [str(starter_copy) if part == str(starter) else part for part in command]
+            elif scratch:
                 project_copy = Path(scratch) / 'project'
-                shutil.copytree(acceptance_fixture, project_copy)
+                clone_project(acceptance_fixture, project_copy)
                 env['CHIBI_STUDIO_PREFS_PATH'] = str(project_copy / '.acceptance-prefs.json')
                 env['CHIBI_THUMBNAIL_CACHE'] = str(project_copy / '.acceptance-thumbnails')
                 command = [str(acceptance_binary), STUDIO_ACCEPTANCE[args.selector][0], '--project-root', str(project_copy)]

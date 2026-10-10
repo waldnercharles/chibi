@@ -51,9 +51,9 @@ int game_prototypes_register(
 )
 {
     assert(prototypes && scene && (!size || error));
-    if (!name || !name[0] || game_scene_object_count(scene) != 1) {
+    if (!name || !name[0] || !game_scene_is_tree(scene)) {
         if (size) {
-            snprintf(error, size, "prepared prototype requires a name and exactly one object");
+            snprintf(error, size, "prepared prototype requires a name and one root object");
         }
         return -1;
     }

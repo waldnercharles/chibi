@@ -1316,10 +1316,21 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(scenes_run_under_their_own_name);
     RUN_TEST_CASE(scene_children_are_placed_by_their_parent);
     RUN_TEST_CASE(prototype_children_come_with_their_instance);
-    RUN_TEST_CASE(prototype_expansion_is_shared);
-    RUN_TEST_CASE(scene_instances_share_the_expansion);
     RUN_TEST_CASE(scenarios_hold_input_actions);
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     RUN_TEST_CASE(unit_mismatches_are_warnings);
+    pu_clear_setup();
+}
+
+/* The cases that read a project-wide budget's worth of prototypes, kept apart
+ * so each selector stays well inside the test deadline. */
+void test_tool_prototype_expansion(const char *binary)
+{
+    bool found = realpath(binary, program);
+    assert(found);
+    (void)found;
+    pu_setup(setup, teardown);
+    RUN_TEST_CASE(prototype_expansion_is_shared);
+    RUN_TEST_CASE(scene_instances_share_the_expansion);
     pu_clear_setup();
 }

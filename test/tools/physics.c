@@ -2227,12 +2227,20 @@ TEST_CASE(physics_joined_bodies_touch_only_with_collide)
     fixture f = joined();
     ecs_entity chassis = crate(&f, 0, 64, GAME_BODY_STATIC);
     ecs_entity wheel = turning(&f, 16, 0, 16, GAME_BODY_DYNAMIC);
-    GameJoint *axle = join(&f, wheel, GAME_JOINT_HINGE, chassis);
+    GameJoint *axle = join(&f, point(&f, wheel, 0, 0), GAME_JOINT_HINGE, chassis);
+    ecs_entity *found = NULL;
+    REQUIRE(game_physics_contact_entities(f.world, f.entities, wheel, 1, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 0);
     REQUIRE(step(&f, 1.0f / 60) == 0 && step(&f, 1.0f / 60) == 0);
     REQUIRE(near_v2(at(&f, wheel), 16, 0, .5f));
+    REQUIRE(game_physics_contact_entities(f.world, f.entities, chassis, 1, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 0);
     axle->collide = true;
+    REQUIRE(game_physics_contact_entities(f.world, f.entities, chassis, 1, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 1 && ecs_entity_to_u64(found[0]) == ecs_entity_to_u64(wheel));
     REQUIRE(step(&f, 1.0f / 60) == 2);
     REQUIRE(other(&f, wheel) == ecs_entity_to_u64(chassis));
+    afree(found);
     dispose(&f);
     return true;
 }

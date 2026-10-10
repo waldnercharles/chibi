@@ -1799,6 +1799,65 @@ int game_physics_raycast(
     return result;
 }
 
+/* The slot of the body a joint on or under entity holds, read from its
+ * components as sync places it: the nearest collider at or above it, or the
+ * root collider carrying that one. */
+static unsigned read_owner(const ecs_world *world, game_entities *entities, ecs_entity entity)
+{
+    for (ecs_entity at = entity; at.slot; at = game_transform_parent(world, at)) {
+        if (GAME_GameCollider_has(world, at)) {
+            unsigned group = read_group(world, entities, at);
+            return group ? group : at.slot;
+        }
+    }
+    return 0;
+}
+
+/* Collects the bodies joints without collide join to owner's body. */
+static int read_joined(ecs_world *world, game_entities *entities, unsigned owner, unsigned **out)
+{
+    ecs_component_id id = GAME_COMPONENT_GameJoint.id;
+    if (!ecs_world_component(world, id)) {
+        return FLOW_OK;
+    }
+    ecs_query query;
+    int result = ecs_query_begin(world, &query, &id, 1);
+    if (result != ECS_OK) {
+        return result;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        const GameJoint *joint = GAME_GameJoint_get_const(world, entity);
+        ecs_entity other = ecs_entity_from_u64(joint->other);
+        if (joint->collide || !other.slot || !ecs_entity_is_alive(world, other) ||
+            game_entities_is_retiring(entities, entity) ||
+            game_entities_is_retiring(entities, other) ||
+            !GAME_GameTransform_has(world, entity) ||
+            !GAME_GameTransform_has(world, other)) {
+            continue;
+        }
+        unsigned a = read_owner(world, entities, entity),
+                 b = read_owner(world, entities, other);
+        if (a == owner && b) {
+            apush(*out, b);
+        } else if (b == owner && a) {
+            apush(*out, a);
+        }
+    }
+    ecs_query_end(&query);
+    return FLOW_OK;
+}
+
+static bool has_slot(const unsigned *slots, unsigned slot)
+{
+    for (int i = 0; i < acount(slots); i++) {
+        if (slots[i] == slot) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int game_physics_contact_entities(
     ecs_world *world,
     game_entities *entities,
@@ -1816,11 +1875,21 @@ int game_physics_contact_entities(
     if (!read_geometry(world, entities, entity, &source)) {
         return FLOW_ERR_ARGUMENT;
     }
+    unsigned *joined = NULL;
+    int result = read_joined(
+        world,
+        entities,
+        source.group ? source.group : entity.slot,
+        &joined
+    );
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
                                     GAME_COMPONENT_GameCollider.id };
     ecs_query query;
-    int result = ecs_query_begin(world, &query, required, 2);
+    if (result == FLOW_OK) {
+        result = ecs_query_begin(world, &query, required, 2);
+    }
     if (result != ECS_OK) {
+        afree(joined);
         return result;
     }
     ecs_entity candidate;
@@ -1838,7 +1907,8 @@ int game_physics_contact_entities(
             result = FLOW_ERR_ARGUMENT;
             break;
         }
-        if (!eligible(&source, &target)) {
+        if (!eligible(&source, &target) ||
+            has_slot(joined, target.group ? target.group : candidate.slot)) {
             continue;
         }
         /* Match Box2D's speculative solid contact distance. The query is rare
@@ -1851,6 +1921,7 @@ int game_physics_contact_entities(
         }
     }
     ecs_query_end(&query);
+    afree(joined);
     if (result < 0) {
         aclear(*out);
     }

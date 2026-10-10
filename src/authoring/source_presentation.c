@@ -196,7 +196,8 @@ authoring_source_presentation *authoring_source_presentation_new(
     memset(p.statements, 0, (size_t)analysis->statement_count * sizeof *p.statements);
     for (int i = 0; i < analysis->symbol_count; i++) {
         const script_symbol *s = &analysis->symbols[i];
-        if (s->declaration.start < 0 || s->function >= 0) {
+        if (s->declaration.start < 0 || s->function >= 0 ||
+            analysis->scopes[s->scope].function >= 0) {
             continue;
         }
         if (s->kind == SCRIPT_STATE || s->kind == SCRIPT_SHARED_STATE ||

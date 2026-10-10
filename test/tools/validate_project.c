@@ -45,11 +45,12 @@ static void write_file(const char *relative, const char *text)
 }
 
 /* Runs a shell command from `root` that sees chibi_ctl as $0 and its own
- * output as $1; returns its exit status and keeps the last reply. */
-static int run(const char *command)
+ * output as $1, for at most `allowed` seconds; returns its exit status and
+ * keeps the last reply. */
+static int run_within(const char *command, double allowed)
 {
     const char *args[] = { "/bin/sh", "-c", command, program, log_path, NULL };
-    int status = tool_run(args, root, log_path);
+    int status = tool_run_within(args, root, log_path, allowed);
     char *output = tool_read(log_path);
     const char *json = output ? strstr(output, "{\"contract\"") : NULL;
     for (const char *next; json && (next = strstr(json + 1, "{\"contract\""));) {
@@ -61,6 +62,12 @@ static int run(const char *command)
     assert(reply);
     return status;
 }
+
+static int run(const char *command)
+{
+    return run_within(command, TOOL_RUN_SECONDS);
+}
+
 /* Sends requests, one per line, to one chibi_ctl, inside the project "game"
  * when `scoped`. */
 static int ctl(bool scoped, const char *request)
@@ -72,6 +79,16 @@ static int ctl(bool scoped, const char *request)
 static int validate()
 {
     return ctl(true, "{\"contract\":1,\"operation\":\"validate_project\"}");
+}
+
+/* Validation loads each prototype three times, so under sanitizers a project
+ * that reads past the expansion budget can take longer than a usual run. */
+static const double EXPANSION_SECONDS = 30;
+
+static int validate_expansion()
+{
+    write_file("request.json", "{\"contract\":1,\"operation\":\"validate_project\"}");
+    return run_within("exec \"$0\" --project-root game < request.json", EXPANSION_SECONDS);
 }
 
 static yyjson_val *result(const char *key)
@@ -1050,18 +1067,27 @@ static void write_fans(const char *prefix, int levels)
 TEST_CASE(prototype_expansion_is_shared)
 {
     /* Each load stays under its own limit, but the project's loads together
-     * read more than one load may, so preparing it stops. Fan0 to Fan12 read
-     * 16369 documents, and Twin's two Fan0 children read 16382 more. */
+     * read more than one load may, so preparing it stops. Fan0 to Fan10 read
+     * 4083 documents, and each Pair's two Fan0 children read 4094 more. */
     char folder[256];
     path(folder, sizeof folder, "game/content/prototypes");
     REQUIRE(mkdir(folder, 0700) == 0);
-    write_fans("Fan", 13);
-    write_file(
-        "game/content/prototypes/Twin.kdl",
-        "name \"Twin\"\n(array)children { - name=\"L\" prototype=\"Fan0\"; - "
-        "name=\"R\" prototype=\"Fan0\"; }\n"
-    );
-    REQUIRE(validate() != 0);
+    write_fans("Fan", 11);
+    for (int i = 0; i < 4; i++) {
+        char file[64], text[160];
+        snprintf(file, sizeof file, "game/content/prototypes/Pair%d.kdl", i);
+        snprintf(
+            text,
+            sizeof text,
+            "name \"Pair%d\"\n(array)children { - name=\"L\" "
+            "prototype=\"Fan0\"; "
+            "- name=\"R\" prototype=\"Fan0\"; }\n",
+            i
+        );
+        write_file(file, text);
+    }
+    REQUIRE(validate_expansion() != 0);
+    REQUIRE(errors() == 1);
     const char *message = first_message(result("project"));
     REQUIRE(message && strstr(message, "through their includes and children"));
     return true;
@@ -1084,7 +1110,7 @@ TEST_CASE(scene_instances_share_the_expansion)
     }
     snprintf(scene + n, sizeof scene - n, "}\n");
     write_file("game/content/scenes/Start.kdl", scene);
-    REQUIRE(validate() != 0);
+    REQUIRE(validate_expansion() != 0);
     const char *message = first_message(result("project"));
     REQUIRE(message && strstr(message, "through their includes and children"));
     return true;

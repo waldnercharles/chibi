@@ -302,10 +302,10 @@ Otherwise the child teleports when a script moves its parents. Moving a body's
 Transform3D from a script teleports it. Gravity is 9.81 meters per second
 squared down Y unless one entity's `GAME.GameGravity3D` sets it. Behaviors
 handle `on ContactBegin3D` with `event.Other` and `event.Point`, and
-`on ContactEnd3D` with `event.Other`. A sensor collider reports both without
-pushing. Hull and triangle-mesh colliders are not available yet. The 3D
-renderer draws a body's `GAME.GameGeometry3D` at its Transform3D pose (see
-`docs/rendering-3d.md`).
+`on ContactEnd3D` with `event.Other`, as 2D colliders report `on ContactBegin`
+and `on ContactEnd`. A sensor collider reports both without pushing. Hull and
+triangle-mesh colliders are not available yet. The 3D renderer draws a body's
+`GAME.GameGeometry3D` at its Transform3D pose (see `docs/rendering-3d.md`).
 
 `GAME.GameCharacter3D` turns a kinematic body with a solid capsule collider
 into a character that walks and slides. Each step physics moves it by its
@@ -316,7 +316,8 @@ Physics writes `on_floor` and `floor_normal`, a surface within 45 degrees of
 up, against gravity. The character stops at dynamic bodies and other
 characters as at walls, does not ride moving platforms, and needs a radius of
 at least 2 cm. Colliders under it must be sensors, because only its capsule
-moves and slides.
+moves and slides. It turns by its `Transform3D`; physics keeps its body's
+`angular_velocity` at zero.
 
 Scripts query colliders where their components place them now, with or without
 a step: `raycast_3d(start, end, categories, exclude, sensors)` and
@@ -327,6 +328,19 @@ collider as the simulation would let it. None of them meets colliders on the
 caller's own body. A shape cast that starts touching something, such as the
 ground a body rests on, hits it at distance zero, so leave the ground's
 category out to sweep along it.
+
+`apply_impulse_3d(entity, impulse)` changes a dynamic body's velocity by the
+impulse over its mass at its next physics step, and
+`apply_force_3d(entity, force)` accelerates it by the force over its mass
+through that step. 2D bodies take `apply_impulse` and `apply_force` with 2D
+vectors. A 3D body weighs 1000 kg per cubic meter, the density of water, and a
+2D body 1 kg per square meter, so an impulse is in kilogram units per second
+and a force in kilogram units per second squared. Pushes act through the
+center of mass and add up, and they fail on an entity without a dynamic body.
+After each step physics writes a dynamic body's mass, with the solid colliders
+it carries, to `mass` on its `GAME.GameBody3D` or `GAME.GameBody`, so
+`self.Body3D.mass` times a change of speed is the impulse that makes it. The
+mass reads zero until the body's first step.
 
 ```kdl
 name "Crate"

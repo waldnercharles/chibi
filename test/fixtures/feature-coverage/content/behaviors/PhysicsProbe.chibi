@@ -4,8 +4,13 @@ behavior PhysicsProbe {
         if hit.Found {
             self.Velocity = self.Velocity * 0.5
         }
+        apply_force(self, vec2(0, self.Body.mass * 10))
     }
     on ContactBegin {
         touching := get_contact_entities(self, 1)
+        apply_impulse(self, vec2(0, self.Body.mass * 20))
+    }
+    on ContactEnd {
+        left := Other
     }
 }

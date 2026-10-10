@@ -95,7 +95,9 @@ square holds the lookup, and compares against it with a 3x3 grid of hardware
 - **Masked casters**: shadow passes draw depth alone, except for Mask
   materials, which run a shadow build of their program that discards the
   pixels below their cutoff, so cut-out leaves cast cut-out shadows. A masked
-  solid outside the view keeps a material row for this.
+  solid outside the view keeps a material row for this. Each pass sees its
+  View Direction from its light: toward the sun, or toward a point or spot
+  light's position.
 - **Not covered**: blended surfaces, particles and trails cast nothing.
   Cascade edges change resolution without a blend.
   A penumbra's radius stops at 128 texels of its cascade, and a caster
@@ -354,7 +356,9 @@ box below its cutoff leaves only the sky; only Blend counts as translucent.
 Opaque and Mask boxes shadow the floor, and a Blend box does not. A box masked
 to one half shades the floor behind that half alone, from the sun, as the unit
 box mesh as well, and from a point light. So does a masked pillar outside the
-view, whose material row arrives through a later worker's buffer. It is a GPU
+view, whose material row arrives through a later worker's buffer. A box masked
+by View Direction shades the floor as the sun and a point light see it, though
+the camera sees it cut. It is a GPU
 check that runs the main build's
 `test/tools/test_tools` after the agent's device preflight, so build it first
 with `make build BUILD_TARGET=test_tools`.

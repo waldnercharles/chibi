@@ -2873,6 +2873,34 @@ TEST_CASE(masked_surfaces_cast_cut_out_shadows)
     return true;
 }
 
+/* A box masked by View Direction to what is seen from toward -X shades the
+ * floor from the sun and from a point light there, which see it kept, though
+ * the camera above sees it cut. */
+TEST_CASE(view_dependent_masks_cast_shadows_seen_from_the_light)
+{
+    REQUIRE(test_register_view_mask("Facing"));
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    ecs_entity box = add_surface_box("Facing");
+    GAME_GameGeometry3D_get(world, box)->elevation = 1;
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(pixel_at(shaded).colors.g > 60);
+    sun->shadows = true;
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(shaded).colors.g == 0);
+    sun->intensity = 0;
+    ecs_entity lamp = add_lamp((CF_V3){ -3, 4, 0 }, 2, 20);
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(shaded).colors.g > 30);
+    GAME_GamePointLight_get(world, lamp)->shadows = true;
+    REQUIRE(render(&environment));
+    REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 1);
+    REQUIRE(pixel_at(shaded).colors.g == 0);
+    return true;
+}
+
 /* A masked pillar outside the view casts only its kept half into it. Crowds
  * far away split collection across workers where the host has them: the
  * pillar's material row arrives through a later buffer than the floor's, and
@@ -3001,6 +3029,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(alpha_modes_decide_how_opacity_draws);
     RUN_TEST_CASE(opaque_and_masked_surfaces_cast_shadows);
     RUN_TEST_CASE(masked_surfaces_cast_cut_out_shadows);
+    RUN_TEST_CASE(view_dependent_masks_cast_shadows_seen_from_the_light);
     RUN_TEST_CASE(masked_solids_outside_the_view_cut_their_shadows);
 #endif
     pu_clear_setup();

@@ -1,7 +1,11 @@
 #define SG_SCENE_INFLUENCE 1
 
 layout(set = 3, binding = 0) uniform uniform_block {
-    vec4 scene_camera_time;
+    // Where surfaces are seen from: the camera, or the light a shadow pass
+    // draws for. A point when w is 1; when w is 0, the direction toward a
+    // distant viewer such as the sun.
+    vec4 scene_eye;
+    vec4 scene_time;
     vec4 scene_rhythm;
     vec4 scene_sun_direction;
     vec4 scene_sun_color;

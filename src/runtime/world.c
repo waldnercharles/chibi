@@ -165,6 +165,8 @@ game_world *game_world_new(const game_world_options *options, char *error, size_
     bind(w, "game.ui", w->modules.ui);
     bind(w, "game.particles", w->modules.particles);
     bind(w, "game.visibility", w->modules.visibility);
+    bind(w, "game.physics", w->modules.physics);
+    bind(w, "game.physics3d", w->modules.physics3d);
     w->log = options->log;
     if (w->log.emit) {
         bind(w, EXECUTION_LOG_SERVICE, &w->log);

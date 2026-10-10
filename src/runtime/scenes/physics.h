@@ -58,10 +58,20 @@ game_physics_settings game_physics_configuration(const game_physics *physics);
 void game_physics_set_tasks(game_physics *physics, const game_task_system *tasks);
 /* Effective worker budget for the last step; 1 before the first step. */
 int game_physics_workers(const game_physics *physics);
-/* Synchronize authored state, integrate, then queue deduplicated Contact Begin.
- * Payload: Other, Point (CF_V2). Sweeps report the cast contact in world
- * units; initial overlaps and ordinary contacts use a representative center.
- * Swept events are delivered in travel order, clipped to the first blocker.
+/* Push entity's dynamic Body through its center of mass in the next step that
+ * advances. An impulse changes its Velocity by impulse over its mass at once;
+ * a force accelerates it by force over its mass through that step. Bodies
+ * weigh 1 kg per square meter. Pushes add up, and a push on a body destroyed or
+ * no longer dynamic by then is dropped. FLOW_ERR_ARGUMENT for a non-finite
+ * vector or an entity without a dynamic Body. */
+int game_physics_apply_impulse(game_physics *physics, ecs_entity entity, CF_V2 impulse);
+int game_physics_apply_force(game_physics *physics, ecs_entity entity, CF_V2 force);
+/* Synchronize authored state, integrate, then queue Contact End (payload:
+ * Other) to both entities of each pair that stopped touching, in pair order,
+ * and deduplicated Contact Begin (payload: Other, Point (CF_V2)) to both of
+ * each pair that started. Sweeps report the cast contact in world units;
+ * initial overlaps and ordinary contacts use a representative center. Swept
+ * Begin events are delivered in travel order, clipped to the first blocker.
  * A zero delta synchronizes and checks overlaps without advancing simulation. */
 int game_physics_tick(game_physics *physics, float delta_seconds);
 const char *game_physics_error(const game_physics *physics);

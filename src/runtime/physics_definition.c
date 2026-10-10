@@ -8,6 +8,13 @@ static const native_parameter_definition CONTACT_IN[] = { PHYSICS_CONTACT_INPUTS
 static const native_parameter_definition CONTACT_OUT[] = {
     PHYSICS_CONTACT_OUTPUTS(NATIVE_PORT)
 };
+static const native_parameter_definition IMPULSE_IN[] = {
+    PHYSICS_PUSH_INPUTS(NATIVE_PORT, "Impulse")
+};
+static const native_parameter_definition FORCE_IN[] = {
+    PHYSICS_PUSH_INPUTS(NATIVE_PORT, "Force")
+};
+static const native_parameter_definition THEN[] = { PHYSICS_PUSH_OUTPUTS(NATIVE_PORT) };
 static const native_capability_definition DEFINITIONS[] = {
     { .canonical_name = PHYSICS_RAY_NAME,
       PHYSICS_RAY_PRESENTATION,
@@ -29,6 +36,26 @@ static const native_capability_definition DEFINITIONS[] = {
       .input_count = NATIVE_COUNT(CONTACT_IN),
       .outputs = CONTACT_OUT,
       .output_count = NATIVE_COUNT(CONTACT_OUT) },
+    { .canonical_name = PHYSICS_IMPULSE_NAME,
+      PHYSICS_IMPULSE_PRESENTATION,
+      .source_name = PHYSICS_IMPULSE_SOURCE,
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .inputs = IMPULSE_IN,
+      .input_count = NATIVE_COUNT(IMPULSE_IN),
+      .outputs = THEN,
+      .output_count = NATIVE_COUNT(THEN),
+      .completion_output = 0,
+      .effects = SCRIPT_EFFECT_HOST },
+    { .canonical_name = PHYSICS_FORCE_NAME,
+      PHYSICS_FORCE_PRESENTATION,
+      .source_name = PHYSICS_FORCE_SOURCE,
+      .kind = SCRIPT_CAPABILITY_ACTION,
+      .inputs = FORCE_IN,
+      .input_count = NATIVE_COUNT(FORCE_IN),
+      .outputs = THEN,
+      .output_count = NATIVE_COUNT(THEN),
+      .completion_output = 0,
+      .effects = SCRIPT_EFFECT_HOST },
 };
 static const native_definition_binding BINDINGS[] = {
     { .canonical_name = PHYSICS_RAY_NAME,
@@ -37,6 +64,12 @@ static const native_definition_binding BINDINGS[] = {
     { .canonical_name = PHYSICS_CONTACT_NAME,
       .implementation = { .call = &GAME_PHYSICS_CONTACTS_CALL,
                           .access = &GAME_PHYSICS_READ_ACCESS } },
+    { .canonical_name = PHYSICS_IMPULSE_NAME,
+      .implementation = { .call = &GAME_PHYSICS_IMPULSE_CALL,
+                          .access = &GAME_PHYSICS_PUSH_ACCESS } },
+    { .canonical_name = PHYSICS_FORCE_NAME,
+      .implementation = { .call = &GAME_PHYSICS_FORCE_CALL,
+                          .access = &GAME_PHYSICS_PUSH_ACCESS } },
 };
 const native_definition_pack GAME_PHYSICS_DEFINITION_PACK = {
     .definitions = DEFINITIONS,

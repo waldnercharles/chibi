@@ -2619,10 +2619,41 @@ TEST_CASE(mirroring_transform3d_keeps_faces_outward)
     return true;
 }
 
+/* A box mesh 1e30 long in x in its own units, drawn at a 1e-30 x scale,
+ * matches the unit box mesh: the cofactors that give its top and front
+ * normals are 1e-30 long, too short to normalize directly. */
+TEST_CASE(lopsided_mesh_models_keep_their_normals)
+{
+    ecs_entity box = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    add_sun(0xffffffffu, (CF_V3){ -1, -2, -3 })->intensity = 1;
+    GameEnvironment environment = unlit_environment();
+    render_mesh_asset mesh = box_mesh();
+    publish_mesh(&mesh);
+    import_mesh(box);
+    REQUIRE(render(&environment));
+    REQUIRE(top().colors.g > 30 && front().colors.g > 30);
+    static CF_Pixel upright[PIXELS];
+    memcpy(upright, pixels, sizeof upright);
+    mesh = box_mesh();
+    for (int i = 0; i < acount(mesh.vertices); i++) {
+        mesh.vertices[i].position.x *= 1e30f;
+    }
+    mesh.min.x *= 1e30f;
+    mesh.max.x *= 1e30f;
+    publish_mesh(&mesh);
+    GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1e-30f, 1, 1 };
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(matches(upright));
+    return true;
+}
+
 /* A box whose parent's Transform3D flattens it onto a plane, both turned so
  * that rounding leaves its frame a sliver of volume, hides and has no
  * bounds. A box scaled tiny but whole keeps them, as does one turned within
- * a parent squashed thin, whose axes nearly meet. */
+ * a parent squashed thin, whose axes nearly meet. One whose Geometry3D
+ * width underflows its whole frame's x axis to zero has none. */
 TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
 {
     ecs_entity parent = ecs_world_create_entity(world);
@@ -2656,6 +2687,11 @@ TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
     GAME_GameTransform3D_get(world, parent)->scale = (CF_V3){ 1e-6f, 1, 1 };
     GAME_GameTransform3D_get(world, child)->rotation = turn;
     REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    GAME_GameTransform3D_get(world, parent)->scale = (CF_V3){ 1e-25f, 1, 1 };
+    GAME_GameTransform3D_get(world, child)->rotation = cf_quat_identity();
+    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    GAME_GameGeometry3D_get(world, child)->width = 1e-25f;
+    REQUIRE(!render_scene3d_entity_bounds(world, child, corners));
     return true;
 }
 
@@ -3098,6 +3134,27 @@ TEST_CASE(mirroring_transform3d_turns_mesh_bitangents)
     return true;
 }
 
+/* A Transform3D that stretches the ground square ten million times along
+ * its normal leaves it as it was, tangents included: with authored tangents
+ * along +z, a map tilted along u still faces the sun, though the frame's
+ * other axes are ten million times shorter than its y. */
+TEST_CASE(stretched_transform3d_keeps_mesh_tangents)
+{
+    static const float along_u[] = { .85f, .5f, .85f };
+    REQUIRE(test_register_normal_map("AlongU", along_u));
+    static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 };
+    publish_square(x, z, (CF_V4){ 0, 0, 1, 1 }, false);
+    ecs_entity square = add_surface_box("AlongU");
+    import_mesh(square);
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
+    place_3d(square, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    int facing = square_light(square, "AlongU");
+    REQUIRE(facing > 0);
+    GAME_GameTransform3D_get(world, square)->scale = (CF_V3){ 1, 1e7f, 1 };
+    REQUIRE(abs(square_light(square, "AlongU") - facing) <= 3);
+    return true;
+}
+
 /* Occlusion scales the light that arrives from every side, ambient and sky
  * alike, and leaves the sun's alone. */
 TEST_CASE(occlusion_dims_only_ambient_light)
@@ -3357,6 +3414,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(transform3d_models_pick_and_bound_at_their_pose);
 #endif
     RUN_TEST_CASE(mirroring_transform3d_keeps_faces_outward);
+    RUN_TEST_CASE(lopsided_mesh_models_keep_their_normals);
     RUN_TEST_CASE(flattened_transform3d_frames_hide_at_any_scale);
     RUN_TEST_CASE(overflowing_transform3d_frames_are_authoring_errors);
     RUN_TEST_CASE(fog_culls_transform3d_solids_where_they_draw);
@@ -3368,6 +3426,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_meshes_carry_texture_and_part_coordinates);
     RUN_TEST_CASE(normal_maps_follow_mesh_tangents);
     RUN_TEST_CASE(mirroring_transform3d_turns_mesh_bitangents);
+    RUN_TEST_CASE(stretched_transform3d_keeps_mesh_tangents);
     RUN_TEST_CASE(occlusion_dims_only_ambient_light);
     RUN_TEST_CASE(alpha_modes_decide_how_opacity_draws);
     RUN_TEST_CASE(opaque_and_masked_surfaces_cast_shadows);

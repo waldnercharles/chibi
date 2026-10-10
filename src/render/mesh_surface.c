@@ -314,9 +314,13 @@ bool render_mesh_surface_build_with_bounds(
                         .frame = cf_mul_m4(frame, cf_m4_translate(center)) },
             .sdf_center = center,
         };
-        if (!render_scene3d_visual_finite(&part.visual)) {
+        state = render_scene3d_visual_state(&part.visual);
+        if (state == SCENE3D_FRAME_INVALID) {
             snprintf(error, size, "SDF surface requires finite transforms and positive bounds.");
             return false;
+        }
+        if (state == SCENE3D_FRAME_FLAT) {
+            return true;
         }
         part.vertices = sdf_proxy;
         part.corner_count = 36;

@@ -15,7 +15,8 @@ mirrored with its faces lit from outside, judged by its axes' directions so
 that a tiny mirror still turns them. One that flattens it onto a plane, a line
 or a point hides it: a zero scale in its Visual Transform or in a Transform3D
 placing it, however the turns between them round, or axes float cannot keep
-apart at all. A tiny, thin or sheared frame that keeps some volume stays. Picks
+apart at all, such as one a tiny Geometry3D dimension underflows to zero. A
+tiny, thin or sheared frame that keeps some volume stays. Picks
 and bounds follow the same placement, a model surface's included, and a Render
 State's fog culling reads the ground under its drawn pose. Point and spot
 lights, particles, trails and Surface Influences still place from
@@ -275,10 +276,11 @@ Normal maps and every node that reads the surface UV's gradients follow a
 mesh's interpolated vertex tangent and bitangent, the frame its maps were baked
 against, so they shade smoothly across triangles. The gradients keep their
 screen-space lengths, so unequal UV scales still weigh each tangent component.
-Tangents turn and stretch with the mesh's transform, and their w picks the
-bitangent's side, so mirrored UVs work. A mesh whose UVs are box-projected from
-source bounds keeps the screen-space frame, which its tangents don't describe,
-as shapes do.
+Tangents turn with the mesh's transform, and each vertex keeps its tangent's
+direction even along an axis scaled far shorter than another. Their w picks
+the bitangent's side, so mirrored UVs work. A mesh whose UVs are box-projected
+from source bounds keeps the screen-space frame, which its tangents don't
+describe, as shapes do.
 
 ## Occlusion and alpha modes
 
@@ -367,15 +369,21 @@ turns make. A box under a turned Transform3D parent picks and bounds where the
 parent turns it, before any propagation. A box mirrored by its Transform3D,
 as a shape and as the unit box mesh, matches the unmirrored box, as does one
 mirrored at a 1e-16 scale under a Geometry3D as large, or a mesh 2e16 across
-in its own units, and one flattened to zero height disappears. A box flattened
+in its own units, and one flattened to zero height disappears. A box mesh
+1e30 long in x in its own units, drawn at a 1e-30 x scale, matches the unit
+box mesh too, though its normals come from cofactors too short to normalize
+directly. A box flattened
 by its parent's Transform3D under turns that leave it a sliver of volume has
-no bounds, and one scaled to 1e-16 keeps them, as does one turned under a
-parent squashed to 1e-6. A frame whose finite values multiply past float range,
-alone or with a part's position or the Geometry3D's dimensions, is an
+no bounds, as does one 1e-25 wide under a parent scaled 1e-25, whose model
+axis underflows to zero. One scaled to 1e-16 keeps them, as does one turned
+under a parent squashed to 1e-6. A frame whose finite values multiply past
+float range, alone or with a part's position or the Geometry3D's dimensions,
+is an
 authoring error. A model surface picks and bounds at its Transform3D
 pose, with or without a Transform. Fog culls a box
 by the ground under its Transform3D pose, not by its Transform. A mirrored ground
-square's normal maps turn their bitangent with it.
+square's normal maps turn their bitangent with it, and one stretched 1e7 times
+along its normal keeps its authored tangents.
 Normal maps on a ground square tilt toward or away from the sun as its
 tangents say: authored tangents a quarter turn from the UV gradient, mirrored
 UVs, a quarter-turned square, and box-projected UVs that keep their own frame.

@@ -1,0 +1,3 @@
+system Drift(position: Transform, velocity: Velocity) {
+    position += velocity * dt
+}

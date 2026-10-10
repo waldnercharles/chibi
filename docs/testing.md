@@ -49,6 +49,40 @@ group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 which needs a display and a GPU driver the CI job does not set up, so they stay
 out of the group; run them with `python3 tools/test_policy.py tool <name>`.
 
+## Feature coverage
+
+`test/fixtures/feature-coverage` is the all-features project: one scene per
+area (2D and 3D physics, tilemaps, UI, particles, audio, save, rhythm,
+materials, input and entities). `test_tools --feature-coverage <project>` compares the engine
+catalog (components, native functions and events) with what the project's
+scripts, prototypes and scenes use, prints each gap, and runs every scene for
+four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
+failure. Every prototype, behavior, library and system must be reachable from a
+scene: placed or attached there, spawned or called from source that runs, and
+only that source counts. A spawn reaches the prototype it names directly or
+through a value, such as a local, state or library parameter that holds the
+prototype's name, as find references does. A scene entity with its own behavior list
+runs that list in place of its prototype's; otherwise it and a spawned
+prototype run the prototype's list. A prototype's children spawn with each of
+its instances, so they are reached and run as instances too. Components count on these placed and
+spawned instances, after the scene's overrides, and where running source reads,
+writes or adds them, directly or through a generic call such as
+`add_component("GAME.Heat")`; a system query alone matches nothing without
+them, so it does not count.
+A system runs only while an entity's `EngineSystem` names it. Components the
+project declares in `content/components` load as they do in preparation and
+count as its own catalog entries. Run it on any project whose content folder is
+`content` to list what that project leaves unused; it fails while any of that
+is unlisted.
+
+The project's `coverage-gaps.txt` lists the entries no scene uses yet, in groups
+under a comment that gives the reason; without the file, every unused entry is a
+gap. The check fails when a catalog entry is in neither the scenes nor that
+list, when a listed entry has no reason comment above it, and when a listed
+entry becomes used. A PR that adds a component, native function or event uses it
+in a feature-coverage scene; it lists the entry as a gap only with a reason. The
+`native` group, and so CI, runs it on the fixture.
+
 ## Temporary 60-second policy
 
 The retired frontend experiment's five source inputs are preserved as historical

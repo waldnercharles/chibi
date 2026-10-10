@@ -3,6 +3,11 @@
 
 #include <cute_math3d.h>
 
+/* The farthest far clip, as a multiple of the near clip. Float depth rounds
+ * far planes much past 1e7 near clips toward infinity, so rays unprojected
+ * through them collapse. */
+#define ENGINE_VIEWPORT_CLIP_RATIO_MAX 1e6f
+
 /* How the 3D path sees a camera. A nonzero forward looks along it from eye
  * with up toward the image top; a zero forward frames the center and span from
  * a fixed overhead angle. Field of view is vertical radians and the clips are

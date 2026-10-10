@@ -177,7 +177,7 @@ that includes another prototype keeps its includes and only its own children.
 Four in-memory prototypes, no files, CPU only.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-twenty-three cases, twenty-two without model import, against that
+twenty-one cases, twenty without model import, against that
 `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
@@ -208,6 +208,12 @@ that validate and that `--format --check` keeps, and refuses a name that is
 no asset name or that a prototype already declares, and a model it cannot
 read, writing nothing.
 A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
+
+`python3 tools/test_policy.py tool prototype-expansion` runs, the same way, the
+two cases whose projects read past the prototype expansion budget that
+preparation shares: a project's prototypes, each under its own load's limit,
+and a scene's instances of one prototype tree. Each reads tens of thousands of
+small prototype documents, so they have their own selector.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,

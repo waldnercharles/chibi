@@ -756,7 +756,7 @@ static bool collect_lights(
 {
     scene3d->light_count = 0;
     scene3d->shadowed_lights = 0;
-    CF_V3 eye = render_scene3d_eye(camera);
+    CF_V3 eye = camera->eye;
     int candidates = 0;
     collect_point_lights(scene3d, world, eye, runtime, &candidates);
     if (!collect_spot_lights(scene3d, world, eye, runtime, &candidates)) {
@@ -1161,8 +1161,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         !draw_light_shadows(scene3d, receivers)) {
         return false;
     }
-    CF_V3 position = render_scene3d_eye(camera);
-    CF_V4 eye = { position.x, position.y, position.z, time };
+    CF_V4 eye = { camera->eye.x, camera->eye.y, camera->eye.z, time };
     cf_draw3d_set_uniform("scene_camera_time", &eye, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_rhythm", &scene3d->rhythm, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_sun_direction", &scene3d->sun_direction, CF_UNIFORM_TYPE_FLOAT4, 1);

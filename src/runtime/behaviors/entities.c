@@ -29,6 +29,7 @@ typedef struct
     game_scene *prototype;
     flow_host_request *wait;
     ecs_entity entity;
+    ecs_entity *tree; /* the entity of each prototype object, the first being entity */
 } spawn_request;
 
 typedef struct
@@ -194,6 +195,7 @@ static void release_request(spawn_request *request)
 {
     flow_host_release(request->wait);
     game_scene_free(request->prototype);
+    afree(request->tree);
 }
 
 void game_entities_copy_live(const game_entities *entities, ecs_entity **out)
@@ -714,7 +716,8 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
             flow_host_cancel(request->wait);
             return -1;
         }
-        request->entity = game_scene_instance_take_entity(instance);
+        request->tree = game_scene_instance_take_entities(instance);
+        request->entity = request->tree[0];
         apush(entities->owned, request->entity);
         if (game_entities_rebuild_global_bindings(entities) != 0) {
             flow_host_cancel(request->wait);
@@ -743,13 +746,18 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
         return 1;
     }
     assert(entities->host.attach);
-    for (int i = 0; i < game_scene_object_behavior_count(request->prototype, 0); i++) {
-        if (entities->host.attach(
-                entities->host.context,
-                request->entity,
-                game_scene_object_behavior(request->prototype, 0, i)
-            ) != 0) {
-            return -1;
+    for (int object = 0; object < game_scene_object_count(request->prototype);
+         object++) {
+        for (int i = 0;
+             i < game_scene_object_behavior_count(request->prototype, object);
+             i++) {
+            if (entities->host.attach(
+                    entities->host.context,
+                    request->tree[object],
+                    game_scene_object_behavior(request->prototype, object, i)
+                ) != 0) {
+                return -1;
+            }
         }
     }
     return 0;

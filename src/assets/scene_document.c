@@ -429,6 +429,21 @@ static av_value *entity_value(av_doc *json, const game_scene_document *document,
     return value;
 }
 
+av_value *game_scene_document_entities_value(
+    av_doc *doc,
+    const game_scene_document *document,
+    ecs_component_catalog components
+)
+{
+    av_value *entities = av_arr(doc);
+    for (int i = 0; i < acount(document->entities); i++) {
+        if (document->entities[i].parent < 0) {
+            av_arr_add_val(entities, entity_value(doc, document, i, components));
+        }
+    }
+    return entities;
+}
+
 av_value *game_scene_document_to_value(const game_scene_document *document, ecs_component_catalog components)
 {
     av_doc *json = av_doc_new();
@@ -446,13 +461,7 @@ av_value *game_scene_document_to_value(const game_scene_document *document, ecs_
     if (av_obj_size(physics)) {
         av_obj_add_val(json, root, "physics", physics);
     }
-    av_value *entities = av_arr(json);
-    for (int i = 0; i < acount(document->entities); i++) {
-        if (document->entities[i].parent < 0) {
-            av_arr_add_val(entities, entity_value(json, document, i, components));
-        }
-    }
-    av_obj_add_val(json, root, "entities", entities);
+    av_obj_add_val(json, root, "entities", game_scene_document_entities_value(json, document, components));
     av_value *result = av_value_copy(av_doc_root(json));
     av_doc_free(json);
     return result;
@@ -541,6 +550,51 @@ static bool read_entities(
     return true;
 }
 
+int game_scene_document_read_entities(
+    game_scene_document *document,
+    av_value *entities,
+    char *error,
+    size_t error_size
+)
+{
+    int index = 0;
+    if (!av_is_arr(entities)) {
+        set_error(error, error_size, "scene entities must be an array");
+        return -1;
+    }
+    return read_entities(document, entities, -1, &index, error, error_size) ? 0 : -1;
+}
+
+int game_scene_document_take_entities(
+    game_scene_document *document,
+    game_scene_document *from,
+    char *error,
+    size_t error_size
+)
+{
+    for (int i = 0; i < acount(from->entities); i++) {
+        const game_scene_entity *entity = &from->entities[i];
+        if (entity->parent < 0 &&
+            child_named(document, -1, entity->name, strlen(entity->name)) >= 0) {
+            set_error(
+                error,
+                error_size,
+                "two scene entities are named %s",
+                entity->name
+            );
+            return -1;
+        }
+    }
+    int offset = acount(document->entities);
+    for (int i = 0; i < acount(from->entities); i++) {
+        game_scene_entity entity = from->entities[i];
+        entity.parent = entity.parent < 0 ? -1 : entity.parent + offset;
+        apush(document->entities, entity);
+    }
+    aclear(from->entities);
+    return 0;
+}
+
 static game_scene_document *load_document_value(av_doc *parsed, char *error, size_t error_size)
 {
     av_value *root = av_doc_root(parsed);
@@ -578,8 +632,7 @@ static game_scene_document *load_document_value(av_doc *parsed, char *error, siz
         return NULL;
     }
     game_scene_document_set_ui(document, av_get_str(ui));
-    int index = 0;
-    if (!read_entities(document, entities, -1, &index, error, error_size)) {
+    if (game_scene_document_read_entities(document, entities, error, error_size)) {
         load_fail(document, parsed);
         return NULL;
     }

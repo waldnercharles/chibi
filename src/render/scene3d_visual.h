@@ -24,23 +24,27 @@ GameGlobalTransform2D render_scene3d_placement(
  * Geometry3D and a Transform, then those with a Geometry3D and a Transform3D.
  * An entity with both transforms comes once, with the second. */
 void render_scene3d_entities(ecs_world *world, render_skip skip, ecs_entity **entities);
+typedef enum
+{
+    SCENE3D_FRAME_INVALID, /* a value is not finite, or the scale is negative */
+    SCENE3D_FRAME_FLAT, /* flattened onto a plane, a line or a point: hidden */
+    SCENE3D_FRAME_WHOLE,
+} scene3d_frame_state;
 /* Where an entity's visual stands, before its parts' own placement. With a
- * `transform`, a global 3D transform, its center sits there and its
- * Geometry3D's elevation is ignored. Without one it stands at `position`, as
- * render_scene3d_placement takes it, raised to that elevation. Its Visual
- * Transform turns and scales it there. False when a value is not finite or
- * the scale is negative. */
-bool render_scene3d_visual_frame(
+ * `transform`, the global 3D transform of the entity's Transform3D, its
+ * center sits there and its Geometry3D's elevation is ignored. Without one
+ * it stands at `position`, as render_scene3d_placement takes it, raised to
+ * that elevation. Its Visual Transform turns and scales it there. The frame
+ * is flat when its Visual Transform or a Transform3D placing it scales an
+ * axis to zero, however the turns between them round, or when float cannot
+ * keep its volume at all. A thin frame that keeps some is whole. */
+scene3d_frame_state render_scene3d_visual_frame(
     const ecs_world *world,
     ecs_entity entity,
     const GameTransform *position,
     const GameGlobalTransform3D *transform,
     CF_M4x4 *frame
 );
-/* Whether a frame flattens space onto a plane, a line or a point, which
- * hides a visual. It reads its axes' directions alone, so a frame of any
- * scale that keeps some volume is whole. */
-bool render_scene3d_frame_flat(CF_M4x4 frame);
 /* Returns parts, zero for an invisible/missing visual, or -1 with an authoring error.
  * The parts stand where render_scene3d_visual_frame places them. An entity
  * with a Mesh Asset has one Box part sized by its Geometry3D, whose model
@@ -57,7 +61,7 @@ int render_scene3d_visuals(
 );
 CF_M4x4 render_scene3d_visual_model(const scene3d_visual *visual);
 /* Whether a whole frame mirrors space, which turns its faces inside out. It
- * reads its axes' directions alone, like render_scene3d_frame_flat. */
+ * reads its axes' directions alone, so it holds at any scale. */
 bool render_scene3d_frame_mirrors(CF_M4x4 frame);
 /* Conservative clip test of a box, a transform of the unit cube from -0.5 to
  * 0.5. */

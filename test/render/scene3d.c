@@ -2592,7 +2592,8 @@ TEST_CASE(mirroring_transform3d_keeps_faces_outward)
 
 /* A box whose parent's Transform3D flattens it onto a plane, both turned so
  * that rounding leaves its frame a sliver of volume, hides and has no
- * bounds. A box scaled tiny but whole keeps them. */
+ * bounds. A box scaled tiny but whole keeps them, as does one turned within
+ * a parent squashed thin, whose axes nearly meet. */
 TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
 {
     ecs_entity parent = ecs_world_create_entity(world);
@@ -2621,6 +2622,10 @@ TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
         cf_quat_identity(),
         { 1e-16f, 1e-16f, 1e-16f }
     };
+    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    CF_Quat turn = cf_quat_from_axis_angle((CF_V3){ 0, 0, 1 }, CF_PI / 4);
+    GAME_GameTransform3D_get(world, parent)->scale = (CF_V3){ 1e-6f, 1, 1 };
+    GAME_GameTransform3D_get(world, child)->rotation = turn;
     REQUIRE(render_scene3d_entity_bounds(world, child, corners));
     return true;
 }

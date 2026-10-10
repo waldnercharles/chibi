@@ -81,6 +81,7 @@ void render_mesh_asset_tangents(render_mesh_asset *asset)
     }
     for (int i = 0; i < count; i++) {
         render_mesh_surface_vertex *v = &asset->vertices[i];
+        assert(fabsf(cf_len_v3(v->normal) - 1) < 1e-3f);
         CF_V3 side = cf_sub_v3(sides[i], cf_mul_v3_f(v->normal, cf_dot_v3(v->normal, sides[i])));
         float length = cf_len_v3(side);
         CF_V3 tangent = isfinite(length) && length > 1e-12f

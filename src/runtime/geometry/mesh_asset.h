@@ -38,7 +38,8 @@ typedef struct
 
 void render_mesh_asset_free(render_mesh_asset *asset);
 /* Fills each vertex tangent from its triangles' UVs, perpendicular to its
- * normal. A vertex whose UVs don't vary takes any perpendicular tangent. */
+ * normal, which must be unit length. A vertex whose UVs don't vary takes any
+ * perpendicular tangent. */
 void render_mesh_asset_tangents(render_mesh_asset *asset);
 /* Immutable catalog-owned storage. Content-relative path, e.g. content/meshes/a.mesh.
  * Resolving a resident source does no file IO; workspace reset invalidates the catalog. */

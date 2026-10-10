@@ -127,23 +127,25 @@ static pick_tree build(const render_mesh_asset *mesh)
     return tree;
 }
 
-/* Whether a ray crosses a box before `reach` along it. An axis it runs
- * along, as cf_ray3_to_aabb3 judges it, only needs its origin inside. */
+/* Whether a ray crosses a box before `reach` along it. It works in double,
+ * where a gap across float's range divides by a direction of any length
+ * without overflow, so only an axis the ray doesn't move along at all needs
+ * its origin inside instead. */
 static bool crosses(CF_Ray3 ray, float reach, const pick_box *box)
 {
-    float enter = 0, leave = reach;
+    double enter = 0, leave = reach;
     for (int axis = 0; axis < 3; axis++) {
-        float origin = along(ray.p, axis), direction = along(ray.d, axis);
-        float low = along(box->min, axis), high = along(box->max, axis);
-        if (fabsf(direction) < 1e-8f) {
+        double origin = along(ray.p, axis), direction = along(ray.d, axis);
+        double low = along(box->min, axis), high = along(box->max, axis);
+        if (direction == 0) {
             if (origin < low || origin > high) {
                 return false;
             }
             continue;
         }
-        float from = (low - origin) / direction, to = (high - origin) / direction;
-        enter = fmaxf(enter, fminf(from, to));
-        leave = fminf(leave, fmaxf(from, to) * PICK_ROUNDING);
+        double from = (low - origin) / direction, to = (high - origin) / direction;
+        enter = fmax(enter, fmin(from, to));
+        leave = fmin(leave, fmax(from, to) * PICK_ROUNDING);
     }
     return enter <= leave;
 }
@@ -190,7 +192,8 @@ float render_triangle_hit(CF_Ray3 ray, const CF_V3 triangle[3])
     difference(triangle[2], triangle[0], edge2);
     cross(direction, edge2, p);
     double determinant = dot(edge1, p);
-    if (fabs(determinant) <= 1e-7 * sqrt(dot(edge1, edge1)) * sqrt(dot(edge2, edge2))) {
+    if (fabs(determinant) <= 1e-7 * sqrt(dot(direction, direction)) *
+                                 sqrt(dot(edge1, edge1)) * sqrt(dot(edge2, edge2))) {
         return FLT_MAX;
     }
     double delta[3], q[3];

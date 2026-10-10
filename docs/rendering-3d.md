@@ -270,9 +270,10 @@ Meshes cast and receive shadows as shapes do, including from outside the view;
 picking meets their triangles, and bounds hold their extents. A pick tests
 only the triangles in boxes its ray crosses, from a tree of boxes built on a
 mesh's first pick and freed whenever the mesh catalog changes. The ray is
-cut to the mesh's box before it goes into the mesh's coordinates, and the
-triangle test runs in double, so a mesh near float's range that its
-Geometry3D scales down to view picks as it draws. Translucent
+cut to the mesh's box before it goes into the mesh's coordinates, with half
+the cut span as its direction, and the box and triangle tests run in double,
+so a mesh near or past float's range that its Geometry3D scales down to view
+picks as it draws. Translucent
 meshes sort back to front by the center of their bounds, so a mesh whose
 vertices lie away from its origin sorts where its triangles are. Cute sorts
 translucent draws by the translation of their transform, so a mesh's GPU copy
@@ -511,13 +512,13 @@ check that runs the main build's
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 88 cases and 75146 assertions in 21.0 seconds on 2026-10-10.
+Vulkan llvmpipe passed 90 cases and 79358 assertions in 17.9 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 88
-cases and 75146 assertions in 16.0 seconds on 2026-10-10.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 90
+cases and 79358 assertions in 13.1 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

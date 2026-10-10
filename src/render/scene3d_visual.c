@@ -265,13 +265,21 @@ bool render_scene3d_visual_visible(const scene3d_visual *visual, CF_M4x4 view_pr
     return render_scene3d_box_visible(box, view_projection);
 }
 
-CF_M4x4 render_scene3d_mesh_box(const render_mesh_asset *mesh, CF_M4x4 model)
+CF_M4x4 render_scene3d_mesh_extent(const render_mesh_asset *mesh)
 {
     /* Half the bounds' size, from halves of each, so bounds near the float
-     * limit cannot overflow it. The model scales it before it doubles. */
+     * limit cannot overflow it. */
     CF_V3 half = cf_sub_v3(cf_mul_v3_f(mesh->max, .5f), cf_mul_v3_f(mesh->min, .5f));
     float sliver = fmaxf(half.x, fmaxf(half.y, half.z)) * 1e-3f;
     half = cf_max_v3(half, (CF_V3){ sliver, sliver, sliver });
-    CF_M4x4 box = cf_m4_from_trs(render_mesh_asset_center(mesh), cf_quat(0, 0, 0, 1), half);
-    return cf_mul_m4(cf_mul_m4(model, box), cf_m4_scale((CF_V3){ 2, 2, 2 }));
+    return cf_m4_from_trs(render_mesh_asset_center(mesh), cf_quat(0, 0, 0, 1), half);
+}
+
+CF_M4x4 render_scene3d_mesh_box(const render_mesh_asset *mesh, CF_M4x4 model)
+{
+    /* The model scales the extent before it doubles. */
+    return cf_mul_m4(
+        cf_mul_m4(model, render_scene3d_mesh_extent(mesh)),
+        cf_m4_scale((CF_V3){ 2, 2, 2 })
+    );
 }

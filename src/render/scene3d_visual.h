@@ -75,8 +75,12 @@ bool render_scene3d_frame_mirrors(CF_M4x4 frame);
 bool render_scene3d_box_visible(CF_M4x4 box, CF_M4x4 view_projection);
 /* Conservative clip test of the built-in mesh bounds, including part transforms. */
 bool render_scene3d_visual_visible(const scene3d_visual *visual, CF_M4x4 view_projection);
+/* The box around a mesh's bounds in its own coordinates, as a transform of
+ * the cube from -1 to 1. A flat mesh's box keeps a sliver of thickness. Its
+ * axes are half the bounds' size, so any finite bounds fit in a float. */
+CF_M4x4 render_scene3d_mesh_extent(const render_mesh_asset *mesh);
 /* The box around a mesh's bounds through `model`, as a transform of the unit
- * cube from -0.5 to 0.5. A flat mesh's box keeps a sliver of thickness. */
+ * cube from -0.5 to 0.5, sized as render_scene3d_mesh_extent. */
 CF_M4x4 render_scene3d_mesh_box(const render_mesh_asset *mesh, CF_M4x4 model);
 
 #endif

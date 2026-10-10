@@ -533,6 +533,8 @@ TEST_CASE(physics3d_followers_are_part_of_their_body)
     REQUIRE(near(position(crate).y, .75f * METER, 1e-2f * METER));
     REQUIRE(near_v3(body(base)->linear_velocity, (CF_V3){ 0 }, 0));
     REQUIRE(near_v3(body(crate)->linear_velocity, (CF_V3){ 0 }, 0));
+    /* The ball's mass includes the plate's, at 1000 kg per cubic meter. */
+    REQUIRE(near(body(base)->mass, 1000 * (2 + 4 * 3.14159265f / 3 / 64), .1f));
     return true;
 }
 
@@ -887,6 +889,8 @@ TEST_CASE(physics3d_pushes_divide_by_mass)
     REQUIRE(game_physics3d_apply_impulse(physics, large, (CF_V3){ 64 * mass, 0, 0 }) == FLOW_OK);
     step(0); /* Only an advancing step pushes. */
     REQUIRE(body(small)->linear_velocity.x == 0);
+    /* Each step writes a dynamic body's mass for scripts to size pushes. */
+    REQUIRE(near(body(small)->mass, mass, .01f) && near(body(large)->mass, 8 * mass, .1f));
     body(small)->linear_velocity.z = 5; /* Pushes add to a velocity set now. */
     step(STEP);
     REQUIRE(near_v3(body(small)->linear_velocity, (CF_V3){ 64, 0, 5 }, 1e-2f));

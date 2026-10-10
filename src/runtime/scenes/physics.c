@@ -2230,6 +2230,9 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
             b2Vec2 solved = b2Body_GetLinearVelocity(body->body);
             *velocity = (GameVelocity){ solved.x, solved.y };
         }
+        if (body->settings.type == GAME_BODY_DYNAMIC) {
+            GAME_GameBody_get(physics->world, body->entity)->mass = b2Body_GetMass(body->body);
+        }
     }
     CHIBI_TRACE_ZONE_END(writeback_zone);
     profile_phase(physics, &start, &physics->profile.writeback_ms);

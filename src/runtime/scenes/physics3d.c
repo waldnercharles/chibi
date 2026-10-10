@@ -947,6 +947,7 @@ static void write_back(game_physics3d *physics)
         GameBody3D *body = GAME_GameBody3D_get(physics->world, record->entity);
         body->linear_velocity = from_b3(b3Body_GetLinearVelocity(record->body));
         body->angular_velocity = from_b3(b3Body_GetAngularVelocity(record->body));
+        body->mass = b3Body_GetMass(record->body);
         record->linear_velocity = body->linear_velocity;
         record->angular_velocity = body->angular_velocity;
     }

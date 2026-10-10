@@ -4,11 +4,11 @@ behavior Physics3DProbe {
         below := raycast_3d(place, place - vec3(0, 320, 0), 1, self, false)
         ahead := shape_cast_3d(self, vec3(64, 0, 0), 1, false)
         touching := contact_entities_3d(self, 1)
-        apply_force_3d(self, vec3(0, 2000, 0))
+        apply_force_3d(self, vec3(0, self.Body3D.mass * 2, 0))
     }
     on ContactBegin3D {
         landed := Point
-        apply_impulse_3d(self, vec3(0, 32000, 0))
+        apply_impulse_3d(self, vec3(0, self.Body3D.mass * 32, 0))
     }
     on ContactEnd3D {
         left := Other

@@ -1151,6 +1151,7 @@ static void carried_colliders_join_their_body()
     assert(step(&f, 0) == 0);
     game_physics_body_state state = inspect_body(&f, ship);
     assert(state.shape_count == 3 && fabsf(state.mass - 2 * alone) < alone * 1e-4f);
+    assert(GAME_GameBody_get(f.world, ship)->mass == state.mass);
     for (int i = 0; i < 30; i++) {
         step(&f, 1.0f / 60);
     }
@@ -1875,6 +1876,9 @@ static void pushes_divide_by_mass()
     assert(game_physics_apply_impulse(f.physics, small, (CF_V2){ 64, 0 }) == FLOW_OK);
     assert(game_physics_apply_impulse(f.physics, large, (CF_V2){ 64, 0 }) == FLOW_OK);
     assert(step(&f, 0) == 0 && GAME_GameVelocity_get(f.world, small)->x == 0);
+    /* Each step writes a dynamic body's mass for scripts to size pushes. */
+    assert(fabsf(GAME_GameBody_get(f.world, small)->mass - 1) < 1e-5f);
+    assert(fabsf(GAME_GameBody_get(f.world, large)->mass - 4) < 1e-5f);
     GAME_GameVelocity_get(f.world, small)->y = 5; /* Pushes add to a set velocity. */
     step(&f, 1.0f / 60);
     GameVelocity v = *GAME_GameVelocity_get(f.world, small);

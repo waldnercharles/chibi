@@ -337,6 +337,10 @@ vectors. A 3D body weighs 1000 kg per cubic meter, the density of water, and a
 2D body 1 kg per square meter, so an impulse is in kilogram units per second
 and a force in kilogram units per second squared. Pushes act through the
 center of mass and add up, and they fail on an entity without a dynamic body.
+After each step physics writes a dynamic body's mass, with the solid colliders
+it carries, to `mass` on its `GAME.GameBody3D` or `GAME.GameBody`, so
+`self.Body3D.mass` times a change of speed is the impulse that makes it. The
+mass reads zero until the body's first step.
 
 ```kdl
 name "Crate"

@@ -856,7 +856,8 @@ static bool kicker(const char *name, const node_host_call *call, const node_acce
     return true;
 }
 /* The world binds its 2D and 3D physics as the services the push calls use:
- * a meter square weighs 1 kg in 2D, and a meter cube 1000 kg in 3D. */
+ * a meter square weighs 1 kg in 2D, and a meter cube 1000 kg in 3D, as each
+ * step writes to the bodies. */
 TEST_CASE(native_world_binds_physics_for_pushes)
 {
     cleanup();
@@ -896,6 +897,8 @@ TEST_CASE(native_world_binds_physics_for_pushes)
     REQUIRE(engine_last_timing(runtime)->simulation_steps == 1);
     REQUIRE(fabsf(GAME_GameVelocity_get_const(ecs, crate)->x - 32) < .01f);
     REQUIRE(fabsf(GAME_GameBody3D_get_const(ecs, crate)->linear_velocity.x - 64) < .01f);
+    REQUIRE(fabsf(GAME_GameBody_get_const(ecs, crate)->mass - 1) < 1e-5f);
+    REQUIRE(fabsf(GAME_GameBody3D_get_const(ecs, crate)->mass - 1000) < .01f);
     cleanup();
     return true;
 }

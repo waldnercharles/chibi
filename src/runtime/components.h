@@ -1332,4 +1332,19 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameGravity3D)
 }
 GameGravity3D;
 
+/* Makes a kinematic body with a solid capsule collider, at least 2 cm in
+ * radius, a character that slides. Each step, physics moves it by its Body3D
+ * linear velocity until it meets a solid collider its collider collides with,
+ * slides along what it meets, and drops the part of the velocity that pushes
+ * into it, so gravity a script adds does not build up while it stands. on_floor
+ * says whether it ended the step on a surface within 45 degrees of up, against
+ * gravity, and floor_normal is that surface's normal. Physics writes both. It
+ * stops at dynamic bodies as at walls and does not ride moving platforms. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameCharacter3D)
+{
+    bool on_floor;
+    CF_V3 floor_normal;
+}
+GameCharacter3D;
+
 #endif

@@ -291,6 +291,15 @@ pushing. Hull and triangle-mesh colliders are not available yet, and the 3D
 renderer still places visuals from `GAME.GameTransform`, so it does not draw
 bodies at their simulated pose yet.
 
+`GAME.GameCharacter3D` turns a kinematic body with a solid capsule collider
+into a character that walks and slides. Each step physics moves it by its
+`linear_velocity` until it meets something solid, slides along what it meets,
+and drops the part of the velocity that pushes into it, so a script can add
+gravity every frame without it building up while the character stands.
+Physics writes `on_floor` and `floor_normal`, a surface within 45 degrees of
+up, against gravity. The character stops at dynamic bodies as at walls, does
+not ride moving platforms, and needs a radius of at least 2 cm.
+
 Scripts query colliders where their components place them now, with or without
 a step: `raycast_3d(start, end, categories, exclude, sensors)` and
 `shape_cast_3d(entity, translation, categories, sensors)` return `.Found`,

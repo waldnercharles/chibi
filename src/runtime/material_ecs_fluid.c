@@ -407,6 +407,9 @@ static void blasts(
 {
     int count;
     const fluid_blast *events = material_fluid_blasts(materials->fluid, &count);
+    if (!count) {
+        return;
+    }
     GameCombustion settings = materials->combustion;
     /* The push each body takes from one blast: it moves once, as its part
      * nearest the blast that the blast reaches. */

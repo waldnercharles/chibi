@@ -484,7 +484,18 @@ TEST_CASE(prototype_children_spawn_with_it)
                         ECS_OK &&
                     ecs_world_live_count(world) == 0;
     ecs_world_free(world);
-    REQUIRE(tree && destroyed && refused && components_only && unplaced);
+    /* Without an attach hook the spawn is refused before it touches the world. */
+    world = ecs_world_new();
+    REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &nested, NULL) == ECS_OK);
+    bool unhooked = game_prototype_spawn(prototype, world, NULL, &ship, error, sizeof error) ==
+                        ECS_ERR_ARGUMENT &&
+                    !ecs_world_component(
+                        world,
+                        game_prototype_tag_desc(prototype)->id
+                    );
+    ecs_world_free(world);
+    REQUIRE(tree && destroyed && refused && components_only && unplaced && unhooked);
     return true;
 }
 

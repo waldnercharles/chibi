@@ -1576,6 +1576,20 @@ static int create_tree(
 }
 
 /* Every entity exists before any behavior attaches; without hooks none do. */
+/* Whether the prototype or any of its children attaches a behavior. */
+static bool has_graphs(const game_prototype *prototype)
+{
+    if (acount(prototype->graphs)) {
+        return true;
+    }
+    for (int i = 0; i < acount(prototype->child_prototypes); i++) {
+        if (has_graphs(prototype->child_prototypes[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int spawn_tree(
     const game_prototype *prototype,
     ecs_world *world,
@@ -1591,12 +1605,7 @@ static int spawn_tree(
     for (int i = 0; !result && hooks && i < acount(entities); i++) {
         const game_prototype *spawned = prototypes[i];
         for (int j = 0; !result && j < acount(spawned->graphs); j++) {
-            if (!hooks->attach) {
-                set_error(error, error_size, "prototype has behavior graphs but no attach hook");
-                result = ECS_ERR_ARGUMENT;
-            } else if (
-                hooks->attach(world, entities[i], spawned->graphs[j], hooks->attach_user)
-            ) {
+            if (hooks->attach(world, entities[i], spawned->graphs[j], hooks->attach_user)) {
                 set_error(
                     error,
                     error_size,
@@ -1653,8 +1662,11 @@ int game_prototype_spawn(
         set_error(error, error_size, "invalid prototype spawn arguments");
         return ECS_ERR_ARGUMENT;
     }
-    static const game_prototype_spawn_hooks none = { 0 };
-    return spawn_tree(prototype, world, hooks ? hooks : &none, out_entity, error, error_size);
+    if ((!hooks || !hooks->attach) && has_graphs(prototype)) {
+        set_error(error, error_size, "prototype has behavior graphs but no attach hook");
+        return ECS_ERR_ARGUMENT;
+    }
+    return spawn_tree(prototype, world, hooks, out_entity, error, error_size);
 }
 
 int game_prototype_read_field(

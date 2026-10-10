@@ -331,16 +331,19 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   the blue channel of the metallic-roughness image and roughness its green;
   occlusion is `mix(1, red, strength)`; normal images use the OpenGL `+green`
   convention along the mesh's bitangent. Alpha Mode and Alpha Cutoff carry
-  over, and `KHR_materials_unlit` sets Unlit. A sampler that magnifies with
-  `NEAREST` samples Nearest, and one that clamps both axes samples Clamp;
-  every other wrap repeats, with a warning.
+  over, and `KHR_materials_unlit` sets Unlit. An unlit material keeps only its
+  base color and its image, since glTF makes its other properties fallbacks
+  for viewers that light it. An image has one filter, its sampler's
+  `magFilter`: `NEAREST` samples Nearest and anything else Bilinear, with a
+  warning when its `minFilter` differs. A sampler that clamps both axes
+  samples Clamp; every other wrap repeats, with a warning.
 - **Refused**: a required extension other than `KHR_materials_unlit`,
   `KHR_materials_emissive_strength` and `KHR_texture_transform`; a texture
   transform other than the identity; a texture that reads a UV set other than
   `TEXCOORD_0`; an image that is not a PNG or JPEG of 1 to 2048 pixels a side;
-  primitives that are not triangles; a buffer or image named by an absolute
-  path or a scheme other than `data:`; a model over 256 MiB; and a mesh past
-  the `.mesh` limits above.
+  a material factor beyond float range; primitives that are not triangles; a
+  buffer or image named by an absolute path or a scheme other than `data:`; a
+  model over 256 MiB; and a mesh past the `.mesh` limits above.
 - **Warned and left out**: vertex colors, morph targets, skins, animations,
   cameras, lights and other extensions the model uses. Double-sided
   materials draw single-sided.

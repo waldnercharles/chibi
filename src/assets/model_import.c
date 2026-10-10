@@ -38,6 +38,8 @@ enum
     GLB_JSON = 0x4e4f534a,  /* "JSON" */
     GLB_HEADER = 20,        /* the file header and the JSON chunk's */
     GL_NEAREST = 9728,
+    GL_NEAREST_MIPMAP_NEAREST = 9984,
+    GL_NEAREST_MIPMAP_LINEAR = 9986,
     GL_CLAMP_TO_EDGE = 33071,
     GL_REPEAT = 10497,
 };
@@ -355,6 +357,20 @@ static void sample(import *in, int material, standard_texture_slot slot, standar
     out->filter = yyjson_get_int(yyjson_obj_get(sampler, "magFilter")) == GL_NEAREST
                     ? SHADER_IMAGE_NEAREST
                     : SHADER_IMAGE_BILINEAR;
+    /* An image has one filter, so its magnification filter shrinks it too. */
+    yyjson_val *min = yyjson_obj_get(sampler, "minFilter");
+    int shrink = (int)yyjson_get_int(min);
+    bool nearest = shrink == GL_NEAREST || shrink == GL_NEAREST_MIPMAP_NEAREST ||
+                   shrink == GL_NEAREST_MIPMAP_LINEAR;
+    if (min && nearest != (out->filter == SHADER_IMAGE_NEAREST)) {
+        warn(
+            in,
+            "Material %s's %s shrinks with its magFilter, not the model's "
+            "minFilter.",
+            in->materials[material],
+            TEXTURE_KEYS[slot]
+        );
+    }
     out->wrap = wrap_s == GL_CLAMP_TO_EDGE && wrap_t == GL_CLAMP_TO_EDGE
                   ? SHADER_IMAGE_CLAMP
                   : SHADER_IMAGE_REPEAT;
@@ -408,6 +424,31 @@ static bool texture(
     return true;
 }
 
+/* Whether every factor of `material` is finite, as its asset text needs: a
+ * glTF number beyond float range reads as infinite. */
+static bool finite_factors(const standard_material *material)
+{
+    const float *color = material->base_color, *emission = material->emission;
+    const float factors[] = { color[0],
+                              color[1],
+                              color[2],
+                              color[3],
+                              material->metallic,
+                              material->roughness,
+                              emission[0],
+                              emission[1],
+                              emission[2],
+                              material->normal_scale,
+                              material->occlusion_strength,
+                              material->alpha_cutoff };
+    for (size_t i = 0; i < sizeof factors / sizeof *factors; i++) {
+        if (!isfinite(factors[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* The Standard form of glTF material `index`, or of the default material
  * when it is -1. */
 static bool standard(import *in, int index, standard_material *out)
@@ -429,11 +470,16 @@ static bool standard(import *in, int index, standard_material *out)
         "emissiveStrength"
     );
     float emissive = strength ? (float)yyjson_get_num(strength) : 1;
+    out->unlit = yyjson_obj_get(extensions, "KHR_materials_unlit") != NULL;
     memcpy(out->base_color, m->base_color, sizeof out->base_color);
     out->metallic = m->metallic;
     out->roughness = m->roughness;
-    for (int i = 0; i < 3; i++) {
-        out->emission[i] = m->emissive[i] * emissive;
+    /* An unlit material's emission is the fallback glTF gives viewers that
+     * light it, so it adds nothing here. */
+    if (!out->unlit) {
+        for (int i = 0; i < 3; i++) {
+            out->emission[i] = m->emissive[i] * emissive;
+        }
     }
     out->normal_scale = m->normal_scale;
     out->occlusion_strength = m->occlusion_strength;
@@ -441,7 +487,9 @@ static bool standard(import *in, int index, standard_material *out)
                     : m->alpha_mode == CM_ALPHA_MASK  ? SHADER_ALPHA_MASK
                                                       : SHADER_ALPHA_OPAQUE;
     out->alpha_cutoff = m->alpha_cutoff;
-    out->unlit = yyjson_obj_get(extensions, "KHR_materials_unlit") != NULL;
+    if (!finite_factors(out)) {
+        return fail(in, "Material %s holds a number beyond float range", in->materials[index]);
+    }
     if (m->double_sided) {
         warn(in, "Material %s draws single-sided.", in->materials[index]);
     }
@@ -453,7 +501,9 @@ static bool standard(import *in, int index, standard_material *out)
         [STANDARD_TEXTURE_EMISSION] = &m->emissive_texture,
     };
     for (int slot = 0; slot < STANDARD_TEXTURE_COUNT; slot++) {
-        if (!texture(in, index, slot, refs[slot], &out->textures[slot])) {
+        /* Like its emission, an unlit material's other images are fallbacks. */
+        bool fallback = out->unlit && slot != STANDARD_TEXTURE_BASE_COLOR;
+        if (!fallback && !texture(in, index, slot, refs[slot], &out->textures[slot])) {
             return false;
         }
     }

@@ -18,6 +18,9 @@ bool test_register_ramp(const char *name, int count, const float from[4], const 
 /* An unlit material whose base color is a black-to-white ramp of the x of
  * coordinate node `input`, such as "Shader UV". */
 bool test_register_coordinate(const char *name, const char *input);
+/* A lit material with the output's white base whose Normal is a Normal Map
+ * of the constant linear `color`. */
+bool test_register_normal_map(const char *name, const float color[3]);
 /* A model graph of one sphere of `radius` at the origin. */
 bool test_register_model_sphere(const char *name, float radius);
 

@@ -252,8 +252,16 @@ translucent draws by the translation of their transform, so a mesh's GPU copy
 holds its positions about that center and its draws translate to it. A mesh goes to
 the GPU when it first draws and is freed once a reload replaces it or the
 catalog drops it; `render_scene3d_last_work` counts the meshes held. The copies
-stay ordered by mesh identity, so each draw finds its own by bisection. Tangents
-don't reach the lit pass yet.
+stay ordered by mesh identity, so each draw finds its own by bisection.
+
+Normal maps and every node that reads the surface UV's gradients follow a
+mesh's interpolated vertex tangent and bitangent, the frame its maps were baked
+against, so they shade smoothly across triangles. The gradients keep their
+screen-space lengths, so unequal UV scales still weigh each tangent component.
+Tangents turn and stretch with the mesh's transform, and their w picks the
+bitangent's side, so mirrored UVs work. A mesh whose UVs are box-projected from
+source bounds keeps the screen-space frame, which its tangents don't describe,
+as shapes do.
 
 ## Optional material inputs
 
@@ -323,18 +331,21 @@ mesh draws its new triangles while the GPU copies of replaced and removed
 meshes are freed. Copies uploaded out of identity order are each found again.
 A translucent mesh whose vertices sit between the eye and a
 translucent box, while its origin lies behind the box, blends over the box as
-a shape in its place does, alone and as one of two copies drawn in one batch. It is a GPU check that runs the main build's
+a shape in its place does, alone and as one of two copies drawn in one batch.
+Normal maps on a ground square tilt toward or away from the sun as its
+tangents say: authored tangents a quarter turn from the UV gradient, mirrored
+UVs, a quarter-turned square, and box-projected UVs that keep their own frame. It is a GPU check that runs the main build's
 `test/tools/test_tools` after the agent's device preflight, so build it first
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 66 cases and 29875 assertions in 11.6 seconds on 2026-10-10.
+Vulkan llvmpipe passed 67 cases and 29885 assertions in 12.2 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 66
-cases and 29875 assertions in 9.5 seconds on 2026-10-10.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 67
+cases and 29885 assertions in 9.2 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

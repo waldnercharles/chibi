@@ -56,7 +56,9 @@ U is one revolution around Axis; V is the coordinate along that axis. Use its
 Scale and Offset controls for repeats and placement.
 
 Normal Map decodes linear RGB in the selected OpenGL `+green` or DirectX
-`-green` convention. It builds a UV cotangent frame on the geometric normal.
+`-green` convention. It builds a UV cotangent frame on the geometric normal;
+on an imported mesh in the lit 3D pass, the frame follows the mesh's vertex
+tangents (see `docs/rendering-3d.md`).
 This is a tangent-space map, not a raw object-space normal-vector transform.
 A common UV scale leaves normal strength unchanged; unequal scales and mirrored
 UVs affect the corresponding tangent components. Fully collapsed UVs preserve

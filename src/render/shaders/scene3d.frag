@@ -8,6 +8,7 @@ layout(location = 5) in vec3 v_part_position;
 layout(location = 6) in vec3 v_part_frame0;
 layout(location = 7) in vec3 v_part_frame1;
 layout(location = 8) in vec3 v_part_frame2;
+layout(location = 9) in vec4 v_tangent;
 #endif
 layout(location = 0) out vec4 result;
 layout(set = 2, binding = 0) uniform sampler2D scene_parameters;
@@ -75,6 +76,21 @@ vec2 mesh_uv(vec3 local)
     if (side.y >= side.x && side.y >= side.z) return p.xz + 0.5;
     if (side.x >= side.z) return vec2(p.z + 0.5, 0.5 - p.y);
     return vec2(p.x + 0.5, 0.5 - p.y);
+}
+
+// Turns the screen-space gradients of a mesh's own texture coordinate onto
+// its interpolated tangent and bitangent, keeping their lengths. Per-triangle
+// gradients facet normal maps on curved meshes; the vertex frame is smooth
+// and is the one the mesh's normal maps were baked against. Box-projected
+// coordinates keep their gradients, which the tangents don't describe.
+void mesh_uv_frame(vec3 normal, inout vec3 uv_from_world[2])
+{
+    vec3 tangent = v_tangent.xyz - normal * dot(normal, v_tangent.xyz);
+    if (material_value(37).w >= 0.5 || dot(tangent, tangent) < 1e-12) return;
+    tangent = normalize(tangent);
+    vec3 bitangent = cross(normal, tangent) * (v_tangent.w < 0.0 ? -1.0 : 1.0);
+    uv_from_world[0] = tangent * length(uv_from_world[0]);
+    uv_from_world[1] = bitangent * length(uv_from_world[1]);
 }
 #endif
 
@@ -412,6 +428,9 @@ void main()
         sg_context.uv_from_world[0]=(dx*(yy*du.x-xy*dv.x)+dy*(xx*dv.x-xy*du.x))/determinant;
         sg_context.uv_from_world[1]=(dx*(yy*du.y-xy*dv.y)+dy*(xx*dv.y-xy*du.y))/determinant;
     }
+#ifdef SCENE3D_MESH
+    mesh_uv_frame(normal, sg_context.uv_from_world);
+#endif
     sg_context.world_position = v_world;
     sg_context.normal = normal;
     sg_context.view_direction = view;

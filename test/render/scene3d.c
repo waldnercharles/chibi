@@ -2065,11 +2065,10 @@ TEST_CASE(sky_lights_surfaces_by_its_gradients)
 
 static const char *const mesh_key = "content/meshes/test.mesh";
 
-/* Publishes `mesh` under mesh_key as preparation does: with tangents, written
- * and read back through the prepared format. Takes the mesh's storage. */
-static void publish_mesh(render_mesh_asset *mesh)
+/* Publishes `mesh` under mesh_key, written and read back through the
+ * prepared format, with the tangents it has. Takes the mesh's storage. */
+static void publish_prepared(render_mesh_asset *mesh)
 {
-    render_mesh_asset_tangents(mesh);
     unsigned char *bytes;
     size_t length, budget = SIZE_MAX;
     char error[256];
@@ -2081,6 +2080,13 @@ static void publish_mesh(render_mesh_asset *mesh)
     free(bytes);
     render_mesh_asset_free(mesh);
     render_mesh_asset_publish(mesh_key, &prepared);
+}
+
+/* Publishes `mesh` as preparation does, with tangents from its UVs. */
+static void publish_mesh(render_mesh_asset *mesh)
+{
+    render_mesh_asset_tangents(mesh);
+    publish_prepared(mesh);
 }
 
 /* The unit box's triangles with their own corners: the -x, +x, bottom, top,
@@ -2701,6 +2707,96 @@ TEST_CASE(imported_meshes_carry_texture_and_part_coordinates)
     }
     return true;
 }
+
+/* A square on the ground facing up, scaled by the two-unit surface box to
+ * four units, with its texture's u along `u` and v along `v`, and every
+ * vertex's tangent `tangent`, or with no tangent, tangents from its UVs.
+ * With `projected`, source bounds project its UVs from its positions. */
+static void publish_square(CF_V3 u, CF_V3 v, CF_V4 tangent, bool projected)
+{
+    static const CF_V3 corners[] = { { -1, 0, -1 },
+                                     { -1, 0, 1 },
+                                     { 1, 0, 1 },
+                                     { 1, 0, -1 } };
+    static const int indices[] = { 0, 1, 2, 0, 2, 3 };
+    render_mesh_asset square = { .min = { -1, 0, -1 },
+                                 .max = { 1, 0, 1 },
+                                 .has_uv_bounds = projected,
+                                 .uv_min = { -1, -1, -1 },
+                                 .uv_max = { 1, 1, 1 } };
+    for (int i = 0; i < 4; i++) {
+        CF_V3 p = corners[i];
+        render_mesh_surface_vertex vertex = {
+            .position = p,
+            .normal = { 0, 1, 0 },
+            .uv = { (cf_dot_v3(p, u) + 1) / 2, (cf_dot_v3(p, v) + 1) / 2 },
+            .tangent = tangent,
+        };
+        apush(square.vertices, vertex);
+    }
+    for (int i = 0; i < 6; i++) {
+        apush(square.indices, indices[i]);
+    }
+    if (tangent.w) {
+        publish_prepared(&square);
+        return;
+    }
+    publish_mesh(&square);
+}
+
+/* How bright the ground square's center shows with material `name`. */
+static int square_light(ecs_entity square, const char *name)
+{
+    GAME_GameShader_get(world, square)->material = name;
+    GameEnvironment environment = unlit_environment();
+    if (!render(&environment)) {
+        return -1;
+    }
+    return pixel_at((CF_V3){ 0 }).colors.g;
+}
+
+/* Normal maps turn with a mesh's tangents. A sun shines down and toward -z.
+ * A map tilted along u lights a square whose u runs along +z more than a
+ * flat map does, and a square whose u runs along +x but whose authored
+ * tangents point along +z shades the same. A map tilted along v follows the
+ * tangents' handedness: it faces the sun when v runs along +z and turns away
+ * when v is mirrored. Box-projected UVs keep their own frame, along +x, and
+ * authored tangents turn with the square, across the sun. */
+TEST_CASE(normal_maps_follow_mesh_tangents)
+{
+    static const float flat[] = { .5f, .5f, 1 }, along_u[] = { .85f, .5f, .85f },
+                       along_v[] = { .5f, .85f, .85f };
+    REQUIRE(test_register_normal_map("Flat", flat));
+    REQUIRE(test_register_normal_map("AlongU", along_u));
+    REQUIRE(test_register_normal_map("AlongV", along_v));
+    static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 }, back = { 0, 0, -1 };
+    publish_square(z, x, (CF_V4){ 0 }, false);
+    ecs_entity square = add_surface_box("Flat");
+    import_mesh(square);
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 });
+    sun->intensity = 1;
+    int level = square_light(square, "Flat"), facing = square_light(square, "AlongU");
+    REQUIRE(level > 0 && facing > level + 10);
+    publish_square(x, z, (CF_V4){ 0, 0, 1, 1 }, false);
+    REQUIRE(abs(square_light(square, "AlongU") - facing) <= 3);
+    publish_square(x, z, (CF_V4){ 0 }, false);
+    int along = square_light(square, "AlongU");
+    REQUIRE(along >= 0 && along + 10 < level);
+    REQUIRE(abs(square_light(square, "AlongV") - facing) <= 3);
+    publish_square(x, back, (CF_V4){ 0 }, false);
+    int away = square_light(square, "AlongV");
+    publish_square(x, z, (CF_V4){ 0, 0, 1, 1 }, true);
+    REQUIRE(away >= 0 && away + 10 < along);
+    REQUIRE(abs(square_light(square, "AlongU") - along) <= 3);
+    publish_square(x, z, (CF_V4){ 0, 0, 1, 1 }, false);
+    GameVisualTransform turned = { .yaw = CF_PI / 2, .scale = 1 };
+    assert(
+        ecs_world_record_add(world, square, GAME_COMPONENT_GameVisualTransform.id, &turned, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(abs(square_light(square, "AlongU") - along) <= 3);
+    return true;
+}
 #endif
 
 void test_render_scene3d(bool gles)
@@ -2786,6 +2882,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(color_ramps_color_surfaces_from_any_table_offset);
     RUN_TEST_CASE(imported_mesh_groups_take_their_own_materials);
     RUN_TEST_CASE(imported_meshes_carry_texture_and_part_coordinates);
+    RUN_TEST_CASE(normal_maps_follow_mesh_tangents);
 #endif
     pu_clear_setup();
     cf_destroy_app();

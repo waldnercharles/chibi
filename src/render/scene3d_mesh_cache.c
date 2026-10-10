@@ -57,6 +57,9 @@ static const CF_VertexAttribute attributes[] = {
     { .name = "in_part_frame2",
       .format = CF_VERTEX_FORMAT_FLOAT3,
       .offset = offsetof(render_mesh_surface_vertex, part_from_object[2]) },
+    { .name = "in_tangent",
+      .format = CF_VERTEX_FORMAT_FLOAT4,
+      .offset = offsetof(render_mesh_surface_vertex, tangent) },
 };
 
 /* Where `identity`'s copy is, or would go to keep the order. */

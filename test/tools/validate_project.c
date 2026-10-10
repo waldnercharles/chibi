@@ -1,4 +1,5 @@
 #include "assets/project.h"
+#include "assets/prototype.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "third_party/yyjson/yyjson.h"
@@ -621,6 +622,24 @@ static bool reads(const char *text, const char *expected)
     return text && !strcmp(text, expected);
 }
 
+/* Whether the catalog lists `member` among the members of the asset found
+ * by `query`. */
+static bool catalog_lists(const char *query, const char *member)
+{
+    char request[256];
+    snprintf(request, sizeof request, "{\"contract\":1,\"operation\":\"search_assets\",\"query\":\"%s\"}", query);
+    if (ctl(true, request) != 0) {
+        return false;
+    }
+    yyjson_val *members = yyjson_obj_get(yyjson_arr_get(result("assets"), 0), "members");
+    for (size_t i = 0; i < yyjson_arr_size(members); i++) {
+        if (reads(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(members, i), "name")), member)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Runs chibi_ctl --format on the project, with "--check" to only compare. */
 static int format(const char *check)
 {
@@ -859,14 +878,16 @@ TEST_CASE(scenes_run_under_their_own_name)
     return true;
 }
 
-/* The x of the GlobalTransform2D on the snapshot entity named `name`. */
+/* The x of the GlobalTransform2D on the snapshot entity named `name`, or on
+ * the first unnamed one when `name` is NULL. */
 static double global_x(const char *name)
 {
     yyjson_val *entity, *component;
     size_t i, count, j, components;
     yyjson_arr_foreach(result("entities"), i, count, entity)
     {
-        if (!reads(yyjson_get_str(yyjson_obj_get(entity, "name")), name)) {
+        const char *named = yyjson_get_str(yyjson_obj_get(entity, "name"));
+        if (name ? !reads(named, name) : named != NULL) {
             continue;
         }
         yyjson_arr_foreach(yyjson_obj_get(entity, "components"), j, components, component)
@@ -913,13 +934,7 @@ TEST_CASE(scene_children_are_placed_by_their_parent)
     );
     REQUIRE(global_x("Ship.Turret") == 110 && global_x("Turret") == 0);
     /* The catalog lists a child by its path. */
-    REQUIRE(ctl(true, "{\"contract\":1,\"operation\":\"search_assets\",\"query\":\"Start\"}") == 0);
-    yyjson_val *members = yyjson_obj_get(yyjson_arr_get(result("assets"), 0), "members");
-    bool listed = false;
-    for (size_t i = 0; i < yyjson_arr_size(members); i++) {
-        listed |= reads(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(members, i), "name")), "Ship.Turret");
-    }
-    REQUIRE(listed);
+    REQUIRE(catalog_lists("Start", "Ship.Turret"));
     write_file(
         "game/content/scenes/Start.kdl",
         "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Ship\" "
@@ -928,6 +943,150 @@ TEST_CASE(scene_children_are_placed_by_their_parent)
         "name=\"Turret\" prototype=\"Hull\"; }; }\n}\n"
     );
     REQUIRE(validate() != 0);
+    return true;
+}
+
+/* A prototype's children come with each instance of it, placed by it. */
+TEST_CASE(prototype_children_come_with_their_instance)
+{
+    char folder[256], ship[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    GameTransform x=0 y=0\n}\n");
+    write_file(
+        "game/content/prototypes/Ship.kdl",
+        "name \"Ship\"\ncomponents { GameTransform x=0 y=0; }\n"
+        "(array)children { - name=\"Gun\" prototype=\"Hull\" { components { "
+        "GameTransform x=4 y=0; }; }; }\n"
+    );
+    write_file(
+        "game/content/scenes/Start.kdl",
+        "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Flagship\" "
+        "prototype=\"Ship\" { components { GameTransform x=100 y=0; }; }\n}\n"
+    );
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    REQUIRE(format(NULL) == 0 && format("--check") == 0);
+    path(ship, sizeof ship, "game/content/prototypes/Ship.kdl");
+    char *text = tool_read(ship);
+    /* A prototype with children is formatted too: Transform's zero fields go. */
+    bool nested = text &&
+                  strstr(text, "(array)children {\n    - {\n        name \"Gun\"") &&
+                  strstr(text, "(object)GAME.GameTransform");
+    free(text);
+    REQUIRE(nested);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"runtime_snapshot\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
+        0
+    );
+    /* Snapshots name only the scene's own objects. */
+    REQUIRE(yyjson_arr_size(result("entities")) == 2);
+    REQUIRE(global_x("Flagship") == 100 && global_x(NULL) == 104);
+    REQUIRE(catalog_lists("Ship", "Gun"));
+    /* A child is an edge to the prototype it uses. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"asset_dependencies\",\"kind\":\"prototype\",\"name\":\"Ship\"}") ==
+        0
+    );
+    yyjson_val *edges = result("edges");
+    yyjson_val *to = yyjson_obj_get(yyjson_arr_get_first(edges), "to");
+    REQUIRE(
+        yyjson_arr_size(edges) == 1 &&
+        reads(yyjson_get_str(yyjson_obj_get(to, "name")), "Hull")
+    );
+    /* A child's own behaviors are checked with the scene that spawns it. */
+    write_file(
+        "game/content/prototypes/Ship.kdl",
+        "name \"Ship\"\n(array)children { - name=\"Gun\" prototype=\"Hull\" { "
+        "(array)behaviors \"Missing\"; }; }\n"
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"scene\",\"name\":\"Start\"}") !=
+        0
+    );
+    const char *missing = first_message(result("diagnostics"));
+    REQUIRE(missing && strstr(missing, "Missing"));
+    /* So are the bindings a child's overrides add. */
+    write_file(
+        "game/content/prototypes/Ship.kdl",
+        "name \"Ship\"\n(array)children { - name=\"Gun\" prototype=\"Hull\" { "
+        "components { GAME.GameUi document=\"Nowhere\"; }; }; }\n"
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Ship\"}") !=
+        0
+    );
+    missing = first_message(result("diagnostics"));
+    REQUIRE(missing && !strcmp(missing, "Unknown UI document 'Nowhere'"));
+    write_file("game/content/prototypes/Ship.kdl", "name \"Ship\"\n(array)children { - name=\"Again\" prototype=\"Ship\"; }\n");
+    REQUIRE(validate() != 0);
+    return true;
+}
+
+/* Prototypes `prefix`0 to `prefix`<levels - 1>, each with two children that
+ * use the next, so loading `prefix`0 reads 2^levels - 2 other documents. */
+static void write_fans(const char *prefix, int levels)
+{
+    for (int i = 0; i < levels; i++) {
+        char file[128], text[256];
+        snprintf(file, sizeof file, "game/content/prototypes/%s%d.kdl", prefix, i);
+        int n = snprintf(text, sizeof text, "name \"%s%d\"\n", prefix, i);
+        if (i + 1 < levels) {
+            snprintf(
+                text + n,
+                sizeof text - n,
+                "(array)children { - name=\"L\" prototype=\"%s%d\"; - "
+                "name=\"R\" "
+                "prototype=\"%s%d\"; }\n",
+                prefix,
+                i + 1,
+                prefix,
+                i + 1
+            );
+        }
+        write_file(file, text);
+    }
+}
+
+TEST_CASE(prototype_expansion_is_shared)
+{
+    /* Each load stays under its own limit, but the project's loads together
+     * read more than one load may, so preparing it stops. Fan0 to Fan12 read
+     * 16369 documents, and Twin's two Fan0 children read 16382 more. */
+    char folder[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_fans("Fan", 13);
+    write_file(
+        "game/content/prototypes/Twin.kdl",
+        "name \"Twin\"\n(array)children { - name=\"L\" prototype=\"Fan0\"; - "
+        "name=\"R\" prototype=\"Fan0\"; }\n"
+    );
+    REQUIRE(validate() != 0);
+    const char *message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "through their includes and children"));
+    return true;
+}
+
+TEST_CASE(scene_instances_share_the_expansion)
+{
+    /* Each instance loads its prototype again, so a scene's instances share
+     * one budget too. An instance of Bush0 reads 512 documents: its
+     * overlay, Bush0 and Bush0's 510. */
+    char folder[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_fans("Bush", 9);
+    REQUIRE(validate() == 0);
+    static char scene[GAME_PROTOTYPE_EXPANSION_MAX];
+    int n = snprintf(scene, sizeof scene, "version 1\nname \"Start\"\n(array)entities {\n");
+    for (int i = 0; i < GAME_PROTOTYPE_EXPANSION_MAX / 512; i++) {
+        n += snprintf(scene + n, sizeof scene - n, "    - name=\"B%d\" prototype=\"Bush0\"\n", i);
+    }
+    snprintf(scene + n, sizeof scene - n, "}\n");
+    write_file("game/content/scenes/Start.kdl", scene);
+    REQUIRE(validate() != 0);
+    const char *message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "through their includes and children"));
     return true;
 }
 
@@ -1104,6 +1263,9 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(manifest_content_folder_is_used);
     RUN_TEST_CASE(scenes_run_under_their_own_name);
     RUN_TEST_CASE(scene_children_are_placed_by_their_parent);
+    RUN_TEST_CASE(prototype_children_come_with_their_instance);
+    RUN_TEST_CASE(prototype_expansion_is_shared);
+    RUN_TEST_CASE(scene_instances_share_the_expansion);
     RUN_TEST_CASE(scenarios_hold_input_actions);
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     RUN_TEST_CASE(unit_mismatches_are_warnings);

@@ -62,12 +62,12 @@ static int attach(void *, ecs_entity, const char *)
 static void setup()
 {
     world = ecs_world_new();
-    const ecs_component_desc *components[] = { &GAME_COMPONENT_GameTransform3D,
-                                               &GAME_COMPONENT_GameGlobalTransform3D,
-                                               &GAME_COMPONENT_GameCollider3D,
-                                               &GAME_COMPONENT_GameBody3D,
-                                               &GAME_COMPONENT_GameGravity3D };
-    for (int i = 0; i < 5; i++) {
+    const ecs_component_desc *components[] = {
+        &GAME_COMPONENT_GameTransform3D, &GAME_COMPONENT_GameGlobalTransform3D,
+        &GAME_COMPONENT_GameCollider3D,  &GAME_COMPONENT_GameBody3D,
+        &GAME_COMPONENT_GameGravity3D,   &GAME_COMPONENT_GameCharacter3D
+    };
+    for (int i = 0; i < 6; i++) {
         assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
     }
     const game_entity_host host = { .destroy = destroy,
@@ -870,6 +870,375 @@ TEST_CASE(physics3d_runs_as_a_world_module)
 }
 
 void test_native_catalog_enable();
+static bool is(ecs_entity a, ecs_entity b)
+{
+    return ecs_entity_to_u64(a) == ecs_entity_to_u64(b);
+}
+
+static game_physics3d_hit ray(CF_V3 start, CF_V3 end, unsigned categories, ecs_entity exclude, bool sensors)
+{
+    game_physics3d_hit hit;
+    int result = game_physics3d_raycast(world, entities, start, end, categories, exclude, sensors, &hit);
+    assert(result == FLOW_OK);
+    return hit;
+}
+
+static game_physics3d_hit sweep(ecs_entity caster, CF_V3 translation, bool sensors)
+{
+    game_physics3d_hit hit;
+    int result = game_physics3d_shape_cast(world, entities, caster, translation, ~0u, sensors, &hit);
+    assert(result == FLOW_OK);
+    return hit;
+}
+
+static bool hit_at(game_physics3d_hit hit, ecs_entity entity, CF_V3 point, CF_V3 normal, float distance)
+{
+    const float tolerance = METER / 100;
+    return hit.found && is(hit.entity, entity) &&
+           near_v3(hit.point, point, tolerance) &&
+           near_v3(hit.normal, normal, 1e-3f) &&
+           near(hit.distance, distance, tolerance);
+}
+
+/* Rays see colliders as their components place them now, before any step. */
+TEST_CASE(physics3d_raycasts_find_the_nearest_collider)
+{
+    ecs_entity floor = ground();
+    ecs_entity rock = collider((ecs_entity){ 0 }, (CF_V3){ 0, 2 * METER, 0 }, ball(METER / 2), GAME_BODY_STATIC);
+    GameCollider3D zone = ball(METER / 2);
+    zone.sensor = true;
+    ecs_entity mist = collider((ecs_entity){ 0 }, (CF_V3){ 0, 4 * METER, 0 }, zone, GAME_BODY_STATIC);
+    CF_V3 top = { 0, 10 * METER, 0 }, bottom = { 0, -METER, 0 }, up = { 0, 1, 0 };
+    REQUIRE(hit_at(
+        ray(top, bottom, ~0u, (ecs_entity){ 0 }, false),
+        rock,
+        (CF_V3){ 0, 2.5f * METER, 0 },
+        up,
+        7.5f * METER
+    ));
+    REQUIRE(hit_at(
+        ray(top, bottom, ~0u, (ecs_entity){ 0 }, true),
+        mist,
+        (CF_V3){ 0, 4.5f * METER, 0 },
+        up,
+        5.5f * METER
+    ));
+    REQUIRE(hit_at(ray(top, bottom, ~0u, rock, false), floor, (CF_V3){ 0 }, up, 10 * METER));
+    REQUIRE(!ray(top, bottom, 2, (ecs_entity){ 0 }, true).found);
+    /* A ray from inside hits at its start without a normal. */
+    REQUIRE(hit_at(
+        ray((CF_V3){ 0, 2 * METER, 0 }, top, ~0u, (ecs_entity){ 0 }, false),
+        rock,
+        (CF_V3){ 0, 2 * METER, 0 },
+        (CF_V3){ 0 },
+        0
+    ));
+    /* A long thin box turned a quarter about Y and doubled lies across X. */
+    GameCollider3D plank = box(METER / 2, METER / 2, 2 * METER);
+    plank.category = 2;
+    ecs_entity beam = collider((ecs_entity){ 0 }, (CF_V3){ 6 * METER, METER, 0 }, plank, GAME_BODY_STATIC);
+    GameTransform3D *placed = GAME_GameTransform3D_get(world, beam);
+    placed->rotation = cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, 1.57079633f);
+    placed->scale = (CF_V3){ 2, 2, 2 };
+    REQUIRE(hit_at(
+        ray((CF_V3){ 0, METER, 0 }, (CF_V3){ 10 * METER, METER, 0 }, 2, (ecs_entity){ 0 }, false),
+        beam,
+        (CF_V3){ 4 * METER, METER, 0 },
+        (CF_V3){ -1, 0, 0 },
+        4 * METER
+    ));
+    /* Excluding a child excludes the body that carries it. */
+    ecs_entity cart = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 0, METER, 5 * METER },
+        box(METER, METER, METER),
+        GAME_BODY_KINEMATIC
+    );
+    ecs_entity mast = collider(cart, (CF_V3){ 0, METER, 0 }, box(METER / 4, METER, METER / 4), GAME_BODY_STATIC);
+    CF_V3 above = { 0, 10 * METER, 5 * METER }, below = { 0, -METER, 5 * METER };
+    REQUIRE(is(ray(above, below, ~0u, (ecs_entity){ 0 }, false).entity, mast));
+    REQUIRE(is(ray(above, below, ~0u, mast, false).entity, floor));
+    REQUIRE(is(ray(above, below, ~0u, cart, false).entity, floor));
+    game_physics3d_hit hit;
+    REQUIRE(
+        game_physics3d_raycast(world, entities, (CF_V3){ 0, 1e9f, 0 }, bottom, ~0u, (ecs_entity){ 0 }, false, &hit) ==
+        FLOW_ERR_ARGUMENT
+    );
+    GAME_GameCollider3D_get(world, mist)->radius = 0;
+    REQUIRE(
+        game_physics3d_raycast(world, entities, top, bottom, ~0u, (ecs_entity){ 0 }, false, &hit) ==
+        FLOW_ERR_ARGUMENT
+    );
+    REQUIRE(!hit.found);
+    return true;
+}
+
+TEST_CASE(physics3d_shape_casts_sweep_a_collider)
+{
+    ecs_entity floor = ground();
+    ecs_entity drop = collider((ecs_entity){ 0 }, (CF_V3){ 0, 5 * METER, 0 }, ball(METER / 2), GAME_BODY_DYNAMIC);
+    /* Its own child below it is part of its body, not in its way. */
+    collider(drop, (CF_V3){ 0, -2 * METER, 0 }, box(METER, METER / 4, METER), GAME_BODY_STATIC);
+    REQUIRE(hit_at(
+        sweep(drop, (CF_V3){ 0, -10 * METER, 0 }, false),
+        floor,
+        (CF_V3){ 0 },
+        (CF_V3){ 0, 1, 0 },
+        4.5f * METER
+    ));
+    REQUIRE(!sweep(drop, (CF_V3){ 0, -4 * METER, 0 }, false).found);
+    /* A capsule turned a quarter about Z lies along X, 2 m from end to end. */
+    GameCollider3D log = { .shape = GAME_COLLIDER3D_CAPSULE,
+                           .radius = METER / 4,
+                           .height = 2 * METER,
+                           .category = 1,
+                           .mask = 1 };
+    ecs_entity roller = collider((ecs_entity){ 0 }, (CF_V3){ 0, 2 * METER, 10 * METER }, log, GAME_BODY_DYNAMIC);
+    GAME_GameTransform3D_get(world, roller)
+        ->rotation = cf_quat_from_axis_angle((CF_V3){ 0, 0, 1 }, 1.57079633f);
+    ecs_entity wall = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 5 * METER, 2 * METER, 10 * METER },
+        box(METER, 4 * METER, 4 * METER),
+        GAME_BODY_STATIC
+    );
+    GameCollider3D zone = box(METER, 4 * METER, 4 * METER);
+    zone.sensor = true;
+    ecs_entity gate = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 3 * METER, 2 * METER, 10 * METER },
+        zone,
+        GAME_BODY_STATIC
+    );
+    CF_V3 across = { 10 * METER, 0, 0 };
+    REQUIRE(hit_at(
+        sweep(roller, across, false),
+        wall,
+        (CF_V3){ 4.5f * METER, 2 * METER, 10 * METER },
+        (CF_V3){ -1, 0, 0 },
+        3.5f * METER
+    ));
+    REQUIRE(is(sweep(roller, across, true).entity, gate));
+    /* What it already overlaps, it hits at once, without a normal. */
+    GAME_GameTransform3D_get(world, roller)->position.x = 5 * METER;
+    game_physics3d_hit stuck = sweep(roller, across, false);
+    REQUIRE(stuck.found && is(stuck.entity, wall) && stuck.distance == 0);
+    REQUIRE(near_v3(stuck.normal, (CF_V3){ 0 }, 0));
+    ecs_entity gone = ecs_world_create_entity(world);
+    REQUIRE(!sweep(gone, across, false).found);
+    return true;
+}
+
+/* Contact queries answer what the simulation would let touch: a resting
+ * crate touches its floor, a near solid counts within Box3D's margin, a
+ * sensor needs overlap, and masks and bodies apply. */
+TEST_CASE(physics3d_contact_queries_match_what_touches)
+{
+    ecs_entity floor = ground();
+    ecs_entity crate = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 0, METER, 0 },
+        box(METER, METER, METER),
+        GAME_BODY_DYNAMIC
+    );
+    ecs_entity handle = collider(
+        crate,
+        (CF_V3){ 0, -METER / 4, 0 },
+        box(METER / 4, METER / 2, METER / 4),
+        GAME_BODY_STATIC
+    );
+    bool landed = false;
+    for (int i = 0; i < 240; i++) {
+        step(STEP);
+        landed = landed || touched(crate, floor, true) || touched(handle, floor, true);
+    }
+    REQUIRE(landed && near_v3(body(crate)->linear_velocity, (CF_V3){ 0 }, 0));
+    ecs_entity *found = NULL;
+    REQUIRE(game_physics3d_contact_entities(world, entities, crate, ~0u, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 1 && is(found[0], floor));
+    REQUIRE(game_physics3d_contact_entities(world, entities, floor, ~0u, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 2 && is(found[0], crate) && is(found[1], handle));
+    REQUIRE(game_physics3d_contact_entities(world, entities, floor, 2, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 0);
+    /* A hundredth of a meter above a solid is within the margin; a sensor
+     * there touches nothing, and neither does a solid it can't collide with. */
+    float hover = METER / 2 + METER / 100;
+    ecs_entity near_ball = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 5 * METER, hover, 0 },
+        ball(METER / 2),
+        GAME_BODY_STATIC
+    );
+    GameCollider3D zone = ball(METER / 2);
+    zone.sensor = true;
+    ecs_entity near_zone = collider((ecs_entity){ 0 }, (CF_V3){ 10 * METER, hover, 0 }, zone, GAME_BODY_STATIC);
+    GameCollider3D ghost = ball(METER / 2);
+    ghost.mask = 2;
+    ecs_entity sunk = collider((ecs_entity){ 0 }, (CF_V3){ -5 * METER, 0, 0 }, ghost, GAME_BODY_STATIC);
+    REQUIRE(game_physics3d_contact_entities(world, entities, near_ball, ~0u, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 1 && is(found[0], floor));
+    REQUIRE(game_physics3d_contact_entities(world, entities, near_zone, ~0u, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 0);
+    GAME_GameTransform3D_get(world, near_zone)->position.y = METER / 4;
+    REQUIRE(game_physics3d_contact_entities(world, entities, near_zone, ~0u, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 1 && is(found[0], floor));
+    REQUIRE(game_physics3d_contact_entities(world, entities, sunk, ~0u, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 0);
+    REQUIRE(game_physics3d_contact_entities(world, entities, crate, 0, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 0);
+    afree(found);
+    return true;
+}
+
+static const float SLOP = .005f * METER; /* Box3D's linear slop. */
+
+/* A kinematic capsule character, 1.8 m tall and .4 m in radius. */
+static ecs_entity character(CF_V3 position)
+{
+    GameCollider3D capsule = { .shape = GAME_COLLIDER3D_CAPSULE,
+                               .radius = .4f * METER,
+                               .height = 1.8f * METER,
+                               .category = 1,
+                               .mask = 1 };
+    ecs_entity entity = collider((ecs_entity){ 0 }, position, capsule, GAME_BODY_KINEMATIC);
+    assert(GAME_GameCharacter3D_add(world, entity, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    return entity;
+}
+
+/* Steps a character at velocity, adding gravity as a script would when it
+ * falls. */
+static void walk(ecs_entity walker, CF_V3 velocity, bool falls, int count)
+{
+    for (int i = 0; i < count; i++) {
+        GameBody3D *moving = body(walker);
+        float fall = falls ? moving->linear_velocity.y - 9.81f * METER * STEP
+                           : velocity.y;
+        moving->linear_velocity = cf_v3(velocity.x, fall, velocity.z);
+        step(STEP);
+    }
+}
+
+static const GameCharacter3D *character_state(ecs_entity walker)
+{
+    return GAME_GameCharacter3D_get_const(world, walker);
+}
+
+/* A character lands, stands without gathering speed, stops at a wall and
+ * slides along it, all with the velocity it can actually keep. */
+TEST_CASE(physics3d_characters_slide_along_what_they_meet)
+{
+    ground();
+    collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 3 * METER, 2 * METER, 0 },
+        box(METER, 4 * METER, 40 * METER),
+        GAME_BODY_STATIC
+    );
+    ecs_entity walker = character((CF_V3){ 0, METER, 0 });
+    walk(walker, (CF_V3){ 2 * METER, 0, 2 * METER }, true, 120);
+    REQUIRE(character_state(walker)->on_floor);
+    REQUIRE(near_v3(character_state(walker)->floor_normal, (CF_V3){ 0, 1, 0 }, 1e-3f));
+    CF_V3 at = position(walker);
+    REQUIRE(near(at.x, 2.1f * METER, 2 * SLOP) && near(at.y, .9f * METER, 2 * SLOP));
+    REQUIRE(near(at.z, 4 * METER, METER / 10));
+    REQUIRE(near_v3(body(walker)->linear_velocity, (CF_V3){ 0, 0, 2 * METER }, 1e-3f));
+    /* It leaves the floor when it jumps and lands again. */
+    walk(walker, (CF_V3){ 0, 5 * METER, 0 }, false, 1);
+    REQUIRE(!character_state(walker)->on_floor && position(walker).y > at.y);
+    walk(walker, (CF_V3){ 0 }, true, 90);
+    REQUIRE(character_state(walker)->on_floor && near(position(walker).y, at.y, 2 * SLOP));
+    return true;
+}
+
+/* A wall is not a floor, sensors and its own colliders never block it, and
+ * it stops at a dynamic body as at a wall. Up opposes the scene's gravity. */
+TEST_CASE(physics3d_characters_meet_only_solid_others)
+{
+    ground();
+    ecs_entity sky = set_gravity((CF_V3){ 0, 0, 0 });
+    collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 3 * METER, 5 * METER, 0 },
+        box(METER, 4 * METER, 40 * METER),
+        GAME_BODY_STATIC
+    );
+    ecs_entity floater = character((CF_V3){ 0, 5 * METER, 0 });
+    walk(floater, (CF_V3){ 2 * METER, 0, 0 }, false, 120);
+    REQUIRE(near(position(floater).x, 2.1f * METER, 2 * SLOP));
+    REQUIRE(!character_state(floater)->on_floor);
+    GameCollider3D zone = box(METER, 4 * METER, 4 * METER);
+    zone.sensor = true;
+    collider((ecs_entity){ 0 }, (CF_V3){ 0, 2 * METER, 3 * METER }, zone, GAME_BODY_STATIC);
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
+    GameCollider3D pack = box(METER / 2, METER / 2, METER / 2);
+    pack.sensor = true;
+    collider(walker, (CF_V3){ 0, 0, -.6f * METER }, pack, GAME_BODY_STATIC);
+    ecs_entity crate = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 0, METER / 2, 8 * METER },
+        box(METER, METER, METER),
+        GAME_BODY_DYNAMIC
+    );
+    walk(walker, (CF_V3){ 0, 0, 2 * METER }, false, 240);
+    REQUIRE(near(position(walker).z, 7.1f * METER, 2 * SLOP));
+    REQUIRE(near(position(crate).z, 8 * METER, SLOP));
+    /* Sideways gravity turns the wall into a floor. */
+    GAME_GameGravity3D_get(world, sky)->acceleration = (CF_V3){ 9.81f * METER, 0, 0 };
+    walk(floater, (CF_V3){ METER, 0, 0 }, false, 1);
+    REQUIRE(character_state(floater)->on_floor);
+    REQUIRE(near_v3(character_state(floater)->floor_normal, (CF_V3){ -1, 0, 0 }, 1e-3f));
+    return true;
+}
+
+/* Characters stop at each other as at walls, even when both move toward each
+ * other in the same step. */
+TEST_CASE(physics3d_characters_meet_each_other)
+{
+    set_gravity((CF_V3){ 0, 0, 0 });
+    ecs_entity left = character((CF_V3){ 0, METER, 0 });
+    ecs_entity right = character((CF_V3){ 0, METER, 2 * METER });
+    for (int i = 0; i < 30; i++) {
+        body(left)->linear_velocity = (CF_V3){ 0, 0, 4 * METER };
+        body(right)->linear_velocity = (CF_V3){ 0, 0, -4 * METER };
+        step(STEP);
+        REQUIRE(position(right).z - position(left).z >= .8f * METER - 4 * SLOP);
+    }
+    return true;
+}
+
+TEST_CASE(physics3d_characters_need_a_kinematic_capsule)
+{
+    ecs_entity walker = character((CF_V3){ 0, METER, 0 });
+    step(STEP);
+    body(walker)->type = GAME_BODY_DYNAMIC;
+    REQUIRE(failed_with("A Character3D needs a kinematic Body3D"));
+    body(walker)->type = GAME_BODY_KINEMATIC;
+    GAME_GameCollider3D_get(world, walker)->sensor = true;
+    REQUIRE(failed_with("A Character3D needs a solid capsule Collider3D"));
+    *GAME_GameCollider3D_get(world, walker) = box(METER, METER, METER);
+    REQUIRE(failed_with("A Character3D needs a solid capsule Collider3D"));
+    GameCollider3D thin = { .shape = GAME_COLLIDER3D_CAPSULE,
+                            .radius = METER / 100,
+                            .height = METER };
+    *GAME_GameCollider3D_get(world, walker) = thin;
+    REQUIRE(failed_with("at least two centimeters in radius"));
+    thin.radius = METER / 50;
+    *GAME_GameCollider3D_get(world, walker) = thin;
+    REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
+    /* Only its capsule moves, so what it carries must be a sensor. */
+    ecs_entity pack = collider(walker, (CF_V3){ 0 }, box(METER, METER, METER), GAME_BODY_STATIC);
+    REQUIRE(failed_with("A Collider3D under a Character3D must be a sensor"));
+    GAME_GameCollider3D_get(world, pack)->sensor = true;
+    REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
+    ecs_entity lost = ecs_world_create_entity(world);
+    assert(GAME_GameTransform3D_add(world, lost, 0) == ECS_OK);
+    assert(GAME_GameCharacter3D_add(world, lost, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(failed_with("A Character3D needs a Transform3D and a Collider3D"));
+    return true;
+}
+
 void test_tool_physics3d()
 {
     test_native_catalog_enable(); /* Contact payloads copy a CF_V3. */
@@ -888,6 +1257,13 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_moving_followers_wake_what_they_meet);
     RUN_TEST_CASE(physics3d_followers_never_touch_their_body);
     RUN_TEST_CASE(physics3d_followers_stop_touching_the_body_they_join);
+    RUN_TEST_CASE(physics3d_raycasts_find_the_nearest_collider);
+    RUN_TEST_CASE(physics3d_shape_casts_sweep_a_collider);
+    RUN_TEST_CASE(physics3d_contact_queries_match_what_touches);
+    RUN_TEST_CASE(physics3d_characters_slide_along_what_they_meet);
+    RUN_TEST_CASE(physics3d_characters_meet_only_solid_others);
+    RUN_TEST_CASE(physics3d_characters_meet_each_other);
+    RUN_TEST_CASE(physics3d_characters_need_a_kinematic_capsule);
     RUN_TEST_CASE(physics3d_contacts_end_when_bodies_part_or_go);
     RUN_TEST_CASE(physics3d_masks_and_sensors_filter_contacts);
     RUN_TEST_CASE(physics3d_interpolates_moving_roots_only);

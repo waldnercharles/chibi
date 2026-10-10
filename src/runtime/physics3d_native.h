@@ -1,0 +1,9 @@
+#ifndef CHIBI_PHYSICS3D_NATIVE_H
+#define CHIBI_PHYSICS3D_NATIVE_H
+#include "execution/host.h"
+
+extern const node_host_call GAME_PHYSICS3D_RAYCAST_CALL,
+    GAME_PHYSICS3D_CAST_CALL, GAME_PHYSICS3D_CONTACTS_CALL;
+extern const node_access GAME_PHYSICS3D_READ_ACCESS;
+
+#endif

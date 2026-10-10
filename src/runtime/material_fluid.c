@@ -400,6 +400,13 @@ bool material_fluid_constitutive_valid(fluid_constitutive value)
            value.bulk_modulus > 0 && value.shear_modulus >= 0;
 }
 
+int material_fluid_response(const fluid_body *bodies, int index)
+{
+    int response = bodies[index].part_of ? bodies[index].part_of - 1 : index;
+    assert(response <= index && !bodies[response].part_of);
+    return response;
+}
+
 bool material_fluid_add(material_fluid *fluid, fluid_particle p)
 {
     assert(isfinite(p.position.x) && isfinite(p.position.y));
@@ -1462,24 +1469,32 @@ static void collide_obstacles(
         if (x0 > x1 || y0 > y1) {
             continue;
         }
+        /* Contacts push the body this one is a part of, and see what earlier
+         * contacts with its other parts did to it. */
+        fluid_body *response = &bodies[material_fluid_response(bodies, obstacle.body)];
+        fluid_body part = *body;
+        part.impulse = response->impulse;
+        part.angular_impulse = response->angular_impulse;
         double query_cells = ((double)x1 - x0 + 1) * ((double)y1 - y0 + 1);
         if (query_cells > acount(fluid->active)) {
             for (int n = 0; n < acount(fluid->active); n++) {
                 int particle = fluid->active[n];
-                collide(fluid, particle, body, obstacle, fluid->delta, sweep_start, sweep_end);
+                collide(fluid, particle, &part, obstacle, fluid->delta, sweep_start, sweep_end);
             }
-            continue;
-        }
-        for (int y = y0; y <= y1; y++) {
-            for (int x = x0; x <= x1; x++) {
-                for (int j = fluid->heads[bucket(fluid, x, y)]; j >= 0;
-                     j = fluid->work[j].next) {
-                    if (fluid->work[j].x == x && fluid->work[j].y == y) {
-                        collide(fluid, j, body, obstacle, fluid->delta, sweep_start, sweep_end);
+        } else {
+            for (int y = y0; y <= y1; y++) {
+                for (int x = x0; x <= x1; x++) {
+                    for (int j = fluid->heads[bucket(fluid, x, y)]; j >= 0;
+                         j = fluid->work[j].next) {
+                        if (fluid->work[j].x == x && fluid->work[j].y == y) {
+                            collide(fluid, j, &part, obstacle, fluid->delta, sweep_start, sweep_end);
+                        }
                     }
                 }
             }
         }
+        response->impulse = part.impulse;
+        response->angular_impulse = part.angular_impulse;
     }
     close_static_contacts(fluid, bodies, body_count, obstacles, count, sweep_end);
 }

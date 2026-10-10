@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -856,6 +857,78 @@ TEST_CASE(scenes_run_under_their_own_name)
     return true;
 }
 
+/* The x of the GlobalTransform2D on the snapshot entity named `name`. */
+static double global_x(const char *name)
+{
+    yyjson_val *entity, *component;
+    size_t i, count, j, components;
+    yyjson_arr_foreach(result("entities"), i, count, entity)
+    {
+        if (!reads(yyjson_get_str(yyjson_obj_get(entity, "name")), name)) {
+            continue;
+        }
+        yyjson_arr_foreach(yyjson_obj_get(entity, "components"), j, components, component)
+        {
+            if (reads(yyjson_get_str(yyjson_obj_get(component, "name")), "GameGlobalTransform2D")) {
+                yyjson_val *position = yyjson_obj_get(
+                    yyjson_arr_get(yyjson_obj_get(component, "fields"), 0),
+                    "value"
+                );
+                return yyjson_get_num(yyjson_obj_get(position, "x"));
+            }
+        }
+    }
+    return NAN;
+}
+
+TEST_CASE(scene_children_are_placed_by_their_parent)
+{
+    char folder[256], scene[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    GameTransform x=0 y=0\n}\n");
+    /* A root and a child may share a name; siblings may not. */
+    write_file(
+        "game/content/scenes/Start.kdl",
+        "version 1\nname \"Start\"\n(array)entities {\n"
+        "    - name=\"Ship\" prototype=\"Hull\" { components { GameTransform "
+        "x=100 y=5; }; "
+        "(array)children { - name=\"Turret\" prototype=\"Hull\" { components { "
+        "GameTransform x=10 y=0; }; }; }; }\n"
+        "    - name=\"Turret\" prototype=\"Hull\"\n}\n"
+    );
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    REQUIRE(format("--check") != 0 && format(NULL) == 0 && format("--check") == 0);
+    path(scene, sizeof scene, "game/content/scenes/Start.kdl");
+    char *text = tool_read(scene);
+    bool nested = text &&
+                  strstr(text, "        (array)children {\n            - {\n                name \"Turret\"");
+    free(text);
+    REQUIRE(nested);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"runtime_snapshot\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
+        0
+    );
+    REQUIRE(global_x("Ship.Turret") == 110 && global_x("Turret") == 0);
+    /* The catalog lists a child by its path. */
+    REQUIRE(ctl(true, "{\"contract\":1,\"operation\":\"search_assets\",\"query\":\"Start\"}") == 0);
+    yyjson_val *members = yyjson_obj_get(yyjson_arr_get(result("assets"), 0), "members");
+    bool listed = false;
+    for (size_t i = 0; i < yyjson_arr_size(members); i++) {
+        listed |= reads(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(members, i), "name")), "Ship.Turret");
+    }
+    REQUIRE(listed);
+    write_file(
+        "game/content/scenes/Start.kdl",
+        "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Ship\" "
+        "prototype=\"Hull\" { "
+        "(array)children { - name=\"Turret\" prototype=\"Hull\"; - "
+        "name=\"Turret\" prototype=\"Hull\"; }; }\n}\n"
+    );
+    REQUIRE(validate() != 0);
+    return true;
+}
+
 /* The x a Tick wrote to the scene's only Transform in the last snapshot. */
 static double snapshot_x()
 {
@@ -974,6 +1047,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(resources_are_limited_together);
     RUN_TEST_CASE(manifest_content_folder_is_used);
     RUN_TEST_CASE(scenes_run_under_their_own_name);
+    RUN_TEST_CASE(scene_children_are_placed_by_their_parent);
     RUN_TEST_CASE(scenarios_hold_input_actions);
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     pu_clear_setup();

@@ -3006,6 +3006,46 @@ TEST_CASE(program_input_map_validates_actions)
     free(many);
     return true;
 }
+/* The catalog finds a scene's references in nested children as well as in
+ * its roots, and reports the ones that name nothing. */
+TEST_CASE(program_scene_children_are_referenced)
+{
+    char root[] = "/tmp/chibi-children-XXXXXX", path[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/scenes/Start.kdl", root);
+    source_catalog_edit edit = {
+        .path = path,
+        .text = "version 1\n"
+                "name \"Start\"\n"
+                "(array)entities {\n"
+                "    - {\n"
+                "        name \"Ship\"\n"
+                "        prototype \"Hull\"\n"
+                "        (array)children {\n"
+                "            - {\n"
+                "                name \"Turret\"\n"
+                "                (array)children {\n"
+                "                    - name=\"Barrel\" prototype=\"Gun\"\n"
+                "                }\n"
+                "            }\n"
+                "        }\n"
+                "    }\n"
+                "}\n",
+    };
+    source_catalog *project = source_catalog_edited(root, &catalog, &edit, 1);
+    const char *expected[] = { "Hull", "Gun" };
+    REQUIRE(source_catalog_reference_count(project) == 2);
+    REQUIRE(source_catalog_diagnostic_count(project) == 2);
+    for (int i = 0; i < 2; i++) {
+        const source_catalog_reference *reference = &source_catalog_references(project)[i];
+        REQUIRE(reference->kind == SOURCE_REFERENCE_PROTOTYPE);
+        REQUIRE(!strcmp(reference->name, expected[i]));
+        REQUIRE(strstr(source_catalog_diagnostic_at(project, i)->message, expected[i]));
+    }
+    source_catalog_free(project);
+    rmdir(root);
+    return true;
+}
 TEST_CASE(program_input_actions_read_through_typed_names)
 {
     script_catalog_capability capabilities[] = {
@@ -3465,6 +3505,120 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
     rmdir(root);
     return true;
 }
+/* Migrates a version 18 scene whose object names hold the '.' that version 19
+ * uses to separate paths, and stops on a rename that would clash. */
+TEST_CASE(program_version_18_dotted_names_are_renamed)
+{
+    const char *scene = "version 1\n"
+                        "name \"Start\"\n"
+                        "(array)entities {\n"
+                        "    - name=\"Ship\"\n"
+                        "    - name=\"Ship.Turret.Barrel\"\n"
+                        "}\n";
+    const char *renamed = "version 1\n"
+                          "name \"Start\"\n"
+                          "(array)entities {\n"
+                          "    - name=\"Ship\"\n"
+                          "    - name=\"Ship_Turret_Barrel\"\n"
+                          "}\n";
+    const char *clash = "version 1\n"
+                        "name \"Start\"\n"
+                        "(array)entities {\n"
+                        "    - name=\"Ship.Turret\"\n"
+                        "    - name=\"Ship_Turret\"\n"
+                        "}\n";
+    /* A saved scenario's targets and entity payloads follow the rename; other
+     * strings keep their dots. */
+    const char *scenario =
+        "scene \"Start\"\n"
+        "frames 2\n"
+        "(array)inputs {\n"
+        "    - {\n"
+        "        frame 0\n"
+        "        (array)events {\n"
+        "            - {\n"
+        "                name \"Hit\"\n"
+        "                target \"Ship.Turret.Barrel\"\n"
+        "                (array)values {\n"
+        "                    - type=\"entity\" value=\"Ship.Turret.Barrel\"\n"
+        "                    - type=\"string\" value=\"v1.2\"\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "        (array)ui {\n"
+        "            - target=\"Ship.Turret.Barrel\" element=\"fire\" "
+        "event=\"click\"\n"
+        "        }\n"
+        "    }\n"
+        "}\n";
+    const char *manifest = "version 18\ncontent \"content\"\nstart_scene "
+                           "\"scenes/Start.kdl\"\n";
+    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256], text[1024];
+    REQUIRE(mkdtemp(root));
+    const char *directories[] = { "content", "content/scenes", "content/scenarios" };
+    for (int i = 0; i < 3; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        REQUIRE(!mkdir(path, 0700));
+    }
+    const char *runs[][2] = {
+        { scene, NULL },
+        { clash, "Start.kdl has two objects that version 19 names Ship_Turret" }
+    };
+    for (int run = 0; run < 2; run++) {
+        const char *files[][2] = {
+            { CHIBI_PROJECT_MANIFEST, manifest },
+            { "content/scenes/Start.kdl", runs[run][0] },
+            { "content/scenarios/Fight.kdl", scenario },
+        };
+        for (int i = 0; i < 3; i++) {
+            snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+            FILE *file = fopen(path, "wb");
+            fputs(files[i][1], file);
+            fclose(file);
+        }
+        int migrated = chibi_project_migrate(root, error, sizeof error);
+        snprintf(path, sizeof path, "%s/%s", root, files[1][0]);
+        FILE *file = fopen(path, "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        if (runs[run][1]) {
+            REQUIRE(migrated == -1 && strstr(error, runs[run][1]));
+            REQUIRE(!strcmp(text, clash));
+            continue;
+        }
+        REQUIRE(migrated == CHIBI_PROJECT_VERSION - 18);
+        REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
+        if (strcmp(text, renamed)) {
+            fprintf(stderr, "migrated scene:\n%s", text);
+        }
+        REQUIRE(!strcmp(text, renamed));
+        snprintf(path, sizeof path, "%s/content/scenarios/Fight.kdl", root);
+        file = fopen(path, "rb");
+        text[fread(text, 1, sizeof text - 1, file)] = 0;
+        fclose(file);
+        int targets = 0;
+        for (const char *at = strstr(text, "\"Ship_Turret_Barrel\""); at;
+             at = strstr(at + 1, "\"Ship_Turret_Barrel\"")) {
+            targets++;
+        }
+        if (targets != 3 || strstr(text, "Ship.Turret") || !strstr(text, "\"v1.2\"")) {
+            fprintf(stderr, "migrated scenario:\n%s", text);
+        }
+        REQUIRE(targets == 3 && !strstr(text, "Ship.Turret") && strstr(text, "\"v1.2\""));
+    }
+    snprintf(path, sizeof path, "%s/%s", root, CHIBI_PROJECT_MANIFEST);
+    unlink(path);
+    snprintf(path, sizeof path, "%s/content/scenes/Start.kdl", root);
+    unlink(path);
+    snprintf(path, sizeof path, "%s/content/scenarios/Fight.kdl", root);
+    unlink(path);
+    for (int i = 2; i >= 0; i--) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        rmdir(path);
+    }
+    rmdir(root);
+    return true;
+}
 static char *read_whole(const char *path)
 {
     FILE *file = fopen(path, "rb");
@@ -3482,7 +3636,7 @@ static void write_whole(const char *path, const char *text)
     fputs(text, file);
     fclose(file);
 }
-TEST_CASE(program_version_18_components_move_to_chibi)
+TEST_CASE(program_version_19_components_move_to_chibi)
 {
     char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
     REQUIRE(mkdtemp(root));
@@ -3491,7 +3645,7 @@ TEST_CASE(program_version_18_components_move_to_chibi)
         snprintf(path, sizeof path, "%s/%s", root, directories[i]);
         REQUIRE(!mkdir(path, 0700));
     }
-    const char *manifest = "version 18\ncontent \"content\"\nstart_scene "
+    const char *manifest = "version 19\ncontent \"content\"\nstart_scene "
                            "\"scenes/Start.kdl\"\n";
     snprintf(path, sizeof path, "%s/content/scenes/Start.kdl", root);
     write_whole(path, "version 1\nname \"Start\"\n(array)entities\n");
@@ -3512,7 +3666,7 @@ TEST_CASE(program_version_18_components_move_to_chibi)
     if (steps < 0) {
         fprintf(stderr, "migrate: %s\n", error);
     }
-    REQUIRE(steps == CHIBI_PROJECT_VERSION - 18);
+    REQUIRE(steps == CHIBI_PROJECT_VERSION - 19);
     REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
     REQUIRE(!read_whole(path));
     snprintf(path, sizeof path, "%s/content/components/Charge.chibi", root);
@@ -4232,10 +4386,12 @@ void test_language_program()
     RUN_TEST_CASE(program_version_14_scenes_migrate_to_own_behaviors);
     RUN_TEST_CASE(program_version_15_bindings_migrate_to_the_input_map);
     RUN_TEST_CASE(program_input_map_validates_actions);
+    RUN_TEST_CASE(program_scene_children_are_referenced);
     RUN_TEST_CASE(program_input_actions_read_through_typed_names);
     RUN_TEST_CASE(program_version_16_locals_migrate_to_declarations);
     RUN_TEST_CASE(program_version_17_sdf_motion_is_removed);
-    RUN_TEST_CASE(program_version_18_components_move_to_chibi);
+    RUN_TEST_CASE(program_version_18_dotted_names_are_renamed);
+    RUN_TEST_CASE(program_version_19_components_move_to_chibi);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

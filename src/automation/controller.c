@@ -1399,6 +1399,27 @@ static void catalog_member_add(catalog_asset *asset, const char *kind, const cha
     apush(asset->members, member);
 }
 
+/* Scene entities by path, their children nested under them. */
+static void catalog_scan_entities(catalog_asset *asset, yyjson_val *entities, const char *parent, int depth)
+{
+    size_t index, count;
+    yyjson_val *entity;
+    yyjson_arr_foreach(entities, index, count, entity)
+    {
+        const char *name = yyjson_is_obj(entity) ? request_string(entity, "name")
+                                                 : NULL;
+        if (!name || !name[0] || depth >= GAME_SCENE_DEPTH_MAX) {
+            continue;
+        }
+        size_t size = (parent ? strlen(parent) + 1 : 0) + strlen(name) + 1;
+        char *path = xmalloc(size);
+        snprintf(path, size, "%s%s%s", parent ? parent : "", parent ? "." : "", name);
+        catalog_member_add(asset, "entity", path);
+        catalog_scan_entities(asset, yyjson_obj_get(entity, "children"), path, depth + 1);
+        free(path);
+    }
+}
+
 static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
 {
     yyjson_val *graphs = yyjson_obj_get(root, "graphs");
@@ -1433,14 +1454,7 @@ static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
             catalog_member_add(asset, "component", name);
         }
     }
-    yyjson_val *entities = yyjson_obj_get(root, "entities");
-    yyjson_val *entity;
-    yyjson_arr_foreach(entities, index, count, entity)
-    {
-        if (yyjson_is_obj(entity)) {
-            catalog_member_add(asset, "entity", request_string(entity, "name"));
-        }
-    }
+    catalog_scan_entities(asset, yyjson_obj_get(root, "entities"), NULL, 0);
     if (acount(asset->members) > 1) {
         asort(asset->members, catalog_member_compare);
     }
@@ -1933,14 +1947,16 @@ static void catalog_add_content(
             game_scene_document *scene = game_scene_document_load(text, error, sizeof error);
             for (int i = 0; scene && i < acount(scene->entities); i++) {
                 const game_scene_entity *entity = &scene->entities[i];
+                char *path = game_scene_document_entity_path(scene, i);
                 reference_object object = {
-                    .name = entity->name,
+                    .name = path,
                     .prototype = entity->prototype,
                     .overrides = entity->components,
                     .behaviors = (const char *const *)entity->behaviors,
                     .behavior_count = acount(entity->behaviors),
                 };
                 reference_index_add_object(index, asset->reference, &object);
+                free(path);
             }
             if (scene) {
                 reference_index_add_page(index, asset->reference, scene->ui, page);
@@ -7674,6 +7690,7 @@ static int enter_scenario_scene(scenario_context *context, const char *json, cha
             context->scene_entities,
             ((game_prototype_preview_scene_entity){
                 .prototype = prototype,
+                .parent = entity->parent,
                 .components = entity->components,
                 .behaviors = (const char *const *)entity->behaviors,
                 .behavior_count = acount(entity->behaviors),
@@ -10119,12 +10136,9 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
         for (int i = 0; i < acount(context.scene->entities); i++) {
             ecs_entity authored = game_prototype_preview_entity_at(context.preview, i);
             if (ecs_entity_to_u64(authored) == ecs_entity_to_u64(entity)) {
-                yyjson_mut_obj_add_strcpy(
-                    result->doc,
-                    record,
-                    "name",
-                    context.scene->entities[i].name
-                );
+                char *path = game_scene_document_entity_path(context.scene, i);
+                yyjson_mut_obj_add_strcpy(result->doc, record, "name", path);
+                free(path);
                 yyjson_mut_obj_add_strcpy(
                     result->doc,
                     record,

@@ -84,7 +84,7 @@ Prototypes, scenes, behaviors and systems then use `Charge` like an engine
 component. A name may not reuse an engine type. The compiler stores the
 declarations in the prepared artifact, so the player needs no source.
 `chibi_ctl` formats, validates, describes and runs them like engine components.
-Projects saved before version 19 declared components in KDL; `--migrate`
+Projects saved before version 20 declared components in KDL; `--migrate`
 rewrites each into `.chibi`.
 
 ## Scene entities
@@ -99,6 +99,29 @@ the list out to keep the prototype's behaviors.
     - name="Player" prototype="Player"
     - name="Decoy" prototype="Player" {
         (array)behaviors
+    }
+}
+```
+
+An entity's `children` are entities placed under it: each is `ChildOf` its
+parent, and its `Transform` is relative to the parent's placement. A name must
+be unique among its siblings and cannot contain `.`; a path such as
+`Ship.Turret` names a nested entity, for example as a scenario target.
+
+```kdl
+(array)entities {
+    - {
+        name "Ship"
+        prototype "Ship"
+        (array)children {
+            - {
+                name "Turret"
+                prototype "Turret"
+                components {
+                    GameTransform x=0.0 y=-12.0
+                }
+            }
+        }
     }
 }
 ```

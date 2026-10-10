@@ -195,7 +195,7 @@ App.EDITORS.properties = (area, head, body) => {
     const open = q() ? true : !!App.State.openPanels[comp];
     const n = App.componentOverrides(s, comp);
     const p = h(`<section class="panel" ${open ? 'data-open' : ''}>
-      <header class="panel-head" aria-expanded="${open}">${icon('down', 'chev')}<span class="title">${hl(App.human(comp))}</span>${n ? `<span class="badge override" data-tip="Instance overrides">${n}</span>` : ''}<span class="spacer"></span><span class="grip">${icon('grip')}</span><button class="btn sm icon-only more" data-stop data-tip="${App.human(comp)}">${icon('more')}</button></header>
+      <header class="panel-head" aria-expanded="${open}">${icon('down', 'chev')}<span class="title">${hl(App.human(comp))}</span>${n ? `<span class="badge override" data-tip="Instance overrides">${n}</span>` : ''}<span class="spacer"></span><button class="btn sm icon-only more" data-stop data-tip="${App.human(comp)}">${icon('more')}</button></header>
       <div class="panel-body"></div></section>`);
     Kit.panel(p, { onToggle: (o) => { if (!q()) App.State.openPanels[comp] = o; } });
     $('.more', p).addEventListener('click', (e) => Kit.openMenu([

@@ -29,6 +29,12 @@ bool test_register_alpha(const char *name, shader_alpha_mode mode, float opacity
 /* A lit white material, masked at cutoff 0 by its object position's z, so
  * it keeps the half of a solid at z >= 0 and cuts the rest. */
 bool test_register_half_mask(const char *name);
+/* A lit white material, masked at cutoff 0.5 by the negated x of its View
+ * Direction, so it keeps what is seen from well toward -X and cuts the rest. */
+bool test_register_view_mask(const char *name);
+/* An unlit masked material whose Opacity is NaN over its surface, as the
+ * fraction of U scaled past the float limit is, with an Alpha Cutoff of 0.5. */
+bool test_register_unknown_opacity(const char *name);
 /* A model graph of one sphere of `radius` at the origin. */
 bool test_register_model_sphere(const char *name, float radius);
 

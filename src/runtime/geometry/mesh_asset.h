@@ -41,6 +41,9 @@ void render_mesh_asset_free(render_mesh_asset *asset);
  * normal, which must be unit length. A vertex whose UVs don't vary takes any
  * perpendicular tangent. */
 void render_mesh_asset_tangents(render_mesh_asset *asset);
+/* The middle of a mesh's bounds, from halves of each, so bounds near the
+ * float limit cannot overflow it. */
+CF_V3 render_mesh_asset_center(const render_mesh_asset *asset);
 /* Immutable catalog-owned storage. Content-relative path, e.g. content/meshes/a.mesh.
  * Resolving a resident source does no file IO; workspace reset invalidates the catalog. */
 const render_mesh_asset *render_mesh_asset_load(const char *source, char *error, size_t size);

@@ -1,0 +1,9 @@
+version 1
+name "Tilemap"
+(array)entities {
+    - {
+        name "Tiles"
+        prototype "Tiles"
+        (array)behaviors "TileProbe"
+    }
+}

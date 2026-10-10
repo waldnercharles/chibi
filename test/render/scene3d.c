@@ -2,7 +2,6 @@
 
 #include "execution/status.h"
 #include "render/fog.h"
-#include "render/mesh_pick.h"
 #include "render/mesh_surface.h"
 #include "render/scene3d_mesh_cache.h"
 #include "render/scene3d_parts.h"
@@ -15,6 +14,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
 #include "runtime/geometry/mesh_asset.h"
+#include "runtime/geometry/mesh_pick.h"
 #include "runtime/geometry/mesh_prepared.h"
 #include "runtime/images/sky.h"
 #include "runtime/particles.h"
@@ -2285,6 +2285,67 @@ TEST_CASE(picks_follow_tiny_triangles_scaled_up)
     return true;
 }
 
+/* A lit box drawn as a shape, then as the unit box mesh made 2e37 wide around
+ * 1.85e38 on each axis, which its Geometry3D scales and its Transform moves
+ * back over the shape. Its bounds lie past half the float limit, where adding
+ * them overflows, yet it covers the pixels, bounds and picks as the shape
+ * did. */
+TEST_CASE(meshes_near_the_float_limit_draw_bound_and_pick_in_place)
+{
+    add_sun(0xffffffffu, (CF_V3){ 1, -1, -.5f })->intensity = 1;
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    static CF_Pixel empty[PIXELS], shape[PIXELS];
+    memcpy(empty, pixels, sizeof pixels);
+    ecs_entity box = add_solid(
+        (CF_V3){ 0, 1, 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 },
+        0xffffffffu
+    );
+    REQUIRE(render(&environment));
+    memcpy(shape, pixels, sizeof pixels);
+    CF_V3 expected[8];
+    REQUIRE(render_scene3d_entity_bounds(world, box, expected));
+    const float size = 2e37f, middle = 1.85e38f, scale = 1e-37f, back = middle * scale;
+    render_mesh_asset far = box_mesh();
+    for (int i = 0; i < acount(far.vertices); i++) {
+        CF_V3 *position = &far.vertices[i].position;
+        *position = cf_add_v3(cf_mul_v3_f(*position, size), (CF_V3){ middle, middle, middle });
+    }
+    far.min = (CF_V3){ middle - size / 2, middle - size / 2, middle - size / 2 };
+    far.max = (CF_V3){ middle + size / 2, middle + size / 2, middle + size / 2 };
+    publish_mesh(&far);
+    const GameGeometry3D shrunk = { GAME_PRIMITIVE_BOX, scale, scale, scale };
+    *GAME_GameGeometry3D_get(world, box) = shrunk;
+    place_solid(box, (CF_V3){ -back, 1 - back, -back });
+    import_mesh(box);
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    int covered = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        bool shows = distance(pixels[i], empty[i]) > 3;
+        REQUIRE(shows == (distance(shape[i], empty[i]) > 3));
+        covered += shows;
+    }
+    REQUIRE(covered > PIXELS / 8);
+    CF_V3 bounds[8];
+    REQUIRE(render_scene3d_entity_bounds(world, box, bounds));
+    for (int i = 0; i < 8; i++) {
+        REQUIRE(near_value(bounds[i].x, expected[i].x));
+        REQUIRE(near_value(bounds[i].y, expected[i].y));
+        REQUIRE(near_value(bounds[i].z, expected[i].z));
+    }
+    CF_V3 top = render_scene3d_project(&lens, (CF_V3){ 0, 2, 0 });
+    CF_V3 beside = render_scene3d_project(&lens, (CF_V3){ 2, 0, 0 });
+    REQUIRE(
+        render_scene3d_pick(world, &lens, (CF_V2){ top.x, top.y }, (render_skip){ 0 })
+            .slot == box.slot
+    );
+    REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ beside.x, beside.y }, (render_skip){ 0 })
+                 .slot);
+    return true;
+}
+
 enum
 {
     GRID_CELLS = 64
@@ -3307,6 +3368,27 @@ TEST_CASE(alpha_modes_decide_how_opacity_draws)
     return true;
 }
 
+/* A masked box whose Opacity works out to NaN, as the fraction of an
+ * overflowed product does, drops its pixels on the GPU as the CPU evaluator
+ * does, leaving the sky where a kept box stood. */
+TEST_CASE(masks_drop_pixels_whose_opacity_is_not_a_number)
+{
+    look_level();
+    publish_uniform_sky((const unsigned char[4]){ 128, 0, 128, 128 });
+    ecs_entity box = add_surface_box("Kept");
+    GAME_GameTransform_get(world, box)->y = -6;
+    GameEnvironment environment = sky_environment();
+    REQUIRE(test_register_alpha("Kept", SHADER_ALPHA_MASK, .5f, .4f));
+    REQUIRE(render(&environment));
+    CF_Pixel open = pixel(4, 4);
+    REQUIRE(pixel(SIDE / 2, SIDE / 2).colors.g > 200);
+    REQUIRE(test_register_unknown_opacity("Unknown"));
+    GAME_GameShader_get(world, box)->material = "Unknown";
+    REQUIRE(render(&environment));
+    REQUIRE(distance(pixel(SIDE / 2, SIDE / 2), open) <= 1);
+    return true;
+}
+
 /* Opaque and masked surfaces cast shadows like any solid; a blended one lets
  * the sun through. */
 TEST_CASE(opaque_and_masked_surfaces_cast_shadows)
@@ -3361,6 +3443,34 @@ TEST_CASE(masked_surfaces_cast_cut_out_shadows)
     REQUIRE(render(&environment));
     REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 1);
     REQUIRE(open.colors.g > 30 && distance(pixel_at(cut), open) <= 3);
+    REQUIRE(pixel_at(shaded).colors.g == 0);
+    return true;
+}
+
+/* A box masked by View Direction to what is seen from toward -X shades the
+ * floor from the sun and from a point light there, which see it kept, though
+ * the camera above sees it cut. */
+TEST_CASE(view_dependent_masks_cast_shadows_seen_from_the_light)
+{
+    REQUIRE(test_register_view_mask("Facing"));
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    ecs_entity box = add_surface_box("Facing");
+    GAME_GameGeometry3D_get(world, box)->elevation = 1;
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(pixel_at(shaded).colors.g > 60);
+    sun->shadows = true;
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(shaded).colors.g == 0);
+    sun->intensity = 0;
+    ecs_entity lamp = add_lamp((CF_V3){ -3, 4, 0 }, 2, 20);
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(shaded).colors.g > 30);
+    GAME_GamePointLight_get(world, lamp)->shadows = true;
+    REQUIRE(render(&environment));
+    REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 1);
     REQUIRE(pixel_at(shaded).colors.g == 0);
     return true;
 }
@@ -3478,6 +3588,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy);
     RUN_TEST_CASE(picking_and_bounds_follow_imported_triangles);
     RUN_TEST_CASE(picks_follow_tiny_triangles_scaled_up);
+    RUN_TEST_CASE(meshes_near_the_float_limit_draw_bound_and_pick_in_place);
     RUN_TEST_CASE(mesh_picks_test_only_the_triangles_near_their_ray);
     RUN_TEST_CASE(republished_meshes_replace_their_gpu_copies);
     RUN_TEST_CASE(mesh_copies_are_found_in_any_upload_order);
@@ -3504,8 +3615,10 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(stretched_transform3d_keeps_mesh_tangents);
     RUN_TEST_CASE(occlusion_dims_only_ambient_light);
     RUN_TEST_CASE(alpha_modes_decide_how_opacity_draws);
+    RUN_TEST_CASE(masks_drop_pixels_whose_opacity_is_not_a_number);
     RUN_TEST_CASE(opaque_and_masked_surfaces_cast_shadows);
     RUN_TEST_CASE(masked_surfaces_cast_cut_out_shadows);
+    RUN_TEST_CASE(view_dependent_masks_cast_shadows_seen_from_the_light);
     RUN_TEST_CASE(masked_solids_outside_the_view_cut_their_shadows);
 #endif
     pu_clear_setup();

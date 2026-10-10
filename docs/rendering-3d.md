@@ -114,7 +114,9 @@ square holds the lookup, and compares against it with a 3x3 grid of hardware
 - **Masked casters**: shadow passes draw depth alone, except for Mask
   materials, which run a shadow build of their program that discards the
   pixels below their cutoff, so cut-out leaves cast cut-out shadows. A masked
-  solid outside the view keeps a material row for this.
+  solid outside the view keeps a material row for this. Each pass sees its
+  View Direction from its light: toward the sun, or toward a point or spot
+  light's position.
 - **Not covered**: blended surfaces, particles and trails cast nothing.
   Cascade edges change resolution without a blend.
   A penumbra's radius stops at 128 texels of its cascade, and a caster
@@ -265,7 +267,10 @@ projection the planar pass uses, and the vertex part positions and frames.
 Meshes cast and receive shadows as shapes do, including from outside the view;
 picking meets their triangles, and bounds hold their extents. A pick tests
 only the triangles in boxes its ray crosses, from a tree of boxes built on a
-mesh's first pick and kept until the mesh catalog changes. Translucent
+mesh's first pick and freed whenever the mesh catalog changes. The ray is
+cut to the mesh's box before it goes into the mesh's coordinates, and the
+triangle test runs in double, so a mesh near float's range that its
+Geometry3D scales down to view picks as it draws. Translucent
 meshes sort back to front by the center of their bounds, so a mesh whose
 vertices lie away from its origin sorts where its triangles are. Cute sorts
 translucent draws by the translation of their transform, so a mesh's GPU copy
@@ -359,7 +364,9 @@ graphs read a mesh's vertex UVs, its UVs projected from source bounds, its
 part positions and, without part coordinates, its own positions. Picks and
 bounds follow a single triangle rather than its unit box, picks follow one a
 hundred-thousandth that size scaled back up, and a pick through a grid of
-8192 triangles tests only the few near its ray. A republished
+8192 triangles tests only the few near its ray. The unit box mesh made 2e37
+wide around 1.85e38, which its Geometry3D scales back to a box, covers the
+pixels, bounds and picks the shape it replaces did. A republished
 mesh draws its new triangles while the GPU copies of replaced and removed
 meshes are freed. Copies uploaded out of identity order are each found again.
 A translucent mesh whose vertices sit between the eye and a
@@ -398,19 +405,21 @@ box below its cutoff leaves only the sky; only Blend counts as translucent.
 Opaque and Mask boxes shadow the floor, and a Blend box does not. A box masked
 to one half shades the floor behind that half alone, from the sun, as the unit
 box mesh as well, and from a point light. So does a masked pillar outside the
-view, whose material row arrives through a later worker's buffer. It is a GPU
+view, whose material row arrives through a later worker's buffer. A box masked
+by View Direction shades the floor as the sun and a point light see it, though
+the camera sees it cut. It is a GPU
 check that runs the main build's
 `test/tools/test_tools` after the agent's device preflight, so build it first
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 72 cases and 50422 assertions in 13.0 seconds on 2026-10-10.
+Vulkan llvmpipe passed 85 cases and 71027 assertions in 17.0 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 72
-cases and 50422 assertions in 9.6 seconds on 2026-10-10.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 85
+cases and 71027 assertions in 17.1 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

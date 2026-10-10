@@ -41,7 +41,7 @@ App.EDITORS.viewport = (area, head, body) => {
       <button class="btn" data-tool="rotate" data-tip="Rotate" data-kbd="R" data-tip-side="right">${icon('rotate')}</button>
       <button class="btn" data-tool="scale" data-tip="Scale" data-kbd="S" data-tip-side="right">${icon('scale')}</button>
       <div class="shelf-sep"></div>
-      <button class="btn" data-act="frame" data-tip="Frame selected" data-kbd="F" data-tip-side="right">${icon('frame')}</button>
+      <button class="btn" data-act="frame" data-tip="Frame selected" data-kbd="F" data-tip-side="right">${icon('focus')}</button>
     </div>
     <div class="view-label"><span>Top orthographic</span><span class="dim ctx"></span></div>
     <div class="navgizmo">

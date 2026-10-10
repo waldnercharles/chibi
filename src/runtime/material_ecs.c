@@ -7,6 +7,7 @@
 #include "runtime/material_terrain.h"
 #include "runtime/particles.h"
 #include "runtime/task_pool.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
 #include "support/cos_sin.h"
 #include "support/xalloc.h"
@@ -786,15 +787,16 @@ void material_ecs_add_component(
 static void detach(game_materials *materials, ecs_entity source, material_mask mask, fluid_vec hit, float kick)
 {
     ecs_world *world = materials->world;
-    /* Copy before entity growth can relocate component columns. */
-    GameTransform transform = *GAME_GameTransform_get_const(world, source);
+    /* Copy before entity growth can relocate component columns. The fragment
+     * is a root, so it starts at its source's world placement. */
+    GameGlobalTransform2D pose = game_transform_world_2d(world, source);
+    GameTransform transform = { pose.position.x, pose.position.y };
     GameCollider collider = *GAME_GameCollider_get_const(world, source);
     GameDestructible destructible = *GAME_GameDestructible_get_const(world, source);
     destructible.release_fraction = 0;
     const GameVelocity *movement = GAME_GameVelocity_get_const(world, source);
     GameVelocity velocity = movement ? *movement : (GameVelocity){ 0 };
-    const GameOrientation *heading = GAME_GameOrientation_get_const(world, source);
-    GameOrientation orientation = heading ? *heading : (GameOrientation){ 0 };
+    GameOrientation orientation = { pose.radians };
     const GameAppearance *look = GAME_GameAppearance_get_const(world, source);
     GameAppearance appearance = look ? *look
                                      : (GameAppearance){ .color = 0xffffffffu };
@@ -933,15 +935,14 @@ static void queue_damage(game_materials *materials, material_damage damage)
             !record.mask || !ecs_entity_is_alive(materials->world, record.entity)) {
             continue;
         }
-        const GameTransform
-            *p = GAME_GameTransform_get_const(materials->world, record.entity);
+        CF_V2 p = game_transform_world_2d(materials->world, record.entity).position;
         float dx = fmaxf(
             0,
-            fabsf(point.x - p->x) - record.mask->width * record.mask->cell_size * .5f
+            fabsf(point.x - p.x) - record.mask->width * record.mask->cell_size * .5f
         );
         float dy = fmaxf(
             0,
-            fabsf(point.y - p->y) - record.mask->height * record.mask->cell_size * .5f
+            fabsf(point.y - p.y) - record.mask->height * record.mask->cell_size * .5f
         );
         if (dx * dx + dy * dy <= radius * radius) {
             material_damage chunk = damage;
@@ -962,14 +963,13 @@ static bool read_source(void *user, uint64_t target, material_source *out)
     }
     const GameDestructible *style = GAME_GameDestructible_get_const(materials->world, entity);
     const GameSubstance *substance = GAME_GameSubstance_get_const(materials->world, entity);
-    const GameOrientation *heading = GAME_GameOrientation_get_const(materials->world, entity);
-    GameTransform p = *GAME_GameTransform_get_const(materials->world, entity);
+    GameGlobalTransform2D pose = game_transform_world_2d(materials->world, entity);
     material_record *record = &materials->records[entity.slot];
     MaterialBreakProfile profile = material_ecs_break_profile(materials, entity);
     *out = (material_source){
         .mask = record->mask,
-        .position = { p.x, p.y },
-        .angle = heading ? heading->radians : 0,
+        .position = { pose.position.x, pose.position.y },
+        .angle = pose.radians,
         .hardness = substance ? substance->hardness : 1,
         .blast_multiplier = substance ? substance->blast_multiplier : 1,
         .release_fraction = style->release_fraction,
@@ -1027,11 +1027,10 @@ static void material_result(void *user, const material_event *event)
     const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
     const material_mask *mask = game_materials_mask(materials, entity);
     /* Find the crater's open side in the mask's local frame, then rotate back. */
-    const GameTransform *transform = GAME_GameTransform_get_const(world, entity);
-    const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
-    float angle = orientation ? orientation->radians : 0, c = cosf(angle),
-          s = sinf(angle);
-    float dx = event->point.x - transform->x, dy = event->point.y - transform->y;
+    GameGlobalTransform2D pose = game_transform_world_2d(world, entity);
+    float c = cosf(pose.radians), s = sinf(pose.radians);
+    float dx = event->point.x - pose.position.x,
+          dy = event->point.y - pose.position.y;
     fluid_vec local = outward(mask, c * dx + s * dy, c * dy - s * dx);
     /* Terrain chunks unload; their authored source keeps the material. */
     ecs_entity terrain = materials->records[entity.slot].terrain_source;

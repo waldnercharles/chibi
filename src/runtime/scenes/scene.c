@@ -70,8 +70,15 @@ game_scene *game_scene_prepare(const game_scene_spec *spec, char *error, size_t 
     scene->spec.ui = own(&scene->storage, spec->ui);
     game_scene_object *objects = arena_alloc(&scene->storage, (size_t)spec->object_count * sizeof *objects);
     scene->spec.objects = objects;
+    int *parents = arena_alloc(&scene->storage, (size_t)spec->object_count * sizeof *parents);
+    scene->spec.parents = parents;
     for (int i = 0; i < spec->object_count; i++) {
         const game_scene_object *input = &spec->objects[i];
+        parents[i] = spec->parents ? spec->parents[i] : -1;
+        if (parents[i] < -1 || parents[i] >= i) {
+            fail(error, size, "prepared scene object parent must precede it");
+            goto failed;
+        }
         if (!input->name || !input->name[0] || input->component_count < 0 ||
             input->behavior_count < 0 ||
             (input->component_count && !input->components) ||
@@ -80,7 +87,7 @@ game_scene *game_scene_prepare(const game_scene_spec *spec, char *error, size_t 
             goto failed;
         }
         for (int j = 0; j < i; j++) {
-            if (!strcmp(objects[j].name, input->name)) {
+            if (parents[j] == parents[i] && !strcmp(objects[j].name, input->name)) {
                 fail(error, size, "prepared scene object name is duplicated");
                 goto failed;
             }
@@ -98,6 +105,11 @@ game_scene *game_scene_prepare(const game_scene_spec *spec, char *error, size_t 
             if (!desc || !desc->id || !desc->name || !desc->type || !desc->element_size ||
                 desc->type->size != desc->element_size || !component->data) {
                 fail(error, size, "invalid prepared scene component");
+                goto failed;
+            }
+            if (desc->derived_from) {
+                /* Propagation computes it from the component it derives from. */
+                fail(error, size, "prepared scene component is derived, not authored");
                 goto failed;
             }
             if (desc->layout_hash && desc->layout_hash != ecs_layout_hash(desc->type)) {
@@ -201,6 +213,20 @@ const char *game_scene_object_name(const game_scene *scene, int index)
     assert(index >= 0 && index < scene->spec.object_count);
     return scene->spec.objects[index].name;
 }
+int game_scene_object_parent(const game_scene *scene, int index)
+{
+    assert(index >= 0 && index < scene->spec.object_count);
+    return scene->spec.parents[index];
+}
+bool game_scene_is_tree(const game_scene *scene)
+{
+    for (int i = 1; i < scene->spec.object_count; i++) {
+        if (scene->spec.parents[i] < 0) {
+            return false;
+        }
+    }
+    return scene->spec.object_count > 0;
+}
 size_t game_scene_storage_bytes(const game_scene *scene)
 {
     size_t capacity = arena_storage_bytes(&scene->storage);
@@ -265,7 +291,8 @@ void game_scene_instance_free(game_scene_instance *instance)
     if (!instance) {
         return;
     }
-    for (int i = 0; i < acount(instance->entities); i++) {
+    /* Children go before their parents, whose destruction would take them. */
+    for (int i = acount(instance->entities) - 1; i >= 0; i--) {
         ecs_entity entity = instance->entities[i];
         if (instance->sources) {
             game_source_detach_entity(instance->sources, entity);
@@ -328,6 +355,11 @@ static game_scene_instance *instantiate(
             if (ecs_world_record_add(world, entity, object->components[j].desc->id, NULL, (uint64_t)i)) {
                 goto failed;
             }
+        }
+        int parent = scene->spec.parents[i];
+        if (parent >= 0 &&
+            ecs_world_record_add_pair(world, entity, ECS_CHILD_OF, instance->entities[parent], (uint64_t)i)) {
+            goto failed;
         }
     }
     if (ecs_world_apply_commands(world)) {
@@ -402,11 +434,11 @@ game_scene_instance *game_scene_instantiate_components(
 {
     return instantiate(scene, world, NULL, false, error, size);
 }
-ecs_entity game_scene_instance_take_entity(game_scene_instance *instance)
+ecs_entity *game_scene_instance_take_entities(game_scene_instance *instance)
 {
-    assert(instance && !instance->sources && acount(instance->entities) == 1);
-    ecs_entity entity = instance->entities[0];
-    aclear(instance->entities);
+    assert(instance && !instance->sources && game_scene_is_tree(instance->scene));
+    ecs_entity *entities = instance->entities;
+    instance->entities = NULL;
     game_scene_instance_free(instance);
-    return entity;
+    return entities;
 }

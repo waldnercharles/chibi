@@ -193,9 +193,11 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
     }
     for (int i = 0; i < spec->prototype_count; i++) {
         const game_player_prototype *p = &spec->prototypes[i];
-        if (!p->name || !p->name[0] || !p->scene ||
-            game_scene_object_count(p->scene) != 1) {
-            fail(error, size, "Prepared player prototype requires a named single object");
+        if (!p->name || !p->name[0] || !p->scene || !game_scene_is_tree(p->scene)) {
+            fail(error, size, "Prepared player prototype requires a name and one root object");
+            return NULL;
+        }
+        if (!game_player_scene_bindings_valid(p->scene, error, size)) {
             return NULL;
         }
         for (int j = 0; j < i; j++) {
@@ -346,8 +348,11 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
         }
         assert(game_audio_sound_storage_bytes(services->audio) == bytes);
     }
-    if (services->physics &&
-        game_physics_configure(services->physics, game_scene_physics(spec->scene)) < 0) {
+    if ((services->physics &&
+         game_physics_configure(services->physics, game_scene_physics(spec->scene)) < 0) ||
+        (services->physics3d &&
+         game_physics3d_configure(services->physics3d, game_scene_physics(spec->scene)) <
+             0)) {
         fail(error, size, "Prepared scene physics configuration failed");
         goto reject;
     }
@@ -494,8 +499,10 @@ bool game_player_load_scene(game_player *p, const char *name, char *error, size_
     game_entities_reset(services->entities);
     game_scene_instance_free(p->scene);
     p->scene = NULL;
-    if (services->physics &&
-        game_physics_configure(services->physics, game_scene_physics(scene)) < 0) {
+    if ((services->physics &&
+         game_physics_configure(services->physics, game_scene_physics(scene)) < 0) ||
+        (services->physics3d &&
+         game_physics3d_configure(services->physics3d, game_scene_physics(scene)) < 0)) {
         return fail(error, size, "Prepared scene physics configuration failed");
     }
     p->scene = game_scene_instantiate(

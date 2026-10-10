@@ -48,6 +48,26 @@ TEST_CASE(source_format_block_layout)
     return true;
 }
 
+TEST_CASE(source_format_component_measures)
+{
+    REQUIRE(format(
+        "// Fired.\ncomponent Projectile{speed : 0 .. 600 u / s\n"
+        "// Pull.\naccel:u/s ^ 2;drift:- 1..1 rad\nlevel:float}"
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "// Fired.\n"
+        "component Projectile {\n"
+        "    speed: 0..600 u/s\n"
+        "    // Pull.\n"
+        "    accel: u/s^2;\n"
+        "    drift: -1..1 rad\n"
+        "    level: float\n"
+        "}\n"
+    ));
+    return true;
+}
+
 TEST_CASE(source_format_preserves_comments_and_literals)
 {
     const char *input = "// module comment\nbehavior \"quoted name\" { value "
@@ -579,6 +599,7 @@ void test_language_format()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_format_block_layout);
+    RUN_TEST_CASE(source_format_component_measures);
     RUN_TEST_CASE(source_format_preserves_comments_and_literals);
     RUN_TEST_CASE(source_format_preserves_expression_structure);
     RUN_TEST_CASE(source_format_system_types_and_control_flow);

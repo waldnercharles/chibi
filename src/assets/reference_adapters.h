@@ -15,7 +15,8 @@ reference_asset_kind reference_domain_kind(behavior_domain domain);
  * bindings; locals and parameters read; events sent and handled; prototypes
  * spawned; and assets pin defaults name, as a GameShader value's material. */
 void reference_index_add_graphs(reference_index *index, int source, const behavior_asset *asset);
-/* Its behaviors, and the assets and events its component fields name. */
+/* Its behaviors, the assets and events its component fields name, and each
+ * child as a reference_object named by its path among the children. */
 void reference_index_add_prototype(reference_index *index, int source, const struct game_prototype *prototype);
 
 /* A scene object: its prototype, behaviors, and the assets its component
@@ -23,7 +24,7 @@ void reference_index_add_prototype(reference_index *index, int source, const str
  * unless its overrides set those fields. */
 typedef struct
 {
-    const char *name;
+    const char *name; /* its path in the scene */
     const char *prototype;
     const struct game_prototype *base; /* may be NULL */
     av_value *overrides; /* borrowed component overrides; may be NULL */

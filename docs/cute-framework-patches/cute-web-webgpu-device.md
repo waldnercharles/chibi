@@ -10,7 +10,9 @@ The remaining waits change only in a build that cannot wait:
 - The polling-loop yield in `cf_webgpu_end_frame` is skipped. Chibi's player schedules frames with `emscripten_set_main_loop`, so the browser presents when each frame returns.
 - `cf_gpu_sync` submits without waiting, like `cf_gpu_submit`.
 - A readback destroyed before its map lands is freed by the map callback.
-- Shutdown leaks staging chunks still mapping, so late callbacks never write freed memory.
+- Shutdown transfers chunks still mapping to their callbacks. Each callback releases its chunk without accessing the destroyed application state.
+
+Browser staging maps use `AllowSpontaneous`, and each frame collects completed maps for reuse. The adopted device belongs to Emdawn's JavaScript instance, while Cute pumps a different native instance; `AllowProcessEvents` therefore leaves those callbacks pending indefinitely. Native builds keep `AllowProcessEvents`.
 
 Chibi's `src/host/web/index.html` requests the device with every adapter feature and the adapter's full limits, which covers what Cute asks for itself. It skips WebGPU when the adapter allows fewer than 48 bytes of color targets per sample, because the 2D material raster writes six RGBA16F targets and Cute cannot make that canvas on a smaller adapter. The adopted device has no lost or uncaptured-error callbacks from Cute, so the page reports a lost device and logs uncaptured errors.
 
@@ -27,4 +29,4 @@ git apply --check cute-web-webgpu-device.patch
 git apply cute-web-webgpu-device.patch
 ```
 
-Patch SHA-256: `2f4f9d910e78b33823823aac83259ba9d7b9a1db65740bb8d9290e996e92cfbd`.
+Patch SHA-256: `9bfc0554f70466c0b04140135037fc467c600c41eac0b6bb263075e6f1e90cd0`.

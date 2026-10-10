@@ -10,7 +10,8 @@ typedef struct render_ui render_ui;
 typedef struct ui_world ui_world;
 typedef struct rml_input rml_input;
 
-/* Host viewport surface. Resize requests are coalesced; the target is
+/* Host viewport surface. The first requested size replaces the placeholder
+ * target on the next draw. Later requests are coalesced, and the target is
  * recreated once a size has held for two draws. */
 engine_viewport *engine_viewport_new(int width, int height);
 void engine_viewport_free(engine_viewport *viewport);

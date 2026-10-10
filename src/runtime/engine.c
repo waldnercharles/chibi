@@ -8,8 +8,10 @@
 #include "runtime/events.h"
 #include "runtime/particle_emitters.h"
 #include "runtime/scenes/physics.h"
+#include "runtime/scenes/physics3d.h"
 #include "runtime/source_input.h"
 #include "runtime/task_pool.h"
+#include "runtime/transform_propagation.h"
 #include "runtime/visual_motion.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -92,10 +94,10 @@ bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity en
     if (state->hidden) {
         return false;
     }
-    const GameTransform *position = GAME_GameTransform_get_const(world, entity);
+    const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
     const game_visibility *visibility = engine_visibility(engine);
-    return !state->visibility_culled || !position || !visibility ||
-           game_visibility_at(visibility, *position).visible;
+    return !state->visibility_culled || !global || !visibility ||
+           game_visibility_at(visibility, global->position).visible;
 }
 
 static double elapsed_ms(struct timespec start, struct timespec end)
@@ -132,8 +134,8 @@ static void schedule_finish(void *task, void *user)
 static bool has_simulation(const engine *e)
 {
     return e->modules.sources || e->modules.entities || e->modules.physics ||
-           e->modules.materials || e->modules.particles ||
-           e->modules.visibility || e->modules.rendering;
+           e->modules.physics3d || e->modules.materials ||
+           e->modules.particles || e->modules.visibility || e->modules.rendering;
 }
 static bool engine_paused(const engine *e)
 {
@@ -595,6 +597,9 @@ void engine_reset_scene(engine *engine)
         if (engine->modules.physics) {
             game_physics_reset(engine->modules.physics);
         }
+        if (engine->modules.physics3d) {
+            game_physics3d_reset(engine->modules.physics3d);
+        }
         if (engine->modules.materials) {
             game_materials_reset(engine->modules.materials);
         }
@@ -920,6 +925,17 @@ static int update_visual_motion(engine *engine, float delta)
     return result;
 }
 
+static int propagate_transforms(engine *engine)
+{
+    CHIBI_TRACE_ZONE_BEGIN(zone, "Transform propagation");
+    int result = game_transform_propagate(engine->world);
+    CHIBI_TRACE_ZONE_END(zone);
+    if (result != ECS_OK) {
+        snprintf(engine->error, sizeof engine->error, "Transform propagation failed (%d).", result);
+    }
+    return result;
+}
+
 static int finish_systems(engine *engine)
 {
     int result = FLOW_OK;
@@ -939,10 +955,6 @@ static int finish_systems(engine *engine)
                        ? game_physics_tick(engine->modules.physics, (float)ENGINE_FIXED_SECONDS)
                        : FLOW_OK;
             CHIBI_TRACE_ZONE_END(physics_zone);
-            if (clock_now(&end) != 0) {
-                return FLOW_ERR_STATE;
-            }
-            engine->timing.physics_ms += elapsed_ms(start, end);
             if (result < 0) {
                 snprintf(
                     engine->error,
@@ -950,6 +962,27 @@ static int finish_systems(engine *engine)
                     "%s",
                     game_physics_error(engine->modules.physics)
                 );
+                return result;
+            }
+            CHIBI_TRACE_ZONE_BEGIN(physics3d_zone, "Physics 3D");
+            result = engine->modules.physics3d
+                       ? game_physics3d_tick(engine->modules.physics3d, (float)ENGINE_FIXED_SECONDS)
+                       : FLOW_OK;
+            CHIBI_TRACE_ZONE_END(physics3d_zone);
+            if (result < 0) {
+                snprintf(
+                    engine->error,
+                    sizeof engine->error,
+                    "%s",
+                    game_physics3d_error(engine->modules.physics3d)
+                );
+                return result;
+            }
+            if (clock_now(&end) != 0) {
+                return FLOW_ERR_STATE;
+            }
+            engine->timing.physics_ms += elapsed_ms(start, end);
+            if ((result = propagate_transforms(engine)) < 0) {
                 return result;
             }
             result = run_system_phase(engine, SYSTEM_POST_PHYSICS);
@@ -985,7 +1018,10 @@ static int finish_systems(engine *engine)
     }
     CHIBI_TRACE_ZONE_BEGIN(systems_zone, "ECS systems");
     if (!has_simulation(engine)) {
+        /* PostPhysics sees the placements PrePhysics left, as it does when
+         * physics runs between them. */
         if ((result = run_system_phase(engine, SYSTEM_PRE_PHYSICS)) < 0 ||
+            (result = propagate_transforms(engine)) < 0 ||
             (result = run_system_phase(engine, SYSTEM_POST_PHYSICS)) < 0) {
             return result;
         }
@@ -995,6 +1031,9 @@ static int finish_systems(engine *engine)
         return result;
     }
     CHIBI_TRACE_ZONE_END(systems_zone);
+    if ((result = propagate_transforms(engine)) < 0) {
+        return result;
+    }
     if (engine->emitters && !game_particle_emitters_collect(
                                 engine->emitters,
                                 engine->world,
@@ -1306,13 +1345,60 @@ void engine_set_behavior_profiling(engine *engine, bool enabled)
     }
 }
 
-bool engine_render_position(const engine *engine, ecs_entity entity, GameTransform *out)
+GameGlobalTransform2D engine_render_transform(const engine *engine, const ecs_world *world, ecs_entity entity)
 {
-    return engine && engine->modules.physics &&
-           game_physics_interpolate(
-               engine->modules.physics,
-               entity,
-               engine->timing.alpha,
-               out
-           );
+    if (!engine) {
+        return game_transform_world_2d(world, entity);
+    }
+    const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
+    assert(global);
+    GameGlobalTransform2D shown = *global;
+    if (!engine->modules.physics) {
+        return shown;
+    }
+    for (ecs_entity at = entity; at.slot; at = ecs_parent(world, at)) {
+        CF_V2 offset;
+        if (game_physics_interpolation_offset(
+                engine->modules.physics,
+                at,
+                engine->timing.alpha,
+                &offset
+            )) {
+            shown.position.x += offset.x;
+            shown.position.y += offset.y;
+            break;
+        }
+    }
+    return shown;
+}
+
+GameGlobalTransform3D engine_render_transform_3d(const engine *engine, const ecs_world *world, ecs_entity entity)
+{
+    if (!engine) {
+        return game_transform_world_3d(world, entity);
+    }
+    const GameGlobalTransform3D *global = GAME_GameGlobalTransform3D_get_const(world, entity);
+    assert(global);
+    GameGlobalTransform3D shown = *global;
+    if (!engine->modules.physics3d) {
+        return shown;
+    }
+    for (ecs_entity at = entity; at.slot; at = ecs_parent(world, at)) {
+        CF_Quat rotation;
+        CF_V3 translation;
+        if (game_physics3d_interpolation(
+                engine->modules.physics3d,
+                at,
+                engine->timing.alpha,
+                &rotation,
+                &translation
+            )) {
+            shown.x_axis = cf_mul_q_v3(rotation, shown.x_axis);
+            shown.y_axis = cf_mul_q_v3(rotation, shown.y_axis);
+            shown.z_axis = cf_mul_q_v3(rotation, shown.z_axis);
+            shown.position = cf_add_v3(cf_mul_q_v3(rotation, shown.position), translation);
+            break;
+        }
+    }
+    return shown;
 }

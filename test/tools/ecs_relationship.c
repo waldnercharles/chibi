@@ -28,6 +28,31 @@ static const ecs_component_desc weight_desc = {
     .element_size = sizeof(int),
     .type = &value_type,
 };
+/* Derived from armor, which registers first, and from shield, which
+ * registers after it. */
+static const ecs_component_desc total_desc = {
+    .id = 503,
+    .key = "sdk.ecs.total",
+    .name = "Total",
+    .element_size = sizeof(int),
+    .type = &value_type,
+    .derived_from = 501,
+};
+static const ecs_component_desc shield_desc = {
+    .id = 504,
+    .key = "sdk.ecs.shield",
+    .name = "Shield",
+    .element_size = sizeof(int),
+    .type = &value_type,
+};
+static const ecs_component_desc cover_desc = {
+    .id = 505,
+    .key = "sdk.ecs.cover",
+    .name = "Cover",
+    .element_size = sizeof(int),
+    .type = &value_type,
+    .derived_from = 504,
+};
 static const ecs_relationship_desc likes_desc = { .id = 601,
                                                   .key = "sdk.ecs.likes",
                                                   .name = "Likes" };
@@ -321,6 +346,68 @@ TEST_CASE(ecs_with_adds_implied_components_once)
     REQUIRE(*(const int *)ecs_component_data_const(world, weighed, weight_desc.id) == 9);
     REQUIRE(*(const int *)ecs_component_data_const(world, both, weight_desc.id) == 9);
     REQUIRE(*(const int *)ecs_component_data_const(world, both, armor_desc.id) == 4);
+    /* A plain implied component stays when its source goes. */
+    REQUIRE(ecs_world_record_remove(world, bare, armor_desc.id, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_component_has(world, bare, weight_desc.id));
+    return true;
+}
+
+TEST_CASE(ecs_derived_components_follow_their_source_and_reject_writes)
+{
+    REQUIRE(ecs_world_register_component(world, &total_desc, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &cover_desc, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &shield_desc, NULL) == ECS_OK);
+    ecs_component_desc itself = shield_desc;
+    itself.id = 506, itself.key = "sdk.ecs.itself", itself.derived_from = 506;
+    REQUIRE(ecs_world_register_component(world, &itself, NULL) == ECS_ERR_ARGUMENT);
+    ecs_entity armored = spawn(), shielded = spawn();
+    int value = 3;
+    REQUIRE(ecs_world_record_add(world, armored, armor_desc.id, &value, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add(world, shielded, shield_desc.id, &value, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_component_has(world, armored, total_desc.id));
+    REQUIRE(!ecs_component_has(world, armored, cover_desc.id));
+    REQUIRE(ecs_component_has(world, shielded, cover_desc.id));
+    pin_value number = { .type = PIN_I32, .type_name = "int", .i = 7 };
+    REQUIRE(!ecs_component_accepts_value(world, total_desc.id, 0, number));
+    REQUIRE(ecs_component_accepts_value(world, armor_desc.id, 0, number));
+    REQUIRE(
+        ecs_component_write_value(world, armored, total_desc.id, 0, number, number) == ECS_ERR_ARGUMENT
+    );
+    REQUIRE(ecs_component_write_field(world, armored, total_desc.id, 0, number) == ECS_ERR_ARGUMENT);
+    *(int *)ecs_component_data(world, armored, total_desc.id) = 7;
+    REQUIRE(*(const int *)ecs_component_data_const(world, armored, total_desc.id) == 7);
+    /* One registered after its source already has rows comes on them too. */
+    ecs_component_desc late = total_desc;
+    late.id = 507, late.key = "sdk.ecs.late", late.name = "Late";
+    REQUIRE(ecs_world_register_component(world, &late, NULL) == ECS_OK);
+    REQUIRE(
+        ecs_component_has(world, armored, late.id) &&
+        !ecs_component_has(world, shielded, late.id)
+    );
+    REQUIRE(ecs_world_record_remove(world, armored, armor_desc.id, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(!ecs_component_has(world, armored, total_desc.id));
+    REQUIRE(!ecs_component_has(world, armored, late.id));
+    /* An automatic id never takes a source still to come. */
+    ecs_component_id next = 1;
+    while (ecs_world_component(world, next) || ecs_world_relationship(world, next)) {
+        next++;
+    }
+    ecs_component_desc early = total_desc, unrelated = shield_desc, source = shield_desc;
+    early.id = 0, early.key = "sdk.ecs.early", early.name = "Early",
+    early.derived_from = next;
+    unrelated.id = 0, unrelated.key = "sdk.ecs.unrelated", unrelated.name = "Unrelated";
+    source.id = next, source.key = "sdk.ecs.source", source.name = "Source";
+    ecs_component_id early_id = 0, unrelated_id = 0;
+    REQUIRE(ecs_world_register_component(world, &early, &early_id) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &unrelated, &unrelated_id) == ECS_OK);
+    REQUIRE(early_id != next && unrelated_id != next);
+    REQUIRE(ecs_world_register_component(world, &source, NULL) == ECS_OK);
+    REQUIRE(ecs_world_record_add(world, shielded, next, &value, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_component_has(world, shielded, early_id));
     return true;
 }
 
@@ -337,5 +424,6 @@ void test_tool_ecs_relationships()
     RUN_TEST_CASE(ecs_pairs_target_entities_created_in_the_same_sync_point);
     RUN_TEST_CASE(ecs_pairs_survive_entity_growth_and_feed_the_world_hash);
     RUN_TEST_CASE(ecs_with_adds_implied_components_once);
+    RUN_TEST_CASE(ecs_derived_components_follow_their_source_and_reject_writes);
     pu_clear_setup();
 }

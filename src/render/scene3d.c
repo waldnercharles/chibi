@@ -16,6 +16,7 @@
 #include "runtime/particle_emitters.h"
 #include "runtime/rhythm.h"
 #include "runtime/task_pool.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -305,13 +306,10 @@ static void collect_entity(
     const engine *runtime
 )
 {
-    GameTransform position = *GAME_GameTransform_get_const(world, entity);
     if (!engine_entity_visible(runtime, world, entity)) {
         return;
     }
-    if (runtime) {
-        engine_render_position(runtime, entity, &position);
-    }
+    GameTransform position = engine_render_transform(runtime, world, entity).position;
     scene3d_visual visuals[SCENE3D_PART_LIMIT];
     char error[256] = { 0 };
     int count = render_scene3d_visuals(world, entity, &position, visuals, error, sizeof error);
@@ -473,10 +471,7 @@ static bool place_light(ecs_world *world, const engine *runtime, ecs_entity enti
     if (!engine_entity_visible(runtime, world, entity)) {
         return false;
     }
-    *position = *GAME_GameTransform_get_const(world, entity);
-    if (runtime) {
-        engine_render_position(runtime, entity, position);
-    }
+    *position = engine_render_transform(runtime, world, entity).position;
     return true;
 }
 
@@ -1223,6 +1218,13 @@ bool render_scene3d_draw(
 {
     scene3d->simulation_particles = game_particles_count(particles);
     scene3d->binding_error[0] = 0;
+    /* Hosts may draw edits, loads and hand-built worlds that no engine frame
+     * has propagated yet, so drawing starts from current global transforms. */
+    int propagated = game_transform_propagate(world);
+    if (propagated != ECS_OK) {
+        snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "Transform propagation failed (%d).", propagated);
+        return false;
+    }
     aclear(scene3d->buffer.pixels);
     aclear(scene3d->buffer.draws);
     aclear(scene3d->buffer.casters);

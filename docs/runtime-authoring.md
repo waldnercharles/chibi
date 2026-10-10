@@ -50,21 +50,66 @@ other prototypes' `(array)includes` find it by that name in the player and in
 prototype with includes but keeps its text as written instead of folding the
 included components in.
 
+## Tilemap layers
+
+Put a `GAME.GameTilemap` on one transformed entity to draw an atlas-backed grid.
+`image` names the atlas, `columns` and `rows` give the grid dimensions, and
+`frame_width` and `frame_height` set both cell size in project units and atlas
+frame size in pixels. `cells` contains whitespace-separated row-major frame
+indices; `-1` leaves a cell empty. The entity origin is the top-left corner and
+rows increase along local +Y. Orientation rotates the whole layer.
+
+Tilemaps render in scene previews without spawning cell entities. Their `layer`
+orders them with sprites. A behavior can query an occupied frame with
+`tilemap_frame_at(entity, point)` or count occupied cells overlapping a world
+rectangle with `tilemap_occupied_in_box(entity, minimum, maximum)`. Decorative
+layers need no behavior or collision setup. See the rotated `TileMosaic`
+prototype in `test/fixtures/sprites`.
+
 ## Declare components
 
-A game declares its own component types under `content/components`, one KDL file
-per component. Fields are laid out in order with natural alignment and start
-zeroed. A field type is a script scalar (`bool`, `int`, `float`, `double`,
-`string`, `entity`, ...) or an engine struct such as `CF_V2`:
+A game declares its own component types under `content/components`, one `.chibi`
+file per component. Fields are laid out in order with natural alignment and start
+zeroed. A field's type is a script scalar (`bool`, `int`, `float`, `double`,
+`number`, `string`, `entity`, ...), an engine struct such as `CF_V2`, or a
+measure: a `number` with an optional range and an optional unit. The `//`
+comments directly above the component and each field describe them.
 
-```kdl
-name "Charge"
-description "Stored energy that refills over time."
-(array)fields {
-    - name="level" type="float"
-    - name="capacity" type="float"
-    - name="full" type="bool"
-    - name="drift" type="CF_V2"
+```code
+// Stored energy that refills over time.
+component Charge {
+    level: 0..100 charge
+    // Charge gained per second.
+    rate: charge/s
+    delay: s
+    full: bool
+    drift: CF_V2
+}
+```
+
+A range such as `0..1` or `-1.5..2` sets the field's editing range in Studio. It
+is a hint, never a clamp: scripts and assets may store any value. A unit such as
+`u/s`, `rad`, `u/s^2` (shown as u/s²) or `banana/basket` labels the value. Unit
+names mean units only in a field's type, so `s` stays a free name in scripts.
+A unit standing alone must be a common one (`u`, `px`, `m`, `s`, `ms`, `rad`,
+`deg`, `Hz`, `fps`, `bpm`, `EV`, `dB`, `kg`, `N`), so a misspelled type name
+is reported instead of becoming a unit; after a range or with a `/`, any name
+works.
+
+Scripts check units the way F# does, and units are erased before the game
+runs. `*` and `/` combine them, so `charge.rate * dt` is in `charge` because
+`dt` and `delta` are in seconds. `+`, `-`, `%`, comparisons, assignment and `bind` need the
+same unit on both sides. A plain number literal takes the unit it meets in a
+sum or comparison, and as a factor it may carry any unit, so `3 * dt` is not
+checked. A value nothing measures, such as a local set to `0` or a function's
+result, is never checked either. The engine's own fields carry units too: a `GameMovement.speed` is in
+`u/s` and a collider's `radius` is in `u`. A mismatch is a warning for now.
+`validate_project` lists it with its line, and the program still runs:
+
+```code
+system Recharge(charge: Charge) {
+    charge.level += charge.rate * dt // charge
+    charge.level += charge.rate      // Units differ: charge += charge/s
 }
 ```
 
@@ -72,7 +117,8 @@ Prototypes, scenes, behaviors and systems then use `Charge` like an engine
 component. A name may not reuse an engine type. The compiler stores the
 declarations in the prepared artifact, so the player needs no source.
 `chibi_ctl` formats, validates, describes and runs them like engine components.
-Studio does not read declarations yet.
+Projects saved before version 20 declared components in KDL; `--migrate`
+rewrites each into `.chibi`.
 
 ## Scene entities
 
@@ -86,6 +132,52 @@ the list out to keep the prototype's behaviors.
     - name="Player" prototype="Player"
     - name="Decoy" prototype="Player" {
         (array)behaviors
+    }
+}
+```
+
+An entity's `children` are entities placed under it: each is `ChildOf` its
+parent, and its `Transform` is relative to the parent's placement. A name must
+be unique among its siblings and cannot contain `.`; a path such as
+`Ship.Turret` names a nested entity, for example as a scenario target.
+
+```kdl
+(array)entities {
+    - {
+        name "Ship"
+        prototype "Ship"
+        (array)children {
+            - {
+                name "Turret"
+                prototype "Turret"
+                components {
+                    GameTransform x=0.0 y=-12.0
+                }
+            }
+        }
+    }
+}
+```
+
+A prototype lists `children` in the same shape, and each instance of it,
+whether placed in a scene or spawned, gets the whole tree. A prototype that
+includes another gets the included prototype's children before its own. A
+child cannot use the prototype it belongs to, directly or through its
+children. Studio cannot load a prototype with children yet, as with
+includes, and snapshots name only the scene's own entities.
+
+```kdl
+name "Ship"
+components {
+    GameTransform x=0.0 y=0.0
+}
+(array)children {
+    - {
+        name "Turret"
+        prototype "Turret"
+        components {
+            GameTransform x=0.0 y=-12.0
+        }
     }
 }
 ```
@@ -192,6 +284,63 @@ without a file. `chibi-compile` embeds every sound in the prepared artifact.
 Scenarios hash every audio request, and `runtime_snapshot` counts the sounds and
 tones played in `sound_cues`. Studio play mode cannot play sound files yet, so
 `play_sound` and `play_music` fail there with "No sound named".
+
+## Simulate 3D bodies
+
+An entity with `GAME.GameTransform3D` and `GAME.GameCollider3D` collides in the
+scene's Box3D world. A collider is a box (`size` is its full extents), a sphere
+(`radius`) or a capsule (`radius`, and `height` along local Y), scaled by the
+entity's world scale. Lengths are units, 32 to the meter. Without
+`GAME.GameBody3D` the collider is static; with one it is kinematic, moving at its
+velocities, or dynamic, and physics writes a dynamic body's position, rotation
+and velocities back each step. Dynamic bodies must be roots. Any other body
+under a ChildOf parent with a Transform3D follows it and ignores its own
+velocities. When the top of its hierarchy has a body, the child's collider
+becomes part of that body: it moves exactly with it, adds its mass (a sensor
+adds none), and its hits push the body while contact events name the child.
+Otherwise the child teleports when a script moves its parents. Moving a body's
+Transform3D from a script teleports it. Gravity is 9.81 meters per second
+squared down Y unless one entity's `GAME.GameGravity3D` sets it. Behaviors
+handle `on ContactBegin3D` with `event.Other` and `event.Point`, and
+`on ContactEnd3D` with `event.Other`. A sensor collider reports both without
+pushing. Hull and triangle-mesh colliders are not available yet, and the 3D
+renderer still places visuals from `GAME.GameTransform`, so it does not draw
+bodies at their simulated pose yet.
+
+`GAME.GameCharacter3D` turns a kinematic body with a solid capsule collider
+into a character that walks and slides. Each step physics moves it by its
+`linear_velocity` until it meets something solid, slides along what it meets,
+and drops the part of the velocity that pushes into it, so a script can add
+gravity every frame without it building up while the character stands.
+Physics writes `on_floor` and `floor_normal`, a surface within 45 degrees of
+up, against gravity. The character stops at dynamic bodies and other
+characters as at walls, does not ride moving platforms, and needs a radius of
+at least 2 cm. Colliders under it must be sensors, because only its capsule
+moves and slides.
+
+Scripts query colliders where their components place them now, with or without
+a step: `raycast_3d(start, end, categories, exclude, sensors)` and
+`shape_cast_3d(entity, translation, categories, sensors)` return `.Found`,
+`.Entity`, `.Point`, `.Normal` and `.Distance` for the nearest hit, and
+`contact_entities_3d(entity, categories)` lists what touches the entity's
+collider as the simulation would let it. None of them meets colliders on the
+caller's own body. A shape cast that starts touching something, such as the
+ground a body rests on, hits it at distance zero, so leave the ground's
+category out to sweep along it.
+
+```kdl
+name "Crate"
+components {
+    GAME.GameBody3D type="Dynamic"
+    GAME.GameCollider3D category=1 mask=1 friction=0.6 {
+        size x=32.0 y=32.0 z=32.0
+    }
+    GAME.GameTransform3D {
+        position y=64.0
+        scale x=1.0 y=1.0 z=1.0
+    }
+}
+```
 
 ## Runtime identity and capability requests
 

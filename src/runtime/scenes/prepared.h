@@ -3,7 +3,7 @@
 #include "ecs/component_catalog.h"
 #include "runtime/scenes/scene.h"
 
-#define GAME_SCENE_PREPARED_VERSION UINT64_C(2)
+#define GAME_SCENE_PREPARED_VERSION UINT64_C(3)
 
 /* Versioned field-wise scene/prototype records. Stable component IDs, names,
  * sizes and reflected layout hashes are verified against the explicit catalog.
@@ -20,7 +20,7 @@ bool game_scene_prepared_write(
 );
 /* Returned bytes use malloc/free. Failure leaves no bytes. Decoding returns an
  * owned scene only after complete validation; the catalog's type descriptors
- * must outlive it. A prototype uses this same format with exactly one object.
+ * must outlive it. A prototype uses this same format, every object descending from the first.
  * Input and owned payloads are limited to 64 MiB, depth 64 and one million values;
  * at most 1024 objects/items per object and 4096 total scene item records. */
 game_scene *game_scene_prepared_read(

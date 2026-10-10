@@ -1161,7 +1161,7 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
             prefix
         );
     } else {
-        append(&s, "void %s(SGSample sg_sample, vec4 sg_params[32], out vec4 sg_out[8]) {\n", prefix);
+        append(&s, "void %s(SGSample sg_sample, vec4 sg_params[32], out vec4 sg_out[%d]) {\n", prefix, SHADER_OUTPUT_MAX);
     }
     int *canon = gradient ? NULL : canonical_nodes(g);
     for (int i = 0; i < acount(g->nodes); i++) {

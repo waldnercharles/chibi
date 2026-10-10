@@ -76,7 +76,7 @@ void shade_surface_points(vec3 v_world, vec3 v_normal, vec3 object_point, vec3 p
         context.normal=normal;
         context.view_direction=normalize(eye);
         context.time=u_surface.y;
-        vec4 surface[8];
+        vec4 surface[SG_OUTPUTS];
         SG_MATERIAL_CALL(material_id,context,parameters,surface);
         base=surface[0].rgb; emission=surface[1].rgb;
         opacity=clamp(surface[5].x,0.0,1.0);

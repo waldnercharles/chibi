@@ -225,6 +225,11 @@ static bool asset_valid(const shader_prepared_asset *a, shader_error *error)
     if (a->shape && (!(a->bounds[0] > 0) || !(a->bounds[1] > 0))) {
         return false;
     }
+    /* Only a material has an alpha mode; a shape keeps Blend's zero. */
+    if (a->alpha_mode < SHADER_ALPHA_BLEND || a->alpha_mode > SHADER_ALPHA_MASK ||
+        (a->shape && a->alpha_mode != SHADER_ALPHA_BLEND)) {
+        return false;
+    }
     for (int i = 0; i < SHADER_PARAMETER_MAX; i++) {
         if (a->widths[i] < 0 || a->widths[i] > 4) {
             return false;
@@ -255,6 +260,11 @@ static void asset_wire(execution_wire *w, shader_prepared_asset *a)
     }
     execution_wire_owned_string(w, &a->name);
     execution_wire_bool(w, &a->shape);
+    int alpha_mode = a->alpha_mode;
+    execution_wire_int(w, &alpha_mode);
+    if (w->reading) {
+        a->alpha_mode = alpha_mode;
+    }
     for (int i = 0; i < 2; i++) {
         execution_wire_float(w, &a->bounds[i]);
     }

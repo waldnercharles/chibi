@@ -58,9 +58,18 @@ Every material ends in **Surface Output**:
 | Roughness | Zero gives a sharp highlight; one gives a broad highlight. |
 | Metallic | Blends between a dielectric and a conductor. |
 | Normal | World-space shading normal; zero uses the solid's geometry normal. |
-| Opacity | Zero is invisible; one is opaque. |
+| Opacity | Zero is invisible; one is opaque. Alpha Mode decides how it applies. |
 | Unlit | Shows Base Color and Emission without the lighting response. |
 | Height | World units of relief above the surface. 2D solids cast its shadows. |
+| Occlusion | The share of ambient and sky light that reaches the surface, from zero to one (the default). 3D shading only; direct lights ignore it. |
+| Alpha Mode | A setting. **Blend** (the default) mixes the surface over what lies behind by Opacity. **Opaque** ignores Opacity. **Mask** draws the surface whole where Opacity reaches Alpha Cutoff and not at all below it. |
+| Alpha Cutoff | The Opacity at which Mask keeps a pixel; 0.5 by default. |
+
+The modes follow glTF's `alphaMode`. In 3D, Blend surfaces with an Opacity
+below one sort back to front, skip the depth buffer and cast no shadows; Opaque
+and Mask surfaces draw with the solids and cast shadows. A masked surface casts
+the shadow of its whole shape until shadow passes run materials. In 2D the
+modes change only Opacity.
 
 Material previews use a sphere with diameter 100 and the same shading path as
 3D actors. The geometry normal and camera are real, so view-dependent effects

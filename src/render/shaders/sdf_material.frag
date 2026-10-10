@@ -31,7 +31,7 @@ SGSample shape_context(vec3 p)
 float distance_at(vec3 p)
 {
     SGSample context=shape_context(p);
-    vec4 values[32], result[8];
+    vec4 values[32], result[SG_OUTPUTS];
     for(int i=0;i<32;i++) values[i]=SG_SHAPE_PARAMETER(i);
 #ifdef SG_MODEL_ISOLATE
     sg_preview_distance(context,values,result);
@@ -244,7 +244,7 @@ void main()
     vec2 uv=side.y>=side.x&&side.y>=side.z ? local.xz+0.5
         : side.x>=side.z ? vec2(local.z+0.5,0.5-local.y)
         : vec2(local.x+0.5,0.5-local.y);
-    vec4 geometry_parameters[32], resolved[8];
+    vec4 geometry_parameters[32], resolved[SG_OUTPUTS];
     for(int i=0;i<32;i++) geometry_parameters[i]=SG_SHAPE_PARAMETER(i);
     SGSample hit_context=shape_context(point);
 #ifdef SG_MODEL_ISOLATE

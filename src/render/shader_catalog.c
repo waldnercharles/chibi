@@ -320,8 +320,11 @@ bool render_shader_may_be_transparent(int index)
         !shader_catalog_assets[index - 1].name[0] || render_shader_is_shape(index)) {
         return false;
     }
-    const shader_graph *graph = &shader_catalog_assets[index - 1].graph;
-    const shader_node *opacity = &graph->nodes[graph->output[5]];
+    const shader_asset *asset = &shader_catalog_assets[index - 1];
+    if (asset->alpha_mode != SHADER_ALPHA_BLEND) {
+        return false;
+    }
+    const shader_node *opacity = &asset->graph.nodes[asset->graph.output[SHADER_SURFACE_OPACITY]];
     return opacity->op != SHADER_CONSTANT || opacity->value[0] < 1;
 }
 bool render_shader_sample(
@@ -689,7 +692,7 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
         append(&text, "default: return -1; }\n");
     }
     append(&text, "default: return -1; } }\n");
-    append(&text, "void sg_model_hit_dispatch(int id,SGSample context,vec4 values[32],out vec4 result[8]) {\n for(int i=0;i<8;i++) result[i]=vec4(0); result[0].xy=vec2(-1); result[1].xyz=context.object_position;\n switch(id) {\n");
+    append(&text, "void sg_model_hit_dispatch(int id,SGSample context,vec4 values[32],out vec4 result[SG_OUTPUTS]) {\n for(int i=0;i<SG_OUTPUTS;i++) result[i]=vec4(0); result[0].xy=vec2(-1); result[1].xyz=context.object_position;\n switch(id) {\n");
     for (int i = 0; i < acount(shader_catalog_assets); i++) {
         if (shader_catalog_assets[i].is_model &&
             render_shader_set_contains(set, i + 1)) {
@@ -705,7 +708,7 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
         }
     }
     append(&text, "default: break; } }\n");
-    append(&text, "void sg_dispatch(int id,SGSample sg_context,vec4 values[32],out vec4 result[8]) {\n for(int i=0;i<8;i++) result[i]=vec4(0);\n switch(id) {\n");
+    append(&text, "void sg_dispatch(int id,SGSample sg_context,vec4 values[32],out vec4 result[SG_OUTPUTS]) {\n for(int i=0;i<SG_OUTPUTS;i++) result[i]=vec4(0);\n switch(id) {\n");
     for (int i = 0; i < acount(shader_catalog_assets); i++) {
         if (!render_shader_set_contains(set, i + 1)) {
             continue;
@@ -717,7 +720,7 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
         &text,
         "void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,vec4 "
         "object_frame,float "
-        "time,vec4 values[32],out vec4 result[8]) {\n"
+        "time,vec4 values[32],out vec4 result[SG_OUTPUTS]) {\n"
         " SGSample sg_context; sg_context.position=p; "
         "sg_context.uv=vec2(p.x,-p.y)/max(2.0*half_size,vec2(0.0001))+0.5;\n"
         " sg_context.object_position=vec3(p.x,0.0,p.y); "
@@ -1541,7 +1544,7 @@ bool render_shader_contains(
     if (!render_shader_is_shape(id)) {
         return false;
     }
-    float parameters[32][4], result[8][4];
+    float parameters[32][4], result[SHADER_OUTPUT_MAX][4];
     shader_error error;
     render_shader_parameters(id, world, entity, binding->parameters, parameters);
     shader_sample_context sample = {

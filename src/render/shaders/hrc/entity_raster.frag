@@ -33,8 +33,9 @@ layout(set = 2, binding = 9) uniform sampler2D u_mesh_normal;
 #define SG_PARAMETERS_BINDING 3
 #endif
 #ifndef SG_GRAPHS
-void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,vec4 object_frame,float time,vec4 values[32],out vec4 result[8]) {
- for(int i=0;i<8;i++) result[i]=vec4(0);
+#define SG_OUTPUTS 9
+void sg_dispatch_2d(int id,vec2 p,vec2 wp,vec2 half_size,vec4 object_frame,float time,vec4 values[32],out vec4 result[SG_OUTPUTS]) {
+ for(int i=0;i<SG_OUTPUTS;i++) result[i]=vec4(0);
 }
 vec4 sg_image_sample(int id,vec2 uv) { return vec4(0); }
 layout(set = 3, binding = 0) uniform uniform_block {
@@ -664,7 +665,7 @@ void main()
         vec2 half_size = shader_half_size(e);
         vec2 material_pos = material_position(e, local_p, world_pos);
         // Pieces of one shape share a block of material and shape parameters.
-        vec4 graph_output[8];
+        vec4 graph_output[SG_OUTPUTS];
         vec4 parameters[32];
         if (e.reserved1 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[floatBitsToUint(e.simulation_time.y)+32u+uint(p)];

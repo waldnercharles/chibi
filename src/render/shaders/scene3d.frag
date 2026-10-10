@@ -331,9 +331,10 @@ vec3 ambient_light(vec3 base, float roughness, float metallic, vec3 normal, vec3
     return base * (1.0 - metallic) * mix(scene_ambient_ground.rgb, scene_ambient_sky.rgb, sky);
 }
 
-vec3 direct_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 view)
+vec3 direct_light(vec3 base, float roughness, float metallic, float occlusion, vec3 normal, vec3 view)
 {
-    vec3 result = ambient_light(base, roughness, metallic, normal, view);
+    // Occlusion dims only the ambient and sky light, which arrive from every side.
+    vec3 result = ambient_light(base, roughness, metallic, normal, view) * occlusion;
     if (dot(scene_sun_color.rgb, scene_sun_color.rgb) > 0.0) {
         result += surface_light(base, roughness, metallic, normal, view, scene_sun_direction.xyz) *
                   scene_sun_color.rgb * sun_shadow();
@@ -438,11 +439,11 @@ void main()
     vec4 fallback = material_value(0);
     vec3 base = fallback.rgb;
     vec3 emission = material_value(1).rgb;
-    float roughness = 0.5, metallic = 0.0, opacity = fallback.a;
+    float roughness = 0.5, metallic = 0.0, occlusion = 1.0, opacity = fallback.a;
     bool unlit = false;
     int material = int(v_material.y);
     if (material > 0) {
-        vec4 parameters[32], surface[8];
+        vec4 parameters[32], surface[SG_OUTPUTS];
         for (int i = 0; i < 32; i++) parameters[i] = material_value(i + 2);
         sg_dispatch(material, sg_context, parameters, surface);
         base = max(surface[0].rgb, vec3(0));
@@ -452,9 +453,10 @@ void main()
         normal = safe_normal(surface[4].xyz, normal);
         opacity = clamp(surface[5].x, 0.0, 1.0);
         unlit = surface[6].x > 0.5;
+        occlusion = clamp(surface[8].x, 0.0, 1.0);
     }
     if (isnan(opacity) || opacity <= 0.0) discard;
-    vec3 color = (unlit ? base : direct_light(base, roughness, metallic, normal, view)) + emission;
+    vec3 color = (unlit ? base : direct_light(base, roughness, metallic, occlusion, normal, view)) + emission;
     // Keep the scene-linear result within RGBA16F storage. A graph can produce
     // a larger value without turning subsequent bloom taps into infinity.
     if (isnan(color.r)) color.r = 0.0;

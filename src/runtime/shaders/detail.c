@@ -506,7 +506,13 @@ char *shader_detail_glsl_helpers(const shader_graph *g, const char *prefix, shad
                             : n->op == SHADER_DECAL_MASK ? "0.001"
                                                          : "c.x";
         append(&text, "float spacing=%s;if(spacing<=0.0||isnan(spacing)||isinf(spacing))return vec4(normal,0);\n", spacing);
-        append(&text, "vec3 row0=vec3(0),row1=vec3(0),row2=vec3(0);for(int axis=0;axis<3;axis++){vec4 positive[8],negative[8];\n");
+        append(
+            &text,
+            "vec3 row0=vec3(0),row1=vec3(0),row2=vec3(0);for(int "
+            "axis=0;axis<3;axis++){vec4 positive[%d],negative[%d];\n",
+            SHADER_OUTPUT_MAX,
+            SHADER_OUTPUT_MAX
+        );
         append(
             &text,
             "%s(sgd_shift(context,axis,spacing),parameters,positive);%s(sgd_"

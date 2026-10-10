@@ -107,7 +107,8 @@ bool authoring_visual_prepare(
          * nothing and is never passed to the decoded-value destructor. */
         shader_prepared_asset value = { .name = asset->name,
                                         .graph = asset->graph,
-                                        .shape = asset->shape };
+                                        .shape = asset->shape,
+                                        .alpha_mode = asset->alpha_mode };
         memcpy(value.names, asset->names, sizeof value.names);
         memcpy(value.widths, asset->widths, sizeof value.widths);
         memcpy(value.defaults, asset->defaults, sizeof value.defaults);

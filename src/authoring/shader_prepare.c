@@ -122,6 +122,7 @@ bool render_shader_upsert(const behavior_asset *source, shader_error *error)
         av_value_free(value);
         return false;
     }
+    fresh.alpha_mode = shader_graph_alpha_mode(source->graph);
     fresh.material_inspection = shader_graph_inspect(&fresh.graph);
     fresh.name = xstrdup(source->name);
     for (int i = 0; i < acount(fresh.graph.images); i++) {

@@ -347,7 +347,14 @@ char *model_program_frame_glsl(const model_program *p, const char *prefix, shade
         append(&text, "}\n");
         free(active);
     }
-    append(&text, "void %s(int part,SGSample context,vec4 values[32],out vec3 rows[3]) { rows[0]=vec3(1,0,0); rows[1]=vec3(0,1,0); rows[2]=vec3(0,0,1); vec4 result[8]; switch(part) {\n", prefix);
+    append(
+        &text,
+        "void %s(int part,SGSample context,vec4 values[32],out vec3 rows[3]) { "
+        "rows[0]=vec3(1,0,0); rows[1]=vec3(0,1,0); rows[2]=vec3(0,0,1); vec4 "
+        "result[%d]; switch(part) {\n",
+        prefix,
+        SHADER_OUTPUT_MAX
+    );
     for (int part = 0; part < acount(p->parts); part++) {
         if (p->bounds_program->part_frames[part].output_count) {
             append(

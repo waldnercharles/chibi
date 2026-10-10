@@ -34,7 +34,7 @@ char *render_shader_fragment_source()
         " vec2 wp=params.view_pos, p=wp-e.pos; "
         "p=vec2(dot(e.inv_rot.xy,p),dot(e.inv_rot.zw,p));\n"
         " float d=evaluate_sdf(p,e); vec2 half_size=shader_half_size(e); vec4 "
-        "values[32], result[8];\n"
+        "values[32], result[SG_OUTPUTS];\n"
         " int shape=int(sg_entity[4].z), material=int(sg_entity[4].y); float "
         "time=sg_entity[17].x;\n"
         " e.material_frame=sg_entity[18]; vec2 "

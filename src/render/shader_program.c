@@ -280,7 +280,7 @@ static bool compile(render_programs *programs, program *entry)
     snprintf(
         source,
         bytes,
-        "#define SG_GRAPHS 1\n%s"
+        "#define SG_GRAPHS 1\n#define SG_OUTPUTS %d\n%s"
         "#define SG_PREVIOUS_SCENE_BINDING %d\n#define "
         "SG_PREVIOUS_SOURCE_BINDING %d\n"
         "#define SG_PREVIOUS_ALBEDO_BINDING %d\n#define "
@@ -293,6 +293,7 @@ static bool compile(render_programs *programs, program *entry)
         "%d\n#define SG_LIGHT_SHADOW_BINDING %d\n#define "
         "SG_SKY_SPECULAR_BINDING "
         "%d\n#define SG_SKY_BRDF_BINDING %d\n%s%s%s%s\n%s",
+        SHADER_OUTPUT_MAX,
         programs->kind == RENDER_PROGRAM_RASTER_MESH
             ? "#define SG_ACCUMULATE 1\n#define SG_MESH_LAYER 1\n"
         : previous ? "#define SG_ACCUMULATE 1\n"

@@ -118,6 +118,33 @@ bool test_register_normal_map(const char *name, const float color[3])
     );
 }
 
+bool test_register_occlusion(const char *name, float occlusion)
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    pin_value value = { .type = PIN_F32, .f = occlusion };
+    return publish(material, !graph_set_pin_default(g, output, 0, SHADER_SURFACE_OCCLUSION, &value));
+}
+
+bool test_register_alpha(const char *name, shader_alpha_mode mode, float opacity, float cutoff)
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    pin_value values[] = { { .type = PIN_BOOL, .b = true },
+                           { .type = PIN_I32, .i = mode },
+                           { .type = PIN_F32, .f = opacity },
+                           { .type = PIN_F32, .f = cutoff } };
+    return publish(
+        material,
+        !graph_set_pin_default(g, output, 0, SHADER_SURFACE_UNLIT, &values[0]) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_ALPHA_MODE, &values[1]) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_OPACITY, &values[2]) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_ALPHA_CUTOFF, &values[3])
+    );
+}
+
 bool test_register_model_sphere(const char *name, float radius)
 {
     behavior_asset *model = behavior_asset_new(name);

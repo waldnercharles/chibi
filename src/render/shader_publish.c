@@ -121,7 +121,8 @@ static bool prepare_shader(
     }
     shader_asset asset = { .name = value.name,
                            .graph = value.graph,
-                           .shape = value.shape };
+                           .shape = value.shape,
+                           .alpha_mode = value.alpha_mode };
     memcpy(asset.names, value.names, sizeof asset.names);
     memcpy(asset.widths, value.widths, sizeof asset.widths);
     memcpy(asset.defaults, value.defaults, sizeof asset.defaults);

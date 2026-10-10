@@ -4,7 +4,7 @@
 #include <stdint.h>
 #define SHADER_PARAMETER_MAX 32
 #define SHADER_NODE_MAX 1024
-#define SHADER_OUTPUT_MAX 8
+#define SHADER_OUTPUT_MAX 9
 
 typedef enum
 {
@@ -112,6 +112,32 @@ enum
     SHADER_IMAGE_INPUT_WRAP,
     SHADER_IMAGE_INPUT_COUNT
 };
+/* Surface Output inputs. The first SHADER_OUTPUT_MAX are a material's IR
+ * outputs; lowering folds the alpha settings into Opacity. */
+enum
+{
+    SHADER_SURFACE_BASE_COLOR,
+    SHADER_SURFACE_EMISSION,
+    SHADER_SURFACE_ROUGHNESS,
+    SHADER_SURFACE_METALLIC,
+    SHADER_SURFACE_NORMAL,
+    SHADER_SURFACE_OPACITY,
+    SHADER_SURFACE_UNLIT,
+    SHADER_SURFACE_HEIGHT,
+    SHADER_SURFACE_OCCLUSION,
+    SHADER_SURFACE_ALPHA_MODE,
+    SHADER_SURFACE_ALPHA_CUTOFF,
+    SHADER_SURFACE_INPUT_COUNT
+};
+_Static_assert(SHADER_SURFACE_ALPHA_MODE == SHADER_OUTPUT_MAX, "surface outputs");
+/* Blend mixes by Opacity, Opaque ignores it, and Mask keeps whole the pixels
+ * whose Opacity reaches the Alpha Cutoff and drops the rest. */
+typedef enum
+{
+    SHADER_ALPHA_BLEND,
+    SHADER_ALPHA_OPAQUE,
+    SHADER_ALPHA_MASK
+} shader_alpha_mode;
 typedef struct
 {
     char *key; /* Owned asset key, never a GPU handle or embedded image bytes. */
@@ -222,7 +248,7 @@ bool shader_graph_eval_outputs(
     shader_error *error
 );
 /* malloc-owned portable GLSL; caller supplies all 32 parameter values including defaults.
- * void PREFIX(SGSample sg_sample,vec4 sg_params[32],out vec4 sg_out[8])
+ * void PREFIX(SGSample sg_sample,vec4 sg_params[32],out vec4 sg_out[SHADER_OUTPUT_MAX])
  * Caller defines vec4 PREFIX_image_N(vec2 uv) for every entry in g->images. */
 char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_error *error);
 /* malloc-owned portable GLSL for output[0]'s object-space gradient. The emitted

@@ -3,7 +3,7 @@
 #include "runtime/shaders/program.h"
 
 #include <stddef.h>
-#define SHADER_PREPARED_VERSION UINT64_C(2)
+#define SHADER_PREPARED_VERSION UINT64_C(3)
 /* Field-wise immutable IR, resource keys and sampler settings. No host callback,
  * process address, GPU object or authored source is persisted. Bytes use free(). */
 bool shader_graph_prepared_write(const shader_graph *, unsigned char **, size_t *, shader_error *);
@@ -21,6 +21,7 @@ typedef struct
     int widths[SHADER_PARAMETER_MAX];
     float defaults[SHADER_PARAMETER_MAX][4], bounds[2];
     bool shape;
+    shader_alpha_mode alpha_mode;
 } shader_prepared_asset;
 void shader_prepared_asset_init(shader_prepared_asset *);
 void shader_prepared_asset_free(shader_prepared_asset *);

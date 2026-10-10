@@ -86,6 +86,17 @@ def studio_resource_preflight(build):
             raise ValueError('studio_startup_resource_generation_changed')
 
 
+def external_project(data):
+    """Whether `data` is Studio's fixture project.kdl at a version the engine
+    upgrades when it opens it. Studio's projects lag the engine's version."""
+    header = (ROOT / 'src/assets/project.h').read_text()
+    current = int(re.search(r'^#define CHIBI_PROJECT_VERSION (\d+)$', header, re.M)[1])
+    line, _, rest = data.partition(b'\n')
+    version = re.fullmatch(rb'version ([1-9][0-9]*)', line)
+    return (version is not None and int(version[1]) <= current and
+            rest == b'name "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n')
+
+
 def studio_startup_preflight():
     source = Path('/Users/cwaldner/Personal/chibi-studio')
     build = ROOT / 'build-verify/sdk-migration/external-studio-build'
@@ -106,10 +117,11 @@ def studio_startup_preflight():
                         1024 * 1024) != evidence.get('sdk_config_sha256')):
         raise ValueError('studio_startup_build_provenance_mismatch')
     starter = source / 'projects/starter'
-    expected = {'project.kdl': b'version 20\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
-                'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n'}
-    if {p.relative_to(starter).as_posix() for p in starter.rglob('*') if p.is_file()} != set(expected):
+    expected = {'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n'}
+    if {p.relative_to(starter).as_posix() for p in starter.rglob('*') if p.is_file()} != {'project.kdl', *expected}:
         raise ValueError('studio_starter_membership_changed')
+    if not external_project(bounded_read(starter / 'project.kdl', 1024)):
+        raise ValueError('studio_starter_content_changed')
     for name, value in expected.items():
         if (starter / name).stat().st_size != len(value) or (starter / name).read_bytes() != value:
             raise ValueError('studio_starter_content_changed')
@@ -174,13 +186,14 @@ def studio_acceptance_preflight(selector):
         raise ValueError('studio_acceptance_sdk_changed')
     fixture = source / 'tests/acceptance/project'
     expected = {
-        'project.kdl': b'version 20\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
         'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n',
         'content/behaviors/Counter.chibi': b'behavior Counter {\n    state count: int = 1\n    on Tick {\n        count = count + 1\n    }\n}\n',
     }
     paths = list(fixture.rglob('*'))
-    if any(p.is_symlink() for p in paths) or {p.relative_to(fixture).as_posix() for p in paths if p.is_file()} != set(expected):
+    if any(p.is_symlink() for p in paths) or {p.relative_to(fixture).as_posix() for p in paths if p.is_file()} != {'project.kdl', *expected}:
         raise ValueError('studio_acceptance_fixture_membership_changed')
+    if not external_project(bounded_read(fixture / 'project.kdl', 1024)):
+        raise ValueError('studio_acceptance_fixture_changed')
     for name, value in expected.items():
         if (fixture / name).stat().st_size != len(value) or bounded_read(fixture / name, len(value)) != value:
             raise ValueError('studio_acceptance_fixture_changed')

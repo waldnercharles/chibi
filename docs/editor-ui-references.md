@@ -76,7 +76,8 @@ State lives in `data-*` attributes (`data-open`, `data-pressed`, `data-highlight
 switch on hover within a menubar and open submenus after 100 ms. Tooltips show
 after 500 ms and stay warm for 400 ms within a group. A tooltip holds a label, a
 shortcut and an optional description that wraps; in a zoomed canvas it keeps
-its size on screen. Number fields repeat held
+its size on screen. An element marked `data-tip-clipped` shows its own text as
+a tooltip only while that text is cut off, unless an ancestor has its own tip. Number fields repeat held
 steps after 400 ms, then every 60 ms. Popups close on Escape or an outside press,
 the top one first: `src/ui/popover.c` keeps one stack per context for authored
 popovers (`<div popover>`, opened by `popovertarget`), the kit's popups and the

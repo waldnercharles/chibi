@@ -76,6 +76,14 @@ it in place, and `chibi_ctl --migrate` does the same explicitly. The
 `validate_project` operation refuses an older project until one of them has
 run. There are no compatibility aliases (see the first rule in `AGENTS.md`).
 
+Bump the version only when you can name a project in this repository,
+`chibi-studio` or `chibi-celeste` that would otherwise load wrong or fail, and
+the step would rewrite it. Skip the steps below for additive changes, a
+contract no project uses yet, a change to what the engine does with a value
+(a physics or rendering fix), or old data that loading already handles (a step
+that would only write what the runtime does anyway). The PR then says how to
+fix a hand-made project.
+
 1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and add the step
    that upgrades the previous version to the `switch` in
    `src/assets/project_migrate.c`. Steps are idempotent and stage every

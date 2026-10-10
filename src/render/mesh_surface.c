@@ -258,7 +258,7 @@ bool render_mesh_surface_build_with_bounds(
         }
         const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
         CF_M4x4 frame;
-        bool placed = render_scene3d_visual_frame(world, entity, position, transform, &frame);
+        scene3d_frame_state state = render_scene3d_visual_frame(world, entity, position, transform, &frame);
         CF_V3 dimensions = { shape->width, shape->height, shape->depth };
         CF_V3 center = { 0 };
         const GameShader *binding = GAME_GameShader_get_const(world, entity);
@@ -299,14 +299,14 @@ bool render_mesh_surface_build_with_bounds(
                               max[1] * .5f + min[1] * .5f,
                               max[2] * .5f + min[2] * .5f };
         }
-        if (!placed || !isfinite(dimensions.x) || !isfinite(dimensions.y) ||
-            !isfinite(dimensions.z) || !isfinite(center.x) ||
-            !isfinite(center.y) || !isfinite(center.z) || dimensions.x <= 0 ||
-            dimensions.y <= 0 || dimensions.z <= 0) {
+        if (state == SCENE3D_FRAME_INVALID || !isfinite(dimensions.x) ||
+            !isfinite(dimensions.y) || !isfinite(dimensions.z) ||
+            !isfinite(center.x) || !isfinite(center.y) || !isfinite(center.z) ||
+            dimensions.x <= 0 || dimensions.y <= 0 || dimensions.z <= 0) {
             snprintf(error, size, "SDF surface requires finite transforms and positive bounds.");
             return false;
         }
-        if (render_scene3d_frame_flat(frame)) {
+        if (state == SCENE3D_FRAME_FLAT) {
             return true;
         }
         render_mesh_surface_part part = {

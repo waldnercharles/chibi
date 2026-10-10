@@ -4,6 +4,7 @@
 #include "runtime/transform_propagation.h"
 #include "support/array.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 
@@ -71,13 +72,18 @@ static float direction_volume(CF_M4x4 frame)
     return cf_dot_v3(axes[0], cf_cross_v3(axes[1], axes[2]));
 }
 
-/* The least direction volume of a whole frame. Rounding leaves a flattened
- * frame well below it. */
-static const float flat_volume = 1e-5f;
-
-bool render_scene3d_frame_flat(CF_M4x4 frame)
+/* Whether the Transform3D of `entity` or of an ancestor placing it scales
+ * an axis to zero. */
+static bool scaled_to_nothing(const ecs_world *world, ecs_entity entity)
 {
-    return fabsf(direction_volume(frame)) < flat_volume;
+    for (ecs_entity at = entity; at.slot; at = game_transform_parent_3d(world, at)) {
+        const GameTransform3D *local = GAME_GameTransform3D_get_const(world, at);
+        assert(local);
+        if (!local->scale.x || !local->scale.y || !local->scale.z) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool render_scene3d_frame_mirrors(CF_M4x4 frame)
@@ -85,7 +91,7 @@ bool render_scene3d_frame_mirrors(CF_M4x4 frame)
     return direction_volume(frame) < 0;
 }
 
-bool render_scene3d_visual_frame(
+scene3d_frame_state render_scene3d_visual_frame(
     const ecs_world *world,
     ecs_entity entity,
     const GameTransform *position,
@@ -115,8 +121,13 @@ bool render_scene3d_visual_frame(
             (CF_V3){ scale, scale, scale }
         );
     }
-    return finite && isfinite(scale + rotation.x + rotation.y + rotation.z) &&
-           scale >= 0;
+    if (!finite || !isfinite(scale + rotation.x + rotation.y + rotation.z) ||
+        scale < 0) {
+        return SCENE3D_FRAME_INVALID;
+    }
+    bool flat = !direction_volume(*frame) ||
+                (transform && scaled_to_nothing(world, entity));
+    return flat ? SCENE3D_FRAME_FLAT : SCENE3D_FRAME_WHOLE;
 }
 
 int render_scene3d_visuals(
@@ -139,11 +150,12 @@ int render_scene3d_visuals(
     const GameMeshParts *authored = GAME_GameMeshParts_get_const(world, entity);
     const GameMeshAsset *imported = GAME_GameMeshAsset_get_const(world, entity);
     CF_M4x4 frame;
-    if (!render_scene3d_visual_frame(world, entity, position, transform, &frame)) {
+    scene3d_frame_state state = render_scene3d_visual_frame(world, entity, position, transform, &frame);
+    if (state == SCENE3D_FRAME_INVALID) {
         snprintf(error, size, "Visual transform needs finite values and nonnegative scale.");
         return -1;
     }
-    if (render_scene3d_frame_flat(frame)) {
+    if (state == SCENE3D_FRAME_FLAT) {
         return 0;
     }
     scene3d_parts parts;

@@ -8,7 +8,7 @@
 #include <stdint.h>
 
 /* How editors present reflected components. The engine presents its own
- * components (PRESENTATION_DEFAULTS, and the units and ranges its fields
+ * components (engine_components.kdl, and the units and ranges its fields
  * reflect); a content root's document overrides that key by key. Any other
  * component shows under Object without an icon, and its numbers are unbounded
  * and unitless. */
@@ -45,16 +45,9 @@ typedef enum
 
 extern const char *const COMPONENT_TAB_NAMES[COMPONENT_TAB_COUNT];
 
-/* The engine's tab and icon for one of its components, named by key. */
-typedef struct
-{
-    const char *component;
-    component_tab tab;
-    component_icon icon;
-} presentation_default;
-
-extern const presentation_default PRESENTATION_DEFAULTS[];
-extern const int PRESENTATION_DEFAULT_COUNT;
+/* The engine's own document, in editor/Components.kdl's format: the tabs and
+ * icons of its components. Owned by the caller. */
+char *component_presentation_engine_text();
 
 typedef struct
 {

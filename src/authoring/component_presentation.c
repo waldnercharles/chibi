@@ -6,7 +6,9 @@
 
 #include <assert.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 const char *const COMPONENT_TAB_NAMES[COMPONENT_TAB_COUNT] = {
@@ -21,75 +23,17 @@ static const char *const ICON_NAMES[COMPONENT_ICON_COUNT] = {
     "gamepad", "keyboard", "projectile", "health",  "diamond", "shape",
 };
 
-#define D(KEY, TAB, ICON)                                                      \
-    { "GAME." KEY, COMPONENT_TAB_##TAB, COMPONENT_ICON_##ICON }
-const presentation_default PRESENTATION_DEFAULTS[] = {
-    D("EngineSystem", OBJECT, SYSTEM),
-    D("GameAim", GAMEPLAY, NONE),
-    D("GameAppearance", OBJECT, SHAPE),
-    D("GameBody", PHYSICS, NONE),
-    D("GameBody3D", PHYSICS, NONE),
-    D("GameCamera", OBJECT, CAMERA),
-    D("GameCharacter3D", PHYSICS, NONE),
-    D("GameCollider", PHYSICS, NONE),
-    D("GameCollider3D", PHYSICS, NONE),
-    D("GameCombustion", GAMEPLAY, NONE),
-    D("GameDash", GAMEPLAY, NONE),
-    D("GameDestructible", PHYSICS, DIAMOND),
-    D("GameDirectionalLight", MATERIAL, LIGHT),
-    D("GameDrive", PHYSICS, NONE),
-    D("GameEncounter", GAMEPLAY, NONE),
-    D("GameEncounterMember", GAMEPLAY, NONE),
-    D("GameEnvironment", MATERIAL, NONE),
-    D("GameExperience", GAMEPLAY, NONE),
-    D("GameFluidVolume", PHYSICS, WATER),
-    D("GameFog", MATERIAL, NONE),
-    D("GameFragmentGlow", MATERIAL, NONE),
-    D("GameFuel", GAMEPLAY, NONE),
-    D("GameGeometry3D", MATERIAL, NONE),
-    D("GameGravity3D", PHYSICS, NONE),
-    D("GameHRC2D", MATERIAL, LIGHT),
-    D("GameHealth", GAMEPLAY, HEALTH),
-    D("GameIgniter", GAMEPLAY, NONE),
-    D("GameInput", GAMEPLAY, GAMEPAD),
-    D("GameMaterial", MATERIAL, NONE),
-    D("GameMaterialCavity", PHYSICS, NONE),
-    D("GameMaterialFrame", PHYSICS, NONE),
-    D("GameMeshAsset", MATERIAL, NONE),
-    D("GameMeshParts", MATERIAL, NONE),
-    D("GameMeshSurface2D", MATERIAL, NONE),
-    D("GameMovement", GAMEPLAY, NONE),
-    D("GameParticleEmitter", OBJECT, EMITTER),
-    D("GamePickup", GAMEPLAY, NONE),
-    D("GamePointLight", MATERIAL, LIGHT),
-    D("GameProjectile", GAMEPLAY, PROJECTILE),
-    D("GameReflection", MATERIAL, NONE),
-    D("GameRhythm", GAMEPLAY, NONE),
-    D("GameSdfSurface3D", MATERIAL, NONE),
-    D("GameSensorContact", PHYSICS, NONE),
-    D("GameShader", MATERIAL, NONE),
-    D("GameSpawnRequest", GAMEPLAY, NONE),
-    D("GameSpotLight", MATERIAL, LIGHT),
-    D("GameSprite", MATERIAL, NONE),
-    D("GameTilemap", MATERIAL, NONE),
-    D("GameStarfield2D", MATERIAL, NONE),
-    D("GameSubstance", PHYSICS, NONE),
-    D("GameSurfaceInfluence", MATERIAL, NONE),
-    D("GameSurfaceQuality", MATERIAL, NONE),
-    D("GameTrail", MATERIAL, NONE),
-    D("GameVelocity", PHYSICS, NONE),
-    D("GameVision", GAMEPLAY, NONE),
-    D("GameWeapon", GAMEPLAY, NONE),
-    D("MaterialBreakProfile", PHYSICS, NONE),
-    D("MaterialConstitutive", PHYSICS, NONE),
-    D("MaterialDestructionWorld", PHYSICS, NONE),
-    D("MaterialFluidWorld", PHYSICS, NONE),
-    D("MaterialTerrain", MATERIAL, TERRAIN),
-    D("MaterialThermal", PHYSICS, NONE),
-};
-#undef D
-const int PRESENTATION_DEFAULT_COUNT = (int)(sizeof PRESENTATION_DEFAULTS /
-                                             sizeof *PRESENTATION_DEFAULTS);
+/* engine_components.kdl, embedded at build time. */
+extern const unsigned char component_presentation_engine_kdl[];
+extern const size_t component_presentation_engine_kdl_size;
+
+/* The engine's tab and icon for one of its components, named by key. */
+typedef struct
+{
+    char *key;
+    component_tab tab;
+    component_icon icon;
+} engine_component;
 
 static const char *const DOCUMENT_KEYS[] = { "components" };
 static const char *const COMPONENT_KEYS[] = { "tab", "icon", "fields" };
@@ -127,6 +71,77 @@ static const char *unknown_key(av_value *object, const char *const *keys, int co
     return NULL;
 }
 
+/* `value` names a tab; false when it names none. */
+static bool read_tab(av_value *value, component_tab *out)
+{
+    int index = name_index(av_get_str(value), COMPONENT_TAB_NAMES, COMPONENT_TAB_COUNT);
+    if (index < 0) {
+        return false;
+    }
+    *out = (component_tab)index;
+    return true;
+}
+
+/* `value` names an icon, or "none" to clear one; false when it names neither. */
+static bool read_icon(av_value *value, component_icon *out)
+{
+    if (av_is_str(value) && !strcmp(av_get_str(value), "none")) {
+        *out = COMPONENT_ICON_NONE;
+        return true;
+    }
+    int index = name_index(av_get_str(value), ICON_NAMES, COMPONENT_ICON_COUNT);
+    if (index < 0) {
+        return false;
+    }
+    *out = (component_icon)index;
+    return true;
+}
+
+char *component_presentation_engine_text()
+{
+    size_t size = component_presentation_engine_kdl_size;
+    char *text = xmalloc(size + 1);
+    memcpy(text, component_presentation_engine_kdl, size);
+    text[size] = 0;
+    return text;
+}
+
+/* The engine document's components, read once. The engine ships the document,
+   so an invalid one is a build defect. */
+static const engine_component *engine_components(int *count)
+{
+    static engine_component *components;
+    static atomic_flag lock = ATOMIC_FLAG_INIT;
+    while (atomic_flag_test_and_set_explicit(&lock, memory_order_acquire)) {
+    }
+    if (!components) {
+        char error[256];
+        char *text = component_presentation_engine_text();
+        av_doc *doc = asset_text_read(text, error, sizeof error);
+        free(text);
+        assert(doc);
+        av_obj_iter iterator = av_obj_iter_with(av_obj_get(av_doc_root(doc), "components"));
+        av_value *key;
+        while ((key = av_obj_iter_next(&iterator))) {
+            av_value *value = av_obj_iter_get_val(key);
+            engine_component c = { xstrdup(av_get_str(key)),
+                                   COMPONENT_TAB_OBJECT,
+                                   COMPONENT_ICON_NONE };
+            av_value *tab = av_obj_get(value, "tab");
+            av_value *icon = av_obj_get(value, "icon");
+            bool valid = (!tab || read_tab(tab, &c.tab)) &&
+                         (!icon || read_icon(icon, &c.icon));
+            assert(valid);
+            (void)valid;
+            apush(components, c);
+        }
+        av_doc_free(doc);
+    }
+    atomic_flag_clear_explicit(&lock, memory_order_release);
+    *count = acount(components);
+    return components;
+}
+
 static const presented_component *find_component(const component_presentation *p, uint64_t id)
 {
     for (int i = 0; i < acount(p->components); i++) {
@@ -150,11 +165,11 @@ static const presented_field *find_field(const component_presentation *p, uint64
 /* The engine's presentation of `desc`, or Object without an icon. */
 static presented_component default_component(const ecs_component_desc *desc)
 {
-    for (int i = 0; desc->key && i < PRESENTATION_DEFAULT_COUNT; i++) {
-        if (!strcmp(PRESENTATION_DEFAULTS[i].component, desc->key)) {
-            return (presented_component){ desc->id,
-                                          PRESENTATION_DEFAULTS[i].tab,
-                                          PRESENTATION_DEFAULTS[i].icon };
+    int count;
+    const engine_component *engine = engine_components(&count);
+    for (int i = 0; desc->key && i < count; i++) {
+        if (!strcmp(engine[i].key, desc->key)) {
+            return (presented_component){ desc->id, engine[i].tab, engine[i].icon };
         }
     }
     return (presented_component){ desc->id, COMPONENT_TAB_OBJECT, COMPONENT_ICON_NONE };
@@ -255,23 +270,13 @@ static bool read_component(
     }
     presented_component component = default_component(desc);
     av_value *tab = av_obj_get(value, "tab");
-    if (tab) {
-        int index = name_index(av_get_str(tab), COMPONENT_TAB_NAMES, COMPONENT_TAB_COUNT);
-        if (index < 0) {
-            return fail(error, size, "%s: unknown tab %s", name, av_is_str(tab) ? av_get_str(tab) : "");
-        }
-        component.tab = (component_tab)index;
+    if (tab && !read_tab(tab, &component.tab)) {
+        return fail(error, size, "%s: unknown tab %s", name, av_is_str(tab) ? av_get_str(tab) : "");
     }
+    /* "none" clears an engine icon, so another component's shows. */
     av_value *icon = av_obj_get(value, "icon");
-    if (icon) {
-        /* "none" clears an engine icon, so another component's shows. */
-        bool none = av_is_str(icon) && !strcmp(av_get_str(icon), "none");
-        int index = none ? COMPONENT_ICON_NONE
-                         : name_index(av_get_str(icon), ICON_NAMES, COMPONENT_ICON_COUNT);
-        if (!none && index < 0) {
-            return fail(error, size, "%s: unknown icon %s", name, av_is_str(icon) ? av_get_str(icon) : "");
-        }
-        component.icon = (component_icon)index;
+    if (icon && !read_icon(icon, &component.icon)) {
+        return fail(error, size, "%s: unknown icon %s", name, av_is_str(icon) ? av_get_str(icon) : "");
     }
     apush(out->components, component);
     av_value *fields = av_obj_get(value, "fields");

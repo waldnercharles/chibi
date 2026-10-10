@@ -291,13 +291,13 @@ edit shows without a recompile. It is a GPU check that runs the main build's
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 42 cases and 9218 assertions in 7.4 seconds on 2026-10-09.
+Vulkan llvmpipe passed 55 cases and 9297 assertions in 8.6 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 42
-cases and 9218 assertions in 6.0 seconds on 2026-10-09.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 55
+cases and 9297 assertions in 7.0 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

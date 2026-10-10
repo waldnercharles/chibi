@@ -565,12 +565,13 @@ partway, leaves the content as it was; material and prototype names another
 file in the project already declares, and content folders and folders in them
 that are links, which it refuses; refused extensions, texture transforms,
 second UV sets, factors beyond float range, images and primitives; unreadable
-files, names and buffers, and buffers that `..` or a link leads outside the
-model's folder; unlit materials that keep only their base color; the warnings
-for what it leaves out, and the vertices only a left-out triangle used; and
-tangent frames generated toward image-up, authored, turned, mirrored by a node,
-flat, and flattened onto the ground by a parent. It needs a compiler build,
-uses one temporary folder and passes 131 assertions under ASan/UBSan with leak
+files, names and buffers, buffers that `..` or a link leads outside the model's
+folder, and buffers that together pass the size limit; unlit materials that
+keep only their base color; the warnings for what it leaves out, and the
+vertices only a left-out triangle used; and tangent frames generated toward
+image-up, authored, turned, mirrored by a node, flat, flattened onto the ground
+by a parent, and scaled past float's volume. It needs a compiler build, uses
+one temporary folder and passes 136 assertions under ASan/UBSan with leak
 checks, without processes or GPU.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops

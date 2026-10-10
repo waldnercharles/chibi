@@ -96,16 +96,19 @@ static void warn(import *in, const char *format, ...)
     apush(in->report->warnings, xstrdup(text));
 }
 
-/* The whole file at `path`, at most MODEL_IMPORT_BYTES_MAX bytes, or NULL. */
-static void *read_whole(const char *path, size_t *length)
+/* The whole file at `path` when it holds at most `limit` bytes, or NULL.
+ * `length` is its size, read or not, or 0 when it cannot be measured. */
+static void *read_whole(const char *path, size_t limit, size_t *length)
 {
+    *length = 0;
     FILE *file = fopen(path, "rb");
     if (!file) {
         return NULL;
     }
     long end = fseek(file, 0, SEEK_END) ? -1 : ftell(file);
+    *length = end > 0 ? (size_t)end : 0;
     void *bytes = NULL;
-    if (end > 0 && end <= MODEL_IMPORT_BYTES_MAX && !fseek(file, 0, SEEK_SET)) {
+    if (end > 0 && (size_t)end <= limit && !fseek(file, 0, SEEK_SET)) {
         bytes = xmalloc((size_t)end);
         if (fread(bytes, 1, (size_t)end, file) != (size_t)end) {
             free(bytes);
@@ -113,9 +116,16 @@ static void *read_whole(const char *path, size_t *length)
         }
     }
     fclose(file);
-    *length = bytes ? (size_t)end : 0;
     return bytes;
 }
+
+/* The files a .gltf names beside it, which read_external reads. */
+typedef struct
+{
+    const char *folder; /* the model's real folder, which they stay inside */
+    size_t budget;      /* the bytes left for them under the import's limit */
+    bool over;          /* whether they would have taken more */
+} sidecars;
 
 /* Whether the real path `path` lies inside the real folder `folder`. */
 static bool within(const char *folder, const char *path)
@@ -126,23 +136,31 @@ static bool within(const char *folder, const char *path)
 }
 
 /* A .gltf's buffer or image file, which `uri` names relative to the model's
- * real folder `folder`. A model never reaches a file outside that folder: not
- * by absolute path or scheme, nor through .. or a link. */
-static void *read_external(const char *uri, int *size, void *folder)
+ * real folder. A model never reaches a file outside that folder: not by
+ * absolute path or scheme, nor through .. or a link. Its files together stay
+ * within the budget `beside` holds. */
+static void *read_external(const char *uri, int *size, void *beside)
 {
+    sidecars *files = beside;
     *size = 0;
     if (uri[0] == '/' || uri[0] == '\\' || strchr(uri, ':')) {
         return NULL;
     }
-    size_t bytes = strlen(folder) + strlen(uri) + 2;
+    size_t bytes = strlen(files->folder) + strlen(uri) + 2;
     char *path = xmalloc(bytes);
-    snprintf(path, bytes, "%s/%s", (const char *)folder, uri);
+    snprintf(path, bytes, "%s/%s", files->folder, uri);
     char *real = realpath(path, NULL);
     free(path);
     size_t length = 0;
-    void *data = real && within(folder, real) ? read_whole(real, &length) : NULL;
+    void *data = real && within(files->folder, real)
+                   ? read_whole(real, files->budget, &length)
+                   : NULL;
     free(real);
-    *size = (int)length;
+    files->over |= !data && length > files->budget;
+    if (data) {
+        files->budget -= length;
+        *size = (int)length;
+    }
     return data;
 }
 
@@ -594,11 +612,14 @@ static bool primitive_part(import *in, const CM_Primitive *p, yyjson_val *json, 
     return true;
 }
 
-static float determinant(CF_M4x4 m)
+static bool finite_frame(CF_M4x4 m)
 {
-    const float *e = m.elements;
-    return e[0] * (e[5] * e[10] - e[6] * e[9]) -
-           e[4] * (e[1] * e[10] - e[2] * e[9]) + e[8] * (e[1] * e[6] - e[2] * e[5]);
+    for (int i = 0; i < 16; i++) {
+        if (!isfinite(m.elements[i])) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /* The cofactors of `m`'s linear part, as columns: each the cross product of
@@ -781,10 +802,10 @@ static bool bake_mesh(import *in, render_mesh_asset *mesh)
         int first = acount(mesh->indices);
         for (int i = 0; in->materials[slot] && i < model->node_count; i++) {
             int n = model->order[i], index = model->nodes[n].mesh;
-            /* A node whose scale collapses its surfaces hides them; one
-             * that flattens them onto a plane keeps what has area there. */
-            if (index < 0 || !isfinite(determinant(frames[n])) ||
-                collapses(frames[n])) {
+            /* A node whose scale collapses its surfaces, or overflows
+             * float, hides them; one that flattens them onto a plane keeps
+             * what has area there. */
+            if (index < 0 || !finite_frame(frames[n]) || collapses(frames[n])) {
                 continue;
             }
             const CM_Mesh *source = &model->meshes[index];
@@ -1131,7 +1152,7 @@ static void warn_unused(import *in)
 static bool run(import *in, const char *path)
 {
     size_t length = 0;
-    unsigned char *bytes = read_whole(path, &length);
+    unsigned char *bytes = read_whole(path, MODEL_IMPORT_BYTES_MAX, &length);
     if (!bytes) {
         return fail(in, "Cannot read %s, or it is over 256 MiB", path);
     }
@@ -1147,13 +1168,17 @@ static bool run(import *in, const char *path)
         free(bytes);
         return fail(in, "Cannot find the folder of %s", path);
     }
+    sidecars beside = { .folder = real, .budget = MODEL_IMPORT_BYTES_MAX - length };
     CM_LoadParams params = { .read_fn = read_external,
                              .free_fn = free_external,
-                             .udata = real };
+                             .udata = &beside };
     in->model = cm_load_ex(bytes, (int)length, params);
-    yyjson_doc *json = in->model ? read_json(bytes, length) : NULL;
+    yyjson_doc *json = in->model && !beside.over ? read_json(bytes, length) : NULL;
     free(real);
     free(bytes);
+    if (beside.over) {
+        return fail(in, "%s and the files it names are over 256 MiB together", path);
+    }
     if (!in->model) {
         return fail(in, "Cannot load %s: %s", path, cm_error());
     }

@@ -777,6 +777,14 @@ TEST_CASE(model_imports_refuse_files_they_cannot_read)
     REQUIRE(!symlink(path, link));
     REQUIRE(rename_uri("other/empty.gltf", "other/empty.gltf", "../empty.bin", "empty.bin"));
     REQUIRE(!strncmp(refused("other/empty.gltf"), "Cannot load ", 12));
+    /* Files each within the size limit, which together pass it, are
+     * refused before the last is read. */
+    const char *vast = "empty.bin\"},{\"byteLength\":1,\"uri\":\"vast.bin";
+    REQUIRE(rename_uri("other/empty.gltf", "vast.gltf", "empty.bin", vast));
+    inside(path, sizeof path, "vast.bin");
+    file = fopen(path, "wb");
+    REQUIRE(file && !fclose(file) && !truncate(path, MODEL_IMPORT_BYTES_MAX));
+    REQUIRE(strstr(refused("vast.gltf"), "vast.gltf and the files it names are over 256 MiB together"));
     /* The same link, read from a model it keeps inside the folder, imports,
      * with the URI's escapes decoded. */
     REQUIRE(rename_uri("other/empty.gltf", "linked.gltf", "empty.bin", "other/empty%2Ebin"));
@@ -921,6 +929,9 @@ TEST_CASE(model_imports_keep_gltf_tangent_frames)
     REQUIRE(near_v3(mesh.min, (CF_V3){ -1, 0, -1 }) && near_v3(mesh.max, (CF_V3){ 1, 0, 1 }));
     REQUIRE(frames(&f, "Hidden", "{\"mesh\":0,\"scale\":[0,1,1]},{\"mesh\":0}", attributes));
     REQUIRE(acount(mesh.vertices) == 4);
+    /* A scale whose volume overflows float keeps finite vertices. */
+    REQUIRE(frames(&f, "Vast", "{\"mesh\":0,\"scale\":[1e13,1e13,1e13]}", attributes));
+    REQUIRE(acount(mesh.indices) == 6 && frames_are(x, z) && mesh.max.x == 1e13f);
     static const struct
     {
         const char *name, *nodes;

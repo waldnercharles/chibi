@@ -163,7 +163,7 @@ chibi_sdk_headers(chibi_physics_runtime PUBLIC runtime/scenes/physics.h
 target_include_directories(chibi_physics_runtime PRIVATE "${trace_root}")
 target_link_libraries(chibi_physics_runtime PUBLIC chibi_native_types chibi_entity_runtime
     chibi_material_runtime chibi_task_pool_runtime chibi_native_capabilities
-    PRIVATE chibi_execution chibi_support chibi_box2d)
+    PRIVATE chibi_spatial_runtime chibi_execution chibi_support chibi_box2d)
 if(COMMAND chibi_enable_tracy)
     chibi_enable_tracy(chibi_task_pool_runtime)
     chibi_enable_tracy(chibi_physics_runtime)

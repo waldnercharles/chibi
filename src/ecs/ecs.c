@@ -701,6 +701,24 @@ static int apply_add(ecs_world *world, const ecs_command *command)
     return ECS_OK;
 }
 
+/* Removes the row, then the components derived from it, which only their
+ * source keeps meaningful. */
+static void remove_component(ecs_world *world, ecs_component *component, ecs_entity entity)
+{
+    flush_modified(world, component, entity);
+    if (observes(component, ECS_ON_REMOVE)) {
+        notify(world, ECS_ON_REMOVE, entity, component->desc.id);
+    }
+    occupancy_remove(world, component, entity.slot);
+    for (int i = 0; i < acount(component->with); i++) {
+        ecs_component *implied = find_component(world, component->with[i]);
+        if (implied->desc.derived_from == component->desc.id &&
+            component_matches(implied, entity.slot)) {
+            remove_component(world, implied, entity);
+        }
+    }
+}
+
 static int apply_remove(ecs_world *world, const ecs_command *command)
 {
     ecs_component *component = find_component(world, command->component);
@@ -713,11 +731,7 @@ static int apply_remove(ecs_world *world, const ecs_command *command)
     if (!ecs_component_has(world, command->entity, command->component)) {
         return ECS_ERR_COMPONENT;
     }
-    flush_modified(world, component, command->entity);
-    if (observes(component, ECS_ON_REMOVE)) {
-        notify(world, ECS_ON_REMOVE, command->entity, command->component);
-    }
-    occupancy_remove(world, component, command->entity.slot);
+    remove_component(world, component, command->entity);
     return ECS_OK;
 }
 
@@ -976,10 +990,54 @@ bool world_key_taken(const ecs_world *world, const char *key)
     return false;
 }
 
+/* A derived component comes with its source, whichever registers second,
+ * including on the entities that already have the source. */
+static void link_derived(ecs_world *world, ecs_component_id id)
+{
+    for (int i = 0; i < acount(world->components); i++) {
+        const ecs_component_desc *desc = &world->components[i].desc;
+        if (!desc->derived_from || (desc->id != id && desc->derived_from != id)) {
+            continue;
+        }
+        ecs_component *source = find_component(world, desc->derived_from);
+        if (!source) {
+            continue;
+        }
+        int result = ecs_world_add_with(world, desc->derived_from, desc->id);
+        ecs_component *derived = &world->components[i];
+        for (uint32_t slot = 1; result == ECS_OK && slot <= world->high_water; slot++) {
+            if (world->occupied[slot] && component_matches(source, slot) &&
+                !component_matches(derived, slot)) {
+                ecs_entity entity = { slot, ecs_world_generation(world, slot) };
+                result = add_component(world, derived, entity, NULL);
+            }
+        }
+        assert(result == ECS_OK);
+        (void)result;
+    }
+}
+
+/* Whether an automatic id must skip this one: it is registered, or it is a
+ * derived component's source still to come. */
+static bool id_taken(ecs_world *world, const ecs_component_desc *desc, ecs_component_id id)
+{
+    if (id == desc->derived_from || find_component(world, id) ||
+        world_relationship(world, id)) {
+        return true;
+    }
+    for (int i = 0; i < acount(world->components); i++) {
+        if (world->components[i].desc.derived_from == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int ecs_world_register_component(ecs_world *world, const ecs_component_desc *desc, ecs_component_id *out_id)
 {
     if (!world || !desc || !desc->name || !desc->name[0] || !desc->element_size ||
-        !desc->type || desc->type->size != desc->element_size) {
+        !desc->type || desc->type->size != desc->element_size ||
+        (desc->derived_from && desc->derived_from == desc->id)) {
         return ECS_ERR_ARGUMENT;
     }
     if (world->iteration_depth || world->applying) {
@@ -995,10 +1053,7 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
     ecs_component_id id = desc->id;
     if (!id) {
         id = 1;
-        for (;;) {
-            if (!find_component(world, id) && !world_relationship(world, id)) {
-                break;
-            }
+        while (id_taken(world, desc, id)) {
             id++;
             if (!id) {
                 return ECS_ERR_CAPACITY;
@@ -1020,6 +1075,7 @@ int ecs_world_register_component(ecs_world *world, const ecs_component_desc *des
     component_index_append(world);
     apush(world->execution_columns, ((ecs_execution_column){ 0 }));
     update_execution_column(world, acount(world->components) - 1);
+    link_derived(world, id);
     if (out_id) {
         *out_id = id;
     }
@@ -1571,6 +1627,12 @@ const char *ecs_world_intern_string(ecs_world *world, const char *text)
     return owned;
 }
 
+/* Names change only through record_name; engine systems write derived rows. */
+static bool value_writable(const ecs_component *component)
+{
+    return component->desc.id != ECS_NAME && !component->desc.derived_from;
+}
+
 int ecs_component_write_field(
     ecs_world *world,
     ecs_entity entity,
@@ -1580,7 +1642,9 @@ int ecs_component_write_field(
 )
 {
     ecs_component *component = world ? find_component(world, component_id) : NULL;
-    const type_field *type_field = component ? component_field(component, field) : NULL;
+    const type_field *type_field = component && value_writable(component)
+                                     ? component_field(component, field)
+                                     : NULL;
     void *data = ecs_component_data(world, entity, component_id);
     if (!type_field || !data) {
         return ECS_ERR_ARGUMENT;
@@ -1701,8 +1765,9 @@ bool ecs_component_accepts_value(const ecs_world *world, ecs_component_id id, si
 {
     bool whole;
     const type_field *field;
+    const ecs_component *component = world ? find_component_const(world, id) : NULL;
     return component_value_target(
-        world && id != ECS_NAME ? find_component_const(world, id) : NULL,
+        component && value_writable(component) ? component : NULL,
         offset,
         declared,
         &whole,
@@ -1790,8 +1855,10 @@ int ecs_component_write_value(
     pin_value value
 )
 {
-    ecs_component *component = world && id != ECS_NAME ? find_component(world, id)
-                                                       : NULL;
+    ecs_component *component = world ? find_component(world, id) : NULL;
+    if (component && !value_writable(component)) {
+        component = NULL;
+    }
     int result = write_value(world, component, entity, offset, declared, value);
     if (result == ECS_OK) {
         mark_modified(component, entity.slot);

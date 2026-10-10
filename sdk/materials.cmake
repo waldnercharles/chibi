@@ -23,8 +23,8 @@ endforeach()
 target_include_directories(chibi_material_runtime PRIVATE "${material_private}")
 target_link_libraries(chibi_material_runtime PUBLIC chibi_ecs chibi_tasks
     chibi_field_catalog chibi_native_capabilities PRIVATE chibi_native_types
-    chibi_entity_runtime chibi_particle_runtime chibi_task_pool_runtime
-    chibi_execution chibi_support)
+    chibi_entity_runtime chibi_particle_runtime chibi_spatial_runtime
+    chibi_task_pool_runtime chibi_execution chibi_support)
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(chibi_material_runtime PRIVATE -ffp-contract=off)
 endif()

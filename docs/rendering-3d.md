@@ -300,7 +300,8 @@ the `warnings`. An import writes:
   material the mesh's triangles use, and `<name>_Default` for primitives with
   none.
   Characters an asset name refuses become `_`, and a name that matches an
-  earlier one, ignoring case, gets `_2`, `_3` and so on.
+  earlier one, ignoring case, gets `_2`, `_3` and so on. `<name>` keeps at
+  most its first 47 bytes here, so the material's own name always fits.
 - `content/textures/<name>/<image>.png` or `.jpg`: each image a material uses,
   copied byte for byte and named for the image, else its file, else
   `Image<n>`.
@@ -318,7 +319,8 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   bitangent points up the image. A primitive without normals gets each triangle's flat normal. A node that
   mirrors flips its tangents' w and its triangles' winding. A node scaled to
   nothing is skipped, and triangles that a transform leaves with no area are
-  left out with a warning.
+  left out with a warning. Vertices no kept triangle uses are left out too, so
+  they don't widen the mesh's bounds.
 - **Materials**: each factor is a Shader Parameter at a fixed slot, so
   entities can override it: Base Color (0), Opacity (1, unless Opaque),
   Metallic (2), Roughness (3), Emission (4, times
@@ -479,7 +481,8 @@ them without replacing a file. Both need the in-tree build above.
 `python3 tools/test_policy.py tool mesh-files` checks `.mesh` tangents,
 preparation and refusals the same way, and
 `python3 tools/test_policy.py tool model-import` checks the files a glTF
-import writes, its names, refusals, warnings and tangent frames.
+import writes, its names, refusals, warnings, left-out vertices and tangent
+frames.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

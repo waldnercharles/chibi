@@ -228,10 +228,16 @@ static bool taken(const import *in, const char *name)
     return false;
 }
 
+/* Bytes a generated name keeps after its prefix, for its own label and any
+ * unique suffix. */
+#define NAME_LABEL_MIN 16
+
 /* `prefix` and then `label`, each character an asset name refuses turned to
- * '_', at most NEW_ASSET_NAME_MAX bytes, and unlike every name taken so far. */
+ * '_', at most NEW_ASSET_NAME_MAX bytes, and unlike every name taken so far.
+ * The prefix leaves NAME_LABEL_MIN bytes, so the name always runs past it. */
 static char *unique_name(import *in, const char *prefix, const char *label)
 {
+    assert(strlen(prefix) + NAME_LABEL_MIN <= NEW_ASSET_NAME_MAX + 1);
     char base[NEW_ASSET_NAME_MAX + 1];
     snprintf(base, sizeof base, "%s%s", prefix, label);
     for (char *c = base + strlen(prefix); *c; c++) {
@@ -257,8 +263,9 @@ static void name_materials(import *in)
     const CM_Model *model = in->model;
     in->materials = xcalloc((size_t)model->material_count + 1, sizeof *in->materials);
     in->scopes = xcalloc((size_t)model->material_count + 1, sizeof *in->scopes);
-    char prefix[NEW_ASSET_NAME_MAX + 2];
-    snprintf(prefix, sizeof prefix, "%s_", in->name);
+    /* As much of the model's name as leaves each material room for its own. */
+    char prefix[NEW_ASSET_NAME_MAX + 1];
+    snprintf(prefix, sizeof prefix, "%.*s_", NEW_ASSET_NAME_MAX - NAME_LABEL_MIN, in->name);
     for (int i = 0; i < model->node_count; i++) {
         int mesh = model->nodes[i].mesh;
         for (int j = 0; mesh >= 0 && j < model->meshes[mesh].primitive_count; j++) {
@@ -580,6 +587,31 @@ static int bake(render_mesh_asset *mesh, const render_mesh_asset *part, CF_M4x4 
     return dropped;
 }
 
+/* Drops the vertices no kept triangle uses, such as those only a triangle
+ * with no area used, keeping the others in order. */
+static void drop_unused_vertices(render_mesh_asset *mesh)
+{
+    int count = acount(mesh->vertices);
+    bool *used = xcalloc((size_t)count, sizeof *used);
+    for (int i = 0; i < acount(mesh->indices); i++) {
+        used[mesh->indices[i]] = true;
+    }
+    int *moved = xmalloc((size_t)count * sizeof *moved);
+    int kept = 0;
+    for (int i = 0; i < count; i++) {
+        if (used[i]) {
+            moved[i] = kept;
+            mesh->vertices[kept++] = mesh->vertices[i];
+        }
+    }
+    for (int i = 0; i < acount(mesh->indices); i++) {
+        mesh->indices[i] = moved[mesh->indices[i]];
+    }
+    asetlen(mesh->vertices, kept);
+    free(used);
+    free(moved);
+}
+
 /* Each node's world frame, parents first. */
 static CF_M4x4 *world_frames(const CM_Model *model)
 {
@@ -679,6 +711,7 @@ static bool bake_mesh(import *in, render_mesh_asset *mesh)
     if (!acount(mesh->indices)) {
         return fail(in, "The model has no triangles to import");
     }
+    drop_unused_vertices(mesh);
     mesh->min = mesh->max = mesh->vertices[0].position;
     for (int i = 1; i < acount(mesh->vertices); i++) {
         mesh->min = cf_min_v3(mesh->min, mesh->vertices[i].position);

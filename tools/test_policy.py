@@ -195,8 +195,8 @@ TOOLS = {
     # mounted content, refused triangles and groups, unreadable files, the largest baked mesh and a
     # model export bundle; one temporary folder, no GPU.
     'mesh-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--mesh-files'],
-    # Eight reviewed in-tree glTF import cases: the files a .gltf or .glb writes, names, refusals with
-    # nothing left behind, warnings and baked tangent frames; one temporary folder, no GPU.
+    # Ten reviewed in-tree glTF import cases: the files a .gltf or .glb writes, names, refusals with
+    # nothing left behind, warnings, left-out vertices and baked tangent frames; one temporary folder, no GPU.
     'model-import': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--model-import'],
     # Nine reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, sound requests, declared components, per-step action state and recorded taps, and held actions across a pause.
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--native'],

@@ -473,6 +473,35 @@ TEST_CASE(model_imports_name_parts_apart)
     return true;
 }
 
+/* A model named as long as a name may be keeps room in each material's name
+ * for the material's own: as much of the model's name as fits, then the
+ * material's. */
+TEST_CASE(model_imports_name_materials_of_the_longest_models)
+{
+    gltf_fixture f = { 0 };
+    square(&f);
+    /* As long as NEW_ASSET_NAME_MAX allows. */
+    char name[64] = { 0 };
+    memset(name, 'L', sizeof name - 1);
+    REQUIRE(import(
+        &f,
+        "long.gltf",
+        "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[{" SQUARE
+        ",\"material\":0}]}],\"materials\":[{\"name\":\"Wood\"}]",
+        name
+    ));
+    char material[128], mesh_key[128], prototype[128];
+    snprintf(material, sizeof material, "content/materials/%.47s_Wood.kdl", name);
+    snprintf(mesh_key, sizeof mesh_key, "content/meshes/%s.mesh", name);
+    snprintf(prototype, sizeof prototype, "content/prototypes/%s.kdl", name);
+    const char *const keys[] = { material, mesh_key, prototype };
+    REQUIRE(wrote(keys, 3));
+    REQUIRE(reads_mesh(mesh_key) && acount(mesh.groups) == 1);
+    REQUIRE(!strcmp(mesh.groups[0].material_scope, "Wood"));
+    gltf_fixture_free(&f);
+    return true;
+}
+
 /* An import never replaces a file. When one is in its way it fails and
  * removes every file and folder it made, leaving what was there. */
 TEST_CASE(model_imports_replace_nothing_and_undo_failures)
@@ -721,6 +750,23 @@ TEST_CASE(model_imports_warn_of_what_they_leave_out)
     return true;
 }
 
+/* A vertex that only a left-out triangle used is left out with it, so it
+ * neither widens the mesh's bounds nor stays in its file. */
+TEST_CASE(model_imports_leave_out_vertices_only_dropped_triangles_use)
+{
+    static const float positions[] = { -1, 0, -1, -1, 0, 1, 1, 0, 1, 100, 0, 0 };
+    gltf_fixture f = shape((const uint16_t[]){ 0, 1, 2, 3, 3, 0 }, 6, positions);
+    REQUIRE(import(&f, "sliver.gltf", PLAIN, "Sliver"));
+    REQUIRE(reads_mesh("content/meshes/Sliver.mesh"));
+    REQUIRE(acount(mesh.vertices) == 3 && acount(mesh.indices) == 3);
+    REQUIRE(mesh.max.x == 1 && mesh.min.x == -1);
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(mesh.indices[i] >= 0 && mesh.indices[i] < 3);
+    }
+    gltf_fixture_free(&f);
+    return true;
+}
+
 /* Imports the square, its node's members `node` and its primitive's
  * attributes `attributes`, as `name`, and reads its mesh. */
 static bool frames(gltf_fixture *f, const char *name, const char *nodes, const char *attributes)
@@ -801,10 +847,12 @@ void test_model_import()
     RUN_TEST_CASE(model_imports_write_each_part_once);
     RUN_TEST_CASE(model_imports_read_binary_files_alike);
     RUN_TEST_CASE(model_imports_name_parts_apart);
+    RUN_TEST_CASE(model_imports_name_materials_of_the_longest_models);
     RUN_TEST_CASE(model_imports_replace_nothing_and_undo_failures);
     RUN_TEST_CASE(model_imports_refuse_what_they_cannot_draw_as_authored);
     RUN_TEST_CASE(model_imports_refuse_files_they_cannot_read);
     RUN_TEST_CASE(model_imports_warn_of_what_they_leave_out);
+    RUN_TEST_CASE(model_imports_leave_out_vertices_only_dropped_triangles_use);
     RUN_TEST_CASE(model_imports_keep_gltf_tangent_frames);
     pu_clear_setup();
 }

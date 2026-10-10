@@ -71,12 +71,12 @@ These are our decisions, drawing on the references above. Distances are screen d
   - Snapping aligns the nearest pin to the grid rather than the node corner, so wires stay straight (imgui-node-editor).
   - When several nodes move, the lead node is snapped and the rest move by the same offset (xyflow).
 - **Wires while dragging a node:**
-  - Alt+drag detaches the node from its wires (Blender).
+  - Alt+drag detaches the node from its wires (Blender). Not implemented yet.
   - Dragging an unconnected node onto a wire highlights that wire, and dropping inserts the node into it (Blender, Node-RED). Alt skips the insert. Neighbors don't shift aside yet.
 - **Keys:**
-  - X or Delete deletes; Ctrl+Delete deletes and reconnects matching wires through (Node-RED, ComfyUI).
+  - X or Delete deletes; Ctrl+Delete deletes and reconnects matching wires through (Node-RED, ComfyUI). Ctrl+Delete is not implemented yet.
   - Shift+D duplicates, and Ctrl+C/X/V copy, cut and paste. Pasted nodes center on the pointer (Unreal).
-  - M mutes (disables), H collapses, F2 renames.
+  - M mutes (disables), H collapses, F2 renames. H is not implemented yet.
   - Arrow keys walk along wires to the next node in that direction; Shift extends the selection upstream or downstream (n8n).
   - Q straightens the selection (Unreal): left to right, each node moves level with the wire that drives it, or with its first output wire when nothing drives it. A selected wire, or Straighten Connection in the wire menu, moves its target. Shift+L arranges the selection (Houdini).
   - L adds the nodes wired to the selection's inputs and Alt+L those wired to its outputs, one step at a time (Blender's Select Linked From and To; Blender's Shift+L is Arrange here). The node menu's Select submenu also follows the wires to the end (Unreal's Select All Input and Output Nodes). Nodes folded into their consumer are passed through.
@@ -119,20 +119,20 @@ Expressions show their source in the node, highlighted and wrapped, under an "Ex
   - Validity has three states (xyflow, Rivet):
     - **none:** the wire follows the pointer.
     - **invalid:** the wire turns red and the status bar gives the reason (imgui-node-editor).
-    - **valid:** the wire snaps to the socket and shows green. A valid connection that needs a conversion node shows amber.
+    - **valid:** the wire snaps to the socket and shows green. A valid connection that needs a conversion node shows dashed, like the converting wire it becomes.
   - While dragging, incompatible sockets dim to 20% (imgui-node-editor, Unity).
   - Commit happens on release.
 - **Where the wire lands:**
   - **On a node's body:** it connects to the first free compatible input. The order is exact type, then wildcard, then occupied exact, then occupied wildcard (ComfyUI).
   - **On empty canvas:** it opens the add search at the drop point, filtered by compatibility, with exact types first. The chosen node spawns with its matching pin under the pointer and wired (Blender, Unreal, ComfyUI).
-  - Holding Ctrl on release keeps the wire for fanning out to more inputs (Rivet).
+  - Holding Ctrl on release keeps the wire for fanning out to more inputs (Rivet). Not implemented yet.
 - **Re-editing wires:**
   - Dragging a connected input picks its wire up; releasing it on empty canvas disconnects it (Blender, Rete, Rivet).
   - Ctrl+drag from an output moves all of its wires (Blender, Unreal).
   - Alt+click a pin breaks all its wires (Unreal); Alt+click a wire deletes it (imgui-node-editor).
   - Right-clicking a pin opens its menu (Unreal): Break Link, or Break All Links and Break Link To one wire; Reset to Default, which also clears a binding; Promote to Variable, which adds a Get beside an input or a Set beside an output (the Set runs after the node when the node's only execution output is free, as Unreal wires it to Then, and otherwise sits below the node, unwired); Name Value or Remove Name on an output; Split or Recombine Struct Pin; and Remove Pin.
   - Double-click a wire to add a reroute and drag it (Unreal); drag a reroute to move it and Alt+click it to remove it. A wire on arranged lanes takes the first reroute as its only point. The wire menu clears a wire's reroutes.
-  - Ctrl+right-drag cuts the wires it crosses; Shift+right-drag inserts reroutes where it crosses (Blender).
+  - Ctrl+right-drag cuts the wires it crosses; Shift+right-drag inserts reroutes where it crosses (Blender). Neither is implemented yet.
 
 ### Values, adding and structure
 

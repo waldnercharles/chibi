@@ -1068,6 +1068,13 @@ static void draw_with_material(const render_scene3d *scene3d, const scene3d_draw
     cf_draw3d_pop_mesh_attributes();
 }
 
+/* Sets where the next draws are seen from: a point, or with `w` 0 the
+ * direction toward a distant viewer. Masks read it as View Direction. */
+static void see_from(CF_V4 eye)
+{
+    cf_draw3d_set_uniform("scene_eye", &eye, CF_UNIFORM_TYPE_FLOAT4, 1);
+}
+
 /* Writes a draw's depth into the current shadow pass. A masked material runs
  * its shadow program, which leaves out the pixels it cuts. */
 static void cast(const render_scene3d *scene3d, const scene3d_draw *draw)
@@ -1087,6 +1094,7 @@ static void cast(const render_scene3d *scene3d, const scene3d_draw *draw)
 static bool draw_shadow(render_scene3d *scene3d, int cascades, int receivers)
 {
     render_scene3d_shadow *shadow = scene3d->shadow;
+    see_from(scene3d->sun_direction);
     for (int cascade = 0; cascade < cascades; cascade++) {
         if (!render_scene3d_shadow_begin(
                 shadow,
@@ -1138,6 +1146,8 @@ static bool draw_light_shadows(render_scene3d *scene3d, int receivers)
         opaque++;
     }
     for (int light = 0; light < scene3d->shadowed_lights; light++) {
+        CF_V4 at = scene3d->light_positions[light];
+        see_from((CF_V4){ at.x, at.y, at.z, 1 });
         aclear(scene3d->near_boxes);
         for (int i = 0; i < acount(scene3d->shadow_boxes); i++) {
             bool solid = i < opaque || i >= receivers;
@@ -1318,9 +1328,9 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     );
     asort(scene3d->buffer.draws, compare_draws);
     /* Masked materials read the scene's uniforms and parameters in shadow
-     * passes too. */
-    CF_V4 eye = { camera->eye.x, camera->eye.y, camera->eye.z, time };
-    cf_draw3d_set_uniform("scene_camera_time", &eye, CF_UNIFORM_TYPE_FLOAT4, 1);
+     * passes too, each seen from its light. */
+    CF_V4 clock = { time };
+    cf_draw3d_set_uniform("scene_time", &clock, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_rhythm", &scene3d->rhythm, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_sun_direction", &scene3d->sun_direction, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_sun_color", &scene3d->sun_color, CF_UNIFORM_TYPE_FLOAT4, 1);
@@ -1342,6 +1352,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         cf_draw3d_set_texture("scene_parameters", (CF_Texture){ 0 });
         return false;
     }
+    see_from((CF_V4){ camera->eye.x, camera->eye.y, camera->eye.z, 1 });
     render_scene3d_shadow_bind(scene3d->shadow, cascades);
     render_scene3d_light_shadow_bind(scene3d->light_shadow);
     render_scene3d_sky_bind(scene3d->sky);

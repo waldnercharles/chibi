@@ -1,0 +1,13 @@
+behavior SceneProbe {
+    steps := 0
+    on Tick {
+        steps += 1
+        if steps == 2 {
+            if current_scene() == "Flow" {
+                load_scene("Reload")
+            } else {
+                reload_scene()
+            }
+        }
+    }
+}

@@ -31,10 +31,12 @@ endif()
 if(TARGET chibi_math AND NOT TARGET chibi_mesh_runtime)
     add_library(chibi_mesh_runtime STATIC
         "${CHIBI_SDK_ROOT}/src/runtime/geometry/mesh_asset.c"
+        "${CHIBI_SDK_ROOT}/src/runtime/geometry/mesh_pick.c"
         "${CHIBI_SDK_ROOT}/src/runtime/geometry/mesh_prepared.c")
     add_library(Chibi::mesh_runtime ALIAS chibi_mesh_runtime)
     set_target_properties(chibi_mesh_runtime PROPERTIES EXPORT_NAME mesh_runtime)
-    chibi_sdk_headers(chibi_mesh_runtime PUBLIC runtime/geometry/mesh_asset.h runtime/geometry/mesh_prepared.h)
+    chibi_sdk_headers(chibi_mesh_runtime PUBLIC runtime/geometry/mesh_asset.h runtime/geometry/mesh_pick.h
+        runtime/geometry/mesh_prepared.h)
     target_link_libraries(chibi_mesh_runtime PUBLIC chibi_math PRIVATE chibi_support chibi_types)
     list(APPEND CHIBI_SDK_TARGETS chibi_mesh_runtime)
 endif()

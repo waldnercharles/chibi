@@ -406,7 +406,7 @@ void main()
     }
 #endif
     vec3 normal = safe_normal(v_normal, vec3(0, 1, 0));
-    vec3 view = safe_normal(scene_camera_time.xyz - v_world, normal);
+    vec3 view = safe_normal(scene_eye.xyz - v_world * scene_eye.w, normal);
     SGSample sg_context;
     sg_context.position = local.xz;
     sg_context.object_position = local;
@@ -444,7 +444,7 @@ void main()
     sg_context.world_position = v_world;
     sg_context.normal = normal;
     sg_context.view_direction = view;
-    sg_context.time = scene_camera_time.w;
+    sg_context.time = scene_time.x;
     vec4 fallback = material_value(0);
     vec3 base = fallback.rgb;
     vec3 emission = material_value(1).rgb;

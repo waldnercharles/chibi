@@ -1,0 +1,11 @@
+behavior PhysicsProbe {
+    on Tick(dt) {
+        hit := raycast(self.Transform, self.Transform + vec2(200, 0), 1, self, false)
+        if hit.Found {
+            self.Velocity = self.Velocity * 0.5
+        }
+    }
+    on ContactBegin {
+        touching := get_contact_entities(self, 1)
+    }
+}

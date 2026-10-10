@@ -1,0 +1,4 @@
+name "Speaker"
+components {
+    (object)GAME.GameTransform
+}

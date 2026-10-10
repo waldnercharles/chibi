@@ -886,9 +886,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
      * and zero picks 35 degrees. Set both clip distances or neither, with
      * far at most a million times near; zero clips scale with the span's
      * height. */
-    float fov;
-    float near_clip;
-    float far_clip;
+    float fov NODE_UNIT("rad");
+    float near_clip NODE_UNIT("u");
+    float far_clip NODE_UNIT("u");
 }
 GameCamera;
 

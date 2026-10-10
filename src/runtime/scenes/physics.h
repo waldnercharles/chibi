@@ -82,7 +82,8 @@ typedef struct
     int shape_count;
 } game_physics_body_state;
 /* Current solved body state; local center uses game units. Fixed rotation has
- * zero rotational inertia. Returns false before synchronization or after removal. */
+ * zero rotational inertia. A collider carried by its root's body reports that
+ * body. Returns false before synchronization or after removal. */
 bool game_physics_inspect_body(const game_physics *physics, ecs_entity entity, game_physics_body_state *out);
 
 /* Snapshot current collider contacts into a caller-owned core array. Honors

@@ -242,7 +242,7 @@ projection the planar pass uses, and the vertex part positions and frames.
 Meshes cast and receive shadows as shapes do, including from outside the view;
 picking meets their triangles, and bounds hold their extents. A pick tests
 only the triangles in boxes its ray crosses, from a tree of boxes built on a
-mesh's first pick and kept until the mesh catalog changes. Translucent
+mesh's first pick and freed whenever the mesh catalog changes. Translucent
 meshes sort back to front by the center of their bounds, so a mesh whose
 vertices lie away from its origin sorts where its triangles are. Cute sorts
 translucent draws by the translation of their transform, so a mesh's GPU copy

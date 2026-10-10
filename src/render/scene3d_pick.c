@@ -1,10 +1,10 @@
-#include "render/mesh_pick.h"
 #include "render/mesh_surface.h"
 #include "render/scene3d.h"
 #include "render/scene3d_geometry.h"
 #include "render/scene3d_visual.h"
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
+#include "runtime/geometry/mesh_pick.h"
 #include "support/array.h"
 
 #include <float.h>

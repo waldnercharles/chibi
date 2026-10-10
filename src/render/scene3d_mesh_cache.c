@@ -59,15 +59,6 @@ static const CF_VertexAttribute attributes[] = {
       .offset = offsetof(render_mesh_surface_vertex, part_from_object[2]) },
 };
 
-/* The point the GPU copy's positions are measured from: the center of the
- * mesh's bounds. Cute sorts translucent draws back to front by the
- * translation of their transform, so a draw translated here sorts by where
- * its triangles are rather than by its origin. */
-static CF_V3 center(const render_mesh_asset *mesh)
-{
-    return cf_mul_v3_f(cf_add_v3(mesh->min, mesh->max), .5f);
-}
-
 /* Where `identity`'s copy is, or would go to keep the order. */
 static int slot(const render_scene3d_mesh_cache *cache, uint64_t identity)
 {
@@ -103,7 +94,11 @@ static CF_Mesh upload(const render_mesh_asset *mesh)
         return result;
     }
     render_mesh_surface_vertex *centered = xmalloc((size_t)vertices * sizeof *centered);
-    CF_V3 offset = center(mesh);
+    /* Positions are measured from the center of the mesh's bounds. Cute
+     * sorts translucent draws back to front by the translation of their
+     * transform, so a draw translated there sorts by where its triangles are
+     * rather than by its origin. */
+    CF_V3 offset = render_mesh_asset_center(mesh);
     for (int i = 0; i < vertices; i++) {
         centered[i] = mesh->vertices[i];
         centered[i].position = cf_sub_v3(centered[i].position, offset);
@@ -142,7 +137,7 @@ void render_scene3d_mesh_cache_draw(
     CF_Mesh gpu = find(cache, mesh->identity);
     assert(gpu.id);
     cf_draw3d_push();
-    cf_draw3d_translate(center(mesh));
+    cf_draw3d_translate(render_mesh_asset_center(mesh));
     cf_draw3d_mesh_range(gpu, first, count);
     cf_draw3d_pop();
 }

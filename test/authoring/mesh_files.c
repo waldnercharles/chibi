@@ -4,6 +4,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/modeling/model_compile.h"
+#include "runtime/geometry/mesh_pick.h"
 #include "runtime/geometry/mesh_prepared.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -129,6 +130,20 @@ static void groups()
                                     .material_scope = xstrdup("") };
         apush(mesh.groups, group);
     }
+}
+
+/* Publishes the quad under `source` and picks it from above, which builds its
+ * pick tree. */
+static bool picks_quad(const char *source)
+{
+    quad();
+    render_mesh_asset_publish(source, &mesh);
+    char error[128];
+    const render_mesh_asset *resident = render_mesh_asset_load(source, error, sizeof error);
+    REQUIRE(resident);
+    CF_Ray3 down = cf_make_ray3((CF_V3){ .5f, 1, .5f }, (CF_V3){ .5f, -1, .5f });
+    REQUIRE(near(render_mesh_pick(resident, down).t, 1));
+    return true;
 }
 
 static bool tangent(const render_mesh_surface_vertex *v, CF_V3 direction, float hand)
@@ -552,6 +567,26 @@ TEST_CASE(mesh_files_hold_the_largest_bake)
     return true;
 }
 
+/* A mesh's pick tree lasts until the catalog changes. A publish, a clear and
+ * an exchange each free every tree, so a mesh the catalog drops keeps none. */
+TEST_CASE(mesh_pick_trees_last_until_the_catalog_changes)
+{
+    REQUIRE(picks_quad("content/meshes/a.mesh"));
+    REQUIRE(render_mesh_pick_trees() == 1);
+    quad();
+    render_mesh_asset_publish("content/meshes/b.mesh", &mesh);
+    REQUIRE(!render_mesh_pick_trees());
+    REQUIRE(picks_quad("content/meshes/a.mesh"));
+    render_mesh_assets_clear();
+    REQUIRE(!render_mesh_pick_trees());
+    REQUIRE(picks_quad("content/meshes/a.mesh"));
+    render_mesh_table *empty = render_mesh_table_new();
+    render_mesh_table_exchange(empty);
+    render_mesh_table_free(empty);
+    REQUIRE(!render_mesh_pick_trees());
+    return true;
+}
+
 void test_mesh_files()
 {
     pu_setup(setup, teardown);
@@ -561,5 +596,6 @@ void test_mesh_files()
     RUN_TEST_CASE(mesh_files_refuse_unreadable_files);
     RUN_TEST_CASE(mesh_files_hold_the_largest_bake);
     RUN_TEST_CASE(model_exports_write_indexed_meshes);
+    RUN_TEST_CASE(mesh_pick_trees_last_until_the_catalog_changes);
     pu_clear_setup();
 }

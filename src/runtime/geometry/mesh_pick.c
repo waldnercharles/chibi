@@ -1,7 +1,8 @@
-#include "render/mesh_pick.h"
+#include "runtime/geometry/mesh_pick.h"
 
 #include "support/array.h"
 
+#include <assert.h>
 #include <float.h>
 #include <math.h>
 
@@ -35,10 +36,8 @@ typedef struct
     int box, first, count;
 } pick_span;
 
-/* Trees built for resident meshes since the catalog last changed. A change
- * may drop or replace any mesh, so it drops them all. */
+/* Trees built for resident meshes since the catalog last changed. */
 static pick_tree *trees;
-static uint64_t trees_generation;
 
 static float along(CF_V3 v, int axis)
 {
@@ -152,14 +151,7 @@ static bool crosses(CF_Ray3 ray, float reach, const pick_box *box)
 /* The tree of a resident mesh, built on its first pick. */
 static const pick_tree *tree_of(const render_mesh_asset *mesh)
 {
-    if (trees_generation != render_mesh_assets_generation()) {
-        for (int i = 0; i < acount(trees); i++) {
-            afree(trees[i].boxes);
-            afree(trees[i].triangles);
-        }
-        asetlen(trees, 0);
-        trees_generation = render_mesh_assets_generation();
-    }
+    assert(mesh->identity);
     for (int i = 0; i < acount(trees); i++) {
         if (trees[i].identity == mesh->identity) {
             return &trees[i];
@@ -214,4 +206,18 @@ render_mesh_hit render_mesh_pick(const render_mesh_asset *mesh, CF_Ray3 ray)
     }
     afree(pending);
     return hit;
+}
+
+void render_mesh_picks_clear()
+{
+    for (int i = 0; i < acount(trees); i++) {
+        afree(trees[i].boxes);
+        afree(trees[i].triangles);
+    }
+    afree(trees);
+}
+
+int render_mesh_pick_trees()
+{
+    return acount(trees);
 }

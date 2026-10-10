@@ -24,5 +24,10 @@ bool authoring_prototype_parameters_fields(
             return false;
         }
     }
+    for (int i = 0; i < acount(prototype->child_prototypes); i++) {
+        if (!authoring_prototype_parameters_fields(fields, prototype->child_prototypes[i], error, size)) {
+            return false;
+        }
+    }
     return true;
 }

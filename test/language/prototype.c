@@ -5,7 +5,9 @@
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <assert.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -328,6 +330,260 @@ TEST_CASE(scene_children_nest_at_most_the_depth_limit)
     return saved != NULL;
 }
 
+static const char ship_text
+    [] = "name \"Ship\"\n"
+         "components {\n    test.DefaultRow count=5\n}\n"
+         "(array)behaviors \"Fly\"\n"
+         "(array)children {\n"
+         "    - name=\"Left\" prototype=\"Turret\" {\n"
+         "        components {\n            test.DefaultRow count=2\n        "
+         "}\n"
+         "        (array)children {\n"
+         "            - name=\"Muzzle\" prototype=\"Barrel\"\n"
+         "        }\n"
+         "    }\n"
+         "    - name=\"Right\" prototype=\"Turret\" { (array)behaviors; }\n"
+         "}\n";
+static const char *const library[][2] = {
+    { "Ship", ship_text },
+    { "Turret", "name \"Turret\"\ncomponents {\n    test.DefaultRow count=1\n}\n(array)behaviors \"Aim\"\n" },
+    { "Barrel", "name \"Barrel\"\ncomponents {\n    test.DefaultNested label=\"steel\"\n}\n" },
+    { "Loop", "name \"Loop\"\n(array)children {\n    - name=\"Again\" prototype=\"Loop\"\n}\n" },
+    { "Lost", "name \"Lost\"\n(array)children {\n    - name=\"Gone\" prototype=\"Nope\"\n}\n" },
+    { "Escort",
+      "name \"Escort\"\n(array)includes \"Ship\"\n"
+      "(array)children {\n    - name=\"Rear\" prototype=\"Turret\"\n}\n" },
+    { "Clash",
+      "name \"Clash\"\n(array)includes \"Ship\"\n"
+      "(array)children {\n    - name=\"Left\" prototype=\"Barrel\"\n}\n" },
+};
+static const char *find_prototype(const char *name, void *)
+{
+    for (size_t i = 0; i < sizeof library / sizeof library[0]; i++) {
+        if (!strcmp(library[i][0], name)) {
+            return library[i][1];
+        }
+    }
+    return NULL;
+}
+static game_prototype *load_named(const char *name, char *error, size_t size)
+{
+    const game_prototype_registry registry = { .components = components,
+                                               .component_count = 2,
+                                               .include = find_prototype };
+    return game_prototype_load(find_prototype(name, NULL), &registry, error, size);
+}
+static int count_of(const game_prototype *prototype)
+{
+    return ((const component_default *)prototype->components[0].data)->count;
+}
+static struct
+{
+    ecs_entity entities[4];
+    const char *graphs[4];
+    int count;
+    const char *refuse;
+} attached;
+static int attach(ecs_world *, ecs_entity entity, const char *graph, void *)
+{
+    if (attached.refuse && !strcmp(graph, attached.refuse)) {
+        return -1;
+    }
+    assert(attached.count < 4);
+    attached.entities[attached.count] = entity;
+    attached.graphs[attached.count++] = graph;
+    return 0;
+}
+
+/* A prototype's children load as their own prototypes, with the child's
+ * components and behaviors, and save back as written. */
+TEST_CASE(prototype_children_resolve_and_save_nested)
+{
+    char error[256];
+    prototype = load_named("Ship", error, sizeof error);
+    REQUIRE(prototype && acount(prototype->children->entities) == 3);
+    REQUIRE(acount(prototype->child_prototypes) == 3);
+    const game_prototype *left = prototype->child_prototypes[0];
+    const game_prototype *muzzle = prototype->child_prototypes[1];
+    const game_prototype *right = prototype->child_prototypes[2];
+    REQUIRE(!strcmp(left->name, "Left") && count_of(left) == 2);
+    REQUIRE(acount(left->graphs) == 1 && !strcmp(left->graphs[0], "Aim"));
+    REQUIRE(!strcmp(muzzle->name, "Muzzle") && prototype->children->entities[1].parent == 0);
+    REQUIRE(
+        !strcmp(right->name, "Right") && count_of(right) == 1 && !acount(right->graphs)
+    );
+    REQUIRE(!strcmp(game_prototype_identity(left), game_prototype_identity(right)));
+    saved = game_prototype_save(prototype);
+    REQUIRE(saved);
+    const game_prototype_registry registry = { .components = components,
+                                               .component_count = 2,
+                                               .include = find_prototype };
+    loaded = game_prototype_load(saved, &registry, error, sizeof error);
+    REQUIRE(loaded && acount(loaded->child_prototypes) == 3);
+    REQUIRE(game_scene_document_entity_index(loaded->children, "Left.Muzzle") == 1);
+    game_prototype_free(loaded);
+    loaded = game_prototype_load_authored(ship_text, &registry, error, sizeof error);
+    REQUIRE(loaded && acount(loaded->children->entities) == 3 && !acount(loaded->child_prototypes));
+    game_prototype_free(loaded);
+    const game_prototype_registry unresolved = { .components = components,
+                                                 .component_count = 2 };
+    loaded = game_prototype_load(ship_text, &unresolved, error, sizeof error);
+    REQUIRE(!loaded && strstr(error, "children need a resolver"));
+    /* An include's children come first, and a name stays unique among them. */
+    loaded = load_named("Escort", error, sizeof error);
+    REQUIRE(loaded && acount(loaded->child_prototypes) == 4);
+    REQUIRE(!strcmp(loaded->child_prototypes[3]->name, "Rear"));
+    game_prototype_free(loaded);
+    loaded = load_named("Clash", error, sizeof error);
+    REQUIRE(!loaded && strstr(error, "children of prototype Clash"));
+    loaded = load_named("Loop", error, sizeof error);
+    REQUIRE(!loaded && strstr(error, "cycle at Loop"));
+    loaded = load_named("Lost", error, sizeof error);
+    REQUIRE(!loaded && !strcmp(error, "child prototype Nope is unavailable"));
+    return true;
+}
+
+/* Spawning makes every entity of the tree before any behavior attaches, and a
+ * failure leaves none. */
+TEST_CASE(prototype_children_spawn_with_it)
+{
+    char error[256];
+    prototype = load_named("Ship", error, sizeof error);
+    REQUIRE(prototype);
+    ecs_world *world = ecs_world_new();
+    REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &nested, NULL) == ECS_OK);
+    attached = (typeof(attached)){ 0 };
+    game_prototype_spawn_hooks hooks = { attach, NULL };
+    ecs_entity ship = { 0 };
+    int spawned = game_prototype_spawn(prototype, world, &hooks, &ship, error, sizeof error);
+    ecs_entity left = attached.entities[1];
+    const component_default
+        *row = ecs_component_data_const(world, left, component.id);
+    bool tree = spawned == ECS_OK && ecs_world_live_count(world) == 4 &&
+                attached.count == 2 && !strcmp(attached.graphs[0], "Fly") &&
+                attached.entities[0].slot == ship.slot &&
+                !strcmp(attached.graphs[1], "Aim") &&
+                ecs_parent(world, left).slot == ship.slot && row && row->count == 2 &&
+                ecs_pair_source_count(world, ECS_CHILD_OF, ship) == 2 &&
+                ecs_pair_source_count(world, ECS_CHILD_OF, left) == 1;
+    bool destroyed = ecs_world_destroy_entity(world, ship) == ECS_OK &&
+                     ecs_world_live_count(world) == 0;
+    attached = (typeof(attached)){ .refuse = "Aim" };
+    bool refused = game_prototype_spawn(prototype, world, &hooks, &ship, error, sizeof error) !=
+                       ECS_OK &&
+                   ecs_world_live_count(world) == 0;
+    bool components_only = game_prototype_spawn_components(prototype, world, &ship, error, sizeof error) ==
+                               ECS_OK &&
+                           ecs_world_live_count(world) == 4;
+    ecs_world_free(world);
+    /* Muzzle's component is missing here, so the spawn stops at it. */
+    world = ecs_world_new();
+    REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
+    bool unplaced = game_prototype_spawn_components(prototype, world, &ship, error, sizeof error) !=
+                        ECS_OK &&
+                    ecs_world_live_count(world) == 0;
+    ecs_world_free(world);
+    /* Without an attach hook the spawn is refused before it touches the world. */
+    world = ecs_world_new();
+    REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &nested, NULL) == ECS_OK);
+    bool unhooked = game_prototype_spawn(prototype, world, NULL, &ship, error, sizeof error) ==
+                        ECS_ERR_ARGUMENT &&
+                    !ecs_world_component(
+                        world,
+                        game_prototype_tag_desc(prototype)->id
+                    );
+    ecs_world_free(world);
+    REQUIRE(tree && destroyed && refused && components_only && unplaced && unhooked);
+    return true;
+}
+
+/* FanN has two children using FanN+1, down to a childless Fan20, so Fan0's
+ * load would read two million documents. */
+static const char *find_fan(const char *name, void *)
+{
+    static char texts[21][160];
+    int level = atoi(name + 3);
+    assert(!strncmp(name, "Fan", 3) && level >= 0 && level <= 20);
+    if (level == 20) {
+        return "name \"Fan20\"\n";
+    }
+    snprintf(
+        texts[level],
+        sizeof texts[level],
+        "name \"Fan%d\"\n(array)children {\n    - name=\"A\" "
+        "prototype=\"Fan%d\"\n"
+        "    - name=\"B\" prototype=\"Fan%d\"\n}\n",
+        level,
+        level + 1,
+        level + 1
+    );
+    return texts[level];
+}
+
+/* A load stops once includes and children have read too many documents. */
+TEST_CASE(prototype_expansion_is_bounded)
+{
+    char error[256];
+    const game_prototype_registry registry = { .components = components,
+                                               .component_count = 2,
+                                               .include = find_fan };
+    prototype = game_prototype_load(find_fan("Fan10", NULL), &registry, error, sizeof error);
+    REQUIRE(prototype && prototype->expanded == 2046);
+    loaded = game_prototype_load(find_fan("Fan0", NULL), &registry, error, sizeof error);
+    REQUIRE(!loaded && strstr(error, "reads more than 16384 prototypes"));
+    return true;
+}
+
+/* WideN has two children using WideN+1, down to a 1 MiB Wide6, so Wide0's
+ * load would read 64 copies of it. */
+static char *wide_leaf;
+static const char *find_wide(const char *name, void *)
+{
+    static char texts[6][160];
+    char *leaf = wide_leaf;
+    int level = atoi(name + 4);
+    assert(!strncmp(name, "Wide", 4) && level >= 0 && level <= 6);
+    if (level == 6 && !leaf) {
+        size_t size = 1024 * 1024;
+        leaf = wide_leaf = xmalloc(size + 1);
+        int n = snprintf(leaf, size, "name \"Wide6\"\n/* ");
+        memset(leaf + n, 'x', size - (size_t)n - 3);
+        memcpy(leaf + size - 3, "*/\n", 4);
+    }
+    if (level == 6) {
+        return leaf;
+    }
+    snprintf(
+        texts[level],
+        sizeof texts[level],
+        "name \"Wide%d\"\n(array)children {\n    - name=\"A\" "
+        "prototype=\"Wide%d\"\n"
+        "    - name=\"B\" prototype=\"Wide%d\"\n}\n",
+        level,
+        level + 1,
+        level + 1
+    );
+    return texts[level];
+}
+
+/* So does one whose documents add up to too many bytes. */
+TEST_CASE(prototype_expansion_bytes_are_bounded)
+{
+    char error[256];
+    const game_prototype_registry registry = { .components = components,
+                                               .component_count = 2,
+                                               .include = find_wide };
+    prototype = game_prototype_load(find_wide("Wide1", NULL), &registry, error, sizeof error);
+    REQUIRE(prototype && prototype->read > 32 * 1024 * 1024);
+    loaded = game_prototype_load(find_wide("Wide0", NULL), &registry, error, sizeof error);
+    REQUIRE(!loaded && strstr(error, "reads more than 64 MiB of prototypes"));
+    free(wide_leaf);
+    wide_leaf = NULL;
+    return true;
+}
+
 void test_prototype_document()
 {
     pu_setup(NULL, cleanup);
@@ -336,5 +592,9 @@ void test_prototype_document()
     RUN_TEST_CASE(scene_children_nest_by_path);
     RUN_TEST_CASE(scene_children_nest_at_most_the_depth_limit);
     RUN_TEST_CASE(derived_components_are_never_authored_or_captured);
+    RUN_TEST_CASE(prototype_children_resolve_and_save_nested);
+    RUN_TEST_CASE(prototype_children_spawn_with_it);
+    RUN_TEST_CASE(prototype_expansion_is_bounded);
+    RUN_TEST_CASE(prototype_expansion_bytes_are_bounded);
     pu_clear_setup();
 }

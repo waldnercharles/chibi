@@ -7,9 +7,10 @@ typedef struct game_prototypes game_prototypes;
 
 game_prototypes *game_prototypes_new();
 void game_prototypes_free(game_prototypes *);
-/* Retains an immutable single-object generation and copies its registration
- * name. Replacing a name never modifies generations retained by pending spawns.
- * No authoring document, source compiler, or filesystem resolver is retained. */
+/* Retains an immutable generation whose objects descend from its first, the
+ * entity a spawn returns, and copies its registration name. Replacing a name
+ * never modifies generations retained by pending spawns. No authoring
+ * document, source compiler, or filesystem resolver is retained. */
 int game_prototypes_register(game_prototypes *, const char *, game_scene *, char *error, size_t size);
 int game_prototypes_remove(game_prototypes *, const char *);
 /* Borrowed until replacement/removal/free; retain before asynchronous use. */

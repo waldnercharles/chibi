@@ -488,6 +488,8 @@ TEST_CASE(language_units_combine_through_arithmetic)
         "body.x = body.x + step * 2\n"
         "body.x *= body.x / body.x\n"
         "body.x /= 2\n"
+        "body.angle = body.angle % 6.28\n"
+        "body.x %= body.x\n"
         "body.angle = -body.angle\n"
         "body.count = body.count + body.x\n"
         "n := 0\n"
@@ -523,6 +525,8 @@ TEST_CASE(language_units_warn_on_mismatch)
         "body.volume = body.mass\n"
         "body.x = body.snap\n"
         "body.speed = body.rate\n"
+        "body.x = body.x % body.speed\n"
+        "body.x %= body.speed\n"
     );
     /* Warnings first: the program still runs. */
     REQUIRE(analysis->valid);
@@ -539,7 +543,9 @@ TEST_CASE(language_units_warn_on_mismatch)
     REQUIRE(warning("Units differ: m³ = kg"));
     REQUIRE(warning("Units differ: u = u/s^4"));
     REQUIRE(warning("Units differ: u/s = 1/s"));
-    REQUIRE(analysis->warning_count == 12);
+    REQUIRE(warning("Units differ: u % u/s"));
+    REQUIRE(warning("Units differ: u %= u/s"));
+    REQUIRE(analysis->warning_count == 14);
     /* Listed in source order. */
     for (int i = 1; i < analysis->warning_count; i++) {
         REQUIRE(

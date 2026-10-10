@@ -220,7 +220,7 @@ static void warn_units(pass *p, script_range range, unit x, const char *op, unit
     format(y, right, sizeof right);
     warn(p, range, "Units differ: %s %s %s", left, op, right);
 }
-/* `+`, `-` and comparisons: the operands share one unit. A mismatch warns
+/* `+`, `-`, `%` and comparisons: the operands share one unit. A mismatch warns
  * once, here, and leaves the result unknown. */
 static unit match(pass *p, script_range range, unit x, const char *op, unit y)
 {
@@ -260,6 +260,7 @@ static const char *symbol_text(script_operator op)
         case SCRIPT_OP_SUB: return "-";
         case SCRIPT_OP_MUL: return "*";
         case SCRIPT_OP_DIV: return "/";
+        case SCRIPT_OP_MOD: return "%";
         case SCRIPT_OP_EQ: return "==";
         case SCRIPT_OP_NE: return "!=";
         case SCRIPT_OP_LT: return "<";
@@ -283,7 +284,8 @@ static unit operation(pass *p, script_range range, script_operator op, int left,
         case SCRIPT_OP_MUL: return product(x, y, 1);
         case SCRIPT_OP_DIV: return product(x, y, -1);
         case SCRIPT_OP_ADD:
-        case SCRIPT_OP_SUB: return match(p, range, x, symbol_text(op), y);
+        case SCRIPT_OP_SUB:
+        case SCRIPT_OP_MOD: return match(p, range, x, symbol_text(op), y);
         case SCRIPT_OP_EQ:
         case SCRIPT_OP_NE:
         case SCRIPT_OP_LT:
@@ -372,6 +374,7 @@ static void assignment(pass *p, const script_statement *s)
         case SCRIPT_OP_NONE:
         case SCRIPT_OP_ADD:
         case SCRIPT_OP_SUB:
+        case SCRIPT_OP_MOD:
             if (clash(target, value)) {
                 char op[4];
                 snprintf(op, sizeof op, "%s=", s->op == SCRIPT_OP_NONE ? "" : symbol_text(s->op));

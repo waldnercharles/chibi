@@ -1169,6 +1169,9 @@ static const char *invalid_joint(const GameJoint3D *joint)
     if (joint->limit && joint->lower > joint->upper) {
         return "A Joint3D limit needs lower at most upper";
     }
+    if (joint->limit && joint->kind == GAME_JOINT3D_DISTANCE && joint->lower < 0) {
+        return "A distance Joint3D limit needs lower at least 0";
+    }
     /* Box3D narrows a ball's cone to a quarter turn. */
     if (joint->limit && joint->kind == GAME_JOINT3D_BALL &&
         (joint->upper < 0 || joint->upper > B3_PI / 2)) {
@@ -1184,6 +1187,12 @@ static bool same_joint(const GameJoint3D *a, const GameJoint3D *b)
            a->upper == b->upper && a->motor == b->motor && a->speed == b->speed &&
            a->strength == b->strength && a->spring == b->spring &&
            a->hertz == b->hertz && a->damping == b->damping;
+}
+
+static bool finite_pose(pose at)
+{
+    CF_Quat q = at.rotation;
+    return finite_v3(at.position) && isfinite(q.x + q.y + q.z + q.w);
 }
 
 static b3Transform to_b3_transform(pose at)
@@ -1355,6 +1364,12 @@ static int sync_joint(game_physics3d *physics, ecs_entity entity)
     if (!alive && joint->kind == GAME_JOINT3D_DISTANCE) {
         return fail(physics, entity, "A distance Joint3D needs another body");
     }
+    pose frame = carried_placement(physics->world, entity, b->entity).pose;
+    pose there = alive ? place(physics->world, other).pose
+                       : (pose){ .rotation = cf_quat_identity() };
+    if (!finite_pose(frame) || !finite_pose(there)) {
+        return fail(physics, entity, "A Joint3D and its other need finite Transform3Ds");
+    }
     if (entity.slot >= (unsigned)acount(physics->joints)) {
         int previous = acount(physics->joints);
         asetlen(physics->joints, (int)entity.slot + 1);
@@ -1365,14 +1380,12 @@ static int sync_joint(game_physics3d *physics, ecs_entity entity)
         );
     }
     joint_record *record = &physics->joints[entity.slot];
-    joint_record want = {
-        .entity = entity,
-        .settings = *joint,
-        .a = a ? a->body : ground(physics),
-        .b = b->body,
-        .frame = carried_placement(physics->world, entity, b->entity).pose,
-        .seen = true
-    };
+    joint_record want = { .entity = entity,
+                          .settings = *joint,
+                          .a = a ? a->body : ground(physics),
+                          .b = b->body,
+                          .frame = frame,
+                          .seen = true };
     if (b3Joint_IsValid(record->joint) && same_entity(record->entity, entity) &&
         same_joint(&record->settings, joint) && B3_ID_EQUALS(record->a, want.a) &&
         B3_ID_EQUALS(record->b, want.b) && same_pose(record->frame, want.frame)) {
@@ -1380,11 +1393,7 @@ static int sync_joint(game_physics3d *physics, ecs_entity entity)
         return FLOW_OK;
     }
     remove_joint(record);
-    want.joint = create_joint(
-        physics,
-        &want,
-        alive ? place(physics->world, other).pose : (pose){ 0 }
-    );
+    want.joint = create_joint(physics, &want, there);
     b3Joint_WakeBodies(want.joint);
     *record = want;
     return FLOW_OK;

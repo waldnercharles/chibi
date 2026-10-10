@@ -1563,6 +1563,22 @@ TEST_CASE(physics3d_joints_need_two_bodies_and_sound_values)
     REQUIRE(joint_fails(grip, "A Joint3D must join two different bodies"));
     GAME_GameJoint3D_get(world, grip)->kind = GAME_JOINT3D_DISTANCE;
     REQUIRE(joint_fails(grip, "A distance Joint3D needs another body"));
+    ecs_entity post = collider((ecs_entity){ 0 }, (CF_V3){ 4 * METER, 0, 0 }, ball(METER / 4), GAME_BODY_STATIC);
+    joint = GAME_GameJoint3D_get(world, grip);
+    joint->kind = GAME_JOINT3D_DISTANCE;
+    joint->other = ecs_entity_to_u64(post);
+    joint->limit = true;
+    joint->lower = -2;
+    joint->upper = -1;
+    REQUIRE(joint_fails(grip, "A distance Joint3D limit needs lower at least 0"));
+    /* A transform-only joint entity or other must be finite too. */
+    GAME_GameJoint3D_get(world, grip)->other = ecs_entity_to_u64(post);
+    GAME_GameTransform3D_get(world, grip)->position.x = NAN;
+    REQUIRE(failed_with("A Joint3D and its other need finite Transform3Ds"));
+    GAME_GameTransform3D_get(world, grip)->position.x = METER / 2;
+    ecs_entity tip = point(post, (CF_V3){ INFINITY, 0, 0 });
+    GAME_GameJoint3D_get(world, grip)->other = ecs_entity_to_u64(tip);
+    REQUIRE(joint_fails(grip, "A Joint3D and its other need finite Transform3Ds"));
     joint = GAME_GameJoint3D_get(world, grip);
     joint->kind = GAME_JOINT3D_BALL;
     joint->limit = true;

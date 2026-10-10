@@ -327,6 +327,11 @@ bool render_shader_may_be_transparent(int index)
     const shader_node *opacity = &asset->graph.nodes[asset->graph.output[SHADER_SURFACE_OPACITY]];
     return opacity->op != SHADER_CONSTANT || opacity->value[0] < 1;
 }
+shader_alpha_mode render_shader_alpha_mode(int index)
+{
+    assert(index > 0 && index <= acount(shader_catalog_assets));
+    return shader_catalog_assets[index - 1].alpha_mode;
+}
 bool render_shader_sample(
     int index,
     const shader_sample_context *sample,

@@ -190,6 +190,8 @@ TEST_CASE(ramp_tables_count_among_program_samplers)
     REQUIRE(render_program_samplers(RENDER_PROGRAM_RASTER_ACCUMULATE, &set) == 13);
     REQUIRE(render_program_samplers(RENDER_PROGRAM_RASTER, &set) == 8);
     REQUIRE(render_program_samplers(RENDER_PROGRAM_SCENE3D, &set) == 14);
+    /* Shadow programs read the parameters, images and ramps, but no maps. */
+    REQUIRE(render_program_samplers(RENDER_PROGRAM_SCENE3D_SHADOW, &set) == 9);
     return true;
 }
 

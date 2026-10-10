@@ -62,7 +62,15 @@ char *render_shader_source(const char *name)
 
 static bool scene3d_kind(render_program_kind kind)
 {
-    return kind == RENDER_PROGRAM_SCENE3D || kind == RENDER_PROGRAM_SCENE3D_MESH;
+    return kind == RENDER_PROGRAM_SCENE3D || kind == RENDER_PROGRAM_SCENE3D_MESH ||
+           kind == RENDER_PROGRAM_SCENE3D_SHADOW ||
+           kind == RENDER_PROGRAM_SCENE3D_MESH_SHADOW;
+}
+
+static bool shadow_kind(render_program_kind kind)
+{
+    return kind == RENDER_PROGRAM_SCENE3D_SHADOW ||
+           kind == RENDER_PROGRAM_SCENE3D_MESH_SHADOW;
 }
 
 render_programs *render_programs_new(render_program_kind kind)
@@ -70,18 +78,20 @@ render_programs *render_programs_new(render_program_kind kind)
     render_programs *programs = xcalloc(1, sizeof *programs);
     programs->kind = kind;
     if (scene3d_kind(kind)) {
-        bool mesh = kind == RENDER_PROGRAM_SCENE3D_MESH;
+        bool mesh = kind == RENDER_PROGRAM_SCENE3D_MESH ||
+                    kind == RENDER_PROGRAM_SCENE3D_MESH_SHADOW;
         programs->vertex = render_shader_source(mesh ? "scene3d_mesh.vert" : "scene3d.vert");
         programs->body = render_shader_source("scene3d.frag");
         char *scene = render_shader_source("scene3d_scene.glsl");
-        if (scene && mesh) {
-            const char *define = "#define SCENE3D_MESH 1\n";
-            size_t bytes = strlen(define) + strlen(scene) + 1;
+        if (scene) {
+            const char *defines[] = { mesh ? "#define SCENE3D_MESH 1\n" : "",
+                                      shadow_kind(kind)
+                                          ? "#define SCENE3D_SHADOW 1\n"
+                                          : "" };
+            size_t bytes = strlen(defines[0]) + strlen(defines[1]) + strlen(scene) + 1;
             programs->scene = xmalloc(bytes);
-            snprintf(programs->scene, bytes, "%s%s", define, scene);
+            snprintf(programs->scene, bytes, "%s%s%s", defines[0], defines[1], scene);
             free(scene);
-        } else {
-            programs->scene = scene;
         }
     } else if (kind == RENDER_PROGRAM_MESH_MATERIAL || kind == RENDER_PROGRAM_SDF_MATERIAL || kind == RENDER_PROGRAM_SDF_PREVIEW) {
         programs->vertex = render_shader_source(
@@ -184,15 +194,16 @@ static bool sdf_kind(render_program_kind kind)
     return kind == RENDER_PROGRAM_SDF_MATERIAL || kind == RENDER_PROGRAM_SDF_PREVIEW;
 }
 
-/* Set 2 holds the samplers, then the storage buffers. The scene's maps, SDF
- * depth or the previous batch's targets follow the images, and the ramp table
- * comes last. */
+/* Set 2 holds the samplers, then the storage buffers. The lit scene's maps,
+ * SDF depth or the previous batch's targets follow the images, and the ramp
+ * table comes last. Shadow programs read no maps. */
 static int ramp_binding(render_program_kind kind, int images)
 {
     return first_image(kind) + images +
-           (scene3d_kind(kind) ? SCENE3D_MAPS
-            : sdf_kind(kind)   ? 1
-                               : previous_targets(kind));
+           (shadow_kind(kind)    ? 0
+            : scene3d_kind(kind) ? SCENE3D_MAPS
+            : sdf_kind(kind)     ? 1
+                                 : previous_targets(kind));
 }
 
 int render_program_samplers(render_program_kind kind, const render_shader_set *set)

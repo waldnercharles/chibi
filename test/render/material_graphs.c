@@ -145,6 +145,46 @@ bool test_register_alpha(const char *name, shader_alpha_mode mode, float opacity
     );
 }
 
+bool test_register_half_mask(const char *name)
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    node *position = graph_add_node(g, pack_node("Shader ObjectPosition"));
+    node *z = graph_add_node(g, pack_node("Shader Z"));
+    pin_value values[] = { { .type = PIN_I32, .i = SHADER_ALPHA_MASK },
+                           { .type = PIN_F32, .f = 0 } };
+    return publish(
+        material,
+        position && z && !graph_connect_data(g, position, 0, z, 0) &&
+            !graph_connect_data(g, z, 0, output, SHADER_SURFACE_OPACITY) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_ALPHA_MODE, &values[0]) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_ALPHA_CUTOFF, &values[1])
+    );
+}
+
+bool test_register_view_mask(const char *name)
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    node *view = graph_add_node(g, pack_node("Shader ViewDirection"));
+    node *x = graph_add_node(g, pack_node("Shader X"));
+    node *negate = graph_add_node(g, pack_node("Shader Multiply"));
+    pin_value values[] = { { .type = PIN_F32, .f = -1 },
+                           { .type = PIN_I32, .i = SHADER_ALPHA_MASK },
+                           { .type = PIN_F32, .f = .5f } };
+    return publish(
+        material,
+        view && x && negate && !graph_connect_data(g, view, 0, x, 0) &&
+            !graph_connect_data(g, x, 0, negate, 0) &&
+            !graph_set_pin_default(g, negate, 0, 1, &values[0]) &&
+            !graph_connect_data(g, negate, 0, output, SHADER_SURFACE_OPACITY) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_ALPHA_MODE, &values[1]) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_ALPHA_CUTOFF, &values[2])
+    );
+}
+
 bool test_register_unknown_opacity(const char *name)
 {
     behavior_asset *material = new_material(name);

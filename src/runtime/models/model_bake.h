@@ -1,7 +1,14 @@
 #ifndef CHIBI_MODEL_BAKE_H
 #define CHIBI_MODEL_BAKE_H
-#include "runtime/geometry/mesh_asset.h"
+#include "runtime/geometry/mesh_prepared.h"
 #include "runtime/models/model_program.h"
+#include "types/value_wire.h"
+
+/* The most triangles a bake makes. Each baked triangle owns three vertices
+ * and three indices, and a mesh holds at most EXECUTION_WIRE_MAX_RECORDS
+ * vertices, indices and groups together. */
+#define MODEL_BAKE_TRIANGLE_MAX                                                \
+    ((EXECUTION_WIRE_MAX_RECORDS - RENDER_MESH_PREPARED_GROUP_MAX) / 6)
 
 typedef struct
 {

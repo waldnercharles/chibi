@@ -5,13 +5,14 @@
 #include "authoring/mesh_prepare.h"
 #include "authoring/shader_prepare.h"
 #include "render/shader_catalog.h"
+#include "runtime/geometry/mesh_prepared.h"
 #include "runtime/images/catalog.h"
 #include "support/array.h"
-#include "support/file_io.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -48,31 +49,9 @@ static bool write_json(const char *directory, const char *name, yyjson_mut_doc *
     free(path);
     return ok;
 }
-static yyjson_mut_doc *mesh_document(const render_mesh_asset *mesh)
+static yyjson_mut_val *mesh_groups(yyjson_mut_doc *doc, const render_mesh_asset *mesh)
 {
-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
-    yyjson_mut_val *root = yyjson_mut_obj(doc);
-    yyjson_mut_doc_set_root(doc, root);
-    yyjson_mut_obj_add_int(doc, root, "version", 1);
-    if (mesh->has_uv_bounds) {
-        float bounds[] = { mesh->uv_min.x, mesh->uv_min.y, mesh->uv_min.z,
-                           mesh->uv_max.x, mesh->uv_max.y, mesh->uv_max.z };
-        yyjson_mut_obj_add_val(doc, root, "uv_bounds", numbers(doc, bounds, 6));
-    }
-    yyjson_mut_val *vertices = yyjson_mut_obj_add_arr(doc, root, "vertices");
-    yyjson_mut_val *positions = yyjson_mut_obj_add_arr(doc, root, "part_positions");
-    yyjson_mut_val *frames = yyjson_mut_obj_add_arr(doc, root, "part_frames");
-    for (int i = 0; i < acount(mesh->vertices); i++) {
-        const render_mesh_surface_vertex *v = &mesh->vertices[i];
-        float row[] = { v->position.x, v->position.y, v->position.z,
-                        v->normal.x,   v->normal.y,   v->normal.z,
-                        v->uv.x,       v->uv.y };
-        float p[] = { v->part_position.x, v->part_position.y, v->part_position.z };
-        yyjson_mut_arr_add_val(vertices, numbers(doc, row, 8));
-        yyjson_mut_arr_add_val(positions, numbers(doc, p, 3));
-        yyjson_mut_arr_add_val(frames, numbers(doc, &v->part_from_object[0][0], 9));
-    }
-    yyjson_mut_val *groups = yyjson_mut_obj_add_arr(doc, root, "groups");
+    yyjson_mut_val *groups = yyjson_mut_arr(doc);
     for (int i = 0; i < acount(mesh->groups); i++) {
         const render_mesh_group *g = &mesh->groups[i];
         yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, groups);
@@ -85,23 +64,44 @@ static yyjson_mut_doc *mesh_document(const render_mesh_asset *mesh)
         yyjson_mut_obj_add_strcpy(doc, entry, "path", g->path);
         yyjson_mut_obj_add_strcpy(doc, entry, "material", g->material);
         yyjson_mut_obj_add_strcpy(doc, entry, "material_scope", g->material_scope);
+        char label[32];
+        snprintf(label, sizeof label, "part_%d", i);
+        yyjson_mut_obj_add_strcpy(doc, entry, "obj_group", label);
+        snprintf(label, sizeof label, "material_%d", i);
+        yyjson_mut_obj_add_strcpy(doc, entry, "obj_material", label);
     }
-    return doc;
+    return groups;
 }
-static bool validate_staged_mesh(const char *directory, char *error, size_t size)
+/* Writes the engine mesh after reading its bytes back, so a bundle never
+ * carries a mesh the engine would refuse to load. */
+static bool write_mesh(const char *directory, const render_mesh_asset *mesh, char *error, size_t size)
 {
-    size_t length = strlen(directory) + sizeof "/model.mesh.json";
-    char *path = xmalloc(length);
-    snprintf(path, length, "%s/model.mesh.json", directory);
-    char *text = file_read_text(path);
-    free(path);
-    render_mesh_asset mesh = { 0 };
-    bool ok = text && render_mesh_asset_parse(text, &mesh, error, size);
-    if (!text) {
-        snprintf(error, size, "Could not read staged engine mesh.");
+    unsigned char *bytes = NULL;
+    size_t length = 0;
+    render_mesh_asset check = { 0 };
+    size_t budget = SIZE_MAX;
+    char reason[256] = "";
+    bool ok = render_mesh_asset_prepared_write(mesh, &bytes, &length, reason, sizeof reason) &&
+              render_mesh_asset_prepared_read_budget(bytes, length, &budget, &check, reason, sizeof reason);
+    render_mesh_asset_free(&check);
+    if (!ok) {
+        snprintf(error, size, "Baked engine mesh is invalid: %s.", reason);
+        free(bytes);
+        return false;
     }
-    render_mesh_asset_free(&mesh);
-    free(text);
+    size_t path_size = strlen(directory) + sizeof "/model.mesh";
+    char *path = xmalloc(path_size);
+    snprintf(path, path_size, "%s/model.mesh", directory);
+    FILE *file = fopen(path, "wb");
+    free(path);
+    ok = file && fwrite(bytes, 1, length, file) == length;
+    if (file) {
+        ok = fclose(file) == 0 && ok;
+    }
+    free(bytes);
+    if (!ok) {
+        snprintf(error, size, "Could not write staged export: %s", strerror(errno));
+    }
     return ok;
 }
 static bool write_obj(const char *directory, const render_mesh_asset *mesh)
@@ -114,7 +114,7 @@ static bool write_obj(const char *directory, const render_mesh_asset *mesh)
     if (!file) {
         return false;
     }
-    fprintf(file, "# Chibi model bake: engine XYZ, approximate dominant-normal box UVs, live materials in JSON/provenance only\n");
+    fprintf(file, "# Chibi model bake: engine XYZ, approximate dominant-normal box UVs, live materials in model.mesh and provenance only\n");
     fprintf(file, "mtllib model.mtl\n");
     for (int i = 0; i < acount(mesh->vertices); i++) {
         const render_mesh_surface_vertex *v = &mesh->vertices[i];
@@ -129,24 +129,17 @@ static bool write_obj(const char *directory, const render_mesh_asset *mesh)
         fprintf(file, "vn %.9g %.9g %.9g\n", v->normal.x, v->normal.y, v->normal.z);
     }
     int group = 0;
-    for (int i = 0; i < acount(mesh->vertices); i += 3) {
+    for (int i = 0; i < acount(mesh->indices); i += 3) {
         if (group < acount(mesh->groups) && mesh->groups[group].first == i) {
             fprintf(file, "g part_%d\nusemtl material_%d\n", group, group);
             group++;
         }
-        fprintf(
-            file,
-            "f %d/%d/%d %d/%d/%d %d/%d/%d\n",
-            i + 1,
-            i + 1,
-            i + 1,
-            i + 2,
-            i + 2,
-            i + 2,
-            i + 3,
-            i + 3,
-            i + 3
-        );
+        const int *corner = mesh->indices + i;
+        fprintf(file, "f");
+        for (int j = 0; j < 3; j++) {
+            fprintf(file, " %d/%d/%d", corner[j] + 1, corner[j] + 1, corner[j] + 1);
+        }
+        fprintf(file, "\n");
     }
     bool ok = !ferror(file);
     return fclose(file) == 0 && ok;
@@ -223,23 +216,7 @@ static yyjson_mut_doc *provenance(
         yyjson_mut_obj_add_bool(doc, entry, "derived", p->hidden);
         yyjson_mut_obj_add_val(doc, entry, "value", numbers(doc, bake->parameters[p->slot], p->width));
     }
-    yyjson_mut_doc *mesh = mesh_document(&bake->mesh);
-    yyjson_mut_obj_add_val(
-        doc,
-        root,
-        "parts",
-        yyjson_mut_val_mut_copy(doc, yyjson_mut_obj_get(yyjson_mut_doc_get_root(mesh), "groups"))
-    );
-    yyjson_mut_doc_free(mesh);
-    yyjson_mut_val *parts = yyjson_mut_obj_get(root, "parts");
-    for (int i = 0; i < acount(bake->mesh.groups); i++) {
-        yyjson_mut_val *entry = yyjson_mut_arr_get(parts, (size_t)i);
-        char label[32];
-        snprintf(label, sizeof label, "part_%d", i);
-        yyjson_mut_obj_add_strcpy(doc, entry, "obj_group", label);
-        snprintf(label, sizeof label, "material_%d", i);
-        yyjson_mut_obj_add_strcpy(doc, entry, "obj_material", label);
-    }
+    yyjson_mut_obj_add_val(doc, root, "parts", mesh_groups(doc, &bake->mesh));
     yyjson_mut_obj_add_val(doc, root, "bounds_min", numbers(doc, bake->bounds.min, 3));
     yyjson_mut_obj_add_val(doc, root, "bounds_max", numbers(doc, bake->bounds.max, 3));
     yyjson_mut_obj_add_real(doc, root, "cell_size", bake->cell_size);
@@ -288,7 +265,7 @@ static int publish(const char *stage, const char *destination)
 }
 static void discard(const char *directory)
 {
-    const char *names[] = { "model.mesh.json", "model.obj", "model.mtl", "provenance.json" };
+    const char *names[] = { "model.mesh", "model.obj", "model.mtl", "provenance.json" };
     for (int i = 0; i < 4; i++) {
         size_t length = strlen(directory) + strlen(names[i]) + 2;
         char *path = xmalloc(length);
@@ -412,19 +389,16 @@ bool model_export_bundle(
         }
     }
     if (ok) {
-        yyjson_mut_doc *mesh = mesh_document(&bake.mesh);
+        ok = write_mesh(stage, &bake.mesh, error, size);
+    }
+    if (ok) {
         yyjson_mut_doc *meta = provenance(&sources, name, &program, &bake, options);
-        ok = write_json(stage, "model.mesh.json", mesh, false) &&
-             write_obj(stage, &bake.mesh) && write_mtl(stage, &bake.mesh) &&
+        ok = write_obj(stage, &bake.mesh) && write_mtl(stage, &bake.mesh) &&
              write_json(stage, "provenance.json", meta, true);
-        yyjson_mut_doc_free(mesh);
         yyjson_mut_doc_free(meta);
         if (!ok) {
             snprintf(error, size, "Could not write staged export: %s", strerror(errno));
         }
-    }
-    if (ok) {
-        ok = validate_staged_mesh(stage, error, size);
     }
     if (ok && publish(stage, destination)) {
         snprintf(error, size, "Could not publish export: %s", strerror(errno));
@@ -440,7 +414,7 @@ bool model_export_bundle(
         );
     }
     if (ok && summary) {
-        *summary = (model_export_summary){ .triangles = acount(bake.mesh.vertices) / 3,
+        *summary = (model_export_summary){ .triangles = acount(bake.mesh.indices) / 3,
                                            .samples = bake.samples,
                                            .work = bake.work,
                                            .cell_diagonal = bake.cell_diagonal,

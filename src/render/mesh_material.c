@@ -20,7 +20,7 @@ typedef struct
 {
     int primitive;
     uint64_t asset_identity;
-    int first_vertex;
+    int first_index;
     CF_Mesh mesh;
 } primitive_mesh;
 typedef struct
@@ -335,7 +335,7 @@ static CF_Mesh mesh(render_mesh_material *pass, const render_mesh_surface_part *
     for (int i = 0; i < acount(pass->meshes); i++) {
         if (pass->meshes[i].primitive == part->visual.part.primitive &&
             pass->meshes[i].asset_identity == part->asset_identity &&
-            pass->meshes[i].first_vertex == part->first_vertex) {
+            pass->meshes[i].first_index == part->first_index) {
             return pass->meshes[i].mesh;
         }
     }
@@ -362,23 +362,24 @@ static CF_Mesh mesh(render_mesh_material *pass, const render_mesh_surface_part *
           .format = CF_VERTEX_FORMAT_FLOAT3,
           .offset = offsetof(render_mesh_surface_vertex, part_from_object[2]) }
     };
-    int count = render_mesh_surface_vertex_count(part);
-    CF_Mesh result = cf_make_mesh(
-        count * sizeof *part->vertices,
-        attributes,
-        7,
-        sizeof *part->vertices
-    );
+    int count = render_mesh_surface_corner_count(part);
+    render_mesh_surface_vertex *corners = NULL;
+    asetlen(corners, count);
+    for (int i = 0; i < count; i++) {
+        corners[i] = *render_mesh_surface_corner(part, i);
+    }
+    CF_Mesh result = cf_make_mesh(count * sizeof *corners, attributes, 7, sizeof *corners);
     if (result.id) {
-        cf_mesh_update_vertex_data(result, part->vertices, count);
+        cf_mesh_update_vertex_data(result, corners, count);
         apush(
             pass->meshes,
             ((primitive_mesh){ part->visual.part.primitive,
                                part->asset_identity,
-                               part->first_vertex,
+                               part->first_index,
                                result })
         );
     }
+    afree(corners);
     return result;
 }
 static bool draw_actor(
@@ -704,7 +705,7 @@ static CF_Mesh sdf_mesh(render_mesh_material *pass, const render_mesh_surface_pa
                                              .offset = i * 4 * sizeof(float),
                                              .per_instance = true };
     }
-    int count = render_mesh_surface_vertex_count(part);
+    int count = render_mesh_surface_corner_count(part);
     CF_Mesh result = cf_make_mesh(
         count * sizeof *part->vertices,
         attrs,

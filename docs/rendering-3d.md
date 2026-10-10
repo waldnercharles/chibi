@@ -203,6 +203,36 @@ drawn on the far plane, so it fills every pixel no surface covers, and an empty
 - **Not covered**: nothing blocks sky light, so a surface inside a closed box
   is lit as if it stood in the open.
 
+## Meshes
+
+A `GameMeshAsset` source names a binary `.mesh` file in the content folder,
+such as `content/meshes/Camera.mesh`. The file holds indexed triangles. Each
+vertex has a position, normal, texture coordinate and tangent. The tangent's w
+is 1 or -1, and the bitangent is cross(normal, tangent) times w. Meshes baked
+from models also store each vertex's part position and object-to-part frame;
+other meshes read back with their own position and an identity frame. Material
+groups name runs of whole triangles in the index list and cover all of it.
+
+The file is the engine's prepared mesh payload
+(`src/runtime/geometry/mesh_prepared.c`, version 3), so one reader validates
+authored files and player artifacts. Changing that format therefore needs a
+project migration step that rewrites projects' `.mesh` files. A file is at
+most 64 MiB, with at most 1,000,000 vertices, indices and groups together. The
+reader refuses non-finite or out-of-bounds values, zero normals or tangents,
+indices outside the vertex list, triangles below
+`RENDER_MESH_MIN_TRIANGLE_AREA`, and groups that split a triangle or skip
+indices, and names the first vertex, triangle or group at fault. The model
+baker writes this format, with tangents generated from its box UVs by
+`render_mesh_asset_tangents`; each triangle counts by its area, so slivers
+don't steer their corners. A bake makes at most `MODEL_BAKE_TRIANGLE_MAX`
+(166,496) triangles, the most a file holds when every triangle owns its three
+vertices. Runtime C code reads a loaded mesh's vertices and indices through
+`render_mesh_asset_load`. The JSON mesh format (`.mesh.json`) is retired:
+export the model again to get a `.mesh` file.
+
+Imported meshes draw through the planar material renderer
+(`GameMeshSurface2D`); the lit 3D path does not draw them yet.
+
 ## Optional material inputs
 
 Rhythm, Surface Influence, trails and particles feed materials only when a scene
@@ -261,13 +291,13 @@ edit shows without a recompile. It is a GPU check that runs the main build's
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 42 cases and 9218 assertions in 7.4 seconds on 2026-10-09.
+Vulkan llvmpipe passed 55 cases and 9297 assertions in 8.6 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 42
-cases and 9218 assertions in 6.0 seconds on 2026-10-09.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 55
+cases and 9297 assertions in 7.0 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half
@@ -278,6 +308,8 @@ publish, and are charged, with a prepared generation, and
 `python3 tools/test_policy.py tool sky-files` decodes flat and run-length
 files, rejects malformed ones, prepares skies from mounted content and imports
 them without replacing a file. Both need the in-tree build above.
+`python3 tools/test_policy.py tool mesh-files` checks `.mesh` tangents,
+preparation and refusals the same way.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

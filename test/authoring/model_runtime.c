@@ -379,8 +379,13 @@ static bool corrupt_mesh_group()
     }
     execution_wire_count(&reader, &count, 1);
     REQUIRE(!reader.error && count == 3);
-    for (int i = 0; i < 60; i++) {
+    for (int i = 0; i < 72; i++) {
         execution_wire_float(&reader, &value);
+    }
+    execution_wire_count(&reader, &count, 1);
+    REQUIRE(!reader.error && count == 3);
+    for (int i = 0; i < 3; i++) {
+        execution_wire_int(&reader, &first);
     }
     execution_wire_count(&reader, &count, 1);
     execution_wire_int(&reader, &first);
@@ -406,6 +411,7 @@ TEST_CASE(mesh_persistence_transfers_detached_generations)
     for (int i = 0; i < 3; i++) {
         render_mesh_surface_vertex vertex = {
             .normal = { 0, 0, 1 },
+            .tangent = { 1, 0, 0, 1 },
             .part_from_object = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
         };
         vertex.position.x = i == 1;
@@ -413,6 +419,7 @@ TEST_CASE(mesh_persistence_transfers_detached_generations)
         vertex.uv = (CF_V2){ vertex.position.x, vertex.position.y };
         vertex.part_position = vertex.position;
         apush(mesh.vertices, vertex);
+        apush(mesh.indices, i);
     }
     render_mesh_group group = { .count = 3,
                                 .part = 0,
@@ -445,6 +452,11 @@ TEST_CASE(mesh_persistence_transfers_detached_generations)
         near(decoded_mesh.vertices[2].part_position.y, 1)
     );
     REQUIRE(near(decoded_mesh.vertices[1].part_from_object[0][0], 1));
+    REQUIRE(acount(decoded_mesh.indices) == 3 && decoded_mesh.indices[2] == 2);
+    REQUIRE(
+        near(decoded_mesh.vertices[2].tangent.x, 1) &&
+        near(decoded_mesh.vertices[2].tangent.w, 1)
+    );
     REQUIRE(
         !strcmp(decoded_mesh.groups[0].material, "OldMaterial") &&
         decoded_mesh.groups[0].node == 42
@@ -480,16 +492,13 @@ TEST_CASE(mesh_persistence_transfers_detached_generations)
         decoded_mesh.vertices == vertices &&
         render_mesh_table_source_count(staged_meshes) == 0
     );
-    char path[] = "content/meshes/triangle.mesh.json";
+    char path[] = "content/meshes/triangle.mesh";
     REQUIRE(render_mesh_table_add_owned(staged_meshes, path, &decoded_mesh));
     REQUIRE(!decoded_mesh.vertices && render_mesh_table_source_count(staged_meshes) == 1);
     memset(path, 'x', sizeof path - 1);
     render_mesh_table_exchange(staged_meshes);
-    const render_mesh_asset *resident = render_mesh_asset_load(
-        "content/meshes/triangle.mesh.json",
-        error,
-        sizeof error
-    );
+    const render_mesh_asset
+        *resident = render_mesh_asset_load("content/meshes/triangle.mesh", error, sizeof error);
     REQUIRE(resident && resident->identity && !strcmp(resident->groups[0].name, "Face"));
     uint64_t old_identity = resident->identity;
     budget = 8192;
@@ -502,18 +511,16 @@ TEST_CASE(mesh_persistence_transfers_detached_generations)
     decoded_mesh.groups[0].material = xstrdup("NewMaterial");
     replacement_meshes = render_mesh_table_new();
     REQUIRE(
-        render_mesh_table_add_owned(replacement_meshes, "content/meshes/triangle.mesh.json", &decoded_mesh)
+        render_mesh_table_add_owned(replacement_meshes, "content/meshes/triangle.mesh", &decoded_mesh)
     );
     render_mesh_table_exchange(replacement_meshes);
-    resident = render_mesh_asset_load("content/meshes/triangle.mesh.json", error, sizeof error);
+    resident = render_mesh_asset_load("content/meshes/triangle.mesh", error, sizeof error);
     REQUIRE(
         resident && resident->identity != old_identity &&
         !strcmp(resident->groups[0].material, "NewMaterial")
     );
     REQUIRE(render_mesh_table_source_count(replacement_meshes) == 1);
-    REQUIRE(
-        !strcmp(render_mesh_table_source_at(replacement_meshes, 0), "content/meshes/triangle.mesh.json")
-    );
+    REQUIRE(!strcmp(render_mesh_table_source_at(replacement_meshes, 0), "content/meshes/triangle.mesh"));
     const render_mesh_asset *old = render_mesh_table_asset_at(replacement_meshes, 0);
     REQUIRE(old->identity == old_identity && !strcmp(old->groups[0].material, "OldMaterial"));
     REQUIRE(

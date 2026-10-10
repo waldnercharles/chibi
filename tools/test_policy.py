@@ -146,6 +146,10 @@ TOOLS = {
     # Four reviewed in-tree Radiance .hdr cases: flat and run-length decoding, malformed files,
     # preparation from mounted content and import without replacement; one temporary folder, no GPU.
     'sky-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--sky-files'],
+    # Six reviewed in-tree indexed .mesh cases: tangents from texture directions, preparation from
+    # mounted content, refused triangles and groups, unreadable files, the largest baked mesh and a
+    # model export bundle; one temporary folder, no GPU.
+    'mesh-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--mesh-files'],
     # Nine reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, sound requests, declared components, per-step action state and recorded taps, and held actions across a pause.
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--native'],
     # 2D physics through ECS and Contact Begin events: motion, contacts, masks, queries and parallel collection.
@@ -194,7 +198,7 @@ TOOLS = {
 # Every admitted selector of each built driver, run under one shared deadline.
 GROUPS = {
     'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'physics3d', 'transforms',
-               'box3d', 'sky-files', 'tilemap',
+               'box3d', 'sky-files', 'mesh-files', 'tilemap',
                'runtime-scene', 'scene-prepared', 'render-resources', 'persistent-store',
                'whole-alias', 'whole-integer', 'whole-conversion', 'whole-select', 'whole-math',
                'owned-tick', 'parallel-tick', 'source-native-features',

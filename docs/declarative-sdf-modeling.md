@@ -348,7 +348,7 @@ For example, send this native request as one JSON line to
   "operation": "bake_model",
   "model": "PolaroidOneStep",
   "destination": "/absolute/existing-parent/new-camera-bundle",
-  "options": { "cell_size": 0.2, "max_triangles": 200000, "max_samples": 8000000, "max_work": 10000000000 }
+  "options": { "cell_size": 0.2, "max_triangles": 150000, "max_samples": 8000000, "max_work": 10000000000 }
 }
 ```
 
@@ -360,8 +360,10 @@ Native Studio reports the output directory; Web Studio downloads the four files
 as `<Model>-mesh.zip` through the existing browser file export hook, including
 when using the local server storage bridge.
 
-The bundle contains compact `model.mesh.json`, `model.obj`, `model.mtl` and
-`provenance.json`. The engine mesh retains named part identities, stable source
+The bundle contains `model.mesh`, `model.obj`, `model.mtl` and
+`provenance.json`. `model.mesh` is the engine's binary indexed mesh (see
+[3D rendering](rendering-3d.md#meshes)), with tangents generated from the box
+UVs. It retains named part identities, stable source
 node IDs, invocation paths, live material asset references and slot scopes, owner-local vertex
 coordinates and the nine row-major object-to-part coordinate gradients. Its
 optional source `uv_bounds` restores automatic box projection per fragment.
@@ -372,9 +374,9 @@ material graphs, including coordinate-based bump detail. The optional group
 geometry and other-slot bindings are not consumed as material parameters. Use `GameMeshAsset`
 with dimensions `(1,1,1)`, retain the entity's material binding for unassigned
 parts, and enable `GameMeshSurface2D` instead of `GameSdfSurface3D` to select the
-fallback. Copy the JSON into project content and bind a source such as
-`content/meshes/Camera.mesh.json`; absolute mesh paths and parent traversal are
-rejected by the existing importer. The editable model remains available for
+fallback. Copy `model.mesh` into project content and bind a source such as
+`content/meshes/Camera.mesh`; absolute mesh paths, parent traversal and other
+extensions are rejected by the importer. The editable model remains available for
 subsequent changes/rebakes.
 
 OBJ carries engine XYZ geometry, vertex normals, approximate box UVs and named
@@ -392,7 +394,9 @@ bounds, padded by one cell. `cell_size` is measured in authored model units;
 zero selects the longest extent divided by 48. Default limits are 128 cells per
 axis, 100,000 triangles, 2,000,000 evaluated queries, 1,000,000,000 estimated node
 work and 10 edge refinement iterations. Explicit limits are bounded by the
-public tool schema and backend. Work includes conservative hit/frame charges;
+public tool schema and backend. A bake makes at most 166,496 triangles
+(`MODEL_BAKE_TRIANGLE_MAX`), the most a mesh file holds when every triangle
+owns its three vertices. Work includes conservative hit/frame charges;
 it is not a GPU instruction count. The baker drops microscopic triangles at
 the same absolute area floor used by the mesh importer. Thin features smaller
 than the grid can be

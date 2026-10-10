@@ -8,9 +8,14 @@ typedef struct
 {
     scene3d_visual visual;
     CF_V3 sdf_center; /* Model-local bound center; raw shapes remain centered. */
-    /* Primitive-local triangle list. Owned array; model includes dimensions. */
+    /* Primitive-local vertices; model includes dimensions. Owned unless
+     * `borrowed`. With `indices`, the triangles' corners index it; otherwise
+     * it is a triangle list. */
     render_mesh_surface_vertex *vertices;
-    int vertex_count, first_vertex; /* Explicit slices for catalog material groups. */
+    const int *indices; /* Borrowed catalog indices, or NULL. */
+    /* Explicit slices for catalog material groups: the triangle corner count,
+     * and the slice's first index in the asset. */
+    int corner_count, first_index;
     bool part_coordinates, uv_bounds;
     CF_V3 uv_min, uv_max;
     const char *material_scope; /* Borrowed catalog slot name, empty for entity fallback. */
@@ -50,7 +55,13 @@ bool render_mesh_surface_build(
     size_t size
 );
 const char *render_mesh_surface_lod_shape(const GameSdfSurface3D *sdf, float pixels, bool disabled);
-int render_mesh_surface_vertex_count(const render_mesh_surface_part *part);
+/* How many triangle corners the part draws: three per triangle. */
+int render_mesh_surface_corner_count(const render_mesh_surface_part *part);
+/* The vertex at a part's triangle corner. */
+const render_mesh_surface_vertex *render_mesh_surface_corner(
+    const render_mesh_surface_part *part,
+    int corner
+);
 void render_mesh_surface_free(render_mesh_surface *surface);
 bool render_mesh_surface_bounds(
     const ecs_world *world,

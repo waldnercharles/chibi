@@ -240,6 +240,15 @@ static void wire(execution_wire *w, render_mesh_asset *a)
         wire_group(w, &a->groups[i]);
     }
 }
+bool render_mesh_prepared_fits(int vertices, int indices)
+{
+    if (vertices > MESH_PREPARED_VERTEX_MAX) {
+        return false;
+    }
+    size_t vertex_bytes = (size_t)vertices * sizeof(render_mesh_surface_vertex);
+    return vertex_bytes <= EXECUTION_WIRE_MAX_BYTES &&
+           (size_t)indices <= (EXECUTION_WIRE_MAX_BYTES - vertex_bytes) / sizeof(int);
+}
 static bool report(execution_wire *w, char *error, size_t size)
 {
     if (!w->error) {

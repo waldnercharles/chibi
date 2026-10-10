@@ -693,6 +693,19 @@ static CF_V3 carry_normal(const double cofactor[3][3], CF_V3 normal, bool mirror
     return (CF_V3){ (float)(v[0] * scale), (float)(v[1] * scale), (float)(v[2] * scale) };
 }
 
+/* `direction` carried by `m`'s linear part in double, where no sum of two
+ * float products overflows, at unit length or else `fallback`. */
+static CF_V3 carry_direction(CF_M4x4 m, CF_V3 direction, CF_V3 fallback)
+{
+    const float *e = m.elements;
+    double v[3];
+    for (int k = 0; k < 3; k++) {
+        v[k] = (double)e[k] * direction.x + (double)e[4 + k] * direction.y +
+               (double)e[8 + k] * direction.z;
+    }
+    return unit_of(v, fallback);
+}
+
 /* Whether the triangle has the area a mesh file requires. */
 static bool has_area(CF_V3 a, CF_V3 b, CF_V3 c)
 {
@@ -715,10 +728,7 @@ static int bake(render_mesh_asset *mesh, const render_mesh_asset *part, CF_M4x4 
         CF_V4 t = vertex.tangent;
         vertex.position = cf_m4_transform_point(world, vertex.position);
         vertex.normal = carry_normal(cofactor, vertex.normal, mirrored);
-        CF_V3 tangent = unit(
-            cf_m4_transform_dir(world, (CF_V3){ t.x, t.y, t.z }),
-            (CF_V3){ 1, 0, 0 }
-        );
+        CF_V3 tangent = carry_direction(world, (CF_V3){ t.x, t.y, t.z }, (CF_V3){ 1, 0, 0 });
         vertex.tangent = (CF_V4){ tangent.x, tangent.y, tangent.z, mirrored ? -t.w : t.w };
         apush(mesh->vertices, vertex);
     }
@@ -765,6 +775,15 @@ static void drop_unused_vertices(render_mesh_asset *mesh)
     asetlen(mesh->vertices, kept);
     free(used);
     free(moved);
+}
+
+/* Whether the mesh baked so far still fits a .mesh file, checked as each
+ * primitive is placed so that nodes copying one many times stop before
+ * the copies outgrow memory. */
+static bool fits(import *in, const render_mesh_asset *mesh)
+{
+    return render_mesh_prepared_fits(acount(mesh->vertices), acount(mesh->indices)) ||
+           fail(in, "The model's meshes, copied for each node that draws them, are larger than a .mesh file holds");
 }
 
 /* Each node's world frame, parents first. */
@@ -840,12 +859,13 @@ static bool bake_mesh(import *in, render_mesh_asset *mesh)
                     continue;
                 }
                 render_mesh_asset part = { 0 };
-                bool read = primitive_part(in, p, json_primitive(in, index, j), &part);
-                if (read) {
+                bool baked = primitive_part(in, p, json_primitive(in, index, j), &part);
+                if (baked) {
                     dropped += bake(mesh, &part, frames[n], mirrors(model, n));
+                    baked = fits(in, mesh);
                 }
                 render_mesh_asset_free(&part);
-                if (!read) {
+                if (!baked) {
                     free(frames);
                     return false;
                 }
@@ -1083,7 +1103,13 @@ static bool undeclared(import *in, new_asset_kind kind)
     char *path = xmalloc(bytes);
     snprintf(path, bytes, "%s/%s", in->content, folder);
     DIR *directory = opendir(path);
+    int code = errno;
     free(path);
+    /* A folder it cannot read could hide a clash; one that is missing holds
+     * none. */
+    if (!directory && code != ENOENT) {
+        return fail(in, "Cannot read content/%s: %s", folder, strerror(code));
+    }
     bool clear = true;
     for (struct dirent *entry; clear && directory && (entry = readdir(directory));) {
         const char *file = entry->d_name;

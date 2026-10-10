@@ -720,6 +720,11 @@ static int sync_entity(game_physics3d *physics, ecs_entity entity)
     own_body(physics, record, collider, at);
     record->written = *GAME_GameTransform3D_get_const(world, entity);
     record->placed = at.pose;
+    if (character) {
+        /* The mover sweeps the capsule as it stands, so it never spins. */
+        body.angular_velocity = (CF_V3){ 0 };
+        GAME_GameBody3D_get(world, entity)->angular_velocity = body.angular_velocity;
+    }
     set_velocities(record, &body);
     return FLOW_OK;
 }
@@ -1121,7 +1126,9 @@ static void set_gravity(game_physics3d *physics, CF_V3 acceleration)
 /* The most planes a character slides along at once. */
 #define CHARACTER_PLANES 32
 /* Box3D's mover runs at most this many cast and slide passes per step, and
- * stops early once a pass moves less than the tolerance. */
+ * stops early once a pass moves less than the tolerance. The planes touching
+ * the capsule where it stops find the floor, and those that hold back the rest
+ * of its motion clip its velocity. */
 #define CHARACTER_PASSES 5
 static const float CHARACTER_TOLERANCE = .01f * GAME_UNITS_PER_METER;
 /* The cosine of the steepest floor, 45 degrees. */
@@ -1187,8 +1194,9 @@ static void move_character(game_physics3d *physics, body_record *record, float d
     b3QueryFilter filter = { .categoryBits = record->collider.category,
                              .maskBits = record->collider.mask };
     character_contact contact = { .self = record->body };
-    b3Vec3 target = b3MulSV(delta, to_b3(body->linear_velocity)), moved = b3Vec3_zero;
-    for (int pass = 0; pass < CHARACTER_PASSES; pass++) {
+    b3Vec3 target = b3MulSV(delta, to_b3(body->linear_velocity)),
+           moved = b3Vec3_zero, step = b3Vec3_zero;
+    for (int pass = 0;; pass++) {
         b3Capsule mover = { b3Add(local.center1, moved),
                             b3Add(local.center2, moved),
                             radius };
@@ -1196,6 +1204,11 @@ static void move_character(game_physics3d *physics, body_record *record, float d
         b3World_CollideMover(physics->simulation, origin, &mover, filter, gather_planes, &contact);
         b3PlaneSolverResult
             solved = b3SolvePlanes(b3Sub(target, moved), contact.planes, contact.count);
+        if (pass == CHARACTER_PASSES ||
+            (pass > 0 &&
+             b3LengthSquared(step) < CHARACTER_TOLERANCE * CHARACTER_TOLERANCE)) {
+            break;
+        }
         float fraction = b3World_CastMover(
             physics->simulation,
             origin,
@@ -1205,11 +1218,8 @@ static void move_character(game_physics3d *physics, body_record *record, float d
             blocks,
             &contact
         );
-        b3Vec3 step = b3MulSV(fraction, solved.delta);
+        step = b3MulSV(fraction, solved.delta);
         moved = b3Add(moved, step);
-        if (b3LengthSquared(step) < CHARACTER_TOLERANCE * CHARACTER_TOLERANCE) {
-            break;
-        }
     }
     body->linear_velocity = from_b3(
         b3ClipVector(to_b3(body->linear_velocity), contact.planes, contact.count)

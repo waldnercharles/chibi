@@ -41,6 +41,14 @@ static bool mesh_path(const char *source)
            !strchr(source, '\\');
 }
 
+/* Model export wrote .mesh.json files before meshes were indexed binaries. */
+static bool retired_json(const char *source)
+{
+    size_t length = strlen(source);
+    return length >= sizeof ".mesh.json" - 1 &&
+           !strcmp(source + length - 10, ".mesh.json");
+}
+
 const render_mesh_asset *authoring_mesh_prepare(const char *source, char *error, size_t size)
 {
     assert(source);
@@ -50,7 +58,15 @@ const render_mesh_asset *authoring_mesh_prepare(const char *source, char *error,
     }
     if (!mesh_path(source)) {
         if (size) {
-            snprintf(error, size, "Mesh %s must be a content/... .mesh path.", source);
+            snprintf(
+                error,
+                size,
+                "Mesh %s must be a content/... .mesh path%s",
+                source,
+                retired_json(source) ? "; export the model again to replace "
+                                       "the retired .mesh.json format."
+                                     : "."
+            );
         }
         return NULL;
     }

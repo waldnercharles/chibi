@@ -362,9 +362,10 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   limits above, refused before the import builds the vertices of the
   primitive, or of a node's copy of it, that would pass them;
   a material name that another native graph in the project already declares,
-  or a prototype name another prototype does, and a folder of declarations it
-  cannot read; and a content folder, or a folder in it the import writes to,
-  that is a symbolic link.
+  or a prototype name another prototype does, and a folder or file of
+  declarations it cannot read or parse; materials that would bring the
+  project's native graphs past the 1,024 it can prepare; and a content
+  folder, or a folder in it the import writes to, that is a symbolic link.
 - **Warned and left out**: vertex colors, morph targets, skins, animations,
   cameras, lights and other extensions the model uses. Double-sided
   materials draw single-sided.

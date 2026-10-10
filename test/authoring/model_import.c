@@ -537,8 +537,8 @@ TEST_CASE(model_imports_replace_nothing_and_undo_failures)
     return true;
 }
 
-/* Writes the content file `relative`, declaring `name`, in its folder. */
-static bool declare(const char *relative, const char *name)
+/* Writes `text` as the file at `relative`, making its folder. */
+static bool put(const char *relative, const char *text)
 {
     char path[128];
     inside(path, sizeof path, relative);
@@ -547,8 +547,16 @@ static bool declare(const char *relative, const char *name)
     bool folder = !mkdir(path, 0700) || errno == EEXIST;
     *slash = '/';
     FILE *file = folder ? fopen(path, "wb") : NULL;
-    bool written = file && fprintf(file, "name \"%s\"\n", name) > 0;
+    bool written = file && fputs(text, file) >= 0;
     return file && !fclose(file) && written;
+}
+
+/* Writes the content file `relative`, declaring `name`, in its folder. */
+static bool declare(const char *relative, const char *name)
+{
+    char text[96];
+    snprintf(text, sizeof text, "name \"%s\"\n", name);
+    return put(relative, text);
 }
 
 /* An import declares no name that another file in the project declares,
@@ -570,14 +578,53 @@ TEST_CASE(model_imports_refuse_names_the_project_declares)
     REQUIRE(!strcmp(error, "content/prototypes/Box.kdl already declares Crate"));
     REQUIRE(entries("content") == 2 && entries("content/prototypes") == 1);
     REQUIRE(declare("content/prototypes/Box.kdl", "Box"));
-    /* A folder it cannot read could hide a clash, so it refuses then too. */
+    /* A file or folder it cannot read could hide a clash, so it refuses
+     * then too. A file that declares no name hides none. */
+    REQUIRE(put("content/events/Broken.kdl", "name \"Broken\n"));
+    REQUIRE(put("content/events/Nameless.kdl", "event\n"));
+    REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
+    REQUIRE(!strcmp(error, "Cannot read content/events/Broken.kdl: line 1, column 6: Parse error"));
+    REQUIRE(entries("content") == 3 && entries("content/prototypes") == 1);
+    REQUIRE(declare("content/events/Broken.kdl", "Broken"));
     char fields[128];
     inside(fields, sizeof fields, "content/fields");
     REQUIRE(declare("content/fields", "Fields"));
     REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
     REQUIRE(!strcmp(error, "Cannot read content/fields: Not a directory"));
-    REQUIRE(entries("content") == 3 && entries("content/prototypes") == 1);
+    REQUIRE(entries("content") == 4 && entries("content/prototypes") == 1);
     REQUIRE(!unlink(fields));
+    REQUIRE(import(&f, "crate.gltf", CRATE, "Crate"));
+    gltf_fixture_free(&f);
+    return true;
+}
+
+/* An import refuses materials that would bring the native graphs, every
+ * kind but prototypes and scenes, past what a project can prepare. */
+TEST_CASE(model_imports_refuse_more_native_graphs_than_a_project_prepares)
+{
+    gltf_fixture f = { 0 };
+    crate(&f);
+    static const char *const folders[] = { "shader-libraries", "events",
+                                           "fields",           "materials",
+                                           "shapes",           "models" };
+    /* The crate writes three materials, one more than the catalog holds. */
+    int existing = NATIVE_GRAPH_DOCUMENTS_MAX - 2;
+    bool declared = declare("content/prototypes/Box.kdl", "Box");
+    for (int i = 0; i < existing; i++) {
+        char key[96], name[16];
+        snprintf(name, sizeof name, "Graph%d", i);
+        snprintf(key, sizeof key, "content/%s/%s.kdl", folders[i % 6], name);
+        declared = declare(key, name) && declared;
+    }
+    REQUIRE(declared);
+    REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
+    REQUIRE(
+        !strcmp(error, "The content holds 1022 native graphs, and 3 more materials would pass the 1024 a project can prepare")
+    );
+    REQUIRE(!acount(report.written) && !exists("content/prototypes/Crate.kdl"));
+    char first[128];
+    inside(first, sizeof first, "content/shader-libraries/Graph0.kdl");
+    REQUIRE(!unlink(first));
     REQUIRE(import(&f, "crate.gltf", CRATE, "Crate"));
     gltf_fixture_free(&f);
     return true;
@@ -1200,6 +1247,7 @@ void test_model_import()
     RUN_TEST_CASE(model_imports_name_materials_of_the_longest_models);
     RUN_TEST_CASE(model_imports_replace_nothing_and_undo_failures);
     RUN_TEST_CASE(model_imports_refuse_names_the_project_declares);
+    RUN_TEST_CASE(model_imports_refuse_more_native_graphs_than_a_project_prepares);
     RUN_TEST_CASE(model_imports_refuse_linked_folders);
     RUN_TEST_CASE(model_imports_refuse_what_they_cannot_draw_as_authored);
     RUN_TEST_CASE(model_imports_refuse_files_they_cannot_read);

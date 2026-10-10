@@ -1080,17 +1080,24 @@ static char *material_text(const char *name, const standard_material *material)
     return text;
 }
 
-/* The name the asset file at `path` declares, owned by the caller, or NULL. */
-static char *declared_name(const char *path)
+/* Reads into `name` the name the asset file at `path` declares, owned by
+ * the caller, or NULL when it declares none. Refuses a file it cannot read
+ * or parse, since that could hide a clash. */
+static bool declared_name(import *in, const char *path, char **name)
 {
+    const char *shown = path + strlen(in->content) + 1;
     char *text = file_read_text(path);
-    char error[160];
-    av_doc *document = text ? av_doc_read(text, error, sizeof error) : NULL;
-    av_value *name = document ? av_obj_get(av_doc_root(document), "name") : NULL;
-    char *copy = name && av_is_str(name) ? xstrdup(av_get_str(name)) : NULL;
+    if (!text) {
+        return fail(in, "Cannot read content/%s", shown);
+    }
+    char reason[160];
+    av_doc *document = av_doc_read(text, reason, sizeof reason);
+    av_value *value = document ? av_obj_get(av_doc_root(document), "name") : NULL;
+    *name = value && av_is_str(value) ? xstrdup(av_get_str(value)) : NULL;
+    bool parsed = document != NULL;
     av_doc_free(document);
     free(text);
-    return copy;
+    return parsed || fail(in, "Cannot read content/%s: %s", shown, reason);
 }
 
 /* Whether `file` is `name` with the declarative asset extension. */
@@ -1129,10 +1136,11 @@ static bool clashes(const import *in, new_asset_kind kind, const char *file, con
     return false;
 }
 
-/* Refuses when an asset of `kind` already declares a name the import would
- * declare too, since preparing the project refuses two declarations of one
- * prototype or native graph name. */
-static bool undeclared(import *in, new_asset_kind kind)
+/* The number of `kind` files the content holds, as the catalogs count
+ * them, or -1 when it refuses because one already declares a name the
+ * import would declare too, since preparing the project refuses two
+ * declarations of one prototype or native graph name. */
+static int undeclared(import *in, new_asset_kind kind)
 {
     const char *folder = new_asset_folder(kind);
     size_t bytes = strlen(in->content) + strlen(folder) + 2;
@@ -1144,10 +1152,12 @@ static bool undeclared(import *in, new_asset_kind kind)
     /* A folder it cannot read could hide a clash; one that is missing holds
      * none. */
     if (!directory && code != ENOENT) {
-        return fail(in, "Cannot read content/%s: %s", folder, strerror(code));
+        fail(in, "Cannot read content/%s: %s", folder, strerror(code));
+        return -1;
     }
-    bool clear = true;
-    for (struct dirent *entry; clear && directory && (entry = readdir(directory));) {
+    int count = 0;
+    for (struct dirent *entry;
+         count >= 0 && directory && (entry = readdir(directory));) {
         const char *file = entry->d_name;
         if (!asset_file(file)) {
             continue;
@@ -1155,30 +1165,62 @@ static bool undeclared(import *in, new_asset_kind kind)
         bytes = strlen(in->content) + strlen(folder) + strlen(file) + 3;
         path = xmalloc(bytes);
         snprintf(path, bytes, "%s/%s/%s", in->content, folder, file);
-        char *name = declared_name(path);
-        free(path);
-        if (name && clashes(in, kind, file, name)) {
-            clear = fail(in, "content/%s/%s already declares %s", folder, file, name);
+        struct stat info;
+        /* The catalogs pass over what is not a file. */
+        if (stat(path, &info) || !S_ISREG(info.st_mode)) {
+            free(path);
+            continue;
         }
+        char *name = NULL;
+        if (!declared_name(in, path, &name)) {
+            count = -1;
+        } else if (name && clashes(in, kind, file, name)) {
+            count = -1;
+            fail(in, "content/%s/%s already declares %s", folder, file, name);
+        } else {
+            count++;
+        }
+        free(path);
         free(name);
     }
     if (directory) {
         closedir(directory);
     }
-    return clear;
+    return count;
 }
 
-/* Whether every name the import declares is still free. Prototypes share
- * one namespace, and the native graphs, every other declarative kind but
+/* Whether every name the import declares is still free, and the native
+ * graphs fit their catalog with its materials. Prototypes share one
+ * namespace, and the native graphs, every other declarative kind but
  * scenes, share another with materials. */
 static bool names_free(import *in)
 {
-    bool clear = true;
-    for (int kind = 0; clear && kind < NEW_ASSET_KIND_COUNT; kind++) {
+    int graphs = 0;
+    for (int kind = 0; kind < NEW_ASSET_KIND_COUNT; kind++) {
         bool declarative = !strcmp(new_asset_extension(kind), DECLARATIVE_ASSET_EXTENSION);
-        clear = !declarative || kind == NEW_ASSET_SCENE || undeclared(in, kind);
+        if (!declarative || kind == NEW_ASSET_SCENE) {
+            continue;
+        }
+        int count = undeclared(in, kind);
+        if (count < 0) {
+            return false;
+        }
+        graphs += kind == NEW_ASSET_PROTOTYPE ? 0 : count;
     }
-    return clear;
+    int materials = 0;
+    for (int slot = 0; slot <= in->model->material_count; slot++) {
+        materials += in->materials[slot] != NULL;
+    }
+    return graphs + materials <= NATIVE_GRAPH_DOCUMENTS_MAX ||
+           fail(
+               in,
+               "The content holds %d native graphs, and %d more material%s "
+               "would pass the %d a project can prepare",
+               graphs,
+               materials,
+               materials == 1 ? "" : "s",
+               NATIVE_GRAPH_DOCUMENTS_MAX
+           );
 }
 
 /* Every image, material, the mesh and the prototype, as new content files. */

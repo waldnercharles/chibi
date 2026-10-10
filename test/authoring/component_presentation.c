@@ -62,6 +62,8 @@ TEST_CASE(engine_components_present_without_a_document)
     REQUIRE(unit_is(width, NULL) && width.min == width.max);
     field_hint blast = hint("GAME.GameCombustion", "blast_radius");
     REQUIRE(unit_is(blast, "u") && blast.min == 0 && blast.max == 1024);
+    REQUIRE(unit_is(hint("GAME.GameCamera", "fov"), "rad"));
+    REQUIRE(unit_is(hint("GAME.GameCamera", "far_clip"), "u"));
     REQUIRE(
         component_presentation_tab(&presentation, component("GAME.GameCharacter3D")) == COMPONENT_TAB_PHYSICS
     );

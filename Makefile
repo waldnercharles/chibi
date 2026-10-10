@@ -80,9 +80,12 @@ help:
 		'make update-game-runtime Explicitly refresh registered deployments' \
 		'make agent-list     List runnable classified selectors and admission status' \
 		'make agent-test AGENT_SELECTOR=--source-edit' \
-		'make agent-gpu-test AGENT_SELECTOR=--player-space-cadet-vm' \
+		'make agent-gpu-test AGENT_SELECTOR=--player-installed-space-cadet-vm' \
 		'make test / test-short  Six C execution-policy checks, one 60s deadline' \
 		'make test-tools     C tooling integrations, one shared 60s deadline' \
+		'make test-build     Build chibi_ctl and the full test drivers in BUILD_DIR' \
+		'make test-native    Every CPU test_tools selector, one shared 60s deadline' \
+		'make test-language-all  Every test_language selector, one shared 60s deadline' \
 		'make language-build Build the public language C consumer' \
 		'make test-language-{semantic,execution,program,headless,prepared,format}' \
 		'make test-list      Report admitted checks and quarantined coverage' \
@@ -260,15 +263,26 @@ check-format:
 	@$(QUIET) clang-format.sh -- sh tools/clang-format.sh --check
 
 # Test configuration and compilation run outside the measured test deadline.
-.PHONY: agent-list agent-test agent-gpu-test test-short test-policy-inventory tools-build test-studio-selectors
+.PHONY: agent-list agent-test agent-gpu-test test-build test-native test-short test-policy-inventory tools-build
 agent-list:
 	@python3 tools/agent.py list
 
 agent-test:
-	@python3 tools/test_policy.py agent-env "$(BUILD_DIR)" test
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py agent-env "$(BUILD_DIR)" test
 
 agent-gpu-test:
-	@python3 tools/test_policy.py agent-env "$(BUILD_DIR)" gpu-test
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" python3 tools/test_policy.py agent-env "$(BUILD_DIR)" gpu-test
+
+# The full test drivers build with the engine, its native packages and reflection.
+test-build:
+	@$(MAKE) build BUILD_TARGET='chibi_ctl test_tools test_language'
+
+# validate-project starts chibi_ctl dozens of times, and each start builds the
+# authoring catalog, which sanitizers make too slow for one 60-second deadline.
+# It runs against an unsanitized Release chibi_ctl instead.
+test-native: test-build
+	@$(MAKE) build-release BUILD_TARGET=chibi_ctl
+	@CHIBI_TOOLS_BUILD_DIR="$(BUILD_DIR)/test/tools" CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" CHIBI_CTL="$(RELEASE_BUILD_DIR)/bin/chibi_ctl" python3 tools/test_policy.py group native
 
 test: test-short
 
@@ -277,13 +291,16 @@ TOOLS_C_COMPILER ?= $(if $(wildcard /opt/homebrew/opt/llvm/bin/clang),/opt/homeb
 
 # Public SDK language checks configure independently of the engine and Studio.
 LANGUAGE_BUILD_DIR ?= build-language
-.PHONY: language-build test-language test-language-semantic test-language-execution test-language-program test-language-headless test-language-prepared test-language-format
+.PHONY: language-build test-language test-language-all test-language-semantic test-language-execution test-language-program test-language-headless test-language-prepared test-language-format
 language-build:
 	@$(QUIET) configure-language -- cmake -S test/language -B "$(LANGUAGE_BUILD_DIR)" -DCMAKE_C_COMPILER="$(TOOLS_C_COMPILER)" -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 	@$(QUIET) build-language -- cmake --build "$(LANGUAGE_BUILD_DIR)" --parallel $(JOBS)
 
 test-language:
 	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language
+
+test-language-all: test-build
+	@CHIBI_LANGUAGE_BUILD_DIR="$(BUILD_DIR)/test/language" python3 tools/test_policy.py group language
 
 test-language-semantic:
 	@CHIBI_LANGUAGE_BUILD_DIR="$(LANGUAGE_BUILD_DIR)" python3 tools/test_policy.py tool language-semantic
@@ -315,9 +332,6 @@ test-short: tools-build
 
 test-tools: tools-build
 	@python3 tools/test_policy.py short "$(abspath $(TOOLS_BUILD_DIR))/test_tools"
-
-test-studio-selectors:
-	@python3 tools/test_policy.py disabled 'retired test_suite selector-discovery route'
 
 test-full test-slow test-render test-compiler-parity:
 	@python3 tools/test_policy.py disabled $@

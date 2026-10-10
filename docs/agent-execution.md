@@ -25,8 +25,8 @@ zoom MCP utility is retired.
 python3 tools/agent.py doctor
 python3 tools/agent.py plan logic    # or render / temporal
 make agent-list
-make build BUILD_TARGET='test_suite chibi_ctl'
-make agent-test AGENT_SELECTOR=--graph-optimize
+make test-build
+make agent-test AGENT_SELECTOR=--source-edit
 ```
 
 The agent wrapper runs lightweight discovery in an isolated process with a
@@ -56,14 +56,11 @@ carry the same execution metadata. Full checks remain explicitly pending.
 The default `CHIBI_EXECUTION_PROFILE=iteration` allows reviewed CPU selectors and
 bounded authoring previews. `test/execution_selectors.h` is the CPU allowlist.
 Other selectors are GPU/mixed or unclassified, and are blocked with an outstanding
-check rather than silently trimmed. For example, `--studio-documents` includes
-window/render work; `--ui-bench` mixes headless and Studio cases. New selectors
-must be inspected and classified before adding them to this list.
+check rather than silently trimmed. New selectors must be inspected and
+classified before adding them to this list.
 
-The underlying `gpu-check` profile includes `--model-sampled-gpu` and
-`--shader-detail-gpu`, but current timing quarantine refuses agent GPU tests.
-Their native assertions, reference resolutions and frame sequences remain.
-CPU checks use existing sanitizer settings;
+The `gpu-check` profile routes the installed-player and Studio source-edit
+selectors; each needs the installed products named in `tools/agent.py`. CPU checks use existing sanitizer settings;
 the agent wrapper imposes a 60-second deadline without suppressing assertions or
 leak checks. Timeouts are failures/blocked results, never passes.
 

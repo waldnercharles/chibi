@@ -20,6 +20,7 @@ PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
     ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
+    ('--studio-graph-visibility',): 'Reviewed actual installed Studio graph visibility and scene draft history, disposable three-file fixture and isolated prefs, ten hidden 1920x1080 frames at fixed 1/60, shared60s',
     ('--studio-source-edit',): 'Reviewed actual installed Studio edit/undo/redo, disposable3file212byteproject+isolatedprefs, fourhidden1920x1080frames, shared60s',
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
@@ -41,7 +42,7 @@ NATIVE = {
     ('--source-session',): 'First supervised measurement; independently reviewed four tiny source session cases and fixed KDL checkpoint/merge, at most two sources per project, no engine step/render/window/process; docs/testing.md',
     ('--ecs-query-benchmark',): 'Reviewed three fixed ECS query workloads, 4096 entities x 2000 passes each, CPU only; run through benchmark_trials',
     ('--system-schedule',): 'First supervised measurement; independently reviewed fixed dependency/order cases, 62 small engine frames and serial/parallel 128 entities x 20 frames, CPU only; docs/testing.md',
-    ('--source-presentation',): 'First supervised measurement; independently reviewed two cases, six tiny source snapshots, graph ownership/layout and invalid drafts, plus two component presentation cases on two in-memory documents, CPU only; docs/testing.md',
+    ('--source-presentation',): 'Independently reviewed five small source/palette cases, graph ownership/layout, invalid drafts, callable-local scope and readable formulas with retained calls/effects, plus two component presentation cases on two in-memory documents, CPU only; docs/testing.md',
     ('--prepare-corpora', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive project preparation, shared 256 sources/8 MiB, BYTECODE compilation only, CPU; docs/testing.md',
     ('--semantic-corpora', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive 6-project/87-source semantics, shared 256 sources/8 MiB executable-text ceiling, CPU only; docs/testing.md',
     ('--semantic-corpus', '.chibi/architecture/semantic-content.txt', 'content'): 'First supervised measurement; independently reviewed exhaustive 29-file project semantics, capped 256 sources/8 MiB, CPU only; docs/testing.md',
@@ -65,6 +66,7 @@ NATIVE = {
     ('--bench-arena-scene-scale', '2048', '240', '0'): '1.4s; Arena scaling evidence',
 }
 TOOLS = {
+    'studio-graph-visibility': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-graph-visibility'],
     'studio-source-edit': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-source-edit'],
     'compile-installed-space-cadet': [sys.executable, str(ROOT / 'tools/agent.py'), 'test', '--', '--compile-installed-space-cadet'],
     'player-installed-space-cadet-vm': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-vm'],
@@ -127,7 +129,8 @@ TOOLS = {
     'parallel-tick': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--parallel-tick'],
     # Three reviewed source reaction/rhythm/particle cases; fixed waits/emission and both backends.
     'source-native-features': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-native-features'],
-    # Two reviewed source math/query cases; twelve numeric samples and three-to-zero members.
+    # Three reviewed source math/query cases; numeric samples, nested membership,
+    # and ten fractional rectangle/point poses plus live declared-field/stale-handle edits on both backends.
     'source-native-numeric-queries': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-native-numeric-queries'],
     # One reviewed source material case; four payload types, two backends, CPU shader stage only.
     'source-native-material': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-native-material'],
@@ -182,6 +185,8 @@ TOOLS = {
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--native'],
     # 2D physics through ECS and Contact Begin events: motion, contacts, masks, queries and parallel collection.
     'physics': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--physics'],
+    # 3D physics through ECS and Contact 3D events: shapes, gravity, velocities, teleports, followers, sensors, interpolation and parallel steps.
+    'physics3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--physics3d'],
     # Transform hierarchy propagation: 2D and 3D composition, cascade order, moves and reparenting.
     'transforms': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--transforms'],
     'ui-authoring': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--ui-authoring'],
@@ -484,7 +489,7 @@ def main():
     if args.action == 'tool':
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
-        if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'player-space-cadet-vm', 'player-space-cadet-sljit', 'studio-starter-startup', 'studio-source-edit',
+        if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'player-space-cadet-vm', 'player-space-cadet-sljit', 'studio-starter-startup', 'studio-source-edit', 'studio-graph-visibility',
                             'interior-border', 'viewport-resize', 'sdf-visibility', 'scene3d', 'scene3d-gles',
                             'material-ramps'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),

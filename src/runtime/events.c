@@ -13,6 +13,10 @@ static const game_event_field CONTACT_PAYLOAD[] = {
     { .name = "Other", .type = PIN_HANDLE, .type_name = "ecs.entity" },
     { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V2" },
 };
+static const game_event_field CONTACT_3D_PAYLOAD[] = {
+    { .name = "Other", .type = PIN_HANDLE, .type_name = "ecs.entity" },
+    { .name = "Point", .type = PIN_STRUCT, .type_name = "CF_V3" },
+};
 
 const game_host_event_desc GAME_HOST_EVENTS[GAME_HOST_EVENT_COUNT] = {
     [GAME_HOST_EVENT_BEGIN] = { .name = "Begin", .keywords = "start spawn create init ready", .description = "Runs once when the behavior starts." },
@@ -40,6 +44,27 @@ const game_host_event_desc GAME_HOST_EVENTS[GAME_HOST_EVENT_COUNT] = {
                                                        "at Point.",
                                         .payload = CONTACT_PAYLOAD,
                                         .payload_count = 2 },
+    [GAME_HOST_EVENT_CONTACT_BEGIN_3D] = { .name = "Contact Begin 3D",
+                                           .keywords = "hit collide collision "
+                                                       "touch overlap enter "
+                                                       "physics",
+                                           .description = "Runs when this "
+                                                          "entity's 3D "
+                                                          "collider starts "
+                                                          "touching Other's at "
+                                                          "Point.",
+                                           .payload = CONTACT_3D_PAYLOAD,
+                                           .payload_count = 2 },
+    [GAME_HOST_EVENT_CONTACT_END_3D] = { .name = "Contact End 3D",
+                                         .keywords = "separate leave exit "
+                                                     "release collision "
+                                                     "physics",
+                                         .description = "Runs when this "
+                                                        "entity's 3D collider "
+                                                        "stops touching "
+                                                        "Other's.",
+                                         .payload = CONTACT_3D_PAYLOAD,
+                                         .payload_count = 1 },
 };
 
 const char *game_host_event_name(game_host_event event)

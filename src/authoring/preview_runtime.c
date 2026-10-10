@@ -46,6 +46,7 @@ game_preview_runtime *game_preview_runtime_new(ecs_world *ecs)
     r->sources = m->sources;
     r->entities = m->entities;
     r->physics = m->physics;
+    r->physics3d = m->physics3d;
     r->particles = m->particles;
     r->materials = m->materials;
     r->visibility = m->visibility;

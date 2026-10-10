@@ -110,6 +110,24 @@ static const char *member_name(source_projection *p, uint64_t id)
     }
     return "Field";
 }
+static void formula_inputs(source_projection *p, int index, int **children, int **arguments)
+{
+    if (index < 0) {
+        return;
+    }
+    const script_expression *e = &p->analysis->expressions[index];
+    if (e->kind == SCRIPT_EXPR_CALL || e->kind == SCRIPT_EXPR_MEMBER ||
+        e->kind == SCRIPT_EXPR_COMPONENT) {
+        apush(*children, index);
+        apush(*arguments, -1);
+        return;
+    }
+    formula_inputs(p, e->left, children, arguments);
+    formula_inputs(p, e->right, children, arguments);
+    for (int i = 0; i < e->argument_count; i++) {
+        formula_inputs(p, e->arguments[i].value, children, arguments);
+    }
+}
 node *source_view_expression(source_projection *p, int index)
 {
     if (index < 0) {
@@ -120,14 +138,23 @@ node *source_view_expression(source_projection *p, int index)
         return p->expressions[index];
     }
     const script_expression *e = &p->analysis->expressions[index];
+    /* Keep read-only formulas as one editable source expression. Calls and
+     * members retain their ports; operations with effects stay explicit. */
+    bool formula = (e->kind == SCRIPT_EXPR_UNARY ||
+                    e->kind == SCRIPT_EXPR_BINARY || e->kind == SCRIPT_EXPR_CAST) &&
+                   !(e->effects & ~SCRIPT_EFFECT_READ);
     pin_spec *inputs = NULL, *outputs = NULL;
     int *children = NULL, *arguments = NULL;
+    if (formula) {
+        formula_inputs(p, e->left, &children, &arguments);
+        formula_inputs(p, e->right, &children, &arguments);
+    }
     /* Call right identifies an authored function, not an expression record. */
-    if (e->left >= 0) {
+    if (!formula && e->left >= 0) {
         apush(children, e->left);
         apush(arguments, -1);
     }
-    if (e->right >= 0 && e->kind != SCRIPT_EXPR_CALL) {
+    if (!formula && e->right >= 0 && e->kind != SCRIPT_EXPR_CALL) {
         apush(children, e->right);
         apush(arguments, -1);
     }
@@ -199,7 +226,8 @@ node *source_view_expression(source_projection *p, int index)
     }
     node *n = source_view_box(
         p,
-        e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_COMPONENT
+        formula ? "Expression"
+        : e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_COMPONENT
             ? member_name(p, e->member)
             : expression_name(p, e),
         action                            ? NODE_DISPLAY_FUNCTION

@@ -27,7 +27,9 @@ enum
     MAX_TOTAL_BYTES = 8 * 1024 * 1024,
     MAX_DEPTH = 16,
     MAX_PATH = 4096,
-    MAX_VALUES = 65536
+    MAX_VALUES = 65536,
+    /* GAME_SCENE_DEPTH_MAX: a scene nested deeper does not load. */
+    MAX_ENTITY_DEPTH = 256
 };
 typedef enum
 {
@@ -279,6 +281,30 @@ static void project_references(
     const char *text,
     const av_value *value,
     bool scene
+);
+/* Scene entities and their children, as deep as scenes may nest them. */
+static void entity_references(
+    source_catalog *c,
+    const char *path,
+    const char *text,
+    const av_value *entities,
+    int depth
+)
+{
+    for (size_t i = 0; i < av_arr_size(entities) && c->values <= MAX_VALUES &&
+                       depth <= MAX_ENTITY_DEPTH;
+         i++) {
+        const av_value *entity = av_arr_get(entities, i);
+        project_references(c, path, text, entity, false);
+        entity_references(c, path, text, av_obj_get(entity, "children"), depth + 1);
+    }
+}
+static void project_references(
+    source_catalog *c,
+    const char *path,
+    const char *text,
+    const av_value *value,
+    bool scene
 )
 {
     if (!project_value(c, path)) {
@@ -286,10 +312,7 @@ static void project_references(
         return;
     }
     if (scene) {
-        const av_value *entities = av_obj_get(value, "entities");
-        for (size_t i = 0; i < av_arr_size(entities) && c->values <= MAX_VALUES; i++) {
-            project_references(c, path, text, av_arr_get(entities, i), false);
-        }
+        entity_references(c, path, text, av_obj_get(value, "entities"), 1);
         return;
     }
     value_reference(c, path, text, av_obj_get(value, "prototype"), SOURCE_REFERENCE_PROTOTYPE);

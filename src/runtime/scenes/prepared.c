@@ -230,6 +230,8 @@ static void write_scene(execution_wire *wire, const game_scene *scene, char *dia
     for (int i = 0; !wire->error && i < objects; i++) {
         const char *object_name = game_scene_object_name(scene, i);
         execution_wire_string(wire, &object_name);
+        int parent = game_scene_object_parent(scene, i);
+        execution_wire_int(wire, &parent);
         int components = game_scene_object_component_count(scene, i);
         count(wire, &components, &records);
         for (int j = 0; !wire->error && j < components; j++) {
@@ -307,10 +309,13 @@ game_scene *game_scene_prepared_read_budget(
     int records = 0;
     count(&wire, &spec.object_count, &records);
     game_scene_object *objects = allocate(&wire, spec.object_count, sizeof *objects);
+    int *parents = allocate(&wire, spec.object_count, sizeof *parents);
     spec.objects = objects;
+    spec.parents = parents;
     for (int i = 0; !wire.error && i < spec.object_count; i++) {
         game_scene_object *object = &objects[i];
         execution_wire_string(&wire, &object->name);
+        execution_wire_int(&wire, &parents[i]);
         count(&wire, &object->component_count, &records);
         game_scene_component *components = allocate(&wire, object->component_count, sizeof *components);
         object->components = components;

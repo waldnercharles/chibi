@@ -2815,6 +2815,27 @@ TEST_CASE(alpha_modes_decide_how_opacity_draws)
     return true;
 }
 
+/* A masked box whose Opacity works out to NaN, as the fraction of an
+ * overflowed product does, drops its pixels on the GPU as the CPU evaluator
+ * does, leaving the sky where a kept box stood. */
+TEST_CASE(masks_drop_pixels_whose_opacity_is_not_a_number)
+{
+    look_level();
+    publish_uniform_sky((const unsigned char[4]){ 128, 0, 128, 128 });
+    ecs_entity box = add_surface_box("Kept");
+    GAME_GameTransform_get(world, box)->y = -6;
+    GameEnvironment environment = sky_environment();
+    REQUIRE(test_register_alpha("Kept", SHADER_ALPHA_MASK, .5f, .4f));
+    REQUIRE(render(&environment));
+    CF_Pixel open = pixel(4, 4);
+    REQUIRE(pixel(SIDE / 2, SIDE / 2).colors.g > 200);
+    REQUIRE(test_register_unknown_opacity("Unknown"));
+    GAME_GameShader_get(world, box)->material = "Unknown";
+    REQUIRE(render(&environment));
+    REQUIRE(distance(pixel(SIDE / 2, SIDE / 2), open) <= 1);
+    return true;
+}
+
 /* Opaque and masked surfaces cast shadows like any solid; a blended one lets
  * the sun through. */
 TEST_CASE(opaque_and_masked_surfaces_cast_shadows)
@@ -2924,6 +2945,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(normal_maps_follow_mesh_tangents);
     RUN_TEST_CASE(occlusion_dims_only_ambient_light);
     RUN_TEST_CASE(alpha_modes_decide_how_opacity_draws);
+    RUN_TEST_CASE(masks_drop_pixels_whose_opacity_is_not_a_number);
     RUN_TEST_CASE(opaque_and_masked_surfaces_cast_shadows);
 #endif
     pu_clear_setup();

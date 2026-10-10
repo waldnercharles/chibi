@@ -575,12 +575,8 @@ static void face_cross(CF_V3 a, CF_V3 b, CF_V3 c, double out[3])
     out[2] = x1 * y2 - y1 * x2;
 }
 
-/* The primitive's vertices in its node's frame, with glTF's tangent frame:
- * each authored tangent, or else one along +u whose bitangent points up the
- * image, toward -v, where Chibi's generated one points toward +v. Without
- * normals, each triangle's corners get its own flat normal, as glTF
- * requires. */
-static bool primitive_part(import *in, const CM_Primitive *p, yyjson_val *json, render_mesh_asset *part)
+/* Whether the primitive's indices make whole triangles of its vertices. */
+static bool whole_triangles(import *in, const CM_Primitive *p)
 {
     if (p->index_count % 3) {
         return fail(in, "A primitive's %d indices are not whole triangles", p->index_count);
@@ -590,13 +586,37 @@ static bool primitive_part(import *in, const CM_Primitive *p, yyjson_val *json, 
             return fail(in, "A primitive's index %d names a missing vertex", i);
         }
     }
-    bool flat = !has_attribute(json, "NORMAL");
-    int count = flat ? p->index_count : p->vertex_count;
-    for (int i = 0; i < count; i++) {
-        int source = flat ? (int)p->indices[i] : i;
+    return true;
+}
+
+/* What a node draws of a primitive: the triangles with area in its frame,
+ * and the vertices they use. */
+typedef struct
+{
+    bool flat;      /* without normals, so each corner is its own vertex */
+    int *triangles; /* each kept triangle's first index */
+    int *keys;      /* each corner used when flat, else vertex, in order */
+    int *place;     /* by key: its index in keys, or -1 when unused */
+} kept_part;
+
+/* The key of the vertex at the primitive's index `corner`. */
+static int key_of(const CM_Primitive *p, const kept_part *k, int corner)
+{
+    return k->flat ? corner : (int)p->indices[corner];
+}
+
+/* The kept part of `p` in its node's frame, with glTF's tangent frame: each
+ * authored tangent, or else one along +u whose bitangent points up the
+ * image, toward -v, where Chibi's generated one points toward +v. Without
+ * normals, each triangle's corners get its own flat normal, as glTF
+ * requires. */
+static void primitive_part(const CM_Primitive *p, yyjson_val *json, const kept_part *k, render_mesh_asset *part)
+{
+    for (int i = 0; i < acount(k->keys); i++) {
+        int key = k->keys[i], source = k->flat ? (int)p->indices[key] : key;
         CF_V3 up = { 0, 1, 0 }, normal;
-        if (flat) {
-            const uint32_t *corner = p->indices + i / 3 * 3;
+        if (k->flat) {
+            const uint32_t *corner = p->indices + key / 3 * 3;
             double cross[3];
             face_cross(
                 v3(p->positions + corner[0] * 3),
@@ -616,16 +636,18 @@ static bool primitive_part(import *in, const CM_Primitive *p, yyjson_val *json, 
         };
         apush(part->vertices, vertex);
     }
-    for (int i = 0; i < p->index_count; i++) {
-        apush(part->indices, flat ? i : (int)p->indices[i]);
+    for (int t = 0; t < acount(k->triangles); t++) {
+        for (int j = 0; j < 3; j++) {
+            apush(part->indices, k->place[key_of(p, k, k->triangles[t] + j)]);
+        }
     }
     render_mesh_asset_tangents(part);
     /* glTF ignores the tangents of a primitive without normals. */
-    bool authored = !flat && has_attribute(json, "TANGENT") && p->tangents;
-    for (int i = 0; i < count; i++) {
+    bool authored = !k->flat && has_attribute(json, "TANGENT") && p->tangents;
+    for (int i = 0; i < acount(part->vertices); i++) {
         render_mesh_surface_vertex *vertex = &part->vertices[i];
         vertex->tangent.w = -vertex->tangent.w;
-        const float *t = authored ? p->tangents + i * 4 : NULL;
+        const float *t = authored ? p->tangents + k->keys[i] * 4 : NULL;
         CF_V3 direction = t ? unit(v3(t), (CF_V3){ 0 }) : (CF_V3){ 0 };
         if (cf_len_v3(direction) > 0) {
             vertex->tangent = (CF_V4){ direction.x,
@@ -634,7 +656,6 @@ static bool primitive_part(import *in, const CM_Primitive *p, yyjson_val *json, 
                                        t[3] < 0 ? -1.0f : 1.0f };
         }
     }
-    return true;
 }
 
 static bool finite_frame(CF_M4x4 m)
@@ -715,10 +736,54 @@ static bool has_area(CF_V3 a, CF_V3 b, CF_V3 c)
     return isfinite(area) && area > RENDER_MESH_MIN_TRIANGLE_AREA;
 }
 
+/* Fills `k` with the triangles of `p` that have area in the frame `world`
+ * and the vertices they use, and returns how many triangles have none
+ * there. A vertex only those use, or that no index names, is left out. */
+static int keep(const CM_Primitive *p, yyjson_val *json, CF_M4x4 world, kept_part *k)
+{
+    k->flat = !has_attribute(json, "NORMAL");
+    int dropped = 0;
+    for (int i = 0; i < p->index_count; i += 3) {
+        CF_V3 at[3];
+        for (int j = 0; j < 3; j++) {
+            at[j] = cf_m4_transform_point(world, v3(p->positions + p->indices[i + j] * 3));
+        }
+        if (!has_area(at[0], at[1], at[2])) {
+            dropped++;
+            continue;
+        }
+        apush(k->triangles, i);
+    }
+    int count = k->flat ? p->index_count : p->vertex_count;
+    k->place = xmalloc((size_t)count * sizeof *k->place);
+    for (int i = 0; i < count; i++) {
+        k->place[i] = -1;
+    }
+    for (int t = 0; t < acount(k->triangles); t++) {
+        for (int j = 0; j < 3; j++) {
+            k->place[key_of(p, k, k->triangles[t] + j)] = 0;
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        if (k->place[i] < 0) {
+            continue;
+        }
+        k->place[i] = acount(k->keys);
+        apush(k->keys, i);
+    }
+    return dropped;
+}
+
+static void kept_part_free(kept_part *k)
+{
+    afree(k->triangles);
+    afree(k->keys);
+    free(k->place);
+}
+
 /* Appends `part` to `mesh` in the world frame `world`, turning tangent
- * handedness and winding where it is `mirrored`, and returns how many
- * triangles had no area there and were left out. */
-static int bake(render_mesh_asset *mesh, const render_mesh_asset *part, CF_M4x4 world, bool mirrored)
+ * handedness and winding where it is `mirrored`. */
+static void bake(render_mesh_asset *mesh, const render_mesh_asset *part, CF_M4x4 world, bool mirrored)
 {
     double cofactor[3][3];
     cofactors(world, cofactor);
@@ -732,57 +797,22 @@ static int bake(render_mesh_asset *mesh, const render_mesh_asset *part, CF_M4x4 
         vertex.tangent = (CF_V4){ tangent.x, tangent.y, tangent.z, mirrored ? -t.w : t.w };
         apush(mesh->vertices, vertex);
     }
-    int dropped = 0;
     for (int i = 0; i < acount(part->indices); i += 3) {
-        int corner[3] = { first + part->indices[i],
-                          first + part->indices[i + (mirrored ? 2 : 1)],
-                          first + part->indices[i + (mirrored ? 1 : 2)] };
-        if (!has_area(
-                mesh->vertices[corner[0]].position,
-                mesh->vertices[corner[1]].position,
-                mesh->vertices[corner[2]].position
-            )) {
-            dropped++;
-            continue;
-        }
-        for (int j = 0; j < 3; j++) {
-            apush(mesh->indices, corner[j]);
-        }
+        apush(mesh->indices, first + part->indices[i]);
+        apush(mesh->indices, first + part->indices[i + (mirrored ? 2 : 1)]);
+        apush(mesh->indices, first + part->indices[i + (mirrored ? 1 : 2)]);
     }
-    return dropped;
 }
 
-/* Drops the vertices no kept triangle uses, such as those only a triangle
- * with no area used, keeping the others in order. */
-static void drop_unused_vertices(render_mesh_asset *mesh)
+/* Whether `mesh` still fits a .mesh file with `k` added, checked before the
+ * part is built, so that a vast primitive, or nodes copying one many times,
+ * stop before they outgrow memory. */
+static bool fits(import *in, const render_mesh_asset *mesh, const kept_part *k)
 {
-    int count = acount(mesh->vertices);
-    bool *used = xcalloc((size_t)count, sizeof *used);
-    for (int i = 0; i < acount(mesh->indices); i++) {
-        used[mesh->indices[i]] = true;
-    }
-    int *moved = xmalloc((size_t)count * sizeof *moved);
-    int kept = 0;
-    for (int i = 0; i < count; i++) {
-        if (used[i]) {
-            moved[i] = kept;
-            mesh->vertices[kept++] = mesh->vertices[i];
-        }
-    }
-    for (int i = 0; i < acount(mesh->indices); i++) {
-        mesh->indices[i] = moved[mesh->indices[i]];
-    }
-    asetlen(mesh->vertices, kept);
-    free(used);
-    free(moved);
-}
-
-/* Whether the mesh baked so far still fits a .mesh file, checked as each
- * primitive is placed so that nodes copying one many times stop before
- * the copies outgrow memory. */
-static bool fits(import *in, const render_mesh_asset *mesh)
-{
-    return render_mesh_prepared_fits(acount(mesh->vertices), acount(mesh->indices)) ||
+    return render_mesh_prepared_fits(
+               acount(mesh->vertices) + acount(k->keys),
+               acount(mesh->indices) + 3 * acount(k->triangles)
+           ) ||
            fail(in, "The model's meshes, copied for each node that draws them, are larger than a .mesh file holds");
 }
 
@@ -858,13 +888,20 @@ static bool bake_mesh(import *in, render_mesh_asset *mesh)
                 if ((material >= 0 ? material : model->material_count) != slot) {
                     continue;
                 }
-                render_mesh_asset part = { 0 };
-                bool baked = primitive_part(in, p, json_primitive(in, index, j), &part);
+                yyjson_val *json = json_primitive(in, index, j);
+                kept_part kept = { 0 };
+                bool baked = whole_triangles(in, p);
                 if (baked) {
-                    dropped += bake(mesh, &part, frames[n], mirrors(model, n));
-                    baked = fits(in, mesh);
+                    dropped += keep(p, json, frames[n], &kept);
+                    baked = fits(in, mesh, &kept);
                 }
-                render_mesh_asset_free(&part);
+                if (baked) {
+                    render_mesh_asset part = { 0 };
+                    primitive_part(p, json, &kept, &part);
+                    bake(mesh, &part, frames[n], mirrors(model, n));
+                    render_mesh_asset_free(&part);
+                }
+                kept_part_free(&kept);
                 if (!baked) {
                     free(frames);
                     return false;
@@ -905,7 +942,6 @@ static bool bake_mesh(import *in, render_mesh_asset *mesh)
     if (!acount(mesh->indices)) {
         return fail(in, "The model has no triangles to import");
     }
-    drop_unused_vertices(mesh);
     mesh->min = mesh->max = mesh->vertices[0].position;
     for (int i = 1; i < acount(mesh->vertices); i++) {
         mesh->min = cf_min_v3(mesh->min, mesh->vertices[i].position);

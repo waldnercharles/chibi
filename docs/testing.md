@@ -147,7 +147,7 @@ replacement invalidating an existing session, new default values and a rejected
 wrong parameter type on a fixed 3-by-3 bake. All four cases pass 267 assertions
 in 0.650 seconds with ASan/UBSan after the typed catalog extraction.
 
-`--source-presentation` is an independently admitted native selector for five small
+`--source-presentation` is an independently admitted native selector for seven small
 CPU cases: dedicated clone ownership after compiler retirement, explicit source
 edits, exact-source layout metadata, invalid drafts, native palette declarations,
 callable-local ownership and readable formulas. Formula coverage retains authored

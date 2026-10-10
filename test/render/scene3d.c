@@ -2564,6 +2564,26 @@ TEST_CASE(mirroring_transform3d_keeps_faces_outward)
         REQUIRE(render(&environment));
         REQUIRE(!render_scene3d_error(scene3d)[0]);
         REQUIRE(matches(upright));
+        if (imported) {
+            /* So does a mesh 2e16 across in its own units, whose model's
+             * determinant underflows float at that scale. */
+            render_mesh_asset vast = box_mesh();
+            for (int i = 0; i < acount(vast.vertices); i++) {
+                vast.vertices[i].position = cf_mul_v3_f(vast.vertices[i].position, 2e16f);
+            }
+            vast.min = cf_mul_v3_f(vast.min, 2e16f);
+            vast.max = cf_mul_v3_f(vast.max, 2e16f);
+            publish_mesh(&vast);
+            *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX,
+                                                                     1,
+                                                                     1,
+                                                                     1 };
+            REQUIRE(render(&environment));
+            REQUIRE(!render_scene3d_error(scene3d)[0]);
+            REQUIRE(matches(upright));
+            mesh = box_mesh();
+            publish_mesh(&mesh);
+        }
         *GAME_GameGeometry3D_get(world, box) = shape;
         GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1, 0, 1 };
         REQUIRE(render(&environment));

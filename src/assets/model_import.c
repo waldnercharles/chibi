@@ -550,13 +550,29 @@ static CF_V3 v3(const float *values)
 /* `v` at unit length, or `fallback` when it is zero or not finite. Its
  * length is taken in double, where no float's square overflows or
  * vanishes, so a vector a vast or tiny scale carried keeps its direction. */
-static CF_V3 unit(CF_V3 v, CF_V3 fallback)
+static CF_V3 unit_of(const double v[3], CF_V3 fallback)
 {
-    double length = sqrt((double)v.x * v.x + (double)v.y * v.y + (double)v.z * v.z);
+    double length = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
     if (!isfinite(length) || length <= 0) {
         return fallback;
     }
-    return (CF_V3){ (float)(v.x / length), (float)(v.y / length), (float)(v.z / length) };
+    return (CF_V3){ (float)(v[0] / length), (float)(v[1] / length), (float)(v[2] / length) };
+}
+
+static CF_V3 unit(CF_V3 v, CF_V3 fallback)
+{
+    return unit_of((const double[3]){ v.x, v.y, v.z }, fallback);
+}
+
+/* The cross product of a triangle's edges, along its normal and twice its
+ * area long, taken in double, where no float's product overflows. */
+static void face_cross(CF_V3 a, CF_V3 b, CF_V3 c, double out[3])
+{
+    double x1 = (double)b.x - a.x, y1 = (double)b.y - a.y, z1 = (double)b.z - a.z;
+    double x2 = (double)c.x - a.x, y2 = (double)c.y - a.y, z2 = (double)c.z - a.z;
+    out[0] = y1 * z2 - z1 * y2;
+    out[1] = z1 * x2 - x1 * z2;
+    out[2] = x1 * y2 - y1 * x2;
 }
 
 /* The primitive's vertices in its node's frame, with glTF's tangent frame:
@@ -578,19 +594,23 @@ static bool primitive_part(import *in, const CM_Primitive *p, yyjson_val *json, 
     int count = flat ? p->index_count : p->vertex_count;
     for (int i = 0; i < count; i++) {
         int source = flat ? (int)p->indices[i] : i;
-        CF_V3 normal;
+        CF_V3 up = { 0, 1, 0 }, normal;
         if (flat) {
             const uint32_t *corner = p->indices + i / 3 * 3;
-            CF_V3 a = v3(p->positions + corner[0] * 3),
-                  b = v3(p->positions + corner[1] * 3),
-                  c = v3(p->positions + corner[2] * 3);
-            normal = cf_cross_v3(cf_sub_v3(b, a), cf_sub_v3(c, a));
+            double cross[3];
+            face_cross(
+                v3(p->positions + corner[0] * 3),
+                v3(p->positions + corner[1] * 3),
+                v3(p->positions + corner[2] * 3),
+                cross
+            );
+            normal = unit_of(cross, up);
         } else {
-            normal = v3(p->normals + source * 3);
+            normal = unit(v3(p->normals + source * 3), up);
         }
         render_mesh_surface_vertex vertex = {
             .position = v3(p->positions + source * 3),
-            .normal = unit(normal, (CF_V3){ 0, 1, 0 }),
+            .normal = normal,
             .uv = p->uvs ? (CF_V2){ p->uvs[source * 2], p->uvs[source * 2 + 1] }
                          : (CF_V2){ 0 },
         };
@@ -676,10 +696,9 @@ static CF_V3 carry_normal(const double cofactor[3][3], CF_V3 normal, bool mirror
 /* Whether the triangle has the area a mesh file requires. */
 static bool has_area(CF_V3 a, CF_V3 b, CF_V3 c)
 {
-    double x1 = (double)b.x - a.x, y1 = (double)b.y - a.y, z1 = (double)b.z - a.z;
-    double x2 = (double)c.x - a.x, y2 = (double)c.y - a.y, z2 = (double)c.z - a.z;
-    double x = y1 * z2 - z1 * y2, y = z1 * x2 - x1 * z2, z = x1 * y2 - y1 * x2;
-    double area = sqrt(x * x + y * y + z * z);
+    double n[3];
+    face_cross(a, b, c, n);
+    double area = sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
     return isfinite(area) && area > RENDER_MESH_MIN_TRIANGLE_AREA;
 }
 

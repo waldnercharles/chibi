@@ -986,6 +986,18 @@ TEST_CASE(model_imports_keep_gltf_tangent_frames)
     );
     gltf_fixture_free(&f);
 
+    /* A flat normal keeps its direction where its float cross product would
+     * overflow. */
+    static const float wall[] = { -1e20f, -1e20f, 0, 1e20f,  -1e20f, 0,
+                                  1e20f,  1e20f,  0, -1e20f, 1e20f,  0 };
+    gltf_fixture vast = shape(NULL, 0, wall);
+    REQUIRE(frames(&vast, "Wall", "{\"mesh\":0}", "\"POSITION\":0,\"TEXCOORD_0\":2"));
+    REQUIRE(acount(mesh.indices) == 6);
+    for (int i = 0; i < acount(mesh.vertices); i++) {
+        REQUIRE(near_v3(mesh.vertices[i].normal, z));
+    }
+    gltf_fixture_free(&vast);
+
     /* The image's u running along -x keeps the bitangent up the image. */
     gltf_fixture flipped = { 0 };
     gltf_fixture_square(&flipped, (const float[]){ 1, 1, 1, 0, 0, 0, 0, 1 });

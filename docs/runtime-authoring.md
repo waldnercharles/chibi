@@ -50,6 +50,22 @@ other prototypes' `(array)includes` find it by that name in the player and in
 prototype with includes but keeps its text as written instead of folding the
 included components in.
 
+## Tilemap layers
+
+Put a `GAME.GameTilemap` on one transformed entity to draw an atlas-backed grid.
+`image` names the atlas, `columns` and `rows` give the grid dimensions, and
+`frame_width` and `frame_height` set both cell size in project units and atlas
+frame size in pixels. `cells` contains whitespace-separated row-major frame
+indices; `-1` leaves a cell empty. The entity origin is the top-left corner and
+rows increase along local +Y. Orientation rotates the whole layer.
+
+Tilemaps render in scene previews without spawning cell entities. Their `layer`
+orders them with sprites. A behavior can query an occupied frame with
+`tilemap_frame_at(entity, point)` or count occupied cells overlapping a world
+rectangle with `tilemap_occupied_in_box(entity, minimum, maximum)`. Decorative
+layers need no behavior or collision setup. See the rotated `TileMosaic`
+prototype in `test/fixtures/sprites`.
+
 ## Declare components
 
 A game declares its own component types under `content/components`, one `.chibi`

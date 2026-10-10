@@ -406,6 +406,21 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSprite)
 }
 GameSprite;
 
+/* One atlas-backed grid, anchored at Transform's local top-left corner.
+ * Cells are row-major whitespace-separated frame indices; -1 is empty.
+ * Frame dimensions are both atlas texels and world units. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameTilemap)
+{
+    const char *image;
+    const char *cells;
+    int columns;
+    int rows;
+    int frame_width;
+    int frame_height;
+    int layer;
+}
+GameTilemap;
+
 /* Radians from gameplay +X toward +Y: atan2(direction.y, direction.x).
  * The 2D canvas flips Y at presentation; 3D maps gameplay Y to world Z. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameOrientation)

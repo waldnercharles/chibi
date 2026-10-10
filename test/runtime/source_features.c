@@ -822,6 +822,51 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
     return true;
 }
 
+TEST_CASE(source_tilemap_queries_use_live_authored_cells)
+{
+    const char
+        *text = "behavior Grid { state frame:int=-1; state count:int=0; "
+                "state point:struct<\"CF_V2\">={x:11,y:-4}; "
+                "state minimum:struct<\"CF_V2\">={x:10,y:-5}; "
+                "state maximum:struct<\"CF_V2\">={x:13,y:0}; "
+                "on Tick { frame=tilemap_frame_at(self,point); "
+                "count=tilemap_occupied_in_box(self,minimum,maximum); } }";
+    for (int backend = 0; backend < 2; backend++) {
+        world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameTilemap, NULL) == ECS_OK);
+        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
+        ecs_entity tilemap = ecs_world_create_entity(world);
+        REQUIRE(GAME_GameTilemap_add(world, tilemap, 0) == ECS_OK);
+        REQUIRE(GAME_GameTransform_add(world, tilemap, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        *GAME_GameTransform_get(world, tilemap) = (GameTransform){ 10, -5 };
+        *GAME_GameTilemap_get(world, tilemap) = (GameTilemap){ .cells = "7 -1",
+                                                               .columns = 2,
+                                                               .rows = 1,
+                                                               .frame_width = 3,
+                                                               .frame_height = 5 };
+        entities = game_entities_new(world, NULL);
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t tick = execution_module_event(prepared->module, "Tick"),
+                 frame = state_id("frame"), count = state_id("count");
+        REQUIRE(tick && frame && count);
+        REQUIRE(execution_program_bind_service(program, "game.entities", entities) == 0);
+        instance = execution_program_attach(program, ecs_entity_to_u64(tilemap));
+        REQUIRE(instance);
+        retire_producer();
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(execution_instance_state(instance, frame)->i == 7);
+        REQUIRE(execution_instance_state(instance, count)->i == 1);
+        GAME_GameTilemap_get(world, tilemap)->cells = "-1 9";
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(execution_instance_state(instance, frame)->i == -1);
+        REQUIRE(execution_instance_state(instance, count)->i == 0);
+        REQUIRE(execution_instance_pending(instance) == 0);
+        cleanup();
+    }
+    return true;
+}
+
 void test_source_native_features()
 {
     pu_setup(NULL, cleanup);
@@ -838,6 +883,7 @@ void test_source_native_numeric_queries()
     RUN_TEST_CASE(source_native_query_retains_nested_iteration_and_membership);
     RUN_TEST_CASE(source_native_query_matches_authored_rectangles);
     RUN_TEST_CASE(source_native_physics3d_queries_read_colliders);
+    RUN_TEST_CASE(source_tilemap_queries_use_live_authored_cells);
     pu_clear_setup();
 }
 

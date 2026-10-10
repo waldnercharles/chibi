@@ -67,6 +67,7 @@ const presentation_default PRESENTATION_DEFAULTS[] = {
     D("GameSpawnRequest", GAMEPLAY, NONE),
     D("GameSpotLight", MATERIAL, LIGHT),
     D("GameSprite", MATERIAL, NONE),
+    D("GameTilemap", MATERIAL, NONE),
     D("GameStarfield2D", MATERIAL, NONE),
     D("GameSubstance", PHYSICS, NONE),
     D("GameSurfaceInfluence", MATERIAL, NONE),

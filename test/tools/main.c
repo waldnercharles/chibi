@@ -5,6 +5,22 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifdef CHIBI_TEST_WEBGPU_STAGING
+int test_webgpu_staging_start();
+int main(int argc, char **argv)
+{
+    if (argc != 2 || strcmp(argv[1], "--webgpu-staging")) {
+        return 2;
+    }
+    return test_webgpu_staging_start();
+}
+#else
+#ifdef CHIBI_TEST_TILEMAP
+void test_tool_tilemap();
+#endif
+#ifdef CHIBI_TEST_TILEMAP_PROJECT
+void test_tool_tilemap_project();
+#endif
 void test_tool_execution_policy();
 void test_tool_package();
 void test_tool_collab();
@@ -12,6 +28,7 @@ void test_tool_test_policy();
 void test_tool_validation_plan();
 void test_tool_publish();
 void test_tool_web_storage();
+void test_tool_webgpu_staging();
 void test_tool_types();
 void test_tool_ecs();
 void test_tool_ecs_relationships();
@@ -101,10 +118,18 @@ bool test_material_graphs_active()
 
 int main(int argc, char **argv)
 {
+    bool tilemap = false, tilemap_project = false;
+#ifdef CHIBI_TEST_TILEMAP
+    tilemap = argc == 2 && !strcmp(argv[1], "--tilemap");
+#endif
+#ifdef CHIBI_TEST_TILEMAP_PROJECT
+    tilemap_project = argc == 2 && !strcmp(argv[1], "--tilemap-project");
+#endif
     bool prepared = argc == 3 && !strcmp(argv[1], "--prepared");
     bool read = argc == 3 && !strcmp(argv[1], "--prepared-read");
     bool package = argc == 2 && !strcmp(argv[1], "--package");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
+    bool webgpu_staging = argc == 2 && !strcmp(argv[1], "--webgpu-staging");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
@@ -177,11 +202,12 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !shader_parameters && !source_edit &&
-        !new_asset && !asset_refactor && !package && !unit && !web_storage &&
-        !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics && !physics3d &&
-        !transforms && !render_resources && !interior_border && !viewport_resize &&
+    if (argc != 1 && !corpus && !shader_parameters && !source_edit && !new_asset &&
+        !asset_refactor && !tilemap && !tilemap_project && !package && !unit &&
+        !web_storage && !webgpu_staging && !query_benchmark && !prepared &&
+        !read && !scene && !scene_prepared && !native && !native_values &&
+        !native_catalog && !physics && !physics3d && !transforms &&
+        !render_resources && !interior_border && !viewport_resize &&
         !sdf_visibility && !scene3d && !material_ramps && !box3d && !sky_files &&
         !persistent_store && !whole_alias && !whole_math && !whole_integer &&
         !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
@@ -190,7 +216,9 @@ int main(int argc, char **argv)
         !validate_project && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
         fprintf(
             stderr,
-            "Usage: %s [--package | --unit | --web-storage | "
+            "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
+            "--web-storage | "
+            "--webgpu-staging | "
             "--ecs-query-benchmark | "
             "--studio-selectors test_suite | --validate-project chibi_ctl | "
             "--prepared "
@@ -339,7 +367,23 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
 #endif
-    if (package) {
+#ifdef CHIBI_TEST_TILEMAP
+    if (tilemap) {
+        test_tool_tilemap();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
+#ifdef CHIBI_TEST_TILEMAP_PROJECT
+    if (tilemap_project) {
+        test_tool_tilemap_project();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
+    if (webgpu_staging) {
+        test_tool_webgpu_staging();
+    } else if (package) {
         test_tool_package();
     } else if (scene_prepared) {
         test_scene_prepared();
@@ -379,3 +423,5 @@ int main(int argc, char **argv)
     pu_print_stats();
     return pu_test_failed() ? 1 : 0;
 }
+
+#endif

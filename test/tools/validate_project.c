@@ -1015,19 +1015,29 @@ TEST_CASE(unit_mismatches_are_warnings)
         "    charge.level += charge.rate * dt\n"
         "    charge.level += charge.rate\n"
         "    collider.radius = movement.speed\n"
+        "    collider.radius += delta\n"
         "}\n"
     );
     /* Warnings first: a mismatch leaves the project valid. */
     REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")) && errors() == 0);
-    REQUIRE(yyjson_get_int(result("warnings")) == 2);
+    REQUIRE(yyjson_get_int(result("warnings")) == 3);
     yyjson_val *problem = yyjson_arr_get_first(result("problems"));
     yyjson_val *diagnostics = yyjson_obj_get(problem, "diagnostics");
-    REQUIRE(yyjson_arr_size(diagnostics) == 2);
+    REQUIRE(yyjson_arr_size(diagnostics) == 3);
     yyjson_val *first = yyjson_arr_get(diagnostics, 0);
     REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(first, "severity")), "warning"));
     REQUIRE(!strcmp(message_at(diagnostics, 0), "Units differ: charge += charge/s"));
     REQUIRE(yyjson_get_int(yyjson_obj_get(first, "line")) == 3);
     REQUIRE(!strcmp(message_at(diagnostics, 1), "Units differ: u = u/s"));
+    REQUIRE(!strcmp(message_at(diagnostics, 2), "Units differ: u += s"));
+    /* Validating the one source counts its warnings apart from errors. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"system\",\"name\":\"Measure\"}") ==
+        0
+    );
+    REQUIRE(errors() == 0 && yyjson_get_int(result("warnings")) == 3);
+    diagnostics = result("diagnostics");
+    REQUIRE(yyjson_get_int(yyjson_obj_get(yyjson_arr_get(diagnostics, 0), "severity")) == 2);
     return true;
 }
 

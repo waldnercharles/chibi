@@ -2,6 +2,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,8 @@
  * a mismatch is a warning. A plain number literal adapts to the unit it meets;
  * a value nothing measures is unknown and never warns. */
 #define TERMS 8
+/* A unit as text: every term, with a power and a separator. */
+#define UNIT_TEXT 192
 
 typedef enum
 {
@@ -139,6 +142,22 @@ static void append_term(char *out, size_t size, term t)
         snprintf(out + used, size - used, "%d", power);
     }
 }
+/* Cuts a sequence a full buffer split, so a long unit stays valid UTF-8. */
+static void whole_characters(char *text)
+{
+    size_t end = strlen(text), lead = end;
+    while (lead && ((unsigned char)text[lead - 1] & 0xc0) == 0x80) {
+        lead--;
+    }
+    if (!lead) {
+        return;
+    }
+    unsigned char first = (unsigned char)text[lead - 1];
+    size_t length = first < 0x80 ? 1 : first < 0xe0 ? 2 : first < 0xf0 ? 3 : 4;
+    if (end - (lead - 1) < length) {
+        text[lead - 1] = 0;
+    }
+}
 static void format(unit u, char *out, size_t size)
 {
     *out = 0;
@@ -165,6 +184,7 @@ static void format(unit u, char *out, size_t size)
             append_term(out, size, u.terms[i]);
         }
     }
+    whole_characters(out);
 }
 static bool same(unit x, unit y)
 {
@@ -190,36 +210,40 @@ static void warn(pass *p, script_range range, const char *format_text, ...)
     va_start(args, format_text);
     vsnprintf(d.message, sizeof d.message, format_text, args);
     va_end(args);
+    whole_characters(d.message);
     apush(p->a->out->warnings, d);
 }
 static void warn_units(pass *p, script_range range, unit x, const char *op, unit y)
 {
-    char left[64], right[64];
+    char left[UNIT_TEXT], right[UNIT_TEXT];
     format(x, left, sizeof left);
     format(y, right, sizeof right);
     warn(p, range, "Units differ: %s %s %s", left, op, right);
 }
-/* `+`, `-`, `%` and comparisons: the operands share one unit. */
+/* `+`, `-` and comparisons: the operands share one unit. A mismatch warns
+ * once, here, and leaves the result unknown. */
 static unit match(pass *p, script_range range, unit x, const char *op, unit y)
 {
     if (clash(x, y)) {
         warn_units(p, range, x, op, y);
-        return x;
+        return UNKNOWN;
     }
     if (x.kind == UNIT_KNOWN || y.kind == UNIT_KNOWN) {
         return x.kind == UNIT_KNOWN ? x : y;
     }
     return x.kind == UNIT_LITERAL && y.kind == UNIT_LITERAL ? LITERAL : UNKNOWN;
 }
+/* `*` and `/`. A literal factor may carry any unit, as `3` in `3 * dt` may
+ * be 3 rad/s, so its product is unknown. */
 static unit product(unit x, unit y, int sign)
 {
-    if (x.kind == UNIT_UNKNOWN || y.kind == UNIT_UNKNOWN) {
+    if (x.kind == UNIT_LITERAL && y.kind == UNIT_LITERAL) {
+        return LITERAL;
+    }
+    if (x.kind != UNIT_KNOWN || y.kind != UNIT_KNOWN) {
         return UNKNOWN;
     }
-    if (y.kind == UNIT_LITERAL) {
-        return x;
-    }
-    unit out = x.kind == UNIT_LITERAL ? (unit){ .kind = UNIT_KNOWN } : x;
+    unit out = x;
     for (int i = 0; i < y.count; i++) {
         term t = y.terms[i];
         t.power *= sign;
@@ -236,7 +260,6 @@ static const char *symbol_text(script_operator op)
         case SCRIPT_OP_SUB: return "-";
         case SCRIPT_OP_MUL: return "*";
         case SCRIPT_OP_DIV: return "/";
-        case SCRIPT_OP_MOD: return "%";
         case SCRIPT_OP_EQ: return "==";
         case SCRIPT_OP_NE: return "!=";
         case SCRIPT_OP_LT: return "<";
@@ -246,29 +269,21 @@ static const char *symbol_text(script_operator op)
         default: return NULL;
     }
 }
-static script_operator operator_named(const char *name, int arity)
-{
-    for (script_operator op = SCRIPT_OP_ADD; op <= SCRIPT_OP_GE; op++) {
-        const char *text = symbol_text(op);
-        if (text && !strcmp(text, name)) {
-            return arity == 1 && op == SCRIPT_OP_SUB ? SCRIPT_OP_NEG : op;
-        }
-    }
-    return SCRIPT_OP_NONE;
-}
 static unit expression_unit(pass *p, int index);
 
 static unit operation(pass *p, script_range range, script_operator op, int left, int right)
 {
     unit x = expression_unit(p, left);
     unit y = right >= 0 ? expression_unit(p, right) : UNKNOWN;
+    if (right < 0) {
+        /* Unary `-x` and `+x` keep x's unit; `!` and `~` measure nothing. */
+        return op == SCRIPT_OP_NEG || op == SCRIPT_OP_NONE ? x : UNKNOWN;
+    }
     switch (op) {
-        case SCRIPT_OP_NEG: return x;
         case SCRIPT_OP_MUL: return product(x, y, 1);
         case SCRIPT_OP_DIV: return product(x, y, -1);
         case SCRIPT_OP_ADD:
-        case SCRIPT_OP_SUB:
-        case SCRIPT_OP_MOD: return match(p, range, x, symbol_text(op), y);
+        case SCRIPT_OP_SUB: return match(p, range, x, symbol_text(op), y);
         case SCRIPT_OP_EQ:
         case SCRIPT_OP_NE:
         case SCRIPT_OP_LT:
@@ -280,31 +295,17 @@ static unit operation(pass *p, script_range range, script_operator op, int left,
         default: return UNKNOWN;
     }
 }
-static unit call(pass *p, const script_expression *e)
-{
-    const script_catalog_capability
-        *capability = script_catalog_capability_by_id(p->a->catalog, e->capability);
-    if (!capability || !capability->operator_name || e->argument_count < 1 ||
-        e->argument_count > 2) {
-        return UNKNOWN;
-    }
-    script_operator op = operator_named(capability->operator_name, e->argument_count);
-    int right = e->argument_count == 2 ? e->arguments[1].value : -1;
-    return operation(p, e->range, op, e->arguments[0].value, right);
-}
 static unit member(pass *p, const script_expression *e)
 {
     const script_expression *receiver = &p->a->out->expressions[e->left];
     const script_catalog_type
         *type = script_catalog_type_by_id(p->a->catalog, receiver->type.nominal);
     for (int i = 0; type && i < type->field_count; i++) {
-        if (type->fields[i].id == e->member && type->fields[i].unit) {
+        if (type->fields[i].id == e->member) {
             return parse(type->fields[i].unit);
         }
     }
-    /* A field of a measured struct, such as a velocity's x, shares its unit. */
-    unit whole = expression_unit(p, e->left);
-    return whole.kind == UNIT_KNOWN ? whole : UNKNOWN;
+    return UNKNOWN;
 }
 static unit symbol(pass *p, int index)
 {
@@ -330,12 +331,12 @@ static unit compute(pass *p, const script_expression *e)
         case SCRIPT_EXPR_CONSTANT:
             return script_type_numeric(e->type) ? LITERAL : UNKNOWN;
         case SCRIPT_EXPR_SYMBOL:
-            return e->symbol >= 0 ? symbol(p, e->symbol) : UNKNOWN;
+            assert(e->symbol >= 0);
+            return symbol(p, e->symbol);
         case SCRIPT_EXPR_UNARY:
         case SCRIPT_EXPR_BINARY:
             return operation(p, e->range, e->op, e->left, e->right);
         case SCRIPT_EXPR_CAST: return expression_unit(p, e->left);
-        case SCRIPT_EXPR_CALL: return call(p, e);
         case SCRIPT_EXPR_MEMBER: return member(p, e);
         default: return UNKNOWN;
     }
@@ -352,49 +353,40 @@ static unit expression_unit(pass *p, int index)
     }
     return p->units[index];
 }
+/* `*=` and `/=` keep the target's unit only with an unmeasured factor. */
+static void scale(pass *p, const script_statement *s, unit target, unit value)
+{
+    if (target.kind != UNIT_KNOWN || value.kind != UNIT_KNOWN || !value.count) {
+        return;
+    }
+    char before[UNIT_TEXT], after[UNIT_TEXT];
+    format(target, before, sizeof before);
+    format(product(target, value, s->op == SCRIPT_OP_MUL ? 1 : -1), after, sizeof after);
+    warn(p, s->range, "Units differ: %s= would turn %s into %s", symbol_text(s->op), before, after);
+}
 static void assignment(pass *p, const script_statement *s)
 {
     unit target = expression_unit(p, s->expression);
     unit value = expression_unit(p, s->second);
     switch (s->op) {
         case SCRIPT_OP_NONE:
-            if (clash(target, value)) {
-                warn_units(p, s->range, target, "=", value);
-            }
-            return;
         case SCRIPT_OP_ADD:
         case SCRIPT_OP_SUB:
-        case SCRIPT_OP_MOD:
             if (clash(target, value)) {
-                warn_units(
-                    p,
-                    s->range,
-                    target,
-                    s->op == SCRIPT_OP_ADD   ? "+="
-                    : s->op == SCRIPT_OP_SUB ? "-="
-                                             : "%=",
-                    value
-                );
+                char op[4];
+                snprintf(op, sizeof op, "%s=", s->op == SCRIPT_OP_NONE ? "" : symbol_text(s->op));
+                warn_units(p, s->range, target, op, value);
             }
             return;
         case SCRIPT_OP_MUL:
-        case SCRIPT_OP_DIV:
-            if (target.kind == UNIT_KNOWN && value.kind == UNIT_KNOWN && value.count) {
-                char before[64], after[64];
-                format(target, before, sizeof before);
-                format(product(target, value, s->op == SCRIPT_OP_MUL ? 1 : -1), after, sizeof after);
-                warn(
-                    p,
-                    s->range,
-                    "Units differ: %s would turn %s into %s",
-                    s->op == SCRIPT_OP_MUL ? "*=" : "/=",
-                    before,
-                    after
-                );
-            }
-            return;
+        case SCRIPT_OP_DIV: scale(p, s, target, value); return;
         default: return;
     }
+}
+static int by_position(const void *a, const void *b)
+{
+    const script_diagnostic *x = a, *y = b;
+    return (x->range.start > y->range.start) - (x->range.start < y->range.start);
 }
 void script_analyzer_units(analyzer *a)
 {
@@ -410,6 +402,9 @@ void script_analyzer_units(analyzer *a)
         if (out->statements[i].kind == SCRIPT_STMT_ASSIGN) {
             assignment(&p, &out->statements[i]);
         }
+    }
+    if (acount(out->warnings) > 1) {
+        qsort(out->warnings, (size_t)acount(out->warnings), sizeof *out->warnings, by_position);
     }
     free(p.units);
     free(p.visits);

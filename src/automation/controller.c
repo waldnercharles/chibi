@@ -1477,6 +1477,22 @@ static void catalog_add_diagnostic(
     };
     apush(asset->diagnostics, diagnostic);
 }
+/* A source's unit warnings, which leave it valid. */
+static void catalog_add_warnings(catalog_asset *asset, const script_analysis *analysis)
+{
+    asset->warnings = analysis->warning_count;
+    for (int i = 0; i < analysis->warning_count; i++) {
+        const script_diagnostic *warning = &analysis->warnings[i];
+        apush(
+            asset->diagnostics,
+            ((catalog_diagnostic){ .severity = xstrdup("warning"),
+                                   .rule_name = xstrdup("UNITS"),
+                                   .message = xstrdup(warning->message),
+                                   .line = warning->range.line,
+                                   .column = warning->range.column })
+        );
+    }
+}
 
 static void free_behavior_assets(behavior_asset **assets);
 static int load_behavior_family_assets(
@@ -1778,19 +1794,8 @@ static void catalog_validate_asset(
                 source->diagnostics[i].message
             );
         }
-        const script_analysis *analysis = source ? source->analysis : NULL;
-        asset->warnings = analysis ? analysis->warning_count : 0;
-        for (int i = 0; i < asset->warnings; i++) {
-            catalog_add_diagnostic(
-                asset,
-                "warning",
-                0,
-                "UNITS",
-                analysis->warnings[i].message
-            );
-            catalog_diagnostic *added = &asset->diagnostics[acount(asset->diagnostics) - 1];
-            added->line = analysis->warnings[i].range.line;
-            added->column = analysis->warnings[i].range.column;
+        if (source) {
+            catalog_add_warnings(asset, source->analysis);
         }
         return;
     }
@@ -6396,8 +6401,16 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         int validated = inspect_source_asset(root, request, result, exit_code, &ref, json, bytes, hash);
         yyjson_mut_val *source_result = yyjson_mut_obj_get(result->root, "result");
         yyjson_mut_val *source_diagnostics = yyjson_mut_obj_get(source_result, "diagnostics");
-        yyjson_mut_obj_add_uint(result->doc, source_result, "errors", yyjson_mut_arr_size(source_diagnostics));
-        yyjson_mut_obj_add_int(result->doc, source_result, "warnings", 0);
+        /* Severity 2 is a unit warning; every other diagnostic is an error. */
+        int source_warnings = 0;
+        yyjson_mut_arr_iter items = yyjson_mut_arr_iter_with(source_diagnostics);
+        for (yyjson_mut_val *item; (item = yyjson_mut_arr_iter_next(&items));) {
+            source_warnings += yyjson_mut_get_int(yyjson_mut_obj_get(item, "severity")) ==
+                               2;
+        }
+        int source_errors = (int)yyjson_mut_arr_size(source_diagnostics) - source_warnings;
+        yyjson_mut_obj_add_int(result->doc, source_result, "errors", source_errors);
+        yyjson_mut_obj_add_int(result->doc, source_result, "warnings", source_warnings);
         yyjson_mut_obj_add_int(result->doc, source_result, "notes", 0);
         free(json);
         return validated;

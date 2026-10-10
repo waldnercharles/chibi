@@ -400,14 +400,50 @@ static const script_catalog_field body_fields[] = {
       .writable = true,
       .unit = "rad" },
     { .id = 64, .name = "count", .type = { .storage = PIN_F32 }, .offset = 16, .writable = true },
+    { .id = 65,
+      .name = "mass",
+      .type = { .storage = PIN_F32 },
+      .offset = 20,
+      .writable = true,
+      .unit = "kg" },
+    { .id = 66,
+      .name = "push",
+      .type = { .storage = PIN_F32 },
+      .offset = 24,
+      .writable = true,
+      .unit = "m/s^2" },
+    { .id = 67,
+      .name = "force",
+      .type = { .storage = PIN_F32 },
+      .offset = 28,
+      .writable = true,
+      .unit = "kg·m/s²" },
+    { .id = 68,
+      .name = "rate",
+      .type = { .storage = PIN_F32 },
+      .offset = 32,
+      .writable = true,
+      .unit = "1/s" },
+    { .id = 69,
+      .name = "volume",
+      .type = { .storage = PIN_F32 },
+      .offset = 36,
+      .writable = true,
+      .unit = "m³" },
+    { .id = 70,
+      .name = "snap",
+      .type = { .storage = PIN_F32 },
+      .offset = 40,
+      .writable = true,
+      .unit = "u/s^4" },
 };
 static const script_catalog_type body_type = { .id = 50,
                                                .name = "Body",
                                                .type = { .storage = PIN_STRUCT,
                                                          .nominal = 50 },
                                                .fields = body_fields,
-                                               .field_count = 5,
-                                               .size = 5 * sizeof(float),
+                                               .field_count = 11,
+                                               .size = 11 * sizeof(float),
                                                .component = true,
                                                .component_id = 502 };
 static const script_catalog_global measured_globals[] = {
@@ -456,6 +492,14 @@ TEST_CASE(language_units_combine_through_arithmetic)
         "body.count = body.count + body.x\n"
         "n := 0\n"
         "n = body.angle\n"
+        /* A literal factor may carry any unit. */
+        "body.angle += 3 * dt\n"
+        "body.accel = body.speed / 0.25\n"
+        "body.x = +body.x\n"
+        /* Units written with ^, · and superscripts, and 1/s. */
+        "body.force = body.mass * body.push\n"
+        "body.force = body.push * body.mass\n"
+        "body.x *= body.rate * dt\n"
     );
     REQUIRE(analysis->valid);
     for (int i = 0; i < analysis->warning_count; i++) {
@@ -473,8 +517,12 @@ TEST_CASE(language_units_warn_on_mismatch)
         "late := body.x + dt\n"
         "body.x *= dt\n"
         "body.x = body.speed / dt\n"
-        "body.speed = 1 / dt\n"
         "body.x = body.x / body.x\n"
+        "body.x = +body.angle\n"
+        "body.x = body.speed + body.x\n"
+        "body.volume = body.mass\n"
+        "body.x = body.snap\n"
+        "body.speed = body.rate\n"
     );
     /* Warnings first: the program still runs. */
     REQUIRE(analysis->valid);
@@ -484,9 +532,29 @@ TEST_CASE(language_units_warn_on_mismatch)
     REQUIRE(warning("Units differ: u + s"));
     REQUIRE(warning("Units differ: *= would turn u into u·s"));
     REQUIRE(warning("Units differ: u = u/s²"));
-    REQUIRE(warning("Units differ: u/s = 1/s"));
     REQUIRE(warning("Units differ: u = 1"));
-    REQUIRE(analysis->warning_count == 8);
+    REQUIRE(warning("Units differ: u = rad"));
+    /* One mistake, one warning: the sum is wrong, not its assignment. */
+    REQUIRE(warning("Units differ: u/s + u"));
+    REQUIRE(warning("Units differ: m³ = kg"));
+    REQUIRE(warning("Units differ: u = u/s^4"));
+    REQUIRE(warning("Units differ: u/s = 1/s"));
+    REQUIRE(analysis->warning_count == 12);
+    /* Listed in source order. */
+    for (int i = 1; i < analysis->warning_count; i++) {
+        REQUIRE(
+            analysis->warnings[i - 1].range.start <= analysis->warnings[i].range.start
+        );
+    }
+    return true;
+}
+TEST_CASE(language_units_skip_invalid_sources)
+{
+    /* Recovery closes this source to analyze it; it stays unchecked. */
+    cleanup();
+    syntax = script_parse("system Move(body: Body) {\n    body.x = (body.speed + 1");
+    analysis = script_analyze(syntax, &measured);
+    REQUIRE(!analysis->valid && analysis->warning_count == 0);
     return true;
 }
 
@@ -507,5 +575,6 @@ void test_language_semantic()
     RUN_TEST_CASE(language_component_rejects_invalid_fields);
     RUN_TEST_CASE(language_units_combine_through_arithmetic);
     RUN_TEST_CASE(language_units_warn_on_mismatch);
+    RUN_TEST_CASE(language_units_skip_invalid_sources);
     pu_clear_setup();
 }

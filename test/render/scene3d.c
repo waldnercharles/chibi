@@ -4,6 +4,7 @@
 #include "render/fog.h"
 #include "render/mesh_surface.h"
 #include "render/scene3d_mesh_cache.h"
+#include "render/scene3d_parts.h"
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
@@ -2656,6 +2657,26 @@ TEST_CASE(overflowing_transform3d_frames_are_authoring_errors)
     GAME_GameVisualTransform_get(world, box)->scale = 1;
     parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
     REQUIRE(parts == 1);
+    /* So is a Geometry3D, or a part's position, that carries the frame past
+     * it. */
+    const char *beyond = "3D Geometry needs a placement within float range.";
+    GAME_GameGeometry3D_get(world, box)->width = 1e20f;
+    parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    REQUIRE(parts == -1 && !strcmp(error, beyond));
+    GAME_GameGeometry3D_get(world, box)->width = 1;
+    scene3d_parts far = { .count = 1 };
+    far.parts[0] = (scene3d_part){ .primitive = GAME_PRIMITIVE_BOX,
+                                   .dimensions = { 1, 1, 1 },
+                                   .position = { 1e20f, 0, 0 } };
+    REQUIRE(render_scene3d_parts_publish("far", &far, error, sizeof error));
+    GameMeshParts authored = { .parts = "far" };
+    REQUIRE(
+        ecs_world_record_add(world, box, GAME_COMPONENT_GameMeshParts.id, &authored, 0) == ECS_OK
+    );
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    render_scene3d_parts_clear();
+    REQUIRE(parts == -1 && !strcmp(error, beyond));
     return true;
 }
 

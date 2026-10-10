@@ -370,8 +370,9 @@ mirrored at a 1e-16 scale under a Geometry3D as large, or a mesh 2e16 across
 in its own units, and one flattened to zero height disappears. A box flattened
 by its parent's Transform3D under turns that leave it a sliver of volume has
 no bounds, and one scaled to 1e-16 keeps them, as does one turned under a
-parent squashed to 1e-6. A frame whose finite values multiply past float range
-is an authoring error. A model surface picks and bounds at its Transform3D
+parent squashed to 1e-6. A frame whose finite values multiply past float range,
+alone or with a part's position or the Geometry3D's dimensions, is an
+authoring error. A model surface picks and bounds at its Transform3D
 pose, with or without a Transform. Fog culls a box
 by the ground under its Transform3D pose, not by its Transform. A mirrored ground
 square's normal maps turn their bitangent with it.

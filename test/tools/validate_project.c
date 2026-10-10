@@ -6,6 +6,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -181,6 +182,30 @@ TEST_CASE(new_project_is_valid)
     REQUIRE(validate() == 0);
     REQUIRE(yyjson_get_bool(result("valid")) && errors() == 0);
     REQUIRE(!yyjson_arr_size(result("project")) && !yyjson_arr_size(result("problems")));
+    return true;
+}
+
+TEST_CASE(stopped_runs_are_reported)
+{
+    /* The stopped command's report goes to the test's own stderr. */
+    char file[160];
+    path(file, sizeof file, "stderr");
+    fflush(stderr);
+    int saved = dup(STDERR_FILENO),
+        captured = open(file, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    REQUIRE(saved >= 0 && captured >= 0);
+    dup2(captured, STDERR_FILENO);
+    close(captured);
+    const char *args[] = { "/bin/sh", "-c", "exec sleep 5", NULL };
+    int status = tool_run_within(args, root, log_path, 1);
+    fflush(stderr);
+    dup2(saved, STDERR_FILENO);
+    close(saved);
+    char *text = tool_read(file);
+    bool reported = text &&
+                    strstr(text, "stopped after 1 seconds: /bin/sh -c exec sleep 5\n");
+    free(text);
+    REQUIRE(status == 124 && reported);
     return true;
 }
 
@@ -1274,6 +1299,7 @@ void test_tool_validate_project(const char *binary)
     (void)found;
     pu_setup(setup, teardown);
     RUN_TEST_CASE(new_project_is_valid);
+    RUN_TEST_CASE(stopped_runs_are_reported);
     RUN_TEST_CASE(ui_style_problems_are_listed);
     RUN_TEST_CASE(start_scene_outside_scenes_is_parsed);
     RUN_TEST_CASE(cataloged_start_scene_is_reported_once);

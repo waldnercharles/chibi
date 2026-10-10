@@ -1,0 +1,9 @@
+name "Spawner"
+components {
+    GAME.GameGlobalBinding name="Spawner"
+    GAME.GameHealth current=3 maximum=3
+    (object)GAME.GameTransform
+}
+(array)children {
+    - name="Antenna" prototype="Antenna"
+}

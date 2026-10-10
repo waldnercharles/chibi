@@ -107,7 +107,7 @@ demo('#demo-text', 'Search', h(`<div class="field search w240"><span class="part
 {
   const s = h('<div class="w340"></div>');
   for (const [title, open, badge] of [['Transform', true, 2], ['Appearance', false, 0], ['Movement', false, 0]]) {
-    const p = h(`<section class="panel" ${open ? 'data-open' : ''}><header class="panel-head">${icon('down', 'chev')}<span class="title">${title}</span>${badge ? `<span class="badge override">${badge}</span>` : ''}<span class="spacer"></span><span class="grip">${icon('grip')}</span><button class="btn sm icon-only" data-stop>${icon('more')}</button></header><div class="panel-body"></div></section>`);
+    const p = h(`<section class="panel" ${open ? 'data-open' : ''}><header class="panel-head">${icon('down', 'chev')}<span class="title">${title}</span>${badge ? `<span class="badge override">${badge}</span>` : ''}<span class="spacer"></span><button class="btn sm icon-only" data-stop>${icon('more')}</button></header><div class="panel-body"></div></section>`);
     const r = h('<div class="prop"><span class="label">Position</span><div class="control"><div class="joined"></div></div></div>');
     ['x', 'y'].forEach((a, i) => { const f = box(); r.querySelector('.joined').appendChild(f); Kit.numberField(f, { value: [-320, 0][i], addon: a.toUpperCase(), addonClass: a, overridden: () => true }); });
     p.lastChild.appendChild(r);

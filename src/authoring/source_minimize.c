@@ -1028,11 +1028,14 @@ static void call_rewrites(collector *c, TSNode node)
         return;
     }
     const script_catalog_capability *cap = script_catalog_capability_by_id(c->catalog, call->capability);
-    if (cap && !cap->component_field &&
+    /* A generic call such as has_component("Heat") names no fixed component
+     * to spell as a path, so it keeps its call. */
+    bool accessor = cap && cap->component;
+    if (accessor && !cap->component_field &&
         (cap->component_access == SCRIPT_COMPONENT_ACCESS_READ ||
          cap->component_access == SCRIPT_COMPONENT_ACCESS_HAS)) {
         accessor_read(c, node, call, cap);
-    } else if (cap && cap->component_access == SCRIPT_COMPONENT_ACCESS_WRITE) {
+    } else if (accessor && cap->component_access == SCRIPT_COMPONENT_ACCESS_WRITE) {
         accessor_write(c, node, call, cap);
     } else {
         operator_rewrite(c, node, call);

@@ -1,0 +1,4 @@
+name "CoolSystem"
+components {
+    GAME.EngineSystem asset="Cool"
+}

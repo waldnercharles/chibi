@@ -72,9 +72,8 @@ bool render_fog_draw(
         fog->height = settings.rows;
     }
     cf_texture_update(fog->mask, (void *)cells, settings.columns * settings.rows * 4);
-    CF_M4x4 inverse = camera
-                        ? cf_m4_invert(cf_mul_m4(camera->projection, camera->view))
-                        : cf_m4_identity();
+    CF_M4x4 rays = camera ? render_scene3d_eye_rays(camera) : cf_m4_identity();
+    CF_V3 eye = camera ? render_scene3d_eye(camera) : (CF_V3){ 0 };
     unsigned rgba = settings.color ? settings.color : 0x07111AFF;
     CF_Color color = { (rgba >> 24) / 255.0f,
                        ((rgba >> 16) & 255) / 255.0f,
@@ -85,7 +84,8 @@ bool render_fog_draw(
     cf_draw_projection(cf_ortho_2d(0, 0, 2, 2));
     cf_draw_push_shader(fog->shader);
     cf_draw_set_texture("visibility_mask", fog->mask);
-    cf_draw_set_uniform("inverse_camera", &inverse, CF_UNIFORM_TYPE_MAT4, 1);
+    cf_draw_set_uniform("eye_rays", &rays, CF_UNIFORM_TYPE_MAT4, 1);
+    cf_draw_set_uniform("eye", &eye, CF_UNIFORM_TYPE_FLOAT3, 1);
     cf_draw_set_uniform_v2("grid_origin", settings.origin);
     cf_draw_set_uniform_v2(
         "grid_extent",

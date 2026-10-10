@@ -143,12 +143,27 @@ CF_V3 render_scene3d_project(const render_scene3d_camera *camera, CF_V3 world)
     return cf_m4_transform_point(cf_mul_m4(camera->projection, camera->view), world);
 }
 
+CF_V3 render_scene3d_eye(const render_scene3d_camera *camera)
+{
+    CF_M4x4 frame = cf_m4_invert(camera->view);
+    return (CF_V3){ frame.elements[12], frame.elements[13], frame.elements[14] };
+}
+
+CF_M4x4 render_scene3d_eye_rays(const render_scene3d_camera *camera)
+{
+    CF_M4x4 turn = camera->view;
+    turn.elements[12] = turn.elements[13] = turn.elements[14] = 0;
+    return cf_m4_invert(cf_mul_m4(camera->projection, turn));
+}
+
 CF_Ray3 render_scene3d_ray(const render_scene3d_camera *camera, CF_V2 ndc)
 {
-    CF_M4x4 inverse = cf_m4_invert(cf_mul_m4(camera->projection, camera->view));
-    CF_V3 near = cf_m4_transform_point(inverse, (CF_V3){ ndc.x, ndc.y, 0 });
-    CF_V3 far = cf_m4_transform_point(inverse, (CF_V3){ ndc.x, ndc.y, 1 });
-    return cf_make_ray3(near, far);
+    CF_M4x4 rays = render_scene3d_eye_rays(camera);
+    CF_V3 near = cf_m4_transform_point(rays, (CF_V3){ ndc.x, ndc.y, 0 });
+    CF_V3 far = cf_m4_transform_point(rays, (CF_V3){ ndc.x, ndc.y, 1 });
+    CF_Ray3 ray = cf_make_ray3(near, far);
+    ray.p = cf_add_v3(render_scene3d_eye(camera), near);
+    return ray;
 }
 
 bool render_scene3d_ground(const render_scene3d_camera *camera, CF_V2 ndc, CF_V2 *game)

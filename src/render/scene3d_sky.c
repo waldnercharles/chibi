@@ -269,12 +269,7 @@ void render_scene3d_sky_draw(const render_scene3d_sky *sky, const render_scene3d
     }
     /* Clip space back to sky directions: the camera turned to the origin, then
      * the sky turned the other way so it appears turned by its rotation. */
-    CF_M4x4 view = camera->view;
-    view.elements[12] = view.elements[13] = view.elements[14] = 0;
-    CF_M4x4 rays = cf_mul_m4(
-        cf_m4_rotate_y(-sky->rotation),
-        cf_m4_invert(cf_mul_m4(camera->projection, view))
-    );
+    CF_M4x4 rays = cf_mul_m4(cf_m4_rotate_y(-sky->rotation), render_scene3d_eye_rays(camera));
     CF_V4 scale = { .x = sky->scale };
     /* It lies on the far plane, so it fills only pixels no surface covers. It
      * keeps depth writes on so Cute orders it with the opaque draws. */

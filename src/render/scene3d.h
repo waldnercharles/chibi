@@ -25,6 +25,10 @@ render_scene3d_camera render_scene3d_camera_make(
     float span_height
 );
 CF_V3 render_scene3d_project(const render_scene3d_camera *camera, CF_V3 world);
+CF_V3 render_scene3d_eye(const render_scene3d_camera *camera);
+/* Clip space back to offsets from the eye. Leaving out the eye's position
+ * keeps view rays precise however far the eye is from the origin. */
+CF_M4x4 render_scene3d_eye_rays(const render_scene3d_camera *camera);
 CF_Ray3 render_scene3d_ray(const render_scene3d_camera *camera, CF_V2 ndc);
 bool render_scene3d_ground(const render_scene3d_camera *camera, CF_V2 ndc, CF_V2 *game);
 /* Rotated visual bounds; corner bits select positive X, Z and Y respectively. */

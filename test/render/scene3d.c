@@ -400,20 +400,59 @@ TEST_CASE(widest_clip_range_keeps_ground_rays)
 /* Fog conceals ground no vision source sees. A ray that never reaches the
  * ground ahead, such as one above a level camera's horizon, sees past the
  * grid, so fog conceals it too. */
-TEST_CASE(fog_conceals_rays_that_miss_the_ground)
+/* Fog over a 16-unit grid around one vision source, drawn through a frame. */
+static bool draw_fog(CF_V2 seen, float radius, const engine_viewport_camera *frame)
 {
-    GameFog settings = { .origin = { -8, -8 },
+    GameFog settings = { .origin = { seen.x - 8, seen.y - 8 },
                          .columns = 16,
                          .rows = 16,
                          .cell_size = 1,
                          .color = 0xff0000ffu };
     add(GAME_COMPONENT_GameFog.id, &settings);
-    ecs_entity eye = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 0, 0 });
-    GameVision vision = { .radius = 6 };
+    ecs_entity eye = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ seen.x, seen.y });
+    GameVision vision = { .radius = radius };
     assert(ecs_world_record_add(world, eye, GAME_COMPONENT_GameVision.id, &vision, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     game_visibility *visibility = game_visibility_new(world, NULL);
     const char *error = game_visibility_update(visibility, 0);
+    render_scene3d_camera camera = render_scene3d_camera_frame(frame);
+    render_fog *fog = render_fog_new();
+    CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
+    cf_canvas_set_clear_color(canvas, (CF_Color){ 1, 1, 1, 1 });
+    cf_app_update(NULL);
+    bool drawn = render_fog_draw(fog, visibility, frame, &camera, 0);
+    cf_render_to(canvas, true);
+    cf_app_draw_onto_screen(false);
+    bool read = read_pixels(canvas);
+    cf_destroy_canvas(canvas);
+    render_fog_free(fog);
+    game_visibility_free(visibility);
+    return !error && drawn && read;
+}
+
+static bool fogged(CF_Pixel pixel)
+{
+    return pixel.colors.r > 192 && pixel.colors.g < 64;
+}
+
+static bool unfogged(CF_Pixel pixel)
+{
+    return pixel.colors.r > 192 && pixel.colors.g > 192;
+}
+
+/* A frame looking straight down from an eye with a 90 degree field of view,
+ * so the image spans the eye's height either way from below it. */
+static engine_viewport_camera looking_down(CF_V3 eye)
+{
+    return (engine_viewport_camera){
+        .span_width = 2,
+        .span_height = 2,
+        .lens = { .eye = eye, .forward = { 0, -1, 0 }, .up = { 0, 0, -1 }, .fov = CF_PI / 2 },
+    };
+}
+
+TEST_CASE(fog_conceals_rays_that_miss_the_ground)
+{
     engine_viewport_camera frame = {
         .span_width = 2,
         .span_height = 2,
@@ -422,23 +461,33 @@ TEST_CASE(fog_conceals_rays_that_miss_the_ground)
                   .up = { 0, 1, 0 },
                   .fov = CF_PI / 2 },
     };
-    render_scene3d_camera level = render_scene3d_camera_frame(&frame);
-    render_fog *fog = render_fog_new();
-    CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
-    cf_canvas_set_clear_color(canvas, (CF_Color){ 1, 1, 1, 1 });
-    cf_app_update(NULL);
-    bool drawn = render_fog_draw(fog, visibility, &frame, &level, 0);
-    cf_render_to(canvas, true);
-    cf_app_draw_onto_screen(false);
-    bool read = read_pixels(canvas);
-    cf_destroy_canvas(canvas);
-    render_fog_free(fog);
-    game_visibility_free(visibility);
-    REQUIRE(!error && drawn && read);
-    CF_Pixel sky = pixels[4 * SIDE + SIDE / 2],
-             ground = pixels[(SIDE - 5) * SIDE + SIDE / 2];
-    REQUIRE(sky.colors.r > 192 && sky.colors.g < 64);
-    REQUIRE(ground.colors.r > 192 && ground.colors.g > 192);
+    REQUIRE(draw_fog((CF_V2){ 0 }, 6, &frame));
+    REQUIRE(fogged(pixels[4 * SIDE + SIDE / 2]));
+    REQUIRE(unfogged(pixels[(SIDE - 5) * SIDE + SIDE / 2]));
+    return true;
+}
+
+/* An eye far from the origin, whose near plane is closer to it than its
+ * position's precision, still finds the ground it looks at. */
+TEST_CASE(distant_eyes_keep_precise_ground_rays)
+{
+    engine_viewport_camera frame = looking_down((CF_V3){ 1e5f, 4, 1e5f });
+    render_scene3d_camera above = render_scene3d_camera_frame(&frame);
+    CF_V2 center, corner;
+    REQUIRE(render_scene3d_ground(&above, (CF_V2){ 0 }, &center));
+    REQUIRE(render_scene3d_ground(&above, (CF_V2){ 1, 1 }, &corner));
+    REQUIRE(fabsf(center.x - 1e5f) < .02f && fabsf(center.y - 1e5f) < .02f);
+    REQUIRE(fabsf(corner.x - (1e5f + 4)) < .02f && fabsf(corner.y - (1e5f - 4)) < .02f);
+    return true;
+}
+
+TEST_CASE(distant_eyes_fog_the_ground_they_look_at)
+{
+    engine_viewport_camera frame = looking_down((CF_V3){ 1e5f, 4, 1e5f });
+    REQUIRE(draw_fog((CF_V2){ 1e5f, 1e5f }, 2, &frame));
+    REQUIRE(unfogged(center()));
+    REQUIRE(fogged(pixels[2 * SIDE + SIDE / 2]));
+    REQUIRE(fogged(pixels[(SIDE / 2) * SIDE + 2]));
     return true;
 }
 
@@ -2138,6 +2187,8 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(widest_clip_range_keeps_ground_rays);
     RUN_TEST_CASE(navigating_drops_an_authored_lens);
     RUN_TEST_CASE(fog_conceals_rays_that_miss_the_ground);
+    RUN_TEST_CASE(distant_eyes_keep_precise_ground_rays);
+    RUN_TEST_CASE(distant_eyes_fog_the_ground_they_look_at);
     RUN_TEST_CASE(picking_and_bounds_place_children_under_their_parent);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(picking_and_bounds_place_child_models_under_their_parent);

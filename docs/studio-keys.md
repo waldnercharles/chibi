@@ -32,7 +32,7 @@ Rebindable commands, active over any area unless noted.
 | Mod+Shift+U | Toggle the Output drawer | Global | `studio_commands.c` |
 | Mod+Shift+C | Inspect Element (UI Inspector picking) | Global | `studio_commands.c`, `studio_inspect.c` |
 | Ctrl+Space | Maximize the area under the pointer, or restore | Global | `studio_commands.c` |
-| Space (also with Shift or Alt) | Play, Pause, or Resume a paused run | Except Behavior | `studio_commands.c` |
+| Space (also with Shift or Alt) | Play, Pause, or Resume a paused run; over an edited Scene, plain Space plays once released, unless a drag panned while it was held | Except Behavior | `studio_commands.c`, `studio_scene.c` |
 | Shift+F5 | Stop | Global | `studio_commands.c` |
 | Mod+Alt+-, Mod+Alt+= | Slower, Faster: step the playback speed through 0.1×, 0.25×, 0.5×, 1× and 2× (UI Scale's keys with Alt; Stop returns to 1×) | Global | `studio_commands.c`, `studio_debug.c` |
 | Mod+Alt+0 | Normal Speed | Global | `studio_commands.c`, `studio_debug.c` |
@@ -63,23 +63,32 @@ Commands act on the whole selection; F2 renames the active object.
 | Alt+click on an eye | Show only that object, or all of them again | Outliner | `studio_outliner.c` |
 | Shift+click, Mod+click | Add an object to the selection, or take it out (not on a gizmo handle, where Shift keeps the aspect) | Scene | `workspace/scene_viewport.c` |
 | Shift+drag, Mod+drag | Add a marquee's objects to the selection | Scene | `workspace/scene_viewport.c` |
-| Mod or Ctrl + wheel | Magnify the Scene view; middle drag pans it | Scene | `studio_scene.c` |
+| Wheel, Mod or Ctrl + wheel, pinch | Zoom the camera around the pointer; the corner readout reads 100% as last framed (F, Home, Reset Camera) | Scene | `studio_scene.c`, `studio_host.c` |
+| Two-finger scroll, middle drag, Space (held) + drag | Pan the camera; a trackpad's scroll is told from a mouse wheel's notches by its fractions and sideways motion | Scene | `studio_scene.c`, `studio_host.c` |
 | Alt (held) | Navigate the camera while playing | Scene | `workspace/viewport.c` |
 
-### Scene tools (reserved, in progress on other branches)
+### Scene tools
+
+The toolbar's tools and Snap are commands (`studio_commands.c`); the gizmo takes the keys held during its drag (`workspace/scene_gizmo.c`).
 
 | Key | Action | Context |
 | --- | --- | --- |
 | Q | Select tool | Scene |
 | W | Move tool | Scene |
-| E | Rotate tool | Scene |
-| R | Scale tool | Scene |
-| G, then X or Y | Grab (modal move), constrained to an axis | Scene |
-| TBD | Snap toggle | Scene |
-| Numpad 0, TBD | View Through Camera | Scene |
-| K | Keep Simulation Changes | Properties, Scene, while playing |
+| E | Rotate tool; without an Orientation on the selection its ring is grey, and the hint under it adds one in a click | Scene |
+| R | Scale tool; without a size (2D Appearance) its handles are grey, with the same hint | Scene |
+| G | Grab: the selection follows the pointer until a click or Enter | Scene |
+| X, Y (during Grab) | Constrain to that axis; the same key again frees it | Scene |
+| Enter, click (during Grab) | Place | Scene |
+| Escape, right click (during a drag or Grab) | Cancel and restore | Scene |
+| Shift+G | Snap to Grid on or off; the increment menu beside it sets the step | Scene |
+| Ctrl (held while dragging) | Invert snapping: snap while it is off, move freely while it is on; rotation snaps to 15° | Scene |
+| Shift (held on a Scale handle) | Keep the aspect ratio | Scene |
+| Alt (held on a Scale handle) | Scale from the center | Scene |
+| Shift+C, Keypad 0 | View Through Camera | Scene, Outliner |
+| K | Keep Changes | Properties, Scene, while playing |
 
-Q, W, E, R and G are free in the Scene; Q is Straighten and G places a Gate only in the Behavior area. Two overlaps need the modal grab to own its keys while it runs: X (and Backspace or Delete) deletes in the Scene, and Escape deselects there, so the grab must take X and Y as constraints and Escape as cancel before the commands see them. While playing, a game with the keyboard takes plain letters, so K over the Scene reaches Studio only when the game does not have the keyboard.
+A drag shows its change (position, angle or size) beside the pointer and in the status bar. While Grab runs it owns the keyboard: X and Y constrain instead of deleting, Escape cancels instead of deselecting, and no other command runs. While playing, a game with the keyboard takes plain letters, so K over the Scene reaches Studio only when the game does not have the keyboard.
 
 ## Behavior
 

@@ -25,10 +25,12 @@ if(EMSCRIPTEN)
     endif()
     configure_file("${CHIBI_TOOL_ROOT}/test/render/webgpu_staging.html"
         "${CMAKE_CURRENT_BINARY_DIR}/webgpu_staging.html" @ONLY)
-    add_executable(test_tools main.c ../render/webgpu_staging.c)
+    add_executable(test_tools main.c ../render/webgpu_staging.c ../draw_backend.cpp)
     target_include_directories(test_tools PRIVATE "${CHIBI_TOOL_ROOT}" "${CHIBI_TOOL_ROOT}/src")
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_WEBGPU_STAGING=1)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_WEBGPU_STAGING=1
+        CHIBI_TEST_ADOPT_DEVICE=${CHIBI_TEST_ADOPT_DEVICE})
     target_compile_features(test_tools PRIVATE c_std_11)
+    target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -Wno-experimental -UNDEBUG)
     target_link_libraries(test_tools PRIVATE ${CHIBI_TEST_PLATFORM})
     set_target_properties(test_tools PROPERTIES SUFFIX ".html" LINKER_LANGUAGE CXX
         LINK_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/webgpu_staging.html")
@@ -74,7 +76,7 @@ target_include_directories(chibi_scene_consumer PRIVATE "${CMAKE_CURRENT_BINARY_
 target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
-add_executable(test_tools main.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c studio_selectors.c
+add_executable(test_tools main.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
     validate_project.c test_policy.c validation_plan.c publish.c web_storage.c webgpu_staging.c $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
@@ -204,6 +206,13 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)
         target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::studio_capabilities)
         target_link_libraries(test_tools PRIVATE Chibi::studio_capabilities)
+        # Feature coverage runs each fixture scene through chibi_ctl's run_scenario.
+        if(TARGET chibi_ctl)
+            target_sources(test_tools PRIVATE feature_coverage.c)
+            target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FEATURE_COVERAGE=1
+                CHIBI_CTL_PATH="$<TARGET_FILE:chibi_ctl>")
+            add_dependencies(test_tools chibi_ctl)
+        endif()
     endif()
 endif()
 

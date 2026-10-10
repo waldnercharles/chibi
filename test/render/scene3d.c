@@ -1,13 +1,17 @@
 #include "render/scene3d.h"
 
+#include "render/fog.h"
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "render/shader_program.h"
+#include "render/viewport.h"
+#include "runtime/camera.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
 #include "runtime/images/sky.h"
 #include "runtime/particles.h"
+#include "runtime/visibility.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #if CHIBI_TEST_MATERIAL_GRAPHS
@@ -43,7 +47,15 @@ static render_scene3d_camera camera()
     return (render_scene3d_camera){
         .view = cf_look_at((CF_V3){ 0, 4, 4 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 }),
         .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
+        .eye = { 0, 4, 4 },
     };
+}
+
+/* Turns `lens` to look from `eye` toward `target`. */
+static void look(CF_V3 eye, CF_V3 target, CF_V3 up)
+{
+    lens.view = cf_look_at(eye, target, up);
+    lens.eye = eye;
 }
 
 static void setup()
@@ -156,15 +168,9 @@ static CF_V3 pixel_floor(CF_V3 world)
     return (CF_V3){ ground.x, 0, ground.y };
 }
 
-/* Post-processes the scene target and reads back the tone-mapped output. */
-static bool finish(float time)
+static bool read_pixels(CF_Canvas canvas)
 {
-    bool processed = render_scene3d_post_process(post, time);
-    cf_app_draw_onto_screen(false);
-    if (!processed) {
-        return false;
-    }
-    CF_Readback readback = cf_canvas_readback(render_scene3d_post_output(post));
+    CF_Readback readback = cf_canvas_readback(canvas);
     assert(readback.id);
     while (!cf_readback_ready(readback)) {
         cf_sleep(1);
@@ -173,6 +179,14 @@ static bool finish(float time)
     bool read = cf_readback_data(readback, pixels, bytes) == bytes;
     cf_destroy_readback(readback);
     return read;
+}
+
+/* Post-processes the scene target and reads back the tone-mapped output. */
+static bool finish(float time)
+{
+    bool processed = render_scene3d_post_process(post, time);
+    cf_app_draw_onto_screen(false);
+    return processed && read_pixels(render_scene3d_post_output(post));
 }
 
 static bool render_at(const GameEnvironment *environment, float time)
@@ -208,6 +222,340 @@ TEST_CASE(scene_draws_without_a_valid_rhythm_clock)
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
     REQUIRE(top().colors.r > 0);
+    return true;
+}
+
+/* Points the renders through the scene's camera, as Play frames it. */
+static int look_through_camera()
+{
+    engine_viewport_view view;
+    int found = game_camera_view(world, NULL, &view);
+    if (found == 1) {
+        lens = render_scene3d_camera_frame(&(engine_viewport_camera){
+            .center_x = view.center_x,
+            .center_y = view.center_y,
+            .span_width = view.width,
+            .span_height = view.height,
+            .lens = view.lens });
+    }
+    return found;
+}
+
+/* A camera at a 3D pose, looking along -Z until rotated. */
+static ecs_entity add_camera_3d(CF_Quat rotation)
+{
+    ecs_entity entity = add(GAME_COMPONENT_GameCamera.id, &(GameCamera){ .width = 2, .height = 2 });
+    GameTransform3D pose = { .rotation = rotation, .scale = { 1, 1, 1 } };
+    assert(
+        ecs_world_record_add(world, entity, GAME_COMPONENT_GameTransform3D.id, &pose, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    return entity;
+}
+
+static CF_Pixel center()
+{
+    return pixels[SIDE / 2 * SIDE + SIDE / 2];
+}
+
+static bool near_value(float value, float expected)
+{
+    return fabsf(value - expected) < 1e-4f;
+}
+
+TEST_CASE(cameras_look_along_their_transform3d)
+{
+    GameGeometry3D cube = { GAME_PRIMITIVE_BOX, 2, 2, 2, 0 };
+    add_solid((CF_V3){ 6, 0, 0 }, cube, 0xff0000ffu);
+    add_solid((CF_V3){ -6, 0, 0 }, cube, 0x0000ffffu);
+    ecs_entity camera = add_camera_3d(
+        cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, -CF_PI / 2)
+    );
+    REQUIRE(look_through_camera() == 1);
+    CF_V3 ahead = render_scene3d_project(&lens, (CF_V3){ 5, 0, 0 });
+    CF_V3 above = render_scene3d_project(&lens, (CF_V3){ 5, 1, 0 });
+    CF_V3 right = render_scene3d_project(&lens, (CF_V3){ 5, 0, 1 });
+    REQUIRE(near_value(ahead.x, 0) && near_value(ahead.y, 0));
+    REQUIRE(near_value(above.x, 0) && above.y > .1f);
+    REQUIRE(right.x > .1f && near_value(right.y, 0));
+    GameCamera *authored = GAME_GameCamera_get(world, camera);
+    authored->offset = (CF_V2){ 1, 2 };
+    REQUIRE(look_through_camera() == 1);
+    CF_V3 offset = render_scene3d_project(&lens, (CF_V3){ 6, 0, 2 });
+    REQUIRE(near_value(offset.x, 0) && near_value(offset.y, 0));
+    authored->offset = (CF_V2){ 0 };
+    REQUIRE(look_through_camera() == 1);
+    GameEnvironment environment = game_environment_defaults();
+    REQUIRE(render(&environment));
+    REQUIRE(center().colors.r > 2 * center().colors.b);
+    GAME_GameTransform3D_get(world, camera)
+        ->rotation = cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, CF_PI / 2);
+    REQUIRE(look_through_camera() == 1);
+    REQUIRE(render(&environment));
+    REQUIRE(center().colors.b > 2 * center().colors.r);
+    return true;
+}
+
+TEST_CASE(camera_field_of_view_and_clips_shape_the_projection)
+{
+    ecs_entity framing = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 3, 2 });
+    GameCamera authored = { .width = 4, .height = 2 };
+    assert(
+        ecs_world_record_add(world, framing, GAME_COMPONENT_GameCamera.id, &authored, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(look_through_camera() == 1);
+    CF_V3 target = render_scene3d_project(&lens, (CF_V3){ 3, 0, 2 });
+    REQUIRE(near_value(target.x, 0) && near_value(target.y, 0));
+    REQUIRE(near_value(lens.projection.elements[5] * tanf(.5f * 35 * CF_PI / 180), 1));
+    REQUIRE(near_value(lens.projection.elements[5] / lens.projection.elements[0], 2));
+    GAME_GameCamera_get(world, framing)->fov = CF_PI / 2;
+    REQUIRE(look_through_camera() == 1);
+    target = render_scene3d_project(&lens, (CF_V3){ 3, 0, 2 });
+    REQUIRE(near_value(target.x, 0) && near_value(target.y, 0));
+    REQUIRE(near_value(lens.projection.elements[5], 1));
+    assert(ecs_world_destroy_entity(world, framing) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity posed = add_camera_3d(
+        cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, -CF_PI / 2)
+    );
+    GameCamera *clipped = GAME_GameCamera_get(world, posed);
+    clipped->near_clip = .5f;
+    clipped->far_clip = 50;
+    REQUIRE(look_through_camera() == 1);
+    REQUIRE(near_value(render_scene3d_project(&lens, (CF_V3){ .5f, 0, 0 }).z, 0));
+    REQUIRE(near_value(render_scene3d_project(&lens, (CF_V3){ 50, 0, 0 }).z, 1));
+    return true;
+}
+
+/* A small-scale camera far from the origin still looks along its -Z, though
+ * its scaled direction is below the precision of its position, and its
+ * scaled axes are too short to cross. One whose coordinates are each finite
+ * keeps its view though their sum overflows. */
+TEST_CASE(distant_small_scale_cameras_keep_their_view)
+{
+    ecs_entity camera = add_camera_3d(cf_quat_identity());
+    GameTransform3D *pose = GAME_GameTransform3D_get(world, camera);
+    pose->position = (CF_V3){ 0, 0, 1000 };
+    pose->scale = (CF_V3){ 1e-6f, 1e-6f, 1e-6f };
+    REQUIRE(look_through_camera() == 1);
+    CF_V3 ahead = render_scene3d_project(&lens, (CF_V3){ 0, 0, 990 });
+    CF_V3 right = render_scene3d_project(&lens, (CF_V3){ 1, 0, 990 });
+    REQUIRE(near_value(ahead.x, 0) && near_value(ahead.y, 0));
+    REQUIRE(right.x > .01f && near_value(right.y, 0));
+    pose->scale = (CF_V3){ 1e-12f, 1e-12f, 1e-12f };
+    REQUIRE(look_through_camera() == 1);
+    ahead = render_scene3d_project(&lens, (CF_V3){ 0, 0, 990 });
+    REQUIRE(near_value(ahead.x, 0) && near_value(ahead.y, 0));
+    pose->scale = (CF_V3){ 1, 1, 1 };
+    pose->position = (CF_V3){ 3e38f, 3e38f, 0 };
+    REQUIRE(look_through_camera() == 1);
+    return true;
+}
+
+/* Default clips stay in order however close the framing distance gets, and
+ * keep the framed target in front of near: from the smallest span, and
+ * through a field of view of 179 degrees. */
+TEST_CASE(default_clips_stay_ordered_for_close_framings)
+{
+    render_scene3d_camera close = render_scene3d_camera_make(0, 0, .0001f, .0001f);
+    CF_V3 ahead = { 0, -cosf(10 * CF_PI / 180), -sinf(10 * CF_PI / 180) };
+    float depth = render_scene3d_project(&close, ahead).z;
+    REQUIRE(depth > 0 && depth < 1);
+    depth = render_scene3d_project(&close, (CF_V3){ 0 }).z;
+    REQUIRE(depth > 0 && depth < 1);
+    render_scene3d_camera wide = render_scene3d_camera_frame(&(
+        engine_viewport_camera
+    ){ .span_width = 2, .span_height = 2, .lens = { .fov = 179 * CF_PI / 180 } });
+    depth = render_scene3d_project(&wide, (CF_V3){ 0 }).z;
+    REQUIRE(depth > 0 && depth < 1);
+    ecs_entity camera = add_camera_3d(
+        cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, -CF_PI / 2)
+    );
+    GAME_GameCamera_get(world, camera)->fov = 3.1415f;
+    REQUIRE(look_through_camera() == 1);
+    depth = render_scene3d_project(&lens, (CF_V3){ 1, 0, 0 }).z;
+    REQUIRE(depth > 0 && depth < 1);
+    return true;
+}
+
+TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use)
+{
+    static const float lenses[][3] = {
+        { -.1f, 0, 0 },     { 1e-37f, 0, 0 },  { CF_PI, 0, 0 }, { NAN, 0, 0 },
+        { 0, 1, 0 },        { 0, 0, 1 },       { 0, 2, 2 },     { 0, 2, 1 },
+        { 0, 1, INFINITY }, { 0, .01f, 1e7f },
+    };
+    ecs_entity entity = add_camera_3d(cf_quat_identity());
+    GameCamera *camera = GAME_GameCamera_get(world, entity);
+    for (int i = 0; i < (int)(sizeof lenses / sizeof lenses[0]); i++) {
+        camera->fov = lenses[i][0];
+        camera->near_clip = lenses[i][1];
+        camera->far_clip = lenses[i][2];
+        REQUIRE(look_through_camera() == -1);
+    }
+    *camera = (GameCamera){ .width = 2, .height = 2, .fov = 1, .near_clip = 1, .far_clip = 2 };
+    REQUIRE(look_through_camera() == 1);
+    GAME_GameTransform3D_get(world, entity)->scale = (CF_V3){ 0 };
+    REQUIRE(look_through_camera() == -1);
+    return true;
+}
+
+/* The widest clip range a camera takes still unprojects its ground rays. */
+TEST_CASE(widest_clip_range_keeps_ground_rays)
+{
+    ecs_entity entity = add_camera_3d(
+        cf_quat_from_axis_angle((CF_V3){ 1, 0, 0 }, -CF_PI / 6)
+    );
+    GAME_GameTransform3D_get(world, entity)->position = (CF_V3){ 0, 10, 0 };
+    GameCamera *camera = GAME_GameCamera_get(world, entity);
+    camera->near_clip = .01f;
+    camera->far_clip = 1e4f;
+    REQUIRE(look_through_camera() == 1);
+    CF_V2 ground;
+    REQUIRE(render_scene3d_ground(&lens, (CF_V2){ 0 }, &ground));
+    REQUIRE(fabsf(ground.x) < .01f && fabsf(ground.y + 10 / tanf(CF_PI / 6)) < .01f);
+    return true;
+}
+
+/* Fog conceals ground no vision source sees. A ray that never reaches the
+ * ground ahead, such as one above a level camera's horizon, sees past the
+ * grid, so fog conceals it too. */
+/* Fog over a 16-unit grid around one vision source, drawn through a frame. */
+static bool draw_fog(CF_V2 seen, float radius, const engine_viewport_camera *frame)
+{
+    GameFog settings = { .origin = { seen.x - 8, seen.y - 8 },
+                         .columns = 16,
+                         .rows = 16,
+                         .cell_size = 1,
+                         .color = 0xff0000ffu };
+    add(GAME_COMPONENT_GameFog.id, &settings);
+    ecs_entity eye = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ seen.x, seen.y });
+    GameVision vision = { .radius = radius };
+    assert(ecs_world_record_add(world, eye, GAME_COMPONENT_GameVision.id, &vision, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    game_visibility *visibility = game_visibility_new(world, NULL);
+    const char *error = game_visibility_update(visibility, 0);
+    render_scene3d_camera camera = render_scene3d_camera_frame(frame);
+    render_fog *fog = render_fog_new();
+    CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
+    cf_canvas_set_clear_color(canvas, (CF_Color){ 1, 1, 1, 1 });
+    cf_app_update(NULL);
+    bool drawn = render_fog_draw(fog, visibility, frame, &camera, 0);
+    cf_render_to(canvas, true);
+    cf_app_draw_onto_screen(false);
+    bool read = read_pixels(canvas);
+    cf_destroy_canvas(canvas);
+    render_fog_free(fog);
+    game_visibility_free(visibility);
+    return !error && drawn && read;
+}
+
+static bool fogged(CF_Pixel pixel)
+{
+    return pixel.colors.r > 192 && pixel.colors.g < 64;
+}
+
+static bool unfogged(CF_Pixel pixel)
+{
+    return pixel.colors.r > 192 && pixel.colors.g > 192;
+}
+
+/* A frame looking straight down from an eye with a 90 degree field of view,
+ * so the image spans the eye's height either way from below it. */
+static engine_viewport_camera looking_down(CF_V3 eye)
+{
+    return (engine_viewport_camera){
+        .span_width = 2,
+        .span_height = 2,
+        .lens = { .eye = eye, .forward = { 0, -1, 0 }, .up = { 0, 0, -1 }, .fov = CF_PI / 2 },
+    };
+}
+
+TEST_CASE(fog_conceals_rays_that_miss_the_ground)
+{
+    engine_viewport_camera frame = {
+        .span_width = 2,
+        .span_height = 2,
+        .lens = { .eye = { 0, 1, 0 },
+                  .forward = { 0, 0, -1 },
+                  .up = { 0, 1, 0 },
+                  .fov = CF_PI / 2 },
+    };
+    REQUIRE(draw_fog((CF_V2){ 0 }, 6, &frame));
+    REQUIRE(fogged(pixels[4 * SIDE + SIDE / 2]));
+    REQUIRE(unfogged(pixels[(SIDE - 5) * SIDE + SIDE / 2]));
+    return true;
+}
+
+/* An eye far from the origin, whose near plane is closer to it than its
+ * position's precision, still finds the ground it looks at. */
+TEST_CASE(distant_eyes_keep_precise_ground_rays)
+{
+    engine_viewport_camera frame = looking_down((CF_V3){ 1e5f, 4, 1e5f });
+    render_scene3d_camera above = render_scene3d_camera_frame(&frame);
+    CF_V2 center, corner;
+    REQUIRE(render_scene3d_ground(&above, (CF_V2){ 0 }, &center));
+    REQUIRE(render_scene3d_ground(&above, (CF_V2){ 1, 1 }, &corner));
+    REQUIRE(fabsf(center.x - 1e5f) < .02f && fabsf(center.y - 1e5f) < .02f);
+    REQUIRE(fabsf(corner.x - (1e5f + 4)) < .02f && fabsf(corner.y - (1e5f - 4)) < .02f);
+    return true;
+}
+
+/* A distant eye turned off the axes starts its rays at its own height.
+ * Rebuilt from the rounded view matrix, its distance along the ground leaks
+ * into that height. */
+TEST_CASE(distant_turned_eyes_start_rays_where_they_stand)
+{
+    CF_V3 eye = { 1e7f, 8, -7e6f };
+    CF_V3 forward = cf_norm_v3((CF_V3){ .3f, -.8f, .5f });
+    render_scene3d_camera turned = render_scene3d_camera_frame(&(engine_viewport_camera){
+        .span_width = 2,
+        .span_height = 2,
+        .lens = { .eye = eye, .forward = forward, .up = { 0, 1, 0 } } });
+    CF_Ray3 ray = render_scene3d_ray(&turned, (CF_V2){ 0 });
+    REQUIRE(fabsf(ray.p.y - eye.y) < .02f);
+    return true;
+}
+
+TEST_CASE(distant_eyes_fog_the_ground_they_look_at)
+{
+    engine_viewport_camera frame = looking_down((CF_V3){ 1e5f, 4, 1e5f });
+    REQUIRE(draw_fog((CF_V2){ 1e5f, 1e5f }, 2, &frame));
+    REQUIRE(unfogged(center()));
+    REQUIRE(fogged(pixels[2 * SIDE + SIDE / 2]));
+    REQUIRE(fogged(pixels[(SIDE / 2) * SIDE + 2]));
+    return true;
+}
+
+/* Panning or zooming hands the view from an authored lens to the editor's
+ * overhead framing, which those gestures move. */
+TEST_CASE(navigating_drops_an_authored_lens)
+{
+    engine_viewport *viewport = engine_viewport_new(SIDE, SIDE);
+    REQUIRE(viewport);
+    engine_viewport_set_perspective(viewport, true);
+    engine_viewport_view view = {
+        .width = 2,
+        .height = 2,
+        .lens = { .eye = { 0, 1, 4 }, .forward = { 0, 0, -1 }, .up = { 0, 1, 0 } },
+    };
+    engine_viewport_set_view(viewport, &view);
+    engine_viewport_set_host_input(
+        viewport,
+        &(engine_viewport_host_input){ .width = SIDE,
+                                       .height = SIDE,
+                                       .x = SIDE / 2,
+                                       .y = SIDE / 2,
+                                       .hovered = true,
+                                       .wheel = 1 }
+    );
+    int drawn = engine_viewport_draw(viewport, &(engine_viewport_controls){ 0 });
+    engine_viewport_get_view(viewport, &view);
+    engine_viewport_free(viewport);
+    REQUIRE(drawn == 0);
+    REQUIRE(view.width < 2);
+    REQUIRE(cf_dot_v3(view.lens.forward, view.lens.forward) == 0);
     return true;
 }
 
@@ -644,6 +992,7 @@ static GameDirectionalLight *add_walls(unsigned walls)
     lens = (render_scene3d_camera){
         .view = cf_look_at((CF_V3){ 0 }, (CF_V3){ 0, 0, -1 }, (CF_V3){ 0, 1, 0 }),
         .projection = cf_perspective(0.7853981634f, 1, 0.1f, 1000),
+        .eye = { 0 },
     };
     for (int i = 0; i < WALLS; i++) {
         if (!(walls >> i & 1)) {
@@ -771,6 +1120,7 @@ static GameDirectionalLight *add_wall_scene()
     lens = (render_scene3d_camera){
         .view = cf_look_at((CF_V3){ 2, 10, 3 }, (CF_V3){ 2, 0, 3 }, (CF_V3){ 0, 0, -1 }),
         .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
+        .eye = { 2, 10, 3 },
     };
     add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 40, 40, .2f, -.1f }, 0xffffffffu);
     add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, 6, 4, 2 }, 0xffffffffu);
@@ -893,8 +1243,7 @@ static const float edge_slack = .1f;
  * shows lit, or black. */
 static bool floor_matches(const CF_V3 *casting, int count, CF_Pixel *const *shown, int *checked)
 {
-    CF_M4x4 inverse = cf_m4_invert(lens.view);
-    CF_V3 eye = { inverse.elements[12], inverse.elements[13], inverse.elements[14] };
+    CF_V3 eye = lens.eye;
     for (float x = -3; x <= 3; x += .25f) {
         for (float z = -3; z <= 3; z += .25f) {
             CF_V3 point = { x, 0, z };
@@ -1342,7 +1691,7 @@ static void publish_uniform_sky(const unsigned char rgbe[4])
 /* Looks level along -Z from the origin: +X lies to the right and up on top. */
 static void look_level()
 {
-    lens.view = cf_look_at((CF_V3){ 0 }, (CF_V3){ 0, 0, -1 }, (CF_V3){ 0, 1, 0 });
+    look((CF_V3){ 0 }, (CF_V3){ 0, 0, -1 }, (CF_V3){ 0, 1, 0 });
 }
 
 static GameEnvironment sky_environment()
@@ -1449,7 +1798,7 @@ TEST_CASE(sky_fills_the_view_in_its_directions)
     for (int quarters = 0; quarters < 2; quarters++) {
         environment.sky_rotation = 90.0f * quarters;
         for (int i = 0; i < 6; i++) {
-            lens.view = cf_look_at((CF_V3){ 0 }, views[i][0], views[i][1]);
+            look((CF_V3){ 0 }, views[i][0], views[i][1]);
             REQUIRE(render(&environment));
             int corners[] = { 8, SIDE - 8 };
             for (int j = 0; j < 4; j++) {
@@ -1632,7 +1981,7 @@ TEST_CASE(sky_settings_must_be_valid)
  * and +Z faces show. */
 static void look_at_corner()
 {
-    lens.view = cf_look_at((CF_V3){ 3, 2.5f, 4 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
+    look((CF_V3){ 3, 2.5f, 4 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
 }
 
 static void channels(CF_Pixel shown, int values[3])
@@ -1868,6 +2217,17 @@ void test_render_scene3d(bool gles)
     app_scene_renderer_initialize();
     pu_setup(setup, teardown);
     RUN_TEST_CASE(scene_draws_without_a_valid_rhythm_clock);
+    RUN_TEST_CASE(cameras_look_along_their_transform3d);
+    RUN_TEST_CASE(camera_field_of_view_and_clips_shape_the_projection);
+    RUN_TEST_CASE(distant_small_scale_cameras_keep_their_view);
+    RUN_TEST_CASE(default_clips_stay_ordered_for_close_framings);
+    RUN_TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use);
+    RUN_TEST_CASE(widest_clip_range_keeps_ground_rays);
+    RUN_TEST_CASE(navigating_drops_an_authored_lens);
+    RUN_TEST_CASE(fog_conceals_rays_that_miss_the_ground);
+    RUN_TEST_CASE(distant_eyes_keep_precise_ground_rays);
+    RUN_TEST_CASE(distant_turned_eyes_start_rays_where_they_stand);
+    RUN_TEST_CASE(distant_eyes_fog_the_ground_they_look_at);
     RUN_TEST_CASE(picking_and_bounds_place_children_under_their_parent);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(picking_and_bounds_place_child_models_under_their_parent);

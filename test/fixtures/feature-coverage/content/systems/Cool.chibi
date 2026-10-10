@@ -1,0 +1,3 @@
+system Cool(heat: Heat) {
+    heat.level -= heat.rate * dt
+}

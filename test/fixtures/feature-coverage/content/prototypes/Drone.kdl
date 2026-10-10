@@ -1,0 +1,6 @@
+name "Drone"
+components {
+    GAME.GameBody type="Kinematic"
+    GAME.GameCollider category=2 mask=2 radius=4.0
+    GAME.GameTransform x=8.0
+}

@@ -37,6 +37,18 @@ static const char driver_source[] =
     "    policy.cleanup_subtree = interrupted_cleanup\n"
     "if mode in ('missing-proc', 'no-reader'): policy.proc_children = "
     "unavailable\n"
+    /* signal.signal runs pending handlers before it installs a new one. Model
+       the caller's SIGTERM still pending as cleanup starts to ignore it. */
+    "if mode == 'pending':\n"
+    "    class PendingSignal:\n"
+    "        pending = True\n"
+    "        def __getattr__(self, name): return getattr(signal, name)\n"
+    "        def signal(self, number, handler):\n"
+    "            if self.pending:\n"
+    "                self.pending = False\n"
+    "                raise policy.TerminationRequested()\n"
+    "            return signal.signal(number, handler)\n"
+    "    policy.signal = PendingSignal()\n"
     "if mode == 'no-reader':\n"
     "    policy.enable_subreaper = lambda: True\n"
     "    policy.process_children = unavailable\n"
@@ -84,14 +96,15 @@ static const char driver_source[] =
     "        result = policy.run_commands([[worker, 'descendant', root, '1', "
     "'0']], 60)\n"
     "    else:\n"
-    "        if action == 'missing-proc': os.environ['CHIBI_POLICY_FIXTURE'] = "
-    "action\n"
-    "        detached = '1' if action in ('missing-proc', 'orphan') else '0'\n"
+    "        if action in ('missing-proc', 'pending'): "
+    "os.environ['CHIBI_POLICY_FIXTURE'] = action\n"
+    "        detached = '1' if action in ('missing-proc', 'orphan', 'pending') "
+    "else '0'\n"
     "        orphan = '1' if action == 'orphan' else '0'\n"
     "        result = policy.run_commands([[worker, 'descendant', root, "
     "detached, orphan]], 2)\n"
     "    if action in ('portable', 'descendant', 'nested', 'missing-proc', "
-    "'orphan'):\n"
+    "'orphan', 'pending'):\n"
     "        subprocess.run([worker, 'cleanup-probe', root], check=True)\n"
     "    sys.exit(result)\n"
     "except (policy.TerminationRequested, KeyboardInterrupt):\n"
@@ -279,6 +292,15 @@ TEST_CASE(missing_proc_uses_portable_discovery)
     REQUIRE(!exists("escaped"));
     return true;
 }
+
+TEST_CASE(pending_termination_still_cleans_up)
+{
+    reset_markers();
+    REQUIRE(run("pending", NULL) == 124);
+    REQUIRE(exists("started"));
+    REQUIRE(!exists("escaped"));
+    return true;
+}
 #endif
 
 void test_tool_test_policy()
@@ -297,6 +319,7 @@ void test_tool_test_policy()
     RUN_TEST_CASE(nested_setsid_inherits_deadline);
     RUN_TEST_CASE(orphan_setsid_cleanup);
     RUN_TEST_CASE(missing_proc_uses_portable_discovery);
+    RUN_TEST_CASE(pending_termination_still_cleans_up);
 #endif
     tool_remove_tree(directory);
 }

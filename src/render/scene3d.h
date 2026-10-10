@@ -3,6 +3,7 @@
 
 #include "ecs/ecs.h"
 #include "render/skip.h"
+#include "render/view.h"
 #include "runtime/components.h"
 #include "runtime/particles.h"
 
@@ -11,9 +12,16 @@
 typedef struct render_scene3d_camera
 {
     CF_M4x4 view, projection;
+    /* Where `view` looks from. Rays start here rather than at a position
+     * recovered from the rounded view matrix, which drifts far from the
+     * origin. */
+    CF_V3 eye;
 } render_scene3d_camera;
 
-/* Framing uses the existing canvas coordinates: center_y points up. */
+/* Framing uses the existing canvas coordinates: center_y points up. A frame
+ * whose lens has a forward direction looks from its eye instead. */
+render_scene3d_camera render_scene3d_camera_frame(const engine_viewport_camera *frame);
+/* Frames the center and span through the default lens. */
 render_scene3d_camera render_scene3d_camera_make(
     float center_x,
     float center_y,
@@ -21,6 +29,9 @@ render_scene3d_camera render_scene3d_camera_make(
     float span_height
 );
 CF_V3 render_scene3d_project(const render_scene3d_camera *camera, CF_V3 world);
+/* Clip space back to offsets from the eye. Leaving out the eye's position
+ * keeps view rays precise however far the eye is from the origin. */
+CF_M4x4 render_scene3d_eye_rays(const render_scene3d_camera *camera);
 CF_Ray3 render_scene3d_ray(const render_scene3d_camera *camera, CF_V2 ndc);
 bool render_scene3d_ground(const render_scene3d_camera *camera, CF_V2 ndc, CF_V2 *game);
 /* Rotated visual bounds; corner bits select positive X, Z and Y respectively. */

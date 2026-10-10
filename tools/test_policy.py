@@ -22,15 +22,12 @@ NATIVE = {
     ('--tilemap-project',): 'Reviewed first CPU measurement: fixed sibling Celeste project, pinned local git baseline56ca9d48<=64KiB, Room<=16KiB, Level<=4KiB,1472cells230oldtiles/fiveactors, three owned controller children<=10s each including two headless simulation frames<=15entities, no GPU/network; shared60s',
     ('--tilemap',): 'Independently reviewed seven fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, one <=4KiB KDL and 64x16 PNG preparation, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',
     ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
-    ('--webgpu-staging',): 'Reviewed C-owned isolated headless Chrome: one64x64quad for120 production-main-loop frames, peak64MiB staging/reuse assertions, postdestroy orphan drain<=1s within startup+execution55s/shared60s; docs/testing.md',
+    ('--webgpu-staging',): 'Reviewed C-owned isolated headless Chrome: one64x64quad for120 frames, peak64MiB staging/reuse, two pending-readback ownership checks, allocator restore before callback drain, one app recreation with stale loss, one validation error and real device loss; callback phases<=1s within startup+execution55s/shared60s; docs/testing.md',
     ('--studio-graph-visibility',): 'Reviewed actual installed Studio graph visibility, scene draft history and tilemap viewport bounds/layer picking; two temporary entities and four CPU picks, disposable three-file fixture and isolated prefs, ten hidden 1920x1080 frames at fixed 1/60, shared60s',
     ('--studio-source-edit',): 'Reviewed actual installed Studio edit/undo/redo, disposable3file212byteproject+isolatedprefs, fourhidden1920x1080frames, shared60s',
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
     ('--player-installed-space-cadet-sljit',): 'Pinned installed player SLJIT, four hidden1280x720frames, exact8resources, shared60seconds',
-    ('--studio-starter-startup',): 'Reviewed first measurement: own empty starter, actual Studio shell, two hidden1920x1080 frames, fixed dt; agent exact build/resource provenance and UI diagnostics required, whole process60s',
-    ('--player-space-cadet-vm',): 'Reviewed first GPU measurement: fixed prepared SpaceCadet UI/font manifest, VM, four hidden 1280x720 frames at fixed dt, whole process under 60 seconds; tools/agent.py preflight required',
-    ('--player-space-cadet-sljit',): 'Reviewed first GPU measurement: fixed prepared SpaceCadet UI/font manifest, SLJIT, four hidden 1280x720 frames at fixed dt, whole process under 60 seconds; tools/agent.py preflight required',
     ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
     ('--viewport-resize',): 'Reviewed hidden 64x64 app: an engine viewport takes its first requested size at once and later sizes after two draws; GPU; docs/testing.md',
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
@@ -38,119 +35,78 @@ NATIVE = {
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
     ('--material-ramps',): 'Reviewed hidden 64x64 app: four color ramp table cases through 2D and material raster shaders; GPU; docs/testing.md',
     ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
-    ('--prepare-corpora-sljit', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive six-project SLJIT preparation, shared 256 sources/8 MiB, compilation only, no execution/GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
     ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and six refusals, CPU only; docs/testing.md',
     ('--asset-refactor',): 'One asset rename case: four in-memory prototypes, planned rewrites of a nested child and of a child that an including prototype adds, no files, CPU only; docs/testing.md',
     ('--source-edit',): 'Independently reviewed nine fixed source-edit cases, tiny inputs and checked transactions including extraction/inline/signature/binding/capture and layout, no files/world/runtime/GPU; docs/testing.md',
-    ('--source-session',): 'First supervised measurement; independently reviewed four tiny source session cases and fixed KDL checkpoint/merge, at most two sources per project, no engine step/render/window/process; docs/testing.md',
     ('--ecs-query-benchmark',): 'Reviewed three fixed ECS query workloads, 4096 entities x 2000 passes each, CPU only; run through benchmark_trials',
     ('--system-schedule',): 'First supervised measurement; independently reviewed fixed dependency/order cases, 62 small engine frames and serial/parallel 128 entities x 20 frames, CPU only; docs/testing.md',
     ('--source-presentation',): 'Independently reviewed five small source/palette cases, graph ownership/layout, invalid drafts, callable-local scope and readable formulas with retained calls/effects, plus two component presentation cases on two in-memory documents, CPU only; docs/testing.md',
-    ('--prepare-corpora', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive project preparation, shared 256 sources/8 MiB, BYTECODE compilation only, CPU; docs/testing.md',
-    ('--semantic-corpora', '.chibi/architecture/semantic-corpus/projects.txt'): 'First supervised measurement; independently reviewed exhaustive 6-project/87-source semantics, shared 256 sources/8 MiB executable-text ceiling, CPU only; docs/testing.md',
-    ('--semantic-corpus', '.chibi/architecture/semantic-content.txt', 'content'): 'First supervised measurement; independently reviewed exhaustive 29-file project semantics, capped 256 sources/8 MiB, CPU only; docs/testing.md',
-    ('--execution-request-lifecycle',): 'First supervised measurement; independently reviewed 1024 tiny host-wait iterations and lifecycle/retention/FIFO cases, CPU only; docs/testing.md',
-    ('--authoring-preview-lifecycle',): 'First supervised measurement; independently reviewed small in-memory live/update/prototype contracts, 3 CPU engine frames; docs/testing.md',
-    ('--ui-tab-list',): '1.743s; reviewed CPU-only tab input/layout contracts, 10 existing checks; docs/testing.md',
-    ('--iframe-updates',): '2.379s; CUT61 targeted CPU contracts, 3 pico cases/385 assertions and 12 existing checks; docs/research/cut61-iframe-profile/finish/README.md',
-    ('--kit-documents',): '0.469–0.551s; CUT61 7b0389ea, 10 checks and 49 frames; docs/research/cut61-iframe-profile/finish/README.md',
-    ('--compiled-behaviors',): '47.2s; docs/testing.md selector evidence',
-    ('--automation-authoring-readonly',): 'First supervised measurement; independently reviewed finite code/navigation file contracts and mutation rejection; docs/testing.md',
-    ('--automation-search',): '52.728s; source metadata and host event contracts; docs/testing.md selector evidence',
-    ('--automation-profile-scenario-inputs',): '15.8s; docs/testing.md selector evidence',
-    ('--editor-commands',): '12.5s; docs/testing.md selector evidence',
-    ('--material-thermal',): '4.8s; docs/testing.md selector evidence',
-    ('--material-mpm',): '3.6s; docs/testing.md selector evidence',
-    ('--whole-function-audit',): '1.3s; docs/testing.md baseline',
-    ('--graph-optimize',): '0.5s; docs/testing.md baseline',
-    ('--studio-documents', 'tabs'): '8s; PR164 focused evidence',
-    ('--studio-shell', 'document-tabs'): '9.2s; independently reviewed authored tab fixture, 17 checks, Debug ASan+UBSan with native Metal; docs/testing.md',
-    ('--studio-shell', 'readout_follows_camera'): '3s; PR164 focused evidence',
-    ('--bench-arena-scene-scale', '2048', '240', '0'): '1.4s; Arena scaling evidence',
 }
 TOOLS = {
-    'tilemap-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--tilemap-project'],
-    'tilemap': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--tilemap'],
+    'tilemap-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--tilemap-project'],
+    'tilemap': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--tilemap'],
     'studio-graph-visibility': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-graph-visibility'],
     'studio-source-edit': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-source-edit'],
     'compile-installed-space-cadet': [sys.executable, str(ROOT / 'tools/agent.py'), 'test', '--', '--compile-installed-space-cadet'],
     'player-installed-space-cadet-vm': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-vm'],
     'player-installed-space-cadet-sljit': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-sljit'],
-    'studio-starter-startup': [str(ROOT / 'build-verify/sdk-migration/external-studio-build/bin/chibi-dev'),
-                              '--project-root', '/Users/cwaldner/Personal/chibi-studio/projects/starter',
-                              '--headless', '--frames', '2', '--fixed-dt', '0.0166667'],
-    # Reviewed first GPU measurements: exact prepared SpaceCadet, four hidden frames each.
-    'player-space-cadet-vm': [str(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/bin/chibi-player'),
-                             str(ROOT / '.chibi/architecture/player-space-cadet/project.chibip'),
-                             '--backend', 'vm', '--hidden', '--frames', '4', '--fixed-dt', '0.0166667'],
-    'player-space-cadet-sljit': [str(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/bin/chibi-player'),
-                                str(ROOT / '.chibi/architecture/player-space-cadet/project.chibip'),
-                                '--backend', 'sljit', '--hidden', '--frames', '4', '--fixed-dt', '0.0166667'],
     # Existing admitted source-edit and shader persistence cases, now installed SDK consumers.
-    'source-edit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-edit'],
+    'source-edit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-edit'],
+    # Catalog coverage of the all-features fixture, and four frames of each of its scenes.
+    'feature-coverage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                         '--feature-coverage', str(ROOT / 'test/fixtures/feature-coverage')],
     # One new-asset scaffolding case in a temporary content folder.
-    'new-asset': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--new-asset'],
+    'new-asset': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--new-asset'],
     # One asset rename case over in-memory prototypes.
-    'asset-refactor': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--asset-refactor'],
-    # Eighteen validate_project cases, each a scaffolded temporary project and a few built chibi_ctl runs.
-    'validate-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--validate-project',
-                         str(ROOT / 'build/bin/chibi_ctl')],
-    'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--shader-parameters-prepared'],
-    # Same bounded six unique-project manifests as the admitted native-driver selectors.
-    'semantic-corpora': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--semantic-corpora', '.chibi/architecture/semantic-corpus/projects.txt'],
-    'prepare-corpora': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--prepare-corpora', '.chibi/architecture/semantic-corpus/projects.txt'],
-    'prepare-corpora-sljit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--prepare-corpora-sljit', '.chibi/architecture/semantic-corpus/projects.txt'],
+    'asset-refactor': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-refactor'],
+    # The validate_project cases, each a scaffolded temporary project and a few runs of an
+    # unsanitized chibi_ctl, since sanitizers make its starts too slow for one deadline.
+    'validate-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--validate-project',
+                         str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
+    # Two validate_project cases whose projects read past the shared prototype expansion
+    # budget, against the same unsanitized chibi_ctl.
+    'prototype-expansion': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--prototype-expansion',
+                            str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
+    'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-parameters-prepared'],
     # Reviewed fixed ECS query workloads; compare builds through benchmark_trials.
-    'ecs-query-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--ecs-query-benchmark'],
+    'ecs-query-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query-benchmark'],
     # Reviewed four fixed scheduling cases, including verified source cohorts and mixed phase membership.
-    'system-schedule': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--system-schedule'],
+    'system-schedule': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--system-schedule'],
     # Same admitted eleven fixed source-system cases through installed public consumer, VM and SLJIT.
-    'source-systems': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-systems'],
+    'source-systems': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-systems'],
     # Reviewed six tiny immutable module generations, two backend worlds, aggregate/string ownership.
-    'persistent-store': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--persistent-store'],
+    'persistent-store': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--persistent-store'],
     # Reviewed three source presentation/default/layout and actual native palette composition cases, CPU only.
-    'source-presentation': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-presentation'],
+    'source-presentation': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-presentation'],
     # Reviewed fixed SDK/player install, managed migration and packaging fixtures; one shared deadline.
-    'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--package'],
+    'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
     # Reviewed nominal alias ownership and nested error-source case, both backends, bounded 16 preparations.
-    'whole-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--whole-alias'],
+    'whole-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--whole-alias'],
     # Four reviewed public integer edge/flags/live-register/budget cases; 28k fixed calls, 46 tiny functions.
-    'whole-integer': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--whole-integer'],
+    'whole-integer': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--whole-integer'],
     # One reviewed public scalar conversion case; 18 supported pairs, 12 values, both backends.
-    'whole-conversion': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--whole-conversion'],
+    'whole-conversion': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--whole-conversion'],
     # One reviewed public scalar Select case; six widths, two conditions, both backends.
-    'whole-select': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--whole-select'],
-    # Same admitted primitive math fixture under the debugger for its observed SIGSEGV.
-    'whole-math-debug': ['/usr/bin/lldb', '-b', '-o', 'settings set target.disable-aslr false',
-                         '-o', 'run', '-k', 'thread backtrace all', '-k', 'quit', '--',
-                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--whole-math'],
-    # Same admitted owned Tick fixture under a bounded on-crash debugger for the observed SIGSEGV.
-    'owned-tick-debug': ['/usr/bin/lldb', '-b', '-o', 'settings set target.disable-aslr false',
-                         '-o', 'run', '-k', 'thread backtrace all', '-k', 'quit', '--',
-                         str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--owned-tick'],
+    'whole-select': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--whole-select'],
     # Two reviewed bounded primitive math/ABI cases; 4594 invocations, VM and SLJIT.
-    'whole-math': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--whole-math'],
+    'whole-math': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--whole-math'],
     # Two reviewed owned snapshot cases; four value kinds, three owners/frames, both backends.
-    'owned-tick': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--owned-tick'],
+    'owned-tick': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--owned-tick'],
     # Two reviewed registry service rebinding and incremental attachment cases; four owners.
-    'parallel-tick': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--parallel-tick'],
+    'parallel-tick': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--parallel-tick'],
     # Three reviewed source reaction/rhythm/particle cases; fixed waits/emission and both backends.
-    'source-native-features': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-native-features'],
+    'source-native-features': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-native-features'],
     # Five reviewed source math/query cases; numeric samples, nested membership,
     # ten fractional rectangle/point poses with live declared-field/stale-handle edits,
     # 3D collider queries and one two-cell tilemap with two bounded dispatches per VM/SLJIT backend.
-    'source-native-numeric-queries': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-native-numeric-queries'],
+    'source-native-numeric-queries': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-native-numeric-queries'],
     # One reviewed source material case; four payload types, two backends, CPU shader stage only.
-    'source-native-material': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--source-native-material'],
-    # Independently reviewed extracted SpaceCadet: 35 files/144658 bytes, eight sources, no Begin/window/GPU.
-    'compile-space-cadet': [str(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/bin/chibi-compile'),
-                            '--project-root', '/Users/cwaldner/Personal/chibi-space-cadet',
-                            '--output', str(ROOT / '.chibi/architecture/player-space-cadet/project.chibip')],
+    'source-native-material': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-native-material'],
     # Reviewed CPU-only renderer cases: typed transaction/lifetime, sprite image sets, sky face layout
     # and halves, sky irradiance, the split-sum table, sky publication, and pure desktop key/stick
     # mapping; no window, GPU, fonts or files.
-    'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--render-resources'],
+    'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--render-resources'],
     # Two reviewed hidden-app 64x64 cases: Cute's interior border on a circle and a diamond,
     # opaque and translucent, through the instanced and tiled draw paths. The agent runs the
     # render-enabled test_tools of its selected build directory.
@@ -172,68 +128,84 @@ TOOLS = {
     # counted among a raster batch's samplers.
     'material-ramps': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-ramps'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
-    'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene-prepared'],
+    'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-prepared'],
     # Five independently reviewed model/shader/mesh preparation, persistence and lifetime cases; no files, world or GPU.
-    'model-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--model-runtime'],
+    'model-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--model-runtime'],
     # One independently reviewed finite constant-folding case through the public authoring interface.
-    'graph-authoring': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--graph-authoring'],
+    'graph-authoring': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--graph-authoring'],
     # One independently reviewed full native catalog consumer, generated ABI call and typed observer metadata.
-    'native-catalog': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--native-catalog'],
+    'native-catalog': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--native-catalog'],
     # Two independently reviewed public graph ownership/topology cases, no process/world/GPU.
-    'graph-model': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--graph-model'],
+    'graph-model': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--graph-model'],
     # One independently reviewed bounded native comparison/conversion ABI and ownership case.
-    'native-values': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--native-values'],
+    'native-values': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--native-values'],
     # Two independently reviewed finite formatting and owned-value cases, no world/process/GPU.
-    'text-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--text-format'],
+    'text-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--text-format'],
     # One reviewed in-tree Box3D package case: a falling box comes to rest and three raycasts, CPU only.
-    'box3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--box3d'],
+    'box3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--box3d'],
     # Four reviewed in-tree Radiance .hdr cases: flat and run-length decoding, malformed files,
     # preparation from mounted content and import without replacement; one temporary folder, no GPU.
-    'sky-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--sky-files'],
+    'sky-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--sky-files'],
     # Nine reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, sound requests, declared components, per-step action state and recorded taps, and held actions across a pause.
-    'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--native'],
+    'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--native'],
     # 2D physics through ECS and Contact Begin events: motion, contacts, masks, queries and parallel collection.
-    'physics': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--physics'],
+    'physics': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--physics'],
     # 3D physics through ECS and Contact 3D events: shapes, gravity, velocities, teleports, followers, sensors, interpolation and parallel steps.
-    'physics3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--physics3d'],
+    'physics3d': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--physics3d'],
     # Transform hierarchy propagation: 2D and 3D composition, cascade order, moves and reparenting.
-    'transforms': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--transforms'],
-    'ui-authoring': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--ui-authoring'],
-    'prototype-document': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--prototype-document'],
+    'transforms': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--transforms'],
+    'ui-authoring': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--ui-authoring'],
+    'prototype-document': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--prototype-document'],
     # Five reviewed bounded field cases, including atomic typed argument codec handoff.
-    'field-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--field-runtime'],
+    'field-runtime': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--field-runtime'],
     # Reviewed fixed in-memory source identity/refactor and transactional publication cases.
-    'language-navigation': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--navigation'],
-    'language-publication': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'), '--publication'],
+    'language-navigation': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--navigation'],
+    'language-publication': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--publication'],
     # Two reviewed scene lifecycle cases, isolated public SDK consumer, no GPU.
-    'runtime-scene': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--scene'],
+    'runtime-scene': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene'],
     # Reviewed whitespace-only CST formatter, finite cases and bounded production source manifest.
-    'language-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'),
+    'language-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--format', '--corpus',
-                        str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'corpus.txt')],
+                        str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'corpus.txt')],
     # Reviewed finite producer process and runtime-only consumer with one shared deadline.
-    'language-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'),
+    'language-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                           '--prepared',
-                          str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language')],
+                          str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language')],
     # Reviewed public module consumer; finite ECS/behavior lifecycle on VM and SLJIT.
-    'language-headless': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'),
+    'language-headless': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                          '--headless'],
     # Reviewed source-to-runtime event/system/binding cases with finite supplied-time steps.
-    'language-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'),
+    'language-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--program'],
     # Reviewed finite public builder/VM/native contracts and verifier rejection cases.
-    'language-execution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'),
+    'language-execution': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                            '--execution'],
     # Reviewed finite semantic contracts with inline sources and an immutable catalog.
-    'language-semantic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'),
+    'language-semantic': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                           '--semantic'],
     # Reviewed finite C syntax cases and a corpus capped at 256 files/8 MiB.
-    'language': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'test_language'),
-                 '--syntax', '--corpus', str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build-language') / 'corpus.txt')],
-    'web-storage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--web-storage'],
-    'webgpu-staging': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--webgpu-staging'],
-    'native-tools': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools')],
+    'language': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                 '--syntax', '--corpus', str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'corpus.txt')],
+    'web-storage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--web-storage'],
+    'webgpu-staging': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--webgpu-staging'],
+    'native-tools': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools')],
 
+}
+# Every admitted selector of each built driver, run under one shared deadline.
+GROUPS = {
+    'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'physics3d', 'transforms',
+               'box3d', 'sky-files', 'tilemap',
+               'runtime-scene', 'scene-prepared', 'render-resources', 'persistent-store',
+               'whole-alias', 'whole-integer', 'whole-conversion', 'whole-select', 'whole-math',
+               'owned-tick', 'parallel-tick', 'source-native-features',
+               'source-native-numeric-queries', 'source-native-material', 'source-presentation',
+               'system-schedule', 'source-systems', 'source-edit', 'new-asset', 'asset-refactor',
+               'validate-project', 'prototype-expansion', 'shader-parameters-prepared',
+               'language-prepared', 'ecs-query-benchmark', 'feature-coverage'],
+    'language': ['language', 'language-semantic', 'language-execution', 'language-program',
+                 'language-headless', 'language-format', 'language-navigation', 'language-publication',
+                 'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
+                 'graph-authoring', 'model-runtime'],
 }
 NOTICE = ('TEMPORARY TEST QUARANTINE: full native/render and '
           'unadmitted checks DISABLED, NOT PASSED. See docs/testing.md#temporary-60-second-policy.')
@@ -409,10 +381,16 @@ def supervise(commands):
                 return result if result > 0 else 128 - result
         return 0
     finally:
-        # The caller can reach the shared deadline and send SIGTERM while we
-        # start cleanup. Protect discovery and polling before either can run.
-        signal.signal(signal.SIGTERM, signal.SIG_IGN)
-        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        # The caller reaches the same deadline and sends SIGTERM as we start
+        # cleanup. signal.signal runs a pending handler before it installs
+        # the new one, so retry until discovery and polling are protected.
+        while True:
+            try:
+                signal.signal(signal.SIGTERM, signal.SIG_IGN)
+                signal.signal(signal.SIGINT, signal.SIG_IGN)
+                break
+            except (KeyboardInterrupt, TerminationRequested):
+                pass
         if subreaper:
             cleanup_children(read_children)
         elif child is not None:
@@ -463,7 +441,7 @@ def run_commands(commands, seconds=LIMIT, env=None, output=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['inventory', 'disabled', 'unit', 'short', 'tool', 'admit', 'native', 'admit-env', 'native-env', 'agent-env', 'studio-selectors', '_supervise'])
+    parser.add_argument('action', choices=['inventory', 'disabled', 'unit', 'short', 'tool', 'group', 'admit', 'native', 'admit-env', 'native-env', 'agent-env', '_supervise'])
     parser.add_argument('arguments', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     arguments = args.arguments
@@ -479,7 +457,8 @@ def main():
             print('ADMITTED (60s ceiling): python3 tools/test_policy.py tool', name)
         print('ADMITTED: make test / test-short (C execution-policy units, one deadline)')
         print('ADMITTED: make test-tools (all C tooling and process integrations, one deadline)')
-        print('ADMITTED: make test-studio-selectors (C CLI checks, one deadline)')
+        for name in GROUPS:
+            print(f'ADMITTED (60s ceiling): python3 tools/test_policy.py group {name}')
         print('Retired script suites are absent. Other native commands remain quarantined; see docs/test-quarantine.md.')
         return 0
     if args.action == 'disabled':
@@ -492,15 +471,16 @@ def main():
         if args.action == 'unit':
             command.append('--unit')
         return run_commands([command])
-    if args.action == 'studio-selectors':
-        if len(arguments) != 2:
-            parser.error('studio-selectors requires the C tooling driver and test_suite binary')
-        return run_commands([[str(Path(arguments[0]).resolve()), '--studio-selectors', str(Path(arguments[1]).resolve())]])
+    if args.action == 'group':
+        if len(arguments) != 1 or arguments[0] not in GROUPS:
+            parser.error('unknown test group')
+        return run_commands([TOOLS[name] for name in GROUPS[arguments[0]]])
     if args.action == 'tool':
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
-        if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'player-space-cadet-vm', 'player-space-cadet-sljit', 'studio-starter-startup', 'studio-source-edit', 'studio-graph-visibility',
-                            'interior-border', 'viewport-resize', 'sdf-visibility', 'scene3d', 'scene3d-gles',
+        if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
+                            'studio-graph-visibility', 'interior-border', 'viewport-resize', 'sdf-visibility',
+                            'scene3d', 'scene3d-gles',
                             'material-ramps'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])

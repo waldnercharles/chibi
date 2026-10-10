@@ -76,7 +76,8 @@ State lives in `data-*` attributes (`data-open`, `data-pressed`, `data-highlight
 switch on hover within a menubar and open submenus after 100 ms. Tooltips show
 after 500 ms and stay warm for 400 ms within a group. A tooltip holds a label, a
 shortcut and an optional description that wraps; in a zoomed canvas it keeps
-its size on screen. Number fields repeat held
+its size on screen. An element marked `data-tip-clipped` shows its own text as
+a tooltip only while that text is cut off, unless an ancestor has its own tip. Number fields repeat held
 steps after 400 ms, then every 60 ms. Popups close on Escape or an outside press,
 the top one first: `src/ui/popover.c` keeps one stack per context for authored
 popovers (`<div popover>`, opened by `popovertarget`), the kit's popups and the
@@ -284,7 +285,7 @@ icons, or descriptions, and `kit_choice` for simple named options.
 
 - Pick mode (⇧⌘C, Inspect Element, or the Inspector's Pick) highlights the element under the pointer; a click selects it and Escape ends it. Nothing else takes the pointer while picking.
 - The highlight fills the margin, border and padding bands and the content box in DevTools' colors: margin `#f6b26b`, border `#ffe599`, padding `#93c47d` and content `#6fa8dc`, about two thirds opaque. A label names the element and its size.
-- Picks look through a surface into the document it shows: the graph canvas's, and the game UI in the Scene through the view zoom's crop. Text and `pointer-events: none` content, such as a HUD's, are picked by their boxes.
+- Picks look through a surface into the document it shows: the graph canvas's, and the game UI in the Scene, and the UI Canvas through its page zoom's crop. Text and `pointer-events: none` content, such as a HUD's, are picked by their boxes.
 - The tree reveals a pick. An element's only text shows on its row, and text nodes show as their text. Hovering a row highlights its element.
 - Styles lists the declarations that win, inline first and then by rule, most specific first, with each rule's file and line (`ui_style_origin`). Inherited declarations follow under the ancestor that gives them. RmlUi keeps only winning declarations, so nothing is struck through as overridden.
 - Force state holds `:hover`, `:active`, `:focus` and `:checked` on the selection until it is cleared.

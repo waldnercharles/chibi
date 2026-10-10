@@ -5,6 +5,25 @@ A scene with `presentation "3d"` draws through `render/scene3d.c`. Entities with
 x/z and `elevation` is the center height. The renderer writes scene-linear RGBA16F
 into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
 
+## Camera
+
+A `GameCamera` with a `GameTransform3D` looks along its global -Z with +Y up, so
+its local +X points right in the image. Its `offset` moves the eye across the
+ground (gameplay y is world z), as it moves an overhead camera's target. One
+with only a `GameTransform` frames its span from 10 degrees off overhead. `fov`
+is the vertical field of view in radians, from 0.00001 degrees (Unity's
+narrowest) to below 180, and zero picks 35 degrees. `near_clip` and `far_clip`
+are set together, with far at most a million times near, or both left at zero,
+which scales them with the span's height: far is at least 200, and near stays
+in front of the framed target. Wider ranges round the far plane toward infinity
+in float depth, which breaks picking and fog. The span's aspect shapes the image
+either way. Panning or zooming the
+viewport returns it to the overhead framing. Fog conceals view rays that never
+reach the ground ahead, such as those above the horizon, as it does ground past
+its grid. Picking, ground queries and fog unproject view rays about the eye and
+start them at the eye the camera keeps, so they stay precise however far the
+eye is from the origin.
+
 ## Lighting
 
 - **Directional Light** (`GameDirectionalLight`): color, intensity and the world
@@ -192,7 +211,12 @@ has them. A scene without a valid rhythm clock draws with the beat at rest.
 ## Tests
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d` renders a box or a floor in a
-hidden 64x64 app. It checks ambient, the directional light, the one-light limit
+hidden 64x64 app. It checks cameras looking along their Transform3D, field of
+view and clip distances, the lenses a camera rejects, ground rays at the widest
+clip range, panning dropping a lens, fog concealing rays that miss the ground,
+and ground rays and fog from an eye far from the origin, turned off the axes
+too. It checks ambient, the
+directional light, the one-light limit
 (hidden lights left out), drawing without a rhythm clock, both tone maps, auto
 exposure's geometric mean, background rejection, easing (including slow easing
 finer than a half-float step), snapping and settings checks, and sun shadows: a

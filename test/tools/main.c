@@ -36,8 +36,8 @@ void test_tool_ecs_hierarchy();
 void test_tool_ecs_world();
 void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
-void test_tool_studio_selectors(const char *binary);
 void test_tool_validate_project(const char *binary);
+void test_tool_prototype_expansion(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
 void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
@@ -83,6 +83,9 @@ int run_language_prepare_corpora(const char *);
 int run_language_prepare_corpora_sljit(const char *);
 void test_source_native_numeric_queries();
 void test_source_native_material_features();
+#endif
+#ifdef CHIBI_TEST_FEATURE_COVERAGE
+int run_feature_coverage(const char *project);
 #endif
 #ifdef CHIBI_TEST_BOX3D
 void test_box3d();
@@ -135,6 +138,7 @@ int main(int argc, char **argv)
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
+    bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
          render_resources = false, interior_border = false,
@@ -148,6 +152,10 @@ int main(int argc, char **argv)
          system_schedule = false, source_systems = false, source_edit = false,
          new_asset = false, asset_refactor = false;
     int corpus = 0;
+    bool coverage = false;
+#ifdef CHIBI_TEST_FEATURE_COVERAGE
+    coverage = argc == 3 && !strcmp(argv[1], "--feature-coverage");
+#endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     whole_math = argc == 2 && !strcmp(argv[1], "--whole-math");
     whole_integer = argc == 2 && !strcmp(argv[1], "--whole-integer");
@@ -202,25 +210,26 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !shader_parameters && !source_edit && !new_asset &&
-        !asset_refactor && !tilemap && !tilemap_project && !package && !unit &&
-        !web_storage && !webgpu_staging && !query_benchmark && !prepared &&
-        !read && !scene && !scene_prepared && !native && !native_values &&
-        !native_catalog && !physics && !physics3d && !transforms &&
-        !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !scene3d && !material_ramps && !box3d && !sky_files &&
-        !persistent_store && !whole_alias && !whole_math && !whole_integer &&
-        !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
-        !source_features && !source_numeric && !source_material &&
-        !source_presentation && !system_schedule && !source_systems &&
-        !validate_project && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
+    if (argc != 1 && !corpus && !coverage && !shader_parameters &&
+        !source_edit && !new_asset && !asset_refactor && !tilemap &&
+        !tilemap_project && !package && !unit && !web_storage &&
+        !webgpu_staging && !query_benchmark && !prepared && !read && !scene &&
+        !scene_prepared && !native && !native_values && !native_catalog &&
+        !physics && !physics3d && !transforms && !render_resources &&
+        !interior_border && !viewport_resize && !sdf_visibility && !scene3d &&
+        !material_ramps && !box3d && !sky_files && !persistent_store &&
+        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
+        !whole_select && !owned_tick && !parallel_tick && !source_features &&
+        !source_numeric && !source_material && !source_presentation &&
+        !system_schedule && !source_systems && !validate_project && !expansion) {
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
             "--web-storage | "
             "--webgpu-staging | "
             "--ecs-query-benchmark | "
-            "--studio-selectors test_suite | --validate-project chibi_ctl | "
+            "--validate-project chibi_ctl | "
+            "--prototype-expansion chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
@@ -241,7 +250,7 @@ int main(int argc, char **argv)
             "--shader-parameters-prepared | "
             "--semantic-corpora "
             "manifest | --prepare-corpora manifest | --prepare-corpora-sljit "
-            "manifest]\n",
+            "manifest | --feature-coverage project]\n",
             argv[0]
         );
         return 2;
@@ -249,14 +258,19 @@ int main(int argc, char **argv)
     tool_init();
     pu_display_time(true);
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = corpus || shader_parameters || source_edit ||
-                            new_asset || asset_refactor || system_schedule ||
-                            source_systems || persistent_store ||
+    source_runtime_active = corpus || coverage || shader_parameters ||
+                            source_edit || new_asset || asset_refactor ||
+                            system_schedule || source_systems || persistent_store ||
                             source_presentation || whole_alias || whole_math ||
                             whole_integer || whole_conversion || whole_select ||
                             owned_tick || parallel_tick || source_features ||
                             source_numeric || source_material;
     if (source_runtime_active) {
+#ifdef CHIBI_TEST_FEATURE_COVERAGE
+        if (coverage) {
+            return run_feature_coverage(argv[2]);
+        }
+#endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
         if (corpus) {
             return corpus == 1 ? run_language_semantic_corpora(argv[2])
@@ -395,8 +409,8 @@ int main(int argc, char **argv)
         test_tool_prepared_runtime(argv[2]);
     } else if (validate_project) {
         test_tool_validate_project(argv[2]);
-    } else if (argc == 3) {
-        test_tool_studio_selectors(argv[2]);
+    } else if (expansion) {
+        test_tool_prototype_expansion(argv[2]);
     } else if (unit) {
         test_tool_execution_policy();
     } else if (web_storage) {

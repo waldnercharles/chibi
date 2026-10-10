@@ -350,7 +350,8 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   `TEXCOORD_0`; an image that is not a PNG or JPEG of 1 to 2048 pixels a side;
   a material factor beyond float range; primitives that are not triangles; a
   buffer or image named by an absolute path or a scheme other than `data:`; a
-  model over 256 MiB; and a mesh past the `.mesh` limits above.
+  model over 256 MiB; a mesh past the `.mesh` limits above; and a content
+  folder, or a folder in it the import writes to, that is a symbolic link.
 - **Warned and left out**: vertex colors, morph targets, skins, animations,
   cameras, lights and other extensions the model uses. Double-sided
   materials draw single-sided.

@@ -174,9 +174,8 @@ char *new_asset_text(new_asset_kind kind, const char *name)
     return NULL;
 }
 
-/* A folder, not a symbolic link to one, so a file made inside it stays in
- * the project; like the catalog, writes never follow a link out of it. */
-static bool real_folder(const char *path, char *error, size_t size)
+/* Like the catalog, writes never follow a link out of the project. */
+bool new_asset_real_folder(const char *path, char *error, size_t size)
 {
     struct stat info;
     if (lstat(path, &info) != 0) {
@@ -197,7 +196,7 @@ char *new_asset_create(const char *content, new_asset_kind kind, const char *nam
         errno = EINVAL;
         return NULL;
     }
-    if (!real_folder(content, error, size)) {
+    if (!new_asset_real_folder(content, error, size)) {
         return NULL;
     }
     size_t bytes = strlen(content) + strlen("shader-libraries") + strlen(name) + 16;
@@ -208,7 +207,7 @@ char *new_asset_create(const char *content, new_asset_kind kind, const char *nam
         free(path);
         return NULL;
     }
-    if (!real_folder(path, error, size)) {
+    if (!new_asset_real_folder(path, error, size)) {
         free(path);
         return NULL;
     }

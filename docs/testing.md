@@ -556,18 +556,19 @@ mesh a bake can write with one more triangle refused, and a model export whose
 one temporary folder and passes 9,910 assertions in 8.4 seconds under
 ASan/UBSan with leak checks, 8.0 of them writing and reading the largest mesh,
 without processes or GPU.
-`model-import` selects eleven in-tree glTF import cases: the image, Standard
+`model-import` selects twelve in-tree glTF import cases: the image, Standard
 materials, mesh and prototype a `.gltf` writes, each once, byte for byte the
 same from a `.glb`, and nothing for a material only a hidden node uses; names
 made unique, ignoring case, and cut to 63 bytes; material names for a model
 named as long as a name may be; an import that would replace a file, or fails
-partway, leaves the content as it was; refused extensions, texture transforms,
-second UV sets, factors beyond float range, images and primitives; unreadable
-files, names and buffers; unlit materials that keep only their base color; the
+partway, leaves the content as it was; content folders and folders in them that
+are links, which it refuses; refused extensions, texture transforms, second UV
+sets, factors beyond float range, images and primitives; unreadable files,
+names and buffers; unlit materials that keep only their base color; the
 warnings for what it leaves out, and the vertices only a left-out triangle
 used; and tangent frames whose OpenGL green tilts up the image: generated,
 authored, turned, mirrored by a node, flat, and flattened onto the ground by a
-parent. It needs a compiler build, uses one temporary folder and passes 107
+parent. It needs a compiler build, uses one temporary folder and passes 115
 assertions under ASan/UBSan with leak checks, without processes or GPU.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops

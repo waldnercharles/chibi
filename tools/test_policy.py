@@ -22,7 +22,7 @@ NATIVE = {
     ('--tilemap-project',): 'Reviewed first CPU measurement: fixed sibling Celeste project, pinned local git baseline56ca9d48<=64KiB, Room<=16KiB, Level<=4KiB,1472cells230oldtiles/fiveactors, three owned controller children<=10s each including two headless simulation frames<=15entities, no GPU/network; shared60s',
     ('--tilemap',): 'Independently reviewed seven fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, one <=4KiB KDL and 64x16 PNG preparation, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',
     ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
-    ('--webgpu-staging',): 'Reviewed C-owned isolated headless Chrome: one64x64quad for120 production-main-loop frames, peak64MiB staging/reuse assertions, postdestroy orphan drain<=1s within startup+execution55s/shared60s; docs/testing.md',
+    ('--webgpu-staging',): 'Reviewed C-owned isolated headless Chrome: one64x64quad for120 frames, peak64MiB staging/reuse, two pending-readback ownership checks, allocator restore before callback drain, one app recreation with stale loss, one validation error and real device loss; callback phases<=1s within startup+execution55s/shared60s; docs/testing.md',
     ('--studio-graph-visibility',): 'Reviewed actual installed Studio graph visibility, scene draft history and tilemap viewport bounds/layer picking; two temporary entities and four CPU picks, disposable three-file fixture and isolated prefs, ten hidden 1920x1080 frames at fixed 1/60, shared60s',
     ('--studio-source-edit',): 'Reviewed actual installed Studio edit/undo/redo, disposable3file212byteproject+isolatedprefs, fourhidden1920x1080frames, shared60s',
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
@@ -53,6 +53,9 @@ TOOLS = {
     'player-installed-space-cadet-sljit': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-sljit'],
     # Existing admitted source-edit and shader persistence cases, now installed SDK consumers.
     'source-edit': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-edit'],
+    # Catalog coverage of the all-features fixture, and four frames of each of its scenes.
+    'feature-coverage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                         '--feature-coverage', str(ROOT / 'test/fixtures/feature-coverage')],
     # One new-asset scaffolding case in a temporary content folder.
     'new-asset': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--new-asset'],
     # One asset rename case over in-memory prototypes.
@@ -202,7 +205,7 @@ GROUPS = {
                'source-native-numeric-queries', 'source-native-material', 'source-presentation',
                'system-schedule', 'source-systems', 'source-edit', 'new-asset', 'asset-refactor',
                'validate-project', 'prototype-expansion', 'shader-parameters-prepared',
-               'language-prepared', 'ecs-query-benchmark'],
+               'language-prepared', 'ecs-query-benchmark', 'feature-coverage'],
     'language': ['language', 'language-semantic', 'language-execution', 'language-program',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',

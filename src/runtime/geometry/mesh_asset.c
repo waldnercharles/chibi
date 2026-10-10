@@ -1,5 +1,6 @@
 #include "runtime/geometry/mesh_asset.h"
 
+#include "runtime/geometry/mesh_pick.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -24,6 +25,13 @@ static render_mesh_table resident;
 
 static uint64_t next_identity = 1;
 static uint64_t generation;
+
+/* The resident catalog changed, so a mesh may be gone or replaced. */
+static void changed()
+{
+    generation++;
+    render_mesh_picks_clear();
+}
 
 void render_mesh_asset_free(render_mesh_asset *asset)
 {
@@ -95,6 +103,11 @@ void render_mesh_asset_tangents(render_mesh_asset *asset)
     free(sides);
 }
 
+CF_V3 render_mesh_asset_center(const render_mesh_asset *asset)
+{
+    return cf_add_v3(cf_mul_v3_f(asset->min, .5f), cf_mul_v3_f(asset->max, .5f));
+}
+
 const render_mesh_asset *render_mesh_asset_load(const char *source, char *error, size_t size)
 {
     if (!source || strncmp(source, "content/", 8) || strstr(source, "..") ||
@@ -119,7 +132,7 @@ void render_mesh_asset_publish(const char *source, render_mesh_asset *asset)
     *loaded = (mesh_source){ .source = xstrdup(source), .asset = *asset };
     loaded->asset.identity = next_identity++;
     *asset = (render_mesh_asset){ 0 };
-    generation++;
+    changed();
     for (int i = 0; i < acount(resident.items); i++) {
         if (!strcmp(resident.items[i]->source, source)) {
             free(resident.items[i]->source);
@@ -140,7 +153,7 @@ void render_mesh_assets_clear()
         free(resident.items[i]);
     }
     afree(resident.items);
-    generation++;
+    changed();
 }
 
 uint64_t render_mesh_assets_generation()
@@ -212,7 +225,7 @@ void render_mesh_table_exchange(render_mesh_table *table)
     mesh_source **old = resident.items;
     resident.items = table->items;
     table->items = old;
-    generation++;
+    changed();
 }
 void render_mesh_table_free(render_mesh_table *table)
 {

@@ -330,7 +330,7 @@ static void isolated_part_shaders()
     model_bounds bounds;
     assert(model_program_prepare(&p, NULL, prepared, &bounds, &error));
     shader_sample_context sample = { .object_position = { 12, 0, 0 } };
-    float result[8][4];
+    float result[SHADER_OUTPUT_MAX][4];
     assert(shader_graph_eval_outputs(&distance, &sample, prepared, result, &error));
     near(result[0][0], -1);
     assert(shader_graph_eval_outputs(&resolver, &sample, prepared, result, &error));

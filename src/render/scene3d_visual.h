@@ -26,7 +26,7 @@ GameGlobalTransform2D render_scene3d_placement(
 void render_scene3d_entities(ecs_world *world, render_skip skip, ecs_entity **entities);
 typedef enum
 {
-    SCENE3D_FRAME_INVALID, /* a value is not finite, or the scale is negative */
+    SCENE3D_FRAME_INVALID, /* the frame is not finite, or the scale is negative */
     SCENE3D_FRAME_FLAT, /* flattened onto a plane, a line or a point: hidden */
     SCENE3D_FRAME_WHOLE,
 } scene3d_frame_state;

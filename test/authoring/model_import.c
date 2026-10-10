@@ -13,6 +13,7 @@
 
 #include <assert.h>
 #include <dirent.h>
+#include <errno.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -536,6 +537,43 @@ TEST_CASE(model_imports_replace_nothing_and_undo_failures)
     return true;
 }
 
+/* Writes the content file `relative`, declaring `name`, in its folder. */
+static bool declare(const char *relative, const char *name)
+{
+    char path[128];
+    inside(path, sizeof path, relative);
+    char *slash = strrchr(path, '/');
+    *slash = 0;
+    bool folder = !mkdir(path, 0700) || errno == EEXIST;
+    *slash = '/';
+    FILE *file = folder ? fopen(path, "wb") : NULL;
+    bool written = file && fprintf(file, "name \"%s\"\n", name) > 0;
+    return file && !fclose(file) && written;
+}
+
+/* An import declares no name that another file in the project declares,
+ * since preparing the project refuses two declarations of one name: not a
+ * material's among native graphs of any kind, nor its prototype's. It
+ * then writes nothing. */
+TEST_CASE(model_imports_refuse_names_the_project_declares)
+{
+    gltf_fixture f = { 0 };
+    crate(&f);
+    REQUIRE(declare("content/shapes/Plank.kdl", "Crate_Painted_Wood"));
+    REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
+    REQUIRE(!strcmp(error, "content/shapes/Plank.kdl already declares Crate_Painted_Wood"));
+    REQUIRE(entries("content") == 1 && !acount(report.written));
+    REQUIRE(declare("content/shapes/Plank.kdl", "Plank"));
+    REQUIRE(declare("content/prototypes/Box.kdl", "Crate"));
+    REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
+    REQUIRE(!strcmp(error, "content/prototypes/Box.kdl already declares Crate"));
+    REQUIRE(entries("content") == 2 && entries("content/prototypes") == 1);
+    REQUIRE(declare("content/prototypes/Box.kdl", "Box"));
+    REQUIRE(import(&f, "crate.gltf", CRATE, "Crate"));
+    gltf_fixture_free(&f);
+    return true;
+}
+
 /* Why importing the model at `file` as Bad failed, or what went wrong
  * instead: it imported, or left files behind. */
 static const char *refused(const char *file)
@@ -965,6 +1003,7 @@ void test_model_import()
     RUN_TEST_CASE(model_imports_name_parts_apart);
     RUN_TEST_CASE(model_imports_name_materials_of_the_longest_models);
     RUN_TEST_CASE(model_imports_replace_nothing_and_undo_failures);
+    RUN_TEST_CASE(model_imports_refuse_names_the_project_declares);
     RUN_TEST_CASE(model_imports_refuse_linked_folders);
     RUN_TEST_CASE(model_imports_refuse_what_they_cannot_draw_as_authored);
     RUN_TEST_CASE(model_imports_refuse_files_they_cannot_read);

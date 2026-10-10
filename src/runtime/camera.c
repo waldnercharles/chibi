@@ -10,6 +10,11 @@
  * default clips past float range at any usable span. */
 static const float narrowest_fov = 1.745329e-7f;
 
+/* The farthest far clip, as a multiple of the near clip. Float depth rounds
+ * far planes much past 1e7 near clips toward infinity, so rays unprojected
+ * through them collapse. */
+static const float widest_clip_ratio = 1e6f;
+
 /* The 3D lens of a camera, looking along its global -Z with +Y up from its
  * offset position when it has a Transform3D. False for values the 3D path
  * can't use. */
@@ -20,7 +25,8 @@ static bool camera_lens(const GameCamera *camera, const GameGlobalTransform3D *p
                                     .near_clip = closest,
                                     .far_clip = farthest };
     bool clips = (closest == 0 && farthest == 0) ||
-                 (closest > 0 && farthest > closest && isfinite(farthest));
+                 (closest > 0 && farthest > closest &&
+                  farthest / closest <= widest_clip_ratio);
     bool fov = camera->fov == 0 ||
                (camera->fov >= narrowest_fov && camera->fov < CF_PI);
     if (!(fov && clips)) {
@@ -33,12 +39,11 @@ static bool camera_lens(const GameCamera *camera, const GameGlobalTransform3D *p
         pose->position,
         (CF_V3){ camera->offset.x, 0, camera->offset.y }
     );
-    lens->forward = cf_neg_v3(pose->z_axis);
-    lens->up = pose->y_axis;
+    lens->forward = cf_safe_norm_v3(cf_neg_v3(pose->z_axis));
+    lens->up = cf_safe_norm_v3(pose->y_axis);
     CF_V3 side = cf_cross_v3(lens->forward, lens->up);
     float turn = cf_dot_v3(side, side);
-    return turn > 0 && isfinite(turn) &&
-           isfinite(lens->eye.x + lens->eye.y + lens->eye.z);
+    return turn > 0 && isfinite(lens->eye.x + lens->eye.y + lens->eye.z);
 }
 
 int game_camera_view(ecs_world *world, const engine *runtime, engine_viewport_view *out)

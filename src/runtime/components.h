@@ -868,8 +868,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
      * up, from its position moved by the offset (gameplay y is world z); one
      * without frames its span from a fixed overhead angle. Field of view is
      * vertical, in radians, from 0.00001 degrees (as in Unity) to below pi,
-     * and zero picks 35 degrees. Set both clip distances or neither; zero
-     * clips scale with the span's height. */
+     * and zero picks 35 degrees. Set both clip distances or neither, with
+     * far at most a million times near; zero clips scale with the span's
+     * height. */
     float fov;
     float near_clip;
     float far_clip;

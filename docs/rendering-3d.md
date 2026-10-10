@@ -13,11 +13,13 @@ ground (gameplay y is world z), as it moves an overhead camera's target. One
 with only a `GameTransform` frames its span from 10 degrees off overhead. `fov`
 is the vertical field of view in radians, from 0.00001 degrees (Unity's
 narrowest) to below 180, and zero picks 35 degrees. `near_clip` and `far_clip`
-are set together or both left at zero, which scales them with the span's height
-(at least 0.01 and 200). The span's aspect shapes the image either way. Panning
-or zooming the viewport returns it to the overhead framing. Fog conceals view
-rays that never reach the ground ahead, such as those above the horizon, as it
-does ground past its grid.
+are set together, with far at most a million times near, or both left at zero,
+which scales them with the span's height (at least 0.01 and 200). Wider ranges
+round the far plane toward infinity in float depth, which breaks picking and
+fog. The span's aspect shapes the image either way. Panning or zooming the
+viewport returns it to the overhead framing. Fog conceals view rays that never
+reach the ground ahead, such as those above the horizon, as it does ground past
+its grid.
 
 ## Lighting
 
@@ -207,8 +209,9 @@ has them. A scene without a valid rhythm clock draws with the beat at rest.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d` renders a box or a floor in a
 hidden 64x64 app. It checks cameras looking along their Transform3D, field of
-view and clip distances, the lenses a camera rejects, and panning dropping a
-lens, and fog concealing rays that miss the ground. It checks ambient, the
+view and clip distances, the lenses a camera rejects, ground rays at the widest
+clip range, panning dropping a lens, and fog concealing rays that miss the
+ground. It checks ambient, the
 directional light, the one-light limit
 (hidden lights left out), drawing without a rhythm clock, both tone maps, auto
 exposure's geometric mean, background rejection, easing (including slow easing

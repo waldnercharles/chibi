@@ -321,7 +321,8 @@ TEST_CASE(camera_field_of_view_and_clips_shape_the_projection)
 }
 
 /* A small-scale camera far from the origin still looks along its -Z, though
- * its scaled direction is below the precision of its position. */
+ * its scaled direction is below the precision of its position, and its
+ * scaled axes are too short to cross. */
 TEST_CASE(distant_small_scale_cameras_keep_their_view)
 {
     ecs_entity camera = add_camera_3d(cf_quat_identity());
@@ -333,6 +334,10 @@ TEST_CASE(distant_small_scale_cameras_keep_their_view)
     CF_V3 right = render_scene3d_project(&lens, (CF_V3){ 1, 0, 990 });
     REQUIRE(near_value(ahead.x, 0) && near_value(ahead.y, 0));
     REQUIRE(right.x > .01f && near_value(right.y, 0));
+    pose->scale = (CF_V3){ 1e-12f, 1e-12f, 1e-12f };
+    REQUIRE(look_through_camera() == 1);
+    ahead = render_scene3d_project(&lens, (CF_V3){ 0, 0, 990 });
+    REQUIRE(near_value(ahead.x, 0) && near_value(ahead.y, 0));
     return true;
 }
 
@@ -356,9 +361,9 @@ TEST_CASE(default_clips_stay_ordered_for_close_framings)
 TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use)
 {
     static const float lenses[][3] = {
-        { -.1f, 0, 0 }, { 1e-37f, 0, 0 }, { CF_PI, 0, 0 },
-        { NAN, 0, 0 },  { 0, 1, 0 },      { 0, 0, 1 },
-        { 0, 2, 2 },    { 0, 2, 1 },      { 0, 1, INFINITY },
+        { -.1f, 0, 0 },     { 1e-37f, 0, 0 },  { CF_PI, 0, 0 }, { NAN, 0, 0 },
+        { 0, 1, 0 },        { 0, 0, 1 },       { 0, 2, 2 },     { 0, 2, 1 },
+        { 0, 1, INFINITY }, { 0, .01f, 1e7f },
     };
     ecs_entity entity = add_camera_3d(cf_quat_identity());
     GameCamera *camera = GAME_GameCamera_get(world, entity);
@@ -372,6 +377,23 @@ TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use)
     REQUIRE(look_through_camera() == 1);
     GAME_GameTransform3D_get(world, entity)->scale = (CF_V3){ 0 };
     REQUIRE(look_through_camera() == -1);
+    return true;
+}
+
+/* The widest clip range a camera takes still unprojects its ground rays. */
+TEST_CASE(widest_clip_range_keeps_ground_rays)
+{
+    ecs_entity entity = add_camera_3d(
+        cf_quat_from_axis_angle((CF_V3){ 1, 0, 0 }, -CF_PI / 6)
+    );
+    GAME_GameTransform3D_get(world, entity)->position = (CF_V3){ 0, 10, 0 };
+    GameCamera *camera = GAME_GameCamera_get(world, entity);
+    camera->near_clip = .01f;
+    camera->far_clip = 1e4f;
+    REQUIRE(look_through_camera() == 1);
+    CF_V2 ground;
+    REQUIRE(render_scene3d_ground(&lens, (CF_V2){ 0 }, &ground));
+    REQUIRE(fabsf(ground.x) < .01f && fabsf(ground.y + 10 / tanf(CF_PI / 6)) < .01f);
     return true;
 }
 
@@ -2113,6 +2135,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(distant_small_scale_cameras_keep_their_view);
     RUN_TEST_CASE(default_clips_stay_ordered_for_close_framings);
     RUN_TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use);
+    RUN_TEST_CASE(widest_clip_range_keeps_ground_rays);
     RUN_TEST_CASE(navigating_drops_an_authored_lens);
     RUN_TEST_CASE(fog_conceals_rays_that_miss_the_ground);
     RUN_TEST_CASE(picking_and_bounds_place_children_under_their_parent);

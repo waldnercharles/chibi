@@ -69,8 +69,10 @@ const char *game_physics_error(const game_physics *physics);
 void game_physics_set_profiling(game_physics *physics, bool enabled);
 const game_physics_profile *game_physics_last_profile(const game_physics *physics);
 game_physics_hashes game_physics_hash(const game_physics *physics);
-/* Borrow solved poses for presentation without modifying authoritative ECS. */
-bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, float alpha, GameTransform *out);
+/* How far presentation moves a root body from its solved position at alpha,
+ * without modifying authoritative ECS. False when the entity has no body of
+ * its own to interpolate; a child body follows its parent's. */
+bool game_physics_interpolation_offset(const game_physics *, ecs_entity, float alpha, CF_V2 *out);
 
 typedef struct
 {

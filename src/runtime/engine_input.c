@@ -3,6 +3,7 @@
 #include "execution/status.h"
 #include "runtime/component_catalog.h"
 #include "runtime/events.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -320,9 +321,9 @@ static int apply_aim_sample(engine_input *input)
         aim->firing = input->firing;
         CF_V2 direction = input->aim;
         if (input->aim_point) {
-            const GameTransform *position = GAME_GameTransform_get_const(input->world, entity);
-            direction.x -= position->x;
-            direction.y -= position->y;
+            CF_V2 position = game_transform_world_2d(input->world, entity).position;
+            direction.x -= position.x;
+            direction.y -= position.y;
         }
         /* Float products fit in double; sqrt rounds the same on native and WASM. */
         float length = (float)sqrt(

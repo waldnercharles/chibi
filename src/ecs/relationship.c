@@ -279,6 +279,13 @@ ecs_entity ecs_pair_target(const ecs_world *world, ecs_entity entity, ecs_compon
     return relationship_target(world_relationship(world, id), entity.slot, index);
 }
 
+ecs_entity ecs_parent(const ecs_world *world, ecs_entity entity)
+{
+    return ecs_pair_target_count(world, entity, ECS_CHILD_OF)
+             ? ecs_pair_target(world, entity, ECS_CHILD_OF, 0)
+             : (ecs_entity){ 0 };
+}
+
 int ecs_pair_source_count(const ecs_world *world, ecs_component_id id, ecs_entity target)
 {
     const ecs_relationship *relationship = world_relationship(world, id);

@@ -149,10 +149,8 @@ void render_influences_collect(
     if (ecs_query_begin(world, &query, required, 2) == ECS_OK) {
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
-            GameTransform position = *GAME_GameTransform_get_const(world, entity);
-            if (runtime) {
-                engine_render_position(runtime, entity, &position);
-            }
+            GameTransform position = engine_render_transform(runtime, world, entity)
+                                         .position;
             GameSurfaceInfluence source = *GAME_GameSurfaceInfluence_get_const(world, entity);
             if (!isfinite(position.x) || !isfinite(position.y) ||
                 !isfinite(source.strength) || !isfinite(source.radius) ||

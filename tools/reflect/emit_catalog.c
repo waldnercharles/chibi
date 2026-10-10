@@ -200,6 +200,15 @@ static void fn_parameters(FILE *out, const fn_info *f)
     fprintf(out, "static const node_access %s_access = { .flags = %u };\n", symbol, f->effect_flags);
     free(symbol);
 }
+/* Derived components are computed by the engine, so scripts never write them. */
+static bool field_writable(const struct_info *s, const field_info *field)
+{
+    return !s->derived_from && component_field_settable(field);
+}
+static bool derived_operation(const char *op)
+{
+    return !strcmp(op, "WRITE") || !strcmp(op, "ADD") || !strcmp(op, "REMOVE");
+}
 static void struct_parameters(FILE *out, const struct_info *s)
 {
     char *symbol = join(g_prefix, "_native_", s->name);
@@ -220,7 +229,7 @@ static void struct_parameters(FILE *out, const struct_info *s)
     parameters_begin(out, symbol, "break_argument");
     parameter(out, s->name, "PIN_STRUCT", s->name, true, 0, 0, false);
     parameters_end(out);
-    if (s->component || component_unwrap(s)) {
+    if ((s->component && !s->derived_from) || component_unwrap(s)) {
         parameters_begin(out, symbol, "value_argument");
         parameter(out, "Value", "PIN_STRUCT", s->name, true, 0, 0, false);
         parameters_end(out);
@@ -243,7 +252,7 @@ static void struct_parameters(FILE *out, const struct_info *s)
         parameters_end(out);
         for (int i = 0; i < acount(s->fields); ++i) {
             const field_info *field = &s->fields[i];
-            if (!component_field_settable(field)) {
+            if (!field_writable(s, field)) {
                 continue;
             }
             char *field_symbol = join(symbol, "_", field->name);
@@ -343,6 +352,9 @@ static void struct_caps(FILE *out, const struct_info *s)
             REFLECT_DESC_ADD,      REFLECT_DESC_REMOVE
         };
         for (size_t i = 0; i < sizeof operations / sizeof *operations; ++i) {
+            if (s->derived_from && derived_operation(operations[i].op)) {
+                continue;
+            }
             name = join(operations[i].name, s->name, "");
             const char *ports = !strcmp(operations[i].output, "bool_result")
                                   ? g_prefix
@@ -374,7 +386,7 @@ static void struct_caps(FILE *out, const struct_info *s)
         }
         for (int i = 0; i < acount(s->fields); ++i) {
             const field_info *field = &s->fields[i];
-            if (!component_field_settable(field)) {
+            if (!field_writable(s, field)) {
                 continue;
             }
             char *base = join("Set_", s->name, "_");
@@ -430,9 +442,10 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
             type(out, field->pin, field_type_name(field), 0);
             fprintf(
                 out,
-                ", .offset = offsetof(%s, %s), .writable = true },\n",
+                ", .offset = offsetof(%s, %s), .writable = %s },\n",
                 s->name,
-                field->name
+                field->name,
+                s->derived_from ? "false" : "true"
             );
         }
         if (!acount(s->fields)) {
@@ -481,6 +494,9 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
             emit_string(out, source);
             fputs(", .key = ", out);
             emit_string(out, component_key(s));
+            if (s->derived_from) {
+                fputs(", .derived = true", out);
+            }
         }
         fputs(" },\n", out);
     }
@@ -536,9 +552,9 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
         capabilities += 2 + component_unwrap(s);
         bindings += component_unwrap(s);
         if (s->component) {
-            capabilities += 8;
+            capabilities += s->derived_from ? 4 : 8;
             for (int j = 0; j < acount(s->fields); ++j) {
-                capabilities += component_field_settable(&s->fields[j]);
+                capabilities += field_writable(s, &s->fields[j]);
             }
         }
     }

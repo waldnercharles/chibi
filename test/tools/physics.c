@@ -2,6 +2,7 @@
 
 #include "execution/status.h"
 #include "runtime/behaviors/entities.h"
+#include "runtime/behaviors/entities_native.h"
 #include "runtime/component_catalog.h"
 #include "runtime/events.h"
 #include "runtime/materials.h"
@@ -808,6 +809,23 @@ static void separated_solved_contacts()
     dispose(&f);
 }
 
+/* Nearest positions are world placements, which a parent's Orientation turns,
+ * so a behavior that writes Orientation cannot run beside the query. */
+static void nearest_reads_world_placement()
+{
+    const ecs_component_id components[] = { GAME_COMPONENT_GameTransform.id,
+                                            GAME_COMPONENT_GameOrientation.id,
+                                            GAME_COMPONENT_GameCollider.id };
+    for (int i = 0; i < 3; i++) {
+        bool read = false;
+        for (const uint64_t *const *ref = GAME_ENTITY_NEAREST_ACCESS.read_refs; *ref;
+             ref++) {
+            read |= **ref == components[i];
+        }
+        assert(read);
+    }
+}
+
 static void nearest_and_filters()
 {
     fixture f = create();
@@ -986,22 +1004,157 @@ static void interpolation()
     ecs_entity actor = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 0);
     *GAME_GameVelocity_get(f.world, actor) = (GameVelocity){ 600, 0 };
     assert(step(&f, 1.0f / 60) == 0);
-    GameTransform shown;
-    assert(game_physics_interpolate(f.physics, actor, .5f, &shown));
-    assert(fabsf(shown.x - 5) < .001f);
+    CF_V2 offset;
+    assert(game_physics_interpolation_offset(f.physics, actor, .5f, &offset));
+    assert(fabsf(offset.x + 5) < .001f && offset.y == 0);
     assert(fabsf(GAME_GameTransform_get(f.world, actor)->x - 10) < .001f);
     *GAME_GameTransform_get(f.world, actor) = (GameTransform){ 500, 10 };
-    assert(game_physics_interpolate(f.physics, actor, .5f, &shown));
-    assert(shown.x == 500 && shown.y == 10);
+    assert(game_physics_interpolation_offset(f.physics, actor, .5f, &offset));
+    assert(offset.x == 0 && offset.y == 0);
     assert(step(&f, 0) == 0);
-    assert(game_physics_interpolate(f.physics, actor, 0, &shown));
-    assert(shown.x == 500 && shown.y == 10);
+    assert(game_physics_interpolation_offset(f.physics, actor, 0, &offset));
+    assert(offset.x == 0 && offset.y == 0);
     game_entities_request_destroy(f.entities, actor);
-    assert(!game_physics_interpolate(f.physics, actor, .5f, &shown));
+    assert(!game_physics_interpolation_offset(f.physics, actor, .5f, &offset));
     assert(game_entities_flush(f.entities) == 0);
     ecs_entity replacement = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 0);
-    assert(!game_physics_interpolate(f.physics, actor, .5f, &shown));
-    assert(!game_physics_interpolate(f.physics, replacement, .5f, &shown));
+    assert(!game_physics_interpolation_offset(f.physics, actor, .5f, &offset));
+    assert(!game_physics_interpolation_offset(f.physics, replacement, .5f, &offset));
+    dispose(&f);
+}
+
+static void followers()
+{
+    fixture f = create();
+    ecs_entity parent = body(&f, 100, 0, GAME_BODY_KINEMATIC, 1, 0);
+    GAME_GameOrientation_get(f.world, parent)->radians = 1.57079633f;
+    ecs_entity child = sensor(&f, 10, 0);
+    assert(ecs_world_record_add_pair(f.world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    *GAME_GameVelocity_get(f.world, child) = (GameVelocity){ 600, 0 };
+    ecs_entity there = body(&f, 100, 10, GAME_BODY_KINEMATIC, 2, 4);
+    ecs_entity origin = body(&f, 10, 0, GAME_BODY_KINEMATIC, 2, 4);
+    /* The child collides where its parent places it, ignores its own Velocity
+     * and never writes its pose back. */
+    assert(step(&f, 1.0f / 60) == 2);
+    assert(other(&f, child) == ecs_entity_to_u64(there));
+    assert(other(&f, there) == ecs_entity_to_u64(child));
+    assert(!other(&f, origin));
+    const GameTransform *local = GAME_GameTransform_get_const(f.world, child);
+    assert(local->x == 10 && local->y == 0);
+    CF_V2 offset;
+    assert(!game_physics_interpolation_offset(f.physics, child, .5f, &offset));
+    /* A parent without a Transform only groups; its children stay roots. */
+    ecs_entity group = ecs_world_create_entity(f.world);
+    ecs_entity grouped = body(&f, 0, 40, GAME_BODY_DYNAMIC, 1, 0);
+    assert(ecs_world_record_add_pair(f.world, grouped, ECS_CHILD_OF, group, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    *GAME_GameVelocity_get(f.world, grouped) = (GameVelocity){ 60, 0 };
+    step(&f, 1.0f / 60);
+    assert(fabsf(GAME_GameTransform_get_const(f.world, grouped)->x - 1) < .001f);
+    GAME_GameBody_get(f.world, child)->type = GAME_BODY_DYNAMIC;
+    assert(game_physics_tick(f.physics, 1.0f / 60) < 0);
+    assert(strstr(game_physics_error(f.physics), "root entity"));
+    dispose(&f);
+}
+
+/* A child of a moving body moves with it within the same step, so it touches
+ * what lies where its parent carries it, not only where it started. */
+static void followers_move_with_their_body()
+{
+    fixture f = create();
+    ecs_entity parent = body(&f, 0, 200, GAME_BODY_DYNAMIC, 1, 0);
+    *GAME_GameVelocity_get(f.world, parent) = (GameVelocity){ 1200, 0 };
+    ecs_entity child = sensor(&f, 10, 0);
+    assert(ecs_world_record_add_pair(f.world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    /* The child starts over 8..12 and ends over 28..32; the target covers
+     * 30..38. */
+    ecs_entity target = body(&f, 34, 200, GAME_BODY_KINEMATIC, 2, 4);
+    assert(step(&f, 1.0f / 60) == 2);
+    assert(other(&f, child) == ecs_entity_to_u64(target));
+    assert(fabsf(GAME_GameTransform_get_const(f.world, parent)->x - 20) < .001f);
+    dispose(&f);
+}
+
+/* A body and the sensors it carries move as one, so they never touch. */
+static void followers_ignore_their_anchor()
+{
+    fixture f = create();
+    ecs_entity ship = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 4);
+    ecs_entity hull = sensor(&f, 2, 0);
+    ecs_entity mast = sensor(&f, -2, 0);
+    GAME_GameCollider_get(f.world, hull)->mask |= 1 | 4;
+    GAME_GameCollider_get(f.world, mast)->mask |= 1 | 4;
+    assert(ecs_world_record_add_pair(f.world, hull, ECS_CHILD_OF, ship, 0) == ECS_OK);
+    assert(ecs_world_record_add_pair(f.world, mast, ECS_CHILD_OF, ship, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    for (int i = 0; i < 4; i++) {
+        assert(step(&f, 1.0f / 60) == 0);
+    }
+    ecs_entity *found = NULL;
+    assert(game_physics_contact_entities(f.world, f.entities, ship, 4, &found) == 0);
+    assert(acount(found) == 0);
+    assert(game_physics_contact_entities(f.world, f.entities, hull, 1 | 4, &found) == 0);
+    assert(acount(found) == 0);
+    afree(found);
+    dispose(&f);
+}
+
+/* A carried solid is a kinematic body of its own, which Box2D never lets
+ * push its dynamic carrier, so a dynamic body carries only sensors. */
+static void dynamic_bodies_carry_only_sensors()
+{
+    fixture f = create();
+    ecs_entity ship = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 1);
+    ecs_entity hull = body(&f, 6, 0, GAME_BODY_KINEMATIC, 1, 1);
+    assert(ecs_world_record_add_pair(f.world, hull, ECS_CHILD_OF, ship, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(game_physics_tick(f.physics, 1.0f / 60) == FLOW_ERR_ARGUMENT);
+    assert(strstr(game_physics_error(f.physics), "can carry only sensors"));
+    dispose(&f);
+}
+
+/* A continuous sensor stops partway through its sweep, after its followers
+ * were tested at its end, so it cannot carry a collider. */
+static void continuous_sensors_carry_no_colliders()
+{
+    fixture f = create();
+    ecs_entity shot = sensor(&f, 0, 0);
+    ecs_entity hitbox = body(&f, 4, 0, GAME_BODY_KINEMATIC, 1, 0);
+    assert(ecs_world_record_add_pair(f.world, hitbox, ECS_CHILD_OF, shot, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(game_physics_tick(f.physics, 1.0f / 60) == FLOW_ERR_ARGUMENT);
+    assert(strstr(game_physics_error(f.physics), "cannot carry colliders"));
+    dispose(&f);
+}
+
+/* A destructible under a placed parent breaks where its parent places it. */
+static void followed_material()
+{
+    fixture f = create();
+    assert(ecs_world_register_component(f.world, &GAME_COMPONENT_GameDestructible, NULL) == ECS_OK);
+    ecs_entity parent = body(&f, 100, 0, GAME_BODY_KINEMATIC, 1, 0);
+    GAME_GameOrientation_get(f.world, parent)->radians = 1.57079633f;
+    ecs_entity slab = body(&f, 0, 0, GAME_BODY_STATIC, 8, 1);
+    *GAME_GameCollider_get(f.world, slab) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
+                                                            .width = 32,
+                                                            .height = 16,
+                                                            .category = 8,
+                                                            .mask = 1 };
+    GameDestructible material = { .cell_size = 1, .min_fragment_cells = 1 };
+    assert(
+        ecs_world_record_add(f.world, slab, GAME_COMPONENT_GameDestructible.id, &material, 0) == ECS_OK
+    );
+    assert(ecs_world_record_add_pair(f.world, slab, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(!game_materials_prepare(f.materials));
+    /* The slab's local (0, 7) sits at world (93, 0) under the turned parent. */
+    game_materials_damage(f.materials, slab, (fluid_vec){ 93, 0 }, 7, 1, 0, (material_impact){ 0 });
+    assert(!game_materials_prepare(f.materials));
+    const material_mask *mask = game_materials_mask(f.materials, slab);
+    assert(!material_mask_contains(mask, 0, 5));
+    assert(material_mask_contains(mask, 10, 5));
     dispose(&f);
 }
 
@@ -1231,11 +1384,18 @@ static void physics_cases()
     empty_mask_shapes();
     separated_solved_contacts();
     nearest_and_filters();
+    nearest_reads_world_placement();
     moving_target_and_box();
     sweep_tree_lifetime();
     repeated_moving_sweeps();
     lifecycle_and_validation();
     interpolation();
+    followers();
+    followers_move_with_their_body();
+    followers_ignore_their_anchor();
+    dynamic_bodies_carry_only_sensors();
+    continuous_sensors_carry_no_colliders();
+    followed_material();
     current_contact_query();
     ordered_contacts();
 }
@@ -1362,6 +1522,39 @@ static void authored_bounce_and_drive()
     dispose(&f);
 }
 
+/* Terrain tiles are laid out along the world's axes, so terrain under a
+ * rotated parent, which would turn them, is refused. */
+static void rotated_terrain()
+{
+    fixture f = create();
+    assert(ecs_world_register_component(f.world, &GAME_COMPONENT_MaterialTerrain, NULL) == ECS_OK);
+    ecs_entity parent = ecs_world_create_entity(f.world);
+    ecs_entity source = ecs_world_create_entity(f.world);
+    assert(GAME_GameTransform_add(f.world, parent, 0) == ECS_OK);
+    assert(GAME_GameOrientation_add(f.world, parent, 0) == ECS_OK);
+    assert(GAME_GameTransform_add(f.world, source, 0) == ECS_OK);
+    assert(ecs_world_record_add_pair(f.world, source, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    MaterialTerrain terrain = { .width = 64,
+                                .height = 64,
+                                .cell_size = 2,
+                                .field = "Cave",
+                                .min_fragment_cells = 1 };
+    assert(
+        ecs_world_record_add(f.world, source, GAME_COMPONENT_MaterialTerrain.id, &terrain, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    GAME_GameOrientation_get(f.world, parent)->radians = 0.5f;
+    const char *error = game_materials_prepare(f.materials);
+    assert(error && strstr(error, "unrotated"));
+    dispose(&f);
+}
+
+TEST_CASE(physics_rotated_terrain_is_refused)
+{
+    rotated_terrain();
+    return true;
+}
+
 TEST_CASE(physics_task_pool_runs_every_range)
 {
     test_task_pool();
@@ -1409,6 +1602,7 @@ void test_tool_physics()
 {
     test_native_catalog_enable(); /* Contact payloads copy a CF_V2. */
     RUN_TEST_CASE(physics_task_pool_runs_every_range);
+    RUN_TEST_CASE(physics_rotated_terrain_is_refused);
     RUN_TEST_CASE(physics_authored_motion);
     RUN_TEST_CASE(physics_contacts_and_queries_at_each_substep_count);
     RUN_TEST_CASE(physics_parallel_collection_matches_serial);

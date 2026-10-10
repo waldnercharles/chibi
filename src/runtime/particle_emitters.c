@@ -438,12 +438,9 @@ bool game_particle_emitters_collect(
                 !GAME_GameTransform_has(world, owner)) {
                 continue;
             }
-            GameTransform position = *GAME_GameTransform_get_const(world, owner);
-            if (runtime) {
-                engine_render_position(runtime, owner, &position);
-            }
+            GameGlobalTransform2D shown = engine_render_transform(runtime, world, owner);
+            GameTransform position = shown.position;
             const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, owner);
-            const GameOrientation *heading = GAME_GameOrientation_get_const(world, owner);
             const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, owner);
             float scale = visual ? visual->scale : 1;
             if (scale == 0) {
@@ -452,8 +449,7 @@ bool game_particle_emitters_collect(
             CF_V3 rotation = visual && !style->heading_only
                                ? (CF_V3){ visual->pitch, visual->yaw, visual->roll }
                                : (CF_V3){ 0 };
-            float yaw = heading ? heading->radians : 0,
-                  elevation = shape ? shape->elevation : 0;
+            float yaw = shown.radians, elevation = shape ? shape->elevation : 0;
             if (scale < 0 || !isfinite(
                                  scale + yaw + elevation + position.x +
                                  position.y + rotation.x + rotation.y + rotation.z

@@ -329,11 +329,14 @@ static float along(CF_V3 v, int axis)
 /* How far along `ray` it first meets `mesh` drawn by `model`, or FLT_MAX.
  * The ray is cut to the mesh's box in the box's own frame, which stays
  * near unit size however far the mesh's coordinates reach, and only that
- * span goes into them. So a mesh near float's range that its model scales
- * down to view picks as it draws. */
+ * span goes into them. Half the span is the mesh ray's direction, which a
+ * float holds even where the whole span passes float's range, so the pick
+ * runs from 0 to 2 along it. So a mesh near or past float's range that its
+ * model scales down to view picks as it draws. */
 static float mesh_hit(const render_mesh_asset *mesh, CF_M4x4 model, CF_Ray3 ray)
 {
-    CF_M4x4 inverse = cf_m4_invert(render_scene3d_mesh_box(mesh, model));
+    CF_M4x4 extent = render_scene3d_mesh_extent(mesh);
+    CF_M4x4 inverse = cf_m4_invert(cf_mul_m4(model, extent));
     CF_V3 from = cf_m4_transform_point(inverse, ray.p);
     CF_V3 end = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, ray.t));
     CF_V3 step = cf_sub_v3(cf_m4_transform_point(inverse, end), from);
@@ -341,33 +344,27 @@ static float mesh_hit(const render_mesh_asset *mesh, CF_M4x4 model, CF_Ray3 ray)
     for (int axis = 0; axis < 3; axis++) {
         float origin = along(from, axis), toward = along(step, axis);
         if (toward == 0) {
-            if (fabsf(origin) > .5f) {
+            if (fabsf(origin) > 1) {
                 return FLT_MAX;
             }
             continue;
         }
-        float a = (-.5f - origin) / toward, b = (.5f - origin) / toward;
+        float a = (-1 - origin) / toward, b = (1 - origin) / toward;
         enter = fmaxf(enter, fminf(a, b));
         leave = fminf(leave, fmaxf(a, b));
     }
     if (enter >= leave) {
         return FLT_MAX;
     }
-    CF_M4x4 box = render_scene3d_mesh_box(mesh, cf_m4_identity());
-    CF_V3 first = cf_m4_transform_point(box, cf_add_v3(from, cf_mul_v3_f(step, enter)));
-    CF_V3 last = cf_m4_transform_point(box, cf_add_v3(from, cf_mul_v3_f(step, leave)));
-    double span[3] = { (double)last.x - first.x,
-                       (double)last.y - first.y,
-                       (double)last.z - first.z };
-    double length = sqrt(span[0] * span[0] + span[1] * span[1] + span[2] * span[2]);
+    CF_V3 first = cf_m4_transform_point(extent, cf_add_v3(from, cf_mul_v3_f(step, enter)));
+    CF_V3 last = cf_m4_transform_point(extent, cf_add_v3(from, cf_mul_v3_f(step, leave)));
     CF_Ray3 local = { .p = first,
-                      .d = { (float)(span[0] / length),
-                             (float)(span[1] / length),
-                             (float)(span[2] / length) },
-                      .t = (float)length };
+                      .d = { (float)(((double)last.x - first.x) / 2),
+                             (float)(((double)last.y - first.y) / 2),
+                             (float)(((double)last.z - first.z) / 2) },
+                      .t = 2 };
     float t = render_mesh_pick(mesh, local).t;
-    return t == FLT_MAX ? FLT_MAX
-                        : (enter + (leave - enter) * (float)(t / length)) * ray.t;
+    return t == FLT_MAX ? FLT_MAX : (enter + (leave - enter) * t / 2) * ray.t;
 }
 
 ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *camera, CF_V2 ndc, render_skip skip)

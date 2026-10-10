@@ -2365,6 +2365,88 @@ TEST_CASE(meshes_near_the_float_limit_draw_bound_and_pick_in_place)
     return true;
 }
 
+/* Picks across the view, PICK_GRID by PICK_GRID, that meet `solid`. */
+enum
+{
+    PICK_GRID = 9
+};
+
+static void picks_of(ecs_entity solid, bool picked[PICK_GRID][PICK_GRID])
+{
+    for (int y = 0; y < PICK_GRID; y++) {
+        for (int x = 0; x < PICK_GRID; x++) {
+            CF_V2 ndc = { -.8f + 1.6f * x / (PICK_GRID - 1),
+                          -.8f + 1.6f * y / (PICK_GRID - 1) };
+            picked[y][x] = render_scene3d_pick(world, &lens, ndc, (render_skip){ 0 })
+                               .slot == solid.slot;
+        }
+    }
+}
+
+/* A lit box drawn as a shape 8 wide, then as the unit box mesh made 6e38 wide
+ * around the origin, which its Geometry3D scales back to 8. Its bounds span
+ * more than a float holds, yet it covers the pixels, bounds and picks as the
+ * shape did. */
+TEST_CASE(meshes_wider_than_the_float_limit_draw_bound_and_pick_in_place)
+{
+    look((CF_V3){ 0, 16, 16 }, (CF_V3){ 0, 4, 0 }, (CF_V3){ 0, 1, 0 });
+    add_sun(0xffffffffu, (CF_V3){ 1, -1, -.5f })->intensity = 1;
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    static CF_Pixel empty[PIXELS], shape[PIXELS];
+    memcpy(empty, pixels, sizeof pixels);
+    ecs_entity box = add_solid(
+        (CF_V3){ 0, 4, 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 8, 8, 8 },
+        0xffffffffu
+    );
+    REQUIRE(render(&environment));
+    memcpy(shape, pixels, sizeof pixels);
+    CF_V3 expected[8];
+    REQUIRE(render_scene3d_entity_bounds(world, box, expected));
+    bool expected_picks[PICK_GRID][PICK_GRID];
+    picks_of(box, expected_picks);
+    const float reach = 3e38f, scale = 4 / reach;
+    render_mesh_asset wide = box_mesh();
+    for (int i = 0; i < acount(wide.vertices); i++) {
+        CF_V3 *position = &wide.vertices[i].position;
+        *position = cf_mul_v3_f(cf_mul_v3_f(*position, reach), 2);
+    }
+    wide.min = (CF_V3){ -reach, -reach, -reach };
+    wide.max = (CF_V3){ reach, reach, reach };
+    publish_mesh(&wide);
+    GameGeometry3D *geometry = GAME_GameGeometry3D_get(world, box);
+    geometry->width = geometry->height = geometry->depth = scale;
+    import_mesh(box);
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    int covered = 0;
+    for (int i = 0; i < PIXELS; i++) {
+        bool shows = distance(pixels[i], empty[i]) > 3;
+        REQUIRE(shows == (distance(shape[i], empty[i]) > 3));
+        covered += shows;
+    }
+    REQUIRE(covered > PIXELS / 8);
+    CF_V3 bounds[8];
+    REQUIRE(render_scene3d_entity_bounds(world, box, bounds));
+    for (int i = 0; i < 8; i++) {
+        REQUIRE(near_value(bounds[i].x, expected[i].x));
+        REQUIRE(near_value(bounds[i].y, expected[i].y));
+        REQUIRE(near_value(bounds[i].z, expected[i].z));
+    }
+    bool picks[PICK_GRID][PICK_GRID];
+    picks_of(box, picks);
+    int hits = 0;
+    for (int y = 0; y < PICK_GRID; y++) {
+        for (int x = 0; x < PICK_GRID; x++) {
+            REQUIRE(picks[y][x] == expected_picks[y][x]);
+            hits += picks[y][x];
+        }
+    }
+    REQUIRE(hits > 0 && hits < PICK_GRID * PICK_GRID);
+    return true;
+}
+
 enum
 {
     GRID_CELLS = 64
@@ -2435,6 +2517,42 @@ TEST_CASE(mesh_picks_test_only_the_triangles_near_their_ray)
     REQUIRE(miss.t == FLT_MAX && !miss.tested);
     publish_grid(2);
     REQUIRE(picks_cell(17, 40, 2));
+    return true;
+}
+
+/* Sixteen walls facing x, spread from -2.8e38 to 2.9e38, with only the last
+ * in the path of a ray from x = -3e38 whose direction is half the span. The
+ * boxes around the far walls start more than a float's range from the ray's
+ * origin, yet the pick reaches the last wall through them alone. */
+TEST_CASE(mesh_picks_cross_boxes_past_the_float_limit)
+{
+    enum
+    {
+        WALLS = 16
+    };
+    /* In double, since the walls' span passes float's range. */
+    const double first = -2.8e38, spacing = .38e38;
+    const float last = (float)(first + (WALLS - 1) * spacing);
+    render_mesh_asset walls = { .min = { (float)first, 0, 0 }, .max = { last, 1, 3 } };
+    for (int k = 0; k < WALLS; k++) {
+        float x = (float)(first + k * spacing), z = k == WALLS - 1 ? 0 : 2;
+        CF_V3 corners[] = { { x, 0, z }, { x, 1, z }, { x, 0, z + 1 } };
+        for (int i = 0; i < 3; i++) {
+            render_mesh_surface_vertex vertex = { .position = corners[i],
+                                                  .normal = { 1, 0, 0 } };
+            apush(walls.indices, acount(walls.vertices));
+            apush(walls.vertices, vertex);
+        }
+    }
+    publish_mesh(&walls);
+    char error[128];
+    const render_mesh_asset *mesh = render_mesh_asset_load(mesh_key, error, sizeof error);
+    REQUIRE(mesh);
+    const float origin = -3e38f, half = 3e38f;
+    CF_Ray3 ray = { .p = { origin, .25f, .25f }, .d = { half, 0, 0 }, .t = 2 };
+    render_mesh_hit hit = render_mesh_pick(mesh, ray);
+    REQUIRE(near_value(hit.t, (float)(((double)last - origin) / half)));
+    REQUIRE(hit.tested <= 4);
     return true;
 }
 
@@ -3931,7 +4049,9 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(picking_and_bounds_follow_imported_triangles);
     RUN_TEST_CASE(picks_follow_tiny_triangles_scaled_up);
     RUN_TEST_CASE(meshes_near_the_float_limit_draw_bound_and_pick_in_place);
+    RUN_TEST_CASE(meshes_wider_than_the_float_limit_draw_bound_and_pick_in_place);
     RUN_TEST_CASE(mesh_picks_test_only_the_triangles_near_their_ray);
+    RUN_TEST_CASE(mesh_picks_cross_boxes_past_the_float_limit);
     RUN_TEST_CASE(republished_meshes_replace_their_gpu_copies);
     RUN_TEST_CASE(mesh_copies_are_found_in_any_upload_order);
     RUN_TEST_CASE(translucent_meshes_sort_by_their_bounds);

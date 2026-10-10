@@ -342,8 +342,10 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   base color and its image, since glTF makes its other properties fallbacks
   for viewers that light it. An image has one filter, its sampler's
   `magFilter`: `NEAREST` samples Nearest and anything else Bilinear, with a
-  warning when its `minFilter` differs. A sampler that clamps both axes
-  samples Clamp; every other wrap repeats, with a warning.
+  warning when its `minFilter` differs. Engine images have no mip levels, so
+  a mipmapped `minFilter` reads the full image, as every image does, without
+  a warning. A sampler that clamps both axes samples Clamp; every other wrap
+  repeats, with a warning.
 - **Refused**: a required extension other than `KHR_materials_unlit`,
   `KHR_materials_emissive_strength` and `KHR_texture_transform`; a texture
   transform other than the identity; a texture that reads a UV set other than
@@ -449,8 +451,9 @@ mirrored at a 1e-16 scale under a Geometry3D as large, or a mesh 2e16 across
 in its own units, and one flattened to zero height disappears. A box flattened
 by its parent's Transform3D under turns that leave it a sliver of volume has
 no bounds, and one scaled to 1e-16 keeps them, as does one turned under a
-parent squashed to 1e-6. A frame whose finite values multiply past float range
-is an authoring error. A model surface picks and bounds at its Transform3D
+parent squashed to 1e-6. A frame whose finite values multiply past float range,
+alone or with a part's position or the Geometry3D's dimensions, is an
+authoring error. A model surface picks and bounds at its Transform3D
 pose, with or without a Transform. Fog culls a box
 by the ground under its Transform3D pose, not by its Transform. A mirrored ground
 square's normal maps turn their bitangent with it.

@@ -60,6 +60,10 @@ int render_scene3d_visuals(
     size_t size
 );
 CF_M4x4 render_scene3d_visual_model(const scene3d_visual *visual);
+/* Whether a visual's frame and its model, scaled by its part's dimensions,
+ * stay within float range: a part's position or dimensions can carry a
+ * finite frame past it. */
+bool render_scene3d_visual_finite(const scene3d_visual *visual);
 /* Whether a whole frame mirrors space, which turns its faces inside out. It
  * reads its axes' directions alone, so it holds at any scale. */
 bool render_scene3d_frame_mirrors(CF_M4x4 frame);

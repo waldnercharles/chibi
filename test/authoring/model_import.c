@@ -976,6 +976,9 @@ TEST_CASE(model_imports_keep_gltf_tangent_frames)
     );
     REQUIRE(frames(&f, "Turned", "{\"mesh\":0,\"scale\":[-1,1,1]}", authored));
     REQUIRE(frames_are(cf_neg_v3(z), x));
+    /* A scale that stretches them past float's square keeps them. */
+    REQUIRE(frames(&f, "Stretched", "{\"mesh\":0,\"scale\":[1e-20,1,1e20]}", authored));
+    REQUIRE(acount(mesh.indices) == 6 && frames_are(cf_neg_v3(z), cf_neg_v3(x)));
     /* Without normals glTF ignores tangents too. */
     snprintf(authored, sizeof authored, "\"POSITION\":0,\"TEXCOORD_0\":2,\"TANGENT\":%d", tangents);
     REQUIRE(frames(&f, "Flat", "{\"mesh\":0}", authored));
@@ -984,6 +987,18 @@ TEST_CASE(model_imports_keep_gltf_tangent_frames)
         near_v3(mesh.vertices[0].normal, (CF_V3){ 0, 1, 0 })
     );
     gltf_fixture_free(&f);
+
+    /* A flat normal keeps its direction where its float cross product would
+     * overflow. */
+    static const float wall[] = { -1e20f, -1e20f, 0, 1e20f,  -1e20f, 0,
+                                  1e20f,  1e20f,  0, -1e20f, 1e20f,  0 };
+    gltf_fixture vast = shape(NULL, 0, wall);
+    REQUIRE(frames(&vast, "Wall", "{\"mesh\":0}", "\"POSITION\":0,\"TEXCOORD_0\":2"));
+    REQUIRE(acount(mesh.indices) == 6);
+    for (int i = 0; i < acount(mesh.vertices); i++) {
+        REQUIRE(near_v3(mesh.vertices[i].normal, z));
+    }
+    gltf_fixture_free(&vast);
 
     /* The image's u running along -x keeps green tilting up the image. */
     gltf_fixture flipped = { 0 };

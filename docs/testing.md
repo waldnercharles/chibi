@@ -569,10 +569,10 @@ files, names and buffers, buffers that `..` or a link leads outside the model's
 folder, and buffers that together pass the size limit; unlit materials that
 keep only their base color; the warnings for what it leaves out, and the
 vertices only a left-out triangle used; and tangent frames whose OpenGL green
-tilts up the image: generated, authored, turned, mirrored by a node, flat,
-flattened onto the ground by a parent, and scaled past float's volume. It needs
-a compiler build, uses one temporary folder and passes 136 assertions under
-ASan/UBSan with leak checks, without processes or GPU.
+tilts up the image: generated, authored, turned, mirrored by a node, flat at
+any size, flattened onto the ground by a parent, and scaled past float's volume
+or square. It needs a compiler build, uses one temporary folder and passes 146
+assertions under ASan/UBSan with leak checks, without processes or GPU.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

@@ -33,7 +33,7 @@ jobs:
   native:
     name: Engine build and native tests
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies
@@ -58,13 +58,17 @@ jobs:
           path: |
             ~/.cache/chibi-fetchcontent
             ~/.cache/chibi-dependency-packages
-          key: native-deps-${{ runner.os }}-clang18-${{ steps.deps.outputs.key }}
-          restore-keys: native-deps-${{ runner.os }}-clang18-
+          # Holds the Debug and Release dependency packages.
+          key: native-deps-debug-release-${{ runner.os }}-clang18-${{ steps.deps.outputs.key }}
+          restore-keys: native-deps-debug-release-${{ runner.os }}-clang18-
       - name: Build chibi_ctl and the test drivers (ASan and UBSan)
         run: make test-build LIBCLANG_ROOT=/usr/lib/llvm-18
       # The only engine build on fork pull requests, which skip the Studio job.
       - name: Build chibi, chibi-compile and chibi-player
         run: make build LIBCLANG_ROOT=/usr/lib/llvm-18
+      # validate-project runs chibi_ctl dozens of times, too slowly under sanitizers.
+      - name: Build an unsanitized chibi_ctl (Release)
+        run: make build-release BUILD_TARGET=chibi_ctl LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Save dependencies
         if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@v4

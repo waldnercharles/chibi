@@ -170,14 +170,16 @@ static float cone_hit(CF_Ray3 ray)
     return best;
 }
 
-/* Where a ray meets a triangle from either side, or FLT_MAX. */
+/* Where a ray meets a triangle from either side, or FLT_MAX. The ray counts
+ * as parallel relative to the edges' lengths, so a tiny triangle that a
+ * Geometry3D scales up still takes picks. */
 static float triangle_hit(CF_Ray3 ray, const CF_V3 triangle[3])
 {
     CF_V3 edge1 = cf_sub_v3(triangle[1], triangle[0]);
     CF_V3 edge2 = cf_sub_v3(triangle[2], triangle[0]);
     CF_V3 p = cf_cross_v3(ray.d, edge2);
     float determinant = cf_dot_v3(edge1, p);
-    if (fabsf(determinant) < 1e-7f) {
+    if (fabsf(determinant) <= 1e-7f * cf_len_v3(edge1) * cf_len_v3(edge2)) {
         return FLT_MAX;
     }
     CF_V3 delta = cf_sub_v3(ray.p, triangle[0]);

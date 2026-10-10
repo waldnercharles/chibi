@@ -38,6 +38,22 @@ static int exact_visuals(
     return render_scene3d_visuals(world, entity, NULL, &transform, visuals, mesh, error, size);
 }
 
+/* A model's surface at the same exact placement. */
+static bool exact_surface(
+    const ecs_world *world,
+    ecs_entity entity,
+    render_mesh_surface *surface,
+    char *error,
+    size_t size
+)
+{
+    if (!GAME_GameTransform3D_has(world, entity)) {
+        return render_mesh_surface_build(world, entity, NULL, surface, error, size);
+    }
+    GameGlobalTransform3D transform = game_transform_world_3d(world, entity);
+    return render_mesh_surface_build_with_bounds(world, entity, NULL, &transform, NULL, surface, error, size);
+}
+
 /* The box around a visual: its imported mesh's bounds, or its shape's. */
 static CF_M4x4 visual_box(const scene3d_visual *visual, const render_mesh_asset *mesh)
 {
@@ -61,7 +77,7 @@ bool render_scene3d_entity_bounds(const ecs_world *world, ecs_entity entity, CF_
     int count;
     if (entity_model(world, entity)) {
         render_mesh_surface surface = { 0 };
-        bool ok = render_mesh_surface_build(world, entity, NULL, &surface, error, sizeof error);
+        bool ok = exact_surface(world, entity, &surface, error, sizeof error);
         count = ok ? acount(surface.parts) : 0;
         if (count) {
             visuals[0] = surface.parts[0].visual;
@@ -267,7 +283,7 @@ static float model_ray_hit(ecs_world *world, ecs_entity entity, int id, CF_Ray3 
 {
     render_mesh_surface surface = { 0 };
     char message[128];
-    if (!render_mesh_surface_build(world, entity, NULL, &surface, message, sizeof message) ||
+    if (!exact_surface(world, entity, &surface, message, sizeof message) ||
         !acount(surface.parts)) {
         render_mesh_surface_free(&surface);
         return FLT_MAX;

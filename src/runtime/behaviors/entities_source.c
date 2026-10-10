@@ -28,10 +28,11 @@ static int destroy(void *context, const ecs_entity *entities, int count)
 {
     game_source_entities *host = context;
     ecs_world *world = game_source_world(host->sources);
-    for (int i = 0; i < count; i++) {
+    /* Pending reparenting decides which children go with them. */
+    int status = ecs_world_apply_commands(world);
+    for (int i = 0; !status && i < count; i++) {
         detach_tree(host->sources, world, entities[i]);
     }
-    int status = ecs_world_apply_commands(world);
     for (int i = 0; !status && i < count; i++) {
         if (ecs_entity_is_alive(world, entities[i]) &&
             !ecs_entity_is_retiring(world, entities[i])) {

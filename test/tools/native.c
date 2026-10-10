@@ -375,12 +375,17 @@ TEST_CASE(native_prepared_spawn_whole_tree)
     continuation.request = NULL;
     REQUIRE(game_entities_flush(game_source_entities_host(host)) == 0);
     REQUIRE(ecs_world_live_count(world) == 2 && ecs_entity_is_alive(world, ship));
-    /* Destroying the ship stops the turret's behavior with it. */
+    /* Destroying the ship stops its children's behaviors with it, including
+     * a child reparented under it in the same boundary. */
     ecs_entity turret = ecs_pair_source(world, ECS_CHILD_OF, ship, 0);
+    ecs_entity escort = ecs_world_create_entity(world);
+    REQUIRE(game_source_attach(registry, escort, "New", true, 1, 0) == 0);
+    REQUIRE(ecs_world_record_add_pair(world, escort, ECS_CHILD_OF, ship, 0) == ECS_OK);
     game_entities_request_destroy(game_source_entities_host(host), ship);
     REQUIRE(game_entities_flush(game_source_entities_host(host)) == 0);
     REQUIRE(ecs_world_live_count(world) == 0);
     REQUIRE(game_source_detach_entity(registry, turret) == 0);
+    REQUIRE(game_source_detach_entity(registry, escort) == 0);
     cleanup();
     return true;
 }

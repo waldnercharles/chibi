@@ -56,8 +56,9 @@ int render_scene3d_visuals(
     size_t size
 );
 CF_M4x4 render_scene3d_visual_model(const scene3d_visual *visual);
-/* The determinant of a frame's linear part: negative when it mirrors. */
-float render_scene3d_frame_determinant(CF_M4x4 frame);
+/* Whether a whole frame mirrors space, which turns its faces inside out. It
+ * reads its axes' directions alone, like render_scene3d_frame_flat. */
+bool render_scene3d_frame_mirrors(CF_M4x4 frame);
 /* Conservative clip test of a box, a transform of the unit cube from -0.5 to
  * 0.5. */
 bool render_scene3d_box_visible(CF_M4x4 box, CF_M4x4 view_projection);

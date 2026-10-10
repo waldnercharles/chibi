@@ -12,9 +12,10 @@ draws at its Transform3D. Its Visual Transform turns and scales the solid within
 that frame, and a body's drawn pose is interpolated between physics steps as a
 Transform's is. A transform that mirrors a solid draws it mirrored with its
 faces lit from outside. One that flattens it onto a plane, a line or a point
-hides it, judged by its axes' directions so that rounding cannot keep a sliver
-and a tiny but whole scale cannot vanish. Picks and bounds follow the same
-placement, a model surface's included. Point and spot lights, particles,
+hides it. Both are judged by its axes' directions, so rounding cannot keep a
+sliver, a tiny but whole scale cannot vanish and a tiny mirror still turns its
+faces. Picks and bounds follow the same placement, a model surface's included,
+and a Render State's fog culling reads the ground under its drawn pose. Point and spot lights, particles,
 trails and Surface Influences still place from `GameTransform`, and SDF and Mesh
 Surface 2D surfaces belong to the 2D renderer, which ignores Transform3D.
 
@@ -429,11 +430,13 @@ drawn once. A box turned a quarter about x by its Transform3D, and one turned
 by a Transform3D and a Visual Transform within it, match the upright box their
 turns make. A box under a turned Transform3D parent picks and bounds where the
 parent turns it, before any propagation. A box mirrored by its Transform3D,
-as a shape and as the unit box mesh, matches the unmirrored box, and one
-flattened to zero height disappears. A box flattened by its parent's
+as a shape and as the unit box mesh, matches the unmirrored box, as does one
+mirrored at a 1e-16 scale under a Geometry3D as large, and one flattened to
+zero height disappears. A box flattened by its parent's
 Transform3D under turns that leave it a sliver of volume has no bounds, and one
 scaled to 1e-16 keeps them. A model surface picks and
-bounds at its Transform3D pose, with or without a Transform. A mirrored ground
+bounds at its Transform3D pose, with or without a Transform. Fog culls a box
+by the ground under its Transform3D pose, not by its Transform. A mirrored ground
 square's normal maps turn their bitangent with it.
 Normal maps on a ground square tilt toward or away from the sun as its
 tangents say: authored tangents a quarter turn from the UV gradient, mirrored

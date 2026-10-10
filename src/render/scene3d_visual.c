@@ -49,19 +49,11 @@ static bool finite_v3(CF_V3 v)
     return isfinite(v.x + v.y + v.z);
 }
 
-float render_scene3d_frame_determinant(CF_M4x4 frame)
-{
-    const float *m = frame.elements;
-    return m[0] * (m[5] * m[10] - m[6] * m[9]) -
-           m[4] * (m[1] * m[10] - m[2] * m[9]) + m[8] * (m[1] * m[6] - m[2] * m[5]);
-}
-
-/* The least volume of the box a frame's unit axis directions span, which is
- * one when they are perpendicular. Rounding leaves a flattened frame well
- * below it. */
-static const float flat_volume = 1e-5f;
-
-bool render_scene3d_frame_flat(CF_M4x4 frame)
+/* The signed volume of the box a frame's unit axis directions span: one
+ * when they are perpendicular, negative when the frame mirrors and zero
+ * when an axis vanishes. Unlike the determinant, it keeps its sign and size
+ * at any scale. */
+static float direction_volume(CF_M4x4 frame)
 {
     CF_V3 axes[3];
     for (int i = 0; i < 3; i++) {
@@ -72,11 +64,25 @@ bool render_scene3d_frame_flat(CF_M4x4 frame)
          * underflowing on their way to unit length. */
         float largest = fmaxf(fabsf(axis.x), fmaxf(fabsf(axis.y), fabsf(axis.z)));
         if (largest == 0) {
-            return true;
+            return 0;
         }
         axes[i] = cf_norm_v3(cf_div_v3_f(axis, largest));
     }
-    return fabsf(cf_dot_v3(axes[0], cf_cross_v3(axes[1], axes[2]))) < flat_volume;
+    return cf_dot_v3(axes[0], cf_cross_v3(axes[1], axes[2]));
+}
+
+/* The least direction volume of a whole frame. Rounding leaves a flattened
+ * frame well below it. */
+static const float flat_volume = 1e-5f;
+
+bool render_scene3d_frame_flat(CF_M4x4 frame)
+{
+    return fabsf(direction_volume(frame)) < flat_volume;
+}
+
+bool render_scene3d_frame_mirrors(CF_M4x4 frame)
+{
+    return direction_volume(frame) < 0;
 }
 
 bool render_scene3d_visual_frame(

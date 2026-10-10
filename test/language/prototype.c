@@ -536,6 +536,54 @@ TEST_CASE(prototype_expansion_is_bounded)
     return true;
 }
 
+/* WideN has two children using WideN+1, down to a 1 MiB Wide6, so Wide0's
+ * load would read 64 copies of it. */
+static char *wide_leaf;
+static const char *find_wide(const char *name, void *)
+{
+    static char texts[6][160];
+    char *leaf = wide_leaf;
+    int level = atoi(name + 4);
+    assert(!strncmp(name, "Wide", 4) && level >= 0 && level <= 6);
+    if (level == 6 && !leaf) {
+        size_t size = 1024 * 1024;
+        leaf = wide_leaf = xmalloc(size + 1);
+        int n = snprintf(leaf, size, "name \"Wide6\"\n/* ");
+        memset(leaf + n, 'x', size - (size_t)n - 3);
+        memcpy(leaf + size - 3, "*/\n", 4);
+    }
+    if (level == 6) {
+        return leaf;
+    }
+    snprintf(
+        texts[level],
+        sizeof texts[level],
+        "name \"Wide%d\"\n(array)children {\n    - name=\"A\" "
+        "prototype=\"Wide%d\"\n"
+        "    - name=\"B\" prototype=\"Wide%d\"\n}\n",
+        level,
+        level + 1,
+        level + 1
+    );
+    return texts[level];
+}
+
+/* So does one whose documents add up to too many bytes. */
+TEST_CASE(prototype_expansion_bytes_are_bounded)
+{
+    char error[256];
+    const game_prototype_registry registry = { .components = components,
+                                               .component_count = 2,
+                                               .include = find_wide };
+    prototype = game_prototype_load(find_wide("Wide1", NULL), &registry, error, sizeof error);
+    REQUIRE(prototype && prototype->read > 32 * 1024 * 1024);
+    loaded = game_prototype_load(find_wide("Wide0", NULL), &registry, error, sizeof error);
+    REQUIRE(!loaded && strstr(error, "reads more than 64 MiB of prototypes"));
+    free(wide_leaf);
+    wide_leaf = NULL;
+    return true;
+}
+
 void test_prototype_document()
 {
     pu_setup(NULL, cleanup);
@@ -547,5 +595,6 @@ void test_prototype_document()
     RUN_TEST_CASE(prototype_children_resolve_and_save_nested);
     RUN_TEST_CASE(prototype_children_spawn_with_it);
     RUN_TEST_CASE(prototype_expansion_is_bounded);
+    RUN_TEST_CASE(prototype_expansion_bytes_are_bounded);
     pu_clear_setup();
 }

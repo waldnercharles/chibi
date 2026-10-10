@@ -1002,6 +1002,18 @@ TEST_CASE(prototype_children_come_with_their_instance)
     );
     const char *missing = first_message(result("diagnostics"));
     REQUIRE(missing && strstr(missing, "Missing"));
+    /* So are the bindings a child's overrides add. */
+    write_file(
+        "game/content/prototypes/Ship.kdl",
+        "name \"Ship\"\n(array)children { - name=\"Gun\" prototype=\"Hull\" { "
+        "components { GAME.GameUi document=\"Nowhere\"; }; }; }\n"
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Ship\"}") !=
+        0
+    );
+    missing = first_message(result("diagnostics"));
+    REQUIRE(missing && !strcmp(missing, "Unknown UI document 'Nowhere'"));
     write_file("game/content/prototypes/Ship.kdl", "name \"Ship\"\n(array)children { - name=\"Again\" prototype=\"Ship\"; }\n");
     REQUIRE(validate() != 0);
     return true;

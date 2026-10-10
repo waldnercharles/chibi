@@ -14,6 +14,10 @@
  * documents cannot expand without bound. A prepared scene holds at most 4096
  * records, so no tree that prepares comes near it. */
 #define GAME_PROTOTYPE_EXPANSION_MAX 16384
+/* The most bytes of those documents the same loads may read, the most a
+ * prepared player artifact holds, so many instances of one large document
+ * cannot multiply its size without bound. */
+#define GAME_PROTOTYPE_READ_MAX (64 * 1024 * 1024)
 
 typedef const char *(*game_prototype_include_fn)(const char *name, void *user);
 
@@ -86,6 +90,7 @@ typedef struct game_prototype
      * as the child. Empty for an authored load. */
     struct game_prototype **child_prototypes;
     int expanded; /* the other documents its load read, at most GAME_PROTOTYPE_EXPANSION_MAX */
+    size_t read; /* their bytes, at most GAME_PROTOTYPE_READ_MAX */
     char **strings;
 } game_prototype;
 

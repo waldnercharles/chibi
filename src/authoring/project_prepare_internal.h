@@ -23,8 +23,18 @@ game_prototype *project_prepare_object(
     char *,
     size_t
 );
-/* Adds what loading `prototype` read to `expanded`, the documents read so far
- * by loads retained together; false once it reaches
- * GAME_PROTOTYPE_EXPANSION_MAX. */
-bool project_prepare_expand(int *expanded, const game_prototype *prototype, char *error, size_t size);
+/* The documents, and their bytes, that loads retained together have read. */
+typedef struct
+{
+    int documents;
+    size_t bytes;
+} project_expansion;
+/* Adds what loading `prototype` read to `expansion`; false once it reaches
+ * GAME_PROTOTYPE_EXPANSION_MAX documents or GAME_PROTOTYPE_READ_MAX bytes. */
+bool project_prepare_expand(
+    project_expansion *expansion,
+    const game_prototype *prototype,
+    char *error,
+    size_t size
+);
 void project_prepare_prototypes_free(project_prototype *);

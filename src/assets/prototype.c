@@ -383,15 +383,34 @@ static void move_strings(game_prototype *dst, game_prototype *src)
 }
 
 /* Counts what `src` read toward `dst`'s load; false once the load reads too
- * many documents. */
+ * many documents or bytes. */
 static bool expand(game_prototype *dst, const game_prototype *src, char *error, size_t error_size)
 {
     dst->expanded += 1 + src->expanded;
-    if (dst->expanded < GAME_PROTOTYPE_EXPANSION_MAX) {
-        return true;
+    dst->read += src->read;
+    if (dst->expanded >= GAME_PROTOTYPE_EXPANSION_MAX) {
+        set_error(
+            error,
+            error_size,
+            "prototype %s reads more than %d prototypes through its includes "
+            "and children",
+            dst->name,
+            GAME_PROTOTYPE_EXPANSION_MAX
+        );
+        return false;
     }
-    set_error(error, error_size, "prototype %s reads more than %d prototypes through its includes and children", dst->name, GAME_PROTOTYPE_EXPANSION_MAX);
-    return false;
+    if (dst->read >= GAME_PROTOTYPE_READ_MAX) {
+        set_error(
+            error,
+            error_size,
+            "prototype %s reads more than %d MiB of prototypes through its "
+            "includes and children",
+            dst->name,
+            GAME_PROTOTYPE_READ_MAX >> 20
+        );
+        return false;
+    }
+    return true;
 }
 
 /* An include's children come before the including prototype's own. */
@@ -464,6 +483,9 @@ static game_prototype *load_named(
         return NULL;
     }
     game_prototype *prototype = load_document(source, registry, stack, stack_count, error, error_size);
+    if (prototype) {
+        prototype->read += strlen(source);
+    }
     if (prototype && strcmp(prototype->name, name)) {
         set_error(error, error_size, "%s %s is named %s", role, name, prototype->name);
         game_prototype_free(prototype);

@@ -135,7 +135,7 @@ bool project_prepare_prototypes(
     }
     registry->include = include;
     registry->include_user = *result;
-    int expanded = 0;
+    project_expansion expanded = { 0 };
     for (int i = 0; i < acount(*result); i++) {
         (*result)[i].prototype = game_prototype_load((*result)[i].text, registry, error, size);
         if (!(*result)[i].prototype ||
@@ -151,14 +151,29 @@ bool project_prepare_prototypes(
     }
     return true;
 }
-bool project_prepare_expand(int *expanded, const game_prototype *prototype, char *error, size_t size)
+bool project_prepare_expand(
+    project_expansion *expansion,
+    const game_prototype *prototype,
+    char *error,
+    size_t size
+)
 {
-    *expanded += 1 + prototype->expanded;
-    if (*expanded < GAME_PROTOTYPE_EXPANSION_MAX) {
+    expansion->documents += 1 + prototype->expanded;
+    expansion->bytes += prototype->read;
+    bool documents = expansion->documents >= GAME_PROTOTYPE_EXPANSION_MAX;
+    if (!documents && expansion->bytes < GAME_PROTOTYPE_READ_MAX) {
         return true;
     }
-    if (size) {
+    if (size && documents) {
         snprintf(error, size, "Prototypes read more than %d prototypes through their includes and children", GAME_PROTOTYPE_EXPANSION_MAX);
+    } else if (size) {
+        snprintf(
+            error,
+            size,
+            "Prototypes read more than %d MiB of prototypes through their "
+            "includes and children",
+            GAME_PROTOTYPE_READ_MAX >> 20
+        );
     }
     return false;
 }

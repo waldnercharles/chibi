@@ -11873,16 +11873,10 @@ static int validate_ui_binding(const char *root, const GameUi *ui, char *error, 
     return CHIBI_AUTOMATION_VALIDATION_ERROR;
 }
 
-/* A prototype's shader binding and UI document resolve. */
-static int validate_prototype_bindings(const char *root, const char *text, char *error, size_t error_size)
+/* The shader bindings and UI documents of a resolved prototype and its
+ * children resolve. */
+static int spawned_bindings(const char *root, const game_prototype *prototype, char *error, size_t error_size)
 {
-    prototype_includes includes = { root };
-    game_prototype_registry registry = prototype_registry(&includes);
-    game_prototype *prototype = game_prototype_load(text, &registry, error, error_size);
-    if (!prototype) {
-        prototype_includes_free(&includes);
-        return CHIBI_AUTOMATION_VALIDATION_ERROR;
-    }
     int status = CHIBI_AUTOMATION_OK;
     for (int i = 0; i < acount(prototype->components) && status == CHIBI_AUTOMATION_OK;
          i++) {
@@ -11893,6 +11887,26 @@ static int validate_prototype_bindings(const char *root, const char *text, char 
             status = validate_ui_binding(root, component->data, error, error_size);
         }
     }
+    for (int i = 0;
+         i < acount(prototype->child_prototypes) && status == CHIBI_AUTOMATION_OK;
+         i++) {
+        status = spawned_bindings(root, prototype->child_prototypes[i], error, error_size);
+    }
+    return status;
+}
+
+/* A prototype's shader bindings and UI documents resolve, its children's
+ * included. */
+static int validate_prototype_bindings(const char *root, const char *text, char *error, size_t error_size)
+{
+    prototype_includes includes = { root };
+    game_prototype_registry registry = prototype_registry(&includes);
+    game_prototype *prototype = game_prototype_load(text, &registry, error, error_size);
+    if (!prototype) {
+        prototype_includes_free(&includes);
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
+    int status = spawned_bindings(root, prototype, error, error_size);
     game_prototype_free(prototype);
     prototype_includes_free(&includes);
     return status;

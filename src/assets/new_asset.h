@@ -29,8 +29,11 @@ typedef enum
 const char *new_asset_folder(new_asset_kind kind);
 /* Executable definitions use .chibi; declarative documents use .kdl. */
 const char *new_asset_extension(new_asset_kind kind);
+/* The longest name a new asset may have, in bytes. */
+#define NEW_ASSET_NAME_MAX 63
 /* Whether `name` can name a new asset's file: a letter, then letters,
- * digits, - and _; false with why in `error`. */
+ * digits, - and _, at most NEW_ASSET_NAME_MAX bytes; false with why in
+ * `error`. */
 bool new_asset_name_valid(const char *name, char *error, size_t size);
 /* A graph asset of `domain` named `name`: its one event graph holds the
  * output node a material, shape or field needs, and a shape has 32-unit

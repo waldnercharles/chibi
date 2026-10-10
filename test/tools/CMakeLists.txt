@@ -188,6 +188,28 @@ if(TARGET Chibi::model_authoring)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MESH_PREPARATION=1)
 endif()
 
+# Model import reads glTF files and writes content files, so only compiler
+# builds have it. The render cases draw what it writes.
+if(TARGET Chibi::model_import)
+    configure_file("${CHIBI_TOOL_ROOT}/test/support/gltf_fixture.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/support/gltf_fixture.h" COPYONLY)
+    add_library(chibi_model_import_consumer OBJECT ../authoring/model_import.c ../support/gltf_fixture.c)
+    target_include_directories(chibi_model_import_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_compile_definitions(chibi_model_import_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
+    target_link_libraries(chibi_model_import_consumer PRIVATE Chibi::model_import Chibi::mesh_runtime
+        Chibi::graph_authoring Chibi::graph_compilation Chibi::native_types Chibi::asset_text Chibi::platform)
+    target_compile_options(chibi_model_import_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_model_import_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::model_import Chibi::mesh_runtime Chibi::graph_authoring
+        Chibi::graph_compilation Chibi::native_types Chibi::asset_text Chibi::platform)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MODEL_IMPORT=1)
+    target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MODEL_IMPORT=1)
+    if(TARGET chibi_render_consumer)
+        target_link_libraries(chibi_render_consumer PRIVATE Chibi::model_import Chibi::image_preparation)
+        target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_TEST_MODEL_IMPORT=1)
+    endif()
+endif()
+
 if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     configure_file("${CHIBI_TOOL_ROOT}/test/support/reflected_types.h"
         "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/support/reflected_types.h" COPYONLY)

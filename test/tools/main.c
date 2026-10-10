@@ -93,6 +93,9 @@ void test_sky_files();
 #ifdef CHIBI_TEST_MESH_PREPARATION
 void test_mesh_files();
 #endif
+#ifdef CHIBI_TEST_MODEL_IMPORT
+void test_model_import();
+#endif
 #ifdef CHIBI_TEST_REFLECT
 void test_tool_reflect();
 #endif
@@ -119,6 +122,15 @@ bool test_material_graphs_active()
 }
 #endif
 
+#ifdef CHIBI_TEST_MODEL_IMPORT
+/* The import cases, and the render cases that draw what imports write. */
+static bool model_import_types;
+bool test_model_import_active()
+{
+    return model_import_types;
+}
+#endif
+
 int main(int argc, char **argv)
 {
     bool tilemap = false, tilemap_project = false;
@@ -140,9 +152,10 @@ int main(int argc, char **argv)
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
-         render_resources = false, interior_border = false, viewport_resize = false,
-         sdf_visibility = false, scene3d = false, material_ramps = false,
-         box3d = false, sky_files = false, mesh_files = false;
+         render_resources = false, interior_border = false,
+         viewport_resize = false, sdf_visibility = false, scene3d = false,
+         material_ramps = false, box3d = false, sky_files = false,
+         mesh_files = false, model_import = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -200,6 +213,10 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_MESH_PREPARATION
     mesh_files = argc == 2 && !strcmp(argv[1], "--mesh-files");
 #endif
+#ifdef CHIBI_TEST_MODEL_IMPORT
+    model_import = argc == 2 && !strcmp(argv[1], "--model-import");
+    model_import_types = model_import || scene3d;
+#endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     native_catalog = argc == 2 && !strcmp(argv[1], "--native-catalog");
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
@@ -210,14 +227,14 @@ int main(int argc, char **argv)
 #endif
     if (argc != 1 && !corpus && !shader_parameters && !source_edit && !new_asset &&
         !asset_refactor && !tilemap && !tilemap_project && !package && !unit &&
-        !web_storage && !webgpu_staging && !query_benchmark && !prepared &&
-        !read && !scene && !scene_prepared && !native && !native_values &&
-        !native_catalog && !physics && !physics3d && !transforms &&
-        !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !scene3d && !material_ramps && !box3d && !sky_files &&
-        !mesh_files && !persistent_store && !whole_alias && !whole_math &&
-        !whole_integer && !whole_conversion && !whole_select && !owned_tick &&
-        !parallel_tick && !source_features && !source_numeric && !source_material &&
+        !web_storage && !webgpu_staging && !query_benchmark && !prepared && !read &&
+        !scene && !scene_prepared && !native && !native_values && !native_catalog &&
+        !physics && !physics3d && !transforms && !render_resources &&
+        !interior_border && !viewport_resize && !sdf_visibility && !scene3d &&
+        !material_ramps && !box3d && !sky_files && !mesh_files && !model_import &&
+        !persistent_store && !whole_alias && !whole_math && !whole_integer &&
+        !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
+        !source_features && !source_numeric && !source_material &&
         !source_presentation && !system_schedule && !source_systems &&
         !validate_project && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
         fprintf(
@@ -235,7 +252,7 @@ int main(int argc, char **argv)
             "--sdf-visibility | "
             "--scene3d | --scene3d-gles | --material-ramps | "
             "--box3d | "
-            "--sky-files | --mesh-files | "
+            "--sky-files | --mesh-files | --model-import | "
             "--persistent-store | "
             "--whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
@@ -357,6 +374,13 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_MESH_PREPARATION
     if (mesh_files) {
         test_mesh_files();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
+#ifdef CHIBI_TEST_MODEL_IMPORT
+    if (model_import) {
+        test_model_import();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

@@ -177,7 +177,8 @@ that includes another prototype keeps its includes and only its own children.
 Four in-memory prototypes, no files, CPU only.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-sixteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+twenty-three cases, twenty-two without model import, against that
+`build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
@@ -202,6 +203,10 @@ the project's other resources, fail validation as they fail compiling; and in a
 project whose manifest names another content folder, assets are scaffolded,
 validated, run, formatted, found and reported there under their `content/`
 paths, and `status` names that folder even once the project is too old to open.
+In a compiler build, `import_model` names a model for its file, writes files
+that validate and that `--format --check` keeps, and refuses a name that is
+no asset name or that a prototype already declares, and a model it cannot
+read, writing nothing.
 A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
@@ -551,6 +556,16 @@ mesh a bake can write with one more triangle refused, and a model export whose
 one temporary folder and passes 9,910 assertions in 8.4 seconds under
 ASan/UBSan with leak checks, 8.0 of them writing and reading the largest mesh,
 without processes or GPU.
+`model-import` selects eight in-tree glTF import cases: the image, Standard
+materials, mesh and prototype a `.gltf` writes, each once, byte for byte the
+same from a `.glb`, and nothing for a material only a hidden node uses; names made unique, ignoring case, and cut to 63 bytes;
+an import that would replace a file, or fails partway, leaves the content as
+it was; refused extensions, texture transforms, second UV sets, images and
+primitives; unreadable files, names and buffers; the warnings for what it
+leaves out; and tangent frames generated toward image-up, authored, turned,
+mirrored by a node and flat. It needs a compiler build, uses one temporary
+folder and passes 83 assertions under ASan/UBSan with leak checks, without
+processes or GPU.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

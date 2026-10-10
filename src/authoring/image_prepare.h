@@ -7,6 +7,9 @@ bool render_image_mount_content(const char *root, char *error, size_t size);
 /* The bytes of the file at `path` when they decode as a PNG, owned by the
  * caller, with their count in `length`; NULL with `error` saying why not. */
 void *image_prepare_png_read(const char *path, int *length, char *error, size_t size);
+/* "png" or "jpg" when `bytes` decode as that image within the resident side
+ * limit; NULL with `error` saying why not. */
+const char *image_prepare_check(const void *bytes, size_t length, char *error, size_t size);
 /* Decodes a Radiance .hdr file into an owned sky; false with `error` saying
  * why when it isn't an equirectangular RGBE image within the sky limits. */
 bool image_prepare_sky_decode(const void *, size_t, render_sky *, char *error, size_t size);

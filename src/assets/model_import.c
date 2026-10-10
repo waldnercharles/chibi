@@ -1,0 +1,972 @@
+#include "assets/model_import.h"
+
+#include "assets/new_asset.h"
+#include "assets/prototype.h"
+#include "assets/standard_material.h"
+#include "authoring/image_prepare.h"
+#include "graph/document/serialize.h"
+#include "runtime/component_catalog.h"
+#include "runtime/geometry/mesh_asset.h"
+#include "runtime/geometry/mesh_prepared.h"
+#include "support/array.h"
+#include "support/asset_text.h"
+#include "support/xalloc.h"
+#include "yyjson.h"
+
+/* cute_model.h refuses to compile without ckit.h, though only its
+ * implementation, which Cute's library builds, uses ckit. ckit's dynamic
+ * array macros share support/array.h's names, so its guard stands in. */
+#define CKIT_H
+#include <cute/cute_model.h>
+#undef CKIT_H
+
+#include <assert.h>
+#include <errno.h>
+#include <math.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+enum
+{
+    GLB_MAGIC = 0x46546c67, /* "glTF" */
+    GLB_JSON = 0x4e4f534a,  /* "JSON" */
+    GLB_HEADER = 20,        /* the file header and the JSON chunk's */
+    GL_NEAREST = 9728,
+    GL_CLAMP_TO_EDGE = 33071,
+    GL_REPEAT = 10497,
+};
+
+/* Extensions an import applies, so a model may require them. */
+static const char *const APPLIED[] = { "KHR_materials_unlit",
+                                       "KHR_materials_emissive_strength",
+                                       "KHR_texture_transform" };
+
+/* The glTF texture each Standard slot reads, as its key in a material. */
+static const char *const TEXTURE_KEYS[STANDARD_TEXTURE_COUNT] = {
+    [STANDARD_TEXTURE_BASE_COLOR] = "baseColorTexture",
+    [STANDARD_TEXTURE_METALLIC_ROUGHNESS] = "metallicRoughnessTexture",
+    [STANDARD_TEXTURE_NORMAL] = "normalTexture",
+    [STANDARD_TEXTURE_OCCLUSION] = "occlusionTexture",
+    [STANDARD_TEXTURE_EMISSION] = "emissiveTexture",
+};
+
+/* One import: what it read, and what it named and wrote so far. */
+typedef struct
+{
+    const char *content, *name;
+    CM_Model *model;
+    yyjson_val *root;
+    model_import_report *report;
+    /* Each glTF material's asset name, and its group's parameter scope, with
+     * the default material's last; NULL for one no drawn triangle uses. */
+    char **materials, **scopes;
+    char **images; /* each glTF image's content key, NULL for one no material uses */
+    char **taken;   /* every name chosen so far */
+    char **created; /* paths made, files and folders, to remove on failure */
+    char *error;
+    size_t size;
+} import;
+
+static bool fail(import *in, const char *format, ...)
+{
+    va_list arguments;
+    va_start(arguments, format);
+    vsnprintf(in->error, in->size, format, arguments);
+    va_end(arguments);
+    return false;
+}
+
+static void warn(import *in, const char *format, ...)
+{
+    char text[256];
+    va_list arguments;
+    va_start(arguments, format);
+    vsnprintf(text, sizeof text, format, arguments);
+    va_end(arguments);
+    apush(in->report->warnings, xstrdup(text));
+}
+
+/* The whole file at `path`, at most MODEL_IMPORT_BYTES_MAX bytes, or NULL. */
+static void *read_whole(const char *path, size_t *length)
+{
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        return NULL;
+    }
+    long end = fseek(file, 0, SEEK_END) ? -1 : ftell(file);
+    void *bytes = NULL;
+    if (end > 0 && end <= MODEL_IMPORT_BYTES_MAX && !fseek(file, 0, SEEK_SET)) {
+        bytes = xmalloc((size_t)end);
+        if (fread(bytes, 1, (size_t)end, file) != (size_t)end) {
+            free(bytes);
+            bytes = NULL;
+        }
+    }
+    fclose(file);
+    *length = bytes ? (size_t)end : 0;
+    return bytes;
+}
+
+/* A .gltf's buffer or image file, which `uri` names relative to the model's
+ * folder `directory`; a model never names a file by absolute path or scheme. */
+static void *read_external(const char *uri, int *size, void *directory)
+{
+    if (uri[0] == '/' || uri[0] == '\\' || strchr(uri, ':')) {
+        return NULL;
+    }
+    size_t bytes = strlen(directory) + strlen(uri) + 1;
+    char *path = xmalloc(bytes);
+    snprintf(path, bytes, "%s%s", (const char *)directory, uri);
+    size_t length = 0;
+    void *data = read_whole(path, &length);
+    free(path);
+    *size = (int)length;
+    return data;
+}
+
+static void free_external(void *data, void *)
+{
+    free(data);
+}
+
+static uint32_t read_u32(const unsigned char *bytes)
+{
+    return (uint32_t)bytes[0] | (uint32_t)bytes[1] << 8 |
+           (uint32_t)bytes[2] << 16 | (uint32_t)bytes[3] << 24;
+}
+
+/* The glTF JSON of a .gltf file's bytes, or of a .glb's first chunk. */
+static yyjson_doc *read_json(const unsigned char *bytes, size_t length)
+{
+    if (length < 4 || read_u32(bytes) != GLB_MAGIC) {
+        return yyjson_read((const char *)bytes, length, 0);
+    }
+    if (length < GLB_HEADER || read_u32(bytes + 16) != GLB_JSON ||
+        read_u32(bytes + 12) > length - GLB_HEADER) {
+        return NULL;
+    }
+    return yyjson_read((const char *)bytes + GLB_HEADER, read_u32(bytes + 12), 0);
+}
+
+static yyjson_val *item(yyjson_val *array, int index)
+{
+    return index < 0 ? NULL : yyjson_arr_get(array, (size_t)index);
+}
+
+static yyjson_val *json_material(const import *in, int material)
+{
+    return item(yyjson_obj_get(in->root, "materials"), material);
+}
+
+static yyjson_val *json_primitive(const import *in, int mesh, int primitive)
+{
+    yyjson_val *meshes = yyjson_obj_get(in->root, "meshes");
+    return item(yyjson_obj_get(item(meshes, mesh), "primitives"), primitive);
+}
+
+static bool has_attribute(yyjson_val *primitive, const char *name)
+{
+    return yyjson_obj_get(yyjson_obj_get(primitive, "attributes"), name) != NULL;
+}
+
+static bool applied(const char *extension)
+{
+    for (size_t i = 0; i < sizeof APPLIED / sizeof *APPLIED; i++) {
+        if (!strcmp(APPLIED[i], extension)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Refuses a model that requires an extension the import doesn't apply, and
+ * warns of the ones it uses without requiring. Lights get their own warning. */
+static bool check_extensions(import *in)
+{
+    size_t i, count;
+    yyjson_val *value;
+    yyjson_arr_foreach(yyjson_obj_get(in->root, "extensionsRequired"), i, count, value)
+    {
+        const char *extension = yyjson_get_str(value);
+        if (extension && !applied(extension)) {
+            return fail(in, "The model requires %s, which import does not support", extension);
+        }
+    }
+    yyjson_arr_foreach(yyjson_obj_get(in->root, "extensionsUsed"), i, count, value)
+    {
+        const char *extension = yyjson_get_str(value);
+        if (extension && !applied(extension) &&
+            strcmp(extension, "KHR_lights_punctual")) {
+            warn(in, "Ignored the %s extension.", extension);
+        }
+    }
+    return true;
+}
+
+static int primitive_material(const CM_Model *model, const CM_Primitive *primitive)
+{
+    return primitive->material >= 0 && primitive->material < model->material_count
+             ? primitive->material
+             : -1;
+}
+
+/* Whether `name` matches one taken so far; names differing only in case
+ * would share a file on case-insensitive file systems. */
+static bool taken(const import *in, const char *name)
+{
+    for (int i = 0; i < acount(in->taken); i++) {
+        if (!strcasecmp(in->taken[i], name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* `prefix` and then `label`, each character an asset name refuses turned to
+ * '_', at most NEW_ASSET_NAME_MAX bytes, and unlike every name taken so far. */
+static char *unique_name(import *in, const char *prefix, const char *label)
+{
+    char base[NEW_ASSET_NAME_MAX + 1];
+    snprintf(base, sizeof base, "%s%s", prefix, label);
+    for (char *c = base + strlen(prefix); *c; c++) {
+        bool kept = (*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') ||
+                    (*c >= '0' && *c <= '9') || *c == '-' || *c == '_';
+        *c = kept ? *c : '_';
+    }
+    char name[NEW_ASSET_NAME_MAX + 1];
+    snprintf(name, sizeof name, "%s", base);
+    for (int n = 2; taken(in, name); n++) {
+        char suffix[16];
+        int length = snprintf(suffix, sizeof suffix, "_%d", n);
+        snprintf(name, sizeof name, "%.*s%s", NEW_ASSET_NAME_MAX - length, base, suffix);
+    }
+    apush(in->taken, xstrdup(name));
+    return xstrdup(name);
+}
+
+/* Names each glTF material a mesh node draws with, and the default
+ * material when a primitive names none. */
+static void name_materials(import *in)
+{
+    const CM_Model *model = in->model;
+    in->materials = xcalloc((size_t)model->material_count + 1, sizeof *in->materials);
+    in->scopes = xcalloc((size_t)model->material_count + 1, sizeof *in->scopes);
+    char prefix[NEW_ASSET_NAME_MAX + 2];
+    snprintf(prefix, sizeof prefix, "%s_", in->name);
+    for (int i = 0; i < model->node_count; i++) {
+        int mesh = model->nodes[i].mesh;
+        for (int j = 0; mesh >= 0 && j < model->meshes[mesh].primitive_count; j++) {
+            int material = primitive_material(model, &model->meshes[mesh].primitives[j]);
+            int slot = material >= 0 ? material : model->material_count;
+            if (in->materials[slot]) {
+                continue;
+            }
+            char label[32];
+            const char *name = material >= 0 ? model->materials[material].name
+                                             : "Default";
+            if (!*name) {
+                snprintf(label, sizeof label, "Material%d", material);
+                name = label;
+            }
+            in->materials[slot] = unique_name(in, prefix, name);
+            in->scopes[slot] = xstrdup(in->materials[slot] + strlen(prefix));
+        }
+    }
+}
+
+/* The image's name, else its file's name without folders or extension, else
+ * Image<n>. */
+static void image_label(const import *in, int image, char *label, size_t size)
+{
+    yyjson_val *json = item(yyjson_obj_get(in->root, "images"), image);
+    const char *uri = yyjson_get_str(yyjson_obj_get(json, "uri"));
+    snprintf(label, size, "%s", in->model->images[image].name);
+    if (!*label && uri && strncmp(uri, "data:", 5)) {
+        const char *slash = strrchr(uri, '/');
+        const char *file = slash ? slash + 1 : uri;
+        snprintf(label, size, "%.*s", (int)strcspn(file, "."), file);
+    }
+    if (!*label) {
+        snprintf(label, size, "Image%d", image);
+    }
+}
+
+/* The image's content key under textures/<model>/, after checking it decodes. */
+static bool name_image(import *in, int image)
+{
+    if (in->images[image]) {
+        return true;
+    }
+    const CM_Image *source = &in->model->images[image];
+    if (!source->data) {
+        return fail(in, "Cannot read image %d of the model", image);
+    }
+    char reason[160];
+    const char *extension = image_prepare_check(source->data, (size_t)source->size, reason, sizeof reason);
+    if (!extension) {
+        return fail(in, "Image %d of the model: %s", image, reason);
+    }
+    char label[NEW_ASSET_NAME_MAX + 1];
+    image_label(in, image, label, sizeof label);
+    char *file = unique_name(in, "", label);
+    size_t size = strlen(in->name) + strlen(file) + 32;
+    in->images[image] = xmalloc(size);
+    snprintf(in->images[image], size, "content/textures/%s/%s.%s", in->name, file, extension);
+    free(file);
+    return true;
+}
+
+/* The sampler a material's texture uses, as an engine filter and wrap. */
+static void sample(import *in, int material, standard_texture_slot slot, standard_texture *out)
+{
+    yyjson_val *owner = json_material(in, material);
+    if (slot == STANDARD_TEXTURE_BASE_COLOR ||
+        slot == STANDARD_TEXTURE_METALLIC_ROUGHNESS) {
+        owner = yyjson_obj_get(owner, "pbrMetallicRoughness");
+    }
+    yyjson_val *info = yyjson_obj_get(owner, TEXTURE_KEYS[slot]);
+    yyjson_val *texture = item(
+        yyjson_obj_get(in->root, "textures"),
+        (int)yyjson_get_int(yyjson_obj_get(info, "index"))
+    );
+    yyjson_val *sampler = item(
+        yyjson_obj_get(in->root, "samplers"),
+        yyjson_obj_get(texture, "sampler")
+            ? (int)yyjson_get_int(yyjson_obj_get(texture, "sampler"))
+            : -1
+    );
+    yyjson_val *s = yyjson_obj_get(sampler, "wrapS"),
+               *t = yyjson_obj_get(sampler, "wrapT");
+    int wrap_s = s ? (int)yyjson_get_int(s) : GL_REPEAT,
+        wrap_t = t ? (int)yyjson_get_int(t) : GL_REPEAT;
+    out->filter = yyjson_get_int(yyjson_obj_get(sampler, "magFilter")) == GL_NEAREST
+                    ? SHADER_IMAGE_NEAREST
+                    : SHADER_IMAGE_BILINEAR;
+    out->wrap = wrap_s == GL_CLAMP_TO_EDGE && wrap_t == GL_CLAMP_TO_EDGE
+                  ? SHADER_IMAGE_CLAMP
+                  : SHADER_IMAGE_REPEAT;
+    if (out->wrap == SHADER_IMAGE_REPEAT &&
+        (wrap_s != GL_REPEAT || wrap_t != GL_REPEAT)) {
+        warn(
+            in,
+            "Material %s's %s repeats where the model mirrors or clamps it.",
+            in->materials[material],
+            TEXTURE_KEYS[slot]
+        );
+    }
+}
+
+/* The engine form of a glTF texture slot, after checking the import can
+ * sample it as glTF does. */
+static bool texture(
+    import *in,
+    int material,
+    standard_texture_slot slot,
+    const CM_TextureRef *ref,
+    standard_texture *out
+)
+{
+    *out = (standard_texture){ 0 };
+    if (ref->image < 0) {
+        return true;
+    }
+    const char *name = in->materials[material];
+    if (ref->image >= in->model->image_count) {
+        return fail(in, "Material %s's %s names a missing image", name, TEXTURE_KEYS[slot]);
+    }
+    if (ref->uv_set != 0) {
+        return fail(
+            in,
+            "Material %s's %s reads TEXCOORD_%d; import reads only TEXCOORD_0",
+            name,
+            TEXTURE_KEYS[slot],
+            ref->uv_set
+        );
+    }
+    if (ref->offset[0] || ref->offset[1] || ref->scale[0] != 1 ||
+        ref->scale[1] != 1 || ref->rotation) {
+        return fail(in, "Material %s's %s transforms its UVs, which import does not support", name, TEXTURE_KEYS[slot]);
+    }
+    if (!name_image(in, ref->image)) {
+        return false;
+    }
+    out->image = in->images[ref->image];
+    sample(in, material, slot, out);
+    return true;
+}
+
+/* The Standard form of glTF material `index`, or of the default material
+ * when it is -1. */
+static bool standard(import *in, int index, standard_material *out)
+{
+    *out = (standard_material){ .base_color = { 1, 1, 1, 1 },
+                                .metallic = 1,
+                                .roughness = 1,
+                                .normal_scale = 1,
+                                .occlusion_strength = 1,
+                                .alpha_mode = SHADER_ALPHA_OPAQUE,
+                                .alpha_cutoff = .5f };
+    if (index < 0) {
+        return true;
+    }
+    const CM_Material *m = &in->model->materials[index];
+    yyjson_val *extensions = yyjson_obj_get(json_material(in, index), "extensions");
+    yyjson_val *strength = yyjson_obj_get(
+        yyjson_obj_get(extensions, "KHR_materials_emissive_strength"),
+        "emissiveStrength"
+    );
+    float emissive = strength ? (float)yyjson_get_num(strength) : 1;
+    memcpy(out->base_color, m->base_color, sizeof out->base_color);
+    out->metallic = m->metallic;
+    out->roughness = m->roughness;
+    for (int i = 0; i < 3; i++) {
+        out->emission[i] = m->emissive[i] * emissive;
+    }
+    out->normal_scale = m->normal_scale;
+    out->occlusion_strength = m->occlusion_strength;
+    out->alpha_mode = m->alpha_mode == CM_ALPHA_BLEND ? SHADER_ALPHA_BLEND
+                    : m->alpha_mode == CM_ALPHA_MASK  ? SHADER_ALPHA_MASK
+                                                      : SHADER_ALPHA_OPAQUE;
+    out->alpha_cutoff = m->alpha_cutoff;
+    out->unlit = yyjson_obj_get(extensions, "KHR_materials_unlit") != NULL;
+    if (m->double_sided) {
+        warn(in, "Material %s draws single-sided.", in->materials[index]);
+    }
+    const CM_TextureRef *refs[STANDARD_TEXTURE_COUNT] = {
+        [STANDARD_TEXTURE_BASE_COLOR] = &m->base_color_texture,
+        [STANDARD_TEXTURE_METALLIC_ROUGHNESS] = &m->metallic_roughness_texture,
+        [STANDARD_TEXTURE_NORMAL] = &m->normal_texture,
+        [STANDARD_TEXTURE_OCCLUSION] = &m->occlusion_texture,
+        [STANDARD_TEXTURE_EMISSION] = &m->emissive_texture,
+    };
+    for (int slot = 0; slot < STANDARD_TEXTURE_COUNT; slot++) {
+        if (!texture(in, index, slot, refs[slot], &out->textures[slot])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static CF_V3 v3(const float *values)
+{
+    return (CF_V3){ values[0], values[1], values[2] };
+}
+
+/* `v` at unit length, or `fallback` when it has none. */
+static CF_V3 unit(CF_V3 v, CF_V3 fallback)
+{
+    float length = cf_len_v3(v);
+    return isfinite(length) && length > 1e-12f ? cf_div_v3_f(v, length) : fallback;
+}
+
+/* The primitive's vertices in its node's frame, with glTF's tangent frame:
+ * each authored tangent, or else one along +u whose bitangent points up the
+ * image, toward -v, where Chibi's generated one points toward +v. Without
+ * normals, each triangle's corners get its own flat normal, as glTF
+ * requires. */
+static bool primitive_part(import *in, const CM_Primitive *p, yyjson_val *json, render_mesh_asset *part)
+{
+    if (p->index_count % 3) {
+        return fail(in, "A primitive's %d indices are not whole triangles", p->index_count);
+    }
+    for (int i = 0; i < p->index_count; i++) {
+        if (p->indices[i] >= (uint32_t)p->vertex_count) {
+            return fail(in, "A primitive's index %d names a missing vertex", i);
+        }
+    }
+    bool flat = !has_attribute(json, "NORMAL");
+    int count = flat ? p->index_count : p->vertex_count;
+    for (int i = 0; i < count; i++) {
+        int source = flat ? (int)p->indices[i] : i;
+        CF_V3 normal;
+        if (flat) {
+            const uint32_t *corner = p->indices + i / 3 * 3;
+            CF_V3 a = v3(p->positions + corner[0] * 3),
+                  b = v3(p->positions + corner[1] * 3),
+                  c = v3(p->positions + corner[2] * 3);
+            normal = cf_cross_v3(cf_sub_v3(b, a), cf_sub_v3(c, a));
+        } else {
+            normal = v3(p->normals + source * 3);
+        }
+        render_mesh_surface_vertex vertex = {
+            .position = v3(p->positions + source * 3),
+            .normal = unit(normal, (CF_V3){ 0, 1, 0 }),
+            .uv = p->uvs ? (CF_V2){ p->uvs[source * 2], p->uvs[source * 2 + 1] }
+                         : (CF_V2){ 0 },
+        };
+        apush(part->vertices, vertex);
+    }
+    for (int i = 0; i < p->index_count; i++) {
+        apush(part->indices, flat ? i : (int)p->indices[i]);
+    }
+    render_mesh_asset_tangents(part);
+    /* glTF ignores the tangents of a primitive without normals. */
+    bool authored = !flat && has_attribute(json, "TANGENT") && p->tangents;
+    for (int i = 0; i < count; i++) {
+        render_mesh_surface_vertex *vertex = &part->vertices[i];
+        vertex->tangent.w = -vertex->tangent.w;
+        const float *t = authored ? p->tangents + i * 4 : NULL;
+        CF_V3 direction = t ? unit(v3(t), (CF_V3){ 0 }) : (CF_V3){ 0 };
+        if (cf_len_v3(direction) > 0) {
+            vertex->tangent = (CF_V4){ direction.x,
+                                       direction.y,
+                                       direction.z,
+                                       t[3] < 0 ? -1.0f : 1.0f };
+        }
+    }
+    return true;
+}
+
+static float determinant(CF_M4x4 m)
+{
+    const float *e = m.elements;
+    return e[0] * (e[5] * e[10] - e[6] * e[9]) -
+           e[4] * (e[1] * e[10] - e[2] * e[9]) + e[8] * (e[1] * e[6] - e[2] * e[5]);
+}
+
+/* Whether the triangle has the area a mesh file requires. */
+static bool has_area(CF_V3 a, CF_V3 b, CF_V3 c)
+{
+    double x1 = (double)b.x - a.x, y1 = (double)b.y - a.y, z1 = (double)b.z - a.z;
+    double x2 = (double)c.x - a.x, y2 = (double)c.y - a.y, z2 = (double)c.z - a.z;
+    double x = y1 * z2 - z1 * y2, y = z1 * x2 - x1 * z2, z = x1 * y2 - y1 * x2;
+    double area = sqrt(x * x + y * y + z * z);
+    return isfinite(area) && area > RENDER_MESH_MIN_TRIANGLE_AREA;
+}
+
+/* Appends `part` to `mesh` in the world frame `world`, mirroring tangent
+ * handedness and winding with it, and returns how many triangles had no area
+ * there and were left out. */
+static int bake(render_mesh_asset *mesh, const render_mesh_asset *part, CF_M4x4 world)
+{
+    CF_M4x4 normals = cf_m4_normal_matrix(world);
+    bool mirrored = determinant(world) < 0;
+    int first = acount(mesh->vertices);
+    for (int i = 0; i < acount(part->vertices); i++) {
+        render_mesh_surface_vertex vertex = part->vertices[i];
+        CF_V4 t = vertex.tangent;
+        vertex.position = cf_m4_transform_point(world, vertex.position);
+        vertex.normal = unit(cf_m4_transform_dir(normals, vertex.normal), (CF_V3){ 0, 1, 0 });
+        CF_V3 tangent = unit(
+            cf_m4_transform_dir(world, (CF_V3){ t.x, t.y, t.z }),
+            (CF_V3){ 1, 0, 0 }
+        );
+        vertex.tangent = (CF_V4){ tangent.x, tangent.y, tangent.z, mirrored ? -t.w : t.w };
+        apush(mesh->vertices, vertex);
+    }
+    int dropped = 0;
+    for (int i = 0; i < acount(part->indices); i += 3) {
+        int corner[3] = { first + part->indices[i],
+                          first + part->indices[i + (mirrored ? 2 : 1)],
+                          first + part->indices[i + (mirrored ? 1 : 2)] };
+        if (!has_area(
+                mesh->vertices[corner[0]].position,
+                mesh->vertices[corner[1]].position,
+                mesh->vertices[corner[2]].position
+            )) {
+            dropped++;
+            continue;
+        }
+        for (int j = 0; j < 3; j++) {
+            apush(mesh->indices, corner[j]);
+        }
+    }
+    return dropped;
+}
+
+/* Each node's world frame, parents first. */
+static CF_M4x4 *world_frames(const CM_Model *model)
+{
+    CF_M4x4 *frames = xmalloc(
+        (size_t)(model->node_count ? model->node_count : 1) * sizeof *frames
+    );
+    for (int i = 0; i < model->node_count; i++) {
+        int n = model->order[i];
+        const CM_Node *node = &model->nodes[n];
+        const CM_Transform *rest = &node->rest;
+        CF_Quat rotation = { rest->rotation[0],
+                             rest->rotation[1],
+                             rest->rotation[2],
+                             rest->rotation[3] };
+        float length = sqrtf(
+            rotation.x * rotation.x + rotation.y * rotation.y +
+            rotation.z * rotation.z + rotation.w * rotation.w
+        );
+        rotation = length > 0 ? (CF_Quat){ rotation.x / length,
+                                           rotation.y / length,
+                                           rotation.z / length,
+                                           rotation.w / length }
+                              : (CF_Quat){ 0, 0, 0, 1 };
+        CF_M4x4 local = cf_m4_from_trs(v3(rest->translation), rotation, v3(rest->scale));
+        assert(node->parent < model->node_count);
+        frames[n] = node->parent >= 0 ? cf_mul_m4(frames[node->parent], local) : local;
+    }
+    return frames;
+}
+
+/* Every mesh node's triangles in the world frame, one group per material in
+ * glTF order with the default material's last. */
+static bool bake_mesh(import *in, render_mesh_asset *mesh)
+{
+    const CM_Model *model = in->model;
+    CF_M4x4 *frames = world_frames(model);
+    int dropped = 0;
+    bool colors = false, morphs = false;
+    for (int slot = 0; slot <= model->material_count; slot++) {
+        int first = acount(mesh->indices);
+        for (int i = 0; in->materials[slot] && i < model->node_count; i++) {
+            int n = model->order[i], index = model->nodes[n].mesh;
+            float det = determinant(frames[n]);
+            if (index < 0 || !isfinite(det) || det == 0) {
+                continue;
+            }
+            const CM_Mesh *source = &model->meshes[index];
+            for (int j = 0; j < source->primitive_count; j++) {
+                const CM_Primitive *p = &source->primitives[j];
+                int material = primitive_material(model, p);
+                if ((material >= 0 ? material : model->material_count) != slot) {
+                    continue;
+                }
+                render_mesh_asset part = { 0 };
+                bool read = primitive_part(in, p, json_primitive(in, index, j), &part);
+                if (read) {
+                    dropped += bake(mesh, &part, frames[n]);
+                }
+                render_mesh_asset_free(&part);
+                if (!read) {
+                    free(frames);
+                    return false;
+                }
+                colors = colors || p->colors;
+                morphs = morphs || p->target_count;
+            }
+        }
+        int count = acount(mesh->indices) - first;
+        if (!count) {
+            /* A material that only hidden nodes or triangles with no area
+             * draw with is neither checked nor written. */
+            free(in->materials[slot]);
+            free(in->scopes[slot]);
+            in->materials[slot] = in->scopes[slot] = NULL;
+            continue;
+        }
+        render_mesh_group group = { .first = first,
+                                    .count = count,
+                                    .part = -1,
+                                    .asset = xstrdup(in->name),
+                                    .name = xstrdup(in->scopes[slot]),
+                                    .path = xstrdup(""),
+                                    .material = xstrdup(in->materials[slot]),
+                                    .material_scope = xstrdup(in->scopes[slot]) };
+        apush(mesh->groups, group);
+    }
+    free(frames);
+    if (colors) {
+        warn(in, "Ignored vertex colors.");
+    }
+    if (morphs) {
+        warn(in, "Ignored morph targets.");
+    }
+    if (dropped) {
+        warn(in, "Left out %d triangle%s with no area.", dropped, dropped == 1 ? "" : "s");
+    }
+    if (!acount(mesh->indices)) {
+        return fail(in, "The model has no triangles to import");
+    }
+    mesh->min = mesh->max = mesh->vertices[0].position;
+    for (int i = 1; i < acount(mesh->vertices); i++) {
+        mesh->min = cf_min_v3(mesh->min, mesh->vertices[i].position);
+        mesh->max = cf_max_v3(mesh->max, mesh->vertices[i].position);
+    }
+    return true;
+}
+
+/* Creates the folders of `path` below the content folder, remembering the
+ * ones it made. */
+static bool make_folders(import *in, char *path)
+{
+    for (char *slash = strchr(path + strlen(in->content) + 1, '/'); slash;
+         slash = strchr(slash + 1, '/')) {
+        *slash = 0;
+        bool made = !mkdir(path, 0777);
+        int code = errno;
+        if (made) {
+            apush(in->created, xstrdup(path));
+        }
+        *slash = '/';
+        if (!made && code != EEXIST) {
+            return fail(in, "Cannot create the folders of %s: %s", path, strerror(code));
+        }
+    }
+    return true;
+}
+
+/* Writes `length` bytes as the new content file `key`, never replacing one. */
+static bool write_new(import *in, const char *key, const void *bytes, size_t length)
+{
+    assert(!strncmp(key, "content/", 8));
+    size_t size = strlen(in->content) + strlen(key);
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s", in->content, key + 8);
+    if (!make_folders(in, path)) {
+        free(path);
+        return false;
+    }
+    /* "x" refuses a file that is already there, so nothing is overwritten. */
+    FILE *file = fopen(path, "wbx");
+    if (!file) {
+        int code = errno;
+        free(path);
+        return code == EEXIST
+                 ? fail(in, "%s already exists", key)
+                 : fail(in, "Cannot create %s: %s", key, strerror(code));
+    }
+    apush(in->created, path);
+    bool written = fwrite(bytes, 1, length, file) == length;
+    written = fclose(file) == 0 && written;
+    apush(in->report->written, xstrdup(key));
+    return written || fail(in, "Cannot write all of %s", key);
+}
+
+static bool write_text(import *in, const char *key, char *text)
+{
+    bool written = write_new(in, key, text, strlen(text));
+    free(text);
+    return written;
+}
+
+/* Writes the mesh after reading its bytes back as the engine loads them. */
+static bool write_mesh(import *in, const render_mesh_asset *mesh, const char *key)
+{
+    unsigned char *bytes = NULL;
+    size_t length = 0, budget = SIZE_MAX;
+    render_mesh_asset check = { 0 };
+    char reason[256] = "";
+    bool valid = render_mesh_asset_prepared_write(mesh, &bytes, &length, reason, sizeof reason) &&
+                 render_mesh_asset_prepared_read_budget(bytes, length, &budget, &check, reason, sizeof reason);
+    render_mesh_asset_free(&check);
+    valid = valid ? write_new(in, key, bytes, length)
+                  : fail(in, "The baked mesh is invalid: %s", reason);
+    free(bytes);
+    return valid;
+}
+
+/* A prototype that draws the mesh at `source` in its own units. */
+static char *prototype_text(const char *name, const char *source)
+{
+    game_prototype *prototype = game_prototype_new(name);
+    const ecs_component_desc *components[] = { &GAME_COMPONENT_GameTransform3D,
+                                               &GAME_COMPONENT_GameGeometry3D,
+                                               &GAME_COMPONENT_GameMeshAsset };
+    for (size_t i = 0; i < sizeof components / sizeof *components; i++) {
+        int added = game_prototype_add_component(prototype, components[i]);
+        assert(added == 0);
+        (void)added;
+    }
+    CF_V3 scale = { 1, 1, 1 };
+    CF_Quat rotation = { 0, 0, 0, 1 };
+    const struct
+    {
+        const char *component, *field;
+        pin_value value;
+    } fields[] = {
+        { "GameTransform3D", "rotation", { .type = PIN_STRUCT, .ptr = &rotation } },
+        { "GameTransform3D", "scale", { .type = PIN_STRUCT, .ptr = &scale } },
+        { "GameGeometry3D", "width", { .type = PIN_F32, .f = 1 } },
+        { "GameGeometry3D", "height", { .type = PIN_F32, .f = 1 } },
+        { "GameGeometry3D", "depth", { .type = PIN_F32, .f = 1 } },
+        { "GameMeshAsset", "source", { .type = PIN_STR, .str = source } },
+    };
+    for (size_t i = 0; i < sizeof fields / sizeof *fields; i++) {
+        int written = game_prototype_write_field(
+            prototype,
+            fields[i].component,
+            fields[i].field,
+            fields[i].value
+        );
+        assert(written == 0);
+        (void)written;
+    }
+    char *text = game_prototype_save(prototype);
+    game_prototype_free(prototype);
+    return text;
+}
+
+/* The Standard material's file text, as chibi_ctl --format writes it. */
+static char *material_text(const char *name, const standard_material *material)
+{
+    behavior_asset *asset = standard_material_build(name, material);
+    char *saved = behavior_asset_save(asset);
+    behavior_asset_free(asset);
+    char error[160];
+    char *text = asset_text_to_disk(saved, error, sizeof error);
+    assert(text);
+    free(saved);
+    return text;
+}
+
+/* Every image, material, the mesh and the prototype, as new content files. */
+static bool write_files(import *in, const render_mesh_asset *mesh, const standard_material *materials)
+{
+    const CM_Model *model = in->model;
+    for (int i = 0; i < model->image_count; i++) {
+        if (in->images[i] && !write_new(
+                                 in,
+                                 in->images[i],
+                                 model->images[i].data,
+                                 (size_t)model->images[i].size
+                             )) {
+            return false;
+        }
+    }
+    for (int slot = 0; slot <= model->material_count; slot++) {
+        if (!in->materials[slot]) {
+            continue;
+        }
+        char key[NEW_ASSET_NAME_MAX + 32];
+        snprintf(key, sizeof key, "content/materials/%s.kdl", in->materials[slot]);
+        if (!write_text(in, key, material_text(in->materials[slot], &materials[slot]))) {
+            return false;
+        }
+    }
+    char mesh_key[NEW_ASSET_NAME_MAX + 32], prototype_key[NEW_ASSET_NAME_MAX + 32];
+    snprintf(mesh_key, sizeof mesh_key, "content/meshes/%s.mesh", in->name);
+    snprintf(prototype_key, sizeof prototype_key, "content/prototypes/%s.kdl", in->name);
+    return write_mesh(in, mesh, mesh_key) &&
+           write_text(in, prototype_key, prototype_text(in->name, mesh_key));
+}
+
+static void warn_unused(import *in)
+{
+    const CM_Model *model = in->model;
+    size_t cameras = yyjson_arr_size(yyjson_obj_get(in->root, "cameras"));
+    const struct
+    {
+        size_t count;
+        const char *what;
+    } unused[] = { { (size_t)model->skin_count, "skin" },
+                   { (size_t)model->animation_count, "animation" },
+                   { cameras, "camera" },
+                   { (size_t)model->light_count, "light" } };
+    for (size_t i = 0; i < sizeof unused / sizeof *unused; i++) {
+        if (unused[i].count) {
+            warn(in, "Ignored %zu %s%s.", unused[i].count, unused[i].what, unused[i].count == 1 ? "" : "s");
+        }
+    }
+}
+
+/* Reads the model and writes its files; `in` holds what to undo. */
+static bool run(import *in, const char *path)
+{
+    size_t length = 0;
+    unsigned char *bytes = read_whole(path, &length);
+    if (!bytes) {
+        return fail(in, "Cannot read %s, or it is over 256 MiB", path);
+    }
+    size_t folder = 0;
+    for (size_t i = 0; path[i]; i++) {
+        folder = path[i] == '/' || path[i] == '\\' ? i + 1 : folder;
+    }
+    char *directory = xmalloc(folder + 1);
+    memcpy(directory, path, folder);
+    directory[folder] = 0;
+    CM_LoadParams params = { .read_fn = read_external,
+                             .free_fn = free_external,
+                             .udata = directory };
+    in->model = cm_load_ex(bytes, (int)length, params);
+    yyjson_doc *json = in->model ? read_json(bytes, length) : NULL;
+    free(directory);
+    free(bytes);
+    if (!in->model) {
+        return fail(in, "Cannot load %s: %s", path, cm_error());
+    }
+    if (!json) {
+        return fail(in, "Cannot read the glTF JSON of %s", path);
+    }
+    in->root = yyjson_doc_get_root(json);
+    name_materials(in);
+    in->images = xcalloc((size_t)in->model->image_count + 1, sizeof *in->images);
+    standard_material *materials = xcalloc((size_t)in->model->material_count + 1, sizeof *materials);
+    render_mesh_asset mesh = { 0 };
+    bool ok = check_extensions(in) && bake_mesh(in, &mesh);
+    for (int slot = 0; ok && slot <= in->model->material_count; slot++) {
+        ok = !in->materials[slot] ||
+             standard(in, slot < in->model->material_count ? slot : -1, &materials[slot]);
+    }
+    if (ok) {
+        warn_unused(in);
+    }
+    ok = ok && write_files(in, &mesh, materials);
+    render_mesh_asset_free(&mesh);
+    free(materials);
+    yyjson_doc_free(json);
+    return ok;
+}
+
+static void free_names(char **names, int count)
+{
+    for (int i = 0; i < count; i++) {
+        free(names[i]);
+    }
+    free(names);
+}
+
+bool model_import(
+    const char *content,
+    const char *path,
+    const char *name,
+    model_import_report *report,
+    char *error,
+    size_t size
+)
+{
+    assert(size);
+    *report = (model_import_report){ 0 };
+    if (!new_asset_name_valid(name, error, size)) {
+        return false;
+    }
+    error[0] = 0;
+import in = {.content = content, .name = name, .report = report, .error = error, .size = size };
+    bool ok = run(&in, path);
+    for (int i = acount(in.created) - 1; i >= 0; i--) {
+        if (!ok) {
+            remove(in.created[i]);
+        }
+        free(in.created[i]);
+    }
+    afree(in.created);
+    if (!ok) {
+        for (int i = 0; i < acount(report->written); i++) {
+            free(report->written[i]);
+        }
+        afree(report->written);
+    }
+    int materials = in.model ? in.model->material_count + 1 : 0;
+    free_names(in.materials, in.materials ? materials : 0);
+    free_names(in.scopes, in.scopes ? materials : 0);
+    free_names(in.images, in.images ? in.model->image_count : 0);
+    for (int i = 0; i < acount(in.taken); i++) {
+        free(in.taken[i]);
+    }
+    afree(in.taken);
+    cm_free(in.model);
+    return ok;
+}
+
+void model_import_report_free(model_import_report *report)
+{
+    for (int i = 0; i < acount(report->written); i++) {
+        free(report->written[i]);
+    }
+    afree(report->written);
+    for (int i = 0; i < acount(report->warnings); i++) {
+        free(report->warnings[i]);
+    }
+    afree(report->warnings);
+}

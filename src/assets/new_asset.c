@@ -24,7 +24,6 @@
 
 enum
 {
-    NAME_MAX_LENGTH = 63,
     SHAPE_HALF_EXTENT = 32,
 };
 
@@ -60,7 +59,7 @@ const char *new_asset_extension(new_asset_kind kind)
 
 bool new_asset_name_valid(const char *name, char *error, size_t size)
 {
-    bool valid = isalpha((unsigned char)name[0]) && strlen(name) <= NAME_MAX_LENGTH;
+    bool valid = isalpha((unsigned char)name[0]) && strlen(name) <= NEW_ASSET_NAME_MAX;
     for (const char *c = name; valid && *c; c++) {
         valid = isalnum((unsigned char)*c) || *c == '_' || *c == '-';
     }

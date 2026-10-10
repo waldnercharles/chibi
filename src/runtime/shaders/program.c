@@ -1281,7 +1281,15 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
                 append(&s, "clamp(%s,min(%s,%s),max(%s,%s))", a, b, c, b, c);
                 break;
             case SHADER_SATURATE: append(&s, "clamp(%s,0.0,1.0)", a); break;
-            case SHADER_STEP: append(&s, "step(%s,%s)", b, a); break;
+            /* Compared per component rather than with step(), which reads
+             * NaN as reaching its edge: NaN gives 0 here, as on the CPU. */
+            case SHADER_STEP:
+                append(&s, "vec4(");
+                for (int j = 0; j < 4; j++) {
+                    append(&s, "%s(%s[%d] >= %s[%d] ? 1.0 : 0.0)", j ? "," : "", a, j, b, j);
+                }
+                append(&s, ")");
+                break;
             case SHADER_SMOOTHSTEP:
                 append(
                     &s,

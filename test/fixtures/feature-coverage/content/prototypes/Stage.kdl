@@ -1,0 +1,4 @@
+name "Stage"
+components {
+    (object)GAME.GameTransform
+}

@@ -1,0 +1,6 @@
+behavior SparkProbe {
+    on Tick(dt) {
+        await emit_particles(self.Transform, 4294967295, 2, 40.0, 0.3)
+        await emit_directed_particles(self.Transform, vec2(1, 0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
+    }
+}

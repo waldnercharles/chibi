@@ -1,0 +1,14 @@
+behavior Physics3DProbe {
+    on Tick(dt) {
+        place := self.GlobalTransform3D.position
+        below := raycast_3d(place, place - vec3(0, 320, 0), 1, self, false)
+        ahead := shape_cast_3d(self, vec3(64, 0, 0), 1, false)
+        touching := contact_entities_3d(self, 1)
+    }
+    on ContactBegin3D {
+        landed := Point
+    }
+    on ContactEnd3D {
+        left := Other
+    }
+}

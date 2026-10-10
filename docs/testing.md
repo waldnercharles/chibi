@@ -49,6 +49,46 @@ group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 which needs a display and a GPU driver the CI job does not set up, so they stay
 out of the group; run them with `python3 tools/test_policy.py tool <name>`.
 
+CI runs the build, both groups and `make test-tools` on Linux and macOS. On
+Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
+one-minute step timeout (the test supervisor needs POSIX signals) and builds
+Studio against the installed SDK, without running tests. The Windows jobs are
+advisory until they first pass.
+
+## Feature coverage
+
+`test/fixtures/feature-coverage` is the all-features project: one scene per
+area (2D and 3D physics, tilemaps, UI, particles, audio, save, rhythm,
+materials, input and entities). `test_tools --feature-coverage <project>` compares the engine
+catalog (components, native functions and events) with what the project's
+scripts, prototypes and scenes use, prints each gap, and runs every scene for
+four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
+failure. Every prototype, behavior, library and system must be reachable from a
+scene: placed or attached there, spawned or called from source that runs, and
+only that source counts. A spawn reaches the prototype it names directly or
+through a value, such as a local, state or library parameter that holds the
+prototype's name, as find references does. A scene entity with its own behavior list
+runs that list in place of its prototype's; otherwise it and a spawned
+prototype run the prototype's list. A prototype's children spawn with each of
+its instances, so they are reached and run as instances too. Components count on these placed and
+spawned instances, after the scene's overrides, and where running source reads,
+writes or adds them, directly or through a generic call such as
+`add_component("GAME.Heat")`; a system query alone matches nothing without
+them, so it does not count.
+A system runs only while an entity's `EngineSystem` names it. Components the
+project declares in `content/components` load as they do in preparation and
+count as its own catalog entries. Run it on any project whose content folder is
+`content` to list what that project leaves unused; it fails while any of that
+is unlisted.
+
+The project's `coverage-gaps.txt` lists the entries no scene uses yet, in groups
+under a comment that gives the reason; without the file, every unused entry is a
+gap. The check fails when a catalog entry is in neither the scenes nor that
+list, when a listed entry has no reason comment above it, and when a listed
+entry becomes used. A PR that adds a component, native function or event uses it
+in a feature-coverage scene; it lists the entry as a gap only with a reason. The
+`native` group, and so CI, runs it on the fixture.
+
 ## Temporary 60-second policy
 
 The retired frontend experiment's five source inputs are preserved as historical
@@ -265,9 +305,14 @@ including controller startup, source preparation and the two simulation frames.
 `python3 tools/test_policy.py tool webgpu-staging` runs a C-owned disposable
 Chrome process against the browser build of the same tooling dispatcher in
 `build-webgpu-test`. It draws one 64-by-64 quad for 120 animation frames, checks
-staging-buffer reuse and a 64 MiB peak ceiling, then destroys the app and waits
-at most one second for retained map callbacks to release their chunks. Startup
-and execution share a 55-second deadline inside the production 60-second limit.
+staging-buffer reuse and a 64 MiB peak ceiling, then checks that destroying a
+pending readback or its app releases the custom-allocator owner immediately. It
+restores the default allocator before draining cancelled callbacks. With an
+imported device it recreates the app, delivers a controlled old loss continuation,
+and verifies that the new app stays healthy. A real validation error must reach
+both CF and the page's listener; a real device destruction must mark the backend
+lost. Each callback phase has at most one second, clipped to the shared 55-second
+startup/execution deadline inside the production 60-second limit.
 The isolated Cute source is selected with `CHIBI_TEST_CUTE_SOURCE`; the comparison
 build's `CHIBI_TEST_WEBGPU_BASELINE=ON` retains CF's ASYNCIFY initialization.
 Callback wall time excludes the first 30 frames and is diagnostic, not a timing
@@ -494,18 +539,20 @@ once, with an identity that follows the texels) and import that never replaces
 a file. It needs a compiler build, uses one temporary folder and passes 661
 assertions in 0.12 seconds under ASan/UBSan with leak checks, without
 processes or GPU.
-`mesh-files` selects six in-tree indexed `.mesh` cases: tangents that follow
+`mesh-files` selects eight in-tree indexed `.mesh` cases: tangents that follow
 texture directions (mirrored, rotated, tilted normals, unvarying coordinates
 and a sliver beside a large triangle), preparation from mounted content (read
 once, with part coordinates stored only when present), ten refused meshes,
 each with its reason (bad indices, degenerate triangles, bad tangents, and
 groups that split triangles or skip indices), unreadable files (retired
 `.mesh.json` paths, text, truncated bytes and an older version), the largest
-mesh a bake can write with one more triangle refused, and a model export whose
-`model.mesh`, OBJ faces and provenance agree. It needs a compiler build, uses
-one temporary folder and passes 9,910 assertions in 8.4 seconds under
-ASan/UBSan with leak checks, 8.0 of them writing and reading the largest mesh,
-without processes or GPU.
+mesh a bake can write with one more triangle refused, a model export whose
+`model.mesh`, OBJ faces and provenance agree, pick trees freed by each
+publish, clear and exchange of the mesh catalog, and a pick of a quad 2e20
+across. It needs a compiler build,
+uses one temporary folder and passes 9,929 assertions in 9.2 seconds under
+ASan/UBSan with leak checks, most of them writing and reading the largest
+mesh, without processes or GPU.
 `model-import` selects seventeen in-tree glTF import cases: the image, Standard
 materials, mesh and prototype a `.gltf` writes, each once, byte for byte the
 same from a `.glb`, and nothing for a material only a hidden node uses; names

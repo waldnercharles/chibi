@@ -215,6 +215,16 @@ pushing. Hull and triangle-mesh colliders are not available yet, and the 3D
 renderer still places visuals from `GAME.GameTransform`, so it does not draw
 bodies at their simulated pose yet.
 
+Scripts query colliders where their components place them now, with or without
+a step: `raycast_3d(start, end, categories, exclude, sensors)` and
+`shape_cast_3d(entity, translation, categories, sensors)` return `.Found`,
+`.Entity`, `.Point`, `.Normal` and `.Distance` for the nearest hit, and
+`contact_entities_3d(entity, categories)` lists what touches the entity's
+collider as the simulation would let it. None of them meets colliders on the
+caller's own body. A shape cast that starts touching something, such as the
+ground a body rests on, hits it at distance zero, so leave the ground's
+category out to sweep along it.
+
 ```kdl
 name "Crate"
 components {

@@ -40,4 +40,60 @@ bool game_physics3d_interpolation(
     CF_V3 *translation
 );
 
+/* The first collider a raycast or shape cast reaches. */
+typedef struct
+{
+    bool found;
+    ecs_entity entity;
+    CF_V3 point, normal; /* In the world. */
+    float distance;      /* From the start, in project units. */
+} game_physics3d_hit;
+
+/* Queries read Transform3D and Collider3D as they are now, so they see this
+ * frame's spawns and moves before any step. Colliders on one body never meet
+ * each other: a child collider shares the body of the top of its Transform3D
+ * hierarchy when that has a collider. Each scans every collider and returns
+ * FLOW_ERR_ARGUMENT for a coordinate beyond 100 km or an invalid collider. */
+
+/* The first collider in categories on the segment from start to end. It skips
+ * sensors unless asked, and every collider on exclude's body. A ray that
+ * starts inside a collider hits it at start with a zero normal. */
+int game_physics3d_raycast(
+    ecs_world *world,
+    struct game_entities *entities,
+    CF_V3 start,
+    CF_V3 end,
+    unsigned categories,
+    ecs_entity exclude,
+    bool sensors,
+    game_physics3d_hit *out
+);
+/* The first collider in categories that caster's collider meets when moved by
+ * translation without turning; the hit stops within Box3D's linear slop, .16
+ * units, of touching. It skips colliders on the caster's body and sensors
+ * unless asked. A caster that starts touching or overlapping a collider, as a
+ * body resting on the ground does, hits it at distance zero with a zero
+ * normal; leave the ground's category out to slide along it. A caster without
+ * a live collider finds nothing. */
+int game_physics3d_shape_cast(
+    ecs_world *world,
+    struct game_entities *entities,
+    ecs_entity caster,
+    CF_V3 translation,
+    unsigned categories,
+    bool sensors,
+    game_physics3d_hit *out
+);
+/* Replaces out with the colliders in categories touching entity's collider,
+ * in query order, as the simulation would let them touch: on another body,
+ * with each one's category in the other's mask, overlapping a sensor or
+ * within Box3D's speculative margin of a solid. */
+int game_physics3d_contact_entities(
+    ecs_world *world,
+    struct game_entities *entities,
+    ecs_entity entity,
+    unsigned categories,
+    ecs_entity **out
+);
+
 #endif

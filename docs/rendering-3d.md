@@ -320,10 +320,13 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   otherwise the import generates tangents whose bitangent points up the image,
   toward -v, as glTF requires, where the engine's generator points toward +v.
   A primitive without normals gets each triangle's flat normal. A node that
-  mirrors flips its tangents' w and its triangles' winding. A node scaled to
-  nothing is skipped, and triangles that a transform leaves with no area are
-  left out with a warning. Vertices no kept triangle uses are left out too, so
-  they don't widen the mesh's bounds.
+  mirrors, by the signs of its and its parents' scales, flips its tangents' w
+  and its triangles' winding. A node whose scale collapses its surfaces onto a
+  line or a point is skipped. One that flattens them onto a plane keeps the
+  triangles with area there, their normals turned to the plane on the side
+  they faced. Triangles that a transform leaves with no area are left out
+  with a warning. Vertices no kept triangle uses are left out too, so they
+  don't widen the mesh's bounds.
 - **Materials**: each factor is a Shader Parameter at a fixed slot, so
   entities can override it: Base Color (0), Opacity (1, unless Opaque),
   Metallic (2), Roughness (3), Emission (4, times

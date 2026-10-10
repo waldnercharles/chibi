@@ -565,9 +565,10 @@ it was; refused extensions, texture transforms, second UV sets, factors
 beyond float range, images and primitives; unreadable files, names and
 buffers; unlit materials that keep only their base color; the warnings for what it
 leaves out, and the vertices only a left-out triangle used; and tangent frames
-generated toward image-up, authored, turned, mirrored by a node and flat. It
-needs a compiler build, uses one temporary folder and passes 98 assertions
-under ASan/UBSan with leak checks, without processes or GPU.
+generated toward image-up, authored, turned, mirrored by a node, flat, and
+flattened onto the ground by a parent. It needs a compiler build, uses one
+temporary folder and passes 107 assertions under ASan/UBSan with leak checks,
+without processes or GPU.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

@@ -860,8 +860,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GamePickup)
 }
 GamePickup;
 
-/* An optional camera follows its entity's Transform. The authored span is
- * expanded for the viewport aspect; offsets and spans use project units. */
+/* An optional camera follows its entity's Transform, or its Transform3D. The
+ * authored span is expanded for the viewport aspect; offsets and spans use
+ * project units. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
 {
     float width;
@@ -878,6 +879,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCamera)
     /* Turns the image right/down axes around the view direction. */
     float roll NODE_UNIT("rad");
     float target_elevation;
+    /* 3D scenes. A camera with a Transform3D looks along its local -Z with +Y
+     * up, from its position moved by the offset (gameplay y is world z); one
+     * without frames its span from a fixed overhead angle. Field of view is
+     * vertical, in radians, from 0.00001 degrees (as in Unity) to below pi,
+     * and zero picks 35 degrees. Set both clip distances or neither, with
+     * far at most a million times near; zero clips scale with the span's
+     * height. */
+    float fov NODE_UNIT("rad");
+    float near_clip NODE_UNIT("u");
+    float far_clip NODE_UNIT("u");
 }
 GameCamera;
 

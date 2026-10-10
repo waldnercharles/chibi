@@ -290,7 +290,12 @@ tones played in `sound_cues`. Studio play mode cannot play sound files yet, so
 An entity with `GAME.GameTransform3D` and `GAME.GameCollider3D` collides in the
 scene's Box3D world. A collider is a box (`size` is its full extents), a sphere
 (`radius`) or a capsule (`radius`, and `height` along local Y), scaled by the
-entity's world scale. Lengths are units, 32 to the meter. Without
+entity's world scale. A `shape="Hull"` collider wraps the vertices of `mesh`, a
+`content/... .mesh` file, in at most 64 of them, and a `shape="Mesh"` collider
+is that mesh's triangles. A mesh collider is static and a root, and it touches
+only the other shapes, never another mesh. Hulls and meshes need a scale of at
+least .01 on each axis, and a negative scale mirrors them. Lengths are units,
+32 to the meter. Without
 `GAME.GameBody3D` the collider is static; with one it is kinematic, moving at its
 velocities, or dynamic, and physics writes a dynamic body's position, rotation
 and velocities back each step. Dynamic bodies must be roots. Any other body
@@ -305,7 +310,7 @@ fall only when one entity's `GAME.GameGravity` sets an `acceleration` in units
 per second squared, which also moves material liquids and gas. Behaviors
 handle `on ContactBegin3D` with `event.Other` and `event.Point`, and
 `on ContactEnd3D` with `event.Other`, as 2D colliders report `on ContactBegin`
-and `on ContactEnd`. A sensor collider reports both without pushing. Hull and triangle-mesh colliders are not available yet, and the 3D
+and `on ContactEnd`. A sensor collider reports both without pushing. The 3D
 renderer still places visuals from `GAME.GameTransform`, so it does not draw
 bodies at their simulated pose yet.
 
@@ -329,7 +334,7 @@ a step: `raycast_3d(start, end, categories, exclude, sensors)` and
 collider as the simulation would let it. None of them meets colliders on the
 caller's own body. A shape cast that starts touching something, such as the
 ground a body rests on, hits it at distance zero, so leave the ground's
-category out to sweep along it.
+category out to sweep along it. A mesh collider can't be swept.
 
 `apply_impulse_3d(entity, impulse)` changes a dynamic body's velocity by the
 impulse over its mass at its next physics step, and

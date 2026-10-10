@@ -11,6 +11,7 @@
 #include "runtime/declared_components.h"
 #include "runtime/math_native.h"
 #include "runtime/particles.h"
+#include "runtime/scenes/physics3d.h"
 #include "runtime/shaders/prepared.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -31,6 +32,7 @@ static execution_instance *instance;
 static ecs_world *world;
 static game_particles *particles, *expected_particles;
 static game_entities *entities;
+static game_physics3d *physics3d;
 static declared_components *declared;
 static shader_prepared_asset shader_record;
 static unsigned char *shader_bytes;
@@ -55,6 +57,10 @@ static void cleanup()
         game_particles_free(expected_particles);
     }
     expected_particles = NULL;
+    if (physics3d) {
+        game_physics3d_free(physics3d);
+    }
+    physics3d = NULL;
     if (entities) {
         game_entities_free(entities);
     }
@@ -131,6 +137,9 @@ static bool prepare(const char *text, behavior_backend backend)
     }
     if (entities) {
         apush(services, ((service_binding){ "game.entities", entities }));
+    }
+    if (physics3d) {
+        apush(services, ((service_binding){ "game.physics3d", physics3d }));
     }
     program = execution_program_new(prepared->module, world, services);
     afree(services);
@@ -641,8 +650,8 @@ static ecs_entity place_collider(CF_V3 position, GameCollider3D collider)
     *GAME_GameCollider3D_get(world, entity) = collider;
     return entity;
 }
-/* The 3D queries read colliders from scripts on both backends, with no 3D
- * physics world: a ray down meets a rock, the owner's crate slides into a wall
+/* The 3D queries read colliders from scripts on both backends before any
+ * physics step: a ray down meets a rock, the owner's crate slides into a wall
  * past the floor it rests on, and touches only that floor. Lengths are project
  * units, 32 per meter, so a cast stops Box3D's linear slop of .16 short. */
 TEST_CASE(source_native_physics3d_queries_read_colliders)
@@ -684,6 +693,7 @@ TEST_CASE(source_native_physics3d_queries_read_colliders)
         ecs_entity wall = place_collider((CF_V3){ 160, 16, 128 }, cube);
         entities = game_entities_new(world, NULL);
         REQUIRE(entities);
+        physics3d = game_physics3d_new(world, entities);
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t tick = execution_module_event(prepared->module, "Tick");
         uint64_t found = state_id("found"), target = state_id("target"),

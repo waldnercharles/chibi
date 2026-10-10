@@ -62,14 +62,15 @@ typedef struct
  * frame's spawns and moves before any step. Colliders on one body never meet
  * each other: a child collider shares the body of the top of its Transform3D
  * hierarchy when that has a collider. Each scans every collider and returns
- * FLOW_ERR_ARGUMENT for a coordinate beyond 100 km or an invalid collider. */
+ * FLOW_ERR_ARGUMENT for a coordinate beyond 100 km or an invalid collider.
+ * They build a hull or mesh collider's collision data as the simulation
+ * would and keep it until a reset. */
 
 /* The first collider in categories on the segment from start to end. It skips
  * sensors unless asked, and every collider on exclude's body. A ray that
  * starts inside a collider hits it at start with a zero normal. */
 int game_physics3d_raycast(
-    ecs_world *world,
-    struct game_entities *entities,
+    game_physics3d *physics,
     CF_V3 start,
     CF_V3 end,
     unsigned categories,
@@ -83,10 +84,9 @@ int game_physics3d_raycast(
  * unless asked. A caster that starts touching or overlapping a collider, as a
  * body resting on the ground does, hits it at distance zero with a zero
  * normal; leave the ground's category out to slide along it. A caster without
- * a live collider finds nothing. */
+ * a live collider finds nothing, and a mesh caster is an error. */
 int game_physics3d_shape_cast(
-    ecs_world *world,
-    struct game_entities *entities,
+    game_physics3d *physics,
     ecs_entity caster,
     CF_V3 translation,
     unsigned categories,
@@ -96,10 +96,9 @@ int game_physics3d_shape_cast(
 /* Replaces out with the colliders in categories touching entity's collider,
  * in query order, as the simulation would let them touch: on another body,
  * with each one's category in the other's mask, overlapping a sensor or
- * within Box3D's speculative margin of a solid. */
+ * within Box3D's speculative margin of a solid. Two meshes never touch. */
 int game_physics3d_contact_entities(
-    ecs_world *world,
-    struct game_entities *entities,
+    game_physics3d *physics,
     ecs_entity entity,
     unsigned categories,
     ecs_entity **out

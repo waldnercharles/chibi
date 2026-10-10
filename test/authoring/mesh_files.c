@@ -4,6 +4,7 @@
 #include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/modeling/model_compile.h"
+#include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_pick.h"
 #include "runtime/geometry/mesh_prepared.h"
 #include "support/array.h"
@@ -297,6 +298,33 @@ TEST_CASE(mesh_files_prepare_once_from_mounted_content)
         near(asset->vertices[2].part_position.x, 6) &&
         asset->vertices[2].part_from_object[1][1] == 2
     );
+    return true;
+}
+
+/* Preparation reads the mesh a component draws, or a hull or mesh collider
+ * wraps, and not one a collider of another shape names. */
+TEST_CASE(mesh_files_come_from_drawn_meshes_and_mesh_colliders)
+{
+    GameMeshAsset drawn = { .source = "content/meshes/quad.mesh" };
+    REQUIRE(
+        authoring_component_mesh(&GAME_COMPONENT_GameMeshAsset, &drawn) == drawn.source
+    );
+    GameCollider3D collider = { .shape = GAME_COLLIDER3D_HULL, .mesh = drawn.source };
+    REQUIRE(
+        authoring_component_mesh(&GAME_COMPONENT_GameCollider3D, &collider) ==
+        drawn.source
+    );
+    collider.shape = GAME_COLLIDER3D_MESH;
+    REQUIRE(
+        authoring_component_mesh(&GAME_COMPONENT_GameCollider3D, &collider) ==
+        drawn.source
+    );
+    collider.shape = GAME_COLLIDER3D_BOX;
+    REQUIRE(!authoring_component_mesh(&GAME_COMPONENT_GameCollider3D, &collider));
+    collider = (GameCollider3D){ .shape = GAME_COLLIDER3D_HULL, .mesh = "" };
+    REQUIRE(!authoring_component_mesh(&GAME_COMPONENT_GameCollider3D, &collider));
+    drawn.source = NULL;
+    REQUIRE(!authoring_component_mesh(&GAME_COMPONENT_GameMeshAsset, &drawn));
     return true;
 }
 
@@ -613,6 +641,7 @@ void test_mesh_files()
     pu_setup(setup, teardown);
     RUN_TEST_CASE(mesh_tangents_follow_texture_directions);
     RUN_TEST_CASE(mesh_files_prepare_once_from_mounted_content);
+    RUN_TEST_CASE(mesh_files_come_from_drawn_meshes_and_mesh_colliders);
     RUN_TEST_CASE(mesh_files_refuse_invalid_triangles);
     RUN_TEST_CASE(mesh_files_refuse_unreadable_files);
     RUN_TEST_CASE(mesh_files_hold_the_largest_bake);

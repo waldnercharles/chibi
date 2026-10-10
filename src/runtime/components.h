@@ -1326,21 +1326,27 @@ typedef enum
 {
     GAME_COLLIDER3D_BOX,
     GAME_COLLIDER3D_SPHERE,
-    GAME_COLLIDER3D_CAPSULE
+    GAME_COLLIDER3D_CAPSULE,
+    GAME_COLLIDER3D_HULL,
+    GAME_COLLIDER3D_MESH
 } GameCollider3DShape;
 
 /* A shape centered on the entity and scaled by its world scale. A box uses
  * size, its full extents; a sphere uses radius; a capsule uses radius and
- * height, its full length along local Y, at least twice the radius. Two
- * colliders touch when each one's category shares a bit with the other's
- * mask, so zero masks touch nothing. Sensors report contacts without pushing.
- * Friction and restitution of zero are frictionless and inelastic. */
+ * height, its full length along local Y, at least twice the radius. A hull
+ * wraps the vertices of mesh, a prepared content .mesh, in at most 64 of
+ * them; a mesh is that mesh's triangles, on a static collider placed in the
+ * world, and touches only other bodies' convex shapes. Two colliders touch
+ * when each one's category shares a bit with the other's mask, so zero masks
+ * touch nothing. Sensors report contacts without pushing. Friction and
+ * restitution of zero are frictionless and inelastic. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameCollider3D)
 {
     GameCollider3DShape shape;
     CF_V3 size;
     float radius NODE_UNIT("u");
     float height NODE_UNIT("u");
+    const char *mesh;
     unsigned category;
     unsigned mask;
     bool sensor;

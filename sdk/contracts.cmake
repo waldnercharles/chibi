@@ -123,7 +123,7 @@ if(CHIBI_SDK_BUILD_NATIVE)
         chibi_native_capabilities chibi_spatial_runtime chibi_execution chibi_support chibi_box2d)
     chibi_sdk_contract(chibi_physics3d_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_native_types chibi_entity_runtime chibi_native_capabilities chibi_task_pool_runtime
-        chibi_spatial_runtime chibi_execution chibi_support chibi_box3d)
+        chibi_spatial_runtime chibi_mesh_runtime chibi_execution chibi_support chibi_box3d)
     chibi_sdk_contract(chibi_task_pool_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_tasks chibi_support chibi_task_scheduler Tracy::TracyClient)
     chibi_sdk_contract(chibi_host_native_default "${CHIBI_SDK_ROOT}/src/host"

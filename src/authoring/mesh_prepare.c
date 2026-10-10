@@ -1,5 +1,6 @@
 #include "authoring/mesh_prepare.h"
 
+#include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_prepared.h"
 #include "support/xalloc.h"
 #include "types/value_wire.h"
@@ -113,4 +114,20 @@ const render_mesh_asset *authoring_mesh_prepare(const char *source, char *error,
     }
     render_mesh_asset_publish(source, &asset);
     return render_mesh_asset_load(source, error, size);
+}
+
+const char *authoring_component_mesh(const ecs_component_desc *desc, const void *data)
+{
+    const char *source = NULL;
+    if (desc->id == GAME_COMPONENT_GameMeshAsset.id) {
+        source = ((const GameMeshAsset *)data)->source;
+    }
+    if (desc->id == GAME_COMPONENT_GameCollider3D.id) {
+        const GameCollider3D *collider = data;
+        if (collider->shape == GAME_COLLIDER3D_HULL ||
+            collider->shape == GAME_COLLIDER3D_MESH) {
+            source = collider->mesh;
+        }
+    }
+    return source && source[0] ? source : NULL;
 }

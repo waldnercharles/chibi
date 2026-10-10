@@ -1454,6 +1454,85 @@
     "fields": {}
   },
   {
+    "type": "component",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "component_body",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "component_body",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "component_field",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "component_field",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "measure",
+            "named": true
+          },
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "continue_statement",
     "named": true,
     "fields": {}
@@ -2979,6 +3058,32 @@
     }
   },
   {
+    "type": "measure",
+    "named": true,
+    "fields": {
+      "range": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "range_type",
+            "named": true
+          }
+        ]
+      },
+      "unit": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "unit",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "member_expression",
     "named": true,
     "fields": {
@@ -3571,6 +3676,40 @@
     }
   },
   {
+    "type": "range_type",
+    "named": true,
+    "fields": {
+      "max": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      },
+      "min": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "return_statement",
     "named": true,
     "fields": {
@@ -3694,6 +3833,10 @@
       "types": [
         {
           "type": "behavior",
+          "named": true
+        },
+        {
+          "type": "component",
           "named": true
         },
         {
@@ -4527,6 +4670,25 @@
     }
   },
   {
+    "type": "unit",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "identifier",
+          "named": true
+        },
+        {
+          "type": "number",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "while_statement",
     "named": true,
     "fields": {
@@ -4826,6 +4988,10 @@
   },
   {
     "type": "cast",
+    "named": false
+  },
+  {
+    "type": "component",
     "named": false
   },
   {

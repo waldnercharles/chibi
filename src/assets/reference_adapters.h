@@ -23,7 +23,7 @@ void reference_index_add_prototype(reference_index *index, int source, const str
  * unless its overrides set those fields. */
 typedef struct
 {
-    const char *name;
+    const char *name; /* its path in the scene */
     const char *prototype;
     const struct game_prototype *base; /* may be NULL */
     av_value *overrides; /* borrowed component overrides; may be NULL */

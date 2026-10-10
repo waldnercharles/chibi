@@ -381,7 +381,8 @@ static bool add_global(
                                   .name = source->source_name ? source->source_name
                                                               : source->canonical_name,
                                   .type = type.type,
-                                  .writable = source->writable })
+                                  .writable = source->writable,
+                                  .unit = source->unit })
     );
     return true;
 }

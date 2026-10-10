@@ -133,23 +133,56 @@ int game_scene_document_set_perspective(game_scene_document *document, bool pers
     return 0;
 }
 
-int game_scene_document_entity_index(const game_scene_document *document, const char *name)
+static int child_named(const game_scene_document *document, int parent, const char *name, size_t length)
 {
-    if (!document || !name || !name[0]) {
-        return -1;
-    }
-    for (int i = 0; i < acount(document->entities); i++) {
-        if (!strcmp(document->entities[i].name, name)) {
+    for (int i = parent + 1; i < acount(document->entities); i++) {
+        const game_scene_entity *entity = &document->entities[i];
+        if (entity->parent == parent && !strncmp(entity->name, name, length) &&
+            !entity->name[length]) {
             return i;
         }
     }
     return -1;
 }
 
+int game_scene_document_entity_index(const game_scene_document *document, const char *path)
+{
+    if (!document || !path || !path[0]) {
+        return -1;
+    }
+    int found = -1;
+    for (const char *segment = path;; segment = strchr(segment, '.') + 1) {
+        const char *dot = strchr(segment, '.');
+        found = child_named(document, found, segment, dot ? (size_t)(dot - segment) : strlen(segment));
+        if (found < 0 || !dot) {
+            return found;
+        }
+    }
+}
+
+char *game_scene_document_entity_path(const game_scene_document *document, int index)
+{
+    assert(index >= 0 && index < acount(document->entities));
+    const game_scene_entity *entity = &document->entities[index];
+    if (entity->parent < 0) {
+        return xstrdup(entity->name);
+    }
+    char *parent = game_scene_document_entity_path(document, entity->parent);
+    size_t size = strlen(parent) + strlen(entity->name) + 2;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s.%s", parent, entity->name);
+    free(parent);
+    return path;
+}
+
 int game_scene_entity_validate_name(const char *name, bool name_used, char *error, size_t error_size)
 {
     if (!name || !name[0]) {
         set_error(error, error_size, "An object needs a name.");
+        return -1;
+    }
+    if (strchr(name, '.')) {
+        set_error(error, error_size, "Object names cannot contain '.', which separates paths.");
         return -1;
     }
     if (name_used) {
@@ -168,7 +201,9 @@ int game_scene_document_rename_entity(
 )
 {
     assert(index >= 0 && index < acount(document->entities));
-    int existing = game_scene_document_entity_index(document, name);
+    int existing = name
+                     ? child_named(document, document->entities[index].parent, name, strlen(name))
+                     : -1;
     if (game_scene_entity_validate_name(name, existing >= 0 && existing != index, error, error_size)) {
         return -1;
     }
@@ -181,20 +216,34 @@ int game_scene_document_rename_entity(
     return 0;
 }
 
-int game_scene_document_add_entity(game_scene_document *document, const char *name, const char *prototype)
+/* How many levels deep a child of parent would nest. */
+static int child_depth(const game_scene_document *document, int parent)
 {
-    if (!name || !name[0] || !prototype || !prototype[0]) {
-        return -1;
+    int depth = 1;
+    for (int at = parent; at >= 0; at = document->entities[at].parent) {
+        depth++;
     }
-    for (int i = 0; i < acount(document->entities); i++) {
-        if (strcmp(document->entities[i].name, name) == 0) {
-            return -1;
-        }
+    return depth;
+}
+
+int game_scene_document_add_entity(
+    game_scene_document *document,
+    int parent,
+    const char *name,
+    const char *prototype
+)
+{
+    if (parent < -1 || parent >= acount(document->entities) ||
+        child_depth(document, parent) > GAME_SCENE_DEPTH_MAX ||
+        game_scene_entity_validate_name(name, false, NULL, 0) ||
+        child_named(document, parent, name, strlen(name)) >= 0 || !prototype ||
+        !prototype[0]) {
+        return -1;
     }
     game_scene_entity entity = {
         .name = xstrdup(name),
+        .parent = parent,
         .prototype = xstrdup(prototype),
-        .components = NULL,
     };
     apush(document->entities, entity);
     return 0;
@@ -205,16 +254,22 @@ int game_scene_document_remove_entity(game_scene_document *document, int index)
     if (!document || index < 0 || index >= acount(document->entities)) {
         return -1;
     }
-    free_entity(&document->entities[index]);
-    int remaining = acount(document->entities) - index - 1;
-    if (remaining > 0) {
-        memmove(
-            &document->entities[index],
-            &document->entities[index + 1],
-            (size_t)remaining * sizeof *document->entities
-        );
+    /* Parents precede children, so one pass knows whether a parent went. */
+    int count = acount(document->entities), kept = 0;
+    int *moved = xmalloc((size_t)count * sizeof *moved);
+    for (int i = 0; i < count; i++) {
+        game_scene_entity entity = document->entities[i];
+        if (i == index || (entity.parent >= 0 && moved[entity.parent] < 0)) {
+            free_entity(&entity);
+            moved[i] = -1;
+            continue;
+        }
+        entity.parent = entity.parent >= 0 ? moved[entity.parent] : -1;
+        moved[i] = kept;
+        document->entities[kept++] = entity;
     }
-    asetlen(document->entities, acount(document->entities) - 1);
+    asetlen(document->entities, kept);
+    free(moved);
     return 0;
 }
 
@@ -341,6 +396,39 @@ static av_value *components_value(av_doc *doc, av_value *components, ecs_compone
     return copy;
 }
 
+static av_value *entity_value(av_doc *json, const game_scene_document *document, int index, ecs_component_catalog components)
+{
+    const game_scene_entity *entity = &document->entities[index];
+    av_value *value = av_obj(json);
+    av_obj_add_strcpy(json, value, "name", entity->name);
+    av_obj_add_strcpy(json, value, "prototype", entity->prototype);
+    if (av_obj_size(entity->components)) {
+        av_obj_add_val(json, value, "components", components_value(json, entity->components, components));
+    }
+    if (av_obj_size(entity->retained)) {
+        av_obj_add_val(
+            json,
+            value,
+            "retained_components",
+            components_value(json, entity->retained, components)
+        );
+    }
+    if (entity->own_behaviors) {
+        av_value *behaviors = av_obj_add_arr(json, value, "behaviors");
+        for (int j = 0; j < acount(entity->behaviors); j++) {
+            av_arr_add_strcpy(json, behaviors, entity->behaviors[j]);
+        }
+    }
+    av_value *children = NULL;
+    for (int i = index + 1; i < acount(document->entities); i++) {
+        if (document->entities[i].parent == index) {
+            children = children ? children : av_obj_add_arr(json, value, "children");
+            av_arr_add_val(children, entity_value(json, document, i, components));
+        }
+    }
+    return value;
+}
+
 av_value *game_scene_document_to_value(const game_scene_document *document, ecs_component_catalog components)
 {
     av_doc *json = av_doc_new();
@@ -360,33 +448,9 @@ av_value *game_scene_document_to_value(const game_scene_document *document, ecs_
     }
     av_value *entities = av_arr(json);
     for (int i = 0; i < acount(document->entities); i++) {
-        const game_scene_entity *entity = &document->entities[i];
-        av_value *value = av_obj(json);
-        av_obj_add_strcpy(json, value, "name", entity->name);
-        av_obj_add_strcpy(json, value, "prototype", entity->prototype);
-        if (av_obj_size(entity->components)) {
-            av_obj_add_val(
-                json,
-                value,
-                "components",
-                components_value(json, entity->components, components)
-            );
+        if (document->entities[i].parent < 0) {
+            av_arr_add_val(entities, entity_value(json, document, i, components));
         }
-        if (av_obj_size(entity->retained)) {
-            av_obj_add_val(
-                json,
-                value,
-                "retained_components",
-                components_value(json, entity->retained, components)
-            );
-        }
-        if (entity->own_behaviors) {
-            av_value *behaviors = av_obj_add_arr(json, value, "behaviors");
-            for (int j = 0; j < acount(entity->behaviors); j++) {
-                av_arr_add_strcpy(json, behaviors, entity->behaviors[j]);
-            }
-        }
-        av_arr_add_val(entities, value);
     }
     av_obj_add_val(json, root, "entities", entities);
     av_value *result = av_value_copy(av_doc_root(json));
@@ -406,6 +470,75 @@ static void load_fail(game_scene_document *document, av_doc *parsed)
 {
     game_scene_document_free(document);
     av_doc_free(parsed);
+}
+
+/* Reads entities and their children depth first; index counts them in that
+ * order for error messages. */
+static bool read_entities(
+    game_scene_document *document,
+    av_value *entities,
+    int parent,
+    int *index,
+    char *error,
+    size_t error_size
+)
+{
+    av_arr_iter iterator = av_arr_iter_with(entities);
+    av_value *value;
+    while ((value = av_arr_iter_next(&iterator))) {
+        av_value *name = av_is_obj(value) ? av_obj_get(value, "name") : NULL;
+        av_value *prototype = av_is_obj(value) ? av_obj_get(value, "prototype") : NULL;
+        av_value *behaviors = av_is_obj(value) ? av_obj_get(value, "behaviors") : NULL;
+        av_value *components = av_is_obj(value) ? av_obj_get(value, "components")
+                                                : NULL;
+        av_value *children = av_is_obj(value) ? av_obj_get(value, "children") : NULL;
+        if (!av_is_str(name) || !av_get_len(name) || !av_is_str(prototype) ||
+            !av_get_len(prototype) || (behaviors && !av_is_arr(behaviors)) ||
+            (components && !av_is_obj(components)) ||
+            (children && !av_is_arr(children))) {
+            set_error(error, error_size, "invalid scene entity at index %d", *index);
+            return false;
+        }
+        if (child_depth(document, parent) > GAME_SCENE_DEPTH_MAX) {
+            set_error(
+                error,
+                error_size,
+                "scene entity at index %d nests deeper than %d levels",
+                *index,
+                GAME_SCENE_DEPTH_MAX
+            );
+            return false;
+        }
+        if (game_scene_document_add_entity(document, parent, av_get_str(name), av_get_str(prototype)) !=
+            0) {
+            set_error(error, error_size, "duplicate or invalid scene entity at index %d", *index);
+            return false;
+        }
+        int entity_index = acount(document->entities) - 1;
+        game_scene_entity *entity = &document->entities[entity_index];
+        entity->own_behaviors = behaviors != NULL;
+        if (read_name_array(behaviors, &entity->behaviors, error, error_size, *index, "behaviors") !=
+            0) {
+            return false;
+        }
+        av_value *retained = av_obj_get(value, "retained_components");
+        if (retained &&
+            game_scene_document_set_entity_retained(document, entity_index, retained)) {
+            set_error(error, error_size, "invalid retained components at scene entity %d", *index);
+            return false;
+        }
+        if (components &&
+            game_scene_document_set_entity_components(document, entity_index, components)) {
+            set_error(error, error_size, "invalid components at scene entity %d", *index);
+            return false;
+        }
+        (*index)++;
+        if (children &&
+            !read_entities(document, children, entity_index, index, error, error_size)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static game_scene_document *load_document_value(av_doc *parsed, char *error, size_t error_size)
@@ -445,62 +578,10 @@ static game_scene_document *load_document_value(av_doc *parsed, char *error, siz
         return NULL;
     }
     game_scene_document_set_ui(document, av_get_str(ui));
-    av_arr_iter iterator = av_arr_iter_with(entities);
-    av_value *entity_value;
     int index = 0;
-    while ((entity_value = av_arr_iter_next(&iterator))) {
-        av_value *entity_name = av_is_obj(entity_value)
-                                  ? av_obj_get(entity_value, "name")
-                                  : NULL;
-        av_value *prototype = av_is_obj(entity_value)
-                                ? av_obj_get(entity_value, "prototype")
-                                : NULL;
-        av_value *behaviors = av_is_obj(entity_value)
-                                ? av_obj_get(entity_value, "behaviors")
-                                : NULL;
-        av_value *components = av_is_obj(entity_value)
-                                 ? av_obj_get(entity_value, "components")
-                                 : NULL;
-        if (!av_is_str(entity_name) || !av_get_len(entity_name) ||
-            !av_is_str(prototype) || !av_get_len(prototype) ||
-            (behaviors && !av_is_arr(behaviors)) ||
-            (components && !av_is_obj(components))) {
-            set_error(error, error_size, "invalid scene entity at index %d", index);
-            load_fail(document, parsed);
-            return NULL;
-        }
-        if (game_scene_document_add_entity(document, av_get_str(entity_name), av_get_str(prototype)) !=
-            0) {
-            set_error(error, error_size, "duplicate or invalid scene entity at index %d", index);
-            load_fail(document, parsed);
-            return NULL;
-        }
-        int entity_index = acount(document->entities) - 1;
-        game_scene_entity *entity = &document->entities[entity_index];
-        entity->own_behaviors = behaviors != NULL;
-        if (read_name_array(behaviors, &entity->behaviors, error, error_size, index, "behaviors") !=
-            0) {
-            load_fail(document, parsed);
-            return NULL;
-        }
-        av_value *retained = av_obj_get(entity_value, "retained_components");
-        if (retained) {
-            int result = game_scene_document_set_entity_retained(document, entity_index, retained);
-            if (result != 0) {
-                set_error(error, error_size, "invalid retained components at scene entity %d", index);
-                load_fail(document, parsed);
-                return NULL;
-            }
-        }
-        if (components) {
-            int component_result = game_scene_document_set_entity_components(document, entity_index, components);
-            if (component_result != 0) {
-                set_error(error, error_size, "invalid components at scene entity %d", index);
-                load_fail(document, parsed);
-                return NULL;
-            }
-        }
-        index++;
+    if (!read_entities(document, entities, -1, &index, error, error_size)) {
+        load_fail(document, parsed);
+        return NULL;
     }
     av_doc_free(parsed);
     return document;

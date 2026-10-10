@@ -173,6 +173,106 @@ TEST_CASE(source_views_keep_named_invalid_drafts)
     REQUIRE(authoring_source_presentation_new(analysis, &catalog, NULL) == NULL);
     return true;
 }
+TEST_CASE(source_view_locals_stay_in_their_callable)
+{
+    REQUIRE(project(
+        "behavior View { count: double = 0;"
+        " function Target(n: double) -> (result: double) {"
+        " width := n * 8; if (n > 0) { nested := width - 1; return nested; }"
+        " return width; }"
+        " on Tick { width := Target(count); count = width; } }"
+    ));
+    REQUIRE(analysis->diagnostic_count == 0);
+    behavior_asset *asset = authoring_source_presentation_view(view);
+    int widths = 0, nested = 0;
+    for (int i = 0; i < authoring_source_presentation_origin_count(view); i++) {
+        const source_presentation_origin *o = authoring_source_presentation_origin_at(view, i);
+        if (o->kind != SOURCE_PRESENTATION_SYMBOL || o->pin) {
+            continue;
+        }
+        const script_symbol *symbol = &analysis->symbols[o->record];
+        if (symbol->kind != SCRIPT_LOCAL) {
+            continue;
+        }
+        REQUIRE(o->function >= 0);
+        REQUIRE(o->graph != asset->graph->graph_id);
+        REQUIRE(o->function == analysis->scopes[symbol->scope].function);
+        graph *g = behavior_asset_find_graph(asset, o->graph);
+        REQUIRE(g != NULL);
+        if (!strcmp(symbol->name, "width")) {
+            widths++;
+            REQUIRE(!strcmp(g->name, widths == 1 ? "Target" : "Tick"));
+        } else if (!strcmp(symbol->name, "nested")) {
+            nested++;
+            REQUIRE(!strcmp(g->name, "Target"));
+        }
+    }
+    REQUIRE(widths == 2 && nested == 1);
+    REQUIRE(acount(asset->graph->nodes) == 2); /* count and its initial value. */
+    return true;
+}
+TEST_CASE(source_view_formulas_preserve_readable_source)
+{
+    REQUIRE(project(
+        "behavior View { count: double = 0;"
+        " function Target(n: double) -> (result: double) {"
+        " return (n * 8 + 2) / 2; }"
+        " on Tick { count += (Target(count) - count) * (1 - 0.01); } }"
+    ));
+    REQUIRE(analysis->diagnostic_count == 0);
+    const char *formulas[] = { "(n * 8 + 2) / 2",
+                               "(Target(count) - count) * (1 - 0.01)" };
+    int found = 0, calls = 0;
+    for (int i = 0; i < authoring_source_presentation_origin_count(view); i++) {
+        const source_presentation_origin *o = authoring_source_presentation_origin_at(view, i);
+        if (o->kind != SOURCE_PRESENTATION_EXPRESSION || o->pin) {
+            continue;
+        }
+        if (o->operation == SCRIPT_EXPR_CALL) {
+            calls++;
+        }
+        if (o->operation != SCRIPT_EXPR_BINARY) {
+            continue;
+        }
+        int at = found++;
+        REQUIRE(at < 2);
+        REQUIRE(o->range.end - o->range.start == (int)strlen(formulas[at]));
+        REQUIRE(!strncmp(
+            authoring_source_presentation_text(view) + o->range.start,
+            formulas[at],
+            strlen(formulas[at])
+        ));
+        node *n = origin_node(view, o);
+        REQUIRE(n->input_count == at && n->output_count == 1);
+        edited = authoring_source_presentation_replace(view, o, "3.0");
+        REQUIRE(edited != NULL);
+        script_syntax *replacement = script_parse(edited);
+        script_analysis *checked = script_analyze(replacement, &catalog);
+        REQUIRE(checked->diagnostic_count == 0);
+        script_analysis_free(checked);
+        script_syntax_free(replacement);
+        free(edited);
+        edited = NULL;
+    }
+    REQUIRE(found == 2 && calls == 1); /* Target remains available for source edits. */
+    cleanup();
+    REQUIRE(project(
+        "behavior View { count: double = 0;"
+        " function Next() -> (result: double) { count += 1; return count; }"
+        " on Tick { count = Next() + 2; } }"
+    ));
+    REQUIRE(analysis->diagnostic_count == 0);
+    bool effectful_call = false;
+    for (int i = 0; i < authoring_source_presentation_origin_count(view); i++) {
+        const source_presentation_origin *o = authoring_source_presentation_origin_at(view, i);
+        if (o->kind == SOURCE_PRESENTATION_EXPRESSION && !o->pin &&
+            o->operation == SCRIPT_EXPR_CALL && (o->effects & SCRIPT_EFFECT_WRITE)) {
+            effectful_call = true;
+        }
+    }
+    REQUIRE(effectful_call);
+    return true;
+}
 static bool native_palette_composition_keeps_declared_capabilities()
 {
     char error[512] = { 0 };
@@ -259,6 +359,8 @@ void test_source_presentation()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_view_clone_owns_defaults_and_edit_origins);
     RUN_TEST_CASE(source_views_keep_named_invalid_drafts);
+    RUN_TEST_CASE(source_view_locals_stay_in_their_callable);
+    RUN_TEST_CASE(source_view_formulas_preserve_readable_source);
     RUN_TEST_CASE(native_palette_composition_keeps_declared_capabilities);
     pu_clear_setup();
 }

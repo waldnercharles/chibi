@@ -221,8 +221,9 @@ typedef struct
     script_query *queries;
     script_binding *bindings;
     script_diagnostic *diagnostics;
+    script_diagnostic *warnings; /* Unit mismatches; never invalidate. */
     int symbol_count, use_count, scope_count, expression_count, statement_count,
-        function_count, query_count, binding_count, diagnostic_count;
+        function_count, query_count, binding_count, diagnostic_count, warning_count;
     int query;
     int owner_symbol;
     uint64_t owner_type;

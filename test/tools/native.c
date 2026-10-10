@@ -1457,6 +1457,21 @@ TEST_CASE(native_player_reads_declared_components)
     declared_components_free(older);
     REQUIRE(!type_catalog_find("Battery") && !script_catalog_project());
     REQUIRE(project_components().component_count == GAME_REGISTRY_COMPONENT_COUNT);
+    /* A measure's unit and range reach its type field for editors. */
+    declared_field rate = { .name = "rate",
+                            .type = "number",
+                            .unit = "u/s",
+                            .min = 0,
+                            .max = 10 };
+    declared_component measured = { .name = "Charge", .fields = &rate, .field_count = 1 };
+    declared_components *hinted = declared_components_new(&measured, 1, error, sizeof error);
+    REQUIRE(hinted);
+    const type_field *hint = &type_catalog_find("Charge")->fields[0];
+    REQUIRE(
+        hint->type == PIN_F64 && !strcmp(hint->unit, "u/s") && hint->min == 0 &&
+        hint->max == 10
+    );
+    declared_components_free(hinted);
     game_player_host player_host_context = {
         .components = { .components = GAME_REGISTRY_COMPONENTS,
                         .component_count = GAME_REGISTRY_COMPONENT_COUNT }

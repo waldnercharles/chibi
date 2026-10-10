@@ -1516,6 +1516,26 @@ TEST_CASE(physics3d_joints_follow_their_components)
     return true;
 }
 
+TEST_CASE(physics3d_joints_ignore_unused_limits_and_start_anywhere)
+{
+    /* A slider whose limit is off ignores lower and upper, so it falls. */
+    GameCollider3D block = box(METER, METER, METER);
+    ecs_entity drawer = collider((ecs_entity){ 0 }, (CF_V3){ 0 }, block, GAME_BODY_DYNAMIC);
+    GameJoint3D *slider = join(drawer, GAME_JOINT3D_SLIDER, (ecs_entity){ 0 });
+    slider->lower = 1;
+    /* A rope tied on at its hook's origin starts slack and falls taut. */
+    GameCollider3D small = ball(METER / 4);
+    ecs_entity hook = collider((ecs_entity){ 0 }, (CF_V3){ 10 * METER, 0, 0 }, small, GAME_BODY_STATIC);
+    ecs_entity load = collider((ecs_entity){ 0 }, (CF_V3){ 10 * METER, -METER / 2, 0 }, small, GAME_BODY_DYNAMIC);
+    GameJoint3D *rope = join(point(load, (CF_V3){ 0, METER / 2, 0 }), GAME_JOINT3D_DISTANCE, hook);
+    rope->spring = rope->limit = true;
+    rope->upper = 2 * METER;
+    steps(60);
+    REQUIRE(position(drawer).y < -METER && near(position(drawer).x, 0, METER / 64));
+    REQUIRE(near_v3(position(load), (CF_V3){ 10 * METER, -2.5f * METER, 0 }, METER / 32));
+    return true;
+}
+
 static bool joint_fails(ecs_entity entity, const char *message)
 {
     bool failed = failed_with(message);
@@ -1807,6 +1827,7 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_hinges_and_sliders_keep_to_their_axis);
     RUN_TEST_CASE(physics3d_balls_welds_and_distances_hold_bodies);
     RUN_TEST_CASE(physics3d_joints_follow_their_components);
+    RUN_TEST_CASE(physics3d_joints_ignore_unused_limits_and_start_anywhere);
     RUN_TEST_CASE(physics3d_joints_need_two_bodies_and_sound_values);
     RUN_TEST_CASE(physics3d_characters_slide_along_what_they_meet);
     RUN_TEST_CASE(physics3d_characters_meet_only_solid_others);

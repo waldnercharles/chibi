@@ -1231,7 +1231,12 @@ static void set_frames(b3JointDef *base, const joint_record *record, b3Transform
 
 static b3JointId create_joint(game_physics3d *physics, const joint_record *record, pose other)
 {
-    const GameJoint3D *joint = &record->settings;
+    /* Box3D checks a slider's limits even when they are off. */
+    GameJoint3D settings = record->settings;
+    if (!settings.limit) {
+        settings.lower = settings.upper = 0;
+    }
+    const GameJoint3D *joint = &settings;
     b3Transform a = B3_ID_EQUALS(record->a, physics->ground)
                       ? b3Transform_identity
                       : to_b3_transform(body_pose(record->a));
@@ -1290,7 +1295,8 @@ static b3JointId create_joint(game_physics3d *physics, const joint_record *recor
             b3DistanceJointDef def = b3DefaultDistanceJointDef();
             b3Transform end = to_b3_transform(other);
             set_frames(&def.base, record, b3InvMulTransforms(a, end), on_b);
-            def.length = b3Distance(at.p, end.p);
+            /* Box3D needs a positive length and keeps at least a slop. */
+            def.length = fmaxf(b3Distance(at.p, end.p), FLT_MIN);
             def.enableLimit = joint->limit;
             def.minLength = joint->lower;
             def.maxLength = joint->upper;

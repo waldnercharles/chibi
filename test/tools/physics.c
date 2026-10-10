@@ -1962,6 +1962,357 @@ static void gravity_pulls_bodies_and_fluids()
     dispose(&f);
 }
 
+/* A body turning a radian a second for a second has turned a radian: reading
+ * its written Orientation back does not move it. */
+static void turning_bodies_keep_their_angle()
+{
+    fixture f = create();
+    ecs_entity wheel = crate(&f, 0, 32, GAME_BODY_KINEMATIC);
+    GAME_GameBody_get(f.world, wheel)->angular_velocity = 1;
+    for (int i = 0; i < 60; i++) {
+        step(&f, 1.0f / 60);
+    }
+    assert(fabsf(GAME_GameOrientation_get_const(f.world, wheel)->radians - 1) < 1e-4f);
+    dispose(&f);
+}
+
+/* A fixture with Joint and a Gravity pulling down at 320 units/second^2. */
+static fixture joined()
+{
+    fixture f = create();
+    assert(ecs_world_register_component(f.world, &GAME_COMPONENT_GameJoint, NULL) == ECS_OK);
+    assert(ecs_world_register_component(f.world, &GAME_COMPONENT_GameGravity, NULL) == ECS_OK);
+    ecs_entity scene = ecs_world_create_entity(f.world);
+    assert(GAME_GameGravity_add(f.world, scene, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    GAME_GameGravity_get(f.world, scene)->acceleration = (CF_V2){ 0, -320 };
+    return f;
+}
+
+/* A square crate at x, y that turns. */
+static ecs_entity turning(fixture *f, float x, float y, float size, int type)
+{
+    ecs_entity entity = crate(f, x, size, type);
+    GAME_GameTransform_get(f->world, entity)->y = y;
+    GAME_GameBody_get(f->world, entity)->allow_rotation = true;
+    return entity;
+}
+
+/* A Transform without a collider at x, y under parent. */
+static ecs_entity point(fixture *f, ecs_entity parent, float x, float y)
+{
+    ecs_entity entity = ecs_world_create_entity(f->world);
+    assert(GAME_GameTransform_add(f->world, entity, 0) == ECS_OK);
+    if (parent.slot) {
+        assert(ecs_world_record_add_pair(f->world, entity, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    }
+    assert(ecs_world_apply_commands(f->world) == ECS_OK);
+    *GAME_GameTransform_get(f->world, entity) = (GameTransform){ x, y };
+    return entity;
+}
+
+/* Joins entity's body to other's, or to the world when other is zero. */
+static GameJoint *join(fixture *f, ecs_entity entity, GameJointKind kind, ecs_entity other)
+{
+    assert(GAME_GameJoint_add(f->world, entity, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f->world) == ECS_OK);
+    GameJoint *joint = GAME_GameJoint_get(f->world, entity);
+    joint->kind = kind;
+    joint->other = other.slot ? ecs_entity_to_u64(other) : 0;
+    return joint;
+}
+
+static void steps(fixture *f, int count)
+{
+    for (int i = 0; i < count; i++) {
+        step(f, 1.0f / 60);
+    }
+}
+
+static CF_V2 at(fixture *f, ecs_entity entity)
+{
+    return *GAME_GameTransform_get_const(f->world, entity);
+}
+
+static float turned(fixture *f, ecs_entity entity)
+{
+    return GAME_GameOrientation_get_const(f->world, entity)->radians;
+}
+
+static bool near(float value, float expected, float tolerance)
+{
+    return fabsf(value - expected) <= tolerance;
+}
+
+static bool near_v2(CF_V2 value, float x, float y, float tolerance)
+{
+    return near(value.x, x, tolerance) && near(value.y, y, tolerance);
+}
+
+static float apart(fixture *f, ecs_entity a, ecs_entity b)
+{
+    return cf_len(cf_sub(at(f, a), at(f, b)));
+}
+
+static const ecs_entity world_body = { 0 };
+
+TEST_CASE(physics_hinges_and_sliders_keep_to_their_axis)
+{
+    fixture f = joined();
+    ecs_entity door = turning(&f, 0, 64, 32, GAME_BODY_DYNAMIC);
+    GameJoint *hinge = join(&f, door, GAME_JOINT_HINGE, world_body);
+    hinge->motor = true;
+    hinge->speed = 1;
+    hinge->strength = 1e9f;
+    ecs_entity gate = turning(&f, -200, 64, 32, GAME_BODY_DYNAMIC);
+    hinge = join(&f, gate, GAME_JOINT_HINGE, world_body);
+    hinge->motor = hinge->limit = true;
+    hinge->speed = 1;
+    hinge->strength = 1e4f;
+    hinge->upper = .5f;
+    ecs_entity lift = turning(&f, 200, 64, 32, GAME_BODY_DYNAMIC);
+    GameJoint *slider = join(&f, lift, GAME_JOINT_SLIDER, world_body);
+    slider->limit = true;
+    slider->lower = -32;
+    /* A sled's slider runs along its Y axis, tilted an eighth turn. */
+    ecs_entity sled = turning(&f, 400, 64, 32, GAME_BODY_DYNAMIC);
+    GAME_GameOrientation_get(f.world, sled)->radians = -.78539816f;
+    slider = join(&f, sled, GAME_JOINT_SLIDER, world_body);
+    slider->limit = true;
+    slider->lower = -32;
+    /* A carriage on a turned base slides along its own Y axis. */
+    ecs_entity base = turning(&f, 600, 64, 32, GAME_BODY_STATIC);
+    GAME_GameOrientation_get(f.world, base)->radians = 1.57079633f;
+    ecs_entity carriage = turning(&f, 700, 64, 32, GAME_BODY_DYNAMIC);
+    slider = join(&f, carriage, GAME_JOINT_SLIDER, base);
+    slider->limit = true;
+    slider->lower = -32;
+    steps(&f, 60);
+    /* The hinge holds the door up and its motor turns it. */
+    REQUIRE(near_v2(at(&f, door), 0, 64, .5f) && near(turned(&f, door), 1, .03f));
+    /* The gate's motor turns it only to its limit. */
+    REQUIRE(near(turned(&f, gate), .5f, .02f));
+    /* The lift fell to its lower limit and stays there, upright. */
+    REQUIRE(near_v2(at(&f, lift), 200, 32, .5f));
+    REQUIRE(game_physics_apply_impulse(f.physics, lift, (CF_V2){ 1e4f, 0 }) == FLOW_OK);
+    steps(&f, 10);
+    REQUIRE(near_v2(at(&f, lift), 200, 32, .5f) && near(turned(&f, lift), 0, 1e-3f));
+    REQUIRE(near_v2(at(&f, sled), 400 - 22.627f, 64 - 22.627f, .5f));
+    REQUIRE(near(turned(&f, sled), -.78539816f, 1e-3f));
+    REQUIRE(near_v2(at(&f, carriage), 700, 32, .5f) && near(turned(&f, carriage), 0, 1e-3f));
+    dispose(&f);
+    return true;
+}
+
+TEST_CASE(physics_welds_and_distances_hold_bodies)
+{
+    fixture f = joined();
+    /* A bob swings on a hinge 32 units from its center. */
+    ecs_entity bob = turning(&f, 32, 0, 8, GAME_BODY_DYNAMIC);
+    join(&f, point(&f, bob, -32, 0), GAME_JOINT_HINGE, world_body);
+    /* Two crates welded side by side fall and take a push as one. */
+    ecs_entity left = turning(&f, 200, 0, 16, GAME_BODY_DYNAMIC);
+    ecs_entity right = turning(&f, 216, 0, 16, GAME_BODY_DYNAMIC);
+    join(&f, right, GAME_JOINT_WELD, left);
+    /* A beam welded to a post at an angle keeps that angle. */
+    ecs_entity mast = turning(&f, 1000, 0, 16, GAME_BODY_DYNAMIC);
+    GAME_GameOrientation_get(f.world, mast)->radians = .5f;
+    ecs_entity boom = turning(&f, 1020, 0, 16, GAME_BODY_DYNAMIC);
+    GAME_GameOrientation_get(f.world, boom)->radians = -.3f;
+    join(&f, boom, GAME_JOINT_WELD, mast);
+    /* A rod keeps a weight 64 units from a fixed post, and ropes let two
+     * more fall until they are taut, one tied on at its hook's origin. */
+    ecs_entity post = crate(&f, 400, 8, GAME_BODY_STATIC);
+    ecs_entity weight = turning(&f, 400, -64, 8, GAME_BODY_DYNAMIC);
+    join(&f, weight, GAME_JOINT_DISTANCE, post);
+    GAME_GameVelocity_get(f.world, weight)->x = 64;
+    ecs_entity hook = crate(&f, 600, 8, GAME_BODY_STATIC);
+    ecs_entity load = turning(&f, 600, -16, 8, GAME_BODY_DYNAMIC);
+    GameJoint *rope = join(&f, load, GAME_JOINT_DISTANCE, hook);
+    rope->spring = rope->limit = true;
+    rope->upper = 64;
+    ecs_entity knot = crate(&f, 800, 8, GAME_BODY_STATIC);
+    ecs_entity sack = turning(&f, 800, -16, 8, GAME_BODY_DYNAMIC);
+    rope = join(&f, point(&f, sack, 0, 16), GAME_JOINT_DISTANCE, knot);
+    rope->spring = rope->limit = true;
+    rope->upper = 64;
+    steps(&f, 2);
+    REQUIRE(game_physics_apply_impulse(f.physics, left, (CF_V2){ 0, 64 }) == FLOW_OK);
+    steps(&f, 58);
+    /* A second in, the bob has swung through to the far side. */
+    REQUIRE(near(cf_len(at(&f, bob)), 32, .5f) && at(&f, bob).x < -16);
+    /* The push turned the pair; the right crate stays 16 along the left's X. */
+    CF_V2 offset = cf_mul_T_sc_v2(cf_sincos(turned(&f, left)), cf_sub(at(&f, right), at(&f, left)));
+    REQUIRE(near_v2(offset, 16, 0, .5f) && fabsf(turned(&f, left)) > .1f);
+    REQUIRE(near(turned(&f, right), turned(&f, left), 1e-2f));
+    REQUIRE(near(turned(&f, boom) - turned(&f, mast), -.8f, 1e-2f));
+    REQUIRE(near(apart(&f, weight, post), 64, .5f) && at(&f, weight).x > 416);
+    REQUIRE(near_v2(at(&f, load), 600, -64, 1));
+    REQUIRE(near_v2(at(&f, sack), 800, -80, 1));
+    dispose(&f);
+    return true;
+}
+
+TEST_CASE(physics_joints_follow_their_components)
+{
+    fixture f = joined();
+    ecs_entity lamp = turning(&f, 0, 160, 32, GAME_BODY_DYNAMIC);
+    join(&f, lamp, GAME_JOINT_HINGE, world_body);
+    steps(&f, 10);
+    REQUIRE(near_v2(at(&f, lamp), 0, 160, .5f) && turned(&f, lamp) == 0);
+    /* A field change makes the joint again: now its motor turns it. */
+    GameJoint *hinge = GAME_GameJoint_get(f.world, lamp);
+    hinge->motor = true;
+    hinge->speed = -2;
+    hinge->strength = 1e9f;
+    steps(&f, 10);
+    float before = turned(&f, lamp);
+    steps(&f, 30);
+    REQUIRE(near(turned(&f, lamp) - before, -1, .03f));
+    /* Moving the joint to the wheel's rim makes it again there. */
+    ecs_entity wheel = turning(&f, 300, 160, 32, GAME_BODY_DYNAMIC);
+    ecs_entity axle = point(&f, wheel, 0, 0);
+    hinge = join(&f, axle, GAME_JOINT_HINGE, world_body);
+    hinge->motor = true;
+    hinge->speed = 2;
+    hinge->strength = 1e9f;
+    steps(&f, 10);
+    REQUIRE(near_v2(at(&f, wheel), 300, 160, .5f));
+    *GAME_GameTransform_get(f.world, axle) = cf_mul_T_sc_v2(
+        cf_sincos(turned(&f, wheel)),
+        (CF_V2){ 32, 0 }
+    );
+    steps(&f, 20);
+    CF_V2 rim = { 332, 160 };
+    REQUIRE(near(cf_len(cf_sub(at(&f, wheel), rim)), 32, .5f));
+    REQUIRE(!near_v2(at(&f, wheel), 300, 160, 8));
+    /* Limits that are off are ignored, however they are set. */
+    ecs_entity drawer = turning(&f, 600, 160, 32, GAME_BODY_DYNAMIC);
+    join(&f, drawer, GAME_JOINT_SLIDER, world_body)->lower = 1;
+    ecs_entity vane = turning(&f, 800, 160, 32, GAME_BODY_DYNAMIC);
+    join(&f, vane, GAME_JOINT_HINGE, world_body)->upper = -5;
+    /* Without its Joint the lamp falls. */
+    REQUIRE(GAME_GameJoint_remove(f.world, lamp, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(f.world) == ECS_OK);
+    /* A weld to a body that is gone holds nothing. */
+    ecs_entity shelf = turning(&f, 1000, 160, 32, GAME_BODY_KINEMATIC);
+    ecs_entity vase = turning(&f, 1032, 160, 32, GAME_BODY_DYNAMIC);
+    join(&f, vase, GAME_JOINT_WELD, shelf);
+    steps(&f, 10);
+    REQUIRE(at(&f, lamp).y < 160 - 2 && at(&f, drawer).y < 160 - 2);
+    REQUIRE(near_v2(at(&f, vane), 800, 160, .5f));
+    REQUIRE(near_v2(at(&f, vase), 1032, 160, .5f));
+    REQUIRE(ecs_world_destroy_entity(f.world, shelf) == ECS_OK);
+    steps(&f, 10);
+    REQUIRE(at(&f, vase).y < 160 - 2);
+    /* A body being destroyed releases a joint on an entity under it, and a
+     * joint to one, in the step before its children are destroyed too. */
+    ecs_entity bob = turning(&f, 1200, 160, 8, GAME_BODY_DYNAMIC);
+    join(&f, point(&f, bob, -32, 0), GAME_JOINT_HINGE, world_body);
+    ecs_entity weight = turning(&f, 1300, 160, 8, GAME_BODY_DYNAMIC);
+    join(&f, weight, GAME_JOINT_DISTANCE, point(&f, bob, 0, 0));
+    steps(&f, 2);
+    game_entities_request_destroy(f.entities, bob);
+    steps(&f, 1);
+    REQUIRE(game_entities_flush(f.entities) == 0);
+    steps(&f, 1);
+    dispose(&f);
+    return true;
+}
+
+/* Joined bodies that may not collide report no contact; collide lets them
+ * touch and report it. */
+TEST_CASE(physics_joined_bodies_touch_only_with_collide)
+{
+    fixture f = joined();
+    ecs_entity chassis = crate(&f, 0, 64, GAME_BODY_STATIC);
+    ecs_entity wheel = turning(&f, 16, 0, 16, GAME_BODY_DYNAMIC);
+    GameJoint *axle = join(&f, point(&f, wheel, 0, 0), GAME_JOINT_HINGE, chassis);
+    ecs_entity *found = NULL;
+    REQUIRE(game_physics_contact_entities(f.world, f.entities, wheel, 1, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 0);
+    REQUIRE(step(&f, 1.0f / 60) == 0 && step(&f, 1.0f / 60) == 0);
+    REQUIRE(near_v2(at(&f, wheel), 16, 0, .5f));
+    REQUIRE(game_physics_contact_entities(f.world, f.entities, chassis, 1, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 0);
+    axle->collide = true;
+    REQUIRE(game_physics_contact_entities(f.world, f.entities, chassis, 1, &found) == FLOW_OK);
+    REQUIRE(acount(found) == 1 && ecs_entity_to_u64(found[0]) == ecs_entity_to_u64(wheel));
+    REQUIRE(step(&f, 1.0f / 60) == 2);
+    REQUIRE(other(&f, wheel) == ecs_entity_to_u64(chassis));
+    afree(found);
+    dispose(&f);
+    return true;
+}
+
+static bool fails_with(fixture *f, const char *message)
+{
+    return game_physics_tick(f->physics, 1.0f / 60) == FLOW_ERR_ARGUMENT &&
+           strstr(game_physics_error(f->physics), message);
+}
+
+/* Fails with message, then ticks once entity's Joint is a hinge to the world. */
+static bool joint_fails(fixture *f, ecs_entity entity, const char *message)
+{
+    bool failed = fails_with(f, message);
+    *GAME_GameJoint_get(f->world, entity) = (GameJoint){ 0 };
+    return failed && game_physics_tick(f->physics, 1.0f / 60) == FLOW_OK;
+}
+
+TEST_CASE(physics_joints_need_two_bodies_and_sound_values)
+{
+    fixture f = joined();
+    ecs_entity bare = ecs_world_create_entity(f.world);
+    REQUIRE(GAME_GameJoint_add(f.world, bare, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(f.world) == ECS_OK);
+    REQUIRE(fails_with(&f, "A Joint needs a Transform on entity"));
+    REQUIRE(ecs_world_destroy_entity(f.world, bare) == ECS_OK);
+    ecs_entity loose = point(&f, world_body, 0, 0);
+    join(&f, loose, GAME_JOINT_WELD, world_body);
+    REQUIRE(fails_with(&f, "A Joint must be on or under a body on entity"));
+    REQUIRE(GAME_GameJoint_remove(f.world, loose, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(f.world) == ECS_OK);
+    ecs_entity box = crate(&f, 0, 32, GAME_BODY_DYNAMIC);
+    ecs_entity grip = point(&f, box, 16, 0);
+    GameJoint *joint = join(&f, grip, GAME_JOINT_WELD, loose);
+    REQUIRE(joint_fails(&f, grip, "A Joint's other must be on or under a body"));
+    GAME_GameJoint_get(f.world, grip)->other = ecs_entity_to_u64(box);
+    REQUIRE(joint_fails(&f, grip, "A Joint must join two different bodies"));
+    GAME_GameJoint_get(f.world, grip)->kind = GAME_JOINT_DISTANCE;
+    REQUIRE(joint_fails(&f, grip, "A distance Joint needs another body"));
+    ecs_entity post = crate(&f, 200, 8, GAME_BODY_STATIC);
+    joint = GAME_GameJoint_get(f.world, grip);
+    joint->kind = GAME_JOINT_DISTANCE;
+    joint->other = ecs_entity_to_u64(post);
+    joint->limit = true;
+    joint->lower = -2;
+    joint->upper = -1;
+    REQUIRE(joint_fails(&f, grip, "A distance Joint limit needs lower at least 0"));
+    /* A transform-only joint entity or other must be finite too. */
+    GAME_GameJoint_get(f.world, grip)->other = ecs_entity_to_u64(post);
+    GAME_GameTransform_get(f.world, grip)->x = NAN;
+    REQUIRE(fails_with(&f, "A Joint and its other need finite Transforms and Orientations"));
+    GAME_GameTransform_get(f.world, grip)->x = 16;
+    ecs_entity tip = point(&f, post, INFINITY, 0);
+    GAME_GameJoint_get(f.world, grip)->other = ecs_entity_to_u64(tip);
+    REQUIRE(joint_fails(&f, grip, "A Joint and its other need finite Transforms and Orientations"));
+    joint = GAME_GameJoint_get(f.world, grip);
+    joint->limit = true;
+    joint->upper = 3.12f;
+    REQUIRE(joint_fails(&f, grip, "A hinge Joint limit needs lower and upper within 0.99 pi"));
+    joint->limit = true;
+    joint->lower = 1;
+    REQUIRE(joint_fails(&f, grip, "A Joint limit needs lower at most upper"));
+    GAME_GameJoint_get(f.world, grip)->hertz = -1;
+    REQUIRE(joint_fails(&f, grip, "Joint strength, hertz and damping must not be negative"));
+    GAME_GameJoint_get(f.world, grip)->speed = NAN;
+    REQUIRE(joint_fails(&f, grip, "Joint values must be finite"));
+    GAME_GameJoint_get(f.world, grip)->kind = (GameJointKind)99;
+    REQUIRE(joint_fails(&f, grip, "Unknown Joint kind"));
+    dispose(&f);
+    return true;
+}
+
 TEST_CASE(physics_gravity_pulls_bodies_and_fluids)
 {
     gravity_pulls_bodies_and_fluids();
@@ -1990,6 +2341,7 @@ TEST_CASE(physics_authored_motion)
 {
     authored_bounce_and_drive();
     configured_motion();
+    turning_bodies_keep_their_angle();
     return true;
 }
 
@@ -2031,6 +2383,11 @@ void test_tool_physics()
     RUN_TEST_CASE(physics_authored_motion);
     RUN_TEST_CASE(physics_pushes_divide_by_mass);
     RUN_TEST_CASE(physics_gravity_pulls_bodies_and_fluids);
+    RUN_TEST_CASE(physics_hinges_and_sliders_keep_to_their_axis);
+    RUN_TEST_CASE(physics_welds_and_distances_hold_bodies);
+    RUN_TEST_CASE(physics_joints_follow_their_components);
+    RUN_TEST_CASE(physics_joined_bodies_touch_only_with_collide);
+    RUN_TEST_CASE(physics_joints_need_two_bodies_and_sound_values);
     RUN_TEST_CASE(physics_contacts_and_queries_at_each_substep_count);
     RUN_TEST_CASE(physics_parallel_collection_matches_serial);
 }

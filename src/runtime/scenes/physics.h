@@ -97,7 +97,8 @@ typedef struct
 bool game_physics_inspect_body(const game_physics *physics, ecs_entity entity, game_physics_body_state *out);
 
 /* Snapshot current collider contacts into a caller-owned core array. Honors
- * bilateral filters and pending destruction, including before the first step.
+ * bilateral filters, Joints without collide and pending destruction,
+ * including before the first step.
  * Solid contacts include Box2D's 0.02 meter speculative separation; sensors
  * require actual overlap. Reads authored poses, so teleports are immediate. */
 int game_physics_contact_entities(

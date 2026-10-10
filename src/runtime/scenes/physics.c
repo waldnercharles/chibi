@@ -13,6 +13,7 @@
 
 #include <assert.h>
 #include <box2d/box2d.h>
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,6 +82,18 @@ typedef struct
     b2Vec2 force;
 } drive_force;
 
+/* One per Joint entity slot while its joint exists. */
+typedef struct
+{
+    ecs_entity entity;
+    b2JointId joint;
+    GameJoint settings; /* As the joint was made. */
+    b2BodyId a, b;      /* Other's body or the ground, and the entity's. */
+    unsigned owners[2]; /* The slots owning a (0 for the ground) and b. */
+    b2Transform frame;  /* The entity on body b. */
+    bool seen;
+} joint_record;
+
 /* An impulse or force for a dynamic body's next advancing step. */
 typedef struct
 {
@@ -103,6 +116,9 @@ struct game_physics
     unsigned *visited;
     drive_force *forces;
     push *pushes;
+    joint_record *joints;
+    uint64_t *apart; /* Sorted owner slot pairs joints keep from touching. */
+    b2BodyId ground; /* A static body for joints to the world, once one is. */
     fluid_body *fluid_bodies;
     fluid_obstacle *fluid_obstacles;
     b2BodyId *fluid_ids;
@@ -323,6 +339,8 @@ void game_physics_free(game_physics *physics)
     afree(physics->visited);
     afree(physics->forces);
     afree(physics->pushes);
+    afree(physics->joints);
+    afree(physics->apart);
     afree(physics->fluid_bodies);
     afree(physics->fluid_obstacles);
     afree(physics->fluid_ids);
@@ -348,6 +366,9 @@ void game_physics_reset(game_physics *physics)
     aclear(physics->previous);
     aclear(physics->current);
     aclear(physics->pushes);
+    aclear(physics->joints);
+    aclear(physics->apart);
+    physics->ground = b2_nullBodyId;
     physics->error[0] = 0;
     create_world(physics);
 }
@@ -519,6 +540,34 @@ static bool same_configuration(const physics_body *body, const GameCollider *sha
 static bool carried(const physics_body *body)
 {
     return body->group && body->group != body->entity.slot;
+}
+
+/* The slot of the record that owns the body holding its shapes. */
+static unsigned owner(const physics_body *body)
+{
+    return carried(body) ? body->group : body->entity.slot;
+}
+
+static uint64_t slot_pair(unsigned a, unsigned b)
+{
+    return a < b ? (uint64_t)a << 32 | b : (uint64_t)b << 32 | a;
+}
+
+static int compare_slot_pairs(const void *left, const void *right)
+{
+    uint64_t a = *(const uint64_t *)left, b = *(const uint64_t *)right;
+    return (a > b) - (a < b);
+}
+
+/* Whether a joint without collide joins the bodies a and b ride, so they
+ * report no contact, as Box2D keeps them from touching. */
+static bool kept_apart(const game_physics *physics, const physics_body *a, const physics_body *b)
+{
+    if (!acount(physics->apart)) {
+        return false;
+    }
+    uint64_t key = slot_pair(owner(a), owner(b));
+    return bsearch(&key, physics->apart, (size_t)acount(physics->apart), sizeof key, compare_slot_pairs);
 }
 
 static int own_shape_count(const physics_body *body)
@@ -1134,6 +1183,306 @@ static int place_followers(game_physics *physics)
     return FLOW_OK;
 }
 
+static int joint_error(game_physics *physics, ecs_entity entity, const char *problem)
+{
+    snprintf(
+        physics->error,
+        sizeof physics->error,
+        "%s on entity %u.",
+        problem,
+        entity.slot
+    );
+    return FLOW_ERR_ARGUMENT;
+}
+
+/* Whether the entity or one of its parents is being destroyed, which
+ * releases a joint on or under it. */
+static bool released(const game_physics *physics, ecs_entity entity)
+{
+    for (ecs_entity at = entity; at.slot; at = ecs_parent(physics->world, at)) {
+        if (game_entities_is_retiring(physics->entities, at)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The body a joint on or under entity holds: the nearest at or above it
+ * that no other body carries, or NULL. */
+static const physics_body *joined_body(const game_physics *physics, ecs_entity entity)
+{
+    for (ecs_entity at = entity; at.slot;
+         at = game_transform_parent(physics->world, at)) {
+        const physics_body *body = at.slot < (unsigned)acount(physics->bodies)
+                                     ? &physics->bodies[at.slot]
+                                     : NULL;
+        if (body && body->seen && same_entity(body->entity, at) &&
+            body->body.index1 && !carried(body)) {
+            return body;
+        }
+    }
+    return NULL;
+}
+
+static const char *invalid_joint(const GameJoint *joint)
+{
+    if ((unsigned)joint->kind > GAME_JOINT_DISTANCE) {
+        return "Unknown Joint kind";
+    }
+    if (!isfinite(
+            joint->lower + joint->upper + joint->speed + joint->strength +
+            joint->hertz + joint->damping
+        )) {
+        return "Joint values must be finite";
+    }
+    if (joint->strength < 0 || joint->hertz < 0 || joint->damping < 0) {
+        return "Joint strength, hertz and damping must not be negative";
+    }
+    if (joint->limit && joint->lower > joint->upper) {
+        return "A Joint limit needs lower at most upper";
+    }
+    if (joint->limit && joint->kind == GAME_JOINT_DISTANCE && joint->lower < 0) {
+        return "A distance Joint limit needs lower at least 0";
+    }
+    /* Box2D keeps a hinge's limits within 0.99 pi. */
+    if (joint->limit && joint->kind == GAME_JOINT_HINGE &&
+        (joint->lower < -.99f * B2_PI || joint->upper > .99f * B2_PI)) {
+        return "A hinge Joint limit needs lower and upper within 0.99 pi";
+    }
+    return NULL;
+}
+
+static bool same_joint(const GameJoint *a, const GameJoint *b)
+{
+    return a->kind == b->kind && a->other == b->other && a->collide == b->collide &&
+           a->limit == b->limit && a->lower == b->lower &&
+           a->upper == b->upper && a->motor == b->motor && a->speed == b->speed &&
+           a->strength == b->strength && a->spring == b->spring &&
+           a->hertz == b->hertz && a->damping == b->damping;
+}
+
+static b2BodyId ground(game_physics *physics)
+{
+    if (B2_IS_NULL(physics->ground)) {
+        b2BodyDef def = b2DefaultBodyDef();
+        physics->ground = b2CreateBody(physics->simulation, &def);
+    }
+    return physics->ground;
+}
+
+/* Made from the bodies' current poses, with its anchors where the entity is
+ * now, except that a distance joint's anchor on a is other's origin. */
+static b2JointId create_joint(game_physics *physics, const joint_record *record, b2Vec2 other)
+{
+    /* Box2D checks a hinge's and a slider's limits even when they are off. */
+    GameJoint joint = record->settings;
+    if (!joint.limit) {
+        joint.lower = joint.upper = 0;
+    }
+    b2Transform a = b2Body_GetTransform(record->a),
+                b = b2Body_GetTransform(record->b);
+    b2Transform at = b2MulTransforms(b, record->frame);
+    b2Vec2 on_a = b2InvTransformPoint(a, at.p), on_b = record->frame.p;
+    float reference = b2RelativeAngle(b.q, a.q);
+    b2WorldId world = physics->simulation;
+    switch (joint.kind) {
+        case GAME_JOINT_HINGE: {
+            b2RevoluteJointDef def = b2DefaultRevoluteJointDef();
+            def.bodyIdA = record->a;
+            def.bodyIdB = record->b;
+            def.localAnchorA = on_a;
+            def.localAnchorB = on_b;
+            def.collideConnected = joint.collide;
+            def.referenceAngle = reference;
+            def.enableLimit = joint.limit;
+            def.lowerAngle = joint.lower;
+            def.upperAngle = joint.upper;
+            def.enableMotor = joint.motor;
+            def.motorSpeed = joint.speed;
+            def.maxMotorTorque = joint.strength;
+            def.enableSpring = joint.spring;
+            def.hertz = joint.hertz;
+            def.dampingRatio = joint.damping;
+            return b2CreateRevoluteJoint(world, &def);
+        }
+        case GAME_JOINT_SLIDER: {
+            b2PrismaticJointDef def = b2DefaultPrismaticJointDef();
+            def.bodyIdA = record->a;
+            def.bodyIdB = record->b;
+            def.localAnchorA = on_a;
+            def.localAnchorB = on_b;
+            def.collideConnected = joint.collide;
+            def.localAxisA = b2InvRotateVector(a.q, b2RotateVector(at.q, (b2Vec2){ 0, 1 }));
+            def.referenceAngle = reference;
+            def.enableLimit = joint.limit;
+            def.lowerTranslation = joint.lower;
+            def.upperTranslation = joint.upper;
+            def.enableMotor = joint.motor;
+            def.motorSpeed = joint.speed;
+            def.maxMotorForce = joint.strength;
+            def.enableSpring = joint.spring;
+            def.hertz = joint.hertz;
+            def.dampingRatio = joint.damping;
+            return b2CreatePrismaticJoint(world, &def);
+        }
+        case GAME_JOINT_WELD: {
+            b2WeldJointDef def = b2DefaultWeldJointDef();
+            def.bodyIdA = record->a;
+            def.bodyIdB = record->b;
+            def.localAnchorA = on_a;
+            def.localAnchorB = on_b;
+            def.collideConnected = joint.collide;
+            def.referenceAngle = reference;
+            /* Zero hertz is rigid. */
+            def.linearHertz = def.angularHertz = joint.spring ? joint.hertz : 0;
+            def.linearDampingRatio = def.angularDampingRatio = joint.damping;
+            return b2CreateWeldJoint(world, &def);
+        }
+        case GAME_JOINT_DISTANCE: {
+            b2DistanceJointDef def = b2DefaultDistanceJointDef();
+            def.bodyIdA = record->a;
+            def.bodyIdB = record->b;
+            def.localAnchorA = b2InvTransformPoint(a, other);
+            def.localAnchorB = on_b;
+            def.collideConnected = joint.collide;
+            /* Box2D needs a positive length and keeps at least a slop. */
+            def.length = fmaxf(b2Distance(at.p, other), FLT_MIN);
+            def.enableLimit = joint.limit;
+            def.minLength = joint.lower;
+            def.maxLength = joint.upper;
+            def.enableMotor = joint.motor;
+            def.motorSpeed = joint.speed;
+            def.maxMotorForce = joint.strength;
+            def.enableSpring = joint.spring;
+            def.hertz = joint.hertz;
+            def.dampingRatio = joint.damping;
+            return b2CreateDistanceJoint(world, &def);
+        }
+    }
+    assert(false);
+    return b2_nullJointId;
+}
+
+static void remove_joint(joint_record *record)
+{
+    if (b2Joint_IsValid(record->joint)) {
+        b2DestroyJoint(record->joint);
+    }
+    *record = (joint_record){ 0 };
+}
+
+/* Makes the entity's joint when it has none, its bodies were remade, or its
+ * fields or place on its body changed. A joint whose other is gone holds
+ * nothing until it names a living one. */
+static int sync_joint(game_physics *physics, ecs_entity entity)
+{
+    ecs_world *world = physics->world;
+    const GameJoint *joint = GAME_GameJoint_get_const(world, entity);
+    const char *problem = GAME_GameTransform_get_const(world, entity)
+                            ? invalid_joint(joint)
+                            : "A Joint needs a Transform";
+    if (problem) {
+        return joint_error(physics, entity, problem);
+    }
+    const physics_body *b = joined_body(physics, entity);
+    if (!b) {
+        return joint_error(physics, entity, "A Joint must be on or under a body");
+    }
+    ecs_entity other = ecs_entity_from_u64(joint->other);
+    bool alive = other.slot && ecs_entity_is_alive(world, other) &&
+                 !released(physics, other);
+    if (other.slot && !alive) {
+        return FLOW_OK;
+    }
+    const physics_body *a = alive && GAME_GameTransform_get_const(world, other)
+                              ? joined_body(physics, other)
+                              : NULL;
+    if (alive && !a) {
+        return joint_error(physics, entity, "A Joint's other must be on or under a body");
+    }
+    if (a == b) {
+        return joint_error(physics, entity, "A Joint must join two different bodies");
+    }
+    if (!alive && joint->kind == GAME_JOINT_DISTANCE) {
+        return joint_error(physics, entity, "A distance Joint needs another body");
+    }
+    GameTransform here, there = { 0 };
+    float angle, other_angle = 0;
+    world_pose(world, entity, &here, &angle);
+    if (alive) {
+        world_pose(world, other, &there, &other_angle);
+    }
+    if (!isfinite(here.x + here.y + angle + there.x + there.y + other_angle)) {
+        return joint_error(physics, entity, "A Joint and its other need finite Transforms and Orientations");
+    }
+    if (entity.slot >= (unsigned)acount(physics->joints)) {
+        int previous = acount(physics->joints);
+        asetlen(physics->joints, (int)entity.slot + 1);
+        memset(
+            physics->joints + previous,
+            0,
+            (size_t)(acount(physics->joints) - previous) * sizeof *physics->joints
+        );
+    }
+    joint_record *record = &physics->joints[entity.slot];
+    joint_record want = { .entity = entity,
+                          .settings = *joint,
+                          .a = a ? a->body : ground(physics),
+                          .b = b->body,
+                          .owners = { a ? a->entity.slot : 0, b->entity.slot },
+                          .frame = carried_offset(world, entity, b->entity),
+                          .seen = true };
+    if (b2Joint_IsValid(record->joint) && same_entity(record->entity, entity) &&
+        same_joint(&record->settings, joint) && B2_ID_EQUALS(record->a, want.a) &&
+        B2_ID_EQUALS(record->b, want.b) && same_transform(record->frame, want.frame)) {
+        record->seen = true;
+        return FLOW_OK;
+    }
+    remove_joint(record);
+    want.joint = create_joint(physics, &want, (b2Vec2){ there.x, there.y });
+    b2Joint_WakeBodies(want.joint);
+    *record = want;
+    return FLOW_OK;
+}
+
+static int sync_joints(game_physics *physics)
+{
+    for (int i = 0; i < acount(physics->joints); i++) {
+        physics->joints[i].seen = false;
+    }
+    ecs_component_id id = GAME_COMPONENT_GameJoint.id;
+    int result = FLOW_OK;
+    if (ecs_world_component(physics->world, id)) {
+        ecs_query query;
+        result = ecs_query_begin(physics->world, &query, &id, 1);
+        if (result != ECS_OK) {
+            return result;
+        }
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            if (!released(physics, entity) &&
+                (result = sync_joint(physics, entity)) < 0) {
+                break;
+            }
+        }
+        ecs_query_end(&query);
+    }
+    if (result < 0) {
+        return result;
+    }
+    aclear(physics->apart);
+    for (int i = 0; i < acount(physics->joints); i++) {
+        joint_record *record = &physics->joints[i];
+        if (record->entity.slot && !record->seen) {
+            remove_joint(record);
+        } else if (record->entity.slot && !record->settings.collide && record->owners[0]) {
+            apush(physics->apart, slot_pair(record->owners[0], record->owners[1]));
+        }
+    }
+    asort(physics->apart, compare_slot_pairs);
+    return FLOW_OK;
+}
+
 static int synchronize(game_physics *physics, float delta)
 {
     aclear(physics->forces);
@@ -1172,6 +1521,9 @@ static int synchronize(game_physics *physics, float delta)
     }
     if (result == FLOW_OK) {
         result = place_followers(physics);
+    }
+    if (result == FLOW_OK) {
+        result = sync_joints(physics);
     }
     for (int i = 0; i < acount(physics->bodies) && result == FLOW_OK; i++) {
         physics_body *body = &physics->bodies[i];
@@ -1447,6 +1799,65 @@ int game_physics_raycast(
     return result;
 }
 
+/* The slot of the body a joint on or under entity holds, read from its
+ * components as sync places it: the nearest collider at or above it, or the
+ * root collider carrying that one. */
+static unsigned read_owner(const ecs_world *world, game_entities *entities, ecs_entity entity)
+{
+    for (ecs_entity at = entity; at.slot; at = game_transform_parent(world, at)) {
+        if (GAME_GameCollider_has(world, at)) {
+            unsigned group = read_group(world, entities, at);
+            return group ? group : at.slot;
+        }
+    }
+    return 0;
+}
+
+/* Collects the bodies joints without collide join to owner's body. */
+static int read_joined(ecs_world *world, game_entities *entities, unsigned owner, unsigned **out)
+{
+    ecs_component_id id = GAME_COMPONENT_GameJoint.id;
+    if (!ecs_world_component(world, id)) {
+        return FLOW_OK;
+    }
+    ecs_query query;
+    int result = ecs_query_begin(world, &query, &id, 1);
+    if (result != ECS_OK) {
+        return result;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        const GameJoint *joint = GAME_GameJoint_get_const(world, entity);
+        ecs_entity other = ecs_entity_from_u64(joint->other);
+        if (joint->collide || !other.slot || !ecs_entity_is_alive(world, other) ||
+            game_entities_is_retiring(entities, entity) ||
+            game_entities_is_retiring(entities, other) ||
+            !GAME_GameTransform_has(world, entity) ||
+            !GAME_GameTransform_has(world, other)) {
+            continue;
+        }
+        unsigned a = read_owner(world, entities, entity),
+                 b = read_owner(world, entities, other);
+        if (a == owner && b) {
+            apush(*out, b);
+        } else if (b == owner && a) {
+            apush(*out, a);
+        }
+    }
+    ecs_query_end(&query);
+    return FLOW_OK;
+}
+
+static bool has_slot(const unsigned *slots, unsigned slot)
+{
+    for (int i = 0; i < acount(slots); i++) {
+        if (slots[i] == slot) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int game_physics_contact_entities(
     ecs_world *world,
     game_entities *entities,
@@ -1464,11 +1875,21 @@ int game_physics_contact_entities(
     if (!read_geometry(world, entities, entity, &source)) {
         return FLOW_ERR_ARGUMENT;
     }
+    unsigned *joined = NULL;
+    int result = read_joined(
+        world,
+        entities,
+        source.group ? source.group : entity.slot,
+        &joined
+    );
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
                                     GAME_COMPONENT_GameCollider.id };
     ecs_query query;
-    int result = ecs_query_begin(world, &query, required, 2);
+    if (result == FLOW_OK) {
+        result = ecs_query_begin(world, &query, required, 2);
+    }
     if (result != ECS_OK) {
+        afree(joined);
         return result;
     }
     ecs_entity candidate;
@@ -1486,7 +1907,8 @@ int game_physics_contact_entities(
             result = FLOW_ERR_ARGUMENT;
             break;
         }
-        if (!eligible(&source, &target)) {
+        if (!eligible(&source, &target) ||
+            has_slot(joined, target.group ? target.group : candidate.slot)) {
             continue;
         }
         /* Match Box2D's speculative solid contact distance. The query is rare
@@ -1499,6 +1921,7 @@ int game_physics_contact_entities(
         }
     }
     ecs_query_end(&query);
+    afree(joined);
     if (result < 0) {
         aclear(*out);
     }
@@ -1529,7 +1952,8 @@ static bool overlap_candidate(b2ShapeId shape, void *user)
 {
     pair_query *query = user;
     physics_body *a = query->body, *b = shape_body(query->physics, shape);
-    if (b->entity.slot <= a->entity.slot || continuous_sensor(b) || !eligible(a, b)) {
+    if (b->entity.slot <= a->entity.slot || continuous_sensor(b) ||
+        !eligible(a, b) || kept_apart(query->physics, a, b)) {
         return true;
     }
     /* A compound collider appears once per shape. Once any piece touches,
@@ -1560,7 +1984,7 @@ static bool sweep_candidate(int, uint64_t slot, void *user)
 {
     pair_query *query = user;
     physics_body *a = query->body, *b = &query->physics->bodies[slot];
-    if (!eligible(a, b)) {
+    if (!eligible(a, b) || kept_apart(query->physics, a, b)) {
         return true;
     }
     float fraction = 0;
@@ -2283,6 +2707,9 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
                             body->settings.allow_rotation)) {
             orientation->radians = body->angle +
                                    remainderf(b2Rot_GetAngle(body->end.q) - body->angle, 6.28318530718f);
+            /* Reading it back must not teleport the body: the angle's
+             * round trip through a rotation is inexact and would drift. */
+            body->angle = orientation->radians;
         }
         GameVelocity *velocity = GAME_GameVelocity_get(physics->world, body->entity);
         if (velocity) {

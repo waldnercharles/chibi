@@ -31,6 +31,7 @@ components {
     GAME.GameHealth tab="Gameplay" icon="health"
     GAME.GameIgniter tab="Gameplay"
     GAME.GameInput tab="Gameplay" icon="gamepad"
+    GAME.GameJoint tab="Physics"
     GAME.GameJoint3D tab="Physics"
     GAME.GameMaterial tab="Material"
     GAME.GameMaterialCavity tab="Physics"

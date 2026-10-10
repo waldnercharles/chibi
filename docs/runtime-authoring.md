@@ -344,6 +344,12 @@ as they were when it was made and is made again when its fields change or its
 entity moves on its body; a joint whose `other` is destroyed holds nothing.
 Scenes can't name another entity yet, so a script sets `other`.
 
+`GAME.GameJoint` joins 2D bodies the same way at the entity's `Transform`, with
+`Hinge`, `Slider`, `Weld` and `Distance` and no ball: a hinge turns about the
+entity, a slider moves along its local Y axis, and a hinge's limits stay within
+0.99 pi radians either way. A dynamic body turns only with `allow_rotation`, so
+a hinged door needs it and a `GAME.GameOrientation` to show its angle.
+
 Scripts query colliders where their components place them now, with or without
 a step: `raycast_3d(start, end, categories, exclude, sensors)` and
 `shape_cast_3d(entity, translation, categories, sensors)` return `.Found`,

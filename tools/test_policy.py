@@ -60,9 +60,10 @@ TOOLS = {
     'new-asset': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--new-asset'],
     # One asset rename case over in-memory prototypes.
     'asset-refactor': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-refactor'],
-    # Eighteen validate_project cases, each a scaffolded temporary project and a few built chibi_ctl runs.
+    # The validate_project cases, each a scaffolded temporary project and a few runs of an
+    # unsanitized chibi_ctl, since sanitizers make its starts too slow for one deadline.
     'validate-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--validate-project',
-                         str(ROOT / os.environ.get('CHIBI_CTL', 'build/bin/chibi_ctl'))],
+                         str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
     'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-parameters-prepared'],
     # Reviewed fixed ECS query workloads; compare builds through benchmark_trials.
     'ecs-query-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query-benchmark'],
@@ -186,7 +187,7 @@ TOOLS = {
     'native-tools': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools')],
 
 }
-# The admitted CPU selectors of each built driver that fit one shared deadline.
+# Every admitted selector of each built driver, run under one shared deadline.
 GROUPS = {
     'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'physics3d', 'transforms',
                'box3d', 'sky-files', 'tilemap',
@@ -195,7 +196,7 @@ GROUPS = {
                'owned-tick', 'parallel-tick', 'source-native-features',
                'source-native-numeric-queries', 'source-native-material', 'source-presentation',
                'system-schedule', 'source-systems', 'source-edit', 'new-asset', 'asset-refactor',
-               'shader-parameters-prepared',
+               'validate-project', 'shader-parameters-prepared',
                'language-prepared', 'ecs-query-benchmark', 'feature-coverage'],
     'language': ['language', 'language-semantic', 'language-execution', 'language-program',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',

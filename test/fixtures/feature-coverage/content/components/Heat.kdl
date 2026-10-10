@@ -1,6 +1,0 @@
-name "Heat"
-description "A project-declared component the Cool system drains."
-(array)fields {
-    - name="level" type="float"
-    - name="rate" type="float" description="Units lost per second."
-}

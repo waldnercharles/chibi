@@ -93,7 +93,7 @@ TOOLS = {
     'new-asset': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--new-asset'],
     # One asset rename case over in-memory prototypes.
     'asset-refactor': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--asset-refactor'],
-    # Twenty-one validate_project cases (20 without model import), each a scaffolded temporary project
+    # Twenty-two validate_project cases (21 without model import), each a scaffolded temporary project
     # and a few built chibi_ctl runs.
     'validate-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build-tools') / 'test_tools'), '--validate-project',
                          str(ROOT / 'build/bin/chibi_ctl')],

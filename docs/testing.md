@@ -177,7 +177,7 @@ that includes another prototype keeps its includes and only its own children.
 Four in-memory prototypes, no files, CPU only.
 
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-twenty-one cases, twenty without model import, against that
+twenty-two cases, twenty-one without model import, against that
 `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene

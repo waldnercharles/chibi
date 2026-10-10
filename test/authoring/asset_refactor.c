@@ -86,7 +86,7 @@ TEST_CASE(prototype_children_follow_a_rename)
         reference_index_add_prototype(index, i, prototype);
         game_prototype_free(prototype);
     }
-    refactor_project project = { index, texts, &registry };
+    refactor_project project = { index, texts, &registry, NULL };
     refactor_plan plan = { 0 };
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = BARREL };
     bool renamed = refactor_rename(&project, symbol, "Cannon", &plan, error, sizeof error) ==

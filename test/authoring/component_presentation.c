@@ -69,6 +69,7 @@ TEST_CASE(a_document_overrides_engine_presentation_key_by_key)
     const char *document = "components {\n"
                            "    GAME.GameCollider icon=\"shape\"\n"
                            "    GAME.GameBody tab=\"Object\"\n"
+                           "    GAME.GameCamera icon=\"none\"\n"
                            "    GAME.GameCombustion {\n"
                            "        fields {\n"
                            "            blast_radius unit=\"m\"\n"
@@ -85,6 +86,9 @@ TEST_CASE(a_document_overrides_engine_presentation_key_by_key)
     REQUIRE(component_presentation_icon(&presentation, collider) == COMPONENT_ICON_SHAPE);
     REQUIRE(
         component_presentation_tab(&presentation, component("GAME.GameBody")) == COMPONENT_TAB_OBJECT
+    );
+    REQUIRE(
+        component_presentation_icon(&presentation, component("GAME.GameCamera")) == COMPONENT_ICON_NONE
     );
     REQUIRE(
         component_presentation_tab(&presentation, component("GAME.GameCombustion")) == COMPONENT_TAB_GAMEPLAY

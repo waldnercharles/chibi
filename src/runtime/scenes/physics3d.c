@@ -1136,6 +1136,18 @@ static int check_characters(game_physics3d *physics)
     return result;
 }
 
+/* Whether the entity or one of its parents is being destroyed, which
+ * releases a joint on or under it. */
+static bool released(const game_physics3d *physics, ecs_entity entity)
+{
+    for (ecs_entity at = entity; at.slot; at = ecs_parent(physics->world, at)) {
+        if (game_entities_is_retiring(physics->entities, at)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* The body a joint on or under entity holds: the nearest at or above it
  * that no other body carries, or NULL. */
 static const body_record *joined_body(const game_physics3d *physics, ecs_entity entity)
@@ -1348,7 +1360,7 @@ static int sync_joint(game_physics3d *physics, ecs_entity entity)
     }
     ecs_entity other = ecs_entity_from_u64(joint->other);
     bool alive = other.slot && ecs_entity_is_alive(physics->world, other) &&
-                 !game_entities_is_retiring(physics->entities, other);
+                 !released(physics, other);
     if (other.slot && !alive) {
         return FLOW_OK;
     }
@@ -1414,7 +1426,7 @@ static int sync_joints(game_physics3d *physics)
         }
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
-            if (!game_entities_is_retiring(physics->entities, entity) &&
+            if (!released(physics, entity) &&
                 (result = sync_joint(physics, entity)) < 0) {
                 break;
             }

@@ -1513,6 +1513,27 @@ TEST_CASE(physics3d_joints_follow_their_components)
     REQUIRE(ecs_world_destroy_entity(world, shelf) == ECS_OK);
     steps(30);
     REQUIRE(position(vase).y < 5 * METER - METER / 4);
+    /* A body being destroyed releases a joint on an entity under it, and a
+     * joint to one, in the step before its children are destroyed too. */
+    ecs_entity bob = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 20 * METER, 5 * METER, 0 },
+        ball(METER / 4),
+        GAME_BODY_DYNAMIC
+    );
+    join(point(bob, (CF_V3){ -METER, 0, 0 }), GAME_JOINT3D_BALL, (ecs_entity){ 0 });
+    ecs_entity weight = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 24 * METER, 5 * METER, 0 },
+        ball(METER / 4),
+        GAME_BODY_DYNAMIC
+    );
+    join(weight, GAME_JOINT3D_DISTANCE, point(bob, (CF_V3){ 0 }));
+    steps(2);
+    game_entities_request_destroy(entities, bob);
+    steps(1);
+    REQUIRE(game_entities_flush(entities) == 0);
+    steps(1);
     return true;
 }
 

@@ -205,6 +205,41 @@ static bool prototype(float x, const char *behavior)
     scene = NULL;
     return true;
 }
+/* A turret under the spawned ship, each with its own behavior. */
+static bool ship_prototype()
+{
+    GameTransform hull = { .x = 3, .y = 2 }, turret = { .x = 5 };
+    game_scene_component components[] = { { &GAME_COMPONENT_GameTransform, &hull },
+                                          { &GAME_COMPONENT_GameTransform, &turret } };
+    const char *behaviors[] = { "Old", "New" };
+    game_scene_object objects[] = {
+        { .name = "Ship",
+          .components = &components[0],
+          .component_count = 1,
+          .behaviors = &behaviors[0],
+          .behavior_count = 1 },
+        { .name = "Turret",
+          .components = &components[1],
+          .component_count = 1,
+          .behaviors = &behaviors[1],
+          .behavior_count = 1 },
+    };
+    const int parents[] = { -1, 0 };
+    game_scene_spec spec = { .name = "Ship",
+                             .physics = game_physics_defaults(),
+                             .objects = objects,
+                             .object_count = 2,
+                             .parents = parents };
+    char error[192];
+    scene = game_scene_prepare(&spec, error, sizeof error);
+    REQUIRE(scene);
+    REQUIRE(
+        game_entities_register_prepared(game_source_entities_host(host), "Selected", scene) == 0
+    );
+    game_scene_free(scene);
+    scene = NULL;
+    return true;
+}
 static bool complete(void *, int pin, pin_value value)
 {
     continuation.payload_valid = pin == 1 && value.type == PIN_HANDLE;
@@ -313,6 +348,45 @@ TEST_CASE(native_prepared_spawn_generations)
         REQUIRE(old_begins == 1 && new_begins == 1);
         cleanup();
     }
+    return true;
+}
+/* A prototype's children spawn under it and start their own behaviors; a
+ * canceled spawn takes them with it. */
+TEST_CASE(native_prepared_spawn_whole_tree)
+{
+    world = ecs_world_new();
+    registry = game_source_registry_new(world);
+    host = game_source_entities_new(registry);
+    game_source_entities_time(host, 1, 0, true);
+    REQUIRE(register_behavior(BEHAVIOR_BYTECODE, false));
+    REQUIRE(register_behavior(BEHAVIOR_BYTECODE, true));
+    REQUIRE(ship_prototype());
+    REQUIRE(queue(3, 33));
+    REQUIRE(game_entities_flush(game_source_entities_host(host)) == 1);
+    ecs_entity ship = continuation.entity;
+    REQUIRE(continuation.payload_valid && ecs_world_live_count(world) == 2);
+    REQUIRE(ecs_pair_source_count(world, ECS_CHILD_OF, ship) == 1);
+    REQUIRE(finish());
+    REQUIRE(old_begins == 1 && new_begins == 1);
+    REQUIRE(queue(3, 44));
+    REQUIRE(game_entities_flush(game_source_entities_host(host)) == 1);
+    REQUIRE(ecs_world_live_count(world) == 4);
+    execution_request_detach(continuation.request);
+    continuation.request = NULL;
+    REQUIRE(game_entities_flush(game_source_entities_host(host)) == 0);
+    REQUIRE(ecs_world_live_count(world) == 2 && ecs_entity_is_alive(world, ship));
+    /* Destroying the ship stops its children's behaviors with it, including
+     * a child reparented under it in the same boundary. */
+    ecs_entity turret = ecs_pair_source(world, ECS_CHILD_OF, ship, 0);
+    ecs_entity escort = ecs_world_create_entity(world);
+    REQUIRE(game_source_attach(registry, escort, "New", true, 1, 0) == 0);
+    REQUIRE(ecs_world_record_add_pair(world, escort, ECS_CHILD_OF, ship, 0) == ECS_OK);
+    game_entities_request_destroy(game_source_entities_host(host), ship);
+    REQUIRE(game_entities_flush(game_source_entities_host(host)) == 0);
+    REQUIRE(ecs_world_live_count(world) == 0);
+    REQUIRE(game_source_detach_entity(registry, turret) == 0);
+    REQUIRE(game_source_detach_entity(registry, escort) == 0);
+    cleanup();
     return true;
 }
 static const char *tick(void *, const pin_value *, pin_value *)
@@ -991,7 +1065,7 @@ static game_scene *one_object_scene(const char *name, float x, const char *globa
     char error[192];
     return game_scene_prepare(&spec, error, sizeof error);
 }
-/* Two entities bound to one global name. */
+/* A parent and its child bound to one global name. */
 static game_scene *twice_bound_scene(const char *global)
 {
     GameGlobalBinding binding = { .name = global };
@@ -1003,6 +1077,7 @@ static game_scene *twice_bound_scene(const char *global)
     game_scene_spec spec = { .name = "Twice",
                              .physics = game_physics_defaults(),
                              .objects = objects,
+                             .parents = (const int[]){ -1, 0 },
                              .object_count = 2 };
     char error[192];
     return game_scene_prepare(&spec, error, sizeof error);
@@ -1053,8 +1128,16 @@ TEST_CASE(native_player_loads_named_scenes)
         !game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
     );
     REQUIRE(!strcmp(error, "Scene 'Twice' binds two entities to the global 'Player'"));
-    game_scene_free(twice);
+    /* So does a prototype tree that binds it twice, as writing it would. */
     named = (game_player_named_scene){ "Next", other_scene };
+    spec.prototypes = &(game_player_prototype){ "Twice", twice };
+    spec.prototype_count = 1;
+    error[0] = 0;
+    REQUIRE(!game_player_new(&spec, error, sizeof error));
+    REQUIRE(!strcmp(error, "Scene 'Twice' binds two entities to the global 'Player'"));
+    spec.prototypes = NULL;
+    spec.prototype_count = 0;
+    game_scene_free(twice);
     REQUIRE(
         game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
     );
@@ -1505,6 +1588,7 @@ void test_tool_native()
     test_native_catalog_enable();
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(native_prepared_spawn_generations);
+    RUN_TEST_CASE(native_prepared_spawn_whole_tree);
     RUN_TEST_CASE(native_prepared_world_runs_source_and_real_physics);
     RUN_TEST_CASE(native_player_loads_package_and_retires_producers);
     RUN_TEST_CASE(native_player_loads_named_scenes);

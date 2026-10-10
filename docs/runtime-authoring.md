@@ -50,6 +50,22 @@ other prototypes' `(array)includes` find it by that name in the player and in
 prototype with includes but keeps its text as written instead of folding the
 included components in.
 
+## Tilemap layers
+
+Put a `GAME.GameTilemap` on one transformed entity to draw an atlas-backed grid.
+`image` names the atlas, `columns` and `rows` give the grid dimensions, and
+`frame_width` and `frame_height` set both cell size in project units and atlas
+frame size in pixels. `cells` contains whitespace-separated row-major frame
+indices; `-1` leaves a cell empty. The entity origin is the top-left corner and
+rows increase along local +Y. Orientation rotates the whole layer.
+
+Tilemaps render in scene previews without spawning cell entities. Their `layer`
+orders them with sprites. A behavior can query an occupied frame with
+`tilemap_frame_at(entity, point)` or count occupied cells overlapping a world
+rectangle with `tilemap_occupied_in_box(entity, minimum, maximum)`. Decorative
+layers need no behavior or collision setup. See the rotated `TileMosaic`
+prototype in `test/fixtures/sprites`.
+
 ## Declare components
 
 A game declares its own component types under `content/components`, one `.chibi`
@@ -138,6 +154,29 @@ be unique among its siblings and cannot contain `.`; a path such as
                     GameTransform x=0.0 y=-12.0
                 }
             }
+        }
+    }
+}
+```
+
+A prototype lists `children` in the same shape, and each instance of it,
+whether placed in a scene or spawned, gets the whole tree. A prototype that
+includes another gets the included prototype's children before its own. A
+child cannot use the prototype it belongs to, directly or through its
+children. Studio cannot load a prototype with children yet, as with
+includes, and snapshots name only the scene's own entities.
+
+```kdl
+name "Ship"
+components {
+    GameTransform x=0.0 y=0.0
+}
+(array)children {
+    - {
+        name "Turret"
+        prototype "Turret"
+        components {
+            GameTransform x=0.0 y=-12.0
         }
     }
 }
@@ -267,6 +306,27 @@ handle `on ContactBegin3D` with `event.Other` and `event.Point`, and
 pushing. Hull and triangle-mesh colliders are not available yet. The 3D
 renderer draws a body's `GAME.GameGeometry3D` at its Transform3D pose (see
 `docs/rendering-3d.md`).
+
+`GAME.GameCharacter3D` turns a kinematic body with a solid capsule collider
+into a character that walks and slides. Each step physics moves it by its
+`linear_velocity` until it meets something solid, slides along what it meets,
+and drops the part of the velocity that pushes into it, so a script can add
+gravity every frame without it building up while the character stands.
+Physics writes `on_floor` and `floor_normal`, a surface within 45 degrees of
+up, against gravity. The character stops at dynamic bodies and other
+characters as at walls, does not ride moving platforms, and needs a radius of
+at least 2 cm. Colliders under it must be sensors, because only its capsule
+moves and slides.
+
+Scripts query colliders where their components place them now, with or without
+a step: `raycast_3d(start, end, categories, exclude, sensors)` and
+`shape_cast_3d(entity, translation, categories, sensors)` return `.Found`,
+`.Entity`, `.Point`, `.Normal` and `.Distance` for the nearest hit, and
+`contact_entities_3d(entity, categories)` lists what touches the entity's
+collider as the simulation would let it. None of them meets colliders on the
+caller's own body. A shape cast that starts touching something, such as the
+ground a body rests on, hits it at distance zero, so leave the ground's
+category out to sweep along it.
 
 ```kdl
 name "Crate"

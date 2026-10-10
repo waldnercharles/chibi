@@ -406,6 +406,21 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSprite)
 }
 GameSprite;
 
+/* One atlas-backed grid, anchored at Transform's local top-left corner.
+ * Cells are row-major whitespace-separated frame indices; -1 is empty.
+ * Frame dimensions are both atlas texels and world units. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameTilemap)
+{
+    const char *image;
+    const char *cells;
+    int columns;
+    int rows;
+    int frame_width;
+    int frame_height;
+    int layer;
+}
+GameTilemap;
+
 /* Radians from gameplay +X toward +Y: atan2(direction.y, direction.x).
  * The 2D canvas flips Y at presentation; 3D maps gameplay Y to world Z. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameOrientation)
@@ -1314,13 +1329,13 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCollider3D)
 {
     GameCollider3DShape shape;
     CF_V3 size;
-    float radius;
-    float height;
+    float radius NODE_UNIT("u");
+    float height NODE_UNIT("u");
     unsigned category;
     unsigned mask;
     bool sensor;
-    float friction;
-    float restitution;
+    float friction NODE_RANGE(0, 1);
+    float restitution NODE_RANGE(0, 1);
 }
 GameCollider3D;
 
@@ -1342,5 +1357,21 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameGravity3D)
     CF_V3 acceleration;
 }
 GameGravity3D;
+
+/* Makes a kinematic body with a solid capsule collider, at least 2 cm in
+ * radius, a character that slides. Each step, physics moves it by its Body3D
+ * linear velocity until it meets a solid collider its collider collides with,
+ * slides along what it meets, and drops the part of the velocity that pushes
+ * into it, so gravity a script adds does not build up while it stands. on_floor
+ * says whether it ended the step on a surface within 45 degrees of up, against
+ * gravity, and floor_normal is that surface's normal. Physics writes both. It
+ * stops at dynamic bodies and other characters as at walls, does not ride
+ * moving platforms, and carries only sensor colliders under it. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameCharacter3D)
+{
+    bool on_floor;
+    CF_V3 floor_normal;
+}
+GameCharacter3D;
 
 #endif

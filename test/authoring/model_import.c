@@ -739,8 +739,9 @@ TEST_CASE(model_imports_refuse_files_they_cannot_read)
     REQUIRE(!symlink(path, link));
     REQUIRE(rename_uri("other/empty.gltf", "other/empty.gltf", "../empty.bin", "empty.bin"));
     REQUIRE(!strncmp(refused("other/empty.gltf"), "Cannot load ", 12));
-    /* The same link, read from a model it keeps inside the folder, imports. */
-    REQUIRE(rename_uri("other/empty.gltf", "linked.gltf", "empty.bin", "other/empty.bin"));
+    /* The same link, read from a model it keeps inside the folder, imports,
+     * with the URI's escapes decoded. */
+    REQUIRE(rename_uri("other/empty.gltf", "linked.gltf", "empty.bin", "other/empty%2Ebin"));
     REQUIRE(!strcmp(refused("linked.gltf"), "imported"));
     gltf_fixture_free(&f);
     return true;

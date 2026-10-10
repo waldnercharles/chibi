@@ -5,6 +5,17 @@ A scene with `presentation "3d"` draws through `render/scene3d.c`. Entities with
 x/z and `elevation` is the center height. The renderer writes scene-linear RGBA16F
 into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
 
+An entity with `GameTransform3D` and `GameGeometry3D` becomes a solid too. Its
+global transform, through any ChildOf parents, places the solid's center, turns
+it and scales it, and its `elevation` is ignored. An entity with both transforms
+draws at its Transform3D. Its Visual Transform turns and scales the solid within
+that frame, and a body's drawn pose is interpolated between physics steps as a
+Transform's is. A transform that mirrors a solid draws it mirrored with its
+faces lit from outside, and one that flattens it to zero on any axis hides it.
+Picks and bounds follow the same placement. Point and spot lights, particles,
+trails and Surface Influences still place from `GameTransform`, and SDF and Mesh
+Surface 2D surfaces belong to the 2D renderer, which ignores Transform3D.
+
 ## Camera
 
 A `GameCamera` with a `GameTransform3D` looks along its global -Z with +Y up, so
@@ -335,6 +346,15 @@ mesh draws its new triangles while the GPU copies of replaced and removed
 meshes are freed. A translucent mesh whose vertices sit between the eye and a
 translucent box, while its origin lies behind the box, blends over the box as
 a shape in its place does, alone and as one of two copies drawn in one batch.
+The shadow scene's box and a pillar outside the view draw, shade and cast at
+Transform3D poses exactly as they do placed by Transform and elevation, each
+drawn once. A box turned a quarter about x by its Transform3D, and one turned
+by a Transform3D and a Visual Transform within it, match the upright box their
+turns make. A box under a turned Transform3D parent picks and bounds where the
+parent turns it, before any propagation. A box mirrored by its Transform3D,
+as a shape and as the unit box mesh, matches the unmirrored box, and one
+flattened to zero height disappears. A mirrored ground square's normal maps
+turn their bitangent with it.
 Normal maps on a ground square tilt toward or away from the sun as its
 tangents say: authored tangents a quarter turn from the UV gradient, mirrored
 UVs, a quarter-turned square, and box-projected UVs that keep their own frame.
@@ -351,13 +371,13 @@ check that runs the main build's
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 67 cases and 29884 assertions in 12.7 seconds on 2026-10-10.
+Vulkan llvmpipe passed 71 cases and 50406 assertions in 12.8 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 67
-cases and 29884 assertions in 12.0 seconds on 2026-10-10.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 71
+cases and 50406 assertions in 9.7 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

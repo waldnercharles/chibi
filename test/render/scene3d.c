@@ -2245,6 +2245,162 @@ TEST_CASE(translucent_copies_of_a_mesh_sort_by_their_bounds)
     return true;
 }
 
+/* Places an entity by a Transform3D, which outranks its Transform. */
+static void place_3d(ecs_entity entity, CF_V3 position, CF_Quat rotation, CF_V3 scale)
+{
+    GameTransform3D transform = { position, rotation, scale };
+    assert(
+        ecs_world_record_add(world, entity, GAME_COMPONENT_GameTransform3D.id, &transform, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+}
+
+/* The shadow scene's box and a pillar beyond the view's left edge draw first
+ * in 2D placement, then at Transform3D poses with their Transforms and
+ * elevations moved away. Every pixel matches, with each solid drawn once: a
+ * Transform3D places a solid's center and scales its shape, and its solids
+ * shade and cast as before. A box turned a quarter about x then shows as one
+ * with its height and depth swapped. */
+TEST_CASE(transform3d_places_solids_in_their_pose)
+{
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    ecs_entity box = add_solid(
+        (CF_V3){ 0, 1, 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 },
+        0xffffffffu
+    );
+    ecs_entity pillar = add_solid(
+        (CF_V3){ -8, 4, 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 8 },
+        0xffffffffu
+    );
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->intensity = 1;
+    sun->shadows = true;
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    static CF_Pixel placed[PIXELS];
+    memcpy(placed, pixels, sizeof placed);
+    place_solid(box, (CF_V3){ 5, 7, 5 });
+    place_3d(box, (CF_V3){ 0, 1, 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    place_solid(pillar, (CF_V3){ 5, -7, 5 });
+    *GAME_GameGeometry3D_get(world, pillar) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 4, 1, 4 };
+    place_3d(pillar, (CF_V3){ -8, 4, 0 }, cf_quat_identity(), (CF_V3){ .5f, 2, 2 });
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(render_scene3d_last_work(scene3d).entities == 3);
+    REQUIRE(pixel_at(shaded).colors.g == 0 && pixel_at(sunlit[0]).colors.g == 0);
+    REQUIRE(pixel_at(sunlit[4]).colors.g > 60);
+    REQUIRE(matches(placed));
+    /* A box two wide, one high and 2.4 deep, upright, then turned a quarter
+     * about x from 2.4 high and one deep, shows the same. */
+    *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2.4f, 1 };
+    *GAME_GameTransform3D_get(world, box) = (GameTransform3D){ { 0, .5f, 0 },
+                                                               cf_quat_identity(),
+                                                               { 1, 1, 1 } };
+    REQUIRE(render(&environment));
+    REQUIRE(
+        pixel_at((CF_V3){ 0, 1, 0 }).colors.g > 30 && pixel_at(shaded).colors.g == 0
+    );
+    REQUIRE(pixel_at(sunlit[3]).colors.g > 60);
+    static CF_Pixel upright[PIXELS];
+    memcpy(upright, pixels, sizeof upright);
+    *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 1, 2.4f };
+    GAME_GameTransform3D_get(world, box)
+        ->rotation = cf_quat_from_axis_angle((CF_V3){ 1, 0, 0 }, CF_PI / 2);
+    REQUIRE(render(&environment));
+    REQUIRE(matches(upright));
+    /* A Visual Transform turns the box within its Transform3D: a quarter
+     * about y after a quarter roll about x takes 2.4 wide, one deep and two
+     * high to the upright box. */
+    *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2.4f, 1, 2 };
+    GAME_GameTransform3D_get(world, box)
+        ->rotation = cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, CF_PI / 2);
+    GameVisualTransform rolled = { .roll = CF_PI / 2, .scale = 1 };
+    assert(
+        ecs_world_record_add(world, box, GAME_COMPONENT_GameVisualTransform.id, &rolled, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(render(&environment));
+    REQUIRE(matches(upright));
+    return true;
+}
+
+/* A box under a ChildOf parent with a Transform3D, both without a Transform,
+ * takes the parent's turn: three units deep, it lies along x. Picks and
+ * bounds follow it before any propagation. */
+TEST_CASE(transform3d_children_pick_and_bound_under_their_parent)
+{
+    ecs_entity parent = ecs_world_create_entity(world);
+    place_3d(
+        parent,
+        (CF_V3){ 1, 0, 0 },
+        cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, CF_PI / 2),
+        (CF_V3){ 1, 1, 1 }
+    );
+    ecs_entity child = add(
+        GAME_COMPONENT_GameGeometry3D.id,
+        &(GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 3, 1 }
+    );
+    place_3d(child, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    REQUIRE(ecs_world_record_add_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    const CF_V3 on[] = { { -.2f, 0, 0 }, { 2.2f, 0, 0 } },
+                off[] = { { -1.2f, 0, 0 }, { 1, 0, -1.5f } };
+    for (int i = 0; i < 2; i++) {
+        CF_V3 hit = render_scene3d_project(&lens, on[i]),
+              miss = render_scene3d_project(&lens, off[i]);
+        REQUIRE(
+            render_scene3d_pick(world, &lens, (CF_V2){ hit.x, hit.y }, (render_skip){ 0 })
+                .slot == child.slot
+        );
+        REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ miss.x, miss.y }, (render_skip){ 0 })
+                     .slot);
+    }
+    CF_V3 corners[8];
+    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    CF_V3 low = corners[0], high = corners[0];
+    for (int i = 1; i < 8; i++) {
+        low = cf_min_v3(low, corners[i]);
+        high = cf_max_v3(high, corners[i]);
+    }
+    REQUIRE(fabsf(low.x + .5f) < 1e-4f && fabsf(high.x - 2.5f) < 1e-4f);
+    REQUIRE(fabsf(low.z + .5f) < 1e-4f && fabsf(high.z - .5f) < 1e-4f);
+    return true;
+}
+
+/* A Transform3D that mirrors a box across x shows it as the unmirrored box
+ * does, as a shape and as the unit box mesh: the lit pass culls the faces
+ * turned away, not the ones in view, and their normals point out. A
+ * Transform3D that flattens a solid hides it. */
+TEST_CASE(mirroring_transform3d_keeps_faces_outward)
+{
+    ecs_entity box = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    add_sun(0xffffffffu, (CF_V3){ -1, -2, -3 })->intensity = 1;
+    GameEnvironment environment = unlit_environment();
+    render_mesh_asset mesh = box_mesh();
+    publish_mesh(&mesh);
+    for (int imported = 0; imported < 2; imported++) {
+        if (imported) {
+            import_mesh(box);
+        }
+        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1, 1, 1 };
+        REQUIRE(render(&environment));
+        REQUIRE(top().colors.g > 30 && front().colors.g > 30);
+        static CF_Pixel upright[PIXELS];
+        memcpy(upright, pixels, sizeof upright);
+        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ -1, 1, 1 };
+        REQUIRE(render(&environment));
+        REQUIRE(!render_scene3d_error(scene3d)[0]);
+        REQUIRE(matches(upright));
+        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1, 0, 1 };
+        REQUIRE(render(&environment));
+        REQUIRE(!render_scene3d_error(scene3d)[0] && !top().colors.g);
+    }
+    return true;
+}
+
 #if CHIBI_TEST_MATERIAL_GRAPHS
 /* The two-unit box at the origin, drawn with surface material `name`. */
 static ecs_entity add_surface_box(const char *name)
@@ -2572,6 +2728,30 @@ TEST_CASE(normal_maps_follow_mesh_tangents)
     return true;
 }
 
+/* A Transform3D that mirrors the ground square along z keeps it lit from
+ * above, and turns its bitangent with its surface: a map tilted along v,
+ * which faces the sun while v runs along +z, then shades as it does with v
+ * along -z. */
+TEST_CASE(mirroring_transform3d_turns_mesh_bitangents)
+{
+    static const float flat[] = { .5f, .5f, 1 }, along_v[] = { .5f, .85f, .85f };
+    REQUIRE(test_register_normal_map("Flat", flat));
+    REQUIRE(test_register_normal_map("AlongV", along_v));
+    static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 }, back = { 0, 0, -1 };
+    publish_square(x, back, (CF_V4){ 0 }, false);
+    ecs_entity square = add_surface_box("Flat");
+    import_mesh(square);
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
+    int away = square_light(square, "AlongV");
+    publish_square(x, z, (CF_V4){ 0 }, false);
+    int level = square_light(square, "Flat"), facing = square_light(square, "AlongV");
+    REQUIRE(away >= 0 && away + 10 < level && level + 10 < facing);
+    place_3d(square, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, -1 });
+    REQUIRE(abs(square_light(square, "Flat") - level) <= 3);
+    REQUIRE(abs(square_light(square, "AlongV") - away) <= 3);
+    return true;
+}
+
 /* Occlusion scales the light that arrives from every side, ambient and sky
  * alike, and leaves the sun's alone. */
 TEST_CASE(occlusion_dims_only_ambient_light)
@@ -2821,6 +3001,9 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(republished_meshes_replace_their_gpu_copies);
     RUN_TEST_CASE(translucent_meshes_sort_by_their_bounds);
     RUN_TEST_CASE(translucent_copies_of_a_mesh_sort_by_their_bounds);
+    RUN_TEST_CASE(transform3d_places_solids_in_their_pose);
+    RUN_TEST_CASE(transform3d_children_pick_and_bound_under_their_parent);
+    RUN_TEST_CASE(mirroring_transform3d_keeps_faces_outward);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(mirrors_reflect_the_sky_in_its_directions);
     RUN_TEST_CASE(rough_surfaces_blur_the_sky_they_reflect);
@@ -2828,6 +3011,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_mesh_groups_take_their_own_materials);
     RUN_TEST_CASE(imported_meshes_carry_texture_and_part_coordinates);
     RUN_TEST_CASE(normal_maps_follow_mesh_tangents);
+    RUN_TEST_CASE(mirroring_transform3d_turns_mesh_bitangents);
     RUN_TEST_CASE(occlusion_dims_only_ambient_light);
     RUN_TEST_CASE(alpha_modes_decide_how_opacity_draws);
     RUN_TEST_CASE(opaque_and_masked_surfaces_cast_shadows);

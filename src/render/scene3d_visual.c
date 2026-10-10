@@ -2,6 +2,7 @@
 
 #include "runtime/component_catalog.h"
 #include "runtime/transform_propagation.h"
+#include "support/array.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -21,10 +22,45 @@ GameGlobalTransform2D render_scene3d_placement(
     return (GameGlobalTransform2D){ *position, global ? global->radians : 0 };
 }
 
+void render_scene3d_entities(ecs_world *world, render_skip skip, ecs_entity **entities)
+{
+    ecs_component_id placements[] = { GAME_COMPONENT_GameTransform.id,
+                                      GAME_COMPONENT_GameTransform3D.id };
+    for (int i = 0; i < 2; i++) {
+        ecs_component_id required[] = { placements[i],
+                                        GAME_COMPONENT_GameGeometry3D.id };
+        ecs_query query;
+        if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
+            continue;
+        }
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            if (!render_skip_has(skip, entity) &&
+                (i || !GAME_GameTransform3D_has(world, entity))) {
+                apush(*entities, entity);
+            }
+        }
+        ecs_query_end(&query);
+    }
+}
+
+static bool finite_v3(CF_V3 v)
+{
+    return isfinite(v.x + v.y + v.z);
+}
+
+float render_scene3d_frame_determinant(CF_M4x4 frame)
+{
+    const float *m = frame.elements;
+    return m[0] * (m[5] * m[10] - m[6] * m[9]) -
+           m[4] * (m[1] * m[10] - m[2] * m[9]) + m[8] * (m[1] * m[6] - m[2] * m[5]);
+}
+
 int render_scene3d_visuals(
     const ecs_world *world,
     ecs_entity entity,
     const GameTransform *position,
+    const GameGlobalTransform3D *transform,
     scene3d_visual visuals[SCENE3D_PART_LIMIT],
     const render_mesh_asset **mesh,
     char *error,
@@ -33,28 +69,40 @@ int render_scene3d_visuals(
 {
     *mesh = NULL;
     const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
-    if (!shape || (!position && !GAME_GameTransform_get_const(world, entity))) {
+    if (!shape ||
+        (!transform && !position && !GAME_GameTransform_get_const(world, entity))) {
         return 0;
     }
-    GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
-    position = &pose.position;
-    const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
+    const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
     const GameMeshParts *authored = GAME_GameMeshParts_get_const(world, entity);
     const GameMeshAsset *imported = GAME_GameMeshAsset_get_const(world, entity);
-    float angle = pose.radians;
-    float scale = transform ? transform->scale : 1;
-    CF_V3 rotation = transform
-                       ? (CF_V3){ transform->pitch, transform->yaw, transform->roll }
-                       : (CF_V3){ 0 };
-    if (!isfinite(
-            position->x + position->y + shape->elevation + angle + scale +
-            rotation.x + rotation.y + rotation.z
-        ) ||
+    float scale = visual ? visual->scale : 1;
+    CF_V3 rotation = visual ? (CF_V3){ visual->pitch, visual->yaw, visual->roll }
+                            : (CF_V3){ 0 };
+    CF_M4x4 frame;
+    bool finite;
+    if (transform) {
+        finite = finite_v3(transform->x_axis) && finite_v3(transform->y_axis) &&
+                 finite_v3(transform->z_axis) && finite_v3(transform->position);
+        frame = cf_mul_m4(
+            game_transform_matrix_3d(transform),
+            cf_m4_from_trs((CF_V3){ 0 }, game_visual_rotation(0, rotation), (CF_V3){ scale, scale, scale })
+        );
+    } else {
+        GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
+        finite = isfinite(pose.position.x + pose.position.y + shape->elevation + pose.radians);
+        frame = cf_m4_from_trs(
+            (CF_V3){ pose.position.x, shape->elevation, pose.position.y },
+            game_visual_rotation(pose.radians, rotation),
+            (CF_V3){ scale, scale, scale }
+        );
+    }
+    if (!finite || !isfinite(scale + rotation.x + rotation.y + rotation.z) ||
         scale < 0) {
         snprintf(error, size, "Visual transform needs finite values and nonnegative scale.");
         return -1;
     }
-    if (scale == 0) {
+    if (render_scene3d_frame_determinant(frame) == 0) {
         return 0;
     }
     scene3d_parts parts;
@@ -83,11 +131,6 @@ int render_scene3d_visuals(
         };
         parts.count = 1;
     }
-    CF_M4x4 frame = cf_m4_from_trs(
-        (CF_V3){ position->x, shape->elevation, position->y },
-        game_visual_rotation(angle, rotation),
-        (CF_V3){ scale, scale, scale }
-    );
     for (int i = 0; i < parts.count; i++) {
         const scene3d_part *part = &parts.parts[i];
         if (part->primitive < GAME_PRIMITIVE_BOX ||

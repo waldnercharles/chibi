@@ -16,12 +16,14 @@ void main()
 {
     vec4 p = vec4(in_pos, 1.0);
     vec3 world = vec3(dot(in_model0, p), dot(in_model1, p), dot(in_model2, p));
-    // Cofactors preserve perpendicular normals under nonuniform positive scale.
+    // Cofactors preserve perpendicular normals under nonuniform scale. A
+    // mirroring model's negative determinant would turn them inward.
     vec3 a = vec3(in_model0.x, in_model1.x, in_model2.x);
     vec3 b = vec3(in_model0.y, in_model1.y, in_model2.y);
     vec3 c = vec3(in_model0.z, in_model1.z, in_model2.z);
-    v_normal = normalize(cross(b, c) * in_normal.x +
-                         cross(c, a) * in_normal.y + cross(a, b) * in_normal.z);
+    float facing = dot(a, cross(b, c)) < 0.0 ? -1.0 : 1.0;
+    v_normal = facing * normalize(cross(b, c) * in_normal.x +
+                                  cross(c, a) * in_normal.y + cross(a, b) * in_normal.z);
     v_world = world;
     v_material = in_uv_rect;
     gl_Position = u_view_projection * vec4(world, 1.0);

@@ -264,9 +264,9 @@ Transform3D from a script teleports it. Gravity is 9.81 meters per second
 squared down Y unless one entity's `GAME.GameGravity3D` sets it. Behaviors
 handle `on ContactBegin3D` with `event.Other` and `event.Point`, and
 `on ContactEnd3D` with `event.Other`. A sensor collider reports both without
-pushing. Hull and triangle-mesh colliders are not available yet, and the 3D
-renderer still places visuals from `GAME.GameTransform`, so it does not draw
-bodies at their simulated pose yet.
+pushing. Hull and triangle-mesh colliders are not available yet. The 3D
+renderer draws a body's `GAME.GameGeometry3D` at its Transform3D pose (see
+`docs/rendering-3d.md`).
 
 ```kdl
 name "Crate"

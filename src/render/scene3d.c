@@ -473,11 +473,27 @@ static void collect_entity(
     if (!engine_entity_visible(runtime, world, entity)) {
         return;
     }
-    GameTransform position = engine_render_transform(runtime, world, entity).position;
+    bool spatial = GAME_GameTransform3D_has(world, entity);
+    GameTransform position = { 0 };
+    GameGlobalTransform3D transform = { 0 };
+    if (spatial) {
+        transform = engine_render_transform_3d(runtime, world, entity);
+    } else {
+        position = engine_render_transform(runtime, world, entity).position;
+    }
     scene3d_visual visuals[SCENE3D_PART_LIMIT];
     const render_mesh_asset *mesh;
     char error[256] = { 0 };
-    int count = render_scene3d_visuals(world, entity, &position, visuals, &mesh, error, sizeof error);
+    int count = render_scene3d_visuals(
+        world,
+        entity,
+        &position,
+        spatial ? &transform : NULL,
+        visuals,
+        &mesh,
+        error,
+        sizeof error
+    );
     if (count <= 0) {
         if (count < 0 && !buffer->binding_error[0]) {
             snprintf(buffer->binding_error, sizeof buffer->binding_error, "%s", error);
@@ -1237,6 +1253,23 @@ static bool prepare_draws(render_scene3d *scene3d)
     return true;
 }
 
+/* The lit pass's state: translucent draws blend without writing depth, and a
+ * mirroring frame turns its triangles' winding, so it culls the other side. */
+static CF_RenderState lit_state(bool transparent, bool mirrored)
+{
+    CF_RenderState state = cf_render_state_3d_defaults();
+    state.cull_mode = mirrored ? CF_CULL_MODE_FRONT : CF_CULL_MODE_BACK;
+    if (transparent) {
+        state.depth_write_enabled = false;
+        state.blend.enabled = true;
+        state.blend.rgb_src_blend_factor = CF_BLENDFACTOR_SRC_ALPHA;
+        state.blend.rgb_dst_blend_factor = CF_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        state.blend.alpha_src_blend_factor = CF_BLENDFACTOR_ONE;
+        state.blend.alpha_dst_blend_factor = CF_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    }
+    return state;
+}
+
 static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera, float time)
 {
     if (!acount(scene3d->buffer.draws)) {
@@ -1313,9 +1346,8 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     cf_draw3d_push_view(camera->view);
     render_programs *bound = NULL;
     int program = 0;
-    CF_RenderState state = cf_render_state_3d_defaults();
-    cf_draw3d_push_render_state(state);
-    bool transparent = false;
+    bool transparent = false, mirrored = false;
+    cf_draw3d_push_render_state(lit_state(transparent, mirrored));
     for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
         const scene3d_draw *draw = &scene3d->buffer.draws[i];
         render_programs *programs = solid_programs(scene3d, &draw->solid);
@@ -1327,17 +1359,15 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
             program = draw->program;
             render_programs_bind3d(bound, program);
         }
-        if (draw->transparent && !transparent) {
-            draw_behind_translucents(scene3d, camera);
-            transparent = true;
+        bool mirrors = render_scene3d_frame_determinant(draw->solid.frame) < 0;
+        if (draw->transparent != transparent || mirrors != mirrored) {
+            if (draw->transparent && !transparent) {
+                draw_behind_translucents(scene3d, camera);
+            }
+            transparent = draw->transparent;
+            mirrored = mirrors;
             cf_draw3d_pop_render_state();
-            state.depth_write_enabled = false;
-            state.blend.enabled = true;
-            state.blend.rgb_src_blend_factor = CF_BLENDFACTOR_SRC_ALPHA;
-            state.blend.rgb_dst_blend_factor = CF_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-            state.blend.alpha_src_blend_factor = CF_BLENDFACTOR_ONE;
-            state.blend.alpha_dst_blend_factor = CF_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-            cf_draw3d_push_render_state(state);
+            cf_draw3d_push_render_state(lit_state(transparent, mirrored));
         }
         draw_with_material(scene3d, draw);
     }
@@ -1397,18 +1427,7 @@ static void collect_geometry(
 )
 {
     aclear(scene3d->entities);
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameGeometry3D.id };
-    ecs_query query;
-    if (ecs_query_begin(world, &query, required, 2) == ECS_OK) {
-        ecs_entity entity;
-        while (ecs_query_next(&query, &entity)) {
-            if (!render_skip_has(skip, entity)) {
-                apush(scene3d->entities, entity);
-            }
-        }
-        ecs_query_end(&query);
-    }
+    render_scene3d_entities(world, skip, &scene3d->entities);
     int count = acount(scene3d->entities);
     scene3d->work = (render_scene3d_work){ .entities = count, .workers = 1 };
     const game_task_system *tasks = game_task_pool_tasks(scene3d->pool);

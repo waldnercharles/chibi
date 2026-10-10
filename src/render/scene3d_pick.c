@@ -4,6 +4,7 @@
 #include "render/scene3d_visual.h"
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
 
 #include <float.h>
@@ -17,6 +18,24 @@ static int entity_model(const ecs_world *world, ecs_entity entity)
                ? render_shader_find(binding->shape)
                : 0;
     return render_shader_is_model(id) ? id : 0;
+}
+
+/* An entity's visuals at its exact world placement, which picks and bounds
+ * read before any propagation: its Transform3D's when it has one. */
+static int exact_visuals(
+    const ecs_world *world,
+    ecs_entity entity,
+    scene3d_visual visuals[SCENE3D_PART_LIMIT],
+    const render_mesh_asset **mesh,
+    char *error,
+    size_t size
+)
+{
+    if (!GAME_GameTransform3D_has(world, entity)) {
+        return render_scene3d_visuals(world, entity, NULL, NULL, visuals, mesh, error, size);
+    }
+    GameGlobalTransform3D transform = game_transform_world_3d(world, entity);
+    return render_scene3d_visuals(world, entity, NULL, &transform, visuals, mesh, error, size);
 }
 
 /* The box around a visual: its imported mesh's bounds, or its shape's. */
@@ -49,7 +68,7 @@ bool render_scene3d_entity_bounds(const ecs_world *world, ecs_entity entity, CF_
         }
         render_mesh_surface_free(&surface);
     } else {
-        count = render_scene3d_visuals(world, entity, NULL, visuals, &mesh, error, sizeof error);
+        count = exact_visuals(world, entity, visuals, &mesh, error, sizeof error);
     }
     if (count <= 0) {
         return false;
@@ -313,17 +332,10 @@ ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *ca
     CF_V3 end = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, ray.t));
     ecs_entity nearest = { 0 };
     float distance = FLT_MAX;
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameGeometry3D.id };
-    ecs_query query;
-    if (ecs_query_begin(world, &query, required, 2) != ECS_OK) {
-        return nearest;
-    }
-    ecs_entity entity;
-    while (ecs_query_next(&query, &entity)) {
-        if (render_skip_has(skip, entity)) {
-            continue;
-        }
+    ecs_entity *entities = NULL;
+    render_scene3d_entities(world, skip, &entities);
+    for (int e = 0; e < acount(entities); e++) {
+        ecs_entity entity = entities[e];
         int model = entity_model(world, entity);
         if (model) {
             float t = model_ray_hit(world, entity, model, ray);
@@ -336,7 +348,7 @@ ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *ca
         scene3d_visual visuals[SCENE3D_PART_LIMIT];
         const render_mesh_asset *mesh;
         char error[128];
-        int count = render_scene3d_visuals(world, entity, NULL, visuals, &mesh, error, sizeof error);
+        int count = exact_visuals(world, entity, visuals, &mesh, error, sizeof error);
         for (int i = 0; i < count; i++) {
             CF_M4x4 inverse = cf_m4_invert(render_scene3d_visual_model(&visuals[i]));
             CF_Ray3 local = cf_make_ray3(
@@ -355,6 +367,6 @@ ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *ca
             }
         }
     }
-    ecs_query_end(&query);
+    afree(entities);
     return nearest;
 }

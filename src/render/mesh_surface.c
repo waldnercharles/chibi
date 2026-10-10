@@ -349,7 +349,7 @@ bool render_mesh_surface_build_with_bounds(
     }
     scene3d_visual visuals[SCENE3D_PART_LIMIT];
     const render_mesh_asset *asset;
-    int count = render_scene3d_visuals(world, entity, position, visuals, &asset, error, size);
+    int count = render_scene3d_visuals(world, entity, position, NULL, visuals, &asset, error, size);
     if (count < 0) {
         return false;
     }

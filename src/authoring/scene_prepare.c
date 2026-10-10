@@ -39,6 +39,9 @@ game_scene *authoring_scene_prepare(
     for (int i = 0; i < count; i++) {
         authoring_objects_add_children(&records, objects[i], i);
     }
+    for (int i = 0; i < count; i++) {
+        authoring_objects_add_links(&records, i, objects[i], true, document, NULL);
+    }
     game_scene_spec spec = {
         .name = document->name,
         .ui = document->ui,

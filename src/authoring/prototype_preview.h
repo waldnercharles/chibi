@@ -13,6 +13,7 @@ typedef struct game_prototype_preview game_prototype_preview;
 
 typedef struct
 {
+    const char *name; /* unique among its siblings, so paths name it */
     const game_prototype *prototype;
     int parent; /* an earlier entity's index, or -1 for a root */
     av_value *components;

@@ -342,7 +342,12 @@ limit and motor act only with its spring, so a spring of zero hertz and a limit
 make a slack rope. `collide` lets the two bodies touch. A joint holds the bodies
 as they were when it was made and is made again when its fields change or its
 entity moves on its body; a joint whose `other` is destroyed holds nothing.
-Scenes can't name another entity yet, so a script sets `other`.
+A scene names `other` by its path, such as `GAME.GameJoint3D other="Frame.Anchor"`,
+and a prototype names one of its children the same way, in its own components
+or a child's. A scene's paths reach only its own entities, not its instances'
+children. Any entity handle at the top of a component takes a path; loading
+the scene or spawning the prototype writes the entity there, and a path that
+names no entity fails validation and loading. Scripts may still set `other`.
 
 `GAME.GameJoint` joins 2D bodies the same way at the entity's `Transform`, with
 `Hinge`, `Slider`, `Weld` and `Distance` and no ball: a hinge turns about the

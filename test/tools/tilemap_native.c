@@ -4,7 +4,7 @@
 #include "runtime/tilemap.h"
 #include "third_party/pico_headers/pico_unit.h"
 
-#ifdef CHIBI_TEST_TILEMAP_PREPARATION
+#ifdef CHIBI_TEST_PREPARATION
 #include "authoring/image_prepare.h"
 #include "authoring/prototype_prepare.h"
 #include "runtime/images/catalog.h"
@@ -16,7 +16,7 @@
 
 static ecs_world *world;
 static game_entities *entities;
-#ifdef CHIBI_TEST_TILEMAP_PREPARATION
+#ifdef CHIBI_TEST_PREPARATION
 static game_prototype *fixture_prototype;
 static game_scene *fixture_scene;
 #endif
@@ -37,7 +37,7 @@ static void teardown()
 {
     game_entities_free(entities);
     ecs_world_free(world);
-#ifdef CHIBI_TEST_TILEMAP_PREPARATION
+#ifdef CHIBI_TEST_PREPARATION
     game_prototype_free(fixture_prototype);
     fixture_prototype = NULL;
     game_scene_free(fixture_scene);
@@ -121,7 +121,7 @@ TEST_CASE(native_queries_and_cache_lifecycle)
     return true;
 }
 
-#ifdef CHIBI_TEST_TILEMAP_PREPARATION
+#ifdef CHIBI_TEST_PREPARATION
 TEST_CASE(decorative_fixture_prepares_atlas_and_owns_cells)
 {
     char text[4096];
@@ -198,7 +198,7 @@ void test_tool_tilemap_native()
 {
     pu_setup(setup, teardown);
     RUN_TEST_CASE(native_queries_and_cache_lifecycle);
-#ifdef CHIBI_TEST_TILEMAP_PREPARATION
+#ifdef CHIBI_TEST_PREPARATION
     RUN_TEST_CASE(decorative_fixture_prepares_atlas_and_owns_cells);
 #endif
     pu_setup(NULL, NULL);

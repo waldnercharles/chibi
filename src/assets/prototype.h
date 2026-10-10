@@ -65,6 +65,19 @@ typedef struct
     char *name;
 } game_prototype_tag;
 
+/* A handle field authored as an entity path, which holds zero until a scene
+ * or spawn resolves it. The '.'-separated path names an entity from the roots
+ * of the document that authored the value: this prototype's children, or,
+ * when `outer`, the entities of the scene or parent prototype that holds it as
+ * an entity. */
+typedef struct
+{
+    const ecs_component_desc *component;
+    int field;  /* top-level, in the component's type */
+    char *path; /* owned */
+    bool outer;
+} game_prototype_link;
+
 typedef struct game_prototype
 {
     char *name;
@@ -89,6 +102,8 @@ typedef struct game_prototype
      * spawns: its prototype with the child's components and behaviors, named
      * as the child. Empty for an authored load. */
     struct game_prototype **child_prototypes;
+    /* Its handle fields that name entities, attached or detached. */
+    game_prototype_link *links;
     int expanded; /* the other documents its load read, at most GAME_PROTOTYPE_EXPANSION_MAX */
     size_t read; /* their bytes, at most GAME_PROTOTYPE_READ_MAX */
     char **strings;
@@ -115,6 +130,21 @@ game_prototype *game_prototype_load_authored(
     char *error,
     size_t error_size
 );
+/* Applies the entity's component values from the document that holds the
+ * prototype as an entity, so the paths they name are `outer`. */
+int game_prototype_apply_entity_components(
+    game_prototype *prototype,
+    av_value *components,
+    char *error,
+    size_t error_size
+);
+/* The entity paths a document's component values name, as `outer` links; the
+ * caller frees them with game_prototype_links_free. */
+game_prototype_link *game_prototype_components_links(
+    const game_prototype_registry *registry,
+    av_value *components
+);
+void game_prototype_links_free(game_prototype_link *links);
 /* A prototype named `name` with no components or behaviors. */
 game_prototype *game_prototype_new(const char *name);
 game_prototype *game_prototype_clone(const game_prototype *prototype, char *error, size_t error_size);
@@ -151,6 +181,8 @@ av_value *game_prototype_capture_overrides_value(
     const ecs_world *world,
     ecs_entity entity
 );
+/* Entity paths leave their handles zero; game_prototype_components_links
+ * lists them for the caller to resolve. */
 int game_prototype_apply_components_value(
     ecs_world *world,
     ecs_entity entity,

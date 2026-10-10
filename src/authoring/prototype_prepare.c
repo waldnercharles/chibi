@@ -103,6 +103,37 @@ void authoring_objects_add(
     );
 }
 
+void authoring_objects_add_links(
+    authoring_objects *objects,
+    int object,
+    const game_prototype *named,
+    bool outer,
+    const game_scene_document *document,
+    const int *placed
+)
+{
+    for (int i = 0; i < acount(named->links); i++) {
+        const game_prototype_link *link = &named->links[i];
+        int component = 0;
+        while (component < acount(named->components) &&
+               named->components[component].desc->id != link->component->id) {
+            component++;
+        }
+        if (link->outer != outer || component == acount(named->components)) {
+            continue;
+        }
+        int target = game_scene_document_entity_index(document, link->path);
+        if (target < 0) {
+            objects->missing = link;
+            continue;
+        }
+        apush(
+            objects->links,
+            ((game_scene_link){ object, component, link->field, placed ? placed[target] : target })
+        );
+    }
+}
+
 void authoring_objects_add_children(authoring_objects *objects, const game_prototype *prototype, int index)
 {
     const game_scene_document *children = prototype->children;
@@ -113,6 +144,10 @@ void authoring_objects_add_children(authoring_objects *objects, const game_proto
         apush(added, acount(objects->objects));
         authoring_objects_add(objects, child, child->name, parent < 0 ? index : added[parent]);
         authoring_objects_add_children(objects, child, alast(added));
+    }
+    authoring_objects_add_links(objects, index, prototype, false, children, added);
+    for (int i = 0; children && i < acount(children->entities); i++) {
+        authoring_objects_add_links(objects, added[i], prototype->child_prototypes[i], true, children, added);
     }
     afree(added);
 }
@@ -127,13 +162,30 @@ game_scene *authoring_objects_prepare(
     spec.objects = objects->objects;
     spec.object_count = acount(objects->objects);
     spec.parents = objects->parents;
-    game_scene *scene = game_scene_prepare(&spec, error, size);
+    spec.links = objects->links;
+    spec.link_count = acount(objects->links);
+    const game_prototype_link *missing = objects->missing;
+    game_scene *scene = NULL;
+    if (missing && size) {
+        snprintf(
+            error,
+            size,
+            "%s %s names %s, but no entity has that path",
+            missing->component->name,
+            missing->component->type->fields[missing->field].name,
+            missing->path
+        );
+    }
+    if (!missing) {
+        scene = game_scene_prepare(&spec, error, size);
+    }
     for (int i = 0; i < acount(objects->components); i++) {
         afree(objects->components[i]);
     }
     afree(objects->components);
     afree(objects->parents);
     afree(objects->objects);
+    afree(objects->links);
     return scene;
 }
 

@@ -395,6 +395,180 @@ static int attach(ecs_world *, ecs_entity entity, const char *graph, void *)
     return 0;
 }
 
+/* A Link names another entity by path; its inner handle is nested, so it
+ * cannot. */
+typedef struct
+{
+    uint64_t entity;
+} link_inner;
+typedef struct
+{
+    uint64_t other;
+    link_inner inner;
+} link_row;
+static const type_field inner_fields[] = {
+    { .name = "entity", .type = PIN_HANDLE, .size = sizeof(uint64_t), .type_name = "ecs.entity" },
+};
+static const type_desc inner_type = {
+    .name = "LinkInner",
+    .size = sizeof(link_inner),
+    .fields = inner_fields,
+    .field_count = 1,
+};
+static const type_field link_fields[] = {
+    { .name = "other",
+      .type = PIN_HANDLE,
+      .offset = offsetof(link_row, other),
+      .size = sizeof(uint64_t),
+      .type_name = "ecs.entity" },
+    { .name = "inner",
+      .type = PIN_STRUCT,
+      .offset = offsetof(link_row, inner),
+      .size = sizeof(link_inner),
+      .type_name = "LinkInner" },
+};
+static const type_desc link_type = {
+    .name = "LinkRow",
+    .size = sizeof(link_row),
+    .fields = link_fields,
+    .field_count = 2,
+};
+static const ecs_component_desc link = {
+    .id = 9004,
+    .key = "test.Link",
+    .name = "Link",
+    .element_size = sizeof(link_row),
+    .type = &link_type,
+};
+static const ecs_component_desc inner = {
+    .id = 9005,
+    .key = "test.LinkInner",
+    .name = "LinkInner",
+    .element_size = sizeof(link_inner),
+    .type = &inner_type,
+};
+static const ecs_component_desc *const linked[] = { &link, &inner };
+/* Pendulum's root names its child Bob, and its document gives Bob a path to
+ * Hook in place of the one Weight gives it, to its own Inside. */
+static const char *const links_library[][2] = {
+    { "Pendulum",
+      "name \"Pendulum\"\ncomponents {\n    test.Link other=\"Bob\"\n}\n"
+      "(array)children {\n"
+      "    - name=\"Hook\" prototype=\"Weight\"\n"
+      "    - name=\"Bob\" prototype=\"Weight\" {\n"
+      "        components {\n            test.Link other=\"Hook\"\n        }\n"
+      "    }\n"
+      "}\n" },
+    { "Weight",
+      "name \"Weight\"\ncomponents {\n    test.Link other=\"Inside\"\n}\n"
+      "(array)children {\n    - name=\"Inside\" prototype=\"Plain\"\n}\n" },
+    { "Plain", "name \"Plain\"\n" },
+    { "Stray", "name \"Stray\"\ncomponents {\n    test.Link other=\"Nowhere\"\n}\n" },
+    { "Deep", "name \"Deep\"\ncomponents {\n    test.Link {\n        inner entity=\"Plain\"\n    }\n}\n" },
+};
+static const char *find_linked(const char *name, void *)
+{
+    for (size_t i = 0; i < sizeof links_library / sizeof links_library[0]; i++) {
+        if (!strcmp(links_library[i][0], name)) {
+            return links_library[i][1];
+        }
+    }
+    return NULL;
+}
+static const game_prototype_registry links_registry = { .components = linked,
+                                                        .component_count = 2,
+                                                        .include = find_linked };
+static game_prototype *load_linked(const char *name, char *error, size_t size)
+{
+    return game_prototype_load(find_linked(name, NULL), &links_registry, error, size);
+}
+static const game_prototype_link *only_link(const game_prototype *prototype)
+{
+    return acount(prototype->links) == 1 ? &prototype->links[0] : NULL;
+}
+static uint64_t other_of(ecs_world *world, ecs_entity entity)
+{
+    const link_row *row = ecs_component_data_const(world, entity, link.id);
+    return row ? row->other : 0;
+}
+
+/* A handle field may name an entity by path, from the roots of the document
+ * that wrote it, and saves, clones and overrides as that path. */
+TEST_CASE(entity_paths_load_and_save_as_written)
+{
+    char error[256];
+    prototype = load_linked("Pendulum", error, sizeof error);
+    REQUIRE(prototype && acount(prototype->child_prototypes) == 2);
+    const game_prototype_link *own = only_link(prototype);
+    REQUIRE(own && !own->outer && own->field == 0 && !strcmp(own->path, "Bob"));
+    REQUIRE(!((const link_row *)prototype->components[0].data)->other);
+    const game_prototype_link *hook = only_link(prototype->child_prototypes[0]);
+    REQUIRE(hook && !hook->outer && !strcmp(hook->path, "Inside"));
+    const game_prototype_link *bob = only_link(prototype->child_prototypes[1]);
+    REQUIRE(bob && bob->outer && !strcmp(bob->path, "Hook"));
+    saved = game_prototype_save(prototype);
+    REQUIRE(saved && strstr(saved, "test.Link other=\"Bob\"") && strstr(saved, "other=\"Hook\""));
+    loaded = game_prototype_clone(prototype->child_prototypes[1], error, sizeof error);
+    REQUIRE(loaded && only_link(loaded) && only_link(loaded)->outer);
+    /* Bob's path differs from Weight's; Hook's is Weight's own. */
+    game_prototype *weight = load_linked("Weight", error, sizeof error);
+    REQUIRE(weight);
+    before = game_prototype_overrides_value(weight, prototype->child_prototypes[1]);
+    after = game_prototype_overrides_value(weight, prototype->child_prototypes[0]);
+    av_value *fields = before ? av_obj_get(before, "test.Link") : NULL;
+    REQUIRE(fields && !strcmp(av_get_str(av_obj_get(fields, "other")), "Hook"));
+    REQUIRE(after && !av_obj_size(after));
+    /* Writing the handle or removing the component drops the path. */
+    REQUIRE(
+        !game_prototype_write_field(weight, "Link", "other", (pin_value){ .type = PIN_HANDLE })
+    );
+    REQUIRE(!acount(weight->links));
+    av_value_free(after);
+    after = game_prototype_overrides_value(prototype->child_prototypes[0], weight);
+    fields = after ? av_obj_get(after, "test.Link") : NULL;
+    REQUIRE(fields && av_is_null(av_obj_get(fields, "other")));
+    REQUIRE(
+        !game_prototype_remove_component(prototype, "Link") && !acount(prototype->links)
+    );
+    game_prototype_free(weight);
+    game_prototype_free(loaded);
+    loaded = load_linked("Deep", error, sizeof error);
+    REQUIRE(!loaded && strstr(error, "field entity has the wrong value type"));
+    return true;
+}
+
+/* Spawning writes each path's entity, in the tree of the document that
+ * named it; a path naming no entity stops the spawn. */
+TEST_CASE(entity_paths_spawn_as_their_entities)
+{
+    char error[256];
+    prototype = load_linked("Pendulum", error, sizeof error);
+    REQUIRE(prototype);
+    ecs_world *world = ecs_world_new();
+    REQUIRE(ecs_world_register_component(world, &link, NULL) == ECS_OK);
+    ecs_entity root = { 0 };
+    REQUIRE(
+        game_prototype_spawn_components(prototype, world, &root, error, sizeof error) == ECS_OK
+    );
+    ecs_entity bob = ecs_entity_from_u64(other_of(world, root));
+    ecs_entity hook = ecs_entity_from_u64(other_of(world, bob));
+    ecs_entity inside = ecs_entity_from_u64(other_of(world, hook));
+    bool tree = ecs_world_live_count(world) == 5 &&
+                ecs_parent(world, bob).slot == root.slot &&
+                ecs_parent(world, hook).slot == root.slot && bob.slot != hook.slot &&
+                ecs_parent(world, inside).slot == hook.slot;
+    game_prototype *stray = load_linked("Stray", error, sizeof error);
+    bool refused = stray &&
+                   game_prototype_spawn_components(stray, world, &root, error, sizeof error) !=
+                       ECS_OK &&
+                   strstr(error, "names Nowhere, which is not a child of prototype Stray") &&
+                   ecs_world_live_count(world) == 5;
+    game_prototype_free(stray);
+    ecs_world_free(world);
+    REQUIRE(tree && refused);
+    return true;
+}
+
 /* A prototype's children load as their own prototypes, with the child's
  * components and behaviors, and save back as written. */
 TEST_CASE(prototype_children_resolve_and_save_nested)
@@ -594,6 +768,8 @@ void test_prototype_document()
     RUN_TEST_CASE(derived_components_are_never_authored_or_captured);
     RUN_TEST_CASE(prototype_children_resolve_and_save_nested);
     RUN_TEST_CASE(prototype_children_spawn_with_it);
+    RUN_TEST_CASE(entity_paths_load_and_save_as_written);
+    RUN_TEST_CASE(entity_paths_spawn_as_their_entities);
     RUN_TEST_CASE(prototype_expansion_is_bounded);
     RUN_TEST_CASE(prototype_expansion_bytes_are_bounded);
     pu_clear_setup();

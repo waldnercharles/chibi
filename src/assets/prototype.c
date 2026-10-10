@@ -122,6 +122,49 @@ static const type_field *find_field(const type_desc *type, const char *name)
     return NULL;
 }
 
+static const game_prototype_link *find_link(
+    const game_prototype_link *links,
+    const ecs_component_desc *component,
+    int field
+)
+{
+    for (int i = 0; i < acount(links); i++) {
+        if (links[i].component->id == component->id && links[i].field == field) {
+            return &links[i];
+        }
+    }
+    return NULL;
+}
+
+/* Drops the component's links, or only the field's when it is not -1. */
+static void drop_links(game_prototype_link *links, const ecs_component_desc *component, int field)
+{
+    for (int i = acount(links) - 1; i >= 0; i--) {
+        if (links[i].component->id == component->id &&
+            (field < 0 || links[i].field == field)) {
+            free(links[i].path);
+            adel(links, i);
+        }
+    }
+}
+
+void game_prototype_links_free(game_prototype_link *links)
+{
+    for (int i = 0; i < acount(links); i++) {
+        free(links[i].path);
+    }
+    afree(links);
+}
+
+/* The component whose top-level fields are being read, and whether the
+ * document holding the prototype as an entity authors them. Nested values
+ * have none, so they cannot name entities. */
+typedef struct
+{
+    const ecs_component_desc *component;
+    bool outer;
+} field_scope;
+
 static int read_signed(av_value *value, int64_t *out)
 {
     if (av_is_sint(value)) {
@@ -174,6 +217,7 @@ static int parse_fields(
     void *base,
     const type_desc *type,
     av_value *object,
+    const field_scope *scope,
     char *error,
     size_t error_size
 );
@@ -184,6 +228,7 @@ static int parse_field(
     void *base,
     const type_field *field,
     av_value *json,
+    const field_scope *scope,
     char *error,
     size_t error_size
 )
@@ -268,7 +313,7 @@ static int parse_field(
             const type_desc *nested = find_type(registry, field->type_name);
             void *nested_value = xcalloc(1, field->size);
             result = !nested ||
-                     parse_fields(prototype, registry, nested_value, nested, json, error, error_size);
+                     parse_fields(prototype, registry, nested_value, nested, json, NULL, error, error_size);
             if (!result) {
                 value.ptr = nested_value;
                 pin_write_field(base, field, value);
@@ -276,9 +321,25 @@ static int parse_field(
             free(nested_value);
             return result;
         }
-        /* Runtime handles have no authored identity. A saved component clears
-         * them; graph events supply live handles after instantiation. */
-        case PIN_HANDLE: result = !av_is_null(json); break;
+        /* Live handles never save. A component's own handle field may name
+         * an entity by path instead, which a scene or spawn resolves. */
+        case PIN_HANDLE: {
+            bool path = scope && av_is_str(json) && av_get_len(json);
+            result = !path && !av_is_null(json);
+            if (!result && scope) {
+                game_prototype_link link = { scope->component,
+                                             (int)(field -
+                                                   scope->component->type->fields),
+                                             NULL,
+                                             scope->outer };
+                drop_links(prototype->links, link.component, link.field);
+                if (path) {
+                    link.path = xstrdup(av_get_str(json));
+                    apush(prototype->links, link);
+                }
+            }
+            break;
+        }
         case PIN_FLOW: result = 1; break;
     }
     if (result) {
@@ -295,6 +356,7 @@ static int parse_fields(
     void *base,
     const type_desc *type,
     av_value *object,
+    const field_scope *scope,
     char *error,
     size_t error_size
 )
@@ -312,7 +374,7 @@ static int parse_fields(
             set_error(error, error_size, "component %s has unknown field %s", type->name, name);
             return -1;
         }
-        if (parse_field(prototype, registry, base, field, av_obj_iter_get_val(key), error, error_size)) {
+        if (parse_field(prototype, registry, base, field, av_obj_iter_get_val(key), scope, error, error_size)) {
             return -1;
         }
     }
@@ -323,6 +385,7 @@ static int parse_components(
     game_prototype *prototype,
     game_prototype_component **components,
     av_value *object,
+    bool outer,
     char *error,
     size_t error_size
 )
@@ -357,7 +420,8 @@ static int parse_components(
             apush(*components, *component);
             component = &alast(*components);
         }
-        if (parse_fields(prototype, prototype->registry, component->data, desc->type, value, error, error_size)) {
+        field_scope scope = { desc, outer };
+        if (parse_fields(prototype, prototype->registry, component->data, desc->type, value, &scope, error, error_size)) {
             return -1;
         }
     }
@@ -444,11 +508,21 @@ static bool merge_prototype(game_prototype *dst, game_prototype *src, char *erro
         if (existing) {
             memcpy(existing->data, component.data, component.desc->element_size);
             free(component.data);
+            drop_links(dst->links, component.desc, -1);
         } else {
             apush(dst->components, component);
         }
     }
     aclear(src->components);
+    /* Only attached components merge, so only their links do. */
+    for (int i = 0; i < acount(src->links); i++) {
+        if (find_component(dst, src->links[i].component->name)) {
+            apush(dst->links, src->links[i]);
+        } else {
+            free(src->links[i].path);
+        }
+    }
+    aclear(src->links);
     for (int i = 0; i < acount(src->graphs); i++) {
         apush(dst->graphs, src->graphs[i]);
     }
@@ -542,7 +616,7 @@ static game_prototype *resolve_child(
     if (!prototype) {
         return NULL;
     }
-    if (parse_components(prototype, &prototype->components, child->components, error, error_size)) {
+    if (parse_components(prototype, &prototype->components, child->components, true, error, error_size)) {
         game_prototype_free(prototype);
         return NULL;
     }
@@ -675,11 +749,12 @@ static game_prototype *load_value_document(
             apush(prototype->includes, own_string(prototype, av_get_str(include)));
         }
     }
-    if (parse_components(prototype, &prototype->components, av_obj_get(root, "components"), error, error_size) ||
+    if (parse_components(prototype, &prototype->components, av_obj_get(root, "components"), false, error, error_size) ||
         parse_components(
             prototype,
             &prototype->detached_components,
             av_obj_get(root, "detached_components"),
+            false,
             error,
             error_size
         )) {
@@ -788,6 +863,39 @@ game_prototype *game_prototype_load_authored(
     return result;
 }
 
+int game_prototype_apply_entity_components(
+    game_prototype *prototype,
+    av_value *components,
+    char *error,
+    size_t error_size
+)
+{
+    return parse_components(prototype, &prototype->components, components, true, error, error_size);
+}
+
+game_prototype_link *game_prototype_components_links(
+    const game_prototype_registry *registry,
+    av_value *components
+)
+{
+    assert(av_is_obj(components));
+    game_prototype_link *links = NULL;
+    av_obj_iter iterator = av_obj_iter_with(components);
+    av_value *key;
+    while ((key = av_obj_iter_next(&iterator))) {
+        const ecs_component_desc *desc = game_prototype_registry_find(registry, av_get_str(key));
+        av_value *fields = av_obj_iter_get_val(key);
+        for (int i = 0; desc && av_is_obj(fields) && i < desc->type->field_count; i++) {
+            av_value *path = av_obj_get(fields, desc->type->fields[i].name);
+            if (desc->type->fields[i].type == PIN_HANDLE && av_is_str(path) &&
+                av_get_len(path)) {
+                apush(links, ((game_prototype_link){ desc, i, xstrdup(av_get_str(path)), true }));
+            }
+        }
+    }
+    return links;
+}
+
 game_prototype *game_prototype_clone(const game_prototype *prototype, char *error, size_t error_size)
 {
     if (!prototype || !prototype->registry) {
@@ -799,6 +907,17 @@ game_prototype *game_prototype_clone(const game_prototype *prototype, char *erro
                              ? game_prototype_load_value(value, prototype->registry, error, error_size)
                              : NULL;
     av_value_free(value);
+    if (!copy) {
+        return NULL;
+    }
+    /* The document cannot say which paths its holder authored. */
+    game_prototype_links_free(copy->links);
+    copy->links = NULL;
+    for (int i = 0; i < acount(prototype->links); i++) {
+        game_prototype_link link = prototype->links[i];
+        link.path = xstrdup(link.path);
+        apush(copy->links, link);
+    }
     return copy;
 }
 
@@ -882,6 +1001,7 @@ void game_prototype_free(game_prototype *prototype)
         free(prototype->detached_components[i].data);
     }
     afree(prototype->detached_components);
+    game_prototype_links_free(prototype->links);
     afree(prototype->graphs);
     afree(prototype->includes);
     game_scene_document_free(prototype->children);
@@ -903,10 +1023,13 @@ static int compare_strings(const void *left_ptr, const void *right_ptr)
     return strcmp(*left, *right);
 }
 
+/* `component` is the component whose top-level fields these are, so its
+ * entity paths save, or NULL for a nested value. */
 static void write_struct_fields(
     av_doc *doc,
     av_value *object,
     const game_prototype *prototype,
+    const ecs_component_desc *component,
     const void *base,
     const type_desc *type,
     bool sparse
@@ -971,7 +1094,7 @@ static av_value *write_value(
             av_value *object = av_obj(doc);
             const type_desc *nested = find_type(prototype->registry, field->type_name);
             if (nested && value.ptr) {
-                write_struct_fields(doc, object, prototype, value.ptr, nested, false);
+                write_struct_fields(doc, object, prototype, NULL, value.ptr, nested, false);
             }
             return object;
         }
@@ -985,6 +1108,7 @@ static void write_struct_fields(
     av_doc *doc,
     av_value *object,
     const game_prototype *prototype,
+    const ecs_component_desc *component,
     const void *base,
     const type_desc *type,
     bool sparse
@@ -1006,6 +1130,13 @@ static void write_struct_fields(
     }
     for (int i = 0; i < acount(order); i++) {
         const type_field *field = &type->fields[order[i]];
+        const game_prototype_link *link = component
+                                            ? find_link(prototype->links, component, order[i])
+                                            : NULL;
+        if (link) {
+            av_obj_add_val(doc, object, field->name, av_str(doc, link->path));
+            continue;
+        }
         if (sparse && zero_field(base, field)) {
             continue;
         }
@@ -1018,6 +1149,7 @@ static void write_struct_fields(
                 doc,
                 json,
                 prototype,
+                NULL,
                 value.ptr,
                 find_type(prototype->registry, field->type_name),
                 sparse
@@ -1062,6 +1194,7 @@ static av_value *write_components(
             doc,
             object,
             prototype,
+            component->desc,
             component->data,
             component->desc->type,
             sparse
@@ -1194,7 +1327,7 @@ av_value *game_prototype_entity_component_value(
     av_value *root = av_obj(doc);
     av_value *fields = av_obj(doc);
     av_doc_set_root(doc, root);
-    write_struct_fields(doc, fields, &schema, data, desc->type, false);
+    write_struct_fields(doc, fields, &schema, desc, data, desc->type, false);
     av_obj_add_val(doc, root, desc->key ? desc->key : desc->name, fields);
     av_value *json = av_value_copy(av_doc_root(doc));
     av_doc_free(doc);
@@ -1229,8 +1362,36 @@ static int field_equal(
     return pin_value_equal(&left_value, &right_value);
 }
 
-static av_value *component_overrides_value(const game_prototype *base, const game_prototype_component *current_components)
+/* An entity path override: the current path, or null where it names none. */
+static av_value *link_override(
+    av_doc *doc,
+    const game_prototype *base,
+    const game_prototype *current,
+    const ecs_component_desc *component,
+    int field
+)
 {
+    const game_prototype_link *was = find_link(base->links, component, field);
+    const game_prototype_link *now = find_link(current->links, component, field);
+    if (!was && !now) {
+        return NULL;
+    }
+    if (was && now && !strcmp(was->path, now->path)) {
+        return NULL;
+    }
+    return now ? av_str(doc, now->path) : av_null(doc);
+}
+
+/* `current` holds the entity paths of current_components, or is NULL when
+ * they are a live entity's, whose handles never save. */
+static av_value *component_overrides_value(
+    const game_prototype *base,
+    const game_prototype_component *current_components,
+    const game_prototype *current
+)
+{
+    game_prototype view = { .registry = base->registry,
+                            .links = current ? current->links : NULL };
     av_doc *doc = av_doc_new();
     av_value *root = av_obj(doc);
     av_value *components = av_obj(doc);
@@ -1254,14 +1415,14 @@ static av_value *component_overrides_value(const game_prototype *base, const gam
     }
     for (int i = 0; i < acount(order); i++) {
         const game_prototype_component *component = &base->components[order[i]];
-        const void *current = NULL;
+        const void *data = NULL;
         for (int j = 0; j < acount(current_components); j++) {
             if (current_components[j].desc->id == component->desc->id) {
-                current = current_components[j].data;
+                data = current_components[j].data;
                 break;
             }
         }
-        if (!current) {
+        if (!data) {
             av_obj_add_val(
                 doc,
                 components,
@@ -1274,13 +1435,21 @@ static av_value *component_overrides_value(const game_prototype *base, const gam
         for (int field_index = 0; field_index < component->desc->type->field_count;
              field_index++) {
             const type_field *field = &component->desc->type->fields[field_index];
-            if (field_equal(base, field, component->data, current)) {
+            av_value *value = NULL;
+            if (field->type == PIN_HANDLE) {
+                value = current
+                          ? link_override(doc, base, current, component->desc, field_index)
+                          : NULL;
+            } else if (!field_equal(base, field, component->data, data)) {
+                value = write_value(doc, base, data, field);
+            }
+            if (!value) {
                 continue;
             }
             if (!fields) {
                 fields = av_obj(doc);
             }
-            av_obj_add_val(doc, fields, field->name, write_value(doc, base, current, field));
+            av_obj_add_val(doc, fields, field->name, value);
         }
         if (fields) {
             av_obj_add_val(
@@ -1302,7 +1471,15 @@ static av_value *component_overrides_value(const game_prototype *base, const gam
             continue;
         }
         av_value *fields = av_obj(doc);
-        write_struct_fields(doc, fields, base, component->data, component->desc->type, false);
+        write_struct_fields(
+            doc,
+            fields,
+            &view,
+            component->desc,
+            component->data,
+            component->desc->type,
+            false
+        );
         av_obj_add_val(
             doc,
             components,
@@ -1320,7 +1497,7 @@ av_value *game_prototype_overrides_value(const game_prototype *base, const game_
     if (!base || !current) {
         return NULL;
     }
-    return component_overrides_value(base, current->components);
+    return component_overrides_value(base, current->components, current);
 }
 
 av_value *game_prototype_capture_overrides_value(
@@ -1344,7 +1521,7 @@ av_value *game_prototype_capture_overrides_value(
         };
         apush(components, component);
     }
-    av_value *json = component_overrides_value(base, components);
+    av_value *json = component_overrides_value(base, components, NULL);
     afree(components);
     return json;
 }
@@ -1355,6 +1532,7 @@ static int apply_override_fields(
     void *base,
     const type_desc *type,
     av_value *fields,
+    const field_scope *scope,
     char *error,
     size_t error_size
 )
@@ -1380,6 +1558,7 @@ static int apply_override_fields(
                                (unsigned char *)base + field->offset,
                                nested,
                                value,
+                               NULL,
                                error,
                                error_size
                            ) != 0) {
@@ -1393,7 +1572,8 @@ static int apply_override_fields(
             }
             continue;
         }
-        if (parse_field(parser, registry, base, field, value, error, error_size) != 0) {
+        if (parse_field(parser, registry, base, field, value, scope, error, error_size) !=
+            0) {
             return -1;
         }
     }
@@ -1416,7 +1596,20 @@ static int apply_component_override(
         set_error(error, error_size, "component %s override is invalid", desc->name);
         return -1;
     }
-    return apply_override_fields(parser, registry, base, desc->type, fields, error, error_size);
+    field_scope scope = { desc, true };
+    return apply_override_fields(parser, registry, base, desc->type, fields, &scope, error, error_size);
+}
+
+/* Hands the parser's strings to the caller, whose components use them, and
+ * drops its links: live entities hold no paths. */
+static int release_parser(game_prototype *parser, char ***owned_strings, int result)
+{
+    for (int i = 0; i < acount(parser->strings); i++) {
+        apush(*owned_strings, parser->strings[i]);
+    }
+    afree(parser->strings);
+    game_prototype_links_free(parser->links);
+    return result;
 }
 
 int game_prototype_apply_components_value(
@@ -1451,41 +1644,25 @@ int game_prototype_apply_components_value(
                 "override component %s is unknown or computed by the engine",
                 av_get_str(key)
             );
-            for (int i = 0; i < acount(parser.strings); i++) {
-                apush(*owned_strings, parser.strings[i]);
-            }
-            afree(parser.strings);
-            return -1;
+            return release_parser(&parser, owned_strings, -1);
         }
         if (av_is_null(av_obj_iter_get_val(key))) {
             if (ecs_component_has(world, entity, desc->id) &&
                 ecs_world_record_remove(world, entity, desc->id, 0) != ECS_OK) {
                 set_error(error, error_size, "override component %s could not be removed", desc->name);
-                for (int i = 0; i < acount(parser.strings); i++) {
-                    apush(*owned_strings, parser.strings[i]);
-                }
-                afree(parser.strings);
-                return -1;
+                return release_parser(&parser, owned_strings, -1);
             }
             continue;
         }
         if (!ecs_component_has(world, entity, desc->id) &&
             ecs_world_record_add(world, entity, desc->id, NULL, 0) != ECS_OK) {
             set_error(error, error_size, "override component %s could not be added", desc->name);
-            for (int i = 0; i < acount(parser.strings); i++) {
-                apush(*owned_strings, parser.strings[i]);
-            }
-            afree(parser.strings);
-            return -1;
+            return release_parser(&parser, owned_strings, -1);
         }
     }
     if (ecs_world_apply_commands(world) != ECS_OK) {
         set_error(error, error_size, "component override application failed");
-        for (int i = 0; i < acount(parser.strings); i++) {
-            apush(*owned_strings, parser.strings[i]);
-        }
-        afree(parser.strings);
-        return -1;
+        return release_parser(&parser, owned_strings, -1);
     }
     iterator = av_obj_iter_with(root);
     while ((key = av_obj_iter_next(&iterator))) {
@@ -1495,18 +1672,60 @@ int game_prototype_apply_components_value(
         }
         if (apply_component_override(&parser, world, entity, registry, desc, av_obj_iter_get_val(key), error, error_size) !=
             0) {
-            for (int i = 0; i < acount(parser.strings); i++) {
-                apush(*owned_strings, parser.strings[i]);
-            }
-            afree(parser.strings);
-            return -1;
+            return release_parser(&parser, owned_strings, -1);
         }
     }
-    for (int i = 0; i < acount(parser.strings); i++) {
-        apush(*owned_strings, parser.strings[i]);
+    return release_parser(&parser, owned_strings, 0);
+}
+
+/* Writes into `at` the entities that `named`'s links of the given kind name
+ * among `holder`'s children, each spawned as spawned[child]. */
+static int write_links(
+    ecs_world *world,
+    ecs_entity at,
+    const game_prototype *named,
+    bool outer,
+    const game_prototype *holder,
+    const ecs_entity *spawned,
+    char *error,
+    size_t error_size
+)
+{
+    for (int i = 0; i < acount(named->links); i++) {
+        const game_prototype_link *link = &named->links[i];
+        if (link->outer != outer ||
+            !find_component_in(named->components, link->component->name)) {
+            continue;
+        }
+        int child = game_scene_document_entity_index(holder->children, link->path);
+        const type_field *field = &link->component->type->fields[link->field];
+        if (child < 0) {
+            set_error(
+                error,
+                error_size,
+                "%s %s names %s, which is not a child of prototype %s",
+                link->component->name,
+                field->name,
+                link->path,
+                holder->name
+            );
+            return ECS_ERR_COMPONENT;
+        }
+        pin_value value = { .type = PIN_HANDLE,
+                            .type_name = field->type_name,
+                            .u64 = ecs_entity_to_u64(spawned[child]) };
+        if (ecs_component_write_field(world, at, link->component->id, link->field, value)) {
+            set_error(
+                error,
+                error_size,
+                "%s %s could not be written",
+                link->component->name,
+                field->name
+            );
+            return ECS_ERR_COMPONENT;
+        }
     }
-    afree(parser.strings);
-    return 0;
+    return ECS_OK;
 }
 
 /* Creates the prototype's entity under `parent`, unless that is zero, then its
@@ -1593,6 +1812,27 @@ static int create_tree(
             error_size
         );
     }
+    /* Its own paths and those its document gives its children name them. */
+    ecs_entity *spawned = NULL;
+    for (int i = 0; !result && i < count; i++) {
+        apush(spawned, (*entities)[children[i]]);
+    }
+    if (!result) {
+        result = write_links(world, entity, prototype, false, prototype, spawned, error, error_size);
+    }
+    for (int i = 0; !result && i < count; i++) {
+        result = write_links(
+            world,
+            spawned[i],
+            prototype->child_prototypes[i],
+            true,
+            prototype,
+            spawned,
+            error,
+            error_size
+        );
+    }
+    afree(spawned);
     afree(children);
     return result;
 }
@@ -1732,6 +1972,13 @@ int game_prototype_write_field(
     if (field->type == PIN_NAME || field->type == PIN_STR) {
         value.str = own_string(prototype, value.str);
     }
+    if (field->type == PIN_HANDLE) {
+        drop_links(
+            prototype->links,
+            component->desc,
+            (int)(field - component->desc->type->fields)
+        );
+    }
     pin_write_field(component->data, field, value);
     return 0;
 }
@@ -1761,7 +2008,8 @@ int game_prototype_write_field_value(
         set_error(error, error_size, "component %s has unknown field %s", component_name, field_name);
         return -1;
     }
-    return parse_field(prototype, prototype->registry, component->data, field, json, error, error_size);
+    field_scope scope = { component->desc, false };
+    return parse_field(prototype, prototype->registry, component->data, field, json, &scope, error, error_size);
 }
 
 static av_value *rebase_fields(av_doc *doc, av_value *values, av_value *previous, av_value *current)
@@ -1979,6 +2227,7 @@ int game_prototype_remove_component(game_prototype *prototype, const char *compo
         if (strcmp(component->desc->name, component_name) != 0) {
             continue;
         }
+        drop_links(prototype->links, component->desc, -1);
         free(component->data);
         adel(prototype->components, i);
         return 0;

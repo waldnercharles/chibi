@@ -213,12 +213,14 @@ game_prototype *project_prepare_object(
     av_obj_add_str(doc, root, "identity", game_prototype_identity(base));
     av_value *includes = av_obj_add_arr(doc, root, "includes");
     av_arr_add_str(doc, includes, base->name);
-    if (entity->components) {
-        av_obj_add_val(doc, root, "components", av_clone(doc, entity->components));
-    }
     game_prototype *object = game_prototype_load_value(root, base->registry, error, size);
     av_doc_free(doc);
     if (!object) {
+        return NULL;
+    }
+    if (entity->components &&
+        game_prototype_apply_entity_components(object, entity->components, error, size)) {
+        game_prototype_free(object);
         return NULL;
     }
     free(object->name);

@@ -66,13 +66,17 @@ static bool prepare()
           .behaviors = behaviors,
           .behavior_count = 2 },
         { .name = "Second", .components = &row, .component_count = 1 },
+        /* Sibling names need only differ under one parent. */
+        { .name = "First", .components = &row, .component_count = 1 },
     };
+    const int parents[] = { -1, 0, 1 };
     game_scene_spec spec = { .name = "PreparedScene",
                              .ui = "interface",
                              .perspective = true,
                              .physics = game_physics_defaults(),
                              .objects = objects,
-                             .object_count = 2 };
+                             .object_count = 3,
+                             .parents = parents };
     char error[256];
     scene = game_scene_prepare(&spec, error, sizeof error);
     memset(label, 0, sizeof label);
@@ -97,7 +101,11 @@ TEST_CASE(prepared_scene_survives_input_retirement_and_instantiation)
     REQUIRE(!strcmp(game_scene_name(decoded), "PreparedScene"));
     REQUIRE(!strcmp(game_scene_ui(decoded), "interface") && game_scene_perspective(decoded));
     REQUIRE(game_physics_settings_equal(game_scene_physics(decoded), game_physics_defaults()));
-    REQUIRE(game_scene_object_count(decoded) == 2);
+    REQUIRE(game_scene_object_count(decoded) == 3);
+    REQUIRE(
+        game_scene_object_parent(decoded, 0) == -1 &&
+        game_scene_object_parent(decoded, 2) == 1
+    );
     REQUIRE(game_scene_object_behavior_count(decoded, 0) == 2);
     REQUIRE(!strcmp(game_scene_object_behavior(decoded, 0, 1), "Observe"));
     game_scene_component row = game_scene_object_component_at(decoded, 1, 0);
@@ -110,7 +118,17 @@ TEST_CASE(prepared_scene_survives_input_retirement_and_instantiation)
     world = ecs_world_new();
     REQUIRE(game_scene_register_components(decoded, world, error, sizeof error) == ECS_OK);
     instance = game_scene_instantiate_components(decoded, world, error, sizeof error);
-    REQUIRE(instance != NULL && ecs_world_live_count(world) == 2);
+    REQUIRE(instance != NULL && ecs_world_live_count(world) == 3);
+    ecs_entity middle = game_scene_instance_entity(instance, 1);
+    REQUIRE(!ecs_parent(world, game_scene_instance_entity(instance, 0)).slot);
+    REQUIRE(
+        ecs_parent(world, middle).slot ==
+        game_scene_instance_entity(instance, 0).slot
+    );
+    REQUIRE(
+        ecs_parent(world, game_scene_instance_entity(instance, 2)).slot ==
+        middle.slot
+    );
     game_scene_free(decoded);
     decoded = NULL;
     ecs_entity entity = game_scene_instance_entity(instance, 0);
@@ -163,9 +181,41 @@ TEST_CASE(prepared_scene_rejects_incompatible_and_malformed_records)
         game_scene_prepared_read(bytes, length, (ecs_component_catalog){ duplicates, 2 }, error, sizeof error) ==
         NULL
     );
+    /* A derived component is computed from its source, so a scene that
+     * authors one is refused before it can be written. */
+    ecs_component_desc derived = component;
+    derived.derived_from = component.id + 1;
+    record value = { 0 };
+    game_scene_object object = { .name = "Derived",
+                                 .components = &(game_scene_component){ &derived, &value },
+                                 .component_count = 1 };
+    game_scene_spec spec = { .name = "DerivedScene",
+                             .physics = game_physics_defaults(),
+                             .objects = &object,
+                             .object_count = 1 };
+    REQUIRE(game_scene_prepare(&spec, error, sizeof error) == NULL);
+    REQUIRE(strstr(error, "derived"));
     /* Rejection never changed the retained source generation or valid record. */
     decoded = game_scene_prepared_read(bytes, length, catalog, error, sizeof error);
-    REQUIRE(decoded != NULL && game_scene_object_count(decoded) == 2);
+    REQUIRE(decoded != NULL && game_scene_object_count(decoded) == 3);
+    return true;
+}
+/* A parent must precede its child, and siblings need distinct names. */
+TEST_CASE(prepared_scene_rejects_misplaced_parents_and_sibling_names)
+{
+    game_scene_object objects[] = { { .name = "A" }, { .name = "B" }, { .name = "B" } };
+    char error[256];
+    int forward[] = { 1, -1, -1 }, itself[] = { -1, 1, -1 },
+        siblings[] = { -1, 0, 0 };
+    int *cases[] = { forward, itself, siblings };
+    for (int i = 0; i < 3; i++) {
+        game_scene_spec spec = { .name = "Nested",
+                                 .physics = game_physics_defaults(),
+                                 .objects = objects,
+                                 .object_count = 3,
+                                 .parents = cases[i] };
+        REQUIRE(game_scene_prepare(&spec, error, sizeof error) == NULL && error[0]);
+    }
     return true;
 }
 TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_structs)
@@ -420,6 +470,7 @@ void test_scene_prepared()
     RUN_TEST_CASE(prepared_wire_bounds_use_encoded_width);
     RUN_TEST_CASE(prepared_scene_survives_input_retirement_and_instantiation);
     RUN_TEST_CASE(prepared_scene_rejects_incompatible_and_malformed_records);
+    RUN_TEST_CASE(prepared_scene_rejects_misplaced_parents_and_sibling_names);
     RUN_TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_structs);
     pu_clear_setup();
 }

@@ -1,6 +1,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/material_ecs.h"
 #include "runtime/particles.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
 
 #include <math.h>
@@ -130,9 +131,8 @@ void material_ecs_tick_debris(
             !ecs_entity_is_alive(materials->world, record->entity)) {
             continue;
         }
-        const GameTransform
-            *p = GAME_GameTransform_get_const(materials->world, record->entity);
-        apush(materials->debris_tiles, ((struct material_debris_tile){ record->mask, p->x, p->y }));
+        CF_V2 p = game_transform_world_2d(materials->world, record->entity).position;
+        apush(materials->debris_tiles, ((struct material_debris_tile){ record->mask, p.x, p.y }));
     }
     if (materials->fluid) {
         int count;

@@ -6,10 +6,14 @@
 typedef struct game_preview_runtime
 {
     game_world *owner;
+    /* The engine that plays this preview, borrowed; its input takes the
+     * committed input map. NULL until one is created. */
+    engine *engine;
     ecs_world *ecs;
     game_source_registry *sources;
     game_entities *entities;
     game_physics *physics;
+    game_physics3d *physics3d;
     game_particles *particles;
     game_materials *materials;
     game_visibility *visibility;

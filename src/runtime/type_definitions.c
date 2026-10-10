@@ -100,7 +100,8 @@ static bool append(
                                                .name = field->name,
                                                .type = field_type(field),
                                                .offset = field->offset,
-                                               .writable = true };
+                                               .writable = true,
+                                               .unit = field->unit };
         for (int j = 0; j < i; j++) {
             if (converted[j].id == converted[i].id ||
                 !strcmp(converted[j].name, field->name)) {

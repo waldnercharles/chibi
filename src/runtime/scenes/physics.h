@@ -69,8 +69,10 @@ const char *game_physics_error(const game_physics *physics);
 void game_physics_set_profiling(game_physics *physics, bool enabled);
 const game_physics_profile *game_physics_last_profile(const game_physics *physics);
 game_physics_hashes game_physics_hash(const game_physics *physics);
-/* Borrow solved poses for presentation without modifying authoritative ECS. */
-bool game_physics_interpolate(const game_physics *physics, ecs_entity entity, float alpha, GameTransform *out);
+/* How far presentation moves a root body from its solved position at alpha,
+ * without modifying authoritative ECS. False when the entity has no body of
+ * its own to interpolate; a child body follows its parent's. */
+bool game_physics_interpolation_offset(const game_physics *, ecs_entity, float alpha, CF_V2 *out);
 
 typedef struct
 {
@@ -80,7 +82,8 @@ typedef struct
     int shape_count;
 } game_physics_body_state;
 /* Current solved body state; local center uses game units. Fixed rotation has
- * zero rotational inertia. Returns false before synchronization or after removal. */
+ * zero rotational inertia. A collider carried by its root's body reports that
+ * body. Returns false before synchronization or after removal. */
 bool game_physics_inspect_body(const game_physics *physics, ecs_entity entity, game_physics_body_state *out);
 
 /* Snapshot current collider contacts into a caller-owned core array. Honors

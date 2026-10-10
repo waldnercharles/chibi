@@ -236,6 +236,13 @@ int main(int argc, char **argv)
         goto cleanup;
     }
     g_collection = &ctx;
+    for (int i = 0; i < acount(ctx.structs); i++) {
+        const struct_info *s = &ctx.structs[i];
+        if (s->derived_from && !derived_source(s)) {
+            fprintf(stderr, "reflect: %s derives from %s, which is not a component\n", s->name, s->derived_from);
+            g_failed = 1;
+        }
+    }
     record_new_components(&ctx);
     if (g_failed) {
         goto cleanup;

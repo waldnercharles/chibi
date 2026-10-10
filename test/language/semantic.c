@@ -1,5 +1,7 @@
 #include "language/semantic.h"
 
+#include "language/component.h"
+#include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
@@ -22,6 +24,15 @@ static const script_catalog_type types[] = {
       .size = 2 * sizeof(float),
       .component = true,
       .component_id = 501 },
+    { .id = 11,
+      .name = "Placement",
+      .type = { .storage = PIN_STRUCT, .nominal = 11 },
+      .fields = fields,
+      .field_count = 2,
+      .size = 2 * sizeof(float),
+      .component = true,
+      .component_id = 502,
+      .derived = true },
 };
 static const script_catalog_parameter operands[] = {
     { .name = "a", .type = { .storage = PIN_STRUCT, .nominal = 10 } },
@@ -48,7 +59,7 @@ static const script_catalog_capability capabilities[] = {
 };
 static const script_catalog catalog = {
     .types = types,
-    .type_count = 1,
+    .type_count = 2,
     .capabilities = capabilities,
     .capability_count = 3,
     .entity_type = 40,
@@ -121,6 +132,19 @@ TEST_CASE(language_optional_component_requires_presence_guard)
     parse("system Motion(position: Position?) { if (position) { position.x = 1; } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
+    return true;
+}
+TEST_CASE(language_derived_component_is_read_only)
+{
+    parse("system Follow(placement: Placement, position: Position) { position.x = placement.x; }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(analysis->valid);
+    parse("system Follow(placement: Placement) { placement.x = 1; }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(!analysis->valid && diagnostic("Assignment requires a writable value"));
+    parse("behavior Follow { on Tick(dt) { self.Placement.y = dt; } }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(!analysis->valid && diagnostic("Assignment requires a writable value"));
     return true;
 }
 TEST_CASE(language_numeric_literal_storage_limits)
@@ -240,11 +264,330 @@ TEST_CASE(language_invalid_source_retains_bounded_diagnostics)
     return true;
 }
 
+static script_diagnostic *component_diagnostics;
+/* Reads the component `source` declares; diagnostics stay until the next read. */
+static script_component *read_component(const char *source)
+{
+    script_syntax_free(syntax);
+    afree(component_diagnostics);
+    syntax = script_parse(source);
+    return script_component_read(syntax, &catalog, &component_diagnostics);
+}
+static const script_diagnostic *component_diagnostic(const char *message)
+{
+    for (int i = 0; i < acount(component_diagnostics); i++) {
+        if (!strcmp(component_diagnostics[i].message, message)) {
+            return &component_diagnostics[i];
+        }
+    }
+    return NULL;
+}
+static const script_component_field *component_field(const script_component *c, const char *name)
+{
+    for (int i = 0; i < acount(c->fields); i++) {
+        if (!strcmp(c->fields[i].name, name)) {
+            return &c->fields[i];
+        }
+    }
+    return NULL;
+}
+static bool field_is(const script_component_field *f, const char *type, const char *unit, double min, double max)
+{
+    return f && !strcmp(f->type, type) &&
+           (unit ? f->unit && !strcmp(f->unit, unit) : !f->unit) &&
+           f->min == min && f->max == max;
+}
+TEST_CASE(language_component_declares_measured_fields)
+{
+    script_component *c = read_component(
+        "// Something fired.\n"
+        "// Twice described.\n"
+        "component Projectile {\n"
+        "    // How fast.\n"
+        "    speed: 0..600 u/s\n"
+        "    lifetime: s // not a description\n"
+        "    accel: u/s^2\n"
+        "\n"
+        "    // detached\n"
+        "\n"
+        "    friction: 0..1\n"
+        "    //\r\n"
+        "    // Turns.\r\n"
+        "    drift: -1.5..2 rad /* per */ / s\n"
+        "    rate: banana/basket; count: 0..12 banana\n"
+        "    level: float\n"
+        "    at: Position\n"
+        "}\n"
+    );
+    REQUIRE(c && !component_diagnostics && acount(c->fields) == 9);
+    REQUIRE(!strcmp(c->name, "Projectile"));
+    REQUIRE(!strcmp(c->description, "Something fired.\nTwice described."));
+    REQUIRE(field_is(component_field(c, "speed"), "number", "u/s", 0, 600));
+    REQUIRE(!strcmp(component_field(c, "speed")->description, "How fast."));
+    REQUIRE(field_is(component_field(c, "lifetime"), "number", "s", 0, 0));
+    REQUIRE(!component_field(c, "accel")->description);
+    REQUIRE(field_is(component_field(c, "accel"), "number", "u/s²", 0, 0));
+    REQUIRE(!component_field(c, "friction")->description);
+    REQUIRE(field_is(component_field(c, "friction"), "number", NULL, 0, 1));
+    REQUIRE(field_is(component_field(c, "drift"), "number", "rad/s", -1.5, 2));
+    REQUIRE(!strcmp(component_field(c, "drift")->description, "\nTurns."));
+    REQUIRE(field_is(component_field(c, "rate"), "number", "banana/basket", 0, 0));
+    REQUIRE(field_is(component_field(c, "count"), "number", "banana", 0, 12));
+    REQUIRE(field_is(component_field(c, "level"), "float", NULL, 0, 0));
+    REQUIRE(field_is(component_field(c, "at"), "Position", NULL, 0, 0));
+    script_component_free(c);
+    /* Unit names stay free names outside a field's type, and executable
+     * source cannot declare a component. */
+    parse("system S {\n    if true {\n        s := 2\n        u := s * 3\n        component := u\n    }\n}\n");
+    REQUIRE(analysis->valid);
+    parse("component C {\n    a: float\n}\n");
+    REQUIRE(diagnostic("Expected behavior, library or system"));
+    return true;
+}
+TEST_CASE(language_component_rejects_invalid_fields)
+{
+    REQUIRE(!read_component(
+        "component Bad {\n"
+        "    a: 1..0\n"
+        "    b: flaot\n"
+        "    c: u/s^4\n"
+        "    a: float\n"
+        "    d: float[]\n"
+        "    e: 0..1 float\n"
+        "}\n"
+    ));
+    REQUIRE(component_diagnostic("A range goes from a smaller finite number to a larger one"));
+    REQUIRE(component_diagnostic("Unknown type or unit 'flaot'")->range.line == 3);
+    REQUIRE(component_diagnostic("A unit's power is ^2 or ^3"));
+    REQUIRE(component_diagnostic("Field 'a' is declared twice"));
+    REQUIRE(component_diagnostic("A component field holds a number, a scalar or a struct"));
+    REQUIRE(component_diagnostic("'float' is a type, not a unit")->range.line == 7);
+    REQUIRE(acount(component_diagnostics) == 6);
+    REQUIRE(!read_component("component Empty {\n}\n"));
+    REQUIRE(component_diagnostic("A component declares at least one field"));
+    REQUIRE(!read_component("component \"Quoted\" {\n    a: float\n}\n"));
+    REQUIRE(acount(component_diagnostics) == 1);
+    REQUIRE(component_diagnostic("A component and its fields are named by identifiers"));
+    REQUIRE(!read_component("system S {\n}\n"));
+    REQUIRE(acount(component_diagnostics) == 1);
+    REQUIRE(component_diagnostic("A component source declares one component"));
+    /* A reserved word is not a field name; the syntax reports it once. */
+    REQUIRE(!read_component("component C {\n    state: float\n}\n"));
+    REQUIRE(acount(component_diagnostics) == syntax->diagnostic_count);
+    afree(component_diagnostics);
+    return true;
+}
+
+/* A component measured the way the engine's reflected fields are. */
+static const script_catalog_field body_fields[] = {
+    { .id = 60, .name = "x", .type = { .storage = PIN_F32 }, .writable = true, .unit = "u" },
+    { .id = 61,
+      .name = "speed",
+      .type = { .storage = PIN_F32 },
+      .offset = 4,
+      .writable = true,
+      .unit = "u/s" },
+    { .id = 62,
+      .name = "accel",
+      .type = { .storage = PIN_F32 },
+      .offset = 8,
+      .writable = true,
+      .unit = "u/s²" },
+    { .id = 63,
+      .name = "angle",
+      .type = { .storage = PIN_F32 },
+      .offset = 12,
+      .writable = true,
+      .unit = "rad" },
+    { .id = 64, .name = "count", .type = { .storage = PIN_F32 }, .offset = 16, .writable = true },
+    { .id = 65,
+      .name = "mass",
+      .type = { .storage = PIN_F32 },
+      .offset = 20,
+      .writable = true,
+      .unit = "kg" },
+    { .id = 66,
+      .name = "push",
+      .type = { .storage = PIN_F32 },
+      .offset = 24,
+      .writable = true,
+      .unit = "m/s^2" },
+    { .id = 67,
+      .name = "force",
+      .type = { .storage = PIN_F32 },
+      .offset = 28,
+      .writable = true,
+      .unit = "kg·m/s²" },
+    { .id = 68,
+      .name = "rate",
+      .type = { .storage = PIN_F32 },
+      .offset = 32,
+      .writable = true,
+      .unit = "1/s" },
+    { .id = 69,
+      .name = "volume",
+      .type = { .storage = PIN_F32 },
+      .offset = 36,
+      .writable = true,
+      .unit = "m³" },
+    { .id = 70,
+      .name = "snap",
+      .type = { .storage = PIN_F32 },
+      .offset = 40,
+      .writable = true,
+      .unit = "u/s^4" },
+};
+static const script_catalog_type body_type = { .id = 50,
+                                               .name = "Body",
+                                               .type = { .storage = PIN_STRUCT,
+                                                         .nominal = 50 },
+                                               .fields = body_fields,
+                                               .field_count = 11,
+                                               .size = 11 * sizeof(float),
+                                               .component = true,
+                                               .component_id = 502 };
+static const script_catalog_global measured_globals[] = {
+    { .id = 70, .name = "dt", .type = { .storage = PIN_F32 }, .unit = "s" },
+};
+static const script_catalog measured = {
+    .types = &body_type,
+    .type_count = 1,
+    .globals = measured_globals,
+    .global_count = 1,
+    .entity_type = 40,
+};
+static void measure(const char *body)
+{
+    char source[1024];
+    /* Inside a block, `:=` declares a local rather than system state. */
+    snprintf(source, sizeof source, "system Move(body: Body) {\nif true {\n%s}\n}\n", body);
+    cleanup();
+    syntax = script_parse(source);
+    analysis = script_analyze(syntax, &measured);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(stderr, "semantic: %s\n", analysis->diagnostics[i].message);
+    }
+}
+static const script_diagnostic *warning(const char *message)
+{
+    for (int i = 0; i < analysis->warning_count; i++) {
+        if (!strcmp(analysis->warnings[i].message, message)) {
+            return &analysis->warnings[i];
+        }
+    }
+    return NULL;
+}
+TEST_CASE(language_units_combine_through_arithmetic)
+{
+    measure(
+        "body.x += body.speed * dt\n"
+        "body.speed += body.accel * dt\n"
+        "body.speed = (body.x - 3) / dt\n"
+        "if body.x < 10 { body.x = 0 }\n"
+        "step := body.speed * dt\n"
+        "body.x = body.x + step * 2\n"
+        "body.x *= body.x / body.x\n"
+        "body.x /= 2\n"
+        "body.angle = body.angle % 6.28\n"
+        "body.x %= body.x\n"
+        "body.angle = -body.angle\n"
+        "body.count = body.count + body.x\n"
+        "n := 0\n"
+        "n = body.angle\n"
+        /* A literal factor may carry any unit. */
+        "body.angle += 3 * dt\n"
+        "body.accel = body.speed / 0.25\n"
+        "body.x = +body.x\n"
+        /* Units written with ^, · and superscripts, and 1/s. */
+        "body.force = body.mass * body.push\n"
+        "body.force = body.push * body.mass\n"
+        "body.x *= body.rate * dt\n"
+    );
+    REQUIRE(analysis->valid);
+    for (int i = 0; i < analysis->warning_count; i++) {
+        fprintf(stderr, "unexpected: %s\n", analysis->warnings[i].message);
+    }
+    REQUIRE(analysis->warning_count == 0);
+    return true;
+}
+TEST_CASE(language_units_warn_on_mismatch)
+{
+    measure(
+        "body.x += body.speed\n"
+        "body.x = body.angle\n"
+        "if body.speed < body.x {}\n"
+        "late := body.x + dt\n"
+        "body.x *= dt\n"
+        "body.x = body.speed / dt\n"
+        "body.x = body.x / body.x\n"
+        "body.x = +body.angle\n"
+        "body.x = body.speed + body.x\n"
+        "body.volume = body.mass\n"
+        "body.x = body.snap\n"
+        "body.speed = body.rate\n"
+        "body.x = body.x % body.speed\n"
+        "body.x %= body.speed\n"
+        "body.x = fallback(body.speed, default: 0)\n"
+    );
+    /* Warnings first: the program still runs. */
+    REQUIRE(analysis->valid);
+    REQUIRE(warning("Units differ: u += u/s")->range.line == 3);
+    REQUIRE(warning("Units differ: u = rad"));
+    REQUIRE(warning("Units differ: u/s < u"));
+    REQUIRE(warning("Units differ: u + s"));
+    REQUIRE(warning("Units differ: *= would turn u into u·s"));
+    REQUIRE(warning("Units differ: u = u/s²"));
+    REQUIRE(warning("Units differ: u = 1"));
+    REQUIRE(warning("Units differ: u = rad"));
+    /* One mistake, one warning: the sum is wrong, not its assignment. */
+    REQUIRE(warning("Units differ: u/s + u"));
+    REQUIRE(warning("Units differ: m³ = kg"));
+    REQUIRE(warning("Units differ: u = u/s^4"));
+    REQUIRE(warning("Units differ: u/s = 1/s"));
+    REQUIRE(warning("Units differ: u % u/s"));
+    REQUIRE(warning("Units differ: u %= u/s"));
+    /* A fallback measures what it reads first. */
+    REQUIRE(warning("Units differ: u = u/s"));
+    REQUIRE(analysis->warning_count == 15);
+    /* Listed in source order. */
+    for (int i = 1; i < analysis->warning_count; i++) {
+        REQUIRE(
+            analysis->warnings[i - 1].range.start <= analysis->warnings[i].range.start
+        );
+    }
+    return true;
+}
+TEST_CASE(language_units_check_bindings)
+{
+    cleanup();
+    syntax = script_parse(
+        "behavior Bound {\n"
+        "    bind self.Body.x = self.Body.speed\n"
+        "    bind self.Body.push = self.Body.force / self.Body.mass\n"
+        "}\n"
+    );
+    analysis = script_analyze(syntax, &measured);
+    REQUIRE(analysis->valid && analysis->binding_count == 2);
+    REQUIRE(analysis->warning_count == 1);
+    REQUIRE(warning("Units differ: u = u/s")->range.line == 2);
+    return true;
+}
+TEST_CASE(language_units_skip_invalid_sources)
+{
+    /* Recovery closes this source to analyze it; it stays unchecked. */
+    cleanup();
+    syntax = script_parse("system Move(body: Body) {\n    body.x = (body.speed + 1");
+    analysis = script_analyze(syntax, &measured);
+    REQUIRE(!analysis->valid && analysis->warning_count == 0);
+    return true;
+}
+
 void test_language_semantic()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
     RUN_TEST_CASE(language_optional_component_requires_presence_guard);
+    RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);
     RUN_TEST_CASE(language_pure_call_chain_rejects_effects);
@@ -252,5 +595,11 @@ void test_language_semantic()
     RUN_TEST_CASE(language_binding_cycle_rejected);
     RUN_TEST_CASE(language_inferred_return_of_several_results_is_rejected);
     RUN_TEST_CASE(language_invalid_source_retains_bounded_diagnostics);
+    RUN_TEST_CASE(language_component_declares_measured_fields);
+    RUN_TEST_CASE(language_component_rejects_invalid_fields);
+    RUN_TEST_CASE(language_units_combine_through_arithmetic);
+    RUN_TEST_CASE(language_units_warn_on_mismatch);
+    RUN_TEST_CASE(language_units_check_bindings);
+    RUN_TEST_CASE(language_units_skip_invalid_sources);
     pu_clear_setup();
 }

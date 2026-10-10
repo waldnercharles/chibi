@@ -60,16 +60,28 @@ bool component_field_settable(const field_info *field)
     return false;
 }
 
+const struct_info *derived_source(const struct_info *s)
+{
+    for (int i = 0; s->derived_from && i < acount(g_collection->structs); i++) {
+        const struct_info *source = &g_collection->structs[i];
+        if (source->component && source != s && !strcmp(source->name, s->derived_from)) {
+            return source;
+        }
+    }
+    return NULL;
+}
+
 void emit_component_accessors(FILE *out, const struct_info *s)
 {
     const char *name = s->name;
     uint64_t id = component_id(s);
+    const struct_info *source = derived_source(s);
     fprintf(
         out,
         "const ecs_component_desc %s_COMPONENT_%s = { .id = UINT64_C(%llu), "
         ".key = \"%s\", .name = \"%s\", .element_size = sizeof(%s), .type = "
         "&%s_T_%s, "
-        ".index = %s };\n",
+        ".index = %s",
         g_prefix,
         name,
         (unsigned long long)id,
@@ -80,6 +92,10 @@ void emit_component_accessors(FILE *out, const struct_info *s)
         name,
         s->dense ? "ECS_INDEX_DENSE" : "ECS_INDEX_BITSET"
     );
+    if (source) {
+        fprintf(out, ", .derived_from = UINT64_C(%llu)", (unsigned long long)component_id(source));
+    }
+    fputs(" };\n", out);
     fprintf(
         out,
         "%s *%s_%s_get(ecs_world *world, ecs_entity entity) { return "

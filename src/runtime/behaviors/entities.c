@@ -5,6 +5,8 @@
 #include "execution/status.h"
 #include "runtime/behaviors/entities_native.h"
 #include "runtime/component_catalog.h"
+#include "runtime/tilemap.h"
+#include "runtime/transform_propagation.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -28,6 +30,7 @@ typedef struct
     game_scene *prototype;
     flow_host_request *wait;
     ecs_entity entity;
+    ecs_entity *tree; /* the entity of each prototype object, the first being entity */
 } spawn_request;
 
 typedef struct
@@ -84,7 +87,53 @@ struct game_entities
     bool parallel_queries;
     bool query_scope, profile_queries;
     game_entity_query_profile query_profile;
+    struct tilemap_entry *tilemaps;
 };
+
+typedef struct tilemap_entry
+{
+    ecs_entity entity;
+    tilemap_grid grid;
+} tilemap_entry;
+
+const tilemap_grid *game_entities_tilemap(game_entities *entities, ecs_entity entity, const char **error)
+{
+    *error = NULL;
+    const GameTilemap *map = ecs_entity_is_alive(entities->world, entity) &&
+                                     !game_entities_is_retiring(entities, entity)
+                               ? GAME_GameTilemap_get_const(entities->world, entity)
+                               : NULL;
+    if (!map) {
+        *error = "Tilemap query requires a live GameTilemap entity";
+        return NULL;
+    }
+    for (int i = acount(entities->tilemaps) - 1; i >= 0; i--) {
+        ecs_entity cached = entities->tilemaps[i].entity;
+        if (!ecs_entity_is_alive(entities->world, cached) ||
+            !GAME_GameTilemap_get_const(entities->world, cached)) {
+            tilemap_grid_free(&entities->tilemaps[i].grid);
+            entities->tilemaps[i] = alast(entities->tilemaps);
+            apop(entities->tilemaps);
+        }
+    }
+    tilemap_entry *entry = NULL;
+    for (int i = 0; i < acount(entities->tilemaps); i++) {
+        if (ecs_entity_to_u64(entities->tilemaps[i].entity) ==
+            ecs_entity_to_u64(entity)) {
+            entry = &entities->tilemaps[i];
+            break;
+        }
+    }
+    if (!entry) {
+        apush(entities->tilemaps, ((tilemap_entry){ .entity = entity }));
+        entry = &alast(entities->tilemaps);
+    }
+    if (!tilemap_grid_update(&entry->grid, map->cells, map->columns, map->rows, map->frame_width, map->frame_height)) {
+        *error = entry->grid.error;
+        return NULL;
+    }
+    return &entry->grid;
+}
 
 ecs_world *game_entities_world(const game_entities *entities)
 {
@@ -115,9 +164,11 @@ game_materials *game_entities_materials(const game_entities *entities)
 
 bool game_entities_queries_preserved(const behavior_function *function)
 {
+    /* Positions are world placements, which parents' Orientation turns. */
     const uint64_t dependencies[] = { GAME_COMPONENT_GameTransform.id,
+                                      GAME_COMPONENT_GameOrientation.id,
                                       GAME_COMPONENT_GameCollider.id };
-    return behavior_function_preserves_components(function, dependencies, 2);
+    return behavior_function_preserves_components(function, dependencies, 3);
 }
 
 void game_entities_query_scope(game_entities *entities, const behavior_function *function)
@@ -155,7 +206,7 @@ bool game_entities_parallel_begin(game_entities *entities, unsigned categories)
             if (!matching || game_entities_is_retiring(entities, entity)) {
                 continue;
             }
-            CF_V2 position = *GAME_GameTransform_get_const(entities->world, entity);
+            CF_V2 position = game_transform_world_2d(entities->world, entity).position;
             if (!isfinite(position.x) || !isfinite(position.y)) {
                 continue;
             }
@@ -191,6 +242,7 @@ static void release_request(spawn_request *request)
 {
     flow_host_release(request->wait);
     game_scene_free(request->prototype);
+    afree(request->tree);
 }
 
 void game_entities_copy_live(const game_entities *entities, ecs_entity **out)
@@ -483,6 +535,10 @@ static void release_event(event_request *event)
 
 void game_entities_reset(game_entities *entities)
 {
+    for (int i = 0; i < acount(entities->tilemaps); i++) {
+        tilemap_grid_free(&entities->tilemaps[i].grid);
+    }
+    aclear(entities->tilemaps);
     game_entities_query_scope(entities, NULL);
     clear_global_bindings(entities);
     clear_global_values(entities);
@@ -520,6 +576,7 @@ void game_entities_free(game_entities *entities)
     afree(entities->global_bindings);
     afree(entities->global_values);
     afree(entities->events);
+    afree(entities->tilemaps);
     for (int i = 0; i < NEAREST_CACHE_MAX; i++) {
         afree(entities->nearest[i].entities);
     }
@@ -711,7 +768,8 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
             flow_host_cancel(request->wait);
             return -1;
         }
-        request->entity = game_scene_instance_take_entity(instance);
+        request->tree = game_scene_instance_take_entities(instance);
+        request->entity = request->tree[0];
         apush(entities->owned, request->entity);
         if (game_entities_rebuild_global_bindings(entities) != 0) {
             flow_host_cancel(request->wait);
@@ -740,13 +798,18 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
         return 1;
     }
     assert(entities->host.attach);
-    for (int i = 0; i < game_scene_object_behavior_count(request->prototype, 0); i++) {
-        if (entities->host.attach(
-                entities->host.context,
-                request->entity,
-                game_scene_object_behavior(request->prototype, 0, i)
-            ) != 0) {
-            return -1;
+    for (int object = 0; object < game_scene_object_count(request->prototype);
+         object++) {
+        for (int i = 0;
+             i < game_scene_object_behavior_count(request->prototype, object);
+             i++) {
+            if (entities->host.attach(
+                    entities->host.context,
+                    request->tree[object],
+                    game_scene_object_behavior(request->prototype, object, i)
+                ) != 0) {
+                return -1;
+            }
         }
     }
     return 0;
@@ -953,7 +1016,7 @@ static void nearest_candidate(
     if (destroy_requested(entities, entity)) {
         return;
     }
-    CF_V2 position = *GAME_GameTransform_get_const(entities->world, entity);
+    CF_V2 position = game_transform_world_2d(entities->world, entity).position;
     if (!isfinite(position.x) || !isfinite(position.y)) {
         return;
     }
@@ -1058,6 +1121,7 @@ unsigned game_entities_query_categories(const behavior_function *function)
 
 const node_access GAME_ENTITY_QUERY_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
 static const uint64_t *const nearest_reads[] = { &GAME_COMPONENT_GameTransform.id,
+                                                 &GAME_COMPONENT_GameOrientation.id,
                                                  &GAME_COMPONENT_GameCollider.id,
                                                  NULL };
 const node_access GAME_ENTITY_NEAREST_ACCESS = { .read_refs = nearest_reads,

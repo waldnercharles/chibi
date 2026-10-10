@@ -72,6 +72,7 @@ TEST_CASE(ecs_child_of_keeps_order_and_depth_across_reparenting)
     ecs_entity a = spawn_child(root, NULL), b = spawn_child(root, NULL);
     ecs_entity c = spawn_child(a, NULL);
     REQUIRE(ecs_entity_depth(world, root) == 0 && ecs_entity_depth(world, c) == 2);
+    REQUIRE(same(ecs_parent(world, c), a) && !ecs_parent(world, root).slot);
     REQUIRE(ecs_world_relationship(world, ECS_CHILD_OF)->traits & ECS_REL_EXCLUSIVE);
     REQUIRE(ecs_world_record_add_pair(world, a, ECS_CHILD_OF, b, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);

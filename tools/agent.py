@@ -36,8 +36,14 @@ PLAYER_SELECTORS = {
     '--player-installed-space-cadet-vm': 'player-installed-space-cadet-vm',
     '--player-installed-space-cadet-sljit': 'player-installed-space-cadet-sljit',
 }
-STUDIO_SELECTORS = {'--studio-source-edit': 'studio-source-edit'}
-RENDER_SELECTORS = {'--interior-border': 'interior-border', '--sdf-visibility': 'sdf-visibility',
+STUDIO_SELECTORS = {'--studio-source-edit': 'studio-source-edit',
+                    '--studio-graph-visibility': 'studio-graph-visibility'}
+STUDIO_ACCEPTANCE = {
+    '--studio-source-edit': ('--source-edit', 4, 'Studio source edit accepted: frames=4 edits=1 undo=1 redo=1'),
+    '--studio-graph-visibility': ('--graph-visibility', 10, 'Studio graph visibility accepted: frames=10'),
+}
+RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize': 'viewport-resize',
+                    '--sdf-visibility': 'sdf-visibility',
                     '--scene3d': 'scene3d', '--scene3d-gles': 'scene3d-gles',
                     '--material-ramps': 'material-ramps'}
 GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS
@@ -62,7 +68,7 @@ def runnable_selectors(classified, mappings):
 
 
 def studio_resource_preflight(build):
-    resources = {'studio': (261, 438339, '55a85abd2ba57abc63d68c5c9a944b7f3ccdda3bf3885f296142b63bcc958d5d'),
+    resources = {'studio': (261, 436675, '3ae7676c6de4a45db6dc2faadd29a9cf7dde2ea09409f1a008af4df4a4a65689'),
                  'ui': (2, 297, '8505446e5ec71ec7c070f17b6729e0f6c41e2f9666dc7218b3c80a2f2d184e92')}
     for name, (count, length, digest) in resources.items():
         base = build / 'share/chibi' / name
@@ -77,6 +83,27 @@ def studio_resource_preflight(build):
             raise ValueError('studio_startup_resource_generation_changed')
 
 
+def clone_project(source, target):
+    """Copies a project to a scratch target, copy-on-write where the filesystem can."""
+    if os.name == 'nt':
+        shutil.copytree(source, target)
+        return
+    clone = '-c' if sys.platform == 'darwin' else '--reflink=auto'
+    subprocess.run(['cp', '-R', clone, str(source), str(target)], check=True)
+
+
+def external_project(data):
+    """Whether `data` is Studio's fixture project.kdl at a version the engine
+    upgrades when it opens it. Studio's projects lag the engine's version."""
+    header = (ROOT / 'src/assets/project.h').read_text()
+    oldest, current = (int(re.search(rf'^#define {name} (\d+)$', header, re.M)[1])
+                       for name in ('CHIBI_PROJECT_OLDEST_VERSION', 'CHIBI_PROJECT_VERSION'))
+    line, _, rest = data.partition(b'\n')
+    version = re.fullmatch(rb'version ([1-9][0-9]*)', line)
+    return (version is not None and oldest <= int(version[1]) <= current and
+            rest == b'name "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n')
+
+
 def bounded_read(path, limit):
     if not path.is_file() or path.is_symlink() or not 0 < path.stat().st_size <= limit:
         raise ValueError('studio_preflight_file_outside_bound')
@@ -87,7 +114,8 @@ def bounded_read(path, limit):
     return data
 
 
-def studio_source_edit_preflight():
+def studio_acceptance_preflight(selector):
+    _, frames, success = STUDIO_ACCEPTANCE[selector]
     source = Path(os.environ.get('CHIBI_STUDIO_SOURCE', ''))
     build = Path(os.environ.get('CHIBI_STUDIO_BUILD', ''))
     evidence_path = Path(os.environ.get('CHIBI_STUDIO_ACCEPTANCE_EVIDENCE', ''))
@@ -109,9 +137,9 @@ def studio_source_edit_preflight():
             evidence.get('source') != str(source) or evidence.get('build') != str(build) or
             native.get('source') != str(source) or native.get('sdk') != evidence.get('sdk') or
             evidence.get('binary') != str(build / 'bin/studio-acceptance') or
-            evidence.get('frames') != 4 or evidence.get('hidden') is not True or
+            evidence.get('frames') != frames or evidence.get('hidden') is not True or
             evidence.get('window') != [1920, 1080] or
-            evidence.get('success') != 'Studio source edit accepted: frames=4 edits=1 undo=1 redo=1'):
+            evidence.get('success') != success):
         raise ValueError('studio_acceptance_build_not_verified')
     if hashlib.sha256(bounded_read(build / 'compile_commands.json', 64 * 1024 * 1024)).hexdigest() != evidence.get('compile_commands_sha256'):
         raise ValueError('studio_acceptance_compile_inputs_changed')
@@ -132,18 +160,31 @@ def studio_source_edit_preflight():
         raise ValueError('studio_acceptance_sdk_changed')
     fixture = source / 'tests/acceptance/project'
     expected = {
-        'project.kdl': b'version 18\nname "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n',
         'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n',
         'content/behaviors/Counter.chibi': b'behavior Counter {\n    state count: int = 1\n    on Tick {\n        count = count + 1\n    }\n}\n',
     }
     paths = list(fixture.rglob('*'))
-    if any(p.is_symlink() for p in paths) or {p.relative_to(fixture).as_posix() for p in paths if p.is_file()} != set(expected):
+    if any(p.is_symlink() for p in paths) or {p.relative_to(fixture).as_posix() for p in paths if p.is_file()} != {'project.kdl', *expected}:
         raise ValueError('studio_acceptance_fixture_membership_changed')
+    if not external_project(bounded_read(fixture / 'project.kdl', 1024)):
+        raise ValueError('studio_acceptance_fixture_changed')
     for name, value in expected.items():
         if (fixture / name).stat().st_size != len(value) or bounded_read(fixture / name, len(value)) != value:
             raise ValueError('studio_acceptance_fixture_changed')
     studio_resource_preflight(build)
-    return build / 'bin/studio-acceptance', fixture, dict(fixture_files=3, fixture_bytes=210, frames=4, window=[1920,1080])
+    return build / 'bin/studio-acceptance', fixture, dict(fixture_files=3, fixture_bytes=210, frames=frames, window=[1920,1080])
+
+
+def studio_acceptance_output(selector, output):
+    _, frames, success = STUDIO_ACCEPTANCE[selector]
+    if output.splitlines().count(success) != 1:
+        raise RuntimeError(f'child_exit_incomplete_studio_acceptance: {output[-4000:]}')
+    if any(message in output for message in ('Studio UI:', 'runtime frame failed', 'Could not initialize')):
+        raise RuntimeError(f'child_exit_UI_initialization_failure: {output[-4000:]}')
+    evidence = dict(frames=frames)
+    if selector == '--studio-source-edit':
+        evidence.update(edits=1, undo=1, redo=1)
+    return evidence
 
 
 def player_artifact_preflight(artifact):
@@ -434,8 +475,8 @@ def main():
         installed_artifact = None
         if args.selector in INSTALLED_PLAYERS or args.selector == '--compile-installed-space-cadet':
             command, preflight, installed_artifact = installed_space_cadet(args.selector)
-        elif args.selector == '--studio-source-edit':
-            acceptance_binary, acceptance_fixture, preflight = studio_source_edit_preflight()
+        elif args.selector in STUDIO_SELECTORS:
+            acceptance_binary, acceptance_fixture, preflight = studio_acceptance_preflight(args.selector)
         elif args.selector in RENDER_SELECTORS:
             # Render consumers link the desktop SDK, so only the main build has them.
             command = [str(ROOT / args.build_dir / 'test/tools/test_tools'), args.selector]
@@ -448,14 +489,14 @@ def main():
                     return report('blocked', 'gles_requires_xvfb_run', selector=args.selector)
                 command = ['xvfb-run', '-a'] + command
         execution_evidence = None
-        scratch_context = tempfile.TemporaryDirectory(prefix='chibi-studio-source-edit-') if args.selector == '--studio-source-edit' else nullcontext(None)
+        scratch_context = tempfile.TemporaryDirectory(prefix='chibi-studio-') if args.selector in STUDIO_SELECTORS else nullcontext(None)
         with scratch_context as scratch:
             if scratch:
                 project_copy = Path(scratch) / 'project'
-                shutil.copytree(acceptance_fixture, project_copy)
+                clone_project(acceptance_fixture, project_copy)
                 env['CHIBI_STUDIO_PREFS_PATH'] = str(project_copy / '.acceptance-prefs.json')
                 env['CHIBI_THUMBNAIL_CACHE'] = str(project_copy / '.acceptance-thumbnails')
-                command = [str(acceptance_binary), '--source-edit', '--project-root', str(project_copy)]
+                command = [str(acceptance_binary), STUDIO_ACCEPTANCE[args.selector][0], '--project-root', str(project_copy)]
             with tempfile.TemporaryFile(mode='w+') as log:
                 code = run_commands([command],
                                     max(.001, 60 - (time.monotonic() - START)), env, log)
@@ -474,14 +515,9 @@ def main():
                     execution_evidence = dict(frames=int(completed[0][0]), steps=int(completed[0][1]))
                 if args.selector in STUDIO_SELECTORS:
                     log.seek(0)
-                    output = log.read()
-                    if args.selector == '--studio-source-edit' and output.count('Studio source edit accepted: frames=4 edits=1 undo=1 redo=1\n') != 1:
-                        raise RuntimeError(f'child_exit_incomplete_studio_edit: {output[-4000:]}')
-                    if args.selector == '--studio-source-edit':
-                        execution_evidence = dict(frames=4, edits=1, undo=1, redo=1)
-                    if any(message in output for message in ('Studio UI:', 'runtime frame failed', 'Could not initialize')):
-                        raise RuntimeError(f'child_exit_UI_initialization_failure: {output[-4000:]}')
-        reason = ('admitted_studio_source_edit_completed' if args.selector == '--studio-source-edit' else
+                    execution_evidence = studio_acceptance_output(args.selector, log.read())
+        reason = ('admitted_studio_graph_visibility_completed' if args.selector == '--studio-graph-visibility' else
+                  'admitted_studio_source_edit_completed' if args.selector == '--studio-source-edit' else
                   'admitted_installed_compile_completed' if args.selector == '--compile-installed-space-cadet' else
                   'admitted_four_frame_player_completed' if preflight else 'selected_assertions_passed')
         return report('passed', reason,

@@ -16,7 +16,10 @@ reusable capability:
 1. Declare the struct in `src/runtime/components.h` with
    `NODE_COMPONENT_TYPE_DENSE(Name)` (see `GameGlobalBinding`). Use plain
    C fields; enums become named choices, `NODE_HANDLE(ecs.entity)` marks an
-   entity reference. Comment what it means and its units.
+   entity reference. Comment what it means and its units, and mark a numeric
+   field's unit and editing range with `NODE_UNIT("u/s")` and
+   `NODE_RANGE(0, 1)` so editors show them. Give it a Properties tab or icon
+   in `PRESENTATION_DEFAULTS` (`src/authoring/component_presentation.c`).
 2. Build (`make build`). The reflect step regenerates the native type tables
    and adds the component's row to `src/runtime/component_ids.tsv`. Commit
    that row with the header change; never edit the ID by hand. Resolve a
@@ -72,8 +75,10 @@ The smallest complete example is Play Sound:
 
 ## Change saved projects (migration)
 
-A project saved at an older version loads only after `--migrate` upgrades
-it; there are no compatibility aliases (see the first rule in `AGENTS.md`).
+Opening a project saved at an older version (`chibi_project_open`) upgrades
+it in place, and `chibi_ctl --migrate` does the same explicitly. The
+`validate_project` operation refuses an older project until one of them has
+run. There are no compatibility aliases (see the first rule in `AGENTS.md`).
 
 1. Bump `CHIBI_PROJECT_VERSION` in `src/assets/project.h` and add the step
    that upgrades the previous version to the `switch` in
@@ -82,10 +87,25 @@ it; there are no compatibility aliases (see the first rule in `AGENTS.md`).
 2. Cover the step with a pico_unit case that migrates a small old-format
    source and checks the result (see `program_version_11_references_migrate_to_values`
    in `test/language/program.c`).
-3. Migrate every project the change reaches with
+3. Migrate every project in this repository with
    `build/bin/chibi_ctl --project-root <root> --migrate`: every `project.kdl`
-   under `test/fixtures`, and the game and Studio repositories
-   (`chibi-voidweaver`, `chibi-celeste`, `chibi-studio/projects`), each in
-   its own PR that names the engine PR it needs.
+   under `test/fixtures`.
 4. Run `chibi_ctl --format` on each migrated project and compile it with
    `chibi-compile` to prove it still loads.
+
+Don't open version-bump PRs in other repositories (`chibi-studio`,
+`chibi-celeste`). Their projects may lag `main`: Studio, `chibi`,
+`chibi-compile` and `chibi export` upgrade an older project when they open it,
+and Studio CI opens Studio's projects against engine `main` on every run. A
+lagging project takes the new version in the next PR that changes it for
+another reason. Change another repository first only when a step stops on
+something it can't rewrite (a removed component a script names): make that
+edit work with the current engine, merge it before the engine PR, and leave
+its version number alone. Raising `CHIBI_PROJECT_OLDEST_VERSION` is the one
+case that needs those projects migrated first.
+
+Prepared artifact versions (`GAME_PLAYER_PREPARED_VERSION` and the other
+`*_PREPARED_VERSION`s in `sdk/artifact_formats.cmake`) change in the PR that
+changes the format, never in a follow-up. Artifacts are rebuilt from source,
+so they need no migration. If `main` took the same number first, take the
+next one when you merge `main`; git applies two identical bumps silently.

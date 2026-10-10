@@ -288,7 +288,13 @@ void script_analyzer_system_parameters(analyzer *a, TSNode root)
         if (!component || !component->component) {
             script_analyzer_diagnostic(a, parameter, "System parameter requires a reflected component type");
         }
-        script_analyzer_symbol_new(a, script_analyzer_field(parameter, "name"), SCRIPT_COMPONENT, type, true);
+        script_analyzer_symbol_new(
+            a,
+            script_analyzer_field(parameter, "name"),
+            SCRIPT_COMPONENT,
+            type,
+            !component || !component->derived
+        );
         if (component && !(type.flags & SCRIPT_TYPE_OPTIONAL)) {
             script_analyzer_query_intersect(
                 a,

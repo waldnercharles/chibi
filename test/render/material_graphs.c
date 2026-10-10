@@ -2,6 +2,7 @@
 
 #include "authoring/shader_prepare.h"
 #include "graph/authoring/graph_edit.h"
+#include "graph/modeling/model_compile.h"
 #include "graph/shader/shader_graph.h"
 #include "types/catalog.h"
 
@@ -78,5 +79,19 @@ bool test_register_ramp(const char *name, int count, const float from[4], const 
             !graph_set_pin_default(g, ramp, 0, 0, &factor) &&
             !graph_connect_data(g, ramp, 0, output, 0) &&
             !graph_set_pin_default(g, output, 0, 6, &unlit)
+    );
+}
+
+bool test_register_model_sphere(const char *name, float radius)
+{
+    behavior_asset *model = behavior_asset_new(name);
+    model->domain = BEHAVIOR_DOMAIN_MODEL;
+    node *sphere = graph_add_node(model->graph, &NODE_ModelSphere);
+    node *output = model_graph_add_output(model->graph);
+    pin_value value = { .type = PIN_F32, .f = radius };
+    return publish(
+        model,
+        !graph_set_pin_default(model->graph, sphere, 0, 0, &value) &&
+            !graph_connect_data(model->graph, sphere, 0, output, 0)
     );
 }

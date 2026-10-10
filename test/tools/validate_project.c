@@ -1,9 +1,12 @@
 #include "assets/project.h"
+#include "assets/prototype.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "third_party/yyjson/yyjson.h"
 
 #include <assert.h>
+#include <errno.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,16 +44,11 @@ static void write_file(const char *relative, const char *text)
     tool_write(file, text);
 }
 
-/* Sends requests, one per line, to one chibi_ctl from `root`, inside the
- * project "game" when `scoped`; returns its exit status and keeps the last
- * reply. */
-static int ctl(bool scoped, const char *request)
+/* Runs a shell command from `root` that sees chibi_ctl as $0 and its own
+ * output as $1; returns its exit status and keeps the last reply. */
+static int run(const char *command)
 {
-    write_file("request.json", request);
-    const char *command = scoped
-                            ? "exec \"$0\" --project-root game < request.json"
-                            : "exec \"$0\" < request.json";
-    const char *args[] = { "/bin/sh", "-c", command, program, NULL };
+    const char *args[] = { "/bin/sh", "-c", command, program, log_path, NULL };
     int status = tool_run(args, root, log_path);
     char *output = tool_read(log_path);
     const char *json = output ? strstr(output, "{\"contract\"") : NULL;
@@ -62,6 +60,13 @@ static int ctl(bool scoped, const char *request)
     free(output);
     assert(reply);
     return status;
+}
+/* Sends requests, one per line, to one chibi_ctl, inside the project "game"
+ * when `scoped`. */
+static int ctl(bool scoped, const char *request)
+{
+    write_file("request.json", request);
+    return run(scoped ? "exec \"$0\" --project-root game < request.json" : "exec \"$0\" < request.json");
 }
 
 static int validate()
@@ -617,6 +622,24 @@ static bool reads(const char *text, const char *expected)
     return text && !strcmp(text, expected);
 }
 
+/* Whether the catalog lists `member` among the members of the asset found
+ * by `query`. */
+static bool catalog_lists(const char *query, const char *member)
+{
+    char request[256];
+    snprintf(request, sizeof request, "{\"contract\":1,\"operation\":\"search_assets\",\"query\":\"%s\"}", query);
+    if (ctl(true, request) != 0) {
+        return false;
+    }
+    yyjson_val *members = yyjson_obj_get(yyjson_arr_get(result("assets"), 0), "members");
+    for (size_t i = 0; i < yyjson_arr_size(members); i++) {
+        if (reads(yyjson_get_str(yyjson_obj_get(yyjson_arr_get(members, i), "name")), member)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Runs chibi_ctl --format on the project, with "--check" to only compare. */
 static int format(const char *check)
 {
@@ -855,6 +878,368 @@ TEST_CASE(scenes_run_under_their_own_name)
     return true;
 }
 
+/* The x of the GlobalTransform2D on the snapshot entity named `name`, or on
+ * the first unnamed one when `name` is NULL. */
+static double global_x(const char *name)
+{
+    yyjson_val *entity, *component;
+    size_t i, count, j, components;
+    yyjson_arr_foreach(result("entities"), i, count, entity)
+    {
+        const char *named = yyjson_get_str(yyjson_obj_get(entity, "name"));
+        if (name ? !reads(named, name) : named != NULL) {
+            continue;
+        }
+        yyjson_arr_foreach(yyjson_obj_get(entity, "components"), j, components, component)
+        {
+            if (reads(yyjson_get_str(yyjson_obj_get(component, "name")), "GameGlobalTransform2D")) {
+                yyjson_val *position = yyjson_obj_get(
+                    yyjson_arr_get(yyjson_obj_get(component, "fields"), 0),
+                    "value"
+                );
+                return yyjson_get_num(yyjson_obj_get(position, "x"));
+            }
+        }
+    }
+    return NAN;
+}
+
+TEST_CASE(scene_children_are_placed_by_their_parent)
+{
+    char folder[256], scene[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    GameTransform x=0 y=0\n}\n");
+    /* A root and a child may share a name; siblings may not. */
+    write_file(
+        "game/content/scenes/Start.kdl",
+        "version 1\nname \"Start\"\n(array)entities {\n"
+        "    - name=\"Ship\" prototype=\"Hull\" { components { GameTransform "
+        "x=100 y=5; }; "
+        "(array)children { - name=\"Turret\" prototype=\"Hull\" { components { "
+        "GameTransform x=10 y=0; }; }; }; }\n"
+        "    - name=\"Turret\" prototype=\"Hull\"\n}\n"
+    );
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    REQUIRE(format("--check") != 0 && format(NULL) == 0 && format("--check") == 0);
+    path(scene, sizeof scene, "game/content/scenes/Start.kdl");
+    char *text = tool_read(scene);
+    bool nested = text &&
+                  strstr(text, "        (array)children {\n            - {\n                name \"Turret\"");
+    free(text);
+    REQUIRE(nested);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"runtime_snapshot\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
+        0
+    );
+    REQUIRE(global_x("Ship.Turret") == 110 && global_x("Turret") == 0);
+    /* The catalog lists a child by its path. */
+    REQUIRE(catalog_lists("Start", "Ship.Turret"));
+    write_file(
+        "game/content/scenes/Start.kdl",
+        "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Ship\" "
+        "prototype=\"Hull\" { "
+        "(array)children { - name=\"Turret\" prototype=\"Hull\"; - "
+        "name=\"Turret\" prototype=\"Hull\"; }; }\n}\n"
+    );
+    REQUIRE(validate() != 0);
+    return true;
+}
+
+/* A prototype's children come with each instance of it, placed by it. */
+TEST_CASE(prototype_children_come_with_their_instance)
+{
+    char folder[256], ship[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file("game/content/prototypes/Hull.kdl", "name \"Hull\"\ncomponents {\n    GameTransform x=0 y=0\n}\n");
+    write_file(
+        "game/content/prototypes/Ship.kdl",
+        "name \"Ship\"\ncomponents { GameTransform x=0 y=0; }\n"
+        "(array)children { - name=\"Gun\" prototype=\"Hull\" { components { "
+        "GameTransform x=4 y=0; }; }; }\n"
+    );
+    write_file(
+        "game/content/scenes/Start.kdl",
+        "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Flagship\" "
+        "prototype=\"Ship\" { components { GameTransform x=100 y=0; }; }\n}\n"
+    );
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    REQUIRE(format(NULL) == 0 && format("--check") == 0);
+    path(ship, sizeof ship, "game/content/prototypes/Ship.kdl");
+    char *text = tool_read(ship);
+    /* A prototype with children is formatted too: Transform's zero fields go. */
+    bool nested = text &&
+                  strstr(text, "(array)children {\n    - {\n        name \"Gun\"") &&
+                  strstr(text, "(object)GAME.GameTransform");
+    free(text);
+    REQUIRE(nested);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"runtime_snapshot\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") ==
+        0
+    );
+    /* Snapshots name only the scene's own objects. */
+    REQUIRE(yyjson_arr_size(result("entities")) == 2);
+    REQUIRE(global_x("Flagship") == 100 && global_x(NULL) == 104);
+    REQUIRE(catalog_lists("Ship", "Gun"));
+    /* A child is an edge to the prototype it uses. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"asset_dependencies\",\"kind\":\"prototype\",\"name\":\"Ship\"}") ==
+        0
+    );
+    yyjson_val *edges = result("edges");
+    yyjson_val *to = yyjson_obj_get(yyjson_arr_get_first(edges), "to");
+    REQUIRE(
+        yyjson_arr_size(edges) == 1 &&
+        reads(yyjson_get_str(yyjson_obj_get(to, "name")), "Hull")
+    );
+    /* A child's own behaviors are checked with the scene that spawns it. */
+    write_file(
+        "game/content/prototypes/Ship.kdl",
+        "name \"Ship\"\n(array)children { - name=\"Gun\" prototype=\"Hull\" { "
+        "(array)behaviors \"Missing\"; }; }\n"
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"scene\",\"name\":\"Start\"}") !=
+        0
+    );
+    const char *missing = first_message(result("diagnostics"));
+    REQUIRE(missing && strstr(missing, "Missing"));
+    /* So are the bindings a child's overrides add. */
+    write_file(
+        "game/content/prototypes/Ship.kdl",
+        "name \"Ship\"\n(array)children { - name=\"Gun\" prototype=\"Hull\" { "
+        "components { GAME.GameUi document=\"Nowhere\"; }; }; }\n"
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Ship\"}") !=
+        0
+    );
+    missing = first_message(result("diagnostics"));
+    REQUIRE(missing && !strcmp(missing, "Unknown UI document 'Nowhere'"));
+    write_file("game/content/prototypes/Ship.kdl", "name \"Ship\"\n(array)children { - name=\"Again\" prototype=\"Ship\"; }\n");
+    REQUIRE(validate() != 0);
+    return true;
+}
+
+/* Prototypes `prefix`0 to `prefix`<levels - 1>, each with two children that
+ * use the next, so loading `prefix`0 reads 2^levels - 2 other documents. */
+static void write_fans(const char *prefix, int levels)
+{
+    for (int i = 0; i < levels; i++) {
+        char file[128], text[256];
+        snprintf(file, sizeof file, "game/content/prototypes/%s%d.kdl", prefix, i);
+        int n = snprintf(text, sizeof text, "name \"%s%d\"\n", prefix, i);
+        if (i + 1 < levels) {
+            snprintf(
+                text + n,
+                sizeof text - n,
+                "(array)children { - name=\"L\" prototype=\"%s%d\"; - "
+                "name=\"R\" "
+                "prototype=\"%s%d\"; }\n",
+                prefix,
+                i + 1,
+                prefix,
+                i + 1
+            );
+        }
+        write_file(file, text);
+    }
+}
+
+TEST_CASE(prototype_expansion_is_shared)
+{
+    /* Each load stays under its own limit, but the project's loads together
+     * read more than one load may, so preparing it stops. Fan0 to Fan12 read
+     * 16369 documents, and Twin's two Fan0 children read 16382 more. */
+    char folder[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_fans("Fan", 13);
+    write_file(
+        "game/content/prototypes/Twin.kdl",
+        "name \"Twin\"\n(array)children { - name=\"L\" prototype=\"Fan0\"; - "
+        "name=\"R\" prototype=\"Fan0\"; }\n"
+    );
+    REQUIRE(validate() != 0);
+    const char *message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "through their includes and children"));
+    return true;
+}
+
+TEST_CASE(scene_instances_share_the_expansion)
+{
+    /* Each instance loads its prototype again, so a scene's instances share
+     * one budget too. An instance of Bush0 reads 512 documents: its
+     * overlay, Bush0 and Bush0's 510. */
+    char folder[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_fans("Bush", 9);
+    REQUIRE(validate() == 0);
+    static char scene[GAME_PROTOTYPE_EXPANSION_MAX];
+    int n = snprintf(scene, sizeof scene, "version 1\nname \"Start\"\n(array)entities {\n");
+    for (int i = 0; i < GAME_PROTOTYPE_EXPANSION_MAX / 512; i++) {
+        n += snprintf(scene + n, sizeof scene - n, "    - name=\"B%d\" prototype=\"Bush0\"\n", i);
+    }
+    snprintf(scene + n, sizeof scene - n, "}\n");
+    write_file("game/content/scenes/Start.kdl", scene);
+    REQUIRE(validate() != 0);
+    const char *message = first_message(result("project"));
+    REQUIRE(message && strstr(message, "through their includes and children"));
+    return true;
+}
+
+/* The x a Tick wrote to the scene's only Transform in the last snapshot. */
+static double snapshot_x()
+{
+    yyjson_val *entities = result("entities");
+    for (size_t i = 0; i < yyjson_arr_size(entities); i++) {
+        yyjson_val *components = yyjson_obj_get(yyjson_arr_get(entities, i), "components");
+        for (size_t j = 0; j < yyjson_arr_size(components); j++) {
+            yyjson_val *component = yyjson_arr_get(components, j);
+            if (reads(yyjson_get_str(yyjson_obj_get(component, "name")), "GameTransform")) {
+                yyjson_val *x = yyjson_arr_get(yyjson_obj_get(component, "fields"), 0);
+                assert(reads(yyjson_get_str(yyjson_obj_get(x, "name")), "x"));
+                return yyjson_get_num(yyjson_obj_get(x, "value"));
+            }
+        }
+    }
+    assert(false);
+    return 0;
+}
+
+TEST_CASE(components_are_declared_in_chibi_sources)
+{
+    char folder[256], source[256];
+    path(folder, sizeof folder, "game/content/components");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    path(folder, sizeof folder, "game/content/systems");
+    REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
+    write_file("game/content/components/Charge.chibi", "// Stored energy.\ncomponent Charge{level : 0 .. 100 charge\nrate:charge / s}\n");
+    write_file("game/content/systems/Recharge.chibi", "system Recharge(charge: Charge) {\n    charge.level += charge.rate * dt\n}\n");
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    /* chibi_ctl formats component sources with the rest of the content. */
+    REQUIRE(format("--check") != 0 && format(NULL) == 0 && format("--check") == 0);
+    path(source, sizeof source, "game/content/components/Charge.chibi");
+    char *formatted = tool_read(source);
+    bool canonical = reads(
+        formatted,
+        "// Stored energy.\n"
+        "component Charge {\n"
+        "    level: 0..100 charge\n"
+        "    rate: charge/s\n"
+        "}\n"
+    );
+    free(formatted);
+    REQUIRE(canonical);
+    /* Formatting never writes through a link out of the project. */
+    char outside[256], link_path[256];
+    path(outside, sizeof outside, "Outside.chibi");
+    path(link_path, sizeof link_path, "game/content/components/Outside.chibi");
+    const char *loose = "component Outside{x:float}\n";
+    write_file("Outside.chibi", loose);
+    REQUIRE(symlink(outside, link_path) == 0);
+    format(NULL);
+    char *kept = tool_read(outside);
+    bool untouched = reads(kept, loose);
+    free(kept);
+    REQUIRE(untouched && unlink(link_path) == 0);
+    /* A field's mistake is reported where it is. */
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: flaot\n}\n");
+    REQUIRE(validate() != 0);
+    REQUIRE(strstr(failure(), "Charge.chibi: 2:12: Unknown type or unit 'flaot'"));
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: float\n    job: task\n}\n");
+    REQUIRE(validate() != 0);
+    REQUIRE(strstr(failure(), "Charge.chibi: 3:5: A component field cannot hold a task"));
+    /* A project may not declare a component the engine already has. */
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: float\n}\n");
+    write_file("game/content/components/Transform.chibi", "component GameTransform {\n    x: float\n}\n");
+    REQUIRE(validate() != 0);
+    REQUIRE(strstr(failure(), "Transform.chibi: the name is already an engine type"));
+    return true;
+}
+
+TEST_CASE(unit_mismatches_are_warnings)
+{
+    char folder[256];
+    path(folder, sizeof folder, "game/content/components");
+    REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
+    path(folder, sizeof folder, "game/content/systems");
+    REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: 0..100 charge\n    rate: charge/s\n}\n");
+    /* Declared units, the engine's reflected units and dt's seconds. */
+    write_file(
+        "game/content/systems/Measure.chibi",
+        "system Measure(charge: Charge, movement: GameMovement, collider: "
+        "GameCollider) {\n"
+        "    charge.level += charge.rate * dt\n"
+        "    charge.level += charge.rate\n"
+        "    collider.radius = movement.speed\n"
+        "    collider.radius += delta\n"
+        "}\n"
+    );
+    /* Warnings first: a mismatch leaves the project valid. */
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")) && errors() == 0);
+    REQUIRE(yyjson_get_int(result("warnings")) == 3);
+    yyjson_val *problem = yyjson_arr_get_first(result("problems"));
+    yyjson_val *diagnostics = yyjson_obj_get(problem, "diagnostics");
+    REQUIRE(yyjson_arr_size(diagnostics) == 3);
+    yyjson_val *first = yyjson_arr_get(diagnostics, 0);
+    REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(first, "severity")), "warning"));
+    REQUIRE(!strcmp(message_at(diagnostics, 0), "Units differ: charge += charge/s"));
+    REQUIRE(yyjson_get_int(yyjson_obj_get(first, "line")) == 3);
+    REQUIRE(!strcmp(message_at(diagnostics, 1), "Units differ: u = u/s"));
+    REQUIRE(!strcmp(message_at(diagnostics, 2), "Units differ: u += s"));
+    /* Validating the one source counts its warnings apart from errors. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"system\",\"name\":\"Measure\"}") ==
+        0
+    );
+    REQUIRE(errors() == 0 && yyjson_get_int(result("warnings")) == 3);
+    diagnostics = result("diagnostics");
+    REQUIRE(yyjson_get_int(yyjson_obj_get(yyjson_arr_get(diagnostics, 0), "severity")) == 2);
+    /* One chibi_ctl sees a unit change that leaves the layout as it was. */
+    write_file("Charge.chibi", "component Charge {\n    level: 0..100 charge\n    rate: 0..10 charge\n}\n");
+    write_file("request.json", "{\"contract\":1,\"operation\":\"validate_project\"}\n");
+    REQUIRE(
+        run("{ cat request.json; until grep -q contract \"$1\"; do sleep 0.02; "
+            "done; "
+            "cp Charge.chibi game/content/components/Charge.chibi; cat "
+            "request.json; } | "
+            "exec \"$0\" --project-root game") == 0
+    );
+    diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
+    REQUIRE(!strcmp(message_at(diagnostics, 0), "Units differ: charge += charge·s"));
+    return true;
+}
+
+TEST_CASE(scenarios_hold_input_actions)
+{
+    /* A scenario's controls reach the input map of the engine that plays it. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Dot\"}") == 0
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"behavior\",\"name\":\"Jumper\"}") == 0
+    );
+    write_file("game/content/input.kdl", "Jump {\n    (array)sources \"Mouse Left\"\n}\n");
+    write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n    (object)GAME.GameTransform\n}\n");
+    write_file("game/content/behaviors/Jumper.chibi", "behavior Jumper {\n    on Tick {\n        if input.Jump.held {\n            self.Transform = vec2(7, 0)\n        }\n    }\n}\n");
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\n(array)entities {\n    - name=\"Dot\" prototype=\"Dot\" {\n        (array)behaviors \"Jumper\"\n    }\n}\n");
+    /* 1 is GAME_CONTROL_MOUSE_LEFT, the first GameControl. */
+    const char *request = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
+                          "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":2,"
+                          "\"input_timeline\":[{\"frame\":0,\"input\":"
+                          "{\"controls\":[%s]}}]}";
+    char held[256], released[256];
+    snprintf(held, sizeof held, request, "1");
+    snprintf(released, sizeof released, request, "");
+    REQUIRE(ctl(true, held) == 0 && snapshot_x() == 7);
+    REQUIRE(ctl(true, released) == 0 && snapshot_x() == 0);
+    return true;
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -877,5 +1262,12 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(resources_are_limited_together);
     RUN_TEST_CASE(manifest_content_folder_is_used);
     RUN_TEST_CASE(scenes_run_under_their_own_name);
+    RUN_TEST_CASE(scene_children_are_placed_by_their_parent);
+    RUN_TEST_CASE(prototype_children_come_with_their_instance);
+    RUN_TEST_CASE(prototype_expansion_is_shared);
+    RUN_TEST_CASE(scene_instances_share_the_expansion);
+    RUN_TEST_CASE(scenarios_hold_input_actions);
+    RUN_TEST_CASE(components_are_declared_in_chibi_sources);
+    RUN_TEST_CASE(unit_mismatches_are_warnings);
     pu_clear_setup();
 }

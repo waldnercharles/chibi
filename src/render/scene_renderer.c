@@ -26,6 +26,8 @@
 #include "render/shader_images.h"
 #include "render/viewport.h"
 #include "runtime/component_catalog.h"
+#include "runtime/tilemap.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -40,6 +42,13 @@ typedef struct
     ecs_entity entity;
     int layer;
 } draw_actor;
+
+typedef struct
+{
+    ecs_entity entity;
+    tilemap_grid grid;
+    bool used;
+} draw_tilemap;
 
 struct app_scene_renderer
 {
@@ -84,6 +93,7 @@ struct app_scene_renderer
     render_material_border_cache *border;
     render_material_lod *lod;
     draw_actor *actors;
+    draw_tilemap *tilemaps;
     render_skip skip; /* the entities the current draw leaves out */
     ecs_world *world;
     engine_viewport_camera camera;
@@ -131,6 +141,14 @@ static void initialize_resources(app_scene_renderer *renderer)
                           render_gpu_clock_install();
 }
 
+static void clear_tilemaps(app_scene_renderer *renderer)
+{
+    for (int i = 0; i < acount(renderer->tilemaps); i++) {
+        tilemap_grid_free(&renderer->tilemaps[i].grid);
+    }
+    afree(renderer->tilemaps);
+}
+
 void app_scene_renderer_free(app_scene_renderer *renderer)
 {
     if (!renderer) {
@@ -173,6 +191,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
     render_material_border_cache_free(renderer->border);
     render_material_lod_free(renderer->lod);
     afree(renderer->actors);
+    clear_tilemaps(renderer);
     free(renderer);
 }
 
@@ -377,6 +396,9 @@ bool app_scene_renderer_draw3d(
 
 void app_scene_renderer_reset(app_scene_renderer *renderer)
 {
+    if (renderer) {
+        clear_tilemaps(renderer);
+    }
     if (renderer && renderer->border) {
         render_material_border_cache_clear(renderer->border);
     }
@@ -535,8 +557,80 @@ static bool append_entity(
     return true;
 }
 
+typedef struct
+{
+    int image, width, height, cell_width, cell_height, columns, frames;
+} sprite_atlas;
+
+static bool load_sprite_atlas(
+    app_scene_renderer *renderer,
+    const char *image_key,
+    int frame_width,
+    int frame_height,
+    sprite_atlas *atlas
+)
+{
+    shader_image_source source = { .key = (char *)image_key,
+                                   .color_space = SHADER_IMAGE_SRGB,
+                                   .filter = SHADER_IMAGE_NEAREST,
+                                   .wrap = SHADER_IMAGE_CLAMP };
+    shader_error error = { 0 };
+    atlas->image = render_image_variant_resident(&source, &error);
+    if (!atlas->image || !render_image_info(image_key, &atlas->width, &atlas->height)) {
+        snprintf(renderer->error, sizeof renderer->error, "Sprite: %s", error.message);
+        return false;
+    }
+    atlas->cell_width = frame_width > 0 ? frame_width : atlas->width;
+    atlas->cell_height = frame_height > 0 ? frame_height : atlas->height;
+    atlas->columns = atlas->width / atlas->cell_width;
+    atlas->frames = atlas->columns * (atlas->height / atlas->cell_height);
+    return true;
+}
+
 /* A sprite is a white box whose raster multiplies its material by the frame's
- * texels, so a Material tints it. */
+ * texels, so a Material tints it. Tilemaps resolve their atlas once per draw. */
+static bool append_sprite_frame(
+    app_scene_renderer *renderer,
+    const GameTransform *position,
+    const GameSprite *sprite,
+    float angle,
+    const GameMaterial *material,
+    const sprite_atlas *atlas
+)
+{
+    if (sprite->frame < 0 || sprite->frame >= atlas->frames) {
+        snprintf(
+            renderer->error,
+            sizeof renderer->error,
+            "Sprite frame %d is outside the %d frames of %s",
+            sprite->frame,
+            atlas->frames,
+            sprite->image
+        );
+        return false;
+    }
+    GameAppearance box = { .width = (float)atlas->cell_width,
+                           .height = (float)atlas->cell_height,
+                           .color = 0xffffffffu,
+                           .layer = sprite->layer };
+    if (!append_entity(renderer, position, &box, angle, material)) {
+        return true;
+    }
+    float u0 = (float)(sprite->frame % atlas->columns * atlas->cell_width) /
+               (float)atlas->width;
+    float v0 = (float)(sprite->frame / atlas->columns * atlas->cell_height) /
+               (float)atlas->height;
+    float u1 = u0 + (float)atlas->cell_width / (float)atlas->width;
+    render_material_entity *draw = &alast(renderer->entities);
+    draw->shape_type = RENDER_SHAPE_SPRITE;
+    draw->points[8] = sprite->flip_x ? u1 : u0;
+    draw->points[9] = v0;
+    draw->points[10] = sprite->flip_x ? u0 : u1;
+    draw->points[11] = v0 + (float)atlas->cell_height / (float)atlas->height;
+    draw->points[12] = (float)atlas->image;
+    return true;
+}
+
 static bool append_sprite(
     app_scene_renderer *renderer,
     const GameTransform *position,
@@ -545,49 +639,15 @@ static bool append_sprite(
     const GameMaterial *material
 )
 {
-    shader_image_source source = { .key = (char *)sprite->image,
-                                   .color_space = SHADER_IMAGE_SRGB,
-                                   .filter = SHADER_IMAGE_NEAREST,
-                                   .wrap = SHADER_IMAGE_CLAMP };
-    shader_error error = { 0 };
-    int image = render_image_variant_resident(&source, &error);
-    int width, height;
-    if (!image || !render_image_info(sprite->image, &width, &height)) {
-        snprintf(renderer->error, sizeof renderer->error, "Sprite: %s", error.message);
-        return false;
-    }
-    int cell_width = sprite->frame_width > 0 ? sprite->frame_width : width;
-    int cell_height = sprite->frame_height > 0 ? sprite->frame_height : height;
-    int columns = width / cell_width, frames = columns * (height / cell_height);
-    if (sprite->frame < 0 || sprite->frame >= frames) {
-        snprintf(
-            renderer->error,
-            sizeof renderer->error,
-            "Sprite frame %d is outside the %d frames of %s",
-            sprite->frame,
-            frames,
-            sprite->image
-        );
-        return false;
-    }
-    GameAppearance box = { .width = (float)cell_width,
-                           .height = (float)cell_height,
-                           .color = 0xffffffffu,
-                           .layer = sprite->layer };
-    if (!append_entity(renderer, position, &box, angle, material)) {
-        return true;
-    }
-    float u0 = (float)(sprite->frame % columns * cell_width) / (float)width;
-    float v0 = (float)(sprite->frame / columns * cell_height) / (float)height;
-    float u1 = u0 + (float)cell_width / (float)width;
-    render_material_entity *draw = &alast(renderer->entities);
-    draw->shape_type = RENDER_SHAPE_SPRITE;
-    draw->points[8] = sprite->flip_x ? u1 : u0;
-    draw->points[9] = v0;
-    draw->points[10] = sprite->flip_x ? u0 : u1;
-    draw->points[11] = v0 + (float)cell_height / (float)height;
-    draw->points[12] = (float)image;
-    return true;
+    sprite_atlas atlas;
+    return load_sprite_atlas(
+               renderer,
+               sprite->image,
+               sprite->frame_width,
+               sprite->frame_height,
+               &atlas
+           ) &&
+           append_sprite_frame(renderer, position, sprite, angle, material, &atlas);
 }
 
 static unsigned particle_color(unsigned start, unsigned end, float age)
@@ -769,6 +829,66 @@ static bool mask_visible(
            y + ry >= view.max_y - view.height && y - ry <= view.max_y;
 }
 
+static bool append_tilemap(
+    app_scene_renderer *renderer,
+    ecs_entity entity,
+    GameGlobalTransform2D shown,
+    const GameTilemap *map,
+    const GameMaterial *material,
+    render_material_view view
+)
+{
+    draw_tilemap *cached = NULL;
+    for (int i = 0; i < acount(renderer->tilemaps); i++) {
+        if (ecs_entity_to_u64(renderer->tilemaps[i].entity) ==
+            ecs_entity_to_u64(entity)) {
+            cached = &renderer->tilemaps[i];
+            break;
+        }
+    }
+    if (!cached) {
+        apush(renderer->tilemaps, ((draw_tilemap){ .entity = entity }));
+        cached = &alast(renderer->tilemaps);
+    }
+    cached->used = true;
+    if (!tilemap_grid_update(&cached->grid, map->cells, map->columns, map->rows, map->frame_width, map->frame_height)) {
+        snprintf(
+            renderer->error,
+            sizeof renderer->error,
+            "Tilemap: %s",
+            cached->grid.error
+        );
+        return false;
+    }
+    sprite_atlas atlas;
+    if (!load_sprite_atlas(renderer, map->image, map->frame_width, map->frame_height, &atlas)) {
+        return false;
+    }
+    float c = cosf(shown.radians), s = sinf(shown.radians);
+    GameSprite sprite = { .image = map->image, .layer = map->layer };
+    material_rect bounds = { .width = (float)map->frame_width,
+                             .height = (float)map->frame_height };
+    for (int row = 0; row < map->rows; row++) {
+        for (int column = 0; column < map->columns; column++) {
+            sprite.frame = tilemap_grid_frame(&cached->grid, column, row);
+            if (sprite.frame < 0) {
+                continue;
+            }
+            float x = (column + .5f) * map->frame_width;
+            float y = (row + .5f) * map->frame_height;
+            GameTransform center = { shown.position.x + c * x - s * y,
+                                     shown.position.y + s * x + c * y };
+            if (!mask_visible(view, center, bounds, shown.radians, renderer->pixel_aa)) {
+                continue;
+            }
+            if (!append_sprite_frame(renderer, &center, &sprite, -shown.radians, material, &atlas)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static int compare_actors(const void *left, const void *right)
 {
     const draw_actor *a = left, *b = right;
@@ -790,7 +910,11 @@ static void collect_order(app_scene_renderer *renderer, ecs_world *world)
     while (ecs_query_next(&query, &entity)) {
         const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
         const GameSprite *sprite = GAME_GameSprite_get_const(world, entity);
-        int layer = sprite ? sprite->layer : appearance ? appearance->layer : 0;
+        const GameTilemap *tilemap = GAME_GameTilemap_get_const(world, entity);
+        int layer = tilemap    ? tilemap->layer
+                  : sprite     ? sprite->layer
+                  : appearance ? appearance->layer
+                               : 0;
         apush(renderer->actors, ((draw_actor){ entity, layer }));
     }
     ecs_query_end(&query);
@@ -901,6 +1025,16 @@ static bool collect(
     aclear(renderer->meshes);
     renderer->tile_groups = 0;
     aclear(renderer->reflectors);
+    for (int i = 0; i < acount(renderer->tilemaps);) {
+        draw_tilemap *cached = &renderer->tilemaps[i];
+        if (!cached->used) {
+            tilemap_grid_free(&cached->grid);
+            adel(renderer->tilemaps, i);
+            continue;
+        }
+        cached->used = false;
+        i++;
+    }
     collect_order(renderer, world);
     for (int actor = 0; actor < acount(renderer->actors); actor++) {
         ecs_entity entity = renderer->actors[actor].entity;
@@ -908,7 +1042,7 @@ static bool collect(
             render_skip_has(renderer->skip, entity)) {
             continue;
         }
-        const GameOrientation *orientation = GAME_GameOrientation_get_const(world, entity);
+        GameGlobalTransform2D shown = engine_render_transform(runtime, world, entity);
         const GameShader *binding = GAME_GameShader_get_const(world, entity);
         const GameMeshSurface2D *mesh = GAME_GameMeshSurface2D_get_const(world, entity);
         const GameSdfSurface3D *sdf = GAME_GameSdfSurface3D_get_const(world, entity);
@@ -917,8 +1051,7 @@ static bool collect(
             if (pose && pose->scale == 0) {
                 continue;
             }
-            GameTransform position = *GAME_GameTransform_get_const(world, entity);
-            engine_render_position(runtime, entity, &position);
+            GameTransform position = shown.position;
             model_bounds selected_bounds, *override = NULL;
             if (ecs_entity_to_u64(entity) ==
                     ecs_entity_to_u64(renderer->inspection.entity) &&
@@ -998,17 +1131,21 @@ static bool collect(
             apush(renderer->entities, draw);
             continue;
         }
+        const GameTilemap *tilemap = GAME_GameTilemap_get_const(world, entity);
+        if (tilemap) {
+            if (!append_tilemap(renderer, entity, shown, tilemap, GAME_GameMaterial_get_const(world, entity), view)) {
+                return false;
+            }
+            continue;
+        }
         const GameSprite *sprite = GAME_GameSprite_get_const(world, entity);
         if (sprite) {
-            GameTransform position = *GAME_GameTransform_get_const(world, entity);
-            if (runtime) {
-                engine_render_position(runtime, entity, &position);
-            }
+            GameTransform position = shown.position;
             if (!append_sprite(
                     renderer,
                     &position,
                     sprite,
-                    orientation ? -orientation->radians : 0,
+                    -shown.radians,
                     GAME_GameMaterial_get_const(world, entity)
                 )) {
                 return false;
@@ -1028,7 +1165,7 @@ static bool collect(
                                                         .shape = GAME_SHAPE_BOX,
                                                         .antialias = 1 };
         const GameVisualTransform *visual = GAME_GameVisualTransform_get_const(world, entity);
-        float heading = orientation ? orientation->radians : 0;
+        float heading = shown.radians;
         GameAppearance appearance;
         float angle;
         if (!render_geometry_2d_project(authored ? NULL : geometry, &fallback, visual, heading, &appearance, &angle)) {
@@ -1047,10 +1184,7 @@ static bool collect(
                                                        : bounds[1]) *
                                 scale;
         }
-        GameTransform position = *GAME_GameTransform_get_const(world, entity);
-        if (runtime) {
-            engine_render_position(runtime, entity, &position);
-        }
+        GameTransform position = shown.position;
         const material_mask *mask = game_materials_mask(engine_materials(runtime), entity);
         if (mask) {
             /* Distant masks draw a coarser level, about a piece per pixel. */
@@ -1580,6 +1714,13 @@ bool app_scene_renderer_draw(
     engine_viewport_get_camera(viewport, &camera);
     int width, height;
     renderer->error[0] = 0;
+    /* Hosts may draw edits, loads and hand-built worlds that no engine frame
+     * has propagated yet, so drawing starts from current global transforms. */
+    int propagated = game_transform_propagate(world);
+    if (propagated != ECS_OK) {
+        snprintf(renderer->error, sizeof renderer->error, "Transform propagation failed (%d).", propagated);
+        return false;
+    }
     engine_viewport_pixel_size(viewport, &width, &height);
     /* Material edges and final composition retain viewport pixel resolution.
      * Only the radiance work grid is reduced, inside render_radiance_resize. */

@@ -19,12 +19,13 @@ requirements or clear a PR hold. The broad suites below still need migration.
 
 The engine build compiles the full test drivers, `test_tools` and
 `test_language`, with every native, compiler and renderer package. CI runs each
-group below on every pull request, and `make build` links `chibi`,
-`chibi-compile` and `chibi-player` in the same tree.
+group below on every push to `main` and every pull request into it that changes
+more than documentation, and `make build` links `chibi`, `chibi-compile` and
+`chibi-player` in the same tree.
 
 ```sh
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
-make test-native         # each CPU test_tools selector with checked-in inputs, one 60-second deadline
+make test-native         # the CPU test_tools selectors in its group, one 60-second deadline
 make test-language-all   # every test_language selector, one 60-second deadline
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
@@ -51,8 +52,8 @@ advisory until they first pass.
 ## Feature coverage
 
 `test/fixtures/feature-coverage` is the all-features project: one scene per
-area (2D physics, UI, particles, audio, save, rhythm, materials, input and
-entities). `test_tools --feature-coverage <project>` compares the engine
+area (2D and 3D physics, tilemaps, UI, particles, audio, save, rhythm,
+materials, input and entities). `test_tools --feature-coverage <project>` compares the engine
 catalog (components, native functions and events) with what the project's
 scripts, prototypes and scenes use, prints each gap, and runs every scene for
 four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior
@@ -177,10 +178,16 @@ replacement invalidating an existing session, new default values and a rejected
 wrong parameter type on a fixed 3-by-3 bake. All four cases pass 267 assertions
 in 0.650 seconds with ASan/UBSan after the typed catalog extraction.
 
-`--source-presentation` is an independently admitted native selector for two small
+`--source-presentation` is an independently admitted native selector for seven small
 CPU cases: dedicated clone ownership after compiler retirement, explicit source
-edits, exact-source layout metadata and invalid drafts. Its first snapshot passed
-37 assertions in 0.364 seconds. Later document/Studio integrations are unverified.
+edits, exact-source layout metadata, invalid drafts, native palette declarations,
+callable-local ownership and readable formulas. Formula coverage retains authored
+call origins and effectful operations and reparses expression replacements.
+These cases pass 7,971 assertions in 1.259 seconds under the production deadline.
+Later document/Studio integrations are unverified.
+It also runs two component presentation cases on two fixed in-memory documents:
+the engine's tabs, icons and reflected units and ranges, and a document
+overriding them key by key.
 `--system-schedule` admits only `test_system_schedule`: fixed access/order cases,
 62 small CPU engine frames and a serial/parallel 128-entity, 20-frame comparison.
 The scheduler benchmark and broad material aggregates remain quarantined. This
@@ -195,8 +202,13 @@ by a file, and a family folder or content folder that is a symbolic link out
 of the project. Each refusal's errno tells a bad request from a taken name and
 a storage failure. CPU only; the folder is removed afterwards.
 
+`--asset-refactor` admits one case: renaming a prototype that prototype
+children use plans a rewrite of each child in its parent's text, and a parent
+that includes another prototype keeps its includes and only its own children.
+Four in-memory prototypes, no files, CPU only.
+
 After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-fifteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+sixteen cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
@@ -213,14 +225,18 @@ name or the name could not name a file, `new_asset` refuses a declared name,
 two declarations of one name are a conflict, and a file the search cannot read,
 or one declaring a name longer than the player takes, fails it; a scene runs as
 a scenario in a project that has a material; a scene requested by its file name
-runs, and reloads, under its own name; a scenario and validation accept a real
+runs, and reloads, under its own name; a scenario's controls hold the input
+map's actions; a scenario and validation accept a real
 Ogg Vorbis sound, but refuse copies whose headers or audio packets players
 cannot decode; sounds that fit the player's resource count alone, but not with
 the project's other resources, fail validation as they fail compiling; and in a
 project whose manifest names another content folder, assets are scaffolded,
 validated, run, formatted, found and reported there under their `content/`
 paths, and `status` names that folder even once the project is too old to open.
-A few short `chibi_ctl` runs, CPU only; the project is removed afterwards.
+CPU only; the project is removed afterwards. The two prototype expansion cases
+each validate more than 16,000 prototype documents. With the sanitized
+`chibi_ctl` from `make test-build`, the selector takes more than 60 seconds on a
+four-core Linux host, so it is not in the native group and CI does not run it.
 
 `--source-edit` admits nine independently reviewed cases with fixed small inline
 sources and checked edit transactions. They check expression/type validation,
@@ -247,6 +263,54 @@ movement and camera globals. Each fixture has at most 259 entities, and the case
 use no renderer, sleeps or child processes. Its exact dispatcher runs only registry
 validation and these cases. The migrated selector is independently reviewed and
 admitted for its first supervised capture.
+
+`python3 tools/test_policy.py tool tilemap` selects seven reviewed C cases for
+owned grid decoding and cache invalidation, half-open point lookup, exact rotated
+rectangle overlap, transformed bounds and native ECS binding lifetimes. Each
+grid has at most four cells and no rendering or engine frames run. A decorative
+prototype also checks atlas preparation and owned prepared data without gameplay.
+
+`python3 tools/test_policy.py tool tilemap-project` admits two project acceptance
+cases when the tooling build includes asset authoring. It reads only the sibling
+`chibi-celeste` checkout. A bounded local `git show` supplies the former Level
+scene from commit `56ca9d486b93c15a504bf293dc722c6202cd2bf5`; the production KDL
+parser compares all 1,472 cells and 230 former tile centres/frame indices, then
+checks the four retained actors and one Room layer. Inputs are capped at 64 KiB
+for the baseline, 16 KiB for Room and 4 KiB for Level. Three owned controller
+children validate, prepare and run exactly two headless simulation frames with
+five authored and fifteen live entities and no behavior failures. Each child
+has the existing ten-second deadline inside the shared sixty-second supervisor.
+No GPU or network is used. Logs and the baseline revision are retained under
+`/tmp/chibi-publish-validation/evidence`; generated baseline, requests and prepared
+artifacts are removed. This fixed workload is independently admitted for its
+first supervised measurement; it does not admit arbitrary projects or frames.
+The first supervised run passed both cases and 3,818 assertions in 8.270 seconds,
+including controller startup, source preparation and the two simulation frames.
+
+`python3 tools/test_policy.py tool webgpu-staging` runs a C-owned disposable
+Chrome process against the browser build of the same tooling dispatcher in
+`build-webgpu-test`. It draws one 64-by-64 quad for 120 animation frames, checks
+staging-buffer reuse and a 64 MiB peak ceiling, then destroys the app and waits
+at most one second for retained map callbacks to release their chunks. Startup
+and execution share a 55-second deadline inside the production 60-second limit.
+The isolated Cute source is selected with `CHIBI_TEST_CUTE_SOURCE`; the comparison
+build's `CHIBI_TEST_WEBGPU_BASELINE=ON` retains CF's ASYNCIFY initialization.
+Callback wall time excludes the first 30 frames and is diagnostic, not a timing
+assertion. This small workload does not establish whole-game performance.
+
+`python3 tools/test_policy.py tool source-native-numeric-queries` selects five
+finite C cases on VM and SLJIT. Besides numeric outputs and nested entity query
+membership, the rectangle case prepares one declared Boolean component and two
+contextually typed `EntityCondition` arrays. Ten fixed transform positions check
+fractional overlap, strict rectangle edge contact and half-open point inclusion.
+It retains the query snapshot while disabling, removing, restoring and destroying
+its single member. The case creates no windows, files, subprocesses or engine
+frames and uses at most 16 bounded event dispatches per backend. Independent
+review admitted the extension; its supervised run passed three cases and 722
+assertions in 1.351 seconds. The room-border rules and player spawn remain
+project-owned scenario coverage.
+The tilemap case executes both tilemap functions on VM and SLJIT using one
+two-cell map, then edits its cells and checks the next dispatch sees the change.
 
 `python3 tools/test_policy.py tool language-headless` selects two independently
 reviewed public SDK consumer cases on VM and SLJIT. Each owns one entity and
@@ -433,6 +497,10 @@ GPU check that needs the render-enabled tools of the main build: run
 9 assertions in 6.1 seconds on a cold shader cache and 0.9 seconds warm. The
 tiled case fails when Cute's compute renderer is unavailable. Every SDL_GPU
 backend has one, so there a failure means Cute's tile shaders did not load.
+`viewport-resize` creates an engine viewport at a 640 x 360 placeholder in a
+hidden app. The first requested size must replace the canvas on that draw, and
+a later size only once it has been requested for two more draws. Build and run
+it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
 near clipping, a mixed 2D layer, and a later frame without the occluder) with

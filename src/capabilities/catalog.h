@@ -44,6 +44,8 @@ typedef struct
     bool writable;
     /* Reads as its own name, a string constant, with no receiver storage. */
     bool constant;
+    /* Measure, such as "u/s"; NULL without one. Checked, never stored. */
+    const char *unit;
 } script_catalog_field;
 typedef struct
 {
@@ -56,6 +58,8 @@ typedef struct
     uint64_t layout, underlying;
     uint64_t component_id; /* ECS storage ID, distinct from this catalog type ID. */
     bool component;
+    /* Computed by the engine: scripts read it but never write, add or remove it. */
+    bool derived;
 } script_catalog_type;
 typedef enum
 {
@@ -148,6 +152,7 @@ typedef struct
     const char *name;
     script_type type;
     bool writable;
+    const char *unit; /* NULL without one */
 } script_catalog_global;
 /* Immutable borrowed declaration catalog. Analysis copies resolved identities
  * and types; callers can release this catalog after analysis completes. */

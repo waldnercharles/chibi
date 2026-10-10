@@ -171,6 +171,10 @@ extern int GAME_GameAppearance_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameAppearance_remove(ecs_world *, ecs_entity, uint64_t);
 extern const ecs_component_desc GAME_COMPONENT_GameSprite;
 extern const GameSprite *GAME_GameSprite_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameTilemap;
+extern GameTilemap *GAME_GameTilemap_get(ecs_world *, ecs_entity);
+extern int GAME_GameTilemap_add(ecs_world *, ecs_entity, uint64_t);
+extern const GameTilemap *GAME_GameTilemap_get_const(const ecs_world *, ecs_entity);
 
 extern GameCollider *GAME_GameCollider_get(ecs_world *, ecs_entity);
 extern const GameCollider *GAME_GameCollider_get_const(const ecs_world *, ecs_entity);
@@ -336,5 +340,43 @@ extern const GameHRC2D *GAME_GameHRC2D_get_const(const ecs_world *, ecs_entity);
 extern int GAME_GameHRC2D_has(const ecs_world *, ecs_entity);
 extern int GAME_GameHRC2D_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameHRC2D_remove(ecs_world *, ecs_entity, uint64_t);
+
+extern const ecs_component_desc GAME_COMPONENT_GameTransform3D;
+extern GameTransform3D *GAME_GameTransform3D_get(ecs_world *, ecs_entity);
+extern const GameTransform3D *GAME_GameTransform3D_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameTransform3D_has(const ecs_world *, ecs_entity);
+extern int GAME_GameTransform3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameTransform3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameGlobalTransform3D;
+extern GameGlobalTransform3D *GAME_GameGlobalTransform3D_get(ecs_world *, ecs_entity);
+extern const GameGlobalTransform3D *GAME_GameGlobalTransform3D_get_const(const ecs_world *, ecs_entity);
+extern const ecs_component_desc GAME_COMPONENT_GameGlobalTransform2D;
+extern GameGlobalTransform2D *GAME_GameGlobalTransform2D_get(ecs_world *, ecs_entity);
+extern const GameGlobalTransform2D *GAME_GameGlobalTransform2D_get_const(const ecs_world *, ecs_entity);
+
+extern const ecs_component_desc GAME_COMPONENT_GameCollider3D;
+extern GameCollider3D *GAME_GameCollider3D_get(ecs_world *, ecs_entity);
+extern const GameCollider3D *GAME_GameCollider3D_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameCollider3D_has(const ecs_world *, ecs_entity);
+extern int GAME_GameCollider3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameCollider3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameBody3D;
+extern GameBody3D *GAME_GameBody3D_get(ecs_world *, ecs_entity);
+extern const GameBody3D *GAME_GameBody3D_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameBody3D_has(const ecs_world *, ecs_entity);
+extern int GAME_GameBody3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameBody3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameGravity3D;
+extern GameGravity3D *GAME_GameGravity3D_get(ecs_world *, ecs_entity);
+extern const GameGravity3D *GAME_GameGravity3D_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameGravity3D_has(const ecs_world *, ecs_entity);
+extern int GAME_GameGravity3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameGravity3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameCharacter3D;
+extern GameCharacter3D *GAME_GameCharacter3D_get(ecs_world *, ecs_entity);
+extern const GameCharacter3D *GAME_GameCharacter3D_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameCharacter3D_has(const ecs_world *, ecs_entity);
+extern int GAME_GameCharacter3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameCharacter3D_remove(ecs_world *, ecs_entity, uint64_t);
 
 #endif

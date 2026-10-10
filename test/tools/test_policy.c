@@ -56,6 +56,12 @@ static const char driver_source[] =
     "    if sys.argv[2] == '_supervise':\n"
     "        sys.exit(policy.supervise(json.loads(sys.argv[3])))\n"
     "    action, worker, root = sys.argv[2:5]\n"
+    "    if action == 'studio-result':\n"
+    "        import agent\n"
+    "        output = open(root + '/studio-output').read()\n"
+    "        print(json.dumps(agent.studio_acceptance_output(sys.argv[5], "
+    "output)))\n"
+    "        sys.exit(0)\n"
     "    if action == 'exit':\n"
     "        result = policy.run_commands([[worker, 'exit', sys.argv[5]]], 6)\n"
     "    elif action == 'aggregate':\n"
@@ -166,6 +172,40 @@ static void reset_markers()
     }
 }
 
+TEST_CASE(studio_acceptance_requires_exact_completion)
+{
+    char filename[PATH_MAX];
+    path(filename, "studio-output");
+    const char *graph = "Studio graph visibility accepted: frames=10\n";
+    const char
+        *edit = "Studio source edit accepted: frames=4 edits=1 undo=1 redo=1\n";
+    tool_write(filename, graph);
+    REQUIRE(run("studio-result", "--studio-graph-visibility") == 0);
+    char *output = tool_read(logpath);
+    bool ten_frames = output && strstr(output, "\"frames\": 10");
+    free(output);
+    REQUIRE(ten_frames);
+    REQUIRE(run("studio-result", "--studio-source-edit") == 2);
+    tool_write(filename, edit);
+    REQUIRE(run("studio-result", "--studio-source-edit") == 0);
+    REQUIRE(run("studio-result", "--studio-graph-visibility") == 2);
+    tool_write(filename, "Studio graph visibility accepted: frames=9\n");
+    REQUIRE(run("studio-result", "--studio-graph-visibility") == 2);
+    tool_write(filename, "prefix Studio graph visibility accepted: frames=10\n");
+    REQUIRE(run("studio-result", "--studio-graph-visibility") == 2);
+    char repeated[256];
+    snprintf(repeated, sizeof repeated, "%s%s", graph, graph);
+    tool_write(filename, repeated);
+    REQUIRE(run("studio-result", "--studio-graph-visibility") == 2);
+    const char *failures[] = { "Studio UI:", "runtime frame failed", "Could not initialize" };
+    for (int i = 0; i < (int)(sizeof failures / sizeof *failures); i++) {
+        snprintf(repeated, sizeof repeated, "%s%s\n", graph, failures[i]);
+        tool_write(filename, repeated);
+        REQUIRE(run("studio-result", "--studio-graph-visibility") == 2);
+    }
+    return true;
+}
+
 TEST_CASE(exit_and_aggregate_deadlines)
 {
     REQUIRE(run("exit", "0") == 0);
@@ -270,6 +310,7 @@ void test_tool_test_policy()
     path(driver, "driver.py");
     path(logpath, "output.log");
     tool_write(driver, driver_source);
+    RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(exit_and_aggregate_deadlines);
     RUN_TEST_CASE(descendant_cleanup);
     RUN_TEST_CASE(portable_nested_cleanup_preserves_sibling);

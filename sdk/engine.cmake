@@ -6,7 +6,7 @@ add_library(Chibi::visibility_runtime ALIAS chibi_visibility_runtime)
 set_target_properties(chibi_visibility_runtime PROPERTIES EXPORT_NAME visibility_runtime)
 chibi_sdk_headers(chibi_visibility_runtime PUBLIC runtime/visibility.h runtime/visibility_definition.h)
 target_link_libraries(chibi_visibility_runtime PUBLIC chibi_entity_runtime chibi_native_types
-    chibi_native_capabilities PRIVATE chibi_physics_runtime chibi_support)
+    chibi_native_capabilities PRIVATE chibi_physics_runtime chibi_spatial_runtime chibi_support)
 list(APPEND CHIBI_SDK_TARGETS chibi_visibility_runtime)
 
 # Simulation consumes installed runtime services; display hosts inject rendering
@@ -25,7 +25,7 @@ foreach(header diagnostics/tracy.h diagnostics/web_trace.h support/cos_sin.h)
 endforeach()
 target_include_directories(chibi_engine PRIVATE "${engine_private}")
 target_link_libraries(chibi_engine PUBLIC chibi_behavior_runtime chibi_entity_runtime
-    chibi_native_types chibi_scheduling chibi_physics_runtime chibi_material_runtime
+    chibi_native_types chibi_scheduling chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime
     chibi_visibility_runtime chibi_particle_runtime chibi_audio_runtime chibi_ui_runtime chibi_save_runtime chibi_input_runtime
     PRIVATE chibi_task_pool_runtime chibi_spatial_runtime
     chibi_visual_motion_runtime chibi_execution chibi_support)

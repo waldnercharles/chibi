@@ -1,0 +1,32 @@
+name: Chibi merge policy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Chibi review signal]
+    types: [completed]
+  schedule:
+    - cron: "*/5 * * * *"
+
+permissions:
+  contents: write
+  actions: write
+  checks: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  policy:
+    uses: waldnercharles/chibi-studio/.github/workflows/chibi-merge-policy-reusable.yml@28655e2ed98ee2d3b6ad53e252f463a220f77e4c
+    with:
+      gate_ready: ${{ vars.CHIBI_REVIEW_GATE_READY == 'true' }}
+      post_merge_workflows: >-
+        [{"workflow":"ci.yml","ignore":["docs/**","**.md",".claude/**"]},{"workflow":"publish.yml","include":["src/**","include/**","sdk/**","cmake/**","third_party/**","content/**","tools/**","CMakeLists.txt","Makefile",".github/workflows/publish.yml"]}]
+    permissions:
+      contents: write
+      actions: write
+      checks: write
+      issues: write
+      pull-requests: write

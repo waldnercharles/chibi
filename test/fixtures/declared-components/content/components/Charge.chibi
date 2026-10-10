@@ -1,0 +1,12 @@
+// Stored energy that refills over time.
+component Charge {
+    level: float
+    // Charge gained per second.
+    rate: 0..10 charge/s
+    capacity: 0..100 charge
+    // Times the charge filled up.
+    cycles: int
+    full: bool
+    source: entity
+    drift: CF_V2
+}

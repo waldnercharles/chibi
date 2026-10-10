@@ -60,7 +60,8 @@ static void destroy_entities(game_prototype_preview *preview)
 {
     game_particles_clear(preview->live->runtime->particles);
     game_entities_reset(preview->live->runtime->entities);
-    for (int i = 0; i < acount(preview->entities); i++) {
+    /* Children go before their parents, whose destruction would take them. */
+    for (int i = acount(preview->entities) - 1; i >= 0; i--) {
         if (preview->entities[i].slot) {
             game_source_detach_entity(preview->live->runtime->sources, preview->entities[i]);
             ecs_world_destroy_entity(preview->world, preview->entities[i]);
@@ -292,8 +293,10 @@ int game_prototype_preview_start_scene(
 {
     assert(entity_count >= 0 && (entities || !entity_count));
     preview->live->runtime->deferred = true;
+    int base = acount(preview->entities);
     for (int i = 0; i < entity_count; i++) {
-        if (!entities[i].prototype || entities[i].behavior_count < 0 ||
+        if (!entities[i].prototype || entities[i].parent < -1 ||
+            entities[i].parent >= i || entities[i].behavior_count < 0 ||
             (entities[i].behavior_count && !entities[i].behaviors)) {
             snprintf(error, error_size, "scene fixture entity %d is invalid", i);
             preview->live->runtime->deferred = false;
@@ -329,6 +332,20 @@ int game_prototype_preview_start_scene(
         apush(preview->entities, entity);
         if (!preview->entity.slot) {
             preview->entity = entity;
+        }
+        int parent = entities[i].parent;
+        if (parent >= 0 && (ecs_world_record_add_pair(
+                                preview->world,
+                                entity,
+                                ECS_CHILD_OF,
+                                preview->entities[base + parent],
+                                0
+                            ) ||
+                            ecs_world_apply_commands(preview->world))) {
+            snprintf(error, error_size, "scene fixture entity %d could not join its parent", i);
+            preview->live->runtime->deferred = false;
+            clear_entity(preview);
+            return ECS_ERR_COMMAND;
         }
         if (entities[i].components && game_prototype_apply_components_value(
                                           preview->world,

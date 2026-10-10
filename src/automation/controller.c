@@ -1399,6 +1399,27 @@ static void catalog_member_add(catalog_asset *asset, const char *kind, const cha
     apush(asset->members, member);
 }
 
+/* Scene entities by path, their children nested under them. */
+static void catalog_scan_entities(catalog_asset *asset, yyjson_val *entities, const char *parent, int depth)
+{
+    size_t index, count;
+    yyjson_val *entity;
+    yyjson_arr_foreach(entities, index, count, entity)
+    {
+        const char *name = yyjson_is_obj(entity) ? request_string(entity, "name")
+                                                 : NULL;
+        if (!name || !name[0] || depth >= GAME_SCENE_DEPTH_MAX) {
+            continue;
+        }
+        size_t size = (parent ? strlen(parent) + 1 : 0) + strlen(name) + 1;
+        char *path = xmalloc(size);
+        snprintf(path, size, "%s%s%s", parent ? parent : "", parent ? "." : "", name);
+        catalog_member_add(asset, "entity", path);
+        catalog_scan_entities(asset, yyjson_obj_get(entity, "children"), path, depth + 1);
+        free(path);
+    }
+}
+
 static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
 {
     yyjson_val *graphs = yyjson_obj_get(root, "graphs");
@@ -1433,14 +1454,7 @@ static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
             catalog_member_add(asset, "component", name);
         }
     }
-    yyjson_val *entities = yyjson_obj_get(root, "entities");
-    yyjson_val *entity;
-    yyjson_arr_foreach(entities, index, count, entity)
-    {
-        if (yyjson_is_obj(entity)) {
-            catalog_member_add(asset, "entity", request_string(entity, "name"));
-        }
-    }
+    catalog_scan_entities(asset, yyjson_obj_get(root, "entities"), NULL, 0);
     if (acount(asset->members) > 1) {
         asort(asset->members, catalog_member_compare);
     }
@@ -1933,14 +1947,16 @@ static void catalog_add_content(
             game_scene_document *scene = game_scene_document_load(text, error, sizeof error);
             for (int i = 0; scene && i < acount(scene->entities); i++) {
                 const game_scene_entity *entity = &scene->entities[i];
+                char *path = game_scene_document_entity_path(scene, i);
                 reference_object object = {
-                    .name = entity->name,
+                    .name = path,
                     .prototype = entity->prototype,
                     .overrides = entity->components,
                     .behaviors = (const char *const *)entity->behaviors,
                     .behavior_count = acount(entity->behaviors),
                 };
                 reference_index_add_object(index, asset->reference, &object);
+                free(path);
             }
             if (scene) {
                 reference_index_add_page(index, asset->reference, scene->ui, page);
@@ -5858,6 +5874,80 @@ static int format_input_map(const char *root, bool check)
     return differing;
 }
 
+static int compare_names(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+/* Formats one content/components source, already validated by load_declared. */
+static int format_component(const char *root, const char *name, bool check)
+{
+    char relative[512];
+    snprintf(relative, sizeof relative, "content/components/%s", name);
+    char *path = content_path(root, relative);
+    char error[256];
+    char *text = read_file(path, NULL, NULL, error, sizeof error);
+    script_syntax *syntax = text ? script_parse(text) : NULL;
+    char *formatted = syntax ? authoring_source_format(syntax, error, sizeof error)
+                             : NULL;
+    script_syntax_free(syntax);
+    int differing = formatted ? strcmp(text, formatted) != 0 : -1;
+    if (!formatted) {
+        fprintf(stderr, "chibi_ctl --format: %s: %s\n", relative, error);
+    } else if (differing) {
+        fprintf(stderr, "%s %s\n", check ? "not canonical:" : "formatted", relative);
+        FILE *file = check ? NULL : fopen(path, "wb");
+        if (!check && (!file || fputs(formatted, file) < 0 || fclose(file))) {
+            fprintf(stderr, "chibi_ctl --format: could not write %s\n", relative);
+            differing = -1;
+        }
+    }
+    free(formatted);
+    free(text);
+    free(path);
+    return differing;
+}
+/* A regular file, not a link: formatting rewrites it in place. */
+static bool regular_file(const char *folder, const char *name)
+{
+    char *path = xmalloc(strlen(folder) + strlen(name) + 2);
+    sprintf(path, "%s/%s", folder, name);
+    struct stat info;
+    bool regular = !lstat(path, &info) && S_ISREG(info.st_mode);
+    free(path);
+    return regular;
+}
+static int format_components(const char *root, bool check)
+{
+    char *folder = content_path(root, "content/components");
+    DIR *dir = opendir(folder);
+    if (!dir) {
+        free(folder);
+        return 0;
+    }
+    char **names = NULL;
+    for (struct dirent *entry; (entry = readdir(dir));) {
+        size_t n = strlen(entry->d_name);
+        if (entry->d_name[0] != '.' && n > strlen(CODE_ASSET_EXTENSION) &&
+            !strcmp(entry->d_name + n - strlen(CODE_ASSET_EXTENSION), CODE_ASSET_EXTENSION) &&
+            regular_file(folder, entry->d_name)) {
+            apush(names, xstrdup(entry->d_name));
+        }
+    }
+    closedir(dir);
+    free(folder);
+    if (names) {
+        qsort(names, (size_t)acount(names), sizeof *names, compare_names);
+    }
+    int differing = 0;
+    for (int i = 0; i < acount(names); i++) {
+        int one = differing >= 0 ? format_component(root, names[i], check) : 0;
+        differing = one < 0 ? one : differing + one;
+        free(names[i]);
+    }
+    afree(names);
+    return differing;
+}
+
 int chibi_automation_format_assets(const char *root, bool check)
 {
     asset_entry *entries = NULL;
@@ -5936,6 +6026,10 @@ int chibi_automation_format_assets(const char *root, bool check)
     if (differing >= 0) {
         int map = format_input_map(root, check);
         differing = map < 0 ? map : differing + map;
+    }
+    if (differing >= 0) {
+        int components = format_components(root, check);
+        differing = components < 0 ? components : differing + components;
     }
     source_catalog_free(sources);
     authoring_language_catalog_free(native);
@@ -7596,6 +7690,7 @@ static int enter_scenario_scene(scenario_context *context, const char *json, cha
             context->scene_entities,
             ((game_prototype_preview_scene_entity){
                 .prototype = prototype,
+                .parent = entity->parent,
                 .components = entity->components,
                 .behaviors = (const char *const *)entity->behaviors,
                 .behavior_count = acount(entity->behaviors),
@@ -10041,12 +10136,9 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
         for (int i = 0; i < acount(context.scene->entities); i++) {
             ecs_entity authored = game_prototype_preview_entity_at(context.preview, i);
             if (ecs_entity_to_u64(authored) == ecs_entity_to_u64(entity)) {
-                yyjson_mut_obj_add_strcpy(
-                    result->doc,
-                    record,
-                    "name",
-                    context.scene->entities[i].name
-                );
+                char *path = game_scene_document_entity_path(context.scene, i);
+                yyjson_mut_obj_add_strcpy(result->doc, record, "name", path);
+                free(path);
                 yyjson_mut_obj_add_strcpy(
                     result->doc,
                     record,

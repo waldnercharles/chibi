@@ -1,5 +1,7 @@
 #include "language/semantic.h"
 
+#include "language/component.h"
+#include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
@@ -262,6 +264,120 @@ TEST_CASE(language_invalid_source_retains_bounded_diagnostics)
     return true;
 }
 
+static script_diagnostic *component_diagnostics;
+/* Reads the component `source` declares; diagnostics stay until the next read. */
+static script_component *read_component(const char *source)
+{
+    script_syntax_free(syntax);
+    afree(component_diagnostics);
+    syntax = script_parse(source);
+    return script_component_read(syntax, &catalog, &component_diagnostics);
+}
+static const script_diagnostic *component_diagnostic(const char *message)
+{
+    for (int i = 0; i < acount(component_diagnostics); i++) {
+        if (!strcmp(component_diagnostics[i].message, message)) {
+            return &component_diagnostics[i];
+        }
+    }
+    return NULL;
+}
+static const script_component_field *component_field(const script_component *c, const char *name)
+{
+    for (int i = 0; i < acount(c->fields); i++) {
+        if (!strcmp(c->fields[i].name, name)) {
+            return &c->fields[i];
+        }
+    }
+    return NULL;
+}
+static bool field_is(const script_component_field *f, const char *type, const char *unit, double min, double max)
+{
+    return f && !strcmp(f->type, type) &&
+           (unit ? f->unit && !strcmp(f->unit, unit) : !f->unit) &&
+           f->min == min && f->max == max;
+}
+TEST_CASE(language_component_declares_measured_fields)
+{
+    script_component *c = read_component(
+        "// Something fired.\n"
+        "// Twice described.\n"
+        "component Projectile {\n"
+        "    // How fast.\n"
+        "    speed: 0..600 u/s\n"
+        "    lifetime: s // not a description\n"
+        "    accel: u/s^2\n"
+        "\n"
+        "    // detached\n"
+        "\n"
+        "    friction: 0..1\n"
+        "    //\r\n"
+        "    // Turns.\r\n"
+        "    drift: -1.5..2 rad /* per */ / s\n"
+        "    rate: banana/basket; count: 0..12 banana\n"
+        "    level: float\n"
+        "    at: Position\n"
+        "}\n"
+    );
+    REQUIRE(c && !component_diagnostics && acount(c->fields) == 9);
+    REQUIRE(!strcmp(c->name, "Projectile"));
+    REQUIRE(!strcmp(c->description, "Something fired.\nTwice described."));
+    REQUIRE(field_is(component_field(c, "speed"), "number", "u/s", 0, 600));
+    REQUIRE(!strcmp(component_field(c, "speed")->description, "How fast."));
+    REQUIRE(field_is(component_field(c, "lifetime"), "number", "s", 0, 0));
+    REQUIRE(!component_field(c, "accel")->description);
+    REQUIRE(field_is(component_field(c, "accel"), "number", "u/s²", 0, 0));
+    REQUIRE(!component_field(c, "friction")->description);
+    REQUIRE(field_is(component_field(c, "friction"), "number", NULL, 0, 1));
+    REQUIRE(field_is(component_field(c, "drift"), "number", "rad/s", -1.5, 2));
+    REQUIRE(!strcmp(component_field(c, "drift")->description, "\nTurns."));
+    REQUIRE(field_is(component_field(c, "rate"), "number", "banana/basket", 0, 0));
+    REQUIRE(field_is(component_field(c, "count"), "number", "banana", 0, 12));
+    REQUIRE(field_is(component_field(c, "level"), "float", NULL, 0, 0));
+    REQUIRE(field_is(component_field(c, "at"), "Position", NULL, 0, 0));
+    script_component_free(c);
+    /* Unit names stay free names outside a field's type, and executable
+     * source cannot declare a component. */
+    parse("system S {\n    if true {\n        s := 2\n        u := s * 3\n        component := u\n    }\n}\n");
+    REQUIRE(analysis->valid);
+    parse("component C {\n    a: float\n}\n");
+    REQUIRE(diagnostic("Expected behavior, library or system"));
+    return true;
+}
+TEST_CASE(language_component_rejects_invalid_fields)
+{
+    REQUIRE(!read_component(
+        "component Bad {\n"
+        "    a: 1..0\n"
+        "    b: flaot\n"
+        "    c: u/s^4\n"
+        "    a: float\n"
+        "    d: float[]\n"
+        "    e: 0..1 float\n"
+        "}\n"
+    ));
+    REQUIRE(component_diagnostic("A range goes from a smaller finite number to a larger one"));
+    REQUIRE(component_diagnostic("Unknown type or unit 'flaot'")->range.line == 3);
+    REQUIRE(component_diagnostic("A unit's power is ^2 or ^3"));
+    REQUIRE(component_diagnostic("Field 'a' is declared twice"));
+    REQUIRE(component_diagnostic("A component field holds a number, a scalar or a struct"));
+    REQUIRE(component_diagnostic("'float' is a type, not a unit")->range.line == 7);
+    REQUIRE(acount(component_diagnostics) == 6);
+    REQUIRE(!read_component("component Empty {\n}\n"));
+    REQUIRE(component_diagnostic("A component declares at least one field"));
+    REQUIRE(!read_component("component \"Quoted\" {\n    a: float\n}\n"));
+    REQUIRE(acount(component_diagnostics) == 1);
+    REQUIRE(component_diagnostic("A component and its fields are named by identifiers"));
+    REQUIRE(!read_component("system S {\n}\n"));
+    REQUIRE(acount(component_diagnostics) == 1);
+    REQUIRE(component_diagnostic("A component source declares one component"));
+    /* A reserved word is not a field name; the syntax reports it once. */
+    REQUIRE(!read_component("component C {\n    state: float\n}\n"));
+    REQUIRE(acount(component_diagnostics) == syntax->diagnostic_count);
+    afree(component_diagnostics);
+    return true;
+}
+
 void test_language_semantic()
 {
     pu_setup(NULL, cleanup);
@@ -275,5 +391,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_binding_cycle_rejected);
     RUN_TEST_CASE(language_inferred_return_of_several_results_is_rejected);
     RUN_TEST_CASE(language_invalid_source_retains_bounded_diagnostics);
+    RUN_TEST_CASE(language_component_declares_measured_fields);
+    RUN_TEST_CASE(language_component_rejects_invalid_fields);
     pu_clear_setup();
 }

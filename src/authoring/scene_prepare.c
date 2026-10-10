@@ -31,6 +31,7 @@ game_scene *authoring_scene_prepare(
     }
     game_scene_object *records = xcalloc((size_t)count, sizeof *records);
     game_scene_component **components = xcalloc((size_t)count, sizeof *components);
+    int *parents = xcalloc((size_t)count, sizeof *parents);
     unsigned char tag = 1;
     for (int i = 0; i < count; i++) {
         assert(objects[i]);
@@ -43,6 +44,7 @@ game_scene *authoring_scene_prepare(
             );
         }
         apush(components[i], ((game_scene_component){ game_prototype_tag_desc(prototype), &tag }));
+        parents[i] = document->entities[i].parent;
         records[i] = (game_scene_object){
             .name = document->entities[i].name,
             .components = components[i],
@@ -58,12 +60,14 @@ game_scene *authoring_scene_prepare(
         .physics = document->physics,
         .objects = records,
         .object_count = count,
+        .parents = parents,
     };
     game_scene *scene = game_scene_prepare(&spec, error, size);
     for (int i = 0; i < count; i++) {
         afree(components[i]);
     }
     free(components);
+    free(parents);
     free(records);
     return scene;
 }

@@ -90,9 +90,11 @@ square holds the lookup, and compares against it with a 3x3 grid of hardware
   24-bit, then 16-bit, so four cascades take at most 64 MB. A soft sun adds
   a half-resolution map of each 2x2 block's nearest depth in half floats,
   at most 8 MB.
-- **Not covered**: blended surfaces, particles and trails cast nothing, and a
-  masked surface casts the shadow of its whole shape, since shadow passes
-  don't run materials.
+- **Masked casters**: shadow passes draw depth alone, except for Mask
+  materials, which run a shadow build of their program that discards the
+  pixels below their cutoff, so cut-out leaves cast cut-out shadows. A masked
+  solid outside the view keeps a material row for this.
+- **Not covered**: blended surfaces, particles and trails cast nothing.
   Cascade edges change resolution without a blend.
   A penumbra's radius stops at 128 texels of its cascade, and a caster
   thinner than the disc's tap spacing shades its penumbra unevenly.
@@ -119,7 +121,7 @@ lights cast can change as it moves.
   light's radius, into each face whose view they reach, including solids the
   camera culls. A solid whose box holds the light casts nothing for it, so a
   lamp's own bulb leaves it lit. Solids nearer the light than 1% of its radius
-  cast nothing.
+  cast nothing. Masked solids cast their cut-out, as for the sun.
 - **Bias**: each lookup lifts the surface point along its geometric normal by
   half a texel of its face at the point's distance, up to 2.5 texels for a
   surface edge on to the light or turned from the face's axis, since a face's
@@ -265,9 +267,10 @@ Mode decides how it draws. A Blend material whose Opacity is wired or below
 one is translucent: it draws after the solids, back to front, without writing
 depth, and casts nothing. An Opaque material ignores Opacity. A Mask material
 keeps a pixel whole where Opacity reaches the Alpha Cutoff and discards it
-below; it draws with the solids, writes depth and casts shadows. Lowering
-folds both modes into the material's Opacity, so the planar and 2D paths
-shade them unchanged, and the catalog keeps the mode to sort the draw.
+below; it draws with the solids, writes depth and casts shadows of the pixels
+it keeps. Lowering folds both modes into the material's Opacity, so the planar
+and 2D paths shade them unchanged, and the catalog keeps the mode to sort the
+draw and to cut its shadows.
 
 ## Optional material inputs
 
@@ -339,18 +342,22 @@ A box's Occlusion dims hemisphere ambient and sky light in proportion and
 leaves a sun's light as it was. At Opacity 0.3 over a purple sky, a Blend box
 mixes over it, Opaque and Mask boxes above their cutoff draw whole, and a Mask
 box below its cutoff leaves only the sky; only Blend counts as translucent.
-Opaque and Mask boxes shadow the floor, and a Blend box does not. It is a GPU check that runs the main build's
+Opaque and Mask boxes shadow the floor, and a Blend box does not. A box masked
+to one half shades the floor behind that half alone, from the sun, as the unit
+box mesh as well, and from a point light. So does a masked pillar outside the
+view, whose material row arrives through a later worker's buffer. It is a GPU
+check that runs the main build's
 `test/tools/test_tools` after the agent's device preflight, so build it first
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 65 cases and 25770 assertions in 11.5 seconds on 2026-10-10.
+Vulkan llvmpipe passed 67 cases and 29884 assertions in 12.7 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 65
-cases and 25770 assertions in 19.2 seconds on 2026-10-10.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 67
+cases and 29884 assertions in 12.0 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

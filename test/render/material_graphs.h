@@ -26,6 +26,9 @@ bool test_register_occlusion(const char *name, float occlusion);
 /* An unlit white material with constant `opacity` drawn by alpha `mode` with
  * `cutoff`. */
 bool test_register_alpha(const char *name, shader_alpha_mode mode, float opacity, float cutoff);
+/* A lit white material, masked at cutoff 0 by its object position's z, so
+ * it keeps the half of a solid at z >= 0 and cuts the rest. */
+bool test_register_half_mask(const char *name);
 /* A model graph of one sphere of `radius` at the origin. */
 bool test_register_model_sphere(const char *name, float radius);
 

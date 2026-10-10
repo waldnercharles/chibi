@@ -112,6 +112,8 @@ bool render_shader_model_bounds(
     shader_error *error
 );
 bool render_shader_may_be_transparent(int index);
+/* The Alpha Mode of loaded shader `index`. */
+shader_alpha_mode render_shader_alpha_mode(int index);
 bool render_shader_sample(
     int index,
     const shader_sample_context *sample,

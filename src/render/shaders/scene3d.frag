@@ -10,8 +10,12 @@ layout(location = 7) in vec3 v_part_frame1;
 layout(location = 8) in vec3 v_part_frame2;
 layout(location = 9) in vec4 v_tangent;
 #endif
-layout(location = 0) out vec4 result;
+// SCENE3D_SHADOW builds the program that draws a masked material into shadow
+// maps: it writes only depth, where the material keeps its pixels, so it reads
+// none of the lit pass's maps or outputs.
 layout(set = 2, binding = 0) uniform sampler2D scene_parameters;
+#ifndef SCENE3D_SHADOW
+layout(location = 0) out vec4 result;
 layout(set = 2, binding = SG_SHADOW_BINDING) uniform sampler2DShadow scene_shadow_map;
 layout(set = 2, binding = SG_SHADOW_BLOCKERS_BINDING) uniform sampler2D scene_shadow_blockers;
 layout(set = 2, binding = SG_LIGHT_SHADOW_BINDING) uniform sampler2DShadow scene_light_shadow_map;
@@ -24,6 +28,7 @@ layout(set = 3, binding = 1) uniform shd_uniforms {
     vec4 scene_sky_light;
     vec4 scene_sky_irradiance[9];
 };
+#endif
 const float PI = 3.141592653589793;
 // Taps per blocker search and per soft filter, and the widest radius of each,
 // in texels of the cascade; scene3d_shadow.c widens cascades by that radius.
@@ -94,6 +99,7 @@ void mesh_uv_frame(vec3 normal, inout vec3 uv_from_world[2])
 }
 #endif
 
+#ifndef SCENE3D_SHADOW
 // GGX distribution, height-correlated Smith visibility, Schlick Fresnel.
 // Reference: https://google.github.io/filament/main/filament.html#materialsystem/standardmodelsummary
 vec3 surface_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 view, vec3 light)
@@ -384,18 +390,21 @@ vec4 graphic_particle(vec2 p, int shape, float age, vec4 tint, vec3 emission)
     body = mix(body, vec3(1.0, 0.98, 0.88), core * (0.86 - age * 0.3));
     return vec4(body + emission * (0.45 + core * 0.65), tint.a * coverage);
 }
+#endif
 
 void main()
 {
     vec4 inverse_x = material_value(34), inverse_y = material_value(35), inverse_z = material_value(36);
     vec4 world = vec4(v_world, 1.0);
     vec3 local = vec3(dot(inverse_x, world), dot(inverse_y, world), dot(inverse_z, world));
+#ifndef SCENE3D_SHADOW
     if (v_material.w > 0.0) {
         result = graphic_particle(local.xy * 2.0 / material_value(37).xy,
             int(v_material.w) - 1, material_value(2).x, material_value(0), material_value(1).rgb);
         if (result.a <= 0.0) discard;
         return;
     }
+#endif
     vec3 normal = safe_normal(v_normal, vec3(0, 1, 0));
     vec3 view = safe_normal(scene_camera_time.xyz - v_world, normal);
     SGSample sg_context;
@@ -456,6 +465,7 @@ void main()
         occlusion = clamp(surface[8].x, 0.0, 1.0);
     }
     if (isnan(opacity) || opacity <= 0.0) discard;
+#ifndef SCENE3D_SHADOW
     vec3 color = (unlit ? base : direct_light(base, roughness, metallic, occlusion, normal, view)) + emission;
     // Keep the scene-linear result within RGBA16F storage. A graph can produce
     // a larger value without turning subsequent bloom taps into infinity.
@@ -463,4 +473,5 @@ void main()
     if (isnan(color.g)) color.g = 0.0;
     if (isnan(color.b)) color.b = 0.0;
     result = vec4(clamp(color, vec3(0), vec3(65504)), opacity);
+#endif
 }

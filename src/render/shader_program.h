@@ -10,6 +10,9 @@ typedef enum
 {
     RENDER_PROGRAM_SCENE3D,
     RENDER_PROGRAM_SCENE3D_MESH, /* The lit pass for imported meshes. */
+    /* Masked materials in shadow passes, writing depth where they keep pixels. */
+    RENDER_PROGRAM_SCENE3D_SHADOW,
+    RENDER_PROGRAM_SCENE3D_MESH_SHADOW,
     RENDER_PROGRAM_FRAGMENT,
     RENDER_PROGRAM_RASTER,
     RENDER_PROGRAM_RASTER_ACCUMULATE,

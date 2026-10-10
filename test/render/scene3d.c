@@ -2672,6 +2672,81 @@ TEST_CASE(opaque_and_masked_surfaces_cast_shadows)
     }
     return true;
 }
+
+/* A box masked to its half at z >= 0 shades the floor behind that half alone,
+ * from the sun, as the unit box mesh too, and from a point light. */
+TEST_CASE(masked_surfaces_cast_cut_out_shadows)
+{
+    REQUIRE(test_register_half_mask("Half"));
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    ecs_entity box = add_surface_box("Half");
+    GAME_GameGeometry3D_get(world, box)->elevation = 1;
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->shadows = true;
+    GameEnvironment environment = unlit_environment();
+    CF_V3 cut = { shaded.x, 0, -shaded.z };
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(pixel_at(shaded).colors.g == 0 && pixel_at(cut).colors.g > 60);
+    static CF_Pixel shape[PIXELS];
+    memcpy(shape, pixels, sizeof pixels);
+    render_mesh_asset mesh = box_mesh();
+    publish_mesh(&mesh);
+    import_mesh(box);
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(matches(shape));
+    sun->intensity = 0;
+    ecs_entity lamp = add_lamp((CF_V3){ -3, 4, 0 }, 2, 20);
+    REQUIRE(render(&environment));
+    CF_Pixel open = pixel_at(cut);
+    GAME_GamePointLight_get(world, lamp)->shadows = true;
+    REQUIRE(render(&environment));
+    REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 1);
+    REQUIRE(open.colors.g > 30 && distance(pixel_at(cut), open) <= 3);
+    REQUIRE(pixel_at(shaded).colors.g == 0);
+    return true;
+}
+
+/* A masked pillar outside the view casts only its kept half into it. Crowds
+ * far away split collection across workers where the host has them: the
+ * pillar's material row arrives through a later buffer than the floor's, and
+ * a red box's through a later buffer than the pillar's. */
+TEST_CASE(masked_solids_outside_the_view_cut_their_shadows)
+{
+    REQUIRE(test_register_half_mask("Half"));
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    for (int i = 0; i < 600; i++) {
+        add_solid_at(60, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1, 1 }, 0xffffffffu);
+    }
+    /* Beyond the left edge of the view and spanning z = -2 to 0, it keeps
+     * z = -1 to 0, which shades the floor there up to x = 1. */
+    ecs_entity pillar = add_solid(
+        (CF_V3){ -8, 4, -1 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 8 },
+        0xffffffffu
+    );
+    GameShader binding = { .material = "Half" };
+    assert(
+        ecs_world_record_add(world, pillar, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    for (int i = 0; i < 600; i++) {
+        add_solid_at(60, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1, 1 }, 0xffffffffu);
+    }
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1, .5f }, 0xff0000ffu);
+    add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 })->shadows = true;
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    CF_V3 kept = { -1.6f, 0, -.5f }, cut = { -1.6f, 0, -1.5f },
+          open = { -1.6f, 0, .5f };
+    REQUIRE(pixel_at(kept).colors.g == 0);
+    REQUIRE(pixel_at(cut).colors.g > 60 && pixel_at(open).colors.g > 60);
+    CF_Pixel red = pixel_at((CF_V3){ 0, 1, 0 });
+    REQUIRE(red.colors.r > 60 && red.colors.g == 0);
+    return true;
+}
 #endif
 
 void test_render_scene3d(bool gles)
@@ -2756,6 +2831,8 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(occlusion_dims_only_ambient_light);
     RUN_TEST_CASE(alpha_modes_decide_how_opacity_draws);
     RUN_TEST_CASE(opaque_and_masked_surfaces_cast_shadows);
+    RUN_TEST_CASE(masked_surfaces_cast_cut_out_shadows);
+    RUN_TEST_CASE(masked_solids_outside_the_view_cut_their_shadows);
 #endif
     pu_clear_setup();
     cf_destroy_app();

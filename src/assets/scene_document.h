@@ -77,6 +77,28 @@ int game_scene_document_set_entity_components(game_scene_document *document, int
  * color and enum formatting. Unknown components retain their authored values;
  * an empty catalog preserves all component values without reflected formatting.
  * Returned values/text own their storage and outlive the catalog/document. */
+/* The document's roots with their children nested, as an array in doc. */
+av_value *game_scene_document_entities_value(
+    av_doc *doc,
+    const game_scene_document *document,
+    ecs_component_catalog components
+);
+/* Appends the entities of a nested array value, each with its children, as
+ * roots. */
+int game_scene_document_read_entities(
+    game_scene_document *document,
+    av_value *entities,
+    char *error,
+    size_t error_size
+);
+/* Moves every entity of `from` into `document`, its roots staying roots,
+ * unless a root's name is taken there. */
+int game_scene_document_take_entities(
+    game_scene_document *document,
+    game_scene_document *from,
+    char *error,
+    size_t error_size
+);
 av_value *game_scene_document_to_value(const game_scene_document *document, ecs_component_catalog components);
 game_scene_document *game_scene_document_load_value(av_value *value, char *error, size_t error_size);
 char *game_scene_document_save(const game_scene_document *document, ecs_component_catalog components);

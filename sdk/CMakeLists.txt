@@ -443,7 +443,7 @@ if(CHIBI_SDK_BUILD_COMPILER)
     add_library(Chibi::prototype_document ALIAS chibi_prototype_document)
     set_target_properties(chibi_prototype_document PROPERTIES EXPORT_NAME prototype_document)
     chibi_sdk_headers(chibi_prototype_document PUBLIC assets/prototype.h)
-    target_link_libraries(chibi_prototype_document PUBLIC chibi_ecs chibi_asset_values
+    target_link_libraries(chibi_prototype_document PUBLIC chibi_ecs chibi_asset_values chibi_scene_document
         PRIVATE chibi_asset_text)
     list(APPEND CHIBI_SDK_TARGETS chibi_prototype_document)
     add_library(chibi_scene_document STATIC "${CHIBI_SDK_ROOT}/src/assets/scene_document.c"

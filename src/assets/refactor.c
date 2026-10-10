@@ -119,7 +119,9 @@ static bool read_asset(
             snprintf(why, size, "Executable source uses canonical source refactoring");
             return false;
         case REFERENCE_ASSET_PROTOTYPE:
-            l->prototype = game_prototype_load(text, project->registry, why, size);
+            /* As written: renames edit its own content, and the prototypes it
+             * names may be renamed in the same plan. */
+            l->prototype = game_prototype_load_authored(text, project->registry, why, size);
             return l->prototype != NULL;
         case REFERENCE_ASSET_SCENE:
             l->scene = game_scene_document_load(text, why, size);
@@ -470,20 +472,6 @@ static bool rename_prototype_field(
     return ok;
 }
 
-static bool rename_prototype(work *w, loaded *l, const reference *r, const char *from, const char *to, int expected)
-{
-    game_prototype *prototype = l->prototype;
-    if (r->role != REFERENCE_ATTACH) {
-        return r->component
-                 ? rename_prototype_field(w, prototype, r, from, to, expected)
-                 : fail(w, "cannot rename a reference in %s", prototype->name);
-    }
-    return swappable(w, prototype->graphs, from, to) &&
-           ((game_prototype_remove_graph(prototype, from) == 0 &&
-             game_prototype_add_graph(prototype, to) == 0) ||
-            fail(w, "could not attach %s to %s", to, prototype->name));
-}
-
 /* An override's components: the object itself, or its components. */
 static av_value *override_components(av_value *root)
 {
@@ -545,12 +533,17 @@ static bool rename_page(work *w, loaded *l, const reference *r, const char *from
     return renamed_count(w, r, named, expected);
 }
 
-static bool rename_object(work *w, loaded *l, const reference *r, const char *from, const char *to, int expected)
+/* A scene's object, or a prototype's child, by its path. */
+static bool rename_entity(
+    work *w,
+    loaded *l,
+    game_scene_document *scene,
+    const reference *r,
+    const char *from,
+    const char *to,
+    int expected
+)
 {
-    if (!r->object) {
-        return rename_page(w, l, r, from, to, expected);
-    }
-    game_scene_document *scene = l->scene;
     int entity = game_scene_document_entity_index(scene, r->object);
     if (entity < 0) {
         return fail(w, "%s has no object %s", asset_name(w, l->asset), r->object);
@@ -577,6 +570,29 @@ static bool rename_object(work *w, loaded *l, const reference *r, const char *fr
               0;
     afree(names);
     return ok || fail(w, "could not attach %s to %s", to, r->object);
+}
+
+static bool rename_prototype(work *w, loaded *l, const reference *r, const char *from, const char *to, int expected)
+{
+    game_prototype *prototype = l->prototype;
+    if (r->object) {
+        return rename_entity(w, l, prototype->children, r, from, to, expected);
+    }
+    if (r->role != REFERENCE_ATTACH) {
+        return r->component
+                 ? rename_prototype_field(w, prototype, r, from, to, expected)
+                 : fail(w, "cannot rename a reference in %s", prototype->name);
+    }
+    return swappable(w, prototype->graphs, from, to) &&
+           ((game_prototype_remove_graph(prototype, from) == 0 &&
+             game_prototype_add_graph(prototype, to) == 0) ||
+            fail(w, "could not attach %s to %s", to, prototype->name));
+}
+
+static bool rename_object(work *w, loaded *l, const reference *r, const char *from, const char *to, int expected)
+{
+    return r->object ? rename_entity(w, l, l->scene, r, from, to, expected)
+                     : rename_page(w, l, r, from, to, expected);
 }
 
 /* Widget names, or events a ui document sends. */

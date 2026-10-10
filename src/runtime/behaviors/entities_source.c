@@ -15,14 +15,24 @@ struct game_source_entities
     bool defer_begin;
 };
 
+/* Destroying an entity destroys its children too, so their behaviors stop
+ * with its own rather than when the registry next reaps them. */
+static void detach_tree(game_source_registry *sources, ecs_world *world, ecs_entity entity)
+{
+    game_source_detach_entity(sources, entity);
+    for (int i = 0; i < ecs_pair_source_count(world, ECS_CHILD_OF, entity); i++) {
+        detach_tree(sources, world, ecs_pair_source(world, ECS_CHILD_OF, entity, i));
+    }
+}
 static int destroy(void *context, const ecs_entity *entities, int count)
 {
     game_source_entities *host = context;
     ecs_world *world = game_source_world(host->sources);
-    for (int i = 0; i < count; i++) {
-        game_source_detach_entity(host->sources, entities[i]);
-    }
+    /* Pending reparenting decides which children go with them. */
     int status = ecs_world_apply_commands(world);
+    for (int i = 0; !status && i < count; i++) {
+        detach_tree(host->sources, world, entities[i]);
+    }
     for (int i = 0; !status && i < count; i++) {
         if (ecs_entity_is_alive(world, entities[i]) &&
             !ecs_entity_is_retiring(world, entities[i])) {

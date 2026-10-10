@@ -40,6 +40,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameBody)
     bool continuous;
     float angular_velocity NODE_UNIT("rad/s"); /* Kinematic radians/second; requires Orientation. */
     bool allow_rotation;
+    /* A dynamic body's mass, 1 kg per square meter of its collider and the
+     * solid colliders it carries; physics writes it after each step. */
+    float mass NODE_UNIT("kg");
 }
 GameBody;
 
@@ -1341,12 +1344,14 @@ GameCollider3D;
 
 /* World-space velocities: linear in units/second, angular in radians/second.
  * Kinematic bodies move at them. Dynamic bodies start from them, and physics
- * writes the solved values back each step. */
+ * writes the solved values back each step, with the body's mass: 1000 kg per
+ * cubic meter of its collider and the solid colliders it carries. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameBody3D)
 {
     GameBodyType type;
     CF_V3 linear_velocity;
     CF_V3 angular_velocity;
+    float mass NODE_UNIT("kg");
 }
 GameBody3D;
 
@@ -1366,7 +1371,8 @@ GameGravity3D;
  * says whether it ended the step on a surface within 45 degrees of up, against
  * gravity, and floor_normal is that surface's normal. Physics writes both. It
  * stops at dynamic bodies and other characters as at walls, does not ride
- * moving platforms, and carries only sensor colliders under it. */
+ * moving platforms, and carries only sensor colliders under it. It turns by
+ * its Transform3D; physics keeps its Body3D angular velocity at zero. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameCharacter3D)
 {
     bool on_floor;

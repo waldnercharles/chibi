@@ -4,6 +4,7 @@
 #include "execution/status.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/component_catalog.h"
+#include "runtime/events.h"
 #include "runtime/materials.h"
 #include "runtime/task_pool.h"
 #include "runtime/transform_propagation.h"
@@ -80,6 +81,14 @@ typedef struct
     b2Vec2 force;
 } drive_force;
 
+/* An impulse or force for a dynamic body's next advancing step. */
+typedef struct
+{
+    ecs_entity entity;
+    b2Vec2 amount;
+    bool impulse;
+} push;
+
 struct game_physics
 {
     ecs_world *world;
@@ -93,6 +102,7 @@ struct game_physics
     b2ContactData *contacts;
     unsigned *visited;
     drive_force *forces;
+    push *pushes;
     fluid_body *fluid_bodies;
     fluid_obstacle *fluid_obstacles;
     b2BodyId *fluid_ids;
@@ -312,6 +322,7 @@ void game_physics_free(game_physics *physics)
     afree(physics->contacts);
     afree(physics->visited);
     afree(physics->forces);
+    afree(physics->pushes);
     afree(physics->fluid_bodies);
     afree(physics->fluid_obstacles);
     afree(physics->fluid_ids);
@@ -336,6 +347,7 @@ void game_physics_reset(game_physics *physics)
     physics->active_workers = 1;
     aclear(physics->previous);
     aclear(physics->current);
+    aclear(physics->pushes);
     physics->error[0] = 0;
     create_world(physics);
 }
@@ -1739,19 +1751,30 @@ static int compare_pairs(const void *left, const void *right)
     return (a->second > b->second) - (a->second < b->second);
 }
 
-static int queue_contact(game_physics *physics, uint64_t target, uint64_t other, b2Vec2 point)
+/* Contact Begin or Contact End to both entities of pair; only Begin carries
+ * the point. */
+static int queue_contact(game_physics *physics, game_host_event event, contact_pair pair)
 {
-    CF_V2 position = { point.x, point.y };
-    pin_value values[] = {
-        { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = other },
-        { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &position },
-    };
-    return game_entities_request_event(
-        physics->entities,
-        ecs_entity_from_u64(target),
-        "Contact Begin",
-        (execution_arguments){ .values = values, .count = 2 }
-    );
+    const uint64_t targets[] = { pair.first, pair.second };
+    CF_V2 position = { pair.point.x, pair.point.y };
+    int result = FLOW_OK;
+    for (int i = 0; i < 2; i++) {
+        pin_value values[] = {
+            { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = targets[1 - i] },
+            { .type = PIN_STRUCT, .type_name = "CF_V2", .ptr = &position },
+        };
+        int queued = game_entities_request_event(
+            physics->entities,
+            ecs_entity_from_u64(targets[i]),
+            game_host_event_name(event),
+            (execution_arguments){ .values = values,
+                                   .count = event == GAME_HOST_EVENT_CONTACT_BEGIN ? 2 : 1 }
+        );
+        if (queued < 0 && result == FLOW_OK) {
+            result = queued;
+        }
+    }
+    return result;
 }
 
 static void sort_pairs(game_physics *physics)
@@ -1809,6 +1832,8 @@ static int compare_hit_times(const void *left, const void *right)
     return compare_pairs(left, right);
 }
 
+/* Queues Contact End for the previous step's pairs that stopped touching,
+ * then Contact Begin for this step's new pairs in travel order. */
 static int dispatch_pairs(game_physics *physics)
 {
     CHIBI_TRACE_ZONE_BEGIN(sort_zone, "Physics sort pairs");
@@ -1817,25 +1842,35 @@ static int dispatch_pairs(game_physics *physics)
     }
     CHIBI_TRACE_ZONE_END(sort_zone);
     CHIBI_TRACE_ZONE_BEGIN(diff_zone, "Physics diff contacts");
-    int count = 0, previous = 0, result = FLOW_OK;
-    aclear(physics->begun);
+    int count = 0, result = FLOW_OK;
     for (int i = 0; i < acount(physics->current); i++) {
-        contact_pair pair = physics->current[i];
-        if (count && !compare_pairs(&pair, &physics->current[count - 1])) {
-            continue;
+        if (!count ||
+            compare_pairs(&physics->current[i], &physics->current[count - 1])) {
+            physics->current[count++] = physics->current[i];
         }
-        physics->current[count++] = pair;
-        /* Both frames are sorted. Advance through the old frame once rather
-         * than searching it separately for every persistent contact. */
-        while (previous < acount(physics->previous) &&
-               compare_pairs(&physics->previous[previous], &pair) < 0) {
-            previous++;
+    }
+    asetlen(physics->current, count);
+    /* Both frames are sorted. Advance through the other frame once rather
+     * than searching it separately for every pair. */
+    const contact_pair *before = physics->previous, *after = physics->current;
+    int before_count = acount(before);
+    for (int i = 0, j = 0; i < before_count; i++) {
+        while (j < count && compare_pairs(&after[j], &before[i]) < 0) {
+            j++;
         }
-        if (previous < acount(physics->previous) &&
-            !compare_pairs(&physics->previous[previous], &pair)) {
-            continue;
+        if (j == count || compare_pairs(&after[j], &before[i])) {
+            int queued = queue_contact(physics, GAME_HOST_EVENT_CONTACT_END, before[i]);
+            result = result == FLOW_OK ? queued : result;
         }
-        apush(physics->begun, pair);
+    }
+    aclear(physics->begun);
+    for (int i = 0, j = 0; i < count; i++) {
+        while (j < before_count && compare_pairs(&before[j], &after[i]) < 0) {
+            j++;
+        }
+        if (j == before_count || compare_pairs(&before[j], &after[i])) {
+            apush(physics->begun, after[i]);
+        }
     }
     /* Deliver swept impacts in travel order so a later blocking hit cannot
      * retire the projectile before earlier debris contacts carve their hulls. */
@@ -1843,14 +1878,13 @@ static int dispatch_pairs(game_physics *physics)
         asort(physics->begun, compare_hit_times);
     }
     for (int i = 0; i < acount(physics->begun); i++) {
-        contact_pair pair = physics->begun[i];
-        int first = queue_contact(physics, pair.first, pair.second, pair.point),
-            second = queue_contact(physics, pair.second, pair.first, pair.point);
-        if (first < 0 || second < 0) {
-            result = first < 0 ? first : second;
-        }
+        int queued = queue_contact(
+            physics,
+            GAME_HOST_EVENT_CONTACT_BEGIN,
+            physics->begun[i]
+        );
+        result = result == FLOW_OK ? queued : result;
     }
-    asetlen(physics->current, count);
     contact_pair *old = physics->previous;
     physics->previous = physics->current;
     physics->current = old;
@@ -2025,6 +2059,52 @@ static void solve_fluid(game_physics *physics, float delta, double *start)
     profile_phase(physics, start, &physics->profile.fluid_impulse_ms);
 }
 
+static int queue_push(game_physics *physics, ecs_entity entity, CF_V2 amount, bool impulse)
+{
+    const GameBody *body = ecs_entity_is_alive(physics->world, entity)
+                             ? GAME_GameBody_get_const(physics->world, entity)
+                             : NULL;
+    if (!body || body->type != GAME_BODY_DYNAMIC || !isfinite(amount.x + amount.y)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    apush(physics->pushes, ((push){ entity, { amount.x, amount.y }, impulse }));
+    return FLOW_OK;
+}
+
+int game_physics_apply_impulse(game_physics *physics, ecs_entity entity, CF_V2 impulse)
+{
+    return queue_push(physics, entity, impulse, true);
+}
+
+int game_physics_apply_force(game_physics *physics, ecs_entity entity, CF_V2 force)
+{
+    return queue_push(physics, entity, force, false);
+}
+
+/* Applies the queued pushes to the dynamic bodies they still name. */
+static void apply_pushes(game_physics *physics)
+{
+    for (int i = 0; i < acount(physics->pushes); i++) {
+        push queued = physics->pushes[i];
+        unsigned slot = queued.entity.slot;
+        const physics_body *body = slot < (unsigned)acount(physics->bodies)
+                                     ? &physics->bodies[slot]
+                                     : NULL;
+        if (!body ||
+            ecs_entity_to_u64(body->entity) != ecs_entity_to_u64(queued.entity) ||
+            !body->body.index1 || body->follower ||
+            body->settings.type != GAME_BODY_DYNAMIC) {
+            continue;
+        }
+        if (queued.impulse) {
+            b2Body_ApplyLinearImpulseToCenter(body->body, queued.amount, true);
+            continue;
+        }
+        b2Body_ApplyForceToCenter(body->body, queued.amount, true);
+    }
+    aclear(physics->pushes);
+}
+
 int game_physics_tick(game_physics *physics, float delta_seconds)
 {
     physics->error[0] = 0;
@@ -2054,6 +2134,9 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
     profile_phase(physics, &start, &physics->profile.synchronize_ms);
     if (result < 0) {
         return result;
+    }
+    if (delta_seconds > 0) {
+        apply_pushes(physics);
     }
     bool parallel = physics->body_count >= PARALLEL_BODY_MINIMUM;
     if (physics->pool) {
@@ -2146,6 +2229,9 @@ int game_physics_tick(game_physics *physics, float delta_seconds)
         if (velocity) {
             b2Vec2 solved = b2Body_GetLinearVelocity(body->body);
             *velocity = (GameVelocity){ solved.x, solved.y };
+        }
+        if (body->settings.type == GAME_BODY_DYNAMIC) {
+            GAME_GameBody_get(physics->world, body->entity)->mass = b2Body_GetMass(body->body);
         }
     }
     CHIBI_TRACE_ZONE_END(writeback_zone);

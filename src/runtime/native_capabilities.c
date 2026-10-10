@@ -135,6 +135,11 @@ static bool add_type(
     for (int i = 0; i < source->field_count; ++i) {
         fields[i] = source->fields[i];
         fields[i].name = own(n, fields[i].name);
+        /* Reflected declarations leave units to the target layout. */
+        fields[i].unit = own(
+            n,
+            layout && !fields[i].unit ? layout->fields[i].unit : fields[i].unit
+        );
     }
     copy.fields = fields;
     apush(n->types, copy);
@@ -234,6 +239,7 @@ static bool add_global(native_capabilities *n, const script_catalog_global *sour
     }
     script_catalog_global copy = *source;
     copy.name = own(n, source->name);
+    copy.unit = own(n, source->unit);
     apush(n->declarations, copy);
     return true;
 }

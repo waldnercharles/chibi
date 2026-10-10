@@ -198,7 +198,8 @@ static bool build(declared_components *c, int index, const declared_component *i
                                                    .name = field.name,
                                                    .type = type,
                                                    .offset = field.offset,
-                                                   .writable = true };
+                                                   .writable = true,
+                                                   .unit = field.unit };
     }
     type_desc *type = &c->types[index];
     *type = (type_desc){ .name = name,

@@ -84,6 +84,7 @@ jobs:
   native-macos:
     name: Engine build and native tests (macOS)
     runs-on: macos-15
+    timeout-minutes: 30
     env:
       XDG_RUNTIME_DIR: /tmp/chibi-runtime
     steps:
@@ -102,17 +103,28 @@ jobs:
       - name: Identify dependency sources
         id: deps
         run: echo "key=$(python3 tools/fetchcontent_cache.py fingerprint --source-dir .)" >> "$GITHUB_OUTPUT"
-      - name: Cache dependencies
-        uses: actions/cache@v4
+      # Only main saves the caches; pull requests restore them.
+      - name: Restore dependencies
+        id: dependency-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cache/chibi-fetchcontent
             ~/.cache/chibi-dependency-packages
           key: native-deps-${{ runner.os }}-${{ runner.arch }}-${{ steps.deps.outputs.key }}
+          restore-keys: native-deps-${{ runner.os }}-${{ runner.arch }}-
       - name: Build chibi_ctl and the test drivers (ASan and UBSan)
         run: make test-build LIBCLANG_ROOT="$LLVM"
       - name: Build chibi, chibi-compile and chibi-player
         run: make build LIBCLANG_ROOT="$LLVM"
+      - name: Save dependencies
+        if: steps.dependency-cache.outputs.cache-hit != 'true' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cache/chibi-fetchcontent
+            ~/.cache/chibi-dependency-packages
+          key: ${{ steps.dependency-cache.outputs.cache-primary-key }}
       # After make build, whose build/reflect the reflection identity cases run.
       - name: Tooling and process integrations (one 60-second deadline)
         run: make test-tools TOOLS_C_COMPILER="$CC"
@@ -124,6 +136,7 @@ jobs:
   windows:
     name: Engine build and compile smoke test (Windows)
     runs-on: windows-2022
+    timeout-minutes: 45
     # The Windows port is new; keep this row advisory until it has passed once.
     continue-on-error: true
     steps:
@@ -158,6 +171,7 @@ jobs:
       github.event_name != 'pull_request' ||
       (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: windows-2022
+    timeout-minutes: 45
     # Studio on Windows is new; keep this row advisory until it has passed once.
     continue-on-error: true
     steps:

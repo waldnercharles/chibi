@@ -29,9 +29,11 @@ render_scene3d_camera render_scene3d_camera_frame(const engine_viewport_camera *
         lens.forward = cf_neg_v3(camera_direction());
         lens.up = (CF_V3){ 0, 1, 0 };
     }
-    /* Default clips keep one depth ratio around the framing distance, which
-     * has a floor so close framings keep near in front of far. */
+    /* Default clips scale with the framing distance, floored at 10 so close
+     * framings still see 200 ahead. Near stays in front of the framed target,
+     * and far within the widest ratio a camera may author. */
     float reach = fmaxf(distance, 10);
+    float closest = fminf(reach * 0.001f, distance * 0.5f);
     return (render_scene3d_camera){
         /* Turning at the origin keeps a short forward from vanishing into a
          * distant eye's rounding. */
@@ -42,8 +44,8 @@ render_scene3d_camera render_scene3d_camera_frame(const engine_viewport_camera *
         .projection = cf_perspective(
             fov,
             frame->span_width / frame->span_height,
-            clipped ? lens.near_clip : reach * 0.001f,
-            clipped ? lens.far_clip : reach * 20
+            clipped ? lens.near_clip : closest,
+            clipped ? lens.far_clip : fminf(reach * 20, closest * ENGINE_VIEWPORT_CLIP_RATIO_MAX)
         )
     };
 }

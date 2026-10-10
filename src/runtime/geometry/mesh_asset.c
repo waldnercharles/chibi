@@ -55,12 +55,55 @@ static CF_V3 perpendicular(CF_V3 normal)
     return cf_norm_v3(cf_cross_v3(normal, axis));
 }
 
+/* Tangents are summed in double, where the products of edges anywhere in
+ * float's range neither overflow nor underflow. */
+typedef struct
+{
+    double x, y, z;
+} wide_v3;
+
+/* The texture directions summed at one vertex, and the surface behind them. */
+typedef struct
+{
+    wide_v3 side, up;
+    double weight;
+} texture_frame;
+
+static wide_v3 widen(CF_V3 v)
+{
+    return (wide_v3){ v.x, v.y, v.z };
+}
+
+/* a * s + b * t */
+static wide_v3 combine(wide_v3 a, double s, wide_v3 b, double t)
+{
+    return (wide_v3){ a.x * s + b.x * t, a.y * s + b.y * t, a.z * s + b.z * t };
+}
+
+static wide_v3 cross(wide_v3 a, wide_v3 b)
+{
+    return (wide_v3){ a.y * b.z - a.z * b.y,
+                      a.z * b.x - a.x * b.z,
+                      a.x * b.y - a.y * b.x };
+}
+
+static double dot(wide_v3 a, wide_v3 b)
+{
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+/* `sum` plus `v` resized to `length`, or `sum` when `v` has no direction. */
+static wide_v3 add_resized(wide_v3 sum, wide_v3 v, double length)
+{
+    double size = sqrt(dot(v, v));
+    return size == 0 ? sum : combine(sum, 1, v, length / size);
+}
+
 void render_mesh_asset_tangents(render_mesh_asset *asset)
 {
     int count = acount(asset->vertices);
     assert(acount(asset->indices) % 3 == 0);
-    CF_V3 *sides = xcalloc((size_t)count * 2, sizeof *sides);
-    CF_V3 *ups = sides + count;
+    texture_frame *frames = xcalloc((size_t)count, sizeof *frames);
     for (int i = 0; i < acount(asset->indices); i += 3) {
         const int *corner = asset->indices + i;
         for (int j = 0; j < 3; j++) {
@@ -69,38 +112,46 @@ void render_mesh_asset_tangents(render_mesh_asset *asset)
         const render_mesh_surface_vertex *a = &asset->vertices[corner[0]],
                                          *b = &asset->vertices[corner[1]],
                                          *c = &asset->vertices[corner[2]];
-        CF_V3 ab = cf_sub_v3(b->position, a->position),
-              ac = cf_sub_v3(c->position, a->position);
-        CF_V2 st = cf_sub_v2(b->uv, a->uv), su = cf_sub_v2(c->uv, a->uv);
-        float area = st.x * su.y - su.x * st.y;
-        if (!isfinite(area) || fabsf(area) < 1e-20f) {
+        wide_v3 ab = combine(widen(b->position), 1, widen(a->position), -1),
+                ac = combine(widen(c->position), 1, widen(a->position), -1);
+        /* Texture offsets along ab and ac. */
+        double u1 = (double)b->uv.x - a->uv.x, v1 = (double)b->uv.y - a->uv.y,
+               u2 = (double)c->uv.x - a->uv.x, v2 = (double)c->uv.y - a->uv.y;
+        double area = u1 * v2 - u2 * v1;
+        if (!isfinite(area) || fabs(area) < 1e-20) {
             continue;
         }
         /* Each triangle's texture directions count by its surface area, so a
          * sliver with nearly no texture area cannot dominate its corners. */
-        float weight = cf_len_v3(cf_cross_v3(ab, ac)) * (area < 0 ? -1 : 1);
-        CF_V3 side = cf_sub_v3(cf_mul_v3_f(ab, su.y), cf_mul_v3_f(ac, st.y));
-        CF_V3 up = cf_sub_v3(cf_mul_v3_f(ac, st.x), cf_mul_v3_f(ab, su.x));
-        side = cf_mul_v3_f(cf_safe_norm_v3(side), weight);
-        up = cf_mul_v3_f(cf_safe_norm_v3(up), weight);
+        wide_v3 normal = cross(ab, ac);
+        double weight = sqrt(dot(normal, normal)),
+               signed_weight = area < 0 ? -weight : weight;
+        wide_v3 side = combine(ab, v2, ac, -v1), up = combine(ac, u1, ab, -u2);
         for (int j = 0; j < 3; j++) {
-            sides[corner[j]] = cf_add_v3(sides[corner[j]], side);
-            ups[corner[j]] = cf_add_v3(ups[corner[j]], up);
+            texture_frame *frame = &frames[corner[j]];
+            frame->side = add_resized(frame->side, side, signed_weight);
+            frame->up = add_resized(frame->up, up, signed_weight);
+            frame->weight += weight;
         }
     }
     for (int i = 0; i < count; i++) {
         render_mesh_surface_vertex *v = &asset->vertices[i];
+        const texture_frame *frame = &frames[i];
         assert(fabsf(cf_len_v3(v->normal) - 1) < 1e-3f);
-        CF_V3 side = cf_sub_v3(sides[i], cf_mul_v3_f(v->normal, cf_dot_v3(v->normal, sides[i])));
-        float length = cf_len_v3(side);
-        CF_V3 tangent = isfinite(length) && length > 1e-12f
-                          ? cf_div_v3_f(side, length)
+        wide_v3 normal = widen(v->normal);
+        wide_v3 side = combine(frame->side, 1, normal, -dot(normal, frame->side));
+        double length = sqrt(dot(side, side));
+        /* The sums grow with the mesh, so a direction is measured against the
+         * surface that went into it. */
+        CF_V3 tangent = isfinite(length) && length > 1e-12 * frame->weight
+                          ? (CF_V3){ (float)(side.x / length),
+                                     (float)(side.y / length),
+                                     (float)(side.z / length) }
                           : perpendicular(v->normal);
-        float hand = cf_dot_v3(cf_cross_v3(v->normal, tangent), ups[i]) < 0 ? -1.0f
-                                                                            : 1.0f;
+        float hand = dot(cross(normal, widen(tangent)), frame->up) < 0 ? -1.0f : 1.0f;
         v->tangent = (CF_V4){ tangent.x, tangent.y, tangent.z, hand };
     }
-    free(sides);
+    free(frames);
 }
 
 CF_V3 render_mesh_asset_center(const render_mesh_asset *asset)

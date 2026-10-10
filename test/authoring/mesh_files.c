@@ -238,6 +238,24 @@ TEST_CASE(mesh_tangents_follow_texture_directions)
     return true;
 }
 
+/* The quad's tangents at sizes whose edge products overflow or underflow a
+ * float match its tangents at unit size. */
+TEST_CASE(mesh_tangents_hold_at_any_scale)
+{
+    static const float scales[] = { 1e-25f, 1e20f, 3e38f };
+    for (int s = 0; s < 3; s++) {
+        quad();
+        for (int i = 0; i < 4; i++) {
+            mesh.vertices[i].position = cf_mul_v3_f(mesh.vertices[i].position, scales[s]);
+        }
+        render_mesh_asset_tangents(&mesh);
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(tangent(&mesh.vertices[i], (CF_V3){ 1, 0, 0 }, -1));
+        }
+    }
+    return true;
+}
+
 TEST_CASE(mesh_files_prepare_once_from_mounted_content)
 {
     quad();
@@ -640,6 +658,7 @@ void test_mesh_files()
 {
     pu_setup(setup, teardown);
     RUN_TEST_CASE(mesh_tangents_follow_texture_directions);
+    RUN_TEST_CASE(mesh_tangents_hold_at_any_scale);
     RUN_TEST_CASE(mesh_files_prepare_once_from_mounted_content);
     RUN_TEST_CASE(mesh_files_come_from_drawn_meshes_and_mesh_colliders);
     RUN_TEST_CASE(mesh_files_refuse_invalid_triangles);

@@ -194,6 +194,7 @@ typedef struct
     int rule;
     char *rule_name;
     char *message;
+    int line, column; /* 0 when it names no place */
 } catalog_diagnostic;
 
 typedef struct
@@ -1777,6 +1778,20 @@ static void catalog_validate_asset(
                 source->diagnostics[i].message
             );
         }
+        const script_analysis *analysis = source ? source->analysis : NULL;
+        asset->warnings = analysis ? analysis->warning_count : 0;
+        for (int i = 0; i < asset->warnings; i++) {
+            catalog_add_diagnostic(
+                asset,
+                "warning",
+                0,
+                "UNITS",
+                analysis->warnings[i].message
+            );
+            catalog_diagnostic *added = &asset->diagnostics[acount(asset->diagnostics) - 1];
+            added->line = analysis->warnings[i].range.line;
+            added->column = analysis->warnings[i].range.column;
+        }
         return;
     }
     if (family->loader == ASSET_GRAPH) {
@@ -2373,6 +2388,12 @@ static int analyze_project_source(
         source_range_json(doc, item, analysis->diagnostics[i].range);
         yyjson_mut_obj_add_strcpy(doc, item, "message", analysis->diagnostics[i].message);
         yyjson_mut_obj_add_int(doc, item, "severity", 1);
+    }
+    for (int i = 0; i < analysis->warning_count; i++) {
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
+        source_range_json(doc, item, analysis->warnings[i].range);
+        yyjson_mut_obj_add_strcpy(doc, item, "message", analysis->warnings[i].message);
+        yyjson_mut_obj_add_int(doc, item, "severity", 2);
     }
     if (compile && analysis->valid) {
         script_lower_bindings bindings = authoring_language_bindings(native);
@@ -3304,6 +3325,10 @@ static void add_catalog_diagnostics(
         yyjson_mut_obj_add_int(doc, item, "rule", diagnostic->rule);
         yyjson_mut_obj_add_strcpy(doc, item, "rule_name", diagnostic->rule_name);
         yyjson_mut_obj_add_strcpy(doc, item, "message", diagnostic->message);
+        if (diagnostic->line) {
+            yyjson_mut_obj_add_int(doc, item, "line", diagnostic->line);
+            yyjson_mut_obj_add_int(doc, item, "column", diagnostic->column);
+        }
     }
 }
 

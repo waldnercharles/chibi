@@ -999,6 +999,38 @@ TEST_CASE(components_are_declared_in_chibi_sources)
     return true;
 }
 
+TEST_CASE(unit_mismatches_are_warnings)
+{
+    char folder[256];
+    path(folder, sizeof folder, "game/content/components");
+    REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
+    path(folder, sizeof folder, "game/content/systems");
+    REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: 0..100 charge\n    rate: charge/s\n}\n");
+    /* Declared units, the engine's reflected units and dt's seconds. */
+    write_file(
+        "game/content/systems/Measure.chibi",
+        "system Measure(charge: Charge, movement: GameMovement, collider: "
+        "GameCollider) {\n"
+        "    charge.level += charge.rate * dt\n"
+        "    charge.level += charge.rate\n"
+        "    collider.radius = movement.speed\n"
+        "}\n"
+    );
+    /* Warnings first: a mismatch leaves the project valid. */
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")) && errors() == 0);
+    REQUIRE(yyjson_get_int(result("warnings")) == 2);
+    yyjson_val *problem = yyjson_arr_get_first(result("problems"));
+    yyjson_val *diagnostics = yyjson_obj_get(problem, "diagnostics");
+    REQUIRE(yyjson_arr_size(diagnostics) == 2);
+    yyjson_val *first = yyjson_arr_get(diagnostics, 0);
+    REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(first, "severity")), "warning"));
+    REQUIRE(!strcmp(message_at(diagnostics, 0), "Units differ: charge += charge/s"));
+    REQUIRE(yyjson_get_int(yyjson_obj_get(first, "line")) == 3);
+    REQUIRE(!strcmp(message_at(diagnostics, 1), "Units differ: u = u/s"));
+    return true;
+}
+
 TEST_CASE(scenarios_hold_input_actions)
 {
     /* A scenario's controls reach the input map of the engine that plays it. */
@@ -1050,5 +1082,6 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(scene_children_are_placed_by_their_parent);
     RUN_TEST_CASE(scenarios_hold_input_actions);
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
+    RUN_TEST_CASE(unit_mismatches_are_warnings);
     pu_clear_setup();
 }

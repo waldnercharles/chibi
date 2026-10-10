@@ -378,6 +378,118 @@ TEST_CASE(language_component_rejects_invalid_fields)
     return true;
 }
 
+/* A component measured the way the engine's reflected fields are. */
+static const script_catalog_field body_fields[] = {
+    { .id = 60, .name = "x", .type = { .storage = PIN_F32 }, .writable = true, .unit = "u" },
+    { .id = 61,
+      .name = "speed",
+      .type = { .storage = PIN_F32 },
+      .offset = 4,
+      .writable = true,
+      .unit = "u/s" },
+    { .id = 62,
+      .name = "accel",
+      .type = { .storage = PIN_F32 },
+      .offset = 8,
+      .writable = true,
+      .unit = "u/s²" },
+    { .id = 63,
+      .name = "angle",
+      .type = { .storage = PIN_F32 },
+      .offset = 12,
+      .writable = true,
+      .unit = "rad" },
+    { .id = 64, .name = "count", .type = { .storage = PIN_F32 }, .offset = 16, .writable = true },
+};
+static const script_catalog_type body_type = { .id = 50,
+                                               .name = "Body",
+                                               .type = { .storage = PIN_STRUCT,
+                                                         .nominal = 50 },
+                                               .fields = body_fields,
+                                               .field_count = 5,
+                                               .size = 5 * sizeof(float),
+                                               .component = true,
+                                               .component_id = 502 };
+static const script_catalog_global measured_globals[] = {
+    { .id = 70, .name = "dt", .type = { .storage = PIN_F32 }, .unit = "s" },
+};
+static const script_catalog measured = {
+    .types = &body_type,
+    .type_count = 1,
+    .globals = measured_globals,
+    .global_count = 1,
+    .entity_type = 40,
+};
+static void measure(const char *body)
+{
+    char source[1024];
+    /* Inside a block, `:=` declares a local rather than system state. */
+    snprintf(source, sizeof source, "system Move(body: Body) {\nif true {\n%s}\n}\n", body);
+    cleanup();
+    syntax = script_parse(source);
+    analysis = script_analyze(syntax, &measured);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(stderr, "semantic: %s\n", analysis->diagnostics[i].message);
+    }
+}
+static const script_diagnostic *warning(const char *message)
+{
+    for (int i = 0; i < analysis->warning_count; i++) {
+        if (!strcmp(analysis->warnings[i].message, message)) {
+            return &analysis->warnings[i];
+        }
+    }
+    return NULL;
+}
+TEST_CASE(language_units_combine_through_arithmetic)
+{
+    measure(
+        "body.x += body.speed * dt\n"
+        "body.speed += body.accel * dt\n"
+        "body.speed = (body.x - 3) / dt\n"
+        "if body.x < 10 { body.x = 0 }\n"
+        "step := body.speed * dt\n"
+        "body.x = body.x + step * 2\n"
+        "body.x *= body.x / body.x\n"
+        "body.x /= 2\n"
+        "body.angle = -body.angle\n"
+        "body.count = body.count + body.x\n"
+        "n := 0\n"
+        "n = body.angle\n"
+    );
+    REQUIRE(analysis->valid);
+    for (int i = 0; i < analysis->warning_count; i++) {
+        fprintf(stderr, "unexpected: %s\n", analysis->warnings[i].message);
+    }
+    REQUIRE(analysis->warning_count == 0);
+    return true;
+}
+TEST_CASE(language_units_warn_on_mismatch)
+{
+    measure(
+        "body.x += body.speed\n"
+        "body.x = body.angle\n"
+        "if body.speed < body.x {}\n"
+        "late := body.x + dt\n"
+        "body.x *= dt\n"
+        "body.x = body.speed / dt\n"
+        "body.speed = 1 / dt\n"
+        "body.x = body.x / body.x\n"
+    );
+    /* Warnings first: the program still runs. */
+    REQUIRE(analysis->valid);
+    REQUIRE(warning("Units differ: u += u/s")->range.line == 3);
+    REQUIRE(warning("Units differ: u = rad"));
+    REQUIRE(warning("Units differ: u/s < u"));
+    REQUIRE(warning("Units differ: u + s"));
+    REQUIRE(warning("Units differ: *= would turn u into u·s"));
+    REQUIRE(warning("Units differ: u = u/s²"));
+    REQUIRE(warning("Units differ: u/s = 1/s"));
+    REQUIRE(warning("Units differ: u = 1"));
+    REQUIRE(analysis->warning_count == 8);
+    return true;
+}
+
 void test_language_semantic()
 {
     pu_setup(NULL, cleanup);
@@ -393,5 +505,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_invalid_source_retains_bounded_diagnostics);
     RUN_TEST_CASE(language_component_declares_measured_fields);
     RUN_TEST_CASE(language_component_rejects_invalid_fields);
+    RUN_TEST_CASE(language_units_combine_through_arithmetic);
+    RUN_TEST_CASE(language_units_warn_on_mismatch);
     pu_clear_setup();
 }

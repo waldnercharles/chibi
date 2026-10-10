@@ -10,7 +10,7 @@ target_link_libraries(chibi_language_syntax PUBLIC chibi_support chibi_syntax_ru
 set_source_files_properties(src/parser.c PROPERTIES COMPILE_OPTIONS "-w")
 
 add_library(chibi_language STATIC semantic.c semantic_context.c identity.c component.c
-    semantic_expression.c semantic_calls.c semantic_statement.c semantic_declaration.c semantic_effects.c
+    semantic_expression.c semantic_calls.c semantic_statement.c semantic_declaration.c semantic_effects.c semantic_units.c
     semantic_recovery.c)
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/semantic_internal.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/language/semantic_internal.h" COPYONLY)

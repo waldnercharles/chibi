@@ -80,6 +80,22 @@ A unit standing alone must be a common one (`u`, `px`, `m`, `s`, `ms`, `rad`,
 is reported instead of becoming a unit; after a range or with a `/`, any name
 works.
 
+Scripts check units the way F# does, and units are erased before the game
+runs. `*` and `/` combine them, so `charge.rate * dt` is in `charge` because
+`dt` is in seconds. `+`, `-`, `%`, comparisons and assignment need the same
+unit on both sides. A plain number literal takes the unit it meets, and a value
+nothing measures, such as a local set to `0` or a function's result, is never
+checked. The engine's own fields carry units too: a `GameMovement.speed` is in
+`u/s` and a collider's `radius` is in `u`. A mismatch is a warning for now.
+`validate_project` lists it with its line, and the program still runs:
+
+```code
+system Recharge(charge: Charge) {
+    charge.level += charge.rate * dt // charge
+    charge.level += charge.rate      // Units differ: charge += charge/s
+}
+```
+
 Prototypes, scenes, behaviors and systems then use `Charge` like an engine
 component. A name may not reuse an engine type. The compiler stores the
 declarations in the prepared artifact, so the player needs no source.

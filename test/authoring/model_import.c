@@ -550,6 +550,28 @@ static const char *refused(const char *file)
     return entries("content") ? "left files" : error;
 }
 
+/* Copies the model `from` to `to` with its file `old` named `renamed`. */
+static bool rename_uri(const char *from, const char *to, const char *old, const char *renamed)
+{
+    size_t length = 0;
+    char *text = read_file(from, &length);
+    char quoted[160], path[128];
+    snprintf(quoted, sizeof quoted, "\"uri\":\"%s\"", old);
+    char *uri = text ? strstr(text, quoted) : NULL;
+    inside(path, sizeof path, to);
+    FILE *file = uri ? fopen(path, "wb") : NULL;
+    if (!file) {
+        free(text);
+        return false;
+    }
+    int before = (int)(uri - text);
+    const char *after = uri + strlen(quoted);
+    bool written = fprintf(file, "%.*s\"uri\":\"%s\"%s", before, text, renamed, after) > 0;
+    written = !fclose(file) && written;
+    free(text);
+    return written;
+}
+
 static const char *refusal(const gltf_fixture *f, const char *members)
 {
     char path[128];
@@ -680,7 +702,8 @@ TEST_CASE(model_imports_refuse_what_they_cannot_draw_as_authored)
 }
 
 /* Files the import cannot read, by name or as glTF, write nothing either. A
- * model names its files relative to itself, never by absolute path. */
+ * model names its files relative to itself, never by absolute path, and
+ * neither .. nor a link leads it out of its folder. */
 TEST_CASE(model_imports_refuse_files_they_cannot_read)
 {
     REQUIRE(!strncmp(refused("nothing.gltf"), "Cannot read ", 12));
@@ -705,19 +728,20 @@ TEST_CASE(model_imports_refuse_files_they_cannot_read)
     /* empty.bin, named by its absolute path, is still there. */
     f = shape(NULL, 0, NULL);
     REQUIRE(gltf_fixture_write(&f, source, PLAIN));
-    size_t length = 0;
-    char *text = read_file("empty.gltf", &length);
-    const char *relative = "\"uri\":\"empty.bin\"";
-    char *uri = strstr(text, relative);
-    REQUIRE(uri);
     inside(path, sizeof path, "empty.bin");
-    file = fopen(source, "wb");
-    REQUIRE(file);
-    fprintf(file, "%.*s\"uri\":\"%s\"%s", (int)(uri - text), text, path, uri + strlen(relative));
-    REQUIRE(!fclose(file));
-    free(text);
+    REQUIRE(rename_uri("empty.gltf", "empty.gltf", "empty.bin", path));
     REQUIRE(access(path, R_OK) == 0);
     REQUIRE(!strncmp(refused("empty.gltf"), "Cannot load ", 12));
+    REQUIRE(rename_uri("empty.gltf", "other/empty.gltf", path, "../empty.bin"));
+    REQUIRE(!strncmp(refused("other/empty.gltf"), "Cannot load ", 12));
+    char link[128];
+    inside(link, sizeof link, "other/empty.bin");
+    REQUIRE(!symlink(path, link));
+    REQUIRE(rename_uri("other/empty.gltf", "other/empty.gltf", "../empty.bin", "empty.bin"));
+    REQUIRE(!strncmp(refused("other/empty.gltf"), "Cannot load ", 12));
+    /* The same link, read from a model it keeps inside the folder, imports. */
+    REQUIRE(rename_uri("other/empty.gltf", "linked.gltf", "empty.bin", "other/empty.bin"));
+    REQUIRE(!strcmp(refused("linked.gltf"), "imported"));
     gltf_fixture_free(&f);
     return true;
 }

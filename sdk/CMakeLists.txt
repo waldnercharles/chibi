@@ -411,8 +411,16 @@ if(CHIBI_SDK_BUILD_COMPILER)
             PRIVATE chibi_studio_capabilities chibi_host_native_default)
         list(APPEND CHIBI_SDK_TARGETS chibi_studio_catalog)
     endif()
+    set(engine_components "${CMAKE_CURRENT_BINARY_DIR}/generated/authoring/engine_components.c")
+    add_custom_command(OUTPUT "${engine_components}"
+        COMMAND ${CMAKE_COMMAND} "-DINPUT=${CHIBI_SDK_ROOT}/src/authoring/engine_components.kdl"
+            "-DOUTPUT=${engine_components}" "-DSYMBOL=component_presentation_engine_kdl"
+            -P "${CHIBI_SDK_ROOT}/cmake/embed_binary.cmake"
+        DEPENDS "${CHIBI_SDK_ROOT}/src/authoring/engine_components.kdl"
+            "${CHIBI_SDK_ROOT}/cmake/embed_binary.cmake"
+            "${CHIBI_SDK_ROOT}/cmake/generated_file.cmake" VERBATIM)
     add_library(chibi_component_presentation STATIC
-        "${CHIBI_SDK_ROOT}/src/authoring/component_presentation.c")
+        "${CHIBI_SDK_ROOT}/src/authoring/component_presentation.c" "${engine_components}")
     add_library(Chibi::component_presentation ALIAS chibi_component_presentation)
     set_target_properties(chibi_component_presentation PROPERTIES EXPORT_NAME component_presentation)
     chibi_sdk_headers(chibi_component_presentation PUBLIC authoring/component_presentation.h)

@@ -547,11 +547,16 @@ static CF_V3 v3(const float *values)
     return (CF_V3){ values[0], values[1], values[2] };
 }
 
-/* `v` at unit length, or `fallback` when it has none. */
+/* `v` at unit length, or `fallback` when it is zero or not finite. Its
+ * length is taken in double, where no float's square overflows or
+ * vanishes, so a vector a vast or tiny scale carried keeps its direction. */
 static CF_V3 unit(CF_V3 v, CF_V3 fallback)
 {
-    float length = cf_len_v3(v);
-    return isfinite(length) && length > 1e-12f ? cf_div_v3_f(v, length) : fallback;
+    double length = sqrt((double)v.x * v.x + (double)v.y * v.y + (double)v.z * v.z);
+    if (!isfinite(length) || length <= 0) {
+        return fallback;
+    }
+    return (CF_V3){ (float)(v.x / length), (float)(v.y / length), (float)(v.z / length) };
 }
 
 /* The primitive's vertices in its node's frame, with glTF's tangent frame:

@@ -20,7 +20,7 @@ bool game_scene_prepared_write(
 );
 /* Returned bytes use malloc/free. Failure leaves no bytes. Decoding returns an
  * owned scene only after complete validation; the catalog's type descriptors
- * must outlive it. A prototype uses this same format with exactly one object.
+ * must outlive it. A prototype uses this same format, every object descending from the first.
  * Input and owned payloads are limited to 64 MiB, depth 64 and one million values;
  * at most 1024 objects/items per object and 4096 total scene item records. */
 game_scene *game_scene_prepared_read(

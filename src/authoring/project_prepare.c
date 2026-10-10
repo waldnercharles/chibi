@@ -202,9 +202,10 @@ static game_scene *prepare_scene(const scene_inputs *in, const char *path, char 
     }
     game_prototype **objects = NULL;
     bool valid = true;
+    project_expansion expanded = { 0 };
     for (int i = 0; valid && i < acount(document->entities); i++) {
         game_prototype *object = project_prepare_object(&document->entities[i], in->prototypes, error, size);
-        valid = object &&
+        valid = object && project_prepare_expand(&expanded, object, error, size) &&
                 authoring_prototype_parameters_fields(in->fields, object, error, size);
         if (object) {
             apush(objects, object);

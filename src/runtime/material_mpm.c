@@ -447,6 +447,10 @@ static bool grid_contacts(material_mpm *mpm, double h, fluid_mpm_colliders colli
         assert(obstacle.body >= 0 && obstacle.body < colliders.body_count);
         fluid_body
             body = collider_pose(colliders.bodies[obstacle.body], colliders.sweep_end);
+        /* Contacts push the body this one is a part of. */
+        obstacle.body = material_fluid_response(colliders.bodies, obstacle.body);
+        body.impulse = colliders.bodies[obstacle.body].impulse;
+        body.angular_impulse = colliders.bodies[obstacle.body].angular_impulse;
         cos_sin rotation = cos_sin_compute(body.angle);
         double c = rotation.c, s = rotation.s;
         double center_x = body.position.x + c * obstacle.center.x -

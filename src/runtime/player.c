@@ -193,9 +193,11 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
     }
     for (int i = 0; i < spec->prototype_count; i++) {
         const game_player_prototype *p = &spec->prototypes[i];
-        if (!p->name || !p->name[0] || !p->scene ||
-            game_scene_object_count(p->scene) != 1) {
-            fail(error, size, "Prepared player prototype requires a named single object");
+        if (!p->name || !p->name[0] || !p->scene || !game_scene_is_tree(p->scene)) {
+            fail(error, size, "Prepared player prototype requires a name and one root object");
+            return NULL;
+        }
+        if (!game_player_scene_bindings_valid(p->scene, error, size)) {
             return NULL;
         }
         for (int j = 0; j < i; j++) {

@@ -33,7 +33,12 @@ render_scene3d_camera render_scene3d_camera_frame(const engine_viewport_camera *
      * has a floor so close framings keep near in front of far. */
     float reach = fmaxf(distance, 10);
     return (render_scene3d_camera){
-        .view = cf_look_at(lens.eye, cf_add_v3(lens.eye, lens.forward), lens.up),
+        /* Turning at the origin keeps a short forward from vanishing into a
+         * distant eye's rounding. */
+        .view = cf_mul_m4(
+            cf_look_at((CF_V3){ 0 }, lens.forward, lens.up),
+            cf_m4_translate(cf_neg_v3(lens.eye))
+        ),
         .projection = cf_perspective(
             fov,
             frame->span_width / frame->span_height,

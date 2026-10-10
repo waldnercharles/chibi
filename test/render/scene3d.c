@@ -320,6 +320,22 @@ TEST_CASE(camera_field_of_view_and_clips_shape_the_projection)
     return true;
 }
 
+/* A small-scale camera far from the origin still looks along its -Z, though
+ * its scaled direction is below the precision of its position. */
+TEST_CASE(distant_small_scale_cameras_keep_their_view)
+{
+    ecs_entity camera = add_camera_3d(cf_quat_identity());
+    GameTransform3D *pose = GAME_GameTransform3D_get(world, camera);
+    pose->position = (CF_V3){ 0, 0, 1000 };
+    pose->scale = (CF_V3){ 1e-6f, 1e-6f, 1e-6f };
+    REQUIRE(look_through_camera() == 1);
+    CF_V3 ahead = render_scene3d_project(&lens, (CF_V3){ 0, 0, 990 });
+    CF_V3 right = render_scene3d_project(&lens, (CF_V3){ 1, 0, 990 });
+    REQUIRE(near_value(ahead.x, 0) && near_value(ahead.y, 0));
+    REQUIRE(right.x > .01f && near_value(right.y, 0));
+    return true;
+}
+
 /* Default clips stay in order however close the framing distance gets. */
 TEST_CASE(default_clips_stay_ordered_for_close_framings)
 {
@@ -2094,6 +2110,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(scene_draws_without_a_valid_rhythm_clock);
     RUN_TEST_CASE(cameras_look_along_their_transform3d);
     RUN_TEST_CASE(camera_field_of_view_and_clips_shape_the_projection);
+    RUN_TEST_CASE(distant_small_scale_cameras_keep_their_view);
     RUN_TEST_CASE(default_clips_stay_ordered_for_close_framings);
     RUN_TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use);
     RUN_TEST_CASE(navigating_drops_an_authored_lens);

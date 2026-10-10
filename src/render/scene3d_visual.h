@@ -46,9 +46,11 @@ scene3d_frame_state render_scene3d_visual_frame(
     CF_M4x4 *frame
 );
 /* Returns parts, zero for an invisible/missing visual, or -1 with an authoring error.
- * The parts stand where render_scene3d_visual_frame places them. An entity
+ * The parts stand where render_scene3d_visual_frame places them, and a part
+ * whose model render_scene3d_visual_state finds flat is left out. An entity
  * with a Mesh Asset has one Box part sized by its Geometry3D, whose model
- * places the returned `mesh`; `mesh` is NULL for other entities. */
+ * places the returned `mesh`; `mesh` is NULL for other entities and when
+ * no part is left. */
 int render_scene3d_visuals(
     const ecs_world *world,
     ecs_entity entity,
@@ -60,10 +62,11 @@ int render_scene3d_visuals(
     size_t size
 );
 CF_M4x4 render_scene3d_visual_model(const scene3d_visual *visual);
-/* Whether a visual's frame and its model, scaled by its part's dimensions,
- * stay within float range: a part's position or dimensions can carry a
- * finite frame past it. */
-bool render_scene3d_visual_finite(const scene3d_visual *visual);
+/* How a visual's model, its frame scaled by its part's dimensions, stands:
+ * invalid when it or the frame passes float range, which a part's position
+ * or dimensions can carry a finite frame past; flat when a dimension
+ * underflows one of a whole frame's axes to zero; whole otherwise. */
+scene3d_frame_state render_scene3d_visual_state(const scene3d_visual *visual);
 /* Whether a whole frame mirrors space, which turns its faces inside out. It
  * reads its axes' directions alone, so it holds at any scale. */
 bool render_scene3d_frame_mirrors(CF_M4x4 frame);

@@ -2,6 +2,7 @@
 
 #include "execution/status.h"
 #include "render/fog.h"
+#include "render/mesh_pick.h"
 #include "render/mesh_surface.h"
 #include "render/scene3d_mesh_cache.h"
 #include "render/scene3d_parts.h"
@@ -2241,13 +2242,14 @@ TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy)
     return true;
 }
 
-/* One triangle over half of a two-unit square on the ground, drawn at unit
- * size: picks hit the triangle beyond the unit box and miss the box's corner
- * that the triangle leaves out, and bounds hold just the triangle. */
-TEST_CASE(picking_and_bounds_follow_imported_triangles)
+/* Draws, at `scale` times its mesh's size, one triangle over half of a square
+ * 2 / `scale` units wide on the ground: the triangle covers half of a
+ * two-unit square wherever it is drawn. */
+static ecs_entity add_imported_triangle(float scale)
 {
-    static const CF_V3 corners[] = { { -1, 0, -1 }, { -1, 0, 1 }, { 1, 0, -1 } };
-    render_mesh_asset mesh = { .min = { -1, 0, -1 }, .max = { 1, 0, 1 } };
+    float half = 1 / scale;
+    CF_V3 corners[] = { { -half, 0, -half }, { -half, 0, half }, { half, 0, -half } };
+    render_mesh_asset mesh = { .min = { -half, 0, -half }, .max = { half, 0, half } };
     for (int i = 0; i < 3; i++) {
         render_mesh_surface_vertex vertex = { .position = corners[i],
                                               .normal = { 0, 1, 0 } };
@@ -2257,10 +2259,17 @@ TEST_CASE(picking_and_bounds_follow_imported_triangles)
     publish_mesh(&mesh);
     ecs_entity triangle = add_solid(
         (CF_V3){ 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, scale, scale, scale },
         0xffffffffu
     );
     import_mesh(triangle);
+    return triangle;
+}
+
+/* Picks hit add_imported_triangle's triangle beyond the unit box and miss
+ * the box's corner that the triangle leaves out. */
+static bool picks_follow_triangle(ecs_entity triangle)
+{
     CF_V3 inside = render_scene3d_project(&lens, (CF_V3){ -.9f, 0, -.9f });
     CF_V3 outside = render_scene3d_project(&lens, (CF_V3){ .3f, 0, .3f });
     REQUIRE(
@@ -2269,11 +2278,102 @@ TEST_CASE(picking_and_bounds_follow_imported_triangles)
     );
     REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ outside.x, outside.y }, (render_skip){ 0 })
                  .slot);
+    return true;
+}
+
+/* A triangle drawn at unit size: picks follow it, and bounds hold just the
+ * triangle. */
+TEST_CASE(picking_and_bounds_follow_imported_triangles)
+{
+    ecs_entity triangle = add_imported_triangle(1);
+    REQUIRE(picks_follow_triangle(triangle));
     CF_V3 box[8];
     REQUIRE(render_scene3d_entity_bounds(world, triangle, box));
     REQUIRE(near_value(box[0].x, -1) && near_value(box[0].z, -1));
     REQUIRE(near_value(box[7].x, 1) && near_value(box[7].z, 1));
     REQUIRE(fabsf(box[0].y) < 2e-3f && fabsf(box[7].y) < 2e-3f);
+    return true;
+}
+
+/* The same triangle with a mesh a hundred-thousandth the size, which its
+ * Geometry3D scales back up: picks still follow it, because the test for a
+ * ray parallel to a triangle scales with the triangle's edges. */
+TEST_CASE(picks_follow_tiny_triangles_scaled_up)
+{
+    REQUIRE(picks_follow_triangle(add_imported_triangle(1e5f)));
+    return true;
+}
+
+enum
+{
+    GRID_CELLS = 64
+};
+
+/* The height of the grid's square at column x and row z, from 0 to 1. */
+static float grid_height(int x, int z)
+{
+    return (float)((x * 7 + z * 3) % 5) / 4;
+}
+
+/* Publishes a ground grid of GRID_CELLS by GRID_CELLS unit squares, each
+ * two triangles of its own at grid_height plus `raise`. */
+static void publish_grid(float raise)
+{
+    render_mesh_asset grid = { .min = { 0, raise, 0 },
+                               .max = { GRID_CELLS, raise + 1, GRID_CELLS } };
+    static const int corners[][2] = { { 0, 0 }, { 0, 1 }, { 1, 1 }, { 1, 0 } };
+    static const int indices[] = { 0, 1, 2, 0, 2, 3 };
+    for (int z = 0; z < GRID_CELLS; z++) {
+        for (int x = 0; x < GRID_CELLS; x++) {
+            int first = acount(grid.vertices);
+            for (int i = 0; i < 4; i++) {
+                render_mesh_surface_vertex vertex = {
+                    .position = { (float)(x + corners[i][0]),
+                                  grid_height(x, z) + raise,
+                                  (float)(z + corners[i][1]) },
+                    .normal = { 0, 1, 0 },
+                };
+                apush(grid.vertices, vertex);
+            }
+            for (int i = 0; i < 6; i++) {
+                apush(grid.indices, first + indices[i]);
+            }
+        }
+    }
+    publish_mesh(&grid);
+}
+
+/* A pick straight down through a cell's center meets its square. */
+static bool picks_cell(int x, int z, float raise)
+{
+    char error[128];
+    const render_mesh_asset *grid = render_mesh_asset_load(mesh_key, error, sizeof error);
+    REQUIRE(grid);
+    CF_V3 above = { x + .5f, 10, z + .5f };
+    render_mesh_hit hit = render_mesh_pick(
+        grid,
+        cf_make_ray3(above, (CF_V3){ x + .5f, -10, z + .5f })
+    );
+    REQUIRE(near_value(hit.t, 10 - grid_height(x, z) - raise));
+    REQUIRE(hit.tested <= 16);
+    return true;
+}
+
+/* A pick through an imported mesh of 8192 triangles tests only the few in
+ * boxes its ray crosses and still meets the nearest; one that misses the
+ * mesh tests none. A republished mesh is picked as it now stands. */
+TEST_CASE(mesh_picks_test_only_the_triangles_near_their_ray)
+{
+    publish_grid(0);
+    REQUIRE(picks_cell(0, 0, 0) && picks_cell(17, 40, 0) && picks_cell(63, 63, 0));
+    char error[128];
+    const render_mesh_asset *grid = render_mesh_asset_load(mesh_key, error, sizeof error);
+    REQUIRE(grid);
+    CF_V3 beside = { -5, 10, 5 };
+    render_mesh_hit miss = render_mesh_pick(grid, cf_make_ray3(beside, (CF_V3){ -5, -10, 5 }));
+    REQUIRE(miss.t == FLT_MAX && !miss.tested);
+    publish_grid(2);
+    REQUIRE(picks_cell(17, 40, 2));
     return true;
 }
 
@@ -2612,10 +2712,41 @@ TEST_CASE(mirroring_transform3d_keeps_faces_outward)
     return true;
 }
 
+/* A box mesh 1e30 long in x in its own units, drawn at a 1e-30 x scale,
+ * matches the unit box mesh: the cofactors that give its top and front
+ * normals are 1e-30 long, too short to normalize directly. */
+TEST_CASE(lopsided_mesh_models_keep_their_normals)
+{
+    ecs_entity box = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    add_sun(0xffffffffu, (CF_V3){ -1, -2, -3 })->intensity = 1;
+    GameEnvironment environment = unlit_environment();
+    render_mesh_asset mesh = box_mesh();
+    publish_mesh(&mesh);
+    import_mesh(box);
+    REQUIRE(render(&environment));
+    REQUIRE(top().colors.g > 30 && front().colors.g > 30);
+    static CF_Pixel upright[PIXELS];
+    memcpy(upright, pixels, sizeof upright);
+    mesh = box_mesh();
+    for (int i = 0; i < acount(mesh.vertices); i++) {
+        mesh.vertices[i].position.x *= 1e30f;
+    }
+    mesh.min.x *= 1e30f;
+    mesh.max.x *= 1e30f;
+    publish_mesh(&mesh);
+    GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1e-30f, 1, 1 };
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(matches(upright));
+    return true;
+}
+
 /* A box whose parent's Transform3D flattens it onto a plane, both turned so
  * that rounding leaves its frame a sliver of volume, hides and has no
  * bounds. A box scaled tiny but whole keeps them, as does one turned within
- * a parent squashed thin, whose axes nearly meet. */
+ * a parent squashed thin, whose axes nearly meet. One whose Geometry3D
+ * width underflows its whole frame's x axis to zero has none. */
 TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
 {
     ecs_entity parent = ecs_world_create_entity(world);
@@ -2649,6 +2780,11 @@ TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
     GAME_GameTransform3D_get(world, parent)->scale = (CF_V3){ 1e-6f, 1, 1 };
     GAME_GameTransform3D_get(world, child)->rotation = turn;
     REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    GAME_GameTransform3D_get(world, parent)->scale = (CF_V3){ 1e-25f, 1, 1 };
+    GAME_GameTransform3D_get(world, child)->rotation = cf_quat_identity();
+    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    GAME_GameGeometry3D_get(world, child)->width = 1e-25f;
+    REQUIRE(!render_scene3d_entity_bounds(world, child, corners));
     return true;
 }
 
@@ -3088,6 +3224,27 @@ TEST_CASE(mirroring_transform3d_turns_mesh_bitangents)
     place_3d(square, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, -1 });
     REQUIRE(abs(square_light(square, "Flat") - level) <= 3);
     REQUIRE(abs(square_light(square, "AlongV") - away) <= 3);
+    return true;
+}
+
+/* A Transform3D that stretches the ground square ten million times along
+ * its normal leaves it as it was, tangents included: with authored tangents
+ * along +z, a map tilted along u still faces the sun, though the frame's
+ * other axes are ten million times shorter than its y. */
+TEST_CASE(stretched_transform3d_keeps_mesh_tangents)
+{
+    static const float along_u[] = { .85f, .5f, .85f };
+    REQUIRE(test_register_normal_map("AlongU", along_u));
+    static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 };
+    publish_square(x, z, (CF_V4){ 0, 0, 1, 1 }, false);
+    ecs_entity square = add_surface_box("AlongU");
+    import_mesh(square);
+    add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
+    place_3d(square, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
+    int facing = square_light(square, "AlongU");
+    REQUIRE(facing > 0);
+    GAME_GameTransform3D_get(world, square)->scale = (CF_V3){ 1, 1e7f, 1 };
+    REQUIRE(abs(square_light(square, "AlongU") - facing) <= 3);
     return true;
 }
 
@@ -3640,6 +3797,8 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(sky_lights_surfaces_by_its_gradients);
     RUN_TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy);
     RUN_TEST_CASE(picking_and_bounds_follow_imported_triangles);
+    RUN_TEST_CASE(picks_follow_tiny_triangles_scaled_up);
+    RUN_TEST_CASE(mesh_picks_test_only_the_triangles_near_their_ray);
     RUN_TEST_CASE(republished_meshes_replace_their_gpu_copies);
     RUN_TEST_CASE(mesh_copies_are_found_in_any_upload_order);
     RUN_TEST_CASE(translucent_meshes_sort_by_their_bounds);
@@ -3650,6 +3809,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(transform3d_models_pick_and_bound_at_their_pose);
 #endif
     RUN_TEST_CASE(mirroring_transform3d_keeps_faces_outward);
+    RUN_TEST_CASE(lopsided_mesh_models_keep_their_normals);
     RUN_TEST_CASE(flattened_transform3d_frames_hide_at_any_scale);
     RUN_TEST_CASE(overflowing_transform3d_frames_are_authoring_errors);
     RUN_TEST_CASE(fog_culls_transform3d_solids_where_they_draw);
@@ -3661,6 +3821,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_meshes_carry_texture_and_part_coordinates);
     RUN_TEST_CASE(normal_maps_follow_mesh_tangents);
     RUN_TEST_CASE(mirroring_transform3d_turns_mesh_bitangents);
+    RUN_TEST_CASE(stretched_transform3d_keeps_mesh_tangents);
     RUN_TEST_CASE(occlusion_dims_only_ambient_light);
     RUN_TEST_CASE(alpha_modes_decide_how_opacity_draws);
     RUN_TEST_CASE(opaque_and_masked_surfaces_cast_shadows);

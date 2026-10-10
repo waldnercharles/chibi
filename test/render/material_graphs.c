@@ -82,6 +82,27 @@ bool test_register_ramp(const char *name, int count, const float from[4], const 
     );
 }
 
+bool test_register_coordinate(const char *name, const char *input)
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    node *source = graph_add_node(g, pack_node(input));
+    node *x = graph_add_node(g, pack_node("Shader X"));
+    node *ramp = graph_add_node(g, pack_node("Shader Color Ramp"));
+    shader_ramp_stop stops[] = { { .position = 0, .color = { 0, 0, 0, 1 } },
+                                 { .position = 1, .color = { 1, 1, 1, 1 } } };
+    pin_value unlit = { .type = PIN_BOOL, .b = true };
+    return publish(
+        material,
+        source && x && ramp && shader_node_ramp_set(g, ramp, stops, 2) &&
+            !graph_connect_data(g, source, 0, x, 0) &&
+            !graph_connect_data(g, x, 0, ramp, 0) &&
+            !graph_connect_data(g, ramp, 0, output, 0) &&
+            !graph_set_pin_default(g, output, 0, 6, &unlit)
+    );
+}
+
 bool test_register_model_sphere(const char *name, float radius)
 {
     behavior_asset *model = behavior_asset_new(name);

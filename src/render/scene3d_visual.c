@@ -26,10 +26,12 @@ int render_scene3d_visuals(
     ecs_entity entity,
     const GameTransform *position,
     scene3d_visual visuals[SCENE3D_PART_LIMIT],
+    const render_mesh_asset **mesh,
     char *error,
     size_t size
 )
 {
+    *mesh = NULL;
     const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
     if (!shape || (!position && !GAME_GameTransform_get_const(world, entity))) {
         return 0;
@@ -37,7 +39,8 @@ int render_scene3d_visuals(
     GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
     position = &pose.position;
     const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
-    const GameMeshParts *mesh = GAME_GameMeshParts_get_const(world, entity);
+    const GameMeshParts *authored = GAME_GameMeshParts_get_const(world, entity);
+    const GameMeshAsset *imported = GAME_GameMeshAsset_get_const(world, entity);
     float angle = pose.radians;
     float scale = transform ? transform->scale : 1;
     CF_V3 rotation = transform
@@ -55,8 +58,23 @@ int render_scene3d_visuals(
         return 0;
     }
     scene3d_parts parts;
-    if (!render_scene3d_parts_read(mesh ? mesh->parts : NULL, &parts, error, size)) {
+    if (!render_scene3d_parts_read(authored ? authored->parts : NULL, &parts, error, size)) {
         return -1;
+    }
+    if (imported && imported->source && *imported->source) {
+        if (parts.count) {
+            snprintf(error, size, "Mesh Asset and Mesh Parts cannot be combined on one visual.");
+            return -1;
+        }
+        *mesh = render_mesh_asset_load(imported->source, error, size);
+        if (!*mesh) {
+            return -1;
+        }
+        parts.parts[0] = (scene3d_part){
+            .primitive = GAME_PRIMITIVE_BOX,
+            .dimensions = { shape->width, shape->height, shape->depth }
+        };
+        parts.count = 1;
     }
     if (!parts.count) {
         parts.parts[0] = (scene3d_part){
@@ -100,12 +118,12 @@ CF_M4x4 render_scene3d_visual_model(const scene3d_visual *visual)
     return cf_mul_m4(visual->frame, cf_m4_scale(dimensions));
 }
 
-bool render_scene3d_visual_visible(const scene3d_visual *visual, CF_M4x4 view_projection)
+bool render_scene3d_box_visible(CF_M4x4 box, CF_M4x4 view_projection)
 {
-    CF_M4x4 clip = cf_mul_m4(view_projection, render_scene3d_visual_model(visual));
-    /* Every built-in mesh lies in [-1,1]^3. The wider depth interval also
-     * conservatively contains the zero-to-one clip convention. No perspective
-     * division: bounds crossing the eye or a clip plane must remain visible. */
+    CF_M4x4 clip = cf_mul_m4(view_projection, box);
+    /* The wider depth interval also conservatively contains the zero-to-one
+     * clip convention. No perspective division: bounds crossing the eye or a
+     * clip plane must remain visible. */
     for (int axis = 0; axis < 3; axis++) {
         for (int sign = -1; sign <= 1; sign += 2) {
             float center = clip.elements[15] + sign * clip.elements[12 + axis];
@@ -115,10 +133,26 @@ bool render_scene3d_visual_visible(const scene3d_visual *visual, CF_M4x4 view_pr
                     clip.elements[column * 4 + 3] + sign * clip.elements[column * 4 + axis]
                 );
             }
-            if (center + extent < -0.0001f) {
+            if (center + extent / 2 < -0.0001f) {
                 return false;
             }
         }
     }
     return true;
+}
+
+bool render_scene3d_visual_visible(const scene3d_visual *visual, CF_M4x4 view_projection)
+{
+    /* Every built-in mesh lies in [-1,1]^3. */
+    CF_M4x4 box = cf_mul_m4(render_scene3d_visual_model(visual), cf_m4_scale((CF_V3){ 2, 2, 2 }));
+    return render_scene3d_box_visible(box, view_projection);
+}
+
+CF_M4x4 render_scene3d_mesh_box(const render_mesh_asset *mesh, CF_M4x4 model)
+{
+    CF_V3 center = cf_mul_v3_f(cf_add_v3(mesh->min, mesh->max), .5f);
+    CF_V3 extent = cf_sub_v3(mesh->max, mesh->min);
+    float sliver = fmaxf(extent.x, fmaxf(extent.y, extent.z)) * 1e-3f;
+    extent = cf_max_v3(extent, (CF_V3){ sliver, sliver, sliver });
+    return cf_mul_m4(model, cf_m4_from_trs(center, cf_quat(0, 0, 0, 1), extent));
 }

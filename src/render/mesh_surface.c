@@ -185,6 +185,53 @@ void render_mesh_surface_free(render_mesh_surface *surface)
     afree(surface->parts);
 }
 
+/* An imported mesh's parts: one per material group, or the whole mesh. */
+static void add_mesh_asset(
+    render_mesh_surface *surface,
+    const scene3d_visual *visual,
+    const render_mesh_asset *asset
+)
+{
+    render_mesh_surface_part part = { .visual = *visual,
+                                      .vertices = asset->vertices,
+                                      .indices = asset->indices,
+                                      .corner_count = acount(asset->indices),
+                                      .asset_identity = asset->identity,
+                                      .part_coordinates = asset->has_part_coordinates,
+                                      .uv_bounds = asset->has_uv_bounds,
+                                      .uv_min = asset->uv_min,
+                                      .uv_max = asset->uv_max,
+                                      .borrowed = true };
+    CF_M4x4 model = render_scene3d_visual_model(&part.visual);
+    for (int i = 0; i < render_mesh_surface_corner_count(&part); i++) {
+        CF_V3 p = cf_m4_transform_point(
+            model,
+            render_mesh_surface_corner(&part, i)->position
+        );
+        surface->min = cf_min_v3(surface->min, p);
+        surface->max = cf_max_v3(surface->max, p);
+    }
+    if (!acount(asset->groups)) {
+        apush(surface->parts, part);
+        return;
+    }
+    for (int i = 0; i < acount(asset->groups); i++) {
+        const render_mesh_group *group = &asset->groups[i];
+        render_mesh_surface_part slice = part;
+        slice.indices = asset->indices + group->first;
+        slice.corner_count = group->count;
+        slice.first_index = group->first;
+        slice.material_scope = group->material_scope;
+        snprintf(
+            slice.visual.part.material,
+            sizeof slice.visual.part.material,
+            "%s",
+            group->material
+        );
+        apush(surface->parts, slice);
+    }
+}
+
 bool render_mesh_surface_build_with_bounds(
     const ecs_world *world,
     ecs_entity entity,
@@ -300,104 +347,18 @@ bool render_mesh_surface_build_with_bounds(
         apush(surface->parts, part);
         return true;
     }
-    const GameMeshAsset *imported = GAME_GameMeshAsset_get_const(world, entity);
-    if (imported && imported->source && *imported->source) {
-        const GameMeshParts *parts = GAME_GameMeshParts_get_const(world, entity);
-        scene3d_parts parsed;
-        if (!render_scene3d_parts_read(parts ? parts->parts : NULL, &parsed, error, size)) {
-            return false;
-        }
-        if (parsed.count) {
-            snprintf(error, size, "Mesh Asset and Mesh Parts cannot be combined on one visual.");
-            return false;
-        }
-        const render_mesh_asset *asset = render_mesh_asset_load(imported->source, error, size);
-        if (!asset) {
-            return false;
-        }
-        const GameGeometry3D *shape = GAME_GameGeometry3D_get_const(world, entity);
-        const GameVisualTransform *transform = GAME_GameVisualTransform_get_const(world, entity);
-        GameGlobalTransform2D pose = render_scene3d_placement(world, entity, position);
-        float angle = pose.radians;
-        float scale = transform ? transform->scale : 1;
-        CF_V3 rotation = transform ? (CF_V3){ transform->pitch,
-                                              transform->yaw,
-                                              transform->roll }
-                                   : (CF_V3){ 0 };
-        if (!isfinite(
-                pose.position.x + pose.position.y + shape->elevation + angle +
-                scale + rotation.x + rotation.y + rotation.z + shape->width +
-                shape->height + shape->depth
-            ) ||
-            scale < 0 || shape->width <= 0 || shape->height <= 0 || shape->depth <= 0) {
-            snprintf(error, size, "Imported mesh requires finite transforms and positive dimensions.");
-            return false;
-        }
-        if (scale == 0) {
-            surface->min = surface->max = (CF_V3){ 0 };
-            return true;
-        }
-        render_mesh_surface_part part = {
-            .visual = { .part = { .primitive = GAME_PRIMITIVE_BOX,
-                                  .dimensions = { shape->width,
-                                                  shape->height,
-                                                  shape->depth } },
-                        .frame = cf_m4_from_trs(
-                            (CF_V3){ pose.position.x,
-                                     shape->elevation,
-                                     pose.position.y },
-                            game_visual_rotation(angle, rotation),
-                            (CF_V3){ scale, scale, scale }
-                        ) },
-            .vertices = asset->vertices,
-            .indices = asset->indices,
-            .corner_count = acount(asset->indices),
-            .asset_identity = asset->identity,
-            .part_coordinates = asset->has_part_coordinates,
-            .uv_bounds = asset->has_uv_bounds,
-            .uv_min = asset->uv_min,
-            .uv_max = asset->uv_max,
-            .borrowed = true
-        };
-        surface->min = (CF_V3){ FLT_MAX, FLT_MAX, FLT_MAX };
-        surface->max = (CF_V3){ -FLT_MAX, -FLT_MAX, -FLT_MAX };
-        CF_M4x4 model = render_scene3d_visual_model(&part.visual);
-        for (int i = 0; i < render_mesh_surface_corner_count(&part); i++) {
-            CF_V3 p = cf_m4_transform_point(
-                model,
-                render_mesh_surface_corner(&part, i)->position
-            );
-            surface->min = cf_min_v3(surface->min, p);
-            surface->max = cf_max_v3(surface->max, p);
-        }
-        if (!acount(asset->groups)) {
-            apush(surface->parts, part);
-            return true;
-        }
-        for (int i = 0; i < acount(asset->groups); i++) {
-            const render_mesh_group *group = &asset->groups[i];
-            render_mesh_surface_part slice = part;
-            slice.indices = asset->indices + group->first;
-            slice.corner_count = group->count;
-            slice.first_index = group->first;
-            slice.material_scope = group->material_scope;
-            snprintf(
-                slice.visual.part.material,
-                sizeof slice.visual.part.material,
-                "%s",
-                group->material
-            );
-            apush(surface->parts, slice);
-        }
-        return true;
-    }
     scene3d_visual visuals[SCENE3D_PART_LIMIT];
-    int count = render_scene3d_visuals(world, entity, position, visuals, error, size);
+    const render_mesh_asset *asset;
+    int count = render_scene3d_visuals(world, entity, position, visuals, &asset, error, size);
     if (count < 0) {
         return false;
     }
     surface->min = (CF_V3){ FLT_MAX, FLT_MAX, FLT_MAX };
     surface->max = (CF_V3){ -FLT_MAX, -FLT_MAX, -FLT_MAX };
+    if (asset) {
+        add_mesh_asset(surface, &visuals[0], asset);
+        return true;
+    }
     for (int i = 0; i < count; i++) {
         render_mesh_surface_part part = { .visual = visuals[i] };
         if (!render_mesh_surface_vertices(part.visual.part.primitive, &part.vertices, error, size)) {

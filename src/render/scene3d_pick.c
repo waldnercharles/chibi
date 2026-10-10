@@ -19,9 +19,25 @@ static int entity_model(const ecs_world *world, ecs_entity entity)
     return render_shader_is_model(id) ? id : 0;
 }
 
+/* The box around a visual: its imported mesh's bounds, or its shape's. */
+static CF_M4x4 visual_box(const scene3d_visual *visual, const render_mesh_asset *mesh)
+{
+    if (mesh) {
+        return render_scene3d_mesh_box(mesh, render_scene3d_visual_model(visual));
+    }
+    CF_M4x4 model = cf_mul_m4(visual->frame, cf_m4_scale(visual->part.dimensions));
+    int primitive = visual->part.primitive;
+    float center_x = primitive == GAME_PRIMITIVE_TRIANGLE ||
+                             primitive == GAME_PRIMITIVE_TRIANGLE_OUTLINE
+                       ? 1.0f / 6
+                       : 0;
+    return cf_mul_m4(model, cf_m4_translate((CF_V3){ center_x, 0, 0 }));
+}
+
 bool render_scene3d_entity_bounds(const ecs_world *world, ecs_entity entity, CF_V3 corners[8])
 {
     scene3d_visual visuals[SCENE3D_PART_LIMIT];
+    const render_mesh_asset *mesh = NULL;
     char error[128];
     int count;
     if (entity_model(world, entity)) {
@@ -33,7 +49,7 @@ bool render_scene3d_entity_bounds(const ecs_world *world, ecs_entity entity, CF_
         }
         render_mesh_surface_free(&surface);
     } else {
-        count = render_scene3d_visuals(world, entity, NULL, visuals, error, sizeof error);
+        count = render_scene3d_visuals(world, entity, NULL, visuals, &mesh, error, sizeof error);
     }
     if (count <= 0) {
         return false;
@@ -41,21 +57,11 @@ bool render_scene3d_entity_bounds(const ecs_world *world, ecs_entity entity, CF_
     CF_V3 minimum = { FLT_MAX, FLT_MAX, FLT_MAX },
           maximum = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
     for (int part = 0; part < count; part++) {
-        CF_M4x4 model = cf_mul_m4(
-            visuals[part].frame,
-            cf_m4_scale(visuals[part].part.dimensions)
-        );
-        int primitive = visuals[part].part.primitive;
-        float center_x = primitive == GAME_PRIMITIVE_TRIANGLE ||
-                                 primitive == GAME_PRIMITIVE_TRIANGLE_OUTLINE
-                           ? 1.0f / 6
-                           : 0;
+        CF_M4x4 box = visual_box(&visuals[part], mesh);
         for (int i = 0; i < 8; i++) {
             CF_V3 point = cf_m4_transform_point(
-                model,
-                (CF_V3){ center_x + (i & 1 ? .5f : -.5f),
-                         i & 4 ? .5f : -.5f,
-                         i & 2 ? .5f : -.5f }
+                box,
+                (CF_V3){ i & 1 ? .5f : -.5f, i & 4 ? .5f : -.5f, i & 2 ? .5f : -.5f }
             );
             corners[i] = point;
             minimum = cf_min_v3(minimum, point);
@@ -164,6 +170,24 @@ static float cone_hit(CF_Ray3 ray)
     return best;
 }
 
+/* Where a ray meets a triangle from either side, or FLT_MAX. */
+static float triangle_hit(CF_Ray3 ray, const CF_V3 triangle[3])
+{
+    CF_V3 edge1 = cf_sub_v3(triangle[1], triangle[0]);
+    CF_V3 edge2 = cf_sub_v3(triangle[2], triangle[0]);
+    CF_V3 p = cf_cross_v3(ray.d, edge2);
+    float determinant = cf_dot_v3(edge1, p);
+    if (fabsf(determinant) < 1e-7f) {
+        return FLT_MAX;
+    }
+    CF_V3 delta = cf_sub_v3(ray.p, triangle[0]);
+    float u = cf_dot_v3(delta, p) / determinant;
+    CF_V3 q = cf_cross_v3(delta, edge1);
+    float v = cf_dot_v3(ray.d, q) / determinant;
+    float t = cf_dot_v3(edge2, q) / determinant;
+    return u >= 0 && v >= 0 && u + v <= 1 && t >= 0 && t <= ray.t ? t : FLT_MAX;
+}
+
 static float primitive_hit(CF_Ray3 ray, int primitive)
 {
     CF_Raycast3 hit = { 0 };
@@ -192,26 +216,30 @@ static float primitive_hit(CF_Ray3 ray, int primitive)
             int count = render_scene3d_mesh_triangles(primitive, triangles);
             float nearest = FLT_MAX;
             for (int i = 0; i < count; i++) {
-                CF_V3 edge1 = cf_sub_v3(triangles[i][1], triangles[i][0]);
-                CF_V3 edge2 = cf_sub_v3(triangles[i][2], triangles[i][0]);
-                CF_V3 p = cf_cross_v3(ray.d, edge2);
-                float determinant = cf_dot_v3(edge1, p);
-                if (fabsf(determinant) < 1e-7f) {
-                    continue;
-                }
-                CF_V3 delta = cf_sub_v3(ray.p, triangles[i][0]);
-                float u = cf_dot_v3(delta, p) / determinant;
-                CF_V3 q = cf_cross_v3(delta, edge1);
-                float v = cf_dot_v3(ray.d, q) / determinant;
-                float t = cf_dot_v3(edge2, q) / determinant;
-                if (u >= 0 && v >= 0 && u + v <= 1 && t >= 0 && t <= ray.t) {
-                    nearest = fminf(nearest, t);
-                }
+                nearest = fminf(nearest, triangle_hit(ray, triangles[i]));
             }
             return nearest;
         }
     }
     return hit.hit ? hit.t : FLT_MAX;
+}
+
+/* The nearest of a mesh's triangles along a ray in its coordinates. */
+static float mesh_hit(CF_Ray3 ray, const render_mesh_asset *mesh)
+{
+    CF_Raycast3 bounds = cf_ray3_to_aabb3(ray, (CF_Aabb3){ mesh->min, mesh->max });
+    if (!bounds.hit) {
+        return FLT_MAX;
+    }
+    float nearest = FLT_MAX;
+    for (int i = 0; i < acount(mesh->indices); i += 3) {
+        const int *corner = mesh->indices + i;
+        CF_V3 triangle[3] = { mesh->vertices[corner[0]].position,
+                              mesh->vertices[corner[1]].position,
+                              mesh->vertices[corner[2]].position };
+        nearest = fminf(nearest, triangle_hit(ray, triangle));
+    }
+    return nearest;
 }
 
 /* March authored model space inside the same compiled bounds used for rendering.
@@ -306,15 +334,17 @@ ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *ca
             continue;
         }
         scene3d_visual visuals[SCENE3D_PART_LIMIT];
+        const render_mesh_asset *mesh;
         char error[128];
-        int count = render_scene3d_visuals(world, entity, NULL, visuals, error, sizeof error);
+        int count = render_scene3d_visuals(world, entity, NULL, visuals, &mesh, error, sizeof error);
         for (int i = 0; i < count; i++) {
             CF_M4x4 inverse = cf_m4_invert(render_scene3d_visual_model(&visuals[i]));
             CF_Ray3 local = cf_make_ray3(
                 cf_m4_transform_point(inverse, ray.p),
                 cf_m4_transform_point(inverse, end)
             );
-            float t = primitive_hit(local, visuals[i].part.primitive);
+            float t = mesh ? mesh_hit(local, mesh)
+                           : primitive_hit(local, visuals[i].part.primitive);
             if (t == FLT_MAX) {
                 continue;
             }

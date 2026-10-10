@@ -1,6 +1,7 @@
 #include "render/scene3d.h"
 
 #include "render/fog.h"
+#include "render/mesh_surface.h"
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
@@ -9,9 +10,12 @@
 #include "runtime/camera.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
+#include "runtime/geometry/mesh_asset.h"
+#include "runtime/geometry/mesh_prepared.h"
 #include "runtime/images/sky.h"
 #include "runtime/particles.h"
 #include "runtime/visibility.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 #if CHIBI_TEST_MATERIAL_GRAPHS
@@ -66,6 +70,7 @@ static void teardown()
 {
     backdrop = false;
     render_shader_catalog_clear();
+    render_mesh_assets_clear();
     engine_free(runtime);
     runtime = NULL;
     render_scene3d_free(scene3d);
@@ -2018,6 +2023,153 @@ TEST_CASE(sky_lights_surfaces_by_its_gradients)
     return true;
 }
 
+static const char *const mesh_key = "content/meshes/test.mesh";
+
+/* Publishes `mesh` under mesh_key as preparation does: with tangents, written
+ * and read back through the prepared format. Takes the mesh's storage. */
+static void publish_mesh(render_mesh_asset *mesh)
+{
+    render_mesh_asset_tangents(mesh);
+    unsigned char *bytes;
+    size_t length, budget = SIZE_MAX;
+    char error[256];
+    render_mesh_asset prepared = { 0 };
+    assert(render_mesh_asset_prepared_write(mesh, &bytes, &length, error, sizeof error));
+    assert(
+        render_mesh_asset_prepared_read_budget(bytes, length, &budget, &prepared, error, sizeof error)
+    );
+    free(bytes);
+    render_mesh_asset_free(mesh);
+    render_mesh_asset_publish(mesh_key, &prepared);
+}
+
+/* The unit box's triangles with their own corners: the -x, +x, bottom, top,
+ * back and front faces in turn, six indices each. */
+static render_mesh_asset box_mesh()
+{
+    render_mesh_surface_vertex *box = NULL;
+    char error[128];
+    assert(render_mesh_surface_vertices(GAME_PRIMITIVE_BOX, &box, error, sizeof error));
+    render_mesh_asset mesh = { .min = { -.5f, -.5f, -.5f }, .max = { .5f, .5f, .5f } };
+    for (int i = 0; i < acount(box); i++) {
+        apush(mesh.vertices, box[i]);
+        apush(mesh.indices, i);
+    }
+    afree(box);
+    return mesh;
+}
+
+/* Draws an entity as the mesh under mesh_key, sized by its Geometry3D. */
+static void import_mesh(ecs_entity entity)
+{
+    GameMeshAsset imported = { .source = mesh_key };
+    assert(
+        ecs_world_record_add(world, entity, GAME_COMPONENT_GameMeshAsset.id, &imported, 0) == ECS_OK
+    );
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+}
+
+/* The shadow scene's box and a pillar beyond the view's left edge draw first
+ * as shapes, then as the unit box mesh. Every pixel matches: imported meshes
+ * light, shade and cast from outside the view as shapes do. */
+TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy)
+{
+    render_mesh_asset box = box_mesh();
+    publish_mesh(&box);
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    ecs_entity solids[] = {
+        add_solid((CF_V3){ 0, 1, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu),
+        add_solid((CF_V3){ -8, 4, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 8 }, 0xffffffffu),
+    };
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->intensity = 1;
+    sun->shadows = true;
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    static CF_Pixel shapes[PIXELS];
+    memcpy(shapes, pixels, sizeof pixels);
+    for (int i = 0; i < 2; i++) {
+        import_mesh(solids[i]);
+    }
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(pixel_at(shaded).colors.g == 0 && pixel_at(sunlit[0]).colors.g == 0);
+    REQUIRE(pixel_at(sunlit[4]).colors.g > 60);
+    for (int i = 0; i < PIXELS; i++) {
+        REQUIRE(distance(pixels[i], shapes[i]) <= 3);
+    }
+    return true;
+}
+
+/* One triangle over half of a two-unit square on the ground, drawn at unit
+ * size: picks hit the triangle beyond the unit box and miss the box's corner
+ * that the triangle leaves out, and bounds hold just the triangle. */
+TEST_CASE(picking_and_bounds_follow_imported_triangles)
+{
+    static const CF_V3 corners[] = { { -1, 0, -1 }, { -1, 0, 1 }, { 1, 0, -1 } };
+    render_mesh_asset mesh = { .min = { -1, 0, -1 }, .max = { 1, 0, 1 } };
+    for (int i = 0; i < 3; i++) {
+        render_mesh_surface_vertex vertex = { .position = corners[i],
+                                              .normal = { 0, 1, 0 } };
+        apush(mesh.vertices, vertex);
+        apush(mesh.indices, i);
+    }
+    publish_mesh(&mesh);
+    ecs_entity triangle = add_solid(
+        (CF_V3){ 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 },
+        0xffffffffu
+    );
+    import_mesh(triangle);
+    CF_V3 inside = render_scene3d_project(&lens, (CF_V3){ -.9f, 0, -.9f });
+    CF_V3 outside = render_scene3d_project(&lens, (CF_V3){ .3f, 0, .3f });
+    REQUIRE(
+        render_scene3d_pick(world, &lens, (CF_V2){ inside.x, inside.y }, (render_skip){ 0 })
+            .slot == triangle.slot
+    );
+    REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ outside.x, outside.y }, (render_skip){ 0 })
+                 .slot);
+    CF_V3 box[8];
+    REQUIRE(render_scene3d_entity_bounds(world, triangle, box));
+    REQUIRE(near_value(box[0].x, -1) && near_value(box[0].z, -1));
+    REQUIRE(near_value(box[7].x, 1) && near_value(box[7].z, 1));
+    REQUIRE(fabsf(box[0].y) < 2e-3f && fabsf(box[7].y) < 2e-3f);
+    return true;
+}
+
+/* A republished source draws its new triangles, and the GPU copies of
+ * replaced and removed meshes are freed. */
+TEST_CASE(republished_meshes_replace_their_gpu_copies)
+{
+    render_mesh_asset box = box_mesh();
+    publish_mesh(&box);
+    ecs_entity solid = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    import_mesh(solid);
+    GameEnvironment environment = game_environment_defaults();
+    REQUIRE(render(&environment));
+    CF_Pixel drawn = top();
+    REQUIRE(drawn.colors.r > 60 && render_scene3d_last_work(scene3d).meshes == 1);
+    /* Moved a box width to the right, the mesh leaves the center empty. */
+    box = box_mesh();
+    for (int i = 0; i < acount(box.vertices); i++) {
+        box.vertices[i].position.x += 1;
+    }
+    box.min.x += 1;
+    box.max.x += 1;
+    publish_mesh(&box);
+    REQUIRE(render(&environment));
+    REQUIRE(top().colors.r < 10 && render_scene3d_last_work(scene3d).meshes == 1);
+    render_mesh_assets_clear();
+    REQUIRE(!render(&environment));
+    REQUIRE(
+        strstr(render_scene3d_error(scene3d), "Mesh content/meshes/test.mesh has not been prepared.")
+    );
+    GAME_GameMeshAsset_get(world, solid)->source = "";
+    REQUIRE(render(&environment));
+    REQUIRE(distance(top(), drawn) <= 3 && render_scene3d_last_work(scene3d).meshes == 0);
+    return true;
+}
+
 #if CHIBI_TEST_MATERIAL_GRAPHS
 /* The two-unit box at the origin, drawn with surface material `name`. */
 static ecs_entity add_surface_box(const char *name)
@@ -2116,11 +2268,10 @@ TEST_CASE(rough_surfaces_blur_the_sky_they_reflect)
     return true;
 }
 
-/* Whether the box's top shows linear color `rgb` through neutral tone
- * mapping, whose offset applies with every channel at least 0.08. */
-static bool shows_ramp(const float rgb[3])
+/* Whether a pixel shows linear color `rgb` through neutral tone mapping,
+ * whose offset applies with every channel at least 0.08. */
+static bool shows_ramp(CF_Pixel shown, const float rgb[3])
 {
-    CF_Pixel shown = top();
     int values[3];
     channels(shown, values);
     for (int c = 0; c < 3; c++) {
@@ -2151,15 +2302,108 @@ TEST_CASE(color_ramps_color_surfaces_from_any_table_offset)
     ecs_entity box = add_surface_box("Filler 0");
     GameEnvironment environment = unlit_environment();
     REQUIRE(render(&environment));
-    REQUIRE(shows_ramp(gray));
+    REQUIRE(shows_ramp(top(), gray));
     GAME_GameShader_get(world, box)->material = "Ramp";
     REQUIRE(render(&environment));
-    REQUIRE(shows_ramp((const float[]){ .55f, .25f, .4f }));
+    REQUIRE(shows_ramp(top(), (const float[]){ .55f, .25f, .4f }));
     unsigned compiles = render_shader_compile_count();
     REQUIRE(test_register_ramp("Ramp", 2, red, blue));
     REQUIRE(render(&environment));
-    REQUIRE(shows_ramp((const float[]){ .55f, .175f, .475f }));
+    REQUIRE(shows_ramp(top(), (const float[]){ .55f, .175f, .475f }));
     REQUIRE(render_shader_compile_count() == compiles);
+    return true;
+}
+
+/* The unit box mesh whose top face draws with `material` and whose other
+ * faces inherit the entity's. */
+static void publish_box_top(const char *material)
+{
+    render_mesh_asset box = box_mesh();
+    static const int runs[][2] = { { 0, 18 }, { 18, 6 }, { 24, 12 } };
+    for (int i = 0; i < 3; i++) {
+        render_mesh_group group = { .first = runs[i][0],
+                                    .count = runs[i][1],
+                                    .part = -1,
+                                    .asset = xstrdup("Box"),
+                                    .name = xstrdup("Faces"),
+                                    .path = xstrdup("Box/Faces"),
+                                    .material = xstrdup(i == 1 ? material : ""),
+                                    .material_scope = xstrdup("") };
+        apush(box.groups, group);
+    }
+    publish_mesh(&box);
+}
+
+/* A mesh's top face has its own material and its other faces inherit the
+ * entity's. A group naming no surface material fails the frame. */
+TEST_CASE(imported_mesh_groups_take_their_own_materials)
+{
+    static const float red[4] = { .7f, .1f, .1f, 1 }, blue[4] = { .1f, .1f, .7f, 1 };
+    REQUIRE(test_register_ramp("Red", 2, red, red));
+    REQUIRE(test_register_ramp("Blue", 2, blue, blue));
+    publish_box_top("Red");
+    import_mesh(add_surface_box("Blue"));
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    REQUIRE(shows_ramp(top(), red) && shows_ramp(front(), blue));
+    publish_box_top("Missing");
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_error(scene3d), "Unknown surface material: Missing"));
+    return true;
+}
+
+/* Surface graphs read a mesh's vertex UVs, or with source bounds their box
+ * projection, and its part positions, or without them its own positions. */
+TEST_CASE(imported_meshes_carry_texture_and_part_coordinates)
+{
+    REQUIRE(test_register_coordinate("U", "Shader UV"));
+    REQUIRE(test_register_coordinate("Part X", "Shader PartPosition"));
+    REQUIRE(test_register_coordinate("Object X", "Shader ObjectPosition"));
+    ecs_entity box = add_surface_box("U");
+    import_mesh(box);
+    GameEnvironment environment = unlit_environment();
+    render_mesh_asset mesh = box_mesh();
+    for (int i = 0; i < acount(mesh.vertices); i++) {
+        mesh.vertices[i].uv = (CF_V2){ .25f, .5f };
+    }
+    publish_mesh(&mesh);
+    REQUIRE(render(&environment));
+    REQUIRE(shows_ramp(top(), (const float[]){ .25f, .25f, .25f }));
+    /* Bounds 100 units wide from x = -60 put the top's center at u = 0.6. */
+    mesh = box_mesh();
+    mesh.has_uv_bounds = true;
+    mesh.uv_min = (CF_V3){ -60, -1, -1 };
+    mesh.uv_max = (CF_V3){ 40, 1, 1 };
+    publish_mesh(&mesh);
+    REQUIRE(render(&environment));
+    REQUIRE(shows_ramp(top(), (const float[]){ .6f, .6f, .6f }));
+    mesh = box_mesh();
+    mesh.has_part_coordinates = true;
+    for (int i = 0; i < acount(mesh.vertices); i++) {
+        render_mesh_surface_vertex *vertex = &mesh.vertices[i];
+        vertex->part_position = (CF_V3){ .4f, 0, 0 };
+        for (int j = 0; j < 3; j++) {
+            for (int k = 0; k < 3; k++) {
+                vertex->part_from_object[j][k] = j == k;
+            }
+        }
+    }
+    publish_mesh(&mesh);
+    GAME_GameShader_get(world, box)->material = "Part X";
+    REQUIRE(render(&environment));
+    REQUIRE(shows_ramp(top(), (const float[]){ .4f, .4f, .4f }));
+    mesh = box_mesh();
+    publish_mesh(&mesh);
+    REQUIRE(render(&environment));
+    static CF_Pixel part[PIXELS];
+    memcpy(part, pixels, sizeof pixels);
+    GAME_GameShader_get(world, box)->material = "Object X";
+    REQUIRE(render(&environment));
+    /* The top's x = 0.6 is the mesh's x = 0.3. */
+    REQUIRE(pixel_at((CF_V3){ .6f, 1, 0 }).colors.g > 60);
+    for (int i = 0; i < PIXELS; i++) {
+        REQUIRE(distance(pixels[i], part[i]) <= 1);
+    }
     return true;
 }
 #endif
@@ -2231,10 +2475,15 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(sky_settings_must_be_valid);
     RUN_TEST_CASE(sky_lights_surfaces_from_its_directions);
     RUN_TEST_CASE(sky_lights_surfaces_by_its_gradients);
+    RUN_TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy);
+    RUN_TEST_CASE(picking_and_bounds_follow_imported_triangles);
+    RUN_TEST_CASE(republished_meshes_replace_their_gpu_copies);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(mirrors_reflect_the_sky_in_its_directions);
     RUN_TEST_CASE(rough_surfaces_blur_the_sky_they_reflect);
     RUN_TEST_CASE(color_ramps_color_surfaces_from_any_table_offset);
+    RUN_TEST_CASE(imported_mesh_groups_take_their_own_materials);
+    RUN_TEST_CASE(imported_meshes_carry_texture_and_part_coordinates);
 #endif
     pu_clear_setup();
     cf_destroy_app();

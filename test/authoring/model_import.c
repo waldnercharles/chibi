@@ -538,8 +538,8 @@ TEST_CASE(model_imports_replace_nothing_and_undo_failures)
     return true;
 }
 
-/* Writes the content file `relative`, declaring `name`, in its folder. */
-static bool declare(const char *relative, const char *name)
+/* Writes `text` as the file at `relative`, making its folder. */
+static bool put(const char *relative, const char *text)
 {
     char path[128];
     inside(path, sizeof path, relative);
@@ -548,8 +548,16 @@ static bool declare(const char *relative, const char *name)
     bool folder = !mkdir(path, 0700) || errno == EEXIST;
     *slash = '/';
     FILE *file = folder ? fopen(path, "wb") : NULL;
-    bool written = file && fprintf(file, "name \"%s\"\n", name) > 0;
+    bool written = file && fputs(text, file) >= 0;
     return file && !fclose(file) && written;
+}
+
+/* Writes the content file `relative`, declaring `name`, in its folder. */
+static bool declare(const char *relative, const char *name)
+{
+    char text[96];
+    snprintf(text, sizeof text, "name \"%s\"\n", name);
+    return put(relative, text);
 }
 
 /* An import declares no name that another file in the project declares,
@@ -571,14 +579,53 @@ TEST_CASE(model_imports_refuse_names_the_project_declares)
     REQUIRE(!strcmp(error, "content/prototypes/Box.kdl already declares Crate"));
     REQUIRE(entries("content") == 2 && entries("content/prototypes") == 1);
     REQUIRE(declare("content/prototypes/Box.kdl", "Box"));
-    /* A folder it cannot read could hide a clash, so it refuses then too. */
+    /* A file or folder it cannot read could hide a clash, so it refuses
+     * then too. A file that declares no name hides none. */
+    REQUIRE(put("content/events/Broken.kdl", "name \"Broken\n"));
+    REQUIRE(put("content/events/Nameless.kdl", "event\n"));
+    REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
+    REQUIRE(!strcmp(error, "Cannot read content/events/Broken.kdl: line 1, column 6: Parse error"));
+    REQUIRE(entries("content") == 3 && entries("content/prototypes") == 1);
+    REQUIRE(declare("content/events/Broken.kdl", "Broken"));
     char fields[128];
     inside(fields, sizeof fields, "content/fields");
     REQUIRE(declare("content/fields", "Fields"));
     REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
     REQUIRE(!strcmp(error, "Cannot read content/fields: Not a directory"));
-    REQUIRE(entries("content") == 3 && entries("content/prototypes") == 1);
+    REQUIRE(entries("content") == 4 && entries("content/prototypes") == 1);
     REQUIRE(!unlink(fields));
+    REQUIRE(import(&f, "crate.gltf", CRATE, "Crate"));
+    gltf_fixture_free(&f);
+    return true;
+}
+
+/* An import refuses materials that would bring the native graphs, every
+ * kind but prototypes and scenes, past what a project can prepare. */
+TEST_CASE(model_imports_refuse_more_native_graphs_than_a_project_prepares)
+{
+    gltf_fixture f = { 0 };
+    crate(&f);
+    static const char *const folders[] = { "shader-libraries", "events",
+                                           "fields",           "materials",
+                                           "shapes",           "models" };
+    /* The crate writes three materials, one more than the catalog holds. */
+    int existing = NATIVE_GRAPH_DOCUMENTS_MAX - 2;
+    bool declared = declare("content/prototypes/Box.kdl", "Box");
+    for (int i = 0; i < existing; i++) {
+        char key[96], name[16];
+        snprintf(name, sizeof name, "Graph%d", i);
+        snprintf(key, sizeof key, "content/%s/%s.kdl", folders[i % 6], name);
+        declared = declare(key, name) && declared;
+    }
+    REQUIRE(declared);
+    REQUIRE(!import(&f, "crate.gltf", CRATE, "Crate"));
+    REQUIRE(
+        !strcmp(error, "The content holds 1022 native graphs, and 3 more materials would pass the 1024 a project can prepare")
+    );
+    REQUIRE(!acount(report.written) && !exists("content/prototypes/Crate.kdl"));
+    char first[128];
+    inside(first, sizeof first, "content/shader-libraries/Graph0.kdl");
+    REQUIRE(!unlink(first));
     REQUIRE(import(&f, "crate.gltf", CRATE, "Crate"));
     gltf_fixture_free(&f);
     return true;
@@ -960,6 +1007,89 @@ TEST_CASE(model_imports_refuse_meshes_a_mesh_file_cannot_hold)
     return true;
 }
 
+/* Vertices that no triangle names don't count toward what a .mesh file
+ * holds: a primitive whose accessors carry more than that, of which one
+ * triangle uses three, imports those three. */
+TEST_CASE(model_imports_count_only_the_vertices_their_triangles_use)
+{
+    enum
+    {
+        VERTICES = 700000
+    };
+    float *positions = xcalloc(VERTICES * 3, sizeof *positions);
+    float *normals = xcalloc(VERTICES * 3, sizeof *normals);
+    float *uvs = xcalloc(VERTICES * 2, sizeof *uvs);
+    memcpy(positions, (const float[]){ -1, 0, -1, -1, 0, 1, 1, 0, 1 }, 9 * sizeof *positions);
+    for (int i = 0; i < 3; i++) {
+        normals[i * 3 + 1] = 1;
+    }
+    gltf_fixture f = { 0 };
+    gltf_fixture_floats(&f, positions, VERTICES, 3);
+    gltf_fixture_floats(&f, normals, VERTICES, 3);
+    gltf_fixture_floats(&f, uvs, VERTICES, 2);
+    gltf_fixture_indices(&f, (const uint16_t[]){ 0, 1, 2 }, 3);
+    free(positions);
+    free(normals);
+    free(uvs);
+    REQUIRE(import(&f, "sparse.gltf", PLAIN, "Sparse"));
+    REQUIRE(reads_mesh("content/meshes/Sparse.mesh"));
+    REQUIRE(acount(mesh.vertices) == 3 && acount(mesh.indices) == 3);
+    REQUIRE(mesh.min.x == -1 && mesh.max.x == 1);
+    gltf_fixture_free(&f);
+    return true;
+}
+
+/* A primitive past what a .mesh file holds is refused before the import
+ * builds its vertices: here one without normals, whose 720,000 corners
+ * would each become a vertex though they name 60,000. */
+TEST_CASE(model_imports_refuse_vast_primitives_before_building_them)
+{
+    enum
+    {
+        TRIANGLES = 20000,
+        CORNERS = TRIANGLES * 3,
+        INDICES = CORNERS * 12
+    };
+    float *positions = xmalloc(CORNERS * 3 * sizeof *positions);
+    uint16_t *indices = xmalloc(INDICES * sizeof *indices);
+    for (int i = 0; i < CORNERS; i++) {
+        int k = i / 3, j = i % 3;
+        memcpy(
+            positions + i * 3,
+            (const float[]){ (float)k + (j == 2), 0, (float)(j == 1) },
+            3 * sizeof *positions
+        );
+    }
+    for (int i = 0; i < INDICES; i++) {
+        indices[i] = (uint16_t)(i % CORNERS);
+    }
+    gltf_fixture f = { 0 };
+    gltf_fixture_floats(&f, positions, CORNERS, 3);
+    gltf_fixture_indices(&f, indices, INDICES);
+    free(positions);
+    free(indices);
+    xalloc_stats before, after;
+    xalloc_stats_get(&before);
+    REQUIRE(!import(
+        &f,
+        "vast.gltf",
+        "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[{"
+        "\"attributes\":{\"POSITION\":0},\"indices\":1}]}]",
+        "Vast"
+    ));
+    xalloc_stats_get(&after);
+    REQUIRE(
+        !strcmp(error, "The model's meshes, copied for each node that draws them, are larger than a .mesh file holds")
+    );
+    REQUIRE(
+        after.requested_bytes - before.requested_bytes <
+        INDICES * sizeof(render_mesh_surface_vertex)
+    );
+    REQUIRE(!entries("content"));
+    gltf_fixture_free(&f);
+    return true;
+}
+
 /* Imports the square, its node's members `node` and its primitive's
  * attributes `attributes`, as `name`, and reads its mesh. */
 static bool frames(gltf_fixture *f, const char *name, const char *nodes, const char *attributes)
@@ -1119,6 +1249,7 @@ void test_model_import()
     RUN_TEST_CASE(model_imports_name_materials_of_the_longest_models);
     RUN_TEST_CASE(model_imports_replace_nothing_and_undo_failures);
     RUN_TEST_CASE(model_imports_refuse_names_the_project_declares);
+    RUN_TEST_CASE(model_imports_refuse_more_native_graphs_than_a_project_prepares);
     RUN_TEST_CASE(model_imports_refuse_linked_folders);
     RUN_TEST_CASE(model_imports_refuse_what_they_cannot_draw_as_authored);
     RUN_TEST_CASE(model_imports_refuse_files_they_cannot_read);
@@ -1126,6 +1257,8 @@ void test_model_import()
     RUN_TEST_CASE(model_imports_warn_of_what_they_leave_out);
     RUN_TEST_CASE(model_imports_leave_out_vertices_only_dropped_triangles_use);
     RUN_TEST_CASE(model_imports_refuse_meshes_a_mesh_file_cannot_hold);
+    RUN_TEST_CASE(model_imports_count_only_the_vertices_their_triangles_use);
+    RUN_TEST_CASE(model_imports_refuse_vast_primitives_before_building_them);
     RUN_TEST_CASE(model_imports_keep_gltf_tangent_frames);
     pu_clear_setup();
 }

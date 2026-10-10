@@ -90,8 +90,8 @@ bool authoring_graph_sources_load(const char *content_root, authoring_graph_sour
             snprintf(path, path_size, "%s/%s", directory_path, entry->d_name);
             struct stat info;
             if (stat(path, &info) == 0 && S_ISREG(info.st_mode)) {
-                if (acount(paths) == 1024 || info.st_size < 0 ||
-                    info.st_size > 512 * 1024 ||
+                if (acount(paths) == NATIVE_GRAPH_DOCUMENTS_MAX ||
+                    info.st_size < 0 || info.st_size > 512 * 1024 ||
                     (size_t)info.st_size > 32 * 1024 * 1024 - total_bytes) {
                     free(path);
                     closedir(directory);

@@ -331,9 +331,10 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   that flattens them onto a plane keeps the triangles with area there, their
   normals turned to the plane on the side they faced. Triangles that a
   transform leaves with no area are left out with a warning. Vertices no kept
-  triangle uses are left out too, so they don't widen the mesh's bounds.
-  Normals and tangents go through the node frames in double, so a frame near
-  float's range keeps their directions.
+  triangle uses, or no index names, are left out too, so they neither widen
+  the mesh's bounds nor count toward its limits. Normals and tangents go
+  through the node frames in double, so a frame near float's range keeps
+  their directions.
 - **Materials**: each factor is a Shader Parameter at a fixed slot, so
   entities can override it: Base Color (0), Opacity (1, unless Opaque),
   Metallic (2), Roughness (3), Emission (4, times
@@ -360,11 +361,13 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   buffer or image named by an absolute path or a scheme other than `data:`, or
   one that `..` or a symbolic link leads outside the model's folder; a model
   over 256 MiB together with the files it names; a mesh past the `.mesh`
-  limits above, refused as soon as the nodes copying its primitives pass them;
+  limits above, refused before the import builds the vertices of the
+  primitive, or of a node's copy of it, that would pass them;
   a material name that another native graph in the project already declares,
-  or a prototype name another prototype does, and a folder of declarations it
-  cannot read; and a content folder, or a folder in it the import writes to,
-  that is a symbolic link.
+  or a prototype name another prototype does, and a folder or file of
+  declarations it cannot read or parse; materials that would bring the
+  project's native graphs past the 1,024 it can prepare; and a content
+  folder, or a folder in it the import writes to, that is a symbolic link.
 - **Warned and left out**: vertex colors, morph targets, skins, animations,
   cameras, lights and other extensions the model uses. Double-sided
   materials draw single-sided.

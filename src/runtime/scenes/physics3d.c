@@ -85,6 +85,17 @@ typedef struct
     b3MeshData *mesh;  /* Null until a mesh collider uses it. */
 } collision_mesh;
 
+/* One per Joint3D entity slot while its joint exists. */
+typedef struct
+{
+    ecs_entity entity;
+    b3JointId joint;
+    GameJoint3D settings; /* As the joint was made. */
+    b3BodyId a, b;        /* Other's body or the ground, and the entity's. */
+    pose frame;           /* The entity on body b. */
+    bool seen;
+} joint_record;
+
 typedef struct
 {
     uint64_t first, second;
@@ -116,6 +127,8 @@ struct game_physics3d
     CF_V3 gravity;        /* As the world last applied it. */
     body_record *bodies;
     int body_count;
+    joint_record *joints;
+    b3BodyId ground; /* A static body for joints to the world, once one is. */
     contact_pair *previous, *current;
     b3ContactData *contacts;
     b3ShapeId *shapes; /* Scratch for sensor visitors and a body's shapes. */
@@ -387,6 +400,8 @@ static void destroy_world(game_physics3d *physics)
     physics->simulation = (b3WorldId){ 0 };
     aclear(physics->bodies);
     physics->body_count = 0;
+    aclear(physics->joints);
+    physics->ground = b3_nullBodyId;
     aclear(physics->previous);
     aclear(physics->current);
     aclear(physics->pushes);
@@ -438,6 +453,7 @@ void game_physics3d_free(game_physics3d *physics)
     free_meshes(physics);
     afree(physics->meshes);
     afree(physics->bodies);
+    afree(physics->joints);
     afree(physics->previous);
     afree(physics->current);
     afree(physics->contacts);
@@ -1120,6 +1136,314 @@ static int check_characters(game_physics3d *physics)
     return result;
 }
 
+/* Whether the entity or one of its parents is being destroyed, which
+ * releases a joint on or under it. */
+static bool released(const game_physics3d *physics, ecs_entity entity)
+{
+    for (ecs_entity at = entity; at.slot; at = ecs_parent(physics->world, at)) {
+        if (game_entities_is_retiring(physics->entities, at)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The body a joint on or under entity holds: the nearest at or above it
+ * that no other body carries, or NULL. */
+static const body_record *joined_body(const game_physics3d *physics, ecs_entity entity)
+{
+    for (ecs_entity at = entity; at.slot;
+         at = game_transform_parent_3d(physics->world, at)) {
+        const body_record *record = at.slot < (unsigned)acount(physics->bodies)
+                                      ? &physics->bodies[at.slot]
+                                      : NULL;
+        if (record && same_entity(record->entity, at) && B3_IS_NON_NULL(record->body)) {
+            return record;
+        }
+    }
+    return NULL;
+}
+
+static const char *invalid_joint(const GameJoint3D *joint)
+{
+    if ((unsigned)joint->kind > GAME_JOINT3D_DISTANCE) {
+        return "Unknown Joint3D kind";
+    }
+    if (!isfinite(
+            joint->lower + joint->upper + joint->speed + joint->strength +
+            joint->hertz + joint->damping
+        )) {
+        return "Joint3D values must be finite";
+    }
+    if (joint->strength < 0 || joint->hertz < 0 || joint->damping < 0) {
+        return "Joint3D strength, hertz and damping must not be negative";
+    }
+    if (joint->limit && joint->lower > joint->upper) {
+        return "A Joint3D limit needs lower at most upper";
+    }
+    if (joint->limit && joint->kind == GAME_JOINT3D_DISTANCE && joint->lower < 0) {
+        return "A distance Joint3D limit needs lower at least 0";
+    }
+    /* Box3D narrows a ball's cone to a quarter turn. */
+    if (joint->limit && joint->kind == GAME_JOINT3D_BALL &&
+        (joint->upper < 0 || joint->upper > B3_PI / 2)) {
+        return "A ball Joint3D limit needs upper between 0 and pi/2";
+    }
+    return NULL;
+}
+
+static bool same_joint(const GameJoint3D *a, const GameJoint3D *b)
+{
+    return a->kind == b->kind && a->other == b->other && a->collide == b->collide &&
+           a->limit == b->limit && a->lower == b->lower &&
+           a->upper == b->upper && a->motor == b->motor && a->speed == b->speed &&
+           a->strength == b->strength && a->spring == b->spring &&
+           a->hertz == b->hertz && a->damping == b->damping;
+}
+
+static bool finite_pose(pose at)
+{
+    CF_Quat q = at.rotation;
+    return finite_v3(at.position) && isfinite(q.x + q.y + q.z + q.w);
+}
+
+static b3Transform to_b3_transform(pose at)
+{
+    return (b3Transform){ to_b3(at.position), quat_to_b3(at.rotation) };
+}
+
+static b3BodyId ground(game_physics3d *physics)
+{
+    if (B3_IS_NULL(physics->ground)) {
+        b3BodyDef def = b3DefaultBodyDef();
+        physics->ground = b3CreateBody(physics->simulation, &def);
+    }
+    return physics->ground;
+}
+
+static pose body_pose(b3BodyId body)
+{
+    b3WorldTransform transform = b3Body_GetTransform(body);
+    return (pose){ from_b3(transform.p), quat_from_b3(transform.q) };
+}
+
+/* Box3D hinges and balls turn about their frames' Z axis and sliders move
+ * along X; a joint's axis is its entity's Y. */
+static b3Quat joint_axis(GameJoint3DKind kind)
+{
+    const float half = .70710678f; /* A quarter turn about Z, or back about X. */
+    return kind == GAME_JOINT3D_SLIDER ? (b3Quat){ { 0, 0, half }, half }
+                                       : (b3Quat){ { -half, 0, 0 }, half };
+}
+
+/* The two frames meet where the entity is now, except that a distance
+ * joint's frame on a is other's origin. */
+static void set_frames(b3JointDef *base, const joint_record *record, b3Transform on_a, b3Transform on_b)
+{
+    b3Quat axis = joint_axis(record->settings.kind);
+    on_a.q = b3MulQuat(on_a.q, axis);
+    on_b.q = b3MulQuat(on_b.q, axis);
+    base->bodyIdA = record->a;
+    base->bodyIdB = record->b;
+    base->localFrameA = on_a;
+    base->localFrameB = on_b;
+    base->collideConnected = record->settings.collide;
+}
+
+static b3JointId create_joint(game_physics3d *physics, const joint_record *record, pose other)
+{
+    /* Box3D checks a slider's limits even when they are off. */
+    GameJoint3D settings = record->settings;
+    if (!settings.limit) {
+        settings.lower = settings.upper = 0;
+    }
+    const GameJoint3D *joint = &settings;
+    b3Transform a = B3_ID_EQUALS(record->a, physics->ground)
+                      ? b3Transform_identity
+                      : to_b3_transform(body_pose(record->a));
+    b3Transform on_b = to_b3_transform(record->frame);
+    b3Transform at = b3MulTransforms(to_b3_transform(body_pose(record->b)), on_b);
+    b3Transform on_a = b3InvMulTransforms(a, at);
+    b3WorldId world = physics->simulation;
+    switch (joint->kind) {
+        case GAME_JOINT3D_HINGE: {
+            b3RevoluteJointDef def = b3DefaultRevoluteJointDef();
+            set_frames(&def.base, record, on_a, on_b);
+            def.enableLimit = joint->limit;
+            def.lowerAngle = joint->lower;
+            def.upperAngle = joint->upper;
+            def.enableMotor = joint->motor;
+            def.motorSpeed = joint->speed;
+            def.maxMotorTorque = joint->strength;
+            def.enableSpring = joint->spring;
+            def.hertz = joint->hertz;
+            def.dampingRatio = joint->damping;
+            return b3CreateRevoluteJoint(world, &def);
+        }
+        case GAME_JOINT3D_SLIDER: {
+            b3PrismaticJointDef def = b3DefaultPrismaticJointDef();
+            set_frames(&def.base, record, on_a, on_b);
+            def.enableLimit = joint->limit;
+            def.lowerTranslation = joint->lower;
+            def.upperTranslation = joint->upper;
+            def.enableMotor = joint->motor;
+            def.motorSpeed = joint->speed;
+            def.maxMotorForce = joint->strength;
+            def.enableSpring = joint->spring;
+            def.hertz = joint->hertz;
+            def.dampingRatio = joint->damping;
+            return b3CreatePrismaticJoint(world, &def);
+        }
+        case GAME_JOINT3D_BALL: {
+            b3SphericalJointDef def = b3DefaultSphericalJointDef();
+            set_frames(&def.base, record, on_a, on_b);
+            def.enableConeLimit = joint->limit;
+            def.coneAngle = joint->limit ? joint->upper : 0;
+            def.enableSpring = joint->spring;
+            def.hertz = joint->hertz;
+            def.dampingRatio = joint->damping;
+            return b3CreateSphericalJoint(world, &def);
+        }
+        case GAME_JOINT3D_WELD: {
+            b3WeldJointDef def = b3DefaultWeldJointDef();
+            set_frames(&def.base, record, on_a, on_b);
+            /* Zero hertz is rigid. */
+            def.linearHertz = def.angularHertz = joint->spring ? joint->hertz : 0;
+            def.linearDampingRatio = def.angularDampingRatio = joint->damping;
+            return b3CreateWeldJoint(world, &def);
+        }
+        case GAME_JOINT3D_DISTANCE: {
+            b3DistanceJointDef def = b3DefaultDistanceJointDef();
+            b3Transform end = to_b3_transform(other);
+            set_frames(&def.base, record, b3InvMulTransforms(a, end), on_b);
+            /* Box3D needs a positive length and keeps at least a slop. */
+            def.length = fmaxf(b3Distance(at.p, end.p), FLT_MIN);
+            def.enableLimit = joint->limit;
+            def.minLength = joint->lower;
+            def.maxLength = joint->upper;
+            def.enableMotor = joint->motor;
+            def.motorSpeed = joint->speed;
+            def.maxMotorForce = joint->strength;
+            def.enableSpring = joint->spring;
+            def.hertz = joint->hertz;
+            def.dampingRatio = joint->damping;
+            return b3CreateDistanceJoint(world, &def);
+        }
+    }
+    assert(false);
+    return b3_nullJointId;
+}
+
+static void remove_joint(joint_record *record)
+{
+    if (b3Joint_IsValid(record->joint)) {
+        b3DestroyJoint(record->joint, true);
+    }
+    *record = (joint_record){ 0 };
+}
+
+/* Makes the entity's joint when it has none, its bodies were remade, or its
+ * fields or place on its body changed. A joint whose other is gone holds
+ * nothing until it names a living one. */
+static int sync_joint(game_physics3d *physics, ecs_entity entity)
+{
+    const GameJoint3D *joint = GAME_GameJoint3D_get_const(physics->world, entity);
+    const char *problem = GAME_GameTransform3D_get_const(physics->world, entity)
+                            ? invalid_joint(joint)
+                            : "A Joint3D needs a Transform3D";
+    if (problem) {
+        return fail(physics, entity, problem);
+    }
+    const body_record *b = joined_body(physics, entity);
+    if (!b) {
+        return fail(physics, entity, "A Joint3D must be on or under a 3D body");
+    }
+    ecs_entity other = ecs_entity_from_u64(joint->other);
+    bool alive = other.slot && ecs_entity_is_alive(physics->world, other) &&
+                 !released(physics, other);
+    if (other.slot && !alive) {
+        return FLOW_OK;
+    }
+    const body_record *a = alive && GAME_GameTransform3D_get_const(physics->world, other)
+                             ? joined_body(physics, other)
+                             : NULL;
+    if (alive && !a) {
+        return fail(physics, entity, "A Joint3D's other must be on or under a 3D body");
+    }
+    if (a == b) {
+        return fail(physics, entity, "A Joint3D must join two different bodies");
+    }
+    if (!alive && joint->kind == GAME_JOINT3D_DISTANCE) {
+        return fail(physics, entity, "A distance Joint3D needs another body");
+    }
+    pose frame = carried_placement(physics->world, entity, b->entity).pose;
+    pose there = alive ? place(physics->world, other).pose
+                       : (pose){ .rotation = cf_quat_identity() };
+    if (!finite_pose(frame) || !finite_pose(there)) {
+        return fail(physics, entity, "A Joint3D and its other need finite Transform3Ds");
+    }
+    if (entity.slot >= (unsigned)acount(physics->joints)) {
+        int previous = acount(physics->joints);
+        asetlen(physics->joints, (int)entity.slot + 1);
+        memset(
+            physics->joints + previous,
+            0,
+            (size_t)(acount(physics->joints) - previous) * sizeof *physics->joints
+        );
+    }
+    joint_record *record = &physics->joints[entity.slot];
+    joint_record want = { .entity = entity,
+                          .settings = *joint,
+                          .a = a ? a->body : ground(physics),
+                          .b = b->body,
+                          .frame = frame,
+                          .seen = true };
+    if (b3Joint_IsValid(record->joint) && same_entity(record->entity, entity) &&
+        same_joint(&record->settings, joint) && B3_ID_EQUALS(record->a, want.a) &&
+        B3_ID_EQUALS(record->b, want.b) && same_pose(record->frame, want.frame)) {
+        record->seen = true;
+        return FLOW_OK;
+    }
+    remove_joint(record);
+    want.joint = create_joint(physics, &want, there);
+    b3Joint_WakeBodies(want.joint);
+    *record = want;
+    return FLOW_OK;
+}
+
+static int sync_joints(game_physics3d *physics)
+{
+    for (int i = 0; i < acount(physics->joints); i++) {
+        physics->joints[i].seen = false;
+    }
+    ecs_component_id id = GAME_COMPONENT_GameJoint3D.id;
+    int result = FLOW_OK;
+    if (ecs_world_component(physics->world, id)) {
+        ecs_query query;
+        result = ecs_query_begin(physics->world, &query, &id, 1);
+        if (result != ECS_OK) {
+            return result;
+        }
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            if (!released(physics, entity) &&
+                (result = sync_joint(physics, entity)) < 0) {
+                break;
+            }
+        }
+        ecs_query_end(&query);
+    }
+    if (result < 0) {
+        return result;
+    }
+    for (int i = 0; i < acount(physics->joints); i++) {
+        if (physics->joints[i].entity.slot && !physics->joints[i].seen) {
+            remove_joint(&physics->joints[i]);
+        }
+    }
+    return FLOW_OK;
+}
+
 static int synchronize(game_physics3d *physics)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -1155,19 +1479,16 @@ static int synchronize(game_physics3d *physics)
             remove_record(physics, record);
         }
     }
-    return place_followers(physics);
+    if ((result = place_followers(physics)) < 0) {
+        return result;
+    }
+    return sync_joints(physics);
 }
 
 static bool moving_root(const body_record *record)
 {
     return B3_IS_NON_NULL(record->body) && record->type != GAME_BODY_STATIC &&
            !record->follower;
-}
-
-static pose body_pose(b3BodyId body)
-{
-    b3WorldTransform transform = b3Body_GetTransform(body);
-    return (pose){ from_b3(transform.p), quat_from_b3(transform.q) };
 }
 
 static void write_back(game_physics3d *physics)

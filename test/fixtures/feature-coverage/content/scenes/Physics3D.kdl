@@ -12,5 +12,6 @@ name "Physics3D"
         prototype "Walker3D"
         (array)behaviors "WalkerProbe"
     }
+    - name="Spinner" prototype="Spinner3D"
     - name="Gravity" prototype="Gravity3D"
 }

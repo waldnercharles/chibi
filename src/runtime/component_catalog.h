@@ -382,5 +382,10 @@ extern const GameCharacter3D *GAME_GameCharacter3D_get_const(const ecs_world *, 
 extern int GAME_GameCharacter3D_has(const ecs_world *, ecs_entity);
 extern int GAME_GameCharacter3D_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameCharacter3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameJoint3D;
+extern GameJoint3D *GAME_GameJoint3D_get(ecs_world *, ecs_entity);
+extern const GameJoint3D *GAME_GameJoint3D_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameJoint3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameJoint3D_remove(ecs_world *, ecs_entity, uint64_t);
 
 #endif

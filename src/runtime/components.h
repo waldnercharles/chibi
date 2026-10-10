@@ -1393,4 +1393,42 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCharacter3D)
 }
 GameCharacter3D;
 
+typedef enum
+{
+    GAME_JOINT3D_HINGE,
+    GAME_JOINT3D_SLIDER,
+    GAME_JOINT3D_BALL,
+    GAME_JOINT3D_WELD,
+    GAME_JOINT3D_DISTANCE
+} GameJoint3DKind;
+
+/* Joins the body at or above the entity, the nearest one with a Body3D or a
+ * static collider of its own, to other's (zero: the world), at the entity's
+ * position. A hinge turns about the entity's local Y axis, a slider moves
+ * along it, a ball turns freely and a weld holds. Each holds the bodies as
+ * they were when it was made, and is made again when its fields change or
+ * its entity moves on its body. A distance joint keeps the entity at its first
+ * distance from other's origin. limit keeps a hinge's angle, a slider's offset
+ * or a distance between lower and upper; a ball's angle from its axis stays
+ * within upper. motor drives a hinge, slider or distance at speed with at most
+ * strength. spring pulls a hinge, slider, ball or weld back to where it was
+ * made at hertz and damping, and makes a distance joint elastic: its limit
+ * and motor act only then. collide lets the two bodies touch. */
+typedef NODE_COMPONENT_TYPE_DENSE(GameJoint3D)
+{
+    GameJoint3DKind kind;
+    uint64_t other NODE_HANDLE(ecs.entity);
+    bool collide;
+    bool limit;
+    float lower;
+    float upper;
+    bool motor;
+    float speed;
+    float strength;
+    bool spring;
+    float hertz NODE_UNIT("Hz");
+    float damping;
+}
+GameJoint3D;
+
 #endif

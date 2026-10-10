@@ -66,9 +66,10 @@ static void setup()
     const ecs_component_desc *components[] = {
         &GAME_COMPONENT_GameTransform3D, &GAME_COMPONENT_GameGlobalTransform3D,
         &GAME_COMPONENT_GameCollider3D,  &GAME_COMPONENT_GameBody3D,
-        &GAME_COMPONENT_GameGravity3D,   &GAME_COMPONENT_GameCharacter3D
+        &GAME_COMPONENT_GameGravity3D,   &GAME_COMPONENT_GameCharacter3D,
+        &GAME_COMPONENT_GameJoint3D
     };
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
     }
     const game_entity_host host = { .destroy = destroy,
@@ -1353,6 +1354,269 @@ TEST_CASE(physics3d_sensors_overlap_meshes)
     return true;
 }
 
+/* A Transform3D without a collider, under parent when it has one. */
+static ecs_entity point(ecs_entity parent, CF_V3 position)
+{
+    ecs_entity entity = ecs_world_create_entity(world);
+    assert(GAME_GameTransform3D_add(world, entity, 0) == ECS_OK);
+    if (parent.slot) {
+        assert(ecs_world_record_add_pair(world, entity, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    }
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    *GAME_GameTransform3D_get(world, entity) = (GameTransform3D){
+        .position = position,
+        .rotation = cf_quat_identity(),
+        .scale = { 1, 1, 1 }
+    };
+    return entity;
+}
+
+/* Joins entity's body to other's, or to the world when other is zero. */
+static GameJoint3D *join(ecs_entity entity, GameJoint3DKind kind, ecs_entity other)
+{
+    assert(GAME_GameJoint3D_add(world, entity, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    GameJoint3D *joint = GAME_GameJoint3D_get(world, entity);
+    joint->kind = kind;
+    joint->other = other.slot ? ecs_entity_to_u64(other) : 0;
+    return joint;
+}
+
+static float distance(ecs_entity a, ecs_entity b)
+{
+    return cf_len_v3(cf_sub_v3(position(a), position(b)));
+}
+
+TEST_CASE(physics3d_hinges_and_sliders_keep_to_their_axis)
+{
+    GameCollider3D block = box(METER, METER, METER);
+    ecs_entity door = collider((ecs_entity){ 0 }, (CF_V3){ 0, 2 * METER, 0 }, block, GAME_BODY_DYNAMIC);
+    GameJoint3D *hinge = join(door, GAME_JOINT3D_HINGE, (ecs_entity){ 0 });
+    hinge->motor = true;
+    hinge->speed = 1;
+    hinge->strength = 1e9f;
+    ecs_entity gate = collider((ecs_entity){ 0 }, (CF_V3){ -4 * METER, 2 * METER, 0 }, block, GAME_BODY_DYNAMIC);
+    hinge = join(gate, GAME_JOINT3D_HINGE, (ecs_entity){ 0 });
+    hinge->motor = hinge->limit = true;
+    hinge->speed = 1;
+    hinge->strength = 1e6f;
+    hinge->upper = .5f;
+    ecs_entity lift = collider((ecs_entity){ 0 }, (CF_V3){ 4 * METER, 2 * METER, 0 }, block, GAME_BODY_DYNAMIC);
+    GameJoint3D *slider = join(lift, GAME_JOINT3D_SLIDER, (ecs_entity){ 0 });
+    slider->limit = true;
+    slider->lower = -METER;
+    steps(60);
+    /* The hinge holds the door up and its motor turns it about Y. */
+    REQUIRE(near_v3(position(door), (CF_V3){ 0, 2 * METER, 0 }, METER / 64));
+    REQUIRE(near_v3(body(door)->angular_velocity, (CF_V3){ 0, 1, 0 }, 1e-2f));
+    /* The gate's motor pushes it only to its limit. */
+    CF_Quat swung = GAME_GameTransform3D_get_const(world, gate)->rotation;
+    REQUIRE(
+        near(2 * asinf(swung.y), .5f, 1e-2f) &&
+        near(body(gate)->angular_velocity.y, 0, 1e-2f)
+    );
+    /* The lift fell along Y to its lower limit and stays there, upright. */
+    REQUIRE(near_v3(position(lift), (CF_V3){ 4 * METER, METER, 0 }, METER / 64));
+    REQUIRE(game_physics3d_apply_impulse(physics, lift, (CF_V3){ 1e6f, 0, 1e6f }) == FLOW_OK);
+    steps(10);
+    REQUIRE(near_v3(position(lift), (CF_V3){ 4 * METER, METER, 0 }, METER / 64));
+    REQUIRE(near(GAME_GameTransform3D_get_const(world, lift)->rotation.w, 1, 1e-4f));
+    return true;
+}
+
+TEST_CASE(physics3d_balls_welds_and_distances_hold_bodies)
+{
+    /* A bob hangs from a ball joint a meter from its center. */
+    ecs_entity bob = collider((ecs_entity){ 0 }, (CF_V3){ METER, 0, 0 }, ball(METER / 4), GAME_BODY_DYNAMIC);
+    join(point(bob, (CF_V3){ -METER, 0, 0 }), GAME_JOINT3D_BALL, (ecs_entity){ 0 });
+    /* Two boxes welded side by side fall and take a push as one. */
+    GameCollider3D block = box(METER, METER, METER);
+    ecs_entity left = collider((ecs_entity){ 0 }, (CF_V3){ 10 * METER, 0, 0 }, block, GAME_BODY_DYNAMIC);
+    ecs_entity right = collider((ecs_entity){ 0 }, (CF_V3){ 11 * METER, 0, 0 }, block, GAME_BODY_DYNAMIC);
+    join(right, GAME_JOINT3D_WELD, left);
+    /* A rod keeps a weight two meters from a fixed post, and a rope lets
+     * another fall until it is taut. */
+    GameCollider3D small = ball(METER / 4);
+    ecs_entity post = collider((ecs_entity){ 0 }, (CF_V3){ 20 * METER, 0, 0 }, small, GAME_BODY_STATIC);
+    ecs_entity weight = collider((ecs_entity){ 0 }, (CF_V3){ 20 * METER, -2 * METER, 0 }, small, GAME_BODY_DYNAMIC);
+    join(weight, GAME_JOINT3D_DISTANCE, post);
+    body(weight)->linear_velocity = (CF_V3){ 0, 0, 2 * METER };
+    ecs_entity hook = collider((ecs_entity){ 0 }, (CF_V3){ 30 * METER, 0, 0 }, small, GAME_BODY_STATIC);
+    ecs_entity load = collider((ecs_entity){ 0 }, (CF_V3){ 30 * METER, -METER / 2, 0 }, small, GAME_BODY_DYNAMIC);
+    GameJoint3D *rope = join(load, GAME_JOINT3D_DISTANCE, hook);
+    rope->spring = true;
+    rope->limit = true;
+    rope->upper = 2 * METER;
+    steps(2);
+    REQUIRE(game_physics3d_apply_impulse(physics, left, (CF_V3){ 0, 0, 1e5f }) == FLOW_OK);
+    steps(58);
+    /* A second in, the bob has swung through to the far side. */
+    REQUIRE(near(cf_len_v3(position(bob)), METER, METER / 64) && position(bob).x < -METER / 2);
+    /* The push turned the pair; the right box stays a meter along the left's X. */
+    CF_Quat turned = GAME_GameTransform3D_get_const(world, left)->rotation;
+    CF_V3 offset = cf_mul_q_v3(cf_quat_conjugate(turned), cf_sub_v3(position(right), position(left)));
+    REQUIRE(near_v3(offset, (CF_V3){ METER, 0, 0 }, METER / 64));
+    REQUIRE(position(left).y < -METER && position(left).z > METER / 64);
+    REQUIRE(
+        near(distance(weight, post), 2 * METER, METER / 64) &&
+        position(weight).z > METER / 4
+    );
+    REQUIRE(near(distance(load, hook), 2 * METER, METER / 32));
+    return true;
+}
+
+TEST_CASE(physics3d_joints_follow_their_components)
+{
+    GameCollider3D block = box(METER, METER, METER);
+    ecs_entity lamp = collider((ecs_entity){ 0 }, (CF_V3){ 0, 5 * METER, 0 }, block, GAME_BODY_DYNAMIC);
+    join(lamp, GAME_JOINT3D_HINGE, (ecs_entity){ 0 });
+    steps(10);
+    REQUIRE(
+        near(position(lamp).y, 5 * METER, METER / 64) &&
+        body(lamp)->angular_velocity.y == 0
+    );
+    /* A field change makes the joint again: now its motor turns it. */
+    GameJoint3D *hinge = GAME_GameJoint3D_get(world, lamp);
+    hinge->motor = true;
+    hinge->speed = -2;
+    hinge->strength = 1e9f;
+    steps(10);
+    REQUIRE(near(body(lamp)->angular_velocity.y, -2, 1e-2f));
+    /* Moving the joint to the wheel's rim makes it again there. */
+    ecs_entity wheel = collider((ecs_entity){ 0 }, (CF_V3){ 8 * METER, 5 * METER, 0 }, block, GAME_BODY_DYNAMIC);
+    ecs_entity axle = point(wheel, (CF_V3){ 0 });
+    hinge = join(axle, GAME_JOINT3D_HINGE, (ecs_entity){ 0 });
+    hinge->motor = true;
+    hinge->speed = 2;
+    hinge->strength = 1e9f;
+    steps(10);
+    REQUIRE(near_v3(position(wheel), (CF_V3){ 8 * METER, 5 * METER, 0 }, METER / 64));
+    GAME_GameTransform3D_get(world, axle)->position = cf_mul_q_v3(
+        cf_quat_conjugate(GAME_GameTransform3D_get_const(world, wheel)->rotation),
+        (CF_V3){ METER, 0, 0 }
+    );
+    steps(20);
+    CF_V3 rim = { 9 * METER, 5 * METER, 0 };
+    REQUIRE(near(cf_len_v3(cf_sub_v3(position(wheel), rim)), METER, METER / 64));
+    REQUIRE(!near_v3(position(wheel), (CF_V3){ 8 * METER, 5 * METER, 0 }, METER / 4));
+    /* Without its Joint3D it falls. */
+    REQUIRE(GAME_GameJoint3D_remove(world, lamp, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    steps(30);
+    REQUIRE(position(lamp).y < 5 * METER - METER / 4);
+    /* A weld to a body that is gone holds nothing. */
+    ecs_entity shelf = collider((ecs_entity){ 0 }, (CF_V3){ 4 * METER, 5 * METER, 0 }, block, GAME_BODY_KINEMATIC);
+    ecs_entity vase = collider((ecs_entity){ 0 }, (CF_V3){ 5 * METER, 5 * METER, 0 }, block, GAME_BODY_DYNAMIC);
+    join(vase, GAME_JOINT3D_WELD, shelf);
+    steps(10);
+    REQUIRE(near(position(vase).y, 5 * METER, METER / 64));
+    REQUIRE(ecs_world_destroy_entity(world, shelf) == ECS_OK);
+    steps(30);
+    REQUIRE(position(vase).y < 5 * METER - METER / 4);
+    /* A body being destroyed releases a joint on an entity under it, and a
+     * joint to one, in the step before its children are destroyed too. */
+    ecs_entity bob = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 20 * METER, 5 * METER, 0 },
+        ball(METER / 4),
+        GAME_BODY_DYNAMIC
+    );
+    join(point(bob, (CF_V3){ -METER, 0, 0 }), GAME_JOINT3D_BALL, (ecs_entity){ 0 });
+    ecs_entity weight = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 24 * METER, 5 * METER, 0 },
+        ball(METER / 4),
+        GAME_BODY_DYNAMIC
+    );
+    join(weight, GAME_JOINT3D_DISTANCE, point(bob, (CF_V3){ 0 }));
+    steps(2);
+    game_entities_request_destroy(entities, bob);
+    steps(1);
+    REQUIRE(game_entities_flush(entities) == 0);
+    steps(1);
+    return true;
+}
+
+TEST_CASE(physics3d_joints_ignore_unused_limits_and_start_anywhere)
+{
+    /* A slider whose limit is off ignores lower and upper, so it falls. */
+    GameCollider3D block = box(METER, METER, METER);
+    ecs_entity drawer = collider((ecs_entity){ 0 }, (CF_V3){ 0 }, block, GAME_BODY_DYNAMIC);
+    GameJoint3D *slider = join(drawer, GAME_JOINT3D_SLIDER, (ecs_entity){ 0 });
+    slider->lower = 1;
+    /* A rope tied on at its hook's origin starts slack and falls taut. */
+    GameCollider3D small = ball(METER / 4);
+    ecs_entity hook = collider((ecs_entity){ 0 }, (CF_V3){ 10 * METER, 0, 0 }, small, GAME_BODY_STATIC);
+    ecs_entity load = collider((ecs_entity){ 0 }, (CF_V3){ 10 * METER, -METER / 2, 0 }, small, GAME_BODY_DYNAMIC);
+    GameJoint3D *rope = join(point(load, (CF_V3){ 0, METER / 2, 0 }), GAME_JOINT3D_DISTANCE, hook);
+    rope->spring = rope->limit = true;
+    rope->upper = 2 * METER;
+    steps(60);
+    REQUIRE(position(drawer).y < -METER && near(position(drawer).x, 0, METER / 64));
+    REQUIRE(near_v3(position(load), (CF_V3){ 10 * METER, -2.5f * METER, 0 }, METER / 32));
+    return true;
+}
+
+static bool joint_fails(ecs_entity entity, const char *message)
+{
+    bool failed = failed_with(message);
+    *GAME_GameJoint3D_get(world, entity) = (GameJoint3D){ 0 };
+    return failed && game_physics3d_tick(physics, STEP) == FLOW_OK;
+}
+
+TEST_CASE(physics3d_joints_need_two_bodies_and_sound_values)
+{
+    ecs_entity bare = ecs_world_create_entity(world);
+    REQUIRE(GAME_GameJoint3D_add(world, bare, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(failed_with("A Joint3D needs a Transform3D on entity"));
+    REQUIRE(ecs_world_destroy_entity(world, bare) == ECS_OK);
+    ecs_entity loose = point((ecs_entity){ 0 }, (CF_V3){ 0 });
+    join(loose, GAME_JOINT3D_WELD, (ecs_entity){ 0 });
+    REQUIRE(failed_with("A Joint3D must be on or under a 3D body on entity"));
+    REQUIRE(GAME_GameJoint3D_remove(world, loose, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity crate = collider((ecs_entity){ 0 }, (CF_V3){ 0 }, box(METER, METER, METER), GAME_BODY_DYNAMIC);
+    ecs_entity grip = point(crate, (CF_V3){ METER / 2, 0, 0 });
+    GameJoint3D *joint = join(grip, GAME_JOINT3D_WELD, loose);
+    REQUIRE(joint_fails(grip, "A Joint3D's other must be on or under a 3D body"));
+    GAME_GameJoint3D_get(world, grip)->other = ecs_entity_to_u64(crate);
+    REQUIRE(joint_fails(grip, "A Joint3D must join two different bodies"));
+    GAME_GameJoint3D_get(world, grip)->kind = GAME_JOINT3D_DISTANCE;
+    REQUIRE(joint_fails(grip, "A distance Joint3D needs another body"));
+    ecs_entity post = collider((ecs_entity){ 0 }, (CF_V3){ 4 * METER, 0, 0 }, ball(METER / 4), GAME_BODY_STATIC);
+    joint = GAME_GameJoint3D_get(world, grip);
+    joint->kind = GAME_JOINT3D_DISTANCE;
+    joint->other = ecs_entity_to_u64(post);
+    joint->limit = true;
+    joint->lower = -2;
+    joint->upper = -1;
+    REQUIRE(joint_fails(grip, "A distance Joint3D limit needs lower at least 0"));
+    /* A transform-only joint entity or other must be finite too. */
+    GAME_GameJoint3D_get(world, grip)->other = ecs_entity_to_u64(post);
+    GAME_GameTransform3D_get(world, grip)->position.x = NAN;
+    REQUIRE(failed_with("A Joint3D and its other need finite Transform3Ds"));
+    GAME_GameTransform3D_get(world, grip)->position.x = METER / 2;
+    ecs_entity tip = point(post, (CF_V3){ INFINITY, 0, 0 });
+    GAME_GameJoint3D_get(world, grip)->other = ecs_entity_to_u64(tip);
+    REQUIRE(joint_fails(grip, "A Joint3D and its other need finite Transform3Ds"));
+    joint = GAME_GameJoint3D_get(world, grip);
+    joint->kind = GAME_JOINT3D_BALL;
+    joint->limit = true;
+    joint->upper = 2;
+    REQUIRE(joint_fails(grip, "A ball Joint3D limit needs upper between 0 and pi/2"));
+    joint->limit = true;
+    joint->lower = 1;
+    REQUIRE(joint_fails(grip, "A Joint3D limit needs lower at most upper"));
+    GAME_GameJoint3D_get(world, grip)->hertz = -1;
+    REQUIRE(joint_fails(grip, "Joint3D strength, hertz and damping must not be negative"));
+    GAME_GameJoint3D_get(world, grip)->speed = NAN;
+    REQUIRE(joint_fails(grip, "Joint3D values must be finite"));
+    GAME_GameJoint3D_get(world, grip)->kind = (GameJoint3DKind)99;
+    REQUIRE(joint_fails(grip, "Unknown Joint3D kind"));
+    return true;
+}
+
 TEST_CASE(physics3d_hulls_and_meshes_need_prepared_meshes)
 {
     GameCollider3D missing = meshed(GAME_COLLIDER3D_HULL, "content/meshes/missing.mesh");
@@ -1597,6 +1861,11 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_meshes_hold_up_convex_bodies);
     RUN_TEST_CASE(physics3d_sensors_overlap_meshes);
     RUN_TEST_CASE(physics3d_hulls_and_meshes_need_prepared_meshes);
+    RUN_TEST_CASE(physics3d_hinges_and_sliders_keep_to_their_axis);
+    RUN_TEST_CASE(physics3d_balls_welds_and_distances_hold_bodies);
+    RUN_TEST_CASE(physics3d_joints_follow_their_components);
+    RUN_TEST_CASE(physics3d_joints_ignore_unused_limits_and_start_anywhere);
+    RUN_TEST_CASE(physics3d_joints_need_two_bodies_and_sound_values);
     RUN_TEST_CASE(physics3d_characters_slide_along_what_they_meet);
     RUN_TEST_CASE(physics3d_characters_meet_only_solid_others);
     RUN_TEST_CASE(physics3d_characters_land_within_a_short_pass);

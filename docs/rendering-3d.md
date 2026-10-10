@@ -230,8 +230,30 @@ vertices. Runtime C code reads a loaded mesh's vertices and indices through
 `render_mesh_asset_load`. The JSON mesh format (`.mesh.json`) is retired:
 export the model again to get a `.mesh` file.
 
-Imported meshes draw through the planar material renderer
-(`GameMeshSurface2D`); the lit 3D path does not draw them yet.
+An entity with a `GameMeshAsset` draws its mesh in the lit 3D pass and, with
+`GameMeshSurface2D`, in the planar material renderer. Its `GameGeometry3D`
+dimensions scale the mesh's own coordinates, so dimensions of 1 keep them as
+authored, and its transforms place it as they place a shape. It cannot also
+have Mesh Parts. Each material group draws its run of the index list with the
+group's surface material, or with the entity's Shader material when the group
+names none; a name that is no surface material fails the frame. Surface graphs
+read the vertex texture coordinates, or with source UV bounds the box
+projection the planar pass uses, and the vertex part positions and frames.
+Meshes cast and receive shadows as shapes do, including from outside the view;
+picking meets their triangles, and bounds hold their extents. A pick tests
+only the triangles in boxes its ray crosses, from a tree of boxes built on a
+mesh's first pick and freed whenever the mesh catalog changes. The ray is
+cut to the mesh's box before it goes into the mesh's coordinates, and the
+triangle test runs in double, so a mesh near float's range that its
+Geometry3D scales down to view picks as it draws. Translucent
+meshes sort back to front by the center of their bounds, so a mesh whose
+vertices lie away from its origin sorts where its triangles are. Cute sorts
+translucent draws by the translation of their transform, so a mesh's GPU copy
+holds its positions about that center and its draws translate to it. A mesh goes to
+the GPU when it first draws and is freed once a reload replaces it or the
+catalog drops it; `render_scene3d_last_work` counts the meshes held. The copies
+stay ordered by mesh identity, so each draw finds its own by bisection. Tangents
+don't reach the lit pass yet.
 
 ## Optional material inputs
 
@@ -286,18 +308,33 @@ along it more than those across it, unturned and turned an eighth, which
 reaches every irradiance term but the xy and yz ones; render-resources checks
 those on the CPU. Unlit color ramps show their color whether their stops start
 the program's ramp table or lie past the first 4 KB of it, and a stop color
-edit shows without a recompile. It is a GPU check that runs the main build's
+edit shows without a recompile. Imported copies of the unit box, one on the
+floor and one culled from the view, light, shade and cast exactly as the shape
+boxes do. A mesh's top face takes its group's material while the other faces
+inherit the entity's, and an unknown group material fails the frame. Surface
+graphs read a mesh's vertex UVs, its UVs projected from source bounds, its
+part positions and, without part coordinates, its own positions. Picks and
+bounds follow a single triangle rather than its unit box, picks follow one a
+hundred-thousandth that size scaled back up, and a pick through a grid of
+8192 triangles tests only the few near its ray. The unit box mesh made 2e37
+wide around 1.85e38, which its Geometry3D scales back to a box, covers the
+pixels, bounds and picks the shape it replaces did. A republished
+mesh draws its new triangles while the GPU copies of replaced and removed
+meshes are freed. Copies uploaded out of identity order are each found again.
+A translucent mesh whose vertices sit between the eye and a
+translucent box, while its origin lies behind the box, blends over the box as
+a shape in its place does, alone and as one of two copies drawn in one batch. It is a GPU check that runs the main build's
 `test/tools/test_tools` after the agent's device preflight, so build it first
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 55 cases and 9297 assertions in 8.6 seconds on 2026-10-10.
+Vulkan llvmpipe passed 66 cases and 29875 assertions in 11.6 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 55
-cases and 9297 assertions in 7.0 seconds on 2026-10-10.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 66
+cases and 29875 assertions in 9.5 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

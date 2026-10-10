@@ -1,6 +1,14 @@
 layout(location = 0) in vec3 v_normal;
 layout(location = 1) in vec3 v_world;
 layout(location = 2) flat in vec4 v_material;
+#ifdef SCENE3D_MESH
+layout(location = 3) in vec2 v_uv;
+layout(location = 4) in vec3 v_object_normal;
+layout(location = 5) in vec3 v_part_position;
+layout(location = 6) in vec3 v_part_frame0;
+layout(location = 7) in vec3 v_part_frame1;
+layout(location = 8) in vec3 v_part_frame2;
+#endif
 layout(location = 0) out vec4 result;
 layout(set = 2, binding = 0) uniform sampler2D scene_parameters;
 layout(set = 2, binding = SG_SHADOW_BINDING) uniform sampler2DShadow scene_shadow_map;
@@ -27,7 +35,7 @@ vec3 world_dy;
 
 vec4 material_value(int slot)
 {
-    int texel = int(v_material.x) * 38 + slot;
+    int texel = int(v_material.x) * 39 + slot;
     return texelFetch(scene_parameters, ivec2(texel % 2048, texel / 2048), 0);
 }
 
@@ -54,6 +62,21 @@ vec2 primitive_uv(vec3 local, vec3 dimensions, vec3 object_normal, int primitive
     }
     return vec2(u, 0.5 - p.y);
 }
+
+#ifdef SCENE3D_MESH
+// A mesh's own texture coordinate, or with source bounds (slot 37's w), the
+// box projection of its position within them, as the planar mesh pass does.
+vec2 mesh_uv(vec3 local)
+{
+    vec4 low = material_value(37), high = material_value(38);
+    if (low.w < 0.5) return v_uv;
+    vec3 p = (local - (low.xyz + high.xyz) * 0.5) / (high.xyz - low.xyz);
+    vec3 side = abs(v_object_normal);
+    if (side.y >= side.x && side.y >= side.z) return p.xz + 0.5;
+    if (side.x >= side.z) return vec2(p.z + 0.5, 0.5 - p.y);
+    return vec2(p.x + 0.5, 0.5 - p.y);
+}
+#endif
 
 // GGX distribution, height-correlated Smith visibility, Schlick Fresnel.
 // Reference: https://google.github.io/filament/main/filament.html#materialsystem/standardmodelsummary
@@ -357,17 +380,28 @@ void main()
         return;
     }
     vec3 normal = safe_normal(v_normal, vec3(0, 1, 0));
-    vec3 object_normal = vec3(dot(inverse_x.xyz, normal), dot(inverse_y.xyz, normal), dot(inverse_z.xyz, normal));
     vec3 view = safe_normal(scene_camera_time.xyz - v_world, normal);
     SGSample sg_context;
     sg_context.position = local.xz;
-    sg_context.uv = primitive_uv(local, material_value(37).xyz, object_normal, int(v_material.z));
     sg_context.object_position = local;
-    sg_context.part_position = local;
     sg_context.object_from_world[0]=inverse_x.xyz;
     sg_context.object_from_world[1]=inverse_y.xyz;
     sg_context.object_from_world[2]=inverse_z.xyz;
+#ifdef SCENE3D_MESH
+    // Baked models carry each vertex's part position and object-to-part frame.
+    sg_context.uv = mesh_uv(local);
+    sg_context.part_position = v_part_position;
+    vec3 part_object[3] = vec3[3](v_part_frame0, v_part_frame1, v_part_frame2);
+    for (int i = 0; i < 3; i++) {
+        sg_context.part_from_world[i] = part_object[i].x * inverse_x.xyz +
+            part_object[i].y * inverse_y.xyz + part_object[i].z * inverse_z.xyz;
+    }
+#else
+    vec3 object_normal = vec3(dot(inverse_x.xyz, normal), dot(inverse_y.xyz, normal), dot(inverse_z.xyz, normal));
+    sg_context.uv = primitive_uv(local, material_value(37).xyz, object_normal, int(v_material.z));
+    sg_context.part_position = local;
     for(int i=0;i<3;i++) sg_context.part_from_world[i]=sg_context.object_from_world[i];
+#endif
     vec3 dx=dFdx(v_world),dy=dFdy(v_world);
     world_dx = dx;
     world_dy = dy;

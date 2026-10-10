@@ -4,6 +4,7 @@
 #include "render/scene3d_visual.h"
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
+#include "runtime/geometry/mesh_pick.h"
 #include "support/array.h"
 
 #include <float.h>
@@ -19,9 +20,25 @@ static int entity_model(const ecs_world *world, ecs_entity entity)
     return render_shader_is_model(id) ? id : 0;
 }
 
+/* The box around a visual: its imported mesh's bounds, or its shape's. */
+static CF_M4x4 visual_box(const scene3d_visual *visual, const render_mesh_asset *mesh)
+{
+    if (mesh) {
+        return render_scene3d_mesh_box(mesh, render_scene3d_visual_model(visual));
+    }
+    CF_M4x4 model = cf_mul_m4(visual->frame, cf_m4_scale(visual->part.dimensions));
+    int primitive = visual->part.primitive;
+    float center_x = primitive == GAME_PRIMITIVE_TRIANGLE ||
+                             primitive == GAME_PRIMITIVE_TRIANGLE_OUTLINE
+                       ? 1.0f / 6
+                       : 0;
+    return cf_mul_m4(model, cf_m4_translate((CF_V3){ center_x, 0, 0 }));
+}
+
 bool render_scene3d_entity_bounds(const ecs_world *world, ecs_entity entity, CF_V3 corners[8])
 {
     scene3d_visual visuals[SCENE3D_PART_LIMIT];
+    const render_mesh_asset *mesh = NULL;
     char error[128];
     int count;
     if (entity_model(world, entity)) {
@@ -33,7 +50,7 @@ bool render_scene3d_entity_bounds(const ecs_world *world, ecs_entity entity, CF_
         }
         render_mesh_surface_free(&surface);
     } else {
-        count = render_scene3d_visuals(world, entity, NULL, visuals, error, sizeof error);
+        count = render_scene3d_visuals(world, entity, NULL, visuals, &mesh, error, sizeof error);
     }
     if (count <= 0) {
         return false;
@@ -41,21 +58,11 @@ bool render_scene3d_entity_bounds(const ecs_world *world, ecs_entity entity, CF_
     CF_V3 minimum = { FLT_MAX, FLT_MAX, FLT_MAX },
           maximum = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
     for (int part = 0; part < count; part++) {
-        CF_M4x4 model = cf_mul_m4(
-            visuals[part].frame,
-            cf_m4_scale(visuals[part].part.dimensions)
-        );
-        int primitive = visuals[part].part.primitive;
-        float center_x = primitive == GAME_PRIMITIVE_TRIANGLE ||
-                                 primitive == GAME_PRIMITIVE_TRIANGLE_OUTLINE
-                           ? 1.0f / 6
-                           : 0;
+        CF_M4x4 box = visual_box(&visuals[part], mesh);
         for (int i = 0; i < 8; i++) {
             CF_V3 point = cf_m4_transform_point(
-                model,
-                (CF_V3){ center_x + (i & 1 ? .5f : -.5f),
-                         i & 4 ? .5f : -.5f,
-                         i & 2 ? .5f : -.5f }
+                box,
+                (CF_V3){ i & 1 ? .5f : -.5f, i & 4 ? .5f : -.5f, i & 2 ? .5f : -.5f }
             );
             corners[i] = point;
             minimum = cf_min_v3(minimum, point);
@@ -192,21 +199,7 @@ static float primitive_hit(CF_Ray3 ray, int primitive)
             int count = render_scene3d_mesh_triangles(primitive, triangles);
             float nearest = FLT_MAX;
             for (int i = 0; i < count; i++) {
-                CF_V3 edge1 = cf_sub_v3(triangles[i][1], triangles[i][0]);
-                CF_V3 edge2 = cf_sub_v3(triangles[i][2], triangles[i][0]);
-                CF_V3 p = cf_cross_v3(ray.d, edge2);
-                float determinant = cf_dot_v3(edge1, p);
-                if (fabsf(determinant) < 1e-7f) {
-                    continue;
-                }
-                CF_V3 delta = cf_sub_v3(ray.p, triangles[i][0]);
-                float u = cf_dot_v3(delta, p) / determinant;
-                CF_V3 q = cf_cross_v3(delta, edge1);
-                float v = cf_dot_v3(ray.d, q) / determinant;
-                float t = cf_dot_v3(edge2, q) / determinant;
-                if (u >= 0 && v >= 0 && u + v <= 1 && t >= 0 && t <= ray.t) {
-                    nearest = fminf(nearest, t);
-                }
+                nearest = fminf(nearest, render_triangle_hit(ray, triangles[i]));
             }
             return nearest;
         }
@@ -279,10 +272,72 @@ static float model_ray_hit(ecs_world *world, ecs_entity entity, int id, CF_Ray3 
     return FLT_MAX;
 }
 
+/* How far along `ray` it first meets the shape `primitive` drawn by
+ * `model`, or FLT_MAX. */
+static float shape_hit(int primitive, CF_M4x4 model, CF_Ray3 ray)
+{
+    CF_M4x4 inverse = cf_m4_invert(model);
+    CF_V3 end = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, ray.t));
+    CF_Ray3 local = cf_make_ray3(
+        cf_m4_transform_point(inverse, ray.p),
+        cf_m4_transform_point(inverse, end)
+    );
+    float t = primitive_hit(local, primitive);
+    return t == FLT_MAX ? FLT_MAX : t * ray.t / local.t;
+}
+
+static float along(CF_V3 v, int axis)
+{
+    return axis == 0 ? v.x : axis == 1 ? v.y : v.z;
+}
+
+/* How far along `ray` it first meets `mesh` drawn by `model`, or FLT_MAX.
+ * The ray is cut to the mesh's box in the box's own frame, which stays
+ * near unit size however far the mesh's coordinates reach, and only that
+ * span goes into them. So a mesh near float's range that its model scales
+ * down to view picks as it draws. */
+static float mesh_hit(const render_mesh_asset *mesh, CF_M4x4 model, CF_Ray3 ray)
+{
+    CF_M4x4 inverse = cf_m4_invert(render_scene3d_mesh_box(mesh, model));
+    CF_V3 from = cf_m4_transform_point(inverse, ray.p);
+    CF_V3 end = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, ray.t));
+    CF_V3 step = cf_sub_v3(cf_m4_transform_point(inverse, end), from);
+    float enter = 0, leave = 1;
+    for (int axis = 0; axis < 3; axis++) {
+        float origin = along(from, axis), toward = along(step, axis);
+        if (toward == 0) {
+            if (fabsf(origin) > .5f) {
+                return FLT_MAX;
+            }
+            continue;
+        }
+        float a = (-.5f - origin) / toward, b = (.5f - origin) / toward;
+        enter = fmaxf(enter, fminf(a, b));
+        leave = fminf(leave, fmaxf(a, b));
+    }
+    if (enter >= leave) {
+        return FLT_MAX;
+    }
+    CF_M4x4 box = render_scene3d_mesh_box(mesh, cf_m4_identity());
+    CF_V3 first = cf_m4_transform_point(box, cf_add_v3(from, cf_mul_v3_f(step, enter)));
+    CF_V3 last = cf_m4_transform_point(box, cf_add_v3(from, cf_mul_v3_f(step, leave)));
+    double span[3] = { (double)last.x - first.x,
+                       (double)last.y - first.y,
+                       (double)last.z - first.z };
+    double length = sqrt(span[0] * span[0] + span[1] * span[1] + span[2] * span[2]);
+    CF_Ray3 local = { .p = first,
+                      .d = { (float)(span[0] / length),
+                             (float)(span[1] / length),
+                             (float)(span[2] / length) },
+                      .t = (float)length };
+    float t = render_mesh_pick(mesh, local).t;
+    return t == FLT_MAX ? FLT_MAX
+                        : (enter + (leave - enter) * (float)(t / length)) * ray.t;
+}
+
 ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *camera, CF_V2 ndc, render_skip skip)
 {
     CF_Ray3 ray = render_scene3d_ray(camera, ndc);
-    CF_V3 end = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, ray.t));
     ecs_entity nearest = { 0 };
     float distance = FLT_MAX;
     ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
@@ -306,19 +361,13 @@ ecs_entity render_scene3d_pick(ecs_world *world, const render_scene3d_camera *ca
             continue;
         }
         scene3d_visual visuals[SCENE3D_PART_LIMIT];
+        const render_mesh_asset *mesh;
         char error[128];
-        int count = render_scene3d_visuals(world, entity, NULL, visuals, error, sizeof error);
+        int count = render_scene3d_visuals(world, entity, NULL, visuals, &mesh, error, sizeof error);
         for (int i = 0; i < count; i++) {
-            CF_M4x4 inverse = cf_m4_invert(render_scene3d_visual_model(&visuals[i]));
-            CF_Ray3 local = cf_make_ray3(
-                cf_m4_transform_point(inverse, ray.p),
-                cf_m4_transform_point(inverse, end)
-            );
-            float t = primitive_hit(local, visuals[i].part.primitive);
-            if (t == FLT_MAX) {
-                continue;
-            }
-            float world_t = t * ray.t / local.t;
+            CF_M4x4 model = render_scene3d_visual_model(&visuals[i]);
+            float world_t = mesh ? mesh_hit(mesh, model, ray)
+                                 : shape_hit(visuals[i].part.primitive, model, ray);
             if (world_t < distance) {
                 nearest = entity;
                 distance = world_t;

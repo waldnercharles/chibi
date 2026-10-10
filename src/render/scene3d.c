@@ -5,6 +5,7 @@
 #include "render/scene3d_geometry.h"
 #include "render/scene3d_influence.h"
 #include "render/scene3d_light_shadow.h"
+#include "render/scene3d_mesh_cache.h"
 #include "render/scene3d_shadow.h"
 #include "render/scene3d_sky.h"
 #include "render/scene3d_trail.h"
@@ -29,7 +30,7 @@
 enum
 {
     PARAMETER_TEXTURE_WIDTH = 2048,
-    MATERIAL_TEXELS = 38,
+    MATERIAL_TEXELS = 39,
     LIGHT_LIMIT = 32
 };
 
@@ -46,10 +47,19 @@ typedef struct
     bool shadows;
 } scene3d_light;
 
+/* A built-in shape, whose frame excludes its dimensions, or a run of an
+ * imported mesh's triangles, whose frame places the mesh's own coordinates. */
 typedef struct
 {
     CF_M4x4 frame;
     GameGeometry3D shape;
+    const render_mesh_asset *mesh;
+    int first, count; /* The mesh's indices. */
+} scene3d_solid;
+
+typedef struct
+{
+    scene3d_solid solid;
     float depth;
     int material, row, program;
     int particle_shape;
@@ -57,18 +67,13 @@ typedef struct
     bool transparent;
 } scene3d_draw;
 
-/* An opaque solid outside the view, which may still cast a shadow into it. */
-typedef struct
-{
-    CF_M4x4 frame;
-    GameGeometry3D shape;
-} scene3d_caster;
-
 typedef struct
 {
     CF_V4 *pixels;
     scene3d_draw *draws;
-    scene3d_caster *casters; /* Kept only while a light casts shadows. */
+    /* Opaque solids outside the view, which may still cast a shadow into it.
+     * Kept only while a light casts shadows. */
+    scene3d_solid *casters;
     render_shader_parameter_cache *cache;
     char binding_error[256];
     unsigned worker;
@@ -77,7 +82,8 @@ typedef struct
 
 struct render_scene3d
 {
-    render_programs *programs;
+    render_programs *programs, *mesh_programs;
+    render_scene3d_mesh_cache *meshes;
     render_influences *influences;
     scene3d_trails *trails;
     render_scene3d_sky *sky;
@@ -140,6 +146,8 @@ render_scene3d *render_scene3d_new()
     render_scene3d *scene3d = xcalloc(1, sizeof *scene3d);
     scene3d->pool = game_task_pool_acquire();
     scene3d->programs = render_programs_new(RENDER_PROGRAM_SCENE3D);
+    scene3d->mesh_programs = render_programs_new(RENDER_PROGRAM_SCENE3D_MESH);
+    scene3d->meshes = render_scene3d_mesh_cache_new();
     scene3d->influences = render_influences_new();
     scene3d->shadow = render_scene3d_shadow_new();
     scene3d->light_shadow = render_scene3d_light_shadow_new();
@@ -186,6 +194,8 @@ void render_scene3d_free(render_scene3d *scene3d)
         return;
     }
     render_programs_free(scene3d->programs);
+    render_programs_free(scene3d->mesh_programs);
+    render_scene3d_mesh_cache_free(scene3d->meshes);
     render_influences_free(scene3d->influences);
     render_scene3d_shadow_free(scene3d->shadow);
     render_scene3d_light_shadow_free(scene3d->light_shadow);
@@ -253,6 +263,22 @@ static void draw_shape(const render_scene3d *scene3d, const GameGeometry3D *shap
     }
 }
 
+/* The box around a solid, as a transform of the unit cube: a mesh's bounds,
+ * or a shape's, whose triangles reach 2/3 along x. */
+static CF_M4x4 solid_box(const scene3d_solid *solid)
+{
+    if (solid->mesh) {
+        return render_scene3d_mesh_box(solid->mesh, solid->frame);
+    }
+    const GameGeometry3D *shape = &solid->shape;
+    CF_V3 size = { shape->width, shape->height, shape->depth };
+    if (shape->primitive == GAME_PRIMITIVE_TRIANGLE ||
+        shape->primitive == GAME_PRIMITIVE_TRIANGLE_OUTLINE) {
+        size.x *= 4.0f / 3;
+    }
+    return cf_mul_m4(solid->frame, cf_m4_scale(size));
+}
+
 static bool transparent_surface(int material, const game_material_coefficients *color)
 {
     return material ? render_shader_may_be_transparent(material)
@@ -270,11 +296,11 @@ static void append_draw(
     draw.row = acount(buffer->draws);
     draw.transparent = draw.particle_shape ||
                        transparent_surface(draw.material, color);
-    CF_V4 origin = { draw.frame.elements[12],
-                     draw.frame.elements[13],
-                     draw.frame.elements[14],
-                     1 };
-    draw.depth = -cf_mul_m4_v4(camera->view, origin).z;
+    const scene3d_solid *solid = &draw.solid;
+    /* A mesh's vertices may lie away from its origin, so depth is its box's center. */
+    CF_M4x4 box = solid_box(solid);
+    CF_V4 center = { box.elements[12], box.elements[13], box.elements[14], 1 };
+    draw.depth = -cf_mul_m4_v4(camera->view, center).z;
     int start = acount(buffer->pixels);
     asetlen(buffer->pixels, start + MATERIAL_TEXELS);
     CF_V4 *row = &buffer->pixels[start];
@@ -287,15 +313,100 @@ static void append_draw(
     if (draw.particle_shape) {
         row[2].x = draw.particle_age;
     }
-    CF_M4x4 inverse = cf_m4_invert(draw.frame);
+    CF_M4x4 inverse = cf_m4_invert(solid->frame);
     for (int i = 0; i < 3; i++) {
         row[34 + i] = (CF_V4){ inverse.elements[i],
                                inverse.elements[4 + i],
                                inverse.elements[8 + i],
                                inverse.elements[12 + i] };
     }
-    row[37] = (CF_V4){ draw.shape.width, draw.shape.height, draw.shape.depth, 0 };
+    const render_mesh_asset *mesh = solid->mesh;
+    if (mesh) {
+        /* A mesh with source bounds projects its texture coordinates from them. */
+        row[37] = (CF_V4){ mesh->uv_min.x, mesh->uv_min.y, mesh->uv_min.z, mesh->has_uv_bounds };
+        row[38] = (CF_V4){ mesh->uv_max.x, mesh->uv_max.y, mesh->uv_max.z, 0 };
+    } else {
+        row[37] = (CF_V4){ solid->shape.width, solid->shape.height, solid->shape.depth, 0 };
+    }
     apush(buffer->draws, draw);
+}
+
+/* The surface material a visual draws with, zero for its color alone, or
+ * false with a binding error for a name that is no surface material. */
+static bool surface_material(draw_buffer *buffer, const char *name, int *id)
+{
+    *id = render_shader_find(name);
+    if (!name || !*name || (*id && !render_shader_is_shape(*id))) {
+        return true;
+    }
+    if (!buffer->binding_error[0]) {
+        snprintf(buffer->binding_error, sizeof buffer->binding_error, "Unknown surface material: %s", name);
+    }
+    return false;
+}
+
+/* An imported mesh's material groups, each with its own material or else the
+ * entity's, or the whole mesh with the entity's. */
+static void collect_mesh(
+    draw_buffer *buffer,
+    ecs_world *world,
+    ecs_entity entity,
+    const scene3d_solid *whole,
+    const game_material_coefficients *color,
+    const render_scene3d_camera *camera
+)
+{
+    const render_mesh_asset *mesh = whole->mesh;
+    const GameShader *binding = GAME_GameShader_get_const(world, entity);
+    CF_M4x4 view_projection = cf_mul_m4(camera->projection, camera->view);
+    bool visible = render_scene3d_box_visible(
+        render_scene3d_mesh_box(mesh, whole->frame),
+        view_projection
+    );
+    int groups = acount(mesh->groups);
+    for (int i = 0; i < (groups ? groups : 1); i++) {
+        const render_mesh_group *group = groups ? &mesh->groups[i] : NULL;
+        scene3d_solid solid = *whole;
+        const char *name = binding ? binding->material : NULL;
+        if (group) {
+            solid.first = group->first;
+            solid.count = group->count;
+            name = group->material[0] ? group->material : name;
+        }
+        int id;
+        if (!surface_material(buffer, name, &id)) {
+            return;
+        }
+        if (!visible) {
+            if (buffer->shadows && !transparent_surface(id, color)) {
+                apush(buffer->casters, solid);
+            }
+            continue;
+        }
+        float parameters[SHADER_PARAMETER_MAX][4];
+        shader_error error = { 0 };
+        if (!render_shader_material_parameters_scoped_cached(
+                id,
+                world,
+                entity,
+                binding ? binding->parameters : NULL,
+                group ? group->material_scope : NULL,
+                parameters,
+                &buffer->cache,
+                &error
+            )) {
+            if (!buffer->binding_error[0]) {
+                snprintf(
+                    buffer->binding_error,
+                    sizeof buffer->binding_error,
+                    "%s",
+                    error.message
+                );
+            }
+            return;
+        }
+        append_draw(buffer, (scene3d_draw){ .solid = solid, .material = id }, color, parameters, camera);
+    }
 }
 
 static void collect_entity(
@@ -311,8 +422,9 @@ static void collect_entity(
     }
     GameTransform position = engine_render_transform(runtime, world, entity).position;
     scene3d_visual visuals[SCENE3D_PART_LIMIT];
+    const render_mesh_asset *mesh;
     char error[256] = { 0 };
-    int count = render_scene3d_visuals(world, entity, &position, visuals, error, sizeof error);
+    int count = render_scene3d_visuals(world, entity, &position, visuals, &mesh, error, sizeof error);
     if (count <= 0) {
         if (count < 0 && !buffer->binding_error[0]) {
             snprintf(buffer->binding_error, sizeof buffer->binding_error, "%s", error);
@@ -326,6 +438,13 @@ static void collect_entity(
     if (!game_material_extract(material ? material : &fallback, &color)) {
         return;
     }
+    if (mesh) {
+        scene3d_solid whole = { .frame = render_scene3d_visual_model(&visuals[0]),
+                                .mesh = mesh,
+                                .count = acount(mesh->indices) };
+        collect_mesh(buffer, world, entity, &whole, &color, camera);
+        return;
+    }
     const GameShader *binding = GAME_GameShader_get_const(world, entity);
     CF_M4x4 view_projection = cf_mul_m4(camera->projection, camera->view);
     for (int i = 0; i < count; i++) {
@@ -333,20 +452,18 @@ static void collect_entity(
         const char *name = visual->part.material[0] ? visual->part.material
                          : binding                  ? binding->material
                                                     : NULL;
-        int id = render_shader_find(name);
-        if (name && *name && (!id || render_shader_is_shape(id))) {
-            if (!buffer->binding_error[0]) {
-                snprintf(buffer->binding_error, sizeof buffer->binding_error, "Unknown surface material: %s", name);
-            }
+        int id;
+        if (!surface_material(buffer, name, &id)) {
             return;
         }
-        GameGeometry3D shape = { .primitive = visual->part.primitive,
-                                 .width = visual->part.dimensions.x,
-                                 .height = visual->part.dimensions.y,
-                                 .depth = visual->part.dimensions.z };
+        scene3d_solid solid = { .frame = visual->frame,
+                                .shape = { .primitive = visual->part.primitive,
+                                           .width = visual->part.dimensions.x,
+                                           .height = visual->part.dimensions.y,
+                                           .depth = visual->part.dimensions.z } };
         if (!render_scene3d_visual_visible(visual, view_projection)) {
             if (buffer->shadows && !transparent_surface(id, &color)) {
-                apush(buffer->casters, ((scene3d_caster){ visual->frame, shape }));
+                apush(buffer->casters, solid);
             }
             continue;
         }
@@ -359,8 +476,7 @@ static void collect_entity(
             parameters,
             &buffer->cache
         );
-        scene3d_draw draw = { .frame = visual->frame, .shape = shape, .material = id };
-        append_draw(buffer, draw, &color, parameters, camera);
+        append_draw(buffer, (scene3d_draw){ .solid = solid, .material = id }, &color, parameters, camera);
     }
 }
 
@@ -431,10 +547,12 @@ static void collect_particles(
         frame.elements[14] = particle->position.y;
         float stretch = particle->shape == GAME_PARTICLE_STREAK ? 2.8f : 1;
         scene3d_draw draw = {
-            .frame = frame,
+            .solid = { .frame = frame,
+                       .shape = { .width = radius * 2 * stretch,
+                                  .height = radius * 2,
+                                  .depth = 1 } },
             .particle_shape = particle->shape + 1,
             .particle_age = age,
-            .shape = { .width = radius * 2 * stretch, .height = radius * 2, .depth = 1 },
         };
         append_draw(&scene3d->buffer, draw, &color, NULL, camera);
     }
@@ -740,6 +858,23 @@ static bool collect_sun(render_scene3d *scene3d, ecs_world *world, const engine 
     return valid;
 }
 
+/* Orders the geometry of one pass's solids: shapes by primitive, meshes by
+ * identity and index range, so that draws of one geometry coalesce. */
+static int compare_geometry(const scene3d_solid *a, const scene3d_solid *b)
+{
+    if (!a->mesh) {
+        return (a->shape.primitive > b->shape.primitive) -
+               (a->shape.primitive < b->shape.primitive);
+    }
+    if (a->mesh->identity != b->mesh->identity) {
+        return a->mesh->identity < b->mesh->identity ? -1 : 1;
+    }
+    return (a->first > b->first) - (a->first < b->first);
+}
+
+/* Opaque draws group by pass, shapes before imported meshes, whose programs
+ * are numbered apart, then by program and geometry. Translucent ones go back
+ * to front. */
 static int compare_draws(const void *left, const void *right)
 {
     const scene3d_draw *a = left, *b = right;
@@ -749,24 +884,14 @@ static int compare_draws(const void *left, const void *right)
     if (a->transparent && a->depth != b->depth) {
         return a->depth > b->depth ? -1 : 1;
     }
+    if (!a->transparent && !a->solid.mesh != !b->solid.mesh) {
+        return a->solid.mesh ? 1 : -1;
+    }
     if (!a->transparent && a->program != b->program) {
         return a->program < b->program ? -1 : 1;
     }
-    if (!a->transparent && a->shape.primitive != b->shape.primitive) {
-        return a->shape.primitive < b->shape.primitive ? -1 : 1;
-    }
-    return (a->row > b->row) - (a->row < b->row);
-}
-
-/* The unit cube around a solid's mesh; triangles reach 2/3 along x. */
-static CF_M4x4 shape_box(CF_M4x4 frame, const GameGeometry3D *shape)
-{
-    CF_V3 size = { shape->width, shape->height, shape->depth };
-    if (shape->primitive == GAME_PRIMITIVE_TRIANGLE ||
-        shape->primitive == GAME_PRIMITIVE_TRIANGLE_OUTLINE) {
-        size.x *= 4.0f / 3;
-    }
-    return cf_mul_m4(frame, cf_m4_scale(size));
+    int geometry = a->transparent ? 0 : compare_geometry(&a->solid, &b->solid);
+    return geometry ? geometry : (a->row > b->row) - (a->row < b->row);
 }
 
 /* Whether any light casts shadows, so solids outside the view still count. */
@@ -783,13 +908,12 @@ static int collect_shadow_boxes(render_scene3d *scene3d)
     for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
         const scene3d_draw *draw = &scene3d->buffer.draws[i];
         if (!draw->particle_shape) {
-            apush(scene3d->shadow_boxes, shape_box(draw->frame, &draw->shape));
+            apush(scene3d->shadow_boxes, solid_box(&draw->solid));
         }
     }
     int receivers = acount(scene3d->shadow_boxes);
     for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
-        const scene3d_caster *caster = &scene3d->buffer.casters[i];
-        apush(scene3d->shadow_boxes, shape_box(caster->frame, &caster->shape));
+        apush(scene3d->shadow_boxes, solid_box(&scene3d->buffer.casters[i]));
     }
     return receivers;
 }
@@ -814,11 +938,22 @@ static int fit_shadow(render_scene3d *scene3d, const render_scene3d_camera *came
     );
 }
 
-static void draw_caster(const render_scene3d *scene3d, CF_M4x4 frame, const GameGeometry3D *shape)
+/* Submits a solid's triangles under the current shader. Its mesh is
+ * already uploaded. */
+static void draw_solid(const render_scene3d *scene3d, const scene3d_solid *solid)
 {
     cf_draw3d_push();
-    cf_draw3d_transform(frame);
-    draw_shape(scene3d, shape);
+    cf_draw3d_transform(solid->frame);
+    if (solid->mesh) {
+        render_scene3d_mesh_cache_draw(
+            scene3d->meshes,
+            solid->mesh,
+            solid->first,
+            solid->count
+        );
+    } else {
+        draw_shape(scene3d, &solid->shape);
+    }
     cf_draw3d_pop();
 }
 
@@ -842,13 +977,12 @@ static bool draw_shadow(render_scene3d *scene3d, int cascades, int receivers)
                 break;
             }
             if (render_scene3d_shadow_reaches(shadow, cascade, i)) {
-                draw_caster(scene3d, draw->frame, &draw->shape);
+                draw_solid(scene3d, &draw->solid);
             }
         }
         for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
-            const scene3d_caster *caster = &scene3d->buffer.casters[i];
             if (render_scene3d_shadow_reaches(shadow, cascade, receivers + i)) {
-                draw_caster(scene3d, caster->frame, &caster->shape);
+                draw_solid(scene3d, &scene3d->buffer.casters[i]);
             }
         }
         render_scene3d_shadow_end(shadow, cascade);
@@ -860,12 +994,10 @@ static bool draw_shadow(render_scene3d *scene3d, int cascades, int receivers)
 static void draw_boxed(const render_scene3d *scene3d, int i, int receivers)
 {
     if (i < receivers) {
-        const scene3d_draw *draw = &scene3d->buffer.draws[i];
-        draw_caster(scene3d, draw->frame, &draw->shape);
+        draw_solid(scene3d, &scene3d->buffer.draws[i].solid);
         return;
     }
-    const scene3d_caster *caster = &scene3d->buffer.casters[i - receivers];
-    draw_caster(scene3d, caster->frame, &caster->shape);
+    draw_solid(scene3d, &scene3d->buffer.casters[i - receivers]);
 }
 
 /* Opaque solids in view and the casters near each shadowed point or spot
@@ -928,12 +1060,26 @@ static void draw_behind_translucents(render_scene3d *scene3d, const render_scene
     render_scene3d_trails_draw(scene3d->trails, camera);
 }
 
-static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera, float time)
+/* The programs that draw a solid: the mesh pass's for an imported mesh. */
+static render_programs *solid_programs(const render_scene3d *scene3d, const scene3d_solid *solid)
 {
-    if (!acount(scene3d->buffer.draws)) {
-        draw_behind_translucents(scene3d, camera);
+    return solid->mesh ? scene3d->mesh_programs : scene3d->programs;
+}
+
+/* Uploads a solid's mesh, or returns false with a binding error. */
+static bool upload(render_scene3d *scene3d, const scene3d_solid *solid)
+{
+    if (!solid->mesh || render_scene3d_mesh_cache_upload(scene3d->meshes, solid->mesh)) {
         return true;
     }
+    snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "Cannot upload an imported mesh.");
+    return false;
+}
+
+/* Compiles each draw's program and uploads every mesh a draw or a caster
+ * needs. Returns false with a binding error. */
+static bool prepare_draws(render_scene3d *scene3d)
+{
     for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
         scene3d_draw *draw = &scene3d->buffer.draws[i];
         render_shader_set set = { 0 };
@@ -947,18 +1093,31 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
             );
             return false;
         }
-        draw->program = render_programs_prepare(scene3d->programs, &set);
-        if (render_programs_error(scene3d->programs)[0]) {
-            snprintf(
-                scene3d->binding_error,
-                sizeof scene3d->binding_error,
-                "%s",
-                render_programs_error(scene3d->programs)
-            );
+        render_programs *programs = solid_programs(scene3d, &draw->solid);
+        draw->program = render_programs_prepare(programs, &set);
+        if (render_programs_error(programs)[0]) {
+            snprintf(scene3d->binding_error, sizeof scene3d->binding_error, "%s", render_programs_error(programs));
         }
-        if (!draw->program) {
+        if (!draw->program || !upload(scene3d, &draw->solid)) {
             return false;
         }
+    }
+    for (int i = 0; i < acount(scene3d->buffer.casters); i++) {
+        if (!upload(scene3d, &scene3d->buffer.casters[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera, float time)
+{
+    if (!acount(scene3d->buffer.draws)) {
+        draw_behind_translucents(scene3d, camera);
+        return true;
+    }
+    if (!prepare_draws(scene3d)) {
+        return false;
     }
     int cells = acount(scene3d->buffer.pixels);
     int height = 1;
@@ -1021,18 +1180,21 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     cf_draw3d_set_texture("scene_parameters", scene3d->parameters);
     cf_draw3d_push_projection(camera->projection);
     cf_draw3d_push_view(camera->view);
+    render_programs *bound = NULL;
     int program = 0;
     CF_RenderState state = cf_render_state_3d_defaults();
     cf_draw3d_push_render_state(state);
     bool transparent = false;
     for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
         const scene3d_draw *draw = &scene3d->buffer.draws[i];
-        if (program != draw->program) {
-            if (program) {
-                render_programs_unbind3d(scene3d->programs, program);
+        render_programs *programs = solid_programs(scene3d, &draw->solid);
+        if (bound != programs || program != draw->program) {
+            if (bound) {
+                render_programs_unbind3d(bound, program);
             }
+            bound = programs;
             program = draw->program;
-            render_programs_bind3d(scene3d->programs, program);
+            render_programs_bind3d(bound, program);
         }
         if (draw->transparent && !transparent) {
             draw_behind_translucents(scene3d, camera);
@@ -1046,27 +1208,28 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
             state.blend.alpha_dst_blend_factor = CF_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
             cf_draw3d_push_render_state(state);
         }
+        const scene3d_solid *solid = &draw->solid;
         CF_V4 material = { (float)draw->row,
                            (float)draw->material,
-                           (float)draw->shape.primitive,
+                           (float)solid->shape.primitive,
                            (float)draw->particle_shape };
         /* Cute solids send the first attributes to in_uv_rect; custom meshes send the second. */
         cf_draw3d_push_mesh_attributes(material);
         cf_draw3d_push_mesh_attributes2(material);
-        cf_draw3d_push();
-        cf_draw3d_transform(draw->frame);
         if (draw->particle_shape) {
-            cf_draw3d_scale((CF_V3){ draw->shape.width, draw->shape.height, 1 });
+            cf_draw3d_push();
+            cf_draw3d_transform(solid->frame);
+            cf_draw3d_scale((CF_V3){ solid->shape.width, solid->shape.height, 1 });
             cf_draw3d_mesh(scene3d->particle_quad);
+            cf_draw3d_pop();
         } else {
-            draw_shape(scene3d, &draw->shape);
+            draw_solid(scene3d, solid);
         }
-        cf_draw3d_pop();
         cf_draw3d_pop_mesh_attributes2();
         cf_draw3d_pop_mesh_attributes();
     }
     cf_draw3d_pop_render_state();
-    render_programs_unbind3d(scene3d->programs, program);
+    render_programs_unbind3d(bound, program);
     /* Later meshes would otherwise keep the parameters bound past their resize or free. */
     cf_draw3d_set_texture("scene_parameters", (CF_Texture){ 0 });
     render_scene3d_shadow_unbind();
@@ -1226,6 +1389,7 @@ bool render_scene3d_draw(
     aclear(scene3d->buffer.pixels);
     aclear(scene3d->buffer.draws);
     aclear(scene3d->buffer.casters);
+    render_scene3d_mesh_cache_prune(scene3d->meshes);
     /* Rhythm is an optional material input; without a valid clock it rests at zero. */
     game_beat beat = { 0 };
     game_rhythm_sample(world, time, &beat);
@@ -1280,7 +1444,9 @@ bool render_scene3d_draw(
         )) {
         return false;
     }
-    return submit(scene3d, camera, time);
+    bool submitted = submit(scene3d, camera, time);
+    scene3d->work.meshes = render_scene3d_mesh_cache_count(scene3d->meshes);
+    return submitted;
 }
 
 void render_scene3d_set_error(render_scene3d *scene3d, const char *message)
@@ -1327,12 +1493,14 @@ bool render_scene3d_preview_material(
     float parameters[SHADER_PARAMETER_MAX][4];
     render_shader_parameters(material, NULL, (ecs_entity){ 0 }, parameters_json, parameters);
     game_material_coefficients color = { .scene = { 1, 1, 1, 1 } };
-    scene3d_draw draw = { .frame = cf_m4_identity(),
-                          .shape = { .primitive = GAME_PRIMITIVE_SPHERE,
-                                     .width = RENDER_SCENE3D_PREVIEW_RADIUS * 2,
-                                     .height = RENDER_SCENE3D_PREVIEW_RADIUS * 2,
-                                     .depth = RENDER_SCENE3D_PREVIEW_RADIUS * 2 },
-                          .material = material };
+    scene3d_draw draw = {
+        .solid = { .frame = cf_m4_identity(),
+                   .shape = { .primitive = GAME_PRIMITIVE_SPHERE,
+                              .width = RENDER_SCENE3D_PREVIEW_RADIUS * 2,
+                              .height = RENDER_SCENE3D_PREVIEW_RADIUS * 2,
+                              .depth = RENDER_SCENE3D_PREVIEW_RADIUS * 2 } },
+        .material = material
+    };
     append_draw(&scene3d->buffer, draw, &color, parameters, camera);
     return submit(scene3d, camera, time);
 }

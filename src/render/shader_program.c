@@ -60,14 +60,29 @@ char *render_shader_source(const char *name)
     return copy;
 }
 
+static bool scene3d_kind(render_program_kind kind)
+{
+    return kind == RENDER_PROGRAM_SCENE3D || kind == RENDER_PROGRAM_SCENE3D_MESH;
+}
+
 render_programs *render_programs_new(render_program_kind kind)
 {
     render_programs *programs = xcalloc(1, sizeof *programs);
     programs->kind = kind;
-    if (kind == RENDER_PROGRAM_SCENE3D) {
-        programs->vertex = render_shader_source("scene3d.vert");
+    if (scene3d_kind(kind)) {
+        bool mesh = kind == RENDER_PROGRAM_SCENE3D_MESH;
+        programs->vertex = render_shader_source(mesh ? "scene3d_mesh.vert" : "scene3d.vert");
         programs->body = render_shader_source("scene3d.frag");
-        programs->scene = render_shader_source("scene3d_scene.glsl");
+        char *scene = render_shader_source("scene3d_scene.glsl");
+        if (scene && mesh) {
+            const char *define = "#define SCENE3D_MESH 1\n";
+            size_t bytes = strlen(define) + strlen(scene) + 1;
+            programs->scene = xmalloc(bytes);
+            snprintf(programs->scene, bytes, "%s%s", define, scene);
+            free(scene);
+        } else {
+            programs->scene = scene;
+        }
     } else if (kind == RENDER_PROGRAM_MESH_MATERIAL || kind == RENDER_PROGRAM_SDF_MATERIAL || kind == RENDER_PROGRAM_SDF_PREVIEW) {
         programs->vertex = render_shader_source(
             (kind == RENDER_PROGRAM_SDF_MATERIAL || kind == RENDER_PROGRAM_SDF_PREVIEW)
@@ -161,7 +176,7 @@ static int previous_targets(render_program_kind kind)
 /* Cute's atlas or the scene's parameters come ahead of the images. */
 static int first_image(render_program_kind kind)
 {
-    return kind == RENDER_PROGRAM_SCENE3D || kind == RENDER_PROGRAM_FRAGMENT ? 1 : 0;
+    return scene3d_kind(kind) || kind == RENDER_PROGRAM_FRAGMENT ? 1 : 0;
 }
 
 static bool sdf_kind(render_program_kind kind)
@@ -175,9 +190,9 @@ static bool sdf_kind(render_program_kind kind)
 static int ramp_binding(render_program_kind kind, int images)
 {
     return first_image(kind) + images +
-           (kind == RENDER_PROGRAM_SCENE3D ? SCENE3D_MAPS
-            : sdf_kind(kind)               ? 1
-                                           : previous_targets(kind));
+           (scene3d_kind(kind) ? SCENE3D_MAPS
+            : sdf_kind(kind)   ? 1
+                               : previous_targets(kind));
 }
 
 int render_program_samplers(render_program_kind kind, const render_shader_set *set)
@@ -427,7 +442,7 @@ int render_programs_prepare(render_programs *programs, const render_shader_set *
     programs->error[0] = 0;
     if (!programs->body ||
         (programs->kind != RENDER_PROGRAM_FRAGMENT && !programs->vertex) ||
-        (programs->kind == RENDER_PROGRAM_SCENE3D && !programs->scene)) {
+        (scene3d_kind(programs->kind) && !programs->scene)) {
         snprintf(programs->error, sizeof programs->error, "Cannot read material shader sources.");
         return 0;
     }

@@ -41,12 +41,17 @@ void render_mesh_asset_free(render_mesh_asset *asset);
  * normal, which must be unit length. A vertex whose UVs don't vary takes any
  * perpendicular tangent. */
 void render_mesh_asset_tangents(render_mesh_asset *asset);
+/* The middle of a mesh's bounds, from halves of each, so bounds near the
+ * float limit cannot overflow it. */
+CF_V3 render_mesh_asset_center(const render_mesh_asset *asset);
 /* Immutable catalog-owned storage. Content-relative path, e.g. content/meshes/a.mesh.
  * Resolving a resident source does no file IO; workspace reset invalidates the catalog. */
 const render_mesh_asset *render_mesh_asset_load(const char *source, char *error, size_t size);
 /* Transfers an already validated owned snapshot into the resident catalog. */
 void render_mesh_asset_publish(const char *source, render_mesh_asset *asset);
 void render_mesh_assets_clear();
+/* Changes whenever the resident catalog does: a publish, a clear or an exchange. */
+uint64_t render_mesh_assets_generation();
 /* Detached resident catalog generation. Successful insertion consumes asset;
  * rejection leaves it owned by the caller. Exchange cannot fail and transfers
  * the former resident generation into table for deferred retirement. */

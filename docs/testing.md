@@ -535,18 +535,20 @@ once, with an identity that follows the texels) and import that never replaces
 a file. It needs a compiler build, uses one temporary folder and passes 661
 assertions in 0.12 seconds under ASan/UBSan with leak checks, without
 processes or GPU.
-`mesh-files` selects six in-tree indexed `.mesh` cases: tangents that follow
+`mesh-files` selects eight in-tree indexed `.mesh` cases: tangents that follow
 texture directions (mirrored, rotated, tilted normals, unvarying coordinates
 and a sliver beside a large triangle), preparation from mounted content (read
 once, with part coordinates stored only when present), ten refused meshes,
 each with its reason (bad indices, degenerate triangles, bad tangents, and
 groups that split triangles or skip indices), unreadable files (retired
 `.mesh.json` paths, text, truncated bytes and an older version), the largest
-mesh a bake can write with one more triangle refused, and a model export whose
-`model.mesh`, OBJ faces and provenance agree. It needs a compiler build, uses
-one temporary folder and passes 9,910 assertions in 8.4 seconds under
-ASan/UBSan with leak checks, 8.0 of them writing and reading the largest mesh,
-without processes or GPU.
+mesh a bake can write with one more triangle refused, a model export whose
+`model.mesh`, OBJ faces and provenance agree, pick trees freed by each
+publish, clear and exchange of the mesh catalog, and a pick of a quad 2e20
+across. It needs a compiler build,
+uses one temporary folder and passes 9,929 assertions in 9.2 seconds under
+ASan/UBSan with leak checks, most of them writing and reading the largest
+mesh, without processes or GPU.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

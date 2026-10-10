@@ -326,6 +326,24 @@ at least 2 cm. Colliders under it must be sensors, because only its capsule
 moves and slides. It turns by its `Transform3D`; physics keeps its body's
 `angular_velocity` at zero.
 
+`GAME.GameJoint3D` joins the body at or above its entity to the body at or
+above `other`, or to the world when `other` is zero, at the entity's position.
+Put it on the body itself, or on a child entity with a Transform3D to place and
+turn the joint. `kind` is `Hinge`, turning about the entity's local Y axis;
+`Slider`, moving along it; `Ball`, turning freely; `Weld`, holding fast; or
+`Distance`, keeping the entity at its first distance from `other`'s origin.
+`limit` keeps a hinge's angle in radians, a slider's offset or a distance in
+units between `lower` and `upper`, and a ball within `upper` radians (at most a
+quarter turn) of its axis. `motor` drives a hinge, slider or distance at `speed`
+with at most `strength`: a hinge's torque in kilogram square units per second
+squared, or a force in kilogram units per second squared. `spring` pulls a hinge, slider, ball or weld back toward where it was
+made at `hertz` with `damping`, and makes a distance elastic: a distance's
+limit and motor act only with its spring, so a spring of zero hertz and a limit
+make a slack rope. `collide` lets the two bodies touch. A joint holds the bodies
+as they were when it was made and is made again when its fields change or its
+entity moves on its body; a joint whose `other` is destroyed holds nothing.
+Scenes can't name another entity yet, so a script sets `other`.
+
 Scripts query colliders where their components place them now, with or without
 a step: `raycast_3d(start, end, categories, exclude, sensors)` and
 `shape_cast_3d(entity, translation, categories, sensors)` return `.Found`,

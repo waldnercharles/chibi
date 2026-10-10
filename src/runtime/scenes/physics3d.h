@@ -8,9 +8,10 @@
 struct game_entities;
 typedef struct game_physics3d game_physics3d;
 
-/* Simulates Collider3D entities in a Box3D world, which exists from the first
- * collider until reset, so a world without colliders costs one empty query
- * per step. Lengths are project units, 32 per meter. */
+/* Simulates Collider3D entities, and the Joint3D joints between their bodies,
+ * in a Box3D world, which exists from the first collider until reset, so a
+ * world without colliders costs one empty query per step. Lengths are project
+ * units, 32 per meter. */
 game_physics3d *game_physics3d_new(ecs_world *world, struct game_entities *entities);
 void game_physics3d_free(game_physics3d *physics);
 /* Drops the Box3D world, its bodies, contacts and pushes without events;

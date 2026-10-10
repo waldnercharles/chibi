@@ -104,9 +104,11 @@ leave them out. Propagation writes them parents first after the physics step,
 after presentation systems, and at the start of each draw and camera framing, so
 renderers always read current placements. Physics, vision, aim and nearest-entity
 queries compute the same world placement on demand. A body under a placed parent
-follows it in world space and never writes back; dynamic bodies must be roots,
-and a dynamic body may carry only sensors, since nothing a child collider touches
-pushes its parent.
+follows it in world space and never writes back, and dynamic bodies must be
+roots. When the top of its hierarchy has a body, a child's collider becomes part
+of that body: it moves exactly with it, adds its mass (a sensor adds none), and
+what it hits pushes the body while contacts name the child. Otherwise the child
+teleports when its parents move.
 
 ## Prepared artifacts and products
 

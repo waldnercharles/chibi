@@ -16,5 +16,11 @@ ecs_entity game_transform_parent(const ecs_world *world, ecs_entity entity);
  * Orientation. It is exact at any time, while GlobalTransform2D holds the same
  * value as of the last propagation. The entity must have a Transform. */
 GameGlobalTransform2D game_transform_world_2d(const ecs_world *world, ecs_entity entity);
+/* The nearest ChildOf ancestor with a Transform3D, or a zero handle. */
+ecs_entity game_transform_parent_3d(const ecs_world *world, ecs_entity entity);
+/* The entity's world placement from its own and its ancestors' Transform3D,
+ * exact at any time like game_transform_world_2d. The entity must have a
+ * Transform3D. */
+GameGlobalTransform3D game_transform_world_3d(const ecs_world *world, ecs_entity entity);
 
 #endif

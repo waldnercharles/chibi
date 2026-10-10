@@ -375,7 +375,7 @@ void source_view_function_graph(source_projection *p, int index)
     }
     for (int i = 0; i < p->analysis->symbol_count; i++) {
         const script_symbol *s = &p->analysis->symbols[i];
-        if (s->function != index || s->declaration.start < 0) {
+        if (s->declaration.start < 0 || p->analysis->scopes[s->scope].function != index) {
             continue;
         }
         if (s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_ACTION ||

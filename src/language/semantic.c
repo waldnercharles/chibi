@@ -187,6 +187,10 @@ static script_analysis *analyze(
     out->binding_count = acount(out->bindings);
     out->diagnostic_count = acount(out->diagnostics);
     out->valid = !out->diagnostic_count;
+    if (out->valid && !declarations) {
+        script_analyzer_units(&a);
+    }
+    out->warning_count = acount(out->warnings);
     afree(a.initializers);
     afree(a.bodies);
     afree(a.narrowed);
@@ -264,6 +268,7 @@ void script_analysis_free(script_analysis *out)
     afree(out->queries);
     afree(out->bindings);
     afree(out->diagnostics);
+    afree(out->warnings);
     arena_free(&out->constants);
     free(out);
 }

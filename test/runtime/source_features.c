@@ -8,6 +8,7 @@
 #include "render/shader_publish.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/component_catalog.h"
+#include "runtime/declared_components.h"
 #include "runtime/math_native.h"
 #include "runtime/particles.h"
 #include "runtime/shaders/prepared.h"
@@ -29,6 +30,7 @@ static execution_instance *instance;
 static ecs_world *world;
 static game_particles *particles, *expected_particles;
 static game_entities *entities;
+static declared_components *declared;
 static shader_prepared_asset shader_record;
 static unsigned char *shader_bytes;
 static game_player_resource_host resource_host;
@@ -61,6 +63,8 @@ static void cleanup()
     }
     ecs_world_free(world);
     world = NULL;
+    declared_components_free(declared);
+    declared = NULL;
     if (resource_generation) {
         resource_host.retire(resource_host.context, resource_generation);
     }
@@ -516,6 +520,111 @@ TEST_CASE(source_native_query_retains_nested_iteration_and_membership)
     return true;
 }
 
+/* Contextual EntityCondition literals query a retained entity snapshot against
+ * current declared Boolean fields and fractional transforms. Rectangle contact
+ * is strict, while a point includes the low edge and excludes the high edge. */
+TEST_CASE(source_native_query_matches_authored_rectangles)
+{
+    const char *text =
+        "behavior Query { state members:entity[]; state boxes:int=0; "
+        "state left:number=0; state top:number=0; state right:number=8; "
+        "state bottom:number=8; state x:number=8; state y:number=4; "
+        "state points:int=0; on Begin { "
+        "members=find_entities_with_component(\"SolidTile\"); } "
+        "on Tick { boxes=count_matching_entities(members,["
+        "{component:\"SolidTile\",field:\"enabled\",test:\"==\",value:1},"
+        "{component:\"GAME.GameTransform\",field:\"x\",test:\">\",value:left-4}"
+        ","
+        "{component:\"GAME.GameTransform\",field:\"x\",test:\"<\",value:right+"
+        "4},"
+        "{component:\"GAME.GameTransform\",field:\"y\",test:\">\",value:top-4},"
+        "{component:\"GAME.GameTransform\",field:\"y\",test:\"<\",value:bottom+"
+        "4}]);"
+        "points=count_matching_entities(members,["
+        "{component:\"SolidTile\",field:\"enabled\",test:\"==\",value:1},"
+        "{component:\"GAME.GameTransform\",field:\"x\",test:\"<=\",value:x+4},"
+        "{component:\"GAME.GameTransform\",field:\"x\",test:\">\",value:x-4},"
+        "{component:\"GAME.GameTransform\",field:\"y\",test:\"<=\",value:y+4},"
+        "{component:\"GAME.GameTransform\",field:\"y\",test:\">\",value:y-4}]);"
+        " "
+        "} }";
+    static const struct
+    {
+        float x, y;
+        int boxes, points;
+    } poses[] = { { 12, 4, 0, 1 },     { 11.75f, 4, 1, 1 }, { -4, 4, 0, 0 },
+                  { -3.75f, 4, 1, 0 }, { 4, -4, 0, 0 },     { 4, -3.75f, 1, 0 },
+                  { 4, 12, 0, 0 },     { 4, 11.75f, 1, 0 }, { 8, 8, 1, 1 },
+                  { 8, 0, 1, 0 } };
+    for (int backend = 0; backend < 2; backend++) {
+        char error[256];
+        declared_field field = { .name = "enabled", .type = "bool" };
+        declared_component component = { .name = "SolidTile",
+                                         .fields = &field,
+                                         .field_count = 1 };
+        declared = declared_components_new(&component, 1, error, sizeof error);
+        REQUIRE(declared);
+        ecs_component_catalog components = declared_components_ecs(declared);
+        const ecs_component_desc *solid = components.components[0];
+        world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(world, solid, NULL) == 0);
+        REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == 0);
+        ecs_entity tile = ecs_world_create_entity(world);
+        bool enabled = true;
+        GameTransform transform = { .x = 4, .y = 4 };
+        REQUIRE(ecs_world_record_add(world, tile, solid->id, &enabled, 0) == 0);
+        REQUIRE(
+            ecs_world_record_add(world, tile, GAME_COMPONENT_GameTransform.id, &transform, 0) == 0
+        );
+        REQUIRE(ecs_world_apply_commands(world) == 0);
+        entities = game_entities_new(world, NULL);
+        REQUIRE(entities);
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t begin = execution_module_event(prepared->module, "Begin"),
+                 tick = execution_module_event(prepared->module, "Tick"),
+                 boxes = state_id("boxes"), points = state_id("points");
+        REQUIRE(begin && tick && boxes && points);
+        instance = execution_program_attach(program, 0);
+        REQUIRE(instance);
+        retire_producer();
+        REQUIRE(dispatch(begin, 4096) >= 0);
+        for (int i = 0; i < (int)(sizeof poses / sizeof *poses); i++) {
+            GameTransform *at = GAME_GameTransform_get(world, tile);
+            REQUIRE(at);
+            at->x = poses[i].x;
+            at->y = poses[i].y;
+            REQUIRE(dispatch(tick, 4096) >= 0);
+            REQUIRE(execution_instance_pending(instance) == 0);
+            REQUIRE(execution_instance_state(instance, boxes)->i == poses[i].boxes);
+            REQUIRE(execution_instance_state(instance, points)->i == poses[i].points);
+        }
+        /* The snapshot survives field changes, component removal and stale
+         * handles; only the currently enabled live rectangle can match. */
+        GameTransform *at = GAME_GameTransform_get(world, tile);
+        at->x = at->y = 8;
+        *(bool *)ecs_component_data(world, tile, solid->id) = false;
+        REQUIRE(dispatch(tick, 4096) >= 0);
+        REQUIRE(execution_instance_state(instance, boxes)->i == 0);
+        *(bool *)ecs_component_data(world, tile, solid->id) = true;
+        REQUIRE(dispatch(tick, 4096) >= 0);
+        REQUIRE(execution_instance_state(instance, boxes)->i == 1);
+        REQUIRE(ecs_world_record_remove(world, tile, solid->id, 0) == 0);
+        REQUIRE(ecs_world_apply_commands(world) == 0);
+        REQUIRE(dispatch(tick, 4096) >= 0);
+        REQUIRE(execution_instance_state(instance, boxes)->i == 0);
+        REQUIRE(ecs_world_record_add(world, tile, solid->id, &enabled, 0) == 0);
+        REQUIRE(ecs_world_apply_commands(world) == 0);
+        REQUIRE(dispatch(tick, 4096) >= 0);
+        REQUIRE(execution_instance_state(instance, boxes)->i == 1);
+        REQUIRE(ecs_world_record_destroy(world, tile, 0) == 0);
+        REQUIRE(ecs_world_apply_commands(world) == 0);
+        REQUIRE(dispatch(tick, 4096) >= 0);
+        REQUIRE(execution_instance_state(instance, boxes)->i == 0);
+        cleanup();
+    }
+    return true;
+}
+
 static bool publish_material(int width)
 {
     shader_error error = { 0 };
@@ -644,6 +753,7 @@ void test_source_native_numeric_queries()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_native_motion_retains_numeric_outputs);
     RUN_TEST_CASE(source_native_query_retains_nested_iteration_and_membership);
+    RUN_TEST_CASE(source_native_query_matches_authored_rectangles);
     pu_clear_setup();
 }
 

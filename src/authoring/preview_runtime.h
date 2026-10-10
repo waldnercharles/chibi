@@ -13,6 +13,7 @@ typedef struct game_preview_runtime
     game_source_registry *sources;
     game_entities *entities;
     game_physics *physics;
+    game_physics3d *physics3d;
     game_particles *particles;
     game_materials *materials;
     game_visibility *visibility;

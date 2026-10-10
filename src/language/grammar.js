@@ -57,10 +57,11 @@ const K = Object.fromEntries(
     "wildcard",
     "from",
     "split",
+    "component",
   ].map((word) => [word, word]),
 );
 
-const CONTEXTUAL = ["from", "split"];
+const CONTEXTUAL = ["from", "split", "component"];
 
 const P = {
   or: 1,
@@ -105,7 +106,8 @@ module.exports = grammar({
     [$._expression, $._call_target],
   ],
   rules: {
-    source_file: ($) => choice($.behavior, $.library, $.system),
+    source_file: ($) =>
+      choice($.behavior, $.library, $.system, $.component),
     behavior: ($) =>
       seq(
         K.behavior,
@@ -122,6 +124,41 @@ module.exports = grammar({
         optional(field("without", $.without_clause)),
         field("body", $.system_body),
       ),
+    // A component's fields are data: a type, or a number measured by an
+    // optional range and unit.
+    component: ($) =>
+      seq(
+        K.component,
+        field("name", $._name),
+        field("body", $.component_body),
+      ),
+    component_body: ($) => seq("{", repeat($.component_field), "}"),
+    component_field: ($) =>
+      seq(
+        field("name", $._name),
+        ":",
+        field("type", choice($.type, $.measure)),
+        $._end,
+      ),
+    // A lone name is a type; a unit standing alone reads as one and resolves
+    // to a measure when no type has its name.
+    measure: ($) =>
+      choice(
+        seq(field("range", $.range_type), optional(field("unit", $.unit))),
+        field("unit", alias($._compound_unit, $.unit)),
+      ),
+    range_type: ($) =>
+      seq(field("min", $._bound), "..", field("max", $._bound)),
+    _bound: ($) => choice($.number, alias($._negative_number, $.unary_expression)),
+    _negative_number: ($) => seq(field("operator", "-"), field("operand", $.number)),
+    // u, s, u/s, u/s^2: unit names exist only here, so they stay free names.
+    unit: ($) => seq($._unit_term, repeat(seq("/", $._unit_term))),
+    _compound_unit: ($) =>
+      choice(
+        seq($.identifier, "^", $.number, repeat(seq("/", $._unit_term))),
+        seq($.identifier, repeat1(seq("/", $._unit_term))),
+      ),
+    _unit_term: ($) => seq($.identifier, optional(seq("^", $.number))),
     without_clause: ($) => seq(K.without, comma($.type)),
     declaration_body: ($) => seq("{", repeat($._declaration), "}"),
     system_body: ($) =>

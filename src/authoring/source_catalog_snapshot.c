@@ -64,6 +64,7 @@ bool source_catalog_snapshot(arena *storage, const script_catalog *source, scrip
         for (int j = 0; j < types[i].field_count; j++) {
             fields[j] = types[i].fields[j];
             fields[j].name = text(storage, fields[j].name);
+            fields[j].unit = text(storage, fields[j].unit);
         }
         types[i].fields = fields;
     }
@@ -73,6 +74,7 @@ bool source_catalog_snapshot(arena *storage, const script_catalog *source, scrip
     for (int i = 0; i < source->global_count; i++) {
         globals[i] = source->globals[i];
         globals[i].name = text(storage, globals[i].name);
+        globals[i].unit = text(storage, globals[i].unit);
     }
     out->globals = globals;
     out->global_count = source->global_count;

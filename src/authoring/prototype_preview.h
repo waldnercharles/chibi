@@ -14,6 +14,7 @@ typedef struct game_prototype_preview game_prototype_preview;
 typedef struct
 {
     const game_prototype *prototype;
+    int parent; /* an earlier entity's index, or -1 for a root */
     av_value *components;
     const char *const *behaviors;
     int behavior_count;

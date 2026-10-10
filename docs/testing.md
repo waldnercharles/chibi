@@ -46,8 +46,8 @@ out of the group; run them with `python3 tools/test_policy.py tool <name>`.
 ## Feature coverage
 
 `test/fixtures/feature-coverage` is the all-features project: one scene per
-area (2D physics, UI, particles, audio, save, rhythm, materials, input and
-entities). `test_tools --feature-coverage <project>` compares the engine
+area (2D and 3D physics, tilemaps, UI, particles, audio, save, rhythm,
+materials, input and entities). `test_tools --feature-coverage <project>` compares the engine
 catalog (components, native functions and events) with what the project's
 scripts, prototypes and scenes use, prints each gap, and runs every scene for
 four frames through `chibi_ctl`'s `run_scenario`, failing on any behavior

@@ -1303,13 +1303,13 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameCollider3D)
 {
     GameCollider3DShape shape;
     CF_V3 size;
-    float radius;
-    float height;
+    float radius NODE_UNIT("u");
+    float height NODE_UNIT("u");
     unsigned category;
     unsigned mask;
     bool sensor;
-    float friction;
-    float restitution;
+    float friction NODE_RANGE(0, 1);
+    float restitution NODE_RANGE(0, 1);
 }
 GameCollider3D;
 

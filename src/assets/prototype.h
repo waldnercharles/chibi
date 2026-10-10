@@ -174,7 +174,9 @@ av_value *game_prototype_entity_component_value(
     const game_prototype_registry *registry
 );
 /* Sparse fields, full added components, and null removed components, using
- * the same semantics as capturing an entity. Caller owns the returned native value. */
+ * the same semantics as capturing an entity. A handle overrides only where
+ * `current` names another entity path, so `current` may be a captured
+ * entity's. Caller owns the returned native value. */
 av_value *game_prototype_overrides_value(const game_prototype *base, const game_prototype *current);
 av_value *game_prototype_capture_overrides_value(
     const game_prototype *base,

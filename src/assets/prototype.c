@@ -1362,7 +1362,9 @@ static int field_equal(
     return pin_value_equal(&left_value, &right_value);
 }
 
-/* An entity path override: the current path, or null where it names none. */
+/* An entity path override: the current path where it differs from the
+ * base's. A current naming none keeps the base's: it may be a captured
+ * entity, whose handles never save. */
 static av_value *link_override(
     av_doc *doc,
     const game_prototype *base,
@@ -1371,15 +1373,12 @@ static av_value *link_override(
     int field
 )
 {
-    const game_prototype_link *was = find_link(base->links, component, field);
     const game_prototype_link *now = find_link(current->links, component, field);
-    if (!was && !now) {
+    if (!now) {
         return NULL;
     }
-    if (was && now && !strcmp(was->path, now->path)) {
-        return NULL;
-    }
-    return now ? av_str(doc, now->path) : av_null(doc);
+    const game_prototype_link *was = find_link(base->links, component, field);
+    return was && !strcmp(was->path, now->path) ? NULL : av_str(doc, now->path);
 }
 
 /* `current` holds the entity paths of current_components, or is NULL when

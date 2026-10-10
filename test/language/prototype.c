@@ -524,9 +524,9 @@ TEST_CASE(entity_paths_load_and_save_as_written)
     );
     REQUIRE(!acount(weight->links));
     av_value_free(after);
+    /* A current naming no path, as a captured entity, keeps the base's. */
     after = game_prototype_overrides_value(prototype->child_prototypes[0], weight);
-    fields = after ? av_obj_get(after, "test.Link") : NULL;
-    REQUIRE(fields && av_is_null(av_obj_get(fields, "other")));
+    REQUIRE(after && !av_obj_get(after, "test.Link"));
     REQUIRE(
         !game_prototype_remove_component(prototype, "Link") && !acount(prototype->links)
     );

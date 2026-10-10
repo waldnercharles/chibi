@@ -196,6 +196,29 @@ TEST_CASE(mesh_tangents_follow_texture_directions)
         );
         REQUIRE(t.w == 1 || t.w == -1);
     }
+    /* A sliver with almost no texture area does not outweigh a large
+     * triangle that shares its corner. */
+    render_mesh_asset_free(&mesh);
+    static const CF_V3 fan[] = { { 0, 0, 0 },
+                                 { 2, 0, 0 },
+                                 { 0, 0, 2 },
+                                 { 0, 0, -.1f },
+                                 { -.1f, 0, 0 } };
+    static const CF_V2 coords[] = { { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1e-4f, 0 }, { 0, 1e-4f } };
+    for (int i = 0; i < 5; i++) {
+        apush(
+            mesh.vertices,
+            ((render_mesh_surface_vertex){ .position = fan[i],
+                                           .normal = { 0, 1, 0 },
+                                           .uv = coords[i] })
+        );
+    }
+    static const int corners[] = { 0, 2, 1, 0, 3, 4 };
+    for (int i = 0; i < 6; i++) {
+        apush(mesh.indices, corners[i]);
+    }
+    render_mesh_asset_tangents(&mesh);
+    REQUIRE(mesh.vertices[0].tangent.x > .99f);
     return true;
 }
 
@@ -262,14 +285,14 @@ TEST_CASE(mesh_files_prepare_once_from_mounted_content)
     return true;
 }
 
-/* Whether writing the mesh is refused, writing nothing. */
-static bool refused()
+/* Whether writing the mesh is refused for `reason`, writing nothing. */
+static bool refused(const char *reason)
 {
-    char error[128] = { 0 };
+    char error[256] = { 0 };
     free(bytes);
     bytes = NULL;
     REQUIRE(!render_mesh_asset_prepared_write(&mesh, &bytes, &length, error, sizeof error));
-    REQUIRE(strstr(error, "Invalid prepared mesh"));
+    REQUIRE(strstr(error, "Invalid prepared mesh: ") && strstr(error, reason));
     REQUIRE(!bytes && !length);
     return true;
 }
@@ -278,36 +301,36 @@ TEST_CASE(mesh_files_refuse_invalid_triangles)
 {
     quad();
     asetlen(mesh.indices, 0);
-    REQUIRE(refused());
+    REQUIRE(refused("0 indices are not whole triangles"));
     quad();
     apush(mesh.indices, 1);
-    REQUIRE(refused());
+    REQUIRE(refused("7 indices are not whole triangles"));
     quad();
     mesh.indices[4] = 4;
-    REQUIRE(refused());
+    REQUIRE(refused("triangle 1 names a missing vertex"));
     quad();
     mesh.indices[2] = -1;
-    REQUIRE(refused());
+    REQUIRE(refused("triangle 0 names a missing vertex"));
     quad();
     mesh.indices[1] = mesh.indices[0];
-    REQUIRE(refused());
+    REQUIRE(refused("triangle 0 names a missing vertex or has no area"));
     quad();
     mesh.vertices[2].tangent = (CF_V4){ 0, 0, 0, 1 };
-    REQUIRE(refused());
+    REQUIRE(refused("vertex 2 "));
     quad();
     mesh.vertices[2].tangent.w = .5f;
-    REQUIRE(refused());
+    REQUIRE(refused("vertex 2 "));
     /* Material groups hold whole triangles and cover every index. */
     quad();
     groups();
     mesh.groups[0].count = 2;
     mesh.groups[1].first = 2;
     mesh.groups[1].count = 4;
-    REQUIRE(refused());
+    REQUIRE(refused("group 0 must continue"));
     quad();
     groups();
     mesh.groups[1].first = 0;
-    REQUIRE(refused());
+    REQUIRE(refused("group 1 must continue"));
     quad();
     groups();
     render_mesh_group *last = &mesh.groups[1];
@@ -317,9 +340,11 @@ TEST_CASE(mesh_files_refuse_invalid_triangles)
     free(last->material);
     free(last->material_scope);
     asetlen(mesh.groups, 1);
-    REQUIRE(refused());
+    REQUIRE(refused("groups cover 3 of 6 indices"));
+    /* Part coordinates a mesh does not store are not checked. */
     quad();
     groups();
+    mesh.vertices[1].part_position.x = NAN;
     REQUIRE(write_mesh("content/meshes/quad.mesh"));
     return true;
 }
@@ -342,7 +367,7 @@ TEST_CASE(mesh_files_refuse_unreadable_files)
     REQUIRE(unreadable("content/meshes/missing.mesh", "Cannot read mesh"));
     const char *json = "{\"version\":1,\"vertices\":[]}";
     write_file("content/meshes/text.mesh", json, strlen(json));
-    REQUIRE(unreadable("content/meshes/text.mesh", "Unknown prepared mesh format"));
+    REQUIRE(unreadable("content/meshes/text.mesh", "Not a prepared mesh"));
     quad();
     REQUIRE(write_mesh("content/meshes/short.mesh"));
     write_file("content/meshes/short.mesh", bytes, length - 1);
@@ -351,7 +376,7 @@ TEST_CASE(mesh_files_refuse_unreadable_files)
     REQUIRE(length > 10 && bytes[9] == RENDER_MESH_PREPARED_VERSION);
     bytes[9] = 2;
     write_file("content/meshes/old.mesh", bytes, length);
-    REQUIRE(unreadable("content/meshes/old.mesh", "Unknown prepared mesh format"));
+    REQUIRE(unreadable("content/meshes/old.mesh", "version differs from this engine's"));
     return true;
 }
 
@@ -463,6 +488,66 @@ TEST_CASE(model_exports_write_indexed_meshes)
         !model_export_bundle(directory, "Ball", destination, &options, NULL, error, sizeof error)
     );
     REQUIRE(strstr(error, "new directory"));
+    /* A bake never makes more triangles than a mesh file holds. */
+    inside(destination, sizeof destination, "larger");
+    options.bake.max_triangles = MODEL_BAKE_TRIANGLE_MAX + 1;
+    REQUIRE(
+        !model_export_bundle(directory, "Ball", destination, &options, NULL, error, sizeof error)
+    );
+    char expected[64];
+    snprintf(expected, sizeof expected, "triangles 1..%d", MODEL_BAKE_TRIANGLE_MAX);
+    REQUIRE(strstr(error, expected));
+    return true;
+}
+
+/* The largest mesh a bake can write: separate triangles with part
+ * coordinates, in the most groups a mesh holds. One more triangle is refused. */
+TEST_CASE(mesh_files_hold_the_largest_bake)
+{
+    mesh.has_part_coordinates = true;
+    mesh.max = (CF_V3){ 1000, 1000, 0 };
+    for (int t = 0; t < MODEL_BAKE_TRIANGLE_MAX + 1; t++) {
+        float x = (float)(t % 999), y = (float)(t / 999);
+        CF_V3 corners[] = { { x, y, 0 }, { x + 1, y, 0 }, { x, y + 1, 0 } };
+        for (int j = 0; j < 3; j++) {
+            render_mesh_surface_vertex v = {
+                .position = corners[j],
+                .normal = { 0, 0, 1 },
+                .tangent = { 1, 0, 0, 1 },
+                .part_position = corners[j],
+                .part_from_object = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } }
+            };
+            apush(mesh.indices, acount(mesh.vertices));
+            apush(mesh.vertices, v);
+        }
+    }
+    int share = MODEL_BAKE_TRIANGLE_MAX / RENDER_MESH_PREPARED_GROUP_MAX * 3;
+    for (int i = 0; i < RENDER_MESH_PREPARED_GROUP_MAX; i++) {
+        render_mesh_group group = { .first = i * share,
+                                    .count = share,
+                                    .part = -1,
+                                    .asset = xstrdup(""),
+                                    .name = xstrdup(""),
+                                    .path = xstrdup(""),
+                                    .material = xstrdup(""),
+                                    .material_scope = xstrdup("") };
+        apush(mesh.groups, group);
+    }
+    render_mesh_group *last = &mesh.groups[RENDER_MESH_PREPARED_GROUP_MAX - 1];
+    last->count = acount(mesh.indices) - last->first;
+    char error[256] = { 0 };
+    REQUIRE(!render_mesh_asset_prepared_write(&mesh, &bytes, &length, error, sizeof error));
+    REQUIRE(strstr(error, "record count limit"));
+    last->count -= 3;
+    asetlen(mesh.indices, acount(mesh.indices) - 3);
+    asetlen(mesh.vertices, acount(mesh.vertices) - 3);
+    REQUIRE(render_mesh_asset_prepared_write(&mesh, &bytes, &length, error, sizeof error));
+    render_mesh_asset read = { 0 };
+    size_t budget = SIZE_MAX;
+    bool ok = render_mesh_asset_prepared_read_budget(bytes, length, &budget, &read, error, sizeof error);
+    int corners = acount(read.indices);
+    render_mesh_asset_free(&read);
+    REQUIRE(ok && corners == MODEL_BAKE_TRIANGLE_MAX * 3);
     return true;
 }
 
@@ -473,6 +558,7 @@ void test_mesh_files()
     RUN_TEST_CASE(mesh_files_prepare_once_from_mounted_content);
     RUN_TEST_CASE(mesh_files_refuse_invalid_triangles);
     RUN_TEST_CASE(mesh_files_refuse_unreadable_files);
+    RUN_TEST_CASE(mesh_files_hold_the_largest_bake);
     RUN_TEST_CASE(model_exports_write_indexed_meshes);
     pu_clear_setup();
 }

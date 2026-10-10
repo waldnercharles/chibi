@@ -80,7 +80,7 @@ static bool write_mesh(const char *directory, const render_mesh_asset *mesh, cha
     size_t length = 0;
     render_mesh_asset check = { 0 };
     size_t budget = SIZE_MAX;
-    char reason[128] = "";
+    char reason[256] = "";
     bool ok = render_mesh_asset_prepared_write(mesh, &bytes, &length, reason, sizeof reason) &&
               render_mesh_asset_prepared_read_budget(bytes, length, &budget, &check, reason, sizeof reason);
     render_mesh_asset_free(&check);

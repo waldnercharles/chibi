@@ -2,6 +2,7 @@
 
 #include "runtime/geometry/mesh_prepared.h"
 #include "support/xalloc.h"
+#include "types/value_wire.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -9,7 +10,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#define MESH_FILE_LIMIT (64 * 1024 * 1024)
 
 static char *content_root;
 
@@ -67,8 +67,9 @@ const render_mesh_asset *authoring_mesh_prepare(const char *source, char *error,
     free(path);
     bool valid = file && !fseek(file, 0, SEEK_END);
     long length = valid ? ftell(file) : -1;
-    valid = length >= 0 && length <= MESH_FILE_LIMIT && !fseek(file, 0, SEEK_SET);
-    unsigned char *bytes = valid ? xmalloc((size_t)length + 1) : NULL;
+    valid = length >= 0 && length <= EXECUTION_WIRE_MAX_BYTES &&
+            !fseek(file, 0, SEEK_SET);
+    unsigned char *bytes = valid ? xmalloc((size_t)length) : NULL;
     if (valid) {
         valid = fread(bytes, 1, (size_t)length, file) == (size_t)length &&
                 fgetc(file) == EOF;
@@ -78,14 +79,14 @@ const render_mesh_asset *authoring_mesh_prepare(const char *source, char *error,
     }
     if (!valid) {
         if (size) {
-            snprintf(error, size, "Cannot read mesh %s (maximum %d bytes).", source, MESH_FILE_LIMIT);
+            snprintf(error, size, "Cannot read mesh %s (maximum %d bytes).", source, EXECUTION_WIRE_MAX_BYTES);
         }
         free(bytes);
         return NULL;
     }
     render_mesh_asset asset = { 0 };
     size_t budget = SIZE_MAX;
-    char reason[128];
+    char reason[256];
     valid = render_mesh_asset_prepared_read_budget(bytes, (size_t)length, &budget, &asset, reason, sizeof reason);
     free(bytes);
     if (!valid) {

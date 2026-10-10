@@ -6,11 +6,11 @@
 
 #include <assert.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #define MESH_PREPARED_VERTEX_MAX 1048575
-#define MESH_PREPARED_GROUP_MAX 1024
 static void v3(execution_wire *w, CF_V3 *p)
 {
     execution_wire_float(w, &p->x);
@@ -36,8 +36,13 @@ static bool valid_vertex(const render_mesh_asset *a, const render_mesh_surface_v
     CF_V3 tangent = { v->tangent.x, v->tangent.y, v->tangent.z };
     if (!finite3(v->position) || !inside(v->position, a->min, a->max) ||
         !nonzero(v->normal) || !isfinite(v->uv.x) || !isfinite(v->uv.y) ||
-        !nonzero(tangent) || (v->tangent.w != 1 && v->tangent.w != -1) ||
-        !finite3(v->part_position)) {
+        !nonzero(tangent) || (v->tangent.w != 1 && v->tangent.w != -1)) {
+        return false;
+    }
+    if (!a->has_part_coordinates) {
+        return true;
+    }
+    if (!finite3(v->part_position)) {
         return false;
     }
     for (int j = 0; j < 3; j++) {
@@ -65,40 +70,74 @@ static bool valid_triangle(const render_mesh_asset *a, const int *corner)
     double area = sqrt(x * x + y * y + z * z);
     return isfinite(area) && area > RENDER_MESH_MIN_TRIANGLE_AREA;
 }
-static bool valid(const render_mesh_asset *a)
+static bool valid_group(const render_mesh_group *g, int covered, int indices)
 {
-    int n = acount(a->vertices), indices = acount(a->indices);
-    if (!n || n > MESH_PREPARED_VERTEX_MAX || !indices || indices % 3 ||
-        acount(a->groups) > MESH_PREPARED_GROUP_MAX || !finite3(a->min) ||
-        !finite3(a->max) || a->min.x > a->max.x || a->min.y > a->max.y ||
-        a->min.z > a->max.z || !finite3(a->uv_min) || !finite3(a->uv_max) ||
-        (a->has_uv_bounds &&
-         (a->uv_min.x >= a->uv_max.x || a->uv_min.y >= a->uv_max.y ||
-          a->uv_min.z >= a->uv_max.z))) {
+    return g->first == covered && g->count > 0 && g->count % 3 == 0 &&
+           g->count <= indices - covered && g->part >= -1 && g->part <= 1023 &&
+           g->asset && g->name && g->path && g->material && g->material_scope &&
+           strlen(g->material) < 128;
+}
+static bool valid_bounds(const render_mesh_asset *a)
+{
+    return finite3(a->min) && finite3(a->max) && a->min.x <= a->max.x &&
+           a->min.y <= a->max.y && a->min.z <= a->max.z && finite3(a->uv_min) &&
+           finite3(a->uv_max) &&
+           (!a->has_uv_bounds ||
+            (a->uv_min.x < a->uv_max.x && a->uv_min.y < a->uv_max.y &&
+             a->uv_min.z < a->uv_max.z));
+}
+/* Writes why the mesh is invalid and returns false. */
+static bool refuse(char *error, size_t size, const char *format, ...)
+{
+    if (!size) {
         return false;
+    }
+    int n = snprintf(error, size, "Invalid prepared mesh: ");
+    va_list arguments;
+    va_start(arguments, format);
+    if (n >= 0 && (size_t)n < size) {
+        vsnprintf(error + n, size - (size_t)n, format, arguments);
+    }
+    va_end(arguments);
+    return false;
+}
+static bool valid(const render_mesh_asset *a, char *error, size_t size)
+{
+    int n = acount(a->vertices), indices = acount(a->indices),
+        groups = acount(a->groups);
+    if (!n || n > MESH_PREPARED_VERTEX_MAX) {
+        return refuse(error, size, "%d vertices (1 to %d)", n, MESH_PREPARED_VERTEX_MAX);
+    }
+    if (!indices || indices % 3) {
+        return refuse(error, size, "%d indices are not whole triangles", indices);
+    }
+    if (groups > RENDER_MESH_PREPARED_GROUP_MAX) {
+        return refuse(error, size, "%d groups (at most %d)", groups, RENDER_MESH_PREPARED_GROUP_MAX);
+    }
+    if (!valid_bounds(a)) {
+        return refuse(error, size, "bounds are not finite and ordered");
     }
     for (int i = 0; i < n; i++) {
         if (!valid_vertex(a, &a->vertices[i])) {
-            return false;
+            return refuse(error, size, "vertex %d is not finite, lies outside the bounds, or has a zero normal or tangent or a handedness other than 1 or -1", i);
         }
     }
     for (int i = 0; i < indices; i += 3) {
         if (!valid_triangle(a, a->indices + i)) {
-            return false;
+            return refuse(error, size, "triangle %d names a missing vertex or has no area", i / 3);
         }
     }
     int covered = 0;
-    for (int i = 0; i < acount(a->groups); i++) {
-        const render_mesh_group *g = &a->groups[i];
-        if (g->first != covered || g->count <= 0 || g->count % 3 ||
-            g->count > indices - covered || g->part < -1 || g->part > 1023 ||
-            !g->asset || !g->name || !g->path || !g->material ||
-            !g->material_scope || strlen(g->material) >= 128) {
-            return false;
+    for (int i = 0; i < groups; i++) {
+        if (!valid_group(&a->groups[i], covered, indices)) {
+            return refuse(error, size, "group %d must continue the indices with whole triangles and name its part and material", i);
         }
-        covered += g->count;
+        covered += a->groups[i].count;
     }
-    return !acount(a->groups) || covered == indices;
+    if (groups && covered != indices) {
+        return refuse(error, size, "groups cover %d of %d indices", covered, indices);
+    }
+    return true;
 }
 /* Part coordinates are stored only for meshes that have them. The others
  * read back with each vertex's own position and an identity frame. */
@@ -149,9 +188,11 @@ static void wire(execution_wire *w, render_mesh_asset *a)
              version = RENDER_MESH_PREPARED_VERSION;
     execution_wire_u64(w, &magic);
     execution_wire_u64(w, &version);
-    if (!w->error && (magic != UINT64_C(0x314853454d484343) ||
-                      version != RENDER_MESH_PREPARED_VERSION)) {
-        w->error = "Unknown prepared mesh format";
+    if (!w->error && magic != UINT64_C(0x314853454d484343)) {
+        w->error = "Not a prepared mesh";
+    }
+    if (!w->error && version != RENDER_MESH_PREPARED_VERSION) {
+        w->error = "Prepared mesh version differs from this engine's";
     }
     execution_wire_bool(w, &a->has_part_coordinates);
     execution_wire_bool(w, &a->has_uv_bounds);
@@ -185,7 +226,7 @@ static void wire(execution_wire *w, render_mesh_asset *a)
     }
     count = w->reading ? 0 : acount(a->groups);
     execution_wire_count(w, &count, 1);
-    if (!w->error && count > MESH_PREPARED_GROUP_MAX) {
+    if (!w->error && count > RENDER_MESH_PREPARED_GROUP_MAX) {
         w->error = "Prepared mesh group limit";
     }
     for (int i = 0; i < count && !w->error; i++) {
@@ -220,10 +261,7 @@ bool render_mesh_asset_prepared_write(
     assert(a && data && length);
     *data = NULL;
     *length = 0;
-    if (!valid(a)) {
-        if (size) {
-            snprintf(error, size, "Invalid prepared mesh payload");
-        }
+    if (!valid(a, error, size)) {
         return false;
     }
     execution_wire w = { 0 };
@@ -262,11 +300,8 @@ bool render_mesh_asset_prepared_read_budget(
     if (!w.error && w.offset != w.size) {
         w.error = "Trailing prepared mesh bytes";
     }
-    if (!w.error && !valid(&decoded)) {
-        w.error = "Invalid prepared mesh payload";
-    }
     arena_free(&storage);
-    if (!report(&w, error, size)) {
+    if (!report(&w, error, size) || !valid(&decoded, error, size)) {
         render_mesh_asset_free(&decoded);
         return false;
     }

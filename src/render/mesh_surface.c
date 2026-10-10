@@ -60,9 +60,9 @@ const char *render_mesh_surface_lod_shape(const GameSdfSurface3D *sdf, float pix
     return pixels <= sdf->low_detail_pixels ? sdf->low_detail_shape : NULL;
 }
 
-int render_mesh_surface_vertex_count(const render_mesh_surface_part *part)
+int render_mesh_surface_corner_count(const render_mesh_surface_part *part)
 {
-    return part->vertex_count ? part->vertex_count : acount(part->vertices);
+    return part->corner_count ? part->corner_count : acount(part->vertices);
 }
 
 const render_mesh_surface_vertex *render_mesh_surface_corner(
@@ -286,7 +286,7 @@ bool render_mesh_surface_build_with_bounds(
             cf_m4_from_trs(center, cf_quat(0, 0, 0, 1), (CF_V3){ 1, 1, 1 })
         );
         part.vertices = sdf_proxy;
-        part.vertex_count = 36;
+        part.corner_count = 36;
         part.borrowed = true;
         surface->min = (CF_V3){ FLT_MAX, FLT_MAX, FLT_MAX };
         surface->max = (CF_V3){ -FLT_MAX, -FLT_MAX, -FLT_MAX };
@@ -351,7 +351,7 @@ bool render_mesh_surface_build_with_bounds(
                         ) },
             .vertices = asset->vertices,
             .indices = asset->indices,
-            .vertex_count = acount(asset->indices),
+            .corner_count = acount(asset->indices),
             .asset_identity = asset->identity,
             .part_coordinates = asset->has_part_coordinates,
             .uv_bounds = asset->has_uv_bounds,
@@ -362,7 +362,7 @@ bool render_mesh_surface_build_with_bounds(
         surface->min = (CF_V3){ FLT_MAX, FLT_MAX, FLT_MAX };
         surface->max = (CF_V3){ -FLT_MAX, -FLT_MAX, -FLT_MAX };
         CF_M4x4 model = render_scene3d_visual_model(&part.visual);
-        for (int i = 0; i < render_mesh_surface_vertex_count(&part); i++) {
+        for (int i = 0; i < render_mesh_surface_corner_count(&part); i++) {
             CF_V3 p = cf_m4_transform_point(
                 model,
                 render_mesh_surface_corner(&part, i)->position
@@ -378,7 +378,7 @@ bool render_mesh_surface_build_with_bounds(
             const render_mesh_group *group = &asset->groups[i];
             render_mesh_surface_part slice = part;
             slice.indices = asset->indices + group->first;
-            slice.vertex_count = group->count;
+            slice.corner_count = group->count;
             slice.first_index = group->first;
             slice.material_scope = group->material_scope;
             snprintf(
@@ -406,7 +406,7 @@ bool render_mesh_surface_build_with_bounds(
             return false;
         }
         CF_M4x4 model = render_scene3d_visual_model(&part.visual);
-        for (int v = 0; v < render_mesh_surface_vertex_count(&part); v++) {
+        for (int v = 0; v < render_mesh_surface_corner_count(&part); v++) {
             CF_V3 p = cf_m4_transform_point(model, part.vertices[v].position);
             surface->min = cf_min_v3(surface->min, p);
             surface->max = cf_max_v3(surface->max, p);
@@ -473,7 +473,7 @@ bool render_mesh_surface_pick(const render_mesh_surface *surface, CF_V2 position
     for (int i = 0; i < acount(surface->parts); i++) {
         const render_mesh_surface_part *part = &surface->parts[i];
         CF_M4x4 model = render_scene3d_visual_model(&part->visual);
-        for (int v = 0; v < render_mesh_surface_vertex_count(part); v += 3) {
+        for (int v = 0; v < render_mesh_surface_corner_count(part); v += 3) {
             CF_V3 a = cf_m4_transform_point(
                 model,
                 render_mesh_surface_corner(part, v)->position

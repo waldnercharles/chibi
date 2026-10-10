@@ -49,10 +49,14 @@ static CF_V3 perpendicular(CF_V3 normal)
 void render_mesh_asset_tangents(render_mesh_asset *asset)
 {
     int count = acount(asset->vertices);
+    assert(acount(asset->indices) % 3 == 0);
     CF_V3 *sides = xcalloc((size_t)count * 2, sizeof *sides);
     CF_V3 *ups = sides + count;
-    for (int i = 0; i + 2 < acount(asset->indices); i += 3) {
+    for (int i = 0; i < acount(asset->indices); i += 3) {
         const int *corner = asset->indices + i;
+        for (int j = 0; j < 3; j++) {
+            assert(corner[j] >= 0 && corner[j] < count);
+        }
         const render_mesh_surface_vertex *a = &asset->vertices[corner[0]],
                                          *b = &asset->vertices[corner[1]],
                                          *c = &asset->vertices[corner[2]];
@@ -63,8 +67,13 @@ void render_mesh_asset_tangents(render_mesh_asset *asset)
         if (!isfinite(area) || fabsf(area) < 1e-20f) {
             continue;
         }
-        CF_V3 side = cf_div_v3_f(cf_sub_v3(cf_mul_v3_f(ab, su.y), cf_mul_v3_f(ac, st.y)), area);
-        CF_V3 up = cf_div_v3_f(cf_sub_v3(cf_mul_v3_f(ac, st.x), cf_mul_v3_f(ab, su.x)), area);
+        /* Each triangle's texture directions count by its surface area, so a
+         * sliver with nearly no texture area cannot dominate its corners. */
+        float weight = cf_len_v3(cf_cross_v3(ab, ac)) * (area < 0 ? -1 : 1);
+        CF_V3 side = cf_sub_v3(cf_mul_v3_f(ab, su.y), cf_mul_v3_f(ac, st.y));
+        CF_V3 up = cf_sub_v3(cf_mul_v3_f(ac, st.x), cf_mul_v3_f(ab, su.x));
+        side = cf_mul_v3_f(cf_safe_norm_v3(side), weight);
+        up = cf_mul_v3_f(cf_safe_norm_v3(up), weight);
         for (int j = 0; j < 3; j++) {
             sides[corner[j]] = cf_add_v3(sides[corner[j]], side);
             ups[corner[j]] = cf_add_v3(ups[corner[j]], up);

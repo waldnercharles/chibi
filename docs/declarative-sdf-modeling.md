@@ -348,7 +348,7 @@ For example, send this native request as one JSON line to
   "operation": "bake_model",
   "model": "PolaroidOneStep",
   "destination": "/absolute/existing-parent/new-camera-bundle",
-  "options": { "cell_size": 0.2, "max_triangles": 200000, "max_samples": 8000000, "max_work": 10000000000 }
+  "options": { "cell_size": 0.2, "max_triangles": 150000, "max_samples": 8000000, "max_work": 10000000000 }
 }
 ```
 
@@ -394,7 +394,9 @@ bounds, padded by one cell. `cell_size` is measured in authored model units;
 zero selects the longest extent divided by 48. Default limits are 128 cells per
 axis, 100,000 triangles, 2,000,000 evaluated queries, 1,000,000,000 estimated node
 work and 10 edge refinement iterations. Explicit limits are bounded by the
-public tool schema and backend. Work includes conservative hit/frame charges;
+public tool schema and backend. A bake makes at most 166,496 triangles
+(`MODEL_BAKE_TRIANGLE_MAX`), the most a mesh file holds when every triangle
+owns its three vertices. Work includes conservative hit/frame charges;
 it is not a GPU instruction count. The baker drops microscopic triangles at
 the same absolute area floor used by the mesh importer. Thin features smaller
 than the grid can be

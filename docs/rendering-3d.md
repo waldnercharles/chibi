@@ -213,13 +213,18 @@ groups name runs of whole triangles in the index list and cover all of it.
 
 The file is the engine's prepared mesh payload
 (`src/runtime/geometry/mesh_prepared.c`, version 3), so one reader validates
-authored files and player artifacts. A file is at most 64 MiB, with at most
-1,000,000 vertices, indices and groups together. The reader refuses
-non-finite or out-of-bounds values, zero normals or tangents, indices outside
-the vertex list, triangles below `RENDER_MESH_MIN_TRIANGLE_AREA`, and groups
-that split a triangle or skip indices. The model baker writes this format, with
-tangents generated from its box UVs by `render_mesh_asset_tangents`. Runtime C
-code reads a loaded mesh's vertices and indices through
+authored files and player artifacts. Changing that format therefore needs a
+project migration step that rewrites projects' `.mesh` files. A file is at
+most 64 MiB, with at most 1,000,000 vertices, indices and groups together. The
+reader refuses non-finite or out-of-bounds values, zero normals or tangents,
+indices outside the vertex list, triangles below
+`RENDER_MESH_MIN_TRIANGLE_AREA`, and groups that split a triangle or skip
+indices, and names the first vertex, triangle or group at fault. The model
+baker writes this format, with tangents generated from its box UVs by
+`render_mesh_asset_tangents`; each triangle counts by its area, so slivers
+don't steer their corners. A bake makes at most `MODEL_BAKE_TRIANGLE_MAX`
+(166,496) triangles, the most a file holds when every triangle owns its three
+vertices. Runtime C code reads a loaded mesh's vertices and indices through
 `render_mesh_asset_load`. The JSON mesh format (`.mesh.json`) is retired:
 export the model again to get a `.mesh` file.
 

@@ -362,10 +362,11 @@ static CF_Mesh mesh(render_mesh_material *pass, const render_mesh_surface_part *
           .format = CF_VERTEX_FORMAT_FLOAT3,
           .offset = offsetof(render_mesh_surface_vertex, part_from_object[2]) }
     };
-    int count = render_mesh_surface_vertex_count(part);
+    int count = render_mesh_surface_corner_count(part);
     render_mesh_surface_vertex *corners = NULL;
+    asetlen(corners, count);
     for (int i = 0; i < count; i++) {
-        apush(corners, *render_mesh_surface_corner(part, i));
+        corners[i] = *render_mesh_surface_corner(part, i);
     }
     CF_Mesh result = cf_make_mesh(count * sizeof *corners, attributes, 7, sizeof *corners);
     if (result.id) {
@@ -704,7 +705,7 @@ static CF_Mesh sdf_mesh(render_mesh_material *pass, const render_mesh_surface_pa
                                              .offset = i * 4 * sizeof(float),
                                              .per_instance = true };
     }
-    int count = render_mesh_surface_vertex_count(part);
+    int count = render_mesh_surface_corner_count(part);
     CF_Mesh result = cf_make_mesh(
         count * sizeof *part->vertices,
         attrs,

@@ -1,11 +1,14 @@
 #ifndef CHIBI_MESH_PREPARED_H
 #define CHIBI_MESH_PREPARED_H
 #include "runtime/geometry/mesh_asset.h"
-#define RENDER_MESH_PREPARED_VERSION UINT64_C(3)
 /* Portable field-wise indexed triangle/part/material payload. It is also the
- * `.mesh` content format. Resident identity is assigned by the catalog after
- * publication, never persisted as a process ID. Writer bytes use free();
- * initialized result and budget survive failed reads. */
+ * `.mesh` content format, so changing the version or the value wire codec
+ * needs a project migration step that rewrites projects' `.mesh` files.
+ * Resident identity is assigned by the catalog after publication, never
+ * persisted as a process ID. Writer bytes use free(); initialized result and
+ * budget survive failed reads. */
+#define RENDER_MESH_PREPARED_VERSION UINT64_C(3)
+#define RENDER_MESH_PREPARED_GROUP_MAX 1024
 bool render_mesh_asset_prepared_write(
     const render_mesh_asset *,
     unsigned char **,

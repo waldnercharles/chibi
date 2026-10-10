@@ -147,7 +147,21 @@ static void publish_indexed_box(const char *source)
         apush(asset.indices, found);
     }
     afree(box);
-    assert(acount(asset.vertices) < acount(asset.indices));
+    assert(acount(asset.vertices) < acount(asset.indices) && acount(asset.indices) % 9 == 0);
+    /* Three material groups, each a third of the triangles, all inheriting the
+     * entity's material, so each group draws as its own slice. */
+    for (int i = 0; i < 3; i++) {
+        int count = acount(asset.indices) / 3;
+        render_mesh_group group = { .first = i * count,
+                                    .count = count,
+                                    .part = -1,
+                                    .asset = xstrdup("Box"),
+                                    .name = xstrdup("Faces"),
+                                    .path = xstrdup("Box/Faces"),
+                                    .material = xstrdup(""),
+                                    .material_scope = xstrdup("") };
+        apush(asset.groups, group);
+    }
     render_mesh_asset_tangents(&asset);
     unsigned char *bytes;
     size_t length, budget = SIZE_MAX;
@@ -334,6 +348,10 @@ static bool indexed_copy(
              ) &&
              ok;
     }
+    /* Each material group draws its own slice of the indices. */
+    ok = ok && acount(surfaces[1].parts) == 3 &&
+         surfaces[1].parts[2].first_index == 24 &&
+         render_mesh_surface_corner_count(&surfaces[1].parts[2]) == 12;
     ok = ok && !memcmp(&surfaces[0].min, &surfaces[1].min, sizeof surfaces[0].min) &&
          !memcmp(&surfaces[0].max, &surfaces[1].max, sizeof surfaces[0].max);
     const CF_V2 points[] = { { 0, 0 }, { 25, -12 }, { 40, 0 } };

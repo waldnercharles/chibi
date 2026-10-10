@@ -317,14 +317,17 @@ bool model_bake(
     baker b = { .program = program, .options = *options, .error = error };
     float *samples = NULL;
     bool valid = options->cell_size >= 0 && isfinite(options->cell_size) &&
-                 options->max_axis_cells >= 2 && options->max_axis_cells <= 256 &&
-                 options->max_triangles >= 1 && options->max_triangles <= 349525 &&
+                 options->max_axis_cells >= 2 &&
+                 options->max_axis_cells <= 256 && options->max_triangles >= 1 &&
+                 options->max_triangles <= MODEL_BAKE_TRIANGLE_MAX &&
                  options->edge_iterations >= 1 &&
                  options->edge_iterations <= 24 && options->max_samples >= 1 &&
                  options->max_samples <= 100000000 && options->max_work >= 1 &&
                  options->max_work <= UINT64_C(100000000000);
     if (!valid) {
-        return fail(&b, "Invalid mesh bake budgets (axis 2..256, triangles 1..349525, edge iterations 1..24)");
+        char message[128];
+        snprintf(message, sizeof message, "Invalid mesh bake budgets (axis 2..256, triangles 1..%d, edge iterations 1..24)", MODEL_BAKE_TRIANGLE_MAX);
+        return fail(&b, message);
     }
     if (!model_program_prepare(program, incoming, b.result.parameters, &b.result.bounds, error) ||
         !shader_graph_validate(&program->shader, error)) {

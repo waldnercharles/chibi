@@ -15,41 +15,39 @@ pixel, renderer, backend and authored-workflow assertions until a focused test
 covers their contract. A short unit result does not satisfy unrelated integration
 requirements or clear a PR hold. The broad suites below still need migration.
 
-For iframe changes, after building `test_suite`, use:
+## Run the checks
+
+The engine build compiles the full test drivers, `test_tools` and
+`test_language`, with every native, compiler and renderer package. CI runs each
+group below on every push to `main` and every pull request into it that changes
+more than documentation, and `make build` links `chibi`, `chibi-compile` and
+`chibi-player` in the same tree.
 
 ```sh
-make agent-test AGENT_SELECTOR=--iframe-updates
-make agent-test AGENT_SELECTOR=--kit-documents
+make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
+make test-native         # every CPU test_tools selector with checked-in inputs, one 60-second deadline
+make test-language-all   # every test_language selector, one 60-second deadline
+make test-tools          # tooling and process integrations, separate build-tools/
+make agent-test AGENT_SELECTOR=--source-edit
 ```
 
-`--iframe-updates` checks blank-document model isolation, same-frame fitted
-geometry and callback lifetimes, bound whole-document replacement with
-conditional/list views, and layout refresh with exact callback counts and
-synthetic animation time. `--kit-documents` covers the kit's document placement,
-focus, popup and input contracts. Neither needs a window or GPU rendering.
+`make test-native` also builds an unsanitized Release `chibi_ctl` in
+`build-release/` for `validate-project`, which starts `chibi_ctl` dozens of
+times; each start builds the authoring catalog, and under ASan those starts
+alone take longer than the deadline.
 
-`make agent-test AGENT_SELECTOR=--ui-tab-list` runs the existing tab-strip input
-and layout checks independently of the other control fixtures. It preserves all
-10 assertions for selection, focus, disabled tabs, selected-row reveal, wheel
-scrolling, layout stability and middle-click close. The reviewed CPU-only
-entrypoint completed in 1.743 seconds under the production 60-second supervisor
-with Debug ASan+UBSan during admission. Record fresh results on each candidate;
-this does not replace authored Studio or visual tab checks.
+`python3 tools/test_policy.py tool <name>` runs one entry of that table against
+the drivers `make test-build` produced and that Release `chibi_ctl`; set
+`CHIBI_TOOLS_BUILD_DIR`, `CHIBI_LANGUAGE_BUILD_DIR` or `CHIBI_CTL` to use another
+build.
 
-`make test-fast TEST_ARGS='--studio-shell document-tabs'` runs all 17 authored
-tab checks: hover/focus geometry, contextual pinning, keyboard cycling, overflow
-selection, unsaved-close safeguards, adjacent selection and the final scene
-guard. Independent review confirmed one fixture with fixed frame counts and no
-authored file writes. Its initial complete production-supervised run took 9.2
-seconds with Debug ASan+UBSan and native Metal on macOS; configure/build time was
-separate. It requires the hardware execution profile. Leave capture environment
-variables unset for timing. Record fresh candidate results; full Studio suites
-remain quarantined, and rendered verification still checks close/title masking.
-
-The duplicate `--studio-panel-lifecycle` capture entrypoint and the optional
-1,000-frame blank-document profiling loop have been retired. The authored panel
-lifecycle assertions remain in the quarantined Studio suite; historical profiling
-captures remain research evidence for their recorded revisions.
+`make language-build` builds a standalone, faster `test_language` in
+`build-language/` for the `test-language*` targets. Add a case to the selector
+that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
+group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
+`scene3d`, `scene3d-gles` and `material-ramps` render through a hidden window,
+which needs a display and a GPU driver the CI job does not set up, so they stay
+out of the group; run them with `python3 tools/test_policy.py tool <name>`.
 
 ## Temporary 60-second policy
 
@@ -176,8 +174,9 @@ children use plans a rewrite of each child in its parent's text, and a parent
 that includes another prototype keeps its includes and only its own children.
 Four in-memory prototypes, no files, CPU only.
 
-After `make build`, `python3 tools/test_policy.py tool validate-project` runs
-twenty cases against that `build/bin/chibi_ctl`. Each scaffolds a temporary
+After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
+`python3 tools/test_policy.py tool validate-project` runs its cases against
+`build-release/bin/chibi_ctl`. Each scaffolds a temporary
 project with `new_project` and checks the `validate_project` reply: a new
 project is valid; a UI style error is listed under its asset; a start scene
 outside the scene assets is parsed and checked for its prototypes; a broken
@@ -284,17 +283,6 @@ project-owned scenario coverage.
 The tilemap case executes both tilemap functions on VM and SLJIT using one
 two-cell map, then edits its cells and checks the next dispatch sees the change.
 
-`--source-session` admits only `test_asset_code_checkpoint`: four fixed source
-session cases plus the existing KDL checkpoint and external merge checks. Each
-temporary project has at most two tiny executable files. It covers invalid
-drafts, undo/redo, catalog refresh, retained presentations, navigation, source and
-sidecar disk conflicts, and retry after a sidecar write fails. Preview services
-are initialized and freed, but no engine step, render, window or process runs.
-The corrected migrated selector passes four cases and 71 assertions in 1.483
-seconds. A later admitted extension verifies coalescing a continuous graph gesture
-into one source/metadata undo entry, stale-text rejection and history boundaries;
-that extension awaits its capture.
-
 `python3 tools/test_policy.py tool language-headless` selects two independently
 reviewed public SDK consumer cases on VM and SLJIT. Each owns one entity and
 scalar component, runs five explicit steps, and checks registration ownership,
@@ -320,57 +308,14 @@ candidate passed in 0.701 seconds on 2026-10-07: producer one case/31 assertions
 runtime four cases/184 assertions, and parent one case/five assertions. The producer
 used ASan/UBSan; the consumer was a normal Debug runtime-only SDK build.
 
-`--semantic-corpora .chibi/architecture/semantic-corpus/projects.txt` analyzes an
-explicit exhaustive manifest for each of six unique extracted project catalogs.
-Its 87 executable sources share a 256-file and 8 MiB ceiling. Earlier captures
-used nine checkout rows and 148 source entries: three original game checkouts
-duplicated their extracted copies. Migration verified those copies byte-for-byte
-before removing the 61 repeated entries; no unique source was removed. Each declaration scan
-has separate limits of 1,024 files, 4,096 directory entries, depth 16, 512 KiB per
-file and 8 MiB total; the dispatcher accepts at most 16 projects. This new bounded
-check has independent admission and uses one shared production deadline. It
-checks semantic analysis; it does not certify executable lowering or game behavior.
-
-`--prepare-corpora .chibi/architecture/semantic-corpus/projects.txt` uses the same
-exhaustive project manifests and bounds. It validates complete, unique source
-membership and the shared source/byte limits before transferring the owned catalog
-snapshot into production collection preparation. Sources are analyzed once;
-libraries are prepared in dependency order, then all sources lower and finalize
-through the bytecode backend. It retains invalid source diagnostics and verifies
-that every valid source owns a finalized module. It creates no game world and
-runs no engine frames or GPU work. Independent review admitted the first supervised
-measurement; semantic-only analysis remains a separate selector.
-
-`--prepare-corpora-sljit .chibi/architecture/semantic-corpus/projects.txt` uses
-the same independently reviewed runner and bounds with the native backend selected.
-Every prepared module must report SLJIT. This checks production backend generation
-without creating worlds or running events. The exact six-project command is
-admitted for its first measurement under one shared 60-second deadline.
-
-`--automation-authoring-readonly` selects the existing code/navigation contracts
-with direct file fixture setup and seven rejected retired mutation operations.
-Independent review found bounded file/analysis work and a 1,100-caller hierarchy
-fixture, with no runtime frames or GPU. It uses a finite cleanup shell command.
-It passed in 1.004 seconds on 2026-10-07; retired mutation transport checks are
-no longer registered or admitted.
-
-`--authoring-preview-lifecycle` covers the existing live/update/prototype contracts
-with small in-memory assets, three CPU engine frames and no renderer callbacks,
-project reads, sleeps or child processes. Independent source review admitted its
-first supervised measurement, which passed in 1.180 seconds on 2026-10-07. An
-independently reviewed extension exercises canonical source registration through
-prototype attachment, deferred Begin, typed events, replacement, system/binding
-ordering and pending-work cancellation on VM and SLJIT. The expanded selector
-passed in 1.628 seconds, including 68 new pico assertions. It does
-not cover rendered material updates or Studio interactions.
-
-`--execution-request-lifecycle` selects registry validation and the existing host
-wait contracts. Independent review found one 1,024-iteration tiny graph loop and
-one three-event scheduler case, with supplied timestamps and no sleeps, files,
-processes or GPU work. Assertions cover completion, cancellation, release, stale
-requests, retained observations and FIFO resumption. It passed in 0.281 seconds
-on 2026-10-07 after the neutral native Spawn adapter. Broader execution suites
-remain quarantined.
+`--semantic-corpora`, `--prepare-corpora` and `--prepare-corpora-sljit` take
+a manifest with one row per project: its content folder, a tab, and a file that
+lists every `.chibi` source in it (at most 16 projects, 256 sources and 8 MiB in
+total). They analyze, or prepare for bytecode or SLJIT, every listed source
+against the engine catalog alone. They are not in a group: no manifest is checked
+in, and the repository's fixtures are not complete projects for them, since some
+reference events and prototypes they omit or declare their own components. Run
+them on extracted game projects and keep the manifest with the evidence.
 
 Managed test executions, including aggregates, have one hard 60-second ceiling.
 Known slow and unmeasured commands are quarantined; hardware opt-in cannot clear
@@ -396,20 +341,20 @@ Configure/build separately and report that time separately from test execution:
 ```sh
 make tools-build
 make test
-make build BUILD_TARGET=test_suite
-make test-studio-selectors
+make test-build
+make test-native
 make test-list
-make test-fast TEST_ARGS=--graph-optimize
 ```
 
 | Command | Current coverage |
 | --- | --- |
 | `test`, `test-short` | Six pure C execution-policy unit cases under one deadline. |
 | `test-tools` | Complete C tooling and process integration group under one shared deadline. |
-| `test-studio-selectors` | Bounded C process checks against a separately built native suite, CPU-only discovery and argument handling. |
-| `test-fast` | One exact admitted native argument tuple, with complete existing assertions. |
+| `test-native` | Every CPU `test_tools` selector with checked-in inputs under one shared deadline. |
+| `test-language-all` | Every `test_language` selector under one shared deadline. |
+| `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
-| `test-full`, `test-slow`, `test-render`, `test-compiler-parity` | Quarantined, disabled and not passed. |
+| `test-fast`, `test-full`, `test-slow`, `test-render`, `test-compiler-parity` | Retired or quarantined, disabled and not passed. |
 
 Timeout is failure. Nested managed wrappers inherit the deadline; no child gets
 a fresh aggregate budget. Multi-goal test execution is unadmitted. Direct native
@@ -478,7 +423,7 @@ merge authority.
 ### Planning helper
 
 ```sh
-python3 tools/agent.py validation-plan --base origin/main --scope mixed --review-note 'Independent review: affected tooling and runtime contracts covered by selected checks' --tools --selector=--graph-optimize
+python3 tools/agent.py validation-plan --base origin/main --scope mixed --review-note 'Independent review: affected tooling and runtime contracts covered by selected checks' --tools --selector=--source-edit
 ```
 
 The helper records Git identity and admitted commands; it does not execute them

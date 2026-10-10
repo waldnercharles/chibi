@@ -2289,7 +2289,9 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     file = fopen(manifest, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, "version 19\n"));
+    char current[32];
+    snprintf(current, sizeof current, "\nversion %d\n", CHIBI_PROJECT_VERSION);
+    REQUIRE(strstr(text, "meta version=12\n") && strstr(text, current));
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
@@ -2425,7 +2427,9 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     file = fopen(path, "rb");
     text[fread(text, 1, sizeof text - 1, file)] = 0;
     fclose(file);
-    REQUIRE(!strncmp(text, "version 19\n", 11));
+    char current[32];
+    snprintf(current, sizeof current, "version %d\n", CHIBI_PROJECT_VERSION);
+    REQUIRE(!strncmp(text, current, strlen(current)));
     unlink(path);
     snprintf(path, sizeof path, "%s/content/B.chibi", root);
     file = fopen(path, "rb");
@@ -3625,6 +3629,102 @@ TEST_CASE(program_version_18_dotted_names_are_renamed)
     rmdir(root);
     return true;
 }
+static char *read_whole(const char *path)
+{
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        return NULL;
+    }
+    static char text[1024];
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    return text;
+}
+static void write_whole(const char *path, const char *text)
+{
+    FILE *file = fopen(path, "wb");
+    fputs(text, file);
+    fclose(file);
+}
+TEST_CASE(program_version_19_components_move_to_chibi)
+{
+    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
+    REQUIRE(mkdtemp(root));
+    const char *directories[] = { "content", "content/components", "content/scenes" };
+    for (int i = 0; i < 3; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        REQUIRE(!mkdir(path, 0700));
+    }
+    const char *manifest = "version 19\ncontent \"content\"\nstart_scene "
+                           "\"scenes/Start.kdl\"\n";
+    snprintf(path, sizeof path, "%s/content/scenes/Start.kdl", root);
+    write_whole(path, "version 1\nname \"Start\"\n(array)entities\n");
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    write_whole(path, manifest);
+    snprintf(path, sizeof path, "%s/content/components/Charge.kdl", root);
+    write_whole(
+        path,
+        "name \"Charge\"\n"
+        "description \"Stored energy.\\n\\nRefills.\"\n"
+        "(array)fields {\n"
+        "    - name=\"level\" type=\"float\" description=\"\"\n"
+        "    - name=\"rate\" type=\"float\" description=\"Per second.\\n\"\n"
+        "    - name=\"drift\" type=\"CF_V2\"\n"
+        "}\n"
+    );
+    int steps = chibi_project_migrate(root, error, sizeof error);
+    if (steps < 0) {
+        fprintf(stderr, "migrate: %s\n", error);
+    }
+    REQUIRE(steps == CHIBI_PROJECT_VERSION - 19);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
+    REQUIRE(!read_whole(path));
+    snprintf(path, sizeof path, "%s/content/components/Charge.chibi", root);
+    const char *expected = "// Stored energy.\n"
+                           "//\n"
+                           "// Refills.\n"
+                           "component Charge {\n"
+                           "    //\n"
+                           "    level: float\n"
+                           "    // Per second.\n"
+                           "    //\n"
+                           "    rate: float\n"
+                           "    drift: CF_V2\n"
+                           "}\n";
+    REQUIRE(!strcmp(read_whole(path), expected));
+
+    /* A declaration the step cannot read stops it before any file changes. */
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    write_whole(path, manifest);
+    snprintf(path, sizeof path, "%s/content/components/Bad.kdl", root);
+    const char *bad = "name \"Bad\"\n(array)fields {\n    - name=\"x\" "
+                      "type=\"float[]\"\n}\n";
+    write_whole(path, bad);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) < 0);
+    REQUIRE(strstr(error, "Bad.kdl"));
+    REQUIRE(!strcmp(read_whole(path), bad));
+    snprintf(path, sizeof path, "%s/content/components/Bad.chibi", root);
+    REQUIRE(!read_whole(path));
+    REQUIRE(!chibi_migrate_component("name \"1x\"\n(array)fields\n", error, sizeof error));
+    /* KDL allowed names .chibi reserves, and a person's file is never
+     * replaced. */
+    remove(path);
+    snprintf(path, sizeof path, "%s/content/components/Bad.kdl", root);
+    remove(path);
+    REQUIRE(
+        !chibi_migrate_component("name \"Cell\"\n(array)fields {\n    - name=\"state\" type=\"int\"\n}\n", error, sizeof error)
+    );
+    REQUIRE(strstr(error, "'state: int' is not valid .chibi"));
+    snprintf(path, sizeof path, "%s/content/components/Cell.kdl", root);
+    write_whole(path, "name \"Cell\"\n(array)fields {\n    - name=\"x\" type=\"int\"\n}\n");
+    snprintf(path, sizeof path, "%s/content/components/Cell.chibi", root);
+    write_whole(path, "component Cell {\n    y: int\n}\n");
+    snprintf(path, sizeof path, "%s/" CHIBI_PROJECT_MANIFEST, root);
+    write_whole(path, manifest);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) < 0);
+    REQUIRE(strstr(error, "Cell.chibi already exists"));
+    return true;
+}
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -4301,6 +4401,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_16_locals_migrate_to_declarations);
     RUN_TEST_CASE(program_version_17_sdf_motion_is_removed);
     RUN_TEST_CASE(program_version_18_dotted_names_are_renamed);
+    RUN_TEST_CASE(program_version_19_components_move_to_chibi);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

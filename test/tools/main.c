@@ -56,6 +56,7 @@ bool test_source_runtime_active()
 #ifdef CHIBI_TEST_SOURCE_FEATURES
 void test_source_native_features();
 void test_source_presentation();
+void test_component_presentation();
 void test_system_schedule();
 void test_code_system_runtime();
 void test_source_edit();
@@ -80,6 +81,7 @@ void test_tool_native();
 void test_tool_native_values();
 void test_tool_native_catalog();
 void test_tool_physics();
+void test_tool_physics3d();
 void test_tool_transforms();
 #endif
 
@@ -109,9 +111,10 @@ int main(int argc, char **argv)
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
     bool native = false, native_values = false, native_catalog = false,
-         physics = false, transforms = false, render_resources = false,
-         interior_border = false, viewport_resize = false, sdf_visibility = false,
-         scene3d = false, material_ramps = false, box3d = false, sky_files = false;
+         physics = false, physics3d = false, transforms = false,
+         render_resources = false, interior_border = false,
+         viewport_resize = false, sdf_visibility = false, scene3d = false,
+         material_ramps = false, box3d = false, sky_files = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -171,13 +174,14 @@ int main(int argc, char **argv)
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
     native = argc == 2 && !strcmp(argv[1], "--native");
     physics = argc == 2 && !strcmp(argv[1], "--physics");
+    physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
     if (argc != 1 && !corpus && !shader_parameters && !source_edit &&
         !new_asset && !asset_refactor && !package && !unit && !web_storage &&
         !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics && !transforms &&
-        !render_resources && !interior_border && !viewport_resize &&
+        !native && !native_values && !native_catalog && !physics && !physics3d &&
+        !transforms && !render_resources && !interior_border && !viewport_resize &&
         !sdf_visibility && !scene3d && !material_ramps && !box3d && !sky_files &&
         !persistent_store && !whole_alias && !whole_math && !whole_integer &&
         !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
@@ -192,7 +196,7 @@ int main(int argc, char **argv)
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
-            "| --physics | --transforms "
+            "| --physics | --physics3d | --transforms "
             "| --render-resources | --interior-border | --viewport-resize | "
             "--sdf-visibility | "
             "--scene3d | --scene3d-gles | --material-ramps | "
@@ -241,6 +245,7 @@ int main(int argc, char **argv)
             test_code_system_runtime();
         } else if (source_presentation) {
             test_source_presentation();
+            test_component_presentation();
         } else if (source_features) {
             test_source_native_features();
         } else if (source_numeric) {
@@ -316,9 +321,11 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
-    if (native || native_values || native_catalog || physics || transforms) {
+    if (native || native_values || native_catalog || physics || physics3d || transforms) {
         if (physics) {
             test_tool_physics();
+        } else if (physics3d) {
+            test_tool_physics3d();
         } else if (transforms) {
             test_tool_transforms();
         } else if (native_catalog) {

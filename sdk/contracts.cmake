@@ -109,7 +109,7 @@ if(CHIBI_SDK_BUILD_NATIVE)
         chibi_entity_runtime chibi_native_types chibi_native_capabilities chibi_physics_runtime chibi_spatial_runtime chibi_support)
     chibi_sdk_contract(chibi_engine "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_behavior_runtime chibi_entity_runtime chibi_native_types chibi_scheduling
-        chibi_physics_runtime chibi_material_runtime chibi_visibility_runtime chibi_particle_runtime chibi_audio_runtime
+        chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime chibi_visibility_runtime chibi_particle_runtime chibi_audio_runtime
         chibi_ui_runtime chibi_save_runtime chibi_input_runtime chibi_task_pool_runtime
         chibi_spatial_runtime chibi_visual_motion_runtime chibi_execution chibi_support)
     chibi_sdk_contract(chibi_visual_motion_runtime "${CHIBI_SDK_ROOT}/src/runtime"
@@ -121,6 +121,9 @@ if(CHIBI_SDK_BUILD_NATIVE)
     chibi_sdk_contract(chibi_physics_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_native_types chibi_entity_runtime chibi_material_runtime chibi_task_pool_runtime
         chibi_native_capabilities chibi_spatial_runtime chibi_execution chibi_support chibi_box2d)
+    chibi_sdk_contract(chibi_physics3d_runtime "${CHIBI_SDK_ROOT}/src/runtime"
+        chibi_native_types chibi_entity_runtime chibi_task_pool_runtime chibi_spatial_runtime
+        chibi_execution chibi_support chibi_box3d)
     chibi_sdk_contract(chibi_task_pool_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_tasks chibi_support chibi_task_scheduler Tracy::TracyClient)
     chibi_sdk_contract(chibi_host_native_default "${CHIBI_SDK_ROOT}/src/host"
@@ -232,3 +235,15 @@ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
             chibi_declared_components)
     endif()
 endif()
+
+# Consumers select exported targets as package components, so ChibiConfig
+# must list each one for check_required_components to accept it.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/ChibiConfig.cmake.in" chibi_config)
+string(REGEX MATCH "foreach\\(component ([^)]*)\\)" chibi_component_list "${chibi_config}")
+string(REGEX REPLACE "[ \n]+" ";" chibi_components "${CMAKE_MATCH_1}")
+foreach(target IN LISTS CHIBI_SDK_TARGETS)
+    get_target_property(component ${target} EXPORT_NAME)
+    if(NOT component IN_LIST chibi_components)
+        message(FATAL_ERROR "ChibiConfig.cmake.in does not list ${target}'s component ${component}")
+    endif()
+endforeach()

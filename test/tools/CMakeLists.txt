@@ -54,15 +54,17 @@ target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document)
 if(TARGET Chibi::entity_runtime)
     add_library(chibi_native_consumer OBJECT native.c native_values.c native_catalog.c physics.c
-        transforms.c)
+        physics3d.c transforms.c)
     target_include_directories(chibi_native_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_native_consumer PRIVATE Chibi::player Chibi::engine Chibi::entity_runtime Chibi::comparison_capabilities Chibi::conversion_capabilities Chibi::host_native_default
-        Chibi::physics_runtime Chibi::material_runtime Chibi::task_pool_runtime Chibi::spatial_runtime)
+        Chibi::physics_runtime Chibi::physics3d_runtime Chibi::material_runtime Chibi::task_pool_runtime
+        Chibi::spatial_runtime)
     target_compile_definitions(chibi_native_consumer PRIVATE CHIBI_TEST_NATIVE_RUNTIME=1)
     target_compile_options(chibi_native_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_native_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::player Chibi::engine Chibi::entity_runtime Chibi::comparison_capabilities Chibi::conversion_capabilities Chibi::host_native_default
-        Chibi::physics_runtime Chibi::material_runtime Chibi::task_pool_runtime Chibi::spatial_runtime)
+        Chibi::physics_runtime Chibi::physics3d_runtime Chibi::material_runtime Chibi::task_pool_runtime
+        Chibi::spatial_runtime)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_NATIVE_RUNTIME=1)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_NATIVE_RUNTIME=1)
 endif()
@@ -139,13 +141,13 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     if(TARGET Chibi::render AND TARGET Chibi::project_preparation)
         add_library(chibi_source_features_consumer OBJECT ../runtime/source_features.c ../authoring/source_presentation.c
             ../runtime/system_schedule.c ../code_system_runtime.c ../authoring/source_edit.c
-            ../authoring/shader_parameters.c ../language/corpus_semantic.c)
+            ../authoring/shader_parameters.c ../authoring/component_presentation.c ../language/corpus_semantic.c)
         target_include_directories(chibi_source_features_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-        target_link_libraries(chibi_source_features_consumer PRIVATE Chibi::project_preparation
+        target_link_libraries(chibi_source_features_consumer PRIVATE Chibi::project_preparation Chibi::component_presentation
             Chibi::render Chibi::graph_catalog Chibi::host_native_default Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime)
         target_compile_options(chibi_source_features_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_source_features_consumer>)
-        target_link_libraries(test_tools PRIVATE Chibi::project_preparation Chibi::graph_catalog Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime)
+        target_link_libraries(test_tools PRIVATE Chibi::project_preparation Chibi::component_presentation Chibi::graph_catalog Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)
         target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)
         target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::studio_capabilities)

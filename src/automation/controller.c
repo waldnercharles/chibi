@@ -194,6 +194,7 @@ typedef struct
     int rule;
     char *rule_name;
     char *message;
+    int line, column; /* 0 when it names no place */
 } catalog_diagnostic;
 
 typedef struct
@@ -1478,6 +1479,22 @@ static void catalog_add_diagnostic(
     };
     apush(asset->diagnostics, diagnostic);
 }
+/* A source's unit warnings, which leave it valid. */
+static void catalog_add_warnings(catalog_asset *asset, const script_analysis *analysis)
+{
+    asset->warnings = analysis->warning_count;
+    for (int i = 0; i < analysis->warning_count; i++) {
+        const script_diagnostic *warning = &analysis->warnings[i];
+        apush(
+            asset->diagnostics,
+            ((catalog_diagnostic){ .severity = xstrdup("warning"),
+                                   .rule_name = xstrdup("UNITS"),
+                                   .message = xstrdup(warning->message),
+                                   .line = warning->range.line,
+                                   .column = warning->range.column })
+        );
+    }
+}
 
 static void free_behavior_assets(behavior_asset **assets);
 static int load_behavior_family_assets(
@@ -1778,6 +1795,9 @@ static void catalog_validate_asset(
                 "SOURCE",
                 source->diagnostics[i].message
             );
+        }
+        if (source) {
+            catalog_add_warnings(asset, source->analysis);
         }
         return;
     }
@@ -2375,6 +2395,12 @@ static int analyze_project_source(
         source_range_json(doc, item, analysis->diagnostics[i].range);
         yyjson_mut_obj_add_strcpy(doc, item, "message", analysis->diagnostics[i].message);
         yyjson_mut_obj_add_int(doc, item, "severity", 1);
+    }
+    for (int i = 0; i < analysis->warning_count; i++) {
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, diagnostics);
+        source_range_json(doc, item, analysis->warnings[i].range);
+        yyjson_mut_obj_add_strcpy(doc, item, "message", analysis->warnings[i].message);
+        yyjson_mut_obj_add_int(doc, item, "severity", 2);
     }
     if (compile && analysis->valid) {
         script_lower_bindings bindings = authoring_language_bindings(native);
@@ -3306,6 +3332,10 @@ static void add_catalog_diagnostics(
         yyjson_mut_obj_add_int(doc, item, "rule", diagnostic->rule);
         yyjson_mut_obj_add_strcpy(doc, item, "rule_name", diagnostic->rule_name);
         yyjson_mut_obj_add_strcpy(doc, item, "message", diagnostic->message);
+        if (diagnostic->line) {
+            yyjson_mut_obj_add_int(doc, item, "line", diagnostic->line);
+            yyjson_mut_obj_add_int(doc, item, "column", diagnostic->column);
+        }
     }
 }
 
@@ -3364,21 +3394,22 @@ static void catalog_hash_text(uint64_t *hash, const char *text)
 }
 
 /* A project's declarations change its component schemas without changing
- * any asset the catalog lists. */
+ * any asset the catalog lists. Units are not layout, but scripts' unit
+ * warnings depend on them. */
 static uint64_t components_hash()
 {
     uint64_t hash = UINT64_C(1469598103934665603);
     ecs_component_catalog catalog = project_components();
     for (int i = 0; i < catalog.component_count; i++) {
+        const type_desc *type = catalog.components[i]->type;
         char layout[32];
-        snprintf(
-            layout,
-            sizeof layout,
-            ":%016llx;",
-            (unsigned long long)type_layout_hash(catalog.components[i]->type)
-        );
+        snprintf(layout, sizeof layout, ":%016llx;", (unsigned long long)type_layout_hash(type));
         catalog_hash_text(&hash, catalog.components[i]->name);
         catalog_hash_text(&hash, layout);
+        for (int j = 0; j < type->field_count; j++) {
+            catalog_hash_text(&hash, type->fields[j].unit ? type->fields[j].unit : "");
+            catalog_hash_text(&hash, ";");
+        }
     }
     return hash;
 }
@@ -5876,6 +5907,80 @@ static int format_input_map(const char *root, bool check)
     return differing;
 }
 
+static int compare_names(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+/* Formats one content/components source, already validated by load_declared. */
+static int format_component(const char *root, const char *name, bool check)
+{
+    char relative[512];
+    snprintf(relative, sizeof relative, "content/components/%s", name);
+    char *path = content_path(root, relative);
+    char error[256];
+    char *text = read_file(path, NULL, NULL, error, sizeof error);
+    script_syntax *syntax = text ? script_parse(text) : NULL;
+    char *formatted = syntax ? authoring_source_format(syntax, error, sizeof error)
+                             : NULL;
+    script_syntax_free(syntax);
+    int differing = formatted ? strcmp(text, formatted) != 0 : -1;
+    if (!formatted) {
+        fprintf(stderr, "chibi_ctl --format: %s: %s\n", relative, error);
+    } else if (differing) {
+        fprintf(stderr, "%s %s\n", check ? "not canonical:" : "formatted", relative);
+        FILE *file = check ? NULL : fopen(path, "wb");
+        if (!check && (!file || fputs(formatted, file) < 0 || fclose(file))) {
+            fprintf(stderr, "chibi_ctl --format: could not write %s\n", relative);
+            differing = -1;
+        }
+    }
+    free(formatted);
+    free(text);
+    free(path);
+    return differing;
+}
+/* A regular file, not a link: formatting rewrites it in place. */
+static bool regular_file(const char *folder, const char *name)
+{
+    char *path = xmalloc(strlen(folder) + strlen(name) + 2);
+    sprintf(path, "%s/%s", folder, name);
+    struct stat info;
+    bool regular = !lstat(path, &info) && S_ISREG(info.st_mode);
+    free(path);
+    return regular;
+}
+static int format_components(const char *root, bool check)
+{
+    char *folder = content_path(root, "content/components");
+    DIR *dir = opendir(folder);
+    if (!dir) {
+        free(folder);
+        return 0;
+    }
+    char **names = NULL;
+    for (struct dirent *entry; (entry = readdir(dir));) {
+        size_t n = strlen(entry->d_name);
+        if (entry->d_name[0] != '.' && n > strlen(CODE_ASSET_EXTENSION) &&
+            !strcmp(entry->d_name + n - strlen(CODE_ASSET_EXTENSION), CODE_ASSET_EXTENSION) &&
+            regular_file(folder, entry->d_name)) {
+            apush(names, xstrdup(entry->d_name));
+        }
+    }
+    closedir(dir);
+    free(folder);
+    if (names) {
+        qsort(names, (size_t)acount(names), sizeof *names, compare_names);
+    }
+    int differing = 0;
+    for (int i = 0; i < acount(names); i++) {
+        int one = differing >= 0 ? format_component(root, names[i], check) : 0;
+        differing = one < 0 ? one : differing + one;
+        free(names[i]);
+    }
+    afree(names);
+    return differing;
+}
+
 int chibi_automation_format_assets(const char *root, bool check)
 {
     asset_entry *entries = NULL;
@@ -5954,6 +6059,10 @@ int chibi_automation_format_assets(const char *root, bool check)
     if (differing >= 0) {
         int map = format_input_map(root, check);
         differing = map < 0 ? map : differing + map;
+    }
+    if (differing >= 0) {
+        int components = format_components(root, check);
+        differing = components < 0 ? components : differing + components;
     }
     source_catalog_free(sources);
     authoring_language_catalog_free(native);
@@ -6295,8 +6404,16 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         int validated = inspect_source_asset(root, request, result, exit_code, &ref, json, bytes, hash);
         yyjson_mut_val *source_result = yyjson_mut_obj_get(result->root, "result");
         yyjson_mut_val *source_diagnostics = yyjson_mut_obj_get(source_result, "diagnostics");
-        yyjson_mut_obj_add_uint(result->doc, source_result, "errors", yyjson_mut_arr_size(source_diagnostics));
-        yyjson_mut_obj_add_int(result->doc, source_result, "warnings", 0);
+        /* Severity 2 is a unit warning; every other diagnostic is an error. */
+        int source_warnings = 0;
+        yyjson_mut_arr_iter items = yyjson_mut_arr_iter_with(source_diagnostics);
+        for (yyjson_mut_val *item; (item = yyjson_mut_arr_iter_next(&items));) {
+            source_warnings += yyjson_mut_get_int(yyjson_mut_obj_get(item, "severity")) ==
+                               2;
+        }
+        int source_errors = (int)yyjson_mut_arr_size(source_diagnostics) - source_warnings;
+        yyjson_mut_obj_add_int(result->doc, source_result, "errors", source_errors);
+        yyjson_mut_obj_add_int(result->doc, source_result, "warnings", source_warnings);
         yyjson_mut_obj_add_int(result->doc, source_result, "notes", 0);
         free(json);
         return validated;

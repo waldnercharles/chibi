@@ -5,6 +5,7 @@
 #include "third_party/yyjson/yyjson.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -43,16 +44,11 @@ static void write_file(const char *relative, const char *text)
     tool_write(file, text);
 }
 
-/* Sends requests, one per line, to one chibi_ctl from `root`, inside the
- * project "game" when `scoped`; returns its exit status and keeps the last
- * reply. */
-static int ctl(bool scoped, const char *request)
+/* Runs a shell command from `root` that sees chibi_ctl as $0 and its own
+ * output as $1; returns its exit status and keeps the last reply. */
+static int run(const char *command)
 {
-    write_file("request.json", request);
-    const char *command = scoped
-                            ? "exec \"$0\" --project-root game < request.json"
-                            : "exec \"$0\" < request.json";
-    const char *args[] = { "/bin/sh", "-c", command, program, NULL };
+    const char *args[] = { "/bin/sh", "-c", command, program, log_path, NULL };
     int status = tool_run(args, root, log_path);
     char *output = tool_read(log_path);
     const char *json = output ? strstr(output, "{\"contract\"") : NULL;
@@ -64,6 +60,13 @@ static int ctl(bool scoped, const char *request)
     free(output);
     assert(reply);
     return status;
+}
+/* Sends requests, one per line, to one chibi_ctl, inside the project "game"
+ * when `scoped`. */
+static int ctl(bool scoped, const char *request)
+{
+    write_file("request.json", request);
+    return run(scoped ? "exec \"$0\" --project-root game < request.json" : "exec \"$0\" < request.json");
 }
 
 static int validate()
@@ -1106,6 +1109,111 @@ static double snapshot_x()
     return 0;
 }
 
+TEST_CASE(components_are_declared_in_chibi_sources)
+{
+    char folder[256], source[256];
+    path(folder, sizeof folder, "game/content/components");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    path(folder, sizeof folder, "game/content/systems");
+    REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
+    write_file("game/content/components/Charge.chibi", "// Stored energy.\ncomponent Charge{level : 0 .. 100 charge\nrate:charge / s}\n");
+    write_file("game/content/systems/Recharge.chibi", "system Recharge(charge: Charge) {\n    charge.level += charge.rate * dt\n}\n");
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    /* chibi_ctl formats component sources with the rest of the content. */
+    REQUIRE(format("--check") != 0 && format(NULL) == 0 && format("--check") == 0);
+    path(source, sizeof source, "game/content/components/Charge.chibi");
+    char *formatted = tool_read(source);
+    bool canonical = reads(
+        formatted,
+        "// Stored energy.\n"
+        "component Charge {\n"
+        "    level: 0..100 charge\n"
+        "    rate: charge/s\n"
+        "}\n"
+    );
+    free(formatted);
+    REQUIRE(canonical);
+    /* Formatting never writes through a link out of the project. */
+    char outside[256], link_path[256];
+    path(outside, sizeof outside, "Outside.chibi");
+    path(link_path, sizeof link_path, "game/content/components/Outside.chibi");
+    const char *loose = "component Outside{x:float}\n";
+    write_file("Outside.chibi", loose);
+    REQUIRE(symlink(outside, link_path) == 0);
+    format(NULL);
+    char *kept = tool_read(outside);
+    bool untouched = reads(kept, loose);
+    free(kept);
+    REQUIRE(untouched && unlink(link_path) == 0);
+    /* A field's mistake is reported where it is. */
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: flaot\n}\n");
+    REQUIRE(validate() != 0);
+    REQUIRE(strstr(failure(), "Charge.chibi: 2:12: Unknown type or unit 'flaot'"));
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: float\n    job: task\n}\n");
+    REQUIRE(validate() != 0);
+    REQUIRE(strstr(failure(), "Charge.chibi: 3:5: A component field cannot hold a task"));
+    /* A project may not declare a component the engine already has. */
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: float\n}\n");
+    write_file("game/content/components/Transform.chibi", "component GameTransform {\n    x: float\n}\n");
+    REQUIRE(validate() != 0);
+    REQUIRE(strstr(failure(), "Transform.chibi: the name is already an engine type"));
+    return true;
+}
+
+TEST_CASE(unit_mismatches_are_warnings)
+{
+    char folder[256];
+    path(folder, sizeof folder, "game/content/components");
+    REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
+    path(folder, sizeof folder, "game/content/systems");
+    REQUIRE(mkdir(folder, 0700) == 0 || errno == EEXIST);
+    write_file("game/content/components/Charge.chibi", "component Charge {\n    level: 0..100 charge\n    rate: charge/s\n}\n");
+    /* Declared units, the engine's reflected units and dt's seconds. */
+    write_file(
+        "game/content/systems/Measure.chibi",
+        "system Measure(charge: Charge, movement: GameMovement, collider: "
+        "GameCollider) {\n"
+        "    charge.level += charge.rate * dt\n"
+        "    charge.level += charge.rate\n"
+        "    collider.radius = movement.speed\n"
+        "    collider.radius += delta\n"
+        "}\n"
+    );
+    /* Warnings first: a mismatch leaves the project valid. */
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")) && errors() == 0);
+    REQUIRE(yyjson_get_int(result("warnings")) == 3);
+    yyjson_val *problem = yyjson_arr_get_first(result("problems"));
+    yyjson_val *diagnostics = yyjson_obj_get(problem, "diagnostics");
+    REQUIRE(yyjson_arr_size(diagnostics) == 3);
+    yyjson_val *first = yyjson_arr_get(diagnostics, 0);
+    REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(first, "severity")), "warning"));
+    REQUIRE(!strcmp(message_at(diagnostics, 0), "Units differ: charge += charge/s"));
+    REQUIRE(yyjson_get_int(yyjson_obj_get(first, "line")) == 3);
+    REQUIRE(!strcmp(message_at(diagnostics, 1), "Units differ: u = u/s"));
+    REQUIRE(!strcmp(message_at(diagnostics, 2), "Units differ: u += s"));
+    /* Validating the one source counts its warnings apart from errors. */
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"system\",\"name\":\"Measure\"}") ==
+        0
+    );
+    REQUIRE(errors() == 0 && yyjson_get_int(result("warnings")) == 3);
+    diagnostics = result("diagnostics");
+    REQUIRE(yyjson_get_int(yyjson_obj_get(yyjson_arr_get(diagnostics, 0), "severity")) == 2);
+    /* One chibi_ctl sees a unit change that leaves the layout as it was. */
+    write_file("Charge.chibi", "component Charge {\n    level: 0..100 charge\n    rate: 0..10 charge\n}\n");
+    write_file("request.json", "{\"contract\":1,\"operation\":\"validate_project\"}\n");
+    REQUIRE(
+        run("{ cat request.json; until grep -q contract \"$1\"; do sleep 0.02; "
+            "done; "
+            "cp Charge.chibi game/content/components/Charge.chibi; cat "
+            "request.json; } | "
+            "exec \"$0\" --project-root game") == 0
+    );
+    diagnostics = yyjson_obj_get(yyjson_arr_get_first(result("problems")), "diagnostics");
+    REQUIRE(!strcmp(message_at(diagnostics, 0), "Units differ: charge += charge·s"));
+    return true;
+}
+
 TEST_CASE(scenarios_hold_input_actions)
 {
     /* A scenario's controls reach the input map of the engine that plays it. */
@@ -1159,5 +1267,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(prototype_expansion_is_shared);
     RUN_TEST_CASE(scene_instances_share_the_expansion);
     RUN_TEST_CASE(scenarios_hold_input_actions);
+    RUN_TEST_CASE(components_are_declared_in_chibi_sources);
+    RUN_TEST_CASE(unit_mismatches_are_warnings);
     pu_clear_setup();
 }

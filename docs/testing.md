@@ -147,10 +147,16 @@ replacement invalidating an existing session, new default values and a rejected
 wrong parameter type on a fixed 3-by-3 bake. All four cases pass 267 assertions
 in 0.650 seconds with ASan/UBSan after the typed catalog extraction.
 
-`--source-presentation` is an independently admitted native selector for two small
+`--source-presentation` is an independently admitted native selector for seven small
 CPU cases: dedicated clone ownership after compiler retirement, explicit source
-edits, exact-source layout metadata and invalid drafts. Its first snapshot passed
-37 assertions in 0.364 seconds. Later document/Studio integrations are unverified.
+edits, exact-source layout metadata, invalid drafts, native palette declarations,
+callable-local ownership and readable formulas. Formula coverage retains authored
+call origins and effectful operations and reparses expression replacements.
+These cases pass 7,971 assertions in 1.259 seconds under the production deadline.
+Later document/Studio integrations are unverified.
+It also runs two component presentation cases on two fixed in-memory documents:
+the engine's tabs, icons and reflected units and ranges, and a document
+overriding them key by key.
 `--system-schedule` admits only `test_system_schedule`: fixed access/order cases,
 62 small CPU engine frames and a serial/parallel 128-entity, 20-frame comparison.
 The scheduler benchmark and broad material aggregates remain quarantined. This
@@ -223,6 +229,18 @@ movement and camera globals. Each fixture has at most 259 entities, and the case
 use no renderer, sleeps or child processes. Its exact dispatcher runs only registry
 validation and these cases. The migrated selector is independently reviewed and
 admitted for its first supervised capture.
+
+`python3 tools/test_policy.py tool source-native-numeric-queries` selects three
+finite C cases on VM and SLJIT. Besides numeric outputs and nested entity query
+membership, the rectangle case prepares one declared Boolean component and two
+contextually typed `EntityCondition` arrays. Ten fixed transform positions check
+fractional overlap, strict rectangle edge contact and half-open point inclusion.
+It retains the query snapshot while disabling, removing, restoring and destroying
+its single member. The case creates no windows, files, subprocesses or engine
+frames and uses at most 16 bounded event dispatches per backend. Independent
+review admitted the extension; its supervised run passed three cases and 722
+assertions in 1.351 seconds. The room-border rules and player spawn remain
+project-owned scenario coverage.
 
 `--source-session` admits only `test_asset_code_checkpoint`: four fixed source
 session cases plus the existing KDL checkpoint and external merge checks. Each

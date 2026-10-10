@@ -433,7 +433,10 @@ int game_prototype_preview_configure_physics(game_prototype_preview *preview, ga
     if (preview->entity.slot) {
         return FLOW_ERR_ARGUMENT;
     }
-    return game_physics_configure(preview->live->runtime->physics, settings);
+    game_preview_runtime *runtime = preview->live->runtime;
+    int result = game_physics_configure(runtime->physics, settings);
+    return result < 0 ? result
+                      : game_physics3d_configure(runtime->physics3d, settings);
 }
 
 int game_prototype_preview_input(

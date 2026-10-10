@@ -72,6 +72,7 @@ typedef struct
     const native_parameter_definition *type; /* One resolved DATA port. */
     native_global_identity identity;
     bool writable;
+    const char *unit; /* NULL without one */
 } native_global_definition;
 typedef struct native_definition_catalog native_definition_catalog;
 

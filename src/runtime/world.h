@@ -15,7 +15,8 @@ enum
     GAME_WORLD_UI = 1 << 5,
     GAME_WORLD_INPUT = 1 << 6,
     GAME_WORLD_VISUAL_MOTION = 1 << 7,
-    GAME_WORLD_MODULES_ALL = (1 << 8) - 1,
+    GAME_WORLD_PHYSICS3D = 1 << 8,
+    GAME_WORLD_MODULES_ALL = (1 << 9) - 1,
 };
 typedef struct
 {

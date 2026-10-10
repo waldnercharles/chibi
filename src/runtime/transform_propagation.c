@@ -132,6 +132,44 @@ static CF_Quat unit(CF_Quat q)
     return q.x || q.y || q.z || q.w ? cf_quat_norm(q) : cf_quat_identity();
 }
 
+static CF_M4x4 local_matrix(const GameTransform3D *local)
+{
+    return cf_m4_from_trs(local->position, unit(local->rotation), local->scale);
+}
+
+static GameGlobalTransform3D global_3d(CF_M4x4 m)
+{
+    return (GameGlobalTransform3D){
+        .x_axis = column(m, 0),
+        .y_axis = column(m, 1),
+        .z_axis = column(m, 2),
+        .position = column(m, 3),
+    };
+}
+
+ecs_entity game_transform_parent_3d(const ecs_world *world, ecs_entity entity)
+{
+    ecs_entity parent = ecs_parent(world, entity);
+    while (parent.slot && !GAME_GameTransform3D_has(world, parent)) {
+        parent = ecs_parent(world, parent);
+    }
+    return parent;
+}
+
+static CF_M4x4 world_matrix_3d(const ecs_world *world, ecs_entity entity)
+{
+    const GameTransform3D *local = GAME_GameTransform3D_get_const(world, entity);
+    assert(local);
+    ecs_entity parent = game_transform_parent_3d(world, entity);
+    CF_M4x4 m = local_matrix(local);
+    return parent.slot ? cf_mul_m4(world_matrix_3d(world, parent), m) : m;
+}
+
+GameGlobalTransform3D game_transform_world_3d(const ecs_world *world, ecs_entity entity)
+{
+    return global_3d(world_matrix_3d(world, entity));
+}
+
 static int propagate_3d(ecs_world *world)
 {
     if (!installed(
@@ -154,17 +192,11 @@ static int propagate_3d(ecs_world *world)
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
         ecs_entity parent = ecs_query_src(&query, TERM_PARENT);
-        const GameTransform3D *local = GAME_GameTransform3D_get_const(world, entity);
-        CF_M4x4 m = cf_m4_from_trs(local->position, unit(local->rotation), local->scale);
+        CF_M4x4 m = local_matrix(GAME_GameTransform3D_get_const(world, entity));
         if (parent.slot) {
             m = cf_mul_m4(matrix_3d(GAME_GameGlobalTransform3D_get_const(world, parent)), m);
         }
-        *GAME_GameGlobalTransform3D_get(world, entity) = (GameGlobalTransform3D){
-            .x_axis = column(m, 0),
-            .y_axis = column(m, 1),
-            .z_axis = column(m, 2),
-            .position = column(m, 3),
-        };
+        *GAME_GameGlobalTransform3D_get(world, entity) = global_3d(m);
     }
     ecs_query_end(&query);
     return ECS_OK;

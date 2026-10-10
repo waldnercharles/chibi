@@ -345,8 +345,11 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
         }
         assert(game_audio_sound_storage_bytes(services->audio) == bytes);
     }
-    if (services->physics &&
-        game_physics_configure(services->physics, game_scene_physics(spec->scene)) < 0) {
+    if ((services->physics &&
+         game_physics_configure(services->physics, game_scene_physics(spec->scene)) < 0) ||
+        (services->physics3d &&
+         game_physics3d_configure(services->physics3d, game_scene_physics(spec->scene)) <
+             0)) {
         fail(error, size, "Prepared scene physics configuration failed");
         goto reject;
     }
@@ -493,8 +496,10 @@ bool game_player_load_scene(game_player *p, const char *name, char *error, size_
     game_entities_reset(services->entities);
     game_scene_instance_free(p->scene);
     p->scene = NULL;
-    if (services->physics &&
-        game_physics_configure(services->physics, game_scene_physics(scene)) < 0) {
+    if ((services->physics &&
+         game_physics_configure(services->physics, game_scene_physics(scene)) < 0) ||
+        (services->physics3d &&
+         game_physics3d_configure(services->physics3d, game_scene_physics(scene)) < 0)) {
         return fail(error, size, "Prepared scene physics configuration failed");
     }
     p->scene = game_scene_instantiate(

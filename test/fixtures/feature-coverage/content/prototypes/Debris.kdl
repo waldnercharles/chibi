@@ -1,0 +1,4 @@
+name "Debris"
+components {
+    GAME.GameTransform x=-8.0
+}

@@ -1,0 +1,11 @@
+behavior SaveProbe {
+    on Begin {
+        saved := read_saved_text("best", "0")
+        await set_saved_text("best", "1")
+        await set_saved_text("scratch", "x")
+        await remove_saved_text("scratch")
+        await commit_save()
+        await set_saved_text("pending", "y")
+        await discard_save_changes()
+    }
+}

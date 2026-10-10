@@ -1,5 +1,5 @@
-#ifndef CHIBI_RENDER_MESH_PICK_H
-#define CHIBI_RENDER_MESH_PICK_H
+#ifndef CHIBI_MESH_PICK_H
+#define CHIBI_MESH_PICK_H
 
 #include "runtime/geometry/mesh_asset.h"
 
@@ -15,8 +15,14 @@ typedef struct
 } render_mesh_hit;
 /* Where a ray in a resident mesh's coordinates first meets one of its
  * triangles, from either side. A tree of boxes over the mesh's triangles,
- * built on its first pick and kept until the mesh catalog changes, limits
- * the test to triangles in boxes the ray crosses. */
+ * built on its first pick, limits the test to triangles in boxes the ray
+ * crosses. */
 render_mesh_hit render_mesh_pick(const render_mesh_asset *mesh, CF_Ray3 ray);
+
+/* Frees every mesh's pick tree. The mesh catalog calls it whenever it
+ * changes, since a change may drop or replace any mesh. */
+void render_mesh_picks_clear();
+/* Meshes with a pick tree, for tests. */
+int render_mesh_pick_trees();
 
 #endif

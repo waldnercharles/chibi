@@ -14,12 +14,13 @@ permissions:
   contents: write
   actions: write
   statuses: write
+  checks: write
   issues: write
   pull-requests: write
 
 jobs:
   policy:
-    uses: waldnercharles/chibi-studio/.github/workflows/chibi-merge-policy-reusable.yml@a8e18c7574071f76d7cb4bdcb89271967e40fc6f
+    uses: waldnercharles/chibi-studio/.github/workflows/chibi-merge-policy-reusable.yml@0537d8a122ac53e18073c6f9eb78eddf943fbbba
     with:
       gate_ready: ${{ vars.CHIBI_REVIEW_GATE_READY == 'true' }}
       post_merge_workflows: >-
@@ -28,5 +29,6 @@ jobs:
       contents: write
       actions: write
       statuses: write
+      checks: write
       issues: write
       pull-requests: write

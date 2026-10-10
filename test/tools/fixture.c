@@ -65,7 +65,12 @@ const char *tool_root()
 
 int tool_run(const char *const argv[], const char *cwd, const char *logpath)
 {
-    double limit = seconds() + 10;
+    return tool_run_within(argv, cwd, logpath, TOOL_RUN_SECONDS);
+}
+
+int tool_run_within(const char *const argv[], const char *cwd, const char *logpath, double allowed)
+{
+    double start = seconds(), limit = start + allowed;
     if (limit > deadline - 2) {
         limit = deadline - 2;
     }
@@ -96,6 +101,13 @@ int tool_run(const char *const argv[], const char *cwd, const char *logpath)
             fputs(output, stderr);
             free(output);
         }
+    }
+    if (timeout) {
+        fprintf(stderr, "stopped after %.0f seconds:", limit - start);
+        for (const char *const *arg = argv; *arg; arg++) {
+            fprintf(stderr, " %s", *arg);
+        }
+        fputc('\n', stderr);
     }
     return timeout ? 124 : process.status;
 }

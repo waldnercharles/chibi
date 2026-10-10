@@ -1077,14 +1077,13 @@ static void followers_move_with_their_body()
     dispose(&f);
 }
 
-/* A body and the sensors it carries move as one, so they never touch. */
+/* A body and the colliders it carries move as one, so they never touch. */
 static void followers_ignore_their_anchor()
 {
     fixture f = create();
     ecs_entity ship = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 4);
-    ecs_entity hull = sensor(&f, 2, 0);
+    ecs_entity hull = body(&f, 2, 0, GAME_BODY_KINEMATIC, 4, 1 | 4);
     ecs_entity mast = sensor(&f, -2, 0);
-    GAME_GameCollider_get(f.world, hull)->mask |= 1 | 4;
     GAME_GameCollider_get(f.world, mast)->mask |= 1 | 4;
     assert(ecs_world_record_add_pair(f.world, hull, ECS_CHILD_OF, ship, 0) == ECS_OK);
     assert(ecs_world_record_add_pair(f.world, mast, ECS_CHILD_OF, ship, 0) == ECS_OK);
@@ -1092,6 +1091,8 @@ static void followers_ignore_their_anchor()
     for (int i = 0; i < 4; i++) {
         assert(step(&f, 1.0f / 60) == 0);
     }
+    const GameTransform *at = GAME_GameTransform_get_const(f.world, ship);
+    assert(at->x == 0 && at->y == 0);
     ecs_entity *found = NULL;
     assert(game_physics_contact_entities(f.world, f.entities, ship, 4, &found) == 0);
     assert(acount(found) == 0);
@@ -1101,17 +1102,66 @@ static void followers_ignore_their_anchor()
     dispose(&f);
 }
 
-/* A carried solid is a kinematic body of its own, which Box2D never lets
- * push its dynamic carrier, so a dynamic body carries only sensors. */
-static void dynamic_bodies_carry_only_sensors()
+/* A carried collider is part of its root's body: it adds its mass (a sensor
+ * adds none), and what it hits stops the body while contacts name it. */
+static void carried_colliders_join_their_body()
 {
     fixture f = create();
-    ecs_entity ship = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 1);
-    ecs_entity hull = body(&f, 6, 0, GAME_BODY_KINEMATIC, 1, 1);
-    assert(ecs_world_record_add_pair(f.world, hull, ECS_CHILD_OF, ship, 0) == ECS_OK);
+    ecs_entity ship = body(&f, 0, 0, GAME_BODY_DYNAMIC, 1, 2);
+    assert(step(&f, 0) == 0);
+    float alone = inspect_body(&f, ship).mass;
+    ecs_entity ram = body(&f, 10, 0, GAME_BODY_KINEMATIC, 1, 2);
+    ecs_entity mast = sensor(&f, -10, 0);
+    assert(ecs_world_record_add_pair(f.world, ram, ECS_CHILD_OF, ship, 0) == ECS_OK);
+    assert(ecs_world_record_add_pair(f.world, mast, ECS_CHILD_OF, ship, 0) == ECS_OK);
     assert(ecs_world_apply_commands(f.world) == ECS_OK);
-    assert(game_physics_tick(f.physics, 1.0f / 60) == FLOW_ERR_ARGUMENT);
-    assert(strstr(game_physics_error(f.physics), "can carry only sensors"));
+    ecs_entity wall = body(&f, 40, 0, GAME_BODY_STATIC, 2, 1);
+    *GAME_GameVelocity_get(f.world, ship) = (GameVelocity){ 600, 0 };
+    assert(step(&f, 0) == 0);
+    game_physics_body_state state = inspect_body(&f, ship);
+    assert(state.shape_count == 3 && fabsf(state.mass - 2 * alone) < alone * 1e-4f);
+    for (int i = 0; i < 30; i++) {
+        step(&f, 1.0f / 60);
+    }
+    /* The ram, 10 ahead of the ship, stops against the wall. */
+    float x = GAME_GameTransform_get_const(f.world, ship)->x;
+    assert(x > 21 && x < 22.5f);
+    assert(other(&f, ram) == ecs_entity_to_u64(wall));
+    assert(other(&f, wall) == ecs_entity_to_u64(ram));
+    assert(!other(&f, ship));
+    /* A rebuilt body takes its carried colliders back. */
+    GAME_GameCollider_get(f.world, ship)->radius = 3;
+    assert(step(&f, 0) == 0);
+    assert(inspect_body(&f, ship).shape_count == 3);
+    assert(inspect_body(&f, ram).shape_count == 3);
+    /* A removed one takes its mass with it. */
+    assert(GAME_GameCollider_remove(f.world, ram, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    assert(step(&f, 0) == 0);
+    state = inspect_body(&f, ship);
+    assert(state.shape_count == 2 && fabsf(state.mass - 9.0f / 16 * alone) < alone * 1e-4f);
+    dispose(&f);
+}
+
+/* A follower whose parents have no body teleports with them. */
+static void followers_without_a_body()
+{
+    fixture f = create();
+    ecs_entity parent = ecs_world_create_entity(f.world);
+    assert(GAME_GameTransform_add(f.world, parent, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    *GAME_GameTransform_get(f.world, parent) = (GameTransform){ 50, 0 };
+    ecs_entity child = sensor(&f, 10, 0);
+    assert(ecs_world_record_add_pair(f.world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(f.world) == ECS_OK);
+    ecs_entity far = body(&f, 60, 0, GAME_BODY_KINEMATIC, 2, 4);
+    ecs_entity near = body(&f, 10, 0, GAME_BODY_KINEMATIC, 2, 4);
+    assert(step(&f, 1.0f / 60) == 2);
+    assert(other(&f, child) == ecs_entity_to_u64(far));
+    assert(inspect_body(&f, child).shape_count == 1);
+    *GAME_GameTransform_get(f.world, parent) = (GameTransform){ 0, 0 };
+    assert(step(&f, 1.0f / 60) == 2);
+    assert(other(&f, child) == ecs_entity_to_u64(near));
     dispose(&f);
 }
 
@@ -1393,7 +1443,8 @@ static void physics_cases()
     followers();
     followers_move_with_their_body();
     followers_ignore_their_anchor();
-    dynamic_bodies_carry_only_sensors();
+    carried_colliders_join_their_body();
+    followers_without_a_body();
     continuous_sensors_carry_no_colliders();
     followed_material();
     current_contact_query();

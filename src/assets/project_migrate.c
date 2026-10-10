@@ -2588,33 +2588,68 @@ static av_value *object_name(av_value *entities, size_t index)
     av_value *name = av_is_obj(entity) ? av_obj_get(entity, "name") : NULL;
     return av_is_str(name) ? name : NULL;
 }
+/* Puts '_' in place of each '.' in a string value, returning whether it
+ * had one. */
+static bool undot(av_value *value)
+{
+    if (!av_is_str(value) || !strchr(av_get_str(value), '.')) {
+        return false;
+    }
+    char *undotted = xstrdup(av_get_str(value));
+    for (char *dot = strchr(undotted, '.'); dot; dot = strchr(dot, '.')) {
+        *dot = '_';
+    }
+    av_set_str(value, undotted);
+    free(undotted);
+    return true;
+}
+/* A saved scenario names scene objects in its inputs' event targets, entity
+ * payloads and UI targets. Before version 19 no name was a path, so a '.'
+ * there named an object the scene renames the same way. */
+static bool undot_targets(av_value *root)
+{
+    bool changed = false;
+    av_value *inputs = av_obj_get(root, "inputs");
+    for (size_t i = 0; i < av_arr_size(inputs); i++) {
+        av_value *input = av_arr_get(inputs, i);
+        av_value *events = av_obj_get(input, "events"), *ui = av_obj_get(input, "ui");
+        for (size_t j = 0; j < av_arr_size(events); j++) {
+            av_value *event = av_arr_get(events, j);
+            changed |= undot(av_obj_get(event, "target"));
+            av_value *values = av_obj_get(event, "values");
+            for (size_t k = 0; k < av_arr_size(values); k++) {
+                av_value *payload = av_arr_get(values, k);
+                av_value *type = av_obj_get(payload, "type");
+                if (av_is_str(type) && !strcmp(av_get_str(type), "entity")) {
+                    changed |= undot(av_obj_get(payload, "value"));
+                }
+            }
+        }
+        for (size_t j = 0; j < av_arr_size(ui); j++) {
+            changed |= undot(av_obj_get(av_arr_get(ui, j), "target"));
+        }
+    }
+    return changed;
+}
 /* Version 19 names nested scene objects by '.'-separated paths, so an
- * object name holding '.' takes '_' in its place. Earlier scenes are flat, so
- * a renamed object that would share a name with another stops the migration
- * for a person to rename one of them. Returns an owned copy of `asset` with
- * the new names, or NULL when no name changes. */
+ * object name holding '.' takes '_' in its place, as does a saved scenario's
+ * reference to it. Earlier scenes are flat, so a renamed object that would
+ * share a name with another stops the migration for a person to rename one
+ * of them. Returns an owned copy of `asset` with the new names, or NULL when
+ * no name changes. */
 static char *undot_names(const char *asset, const char *path, char *error, size_t error_size)
 {
     char message[128];
     av_doc *document = asset_text_read(asset, message, sizeof message);
     av_value *root = document ? av_doc_root(document) : NULL;
-    av_value *entities = av_is_obj(root) ? av_obj_get(root, "entities") : NULL;
-    size_t count = av_is_arr(entities) ? av_arr_size(entities) : 0;
-    bool changed = false;
+    av_value *entities = av_obj_get(root, "entities");
+    size_t count = av_arr_size(entities);
+    bool changed = undot_targets(root);
+    bool renamed = false;
     for (size_t i = 0; i < count; i++) {
-        av_value *name = object_name(entities, i);
-        if (!name || !strchr(av_get_str(name), '.')) {
-            continue;
-        }
-        char *undotted = xstrdup(av_get_str(name));
-        for (char *dot = strchr(undotted, '.'); dot; dot = strchr(dot, '.')) {
-            *dot = '_';
-        }
-        av_set_str(name, undotted);
-        free(undotted);
-        changed = true;
+        renamed |= undot(object_name(entities, i));
     }
-    for (size_t i = 0; changed && i < count; i++) {
+    for (size_t i = 0; renamed && i < count; i++) {
         av_value *a = object_name(entities, i);
         for (size_t j = i + 1; a && j < count; j++) {
             av_value *b = object_name(entities, j);
@@ -2632,7 +2667,7 @@ static char *undot_names(const char *asset, const char *path, char *error, size_
             }
         }
     }
-    char *migrated = changed ? asset_text_write(root) : NULL;
+    char *migrated = changed || renamed ? asset_text_write(root) : NULL;
     av_doc_free(document);
     return migrated;
 }

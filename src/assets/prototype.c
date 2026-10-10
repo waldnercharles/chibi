@@ -344,6 +344,10 @@ static int parse_components(
             set_error(error, error_size, "component %s is unavailable", name);
             return -1;
         }
+        if (desc->derived_from) {
+            set_error(error, error_size, "component %s is computed by the engine and cannot be authored", name);
+            return -1;
+        }
         game_prototype_component *component = find_component_in(*components, name);
         if (!component) {
             component = &(game_prototype_component){
@@ -682,7 +686,8 @@ game_prototype *game_prototype_capture_entity(
     prototype->registry_storage = *registry;
     for (int i = 0; i < registry->component_count; i++) {
         const ecs_component_desc *desc = registry->components[i];
-        if (!desc || !ecs_component_has(world, entity, desc->id)) {
+        if (!desc || desc->derived_from ||
+            !ecs_component_has(world, entity, desc->id)) {
             continue;
         }
         game_prototype_component component = {
@@ -1139,7 +1144,7 @@ av_value *game_prototype_capture_overrides_value(
     game_prototype_component *components = NULL;
     for (int i = 0; i < base->registry->component_count; i++) {
         const ecs_component_desc *desc = base->registry->components[i];
-        if (!ecs_component_has(world, entity, desc->id)) {
+        if (desc->derived_from || !ecs_component_has(world, entity, desc->id)) {
             continue;
         }
         game_prototype_component component = {
@@ -1248,8 +1253,13 @@ int game_prototype_apply_components_value(
     av_value *key;
     while ((key = av_obj_iter_next(&iterator))) {
         const ecs_component_desc *desc = game_prototype_registry_find(registry, av_get_str(key));
-        if (!desc) {
-            set_error(error, error_size, "unknown override component %s", av_get_str(key));
+        if (!desc || desc->derived_from) {
+            set_error(
+                error,
+                error_size,
+                "override component %s is unknown or computed by the engine",
+                av_get_str(key)
+            );
             for (int i = 0; i < acount(parser.strings); i++) {
                 apush(*owned_strings, parser.strings[i]);
             }
@@ -1618,7 +1628,8 @@ static int copy_default_fields(
 
 int game_prototype_add_component(game_prototype *prototype, const ecs_component_desc *desc)
 {
-    if (!prototype || !desc || !desc->name || find_component(prototype, desc->name)) {
+    if (!prototype || !desc || !desc->name || desc->derived_from ||
+        find_component(prototype, desc->name)) {
         return -1;
     }
     game_prototype_component

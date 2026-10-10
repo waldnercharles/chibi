@@ -56,6 +56,8 @@ typedef struct
     uint64_t layout, underlying;
     uint64_t component_id; /* ECS storage ID, distinct from this catalog type ID. */
     bool component;
+    /* Computed by the engine: scripts read it but never write, add or remove it. */
+    bool derived;
 } script_catalog_type;
 typedef enum
 {

@@ -7,6 +7,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/values.cmake")
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
     set_source_files_properties(
         "${CHIBI_SDK_ROOT}/src/runtime/visual_transform.c"
+        "${CHIBI_SDK_ROOT}/src/runtime/transform_propagation.c"
         "${CHIBI_SDK_ROOT}/src/runtime/particles.c"
         PROPERTIES COMPILE_OPTIONS -ffp-contract=off)
 endif()
@@ -63,10 +64,12 @@ endif()
 
 add_library(chibi_spatial_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/systems/access.c"
     "${CHIBI_SDK_ROOT}/src/runtime/visual_transform.c"
-    "${CHIBI_SDK_ROOT}/src/runtime/visual_parts.c")
+    "${CHIBI_SDK_ROOT}/src/runtime/visual_parts.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/transform_propagation.c")
 add_library(Chibi::spatial_runtime ALIAS chibi_spatial_runtime)
 set_target_properties(chibi_spatial_runtime PROPERTIES EXPORT_NAME spatial_runtime)
-chibi_sdk_headers(chibi_spatial_runtime PUBLIC runtime/visual_transform.h runtime/visual_parts.h)
+chibi_sdk_headers(chibi_spatial_runtime PUBLIC runtime/visual_transform.h runtime/visual_parts.h
+    runtime/transform_propagation.h)
 target_link_libraries(chibi_spatial_runtime PUBLIC chibi_native_types)
 add_library(chibi_native_bindings STATIC "${CHIBI_NATIVE_BINDINGS_SOURCE}")
 add_library(Chibi::native_bindings ALIAS chibi_native_bindings)
@@ -93,7 +96,7 @@ chibi_sdk_headers(chibi_entity_runtime PUBLIC runtime/behaviors/entities.h
     runtime/behaviors/entities_definition.h runtime/behaviors/entity_query.h
     runtime/behaviors/scene_flow.h runtime/behaviors/scene_flow_definition.h)
 target_link_libraries(chibi_entity_runtime PUBLIC chibi_native_types chibi_execution
-    chibi_scene_runtime chibi_behavior_runtime chibi_native_capabilities)
+    chibi_scene_runtime chibi_behavior_runtime chibi_native_capabilities PRIVATE chibi_spatial_runtime)
 add_library(chibi_audio_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/audio.c"
     "${CHIBI_SDK_ROOT}/src/runtime/audio_definition.c")
 add_library(Chibi::audio_runtime ALIAS chibi_audio_runtime)
@@ -135,7 +138,8 @@ add_library(Chibi::input_runtime ALIAS chibi_input_runtime)
 set_target_properties(chibi_input_runtime PROPERTIES EXPORT_NAME input_runtime)
 chibi_sdk_headers(chibi_input_runtime PUBLIC runtime/engine_input.h runtime/input_definition.h
     runtime/input_timeline.h runtime/source_input.h)
-target_link_libraries(chibi_input_runtime PUBLIC chibi_input_action chibi_native_types chibi_native_capabilities chibi_execution_contract chibi_behavior_runtime PRIVATE chibi_events)
+target_link_libraries(chibi_input_runtime PUBLIC chibi_input_action chibi_native_types chibi_native_capabilities chibi_execution_contract chibi_behavior_runtime PRIVATE chibi_events
+    chibi_spatial_runtime)
 target_include_directories(chibi_save_runtime PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
 list(APPEND CHIBI_SDK_TARGETS chibi_native_types chibi_entity_runtime chibi_audio_runtime
     chibi_rhythm_runtime chibi_particle_runtime chibi_save_runtime chibi_ui_runtime chibi_input_runtime)

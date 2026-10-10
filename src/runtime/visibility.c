@@ -2,6 +2,7 @@
 
 #include "runtime/component_catalog.h"
 #include "runtime/scenes/physics.h"
+#include "runtime/transform_propagation.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -112,12 +113,11 @@ static const char *collect_observers(game_visibility *visibility, float seconds,
         if (vision->disabled || ecs_entity_is_retiring(visibility->world, entity)) {
             continue;
         }
-        const GameTransform *transform = GAME_GameTransform_get_const(visibility->world, entity);
-        if (!transform) {
+        if (!GAME_GameTransform_has(visibility->world, entity)) {
             error = "GameVision requires a GameTransform";
             break;
         }
-        CF_V2 position = *transform;
+        CF_V2 position = game_transform_world_2d(visibility->world, entity).position;
         if (!isfinite(position.x) || !isfinite(position.y) ||
             !isfinite(vision->radius) || !isfinite(vision->age) ||
             !isfinite(vision->duration) || vision->radius < 0 ||

@@ -1,7 +1,7 @@
 version 3
 name "EnergyCells"
 domain "material"
-id_counter 49
+id_counter 52
 description "Scrolling cyan cell lines on a dark surface. Scroll Speed controls UV motion, Tiling sets repetition, and Intensity controls emission. Edit Color Ramp to recolor the energy."
 (array)graphs {
     - {

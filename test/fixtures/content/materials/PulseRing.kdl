@@ -1,7 +1,7 @@
 version 3
 name "PulseRing"
 domain "material"
-id_counter 45
+id_counter 48
 description "An emissive ring surface. Flash remains the named DamageFlashBehavior override; pulse and ring masking use ShaderMath."
 (array)graphs {
     - {

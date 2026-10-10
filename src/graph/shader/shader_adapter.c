@@ -5,6 +5,7 @@
 #include "runtime/shaders/image.h"
 #include "support/array.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -141,6 +142,18 @@ static int literal(lowering *l, const pin_spec *pin, uint64_t id)
     return index;
 }
 static int output(lowering *l, scope *s, const node *n, int pin);
+static int constant_settings(lowering *l, const scope *s, const node *n)
+{
+    for (int j = 0; j < n->input_count && j < n->desc->input_count; j++) {
+        node *source = NULL;
+        int source_pin = 0;
+        if ((n->desc->inputs[j].flags & PIN_FLAG_SETTING) &&
+            graph_input_source(s->source, n, j, &source, &source_pin)) {
+            return error(l, n->id, "Shader settings must be authored constants");
+        }
+    }
+    return 0;
+}
 static int input(lowering *l, scope *s, const node *n, int pin)
 {
     node *from = NULL;
@@ -330,13 +343,8 @@ static int lower_node(lowering *l, scope *s, const node *n, int pin)
         }
         return error(l, n->id, "Node is not supported in shader graphs");
     }
-    for (int j = 0; j < n->input_count && j < n->desc->input_count; j++) {
-        node *source = NULL;
-        int source_pin = 0;
-        if ((n->desc->inputs[j].flags & PIN_FLAG_SETTING) &&
-            graph_input_source(s->source, n, j, &source, &source_pin)) {
-            return error(l, n->id, "Shader settings must be authored constants");
-        }
+    if (constant_settings(l, s, n) < 0) {
+        return -1;
     }
     if (op == SHADER_VORONOI && pin == 1) {
         op = SHADER_VORONOI_COLOR;
@@ -520,6 +528,46 @@ failed:
     shader_graph_free(&ir);
     return false;
 }
+/* A Surface Output's Opacity under its Alpha Mode: Opaque keeps every pixel,
+ * and Mask turns Opacity into 1 where it reaches Alpha Cutoff and 0 below. */
+static int surface_opacity(lowering *l, scope *s, const node *root)
+{
+    const pin_spec *mode = &root->input_pins[SHADER_SURFACE_ALPHA_MODE];
+    if (mode->type != PIN_I32 || mode->default_value.i < SHADER_ALPHA_BLEND ||
+        mode->default_value.i > SHADER_ALPHA_MASK) {
+        return error(l, root->id, "Invalid Alpha Mode");
+    }
+    if (mode->default_value.i == SHADER_ALPHA_OPAQUE) {
+        int whole = shader_graph_add(l->ir, SHADER_CONSTANT, 1);
+        l->ir->nodes[whole].source_id = root->id;
+        l->ir->nodes[whole].value[0] = 1;
+        return whole;
+    }
+    int value = input(l, s, root, SHADER_SURFACE_OPACITY);
+    if (value < 0 || mode->default_value.i == SHADER_ALPHA_BLEND) {
+        return value;
+    }
+    int cutoff = input(l, s, root, SHADER_SURFACE_ALPHA_CUTOFF);
+    if (cutoff < 0) {
+        return -1;
+    }
+    int mask = shader_graph_add(l->ir, SHADER_STEP, 1);
+    l->ir->nodes[mask].source_id = root->id;
+    l->ir->nodes[mask].input[0] = value;
+    l->ir->nodes[mask].input[1] = cutoff;
+    return mask;
+}
+shader_alpha_mode shader_graph_alpha_mode(const graph *source)
+{
+    for (int i = 0; i < acount(source->nodes); i++) {
+        const node *n = source->nodes[i];
+        if (!strcmp(n->desc->name, "Shader Surface Output")) {
+            assert(n->input_count == SHADER_SURFACE_INPUT_COUNT);
+            return n->input_pins[SHADER_SURFACE_ALPHA_MODE].default_value.i;
+        }
+    }
+    return SHADER_ALPHA_BLEND;
+}
 bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_error *err)
 {
     shader_graph ir;
@@ -550,19 +598,28 @@ bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_e
         error(&l, root->id, "Shader output does not match the asset domain");
         goto failed;
     }
-    ir.output_count = root->input_count;
-    if (ir.output_count != (shape ? 1 : 8)) {
+    if (root->input_count != (shape ? 1 : SHADER_SURFACE_INPUT_COUNT)) {
         error(&l, root->id, "Shader output has the wrong number of inputs");
         goto failed;
     }
+    if (constant_settings(&l, &s, root) < 0) {
+        goto failed;
+    }
+    ir.output_count = shape ? 1 : SHADER_OUTPUT_MAX;
     for (int i = 0; i < ir.output_count; i++) {
-        ir.output[i] = input(&l, &s, root, i);
+        ir.output[i] = shape || i != SHADER_SURFACE_OPACITY
+                         ? input(&l, &s, root, i)
+                         : surface_opacity(&l, &s, root);
         if (ir.output[i] < 0) {
             goto failed;
         }
     }
     for (int i = 0; i < ir.output_count; i++) {
-        int expected = ir.output_count == 1 || (i != 0 && i != 1 && i != 4) ? 1 : 3;
+        int expected = shape || (i != SHADER_SURFACE_BASE_COLOR &&
+                                 i != SHADER_SURFACE_EMISSION &&
+                                 i != SHADER_SURFACE_NORMAL)
+                         ? 1
+                         : 3;
         if (ir.nodes[ir.output[i]].width != expected) {
             error(&l, root->id, "Shader output has the wrong type");
             goto failed;

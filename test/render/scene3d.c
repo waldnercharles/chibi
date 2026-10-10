@@ -2797,6 +2797,128 @@ TEST_CASE(normal_maps_follow_mesh_tangents)
     REQUIRE(abs(square_light(square, "AlongU") - along) <= 3);
     return true;
 }
+
+/* Occlusion scales the light that arrives from every side, ambient and sky
+ * alike, and leaves the sun's alone. */
+TEST_CASE(occlusion_dims_only_ambient_light)
+{
+    const char *names[] = { "Open", "Half", "Occluded" };
+    const float occlusion[] = { 1, .5f, 0 };
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(test_register_occlusion(names[i], occlusion[i]));
+    }
+    ecs_entity box = add_surface_box(names[0]);
+    GameEnvironment environment = unlit_environment();
+    environment.ambient_sky = 0x00ff00ffu;
+    environment.ambient_ground = 0x00ff00ffu;
+    environment.ambient_intensity = .5f;
+    int green[3];
+    for (int i = 0; i < 3; i++) {
+        GAME_GameShader_get(world, box)->material = names[i];
+        REQUIRE(render(&environment));
+        green[i] = top().colors.g;
+    }
+    REQUIRE(green[0] > 100 && green[2] == 0);
+    REQUIRE(green[2] + 20 < green[1] && green[1] + 20 < green[0]);
+
+    publish_uniform_sky((const unsigned char[4]){ 128, 128, 128, 128 });
+    environment = sky_environment();
+    GAME_GameShader_get(world, box)->material = names[0];
+    REQUIRE(render(&environment));
+    REQUIRE(top().colors.g > 60);
+    GAME_GameShader_get(world, box)->material = names[2];
+    REQUIRE(render(&environment));
+    REQUIRE(!top().colors.r && !top().colors.g && !top().colors.b);
+
+    add_sun(0xff0000ffu, (CF_V3){ 0, -2, 0 });
+    environment = unlit_environment();
+    GAME_GameShader_get(world, box)->material = names[0];
+    REQUIRE(render(&environment));
+    CF_Pixel open = top();
+    GAME_GameShader_get(world, box)->material = names[2];
+    REQUIRE(render(&environment));
+    REQUIRE(open.colors.r > 150 && distance(top(), open) <= 1);
+    return true;
+}
+
+/* A white box at Opacity 0.3 over a purple sky. Blend mixes it over the sky.
+ * Opaque draws it whole, and so does Mask while Opacity reaches the cutoff;
+ * below the cutoff Mask leaves only the sky. Only Blend is translucent. */
+TEST_CASE(alpha_modes_decide_how_opacity_draws)
+{
+    static const struct
+    {
+        const char *name;
+        shader_alpha_mode mode;
+        float cutoff;
+    } modes[] = { { "Blended", SHADER_ALPHA_BLEND, .5f },
+                  { "Opaque", SHADER_ALPHA_OPAQUE, .5f },
+                  { "Kept", SHADER_ALPHA_MASK, .2f },
+                  { "Cut", SHADER_ALPHA_MASK, .4f } };
+    look_level();
+    publish_uniform_sky((const unsigned char[4]){ 128, 0, 128, 128 });
+    ecs_entity box = add_surface_box(modes[0].name);
+    GAME_GameTransform_get(world, box)->y = -6;
+    GameEnvironment environment = sky_environment();
+    CF_Pixel shown[4];
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(test_register_alpha(modes[i].name, modes[i].mode, .3f, modes[i].cutoff));
+        int id = render_shader_find(modes[i].name);
+        REQUIRE(render_shader_may_be_transparent(id) == (modes[i].mode == SHADER_ALPHA_BLEND));
+        GAME_GameShader_get(world, box)->material = modes[i].name;
+        REQUIRE(render(&environment));
+        shown[i] = pixel(SIDE / 2, SIDE / 2);
+    }
+    CF_Pixel open = pixel(4, 4);
+    REQUIRE(shown[1].colors.g > 200 && distance(shown[2], shown[1]) <= 1);
+    REQUIRE(shown[0].colors.g > 60 && shown[0].colors.g + 60 < shown[1].colors.g);
+    REQUIRE(distance(shown[3], open) <= 1);
+    return true;
+}
+
+/* A masked box whose Opacity works out to NaN, as the fraction of an
+ * overflowed product does, drops its pixels on the GPU as the CPU evaluator
+ * does, leaving the sky where a kept box stood. */
+TEST_CASE(masks_drop_pixels_whose_opacity_is_not_a_number)
+{
+    look_level();
+    publish_uniform_sky((const unsigned char[4]){ 128, 0, 128, 128 });
+    ecs_entity box = add_surface_box("Kept");
+    GAME_GameTransform_get(world, box)->y = -6;
+    GameEnvironment environment = sky_environment();
+    REQUIRE(test_register_alpha("Kept", SHADER_ALPHA_MASK, .5f, .4f));
+    REQUIRE(render(&environment));
+    CF_Pixel open = pixel(4, 4);
+    REQUIRE(pixel(SIDE / 2, SIDE / 2).colors.g > 200);
+    REQUIRE(test_register_unknown_opacity("Unknown"));
+    GAME_GameShader_get(world, box)->material = "Unknown";
+    REQUIRE(render(&environment));
+    REQUIRE(distance(pixel(SIDE / 2, SIDE / 2), open) <= 1);
+    return true;
+}
+
+/* Opaque and masked surfaces cast shadows like any solid; a blended one lets
+ * the sun through. */
+TEST_CASE(opaque_and_masked_surfaces_cast_shadows)
+{
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    ecs_entity box = add_surface_box("Blended");
+    GAME_GameGeometry3D_get(world, box)->elevation = 1;
+    add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 })->shadows = true;
+    REQUIRE(test_register_alpha("Blended", SHADER_ALPHA_BLEND, .5f, .5f));
+    REQUIRE(test_register_alpha("Opaque", SHADER_ALPHA_OPAQUE, .5f, .5f));
+    REQUIRE(test_register_alpha("Kept", SHADER_ALPHA_MASK, .5f, .4f));
+    GameEnvironment environment = unlit_environment();
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(shaded).colors.g > 60);
+    const char *casters[] = { "Opaque", "Kept" };
+    for (int i = 0; i < 2; i++) {
+        GAME_GameShader_get(world, box)->material = casters[i];
+        REQUIRE(render(&environment));
+        REQUIRE(pixel_at(shaded).colors.g == 0);
+    }
+    return true;
+}
 #endif
 
 void test_render_scene3d(bool gles)
@@ -2883,6 +3005,10 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_mesh_groups_take_their_own_materials);
     RUN_TEST_CASE(imported_meshes_carry_texture_and_part_coordinates);
     RUN_TEST_CASE(normal_maps_follow_mesh_tangents);
+    RUN_TEST_CASE(occlusion_dims_only_ambient_light);
+    RUN_TEST_CASE(alpha_modes_decide_how_opacity_draws);
+    RUN_TEST_CASE(masks_drop_pixels_whose_opacity_is_not_a_number);
+    RUN_TEST_CASE(opaque_and_masked_surfaces_cast_shadows);
 #endif
     pu_clear_setup();
     cf_destroy_app();

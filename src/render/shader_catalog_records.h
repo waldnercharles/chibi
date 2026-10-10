@@ -20,6 +20,7 @@ typedef struct
     int widths[SHADER_PARAMETER_MAX];
     float defaults[SHADER_PARAMETER_MAX][4], bounds[2];
     bool shape;
+    shader_alpha_mode alpha_mode;
     bool is_model;
     model_program model;
     model_inspection inspection;

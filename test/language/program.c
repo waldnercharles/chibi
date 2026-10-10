@@ -8,6 +8,9 @@
 #include "execution/inspection.h"
 #include "execution/module.h"
 #include "execution/status.h"
+#include "graph/document/serialize.h"
+#include "graph/model/registry.h"
+#include "graph/shader/shader_graph.h"
 #include "language/identity.h"
 #include "language/lower.h"
 #include "runtime/arithmetic_definition.h"
@@ -3725,6 +3728,111 @@ TEST_CASE(program_version_19_components_move_to_chibi)
     REQUIRE(strstr(error, "Cell.chibi already exists"));
     return true;
 }
+/* Migrates a version 20 material whose Surface Output, node 1, implies its
+ * pin IDs. The pins version 21 appends would continue them at 10, which is
+ * the Time node's ID, so the material only loads once they take IDs from its
+ * counter. */
+TEST_CASE(program_version_20_surface_outputs_take_counter_pin_ids)
+{
+    const char
+        *material = "version 3\n"
+                    "name \"Glow\"\n"
+                    "domain \"material\"\n"
+                    "id_counter 12\n"
+                    "(array)graphs {\n"
+                    "    - {\n"
+                    "        kind \"event\"\n"
+                    "        name \"\"\n"
+                    "        (array)nodes {\n"
+                    "            - id=1 type=\"Shader Surface Output\"\n"
+                    "            - id=10 type=\"Shader Time\"\n"
+                    "        }\n"
+                    "        (array)edges {\n"
+                    "            - from=\"10.Value\" to=\"1.Roughness\"\n"
+                    "        }\n"
+                    "    }\n"
+                    "}\n";
+    char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], error[256];
+    REQUIRE(mkdtemp(root));
+    const char *directories[] = { "content", "content/materials" };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        REQUIRE(!mkdir(path, 0700));
+    }
+    const char *files[][2] = {
+        { CHIBI_PROJECT_MANIFEST, "version 20\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n" },
+        { "content/materials/Glow.kdl", material },
+    };
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        FILE *file = fopen(path, "wb");
+        fputs(files[i][1], file);
+        fclose(file);
+    }
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 20);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == 0);
+    char text[2048];
+    FILE *file = fopen(path, "rb");
+    text[fread(text, 1, sizeof text - 1, file)] = 0;
+    fclose(file);
+    const char
+        *expected = "version 3\n"
+                    "name \"Glow\"\n"
+                    "domain \"material\"\n"
+                    "id_counter 15\n"
+                    "(array)graphs {\n"
+                    "    - {\n"
+                    "        kind \"event\"\n"
+                    "        name \"\"\n"
+                    "        (array)nodes {\n"
+                    "            - {\n"
+                    "                id 1\n"
+                    "                type \"Shader Surface Output\"\n"
+                    "                inputs {\n"
+                    "                    Occlusion id=12\n"
+                    "                    \"Alpha Mode\" id=13\n"
+                    "                    \"Alpha Cutoff\" id=14\n"
+                    "                }\n"
+                    "            }\n"
+                    "            - id=10 type=\"Shader Time\"\n"
+                    "        }\n"
+                    "        (array)edges {\n"
+                    "            - from=\"10.Value\" to=\"1.Roughness\"\n"
+                    "        }\n"
+                    "    }\n"
+                    "}\n";
+    if (strcmp(text, expected)) {
+        fprintf(stderr, "migrated Glow.kdl:\n%s", text);
+    }
+    REQUIRE(!strcmp(text, expected));
+    const registry_pack **previous = NULL;
+    for (int i = 0; i < registry_pack_count(); i++) {
+        apush(previous, registry_pack_at(i));
+    }
+    registry_set_packs((const registry_pack *[]){ &SHADER_PACK }, 1);
+    behavior_asset *before = behavior_asset_load(material),
+                   *after = behavior_asset_load(text);
+    registry_set_packs(previous, acount(previous));
+    afree(previous);
+    const node *output = after ? graph_node_by_id(after->graph, 1) : NULL;
+    bool fresh = output && output->input_pins[SHADER_SURFACE_OCCLUSION].id == 12 &&
+                 output->input_pins[SHADER_SURFACE_ALPHA_MODE].id == 13 &&
+                 output->input_pins[SHADER_SURFACE_ALPHA_CUTOFF].id == 14 &&
+                 after->graph->id_counter == 15;
+    behavior_asset_free(before);
+    behavior_asset_free(after);
+    REQUIRE(!before && fresh);
+    for (int i = 0; i < 2; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        unlink(path);
+    }
+    for (int i = 1; i >= 0; i--) {
+        snprintf(path, sizeof path, "%s/%s", root, directories[i]);
+        rmdir(path);
+    }
+    rmdir(root);
+    return true;
+}
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -4402,6 +4510,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_17_sdf_motion_is_removed);
     RUN_TEST_CASE(program_version_18_dotted_names_are_renamed);
     RUN_TEST_CASE(program_version_19_components_move_to_chibi);
+    RUN_TEST_CASE(program_version_20_surface_outputs_take_counter_pin_ids);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

@@ -1,7 +1,7 @@
 version 3
 name "OutlineGradient"
 domain "material"
-id_counter 81
+id_counter 84
 description "An emissive ring surface. Flash remains the named DamageFlashBehavior override; pulse and ring masking use ShaderMath."
 (array)graphs {
     - {

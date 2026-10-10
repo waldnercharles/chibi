@@ -2845,6 +2845,60 @@ static char *undot_names(const char *asset, const char *path, char *error, size_
     av_doc_free(document);
     return migrated;
 }
+/* Gives a Surface Output `node` explicit IDs, from `counter`, for the pins
+ * version 21 appends. Saved pin IDs otherwise continue from the node's, which
+ * are often the next node's. Returns whether it changed. */
+static bool surface_pin_ids(av_doc *document, av_value *node, uint64_t *counter)
+{
+    static const char *const pins[] = { "Occlusion", "Alpha Mode", "Alpha Cutoff" };
+    if (!av_is_obj(node) || !av_is_str(av_obj_get(node, "type")) ||
+        strcmp(av_get_str(av_obj_get(node, "type")), "Shader Surface Output")) {
+        return false;
+    }
+    av_value *inputs = av_obj_get(node, "inputs");
+    if (!inputs) {
+        inputs = av_obj_add_obj(document, node, "inputs");
+    }
+    if (!av_is_obj(inputs)) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof pins / sizeof *pins; i++) {
+        if (av_obj_get(inputs, pins[i])) {
+            return false;
+        }
+    }
+    for (size_t i = 0; i < sizeof pins / sizeof *pins; i++) {
+        av_value *pin = av_obj_add_obj(document, inputs, pins[i]);
+        av_obj_add_uint(document, pin, "id", (*counter)++);
+    }
+    return true;
+}
+/* Returns an owned copy of a material `asset` whose Surface Outputs carry the
+ * IDs of the pins version 21 appends, or NULL when it has none to change. The
+ * IDs come from the asset's counter, which exceeds every ID it holds. */
+static char *surface_outputs(const char *asset)
+{
+    char message[128];
+    av_doc *document = asset_text_read(asset, message, sizeof message);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    av_value *counter = av_is_obj(root) ? av_obj_get(root, "id_counter") : NULL;
+    av_value *graphs = av_is_uint(counter) ? av_obj_get(root, "graphs") : NULL;
+    uint64_t next = av_is_uint(counter) ? av_get_uint(counter) : 0;
+    bool changed = false;
+    for (size_t i = 0; av_is_arr(graphs) && i < av_arr_size(graphs); i++) {
+        av_value *graph = av_arr_get(graphs, i);
+        av_value *nodes = av_is_obj(graph) ? av_obj_get(graph, "nodes") : NULL;
+        for (size_t j = 0; av_is_arr(nodes) && j < av_arr_size(nodes); j++) {
+            changed |= surface_pin_ids(document, av_arr_get(nodes, j), &next);
+        }
+    }
+    if (changed) {
+        av_obj_set(document, root, "id_counter", av_uint(document, next));
+    }
+    char *migrated = changed ? asset_text_write(root) : NULL;
+    av_doc_free(document);
+    return migrated;
+}
 static int collect_sources(const char *directory, const char *suffix, char ***paths, char *error, size_t error_size)
 {
     DIR *dir = opendir(directory);
@@ -2897,12 +2951,14 @@ int chibi_project_migrate_content(
         return migrate_components(content, error, error_size);
     }
     char **paths = NULL;
-    /* Versions 15, 16, 18 and 19 change scenes and prototypes, wherever the
-     * project keeps them; every other step changes scripts. */
-    bool scenes = from == 14 || from == 15 || from == 17 || from == 18;
+    /* Versions 15, 16, 18 and 19 change scenes and prototypes, and version 21
+     * changes materials, wherever the project keeps them; every other step
+     * changes scripts. */
+    bool declarative = from == 14 || from == 15 || from == 17 || from == 18 ||
+                       from == 20;
     int status = collect_sources(
         content,
-        scenes ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
+        declarative ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
         &paths,
         error,
         error_size
@@ -2914,7 +2970,7 @@ int chibi_project_migrate_content(
     /* The scan skips hidden entries, and the start scene may lie outside the
      * content, so add it unless the scan found it. */
     struct stat info;
-    if (!status && scenes && start_scene && !collected(paths, start_scene) &&
+    if (!status && declarative && start_scene && !collected(paths, start_scene) &&
         !stat(start_scene, &info) && S_ISREG(info.st_mode)) {
         apush(paths, xstrdup(start_scene));
     }
@@ -3000,6 +3056,12 @@ int chibi_project_migrate_content(
                     migrated[i] = undot_names(sources[i], paths[i], error, error_size);
                 }
                 status = error[0] ? -1 : 0;
+                break;
+            case 20:
+                migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+                for (int i = 0; i < count; i++) {
+                    migrated[i] = surface_outputs(sources[i]);
+                }
                 break;
             default: assert(false);
         }

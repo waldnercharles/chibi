@@ -21,6 +21,14 @@ bool test_register_coordinate(const char *name, const char *input);
 /* A lit material with the output's white base whose Normal is a Normal Map
  * of the constant linear `color`. */
 bool test_register_normal_map(const char *name, const float color[3]);
+/* A lit material with the output's white base and constant `occlusion`. */
+bool test_register_occlusion(const char *name, float occlusion);
+/* An unlit white material with constant `opacity` drawn by alpha `mode` with
+ * `cutoff`. */
+bool test_register_alpha(const char *name, shader_alpha_mode mode, float opacity, float cutoff);
+/* An unlit masked material whose Opacity is NaN over its surface, as the
+ * fraction of U scaled past the float limit is, with an Alpha Cutoff of 0.5. */
+bool test_register_unknown_opacity(const char *name);
 /* A model graph of one sphere of `radius` at the origin. */
 bool test_register_model_sphere(const char *name, float radius);
 

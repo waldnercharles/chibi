@@ -109,8 +109,17 @@ static pin_spec surface[] = {
     FLOAT_DEFAULT("Opacity", 1),
     { .name = "Unlit", .type = PIN_BOOL, .default_value = { .type = PIN_BOOL } },
     /* World units of relief above the surface; 2D shading casts its shadows. */
-    FLOAT_PIN("Height")
+    FLOAT_PIN("Height"),
+    /* The share of ambient and sky light that reaches the surface. */
+    FLOAT_DEFAULT("Occlusion", 1),
+    { .name = "Alpha Mode",
+      .type = PIN_I32,
+      .type_name = "ShaderAlphaMode",
+      .flags = PIN_FLAG_SETTING,
+      .default_value = { .type = PIN_I32, .i = SHADER_ALPHA_BLEND } },
+    FLOAT_DEFAULT("Alpha Cutoff", .5f)
 };
+_Static_assert(sizeof surface / sizeof *surface == SHADER_SURFACE_INPUT_COUNT, "surface pin schema");
 static pin_spec mapping2[] = { VECTOR_PIN("Position", 2),
                                VECTOR_PIN("Offset", 2),
                                FLOAT_PIN("Rotation"),
@@ -390,6 +399,11 @@ static const enum_value_desc image_wraps[] = {
     { SHADER_IMAGE_REPEAT, "SHADER_IMAGE_REPEAT", "Repeat" },
     { SHADER_IMAGE_CLAMP, "SHADER_IMAGE_CLAMP", "Clamp" }
 };
+static const enum_value_desc alpha_modes[] = {
+    { SHADER_ALPHA_BLEND, "SHADER_ALPHA_BLEND", "Blend" },
+    { SHADER_ALPHA_OPAQUE, "SHADER_ALPHA_OPAQUE", "Opaque" },
+    { SHADER_ALPHA_MASK, "SHADER_ALPHA_MASK", "Mask" }
+};
 static const enum_desc mapping_axis_type = { .name = "ShaderMappingAxis",
                                              .values = mapping_axes,
                                              .value_count = 3 };
@@ -407,18 +421,23 @@ static const enum_desc image_filter_type = { .name = "ShaderImageFilter",
 static const enum_desc image_wrap_type = { .name = "ShaderImageWrap",
                                            .values = image_wraps,
                                            .value_count = 2 };
-static const enum_desc *const enums[] = { &mapping_axis_type,
-                                          &normal_convention_type,
-                                          &image_space_type,
-                                          &image_filter_type,
-                                          &image_wrap_type };
+static const enum_desc alpha_mode_type = { .name = "ShaderAlphaMode",
+                                           .values = alpha_modes,
+                                           .value_count = 3 };
+static const enum_desc *const enums[] = {
+    &mapping_axis_type, &normal_convention_type, &image_space_type,
+    &image_filter_type, &image_wrap_type,        &alpha_mode_type
+};
 static node_desc surface_output = {
     .name = "Shader Surface Output",
-    .input_count = 8,
+    .input_count = SHADER_SURFACE_INPUT_COUNT,
     .inputs = surface,
     .category = "Shader",
     .description = "Receives the material's final shading; a zero Normal keeps "
-                   "the geometry normal, and Height adds world-unit relief.",
+                   "the geometry normal, Height adds world-unit relief, and "
+                   "Occlusion dims ambient light. Alpha Mode Blend mixes by "
+                   "Opacity, Opaque ignores it, and Mask keeps pixels whose "
+                   "Opacity reaches Alpha Cutoff.",
     .display_class = NODE_DISPLAY_FUNCTION
 };
 static node_desc shape_output = {

@@ -6,6 +6,10 @@
 
 /* result must be initialized; failure preserves its last valid program. */
 bool shader_graph_from_graph(const graph *source, shader_graph *result, shader_error *error);
+/* The Alpha Mode of a graph that shader_graph_from_graph lowers; Blend for a
+ * shape. The mode decides how a renderer draws the material; its effect on
+ * Opacity is already in the lowered outputs. */
+shader_alpha_mode shader_graph_alpha_mode(const graph *source);
 /* Validates a pure shader function without requiring a material or shape output. */
 bool shader_graph_validate_function(const graph *source, shader_error *error);
 /* Available input fallback, independent of wiring or an explicit default value.

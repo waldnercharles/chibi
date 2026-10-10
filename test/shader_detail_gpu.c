@@ -8,6 +8,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* GLSL wrappers size their output arrays by the C contract. */
+#define QUOTE(x) #x
+#define QUOTED(x) QUOTE(x)
+#define OUTPUT_ROWS QUOTED(SHADER_OUTPUT_MAX)
+
 int test_shader_image_routes();
 int test_shader_program_gpu();
 
@@ -44,7 +49,8 @@ static void decal_gpu()
         "layout(local_size_x=1,local_size_y=1,local_size_z=1) in;\n"
         "layout(set=1,binding=0,rgba32f) uniform image2D result_image;\n"
         "layout(set=2,binding=0) uniform Inputs { vec4 values[32]; };\n"
-        "void main(){vec4 result[8],p[32];for(int i=0;i<32;i++)p[i]=values[i];"
+        "void main(){vec4 result[" OUTPUT_ROWS
+        "],p[32];for(int i=0;i<32;i++)p[i]=values[i];"
         "SGSample "
         "s;s.position=vec2(0);s.uv=vec2(0);s.object_position=values[3].xyz;"
         "s.part_position=values[3].xyz;s.world_position=values[3].xyz;"
@@ -80,7 +86,7 @@ static void decal_gpu()
         { 0, .5f, 0, -1, 0 }
     };
     for (int i = 0; i < 7; i++) {
-        float values[32][4] = { 0 }, actual[4], expected[8][4];
+        float values[32][4] = { 0 }, actual[4], expected[SHADER_OUTPUT_MAX][4];
         values[0][0] = cases[i][0];
         values[1][0] = cases[i][1];
         values[2][2] = cases[i][3];

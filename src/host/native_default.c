@@ -5,6 +5,7 @@
 #include "runtime/audio_definition.h"
 #include "runtime/behaviors/entities_definition.h"
 #include "runtime/behaviors/scene_flow_definition.h"
+#include "runtime/behaviors/tilemap_definition.h"
 #include "runtime/comparison_definition.h"
 #include "runtime/conversion_definition.h"
 #include "runtime/core_definition.h"
@@ -50,6 +51,7 @@ native_capabilities *host_native_default_catalog_new(
     native_definition_pack *selected = NULL;
     apush(selected, CORE_DEFINITION_PACK);
     apush(selected, GAME_ENTITY_DEFINITION_PACK);
+    apush(selected, GAME_TILEMAP_DEFINITION_PACK);
     apush(selected, GAME_AUDIO_DEFINITION_PACK);
     apush(selected, GAME_RHYTHM_DEFINITION_PACK);
     apush(selected, FIELD_DEFINITION_PACK);

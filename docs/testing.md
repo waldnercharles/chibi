@@ -230,7 +230,41 @@ use no renderer, sleeps or child processes. Its exact dispatcher runs only regis
 validation and these cases. The migrated selector is independently reviewed and
 admitted for its first supervised capture.
 
-`python3 tools/test_policy.py tool source-native-numeric-queries` selects three
+`python3 tools/test_policy.py tool tilemap` selects seven reviewed C cases for
+owned grid decoding and cache invalidation, half-open point lookup, exact rotated
+rectangle overlap, transformed bounds and native ECS binding lifetimes. Each
+grid has at most four cells and no rendering or engine frames run. A decorative
+prototype also checks atlas preparation and owned prepared data without gameplay.
+
+`python3 tools/test_policy.py tool tilemap-project` admits two project acceptance
+cases when the tooling build includes asset authoring. It reads only the sibling
+`chibi-celeste` checkout. A bounded local `git show` supplies the former Level
+scene from commit `56ca9d486b93c15a504bf293dc722c6202cd2bf5`; the production KDL
+parser compares all 1,472 cells and 230 former tile centres/frame indices, then
+checks the four retained actors and one Room layer. Inputs are capped at 64 KiB
+for the baseline, 16 KiB for Room and 4 KiB for Level. Three owned controller
+children validate, prepare and run exactly two headless simulation frames with
+five authored and fifteen live entities and no behavior failures. Each child
+has the existing ten-second deadline inside the shared sixty-second supervisor.
+No GPU or network is used. Logs and the baseline revision are retained under
+`/tmp/chibi-publish-validation/evidence`; generated baseline, requests and prepared
+artifacts are removed. This fixed workload is independently admitted for its
+first supervised measurement; it does not admit arbitrary projects or frames.
+The first supervised run passed both cases and 3,818 assertions in 8.270 seconds,
+including controller startup, source preparation and the two simulation frames.
+
+`python3 tools/test_policy.py tool webgpu-staging` runs a C-owned disposable
+Chrome process against the browser build of the same tooling dispatcher in
+`build-webgpu-test`. It draws one 64-by-64 quad for 120 animation frames, checks
+staging-buffer reuse and a 64 MiB peak ceiling, then destroys the app and waits
+at most one second for retained map callbacks to release their chunks. Startup
+and execution share a 55-second deadline inside the production 60-second limit.
+The isolated Cute source is selected with `CHIBI_TEST_CUTE_SOURCE`; the comparison
+build's `CHIBI_TEST_WEBGPU_BASELINE=ON` retains CF's ASYNCIFY initialization.
+Callback wall time excludes the first 30 frames and is diagnostic, not a timing
+assertion. This small workload does not establish whole-game performance.
+
+`python3 tools/test_policy.py tool source-native-numeric-queries` selects five
 finite C cases on VM and SLJIT. Besides numeric outputs and nested entity query
 membership, the rectangle case prepares one declared Boolean component and two
 contextually typed `EntityCondition` arrays. Ten fixed transform positions check
@@ -241,6 +275,8 @@ frames and uses at most 16 bounded event dispatches per backend. Independent
 review admitted the extension; its supervised run passed three cases and 722
 assertions in 1.351 seconds. The room-border rules and player spawn remain
 project-owned scenario coverage.
+The tilemap case executes both tilemap functions on VM and SLJIT using one
+two-cell map, then edits its cells and checks the next dispatch sees the change.
 
 `--source-session` admits only `test_asset_code_checkpoint`: four fixed source
 session cases plus the existing KDL checkpoint and external merge checks. Each

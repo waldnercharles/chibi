@@ -201,6 +201,31 @@ drawn on the far plane, so it fills every pixel no surface covers, and an empty
 - **Not covered**: nothing blocks sky light, so a surface inside a closed box
   is lit as if it stood in the open.
 
+## Meshes
+
+A `GameMeshAsset` source names a binary `.mesh` file in the content folder,
+such as `content/meshes/Camera.mesh`. The file holds indexed triangles. Each
+vertex has a position, normal, texture coordinate and tangent. The tangent's w
+is 1 or -1, and the bitangent is cross(normal, tangent) times w. Meshes baked
+from models also store each vertex's part position and object-to-part frame;
+other meshes read back with their own position and an identity frame. Material
+groups name runs of whole triangles in the index list and cover all of it.
+
+The file is the engine's prepared mesh payload
+(`src/runtime/geometry/mesh_prepared.c`, version 3), so one reader validates
+authored files and player artifacts. A file is at most 64 MiB, with at most
+1,000,000 vertices, indices and groups together. The reader refuses
+non-finite or out-of-bounds values, zero normals or tangents, indices outside
+the vertex list, triangles below `RENDER_MESH_MIN_TRIANGLE_AREA`, and groups
+that split a triangle or skip indices. The model baker writes this format, with
+tangents generated from its box UVs by `render_mesh_asset_tangents`. Runtime C
+code reads a loaded mesh's vertices and indices through
+`render_mesh_asset_load`. The JSON mesh format (`.mesh.json`) is retired:
+export the model again to get a `.mesh` file.
+
+Imported meshes draw through the planar material renderer
+(`GameMeshSurface2D`); the lit 3D path does not draw them yet.
+
 ## Optional material inputs
 
 Rhythm, Surface Influence, trails and particles feed materials only when a scene
@@ -275,6 +300,8 @@ publish, and are charged, with a prepared generation, and
 `python3 tools/test_policy.py tool sky-files` decodes flat and run-length
 files, rejects malformed ones, prepares skies from mounted content and imports
 them without replacing a file. Both need the in-tree build above.
+`python3 tools/test_policy.py tool mesh-files` checks `.mesh` tangents,
+preparation and refusals the same way.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

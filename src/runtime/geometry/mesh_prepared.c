@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #define MESH_PREPARED_VERTEX_MAX 1048575
+#define MESH_PREPARED_GROUP_MAX 1024
 static void v3(execution_wire *w, CF_V3 *p)
 {
     execution_wire_float(w, &p->x);
@@ -20,51 +21,69 @@ static bool finite3(CF_V3 p)
 {
     return isfinite(p.x) && isfinite(p.y) && isfinite(p.z);
 }
-static bool valid(const render_mesh_asset *a)
+static bool inside(CF_V3 p, CF_V3 min, CF_V3 max)
+{
+    return p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y &&
+           p.z >= min.z && p.z <= max.z;
+}
+static bool nonzero(CF_V3 v)
+{
+    double norm = (double)v.x * v.x + (double)v.y * v.y + (double)v.z * v.z;
+    return isfinite(norm) && norm >= 1e-16;
+}
+static bool valid_vertex(const render_mesh_asset *a, const render_mesh_surface_vertex *v)
+{
+    CF_V3 tangent = { v->tangent.x, v->tangent.y, v->tangent.z };
+    if (!finite3(v->position) || !inside(v->position, a->min, a->max) ||
+        !nonzero(v->normal) || !isfinite(v->uv.x) || !isfinite(v->uv.y) ||
+        !nonzero(tangent) || (v->tangent.w != 1 && v->tangent.w != -1) ||
+        !finite3(v->part_position)) {
+        return false;
+    }
+    for (int j = 0; j < 3; j++) {
+        for (int k = 0; k < 3; k++) {
+            if (!isfinite(v->part_from_object[j][k])) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+static bool valid_triangle(const render_mesh_asset *a, const int *corner)
 {
     int n = acount(a->vertices);
-    if (!n || n > MESH_PREPARED_VERTEX_MAX || n % 3 ||
-        acount(a->groups) > 1024 || !finite3(a->min) || !finite3(a->max) ||
-        a->min.x > a->max.x || a->min.y > a->max.y || a->min.z > a->max.z ||
-        !finite3(a->uv_min) || !finite3(a->uv_max) ||
+    for (int j = 0; j < 3; j++) {
+        if (corner[j] < 0 || corner[j] >= n) {
+            return false;
+        }
+    }
+    CF_V3 a0 = a->vertices[corner[0]].position,
+          b = a->vertices[corner[1]].position, c = a->vertices[corner[2]].position;
+    double x1 = (double)b.x - a0.x, y1 = (double)b.y - a0.y, z1 = (double)b.z - a0.z;
+    double x2 = (double)c.x - a0.x, y2 = (double)c.y - a0.y, z2 = (double)c.z - a0.z;
+    double x = y1 * z2 - z1 * y2, y = z1 * x2 - x1 * z2, z = x1 * y2 - y1 * x2;
+    double area = sqrt(x * x + y * y + z * z);
+    return isfinite(area) && area > RENDER_MESH_MIN_TRIANGLE_AREA;
+}
+static bool valid(const render_mesh_asset *a)
+{
+    int n = acount(a->vertices), indices = acount(a->indices);
+    if (!n || n > MESH_PREPARED_VERTEX_MAX || !indices || indices % 3 ||
+        acount(a->groups) > MESH_PREPARED_GROUP_MAX || !finite3(a->min) ||
+        !finite3(a->max) || a->min.x > a->max.x || a->min.y > a->max.y ||
+        a->min.z > a->max.z || !finite3(a->uv_min) || !finite3(a->uv_max) ||
         (a->has_uv_bounds &&
          (a->uv_min.x >= a->uv_max.x || a->uv_min.y >= a->uv_max.y ||
           a->uv_min.z >= a->uv_max.z))) {
         return false;
     }
     for (int i = 0; i < n; i++) {
-        const render_mesh_surface_vertex *v = &a->vertices[i];
-        if (!finite3(v->position) || !finite3(v->normal) ||
-            !finite3(v->part_position) || !isfinite(v->uv.x) || !isfinite(v->uv.y) ||
-            v->position.x < a->min.x || v->position.x > a->max.x ||
-            v->position.y < a->min.y || v->position.y > a->max.y ||
-            v->position.z < a->min.z || v->position.z > a->max.z) {
+        if (!valid_vertex(a, &a->vertices[i])) {
             return false;
-        }
-        double norm = (double)v->normal.x * v->normal.x +
-                      (double)v->normal.y * v->normal.y +
-                      (double)v->normal.z * v->normal.z;
-        if (!isfinite(norm) || norm < 1e-16) {
-            return false;
-        }
-        for (int j = 0; j < 3; j++) {
-            for (int k = 0; k < 3; k++) {
-                if (!isfinite(v->part_from_object[j][k])) {
-                    return false;
-                }
-            }
         }
     }
-    for (int i = 0; i < n; i += 3) {
-        CF_V3 a0 = a->vertices[i].position, b = a->vertices[i + 1].position,
-              c = a->vertices[i + 2].position;
-        double x1 = (double)b.x - a0.x, y1 = (double)b.y - a0.y,
-               z1 = (double)b.z - a0.z;
-        double x2 = (double)c.x - a0.x, y2 = (double)c.y - a0.y,
-               z2 = (double)c.z - a0.z;
-        double x = y1 * z2 - z1 * y2, y = z1 * x2 - x1 * z2, z = x1 * y2 - y1 * x2;
-        double area = sqrt(x * x + y * y + z * z);
-        if (!isfinite(area) || area <= RENDER_MESH_MIN_TRIANGLE_AREA) {
+    for (int i = 0; i < indices; i += 3) {
+        if (!valid_triangle(a, a->indices + i)) {
             return false;
         }
     }
@@ -72,14 +91,57 @@ static bool valid(const render_mesh_asset *a)
     for (int i = 0; i < acount(a->groups); i++) {
         const render_mesh_group *g = &a->groups[i];
         if (g->first != covered || g->count <= 0 || g->count % 3 ||
-            g->count > n - covered || g->part < -1 || g->part > 1023 ||
+            g->count > indices - covered || g->part < -1 || g->part > 1023 ||
             !g->asset || !g->name || !g->path || !g->material ||
             !g->material_scope || strlen(g->material) >= 128) {
             return false;
         }
         covered += g->count;
     }
-    return !acount(a->groups) || covered == n;
+    return !acount(a->groups) || covered == indices;
+}
+/* Part coordinates are stored only for meshes that have them. The others
+ * read back with each vertex's own position and an identity frame. */
+static void wire_vertex(execution_wire *w, bool parts, render_mesh_surface_vertex *v)
+{
+    v3(w, &v->position);
+    v3(w, &v->normal);
+    execution_wire_float(w, &v->uv.x);
+    execution_wire_float(w, &v->uv.y);
+    execution_wire_float(w, &v->tangent.x);
+    execution_wire_float(w, &v->tangent.y);
+    execution_wire_float(w, &v->tangent.z);
+    execution_wire_float(w, &v->tangent.w);
+    if (parts) {
+        v3(w, &v->part_position);
+        for (int j = 0; j < 3; j++) {
+            for (int k = 0; k < 3; k++) {
+                execution_wire_float(w, &v->part_from_object[j][k]);
+            }
+        }
+        return;
+    }
+    if (!w->reading) {
+        return;
+    }
+    v->part_position = v->position;
+    for (int j = 0; j < 3; j++) {
+        for (int k = 0; k < 3; k++) {
+            v->part_from_object[j][k] = j == k;
+        }
+    }
+}
+static void wire_group(execution_wire *w, render_mesh_group *g)
+{
+    execution_wire_int(w, &g->first);
+    execution_wire_int(w, &g->count);
+    execution_wire_int(w, &g->part);
+    execution_wire_u64(w, &g->node);
+    execution_wire_owned_string(w, &g->asset);
+    execution_wire_owned_string(w, &g->name);
+    execution_wire_owned_string(w, &g->path);
+    execution_wire_owned_string(w, &g->material);
+    execution_wire_owned_string(w, &g->material_scope);
 }
 static void wire(execution_wire *w, render_mesh_asset *a)
 {
@@ -98,7 +160,7 @@ static void wire(execution_wire *w, render_mesh_asset *a)
     v3(w, &a->min);
     v3(w, &a->max);
     int count = w->reading ? 0 : acount(a->vertices);
-    execution_wire_count(w, &count, 1);
+    execution_wire_count(w, &count, 12);
     if (!w->error && count > MESH_PREPARED_VERTEX_MAX) {
         w->error = "Prepared mesh vertex limit";
     }
@@ -110,21 +172,20 @@ static void wire(execution_wire *w, render_mesh_asset *a)
             render_mesh_surface_vertex value = { 0 };
             apush(a->vertices, value);
         }
-        render_mesh_surface_vertex *v = &a->vertices[i];
-        v3(w, &v->position);
-        v3(w, &v->normal);
-        execution_wire_float(w, &v->uv.x);
-        execution_wire_float(w, &v->uv.y);
-        v3(w, &v->part_position);
-        for (int j = 0; j < 3; j++) {
-            for (int k = 0; k < 3; k++) {
-                execution_wire_float(w, &v->part_from_object[j][k]);
-            }
-        }
+        wire_vertex(w, a->has_part_coordinates, &a->vertices[i]);
+    }
+    count = w->reading ? 0 : acount(a->indices);
+    execution_wire_count(w, &count, 1);
+    if (!w->error && w->reading &&
+        execution_wire_reserve(w, (size_t)count * sizeof(int))) {
+        asetlen(a->indices, count);
+    }
+    for (int i = 0; i < count && !w->error; i++) {
+        execution_wire_int(w, &a->indices[i]);
     }
     count = w->reading ? 0 : acount(a->groups);
     execution_wire_count(w, &count, 1);
-    if (!w->error && count > 1024) {
+    if (!w->error && count > MESH_PREPARED_GROUP_MAX) {
         w->error = "Prepared mesh group limit";
     }
     for (int i = 0; i < count && !w->error; i++) {
@@ -135,16 +196,7 @@ static void wire(execution_wire *w, render_mesh_asset *a)
             render_mesh_group value = { 0 };
             apush(a->groups, value);
         }
-        render_mesh_group *g = &a->groups[i];
-        execution_wire_int(w, &g->first);
-        execution_wire_int(w, &g->count);
-        execution_wire_int(w, &g->part);
-        execution_wire_u64(w, &g->node);
-        execution_wire_owned_string(w, &g->asset);
-        execution_wire_owned_string(w, &g->name);
-        execution_wire_owned_string(w, &g->path);
-        execution_wire_owned_string(w, &g->material);
-        execution_wire_owned_string(w, &g->material_scope);
+        wire_group(w, &a->groups[i]);
     }
 }
 static bool report(execution_wire *w, char *error, size_t size)

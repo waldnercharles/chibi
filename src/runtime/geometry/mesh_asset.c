@@ -27,6 +27,7 @@ static uint64_t next_identity = 1;
 void render_mesh_asset_free(render_mesh_asset *asset)
 {
     afree(asset->vertices);
+    afree(asset->indices);
     for (int i = 0; i < acount(asset->groups); i++) {
         free(asset->groups[i].asset);
         free(asset->groups[i].name);
@@ -36,6 +37,51 @@ void render_mesh_asset_free(render_mesh_asset *asset)
     }
     afree(asset->groups);
     memset(asset, 0, sizeof *asset);
+}
+
+/* A unit vector perpendicular to `normal`. */
+static CF_V3 perpendicular(CF_V3 normal)
+{
+    CF_V3 axis = fabsf(normal.x) < .9f ? (CF_V3){ 1, 0, 0 } : (CF_V3){ 0, 1, 0 };
+    return cf_norm_v3(cf_cross_v3(normal, axis));
+}
+
+void render_mesh_asset_tangents(render_mesh_asset *asset)
+{
+    int count = acount(asset->vertices);
+    CF_V3 *sides = xcalloc((size_t)count * 2, sizeof *sides);
+    CF_V3 *ups = sides + count;
+    for (int i = 0; i + 2 < acount(asset->indices); i += 3) {
+        const int *corner = asset->indices + i;
+        const render_mesh_surface_vertex *a = &asset->vertices[corner[0]],
+                                         *b = &asset->vertices[corner[1]],
+                                         *c = &asset->vertices[corner[2]];
+        CF_V3 ab = cf_sub_v3(b->position, a->position),
+              ac = cf_sub_v3(c->position, a->position);
+        CF_V2 st = cf_sub_v2(b->uv, a->uv), su = cf_sub_v2(c->uv, a->uv);
+        float area = st.x * su.y - su.x * st.y;
+        if (!isfinite(area) || fabsf(area) < 1e-20f) {
+            continue;
+        }
+        CF_V3 side = cf_div_v3_f(cf_sub_v3(cf_mul_v3_f(ab, su.y), cf_mul_v3_f(ac, st.y)), area);
+        CF_V3 up = cf_div_v3_f(cf_sub_v3(cf_mul_v3_f(ac, st.x), cf_mul_v3_f(ab, su.x)), area);
+        for (int j = 0; j < 3; j++) {
+            sides[corner[j]] = cf_add_v3(sides[corner[j]], side);
+            ups[corner[j]] = cf_add_v3(ups[corner[j]], up);
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        render_mesh_surface_vertex *v = &asset->vertices[i];
+        CF_V3 side = cf_sub_v3(sides[i], cf_mul_v3_f(v->normal, cf_dot_v3(v->normal, sides[i])));
+        float length = cf_len_v3(side);
+        CF_V3 tangent = isfinite(length) && length > 1e-12f
+                          ? cf_div_v3_f(side, length)
+                          : perpendicular(v->normal);
+        float hand = cf_dot_v3(cf_cross_v3(v->normal, tangent), ups[i]) < 0 ? -1.0f
+                                                                            : 1.0f;
+        v->tangent = (CF_V4){ tangent.x, tangent.y, tangent.z, hand };
+    }
+    free(sides);
 }
 
 const render_mesh_asset *render_mesh_asset_load(const char *source, char *error, size_t size)

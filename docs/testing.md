@@ -466,7 +466,8 @@ it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`.
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
 near clipping, a mixed 2D layer, and a later frame without the occluder) with
 hidden-surface rejection on and off, and requires the same pixels both ways and
-the expected depth snapshot copies. It also checks Cute's whole-canvas depth copy
+the expected depth snapshot copies. An indexed mesh asset of the occluding box
+must draw the box's pixels and bound and pick like it. It also checks Cute's whole-canvas depth copy
 on its own: a cropped draw after the copy must not reach the snapshot. It builds
 shader graphs, so it needs a compiler build, and it reads the shaders from
 `src/render/shaders`. Build and run it like `interior-border`
@@ -478,6 +479,16 @@ once, with an identity that follows the texels) and import that never replaces
 a file. It needs a compiler build, uses one temporary folder and passes 661
 assertions in 0.12 seconds under ASan/UBSan with leak checks, without
 processes or GPU.
+`mesh-files` selects five in-tree indexed `.mesh` cases: tangents that follow
+texture directions (mirrored, rotated, tilted normals and unvarying
+coordinates), preparation from mounted content (read once, with part
+coordinates stored only when present), ten refused meshes (bad indices,
+degenerate triangles, bad tangents, and groups that split triangles or skip
+indices), unreadable files (retired `.mesh.json` paths, text, truncated bytes
+and an older version) and a model export whose `model.mesh`, OBJ faces and
+provenance agree. It needs a compiler build, uses one temporary folder and
+passes 9,903 assertions in 0.4 seconds under ASan/UBSan with leak checks,
+without processes or GPU.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

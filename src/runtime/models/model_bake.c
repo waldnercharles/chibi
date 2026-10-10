@@ -274,19 +274,20 @@ static void publish_mesh(baker *b)
     mesh->min = (CF_V3){ FLT_MAX, FLT_MAX, FLT_MAX };
     mesh->max = (CF_V3){ -FLT_MAX, -FLT_MAX, -FLT_MAX };
     for (int part = -1; part < acount(b->program->parts); part++) {
-        render_mesh_group group = { .first = acount(mesh->vertices), .part = part };
+        render_mesh_group group = { .first = acount(mesh->indices), .part = part };
         for (int t = 0; t < acount(b->triangles); t++) {
             if (b->triangles[t].part != part) {
                 continue;
             }
             for (int v = 0; v < 3; v++) {
                 render_mesh_surface_vertex vertex = b->triangles[t].vertices[v];
+                apush(mesh->indices, acount(mesh->vertices));
                 apush(mesh->vertices, vertex);
                 mesh->min = cf_min_v3(mesh->min, vertex.position);
                 mesh->max = cf_max_v3(mesh->max, vertex.position);
             }
         }
-        group.count = acount(mesh->vertices) - group.first;
+        group.count = acount(mesh->indices) - group.first;
         if (!group.count) {
             continue;
         }
@@ -303,6 +304,7 @@ static void publish_mesh(baker *b)
         );
         apush(mesh->groups, group);
     }
+    render_mesh_asset_tangents(mesh);
 }
 bool model_bake(
     const model_program *program,

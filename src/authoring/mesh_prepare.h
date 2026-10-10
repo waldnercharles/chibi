@@ -4,6 +4,7 @@
 /* Explicit authored content root; copied until unmount or replacement. */
 bool authoring_mesh_mount_content(const char *, char *, size_t);
 void authoring_mesh_unmount_content();
-bool render_mesh_asset_parse(const char *, render_mesh_asset *, char *, size_t);
+/* Reads a content/... `.mesh` file (the prepared mesh format) and publishes
+ * it to the resident catalog, unless that source is already resident. */
 const render_mesh_asset *authoring_mesh_prepare(const char *, char *, size_t);
 #endif

@@ -65,6 +65,14 @@ int render_mesh_surface_vertex_count(const render_mesh_surface_part *part)
     return part->vertex_count ? part->vertex_count : acount(part->vertices);
 }
 
+const render_mesh_surface_vertex *render_mesh_surface_corner(
+    const render_mesh_surface_part *part,
+    int corner
+)
+{
+    return &part->vertices[part->indices ? part->indices[corner] : corner];
+}
+
 static void add_triangle(render_mesh_surface_vertex **vertices, CF_V3 a, CF_V3 b, CF_V3 c)
 {
     CF_V3 normal = cf_norm_v3(cf_cross_v3(cf_sub_v3(b, a), cf_sub_v3(c, a)));
@@ -342,6 +350,8 @@ bool render_mesh_surface_build_with_bounds(
                             (CF_V3){ scale, scale, scale }
                         ) },
             .vertices = asset->vertices,
+            .indices = asset->indices,
+            .vertex_count = acount(asset->indices),
             .asset_identity = asset->identity,
             .part_coordinates = asset->has_part_coordinates,
             .uv_bounds = asset->has_uv_bounds,
@@ -353,7 +363,10 @@ bool render_mesh_surface_build_with_bounds(
         surface->max = (CF_V3){ -FLT_MAX, -FLT_MAX, -FLT_MAX };
         CF_M4x4 model = render_scene3d_visual_model(&part.visual);
         for (int i = 0; i < render_mesh_surface_vertex_count(&part); i++) {
-            CF_V3 p = cf_m4_transform_point(model, part.vertices[i].position);
+            CF_V3 p = cf_m4_transform_point(
+                model,
+                render_mesh_surface_corner(&part, i)->position
+            );
             surface->min = cf_min_v3(surface->min, p);
             surface->max = cf_max_v3(surface->max, p);
         }
@@ -364,9 +377,9 @@ bool render_mesh_surface_build_with_bounds(
         for (int i = 0; i < acount(asset->groups); i++) {
             const render_mesh_group *group = &asset->groups[i];
             render_mesh_surface_part slice = part;
-            slice.vertices = asset->vertices + group->first;
+            slice.indices = asset->indices + group->first;
             slice.vertex_count = group->count;
-            slice.first_vertex = group->first;
+            slice.first_index = group->first;
             slice.material_scope = group->material_scope;
             snprintf(
                 slice.visual.part.material,
@@ -461,9 +474,18 @@ bool render_mesh_surface_pick(const render_mesh_surface *surface, CF_V2 position
         const render_mesh_surface_part *part = &surface->parts[i];
         CF_M4x4 model = render_scene3d_visual_model(&part->visual);
         for (int v = 0; v < render_mesh_surface_vertex_count(part); v += 3) {
-            CF_V3 a = cf_m4_transform_point(model, part->vertices[v].position);
-            CF_V3 b = cf_m4_transform_point(model, part->vertices[v + 1].position);
-            CF_V3 c = cf_m4_transform_point(model, part->vertices[v + 2].position);
+            CF_V3 a = cf_m4_transform_point(
+                model,
+                render_mesh_surface_corner(part, v)->position
+            );
+            CF_V3 b = cf_m4_transform_point(
+                model,
+                render_mesh_surface_corner(part, v + 1)->position
+            );
+            CF_V3 c = cf_m4_transform_point(
+                model,
+                render_mesh_surface_corner(part, v + 2)->position
+            );
             float bx = b.x - a.x, bz = b.z - a.z, cx = c.x - a.x, cz = c.z - a.z;
             float area = bx * cz - bz * cx;
             if (fabsf(area) <= 1e-8f) {

@@ -119,6 +119,21 @@ if(TARGET Chibi::image_preparation)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_IMAGE_PREPARATION=1)
 endif()
 
+# Mesh preparation reads `.mesh` content files, and model export writes them,
+# so only compiler builds have them.
+if(TARGET Chibi::model_authoring)
+    add_library(chibi_mesh_preparation_consumer OBJECT ../authoring/mesh_files.c)
+    target_include_directories(chibi_mesh_preparation_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_compile_definitions(chibi_mesh_preparation_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
+    target_link_libraries(chibi_mesh_preparation_consumer PRIVATE Chibi::model_authoring Chibi::shader_preparation
+        Chibi::mesh_runtime Chibi::graph_authoring Chibi::graph_compilation Chibi::graph_model)
+    target_compile_options(chibi_mesh_preparation_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_mesh_preparation_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::model_authoring Chibi::shader_preparation
+        Chibi::mesh_runtime Chibi::graph_authoring Chibi::graph_compilation Chibi::graph_model)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MESH_PREPARATION=1)
+endif()
+
 if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     configure_file("${CHIBI_TOOL_ROOT}/test/support/reflected_types.h"
         "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/support/reflected_types.h" COPYONLY)

@@ -360,8 +360,10 @@ Native Studio reports the output directory; Web Studio downloads the four files
 as `<Model>-mesh.zip` through the existing browser file export hook, including
 when using the local server storage bridge.
 
-The bundle contains compact `model.mesh.json`, `model.obj`, `model.mtl` and
-`provenance.json`. The engine mesh retains named part identities, stable source
+The bundle contains `model.mesh`, `model.obj`, `model.mtl` and
+`provenance.json`. `model.mesh` is the engine's binary indexed mesh (see
+[3D rendering](rendering-3d.md#meshes)), with tangents generated from the box
+UVs. It retains named part identities, stable source
 node IDs, invocation paths, live material asset references and slot scopes, owner-local vertex
 coordinates and the nine row-major object-to-part coordinate gradients. Its
 optional source `uv_bounds` restores automatic box projection per fragment.
@@ -372,9 +374,9 @@ material graphs, including coordinate-based bump detail. The optional group
 geometry and other-slot bindings are not consumed as material parameters. Use `GameMeshAsset`
 with dimensions `(1,1,1)`, retain the entity's material binding for unassigned
 parts, and enable `GameMeshSurface2D` instead of `GameSdfSurface3D` to select the
-fallback. Copy the JSON into project content and bind a source such as
-`content/meshes/Camera.mesh.json`; absolute mesh paths and parent traversal are
-rejected by the existing importer. The editable model remains available for
+fallback. Copy `model.mesh` into project content and bind a source such as
+`content/meshes/Camera.mesh`; absolute mesh paths, parent traversal and other
+extensions are rejected by the importer. The editable model remains available for
 subsequent changes/rebakes.
 
 OBJ carries engine XYZ geometry, vertex normals, approximate box UVs and named

@@ -71,6 +71,9 @@ void test_box3d();
 #ifdef CHIBI_TEST_IMAGE_PREPARATION
 void test_sky_files();
 #endif
+#ifdef CHIBI_TEST_MESH_PREPARATION
+void test_mesh_files();
+#endif
 #ifdef CHIBI_TEST_REFLECT
 void test_tool_reflect();
 #endif
@@ -109,8 +112,9 @@ int main(int argc, char **argv)
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, transforms = false, render_resources = false,
-         interior_border = false, viewport_resize = false, sdf_visibility = false,
-         scene3d = false, material_ramps = false, box3d = false, sky_files = false;
+         interior_border = false, viewport_resize = false,
+         sdf_visibility = false, scene3d = false, material_ramps = false,
+         box3d = false, sky_files = false, mesh_files = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -163,6 +167,9 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_IMAGE_PREPARATION
     sky_files = argc == 2 && !strcmp(argv[1], "--sky-files");
 #endif
+#ifdef CHIBI_TEST_MESH_PREPARATION
+    mesh_files = argc == 2 && !strcmp(argv[1], "--mesh-files");
+#endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     native_catalog = argc == 2 && !strcmp(argv[1], "--native-catalog");
     native_values = argc == 2 && !strcmp(argv[1], "--native-values");
@@ -175,12 +182,12 @@ int main(int argc, char **argv)
         !read && !scene && !scene_prepared && !native && !native_values &&
         !native_catalog && !physics && !transforms && !render_resources &&
         !interior_border && !viewport_resize && !sdf_visibility && !scene3d &&
-        !material_ramps && !box3d && !sky_files && !persistent_store &&
-        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
-        !whole_select && !owned_tick && !parallel_tick && !source_features &&
-        !source_numeric && !source_material && !source_presentation &&
-        !system_schedule && !source_systems && !validate_project &&
-        (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
+        !material_ramps && !box3d && !sky_files && !mesh_files &&
+        !persistent_store && !whole_alias && !whole_math && !whole_integer &&
+        !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
+        !source_features && !source_numeric && !source_material &&
+        !source_presentation && !system_schedule && !source_systems &&
+        !validate_project && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
         fprintf(
             stderr,
             "Usage: %s [--package | --unit | --web-storage | "
@@ -194,7 +201,7 @@ int main(int argc, char **argv)
             "--sdf-visibility | "
             "--scene3d | --scene3d-gles | --material-ramps | "
             "--box3d | "
-            "--sky-files | "
+            "--sky-files | --mesh-files | "
             "--persistent-store | "
             "--whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
@@ -304,6 +311,13 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_IMAGE_PREPARATION
     if (sky_files) {
         test_sky_files();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
+#ifdef CHIBI_TEST_MESH_PREPARATION
+    if (mesh_files) {
+        test_mesh_files();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

@@ -6,9 +6,12 @@
 #include "render/fullscreen.h"
 #include "render/material_raster.h"
 #include "render/mesh_material.h"
+#include "render/mesh_surface.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
+#include "runtime/geometry/mesh_prepared.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -121,6 +124,48 @@ static ecs_entity actor(ecs_world *world, const char *shape_name, float elevatio
     ADD(GameSdfSurface3D, sdf);
     ADD(GameMeshSurface2D, mesh);
 #undef ADD
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    return e;
+}
+/* A mesh asset of the generated box, one vertex per distinct corner, read
+ * back from its file bytes so drawing it gathers corners through indices. */
+static void publish_indexed_box(const char *source)
+{
+    render_mesh_surface_vertex *box = NULL;
+    char error[128];
+    assert(render_mesh_surface_vertices(GAME_PRIMITIVE_BOX, &box, error, sizeof error));
+    render_mesh_asset asset = { .min = { -.5f, -.5f, -.5f }, .max = { .5f, .5f, .5f } };
+    for (int i = 0; i < acount(box); i++) {
+        int found = 0;
+        while (found < acount(asset.vertices) &&
+               memcmp(&asset.vertices[found], &box[i], sizeof *box)) {
+            found++;
+        }
+        if (found == acount(asset.vertices)) {
+            apush(asset.vertices, box[i]);
+        }
+        apush(asset.indices, found);
+    }
+    afree(box);
+    assert(acount(asset.vertices) < acount(asset.indices));
+    render_mesh_asset_tangents(&asset);
+    unsigned char *bytes;
+    size_t length, budget = SIZE_MAX;
+    render_mesh_asset file = { 0 };
+    assert(render_mesh_asset_prepared_write(&asset, &bytes, &length, error, sizeof error));
+    assert(
+        render_mesh_asset_prepared_read_budget(bytes, length, &budget, &file, error, sizeof error)
+    );
+    free(bytes);
+    render_mesh_asset_free(&asset);
+    render_mesh_asset_publish(source, &file);
+}
+static ecs_entity indexed_box(ecs_world *world)
+{
+    publish_indexed_box("content/meshes/box.mesh");
+    ecs_entity e = actor(world, NULL, 24);
+    GameMeshAsset imported = { .source = "content/meshes/box.mesh" };
+    assert(ecs_world_record_add(world, e, GAME_COMPONENT_GameMeshAsset.id, &imported, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return e;
 }
@@ -258,6 +303,51 @@ static bool raw_draw(
     bool ok = render_mesh_material_draw(pass, world, actors, count, view, 0);
     cf_app_draw_onto_screen(false);
     return ok && raw(pass, out);
+}
+/* An indexed mesh asset of the box draws, bounds and picks like the box. */
+static bool indexed_copy(
+    render_mesh_material *pass,
+    ecs_world *world,
+    ecs_entity box,
+    ecs_entity copy,
+    render_material_view view
+)
+{
+    *GAME_GameGeometry3D_get(world, copy) = *GAME_GameGeometry3D_get(world, box);
+    render_mesh_material_actor actors[] = { { box, { 0, 0 } }, { copy, { 0, 0 } } };
+    snapshot a = { 0 }, b = { 0 };
+    bool ok = raw_draw(pass, world, actors, 1, view, false, &a) &&
+              raw_draw(pass, world, actors + 1, 1, view, false, &b) &&
+              matches(&a, &b, "indexed mesh asset");
+    release(&a);
+    release(&b);
+    render_mesh_surface surfaces[2] = { 0 };
+    char error[128];
+    for (int i = 0; i < 2; i++) {
+        ok = render_mesh_surface_build(
+                 world,
+                 actors[i].entity,
+                 &actors[i].position,
+                 &surfaces[i],
+                 error,
+                 sizeof error
+             ) &&
+             ok;
+    }
+    ok = ok && !memcmp(&surfaces[0].min, &surfaces[1].min, sizeof surfaces[0].min) &&
+         !memcmp(&surfaces[0].max, &surfaces[1].max, sizeof surfaces[0].max);
+    const CF_V2 points[] = { { 0, 0 }, { 25, -12 }, { 40, 0 } };
+    for (int i = 0; i < 3; i++) {
+        float heights[2] = { 0, 0 };
+        bool hit = render_mesh_surface_pick(&surfaces[0], points[i], &heights[0]);
+        ok = ok && hit == (i < 2) &&
+             render_mesh_surface_pick(&surfaces[1], points[i], &heights[1]) == hit &&
+             heights[0] == heights[1];
+    }
+    render_mesh_surface_free(&surfaces[0]);
+    render_mesh_surface_free(&surfaces[1]);
+    printf("SDF visibility indexed mesh asset: %s\n", ok ? "PASS" : "FAIL");
+    return ok;
 }
 static bool flat_draw(
     render_material_raster *r,
@@ -616,7 +706,7 @@ bool test_sdf_visibility()
     }
     ecs_entity mesh = actor(world, NULL, 24), rear = actor(world, sphere->name, 0),
                solid = actor(world, front->name, 24),
-               torus = actor(world, ring->name, 24);
+               torus = actor(world, ring->name, 24), copy = indexed_box(world);
     GameGeometry3D *bounds = GAME_GameGeometry3D_get(world, mesh);
     bounds->width = bounds->depth = 60;
     bounds->height = 4;
@@ -633,6 +723,7 @@ bool test_sdf_visibility()
     render_mesh_material_actor actors[2] = { { mesh, { 0, 0 } }, { rear, { 0, 0 } } };
     ok &= pair(pass, r, world, actors, 2, view, false, "mesh fully hides sphere");
     ok &= diagnostic(pass, world, actors, false);
+    ok &= indexed_copy(pass, world, mesh, copy, view);
     GAME_GameShader_get(world, mesh)->material = material->name;
     ok &= pair(pass, r, world, actors, 2, view, false, "material cutout");
     ok &= diagnostic(pass, world, actors, true);
@@ -694,6 +785,7 @@ bool test_sdf_visibility()
     render_mesh_material_free(pass);
     render_material_raster_free(r);
     ecs_world_free(world);
+    render_mesh_assets_clear();
     behavior_asset_free(sphere);
     behavior_asset_free(front);
     behavior_asset_free(ring);

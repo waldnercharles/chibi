@@ -115,19 +115,31 @@ static void *read_whole(const char *path, size_t *length)
     return bytes;
 }
 
-/* A .gltf's buffer or image file, which `uri` names relative to the model's
- * folder `directory`; a model never names a file by absolute path or scheme. */
-static void *read_external(const char *uri, int *size, void *directory)
+/* Whether the real path `path` lies inside the real folder `folder`. */
+static bool within(const char *folder, const char *path)
 {
+    size_t length = strlen(folder);
+    return !strncmp(folder, path, length) &&
+           (path[length] == '/' || folder[length - 1] == '/');
+}
+
+/* A .gltf's buffer or image file, which `uri` names relative to the model's
+ * real folder `folder`. A model never reaches a file outside that folder: not
+ * by absolute path or scheme, nor through .. or a link. */
+static void *read_external(const char *uri, int *size, void *folder)
+{
+    *size = 0;
     if (uri[0] == '/' || uri[0] == '\\' || strchr(uri, ':')) {
         return NULL;
     }
-    size_t bytes = strlen(directory) + strlen(uri) + 1;
+    size_t bytes = strlen(folder) + strlen(uri) + 2;
     char *path = xmalloc(bytes);
-    snprintf(path, bytes, "%s%s", (const char *)directory, uri);
-    size_t length = 0;
-    void *data = read_whole(path, &length);
+    snprintf(path, bytes, "%s/%s", (const char *)folder, uri);
+    char *real = realpath(path, NULL);
     free(path);
+    size_t length = 0;
+    void *data = real && within(folder, real) ? read_whole(real, &length) : NULL;
+    free(real);
     *size = (int)length;
     return data;
 }
@@ -1029,15 +1041,20 @@ static bool run(import *in, const char *path)
     for (size_t i = 0; path[i]; i++) {
         folder = path[i] == '/' || path[i] == '\\' ? i + 1 : folder;
     }
-    char *directory = xmalloc(folder + 1);
-    memcpy(directory, path, folder);
-    directory[folder] = 0;
+    char *directory = xmalloc(folder + 2);
+    snprintf(directory, folder + 2, "%.*s.", (int)folder, path);
+    char *real = realpath(directory, NULL);
+    free(directory);
+    if (!real) {
+        free(bytes);
+        return fail(in, "Cannot find the folder of %s", path);
+    }
     CM_LoadParams params = { .read_fn = read_external,
                              .free_fn = free_external,
-                             .udata = directory };
+                             .udata = real };
     in->model = cm_load_ex(bytes, (int)length, params);
     yyjson_doc *json = in->model ? read_json(bytes, length) : NULL;
-    free(directory);
+    free(real);
     free(bytes);
     if (!in->model) {
         return fail(in, "Cannot load %s: %s", path, cm_error());

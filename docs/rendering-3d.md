@@ -349,7 +349,8 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   transform other than the identity; a texture that reads a UV set other than
   `TEXCOORD_0`; an image that is not a PNG or JPEG of 1 to 2048 pixels a side;
   a material factor beyond float range; primitives that are not triangles; a
-  buffer or image named by an absolute path or a scheme other than `data:`; a
+  buffer or image named by an absolute path or a scheme other than `data:`,
+  or one that `..` or a symbolic link leads outside the model's folder; a
   model over 256 MiB; a mesh past the `.mesh` limits above; and a content
   folder, or a folder in it the import writes to, that is a symbolic link.
 - **Warned and left out**: vertex colors, morph targets, skins, animations,

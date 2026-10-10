@@ -1,0 +1,5 @@
+name "Conductor"
+components {
+    GAME.GameRhythm bpm=120.0 pulse_width=0.25
+    (object)GAME.GameTransform
+}

@@ -82,7 +82,7 @@ works.
 
 Scripts check units the way F# does, and units are erased before the game
 runs. `*` and `/` combine them, so `charge.rate * dt` is in `charge` because
-`dt` and `delta` are in seconds. `+`, `-`, comparisons and assignment need the
+`dt` and `delta` are in seconds. `+`, `-`, comparisons, assignment and `bind` need the
 same unit on both sides. A plain number literal takes the unit it meets in a
 sum or comparison, and as a factor it may carry any unit, so `3 * dt` is not
 checked. A value nothing measures, such as a local set to `0` or a function's

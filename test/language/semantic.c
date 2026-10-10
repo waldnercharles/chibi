@@ -548,6 +548,21 @@ TEST_CASE(language_units_warn_on_mismatch)
     }
     return true;
 }
+TEST_CASE(language_units_check_bindings)
+{
+    cleanup();
+    syntax = script_parse(
+        "behavior Bound {\n"
+        "    bind self.Body.x = self.Body.speed\n"
+        "    bind self.Body.push = self.Body.force / self.Body.mass\n"
+        "}\n"
+    );
+    analysis = script_analyze(syntax, &measured);
+    REQUIRE(analysis->valid && analysis->binding_count == 2);
+    REQUIRE(analysis->warning_count == 1);
+    REQUIRE(warning("Units differ: u = u/s")->range.line == 2);
+    return true;
+}
 TEST_CASE(language_units_skip_invalid_sources)
 {
     /* Recovery closes this source to analyze it; it stays unchecked. */
@@ -575,6 +590,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_component_rejects_invalid_fields);
     RUN_TEST_CASE(language_units_combine_through_arithmetic);
     RUN_TEST_CASE(language_units_warn_on_mismatch);
+    RUN_TEST_CASE(language_units_check_bindings);
     RUN_TEST_CASE(language_units_skip_invalid_sources);
     pu_clear_setup();
 }

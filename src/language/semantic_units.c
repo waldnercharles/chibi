@@ -403,6 +403,14 @@ void script_analyzer_units(analyzer *a)
             assignment(&p, &out->statements[i]);
         }
     }
+    for (int i = 0; i < acount(out->bindings); i++) {
+        const script_binding *b = &out->bindings[i];
+        unit target = expression_unit(&p, b->target);
+        unit value = expression_unit(&p, b->value);
+        if (clash(target, value)) {
+            warn_units(&p, b->range, target, "=", value);
+        }
+    }
     if (acount(out->warnings) > 1) {
         qsort(out->warnings, (size_t)acount(out->warnings), sizeof *out->warnings, by_position);
     }

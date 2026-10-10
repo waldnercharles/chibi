@@ -250,7 +250,8 @@ indices outside the vertex list, triangles below
 indices, and names the first vertex, triangle or group at fault. The model
 baker writes this format, with tangents generated from its box UVs by
 `render_mesh_asset_tangents`; each triangle counts by its area, so slivers
-don't steer their corners. A bake makes at most `MODEL_BAKE_TRIANGLE_MAX`
+don't steer their corners, and the sums run in double, so a mesh gets the same
+tangents at any size within float's range. A bake makes at most `MODEL_BAKE_TRIANGLE_MAX`
 (166,496) triangles, the most a file holds when every triangle owns its three
 vertices. Runtime C code reads a loaded mesh's vertices and indices through
 `render_mesh_asset_load`. The JSON mesh format (`.mesh.json`) is retired:

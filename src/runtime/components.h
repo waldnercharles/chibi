@@ -1355,8 +1355,8 @@ GameGravity3D;
  * says whether it ended the step on a surface within 45 degrees of up, against
  * gravity, and floor_normal is that surface's normal. Physics writes both. It
  * stops at dynamic bodies and other characters as at walls, does not ride
- * moving platforms, carries only sensor colliders under it, and turns by its
- * Transform3D, with no Body3D angular velocity. */
+ * moving platforms, and carries only sensor colliders under it. It turns by
+ * its Transform3D; physics keeps its Body3D angular velocity at zero. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameCharacter3D)
 {
     bool on_floor;

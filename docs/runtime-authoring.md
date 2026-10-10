@@ -316,8 +316,8 @@ Physics writes `on_floor` and `floor_normal`, a surface within 45 degrees of
 up, against gravity. The character stops at dynamic bodies and other
 characters as at walls, does not ride moving platforms, and needs a radius of
 at least 2 cm. Colliders under it must be sensors, because only its capsule
-moves and slides, and it turns by its `Transform3D`, so its body's
-`angular_velocity` must stay zero.
+moves and slides. It turns by its `Transform3D`; physics keeps its body's
+`angular_velocity` at zero.
 
 Scripts query colliders where their components place them now, with or without
 a step: `raycast_3d(start, end, categories, exclude, sensors)` and

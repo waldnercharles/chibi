@@ -1240,11 +1240,14 @@ TEST_CASE(physics3d_characters_need_a_kinematic_capsule)
     thin.radius = METER / 50;
     *GAME_GameCollider3D_get(world, walker) = thin;
     REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
-    /* The mover sweeps the capsule as it stands, so it must not spin. */
-    body(walker)->angular_velocity = (CF_V3){ 1, 0, 0 };
-    REQUIRE(failed_with("A Character3D turns by its Transform3D"));
-    body(walker)->angular_velocity = (CF_V3){ 0 };
+    /* The mover sweeps the capsule as it stands, so physics keeps it from
+     * spinning. */
+    body(walker)->angular_velocity = (CF_V3){ 10, 0, 0 };
     REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
+    REQUIRE(near_v3(body(walker)->angular_velocity, (CF_V3){ 0 }, 0));
+    REQUIRE(game_physics3d_tick(physics, STEP) == FLOW_OK);
+    CF_Quat turned = GAME_GameTransform3D_get_const(world, walker)->rotation;
+    REQUIRE(near(turned.w, 1, 1e-6f));
     /* Only its capsule moves, so what it carries must be a sensor. */
     ecs_entity pack = collider(walker, (CF_V3){ 0 }, box(METER, METER, METER), GAME_BODY_STATIC);
     REQUIRE(failed_with("A Collider3D under a Character3D must be a sensor"));

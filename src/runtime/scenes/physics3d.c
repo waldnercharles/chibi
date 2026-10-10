@@ -275,10 +275,6 @@ static const char *invalid_character(placement at, const GameCollider3D *collide
     if (body->type != GAME_BODY_KINEMATIC || at.follower) {
         return "A Character3D needs a kinematic Body3D placed in the world";
     }
-    if (!same_v3(body->angular_velocity, (CF_V3){ 0 })) {
-        return "A Character3D turns by its Transform3D; its Body3D angular "
-               "velocity must be zero";
-    }
     float radius, half;
     capsule_extent(collider, at.scale, &radius, &half);
     if (collider->shape != GAME_COLLIDER3D_CAPSULE || collider->sensor ||
@@ -1180,7 +1176,8 @@ static GameCharacter3D stand(const character_contact *contact, b3Vec3 up)
 }
 
 /* Moves the character's capsule by its velocity over delta with Box3D's
- * mover, puts its body where the capsule ends, and writes what it stands on. */
+ * mover, puts its body where the capsule ends, and writes what it stands on.
+ * The mover sweeps the capsule as it stands, so the body does not spin. */
 static void move_character(game_physics3d *physics, body_record *record, float delta, b3Vec3 up)
 {
     GameBody3D *body = GAME_GameBody3D_get(physics->world, record->entity);
@@ -1224,6 +1221,8 @@ static void move_character(game_physics3d *physics, body_record *record, float d
         b3ClipVector(to_b3(body->linear_velocity), contact.planes, contact.count)
     );
     record->linear_velocity = body->linear_velocity;
+    body->angular_velocity = record->angular_velocity = (CF_V3){ 0 };
+    b3Body_SetAngularVelocity(record->body, b3Vec3_zero);
     b3Body_SetTransform(record->body, b3Add(origin, moved), quat_to_b3(at.rotation));
     *GAME_GameCharacter3D_get(physics->world, record->entity) = stand(&contact, up);
 }

@@ -5,6 +5,7 @@ layout(location = 3) in vec3 in_part_position;
 layout(location = 4) in vec3 in_part_frame0;
 layout(location = 5) in vec3 in_part_frame1;
 layout(location = 6) in vec3 in_part_frame2;
+layout(location = 7) in vec4 in_tangent;
 layout(location = 8) in vec4 in_model0;
 layout(location = 9) in vec4 in_model1;
 layout(location = 10) in vec4 in_model2;
@@ -18,12 +19,13 @@ layout(location = 5) out vec3 v_part_position;
 layout(location = 6) out vec3 v_part_frame0;
 layout(location = 7) out vec3 v_part_frame1;
 layout(location = 8) out vec3 v_part_frame2;
+layout(location = 9) out vec4 v_tangent;
 layout(set = 1, binding = 0) uniform uniform_block {
     mat4 u_view_projection;
 };
 
 // An imported mesh in the lit pass: scene3d.vert's placement, plus the
-// vertex's texture coordinate and model part frame for its material.
+// vertex's texture coordinate, tangent and model part frame for its material.
 void main()
 {
     vec4 p = vec4(in_pos, 1.0);
@@ -41,5 +43,7 @@ void main()
     v_part_frame0 = in_part_frame0;
     v_part_frame1 = in_part_frame1;
     v_part_frame2 = in_part_frame2;
+    // Tangents run along the surface, so they turn and stretch with the model.
+    v_tangent = vec4(a * in_tangent.x + b * in_tangent.y + c * in_tangent.z, in_tangent.w);
     gl_Position = u_view_projection * vec4(world, 1.0);
 }

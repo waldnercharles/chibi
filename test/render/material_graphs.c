@@ -103,6 +103,21 @@ bool test_register_coordinate(const char *name, const char *input)
     );
 }
 
+bool test_register_normal_map(const char *name, const float color[3])
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    node *map = graph_add_node(g, pack_node("Shader Normal Map"));
+    float rgb[3] = { color[0], color[1], color[2] };
+    pin_value value = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = rgb };
+    return publish(
+        material,
+        map && !graph_set_pin_default(g, map, 0, 0, &value) &&
+            !graph_connect_data(g, map, 0, output, 4)
+    );
+}
+
 bool test_register_model_sphere(const char *name, float radius)
 {
     behavior_asset *model = behavior_asset_new(name);

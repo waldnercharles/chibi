@@ -56,6 +56,9 @@ static const CF_VertexAttribute attributes[] = {
     { .name = "in_part_frame2",
       .format = CF_VERTEX_FORMAT_FLOAT3,
       .offset = offsetof(render_mesh_surface_vertex, part_from_object[2]) },
+    { .name = "in_tangent",
+      .format = CF_VERTEX_FORMAT_FLOAT4,
+      .offset = offsetof(render_mesh_surface_vertex, tangent) },
 };
 
 /* The point the GPU copy's positions are measured from: the center of the

@@ -69,7 +69,8 @@ only that source counts. A spawn reaches the prototype it names directly or
 through a value, such as a local, state or library parameter that holds the
 prototype's name, as find references does. A scene entity with its own behavior list
 runs that list in place of its prototype's; otherwise it and a spawned
-prototype run the prototype's list. Components count on these placed and
+prototype run the prototype's list. A prototype's children spawn with each of
+its instances, so they are reached and run as instances too. Components count on these placed and
 spawned instances, after the scene's overrides, and where running source reads,
 writes or adds them, directly or through a generic call such as
 `add_component("GAME.Heat")`; a system query alone matches nothing without

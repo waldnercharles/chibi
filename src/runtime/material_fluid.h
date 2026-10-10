@@ -121,6 +121,9 @@ typedef struct
     /* Output: accumulated translation impulse on this body during the tick. */
     fluid_vec impulse;
     float inverse_inertia, angular_impulse;
+    /* 1 + the index of an earlier body it moves with as one, whose impulse
+     * its contacts change and which a blast moves once; 0 for its own. */
+    int part_of;
 } fluid_body;
 
 typedef struct
@@ -220,6 +223,8 @@ void material_fluid_push(
 void material_fluid_set_tasks(material_fluid *fluid, const game_task_system *tasks);
 /* Returns false at the authored population limit. No existing matter is evicted. */
 bool material_fluid_add(material_fluid *fluid, fluid_particle particle);
+/* The index of the body whose impulse contacts with bodies[index] change. */
+int material_fluid_response(const fluid_body *bodies, int index);
 const fluid_particle *material_fluid_particles(const material_fluid *fluid, int *count);
 int material_fluid_active_count(const material_fluid *fluid);
 /* Regions select whole chunks. Sleeping particles keep position, velocity and

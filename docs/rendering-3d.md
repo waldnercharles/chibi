@@ -242,7 +242,9 @@ names none; a name that is no surface material fails the frame. Surface graphs
 read the vertex texture coordinates, or with source UV bounds the box
 projection the planar pass uses, and the vertex part positions and frames.
 Meshes cast and receive shadows as shapes do, including from outside the view;
-picking meets their triangles, and bounds hold their extents. Translucent
+picking meets their triangles, and bounds hold their extents. A pick tests
+only the triangles in boxes its ray crosses, from a tree of boxes built on a
+mesh's first pick and kept until the mesh catalog changes. Translucent
 meshes sort back to front by the center of their bounds, so a mesh whose
 vertices lie away from its origin sorts where its triangles are. Cute sorts
 translucent draws by the translation of their transform, so a mesh's GPU copy
@@ -331,7 +333,9 @@ boxes do. A mesh's top face takes its group's material while the other faces
 inherit the entity's, and an unknown group material fails the frame. Surface
 graphs read a mesh's vertex UVs, its UVs projected from source bounds, its
 part positions and, without part coordinates, its own positions. Picks and
-bounds follow a single triangle rather than its unit box, and a republished
+bounds follow a single triangle rather than its unit box, picks follow one a
+hundred-thousandth that size scaled back up, and a pick through a grid of
+8192 triangles tests only the few near its ray. A republished
 mesh draws its new triangles while the GPU copies of replaced and removed
 meshes are freed. Copies uploaded out of identity order are each found again.
 A translucent mesh whose vertices sit between the eye and a

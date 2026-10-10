@@ -36,7 +36,6 @@ void test_tool_ecs_hierarchy();
 void test_tool_ecs_world();
 void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
-void test_tool_studio_selectors(const char *binary);
 void test_tool_validate_project(const char *binary);
 void test_tool_prototype_expansion(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
@@ -238,15 +237,14 @@ int main(int argc, char **argv)
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
         !source_numeric && !source_material && !source_presentation &&
-        !system_schedule && !source_systems && !validate_project &&
-        !expansion && (argc != 3 || strcmp(argv[1], "--studio-selectors"))) {
+        !system_schedule && !source_systems && !validate_project && !expansion) {
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
             "--web-storage | "
             "--webgpu-staging | "
             "--ecs-query-benchmark | "
-            "--studio-selectors test_suite | --validate-project chibi_ctl | "
+            "--validate-project chibi_ctl | "
             "--prototype-expansion chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
@@ -438,8 +436,6 @@ int main(int argc, char **argv)
         test_tool_validate_project(argv[2]);
     } else if (expansion) {
         test_tool_prototype_expansion(argv[2]);
-    } else if (argc == 3) {
-        test_tool_studio_selectors(argv[2]);
     } else if (unit) {
         test_tool_execution_policy();
     } else if (web_storage) {

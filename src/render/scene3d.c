@@ -470,16 +470,20 @@ static void collect_entity(
     const engine *runtime
 )
 {
-    if (!engine_entity_visible(runtime, world, entity)) {
-        return;
-    }
     bool spatial = GAME_GameTransform3D_has(world, entity);
     GameTransform position = { 0 };
     GameGlobalTransform3D transform = { 0 };
+    /* The fog culls a solid where it draws. */
+    bool visible;
     if (spatial) {
         transform = engine_render_transform_3d(runtime, world, entity);
+        visible = engine_entity_visible_3d(runtime, world, entity, transform.position);
     } else {
         position = engine_render_transform(runtime, world, entity).position;
+        visible = engine_entity_visible(runtime, world, entity);
+    }
+    if (!visible) {
+        return;
     }
     scene3d_visual visuals[SCENE3D_PART_LIMIT];
     const render_mesh_asset *mesh;
@@ -1358,7 +1362,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
             program = draw->program;
             render_programs_bind3d(bound, program);
         }
-        bool mirrors = render_scene3d_frame_determinant(draw->solid.frame) < 0;
+        bool mirrors = render_scene3d_frame_mirrors(draw->solid.frame);
         if (draw->transparent != transparent || mirrors != mirrored) {
             if (draw->transparent && !transparent) {
                 draw_behind_translucents(scene3d, camera);

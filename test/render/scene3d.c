@@ -2166,13 +2166,14 @@ TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy)
     return true;
 }
 
-/* One triangle over half of a two-unit square on the ground, drawn at unit
- * size: picks hit the triangle beyond the unit box and miss the box's corner
- * that the triangle leaves out, and bounds hold just the triangle. */
-TEST_CASE(picking_and_bounds_follow_imported_triangles)
+/* Draws, at `scale` times its mesh's size, one triangle over half of a square
+ * 2 / `scale` units wide on the ground: the triangle covers half of a
+ * two-unit square wherever it is drawn. */
+static ecs_entity add_imported_triangle(float scale)
 {
-    static const CF_V3 corners[] = { { -1, 0, -1 }, { -1, 0, 1 }, { 1, 0, -1 } };
-    render_mesh_asset mesh = { .min = { -1, 0, -1 }, .max = { 1, 0, 1 } };
+    float half = 1 / scale;
+    CF_V3 corners[] = { { -half, 0, -half }, { -half, 0, half }, { half, 0, -half } };
+    render_mesh_asset mesh = { .min = { -half, 0, -half }, .max = { half, 0, half } };
     for (int i = 0; i < 3; i++) {
         render_mesh_surface_vertex vertex = { .position = corners[i],
                                               .normal = { 0, 1, 0 } };
@@ -2182,10 +2183,17 @@ TEST_CASE(picking_and_bounds_follow_imported_triangles)
     publish_mesh(&mesh);
     ecs_entity triangle = add_solid(
         (CF_V3){ 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, scale, scale, scale },
         0xffffffffu
     );
     import_mesh(triangle);
+    return triangle;
+}
+
+/* Picks hit add_imported_triangle's triangle beyond the unit box and miss
+ * the box's corner that the triangle leaves out. */
+static bool picks_follow_triangle(ecs_entity triangle)
+{
     CF_V3 inside = render_scene3d_project(&lens, (CF_V3){ -.9f, 0, -.9f });
     CF_V3 outside = render_scene3d_project(&lens, (CF_V3){ .3f, 0, .3f });
     REQUIRE(
@@ -2194,11 +2202,29 @@ TEST_CASE(picking_and_bounds_follow_imported_triangles)
     );
     REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ outside.x, outside.y }, (render_skip){ 0 })
                  .slot);
+    return true;
+}
+
+/* A triangle drawn at unit size: picks follow it, and bounds hold just the
+ * triangle. */
+TEST_CASE(picking_and_bounds_follow_imported_triangles)
+{
+    ecs_entity triangle = add_imported_triangle(1);
+    REQUIRE(picks_follow_triangle(triangle));
     CF_V3 box[8];
     REQUIRE(render_scene3d_entity_bounds(world, triangle, box));
     REQUIRE(near_value(box[0].x, -1) && near_value(box[0].z, -1));
     REQUIRE(near_value(box[7].x, 1) && near_value(box[7].z, 1));
     REQUIRE(fabsf(box[0].y) < 2e-3f && fabsf(box[7].y) < 2e-3f);
+    return true;
+}
+
+/* The same triangle with a mesh a hundred-thousandth the size, which its
+ * Geometry3D scales back up: picks still follow it, because the test for a
+ * ray parallel to a triangle scales with the triangle's edges. */
+TEST_CASE(picks_follow_tiny_triangles_scaled_up)
+{
+    REQUIRE(picks_follow_triangle(add_imported_triangle(1e5f)));
     return true;
 }
 
@@ -2612,6 +2638,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(sky_lights_surfaces_by_its_gradients);
     RUN_TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy);
     RUN_TEST_CASE(picking_and_bounds_follow_imported_triangles);
+    RUN_TEST_CASE(picks_follow_tiny_triangles_scaled_up);
     RUN_TEST_CASE(republished_meshes_replace_their_gpu_copies);
     RUN_TEST_CASE(mesh_copies_are_found_in_any_upload_order);
     RUN_TEST_CASE(translucent_meshes_sort_by_their_bounds);

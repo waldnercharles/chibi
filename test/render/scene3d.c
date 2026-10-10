@@ -1,5 +1,6 @@
 #include "render/scene3d.h"
 
+#include "execution/status.h"
 #include "render/fog.h"
 #include "render/mesh_surface.h"
 #include "render/scene3d_post.h"
@@ -15,6 +16,7 @@
 #include "runtime/images/sky.h"
 #include "runtime/particles.h"
 #include "runtime/visibility.h"
+#include "runtime/world.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -382,6 +384,52 @@ TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use)
     REQUIRE(look_through_camera() == 1);
     GAME_GameTransform3D_get(world, entity)->scale = (CF_V3){ 0 };
     REQUIRE(look_through_camera() == -1);
+    return true;
+}
+
+/* A camera riding a dynamic body looks from where the body draws between
+ * physics steps, not from the pose the last step solved. */
+TEST_CASE(cameras_on_bodies_look_from_their_drawn_pose)
+{
+    char error[256];
+    game_world_options options = { .modules = GAME_WORLD_PHYSICS3D };
+    game_world *simulation = game_world_new(&options, error, sizeof error);
+    REQUIRE(simulation);
+    ecs_world *ecs = game_world_ecs(simulation);
+    engine *runtime = game_world_engine(simulation);
+    ecs_entity body = ecs_world_create_entity(ecs),
+               eye = ecs_world_create_entity(ecs);
+    REQUIRE(GAME_GameTransform3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(GAME_GameCollider3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(GAME_GameBody3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(GAME_GameGravity3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(GAME_GameTransform3D_add(ecs, eye, 0) == ECS_OK);
+    REQUIRE(GAME_GameCamera_add(ecs, eye, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add_pair(ecs, eye, ECS_CHILD_OF, body, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
+    *GAME_GameTransform3D_get(ecs, body) = (GameTransform3D){ .scale = { 1, 1, 1 } };
+    *GAME_GameCollider3D_get(ecs, body) = (GameCollider3D){ .shape = GAME_COLLIDER3D_SPHERE,
+                                                            .radius = 1,
+                                                            .category = 1,
+                                                            .mask = 1 };
+    *GAME_GameBody3D_get(ecs, body) = (GameBody3D){ .type = GAME_BODY_DYNAMIC,
+                                                    .linear_velocity = { 60, 0, 0 } };
+    const CF_V3 behind = { 0, 0, 5 };
+    *GAME_GameTransform3D_get(ecs, eye) = (GameTransform3D){ .position = behind,
+                                                             .scale = { 1, 1, 1 } };
+    *GAME_GameCamera_get(ecs, eye) = (GameCamera){ .width = 320, .height = 180 };
+    REQUIRE(engine_set_playing(runtime, true) == 0);
+    REQUIRE(engine_frame(runtime, 0) == FLOW_OK);
+    REQUIRE(engine_frame(runtime, .1) == FLOW_OK);
+    REQUIRE(engine_frame(runtime, .1 + ENGINE_FIXED_SECONDS * .5) == FLOW_OK);
+    engine_viewport_view view;
+    REQUIRE(game_camera_view(ecs, runtime, &view) == 1);
+    CF_V3 drawn = cf_add_v3(engine_render_transform_3d(runtime, ecs, body).position, behind);
+    CF_V3 offset = cf_sub_v3(view.lens.eye, drawn);
+    REQUIRE(cf_len_v3(offset) < 1e-3f);
+    float solved = GAME_GameGlobalTransform3D_get_const(ecs, eye)->position.x;
+    REQUIRE(fabsf(view.lens.eye.x - (solved - 60 * (float)ENGINE_FIXED_SECONDS * .5f)) < 1e-3f);
+    game_world_free(simulation);
     return true;
 }
 
@@ -2949,6 +2997,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(distant_small_scale_cameras_keep_their_view);
     RUN_TEST_CASE(default_clips_stay_ordered_for_close_framings);
     RUN_TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use);
+    RUN_TEST_CASE(cameras_on_bodies_look_from_their_drawn_pose);
     RUN_TEST_CASE(widest_clip_range_keeps_ground_rays);
     RUN_TEST_CASE(navigating_drops_an_authored_lens);
     RUN_TEST_CASE(fog_conceals_rays_that_miss_the_ground);

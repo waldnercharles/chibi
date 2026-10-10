@@ -19,7 +19,8 @@ Surface 2D surfaces belong to the 2D renderer, which ignores Transform3D.
 ## Camera
 
 A `GameCamera` with a `GameTransform3D` looks along its global -Z with +Y up, so
-its local +X points right in the image. Its `offset` moves the eye across the
+its local +X points right in the image. It looks from its drawn pose, so a
+camera riding a body moves between physics steps as the body does. Its `offset` moves the eye across the
 ground (gameplay y is world z), as it moves an overhead camera's target. One
 with only a `GameTransform` frames its span from 10 degrees off overhead. `fov`
 is the vertical field of view in radians, from 0.00001 degrees (Unity's
@@ -291,7 +292,8 @@ has them. A scene without a valid rhythm clock draws with the beat at rest.
 ## Tests
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d` renders a box or a floor in a
-hidden 64x64 app. It checks cameras looking along their Transform3D, field of
+hidden 64x64 app. It checks cameras looking along their Transform3D and from a
+moving body's drawn pose between physics steps, field of
 view and clip distances, the lenses a camera rejects, ground rays at the widest
 clip range, panning dropping a lens, fog concealing rays that miss the ground,
 and ground rays and fog from an eye far from the origin. It checks ambient, the
@@ -371,13 +373,13 @@ check that runs the main build's
 with `make build BUILD_TARGET=test_tools`.
 llvmpipe leaks 112 bytes from its own worker threads, so LeakSanitizer hosts on
 llvmpipe need `ASAN_OPTIONS=detect_leaks=0`. Debug ASan+UBSan on Linux with
-Vulkan llvmpipe passed 71 cases and 50406 assertions in 12.8 seconds on 2026-10-10.
+Vulkan llvmpipe passed 72 cases and 50422 assertions in 13.0 seconds on 2026-10-10.
 
 `make agent-gpu-test AGENT_SELECTOR=--scene3d-gles` runs the same cases on GLES,
 the backend of the web player's WebGL 2 fallback. GLES needs a display rather
 than SDL's offscreen driver, so the agent runs it under `xvfb-run`, and it needs
-a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 71
-cases and 50406 assertions in 9.7 seconds on 2026-10-10.
+a Linux host with Xvfb. Without `xvfb-run` it reports `blocked`. Debug ASan+UBSan with Mesa llvmpipe GLES 3.2 passed 72
+cases and 50422 assertions in 9.6 seconds on 2026-10-10.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

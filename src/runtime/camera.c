@@ -64,7 +64,14 @@ int game_camera_view(ecs_world *world, const engine *runtime, engine_viewport_vi
         if (camera->disabled || ecs_entity_is_retiring(world, entity)) {
             continue;
         }
-        const GameGlobalTransform3D *pose = GAME_GameGlobalTransform3D_get_const(world, entity);
+        /* Drawn as bodies are, between physics steps, so a camera riding one
+         * holds still against it. */
+        GameGlobalTransform3D shown;
+        const GameGlobalTransform3D *pose = NULL;
+        if (GAME_GameTransform3D_has(world, entity)) {
+            shown = engine_render_transform_3d(runtime, world, entity);
+            pose = &shown;
+        }
         if (!pose && !GAME_GameTransform_has(world, entity)) {
             found = -1;
             break;

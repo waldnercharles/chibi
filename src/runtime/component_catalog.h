@@ -372,5 +372,11 @@ extern const GameGravity3D *GAME_GameGravity3D_get_const(const ecs_world *, ecs_
 extern int GAME_GameGravity3D_has(const ecs_world *, ecs_entity);
 extern int GAME_GameGravity3D_add(ecs_world *, ecs_entity, uint64_t);
 extern int GAME_GameGravity3D_remove(ecs_world *, ecs_entity, uint64_t);
+extern const ecs_component_desc GAME_COMPONENT_GameCharacter3D;
+extern GameCharacter3D *GAME_GameCharacter3D_get(ecs_world *, ecs_entity);
+extern const GameCharacter3D *GAME_GameCharacter3D_get_const(const ecs_world *, ecs_entity);
+extern int GAME_GameCharacter3D_has(const ecs_world *, ecs_entity);
+extern int GAME_GameCharacter3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int GAME_GameCharacter3D_remove(ecs_world *, ecs_entity, uint64_t);
 
 #endif

@@ -11,6 +11,7 @@
 
 #include <assert.h>
 #include <box3d/box3d.h>
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,6 +28,8 @@ static const float FARTHEST = 100000 * GAME_UNITS_PER_METER;
 /* A follower's scale comes from decomposing its world matrix, whose last bits
  * wobble as parents turn; smaller changes keep the shape. */
 static const float SCALE_TOLERANCE = 1e-4f;
+/* The narrowest character; its body gives up a centimeter of radius. */
+static const float CHARACTER_RADIUS = .02f * GAME_UNITS_PER_METER;
 
 typedef struct
 {
@@ -52,7 +55,7 @@ typedef struct
     GameCollider3D collider;
     GameBodyType type;
     CF_V3 scale; /* The scale the shape was built at. */
-    bool follower, seen;
+    bool follower, seen, character;
     /* A root's local transform as physics last read or wrote it; a change
      * means something else moved it. */
     GameTransform3D written;
@@ -265,6 +268,21 @@ static const char *invalid(placement at, const GameCollider3D *collider, const G
                "with a Transform3D";
     }
     return invalid_shape(collider, at.scale);
+}
+
+static const char *invalid_character(placement at, const GameCollider3D *collider, const GameBody3D *body)
+{
+    if (body->type != GAME_BODY_KINEMATIC || at.follower) {
+        return "A Character3D needs a kinematic Body3D placed in the world";
+    }
+    float radius, half;
+    capsule_extent(collider, at.scale, &radius, &half);
+    if (collider->shape != GAME_COLLIDER3D_CAPSULE || collider->sensor ||
+        radius < CHARACTER_RADIUS) {
+        return "A Character3D needs a solid capsule Collider3D at least two "
+               "centimeters in radius";
+    }
+    return NULL;
 }
 
 static int fail(game_physics3d *physics, ecs_entity entity, const char *problem)
@@ -495,6 +513,12 @@ static b3ShapeId create_shape(const body_record *record, b3BodyId body, b3Transf
         def.density = 0; /* A carried sensor adds no mass. */
     }
     geometry shape = make_geometry(collider, record->scale, offset);
+    if (record->character) {
+        /* The mover leaves its capsule a slop deep in what it touches. A body
+         * two slops narrower stops short of it, so it never shoves a dynamic
+         * body it walks up to. */
+        shape.capsule.radius -= 2 * B3_LINEAR_SLOP;
+    }
     switch (shape.kind) {
         case GAME_COLLIDER3D_BOX:
             return b3CreateHullShape(body, &def, &shape.box.base);
@@ -657,7 +681,11 @@ static int sync_entity(game_physics3d *physics, ecs_entity entity)
     const GameBody3D *authored = GAME_GameBody3D_get_const(world, entity);
     GameBody3D body = authored ? *authored : (GameBody3D){ .type = GAME_BODY_STATIC };
     placement at = place(world, entity);
+    bool character = GAME_GameCharacter3D_get_const(world, entity) != NULL;
     const char *problem = invalid(at, collider, &body);
+    if (!problem && character) {
+        problem = invalid_character(at, collider, &body);
+    }
     if (problem) {
         return fail(physics, entity, problem);
     }
@@ -676,13 +704,14 @@ static int sync_entity(game_physics3d *physics, ecs_entity entity)
     body_record *record = &physics->bodies[entity.slot];
     if (record->entity.slot &&
         (!same_entity(record->entity, entity) || record->type != body.type ||
-         record->follower != at.follower)) {
+         record->follower != at.follower || record->character != character)) {
         remove_record(physics, record);
     }
     if (!record->entity.slot) {
         *record = (body_record){ .entity = entity,
                                  .type = body.type,
-                                 .follower = at.follower };
+                                 .follower = at.follower,
+                                 .character = character };
     }
     record->seen = true;
     if (at.follower) {
@@ -743,8 +772,9 @@ static void carry(game_physics3d *physics, body_record *record, const body_recor
 }
 
 /* Each follower rides on its anchor's body. One without an anchor has a
- * kinematic body of its own that its parents place. */
-static void place_followers(game_physics3d *physics)
+ * kinematic body of its own that its parents place. The mover moves only a
+ * character's capsule, so a character carries only sensors. */
+static int place_followers(game_physics3d *physics)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
         body_record *record = &physics->bodies[i];
@@ -752,6 +782,10 @@ static void place_followers(game_physics3d *physics)
             continue;
         }
         const body_record *with = anchor(physics, record->entity);
+        if (with && with->character &&
+            !GAME_GameCollider3D_get_const(physics->world, record->entity)->sensor) {
+            return fail(physics, record->entity, "A Collider3D under a Character3D must be a sensor");
+        }
         if (with) {
             carry(physics, record, with);
             continue;
@@ -765,6 +799,7 @@ static void place_followers(game_physics3d *physics)
         );
         record->placed = at.pose;
     }
+    return FLOW_OK;
 }
 
 static int gravity(game_physics3d *physics, CF_V3 *out)
@@ -797,6 +832,37 @@ static int gravity(game_physics3d *physics, CF_V3 *out)
     return FLOW_OK;
 }
 
+static bool synced(const game_physics3d *physics, ecs_entity entity)
+{
+    return entity.slot < (unsigned)acount(physics->bodies) &&
+           same_entity(physics->bodies[entity.slot].entity, entity) &&
+           physics->bodies[entity.slot].seen;
+}
+
+/* The collider query skips a character without a Transform3D or Collider3D. */
+static int check_characters(game_physics3d *physics)
+{
+    ecs_component_id id = GAME_COMPONENT_GameCharacter3D.id;
+    if (!ecs_world_component(physics->world, id)) {
+        return FLOW_OK;
+    }
+    ecs_query query;
+    int result = ecs_query_begin(physics->world, &query, &id, 1);
+    if (result != ECS_OK) {
+        return result;
+    }
+    ecs_entity entity;
+    while (ecs_query_next(&query, &entity)) {
+        if (!game_entities_is_retiring(physics->entities, entity) &&
+            !synced(physics, entity)) {
+            result = fail(physics, entity, "A Character3D needs a Transform3D and a Collider3D");
+            break;
+        }
+    }
+    ecs_query_end(&query);
+    return result;
+}
+
 static int synchronize(game_physics3d *physics)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -823,7 +889,7 @@ static int synchronize(game_physics3d *physics)
         }
         ecs_query_end(&query);
     }
-    if (result < 0) {
+    if (result < 0 || (result = check_characters(physics)) < 0) {
         return result;
     }
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -832,8 +898,7 @@ static int synchronize(game_physics3d *physics)
             remove_record(physics, record);
         }
     }
-    place_followers(physics);
-    return FLOW_OK;
+    return place_followers(physics);
 }
 
 static bool moving_root(const body_record *record)
@@ -1053,6 +1118,143 @@ static void set_gravity(game_physics3d *physics, CF_V3 acceleration)
     }
 }
 
+/* The most planes a character slides along at once. */
+#define CHARACTER_PLANES 32
+/* Box3D's mover runs at most this many cast and slide passes per step, and
+ * stops early once a pass moves less than the tolerance. */
+#define CHARACTER_PASSES 5
+static const float CHARACTER_TOLERANCE = .01f * GAME_UNITS_PER_METER;
+/* The cosine of the steepest floor, 45 degrees. */
+static const float FLOOR_COSINE = .70710678f;
+
+/* What a character touches: solid colliders on other bodies. */
+typedef struct
+{
+    b3BodyId self;
+    b3CollisionPlane planes[CHARACTER_PLANES];
+    int count;
+} character_contact;
+
+static bool blocks(b3ShapeId shape, void *context)
+{
+    const character_contact *contact = context;
+    return !b3Shape_IsSensor(shape) &&
+           !B3_ID_EQUALS(b3Shape_GetBody(shape), contact->self);
+}
+
+static bool gather_planes(b3ShapeId shape, const b3PlaneResult *planes, int count, void *context)
+{
+    character_contact *contact = context;
+    if (!blocks(shape, contact)) {
+        return true;
+    }
+    for (int i = 0; i < count && contact->count < CHARACTER_PLANES; i++) {
+        contact->planes[contact->count++] = (b3CollisionPlane){ planes[i].plane,
+                                                                FLT_MAX,
+                                                                0,
+                                                                true };
+    }
+    return true;
+}
+
+/* What the character stands on: the plane it touches that faces up the most,
+ * when that is within 45 degrees of up. */
+static GameCharacter3D stand(const character_contact *contact, b3Vec3 up)
+{
+    GameCharacter3D out = { 0 };
+    float best = FLOOR_COSINE;
+    for (int i = 0; i < contact->count; i++) {
+        b3Vec3 normal = contact->planes[i].plane.normal;
+        if (b3Dot(normal, up) >= best) {
+            best = b3Dot(normal, up);
+            out = (GameCharacter3D){ true, from_b3(normal) };
+        }
+    }
+    return out;
+}
+
+/* Moves the character's capsule by its velocity over delta with Box3D's
+ * mover, puts its body where the capsule ends, and writes what it stands on. */
+static void move_character(game_physics3d *physics, body_record *record, float delta, b3Vec3 up)
+{
+    GameBody3D *body = GAME_GameBody3D_get(physics->world, record->entity);
+    pose at = body_pose(record->body);
+    b3Vec3 origin = to_b3(at.position);
+    float radius, half;
+    capsule_extent(&record->collider, record->scale, &radius, &half);
+    b3Vec3 axis = to_b3(cf_mul_q_v3(at.rotation, cf_v3(0, half, 0)));
+    b3Capsule local = { b3Neg(axis), axis, radius };
+    b3QueryFilter filter = { .categoryBits = record->collider.category,
+                             .maskBits = record->collider.mask };
+    character_contact contact = { .self = record->body };
+    b3Vec3 target = b3MulSV(delta, to_b3(body->linear_velocity)), moved = b3Vec3_zero;
+    for (int pass = 0; pass < CHARACTER_PASSES; pass++) {
+        b3Capsule mover = { b3Add(local.center1, moved),
+                            b3Add(local.center2, moved),
+                            radius };
+        contact.count = 0;
+        b3World_CollideMover(physics->simulation, origin, &mover, filter, gather_planes, &contact);
+        b3PlaneSolverResult
+            solved = b3SolvePlanes(b3Sub(target, moved), contact.planes, contact.count);
+        float fraction = b3World_CastMover(
+            physics->simulation,
+            origin,
+            &mover,
+            solved.delta,
+            filter,
+            blocks,
+            &contact
+        );
+        b3Vec3 step = b3MulSV(fraction, solved.delta);
+        moved = b3Add(moved, step);
+        if (b3LengthSquared(step) < CHARACTER_TOLERANCE * CHARACTER_TOLERANCE) {
+            break;
+        }
+    }
+    body->linear_velocity = from_b3(
+        b3ClipVector(to_b3(body->linear_velocity), contact.planes, contact.count)
+    );
+    record->linear_velocity = body->linear_velocity;
+    b3Body_SetTransform(record->body, b3Add(origin, moved), quat_to_b3(at.rotation));
+    *GAME_GameCharacter3D_get(physics->world, record->entity) = stand(&contact, up);
+}
+
+static bool moving_character(const body_record *record)
+{
+    return record->character && B3_IS_NON_NULL(record->body);
+}
+
+/* Moves every character before the step, one after another so each meets the
+ * characters before it where they end up. Then each goes back to where the
+ * step starts it, with the velocity that carries it to its end over the step.
+ * Up opposes gravity. */
+static void move_characters(game_physics3d *physics, float delta, CF_V3 acceleration)
+{
+    b3Vec3 up = b3LengthSquared(to_b3(acceleration)) > 0
+                  ? b3Normalize(b3Neg(to_b3(acceleration)))
+                  : (b3Vec3){ 0, 1, 0 };
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        body_record *record = &physics->bodies[i];
+        if (moving_character(record)) {
+            record->start = body_pose(record->body);
+            move_character(physics, record, delta, up);
+        }
+    }
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        body_record *record = &physics->bodies[i];
+        if (!moving_character(record)) {
+            continue;
+        }
+        CF_V3 moved = cf_sub_v3(body_pose(record->body).position, record->start.position);
+        b3Body_SetTransform(
+            record->body,
+            to_b3(record->start.position),
+            quat_to_b3(record->start.rotation)
+        );
+        b3Body_SetLinearVelocity(record->body, b3MulSV(1 / delta, to_b3(moved)));
+    }
+}
+
 static void step(game_physics3d *physics, float delta)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -1084,6 +1286,9 @@ int game_physics3d_tick(game_physics3d *physics, float delta_seconds)
     }
     if (!same_v3(acceleration, physics->gravity)) {
         set_gravity(physics, acceleration);
+    }
+    if (delta_seconds > 0) {
+        move_characters(physics, delta_seconds, acceleration);
     }
     step(physics, delta_seconds);
     write_back(physics);

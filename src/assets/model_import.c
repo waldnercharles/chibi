@@ -586,6 +586,52 @@ static float determinant(CF_M4x4 m)
            e[4] * (e[1] * e[10] - e[2] * e[9]) + e[8] * (e[1] * e[6] - e[2] * e[5]);
 }
 
+/* The cofactors of `m`'s linear part, as columns: each the cross product of
+ * the other two axes. They carry normals as the inverse transpose does,
+ * scaled by the determinant, and stay defined where it is zero. */
+static void cofactors(CF_M4x4 m, double out[3][3])
+{
+    const float *e = m.elements;
+    for (int i = 0; i < 3; i++) {
+        const float *u = e + (i + 1) % 3 * 4, *v = e + (i + 2) % 3 * 4;
+        out[i][0] = (double)u[1] * v[2] - (double)u[2] * v[1];
+        out[i][1] = (double)u[2] * v[0] - (double)u[0] * v[2];
+        out[i][2] = (double)u[0] * v[1] - (double)u[1] * v[0];
+    }
+}
+
+/* Whether a frame collapses every surface onto a line or a point, as a
+ * zero scale on two axes does: no two of its axes span any area. */
+static bool collapses(CF_M4x4 m)
+{
+    double cofactor[3][3];
+    cofactors(m, cofactor);
+    for (int i = 0; i < 9; i++) {
+        if (cofactor[i / 3][i % 3]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* `normal` carried by the cofactors, at unit length and flipped where the
+ * frame mirrors, as winding is. Under one zero scale it turns to the normal
+ * of the plane the surface flattens onto, on its own side. */
+static CF_V3 carry_normal(const double cofactor[3][3], CF_V3 normal, bool mirrored)
+{
+    const double n[3] = { normal.x, normal.y, normal.z };
+    double v[3];
+    for (int k = 0; k < 3; k++) {
+        v[k] = cofactor[0][k] * n[0] + cofactor[1][k] * n[1] + cofactor[2][k] * n[2];
+    }
+    double length = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (!isfinite(length) || length <= 0) {
+        return (CF_V3){ 0, 1, 0 };
+    }
+    double scale = mirrored ? -1 / length : 1 / length;
+    return (CF_V3){ (float)(v[0] * scale), (float)(v[1] * scale), (float)(v[2] * scale) };
+}
+
 /* Whether the triangle has the area a mesh file requires. */
 static bool has_area(CF_V3 a, CF_V3 b, CF_V3 c)
 {
@@ -596,19 +642,19 @@ static bool has_area(CF_V3 a, CF_V3 b, CF_V3 c)
     return isfinite(area) && area > RENDER_MESH_MIN_TRIANGLE_AREA;
 }
 
-/* Appends `part` to `mesh` in the world frame `world`, mirroring tangent
- * handedness and winding with it, and returns how many triangles had no area
- * there and were left out. */
-static int bake(render_mesh_asset *mesh, const render_mesh_asset *part, CF_M4x4 world)
+/* Appends `part` to `mesh` in the world frame `world`, turning tangent
+ * handedness and winding where it is `mirrored`, and returns how many
+ * triangles had no area there and were left out. */
+static int bake(render_mesh_asset *mesh, const render_mesh_asset *part, CF_M4x4 world, bool mirrored)
 {
-    CF_M4x4 normals = cf_m4_normal_matrix(world);
-    bool mirrored = determinant(world) < 0;
+    double cofactor[3][3];
+    cofactors(world, cofactor);
     int first = acount(mesh->vertices);
     for (int i = 0; i < acount(part->vertices); i++) {
         render_mesh_surface_vertex vertex = part->vertices[i];
         CF_V4 t = vertex.tangent;
         vertex.position = cf_m4_transform_point(world, vertex.position);
-        vertex.normal = unit(cf_m4_transform_dir(normals, vertex.normal), (CF_V3){ 0, 1, 0 });
+        vertex.normal = carry_normal(cofactor, vertex.normal, mirrored);
         CF_V3 tangent = unit(
             cf_m4_transform_dir(world, (CF_V3){ t.x, t.y, t.z }),
             (CF_V3){ 1, 0, 0 }
@@ -691,6 +737,23 @@ static CF_M4x4 *world_frames(const CM_Model *model)
     return frames;
 }
 
+/* Whether node `n`'s frame mirrors, by the signs of its scales and its
+ * ancestors'; a decomposed matrix carries its mirroring in them too. Unlike
+ * the determinant's sign, it holds where a zero scale flattens the frame,
+ * counting that scale as positive, the limit of a shrinking one, so the
+ * surface keeps the side its normals face. */
+static bool mirrors(const CM_Model *model, int n)
+{
+    bool mirrored = false;
+    for (int at = n; at >= 0; at = model->nodes[at].parent) {
+        const float *scale = model->nodes[at].rest.scale;
+        for (int i = 0; i < 3; i++) {
+            mirrored ^= scale[i] < 0;
+        }
+    }
+    return mirrored;
+}
+
 /* Every mesh node's triangles in the world frame, one group per material in
  * glTF order with the default material's last. */
 static bool bake_mesh(import *in, render_mesh_asset *mesh)
@@ -703,8 +766,10 @@ static bool bake_mesh(import *in, render_mesh_asset *mesh)
         int first = acount(mesh->indices);
         for (int i = 0; in->materials[slot] && i < model->node_count; i++) {
             int n = model->order[i], index = model->nodes[n].mesh;
-            float det = determinant(frames[n]);
-            if (index < 0 || !isfinite(det) || det == 0) {
+            /* A node whose scale collapses its surfaces hides them; one
+             * that flattens them onto a plane keeps what has area there. */
+            if (index < 0 || !isfinite(determinant(frames[n])) ||
+                collapses(frames[n])) {
                 continue;
             }
             const CM_Mesh *source = &model->meshes[index];
@@ -717,7 +782,7 @@ static bool bake_mesh(import *in, render_mesh_asset *mesh)
                 render_mesh_asset part = { 0 };
                 bool read = primitive_part(in, p, json_primitive(in, index, j), &part);
                 if (read) {
-                    dropped += bake(mesh, &part, frames[n]);
+                    dropped += bake(mesh, &part, frames[n], mirrors(model, n));
                 }
                 render_mesh_asset_free(&part);
                 if (!read) {

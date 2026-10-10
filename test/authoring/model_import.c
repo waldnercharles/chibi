@@ -823,7 +823,9 @@ static bool frames(gltf_fixture *f, const char *name, const char *nodes, const c
  * generated bitangents point down the image, toward +v, as Chibi's do, and
  * authored tangents keep their handedness against glTF's bitangent, which
  * points up it. A mirroring node turns both and the winding with it, and a
- * primitive without normals takes each triangle's own. */
+ * primitive without normals takes each triangle's own. A parent that
+ * flattens a turned square onto the ground keeps it, facing up or down as
+ * its normals did, mirrored or not. */
 TEST_CASE(model_imports_keep_gltf_tangent_frames)
 {
     static const CF_V3 x = { 1, 0, 0 }, z = { 0, 0, 1 };
@@ -835,6 +837,32 @@ TEST_CASE(model_imports_keep_gltf_tangent_frames)
     REQUIRE(near_v3(mesh.min, (CF_V3){ -1, 0, -1 }) && near_v3(mesh.max, (CF_V3){ 1, 0, 1 }));
     REQUIRE(frames(&f, "Hidden", "{\"mesh\":0,\"scale\":[0,1,1]},{\"mesh\":0}", attributes));
     REQUIRE(acount(mesh.vertices) == 4);
+    static const struct
+    {
+        const char *name, *nodes;
+        CF_V3 tangent, normal;
+    } pressed[] = {
+        { "Pressed",
+          "{\"children\":[1],\"scale\":[1,0,1]},"
+          "{\"mesh\":0,\"rotation\":[0,0,0.38268343,0.92387953]}",
+          { 1, 0, 0 },
+          { 0, 1, 0 } },
+        { "Underside",
+          "{\"children\":[1],\"scale\":[1,0,1]},"
+          "{\"mesh\":0,\"rotation\":[0,0,0.92387953,0.38268343]}",
+          { -1, 0, 0 },
+          { 0, -1, 0 } },
+        { "PressedMirror",
+          "{\"children\":[1],\"scale\":[-1,0,1]},"
+          "{\"mesh\":0,\"rotation\":[0,0,0.38268343,0.92387953]}",
+          { -1, 0, 0 },
+          { 0, 1, 0 } },
+    };
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(frames(&f, pressed[i].name, pressed[i].nodes, attributes));
+        REQUIRE(acount(mesh.indices) == 6 && frames_are(pressed[i].tangent, z));
+        REQUIRE(near_v3(mesh.vertices[0].normal, pressed[i].normal));
+    }
     /* Authored tangents along -z and twice unit length tilt green along
      * -x. */
     int tangents = gltf_fixture_floats(

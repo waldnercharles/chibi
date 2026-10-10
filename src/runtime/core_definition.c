@@ -140,8 +140,9 @@ static const native_global_definition GLOBALS[] = {
     { .canonical_name = CORE_DELTA_NAME,
       .source_name = "delta",
       .type = DELTA,
-      .identity = NATIVE_GLOBAL_IDENTITY_CAPABILITY },
-    { .canonical_name = "dt", .type = DELTA },
+      .identity = NATIVE_GLOBAL_IDENTITY_CAPABILITY,
+      .unit = "s" },
+    { .canonical_name = "dt", .type = DELTA, .unit = "s" },
     { .canonical_name = "pi", .type = PI },
 };
 static const native_definition_global_binding GLOBAL_BINDINGS[] = {

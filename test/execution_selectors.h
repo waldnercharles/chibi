@@ -47,6 +47,7 @@ CHIBI_GPU_SELECTOR("--player-installed-space-cadet-vm")
 CHIBI_GPU_SELECTOR("--player-installed-space-cadet-sljit")
 
 CHIBI_GPU_SELECTOR("--studio-source-edit")
+CHIBI_GPU_SELECTOR("--studio-graph-visibility")
 /* Cute's interior border on two shapes in a hidden 64x64 app, through the
  * instanced and tiled draw paths, with readback. */
 CHIBI_GPU_SELECTOR("--interior-border")

@@ -142,4 +142,5 @@ void script_analyzer_function_type(analyzer *a, int function);
 void script_analyzer_host_declarations(analyzer *a, TSNode root);
 bool script_analyzer_resolve_operator(analyzer *, TSNode, TSNode, script_expression *);
 bool script_analyzer_numeric_aggregate(const script_catalog *, script_type, int);
+void script_analyzer_units(analyzer *a);
 #endif

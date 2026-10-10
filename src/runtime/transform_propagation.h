@@ -22,5 +22,7 @@ ecs_entity game_transform_parent_3d(const ecs_world *world, ecs_entity entity);
  * exact at any time like game_transform_world_2d. The entity must have a
  * Transform3D. */
 GameGlobalTransform3D game_transform_world_3d(const ecs_world *world, ecs_entity entity);
+/* The affine matrix whose columns a GlobalTransform3D holds. */
+CF_M4x4 game_transform_matrix_3d(const GameGlobalTransform3D *global);
 
 #endif

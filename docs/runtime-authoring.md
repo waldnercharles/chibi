@@ -303,9 +303,9 @@ Transform3D from a script teleports it. Gravity is 9.81 meters per second
 squared down Y unless one entity's `GAME.GameGravity3D` sets it. Behaviors
 handle `on ContactBegin3D` with `event.Other` and `event.Point`, and
 `on ContactEnd3D` with `event.Other`, as 2D colliders report `on ContactBegin`
-and `on ContactEnd`. A sensor collider reports both without pushing. Hull and triangle-mesh colliders are not available yet, and the 3D
-renderer still places visuals from `GAME.GameTransform`, so it does not draw
-bodies at their simulated pose yet.
+and `on ContactEnd`. A sensor collider reports both without pushing. Hull and
+triangle-mesh colliders are not available yet. The 3D renderer draws a body's
+`GAME.GameGeometry3D` at its Transform3D pose (see `docs/rendering-3d.md`).
 
 `GAME.GameCharacter3D` turns a kinematic body with a solid capsule collider
 into a character that walks and slides. Each step physics moves it by its

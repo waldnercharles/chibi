@@ -24,6 +24,19 @@ layout(set = 1, binding = 0) uniform uniform_block {
     mat4 u_view_projection;
 };
 
+// The largest part of `v`, by size.
+float largest_part(vec3 v)
+{
+    return max(abs(v.x), max(abs(v.y), abs(v.z)));
+}
+
+// `v` at unit length, divided by its largest part first so that a tiny or
+// huge one neither underflows nor overflows on the way.
+vec3 direction(vec3 v)
+{
+    return normalize(v / largest_part(v));
+}
+
 // An imported mesh in the lit pass: scene3d.vert's placement, plus the
 // vertex's texture coordinate, tangent and model part frame for its material.
 void main()
@@ -33,8 +46,16 @@ void main()
     vec3 a = vec3(in_model0.x, in_model1.x, in_model2.x);
     vec3 b = vec3(in_model0.y, in_model1.y, in_model2.y);
     vec3 c = vec3(in_model0.z, in_model1.z, in_model2.z);
-    v_normal = normalize(cross(b, c) * in_normal.x +
-                         cross(c, a) * in_normal.y + cross(a, b) * in_normal.z);
+    // As in scene3d.vert, the axes' directions say whether the model
+    // mirrors, one common scale keeps their cofactors in range, and the
+    // normal is their direction.
+    float facing = dot(direction(a), cross(direction(b), direction(c))) < 0.0 ? -1.0 : 1.0;
+    float scale = max(largest_part(a), max(largest_part(b), largest_part(c)));
+    a /= scale;
+    b /= scale;
+    c /= scale;
+    v_normal = facing * direction(cross(b, c) * in_normal.x + cross(c, a) * in_normal.y +
+                                  cross(a, b) * in_normal.z);
     v_world = world;
     v_material = in_uv_rect;
     v_uv = in_uv;
@@ -43,7 +64,9 @@ void main()
     v_part_frame0 = in_part_frame0;
     v_part_frame1 = in_part_frame1;
     v_part_frame2 = in_part_frame2;
-    // Tangents run along the surface, so they turn and stretch with the model.
-    v_tangent = vec4(a * in_tangent.x + b * in_tangent.y + c * in_tangent.z, in_tangent.w);
+    // Tangents run along the surface, so they turn with the model, and a
+    // mirror turns the bitangent the normal and tangent imply. Taking their
+    // direction keeps one along an axis far shorter than the longest.
+    v_tangent = vec4(direction(a * in_tangent.x + b * in_tangent.y + c * in_tangent.z), in_tangent.w * facing);
     gl_Position = u_view_projection * vec4(world, 1.0);
 }

@@ -85,7 +85,9 @@ game_ui *engine_ui(const engine *engine)
     return engine->modules.ui;
 }
 
-bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity entity)
+/* Whether an entity shows: it isn't hidden and, when its render state culls
+ * it, the fog sees `ground`. The fog leaves an entity with no ground, NULL. */
+static bool visible_at(const engine *engine, ecs_world *world, ecs_entity entity, const CF_V2 *ground)
 {
     const GameRenderState *state = GAME_GameRenderState_get_const(world, entity);
     if (!engine || !state) {
@@ -94,10 +96,21 @@ bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity en
     if (state->hidden) {
         return false;
     }
-    const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
     const game_visibility *visibility = engine_visibility(engine);
-    return !state->visibility_culled || !global || !visibility ||
-           game_visibility_at(visibility, global->position).visible;
+    return !state->visibility_culled || !ground || !visibility ||
+           game_visibility_at(visibility, *ground).visible;
+}
+
+bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity entity)
+{
+    const GameGlobalTransform2D *global = GAME_GameGlobalTransform2D_get_const(world, entity);
+    return visible_at(engine, world, entity, global ? &global->position : NULL);
+}
+
+bool engine_entity_visible_3d(const engine *engine, ecs_world *world, ecs_entity entity, CF_V3 position)
+{
+    CF_V2 ground = { position.x, position.z };
+    return visible_at(engine, world, entity, &ground);
 }
 
 static double elapsed_ms(struct timespec start, struct timespec end)

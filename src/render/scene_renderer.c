@@ -1087,6 +1087,7 @@ static bool collect(
                     world,
                     entity,
                     &position,
+                    NULL,
                     override,
                     surface,
                     renderer->error,

@@ -132,7 +132,12 @@ const game_visibility *engine_visibility(const engine *engine);
 game_audio *engine_audio(const engine *engine);
 game_ui *engine_ui(const engine *engine);
 const game_materials *engine_materials(const engine *engine);
+/* Whether an entity shows: it isn't hidden and, when its render state culls
+ * it, the fog sees its 2D position. */
 bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity entity);
+/* The same for an entity drawn at 3D `position`, which the fog judges by the
+ * ground under it: x and z there are the plane's x and y. */
+bool engine_entity_visible_3d(const engine *engine, ecs_world *world, ecs_entity entity, CF_V3 position);
 const engine_frame_timing *engine_last_timing(const engine *engine);
 /* Detailed per-behavior timers are opt-in; aggregate frame timing stays active. */
 void engine_set_behavior_profiling(engine *engine, bool enabled);

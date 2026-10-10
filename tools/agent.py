@@ -35,11 +35,8 @@ INSTALLED_PLAYERS = {'--player-installed-space-cadet-vm', '--player-installed-sp
 PLAYER_SELECTORS = {
     '--player-installed-space-cadet-vm': 'player-installed-space-cadet-vm',
     '--player-installed-space-cadet-sljit': 'player-installed-space-cadet-sljit',
-    '--player-space-cadet-vm': 'player-space-cadet-vm',
-    '--player-space-cadet-sljit': 'player-space-cadet-sljit',
 }
-STUDIO_SELECTORS = {'--studio-starter-startup': 'studio-starter-startup',
-                    '--studio-source-edit': 'studio-source-edit',
+STUDIO_SELECTORS = {'--studio-source-edit': 'studio-source-edit',
                     '--studio-graph-visibility': 'studio-graph-visibility'}
 STUDIO_ACCEPTANCE = {
     '--studio-source-edit': ('--source-edit', 4, 'Studio source edit accepted: frames=4 edits=1 undo=1 redo=1'),
@@ -105,39 +102,6 @@ def external_project(data):
     version = re.fullmatch(rb'version ([1-9][0-9]*)', line)
     return (version is not None and oldest <= int(version[1]) <= current and
             rest == b'name "New Project"\ncontent "content"\nstart_scene "scenes/Start.kdl"\n')
-
-
-def studio_startup_preflight():
-    source = Path('/Users/cwaldner/Personal/chibi-studio')
-    build = ROOT / 'build-verify/sdk-migration/external-studio-build'
-    evidence_path = ROOT / '.chibi/architecture/external-studio-native-acceptance.json'
-    if evidence_path.stat().st_size > 1024 * 1024:
-        raise ValueError('studio_startup_evidence_oversize')
-    evidence = json.loads(evidence_path.read_text())
-    def checksum(path, limit):
-        if not path.is_file() or not 0 < path.stat().st_size <= limit:
-            raise ValueError('studio_startup_input_missing_or_oversize')
-        return hashlib.sha256(path.read_bytes()).hexdigest()
-    if (evidence.get('build_exit') != 0 or evidence.get('configure_exit') != 0
-            or evidence.get('source') != str(source)
-            or evidence.get('private_engine_source_include') is not False
-            or checksum(build / 'bin/chibi-dev', 64 * 1024 * 1024) != evidence.get('binary_sha256')
-            or checksum(source / 'EXTRACTION.json', 1024 * 1024) != evidence.get('extraction_sha256')
-            or checksum(ROOT / 'build-verify/sdk-migration/desktop-sdk-install/lib/cmake/Chibi/ChibiConfig.cmake',
-                        1024 * 1024) != evidence.get('sdk_config_sha256')):
-        raise ValueError('studio_startup_build_provenance_mismatch')
-    starter = source / 'projects/starter'
-    expected = {'content/scenes/Start.kdl': b'version 1\nname "Start"\n(array)entities\n'}
-    if {p.relative_to(starter).as_posix() for p in starter.rglob('*') if p.is_file()} != {'project.kdl', *expected}:
-        raise ValueError('studio_starter_membership_changed')
-    if not external_project(bounded_read(starter / 'project.kdl', 1024)):
-        raise ValueError('studio_starter_content_changed')
-    for name, value in expected.items():
-        if (starter / name).stat().st_size != len(value) or (starter / name).read_bytes() != value:
-            raise ValueError('studio_starter_content_changed')
-    studio_resource_preflight(build)
-    return starter, dict(starter_files=2, starter_bytes=118, frames=2, window=[1920, 1080],
-                         studio_resource_files=261, studio_resource_bytes=436675)
 
 
 def bounded_read(path, limit):
@@ -223,8 +187,7 @@ def studio_acceptance_output(selector, output):
     return evidence
 
 
-def player_artifact_preflight(artifact=None):
-    artifact = artifact or ROOT / '.chibi/architecture/player-space-cadet/project.chibip'
+def player_artifact_preflight(artifact):
     manifest_path = Path(str(artifact) + '.resources.json')
     if not 0 < artifact.stat().st_size <= 64 * 1024 * 1024:
         raise ValueError('player_artifact_size_outside_reviewed_bound')
@@ -512,12 +475,8 @@ def main():
         installed_artifact = None
         if args.selector in INSTALLED_PLAYERS or args.selector == '--compile-installed-space-cadet':
             command, preflight, installed_artifact = installed_space_cadet(args.selector)
-        elif args.selector in PLAYER_SELECTORS:
-            preflight = player_artifact_preflight()
-        elif args.selector in STUDIO_ACCEPTANCE:
-            acceptance_binary, acceptance_fixture, preflight = studio_acceptance_preflight(args.selector)
         elif args.selector in STUDIO_SELECTORS:
-            starter, preflight = studio_startup_preflight()
+            acceptance_binary, acceptance_fixture, preflight = studio_acceptance_preflight(args.selector)
         elif args.selector in RENDER_SELECTORS:
             # Render consumers link the desktop SDK, so only the main build has them.
             command = [str(ROOT / args.build_dir / 'test/tools/test_tools'), args.selector]
@@ -532,12 +491,7 @@ def main():
         execution_evidence = None
         scratch_context = tempfile.TemporaryDirectory(prefix='chibi-studio-') if args.selector in STUDIO_SELECTORS else nullcontext(None)
         with scratch_context as scratch:
-            if scratch and args.selector not in STUDIO_ACCEPTANCE:
-                # Opening a project upgrades it in place, so start a copy of the starter.
-                starter_copy = Path(scratch) / 'starter'
-                clone_project(starter, starter_copy)
-                command = [str(starter_copy) if part == str(starter) else part for part in command]
-            elif scratch:
+            if scratch:
                 project_copy = Path(scratch) / 'project'
                 clone_project(acceptance_fixture, project_copy)
                 env['CHIBI_STUDIO_PREFS_PATH'] = str(project_copy / '.acceptance-prefs.json')
@@ -561,14 +515,9 @@ def main():
                     execution_evidence = dict(frames=int(completed[0][0]), steps=int(completed[0][1]))
                 if args.selector in STUDIO_SELECTORS:
                     log.seek(0)
-                    output = log.read()
-                    if args.selector in STUDIO_ACCEPTANCE:
-                        execution_evidence = studio_acceptance_output(args.selector, output)
-                    elif any(message in output for message in ('Studio UI:', 'runtime frame failed', 'Could not initialize')):
-                        raise RuntimeError(f'child_exit_UI_initialization_failure: {output[-4000:]}')
+                    execution_evidence = studio_acceptance_output(args.selector, log.read())
         reason = ('admitted_studio_graph_visibility_completed' if args.selector == '--studio-graph-visibility' else
                   'admitted_studio_source_edit_completed' if args.selector == '--studio-source-edit' else
-                  'admitted_two_frame_studio_startup_completed' if args.selector in STUDIO_SELECTORS else
                   'admitted_installed_compile_completed' if args.selector == '--compile-installed-space-cadet' else
                   'admitted_four_frame_player_completed' if preflight else 'selected_assertions_passed')
         return report('passed', reason,
@@ -592,7 +541,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='chibi-capture-') as directory:
         if args.action == 'mp4':
             request.update(render_frames=args.frames, capture_frames=f'{directory}/frames.rgba')
-        output = run([str(ROOT / args.build_dir / 'chibi_ctl'), '--render', '--project-root',
+        output = run([str(ROOT / args.build_dir / 'bin/chibi_ctl'), '--render', '--project-root',
                       str(Path(args.project_root).resolve())],
                      120 if args.action == 'mp4' else 30, env, request, 2048)
         responses = []

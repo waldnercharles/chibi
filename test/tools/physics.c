@@ -1272,7 +1272,9 @@ static void carried_colliders_share_fluid_response()
 
 /* The impulse a blast of burning fuel at the origin gives two bodies 30 and 34
  * to its right, parts of one body when `parts`. */
-static float blast_impulse(bool parts)
+/* The push a blast gives two bodies, or one body of two parts, the first at
+ * first_x and the second at 34. */
+static float blast_impulse(float first_x, bool parts)
 {
     fixture f = create();
     const ecs_component_desc *components[] = { &GAME_COMPONENT_MaterialFluidWorld,
@@ -1316,7 +1318,7 @@ static float blast_impulse(bool parts)
     assert(!game_materials_prepare(f.materials));
     fluid_body bodies[] = {
         { .velocity = { 2, 0 }, .heat = 2 },
-        { .position = { 30, 0 }, .inverse_mass = 1 },
+        { .position = { first_x, 0 }, .inverse_mass = 1 },
         { .position = { 34, 0 }, .inverse_mass = 1, .part_of = parts ? 2 : 0 }
     };
     game_materials_tick(f.materials, 1.0f / 60, bodies, 3, NULL, 0);
@@ -1327,11 +1329,13 @@ static float blast_impulse(bool parts)
     return bodies[1].impulse.x + bodies[2].impulse.x;
 }
 
-/* A blast pushes a body made of parts once, as its first part. */
+/* A blast pushes a body made of parts once, as its nearest part it reaches,
+ * even when its first part is out of reach. */
 static void blasts_push_parts_once()
 {
-    float apart = blast_impulse(false), parts = blast_impulse(true);
+    float apart = blast_impulse(30, false), parts = blast_impulse(30, true);
     assert(parts > 0 && parts < apart * .6f);
+    assert(blast_impulse(200, true) > 0);
 }
 
 /* Gas flows with a carried collider's surface as its body turns, though the

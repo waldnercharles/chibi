@@ -4,6 +4,7 @@
 #include "runtime/particles.h"
 #include "runtime/transform_propagation.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 
 #include <assert.h>
 #include <math.h>
@@ -407,6 +408,9 @@ static void blasts(
     int count;
     const fluid_blast *events = material_fluid_blasts(materials->fluid, &count);
     GameCombustion settings = materials->combustion;
+    /* The push each body takes from one blast: it moves once, as its part
+     * nearest the blast that the blast reaches. */
+    fluid_vec *push = xcalloc(body_count, sizeof *push);
     for (int e = 0; e < count; e++) {
         fluid_blast event = events[e];
         float density = fminf(1, event.ignitions / 8.f);
@@ -432,14 +436,12 @@ static void blasts(
                 material_fluid_blocked(event.position, b->position, bodies, obstacles, obstacle_count, i)) {
                 continue;
             }
-            /* A body's parts each take damage, but it moves once, as its
-             * first part. */
-            float impulse = b->part_of
-                              ? 0
-                              : settings.blast_speed * density *
-                                    (1 - distance / radius) / b->inverse_mass;
-            b->impulse.x += dx / distance * impulse;
-            b->impulse.y += dy / distance * impulse;
+            float impulse = settings.blast_speed * density *
+                            (1 - distance / radius) / b->inverse_mass;
+            fluid_vec *moved = &push[material_fluid_response(bodies, i)];
+            if (impulse > hypotf(moved->x, moved->y)) {
+                *moved = (fluid_vec){ dx / distance * impulse, dy / distance * impulse };
+            }
             ecs_entity entity = ecs_entity_from_u64(b->owner);
             if (!game_materials_mask(materials, entity)) {
                 material_destruction_emit_event(
@@ -452,6 +454,11 @@ static void blasts(
                         .cause = MATERIAL_DAMAGE_BLAST }
                 );
             }
+        }
+        for (int i = 0; i < body_count; i++) {
+            bodies[i].impulse.x += push[i].x;
+            bodies[i].impulse.y += push[i].y;
+            push[i] = (fluid_vec){ 0 };
         }
         /* Trace spokes to the first surviving cell. A blast chips the facing
          * wall but cannot damage a second wall/body through it in this tick. */
@@ -492,6 +499,7 @@ static void blasts(
             }
         }
     }
+    free(push);
 }
 
 static float clamp01(float value)

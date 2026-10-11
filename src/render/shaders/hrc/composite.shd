@@ -332,21 +332,22 @@ vec4 shader(vec4 color, ShaderParams params)
     float energy = 0.0, shadow_sum = 0.0;
     vec2 axes[4] = vec2[4](vec2(1, 0), vec2(0, -1), vec2(-1, 0), vec2(0, 1));
     vec2 relief = relief_at(source_uv);
-    // Depth thickness adds its light to HRC's on solids that absorb. On one
-    // that absorbs nothing, by the same test as Depth's occluders, it shades
-    // HRC's light instead, as much as the solid's edge light. On every solid
-    // the heights around it occlude ambient light.
+    // Depth thickness brings solids that absorb, where HRC's light stops, the
+    // light HRC brings open space from the lights they see, at HRC's scale,
+    // which intensity leaves alone. On one that absorbs nothing, by the same
+    // test as Depth's occluders, it shades HRC's light instead. Both follow
+    // the solid's edge light. On every solid the heights around it occlude
+    // ambient light.
     float depth_shading = 1.0, occlusion = 1.0;
     if (solid && surface_params.x > 0.0 && surface_mode == 2) {
         vec3 specular;
         vec2 shading;
-        float gain = intensity * surface_depth_gain;
-        surface_light = depth_surface_light(suv, n, relief.x, normal.w, specular, shading) * gain;
+        surface_light = depth_surface_light(suv, n, relief.x, normal.w, specular, shading) * surface_depth_gain;
         bool absorbs = source.a > 0.01;
         depth_shading = absorbs ? 1.0 : mix(1.0, shading.x, clamp(normal.z, 0.0, 1.0));
         occlusion = shading.y;
         surface_shaded = (absorbs ? surface_light * albedo * normal.z : vec3(0)) +
-                         specular * gain * surface_params.w * geometry.g * normal.z;
+                         specular * intensity * surface_depth_gain * surface_params.w * geometry.g * normal.z;
         dominant = texture(surface_q3, suv).xy;
         energy = 1.0;
         shadow_sum = occlusion;

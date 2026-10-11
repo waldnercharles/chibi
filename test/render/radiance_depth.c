@@ -345,7 +345,9 @@ TEST_CASE(depth_light_switches_back_to_blur)
 }
 
 /* A slab shadows the receiver only where it crosses the light's path, and a
- * strip without emission lights nothing. */
+ * strip without emission lights nothing. Beside a raised slab, crossing the
+ * path or not, the receiver's filter takes no light from past it, nearer the
+ * strip, so the receiver keeps a little less. */
 TEST_CASE(slabs_shadow_only_the_light_they_cross)
 {
     GameHRC2D lighting = depth_lighting();
@@ -354,7 +356,7 @@ TEST_CASE(slabs_shadow_only_the_light_they_cross)
     REQUIRE(slab_light(BELOW, lighting, &below) && slab_light(ABOVE, lighting, &above));
     REQUIRE(slab_light(UNLIT, lighting, &unlit));
     REQUIRE(open > .001f && crossing < open * .35f);
-    REQUIRE(below > open * .8f && above > open * .8f);
+    REQUIRE(below > open * .8f && above > open * .7f);
     REQUIRE(fabsf(unlit) < .00001f);
     return true;
 }
@@ -369,7 +371,9 @@ TEST_CASE(receivers_tilted_toward_the_light_take_more)
 }
 
 /* Height blocks light whether or not it absorbs, so a prop that lets HRC's
- * light pass still shadows by its height; a light never shadows another. */
+ * light pass still shadows by its height; a light never shadows another,
+ * though beside it, as beside any raised slab, the receiver keeps a little
+ * less. */
 TEST_CASE(slabs_shadow_by_height_unless_they_glow)
 {
     GameHRC2D lighting = depth_lighting();
@@ -377,7 +381,7 @@ TEST_CASE(slabs_shadow_by_height_unless_they_glow)
     REQUIRE(slab_light(OPEN, lighting, &open) && slab_light(CLEAR, lighting, &clear));
     REQUIRE(slab_light(GLOWING, lighting, &glowing));
     REQUIRE(open > .001f && clear < open * .35f);
-    REQUIRE(glowing > open * .8f);
+    REQUIRE(glowing > open * .7f);
     return true;
 }
 
@@ -736,6 +740,55 @@ TEST_CASE(walls_occlude_ambient_light_by_their_height)
             REQUIRE(fabsf(shadow_floor[i] - .5f * occlusion[i]) < .005f);
             REQUIRE(fabsf(flat[i] - .5f) < .005f);
         }
+    }
+    return true;
+}
+
+/* A flat matte floor `floor` units tall with edge light, closed (it absorbs
+ * light) or open, lit by the red strip standing `height` units tall with
+ * nothing between them. */
+static void floor_scene(bool closed, float floor, float height)
+{
+    open_scene(OPEN, 0, 1);
+    for (int p = 0; p < PIXELS; p++) {
+        bool strip = data[SOURCE][p][0] > 0;
+        data[ALBEDO][p][3] = strip ? height : floor;
+        data[SOURCE][p][3] = strip || !closed ? 0 : 20;
+    }
+}
+
+/* The red at the center of floor_scene() from a reset. */
+static bool floor_light(GameHRC2D lighting, bool closed, float floor, float height, float *red)
+{
+    float color[3];
+    floor_scene(closed, floor, height);
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), color));
+    *red = color[0];
+    return true;
+}
+
+/* Depth thickness brings a closed floor, where HRC's light stops, the light
+ * HRC brings the same floor open, at any falloff, and intensity leaves it
+ * alone. A light near the floor's plane lights it less, as by Lambert's law,
+ * and one below it not at all. */
+TEST_CASE(closed_receivers_take_the_light_hrc_brings_open_ones)
+{
+    GameHRC2D lighting = fill_lighting();
+    lighting.surface_depth_radius = 32;
+    for (int falloff = 0; falloff < 3; falloff++) {
+        lighting.falloff = (float)falloff;
+        float open, closed, low, below, bright;
+        REQUIRE(floor_light(lighting, false, 0, 24, &open));
+        REQUIRE(floor_light(lighting, true, 0, 24, &closed));
+        REQUIRE(floor_light(lighting, true, 0, 4, &low));
+        REQUIRE(floor_light(lighting, true, 30, 24, &below));
+        lighting.intensity = 2;
+        REQUIRE(floor_light(lighting, true, 0, 24, &bright));
+        lighting.intensity = .5f;
+        REQUIRE(open > .1f && fabsf(closed - open) < open * .15f);
+        REQUIRE(low > closed * .3f && low < closed * .65f);
+        REQUIRE(fabsf(below) < .00001f);
+        REQUIRE(fabsf(bright - closed) < closed * .01f);
     }
     return true;
 }
@@ -1372,6 +1425,7 @@ void test_render_radiance_depth()
     RUN_TEST_CASE(open_receivers_shade_hrc_light_by_facing_and_height);
     RUN_TEST_CASE(depth_gain_keeps_shadows_and_unlit_scenes_dark);
     RUN_TEST_CASE(walls_occlude_ambient_light_by_their_height);
+    RUN_TEST_CASE(closed_receivers_take_the_light_hrc_brings_open_ones);
     RUN_TEST_CASE(glossy_receivers_take_highlights_by_the_depth_gain);
     RUN_TEST_CASE(matte_patches_take_no_gloss_from_around_them);
     RUN_TEST_CASE(every_depth_quality_lights_and_shadows);

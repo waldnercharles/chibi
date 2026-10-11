@@ -584,7 +584,9 @@ from the same pinned lighting but with color at half resolution: slabs that
 shadow only the light they cross, by height whether or not they absorb, unless
 they glow, small, moving, edge and mixed-color sources, falloff to the depth
 radius, perspective views, the depth gain on receivers that absorb, as much at
-a Material's full absorption as opaque, receivers that absorb nothing taking
+a Material's full absorption as opaque, receivers that absorb taking the light
+HRC brings open ones at any falloff and intensity, less from lights near their
+plane and none from below it, receivers that absorb nothing taking
 HRC's light by facing and height, smoothly, walls hiding ambient light by
 their height in both visibility modes, gloss,
 every depth quality, depth history of light and of that shading, segments and

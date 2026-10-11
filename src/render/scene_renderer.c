@@ -528,6 +528,7 @@ static bool append_entity(
         .inv_rot = { cosf(angle), sinf(angle), -sinf(angle), cosf(angle) },
         .aa = aa,
         .layer = appearance->layer,
+        .relief = appearance->relief,
         .reserved = { 0, 0, material ? material->edge_light : 0 },
         .border_thickness = fmaxf(0, appearance->border_width)
     };
@@ -707,7 +708,7 @@ static bool append_sprite_frame(
     draw->points[12] = (float)atlas->image;
     draw->points[13] = (float)atlas->normal_map;
     draw->points[14] = (float)atlas->height_map;
-    draw->points[15] = sprite->relief;
+    draw->relief = sprite->relief;
     /* Maps shade a sprite through the surface light a Material's edge_light
      * scales, so without a Material it takes that light in full. */
     if (!material && (atlas->normal_map || atlas->height_map)) {

@@ -18,7 +18,7 @@ struct Entity {
     uint shape_type;
     float radius;
     float thickness;
-    float chubbiness;
+    float relief;       // world units above the plane
     float aa;
     uint point_count;
     uint metaball_group;

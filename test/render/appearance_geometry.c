@@ -1,9 +1,11 @@
 #include "render/appearance_geometry.h"
 
+#include "render/geometry_2d.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <float.h>
 #include <math.h>
+#include <string.h>
 
 static bool expect_bounds(Appearance appearance, float left, float bottom, float right, float top)
 {
@@ -147,6 +149,26 @@ TEST_CASE(rotated_geometry)
     return true;
 }
 
+TEST_CASE(projected_relief_rejects_nonfinite_values)
+{
+    Appearance authored = { .width = 8, .height = 8, .relief = 3 };
+    VisualTransform visual = { .scale = 2 };
+    Appearance projected = { 0 };
+    float angle = 0;
+    REQUIRE(render_geometry_2d_project(NULL, &authored, &visual, 0, &projected, &angle));
+    REQUIRE(projected.relief == 6);
+    unsigned char saved[sizeof projected];
+    memcpy(saved, &projected, sizeof saved);
+    const float invalid[] = { NAN, INFINITY, -INFINITY, FLT_MAX };
+    for (int i = 0; i < 4; i++) {
+        authored.relief = invalid[i];
+        angle = 7;
+        REQUIRE(!render_geometry_2d_project(NULL, &authored, &visual, 0, &projected, &angle));
+        REQUIRE(memcmp(saved, &projected, sizeof saved) == 0 && angle == 7);
+    }
+    return true;
+}
+
 void test_appearance_geometry()
 {
     RUN_TEST_CASE(stroked_player);
@@ -154,4 +176,5 @@ void test_appearance_geometry()
     RUN_TEST_CASE(legacy_shapes);
     RUN_TEST_CASE(invalid_geometry);
     RUN_TEST_CASE(rotated_geometry);
+    RUN_TEST_CASE(projected_relief_rejects_nonfinite_values);
 }

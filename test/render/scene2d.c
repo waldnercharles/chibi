@@ -193,6 +193,16 @@ static ecs_entity add_sprite(const char *normal_map, bool flip_x)
     return sprite;
 }
 
+/* Lighting without unlit color or history. */
+static HRC2D plain_lighting()
+{
+    HRC2D lighting = hrc2d_defaults();
+    lighting.ambient = 0;
+    lighting.adaptive = false;
+    lighting.radiance_hysteresis = lighting.bounce_hysteresis = 1;
+    return lighting;
+}
+
 /* A white light at x -20, lighting without unlit color or history. */
 static void add_light()
 {
@@ -203,10 +213,7 @@ static void add_light()
                       .emission_multiplier = 1 };
     assert(ecs_world_record_add(test_world, light, COMPONENT_Appearance.id, &disc, 0) == ECS_OK);
     assert(ecs_world_record_add(test_world, light, COMPONENT_Material.id, &glow, 0) == ECS_OK);
-    HRC2D lighting = hrc2d_defaults();
-    lighting.ambient = 0;
-    lighting.adaptive = false;
-    lighting.radiance_hysteresis = lighting.bounce_hysteresis = 1;
+    HRC2D lighting = plain_lighting();
     add(COMPONENT_HRC2D.id, &lighting);
 }
 
@@ -277,6 +284,73 @@ TEST_CASE(sprites_reject_bad_maps_and_relief)
     return true;
 }
 
+/* A white floor over the view's right half that absorbs light, lit by Depth
+ * thickness from as far as the view reaches. */
+static void add_floor()
+{
+    ecs_entity floor = add(COMPONENT_Transform.id, &(Transform){ SIDE / 4, 0 });
+    Appearance look = { .width = SIDE / 2,
+                        .height = SIDE,
+                        .color = 0xffffffffu,
+                        .shape = SHAPE_BOX };
+    Material closed = { .scene = 0xffffffffu,
+                        .albedo = 0xffffffffu,
+                        .absorption = 1,
+                        .edge_light = 1 };
+    assert(ecs_world_record_add(test_world, floor, COMPONENT_Appearance.id, &look, 0) == ECS_OK);
+    assert(ecs_world_record_add(test_world, floor, COMPONENT_Material.id, &closed, 0) == ECS_OK);
+    HRC2D lighting = plain_lighting();
+    lighting.surface_mode = HRC_SURFACE_DEPTH;
+    lighting.surface_depth_radius = SIDE;
+    lighting.feedback = false;
+    lighting.fog = 0;
+    add(COMPONENT_HRC2D.id, &lighting);
+}
+
+/* The green of the floor's middle, 36 units from a white lamp at x -20
+ * drawn as the disc `look` at `scale`. */
+static bool floor_green(Appearance look, float scale, int *green)
+{
+    ecs_entity lamp = add(COMPONENT_Transform.id, &(Transform){ -20, 0 });
+    look.shape = SHAPE_CIRCLE;
+    Material glow = { .scene = 0xffffffffu,
+                      .emission_color = 0xffffffffu,
+                      .emission_intensity = 2,
+                      .emission_multiplier = 1 };
+    VisualTransform visual = { .scale = scale };
+    REQUIRE(ecs_world_record_add(test_world, lamp, COMPONENT_Appearance.id, &look, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add(test_world, lamp, COMPONENT_Material.id, &glow, 0) == ECS_OK);
+    REQUIRE(
+        ecs_world_record_add(test_world, lamp, COMPONENT_VisualTransform.id, &visual, 0) == ECS_OK
+    );
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
+    REQUIRE(draw());
+    *green = pixels[SIDE / 2 * SIDE + SIDE / 2 + 16].colors.g;
+    REQUIRE(ecs_world_destroy_entity(test_world, lamp) == ECS_OK);
+    return true;
+}
+
+/* A light drawn as a shape stands its relief above the plane, scaled with
+ * its visual, so it lights the closed floor beside it from above. On the
+ * plane it lights none of the floor past its rim, and a relief that isn't
+ * finite draws nothing. */
+TEST_CASE(appearance_relief_raises_lights_over_closed_floors)
+{
+    add_floor();
+    int on_plane, raised, scaled, lower, unfinite;
+    CF_Pixel *lamp = &pixels[SIDE / 2 * SIDE + SIDE / 2 - 20];
+    REQUIRE(floor_green((Appearance){ .width = 8, .height = 8 }, 1, &on_plane));
+    REQUIRE(floor_green((Appearance){ .width = 8, .height = 8, .relief = 24 }, 1, &raised));
+    REQUIRE(lamp->colors.g > 200);
+    REQUIRE(floor_green((Appearance){ .width = 4, .height = 4, .relief = 12 }, 2, &scaled));
+    REQUIRE(floor_green((Appearance){ .width = 8, .height = 8, .relief = 12 }, 1, &lower));
+    REQUIRE(floor_green((Appearance){ .width = 8, .height = 8, .relief = NAN }, 1, &unfinite));
+    REQUIRE(lamp->colors.g < 3 && unfinite < 3);
+    REQUIRE(on_plane < 3 && raised > 60);
+    REQUIRE(abs(scaled - raised) <= 3 && lower < raised - 15);
+    return true;
+}
+
 void test_render_scene2d()
 {
 #ifdef __linux__
@@ -296,6 +370,7 @@ void test_render_scene2d()
     RUN_TEST_CASE(default_lighting_keeps_materials_visible);
     RUN_TEST_CASE(normal_maps_turn_sprites_toward_the_light);
     RUN_TEST_CASE(sprites_reject_bad_maps_and_relief);
+    RUN_TEST_CASE(appearance_relief_raises_lights_over_closed_floors);
     pu_clear_setup();
     cf_destroy_app();
 }

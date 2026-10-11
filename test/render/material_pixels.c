@@ -481,7 +481,7 @@ TEST_CASE(sprite_maps_tilt_and_raise_their_texels)
     sprite.points[12] = (float)test_sprite_variant("white.png", false);
     sprite.points[13] = (float)test_sprite_variant("normals.png", true);
     sprite.points[14] = (float)test_sprite_variant("heights.png", true);
-    sprite.points[15] = 3;
+    sprite.relief = 3;
     REQUIRE(render_material_raster_resize(raster, SMALL, SMALL));
     REQUIRE(raster_only(&sprite, 1, test_centered(SMALL)));
     REQUIRE(shaded(4, 4, .6f, 0, 0) && shaded(12, 4, 0, .6f, 1));
@@ -505,6 +505,45 @@ TEST_CASE(sprite_maps_tilt_and_raise_their_texels)
     even.points[13] = even.points[14] = 0;
     REQUIRE(raster_only(&even, 1, test_centered(SMALL)));
     REQUIRE(shaded(4, 4, 0, 0, 3) && shaded(12, 12, 0, 0, 3));
+    /* Graph Height adds after the height map scales the sprite's relief. */
+    REQUIRE(test_register_relief("SpriteRaised", (test_relief){ .height = 2 }));
+    sprite.reserved[0] = (float)render_shader_find("SpriteRaised");
+    REQUIRE(raster_only(&sprite, 1, test_centered(SMALL)));
+    REQUIRE(read_raster(render_material_raster_textures(raster).albedo, SMALL));
+    REQUIRE(fabsf(texel(SMALL, 4, 4, 3) - 2) < .02f);
+    REQUIRE(fabsf(texel(SMALL, 12, 4, 3) - 3) < .02f);
+    REQUIRE(fabsf(texel(SMALL, 4, 12, 3) - 4) < .02f);
+    REQUIRE(fabsf(texel(SMALL, 12, 12, 3) - 5) < .02f);
+    return true;
+}
+
+/* A shape stands its relief above the plane where it covers, and a
+ * material's Height raises it further. */
+TEST_CASE(shapes_stand_at_their_relief)
+{
+    REQUIRE(test_register_relief("Raised", (test_relief){ .height = 2 }));
+    REQUIRE(render_material_raster_resize(raster, SMALL, SMALL));
+    render_material_entity disc = { .inv_rot = { 1, 0, 0, 1 },
+                                    .extent = { 5, 5 },
+                                    .shape_type = RENDER_SHAPE_CIRCLE,
+                                    .radius = 4,
+                                    .aa = 1,
+                                    .relief = 3,
+                                    .scene = { 1, 1, 1, 1 },
+                                    .albedo = { 1, 1, 1, 1 },
+                                    .absorption = { 1, 1, 1, 1 } };
+    REQUIRE(raster_only(&disc, 1, test_centered(SMALL)));
+    REQUIRE(read_raster(render_material_raster_textures(raster).albedo, SMALL));
+    REQUIRE(fabsf(texel(SMALL, 8, 8, 3) - 3) < .02f && fabsf(texel(SMALL, 1, 1, 3)) < .02f);
+    render_material_entity box = plain_box(0, (float[3]){ 1, 1, 1 });
+    box.relief = 5;
+    REQUIRE(raster_only(&box, 1, test_centered(SMALL)));
+    REQUIRE(read_raster(render_material_raster_textures(raster).albedo, SMALL));
+    REQUIRE(fabsf(texel(SMALL, 8, 8, 3) - 5) < .02f);
+    box.reserved[0] = (float)render_shader_find("Raised");
+    REQUIRE(raster_only(&box, 1, test_centered(SMALL)));
+    REQUIRE(read_raster(render_material_raster_textures(raster).albedo, SMALL));
+    REQUIRE(fabsf(texel(SMALL, 8, 8, 3) - 7) < .02f);
     return true;
 }
 
@@ -940,6 +979,7 @@ void test_render_material_pixels()
     RUN_TEST_CASE(graph_materials_draw_their_parameters_in_their_shapes);
     RUN_TEST_CASE(mixed_batches_upload_only_what_they_draw);
     RUN_TEST_CASE(sprite_maps_tilt_and_raise_their_texels);
+    RUN_TEST_CASE(shapes_stand_at_their_relief);
     pu_setup(fluid_setup, fluid_teardown);
     RUN_TEST_CASE(fluids_land_where_game_y_points_down);
     RUN_TEST_CASE(gas_particles_join_until_they_shrink);

@@ -436,6 +436,11 @@ typedef NODE_COMPONENT_TYPE_DENSE(Appearance)
     float stroke_width;
     float antialias NODE_RANGE(0, 1);
     int layer;
+    /* World units the shape stands above the plane where its scene color
+     * covers, as a Sprite's relief; a material graph's Height adds to it. In
+     * Depth thickness lighting, a light standing higher passes over lower
+     * shapes and reaches raised surfaces. */
+    float relief NODE_UNIT("u");
 }
 Appearance;
 

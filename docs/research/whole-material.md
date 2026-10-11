@@ -140,7 +140,7 @@ asserts zero oracle calls and no SLJIT availability. The native no-JIT smoke
 reports UNAVAILABLE and rejects execution without fallback. Native Arena firing
 and restart also pass under ASAN/UBSAN with zero oracle calls.
 
-SpawnTelegraph's GameSpawnRequest getter remains a major Tick exclusion because
+SpawnTelegraph's SpawnRequest getter remains a major Tick exclusion because
 its component contains a string. Compiling these reads requires explicit owned
 snapshots across waits and later writes. Other exclusions include managed
 values, random inputs, remaining visual/physics operations and array membership.

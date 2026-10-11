@@ -6,17 +6,17 @@
 
 static int payload(void *context, const char *name, render_ui_event_field *fields, int capacity)
 {
-    game_preview_world *world = context;
-    game_preview_runtime *live = world->runtime;
-    game_source_registry *sources = live->sources;
+    preview_world *world = context;
+    preview_runtime *live = world->runtime;
+    source_registry *sources = live->sources;
     execution_module_event_info event;
-    if (game_source_event(sources, name, &event)) {
+    if (source_event(sources, name, &event)) {
         if (event.field_count > capacity) {
             return -1;
         }
         for (int i = 0; i < event.field_count; i++) {
             execution_module_event_field_info field;
-            if (!game_source_event_field(sources, name, i, &field)) {
+            if (!source_event_field(sources, name, i, &field)) {
                 return -1;
             }
             fields[i] = (render_ui_event_field){ .name = field.name,
@@ -24,7 +24,7 @@ static int payload(void *context, const char *name, render_ui_event_field *field
         }
         return event.field_count;
     }
-    game_preview_definition *definition = game_preview_find_definition(world, name);
+    preview_definition *definition = preview_find_definition(world, name);
     const behavior_asset *asset = definition ? definition->applied : NULL;
     if (!asset || asset->domain != BEHAVIOR_DOMAIN_EVENT_DEFINITION) {
         return 0;
@@ -44,38 +44,32 @@ static int payload(void *context, const char *name, render_ui_event_field *field
 }
 static int dispatch(void *context, uint64_t owner, const char *event, execution_arguments arguments)
 {
-    game_preview_world *world = context;
-    game_preview_runtime *live = world->runtime;
-    game_source_registry *sources = live->sources;
+    preview_world *world = context;
+    preview_runtime *live = world->runtime;
+    source_registry *sources = live->sources;
     double now = live->now;
     float delta = (float)live->delta;
-    return owner ? game_source_dispatch(
-                       sources,
-                       ecs_entity_from_u64(owner),
-                       event,
-                       arguments.values,
-                       arguments.count,
-                       now,
-                       delta
-                   )
-                 : game_source_dispatch_all(
-                       sources,
-                       event,
-                       arguments.values,
-                       arguments.count,
-                       now,
-                       delta
-                   );
+    return owner
+             ? source_dispatch(
+                   sources,
+                   ecs_entity_from_u64(owner),
+                   event,
+                   arguments.values,
+                   arguments.count,
+                   now,
+                   delta
+               )
+             : source_dispatch_all(sources, event, arguments.values, arguments.count, now, delta);
 }
 static bool initializing(void *context)
 {
-    return game_entities_initializing(((game_preview_world *)context)->runtime->entities);
+    return entities_initializing(((preview_world *)context)->runtime->entities);
 }
 static const char *failure(void *context)
 {
-    return game_source_error(((game_preview_world *)context)->runtime->sources);
+    return source_error(((preview_world *)context)->runtime->sources);
 }
-render_ui_host authoring_ui_events(game_preview_world *world)
+render_ui_host authoring_ui_events(preview_world *world)
 {
     return world ? (render_ui_host){ .context = world,
                                      .payload = payload,

@@ -23,7 +23,7 @@ static authoring_source *prepared;
 static execution_program *program;
 static execution_instance *instance;
 static ecs_world *world;
-static game_save *save;
+static save *test_save;
 static char save_directory[128];
 static engine_input *input_service;
 static void cleanup()
@@ -35,10 +35,10 @@ static void cleanup()
     prepared = NULL;
     authoring_language_catalog_free(catalog);
     catalog = NULL;
-    if (save) {
-        game_save_free(save);
+    if (test_save) {
+        save_free(test_save);
     }
-    save = NULL;
+    test_save = NULL;
     if (save_directory[0]) {
         DIR *directory = opendir(save_directory);
         assert(directory);
@@ -107,8 +107,8 @@ static bool prepare(const char *text, behavior_backend backend)
         return false;
     }
     service_binding *services = NULL;
-    if (save) {
-        apush(services, ((service_binding){ "game.save", save }));
+    if (test_save) {
+        apush(services, ((service_binding){ "game.save", test_save }));
     }
     program = execution_program_new(prepared->module, world, services);
     afree(services);
@@ -157,7 +157,7 @@ TEST_CASE(source_controller_connected_reads_live_slots)
         REQUIRE(dispatch(tick, 1024) >= 0);
         REQUIRE(!execution_instance_state(instance, connected)->b);
         input_service = engine_input_new(world, NULL);
-        REQUIRE(execution_program_bind_service(program, GAME_INPUT_SERVICE, input_service) == 0);
+        REQUIRE(execution_program_bind_service(program, INPUT_SERVICE, input_service) == 0);
         bool firing;
         REQUIRE(
             engine_input_controller(input_service, 3, (input_controller_state){ .connected = true }, &firing) ==
@@ -197,7 +197,7 @@ TEST_CASE(source_native_saved_numbers_preserve_values_and_defaults)
         DBL_MAX, DBL_MIN, DBL_TRUE_MIN, 9007199254740991.0
     };
     for (int backend = 0; backend < 2; backend++) {
-        save = game_save_new();
+        test_save = save_new();
         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
         uint64_t begin = execution_module_event(prepared->module, "Begin"),
                  tick = execution_module_event(prepared->module, "Tick"),
@@ -212,7 +212,7 @@ TEST_CASE(source_native_saved_numbers_preserve_values_and_defaults)
         REQUIRE(!execution_instance_state(instance, missing)->b);
         REQUIRE(execution_instance_state(instance, fallback)->d == 19.5);
         /* Invalid existing text uses the same fallback as an absent key. */
-        REQUIRE(game_save_set(save, "absent", "1.25oops"));
+        REQUIRE(save_set(test_save, "absent", "1.25oops"));
         REQUIRE(dispatch(begin, 1024) >= 0);
         REQUIRE(!execution_instance_state(instance, missing)->b);
         REQUIRE(execution_instance_state(instance, fallback)->d == 19.5);
@@ -229,10 +229,10 @@ TEST_CASE(source_native_saved_numbers_preserve_values_and_defaults)
             REQUIRE(execution_instance_state(instance, found)->b);
             double actual = execution_instance_state(instance, number)->d;
             REQUIRE(!memcmp(&actual, &samples[i], sizeof actual));
-            REQUIRE(game_save_get_number(save, "score", &actual));
+            REQUIRE(save_get_number(test_save, "score", &actual));
             REQUIRE(!memcmp(&actual, &samples[i], sizeof actual));
         }
-        uint64_t revision = game_save_revision(save);
+        uint64_t revision = save_revision(test_save);
         const double invalid[] = { NAN, INFINITY, -INFINITY };
         for (int i = 0; i < 3; i++) {
             REQUIRE(
@@ -243,8 +243,8 @@ TEST_CASE(source_native_saved_numbers_preserve_values_and_defaults)
                 ) == 0
             );
             REQUIRE(dispatch(tick, 2048) < 0);
-            REQUIRE(strstr(game_save_error(save), "finite"));
-            REQUIRE(game_save_revision(save) == revision);
+            REQUIRE(strstr(save_error(test_save), "finite"));
+            REQUIRE(save_revision(test_save) == revision);
             REQUIRE(execution_instance_pending(instance) == 0);
             execution_program_clear_error(program);
         }
@@ -258,17 +258,17 @@ TEST_CASE(saved_numbers_reject_malformed_text_without_mutation)
     const char *invalid[] = { "",       "nan",   "NaN",  "Infinity", "-inf",
                               "1e9999", "1.2x",  " 1",   "1 ",       "+1",
                               "01",     "0x1p2", "null", "true",     "[]" };
-    save = game_save_new();
+    test_save = save_new();
     for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
-        REQUIRE(game_save_set(save, "number", invalid[i]));
+        REQUIRE(save_set(test_save, "number", invalid[i]));
         double number = 17.25;
-        uint64_t revision = game_save_revision(save);
-        REQUIRE(!game_save_get_number(save, "number", &number));
-        REQUIRE(number == 17.25 && game_save_revision(save) == revision);
+        uint64_t revision = save_revision(test_save);
+        REQUIRE(!save_get_number(test_save, "number", &number));
+        REQUIRE(number == 17.25 && save_revision(test_save) == revision);
     }
-    REQUIRE(game_save_set(save, "number", "-1.25e2"));
+    REQUIRE(save_set(test_save, "number", "-1.25e2"));
     double number;
-    REQUIRE(game_save_get_number(save, "number", &number) && number == -125);
+    REQUIRE(save_get_number(test_save, "number", &number) && number == -125);
     return true;
 }
 
@@ -276,37 +276,37 @@ TEST_CASE(project_saves_reopen_isolate_names_and_respect_override)
 {
     snprintf(save_directory, sizeof save_directory, "/tmp/chibi-save-XXXXXX");
     REQUIRE(mkdtemp(save_directory));
-    save = game_save_new();
+    test_save = save_new();
     const char *project = "Example/../project: Î±";
-    REQUIRE(game_save_open_project(save, project, save_directory, NULL));
-    REQUIRE(game_save_set_number(save, "best", 0.1));
-    REQUIRE(game_save_commit(save));
-    REQUIRE(game_save_set_number(save, "best", 100));
-    game_save_free(save);
-    save = game_save_new();
-    REQUIRE(game_save_open_project(save, project, save_directory, NULL));
+    REQUIRE(save_open_project(test_save, project, save_directory, NULL));
+    REQUIRE(save_set_number(test_save, "best", 0.1));
+    REQUIRE(save_commit(test_save));
+    REQUIRE(save_set_number(test_save, "best", 100));
+    save_free(test_save);
+    test_save = save_new();
+    REQUIRE(save_open_project(test_save, project, save_directory, NULL));
     double number;
-    REQUIRE(game_save_get_number(save, "best", &number) && number == 0.1);
-    REQUIRE(game_save_open_project(save, "Example project", save_directory, NULL));
-    REQUIRE(!game_save_get(save, "best"));
-    REQUIRE(game_save_set_number(save, "best", 2));
-    REQUIRE(game_save_commit(save));
+    REQUIRE(save_get_number(test_save, "best", &number) && number == 0.1);
+    REQUIRE(save_open_project(test_save, "Example project", save_directory, NULL));
+    REQUIRE(!save_get(test_save, "best"));
+    REQUIRE(save_set_number(test_save, "best", 2));
+    REQUIRE(save_commit(test_save));
     char override[256];
     snprintf(override, sizeof override, "%s/selected.json", save_directory);
-    REQUIRE(game_save_open_project(save, project, save_directory, override));
-    REQUIRE(!game_save_get(save, "best"));
-    REQUIRE(game_save_set_number(save, "best", 3));
-    REQUIRE(game_save_commit(save));
-    game_save_free(save);
-    save = game_save_new();
-    REQUIRE(game_save_open_project(save, NULL, NULL, override));
-    REQUIRE(game_save_get_number(save, "best", &number) && number == 3);
-    REQUIRE(game_save_open_project(save, project, save_directory, NULL));
-    REQUIRE(game_save_get_number(save, "best", &number) && number == 0.1);
-    REQUIRE(game_save_open_project(save, "Example project", save_directory, NULL));
-    REQUIRE(game_save_get_number(save, "best", &number) && number == 2);
-    REQUIRE(!game_save_open_project(save, "Example project", save_directory, ""));
-    REQUIRE(!game_save_open_project(save, "Example project", NULL, NULL));
+    REQUIRE(save_open_project(test_save, project, save_directory, override));
+    REQUIRE(!save_get(test_save, "best"));
+    REQUIRE(save_set_number(test_save, "best", 3));
+    REQUIRE(save_commit(test_save));
+    save_free(test_save);
+    test_save = save_new();
+    REQUIRE(save_open_project(test_save, NULL, NULL, override));
+    REQUIRE(save_get_number(test_save, "best", &number) && number == 3);
+    REQUIRE(save_open_project(test_save, project, save_directory, NULL));
+    REQUIRE(save_get_number(test_save, "best", &number) && number == 0.1);
+    REQUIRE(save_open_project(test_save, "Example project", save_directory, NULL));
+    REQUIRE(save_get_number(test_save, "best", &number) && number == 2);
+    REQUIRE(!save_open_project(test_save, "Example project", save_directory, ""));
+    REQUIRE(!save_open_project(test_save, "Example project", NULL, NULL));
     return true;
 }
 

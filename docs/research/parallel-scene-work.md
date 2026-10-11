@@ -114,7 +114,7 @@ time. Parallelizing those blindly would change ordering or create races.
 
 ## Inspection and validation
 
-`game_behavior_last_update` reports actual parallel entries, submitted tasks
+`behavior_last_update` reports actual parallel entries, submitted tasks
 and the maximum workers observed in a span. `render_arena_last_work` and the
 Scene renderer wrapper report geometry entities, tasks and observed workers.
 MCP attachment inspection exposes `tick_parallel_safe`. This is a compiler

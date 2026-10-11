@@ -8,7 +8,7 @@
 
 #include <assert.h>
 
-static const char *write_hit(int result, const char *problem, game_physics3d_hit hit, pin_value *out)
+static const char *write_hit(int result, const char *problem, physics3d_hit hit, pin_value *out)
 {
     if (result < 0) {
         return problem;
@@ -35,8 +35,8 @@ static const char *raycast_call(void *physics, const pin_value *in, pin_value *o
     if (!in[0].ptr || !in[1].ptr) {
         return "Raycast 3D requires Start and End vectors";
     }
-    game_physics3d_hit hit;
-    int result = game_physics3d_raycast(
+    physics3d_hit hit;
+    int result = physics3d_raycast(
         physics,
         *(const CF_V3 *)in[0].ptr,
         *(const CF_V3 *)in[1].ptr,
@@ -56,8 +56,8 @@ static const char *cast_call(void *physics, const pin_value *in, pin_value *out)
     if (!in[1].ptr) {
         return "Shape Cast 3D requires a Translation vector";
     }
-    game_physics3d_hit hit;
-    int result = game_physics3d_shape_cast(
+    physics3d_hit hit;
+    int result = physics3d_shape_cast(
         physics,
         ecs_entity_from_u64(in[0].u64),
         *(const CF_V3 *)in[1].ptr,
@@ -85,7 +85,7 @@ static const char *contacts_host(
         return missing_contacts;
     }
     ecs_entity *handles = NULL;
-    int result = game_physics3d_contact_entities(
+    int result = physics3d_contact_entities(
         physics,
         ecs_entity_from_u64(in[0].u64),
         in[1].u,
@@ -115,23 +115,19 @@ static const char *contacts_host(
     return NULL;
 }
 
-const node_host_call GAME_PHYSICS3D_RAYCAST_CALL = {
-    .service = "game.physics3d",
-    .invoke = raycast_call,
-    .missing_service = missing_raycast,
-    .reusable = true
-};
-const node_host_call GAME_PHYSICS3D_CAST_CALL = { .service = "game.physics3d",
-                                                  .invoke = cast_call,
-                                                  .missing_service = missing_cast,
-                                                  .reusable = true };
-const node_host_call GAME_PHYSICS3D_CONTACTS_CALL = {
-    .service = "game.physics3d",
-    .context = contacts_host,
-    .missing_service = missing_contacts,
-    .reusable = true
-};
-const node_access GAME_PHYSICS3D_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+const node_host_call PHYSICS3D_RAYCAST_CALL = { .service = "game.physics3d",
+                                                .invoke = raycast_call,
+                                                .missing_service = missing_raycast,
+                                                .reusable = true };
+const node_host_call PHYSICS3D_CAST_CALL = { .service = "game.physics3d",
+                                             .invoke = cast_call,
+                                             .missing_service = missing_cast,
+                                             .reusable = true };
+const node_host_call PHYSICS3D_CONTACTS_CALL = { .service = "game.physics3d",
+                                                 .context = contacts_host,
+                                                 .missing_service = missing_contacts,
+                                                 .reusable = true };
+const node_access PHYSICS3D_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
 
 static const char
     missing_impulse[] = "Apply Impulse 3D requires a 3D physics world";
@@ -143,7 +139,7 @@ static const char *impulse_call(void *service, const pin_value *in, pin_value *)
     if (!service) {
         return missing_impulse;
     }
-    if (!in[1].ptr || game_physics3d_apply_impulse(
+    if (!in[1].ptr || physics3d_apply_impulse(
                           service,
                           ecs_entity_from_u64(in[0].u64),
                           *(const CF_V3 *)in[1].ptr
@@ -159,7 +155,7 @@ static const char *force_call(void *service, const pin_value *in, pin_value *)
     if (!service) {
         return missing_force;
     }
-    if (!in[1].ptr || game_physics3d_apply_force(
+    if (!in[1].ptr || physics3d_apply_force(
                           service,
                           ecs_entity_from_u64(in[0].u64),
                           *(const CF_V3 *)in[1].ptr
@@ -169,12 +165,10 @@ static const char *force_call(void *service, const pin_value *in, pin_value *)
     return NULL;
 }
 
-const node_host_call GAME_PHYSICS3D_IMPULSE_CALL = {
-    .service = "game.physics3d",
-    .invoke = impulse_call,
-    .missing_service = missing_impulse
-};
-const node_host_call GAME_PHYSICS3D_FORCE_CALL = { .service = "game.physics3d",
-                                                   .invoke = force_call,
-                                                   .missing_service = missing_force };
-const node_access GAME_PHYSICS3D_PUSH_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+const node_host_call PHYSICS3D_IMPULSE_CALL = { .service = "game.physics3d",
+                                                .invoke = impulse_call,
+                                                .missing_service = missing_impulse };
+const node_host_call PHYSICS3D_FORCE_CALL = { .service = "game.physics3d",
+                                              .invoke = force_call,
+                                              .missing_service = missing_force };
+const node_access PHYSICS3D_PUSH_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };

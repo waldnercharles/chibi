@@ -49,10 +49,10 @@ int engine_input_hold(engine_input *input, const input_keyframe *key);
 
 /* Action Held and Action Pressed read every source of an action, as combined at
  * the start of the fixed step. Without the service they are false. */
-#define GAME_INPUT_SERVICE "game.input"
-extern const node_host_call GAME_INPUT_HELD_CALL;
-extern const node_host_call GAME_INPUT_PRESSED_CALL;
-extern const node_host_call GAME_INPUT_CONTROLLER_CONNECTED_CALL;
-extern const node_access GAME_INPUT_READ_ACCESS;
+#define INPUT_SERVICE "game.input"
+extern const node_host_call INPUT_HELD_CALL;
+extern const node_host_call INPUT_PRESSED_CALL;
+extern const node_host_call INPUT_CONTROLLER_CONNECTED_CALL;
+extern const node_access INPUT_READ_ACCESS;
 
 #endif

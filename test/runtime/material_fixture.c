@@ -48,7 +48,7 @@ void material_test_component(
 )
 {
     assert(ecs_world_record_add(world, entity, desc->id, value, 0) == ECS_OK);
-    if (desc == &GAME_COMPONENT_GameDestructible) {
+    if (desc == &COMPONENT_Destructible) {
         MaterialBreakProfile profile = { .chip_speed = 35,
                                          .fragment_speed = 30,
                                          .blast_speed = 70,
@@ -61,13 +61,7 @@ void material_test_component(
                                          .dust_size_min = .25f,
                                          .dust_size_max = .5f };
         assert(
-            ecs_world_record_add(
-                world,
-                entity,
-                GAME_COMPONENT_MaterialBreakProfile.id,
-                &profile,
-                0
-            ) == ECS_OK
+            ecs_world_record_add(world, entity, COMPONENT_MaterialBreakProfile.id, &profile, 0) == ECS_OK
         );
     }
 }

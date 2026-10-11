@@ -229,7 +229,7 @@ static bool energy(
 static bool set_parts(const char *text)
 {
     char error[256];
-    GAME_GameMeshParts_get(world, box)->parts = text;
+    MeshParts_get(world, box)->parts = text;
     return !text || authoring_parts_prepare(text, error, sizeof error);
 }
 
@@ -239,22 +239,22 @@ static void add(ecs_entity entity, const ecs_component_desc *component, const vo
 }
 
 /* A mesh actor of `geometry`, opaque and emissive in `color`. */
-static ecs_entity mesh_box(GameGeometry3D geometry, uint32_t color, float emission)
+static ecs_entity mesh_box(Geometry3D geometry, uint32_t color, float emission)
 {
     ecs_entity entity = ecs_world_create_entity(world);
-    GameVisualTransform visual = { .scale = 1 };
-    GameMeshSurface2D enabled = { true };
-    GameMaterial material = { .scene = color,
-                              .albedo = color,
-                              .emission_color = color,
-                              .emission_intensity = emission,
-                              .emission_multiplier = 1,
-                              .absorption = 1,
-                              .edge_light = 1 };
-    add(entity, &GAME_COMPONENT_GameGeometry3D, &geometry);
-    add(entity, &GAME_COMPONENT_GameVisualTransform, &visual);
-    add(entity, &GAME_COMPONENT_GameMeshSurface2D, &enabled);
-    add(entity, &GAME_COMPONENT_GameMaterial, &material);
+    VisualTransform visual = { .scale = 1 };
+    MeshSurface2D enabled = { true };
+    Material material = { .scene = color,
+                          .albedo = color,
+                          .emission_color = color,
+                          .emission_intensity = emission,
+                          .emission_multiplier = 1,
+                          .absorption = 1,
+                          .edge_light = 1 };
+    add(entity, &COMPONENT_Geometry3D, &geometry);
+    add(entity, &COMPONENT_VisualTransform, &visual);
+    add(entity, &COMPONENT_MeshSurface2D, &enabled);
+    add(entity, &COMPONENT_Material, &material);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return entity;
 }
@@ -276,25 +276,23 @@ static void setup()
     assert(render_shader_upsert(ramp_asset, &error));
     world = ecs_world_new();
     const ecs_component_desc *components[] = {
-        &GAME_COMPONENT_GameGeometry3D,  &GAME_COMPONENT_GameVisualTransform,
-        &GAME_COMPONENT_GameOrientation, &GAME_COMPONENT_GameMeshParts,
-        &GAME_COMPONENT_GameMaterial,    &GAME_COMPONENT_GameMeshSurface2D,
-        &GAME_COMPONENT_GameMeshAsset,   &GAME_COMPONENT_GameShader
+        &COMPONENT_Geometry3D,  &COMPONENT_VisualTransform,
+        &COMPONENT_Orientation, &COMPONENT_MeshParts,
+        &COMPONENT_Material,    &COMPONENT_MeshSurface2D,
+        &COMPONENT_MeshAsset,   &COMPONENT_Shader
     };
     for (int i = 0; i < 8; i++) {
         assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
     }
     box = mesh_box(
-        (
-            GameGeometry3D
-        ){ .primitive = GAME_PRIMITIVE_BOX, .width = 20, .depth = 16, .height = 4 },
+        (Geometry3D){ .primitive = PRIMITIVE_BOX, .width = 20, .depth = 16, .height = 4 },
         0xff0000ff,
         2
     );
-    GameOrientation heading = { 0 };
-    GameMeshParts parts = { 0 };
-    add(box, &GAME_COMPONENT_GameOrientation, &heading);
-    add(box, &GAME_COMPONENT_GameMeshParts, &parts);
+    Orientation heading = { 0 };
+    MeshParts parts = { 0 };
+    add(box, &COMPONENT_Orientation, &heading);
+    add(box, &COMPONENT_MeshParts, &parts);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     raster = render_material_raster_new();
     assert(render_material_raster_resize(raster, WIDTH, HEIGHT));
@@ -359,7 +357,7 @@ TEST_CASE(boxes_draw_their_visible_faces)
     ));
     for (int negative = 0; negative < 2; negative++) {
         float elevation = negative ? -20 : 0;
-        GAME_GameGeometry3D_get(world, box)->elevation = elevation;
+        Geometry3D_get(world, box)->elevation = elevation;
         for (int phase = 0; phase < 2; phase++) {
             actor.position.x = phase ? .125f : -.125f;
             REQUIRE(draw(actor, home));
@@ -374,11 +372,11 @@ TEST_CASE(boxes_draw_their_visible_faces)
 TEST_CASE(meshes_win_by_depth_not_order)
 {
     ecs_entity other = mesh_box(
-        (GameGeometry3D){ .primitive = GAME_PRIMITIVE_BOX,
-                          .width = 16,
-                          .depth = 12,
-                          .height = 2,
-                          .elevation = -6 },
+        (Geometry3D){ .primitive = PRIMITIVE_BOX,
+                      .width = 16,
+                      .depth = 12,
+                      .height = 2,
+                      .elevation = -6 },
         0x0000ffff,
         4
     );
@@ -386,9 +384,9 @@ TEST_CASE(meshes_win_by_depth_not_order)
     render_material_entity layers[] = { mesh, mesh };
     for (int negative = 0; negative < 2; negative++) {
         float base = negative ? -20 : 0;
-        GAME_GameGeometry3D_get(world, box)->elevation = base;
+        Geometry3D_get(world, box)->elevation = base;
         for (int near = 0; near < 2; near++) {
-            GAME_GameGeometry3D_get(world, other)->elevation = base + (near ? 6 : -6);
+            Geometry3D_get(world, other)->elevation = base + (near ? 6 : -6);
             for (int reverse = 0; reverse < 2; reverse++) {
                 layers[0].points[0] = reverse ? 1 : 0;
                 layers[1].points[0] = reverse ? 0 : 1;
@@ -400,11 +398,11 @@ TEST_CASE(meshes_win_by_depth_not_order)
             }
         }
     }
-    GAME_GameGeometry3D_get(world, box)->elevation = 0;
+    Geometry3D_get(world, box)->elevation = 0;
     /* Intersecting planes need a different winning actor on either side. */
     const float angle = .35f;
-    GAME_GameVisualTransform_get(world, box)->pitch = angle;
-    GAME_GameGeometry3D_get(world, other)->elevation = 1;
+    VisualTransform_get(world, box)->pitch = angle;
+    Geometry3D_get(world, other)->elevation = 1;
     for (int reverse = 0; reverse < 2; reverse++) {
         layers[0].points[0] = reverse ? 1 : 0;
         layers[1].points[0] = reverse ? 0 : 1;
@@ -414,9 +412,9 @@ TEST_CASE(meshes_win_by_depth_not_order)
             inspect(raster, WIDTH, HEIGHT, 54, 40, 1, 0, -sinf(angle), 0, 2 / cosf(angle) + 6.5f * tanf(angle))
         );
     }
-    GAME_GameVisualTransform_get(world, box)->pitch = 0;
+    VisualTransform_get(world, box)->pitch = 0;
     /* A higher authored layer remains an intentional depth override. */
-    GAME_GameGeometry3D_get(world, other)->elevation = -6;
+    Geometry3D_get(world, other)->elevation = -6;
     layers[0].points[0] = 0;
     layers[1].points[0] = 1;
     layers[1].layer = 1;
@@ -435,8 +433,8 @@ TEST_CASE(meshes_win_by_depth_not_order)
     REQUIRE(inspect(raster, WIDTH, HEIGHT, 48, 40, 0, 1, 0, 0, -5));
     /* Half a pixel sees the nearer red silhouette and half the rear blue mesh.
      * Both actor orders fill its optical coverage and keep a real plane. */
-    GAME_GameGeometry3D_get(world, other)->width = 40;
-    GAME_GameGeometry3D_get(world, other)->depth = 30;
+    Geometry3D_get(world, other)->width = 40;
+    Geometry3D_get(world, other)->depth = 30;
     actors[0].position.x = .5f;
     layers[1].layer = 0;
     for (int reverse = 0; reverse < 2; reverse++) {
@@ -477,7 +475,7 @@ TEST_CASE(tilted_meshes_draw_their_planes)
 {
     render_mesh_material_actor actor = { box, { 0, 0 } };
     const float angle = .5235987756f;
-    GameVisualTransform *transform = GAME_GameVisualTransform_get(world, box);
+    VisualTransform *transform = VisualTransform_get(world, box);
     transform->pitch = angle;
     REQUIRE(draw(actor, home));
     REQUIRE(
@@ -491,7 +489,7 @@ TEST_CASE(tilted_meshes_draw_their_planes)
     );
     transform->roll = 0;
     transform->scale = 2;
-    GAME_GameOrientation_get(world, box)->radians = 1.5707963268f;
+    Orientation_get(world, box)->radians = 1.5707963268f;
     REQUIRE(draw(actor, home));
     REQUIRE(inspect(raster, WIDTH, HEIGHT, 48, 40, 1, 0, 0, 0, 4));
     return true;
@@ -501,7 +499,7 @@ TEST_CASE(tilted_meshes_draw_their_planes)
  * of which cover pixels partly. */
 TEST_CASE(subpixel_coverage_stays_even)
 {
-    GAME_GameOrientation_get(world, box)->radians = .3f;
+    Orientation_get(world, box)->radians = .3f;
     float minimum = INFINITY, maximum = 0;
     bool any_partial = false;
     for (int phase = 0; phase < 8; phase++) {
@@ -599,31 +597,28 @@ TEST_CASE(imported_meshes_sample_their_uvs)
     REQUIRE(!graph_connect_data(asset->graph, texture, 0, out, 0));
     shader_error shader_error;
     REQUIRE(render_shader_upsert(asset, &shader_error));
-    GameMeshAsset mesh_asset = { .source = "content/a.mesh" };
-    GameShader binding = { .material = asset->name };
-    add(box, &GAME_COMPONENT_GameMeshAsset, &mesh_asset);
-    add(box, &GAME_COMPONENT_GameShader, &binding);
+    MeshAsset mesh_asset = { .source = "content/a.mesh" };
+    Shader binding = { .material = asset->name };
+    add(box, &COMPONENT_MeshAsset, &mesh_asset);
+    add(box, &COMPONENT_Shader, &binding);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ .width = 20,
-                                                             .height = 8,
-                                                             .depth = 16 };
+    *Geometry3D_get(world, box) = (Geometry3D){ .width = 20, .height = 8, .depth = 16 };
     render_mesh_material_actor actor = { box, { 0, 0 } };
     render_mesh_surface surface = { 0 };
     char error[256];
-    GAME_GameVisualTransform_get(world, box)->roll = 1.5707963268f;
+    VisualTransform_get(world, box)->roll = 1.5707963268f;
     REQUIRE(render_mesh_surface_build(world, box, &actor.position, &surface, error, sizeof error));
     REQUIRE(fabsf(surface.min.x + 10) < .001f && fabsf(surface.max.x - 10) < .001f);
     REQUIRE(fabsf(surface.min.y + 8) < .001f && fabsf(surface.max.y - 8) < .001f);
     REQUIRE(fabsf(surface.min.z + 2) < .001f && fabsf(surface.max.z - 2) < .001f);
     render_mesh_surface_free(&surface);
-    GAME_GameVisualTransform_get(world, box)->roll = 0;
+    VisualTransform_get(world, box)->roll = 0;
     const int x[] = { 43, 53, 43, 53 }, y[] = { 36, 36, 44, 44 };
     const float colors[4][3] = { { 1, 1, 0 }, { 0, 0, 1 }, { 0, 1, 0 }, { 1, 0, 0 } };
     for (int round = 0; round < 3; round++) {
         bool alternate = round == 1;
-        GAME_GameMeshAsset_get(world, box)->source = alternate
-                                                       ? "content/b.mesh"
-                                                       : "content/a.mesh";
+        MeshAsset_get(world, box)->source = alternate ? "content/b.mesh"
+                                                      : "content/a.mesh";
         REQUIRE(draw(actor, home));
         float *scene = NULL, *albedo = NULL;
         REQUIRE(read_target(render_material_raster_textures(raster).scene, WIDTH, HEIGHT, &scene));
@@ -685,16 +680,13 @@ TEST_CASE(perspective_meshes_keep_their_size_and_depth)
     REQUIRE(
         !render_mesh_project_bounds(view, (CF_V3){ 8, 33, 5 }, (CF_V3){ 12, 34, 9 }, &lo, &hi)
     );
-    GameGeometry3D card = { .primitive = GAME_PRIMITIVE_BOX,
-                            .width = 8,
-                            .depth = 8,
-                            .height = .002f };
+    Geometry3D card = { .primitive = PRIMITIVE_BOX, .width = 8, .depth = 8, .height = .002f };
     ecs_entity front = mesh_box(card, 0xff0000ff, 0);
     render_mesh_material_actor actor = { front, { 10, 7 } };
     const float elevations[] = { 0, 16, -32, 33 };
     const float areas[] = { 64, 256, 16, 0 };
     for (int i = 0; i < 4; i++) {
-        GAME_GameGeometry3D_get(world, front)->elevation = elevations[i] - .001f;
+        Geometry3D_get(world, front)->elevation = elevations[i] - .001f;
         float area, emission;
         bool partial;
         REQUIRE(draw(actor, view));
@@ -707,7 +699,7 @@ TEST_CASE(perspective_meshes_keep_their_size_and_depth)
      * supplies the visible pixel. */
     card.elevation = -32.001f;
     ecs_entity rear = mesh_box(card, 0x0000ffff, 0);
-    GAME_GameGeometry3D_get(world, front)->elevation = 15.999f;
+    Geometry3D_get(world, front)->elevation = 15.999f;
     render_mesh_material_actor actors[] = { actor, { rear, { 10, 7 } } };
     render_material_entity layers[] = { mesh, mesh };
     for (int reverse = 0; reverse < 2; reverse++) {
@@ -718,8 +710,8 @@ TEST_CASE(perspective_meshes_keep_their_size_and_depth)
     }
     /* Perspective exposes the left side of an offset box, whose world normal
      * has zero Y. Orthographic back-face rejection would hide it. */
-    GAME_GameGeometry3D_get(world, front)->height = 8;
-    GAME_GameGeometry3D_get(world, front)->elevation = 0;
+    Geometry3D_get(world, front)->height = 8;
+    Geometry3D_get(world, front)->elevation = 0;
     actor.position.x = 26;
     REQUIRE(draw(actor, view));
     float *normals = NULL, *colors = NULL;
@@ -734,7 +726,7 @@ TEST_CASE(perspective_meshes_keep_their_size_and_depth)
     /* A narrow volume straddles the near plane. Its visible side face still
      * draws, while material work stays below a full-canvas fallback. */
     actor.position.x = 10.375f;
-    GameGeometry3D *near = GAME_GameGeometry3D_get(world, front);
+    Geometry3D *near = Geometry3D_get(world, front);
     near->width = near->depth = near->height = .25f;
     near->elevation = 31;
     REQUIRE(draw(actor, view));

@@ -11,16 +11,16 @@ static void load_error(const char *path, const char *stage, const char *message)
     fprintf(stderr, "Could not load graph asset %s (%s): %s\n", path, stage, message);
 }
 
-static int load_sources(game_preview_world *world, game_preview_world *second, const char *root)
+static int load_sources(preview_world *world, preview_world *second, const char *root)
 {
-    game_preview_world *worlds[] = { world, second };
-    game_preview_source_staging *stages[2] = { 0 };
+    preview_world *worlds[] = { world, second };
+    preview_source_staging *stages[2] = { 0 };
     char error[256];
     for (int i = 0; i < 2; i++) {
         if (!worlds[i]) {
             continue;
         }
-        if (game_preview_sources_prepare(worlds[i], root, behavior_default_backend(), error, sizeof error)) {
+        if (preview_sources_prepare(worlds[i], root, behavior_default_backend(), error, sizeof error)) {
             load_error(root, "source preparation", error);
             goto fail;
         }
@@ -29,34 +29,34 @@ static int load_sources(game_preview_world *world, game_preview_world *second, c
         if (!worlds[i]) {
             continue;
         }
-        stages[i] = game_preview_sources_stage(worlds[i], NULL, error, sizeof error);
+        stages[i] = preview_sources_stage(worlds[i], NULL, error, sizeof error);
         if (!stages[i]) {
             load_error(root, "source publication", error);
             goto fail;
         }
     }
-    int loaded = authoring_sources_count(game_preview_sources_working(world));
+    int loaded = authoring_sources_count(preview_sources_working(world));
     for (int i = 0; i < 2; i++) {
         if (stages[i]) {
-            game_preview_sources_commit(stages[i]);
+            preview_sources_commit(stages[i]);
         }
     }
     return loaded;
 fail:
     for (int i = 0; i < 2; i++) {
         if (stages[i]) {
-            game_preview_sources_discard(stages[i]);
+            preview_sources_discard(stages[i]);
         }
     }
     return -1;
 }
 
-int app_behavior_fixtures_load(game_preview_world *world, game_prototype_preview *preview, const char *root)
+int app_behavior_fixtures_load(preview_world *world, prototype_preview *preview, const char *root)
 {
     /* Each world takes each definition once. Sources load first because
      * graphs such as fields call source libraries. */
-    assert(!preview || game_prototype_preview_live(preview) != world);
-    int sources = load_sources(world, preview ? game_prototype_preview_live(preview) : NULL, root);
+    assert(!preview || prototype_preview_live(preview) != world);
+    int sources = load_sources(world, preview ? prototype_preview_live(preview) : NULL, root);
     if (sources < 0) {
         return -1;
     }

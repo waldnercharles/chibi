@@ -25,21 +25,21 @@ typedef struct
     frame frame;
     const char *label;
 } record;
-static game_scene *scene, *decoded;
-static game_scene_instance *instance;
+static scene *document, *decoded;
+static scene_instance *instance;
 static ecs_world *world;
 static unsigned char *bytes, *changed;
 static size_t length;
 static ecs_component_desc component;
 static void cleanup()
 {
-    game_scene_instance_free(instance);
+    scene_instance_free(instance);
     instance = NULL;
     ecs_world_free(world);
     world = NULL;
-    game_scene_free(scene);
-    game_scene_free(decoded);
-    scene = decoded = NULL;
+    scene_free(document);
+    scene_free(decoded);
+    document = decoded = NULL;
     free(bytes);
     free(changed);
     bytes = changed = NULL;
@@ -58,9 +58,9 @@ static bool prepare()
                                       .element_size = sizeof(record) };
     char label[] = "owned scene label";
     record value = { .frame = { .enabled = true, .position = { 2, 3 } }, .label = label };
-    game_scene_component row = { &component, &value };
+    scene_component row = { &component, &value };
     const char *behaviors[] = { "Move", "Observe" };
-    game_scene_object objects[] = {
+    scene_object objects[] = {
         { .name = "First",
           .components = &row,
           .component_count = 1,
@@ -71,45 +71,42 @@ static bool prepare()
         { .name = "First", .components = &row, .component_count = 1 },
     };
     const int parents[] = { -1, 0, 1 };
-    game_scene_spec spec = { .name = "PreparedScene",
-                             .ui = "interface",
-                             .perspective = true,
-                             .physics = game_physics_defaults(),
-                             .objects = objects,
-                             .object_count = 3,
-                             .parents = parents };
+    scene_spec spec = { .name = "PreparedScene",
+                        .ui = "interface",
+                        .perspective = true,
+                        .physics = physics_defaults(),
+                        .objects = objects,
+                        .object_count = 3,
+                        .parents = parents };
     char error[256];
-    scene = game_scene_prepare(&spec, error, sizeof error);
+    document = scene_prepare(&spec, error, sizeof error);
     memset(label, 0, sizeof label);
     memset(&value, 0, sizeof value);
-    return scene &&
-           game_scene_prepared_write(scene, &bytes, &length, error, sizeof error);
+    return document &&
+           scene_prepared_write(document, &bytes, &length, error, sizeof error);
 }
 TEST_CASE(prepared_scene_survives_input_retirement_and_instantiation)
 {
     REQUIRE(prepare());
-    game_scene_free(scene);
-    scene = NULL;
+    scene_free(document);
+    document = NULL;
     const ecs_component_desc *components[] = { &component };
     ecs_component_catalog catalog = { components, 1 };
     char error[256];
     size_t budget = 64u * 1024u * 1024u;
-    decoded = game_scene_prepared_read_budget(bytes, length, catalog, &budget, error, sizeof error);
+    decoded = scene_prepared_read_budget(bytes, length, catalog, &budget, error, sizeof error);
     REQUIRE(decoded != NULL);
-    REQUIRE(budget == 64u * 1024u * 1024u - game_scene_storage_bytes(decoded));
+    REQUIRE(budget == 64u * 1024u * 1024u - scene_storage_bytes(decoded));
     free(bytes);
     bytes = NULL;
-    REQUIRE(!strcmp(game_scene_name(decoded), "PreparedScene"));
-    REQUIRE(!strcmp(game_scene_ui(decoded), "interface") && game_scene_perspective(decoded));
-    REQUIRE(game_physics_settings_equal(game_scene_physics(decoded), game_physics_defaults()));
-    REQUIRE(game_scene_object_count(decoded) == 3);
-    REQUIRE(
-        game_scene_object_parent(decoded, 0) == -1 &&
-        game_scene_object_parent(decoded, 2) == 1
-    );
-    REQUIRE(game_scene_object_behavior_count(decoded, 0) == 2);
-    REQUIRE(!strcmp(game_scene_object_behavior(decoded, 0, 1), "Observe"));
-    game_scene_component row = game_scene_object_component_at(decoded, 1, 0);
+    REQUIRE(!strcmp(scene_name(decoded), "PreparedScene"));
+    REQUIRE(!strcmp(scene_ui(decoded), "interface") && scene_perspective(decoded));
+    REQUIRE(physics_settings_equal(scene_physics(decoded), physics_defaults()));
+    REQUIRE(scene_object_count(decoded) == 3);
+    REQUIRE(scene_object_parent(decoded, 0) == -1 && scene_object_parent(decoded, 2) == 1);
+    REQUIRE(scene_object_behavior_count(decoded, 0) == 2);
+    REQUIRE(!strcmp(scene_object_behavior(decoded, 0, 1), "Observe"));
+    scene_component row = scene_object_component_at(decoded, 1, 0);
     const record *value = row.data;
     REQUIRE(
         value->frame.enabled && value->frame.position.x == 2 &&
@@ -117,22 +114,16 @@ TEST_CASE(prepared_scene_survives_input_retirement_and_instantiation)
     );
     REQUIRE(!strcmp(value->label, "owned scene label"));
     world = ecs_world_new();
-    REQUIRE(game_scene_register_components(decoded, world, error, sizeof error) == ECS_OK);
-    instance = game_scene_instantiate_components(decoded, world, error, sizeof error);
+    REQUIRE(scene_register_components(decoded, world, error, sizeof error) == ECS_OK);
+    instance = scene_instantiate_components(decoded, world, error, sizeof error);
     REQUIRE(instance != NULL && ecs_world_live_count(world) == 3);
-    ecs_entity middle = game_scene_instance_entity(instance, 1);
-    REQUIRE(!ecs_parent(world, game_scene_instance_entity(instance, 0)).slot);
-    REQUIRE(
-        ecs_parent(world, middle).slot ==
-        game_scene_instance_entity(instance, 0).slot
-    );
-    REQUIRE(
-        ecs_parent(world, game_scene_instance_entity(instance, 2)).slot ==
-        middle.slot
-    );
-    game_scene_free(decoded);
+    ecs_entity middle = scene_instance_entity(instance, 1);
+    REQUIRE(!ecs_parent(world, scene_instance_entity(instance, 0)).slot);
+    REQUIRE(ecs_parent(world, middle).slot == scene_instance_entity(instance, 0).slot);
+    REQUIRE(ecs_parent(world, scene_instance_entity(instance, 2)).slot == middle.slot);
+    scene_free(decoded);
     decoded = NULL;
-    ecs_entity entity = game_scene_instance_entity(instance, 0);
+    ecs_entity entity = scene_instance_entity(instance, 0);
     value = ecs_component_data(world, entity, component.id);
     REQUIRE(value && !strcmp(value->label, "owned scene label"));
     REQUIRE(value->frame.position.y == 3);
@@ -152,7 +143,7 @@ TEST_CASE(prepared_scene_roundtrips_repeated_component_rows)
     REQUIRE(type && type->size == sizeof(record));
     ecs_component_desc descriptions[COMPONENTS];
     const ecs_component_desc *catalog[COMPONENTS];
-    game_scene_component rows[COMPONENTS];
+    scene_component rows[COMPONENTS];
     char component_names[COMPONENTS][32];
     record value = { .frame = { .enabled = true, .position = { 7, 9 } },
                      .label = "repeated component" };
@@ -164,27 +155,27 @@ TEST_CASE(prepared_scene_roundtrips_repeated_component_rows)
                                                 .type = type,
                                                 .element_size = sizeof value };
         catalog[i] = &descriptions[i];
-        rows[i] = (game_scene_component){ &descriptions[i], &value };
+        rows[i] = (scene_component){ &descriptions[i], &value };
     }
-    game_scene_object objects[OBJECTS];
+    scene_object objects[OBJECTS];
     char names[OBJECTS][32];
     for (int i = 0; i < OBJECTS; i++) {
         snprintf(names[i], sizeof names[i], "Object%d", i);
-        objects[i] = (game_scene_object){ .name = names[i],
-                                          .components = rows,
-                                          .component_count = COMPONENTS };
+        objects[i] = (scene_object){ .name = names[i],
+                                     .components = rows,
+                                     .component_count = COMPONENTS };
     }
-    game_scene_spec spec = { .name = "RepeatedScene",
-                             .physics = game_physics_defaults(),
-                             .objects = objects,
-                             .object_count = OBJECTS };
+    scene_spec spec = { .name = "RepeatedScene",
+                        .physics = physics_defaults(),
+                        .objects = objects,
+                        .object_count = OBJECTS };
     char error[256];
-    scene = game_scene_prepare(&spec, error, sizeof error);
-    REQUIRE(scene);
-    REQUIRE(game_scene_prepared_write(scene, &bytes, &length, error, sizeof error));
+    document = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(document);
+    REQUIRE(scene_prepared_write(document, &bytes, &length, error, sizeof error));
     REQUIRE(length < 1024 * 1024);
     size_t budget = STORAGE_BYTES;
-    decoded = game_scene_prepared_read_budget(
+    decoded = scene_prepared_read_budget(
         bytes,
         length,
         (ecs_component_catalog){ catalog, COMPONENTS },
@@ -192,13 +183,13 @@ TEST_CASE(prepared_scene_roundtrips_repeated_component_rows)
         error,
         sizeof error
     );
-    REQUIRE(decoded && game_scene_object_count(decoded) == OBJECTS);
-    REQUIRE(budget == STORAGE_BYTES - game_scene_storage_bytes(decoded));
+    REQUIRE(decoded && scene_object_count(decoded) == OBJECTS);
+    REQUIRE(budget == STORAGE_BYTES - scene_storage_bytes(decoded));
     for (int i = 0; i < OBJECTS; i++) {
-        REQUIRE(!strcmp(game_scene_object_name(decoded, i), names[i]));
-        REQUIRE(game_scene_object_component_count(decoded, i) == COMPONENTS);
+        REQUIRE(!strcmp(scene_object_name(decoded, i), names[i]));
+        REQUIRE(scene_object_component_count(decoded, i) == COMPONENTS);
         for (int j = 0; j < COMPONENTS; j++) {
-            game_scene_component row = game_scene_object_component_at(decoded, i, j);
+            scene_component row = scene_object_component_at(decoded, i, j);
             const record *restored = row.data;
             REQUIRE(row.desc->id == descriptions[j].id);
             REQUIRE(
@@ -208,10 +199,10 @@ TEST_CASE(prepared_scene_roundtrips_repeated_component_rows)
             REQUIRE(!strcmp(restored->label, value.label));
         }
     }
-    game_scene_free(decoded);
+    scene_free(decoded);
     decoded = NULL;
     budget = 1;
-    REQUIRE(!game_scene_prepared_read_budget(
+    REQUIRE(!scene_prepared_read_budget(
         bytes,
         length,
         (ecs_component_catalog){ catalog, COMPONENTS },
@@ -233,15 +224,15 @@ TEST_CASE(prepared_scene_rejects_component_identity_conflicts)
                                  .element_size = sizeof(record) };
     ecs_component_desc second;
     record value = { 0 };
-    game_scene_component rows[] = { { &first, &value }, { &second, &value } };
-    game_scene_object objects[] = {
+    scene_component rows[] = { { &first, &value }, { &second, &value } };
+    scene_object objects[] = {
         { .name = "First", .components = &rows[0], .component_count = 1 },
         { .name = "Second", .components = &rows[1], .component_count = 1 }
     };
-    game_scene_spec spec = { .name = "ConflictingScene",
-                             .physics = game_physics_defaults(),
-                             .objects = objects,
-                             .object_count = 2 };
+    scene_spec spec = { .name = "ConflictingScene",
+                        .physics = physics_defaults(),
+                        .objects = objects,
+                        .object_count = 2 };
     char error[256];
     for (int identity = 0; identity < 4; identity++) {
         second = (ecs_component_desc){ .id = 971,
@@ -258,8 +249,8 @@ TEST_CASE(prepared_scene_rejects_component_identity_conflicts)
                 second.index = ECS_INDEX_DENSE;
                 break;
         }
-        scene = game_scene_prepare(&spec, error, sizeof error);
-        REQUIRE(!scene);
+        document = scene_prepare(&spec, error, sizeof error);
+        REQUIRE(!document);
         REQUIRE(strstr(error, "identity has conflicting layouts"));
     }
     /* Missing optional keys do not make unrelated components identical. */
@@ -267,15 +258,15 @@ TEST_CASE(prepared_scene_rejects_component_identity_conflicts)
     second = first;
     second.id++;
     second.name = "SecondRecord";
-    scene = game_scene_prepare(&spec, error, sizeof error);
-    REQUIRE(scene);
-    game_scene_free(scene);
-    scene = NULL;
+    document = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(document);
+    scene_free(document);
+    document = NULL;
     second = first;
     objects[0].component_count = 2;
     spec.object_count = 1;
-    scene = game_scene_prepare(&spec, error, sizeof error);
-    REQUIRE(!scene);
+    document = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(!document);
     REQUIRE(strstr(error, "object component is duplicated"));
     return true;
 }
@@ -288,40 +279,40 @@ TEST_CASE(prepared_scene_rejects_incompatible_and_malformed_records)
     char error[256];
     size_t budget = 1;
     REQUIRE(
-        game_scene_prepared_read_budget(bytes, length, catalog, &budget, error, sizeof error) == NULL
+        scene_prepared_read_budget(bytes, length, catalog, &budget, error, sizeof error) == NULL
     );
     REQUIRE(budget == 1);
     size_t cuts[] = { 0, 8, length - 1 };
     for (int i = 0; i < 3; i++) {
-        REQUIRE(game_scene_prepared_read(bytes, cuts[i], catalog, error, sizeof error) == NULL);
+        REQUIRE(scene_prepared_read(bytes, cuts[i], catalog, error, sizeof error) == NULL);
         REQUIRE(error[0] != 0);
     }
     changed = xmalloc(length + 1);
     memcpy(changed, bytes, length);
     changed[length] = 0;
-    REQUIRE(game_scene_prepared_read(changed, length + 1, catalog, error, sizeof error) == NULL);
+    REQUIRE(scene_prepared_read(changed, length + 1, catalog, error, sizeof error) == NULL);
     changed[8] = 127;
-    REQUIRE(game_scene_prepared_read(changed, length, catalog, error, sizeof error) == NULL);
+    REQUIRE(scene_prepared_read(changed, length, catalog, error, sizeof error) == NULL);
     REQUIRE(
-        game_scene_prepared_read(bytes, 64u * 1024u * 1024u + 1, catalog, error, sizeof error) == NULL
+        scene_prepared_read(bytes, 64u * 1024u * 1024u + 1, catalog, error, sizeof error) == NULL
     );
     ecs_component_desc wrong = component;
     const ecs_component_desc *wrong_components[] = { &wrong };
     ecs_component_catalog incompatible = { wrong_components, 1 };
     wrong.id++;
-    REQUIRE(game_scene_prepared_read(bytes, length, incompatible, error, sizeof error) == NULL);
+    REQUIRE(scene_prepared_read(bytes, length, incompatible, error, sizeof error) == NULL);
     wrong = component;
     wrong.key = "different.key";
-    REQUIRE(game_scene_prepared_read(bytes, length, incompatible, error, sizeof error) == NULL);
+    REQUIRE(scene_prepared_read(bytes, length, incompatible, error, sizeof error) == NULL);
     wrong = component;
     wrong.element_size++;
-    REQUIRE(game_scene_prepared_read(bytes, length, incompatible, error, sizeof error) == NULL);
+    REQUIRE(scene_prepared_read(bytes, length, incompatible, error, sizeof error) == NULL);
     wrong = component;
     wrong.layout_hash = ecs_layout_hash(wrong.type) ^ 1;
-    REQUIRE(game_scene_prepared_read(bytes, length, incompatible, error, sizeof error) == NULL);
+    REQUIRE(scene_prepared_read(bytes, length, incompatible, error, sizeof error) == NULL);
     const ecs_component_desc *duplicates[] = { &component, &component };
     REQUIRE(
-        game_scene_prepared_read(bytes, length, (ecs_component_catalog){ duplicates, 2 }, error, sizeof error) ==
+        scene_prepared_read(bytes, length, (ecs_component_catalog){ duplicates, 2 }, error, sizeof error) ==
         NULL
     );
     /* A derived component is computed from its source, so a scene that
@@ -329,35 +320,35 @@ TEST_CASE(prepared_scene_rejects_incompatible_and_malformed_records)
     ecs_component_desc derived = component;
     derived.derived_from = component.id + 1;
     record value = { 0 };
-    game_scene_object object = { .name = "Derived",
-                                 .components = &(game_scene_component){ &derived, &value },
-                                 .component_count = 1 };
-    game_scene_spec spec = { .name = "DerivedScene",
-                             .physics = game_physics_defaults(),
-                             .objects = &object,
-                             .object_count = 1 };
-    REQUIRE(game_scene_prepare(&spec, error, sizeof error) == NULL);
+    scene_object object = { .name = "Derived",
+                            .components = &(scene_component){ &derived, &value },
+                            .component_count = 1 };
+    scene_spec spec = { .name = "DerivedScene",
+                        .physics = physics_defaults(),
+                        .objects = &object,
+                        .object_count = 1 };
+    REQUIRE(scene_prepare(&spec, error, sizeof error) == NULL);
     REQUIRE(strstr(error, "derived"));
     /* Rejection never changed the retained source generation or valid record. */
-    decoded = game_scene_prepared_read(bytes, length, catalog, error, sizeof error);
-    REQUIRE(decoded != NULL && game_scene_object_count(decoded) == 3);
+    decoded = scene_prepared_read(bytes, length, catalog, error, sizeof error);
+    REQUIRE(decoded != NULL && scene_object_count(decoded) == 3);
     return true;
 }
 /* A parent must precede its child, and siblings need distinct names. */
 TEST_CASE(prepared_scene_rejects_misplaced_parents_and_sibling_names)
 {
-    game_scene_object objects[] = { { .name = "A" }, { .name = "B" }, { .name = "B" } };
+    scene_object objects[] = { { .name = "A" }, { .name = "B" }, { .name = "B" } };
     char error[256];
     int forward[] = { 1, -1, -1 }, itself[] = { -1, 1, -1 },
         siblings[] = { -1, 0, 0 };
     int *cases[] = { forward, itself, siblings };
     for (int i = 0; i < 3; i++) {
-        game_scene_spec spec = { .name = "Nested",
-                                 .physics = game_physics_defaults(),
-                                 .objects = objects,
-                                 .object_count = 3,
-                                 .parents = cases[i] };
-        REQUIRE(game_scene_prepare(&spec, error, sizeof error) == NULL && error[0]);
+        scene_spec spec = { .name = "Nested",
+                            .physics = physics_defaults(),
+                            .objects = objects,
+                            .object_count = 3,
+                            .parents = cases[i] };
+        REQUIRE(scene_prepare(&spec, error, sizeof error) == NULL && error[0]);
     }
     return true;
 }
@@ -365,16 +356,16 @@ TEST_CASE(prepared_scene_rejects_misplaced_parents_and_sibling_names)
 TEST_CASE(prepared_scene_rejects_links_to_no_handle)
 {
     record value = { 0 };
-    game_scene_component row = { &component, &value };
+    scene_component row = { &component, &value };
     REQUIRE(type_catalog_find("test.record"));
     component = (ecs_component_desc){ .id = 970,
                                       .name = "PreparedRecord",
                                       .key = "test.record",
                                       .type = type_catalog_find("test.record"),
                                       .element_size = sizeof(record) };
-    game_scene_object objects[] = { { .name = "A", .components = &row, .component_count = 1 },
-                                    { .name = "B" } };
-    game_scene_link cases[] = {
+    scene_object objects[] = { { .name = "A", .components = &row, .component_count = 1 },
+                               { .name = "B" } };
+    scene_link cases[] = {
         { 0, 0, 1, 1 }, /* a string field */
         { 0, 1, 0, 1 }, /* no second component */
         { 1, 0, 0, 0 }, /* B has no components */
@@ -382,13 +373,13 @@ TEST_CASE(prepared_scene_rejects_links_to_no_handle)
     };
     char error[256];
     for (int i = 0; i < 4; i++) {
-        game_scene_spec spec = { .name = "Linked",
-                                 .physics = game_physics_defaults(),
-                                 .objects = objects,
-                                 .object_count = 2,
-                                 .links = &cases[i],
-                                 .link_count = 1 };
-        REQUIRE(game_scene_prepare(&spec, error, sizeof error) == NULL);
+        scene_spec spec = { .name = "Linked",
+                            .physics = physics_defaults(),
+                            .objects = objects,
+                            .object_count = 2,
+                            .links = &cases[i],
+                            .link_count = 1 };
+        REQUIRE(scene_prepare(&spec, error, sizeof error) == NULL);
         REQUIRE(!strcmp(error, "prepared scene link names no handle field or object"));
     }
     return true;
@@ -419,54 +410,40 @@ TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_stru
     char label[] = "tagged record";
     record value = { .frame = { .enabled = true, .position = { 7, 9 } }, .label = label };
     unsigned char tag = 0xa5;
-    game_scene_component rows[] = { { &component, &value }, { &marker, &tag } };
-    game_scene_object object = { .name = "Tagged",
-                                 .components = rows,
-                                 .component_count = 2 };
-    game_scene_spec spec = { .name = "MarkerScene",
-                             .physics = game_physics_defaults(),
-                             .objects = &object,
-                             .object_count = 1 };
+    scene_component rows[] = { { &component, &value }, { &marker, &tag } };
+    scene_object object = { .name = "Tagged", .components = rows, .component_count = 2 };
+    scene_spec spec = { .name = "MarkerScene",
+                        .physics = physics_defaults(),
+                        .objects = &object,
+                        .object_count = 1 };
     char error[256];
-    scene = game_scene_prepare(&spec, error, sizeof error);
-    REQUIRE(scene);
+    document = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(document);
     memset(label, 0, sizeof label);
     memset(&value, 0, sizeof value);
     tag = 0xff;
-    REQUIRE(game_scene_prepared_write(scene, &bytes, &length, error, sizeof error));
-    game_scene_free(scene);
-    scene = NULL;
+    REQUIRE(scene_prepared_write(document, &bytes, &length, error, sizeof error));
+    scene_free(document);
+    document = NULL;
     const ecs_component_desc *components[] = { &component, &marker };
-    decoded = game_scene_prepared_read(
-        bytes,
-        length,
-        (ecs_component_catalog){ components, 2 },
-        error,
-        sizeof error
-    );
-    REQUIRE(decoded && game_scene_object_count(decoded) == 1);
-    REQUIRE(game_scene_object_component_count(decoded, 0) == 2);
-    game_scene_component marked = game_scene_object_component_at(decoded, 0, 1);
+    decoded = scene_prepared_read(bytes, length, (ecs_component_catalog){ components, 2 }, error, sizeof error);
+    REQUIRE(decoded && scene_object_count(decoded) == 1);
+    REQUIRE(scene_object_component_count(decoded, 0) == 2);
+    scene_component marked = scene_object_component_at(decoded, 0, 1);
     REQUIRE(
         marked.desc && marked.desc->id == marker.id && marked.desc->type == &TYPE_MARKER &&
         marked.data && *(const unsigned char *)marked.data == 0
     );
-    const record *restored = game_scene_object_component_at(decoded, 0, 0).data;
+    const record *restored = scene_object_component_at(decoded, 0, 0).data;
     REQUIRE(
         restored && restored->frame.enabled &&
         restored->frame.position.x == 7 && restored->frame.position.y == 9
     );
     REQUIRE(!strcmp(restored->label, "tagged record"));
-    game_scene_free(decoded);
-    decoded = game_scene_prepared_read(
-        bytes,
-        length,
-        (ecs_component_catalog){ components, 1 },
-        error,
-        sizeof error
-    );
-    REQUIRE(decoded && game_scene_object_component_count(decoded, 0) == 2);
-    marked = game_scene_object_component_at(decoded, 0, 1);
+    scene_free(decoded);
+    decoded = scene_prepared_read(bytes, length, (ecs_component_catalog){ components, 1 }, error, sizeof error);
+    REQUIRE(decoded && scene_object_component_count(decoded, 0) == 2);
+    marked = scene_object_component_at(decoded, 0, 1);
     REQUIRE(marked.desc->id == marker.id && marked.desc->type == &TYPE_MARKER);
     REQUIRE(
         !strcmp(marked.desc->name, marker.name) &&
@@ -514,7 +491,7 @@ TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_stru
         memcpy(changed, bytes, length);
         changed[offsets[i]] ^= 1;
         size_t budget = 64u * 1024u * 1024u;
-        game_scene *rejected = game_scene_prepared_read_budget(
+        scene *rejected = scene_prepared_read_budget(
             changed,
             length,
             (ecs_component_catalog){ components, 1 },
@@ -523,7 +500,7 @@ TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_stru
             sizeof error
         );
         bool refused = rejected == NULL;
-        game_scene_free(rejected);
+        scene_free(rejected);
         REQUIRE(refused && error[0]);
         REQUIRE(budget == 64u * 1024u * 1024u);
     }
@@ -532,12 +509,12 @@ TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_stru
     free(bytes);
     bytes = NULL;
     world = ecs_world_new();
-    REQUIRE(game_scene_register_components(decoded, world, error, sizeof error) == ECS_OK);
-    instance = game_scene_instantiate_components(decoded, world, error, sizeof error);
+    REQUIRE(scene_register_components(decoded, world, error, sizeof error) == ECS_OK);
+    instance = scene_instantiate_components(decoded, world, error, sizeof error);
     REQUIRE(instance && ecs_world_live_count(world) == 1);
-    game_scene_free(decoded);
+    scene_free(decoded);
     decoded = NULL;
-    ecs_entity entity = game_scene_instance_entity(instance, 0);
+    ecs_entity entity = scene_instance_entity(instance, 0);
     const unsigned char *presence = ecs_component_data(world, entity, marker.id);
     REQUIRE(presence && *presence == 0);
     restored = ecs_component_data(world, entity, component.id);
@@ -545,10 +522,10 @@ TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_stru
         restored && !strcmp(restored->label, "tagged record") &&
         restored->frame.position.y == 9
     );
-    rows[1] = (game_scene_component){ &unknown, &tag };
-    scene = game_scene_prepare(&spec, error, sizeof error);
-    REQUIRE(scene);
-    REQUIRE(!game_scene_prepared_write(scene, &bytes, &length, error, sizeof error));
+    rows[1] = (scene_component){ &unknown, &tag };
+    document = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(document);
+    REQUIRE(!scene_prepared_write(document, &bytes, &length, error, sizeof error));
     REQUIRE(bytes == NULL && length == 0 && error[0]);
     REQUIRE(ecs_world_live_count(world) == 1 && *presence == 0);
     return true;

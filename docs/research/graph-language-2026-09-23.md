@@ -45,7 +45,7 @@ The inventory found these problems:
    The optimizer converts between them, which is powerful but hard to predict.
 3. **Catalog bloat.**
    - 914 of 1,156 descriptors are generated: 8 variants per component, 317 field setters, and Make/Break for every type.
-   - Raw C names leak into titles (`game_move_transform`), and a libc enum (`idtype_t`) is reflected.
+   - Raw C names leak into titles (`move_transform`), and a libc enum (`idtype_t`) is reflected.
 4. **Stringly-typed dispatch.** `Get_`/`Set_` prefixes, `Case:` pin names, category-string domain gating and name lookups in the expression builder.
 5. **Game concepts in core.** Fire, Dash and Contact Begin are host events in `graph/document/events.h`. Beat Phase and Surface Influence are shader built-ins.
 6. **Semantic gaps:**

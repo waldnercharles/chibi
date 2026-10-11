@@ -217,18 +217,18 @@ TEST_CASE(axes_snap_to_whole_work_cells)
 TEST_CASE(lighting_outside_hrc_ranges_is_fitted_and_noted)
 {
     char notes[256];
-    GameHRC2D defaults = game_hrc2d_defaults();
-    GameHRC2D fitted = render_radiance_normalize(defaults, notes, sizeof notes);
+    HRC2D defaults = hrc2d_defaults();
+    HRC2D fitted = render_radiance_normalize(defaults, notes, sizeof notes);
     REQUIRE(!notes[0] && fitted.resolution == defaults.resolution);
-    GameHRC2D wild = defaults;
+    HRC2D wild = defaults;
     wild.resolution = 2;
-    wild.surface_mode = (GameHRCSurfaceMode)7;
-    wild.surface_depth_quality = (GameHRCDepthQuality)-1;
+    wild.surface_mode = (HRCSurfaceMode)7;
+    wild.surface_depth_quality = (HRCDepthQuality)-1;
     wild.bloom = 2;
     wild.exposure = NAN;
     fitted = render_radiance_normalize(wild, notes, sizeof notes);
-    REQUIRE(fitted.resolution == 1 && fitted.surface_mode == GAME_HRC_SURFACE_DEPTH);
-    REQUIRE(fitted.surface_depth_quality == GAME_HRC_DEPTH_LOW);
+    REQUIRE(fitted.resolution == 1 && fitted.surface_mode == HRC_SURFACE_DEPTH);
+    REQUIRE(fitted.surface_depth_quality == HRC_DEPTH_LOW);
     REQUIRE(fitted.bloom == 1 && fitted.exposure == 0);
     REQUIRE(strstr(notes, "resolution 2 -> 1") && strstr(notes, "surface_mode 7 -> 2"));
     render_radiance_normalize(fitted, notes, sizeof notes);
@@ -531,9 +531,9 @@ static double mean_difference(const CF_Pixel *a, const CF_Pixel *b)
 }
 
 /* Lighting without fog, so the receiver measures transport alone. */
-static GameHRC2D clear_lighting()
+static HRC2D clear_lighting()
 {
-    GameHRC2D lighting = test_reference_lighting();
+    HRC2D lighting = test_reference_lighting();
     lighting.adaptive = false;
     lighting.fog = 0;
     return lighting;
@@ -546,7 +546,7 @@ TEST_CASE(split_luminance_stays_close_to_full_color)
     static CF_Pixel full[PIXELS];
     render_material_entity open[] = { test_emitter(), receiver(.2f) };
     render_material_entity blocked[] = { test_emitter(), test_wall(), receiver(.2f) };
-    GameHRC2D lighting = clear_lighting();
+    HRC2D lighting = clear_lighting();
     render_radiance_lab lab = render_radiance_lab_defaults();
     REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     REQUIRE(solve(open, 2, SIDE, 8));
@@ -575,7 +575,7 @@ TEST_CASE(fractional_cells_absorb_as_whole_ones)
     haze.points[0] = 1;
     haze.extent[0] = 2;
     render_material_entity scene[] = { test_emitter(), haze, receiver(0) };
-    GameHRC2D lighting = clear_lighting();
+    HRC2D lighting = clear_lighting();
     lighting.feedback = false;
     lighting.resolution = .5f;
     REQUIRE(render_radiance_set_lighting(radiance, lighting, render_radiance_lab_defaults()));
@@ -609,7 +609,7 @@ TEST_CASE(reduced_reconstruction_keeps_sparks_and_thin_walls)
     thin.extent[0] = 1.8f;
     render_material_entity open[] = { spark(), receiver(0) };
     render_material_entity blocked[] = { spark(), thin, receiver(0) };
-    GameHRC2D lighting = clear_lighting();
+    HRC2D lighting = clear_lighting();
     render_radiance_lab lab = render_radiance_lab_defaults();
     lighting.feedback = false;
     double full_gather = 0;
@@ -646,15 +646,15 @@ TEST_CASE(fitted_lighting_applies_to_a_live_renderer)
 {
     char notes[256];
     render_radiance_lab lab = render_radiance_lab_defaults();
-    GameHRC2D wild = game_hrc2d_defaults();
+    HRC2D wild = hrc2d_defaults();
     wild.resolution = 2;
-    wild.surface_mode = (GameHRCSurfaceMode)9;
+    wild.surface_mode = (HRCSurfaceMode)9;
     wild.exposure = NAN;
     REQUIRE(!render_radiance_set_lighting(radiance, wild, lab));
     REQUIRE(
         render_radiance_set_lighting(radiance, render_radiance_normalize(wild, notes, sizeof notes), lab)
     );
-    GameHRC2D coarse = game_hrc2d_defaults();
+    HRC2D coarse = hrc2d_defaults();
     coarse.adaptive = false;
     coarse.resolution = .1f;
     lab.color_resolution = RENDER_RADIANCE_COLOR_EIGHTH;
@@ -694,7 +694,7 @@ TEST_CASE(every_lighting_combination_applies_and_lays_out)
     for (int size = 0; size < 2; size++) {
         REQUIRE(render_radiance_resize(radiance, sizes[size][0], sizes[size][1]));
         for (int i = 0; i < 8 * 4 * 2 * 2; i++) {
-            GameHRC2D lighting = game_hrc2d_defaults();
+            HRC2D lighting = hrc2d_defaults();
             render_radiance_lab lab = render_radiance_lab_defaults();
             lighting.resolution = resolutions[i / 16];
             lab.color_resolution = (render_radiance_color)(i / 4 % 4);
@@ -730,7 +730,7 @@ TEST_CASE(adaptive_steps_down_then_back_up)
 {
     const render_radiance_color half = RENDER_RADIANCE_COLOR_HALF,
                                 quarter = RENDER_RADIANCE_COLOR_QUARTER;
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     render_radiance_lab lab = render_radiance_lab_defaults();
     lighting.resolution = 1;
     lab.color_resolution = half;
@@ -1116,9 +1116,9 @@ static int green_at(int x)
 
 /* Surface light 12 world units into solids, with relief and without bevels
  * or highlights. */
-static GameHRC2D surface_lighting()
+static HRC2D surface_lighting()
 {
-    GameHRC2D lighting = clear_lighting();
+    HRC2D lighting = clear_lighting();
     lighting.surface_radius = 12;
     lighting.surface_relief = 1.5f;
     lighting.surface_bevel = 0;
@@ -1154,7 +1154,7 @@ TEST_CASE(silhouettes_light_from_their_lit_side)
     pieces[2] = test_emitter();
     pieces[2].pos[0] = -38;
     for (int levels = 1; levels <= 3; levels += 2) {
-        GameHRC2D lighting = clear_lighting();
+        HRC2D lighting = clear_lighting();
         render_radiance_lab lab = render_radiance_lab_defaults();
         lab.trace_levels = levels;
         lighting.surface_radius = 12;
@@ -1319,14 +1319,14 @@ TEST_CASE(surface_colors_keep_their_directions)
         relief_material("Flat rough relief", (test_relief){ .roughness = 1 }),
     };
     float ridge = relief_material("Raised ridge", (test_relief){ .roughness = 1, .height = 12 });
-    const GameHRCShadowMode modes[] = { GAME_HRC_SHADOW_REFERENCE,
-                                        GAME_HRC_SHADOW_HORIZON4,
-                                        GAME_HRC_SHADOW_HORIZON8 };
+    const HRCShadowMode modes[] = { HRC_SHADOW_REFERENCE,
+                                    HRC_SHADOW_HORIZON4,
+                                    HRC_SHADOW_HORIZON8 };
     for (int mode = 0; mode < 3; mode++) {
-        GameHRC2D lighting = surface_lighting();
+        HRC2D lighting = surface_lighting();
         lighting.feedback = false;
         lighting.ambient = lighting.shadow_floor = 0;
-        lighting.tone_mapping = GAME_HRC_TONE_AGX;
+        lighting.tone_mapping = HRC_TONE_AGX;
         lighting.surface_shadow_mode = modes[mode];
         REQUIRE(render_radiance_set_lighting(radiance, lighting, render_radiance_lab_defaults()));
         render_material_entity scene[4];
@@ -1385,12 +1385,12 @@ TEST_CASE(surface_light_history_follows_its_hysteresis)
 {
     static uint16_t instant[PIXELS * 4], changed[PIXELS * 4], settled[PIXELS * 4];
     REQUIRE(resize_targets(SIDE, HDR));
-    GameHRC2D lighting = clear_lighting();
+    HRC2D lighting = clear_lighting();
     render_radiance_lab lab = render_radiance_lab_defaults();
     lighting.feedback = false;
     lighting.surface_radius = 12;
     lighting.surface_bevel = lighting.specular = 0;
-    lighting.tone_mapping = GAME_HRC_TONE_AGX;
+    lighting.tone_mapping = HRC_TONE_AGX;
     lab.debug_view = RENDER_RADIANCE_DEBUG_SURFACE_LIGHT;
     lighting.radiance_hysteresis = 1;
     render_material_entity scene[] = { test_emitter(), lit_wall(6, 1.5f) };
@@ -1470,11 +1470,11 @@ TEST_CASE(sky_lights_what_solids_leave_open_above)
                   { .5f, RENDER_RADIANCE_COLOR_FULL },
                   { 1, RENDER_RADIANCE_COLOR_HALF } };
     for (int g = 0; g < 3; g++) {
-        GameHRC2D lighting = clear_lighting();
+        HRC2D lighting = clear_lighting();
         render_radiance_lab lab = render_radiance_lab_defaults();
         lighting.feedback = false;
         lighting.surface_radius = 0;
-        lighting.tone_mapping = GAME_HRC_TONE_AGX;
+        lighting.tone_mapping = HRC_TONE_AGX;
         lighting.sky = TEST_SKY;
         lighting.resolution = grids[g].resolution;
         lab.color_resolution = grids[g].color;
@@ -1540,13 +1540,13 @@ TEST_CASE(sky_lights_what_solids_leave_open_above)
 /* The mode the horizon selector checks. Each mode runs in its own process:
  * lavapipe maps GPU memory a page at a time, and the cache case's resizes
  * in both modes reach Linux's limit of 65530 mappings. */
-static GameHRCShadowMode horizon_mode;
+static HRCShadowMode horizon_mode;
 
 /* Relief shadows from horizons in `mode`, shown as visibility in blue with
  * horizon_lab(). */
-static GameHRC2D horizon_lighting(GameHRCShadowMode mode)
+static HRC2D horizon_lighting(HRCShadowMode mode)
 {
-    GameHRC2D lighting = surface_lighting();
+    HRC2D lighting = surface_lighting();
     lighting.feedback = false;
     lighting.radiance_hysteresis = 1;
     lighting.surface_shadow_mode = mode;
@@ -1592,10 +1592,10 @@ static bool light_matches(const uint16_t *a, const uint16_t *b, int count, float
 
 /* The horizon pass of the latest frame: one build over every pixel with
  * the mode's directions. */
-static bool built_horizons_once(int size, GameHRCShadowMode mode)
+static bool built_horizons_once(int size, HRCShadowMode mode)
 {
     render_horizon_work work = render_radiance_horizon_work(radiance);
-    int directions = mode == GAME_HRC_SHADOW_HORIZON4 ? 4 : 8;
+    int directions = mode == HRC_SHADOW_HORIZON4 ? 4 : 8;
     return work.builds == 1 && work.pixels == size * size &&
            work.directions == directions &&
            work.canvas_bytes == (size_t)size * size * (directions == 4 ? 16 : 24);
@@ -1707,7 +1707,7 @@ TEST_CASE(horizon_hierarchy_matches_the_fine_scan)
     );
     float ridge = relief_material("Low ridge", (test_relief){ .roughness = 1, .height = 6 });
     render_view_2d view = test_centered(32);
-    GameHRC2D lighting = horizon_lighting(horizon_mode);
+    HRC2D lighting = horizon_lighting(horizon_mode);
     render_radiance_lab lab = horizon_lab();
     REQUIRE(render_radiance_set_lighting(other, lighting, lab));
     lab.horizon_hierarchy = true;
@@ -1807,13 +1807,13 @@ enum
  * touches and match horizons built fresh, through light and geometry
  * changes, camera moves, a reset, resizes and switching the mode and
  * fusion. */
-static bool cache_holds(GameHRCShadowMode mode, unsigned options, float ridge)
+static bool cache_holds(HRCShadowMode mode, unsigned options, float ridge)
 {
-    GameHRC2D fresh = horizon_lighting(mode);
+    HRC2D fresh = horizon_lighting(mode);
     fresh.resolution = .5f;
     /* Raw HDR, without display dithering that changes by frame. */
-    fresh.tone_mapping = GAME_HRC_TONE_AGX;
-    GameHRC2D cached = fresh;
+    fresh.tone_mapping = HRC_TONE_AGX;
+    HRC2D cached = fresh;
     render_radiance_lab fresh_lab = horizon_lab();
     fresh_lab.horizon_hierarchy = options & REUSE_HIERARCHY;
     render_radiance_lab cached_lab = fresh_lab;
@@ -1861,9 +1861,9 @@ static bool cache_holds(GameHRCShadowMode mode, unsigned options, float ridge)
                 REQUIRE(resize_targets(size, HDR) && render_radiance_resize(other, size, size));
                 break;
             case 13:
-                cached.surface_shadow_mode = fresh.surface_shadow_mode = mode == GAME_HRC_SHADOW_HORIZON4
-                                                                           ? GAME_HRC_SHADOW_HORIZON8
-                                                                           : GAME_HRC_SHADOW_HORIZON4;
+                cached.surface_shadow_mode = fresh.surface_shadow_mode = mode == HRC_SHADOW_HORIZON4
+                                                                           ? HRC_SHADOW_HORIZON8
+                                                                           : HRC_SHADOW_HORIZON4;
                 break;
             case 14:
                 cached_lab.horizon_fuse_relief = !cached_lab.horizon_fuse_relief;
@@ -1964,7 +1964,7 @@ void test_render_radiance_surface()
 void test_render_radiance_horizons(int directions)
 {
     assert(directions == 4 || directions == 8);
-    horizon_mode = directions == 4 ? GAME_HRC_SHADOW_HORIZON4 : GAME_HRC_SHADOW_HORIZON8;
+    horizon_mode = directions == 4 ? HRC_SHADOW_HORIZON4 : HRC_SHADOW_HORIZON8;
     test_open_hidden_app("radiance horizons", SIDE, SIDE);
     pu_setup(surface_setup, surface_teardown);
     RUN_TEST_CASE(horizons_follow_moving_relief);

@@ -13,8 +13,8 @@
 
 static int entity_model(const ecs_world *world, ecs_entity entity)
 {
-    const GameSdfSurface3D *surface = GAME_GameSdfSurface3D_get_const(world, entity);
-    const GameShader *binding = GAME_GameShader_get_const(world, entity);
+    const SdfSurface3D *surface = SdfSurface3D_get_const(world, entity);
+    const Shader *binding = Shader_get_const(world, entity);
     int id = surface && surface->enabled && binding
                ? render_shader_find(binding->shape)
                : 0;
@@ -32,10 +32,10 @@ static int exact_visuals(
     size_t size
 )
 {
-    if (!GAME_GameTransform3D_has(world, entity)) {
+    if (!Transform3D_has(world, entity)) {
         return render_scene3d_visuals(world, entity, NULL, NULL, visuals, mesh, error, size);
     }
-    GameGlobalTransform3D transform = game_transform_world_3d(world, entity);
+    GlobalTransform3D transform = transform_world_3d(world, entity);
     return render_scene3d_visuals(world, entity, NULL, &transform, visuals, mesh, error, size);
 }
 
@@ -48,10 +48,10 @@ static bool exact_surface(
     size_t size
 )
 {
-    if (!GAME_GameTransform3D_has(world, entity)) {
+    if (!Transform3D_has(world, entity)) {
         return render_mesh_surface_build(world, entity, NULL, surface, error, size);
     }
-    GameGlobalTransform3D transform = game_transform_world_3d(world, entity);
+    GlobalTransform3D transform = transform_world_3d(world, entity);
     return render_mesh_surface_build_with_bounds(world, entity, NULL, &transform, NULL, surface, error, size);
 }
 
@@ -63,8 +63,7 @@ static CF_M4x4 visual_box(const scene3d_visual *visual, const render_mesh_asset 
     }
     CF_M4x4 model = cf_mul_m4(visual->frame, cf_m4_scale(visual->part.dimensions));
     int primitive = visual->part.primitive;
-    float center_x = primitive == GAME_PRIMITIVE_TRIANGLE ||
-                             primitive == GAME_PRIMITIVE_TRIANGLE_OUTLINE
+    float center_x = primitive == PRIMITIVE_TRIANGLE || primitive == PRIMITIVE_TRIANGLE_OUTLINE
                        ? 1.0f / 6
                        : 0;
     return cf_mul_m4(model, cf_m4_translate((CF_V3){ center_x, 0, 0 }));
@@ -210,26 +209,26 @@ static float primitive_hit(CF_Ray3 ray, int primitive)
 {
     CF_Raycast3 hit = { 0 };
     switch (primitive) {
-        case GAME_PRIMITIVE_BOX:
+        case PRIMITIVE_BOX:
             hit = cf_ray3_to_aabb3(ray, (CF_Aabb3){ { -0.5f, -0.5f, -0.5f }, { 0.5f, 0.5f, 0.5f } });
             break;
-        case GAME_PRIMITIVE_SPHERE:
+        case PRIMITIVE_SPHERE:
             hit = cf_ray3_to_sphere(ray, (CF_Sphere){ .p = { 0 }, .r = 0.5f });
             break;
-        case GAME_PRIMITIVE_CAPSULE:
+        case PRIMITIVE_CAPSULE:
             hit = cf_ray3_to_capsule3(
                 ray,
                 (CF_Capsule3){ .a = { 0, -0.25f, 0 }, .b = { 0, 0.25f, 0 }, .r = 0.25f }
             );
             break;
-        case GAME_PRIMITIVE_CONE: return cone_hit(ray);
-        case GAME_PRIMITIVE_TRIANGLE_PRISM: return prism_hit(ray);
-        case GAME_PRIMITIVE_OCTAHEDRON: return octahedron_hit(ray);
-        case GAME_PRIMITIVE_TETRAHEDRON: return tetrahedron_hit(ray);
-        case GAME_PRIMITIVE_CHEVRON_PYRAMID:
-        case GAME_PRIMITIVE_BOX_FRAME:
-        case GAME_PRIMITIVE_TRIANGLE_OUTLINE:
-        case GAME_PRIMITIVE_TRIANGLE: {
+        case PRIMITIVE_CONE: return cone_hit(ray);
+        case PRIMITIVE_TRIANGLE_PRISM: return prism_hit(ray);
+        case PRIMITIVE_OCTAHEDRON: return octahedron_hit(ray);
+        case PRIMITIVE_TETRAHEDRON: return tetrahedron_hit(ray);
+        case PRIMITIVE_CHEVRON_PYRAMID:
+        case PRIMITIVE_BOX_FRAME:
+        case PRIMITIVE_TRIANGLE_OUTLINE:
+        case PRIMITIVE_TRIANGLE: {
             CF_V3 triangles[SCENE3D_MESH_TRIANGLE_LIMIT][3];
             int count = render_scene3d_mesh_triangles(primitive, triangles);
             float nearest = FLT_MAX;
@@ -261,7 +260,7 @@ static float model_ray_hit(ecs_world *world, ecs_entity entity, int id, CF_Ray3 
         cf_add_v3(cf_m4_transform_point(inverse, ray.p), center),
         cf_add_v3(cf_m4_transform_point(inverse, end), center)
     );
-    const GameShader *binding = GAME_GameShader_get_const(world, entity);
+    const Shader *binding = Shader_get_const(world, entity);
     float parameters[32][4], minimum[3], maximum[3];
     bool empty;
     shader_error error = { 0 };

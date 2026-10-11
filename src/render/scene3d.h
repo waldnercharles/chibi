@@ -78,11 +78,11 @@ int render_scene3d_particle_count(const render_scene3d *scene3d);
 bool render_scene3d_draw(
     render_scene3d *scene3d,
     ecs_world *world,
-    const game_particles *particles,
+    const particles *particles,
     const render_scene3d_camera *camera,
     float time,
     const struct engine *runtime,
-    const GameEnvironment *environment,
+    const Environment *environment,
     render_skip skip
 );
 #define RENDER_SCENE3D_PREVIEW_RADIUS 50.0f

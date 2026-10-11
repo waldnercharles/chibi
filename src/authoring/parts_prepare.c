@@ -30,8 +30,8 @@ static bool vector(av_value *value, CF_V3 *out, bool required)
 
 static bool valid(const scene3d_part *part)
 {
-    return part->primitive >= GAME_PRIMITIVE_BOX &&
-           part->primitive < GAME_PRIMITIVE_COUNT && part->dimensions.x > 0 &&
+    return part->primitive >= PRIMITIVE_BOX &&
+           part->primitive < PRIMITIVE_COUNT && part->dimensions.x > 0 &&
            part->dimensions.y > 0 && part->dimensions.z > 0 &&
            isfinite(
                part->dimensions.x + part->dimensions.y + part->dimensions.z +
@@ -65,7 +65,7 @@ bool authoring_parts_parse(const char *text, scene3d_parts *parts, char *error, 
         const char *material = av_get_str(av_obj_get(item, "material"));
         int64_t primitive_value = av_get_sint(primitive);
         part->primitive = av_is_int(primitive) && primitive_value >= 0 &&
-                                  primitive_value < GAME_PRIMITIVE_COUNT
+                                  primitive_value < PRIMITIVE_COUNT
                             ? (int)primitive_value
                             : -1;
         if (!av_is_obj(item) ||

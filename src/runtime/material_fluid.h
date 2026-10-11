@@ -220,7 +220,7 @@ void material_fluid_push(
     int count
 );
 /* Optional borrowed executor; the caller owns its submission scope. */
-void material_fluid_set_tasks(material_fluid *fluid, const game_task_system *tasks);
+void material_fluid_set_tasks(material_fluid *fluid, const task_system *tasks);
 /* Returns false at the authored population limit. No existing matter is evicted. */
 bool material_fluid_add(material_fluid *fluid, fluid_particle particle);
 /* The index of the body whose impulse contacts with bodies[index] change. */

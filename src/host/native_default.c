@@ -50,10 +50,10 @@ native_capabilities *host_native_default_catalog_new(
     }
     native_definition_pack *selected = NULL;
     apush(selected, CORE_DEFINITION_PACK);
-    apush(selected, GAME_ENTITY_DEFINITION_PACK);
-    apush(selected, GAME_TILEMAP_DEFINITION_PACK);
-    apush(selected, GAME_AUDIO_DEFINITION_PACK);
-    apush(selected, GAME_RHYTHM_DEFINITION_PACK);
+    apush(selected, ENTITY_DEFINITION_PACK);
+    apush(selected, TILEMAP_DEFINITION_PACK);
+    apush(selected, AUDIO_DEFINITION_PACK);
+    apush(selected, RHYTHM_DEFINITION_PACK);
     apush(selected, FIELD_DEFINITION_PACK);
     apush(selected, NATIVE_ARRAY_DEFINITION_PACK);
     apush(selected, NATIVE_STATE_DEFINITION_PACK);
@@ -65,21 +65,21 @@ native_capabilities *host_native_default_catalog_new(
     apush(selected, NATIVE_COMPARISON_DEFINITION_PACK);
     apush(selected, NATIVE_CONVERSION_DEFINITION_PACK);
     apush(selected, NATIVE_TEXT_DEFINITION_PACK);
-    apush(selected, GAME_SAVE_DEFINITION_PACK);
-    apush(selected, GAME_SCENE_DEFINITION_PACK);
-    apush(selected, GAME_PARTICLES_DEFINITION_PACK);
-    apush(selected, GAME_UI_DEFINITION_PACK);
-    apush(selected, GAME_PHYSICS_DEFINITION_PACK);
-    apush(selected, GAME_PHYSICS3D_DEFINITION_PACK);
-    apush(selected, GAME_MATERIAL_DEFINITION_PACK);
-    apush(selected, GAME_VISUAL_REACTION_DEFINITION_PACK);
-    apush(selected, GAME_VISIBILITY_DEFINITION_PACK);
-    apush(selected, GAME_INPUT_DEFINITION_PACK);
+    apush(selected, SAVE_DEFINITION_PACK);
+    apush(selected, SCENE_DEFINITION_PACK);
+    apush(selected, PARTICLES_DEFINITION_PACK);
+    apush(selected, UI_DEFINITION_PACK);
+    apush(selected, PHYSICS_DEFINITION_PACK);
+    apush(selected, PHYSICS3D_DEFINITION_PACK);
+    apush(selected, MATERIAL_DEFINITION_PACK);
+    apush(selected, VISUAL_REACTION_DEFINITION_PACK);
+    apush(selected, VISIBILITY_DEFINITION_PACK);
+    apush(selected, INPUT_DEFINITION_PACK);
     for (int i = 0; i < definition_count; i++) {
         apush(selected, definitions[i]);
     }
     native_capability_pack *inputs = NULL;
-    apush(inputs, GAME_NATIVE_PACK);
+    apush(inputs, NATIVE_PACK);
     for (int i = 0; i < native_count; i++) {
         apush(inputs, native[i]);
     }

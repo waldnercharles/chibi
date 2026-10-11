@@ -281,8 +281,8 @@ static bool native_palette_composition_keeps_declared_capabilities()
     palette = authoring_graph_catalog_new(
         (authoring_graph_catalog_config){
             .native = native,
-            .types = GAME_TYPE_PACK,
-            .components = { GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT } },
+            .types = TYPE_PACK,
+            .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT } },
         error,
         sizeof error
     );

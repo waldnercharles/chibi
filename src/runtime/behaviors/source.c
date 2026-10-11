@@ -10,9 +10,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void reap_attachments(game_source_registry *);
+static void reap_attachments(source_registry *);
 
-static void begin_boundary(game_source_registry *r)
+static void begin_boundary(source_registry *r)
 {
     assert(!r->staging);
     if (r->executing) {
@@ -23,7 +23,7 @@ static void begin_boundary(game_source_registry *r)
         execution_program_clear_error(r->records[i].program);
     }
 }
-static int program_status(game_source_registry *r, execution_program *program, int status)
+static int program_status(source_registry *r, execution_program *program, int status)
 {
     if (status >= 0 || r->error[0]) {
         return status;
@@ -63,20 +63,20 @@ static uint64_t event_id(const source_record *record, const char *name)
 {
     return execution_module_event(record->module, name);
 }
-ecs_world *game_source_world(const game_source_registry *r)
+ecs_world *source_world(const source_registry *r)
 {
     return r->world;
 }
-game_source_registry *game_source_registry_new(ecs_world *world)
+source_registry *source_registry_new(ecs_world *world)
 {
-    game_source_registry *r = xcalloc(1, sizeof *r);
+    source_registry *r = xcalloc(1, sizeof *r);
     r->world = world;
     return r;
 }
-void game_source_registry_free(game_source_registry *r)
+void source_registry_free(source_registry *r)
 {
     assert(!r->staging);
-    game_source_profile_reset(r);
+    source_profile_reset(r);
     afree(r->profiles);
     for (int i = 0; i < acount(r->records); i++) {
         execution_program_free(r->records[i].program);
@@ -88,17 +88,17 @@ void game_source_registry_free(game_source_registry *r)
         free((void *)r->services[i].type_name);
     }
     afree(r->services);
-    game_event_catalog_free(r->events);
+    event_catalog_free(r->events);
     free(r);
 }
-int game_source_set_events(game_source_registry *r, game_event_catalog *events)
+int source_set_events(source_registry *r, event_catalog *events)
 {
     assert(r && !r->staging && !r->executing);
     const execution_module **modules = NULL;
     for (int i = 0; i < acount(r->records); i++) {
         apush(modules, r->records[i].module);
     }
-    bool valid = !events || game_event_catalog_validate(
+    bool valid = !events || event_catalog_validate(
                                 events,
                                 modules,
                                 acount(modules),
@@ -110,21 +110,21 @@ int game_source_set_events(game_source_registry *r, game_event_catalog *events)
         return -1;
     }
     if (events) {
-        game_event_catalog_retain(events);
+        event_catalog_retain(events);
     }
-    game_event_catalog_free(r->events);
+    event_catalog_free(r->events);
     r->events = events;
     return 0;
 }
-const game_event_catalog *game_source_events(const game_source_registry *r)
+const event_catalog *source_events(const source_registry *r)
 {
     return r->events;
 }
-bool game_source_registered(const game_source_registry *r, const char *name)
+bool source_registered(const source_registry *r, const char *name)
 {
     return record_index(r, name) >= 0;
 }
-bool game_source_has_event(const game_source_registry *r, const char *name)
+bool source_has_event(const source_registry *r, const char *name)
 {
     for (int i = 0; i < acount(r->records); i++) {
         const source_record *record = &r->records[i];
@@ -154,7 +154,7 @@ bool game_source_has_event(const game_source_registry *r, const char *name)
     }
     return false;
 }
-static const execution_module *event_module(const game_source_registry *r, const char *name, int *index)
+static const execution_module *event_module(const source_registry *r, const char *name, int *index)
 {
     for (int i = 0; i < acount(r->records); i++) {
         const execution_module *module = r->records[i].module;
@@ -168,12 +168,12 @@ static const execution_module *event_module(const game_source_registry *r, const
     }
     return NULL;
 }
-bool game_source_event(const game_source_registry *r, const char *name, execution_module_event_info *out)
+bool source_event(const source_registry *r, const char *name, execution_module_event_info *out)
 {
     assert(r && name && out);
-    int declaration = r->events ? game_event_catalog_find(r->events, name) : -1;
+    int declaration = r->events ? event_catalog_find(r->events, name) : -1;
     if (declaration >= 0) {
-        *out = game_event_catalog_at(r->events, declaration);
+        *out = event_catalog_at(r->events, declaration);
         return true;
     }
     int index;
@@ -184,21 +184,15 @@ bool game_source_event(const game_source_registry *r, const char *name, executio
     *out = execution_module_event_at(module, index);
     return true;
 }
-bool game_source_event_field(
-    const game_source_registry *r,
-    const char *name,
-    int field,
-    execution_module_event_field_info *out
-)
+bool source_event_field(const source_registry *r, const char *name, int field, execution_module_event_field_info *out)
 {
     assert(r && name && out);
-    int declaration = r->events ? game_event_catalog_find(r->events, name) : -1;
+    int declaration = r->events ? event_catalog_find(r->events, name) : -1;
     if (declaration >= 0) {
-        if (field < 0 ||
-            field >= game_event_catalog_at(r->events, declaration).field_count) {
+        if (field < 0 || field >= event_catalog_at(r->events, declaration).field_count) {
             return false;
         }
-        *out = game_event_catalog_field_at(r->events, declaration, field);
+        *out = event_catalog_field_at(r->events, declaration, field);
         return true;
     }
     int index;
@@ -210,7 +204,7 @@ bool game_source_event_field(
     *out = execution_module_event_field_at(module, index, field);
     return true;
 }
-bool game_source_paused(const game_source_registry *r)
+bool source_paused(const source_registry *r)
 {
     for (int i = 0; i < acount(r->records); i++) {
         if (execution_program_paused(r->records[i].program)) {
@@ -219,39 +213,34 @@ bool game_source_paused(const game_source_registry *r)
     }
     return false;
 }
-execution_program *game_source_program(game_source_registry *r, const char *name)
+execution_program *source_program(source_registry *r, const char *name)
 {
     int i = record_index(r, name);
     return i < 0 ? NULL : r->records[i].program;
 }
-int game_source_register(
-    game_source_registry *r,
-    const char *name,
-    execution_module *module,
-    const service_binding *services
-)
+int source_register(source_registry *r, const char *name, execution_module *module, const service_binding *services)
 {
     assert(module);
-    game_source_publication entry = { .name = name, .module = module };
-    return game_source_publish(r, &entry, 1, services, r->error, sizeof r->error);
+    source_publication entry = { .name = name, .module = module };
+    return source_publish(r, &entry, 1, services, r->error, sizeof r->error);
 }
-int game_source_replace(game_source_registry *r, const char *name, execution_module *module, bool restart)
+int source_replace(source_registry *r, const char *name, execution_module *module, bool restart)
 {
     assert(module);
-    game_source_publication entry = {
+    source_publication entry = {
         .name = name,
         .previous_name = name,
         .module = module,
         .restart = restart,
     };
-    return game_source_publish(r, &entry, 1, NULL, r->error, sizeof r->error);
+    return source_publish(r, &entry, 1, NULL, r->error, sizeof r->error);
 }
-int game_source_remove(game_source_registry *r, const char *name)
+int source_remove(source_registry *r, const char *name)
 {
-    game_source_publication entry = { .previous_name = name };
-    return game_source_publish(r, &entry, 1, NULL, r->error, sizeof r->error);
+    source_publication entry = { .previous_name = name };
+    return source_publish(r, &entry, 1, NULL, r->error, sizeof r->error);
 }
-static int begin_attachment(game_source_registry *r, int index, double now, double delta)
+static int begin_attachment(source_registry *r, int index, double now, double delta)
 {
     source_attachment a = r->attachments[index];
     if (a.begin) {
@@ -286,17 +275,10 @@ static int begin_attachment(game_source_registry *r, int index, double now, doub
     }
     return program_status(r, a.program, status < 0 ? status : 0);
 }
-int game_source_attach(
-    game_source_registry *r,
-    ecs_entity entity,
-    const char *name,
-    bool deferred,
-    double now,
-    double delta
-)
+int source_attach(source_registry *r, ecs_entity entity, const char *name, bool deferred, double now, double delta)
 {
     assert(!r->staging);
-    execution_program *p = game_source_program(r, name);
+    execution_program *p = source_program(r, name);
     if (!p || !ecs_entity_is_alive(r->world, entity) ||
         execution_program_instance(p, ecs_entity_to_u64(entity))) {
         return -1;
@@ -313,14 +295,14 @@ int game_source_attach(
                    ? 0
                    : begin_attachment(r, acount(r->attachments) - 1, now, delta);
     if (status < 0) {
-        game_source_detach(r, entity, name);
+        source_detach(r, entity, name);
     }
     return status;
 }
-int game_source_detach(game_source_registry *r, ecs_entity entity, const char *name)
+int source_detach(source_registry *r, ecs_entity entity, const char *name)
 {
     assert(!r->staging);
-    execution_program *p = game_source_program(r, name);
+    execution_program *p = source_program(r, name);
     for (int i = 0; p && i < acount(r->attachments); i++) {
         if (r->attachments[i].program == p &&
             same_entity(r->attachments[i].entity, entity)) {
@@ -331,8 +313,8 @@ int game_source_detach(game_source_registry *r, ecs_entity entity, const char *n
     }
     return 0;
 }
-int game_source_set_attachments(
-    game_source_registry *r,
+int source_set_attachments(
+    source_registry *r,
     ecs_entity entity,
     const char *const *names,
     int count,
@@ -342,13 +324,13 @@ int game_source_set_attachments(
 )
 {
     assert(!r->staging);
-    if (count < 0 || count > GAME_MODULE_SET_MAX_MODULES || (count && !names) ||
+    if (count < 0 || count > MODULE_SET_MAX_MODULES || (count && !names) ||
         !ecs_entity_is_alive(r->world, entity)) {
         snprintf(r->error, sizeof r->error, "Invalid source attachment owner or count");
         return -1;
     }
     for (int i = 0; i < count; i++) {
-        if (!names[i] || !names[i][0] || !game_source_registered(r, names[i])) {
+        if (!names[i] || !names[i][0] || !source_registered(r, names[i])) {
             snprintf(r->error, sizeof r->error, "Source attachment name is unregistered");
             return -1;
         }
@@ -361,13 +343,13 @@ int game_source_set_attachments(
     }
     const char **created = NULL;
     for (int i = 0; i < count; i++) {
-        execution_program *p = game_source_program(r, names[i]);
+        execution_program *p = source_program(r, names[i]);
         if (!p || execution_program_instance(p, ecs_entity_to_u64(entity))) {
             continue;
         }
-        if (game_source_attach(r, entity, names[i], true, now, delta)) {
+        if (source_attach(r, entity, names[i], true, now, delta)) {
             for (int j = 0; j < acount(created); j++) {
-                game_source_detach(r, entity, created[j]);
+                source_detach(r, entity, created[j]);
             }
             afree(created);
             return -1;
@@ -378,7 +360,7 @@ int game_source_set_attachments(
         if (same_entity(r->attachments[i].entity, entity) &&
             begin_attachment(r, i, now, delta) < 0) {
             for (int j = 0; j < acount(created); j++) {
-                game_source_detach(r, entity, created[j]);
+                source_detach(r, entity, created[j]);
             }
             afree(created);
             return -1;
@@ -392,7 +374,7 @@ int game_source_set_attachments(
         }
         bool keep = false;
         for (int j = 0; j < count; j++) {
-            keep |= game_source_program(r, names[j]) == a.program;
+            keep |= source_program(r, names[j]) == a.program;
         }
         if (!keep) {
             execution_program_detach(a.program, ecs_entity_to_u64(entity));
@@ -410,7 +392,7 @@ int game_source_set_attachments(
             continue;
         }
         for (int j = 0; j < count; j++) {
-            execution_program *p = game_source_program(r, names[j]);
+            execution_program *p = source_program(r, names[j]);
             for (int k = 0; p && k < acount(r->attachments); k++) {
                 if (r->attachments[k].program == p &&
                     same_entity(r->attachments[k].entity, entity)) {
@@ -425,7 +407,7 @@ int game_source_set_attachments(
     r->attachments = ordered;
     return 0;
 }
-int game_source_detach_entity(game_source_registry *r, ecs_entity entity)
+int source_detach_entity(source_registry *r, ecs_entity entity)
 {
     assert(!r->staging);
     int count = 0;
@@ -438,7 +420,7 @@ int game_source_detach_entity(game_source_registry *r, ecs_entity entity)
     }
     return count;
 }
-static int source_begin(game_source_registry *r, double now, double delta)
+static int begin_programs(source_registry *r, double now, double delta)
 {
     reap_attachments(r);
     for (int i = 0; i < acount(r->attachments); i++) {
@@ -450,7 +432,7 @@ static int source_begin(game_source_registry *r, double now, double delta)
     return 0;
 }
 static int dispatch_event(
-    game_source_registry *r,
+    source_registry *r,
     uint64_t owner,
     const char *name,
     const pin_value *arguments,
@@ -478,8 +460,8 @@ static int dispatch_event(
     r->executing--;
     return dispatched;
 }
-int game_source_dispatch(
-    game_source_registry *r,
+int source_dispatch(
+    source_registry *r,
     ecs_entity entity,
     const char *name,
     const pin_value *arguments,
@@ -490,8 +472,8 @@ int game_source_dispatch(
 {
     return dispatch_event(r, ecs_entity_to_u64(entity), name, arguments, count, now, delta);
 }
-int game_source_field_changed(
-    game_source_registry *r,
+int source_field_changed(
+    source_registry *r,
     ecs_entity entity,
     ecs_component_id component,
     size_t offset,
@@ -522,8 +504,8 @@ int game_source_field_changed(
     r->executing--;
     return FLOW_OK;
 }
-int game_source_dispatch_all(
-    game_source_registry *r,
+int source_dispatch_all(
+    source_registry *r,
     const char *name,
     const pin_value *arguments,
     int count,
@@ -533,7 +515,7 @@ int game_source_dispatch_all(
 {
     return dispatch_event(r, 0, name, arguments, count, now, delta);
 }
-int game_source_bind_service(game_source_registry *r, const char *name, void *value)
+int source_bind_service(source_registry *r, const char *name, void *value)
 {
     assert(r && name && *name && !r->staging);
     for (int i = 0; i < acount(r->records); i++) {
@@ -555,7 +537,7 @@ int game_source_bind_service(game_source_registry *r, const char *name, void *va
     apush(r->services, ((service_binding){ xstrdup(name), value }));
     return 0;
 }
-static void reap_attachments(game_source_registry *r)
+static void reap_attachments(source_registry *r)
 {
     for (int i = acount(r->attachments) - 1; i >= 0; i--) {
         if (!ecs_entity_is_alive(r->world, r->attachments[i].entity)) {
@@ -567,7 +549,7 @@ static void reap_attachments(game_source_registry *r)
         }
     }
 }
-static int maintain(game_source_registry *r, double now, double delta)
+static int maintain(source_registry *r, double now, double delta)
 {
     execution_program **programs = NULL;
     for (int i = 0; i < acount(r->records); i++) {
@@ -585,7 +567,7 @@ static int maintain(game_source_registry *r, double now, double delta)
     afree(programs);
     return status;
 }
-static int source_step(game_source_registry *r, double now, double delta)
+static int step_programs(source_registry *r, double now, double delta)
 {
     reap_attachments(r);
     for (int i = 0; i < acount(r->records); i++) {
@@ -599,12 +581,12 @@ static int source_step(game_source_registry *r, double now, double delta)
     }
     return maintain(r, now, delta);
 }
-bool game_source_is_system(const game_source_registry *r, const char *name)
+bool source_is_system(const source_registry *r, const char *name)
 {
     int index = record_index(r, name);
     return index >= 0 && r->records[index].system;
 }
-int game_source_select_systems(game_source_registry *r, const char *const *names, int count)
+int source_select_systems(source_registry *r, const char *const *names, int count)
 {
     assert(r && !r->staging && !r->executing && count >= 0 && (!count || names));
     r->error[0] = '\0';
@@ -628,7 +610,7 @@ int game_source_select_systems(game_source_registry *r, const char *const *names
     free(selected);
     return 0;
 }
-int game_source_run_system(game_source_registry *r, const char *name, double now, double delta)
+int source_run_system(source_registry *r, const char *name, double now, double delta)
 {
     assert(r && name && !r->staging);
     int index = record_index(r, name);
@@ -650,16 +632,16 @@ typedef struct
     int status;
     bool ran, prepared;
 } system_result;
-struct game_source_system_batch
+struct source_system_batch
 {
-    game_source_registry *registry;
+    source_registry *registry;
     system_result *results;
     int count;
     bool parallel;
     double now, delta;
 };
-game_source_system_batch *game_source_systems_prepare(
-    game_source_registry *r,
+source_system_batch *source_systems_prepare(
+    source_registry *r,
     const char *const *names,
     int count,
     double now,
@@ -668,7 +650,7 @@ game_source_system_batch *game_source_systems_prepare(
 )
 {
     assert(r && !r->staging && !r->executing);
-    if (count < 0 || count > GAME_SOURCE_SYSTEM_BATCH_MAX || (count && !names)) {
+    if (count < 0 || count > SOURCE_SYSTEM_BATCH_MAX || (count && !names)) {
         snprintf(r->error, sizeof r->error, "Invalid source system cohort");
         return NULL;
     }
@@ -686,7 +668,7 @@ game_source_system_batch *game_source_systems_prepare(
             }
         }
     }
-    game_source_system_batch *batch = xcalloc(1, sizeof *batch);
+    source_system_batch *batch = xcalloc(1, sizeof *batch);
     batch->registry = r;
     batch->count = count;
     batch->now = now;
@@ -717,12 +699,12 @@ game_source_system_batch *game_source_systems_prepare(
     }
     return batch;
 }
-bool game_source_systems_parallel(const game_source_system_batch *batch)
+bool source_systems_parallel(const source_system_batch *batch)
 {
     assert(batch);
     return batch->parallel;
 }
-int game_source_systems_run(game_source_system_batch *batch, int index, char *error, size_t size)
+int source_systems_run(source_system_batch *batch, int index, char *error, size_t size)
 {
     assert(batch && index >= 0 && index < batch->count && (!size || error));
     system_result *result = &batch->results[index];
@@ -766,10 +748,10 @@ int game_source_systems_run(game_source_system_batch *batch, int index, char *er
     }
     return result->status;
 }
-int game_source_systems_finish(game_source_system_batch *batch)
+int source_systems_finish(source_system_batch *batch)
 {
     assert(batch && batch->registry->executing == 1);
-    game_source_registry *r = batch->registry;
+    source_registry *r = batch->registry;
     int status = 0;
     for (int i = 0; i < batch->count; i++) {
         system_result *result = &batch->results[i];
@@ -788,7 +770,7 @@ int game_source_systems_finish(game_source_system_batch *batch)
     free(batch);
     return status;
 }
-int game_source_maintain(game_source_registry *r, double now, double delta)
+int source_maintain(source_registry *r, double now, double delta)
 {
     begin_boundary(r);
     reap_attachments(r);
@@ -797,11 +779,11 @@ int game_source_maintain(game_source_registry *r, double now, double delta)
     r->executing--;
     return status;
 }
-const char *game_source_error(const game_source_registry *r)
+const char *source_error(const source_registry *r)
 {
     return r->error;
 }
-static int source_pump(game_source_registry *r, double now, double delta)
+static int pump_programs(source_registry *r, double now, double delta)
 {
     reap_attachments(r);
     for (int i = 0; i < acount(r->records); i++) {
@@ -813,38 +795,38 @@ static int source_pump(game_source_registry *r, double now, double delta)
     return 0;
 }
 
-int game_source_begin(game_source_registry *r, double now, double delta)
+int source_begin(source_registry *r, double now, double delta)
 {
     begin_boundary(r);
     r->executing++;
-    int status = source_begin(r, now, delta);
+    int status = begin_programs(r, now, delta);
     r->executing--;
     return status;
 }
 
-int game_source_step(game_source_registry *r, double now, double delta)
+int source_step(source_registry *r, double now, double delta)
 {
     begin_boundary(r);
     r->executing++;
-    int status = source_step(r, now, delta);
+    int status = step_programs(r, now, delta);
     r->executing--;
     return status;
 }
 
-int game_source_pump(game_source_registry *r, double now, double delta)
+int source_pump(source_registry *r, double now, double delta)
 {
     begin_boundary(r);
     r->executing++;
-    int status = source_pump(r, now, delta);
+    int status = pump_programs(r, now, delta);
     r->executing--;
     return status;
 }
 
-int game_source_attachment_count(const game_source_registry *r)
+int source_attachment_count(const source_registry *r)
 {
     return acount(r->attachments);
 }
-game_source_attachment_info game_source_attachment_at(const game_source_registry *r, int index)
+source_attachment_info source_attachment_at(const source_registry *r, int index)
 {
     assert(index >= 0 && index < acount(r->attachments));
     source_attachment a = r->attachments[index];
@@ -854,7 +836,7 @@ game_source_attachment_info game_source_attachment_at(const game_source_registry
             continue;
         }
         return (
-            game_source_attachment_info
+            source_attachment_info
         ){ .entity = a.entity,
            .sequence = a.sequence,
            .name = record->name,
@@ -864,5 +846,5 @@ game_source_attachment_info game_source_attachment_at(const game_source_registry
            .begin = a.begin };
     }
     assert(false);
-    return (game_source_attachment_info){ 0 };
+    return (source_attachment_info){ 0 };
 }

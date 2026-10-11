@@ -1,6 +1,6 @@
 name "RenderPart"
 (array)includes "RenderSolid"
 components {
-    GAME.GameMaterial scene=0xffb050ff
-    GAME.GameVisualTransform scale=1.0 yaw=0.5
+    Material scene=0xffb050ff
+    VisualTransform scale=1.0 yaw=0.5
 }

@@ -167,6 +167,15 @@ bool source_edit_declarations(
     }
     const source_presentation_origin *o = origin(p, r->origin);
     int index = symbol(a, o);
+    if (r->kind == AUTHORING_EDIT_SET_DISABLED && o &&
+        o->kind == SOURCE_PRESENTATION_EXPRESSION && o->record >= 0 &&
+        o->record < a->expression_count) {
+        int owner = a->expressions[o->record].symbol;
+        if (owner >= 0 && owner < a->symbol_count &&
+            a->symbols[owner].kind == SCRIPT_ACTION) {
+            index = owner;
+        }
+    }
     if ((r->kind == AUTHORING_EDIT_NAME_VALUE || r->kind == AUTHORING_EDIT_SET_DISABLED) &&
         o && o->kind == SOURCE_PRESENTATION_EXPRESSION && o->record >= 0 &&
         o->record < a->expression_count) {

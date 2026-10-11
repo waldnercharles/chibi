@@ -18,9 +18,9 @@ typedef struct
     const char *name;
     int parent; /* index into the snapshot, or -1 for a root */
     bool has_transform_2d, has_orientation, has_transform_3d;
-    GameTransform position;
-    GameOrientation orientation;
-    GameTransform3D transform_3d;
+    Transform position;
+    Orientation orientation;
+    Transform3D transform_3d;
 } authoring_scene_node;
 
 /* Validates identity, order, names, bounded depth and finite local transforms.

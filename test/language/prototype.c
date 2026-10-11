@@ -70,23 +70,23 @@ static const ecs_component_desc derived = {
     .derived_from = 9001,
 };
 static const ecs_component_desc *const components[] = { &component, &nested, &derived };
-static game_prototype *prototype, *loaded;
-static game_scene_document *scene, *reloaded;
+static prototype *document, *loaded;
+static scene_document *scene, *reloaded;
 static char *saved;
 static av_value *before, *after, *values, *rebased;
 
 static void cleanup()
 {
-    game_prototype_free(prototype);
-    game_prototype_free(loaded);
-    prototype = loaded = NULL;
+    prototype_free(document);
+    prototype_free(loaded);
+    document = loaded = NULL;
     av_value_free(before);
     av_value_free(after);
     av_value_free(values);
     av_value_free(rebased);
     before = after = values = rebased = NULL;
-    game_scene_document_free(scene);
-    game_scene_document_free(reloaded);
+    scene_document_free(scene);
+    scene_document_free(reloaded);
     scene = reloaded = NULL;
     free(saved);
     saved = NULL;
@@ -96,33 +96,33 @@ TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence)
 {
     char label[] = "initial";
     component_default data = { 9, { label } };
-    game_prototype_default initial = { component.id, &data, sizeof data };
-    game_prototype_registry registry = {
+    prototype_default initial = { component.id, &data, sizeof data };
+    prototype_registry registry = {
         .components = components,
         .component_count = 2,
         .defaults = &initial,
         .default_count = 1,
     };
-    prototype = game_prototype_new("DefaultOwner");
-    prototype->registry_storage = registry;
-    REQUIRE(game_prototype_add_component(prototype, &component) == 0);
+    document = prototype_new("DefaultOwner");
+    document->registry_storage = registry;
+    REQUIRE(prototype_add_component(document, &component) == 0);
     label[0] = 'X';
     data.count = 41;
-    const component_default *copy = prototype->components[0].data;
+    const component_default *copy = document->components[0].data;
     REQUIRE(copy->count == 9 && !strcmp(copy->nested.label, "initial"));
-    REQUIRE(game_prototype_detach_component(prototype, component.name) == 0);
-    REQUIRE(game_prototype_add_component(prototype, &component) == 0);
-    copy = prototype->components[0].data;
+    REQUIRE(prototype_detach_component(document, component.name) == 0);
+    REQUIRE(prototype_add_component(document, &component) == 0);
+    copy = document->components[0].data;
     REQUIRE(copy->count == 9 && !strcmp(copy->nested.label, "initial"));
 
     data = (component_default){ 9, { "baseline" } };
-    before = game_prototype_component_defaults_value(&registry, &component);
-    values = game_prototype_component_value(prototype, component.name);
+    before = prototype_component_defaults_value(&registry, &component);
+    values = prototype_component_value(document, component.name);
     REQUIRE(before && values);
     data = (component_default){ 12, { "updated" } };
-    after = game_prototype_component_defaults_value(&registry, &component);
+    after = prototype_component_defaults_value(&registry, &component);
     REQUIRE(after != NULL);
-    rebased = game_prototype_rebase_component_value(values, before, after);
+    rebased = prototype_rebase_component_value(values, before, after);
     REQUIRE(rebased != NULL);
     av_value_free(values);
     values = NULL;
@@ -135,7 +135,7 @@ TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence)
     REQUIRE(!strcmp(av_get_str(av_obj_get(av_obj_get(row, "nested"), "label")), "initial"));
 
     char error[192];
-    loaded = game_prototype_load(
+    loaded = prototype_load(
         "name \"Partial\"\ncomponents { test.DefaultRow { nested "
         "label=\"document\"; }; }\n",
         &registry,
@@ -145,34 +145,34 @@ TEST_CASE(prototype_defaults_are_owned_and_detached_values_take_precedence)
     REQUIRE(loaded != NULL);
     copy = loaded->components[0].data;
     REQUIRE(copy->count == 0 && !strcmp(copy->nested.label, "document"));
-    REQUIRE(game_prototype_remove_component(loaded, component.name) == 0);
+    REQUIRE(prototype_remove_component(loaded, component.name) == 0);
     initial.size--;
-    REQUIRE(game_prototype_add_component(loaded, &component) == -1);
+    REQUIRE(prototype_add_component(loaded, &component) == -1);
     REQUIRE(acount(loaded->components) == 0);
     initial.size++;
     type_desc malformed = component_type;
     ecs_component_desc invalid = component;
     invalid.type = &malformed;
     malformed.size++;
-    REQUIRE(game_prototype_add_component(loaded, &invalid) == -1);
+    REQUIRE(prototype_add_component(loaded, &invalid) == -1);
     REQUIRE(acount(loaded->components) == 0);
     malformed.size = component_type.size;
     type_field fields[2];
     memcpy(fields, component_fields, sizeof fields);
     malformed.fields = fields;
     fields[0].offset = malformed.size;
-    REQUIRE(game_prototype_add_component(loaded, &invalid) == -1);
+    REQUIRE(prototype_add_component(loaded, &invalid) == -1);
     REQUIRE(acount(loaded->components) == 0);
     fields[0] = component_fields[0];
     fields[0].size = 1;
-    REQUIRE(game_prototype_add_component(loaded, &invalid) == -1);
+    REQUIRE(prototype_add_component(loaded, &invalid) == -1);
     REQUIRE(acount(loaded->components) == 0);
     return true;
 }
 
-static bool keeps_prototype_behaviors(const game_scene_document *document)
+static bool keeps_prototype_behaviors(const scene_document *document)
 {
-    const game_scene_entity *entities = document->entities;
+    const scene_entity *entities = document->entities;
     return acount(entities) == 3 && !entities[0].own_behaviors &&
            !acount(entities[0].behaviors) && entities[1].own_behaviors &&
            acount(entities[1].behaviors) == 1 &&
@@ -182,21 +182,21 @@ static bool keeps_prototype_behaviors(const game_scene_document *document)
 
 TEST_CASE(derived_components_are_never_authored_or_captured)
 {
-    const game_prototype_registry registry = { .components = components,
-                                               .component_count = 3 };
+    const prototype_registry registry = { .components = components,
+                                          .component_count = 3 };
     char error[256];
-    loaded = game_prototype_load(
+    loaded = prototype_load(
         "name \"Computed\"\ncomponents {\n    Derived count=1\n}\n",
         &registry,
         error,
         sizeof error
     );
     REQUIRE(!loaded && strstr(error, "Derived is computed by the engine"));
-    prototype = game_prototype_new("Computed");
-    prototype->registry_storage = registry;
-    REQUIRE(game_prototype_add_component(prototype, &derived) != 0);
-    game_prototype_free(prototype);
-    prototype = NULL;
+    document = prototype_new("Computed");
+    document->registry_storage = registry;
+    REQUIRE(prototype_add_component(document, &derived) != 0);
+    prototype_free(document);
+    document = NULL;
     ecs_world *world = ecs_world_new();
     REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
     REQUIRE(ecs_world_register_component(world, &derived, NULL) == ECS_OK);
@@ -204,9 +204,9 @@ TEST_CASE(derived_components_are_never_authored_or_captured)
     REQUIRE(ecs_world_record_add(world, entity, component.id, NULL, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     REQUIRE(ecs_component_has(world, entity, derived.id));
-    prototype = game_prototype_capture_entity("Captured", world, entity, &registry);
-    bool captured = prototype && acount(prototype->components) == 1 &&
-                    prototype->components[0].desc == &component;
+    document = prototype_capture_entity("Captured", world, entity, &registry);
+    bool captured = document && acount(document->components) == 1 &&
+                    document->components[0].desc == &component;
     ecs_world_free(world);
     REQUIRE(captured);
     return true;
@@ -215,7 +215,7 @@ TEST_CASE(derived_components_are_never_authored_or_captured)
 TEST_CASE(scene_entities_keep_prototype_behaviors_until_they_list_their_own)
 {
     char error[192];
-    scene = game_scene_document_load(
+    scene = scene_document_load(
         "version 1\nname \"Start\"\n(array)entities {\n"
         "    - name=\"Inherits\" prototype=\"Mover\"\n"
         "    - name=\"Replaces\" prototype=\"Mover\" { (array)behaviors "
@@ -226,22 +226,22 @@ TEST_CASE(scene_entities_keep_prototype_behaviors_until_they_list_their_own)
         sizeof error
     );
     REQUIRE(scene && keeps_prototype_behaviors(scene));
-    saved = game_scene_document_save(scene, (ecs_component_catalog){ 0 });
+    saved = scene_document_save(scene, (ecs_component_catalog){ 0 });
     REQUIRE(saved);
-    reloaded = game_scene_document_load(saved, error, sizeof error);
+    reloaded = scene_document_load(saved, error, sizeof error);
     REQUIRE(reloaded && keeps_prototype_behaviors(reloaded));
-    REQUIRE(game_scene_document_add_entity(reloaded, -1, "Added", "Mover") == 0);
+    REQUIRE(scene_document_add_entity(reloaded, -1, "Added", "Mover") == 0);
     REQUIRE(!alast(reloaded->entities).own_behaviors);
     return true;
 }
 
-static bool at_path(const game_scene_document *document, const char *path, const char *prototype)
+static bool at_path(const scene_document *document, const char *path, const char *prototype_name)
 {
-    int index = game_scene_document_entity_index(document, path);
-    if (index < 0 || strcmp(document->entities[index].prototype, prototype)) {
+    int index = scene_document_entity_index(document, path);
+    if (index < 0 || strcmp(document->entities[index].prototype, prototype_name)) {
         return false;
     }
-    char *named = game_scene_document_entity_path(document, index);
+    char *named = scene_document_entity_path(document, index);
     bool same = !strcmp(named, path);
     free(named);
     return same;
@@ -261,26 +261,26 @@ TEST_CASE(scene_children_nest_by_path)
                 "        - name=\"Light\" prototype=\"Lamp\"; }; }\n"
                 "    - name=\"Turret\" prototype=\"Gun\"\n"
                 "}\n";
-    scene = game_scene_document_load(text, error, sizeof error);
+    scene = scene_document_load(text, error, sizeof error);
     REQUIRE(scene && acount(scene->entities) == 5);
     REQUIRE(at_path(scene, "Ship", "Hull") && at_path(scene, "Ship.Turret.Barrel", "Tube"));
     REQUIRE(at_path(scene, "Ship.Light", "Lamp") && at_path(scene, "Turret", "Gun"));
-    REQUIRE(scene->entities[game_scene_document_entity_index(scene, "Turret")].parent == -1);
-    REQUIRE(game_scene_document_entity_index(scene, "Barrel") < 0);
-    REQUIRE(game_scene_document_entity_index(scene, "Ship..Light") < 0);
+    REQUIRE(scene->entities[scene_document_entity_index(scene, "Turret")].parent == -1);
+    REQUIRE(scene_document_entity_index(scene, "Barrel") < 0);
+    REQUIRE(scene_document_entity_index(scene, "Ship..Light") < 0);
     /* Names are unique among siblings and cannot hold the separator. */
-    int ship = game_scene_document_entity_index(scene, "Ship");
-    REQUIRE(game_scene_document_add_entity(scene, ship, "Light", "Lamp") != 0);
-    REQUIRE(game_scene_document_add_entity(scene, ship, "Port.Light", "Lamp") != 0);
-    REQUIRE(game_scene_document_rename_entity(scene, ship + 1, "Light", error, sizeof error) != 0);
-    REQUIRE(game_scene_document_add_entity(scene, ship, "Shield", "Dome") == 0);
-    saved = game_scene_document_save(scene, (ecs_component_catalog){ 0 });
-    reloaded = game_scene_document_load(saved, error, sizeof error);
+    int ship = scene_document_entity_index(scene, "Ship");
+    REQUIRE(scene_document_add_entity(scene, ship, "Light", "Lamp") != 0);
+    REQUIRE(scene_document_add_entity(scene, ship, "Port.Light", "Lamp") != 0);
+    REQUIRE(scene_document_rename_entity(scene, ship + 1, "Light", error, sizeof error) != 0);
+    REQUIRE(scene_document_add_entity(scene, ship, "Shield", "Dome") == 0);
+    saved = scene_document_save(scene, (ecs_component_catalog){ 0 });
+    reloaded = scene_document_load(saved, error, sizeof error);
     REQUIRE(reloaded && acount(reloaded->entities) == 6);
     /* The appended child saves among its siblings, ahead of the later root. */
-    REQUIRE(game_scene_document_entity_index(reloaded, "Ship.Shield") == 4);
+    REQUIRE(scene_document_entity_index(reloaded, "Ship.Shield") == 4);
     /* Removing a parent removes its descendants and keeps the rest in place. */
-    REQUIRE(game_scene_document_remove_entity(reloaded, 1) == 0);
+    REQUIRE(scene_document_remove_entity(reloaded, 1) == 0);
     REQUIRE(acount(reloaded->entities) == 4);
     REQUIRE(at_path(reloaded, "Ship.Light", "Lamp") && at_path(reloaded, "Ship.Shield", "Dome"));
     REQUIRE(at_path(reloaded, "Turret", "Gun"));
@@ -312,21 +312,21 @@ static char *nested_scene(int depth)
 TEST_CASE(scene_children_nest_at_most_the_depth_limit)
 {
     char error[192];
-    char *deepest = nested_scene(GAME_SCENE_DEPTH_MAX),
-         *deeper = nested_scene(GAME_SCENE_DEPTH_MAX + 1);
-    scene = game_scene_document_load(deepest, error, sizeof error);
-    reloaded = game_scene_document_load(deeper, error, sizeof error);
+    char *deepest = nested_scene(SCENE_DEPTH_MAX),
+         *deeper = nested_scene(SCENE_DEPTH_MAX + 1);
+    scene = scene_document_load(deepest, error, sizeof error);
+    reloaded = scene_document_load(deeper, error, sizeof error);
     free(deepest);
     free(deeper);
-    REQUIRE(scene && acount(scene->entities) == GAME_SCENE_DEPTH_MAX);
+    REQUIRE(scene && acount(scene->entities) == SCENE_DEPTH_MAX);
     REQUIRE(!reloaded && strstr(error, "nests deeper than 256 levels"));
-    REQUIRE(game_scene_document_add_entity(scene, GAME_SCENE_DEPTH_MAX - 1, "M", "P") != 0);
-    REQUIRE(game_scene_document_add_entity(scene, GAME_SCENE_DEPTH_MAX - 2, "M", "P") == 0);
-    char *path = game_scene_document_entity_path(scene, GAME_SCENE_DEPTH_MAX - 1);
-    bool long_path = strlen(path) == 2 * GAME_SCENE_DEPTH_MAX - 1;
+    REQUIRE(scene_document_add_entity(scene, SCENE_DEPTH_MAX - 1, "M", "P") != 0);
+    REQUIRE(scene_document_add_entity(scene, SCENE_DEPTH_MAX - 2, "M", "P") == 0);
+    char *path = scene_document_entity_path(scene, SCENE_DEPTH_MAX - 1);
+    bool long_path = strlen(path) == 2 * SCENE_DEPTH_MAX - 1;
     free(path);
     REQUIRE(long_path);
-    saved = game_scene_document_save(scene, (ecs_component_catalog){ 0 });
+    saved = scene_document_save(scene, (ecs_component_catalog){ 0 });
     return saved != NULL;
 }
 
@@ -366,16 +366,16 @@ static const char *find_prototype(const char *name, void *)
     }
     return NULL;
 }
-static game_prototype *load_named(const char *name, char *error, size_t size)
+static prototype *load_named(const char *name, char *error, size_t size)
 {
-    const game_prototype_registry registry = { .components = components,
-                                               .component_count = 2,
-                                               .include = find_prototype };
-    return game_prototype_load(find_prototype(name, NULL), &registry, error, size);
+    const prototype_registry registry = { .components = components,
+                                          .component_count = 2,
+                                          .include = find_prototype };
+    return prototype_load(find_prototype(name, NULL), &registry, error, size);
 }
-static int count_of(const game_prototype *prototype)
+static int count_of(const prototype *document)
 {
-    return ((const component_default *)prototype->components[0].data)->count;
+    return ((const component_default *)document->components[0].data)->count;
 }
 static struct
 {
@@ -487,16 +487,16 @@ static const char *find_linked(const char *name, void *)
     }
     return NULL;
 }
-static const game_prototype_registry links_registry = { .components = linked,
-                                                        .component_count = 2,
-                                                        .include = find_linked };
-static game_prototype *load_linked(const char *name, char *error, size_t size)
+static const prototype_registry links_registry = { .components = linked,
+                                                   .component_count = 2,
+                                                   .include = find_linked };
+static prototype *load_linked(const char *name, char *error, size_t size)
 {
-    return game_prototype_load(find_linked(name, NULL), &links_registry, error, size);
+    return prototype_load(find_linked(name, NULL), &links_registry, error, size);
 }
-static const game_prototype_link *only_link(const game_prototype *prototype)
+static const prototype_link *only_link(const prototype *document)
 {
-    return acount(prototype->links) == 1 ? &prototype->links[0] : NULL;
+    return acount(document->links) == 1 ? &document->links[0] : NULL;
 }
 static uint64_t other_of(ecs_world *world, ecs_entity entity)
 {
@@ -509,51 +509,47 @@ static uint64_t other_of(ecs_world *world, ecs_entity entity)
 TEST_CASE(entity_paths_load_and_save_as_written)
 {
     char error[256];
-    prototype = load_linked("Pendulum", error, sizeof error);
-    REQUIRE(prototype && acount(prototype->child_prototypes) == 2);
-    const game_prototype_link *own = only_link(prototype);
+    document = load_linked("Pendulum", error, sizeof error);
+    REQUIRE(document && acount(document->child_prototypes) == 2);
+    const prototype_link *own = only_link(document);
     REQUIRE(own && !own->outer && own->field == 0 && !strcmp(own->path, "Bob"));
-    REQUIRE(!((const link_row *)prototype->components[0].data)->other);
-    const game_prototype_link *hook = only_link(prototype->child_prototypes[0]);
+    REQUIRE(!((const link_row *)document->components[0].data)->other);
+    const prototype_link *hook = only_link(document->child_prototypes[0]);
     REQUIRE(hook && !hook->outer && !strcmp(hook->path, "Inside"));
-    const game_prototype_link *bob = only_link(prototype->child_prototypes[1]);
+    const prototype_link *bob = only_link(document->child_prototypes[1]);
     REQUIRE(bob && bob->outer && !strcmp(bob->path, "Hook"));
-    saved = game_prototype_save(prototype);
+    saved = prototype_save(document);
     REQUIRE(saved && strstr(saved, "test.Link other=\"Bob\"") && strstr(saved, "other=\"Hook\""));
-    loaded = game_prototype_clone(prototype->child_prototypes[1], error, sizeof error);
+    loaded = prototype_clone(document->child_prototypes[1], error, sizeof error);
     REQUIRE(loaded && only_link(loaded) && only_link(loaded)->outer);
     /* Bob's path differs from Weight's; Hook's is Weight's own. */
-    game_prototype *weight = load_linked("Weight", error, sizeof error);
+    prototype *weight = load_linked("Weight", error, sizeof error);
     REQUIRE(weight);
-    before = game_prototype_overrides_value(weight, prototype->child_prototypes[1]);
-    after = game_prototype_overrides_value(weight, prototype->child_prototypes[0]);
+    before = prototype_overrides_value(weight, document->child_prototypes[1]);
+    after = prototype_overrides_value(weight, document->child_prototypes[0]);
     av_value *fields = before ? av_obj_get(before, "test.Link") : NULL;
     REQUIRE(fields && !strcmp(av_get_str(av_obj_get(fields, "other")), "Hook"));
     REQUIRE(after && !av_obj_size(after));
     av_value_free(before);
-    game_prototype *lure = load_linked("Lure", error, sizeof error);
+    prototype *lure = load_linked("Lure", error, sizeof error);
     REQUIRE(lure && acount(lure->child_prototypes) == 2);
-    before = game_prototype_overrides_value(weight, lure->child_prototypes[1]);
+    before = prototype_overrides_value(weight, lure->child_prototypes[1]);
     fields = before ? av_obj_get(before, "test.Link") : NULL;
     REQUIRE(fields && !strcmp(av_get_str(av_obj_get(fields, "other")), "Inside"));
-    game_prototype_free(lure);
-    game_prototype *composite = load_linked("Composite", error, sizeof error);
+    prototype_free(lure);
+    prototype *composite = load_linked("Composite", error, sizeof error);
     REQUIRE(composite && only_link(composite) && !strcmp(only_link(composite)->path, "Inside"));
-    game_prototype_free(composite);
+    prototype_free(composite);
     /* Writing the handle or removing the component drops the path. */
-    REQUIRE(
-        !game_prototype_write_field(weight, "Link", "other", (pin_value){ .type = PIN_HANDLE })
-    );
+    REQUIRE(!prototype_write_field(weight, "Link", "other", (pin_value){ .type = PIN_HANDLE }));
     REQUIRE(!acount(weight->links));
     av_value_free(after);
     /* A current naming no path, as a captured entity, keeps the base's. */
-    after = game_prototype_overrides_value(prototype->child_prototypes[0], weight);
+    after = prototype_overrides_value(document->child_prototypes[0], weight);
     REQUIRE(after && !av_obj_get(after, "test.Link"));
-    REQUIRE(
-        !game_prototype_remove_component(prototype, "Link") && !acount(prototype->links)
-    );
-    game_prototype_free(weight);
-    game_prototype_free(loaded);
+    REQUIRE(!prototype_remove_component(document, "Link") && !acount(document->links));
+    prototype_free(weight);
+    prototype_free(loaded);
     loaded = load_linked("Deep", error, sizeof error);
     REQUIRE(!loaded && strstr(error, "field entity has the wrong value type"));
     return true;
@@ -564,14 +560,12 @@ TEST_CASE(entity_paths_load_and_save_as_written)
 TEST_CASE(entity_paths_spawn_as_their_entities)
 {
     char error[256];
-    prototype = load_linked("Pendulum", error, sizeof error);
-    REQUIRE(prototype);
+    document = load_linked("Pendulum", error, sizeof error);
+    REQUIRE(document);
     ecs_world *world = ecs_world_new();
     REQUIRE(ecs_world_register_component(world, &link, NULL) == ECS_OK);
     ecs_entity root = { 0 };
-    REQUIRE(
-        game_prototype_spawn_components(prototype, world, &root, error, sizeof error) == ECS_OK
-    );
+    REQUIRE(prototype_spawn_components(document, world, &root, error, sizeof error) == ECS_OK);
     ecs_entity bob = ecs_entity_from_u64(other_of(world, root));
     ecs_entity hook = ecs_entity_from_u64(other_of(world, bob));
     ecs_entity inside = ecs_entity_from_u64(other_of(world, hook));
@@ -579,13 +573,13 @@ TEST_CASE(entity_paths_spawn_as_their_entities)
                 ecs_parent(world, bob).slot == root.slot &&
                 ecs_parent(world, hook).slot == root.slot && bob.slot != hook.slot &&
                 ecs_parent(world, inside).slot == hook.slot;
-    game_prototype *stray = load_linked("Stray", error, sizeof error);
+    prototype *stray = load_linked("Stray", error, sizeof error);
     bool refused = stray &&
-                   game_prototype_spawn_components(stray, world, &root, error, sizeof error) !=
+                   prototype_spawn_components(stray, world, &root, error, sizeof error) !=
                        ECS_OK &&
                    strstr(error, "names Nowhere, which is not a child of prototype Stray") &&
                    ecs_world_live_count(world) == 5;
-    game_prototype_free(stray);
+    prototype_free(stray);
     ecs_world_free(world);
     REQUIRE(tree && refused);
     return true;
@@ -596,40 +590,40 @@ TEST_CASE(entity_paths_spawn_as_their_entities)
 TEST_CASE(prototype_children_resolve_and_save_nested)
 {
     char error[256];
-    prototype = load_named("Ship", error, sizeof error);
-    REQUIRE(prototype && acount(prototype->children->entities) == 3);
-    REQUIRE(acount(prototype->child_prototypes) == 3);
-    const game_prototype *left = prototype->child_prototypes[0];
-    const game_prototype *muzzle = prototype->child_prototypes[1];
-    const game_prototype *right = prototype->child_prototypes[2];
+    document = load_named("Ship", error, sizeof error);
+    REQUIRE(document && acount(document->children->entities) == 3);
+    REQUIRE(acount(document->child_prototypes) == 3);
+    const prototype *left = document->child_prototypes[0];
+    const prototype *muzzle = document->child_prototypes[1];
+    const prototype *right = document->child_prototypes[2];
     REQUIRE(!strcmp(left->name, "Left") && count_of(left) == 2);
     REQUIRE(acount(left->graphs) == 1 && !strcmp(left->graphs[0], "Aim"));
-    REQUIRE(!strcmp(muzzle->name, "Muzzle") && prototype->children->entities[1].parent == 0);
+    REQUIRE(!strcmp(muzzle->name, "Muzzle") && document->children->entities[1].parent == 0);
     REQUIRE(
         !strcmp(right->name, "Right") && count_of(right) == 1 && !acount(right->graphs)
     );
-    REQUIRE(!strcmp(game_prototype_identity(left), game_prototype_identity(right)));
-    saved = game_prototype_save(prototype);
+    REQUIRE(!strcmp(prototype_identity(left), prototype_identity(right)));
+    saved = prototype_save(document);
     REQUIRE(saved);
-    const game_prototype_registry registry = { .components = components,
-                                               .component_count = 2,
-                                               .include = find_prototype };
-    loaded = game_prototype_load(saved, &registry, error, sizeof error);
+    const prototype_registry registry = { .components = components,
+                                          .component_count = 2,
+                                          .include = find_prototype };
+    loaded = prototype_load(saved, &registry, error, sizeof error);
     REQUIRE(loaded && acount(loaded->child_prototypes) == 3);
-    REQUIRE(game_scene_document_entity_index(loaded->children, "Left.Muzzle") == 1);
-    game_prototype_free(loaded);
-    loaded = game_prototype_load_authored(ship_text, &registry, error, sizeof error);
+    REQUIRE(scene_document_entity_index(loaded->children, "Left.Muzzle") == 1);
+    prototype_free(loaded);
+    loaded = prototype_load_authored(ship_text, &registry, error, sizeof error);
     REQUIRE(loaded && acount(loaded->children->entities) == 3 && !acount(loaded->child_prototypes));
-    game_prototype_free(loaded);
-    const game_prototype_registry unresolved = { .components = components,
-                                                 .component_count = 2 };
-    loaded = game_prototype_load(ship_text, &unresolved, error, sizeof error);
+    prototype_free(loaded);
+    const prototype_registry unresolved = { .components = components,
+                                            .component_count = 2 };
+    loaded = prototype_load(ship_text, &unresolved, error, sizeof error);
     REQUIRE(!loaded && strstr(error, "children need a resolver"));
     /* An include's children come first, and a name stays unique among them. */
     loaded = load_named("Escort", error, sizeof error);
     REQUIRE(loaded && acount(loaded->child_prototypes) == 4);
     REQUIRE(!strcmp(loaded->child_prototypes[3]->name, "Rear"));
-    game_prototype_free(loaded);
+    prototype_free(loaded);
     loaded = load_named("Clash", error, sizeof error);
     REQUIRE(!loaded && strstr(error, "children of prototype Clash"));
     loaded = load_named("Loop", error, sizeof error);
@@ -644,15 +638,15 @@ TEST_CASE(prototype_children_resolve_and_save_nested)
 TEST_CASE(prototype_children_spawn_with_it)
 {
     char error[256];
-    prototype = load_named("Ship", error, sizeof error);
-    REQUIRE(prototype);
+    document = load_named("Ship", error, sizeof error);
+    REQUIRE(document);
     ecs_world *world = ecs_world_new();
     REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
     REQUIRE(ecs_world_register_component(world, &nested, NULL) == ECS_OK);
     attached = (typeof(attached)){ 0 };
-    game_prototype_spawn_hooks hooks = { attach, NULL };
+    prototype_spawn_hooks hooks = { attach, NULL };
     ecs_entity ship = { 0 };
-    int spawned = game_prototype_spawn(prototype, world, &hooks, &ship, error, sizeof error);
+    int spawned = prototype_spawn(document, world, &hooks, &ship, error, sizeof error);
     ecs_entity left = attached.entities[1];
     const component_default
         *row = ecs_component_data_const(world, left, component.id);
@@ -666,17 +660,17 @@ TEST_CASE(prototype_children_spawn_with_it)
     bool destroyed = ecs_world_destroy_entity(world, ship) == ECS_OK &&
                      ecs_world_live_count(world) == 0;
     attached = (typeof(attached)){ .refuse = "Aim" };
-    bool refused = game_prototype_spawn(prototype, world, &hooks, &ship, error, sizeof error) !=
+    bool refused = prototype_spawn(document, world, &hooks, &ship, error, sizeof error) !=
                        ECS_OK &&
                    ecs_world_live_count(world) == 0;
-    bool components_only = game_prototype_spawn_components(prototype, world, &ship, error, sizeof error) ==
+    bool components_only = prototype_spawn_components(document, world, &ship, error, sizeof error) ==
                                ECS_OK &&
                            ecs_world_live_count(world) == 4;
     ecs_world_free(world);
     /* Muzzle's component is missing here, so the spawn stops at it. */
     world = ecs_world_new();
     REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
-    bool unplaced = game_prototype_spawn_components(prototype, world, &ship, error, sizeof error) !=
+    bool unplaced = prototype_spawn_components(document, world, &ship, error, sizeof error) !=
                         ECS_OK &&
                     ecs_world_live_count(world) == 0;
     ecs_world_free(world);
@@ -684,12 +678,9 @@ TEST_CASE(prototype_children_spawn_with_it)
     world = ecs_world_new();
     REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
     REQUIRE(ecs_world_register_component(world, &nested, NULL) == ECS_OK);
-    bool unhooked = game_prototype_spawn(prototype, world, NULL, &ship, error, sizeof error) ==
+    bool unhooked = prototype_spawn(document, world, NULL, &ship, error, sizeof error) ==
                         ECS_ERR_ARGUMENT &&
-                    !ecs_world_component(
-                        world,
-                        game_prototype_tag_desc(prototype)->id
-                    );
+                    !ecs_world_component(world, prototype_tag_desc(document)->id);
     ecs_world_free(world);
     REQUIRE(tree && destroyed && refused && components_only && unplaced && unhooked);
     return true;
@@ -722,12 +713,12 @@ static const char *find_fan(const char *name, void *)
 TEST_CASE(prototype_expansion_is_bounded)
 {
     char error[256];
-    const game_prototype_registry registry = { .components = components,
-                                               .component_count = 2,
-                                               .include = find_fan };
-    prototype = game_prototype_load(find_fan("Fan10", NULL), &registry, error, sizeof error);
-    REQUIRE(prototype && prototype->expanded == 2046);
-    loaded = game_prototype_load(find_fan("Fan0", NULL), &registry, error, sizeof error);
+    const prototype_registry registry = { .components = components,
+                                          .component_count = 2,
+                                          .include = find_fan };
+    document = prototype_load(find_fan("Fan10", NULL), &registry, error, sizeof error);
+    REQUIRE(document && document->expanded == 2046);
+    loaded = prototype_load(find_fan("Fan0", NULL), &registry, error, sizeof error);
     REQUIRE(!loaded && strstr(error, "reads more than 16384 prototypes"));
     return true;
 }
@@ -768,12 +759,12 @@ static const char *find_wide(const char *name, void *)
 TEST_CASE(prototype_expansion_bytes_are_bounded)
 {
     char error[256];
-    const game_prototype_registry registry = { .components = components,
-                                               .component_count = 2,
-                                               .include = find_wide };
-    prototype = game_prototype_load(find_wide("Wide1", NULL), &registry, error, sizeof error);
-    REQUIRE(prototype && prototype->read > 32 * 1024 * 1024);
-    loaded = game_prototype_load(find_wide("Wide0", NULL), &registry, error, sizeof error);
+    const prototype_registry registry = { .components = components,
+                                          .component_count = 2,
+                                          .include = find_wide };
+    document = prototype_load(find_wide("Wide1", NULL), &registry, error, sizeof error);
+    REQUIRE(document && document->read > 32 * 1024 * 1024);
+    loaded = prototype_load(find_wide("Wide0", NULL), &registry, error, sizeof error);
     REQUIRE(!loaded && strstr(error, "reads more than 64 MiB of prototypes"));
     free(wide_leaf);
     wide_leaf = NULL;

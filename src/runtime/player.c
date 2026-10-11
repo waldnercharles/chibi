@@ -11,13 +11,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct game_player
+struct player
 {
-    game_world *world;
-    game_scene_instance *scene;
+    world *world;
+    scene_instance *scene;
     /* Owned names and retained scenes Load Scene can start, the start first. */
-    game_player_named_scene *scenes;
-    game_player_resource_host resources;
+    player_named_scene *scenes;
+    player_resource_host resources;
     declared_components *declared;
     void *generation;
     bool committed;
@@ -27,7 +27,7 @@ static bool fail(char *error, size_t size, const char *message)
     snprintf(error, size, "%s", message);
     return false;
 }
-uint64_t game_player_asset_fingerprint(const void *data, size_t length)
+uint64_t player_asset_fingerprint(const void *data, size_t length)
 {
     const unsigned char *bytes = data;
     uint64_t hash = UINT64_C(14695981039346656037);
@@ -36,7 +36,7 @@ uint64_t game_player_asset_fingerprint(const void *data, size_t length)
     }
     return hash;
 }
-bool game_player_relative_path(const char *path)
+bool player_relative_path(const char *path)
 {
     if (!path || !path[0] || strnlen(path, 1025) > 1024 || path[0] == '/' ||
         strchr(path, '\\') || strchr(path, ':')) {
@@ -58,34 +58,33 @@ bool game_player_relative_path(const char *path)
         part = p + 1;
     }
 }
-bool game_player_asset_valid(const game_player_asset *asset)
+bool player_asset_valid(const player_asset *asset)
 {
     if (!asset || !asset->name || !asset->name[0] || strnlen(asset->name, 1025) > 1024 ||
-        asset->kind < 0 || asset->kind >= GAME_PLAYER_ASSET_COUNT ||
-        !asset->length || asset->length > GAME_PLAYER_MAX_ASSET_BYTES ||
-        (asset->path && !game_player_relative_path(asset->path))) {
+        asset->kind < 0 || asset->kind >= PLAYER_ASSET_COUNT ||
+        !asset->length || asset->length > PLAYER_MAX_ASSET_BYTES ||
+        (asset->path && !player_relative_path(asset->path))) {
         return false;
     }
     /* Sounds travel inside the artifact. */
     if (asset->external) {
-        return asset->kind != GAME_PLAYER_ASSET_SOUND && !asset->data &&
+        return asset->kind != PLAYER_ASSET_SOUND && !asset->data &&
                asset->path && asset->content_hash;
     }
-    if (!asset->data || (asset->kind == GAME_PLAYER_ASSET_SOUND &&
-                         !game_sound_format_of(asset->data, asset->length))) {
+    if (!asset->data || (asset->kind == PLAYER_ASSET_SOUND &&
+                         !sound_format_of(asset->data, asset->length))) {
         return false;
     }
     return !asset->content_hash ||
-           asset->content_hash ==
-               game_player_asset_fingerprint(asset->data, asset->length);
+           asset->content_hash == player_asset_fingerprint(asset->data, asset->length);
 }
 /* The object's global binding name, or NULL when it binds none. */
-static const char *binding_name(const game_scene *scene, int object)
+static const char *binding_name(const scene *scene, int object)
 {
-    for (int i = 0; i < game_scene_object_component_count(scene, object); i++) {
-        game_scene_component component = game_scene_object_component_at(scene, object, i);
-        if (component.desc->id == GAME_COMPONENT_GameGlobalBinding.id) {
-            const char *name = ((const GameGlobalBinding *)component.data)->name;
+    for (int i = 0; i < scene_object_component_count(scene, object); i++) {
+        scene_component component = scene_object_component_at(scene, object, i);
+        if (component.desc->id == COMPONENT_GlobalBinding.id) {
+            const char *name = ((const GlobalBinding *)component.data)->name;
             return name && name[0] ? name : NULL;
         }
     }
@@ -95,10 +94,10 @@ static int compare_names(const void *a, const void *b)
 {
     return strcmp(*(const char *const *)a, *(const char *const *)b);
 }
-bool game_player_scene_bindings_valid(const game_scene *scene, char *error, size_t size)
+bool player_scene_bindings_valid(const scene *scene, char *error, size_t size)
 {
     const char **names = NULL;
-    for (int i = 0; i < game_scene_object_count(scene); i++) {
+    for (int i = 0; i < scene_object_count(scene); i++) {
         const char *name = binding_name(scene, i);
         if (name) {
             apush(names, name);
@@ -111,36 +110,36 @@ bool game_player_scene_bindings_valid(const game_scene *scene, char *error, size
     }
     afree(names);
     if (shared && size) {
-        snprintf(error, size, "Scene '%s' binds two entities to the global '%s'", game_scene_name(scene), shared);
+        snprintf(error, size, "Scene '%s' binds two entities to the global '%s'", scene_name(scene), shared);
     }
     return !shared;
 }
-static bool behaviors_registered(const game_source_registry *sources, const game_scene *scene)
+static bool behaviors_registered(const source_registry *sources, const scene *scene)
 {
-    for (int i = 0; i < game_scene_object_count(scene); i++) {
-        for (int j = 0; j < game_scene_object_behavior_count(scene, i); j++) {
-            if (!game_source_registered(sources, game_scene_object_behavior(scene, i, j))) {
+    for (int i = 0; i < scene_object_count(scene); i++) {
+        for (int j = 0; j < scene_object_behavior_count(scene, i); j++) {
+            if (!source_registered(sources, scene_object_behavior(scene, i, j))) {
                 return false;
             }
         }
     }
     return true;
 }
-static void keep(game_player *p, const char *name, game_scene *scene)
+static void keep(player *p, const char *name, scene *scene)
 {
-    game_scene_retain(scene);
-    apush(p->scenes, ((game_player_named_scene){ xstrdup(name), scene }));
+    scene_retain(scene);
+    apush(p->scenes, ((player_named_scene){ xstrdup(name), scene }));
 }
-game_player *game_player_new(const game_player_spec *spec, char *error, size_t size)
+player *player_new(const player_spec *spec, char *error, size_t size)
 {
     assert(spec && (!size || error));
     if (spec->world.ecs || !spec->scene || spec->module_count < 0 ||
-        spec->module_count > GAME_PACKAGE_MAX_MODULES ||
+        spec->module_count > PACKAGE_MAX_MODULES ||
         (spec->module_count && !spec->modules) || spec->prototype_count < 0 ||
         spec->prototype_count > 1024 ||
         (spec->prototype_count && !spec->prototypes) || spec->scene_count < 0 ||
         spec->scene_count > 1024 || (spec->scene_count && !spec->scenes) ||
-        spec->asset_count < 0 || spec->asset_count > GAME_PLAYER_MAX_ASSETS ||
+        spec->asset_count < 0 || spec->asset_count > PLAYER_MAX_ASSETS ||
         (spec->asset_count && !spec->assets) ||
         ((spec->asset_count || spec->resources.stage || spec->resources.scene ||
           spec->resources.commit || spec->resources.discard || spec->resources.retire) &&
@@ -151,9 +150,9 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
     }
     size_t asset_bytes = 0;
     for (int i = 0; i < spec->asset_count; i++) {
-        const game_player_asset *asset = &spec->assets[i];
-        if (!game_player_asset_valid(asset) ||
-            asset->length > GAME_PLAYER_MAX_ASSET_BYTES - asset_bytes) {
+        const player_asset *asset = &spec->assets[i];
+        if (!player_asset_valid(asset) ||
+            asset->length > PLAYER_MAX_ASSET_BYTES - asset_bytes) {
             fail(error, size, "Invalid prepared player resource record");
             return NULL;
         }
@@ -166,22 +165,21 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
             }
         }
     }
-    const char *start = spec->scene_name ? spec->scene_name
-                                         : game_scene_name(spec->scene);
+    const char *start = spec->scene_name ? spec->scene_name : scene_name(spec->scene);
     if (!start[0]) {
         fail(error, size, "Prepared player scene names are missing or duplicated");
         return NULL;
     }
-    if (!game_player_scene_bindings_valid(spec->scene, error, size)) {
+    if (!player_scene_bindings_valid(spec->scene, error, size)) {
         return NULL;
     }
     for (int i = 0; i < spec->scene_count; i++) {
-        const game_player_named_scene *s = &spec->scenes[i];
+        const player_named_scene *s = &spec->scenes[i];
         if (!s->name || !s->name[0] || !s->scene || !strcmp(s->name, start)) {
             fail(error, size, "Prepared player scene names are missing or duplicated");
             return NULL;
         }
-        if (!game_player_scene_bindings_valid(s->scene, error, size)) {
+        if (!player_scene_bindings_valid(s->scene, error, size)) {
             return NULL;
         }
         for (int j = 0; j < i; j++) {
@@ -192,12 +190,12 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
         }
     }
     for (int i = 0; i < spec->prototype_count; i++) {
-        const game_player_prototype *p = &spec->prototypes[i];
-        if (!p->name || !p->name[0] || !p->scene || !game_scene_is_tree(p->scene)) {
+        const player_prototype *p = &spec->prototypes[i];
+        if (!p->name || !p->name[0] || !p->scene || !scene_is_tree(p->scene)) {
             fail(error, size, "Prepared player prototype requires a name and one root object");
             return NULL;
         }
-        if (!game_player_scene_bindings_valid(p->scene, error, size)) {
+        if (!player_scene_bindings_valid(p->scene, error, size)) {
             return NULL;
         }
         for (int j = 0; j < i; j++) {
@@ -207,20 +205,20 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
             }
         }
     }
-    size_t local_budget = GAME_PLAYER_MAX_ASSET_BYTES;
+    size_t local_budget = PLAYER_MAX_ASSET_BYTES;
     size_t *remaining = spec->decoded_remaining ? spec->decoded_remaining : &local_budget;
     size_t initial_budget = *remaining;
     if (!spec->decoded_remaining) {
-        size_t bytes = game_scene_storage_bytes(spec->scene);
+        size_t bytes = scene_storage_bytes(spec->scene);
         if (spec->world.events) {
-            bytes += game_event_catalog_storage_bytes(spec->world.events);
+            bytes += event_catalog_storage_bytes(spec->world.events);
         }
         if (bytes > *remaining) {
             fail(error, size, "Prepared player retained storage budget exceeded");
             return NULL;
         }
         *remaining -= bytes;
-        game_scene **charged = NULL;
+        scene **charged = NULL;
         apush(charged, spec->scene);
         for (int i = 0; i < spec->prototype_count; i++) {
             apush(charged, spec->prototypes[i].scene);
@@ -233,7 +231,7 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
             for (int j = 0; j < i; j++) {
                 known |= charged[i] == charged[j];
             }
-            bytes = known ? 0 : game_scene_storage_bytes(charged[i]);
+            bytes = known ? 0 : scene_storage_bytes(charged[i]);
             if (bytes > *remaining) {
                 afree(charged);
                 fail(error, size, "Prepared player retained storage budget exceeded");
@@ -243,7 +241,7 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
         }
         afree(charged);
     }
-    game_world_options options = spec->world;
+    world_options options = spec->world;
     options.fields = NULL;
     if (spec->world.fields) {
         unsigned char *bytes;
@@ -269,7 +267,7 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
         }
         *remaining = field_budget;
     }
-    game_player *p = xcalloc(1, sizeof *p);
+    player *p = xcalloc(1, sizeof *p);
     p->declared = spec->declared ? declared_components_retain(spec->declared) : NULL;
     p->resources = spec->resources;
     if (p->resources.stage) {
@@ -291,73 +289,66 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
             return NULL;
         }
     }
-    p->world = game_world_new(&options, error, size);
+    p->world = world_new(&options, error, size);
     if (!p->world) {
         if (options.fields) {
             material_fields_free(options.fields);
         }
         goto reject;
     }
-    ecs_world *ecs = game_world_ecs(p->world);
-    if (game_scene_register_components(spec->scene, ecs, error, size) != ECS_OK) {
+    ecs_world *ecs = world_ecs(p->world);
+    if (scene_register_components(spec->scene, ecs, error, size) != ECS_OK) {
         goto reject;
     }
     for (int i = 0; i < spec->prototype_count; i++) {
-        if (game_scene_register_components(spec->prototypes[i].scene, ecs, error, size) !=
+        if (scene_register_components(spec->prototypes[i].scene, ecs, error, size) !=
             ECS_OK) {
             goto reject;
         }
     }
     for (int i = 0; i < spec->scene_count; i++) {
-        if (game_scene_register_components(spec->scenes[i].scene, ecs, error, size) !=
-            ECS_OK) {
+        if (scene_register_components(spec->scenes[i].scene, ecs, error, size) != ECS_OK) {
             goto reject;
         }
     }
-    const engine_modules *services = game_world_modules(p->world);
+    const engine_modules *services = world_modules(p->world);
     if (services->audio) {
         /* The library keeps records, names and its own copy of each file, all
          * charged before any file is copied. */
-        assert(!game_audio_sound_count(services->audio));
+        assert(!audio_sound_count(services->audio));
         int sounds = 0;
         size_t bytes = 0;
         for (int i = 0; i < spec->asset_count; i++) {
-            const game_player_asset *asset = &spec->assets[i];
-            if (asset->kind == GAME_PLAYER_ASSET_SOUND) {
+            const player_asset *asset = &spec->assets[i];
+            if (asset->kind == PLAYER_ASSET_SOUND) {
                 sounds++;
                 bytes += strlen(asset->name) + 1 + asset->length;
             }
         }
-        game_audio_reserve_sounds(services->audio, sounds);
-        bytes += game_audio_sound_storage_bytes(services->audio);
+        audio_reserve_sounds(services->audio, sounds);
+        bytes += audio_sound_storage_bytes(services->audio);
         if (bytes > *remaining) {
             fail(error, size, "Prepared player retained storage budget exceeded");
             goto reject;
         }
         *remaining -= bytes;
         for (int i = 0; i < spec->asset_count; i++) {
-            const game_player_asset *asset = &spec->assets[i];
-            if (asset->kind == GAME_PLAYER_ASSET_SOUND) {
-                game_audio_add_sound(
-                    services->audio,
-                    asset->name,
-                    asset->data,
-                    asset->length
-                );
+            const player_asset *asset = &spec->assets[i];
+            if (asset->kind == PLAYER_ASSET_SOUND) {
+                audio_add_sound(services->audio, asset->name, asset->data, asset->length);
             }
         }
-        assert(game_audio_sound_storage_bytes(services->audio) == bytes);
+        assert(audio_sound_storage_bytes(services->audio) == bytes);
     }
     if ((services->physics &&
-         game_physics_configure(services->physics, game_scene_physics(spec->scene)) < 0) ||
+         physics_configure(services->physics, scene_physics(spec->scene)) < 0) ||
         (services->physics3d &&
-         game_physics3d_configure(services->physics3d, game_scene_physics(spec->scene)) <
-             0)) {
+         physics3d_configure(services->physics3d, scene_physics(spec->scene)) < 0)) {
         fail(error, size, "Prepared scene physics configuration failed");
         goto reject;
     }
-    game_source_staging *stage = game_package_stage_budget(
-        game_world_sources(p->world),
+    source_staging *stage = package_stage_budget(
+        world_sources(p->world),
         spec->modules,
         spec->module_count,
         spec->linker,
@@ -372,23 +363,20 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
     }
     /* No dispatch until all registrations exist. A later scene/schema failure
      * destroys the unpublished-to-host player as one owned unit. */
-    game_source_commit(stage);
+    source_commit(stage);
     for (int i = 0; i < spec->scene_count; i++) {
-        if (!behaviors_registered(game_world_sources(p->world), spec->scenes[i].scene)) {
+        if (!behaviors_registered(world_sources(p->world), spec->scenes[i].scene)) {
             fail(error, size, "Prepared scene references an unregistered source module");
             goto reject;
         }
     }
     for (int i = 0; i < spec->prototype_count; i++) {
-        if (!behaviors_registered(
-                game_world_sources(p->world),
-                spec->prototypes[i].scene
-            )) {
+        if (!behaviors_registered(world_sources(p->world), spec->prototypes[i].scene)) {
             fail(error, size, "Prepared prototype references an unregistered source module");
             goto reject;
         }
-        if (game_entities_register_prepared(
-                game_world_entities(p->world),
+        if (entities_register_prepared(
+                world_entities(p->world),
                 spec->prototypes[i].name,
                 spec->prototypes[i].scene
             ) != 0) {
@@ -418,11 +406,11 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
             }
         }
     }
-    p->scene = game_scene_instantiate(spec->scene, ecs, game_world_sources(p->world), error, size);
+    p->scene = scene_instantiate(spec->scene, ecs, world_sources(p->world), error, size);
     if (!p->scene) {
         goto reject;
     }
-    if (game_entities_rebuild_global_bindings(game_world_entities(p->world)) != 0) {
+    if (entities_rebuild_global_bindings(world_entities(p->world)) != 0) {
         fail(error, size, "Prepared scene has conflicting global bindings");
         goto reject;
     }
@@ -434,9 +422,9 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
     for (int i = 0; i < acount(p->scenes); i++) {
         apush(names, p->scenes[i].name);
     }
-    game_scene_flow *flow = game_world_scenes(p->world);
-    game_scene_flow_set(flow, names, acount(names));
-    game_scene_flow_enter(flow, start);
+    scene_flow *flow = world_scenes(p->world);
+    scene_flow_set(flow, names, acount(names));
+    scene_flow_enter(flow, start);
     afree(names);
     if (p->generation) {
         p->resources.commit(p->resources.context, p->generation, p->world);
@@ -444,22 +432,22 @@ game_player *game_player_new(const game_player_spec *spec, char *error, size_t s
     }
     return p;
 reject:
-    game_player_free(p);
+    player_free(p);
     *remaining = initial_budget;
     return NULL;
 }
-void game_player_free(game_player *p)
+void player_free(player *p)
 {
     assert(p);
     if (p->scene) {
-        game_scene_instance_free(p->scene);
+        scene_instance_free(p->scene);
     }
     if (p->world) {
-        game_world_free(p->world);
+        world_free(p->world);
     }
     for (int i = 0; i < acount(p->scenes); i++) {
         free((void *)p->scenes[i].name);
-        game_scene_free(p->scenes[i].scene);
+        scene_free(p->scenes[i].scene);
     }
     afree(p->scenes);
     if (p->generation) {
@@ -472,17 +460,17 @@ void game_player_free(game_player *p)
     declared_components_free(p->declared);
     free(p);
 }
-game_world *game_player_world(const game_player *p)
+world *player_world(const player *p)
 {
     return p->world;
 }
-const game_scene_instance *game_player_scene(const game_player *p)
+const scene_instance *player_scene(const player *p)
 {
     return p->scene;
 }
-bool game_player_load_scene(game_player *p, const char *name, char *error, size_t size)
+bool player_load_scene(player *p, const char *name, char *error, size_t size)
 {
-    game_scene *scene = NULL;
+    scene *scene = NULL;
     for (int i = 0; i < acount(p->scenes) && !scene; i++) {
         scene = !strcmp(p->scenes[i].name, name) ? p->scenes[i].scene : NULL;
     }
@@ -490,39 +478,33 @@ bool game_player_load_scene(game_player *p, const char *name, char *error, size_
         snprintf(error, size, "No scene named '%s'", name);
         return false;
     }
-    const engine_modules *services = game_world_modules(p->world);
-    engine_reset_scene(game_world_engine(p->world));
-    game_scene_flow_enter(game_world_scenes(p->world), name);
+    const engine_modules *services = world_modules(p->world);
+    engine_reset_scene(world_engine(p->world));
+    scene_flow_enter(world_scenes(p->world), name);
     if (services->particles) {
-        game_particles_clear(services->particles);
+        particles_clear(services->particles);
     }
-    game_entities_reset(services->entities);
-    game_scene_instance_free(p->scene);
+    entities_reset(services->entities);
+    scene_instance_free(p->scene);
     p->scene = NULL;
     if ((services->physics &&
-         game_physics_configure(services->physics, game_scene_physics(scene)) < 0) ||
+         physics_configure(services->physics, scene_physics(scene)) < 0) ||
         (services->physics3d &&
-         game_physics3d_configure(services->physics3d, game_scene_physics(scene)) < 0)) {
+         physics3d_configure(services->physics3d, scene_physics(scene)) < 0)) {
         return fail(error, size, "Prepared scene physics configuration failed");
     }
-    p->scene = game_scene_instantiate(
-        scene,
-        game_world_ecs(p->world),
-        game_world_sources(p->world),
-        error,
-        size
-    );
+    p->scene = scene_instantiate(scene, world_ecs(p->world), world_sources(p->world), error, size);
     if (!p->scene) {
         return false;
     }
-    if (game_entities_rebuild_global_bindings(services->entities) != 0) {
+    if (entities_rebuild_global_bindings(services->entities) != 0) {
         return fail(error, size, "Prepared scene has conflicting global bindings");
     }
     /* Begin runs before held input reaches the new entities, as in scenarios. */
-    game_source_registry *sources = game_world_sources(p->world);
-    double now = engine_last_timing(game_world_engine(p->world))->simulation_time;
-    if (game_source_begin(sources, now, ENGINE_FIXED_SECONDS) < 0) {
-        return fail(error, size, game_source_error(sources));
+    source_registry *sources = world_sources(p->world);
+    double now = engine_last_timing(world_engine(p->world))->simulation_time;
+    if (source_begin(sources, now, ENGINE_FIXED_SECONDS) < 0) {
+        return fail(error, size, source_error(sources));
     }
     return true;
 }

@@ -34,7 +34,7 @@ freezing it restores native iteration. Explicit runtime profiling remains
 available. Aggregate frame timings stay active. Unprofiled native spans contain
 no profiling calls.
 
-`game_behavior_last_update` reports total entries, prepared executions, native
+`behavior_last_update` reports total entries, prepared executions, native
 outer-loop executions, and entries handled by ordinary dispatch. This distinguishes
 whole-body code generation from actual compiled iteration. Explicit named-event
 broadcasts remain available for tools and parity comparisons.

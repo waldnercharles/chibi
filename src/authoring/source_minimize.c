@@ -694,7 +694,7 @@ static char *string_argument(const collector *c, TSNode list, uint32_t index)
     }
     return slice(c->text, start(value) + 1, end(value) - 1);
 }
-/* Reflected source spelling: `GameHealth` is `Health`, `cooldown_remaining`
+/* Reflected source spelling: `Health` is `Health`, `cooldown_remaining`
  * is `CooldownRemaining`. */
 static void append_pascal(char **out, const char *name)
 {
@@ -708,7 +708,7 @@ static void append_pascal(char **out, const char *name)
         upper = false;
     }
 }
-/* `component("GAME.GameHealth", "current")` reads `self.Health.Current`. */
+/* `component("Health", "current")` reads `self.Health.Current`. */
 static char *component_path_text(const collector *c, TSNode call)
 {
     TSNode function = field(call, "function"), list = field(call, "arguments");
@@ -725,9 +725,6 @@ static char *component_path_text(const collector *c, TSNode call)
         const script_catalog_type *type = &c->catalog->types[found];
         const char *name = strrchr(type->name, '.');
         name = name ? name + 1 : type->name;
-        if (!strncmp(name, "Game", 4) && isupper((unsigned char)name[4])) {
-            name += 4;
-        }
         for (const char *p = "self."; *p; p++) {
             apush(out, *p);
         }

@@ -281,7 +281,7 @@ typedef struct
     const int *active;
 } flow_work;
 
-static void run(const game_task_system *tasks, game_task_range *function, int count, flow_work *work)
+static void run(const task_system *tasks, task_range *function, int count, flow_work *work)
 {
     if (tasks->workers > 1 && count >= 4096) {
         void *task = tasks->enqueue(function, count, 1024, work, tasks->user);
@@ -434,7 +434,7 @@ static void pressure(int start, int end, uint32_t, void *context)
     }
 }
 
-static void project(material_flow *flow, float h, float dt, const game_task_system *tasks)
+static void project(material_flow *flow, float h, float dt, const task_system *tasks)
 {
     flow_grid *grid = &flow->grid;
     constrain(grid);
@@ -516,7 +516,7 @@ void material_flow_step(
     const fluid_body *bodies,
     const fluid_obstacle *obstacles,
     int obstacle_count,
-    const game_task_system *tasks
+    const task_system *tasks
 )
 {
     seed(flow, particles, active, count, settings.cell_size);

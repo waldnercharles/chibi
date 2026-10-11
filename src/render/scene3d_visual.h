@@ -15,10 +15,10 @@ typedef struct
 
 /* Where an entity with a Transform draws: at the drawn `position` with its
  * propagated angle, or with a NULL position at its exact world transform. */
-GameGlobalTransform2D render_scene3d_placement(
+GlobalTransform2D render_scene3d_placement(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position
+    const Transform *position
 );
 /* Appends the entities the 3D view draws to `entities`: those with a
  * Geometry3D and a Transform, then those with a Geometry3D and a Transform3D.
@@ -41,8 +41,8 @@ typedef enum
 scene3d_frame_state render_scene3d_visual_frame(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position,
-    const GameGlobalTransform3D *transform,
+    const Transform *position,
+    const GlobalTransform3D *transform,
     CF_M4x4 *frame
 );
 /* Returns parts, zero for an invisible/missing visual, or -1 with an authoring error.
@@ -54,8 +54,8 @@ scene3d_frame_state render_scene3d_visual_frame(
 int render_scene3d_visuals(
     const ecs_world *world,
     ecs_entity entity,
-    const GameTransform *position,
-    const GameGlobalTransform3D *transform,
+    const Transform *position,
+    const GlobalTransform3D *transform,
     scene3d_visual visuals[SCENE3D_PART_LIMIT],
     const render_mesh_asset **mesh,
     char *error,

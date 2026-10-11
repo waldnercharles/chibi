@@ -1,5 +1,5 @@
 behavior "CutMaterial" {
     on Tick {
-        damage_material(self, convert<"game_transform_to_cf">(self.Transform), 24.0, 1.0, 0, 0)
+        damage_material(self, convert<"transform_to_cf">(self.Transform), 24.0, 1.0, 0, 0)
     }
 }

@@ -10,21 +10,21 @@
 typedef struct
 {
     engine *runtime;
-    game_prototype_preview *preview;
+    prototype_preview *preview;
     double time;
 } simulation_fixture;
 
-static inline simulation_fixture simulation_fixture_new(engine *runtime, game_prototype_preview *preview)
+static inline simulation_fixture simulation_fixture_new(engine *runtime, prototype_preview *preview)
 {
     return (
         simulation_fixture
-    ){ preview ? game_prototype_preview_runtime(preview) : runtime, preview, 0 };
+    ){ preview ? prototype_preview_runtime(preview) : runtime, preview, 0 };
 }
 
 static inline void simulation_frame(simulation_fixture *f, double time)
 {
     assert(time >= f->time);
-    int result = f->preview ? game_prototype_preview_tick(f->preview, time)
+    int result = f->preview ? prototype_preview_tick(f->preview, time)
                             : engine_frame(f->runtime, time);
     assert(result >= 0);
     f->time = time;

@@ -409,17 +409,17 @@ TEST_CASE(component_reads_format_like_their_bindings)
 {
     asset = behavior_asset_new("Components");
     graph *to = asset->graph;
-    const char *movement = GAME_COMPONENT_GameMovement.key;
+    const char *movement = COMPONENT_Movement.key;
     node *self = add(to, "Self");
     REQUIRE(graph_set_pin_type(to, self, 1, 0, PIN_HANDLE, "ecs.entity") == 0);
     node *self_has = add(to, "Has Component");
     REQUIRE(component_node_retarget(to, self_has, movement) == 0);
     wire(to, self, 0, self_has, component_node_setting(self_has) + 1);
     REQUIRE(graph_node_is_inline(to, self));
-    REQUIRE(formats(to, self_has, "has(Self.GameMovement)"));
+    REQUIRE(formats(to, self_has, "has(Self.Movement)"));
 
     /* Make Struct reads like the generated Make it lowers to. */
-    const char *structs[] = { "GameHealth", "GameTransform" };
+    const char *structs[] = { "Health", "Transform" };
     for (int i = 0; i < 2; i++) {
         char generated_name[64], generated_text[128], authored_text[128];
         snprintf(generated_name, sizeof generated_name, "Make_%s", structs[i]);
@@ -434,7 +434,7 @@ TEST_CASE(component_reads_format_like_their_bindings)
         REQUIRE(!strcmp(generated_text, authored_text));
     }
 
-    node *getter = add(to, "Get_GameMovement");
+    node *getter = add(to, "Get_Movement");
     REQUIRE(graph_expose_output_fields(to, getter, 0) == 0);
     int field = output_named(getter, "speed");
     REQUIRE(field >= 0);
@@ -442,7 +442,7 @@ TEST_CASE(component_reads_format_like_their_bindings)
     wire(to, getter, field, sum, 0);
     wire(to, real(to, 2), 0, sum, 1);
     REQUIRE(graph_node_is_inline(to, getter));
-    REQUIRE(formats(to, sum, "Self.GameMovement.speed + 2"));
+    REQUIRE(formats(to, sum, "Self.Movement.speed + 2"));
 
     /* Configured component reads fold despite their Component setting. */
     node *read = add(to, "Get Component");
@@ -458,8 +458,8 @@ TEST_CASE(component_reads_format_like_their_bindings)
     node *missing = add(to, "Not");
     wire(to, has, 0, missing, 0);
     REQUIRE(graph_node_is_inline(to, read) && graph_node_is_inline(to, has));
-    REQUIRE(formats(to, scaled_read, "Self.GameMovement.speed × 2"));
-    REQUIRE(formats(to, missing, "!has(Self.GameMovement)"));
+    REQUIRE(formats(to, scaled_read, "Self.Movement.speed × 2"));
+    REQUIRE(formats(to, missing, "!has(Self.Movement)"));
 
     /* The values a chip reads, so an editor can name them in its own style. */
     node *reader = add(to, "Reroute Data");
@@ -468,7 +468,7 @@ TEST_CASE(component_reads_format_like_their_bindings)
     behavior_expression_read *reads = NULL;
     behavior_expression_format(to, reader, 0, text, sizeof text, &reads);
     bool listed = acount(reads) == 1 && reads[0].start == 0 &&
-                  reads[0].length == (int)strlen("Self.GameMovement.speed") &&
+                  reads[0].length == (int)strlen("Self.Movement.speed") &&
                   reads[0].read.kind == PIN_BINDING_COMPONENT_FIELD &&
                   !strcmp(reads[0].read.component_key, movement) &&
                   !strcmp(reads[0].read.field_name, "speed");
@@ -476,7 +476,7 @@ TEST_CASE(component_reads_format_like_their_bindings)
     asetlen(reads, 0);
     behavior_expression_format(to, reader, 0, text, 8, &reads);
     bool truncated = acount(reads) == 1 && reads[0].length == 7 &&
-                     !strcmp(text, "Self.Ga");
+                     !strcmp(text, "Self.Mo");
     afree(reads);
     REQUIRE(listed);
     REQUIRE(truncated);

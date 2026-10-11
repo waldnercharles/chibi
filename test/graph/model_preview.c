@@ -70,18 +70,17 @@ static node *slot(graph *g, const char *name, const char *material)
 TEST_CASE(live_rename_updates_applied_sources)
 {
     ecs_world *ecs = ecs_world_new();
-    game_preview_world *world = game_preview_world_new(ecs);
+    preview_world *world = preview_world_new(ecs);
     behavior_asset *paint = material("LiveRenamePaint", 1, 0, 0);
-    game_preview_definition
-        *paint_definition = game_preview_definition_new(paint->name, paint);
-    REQUIRE(!game_preview_add_definition(world, paint_definition));
+    preview_definition *paint_definition = preview_definition_new(paint->name, paint);
+    REQUIRE(!preview_add_definition(world, paint_definition));
     behavior_asset *base = model("LiveRenameBase");
     node *body = part(base->graph, "Body", 2);
     node *paint_slot = slot(base->graph, "Paint", paint->name);
     connect(base->graph, paint_slot, body, 1);
     publish(base->graph, body);
-    game_preview_definition *base_definition = game_preview_definition_new(base->name, base);
-    REQUIRE(!game_preview_add_definition(world, base_definition));
+    preview_definition *base_definition = preview_definition_new(base->name, base);
+    REQUIRE(!preview_add_definition(world, base_definition));
     behavior_asset *parent = model("LiveRenameParent");
     node *instance = graph_add_node(parent->graph, &NODE_ModelInstance);
     instance->reference_asset = graph_own_str(parent->graph, base->name, strlen(base->name));
@@ -95,16 +94,15 @@ TEST_CASE(live_rename_updates_applied_sources)
     REQUIRE(graph_add_pin(parent->graph, instance, false, &override) == 0);
     publish(parent->graph, instance);
     uint64_t instance_id = instance->id;
-    game_preview_definition
-        *parent_definition = game_preview_definition_new(parent->name, parent);
-    REQUIRE(!game_preview_add_definition(world, parent_definition));
-    REQUIRE(!game_preview_rename_definition(world, "LiveRenameBase", "LiveRenamedBase"));
+    preview_definition *parent_definition = preview_definition_new(parent->name, parent);
+    REQUIRE(!preview_add_definition(world, parent_definition));
+    REQUIRE(!preview_rename_definition(world, "LiveRenameBase", "LiveRenamedBase"));
     REQUIRE(!strcmp(base_definition->working->name, "LiveRenamedBase"));
     REQUIRE(!strcmp(base_definition->applied->name, "LiveRenamedBase"));
     REQUIRE(!strcmp(instance->reference_asset, "LiveRenamedBase"));
     node *applied_instance = graph_node_by_id(parent_definition->applied->graph, instance_id);
     REQUIRE(applied_instance && !strcmp(applied_instance->reference_asset, "LiveRenamedBase"));
-    REQUIRE(!game_preview_rename_definition(world, "LiveRenamePaint", "LiveRenamedPaint"));
+    REQUIRE(!preview_rename_definition(world, "LiveRenamePaint", "LiveRenamedPaint"));
     REQUIRE(!strcmp(paint_definition->working->name, "LiveRenamedPaint"));
     REQUIRE(!strcmp(paint_definition->applied->name, "LiveRenamedPaint"));
     REQUIRE(!strcmp(instance->input_pins[0].default_value.str, "LiveRenamedPaint"));
@@ -113,10 +111,10 @@ TEST_CASE(live_rename_updates_applied_sources)
         applied_instance &&
         !strcmp(applied_instance->input_pins[0].default_value.str, "LiveRenamedPaint")
     );
-    REQUIRE(!game_preview_remove_definition(world, "LiveRenameParent"));
-    REQUIRE(!game_preview_remove_definition(world, "LiveRenamedBase"));
-    REQUIRE(!game_preview_remove_definition(world, "LiveRenamedPaint"));
-    game_preview_world_free(world);
+    REQUIRE(!preview_remove_definition(world, "LiveRenameParent"));
+    REQUIRE(!preview_remove_definition(world, "LiveRenamedBase"));
+    REQUIRE(!preview_remove_definition(world, "LiveRenamedPaint"));
+    preview_world_free(world);
     ecs_world_free(ecs);
     return true;
 }
@@ -124,18 +122,18 @@ TEST_CASE(live_rename_updates_applied_sources)
 TEST_CASE(live_model_registration_names_its_node)
 {
     ecs_world *ecs = ecs_world_new();
-    game_preview_world *world = game_preview_world_new(ecs);
+    preview_world *world = preview_world_new(ecs);
     behavior_asset *asset = model("LiveMissingPaint");
     node *body = part(asset->graph, "Body", 2);
     node *paint = slot(asset->graph, "Paint", "LiveAbsentPaint");
     connect(asset->graph, paint, body, 1);
     publish(asset->graph, body);
-    game_preview_definition *definition = game_preview_definition_new(asset->name, asset);
-    REQUIRE(game_preview_add_definition(world, definition));
+    preview_definition *definition = preview_definition_new(asset->name, asset);
+    REQUIRE(preview_add_definition(world, definition));
     REQUIRE(acount(definition->diagnostics.items) == 1);
     REQUIRE(definition->diagnostics.items[0].node_id == paint->id);
-    game_preview_definition_free(definition);
-    game_preview_world_free(world);
+    preview_definition_free(definition);
+    preview_world_free(world);
     ecs_world_free(ecs);
     return true;
 }

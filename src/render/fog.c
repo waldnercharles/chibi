@@ -33,16 +33,15 @@ void render_fog_free(render_fog *fog)
 
 bool render_fog_draw(
     render_fog *fog,
-    const game_visibility *visibility,
+    const visibility *visibility,
     const engine_viewport_camera *frame,
     const render_scene3d_camera *camera,
     float time
 )
 {
-    GameFog settings;
-    const unsigned char *cells = visibility
-                                   ? game_visibility_cells(visibility, &settings)
-                                   : NULL;
+    Fog settings;
+    const unsigned char *cells = visibility ? visibility_cells(visibility, &settings)
+                                            : NULL;
     if (!cells) {
         return true;
     }

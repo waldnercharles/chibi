@@ -103,7 +103,7 @@
   <div class="compare">
     <div class="panel"><h3>Today</h3><div class="canvas" id="self-a"></div></div>
     <div class="panel"><h3>Proposed <span class="tag pick">recommended</span></h3><div class="canvas" id="self-b"></div>
-      <p class="why">A component binding always reads the owner, so “Self” carries nothing. Unreal's member getters and component references drop it too; “self” and Unity's “This” appear only as the default of a call's Target pin, where another object could be wired. An icon tells a component from a variable, event value or local, and names are humanized. Hover shows the expression path, <code>Self.GameAim.manual</code>.</p></div>
+      <p class="why">A component binding always reads the owner, so “Self” carries nothing. Unreal's member getters and component references drop it too; “self” and Unity's “This” appear only as the default of a call's Target pin, where another object could be wired. An icon tells a component from a variable, event value or local, and names are humanized. Hover shows the expression path, <code>Self.Aim.manual</code>.</p></div>
   </div>
 
   <h2>2 · Flow pins in the title row</h2>
@@ -166,7 +166,7 @@ const findB = { ...find, rows: [
 const aim = { title: 'Branch', kind: 'flow', icon: 'git-branch', width: 220, labelWidth: 64, rows: [
   { side: 'exec', in: { wired: true }, out: { label: 'True', wired: true } },
   { side: 'exec', out: { label: 'False', wired: true } },
-  { side: 'in', label: 'Condition', type: 'bool', value: { text: 'Self.GameAim.manual' } },
+  { side: 'in', label: 'Condition', type: 'bool', value: { text: 'Self.Aim.manual' } },
 ] };
 const aimB = { ...aim, rows: [aim.rows[0], aim.rows[1],
   { side: 'in', label: 'Condition', type: 'bool', value: { icon: 'box', text: 'Aim › Manual' } }] };
@@ -211,8 +211,8 @@ mount('compact-b', [
 const exprA = { title: 'target = vec2(cos(heading), sin(heading)) * speed * 2', kind: 'expr', icon: 'math-function', width: 240, labelWidth: 56, rows: [
   { side: 'exec', in: { wired: true }, out: { wired: true } },
   { side: 'out', label: 'Result', type: 'vec' },
-  { side: 'in', label: 'Heading', type: 'float', value: { text: 'Self.GameOrientation.radians' } },
-  { side: 'in', label: 'Speed', type: 'float', value: { text: 'Self.GameMovement.speed' } },
+  { side: 'in', label: 'Heading', type: 'float', value: { text: 'Self.Orientation.radians' } },
+  { side: 'in', label: 'Speed', type: 'float', value: { text: 'Self.Movement.speed' } },
 ] };
 const exprB = { title: 'Expression', kind: 'expr', icon: 'math-function', width: 300, labelWidth: 56, headIn: { wired: true }, headOut: { wired: true },
   code: '<span class="f">target</span> = vec2(cos(<span class="f">heading</span>), sin(<span class="f">heading</span>)) * <span class="f">speed</span> * <span class="n">2</span>',

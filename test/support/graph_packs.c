@@ -1,4 +1,4 @@
-#include "test/support/game_graph_packs.h"
+#include "test/support/graph_packs.h"
 
 #include "authoring/graph_catalog.h"
 #include "host/native_default.h"
@@ -11,7 +11,7 @@
 static authoring_graph_catalog *catalog;
 static const registry_pack **previous;
 
-bool test_game_graph_packs_set()
+bool test_graph_packs_set()
 {
     assert(!catalog);
     char error[512] = "";
@@ -20,8 +20,8 @@ bool test_game_graph_packs_set()
         catalog = authoring_graph_catalog_new(
             (authoring_graph_catalog_config){
                 .native = native,
-                .types = GAME_TYPE_PACK,
-                .components = { GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT } },
+                .types = TYPE_PACK,
+                .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT } },
             error,
             sizeof error
         );
@@ -40,7 +40,7 @@ bool test_game_graph_packs_set()
     return true;
 }
 
-void test_game_graph_packs_clear()
+void test_graph_packs_clear()
 {
     if (!catalog) {
         return;

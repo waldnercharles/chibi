@@ -5,16 +5,16 @@
 #include <math.h>
 #include <string.h>
 
-/* The linear coefficients the material raster draws a GameMaterial with. */
+/* The linear coefficients the material raster draws a Material with. */
 
 static bool near(float actual, float expected)
 {
     return fabsf(actual - expected) < 0.00001f;
 }
 
-static GameMaterial lit_material()
+static Material lit_material()
 {
-    return (GameMaterial){
+    return (Material){
         .scene = 0x20408080,
         .albedo = 0x40608020,
         .filter = 0xFF800000,
@@ -33,9 +33,9 @@ static GameMaterial lit_material()
  * borders absorb independently of the body. */
 TEST_CASE(material_coefficients_linear_and_hdr)
 {
-    GameMaterial material = lit_material();
-    game_material_coefficients result;
-    REQUIRE(game_material_extract(&material, &result));
+    Material material = lit_material();
+    material_coefficients result;
+    REQUIRE(material_extract(&material, &result));
     REQUIRE(near(result.scene[0], 32 / 255.0f));
     REQUIRE(near(result.scene[3], 128 / 255.0f));
     REQUIRE(near(result.albedo[2], 128 / 255.0f));
@@ -62,11 +62,11 @@ TEST_CASE(material_coefficients_linear_and_hdr)
  * no absorption leaves borders clear. */
 TEST_CASE(material_coefficients_zeroed_terms)
 {
-    GameMaterial material = lit_material();
+    Material material = lit_material();
     material.emission_multiplier = 0;
     material.scene &= 0xFFFFFF00u;
-    game_material_coefficients result;
-    REQUIRE(game_material_extract(&material, &result));
+    material_coefficients result;
+    REQUIRE(material_extract(&material, &result));
     for (int i = 0; i < 4; i++) {
         REQUIRE(near(result.emission[i], 0));
         REQUIRE(near(result.border_emission[i], 0));
@@ -75,7 +75,7 @@ TEST_CASE(material_coefficients_zeroed_terms)
     REQUIRE(near(result.border_absorption[3], 1));
     material.emission_multiplier = -1;
     material.absorption = 0;
-    REQUIRE(game_material_extract(&material, &result));
+    REQUIRE(material_extract(&material, &result));
     REQUIRE(near(result.emission[3], 0));
     REQUIRE(near(result.border_absorption[3], 0));
     return true;
@@ -85,20 +85,20 @@ TEST_CASE(material_coefficients_zeroed_terms)
  * leave the previous coefficients untouched. */
 TEST_CASE(material_coefficients_refuse_invalid_scalars)
 {
-    GameMaterial material = lit_material();
-    game_material_coefficients result;
-    REQUIRE(game_material_extract(&material, &result));
-    game_material_coefficients before = result;
+    Material material = lit_material();
+    material_coefficients result;
+    REQUIRE(material_extract(&material, &result));
+    material_coefficients before = result;
     material.absorption = NAN;
-    REQUIRE(!game_material_extract(&material, &result));
+    REQUIRE(!material_extract(&material, &result));
     REQUIRE(memcmp(&before, &result, sizeof result) == 0);
     material.absorption = 1;
     material.emission_intensity = FLT_MAX;
     material.emission_multiplier = 2;
-    REQUIRE(!game_material_extract(&material, &result));
+    REQUIRE(!material_extract(&material, &result));
     REQUIRE(memcmp(&before, &result, sizeof result) == 0);
     material.emission_multiplier = INFINITY;
-    REQUIRE(!game_material_extract(&material, &result));
+    REQUIRE(!material_extract(&material, &result));
     return true;
 }
 

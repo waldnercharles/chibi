@@ -57,12 +57,12 @@ enum
     PIXELS = SIDE * SIDE
 };
 
-static ecs_world *world;
+static ecs_world *test_world;
 static bool backdrop; /* Queue a white 2D fill before each 3D draw. */
 static render_scene3d_camera lens; /* What each render sees. */
 static render_scene3d *scene3d;
 static render_scene3d_post *post;
-static game_particles *particles;
+static particles *test_particles;
 static CF_Pixel pixels[PIXELS];
 static engine *runtime;
 
@@ -85,14 +85,14 @@ static void look(CF_V3 eye, CF_V3 target, CF_V3 up)
 
 static void setup()
 {
-    world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    test_world = ecs_world_new();
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(test_world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     scene3d = render_scene3d_new();
     render_scene3d_set_size(scene3d, SIDE, SIDE);
     post = render_scene3d_post_new();
-    particles = game_particles_new();
+    test_particles = particles_new();
     lens = camera();
 }
 
@@ -112,58 +112,52 @@ static void teardown()
     runtime = NULL;
     render_scene3d_free(scene3d);
     render_scene3d_post_free(post);
-    game_particles_free(particles);
-    ecs_world_free(world);
+    particles_free(test_particles);
+    ecs_world_free(test_world);
 }
 
 static ecs_entity add(ecs_component_id component, const void *data)
 {
-    ecs_entity entity = ecs_world_create_entity(world);
-    assert(ecs_world_record_add(world, entity, component, data, 0) == ECS_OK);
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity entity = ecs_world_create_entity(test_world);
+    assert(ecs_world_record_add(test_world, entity, component, data, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     return entity;
 }
 
 /* A solid centered on a world point. */
-static ecs_entity add_solid(CF_V3 center, GameGeometry3D shape, unsigned color)
+static ecs_entity add_solid(CF_V3 center, Geometry3D shape, unsigned color)
 {
-    ecs_entity solid = add(
-        GAME_COMPONENT_GameTransform.id,
-        &(GameTransform){ center.x, center.z }
-    );
+    ecs_entity
+        solid = add(COMPONENT_Transform.id, &(Transform){ center.x, center.z });
     shape.elevation = center.y;
-    GameMaterial material = { .scene = color };
-    assert(
-        ecs_world_record_add(world, solid, GAME_COMPONENT_GameGeometry3D.id, &shape, 0) == ECS_OK
-    );
-    assert(
-        ecs_world_record_add(world, solid, GAME_COMPONENT_GameMaterial.id, &material, 0) == ECS_OK
-    );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    Material material = { .scene = color };
+    assert(ecs_world_record_add(test_world, solid, COMPONENT_Geometry3D.id, &shape, 0) == ECS_OK);
+    assert(ecs_world_record_add(test_world, solid, COMPONENT_Material.id, &material, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     return solid;
 }
 
-static void add_solid_at(float x, GameGeometry3D shape, unsigned color)
+static void add_solid_at(float x, Geometry3D shape, unsigned color)
 {
     add_solid((CF_V3){ x, shape.elevation, 0 }, shape, color);
 }
 
 static void add_box(unsigned color)
 {
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 0 }, color);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2, 0 }, color);
 }
 
 /* A floor whose top face fills the whole view. */
 static void add_floor()
 {
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 400, 400, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 400, 400, .2f, -.1f }, 0xffffffffu);
 }
 
-static GameDirectionalLight *add_sun(unsigned color, CF_V3 direction)
+static DirectionalLight *add_sun(unsigned color, CF_V3 direction)
 {
-    GameDirectionalLight sun = { .color = color, .intensity = 3, .direction = direction };
-    ecs_entity entity = add(GAME_COMPONENT_GameDirectionalLight.id, &sun);
-    return GAME_GameDirectionalLight_get(world, entity);
+    DirectionalLight sun = { .color = color, .intensity = 3, .direction = direction };
+    ecs_entity entity = add(COMPONENT_DirectionalLight.id, &sun);
+    return DirectionalLight_get(test_world, entity);
 }
 
 /* The box's top face fills the image center; its front face is just below. */
@@ -223,9 +217,9 @@ static bool finish(float time)
     return processed && read_pixels(render_scene3d_post_output(post));
 }
 
-static bool render_at(const GameEnvironment *environment, float time)
+static bool render_at(const Environment *environment, float time)
 {
-    GameEnvironment settings = *environment;
+    Environment settings = *environment;
     settings.bloom_strength = 0;
     if (!render_scene3d_post_prepare(post, SIDE, SIDE, &settings)) {
         return false;
@@ -236,12 +230,21 @@ static bool render_at(const GameEnvironment *environment, float time)
     if (backdrop) {
         cf_draw_quad_fill(cf_make_aabb((CF_V2){ -SIDE, -SIDE }, (CF_V2){ SIDE, SIDE }), 0);
     }
-    bool drawn = render_scene3d_draw(scene3d, world, particles, &lens, 0, runtime, &settings, (render_skip){ 0 });
+    bool drawn = render_scene3d_draw(
+        scene3d,
+        test_world,
+        test_particles,
+        &lens,
+        0,
+        runtime,
+        &settings,
+        (render_skip){ 0 }
+    );
     cf_render_to(canvas, true);
     return finish(time) && drawn;
 }
 
-static bool render(const GameEnvironment *environment)
+static bool render(const Environment *environment)
 {
     return render_at(environment, 0);
 }
@@ -249,10 +252,10 @@ static bool render(const GameEnvironment *environment)
 TEST_CASE(scene_draws_without_a_valid_rhythm_clock)
 {
     add_box(0xffffffffu);
-    GameRhythm rhythm = { 120, .18f };
-    add(GAME_COMPONENT_GameRhythm.id, &rhythm);
-    add(GAME_COMPONENT_GameRhythm.id, &rhythm);
-    GameEnvironment environment = game_environment_defaults();
+    Rhythm rhythm = { 120, .18f };
+    add(COMPONENT_Rhythm.id, &rhythm);
+    add(COMPONENT_Rhythm.id, &rhythm);
+    Environment environment = environment_defaults();
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
     REQUIRE(top().colors.r > 0);
@@ -263,7 +266,7 @@ TEST_CASE(scene_draws_without_a_valid_rhythm_clock)
 static int look_through_camera()
 {
     engine_viewport_view view;
-    int found = game_camera_view(world, NULL, &view);
+    int found = camera_view(test_world, NULL, &view);
     if (found == 1) {
         lens = render_scene3d_camera_frame(&(engine_viewport_camera){
             .center_x = view.center_x,
@@ -278,12 +281,10 @@ static int look_through_camera()
 /* A camera at a 3D pose, looking along -Z until rotated. */
 static ecs_entity add_camera_3d(CF_Quat rotation)
 {
-    ecs_entity entity = add(GAME_COMPONENT_GameCamera.id, &(GameCamera){ .width = 2, .height = 2 });
-    GameTransform3D pose = { .rotation = rotation, .scale = { 1, 1, 1 } };
-    assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameTransform3D.id, &pose, 0) == ECS_OK
-    );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity entity = add(COMPONENT_Camera.id, &(Camera){ .width = 2, .height = 2 });
+    Transform3D pose = { .rotation = rotation, .scale = { 1, 1, 1 } };
+    assert(ecs_world_record_add(test_world, entity, COMPONENT_Transform3D.id, &pose, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     return entity;
 }
 
@@ -299,7 +300,7 @@ static bool near_value(float value, float expected)
 
 TEST_CASE(cameras_look_along_their_transform3d)
 {
-    GameGeometry3D cube = { GAME_PRIMITIVE_BOX, 2, 2, 2, 0 };
+    Geometry3D cube = { PRIMITIVE_BOX, 2, 2, 2, 0 };
     add_solid((CF_V3){ 6, 0, 0 }, cube, 0xff0000ffu);
     add_solid((CF_V3){ -6, 0, 0 }, cube, 0x0000ffffu);
     ecs_entity camera = add_camera_3d(
@@ -312,17 +313,17 @@ TEST_CASE(cameras_look_along_their_transform3d)
     REQUIRE(near_value(ahead.x, 0) && near_value(ahead.y, 0));
     REQUIRE(near_value(above.x, 0) && above.y > .1f);
     REQUIRE(right.x > .1f && near_value(right.y, 0));
-    GameCamera *authored = GAME_GameCamera_get(world, camera);
+    Camera *authored = Camera_get(test_world, camera);
     authored->offset = (CF_V2){ 1, 2 };
     REQUIRE(look_through_camera() == 1);
     CF_V3 offset = render_scene3d_project(&lens, (CF_V3){ 6, 0, 2 });
     REQUIRE(near_value(offset.x, 0) && near_value(offset.y, 0));
     authored->offset = (CF_V2){ 0 };
     REQUIRE(look_through_camera() == 1);
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     REQUIRE(render(&environment));
     REQUIRE(center().colors.r > 2 * center().colors.b);
-    GAME_GameTransform3D_get(world, camera)
+    Transform3D_get(test_world, camera)
         ->rotation = cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, CF_PI / 2);
     REQUIRE(look_through_camera() == 1);
     REQUIRE(render(&environment));
@@ -332,28 +333,26 @@ TEST_CASE(cameras_look_along_their_transform3d)
 
 TEST_CASE(camera_field_of_view_and_clips_shape_the_projection)
 {
-    ecs_entity framing = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 3, 2 });
-    GameCamera authored = { .width = 4, .height = 2 };
-    assert(
-        ecs_world_record_add(world, framing, GAME_COMPONENT_GameCamera.id, &authored, 0) == ECS_OK
-    );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity framing = add(COMPONENT_Transform.id, &(Transform){ 3, 2 });
+    Camera authored = { .width = 4, .height = 2 };
+    assert(ecs_world_record_add(test_world, framing, COMPONENT_Camera.id, &authored, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     REQUIRE(look_through_camera() == 1);
     CF_V3 target = render_scene3d_project(&lens, (CF_V3){ 3, 0, 2 });
     REQUIRE(near_value(target.x, 0) && near_value(target.y, 0));
     REQUIRE(near_value(lens.projection.elements[5] * tanf(.5f * 35 * CF_PI / 180), 1));
     REQUIRE(near_value(lens.projection.elements[5] / lens.projection.elements[0], 2));
-    GAME_GameCamera_get(world, framing)->fov = CF_PI / 2;
+    Camera_get(test_world, framing)->fov = CF_PI / 2;
     REQUIRE(look_through_camera() == 1);
     target = render_scene3d_project(&lens, (CF_V3){ 3, 0, 2 });
     REQUIRE(near_value(target.x, 0) && near_value(target.y, 0));
     REQUIRE(near_value(lens.projection.elements[5], 1));
-    assert(ecs_world_destroy_entity(world, framing) == ECS_OK);
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    assert(ecs_world_destroy_entity(test_world, framing) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     ecs_entity posed = add_camera_3d(
         cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, -CF_PI / 2)
     );
-    GameCamera *clipped = GAME_GameCamera_get(world, posed);
+    Camera *clipped = Camera_get(test_world, posed);
     clipped->near_clip = .5f;
     clipped->far_clip = 50;
     REQUIRE(look_through_camera() == 1);
@@ -369,7 +368,7 @@ TEST_CASE(camera_field_of_view_and_clips_shape_the_projection)
 TEST_CASE(distant_small_scale_cameras_keep_their_view)
 {
     ecs_entity camera = add_camera_3d(cf_quat_identity());
-    GameTransform3D *pose = GAME_GameTransform3D_get(world, camera);
+    Transform3D *pose = Transform3D_get(test_world, camera);
     pose->position = (CF_V3){ 0, 0, 1000 };
     pose->scale = (CF_V3){ 1e-6f, 1e-6f, 1e-6f };
     REQUIRE(look_through_camera() == 1);
@@ -406,7 +405,7 @@ TEST_CASE(default_clips_stay_ordered_for_close_framings)
     ecs_entity camera = add_camera_3d(
         cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, -CF_PI / 2)
     );
-    GAME_GameCamera_get(world, camera)->fov = 3.1415f;
+    Camera_get(test_world, camera)->fov = 3.1415f;
     REQUIRE(look_through_camera() == 1);
     depth = render_scene3d_project(&lens, (CF_V3){ 1, 0, 0 }).z;
     REQUIRE(depth > 0 && depth < 1);
@@ -421,16 +420,16 @@ TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use)
         { 0, 1, INFINITY }, { 0, .01f, 1e7f },
     };
     ecs_entity entity = add_camera_3d(cf_quat_identity());
-    GameCamera *camera = GAME_GameCamera_get(world, entity);
+    Camera *camera = Camera_get(test_world, entity);
     for (int i = 0; i < (int)(sizeof lenses / sizeof lenses[0]); i++) {
         camera->fov = lenses[i][0];
         camera->near_clip = lenses[i][1];
         camera->far_clip = lenses[i][2];
         REQUIRE(look_through_camera() == -1);
     }
-    *camera = (GameCamera){ .width = 2, .height = 2, .fov = 1, .near_clip = 1, .far_clip = 2 };
+    *camera = (Camera){ .width = 2, .height = 2, .fov = 1, .near_clip = 1, .far_clip = 2 };
     REQUIRE(look_through_camera() == 1);
-    GAME_GameTransform3D_get(world, entity)->scale = (CF_V3){ 0 };
+    Transform3D_get(test_world, entity)->scale = (CF_V3){ 0 };
     REQUIRE(look_through_camera() == -1);
     return true;
 }
@@ -440,44 +439,44 @@ TEST_CASE(cameras_reject_lenses_the_3d_path_cannot_use)
 TEST_CASE(cameras_on_bodies_look_from_their_drawn_pose)
 {
     char error[256];
-    game_world_options options = { .modules = GAME_WORLD_PHYSICS3D };
-    game_world *simulation = game_world_new(&options, error, sizeof error);
+    world_options options = { .modules = WORLD_PHYSICS3D };
+    world *simulation = world_new(&options, error, sizeof error);
     REQUIRE(simulation);
-    ecs_world *ecs = game_world_ecs(simulation);
-    engine *runtime = game_world_engine(simulation);
+    ecs_world *ecs = world_ecs(simulation);
+    engine *runtime = world_engine(simulation);
     ecs_entity body = ecs_world_create_entity(ecs),
                eye = ecs_world_create_entity(ecs);
-    REQUIRE(GAME_GameTransform3D_add(ecs, body, 0) == ECS_OK);
-    REQUIRE(GAME_GameCollider3D_add(ecs, body, 0) == ECS_OK);
-    REQUIRE(GAME_GameBody3D_add(ecs, body, 0) == ECS_OK);
-    REQUIRE(GAME_GameGravity3D_add(ecs, body, 0) == ECS_OK);
-    REQUIRE(GAME_GameTransform3D_add(ecs, eye, 0) == ECS_OK);
-    REQUIRE(GAME_GameCamera_add(ecs, eye, 0) == ECS_OK);
+    REQUIRE(Transform3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(Collider3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(Body3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(Gravity3D_add(ecs, body, 0) == ECS_OK);
+    REQUIRE(Transform3D_add(ecs, eye, 0) == ECS_OK);
+    REQUIRE(Camera_add(ecs, eye, 0) == ECS_OK);
     REQUIRE(ecs_world_record_add_pair(ecs, eye, ECS_CHILD_OF, body, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
-    *GAME_GameTransform3D_get(ecs, body) = (GameTransform3D){ .scale = { 1, 1, 1 } };
-    *GAME_GameCollider3D_get(ecs, body) = (GameCollider3D){ .shape = GAME_COLLIDER3D_SPHERE,
-                                                            .radius = 1,
-                                                            .category = 1,
-                                                            .mask = 1 };
-    *GAME_GameBody3D_get(ecs, body) = (GameBody3D){ .type = GAME_BODY_DYNAMIC,
-                                                    .linear_velocity = { 60, 0, 0 } };
+    *Transform3D_get(ecs, body) = (Transform3D){ .scale = { 1, 1, 1 } };
+    *Collider3D_get(ecs, body) = (Collider3D){ .shape = COLLIDER3D_SPHERE,
+                                               .radius = 1,
+                                               .category = 1,
+                                               .mask = 1 };
+    *Body3D_get(ecs, body) = (Body3D){ .type = BODY_DYNAMIC,
+                                       .linear_velocity = { 60, 0, 0 } };
     const CF_V3 behind = { 0, 0, 5 };
-    *GAME_GameTransform3D_get(ecs, eye) = (GameTransform3D){ .position = behind,
-                                                             .scale = { 1, 1, 1 } };
-    *GAME_GameCamera_get(ecs, eye) = (GameCamera){ .width = 320, .height = 180 };
+    *Transform3D_get(ecs, eye) = (Transform3D){ .position = behind,
+                                                .scale = { 1, 1, 1 } };
+    *Camera_get(ecs, eye) = (Camera){ .width = 320, .height = 180 };
     REQUIRE(engine_set_playing(runtime, true) == 0);
     REQUIRE(engine_frame(runtime, 0) == FLOW_OK);
     REQUIRE(engine_frame(runtime, .1) == FLOW_OK);
     REQUIRE(engine_frame(runtime, .1 + ENGINE_FIXED_SECONDS * .5) == FLOW_OK);
     engine_viewport_view view;
-    REQUIRE(game_camera_view(ecs, runtime, &view) == 1);
+    REQUIRE(camera_view(ecs, runtime, &view) == 1);
     CF_V3 drawn = cf_add_v3(engine_render_transform_3d(runtime, ecs, body).position, behind);
     CF_V3 offset = cf_sub_v3(view.lens.eye, drawn);
     REQUIRE(cf_len_v3(offset) < 1e-3f);
-    float solved = GAME_GameGlobalTransform3D_get_const(ecs, eye)->position.x;
+    float solved = GlobalTransform3D_get_const(ecs, eye)->position.x;
     REQUIRE(fabsf(view.lens.eye.x - (solved - 60 * (float)ENGINE_FIXED_SECONDS * .5f)) < 1e-3f);
-    game_world_free(simulation);
+    world_free(simulation);
     return true;
 }
 
@@ -487,8 +486,8 @@ TEST_CASE(widest_clip_range_keeps_ground_rays)
     ecs_entity entity = add_camera_3d(
         cf_quat_from_axis_angle((CF_V3){ 1, 0, 0 }, -CF_PI / 6)
     );
-    GAME_GameTransform3D_get(world, entity)->position = (CF_V3){ 0, 10, 0 };
-    GameCamera *camera = GAME_GameCamera_get(world, entity);
+    Transform3D_get(test_world, entity)->position = (CF_V3){ 0, 10, 0 };
+    Camera *camera = Camera_get(test_world, entity);
     camera->near_clip = .01f;
     camera->far_clip = 1e4f;
     REQUIRE(look_through_camera() == 1);
@@ -504,18 +503,18 @@ TEST_CASE(widest_clip_range_keeps_ground_rays)
 /* Fog over a 16-unit grid around one vision source, drawn through a frame. */
 static bool draw_fog(CF_V2 seen, float radius, const engine_viewport_camera *frame)
 {
-    GameFog settings = { .origin = { seen.x - 8, seen.y - 8 },
-                         .columns = 16,
-                         .rows = 16,
-                         .cell_size = 1,
-                         .color = 0xff0000ffu };
-    add(GAME_COMPONENT_GameFog.id, &settings);
-    ecs_entity eye = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ seen.x, seen.y });
-    GameVision vision = { .radius = radius };
-    assert(ecs_world_record_add(world, eye, GAME_COMPONENT_GameVision.id, &vision, 0) == ECS_OK);
-    assert(ecs_world_apply_commands(world) == ECS_OK);
-    game_visibility *visibility = game_visibility_new(world, NULL);
-    const char *error = game_visibility_update(visibility, 0);
+    Fog settings = { .origin = { seen.x - 8, seen.y - 8 },
+                     .columns = 16,
+                     .rows = 16,
+                     .cell_size = 1,
+                     .color = 0xff0000ffu };
+    add(COMPONENT_Fog.id, &settings);
+    ecs_entity eye = add(COMPONENT_Transform.id, &(Transform){ seen.x, seen.y });
+    Vision vision = { .radius = radius };
+    assert(ecs_world_record_add(test_world, eye, COMPONENT_Vision.id, &vision, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
+    visibility *visibility = visibility_new(test_world, NULL);
+    const char *error = visibility_update(visibility, 0);
     render_scene3d_camera camera = render_scene3d_camera_frame(frame);
     render_fog *fog = render_fog_new();
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
@@ -527,7 +526,7 @@ static bool draw_fog(CF_V2 seen, float radius, const engine_viewport_camera *fra
     bool read = read_pixels(canvas);
     cf_destroy_canvas(canvas);
     render_fog_free(fog);
-    game_visibility_free(visibility);
+    visibility_free(visibility);
     return !error && drawn && read;
 }
 
@@ -643,24 +642,20 @@ TEST_CASE(navigating_drops_an_authored_lens)
  * load or an edit, and still find a child where its parent places it. */
 TEST_CASE(picking_and_bounds_place_children_under_their_parent)
 {
-    ecs_entity parent = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 1.5f, 0 });
-    ecs_entity child = add_solid(
-        (CF_V3){ 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1, 0 },
-        0xffffffffu
-    );
-    REQUIRE(ecs_world_record_add_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
-    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity parent = add(COMPONENT_Transform.id, &(Transform){ 1.5f, 0 });
+    ecs_entity child = add_solid((CF_V3){ 0 }, (Geometry3D){ PRIMITIVE_BOX, 1, 1, 1, 0 }, 0xffffffffu);
+    REQUIRE(ecs_world_record_add_pair(test_world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
     CF_V3 placed = render_scene3d_project(&lens, (CF_V3){ 1.5f, 0, 0 });
     CF_V3 origin = render_scene3d_project(&lens, (CF_V3){ 0 });
     REQUIRE(
-        render_scene3d_pick(world, &lens, (CF_V2){ placed.x, placed.y }, (render_skip){ 0 })
+        render_scene3d_pick(test_world, &lens, (CF_V2){ placed.x, placed.y }, (render_skip){ 0 })
             .slot == child.slot
     );
-    REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ origin.x, origin.y }, (render_skip){ 0 })
+    REQUIRE(!render_scene3d_pick(test_world, &lens, (CF_V2){ origin.x, origin.y }, (render_skip){ 0 })
                  .slot);
     CF_V3 corners[8];
-    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    REQUIRE(render_scene3d_entity_bounds(test_world, child, corners));
     REQUIRE(fabsf(corners[0].x - 1) < 1e-4f && fabsf(corners[7].x - 2) < 1e-4f);
     return true;
 }
@@ -670,32 +665,26 @@ TEST_CASE(picking_and_bounds_place_children_under_their_parent)
 TEST_CASE(picking_and_bounds_place_child_models_under_their_parent)
 {
     REQUIRE(test_register_model_sphere("ChildSphere", .5f));
-    ecs_entity parent = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 1.5f, 0 });
-    ecs_entity child = add_solid(
-        (CF_V3){ 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1, 0 },
-        0xffffffffu
-    );
-    GameSdfSurface3D surface = { .enabled = true };
-    GameShader binding = { .shape = "ChildSphere" };
+    ecs_entity parent = add(COMPONENT_Transform.id, &(Transform){ 1.5f, 0 });
+    ecs_entity child = add_solid((CF_V3){ 0 }, (Geometry3D){ PRIMITIVE_BOX, 1, 1, 1, 0 }, 0xffffffffu);
+    SdfSurface3D surface = { .enabled = true };
+    Shader binding = { .shape = "ChildSphere" };
     REQUIRE(
-        ecs_world_record_add(world, child, GAME_COMPONENT_GameSdfSurface3D.id, &surface, 0) == ECS_OK
+        ecs_world_record_add(test_world, child, COMPONENT_SdfSurface3D.id, &surface, 0) == ECS_OK
     );
-    REQUIRE(
-        ecs_world_record_add(world, child, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
-    );
-    REQUIRE(ecs_world_record_add_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
-    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_world_record_add(test_world, child, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add_pair(test_world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
     CF_V3 placed = render_scene3d_project(&lens, (CF_V3){ 1.5f, 0, 0 });
     CF_V3 origin = render_scene3d_project(&lens, (CF_V3){ 0 });
     REQUIRE(
-        render_scene3d_pick(world, &lens, (CF_V2){ placed.x, placed.y }, (render_skip){ 0 })
+        render_scene3d_pick(test_world, &lens, (CF_V2){ placed.x, placed.y }, (render_skip){ 0 })
             .slot == child.slot
     );
-    REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ origin.x, origin.y }, (render_skip){ 0 })
+    REQUIRE(!render_scene3d_pick(test_world, &lens, (CF_V2){ origin.x, origin.y }, (render_skip){ 0 })
                  .slot);
     CF_V3 corners[8];
-    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    REQUIRE(render_scene3d_entity_bounds(test_world, child, corners));
     REQUIRE(fabsf(corners[0].x - 1) < 1e-3f && fabsf(corners[7].x - 2) < 1e-3f);
     return true;
 }
@@ -704,14 +693,14 @@ TEST_CASE(picking_and_bounds_place_child_models_under_their_parent)
 TEST_CASE(environment_ambient_lights_unlit_faces)
 {
     add_box(0xffffffffu);
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     environment.ambient_intensity = 0;
     REQUIRE(render(&environment));
     REQUIRE(top().colors.r == 0 && front().colors.r == 0);
     environment.ambient_sky = 0x00ff00ffu;
     environment.ambient_ground = 0x00ff00ffu;
     environment.ambient_intensity = .5f;
-    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
     REQUIRE(render(&environment));
     REQUIRE(top().colors.g > 100 && top().colors.r == 0 && top().colors.b == 0);
     return true;
@@ -721,7 +710,7 @@ TEST_CASE(directional_light_shades_faces_it_faces)
 {
     add_box(0xffffffffu);
     add_sun(0xff0000ffu, (CF_V3){ 0, -2, 0 });
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     environment.ambient_intensity = 0;
     REQUIRE(render(&environment));
     CF_Pixel lit = top(), side = front();
@@ -738,7 +727,7 @@ TEST_CASE(scene_rejects_a_second_directional_light)
     add_box(0xffffffffu);
     add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
     add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     REQUIRE(!render(&environment));
     REQUIRE(strstr(render_scene3d_error(scene3d), "only one Directional Light"));
     return true;
@@ -748,17 +737,15 @@ TEST_CASE(hidden_directional_lights_neither_shade_nor_count)
 {
     add_box(0xffffffffu);
     add_sun(0xff0000ffu, (CF_V3){ 0, -2, 0 });
-    GameDirectionalLight unseen = { .color = 0x00ff00ffu,
-                                    .intensity = 3,
-                                    .direction = { 0, -2, 0 } };
-    ecs_entity hidden = add(GAME_COMPONENT_GameDirectionalLight.id, &unseen);
-    GameRenderState state = { .hidden = true };
-    assert(
-        ecs_world_record_add(world, hidden, GAME_COMPONENT_GameRenderState.id, &state, 0) == ECS_OK
-    );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
-    runtime = engine_new(world, NULL);
-    GameEnvironment environment = game_environment_defaults();
+    DirectionalLight unseen = { .color = 0x00ff00ffu,
+                                .intensity = 3,
+                                .direction = { 0, -2, 0 } };
+    ecs_entity hidden = add(COMPONENT_DirectionalLight.id, &unseen);
+    RenderState state = { .hidden = true };
+    assert(ecs_world_record_add(test_world, hidden, COMPONENT_RenderState.id, &state, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
+    runtime = engine_new(test_world, NULL);
+    Environment environment = environment_defaults();
     environment.ambient_intensity = 0;
     REQUIRE(render(&environment));
     CF_Pixel lit = top();
@@ -770,19 +757,19 @@ TEST_CASE(neutral_tone_mapping_keeps_saturated_colors)
 {
     add_box(0xffffffffu);
     add_sun(0xff0000ffu, (CF_V3){ 0, -1, 0 })->intensity = 1;
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     environment.ambient_intensity = 0;
     REQUIRE(render(&environment));
     CF_Pixel agx = top();
-    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
     REQUIRE(render(&environment));
     CF_Pixel neutral = top();
     REQUIRE(agx.colors.r > 0 && agx.colors.g > 0 && agx.colors.b > 0);
     REQUIRE(neutral.colors.r > 100 && neutral.colors.g == 0 && neutral.colors.b == 0);
-    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL + 1;
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL + 1;
     REQUIRE(!render(&environment));
     REQUIRE(strstr(render_scene3d_post_error(post), "tone mapping"));
-    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
     environment.adaptation_speed = 101;
     REQUIRE(!render(&environment));
     REQUIRE(strstr(render_scene3d_post_error(post), "adaptation speed"));
@@ -800,11 +787,11 @@ static int distance(CF_Pixel a, CF_Pixel b)
 TEST_CASE(auto_exposure_meters_the_frame_to_middle_gray)
 {
     add_floor();
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
     sun->intensity = .25f;
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     environment.ambient_intensity = 0;
-    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
     REQUIRE(render(&environment));
     CF_Pixel fixed_dim = top();
     sun->intensity *= 8;
@@ -836,12 +823,12 @@ static int neutral_srgb(float linear)
 TEST_CASE(auto_exposure_meters_the_geometric_mean)
 {
     /* Each half of the symmetric view sees one floor, four times apart in albedo. */
-    add_solid_at(-100, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 200, 400, .2f, -.1f }, 0xffffffffu);
-    add_solid_at(100, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 200, 400, .2f, -.1f }, 0x404040ffu);
+    add_solid_at(-100, (Geometry3D){ PRIMITIVE_BOX, 200, 400, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(100, (Geometry3D){ PRIMITIVE_BOX, 200, 400, .2f, -.1f }, 0x404040ffu);
     add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     environment.ambient_intensity = 0;
-    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
     environment.auto_exposure = true;
     REQUIRE(render(&environment));
     float ratio = 255 / 64.0f;
@@ -856,9 +843,9 @@ TEST_CASE(auto_exposure_ignores_an_empty_background)
 {
     add_box(0xffffffffu);
     add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 })->intensity = .25f;
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     environment.ambient_intensity = 0;
-    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
     environment.auto_exposure = true;
     REQUIRE(render(&environment));
     /* Only the sunlit top face is metered, so it lands on middle gray. */
@@ -869,8 +856,8 @@ TEST_CASE(auto_exposure_ignores_an_empty_background)
 
 TEST_CASE(auto_exposure_meters_around_non_finite_texels)
 {
-    GameEnvironment environment = game_environment_defaults();
-    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    Environment environment = environment_defaults();
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
     environment.auto_exposure = true;
     environment.adaptation_speed = 0;
     environment.bloom_strength = 0;
@@ -900,8 +887,8 @@ TEST_CASE(auto_exposure_meters_around_non_finite_texels)
 TEST_CASE(auto_exposure_adapts_over_scene_time)
 {
     add_floor();
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
-    GameEnvironment environment = game_environment_defaults();
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
+    Environment environment = environment_defaults();
     environment.ambient_intensity = 0;
     environment.auto_exposure = true;
     environment.adaptation_speed = 2;
@@ -938,11 +925,11 @@ TEST_CASE(slow_auto_exposure_eases_past_half_float_steps)
     add_floor();
     /* Bright enough that half floats hold the metered log2 luminance in coarse
      * steps; near the target this easing moves it by less than one a frame. */
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, 0 });
     sun->intensity = 2048;
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     environment.ambient_intensity = 0;
-    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
     environment.auto_exposure = true;
     environment.adaptation_speed = 0;
     REQUIRE(render(&environment));
@@ -964,23 +951,23 @@ TEST_CASE(slow_auto_exposure_eases_past_half_float_steps)
  * spans just the view, so no other solid reaches as close to the sun. */
 static void add_box_on_floor()
 {
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
 }
 
-static GameDirectionalLight *add_shadow_scene()
+static DirectionalLight *add_shadow_scene()
 {
     add_box_on_floor();
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
     sun->intensity = 1;
     return sun;
 }
 
-static GameEnvironment unlit_environment()
+static Environment unlit_environment()
 {
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     environment.ambient_intensity = 0;
-    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
     return environment;
 }
 
@@ -997,8 +984,8 @@ enum
 
 TEST_CASE(directional_light_casts_shadows)
 {
-    GameDirectionalLight *sun = add_shadow_scene();
-    GameEnvironment environment = unlit_environment();
+    DirectionalLight *sun = add_shadow_scene();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     CF_Pixel open[SUNLIT];
     for (int i = 0; i < SUNLIT; i++) {
@@ -1019,17 +1006,17 @@ TEST_CASE(directional_light_casts_shadows)
 
 TEST_CASE(solids_outside_the_view_cast_shadows_into_it)
 {
-    GameDirectionalLight *sun = add_shadow_scene();
+    DirectionalLight *sun = add_shadow_scene();
     sun->shadows = true;
     /* A pillar well beyond the left edge of the view, and nearer the sun than
      * the floor, shades the floor up to x = 1. */
-    add_solid_at(-8, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 8, 4 }, 0xffffffffu);
+    add_solid_at(-8, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 8, 4 }, 0xffffffffu);
     /* A crowd far away splits collection across workers where the host has
      * them, so the pillar arrives through a worker's buffer. */
     for (int i = 0; i < 1100; i++) {
-        add_solid_at(60, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1, 1 }, 0xffffffffu);
+        add_solid_at(60, (Geometry3D){ PRIMITIVE_BOX, 1, 1, 1, 1 }, 0xffffffffu);
     }
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     REQUIRE(pixel_at(sunlit[0]).colors.g == 0);
     REQUIRE(pixel_at(sunlit[3]).colors.g > 60);
@@ -1040,7 +1027,7 @@ TEST_CASE(shadow_pass_leaves_earlier_draws_queued)
 {
     add_box(0xffffffffu);
     add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 })->shadows = true;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     backdrop = true;
     REQUIRE(render(&environment));
     REQUIRE(pixels[0].colors.g > 100);
@@ -1067,7 +1054,7 @@ static CF_V3 on_wall(int wall, float height)
 }
 
 /* Adds the walls whose bits are set in `walls`. */
-static GameDirectionalLight *add_walls(unsigned walls)
+static DirectionalLight *add_walls(unsigned walls)
 {
     lens = (render_scene3d_camera){
         .view = cf_look_at((CF_V3){ 0 }, (CF_V3){ 0, 0, -1 }, (CF_V3){ 0, 1, 0 }),
@@ -1081,20 +1068,12 @@ static GameDirectionalLight *add_walls(unsigned walls)
         float depth = wall_depths[i];
         CF_V3 wall = on_wall(i, 0);
         wall.z = -depth;
-        add_solid(
-            wall,
-            (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f * depth, .02f * depth, .5f * depth },
-            0xffffffffu
-        );
+        add_solid(wall, (Geometry3D){ PRIMITIVE_BOX, .2f * depth, .02f * depth, .5f * depth }, 0xffffffffu);
         float gap = i % 2 ? .25f : .4f;
         CF_V3 cube = { wall.x, gap * depth, -(1 - gap) * depth };
-        add_solid(
-            cube,
-            (GameGeometry3D){ GAME_PRIMITIVE_BOX, .1f * depth, .1f * depth, .1f * depth },
-            0xffffffffu
-        );
+        add_solid(cube, (Geometry3D){ PRIMITIVE_BOX, .1f * depth, .1f * depth, .1f * depth }, 0xffffffffu);
     }
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 });
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 });
     sun->intensity = 1;
     return sun;
 }
@@ -1118,8 +1097,8 @@ static int softened(const CF_Pixel *before, int wall)
 
 TEST_CASE(deep_views_split_sun_shadows_into_cascades)
 {
-    GameDirectionalLight *sun = add_walls(0xf);
-    GameEnvironment environment = unlit_environment();
+    DirectionalLight *sun = add_walls(0xf);
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     CF_Pixel open[WALLS][2];
     for (int i = 0; i < WALLS; i++) {
@@ -1157,9 +1136,9 @@ TEST_CASE(deep_views_split_sun_shadows_into_cascades)
  * take no cascade, so two squares sit side by side in the atlas. */
 TEST_CASE(empty_depth_ranges_take_no_cascade)
 {
-    GameDirectionalLight *sun = add_walls(0x9);
+    DirectionalLight *sun = add_walls(0x9);
     sun->shadows = true;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     REQUIRE(render_scene3d_last_work(scene3d).cascades == 2);
     for (int i = 0; i < WALLS; i += WALLS - 1) {
@@ -1179,11 +1158,11 @@ TEST_CASE(empty_depth_ranges_take_no_cascade)
 TEST_CASE(shadow_cascades_cover_only_what_the_view_shows)
 {
     add_floor();
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
     sun->intensity = 1;
     sun->shadows = true;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     REQUIRE(render_scene3d_last_work(scene3d).cascades == 1);
     REQUIRE(pixel_at(shaded).colors.g == 0);
@@ -1195,16 +1174,16 @@ TEST_CASE(shadow_cascades_cover_only_what_the_view_shows)
  * travels along +x and down at 45 degrees, so the wall shades the floor where
  * 0 < x < 4, and the floor at x lies under the wall's end at height x. The
  * camera looks straight down at that end, z = 3. */
-static GameDirectionalLight *add_wall_scene()
+static DirectionalLight *add_wall_scene()
 {
     lens = (render_scene3d_camera){
         .view = cf_look_at((CF_V3){ 2, 10, 3 }, (CF_V3){ 2, 0, 3 }, (CF_V3){ 0, 0, -1 }),
         .projection = cf_perspective(0.7853981634f, 1, 0.1f, 100),
         .eye = { 2, 10, 3 },
     };
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 40, 40, .2f, -.1f }, 0xffffffffu);
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, 6, 4, 2 }, 0xffffffffu);
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 40, 40, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, .2f, 6, 4, 2 }, 0xffffffffu);
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
     sun->intensity = 1;
     return sun;
 }
@@ -1222,8 +1201,8 @@ enum
 
 TEST_CASE(sun_size_softens_shadows_away_from_casters)
 {
-    GameDirectionalLight *sun = add_wall_scene();
-    GameEnvironment environment = unlit_environment();
+    DirectionalLight *sun = add_wall_scene();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     CF_Pixel open[WALL_EDGES];
     for (int i = 0; i < WALL_EDGES; i++) {
@@ -1256,7 +1235,7 @@ TEST_CASE(sun_size_softens_shadows_away_from_casters)
      * edge is the cascade's low side, which no rounding widens. */
     CF_V3 fringe = { 5.5f, 0, -1.1f };
     CF_Pixel lit = pixel_at(fringe);
-    add_solid((CF_V3){ 2, 2, -1.5f }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, .4f, 4 }, 0xffffffffu);
+    add_solid((CF_V3){ 2, 2, -1.5f }, (Geometry3D){ PRIMITIVE_BOX, .2f, .4f, 4 }, 0xffffffffu);
     REQUIRE(render(&environment));
     REQUIRE(pixel_at(fringe).colors.g < lit.colors.g - 10);
     sun->angular_diameter = 21;
@@ -1268,25 +1247,23 @@ TEST_CASE(sun_size_softens_shadows_away_from_casters)
 /* A white point light. */
 static ecs_entity add_lamp(CF_V3 at, float intensity, float radius)
 {
-    ecs_entity lamp = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ at.x, at.z });
-    GamePointLight light = { .color = 0xffffffffu,
-                             .intensity = intensity,
-                             .radius = radius,
-                             .elevation = at.y };
-    assert(
-        ecs_world_record_add(world, lamp, GAME_COMPONENT_GamePointLight.id, &light, 0) == ECS_OK
-    );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity lamp = add(COMPONENT_Transform.id, &(Transform){ at.x, at.z });
+    PointLight light = { .color = 0xffffffffu,
+                         .intensity = intensity,
+                         .radius = radius,
+                         .elevation = at.y };
+    assert(ecs_world_record_add(test_world, lamp, COMPONENT_PointLight.id, &light, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     return lamp;
 }
 
 static void place_lamp(ecs_entity lamp, CF_V3 at)
 {
-    GameTransform *transform = GAME_GameTransform_get(world, lamp);
+    Transform *transform = Transform_get(test_world, lamp);
     transform->x = at.x;
     transform->y = at.z;
-    GAME_GamePointLight_get(world, lamp)->elevation = at.y;
-    GAME_GameGeometry3D_get(world, lamp)->elevation = at.y;
+    PointLight_get(test_world, lamp)->elevation = at.y;
+    Geometry3D_get(test_world, lamp)->elevation = at.y;
 }
 
 /* Whether the segment from a to b passes through the box on the floor,
@@ -1357,18 +1334,18 @@ static bool floor_matches(const CF_V3 *casting, int count, CF_Pixel *const *show
 /* A point or spot lamp's intensity, and whether it casts shadows. */
 static float *lamp_intensity(ecs_entity lamp)
 {
-    if (GAME_GamePointLight_has(world, lamp)) {
-        return &GAME_GamePointLight_get(world, lamp)->intensity;
+    if (PointLight_has(test_world, lamp)) {
+        return &PointLight_get(test_world, lamp)->intensity;
     }
-    return &GAME_GameSpotLight_get(world, lamp)->intensity;
+    return &SpotLight_get(test_world, lamp)->intensity;
 }
 
 static bool *lamp_shadows(ecs_entity lamp)
 {
-    if (GAME_GamePointLight_has(world, lamp)) {
-        return &GAME_GamePointLight_get(world, lamp)->shadows;
+    if (PointLight_has(test_world, lamp)) {
+        return &PointLight_get(test_world, lamp)->shadows;
     }
-    return &GAME_GameSpotLight_get(world, lamp)->shadows;
+    return &SpotLight_get(test_world, lamp)->shadows;
 }
 
 /* Renders each set of lamps without shadows into frames[mask], with the
@@ -1376,7 +1353,7 @@ static bool *lamp_shadows(ecs_entity lamp)
  * With every lamp off the frame is black, so it is left out. */
 static bool render_lamps(const ecs_entity *lamps, int count, CF_Pixel (*frames)[PIXELS])
 {
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     float intensities[2];
     assert(count <= 2);
     for (int i = 0; i < count; i++) {
@@ -1419,14 +1396,14 @@ TEST_CASE(point_lights_cast_shadows_across_faces)
     add_box_on_floor();
     ecs_entity lamp = add_lamp(lamp_spots[0], 2, 20);
     /* The lamp's own bulb casts nothing for it. */
-    GameGeometry3D bulb = { GAME_PRIMITIVE_BOX, .6f, .6f, .6f };
-    assert(ecs_world_record_add(world, lamp, GAME_COMPONENT_GameGeometry3D.id, &bulb, 0) == ECS_OK);
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    Geometry3D bulb = { PRIMITIVE_BOX, .6f, .6f, .6f };
+    assert(ecs_world_record_add(test_world, lamp, COMPONENT_Geometry3D.id, &bulb, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     static CF_Pixel open[1][PIXELS];
     CF_Pixel *shown[] = { open[0], NULL };
     for (int spot = 0; spot < LAMP_SPOTS; spot++) {
         place_lamp(lamp, lamp_spots[spot]);
-        GAME_GamePointLight_get(world, lamp)->shadows = false;
+        PointLight_get(test_world, lamp)->shadows = false;
         REQUIRE(render_lamps(&lamp, 1, open));
         REQUIRE(!render_scene3d_error(scene3d)[0]);
         REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 1);
@@ -1449,7 +1426,7 @@ TEST_CASE(point_lights_cast_shadows_across_faces)
 TEST_CASE(point_lights_cast_from_mixed_primitives)
 {
     add_box_on_floor();
-    add_solid((CF_V3){ 0, 4, -.5f }, (GameGeometry3D){ GAME_PRIMITIVE_SPHERE, 1, 1, 1 }, 0xffffffffu);
+    add_solid((CF_V3){ 0, 4, -.5f }, (Geometry3D){ PRIMITIVE_SPHERE, 1, 1, 1 }, 0xffffffffu);
     ecs_entity lamp = add_lamp(lamp_spots[0], 2, 20);
     static CF_Pixel open[1][PIXELS];
     CF_Pixel *shown[] = { open[0], NULL };
@@ -1464,7 +1441,7 @@ TEST_CASE(point_lights_cast_from_mixed_primitives)
  * its surface turns away from each face's axis, and nothing shadows itself. */
 TEST_CASE(point_lights_leave_curved_surfaces_lit)
 {
-    add_solid((CF_V3){ 0, 1, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_SPHERE, 2, 2, 2 }, 0xffffffffu);
+    add_solid((CF_V3){ 0, 1, 0 }, (Geometry3D){ PRIMITIVE_SPHERE, 2, 2, 2 }, 0xffffffffu);
     ecs_entity lamp = add_lamp((CF_V3){ 1.5f, 2.5f, 2.5f }, 2, 20);
     static CF_Pixel open[1][PIXELS];
     REQUIRE(render_lamps(&lamp, 1, open));
@@ -1509,17 +1486,17 @@ TEST_CASE(point_light_shadows_stop_at_four_lights)
     for (int i = 0; i < 5; i++) {
         lamps[i] = add_lamp(lamp_spots[i ? 0 : 1], i ? .5f : .4f, 20);
     }
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     static CF_Pixel frames[2][PIXELS];
     for (int frame = 1; frame >= 0; frame--) {
         for (int i = 1; i < 5; i++) {
-            GAME_GamePointLight_get(world, lamps[i])->intensity = frame ? 0 : .5f;
+            PointLight_get(test_world, lamps[i])->intensity = frame ? 0 : .5f;
         }
         REQUIRE(render(&environment));
         memcpy(frames[frame], pixels, sizeof pixels);
     }
     for (int i = 0; i < 5; i++) {
-        GAME_GamePointLight_get(world, lamps[i])->shadows = true;
+        PointLight_get(test_world, lamps[i])->shadows = true;
     }
     REQUIRE(render(&environment));
     REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 4);
@@ -1537,8 +1514,8 @@ TEST_CASE(point_light_shadows_stop_at_four_lights)
 /* A long wall casts for a lamp whose radius reaches only one end of it. */
 TEST_CASE(long_solids_cast_for_point_lights_near_one_end)
 {
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
-    add_solid((CF_V3){ 0, .5f, -14 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, 30, 1 }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid((CF_V3){ 0, .5f, -14 }, (Geometry3D){ PRIMITIVE_BOX, .2f, 30, 1 }, 0xffffffffu);
     ecs_entity lamp = add_lamp((CF_V3){ -1.5f, 1.5f, .5f }, 2, 4);
     static CF_Pixel open[1][PIXELS];
     REQUIRE(render_lamps(&lamp, 1, open));
@@ -1554,8 +1531,8 @@ TEST_CASE(long_solids_cast_for_point_lights_near_one_end)
  * above it. */
 TEST_CASE(solids_outside_the_view_cast_for_point_lights)
 {
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
-    add_solid((CF_V3){ 0, 6, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .5f, .5f, .2f }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid((CF_V3){ 0, 6, 0 }, (Geometry3D){ PRIMITIVE_BOX, .5f, .5f, .2f }, 0xffffffffu);
     ecs_entity lamp = add_lamp((CF_V3){ 0, 8, 0 }, 3, 12);
     static CF_Pixel open[1][PIXELS];
     REQUIRE(render_lamps(&lamp, 1, open));
@@ -1570,16 +1547,16 @@ TEST_CASE(solids_outside_the_view_cast_for_point_lights)
 /* A white spot light pointing from `at` toward `target`. */
 static ecs_entity add_spot(CF_V3 at, CF_V3 target, float inner, float outer)
 {
-    ecs_entity spot = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ at.x, at.z });
-    GameSpotLight light = { .color = 0xffffffffu,
-                            .intensity = 2,
-                            .radius = 20,
-                            .elevation = at.y,
-                            .direction = cf_sub_v3(target, at),
-                            .inner_angle = inner,
-                            .outer_angle = outer };
-    assert(ecs_world_record_add(world, spot, GAME_COMPONENT_GameSpotLight.id, &light, 0) == ECS_OK);
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity spot = add(COMPONENT_Transform.id, &(Transform){ at.x, at.z });
+    SpotLight light = { .color = 0xffffffffu,
+                        .intensity = 2,
+                        .radius = 20,
+                        .elevation = at.y,
+                        .direction = cf_sub_v3(target, at),
+                        .inner_angle = inner,
+                        .outer_angle = outer };
+    assert(ecs_world_record_add(test_world, spot, COMPONENT_SpotLight.id, &light, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     return spot;
 }
 
@@ -1588,14 +1565,14 @@ static ecs_entity add_spot(CF_V3 at, CF_V3 target, float inner, float outer)
  * its outer angle dark. */
 TEST_CASE(spot_lights_light_their_cone)
 {
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
     CF_V3 at = { 0, 2, 0 };
     ecs_entity lamp = add_lamp(at, 2, 20);
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     static CF_Pixel point[PIXELS];
     memcpy(point, pixels, sizeof pixels);
-    GAME_GamePointLight_get(world, lamp)->intensity = 0;
+    PointLight_get(test_world, lamp)->intensity = 0;
     /* 30 and 60 degrees across: full strength out to 15 degrees off its
      * axis, and none past 30. */
     ecs_entity spot = add_spot(at, (CF_V3){ 0 }, 30, 60);
@@ -1618,8 +1595,8 @@ TEST_CASE(spot_lights_light_their_cone)
     float share = (cosine - outer) / (inner - outer);
     REQUIRE(share > .2f && share < .8f);
     CF_Pixel faded = pixel_at(edge);
-    GAME_GameSpotLight_get(world, spot)->intensity = 0;
-    GAME_GamePointLight_get(world, lamp)->intensity = 2 * share * share;
+    SpotLight_get(test_world, spot)->intensity = 0;
+    PointLight_get(test_world, lamp)->intensity = 2 * share * share;
     REQUIRE(render(&environment));
     REQUIRE(faded.colors.g > 10 && distance(pixel_at(edge), faded) <= 3);
     return true;
@@ -1641,8 +1618,8 @@ TEST_CASE(spot_lights_cast_shadows)
         int checked[2] = { 0 };
         REQUIRE(floor_matches(spots[i], 1, shown, checked));
         REQUIRE(checked[0] > 10 && checked[1] > 10);
-        assert(ecs_world_destroy_entity(world, lamp) == ECS_OK);
-        assert(ecs_world_apply_commands(world) == ECS_OK);
+        assert(ecs_world_destroy_entity(test_world, lamp) == ECS_OK);
+        assert(ecs_world_apply_commands(test_world) == ECS_OK);
     }
     return true;
 }
@@ -1674,12 +1651,12 @@ TEST_CASE(spot_light_angles_must_be_in_range)
     add_floor();
     CF_V3 at = { 0, 50, 0 }, below = pixel_floor((CF_V3){ 0 });
     ecs_entity lamp = add_lamp(at, 2, 100);
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     CF_Pixel point = pixel_at(below);
     REQUIRE(point.colors.g > 10);
-    GAME_GamePointLight_get(world, lamp)->intensity = 0;
-    GameSpotLight *spot = GAME_GameSpotLight_get(world, add_spot(at, below, 2, 2));
+    PointLight_get(test_world, lamp)->intensity = 0;
+    SpotLight *spot = SpotLight_get(test_world, add_spot(at, below, 2, 2));
     spot->radius = 100;
     float accepted[][2] = { { 2, 2 }, { 0, 2 }, { 160, 160 } };
     for (int i = 0; i < 3; i++) {
@@ -1711,16 +1688,13 @@ TEST_CASE(spot_light_angles_must_be_in_range)
 TEST_CASE(wide_spot_lights_read_only_their_face)
 {
     add_floor();
-    add_solid((CF_V3){ 7.5f, 1, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 6, 6 }, 0xffffffffu);
+    add_solid((CF_V3){ 7.5f, 1, 0 }, (Geometry3D){ PRIMITIVE_BOX, 2, 6, 6 }, 0xffffffffu);
     ecs_entity lamp = add_lamp((CF_V3){ 6, 1, 0 }, 2, 20);
-    GAME_GamePointLight_get(world, lamp)->shadows = true;
+    PointLight_get(test_world, lamp)->shadows = true;
     CF_V3 at = { 0, .6f, -2.5f };
-    GameSpotLight *spot = GAME_GameSpotLight_get(
-        world,
-        add_spot(at, (CF_V3){ at.x, 0, at.z }, 160, 160)
-    );
+    SpotLight *spot = SpotLight_get(test_world, add_spot(at, (CF_V3){ at.x, 0, at.z }, 160, 160));
     spot->radius = 4;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     static CF_Pixel open[PIXELS];
     memcpy(open, pixels, sizeof pixels);
@@ -1774,10 +1748,10 @@ static void look_level()
     look((CF_V3){ 0 }, (CF_V3){ 0, 0, -1 }, (CF_V3){ 0, 1, 0 });
 }
 
-static GameEnvironment sky_environment()
+static Environment sky_environment()
 {
-    GameEnvironment environment = game_environment_defaults();
-    environment.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    Environment environment = environment_defaults();
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
     environment.sky = sky_key;
     return environment;
 }
@@ -1874,7 +1848,7 @@ TEST_CASE(sky_fills_the_view_in_its_directions)
         { { 1, 0, 0 }, { 0, 1, 0 } },  { { -1, 0, 0 }, { 0, 1, 0 } },
         { { 0, 1, 0 }, { 0, 0, -1 } }, { { 0, -1, 0 }, { 0, 0, 1 } }
     };
-    GameEnvironment environment = sky_environment();
+    Environment environment = sky_environment();
     for (int quarters = 0; quarters < 2; quarters++) {
         environment.sky_rotation = 90.0f * quarters;
         for (int i = 0; i < 6; i++) {
@@ -1949,9 +1923,9 @@ TEST_CASE(sky_shows_only_where_no_surface_is)
 {
     look_level();
     CF_V3 center = { 0, 0, -6 };
-    add_solid(center, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0x000000ffu);
+    add_solid(center, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0x000000ffu);
     publish_uniform_sky((const unsigned char[4]){ 128, 128, 128, 128 });
-    GameEnvironment environment = sky_environment();
+    Environment environment = sky_environment();
     REQUIRE(render(&environment));
     int covered = 0, open = 0;
     for (int y = 0; y < SIDE; y++) {
@@ -1975,8 +1949,8 @@ TEST_CASE(translucent_surfaces_blend_over_the_sky)
 {
     look_level();
     publish_uniform_sky((const unsigned char[4]){ 128, 0, 128, 128 });
-    add_solid((CF_V3){ 0, 0, -6 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xff000080u);
-    GameEnvironment environment = sky_environment();
+    add_solid((CF_V3){ 0, 0, -6 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xff000080u);
+    Environment environment = sky_environment();
     REQUIRE(render(&environment));
     CF_Pixel open = pixel(4, 4), behind = pixel(SIDE / 2, SIDE / 2);
     REQUIRE(open.colors.r > 100 && open.colors.b > 100);
@@ -1997,7 +1971,7 @@ TEST_CASE(sky_rotation_turns_it_counterclockwise_from_above)
         }
     }
     publish_sky(texels);
-    GameEnvironment environment = sky_environment();
+    Environment environment = sky_environment();
     float rotations[] = { 0, 90, -90, 450 };
     for (int i = 0; i < 4; i++) {
         environment.sky_rotation = rotations[i];
@@ -2013,10 +1987,10 @@ TEST_CASE(sky_rotation_turns_it_counterclockwise_from_above)
 TEST_CASE(sky_exposure_scales_it_in_stops)
 {
     look_level();
-    add_solid((CF_V3){ 0, 0, -6 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    add_solid((CF_V3){ 0, 0, -6 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
     int box = SIDE / 2 * SIDE + SIDE / 2;
     publish_uniform_sky((const unsigned char[4]){ 128, 64, 32, 127 });
-    GameEnvironment environment = sky_environment();
+    Environment environment = sky_environment();
     environment.sky_exposure = 1;
     REQUIRE(render(&environment));
     static CF_Pixel exposed[PIXELS];
@@ -2035,7 +2009,7 @@ TEST_CASE(sky_exposure_scales_it_in_stops)
 
 TEST_CASE(sky_settings_must_be_valid)
 {
-    GameEnvironment environment = sky_environment();
+    Environment environment = sky_environment();
     REQUIRE(!render(&environment));
     REQUIRE(strstr(render_scene3d_error(scene3d), "test.hdr has not been prepared"));
     publish_uniform_sky((const unsigned char[4]){ 128, 128, 128, 128 });
@@ -2080,7 +2054,7 @@ TEST_CASE(sky_lights_surfaces_from_its_directions)
     look_at_corner();
     publish_octant_sky();
     add_box(0xffffffffu);
-    GameEnvironment environment = sky_environment();
+    Environment environment = sky_environment();
     environment.ambient_sky = environment.ambient_ground = 0x00ff00ffu;
     static const CF_V3 faces[] = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } };
     for (int quarters = 0; quarters < 2; quarters++) {
@@ -2111,7 +2085,7 @@ TEST_CASE(sky_lights_surfaces_by_its_gradients)
     look_at_corner();
     publish_quadratic_sky();
     add_box(0xffffffffu);
-    GameEnvironment environment = sky_environment();
+    Environment environment = sky_environment();
     static const CF_V3 faces[] = { { 1, 0, 0 }, { 0, 1, 0 }, { 0, 0, 1 } };
     for (int eighths = 0; eighths < 2; eighths++) {
         environment.sky_rotation = 45.0f * eighths;
@@ -2168,7 +2142,7 @@ static render_mesh_asset box_mesh()
 {
     render_mesh_surface_vertex *box = NULL;
     char error[128];
-    assert(render_mesh_surface_vertices(GAME_PRIMITIVE_BOX, &box, error, sizeof error));
+    assert(render_mesh_surface_vertices(PRIMITIVE_BOX, &box, error, sizeof error));
     render_mesh_asset mesh = { .min = { -.5f, -.5f, -.5f }, .max = { .5f, .5f, .5f } };
     for (int i = 0; i < acount(box); i++) {
         apush(mesh.vertices, box[i]);
@@ -2181,11 +2155,11 @@ static render_mesh_asset box_mesh()
 /* Draws an entity as the mesh under mesh_key, sized by its Geometry3D. */
 static void import_mesh(ecs_entity entity)
 {
-    GameMeshAsset imported = { .source = mesh_key };
+    MeshAsset imported = { .source = mesh_key };
     assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameMeshAsset.id, &imported, 0) == ECS_OK
+        ecs_world_record_add(test_world, entity, COMPONENT_MeshAsset.id, &imported, 0) == ECS_OK
     );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
 }
 
 /* Publishes the unit box mesh with its vertices moved by `offset`. */
@@ -2212,8 +2186,8 @@ static bool matches(const CF_Pixel *expected)
 /* Moves a solid that add_solid made to center its shape on `center`. */
 static void place_solid(ecs_entity solid, CF_V3 center)
 {
-    *GAME_GameTransform_get(world, solid) = (GameTransform){ center.x, center.z };
-    GAME_GameGeometry3D_get(world, solid)->elevation = center.y;
+    *Transform_get(test_world, solid) = (Transform){ center.x, center.z };
+    Geometry3D_get(test_world, solid)->elevation = center.y;
 }
 
 /* The shadow scene's box and a pillar beyond the view's left edge draw first
@@ -2223,15 +2197,15 @@ TEST_CASE(imported_meshes_draw_like_the_shapes_they_copy)
 {
     render_mesh_asset box = box_mesh();
     publish_mesh(&box);
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
     ecs_entity solids[] = {
-        add_solid((CF_V3){ 0, 1, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu),
-        add_solid((CF_V3){ -8, 4, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 8 }, 0xffffffffu),
+        add_solid((CF_V3){ 0, 1, 0 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu),
+        add_solid((CF_V3){ -8, 4, 0 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 8 }, 0xffffffffu),
     };
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
     sun->intensity = 1;
     sun->shadows = true;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     static CF_Pixel shapes[PIXELS];
     memcpy(shapes, pixels, sizeof pixels);
@@ -2263,7 +2237,7 @@ static ecs_entity add_imported_triangle(float scale)
     publish_mesh(&mesh);
     ecs_entity triangle = add_solid(
         (CF_V3){ 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, scale, scale, scale },
+        (Geometry3D){ PRIMITIVE_BOX, scale, scale, scale },
         0xffffffffu
     );
     import_mesh(triangle);
@@ -2277,10 +2251,10 @@ static bool picks_follow_triangle(ecs_entity triangle)
     CF_V3 inside = render_scene3d_project(&lens, (CF_V3){ -.9f, 0, -.9f });
     CF_V3 outside = render_scene3d_project(&lens, (CF_V3){ .3f, 0, .3f });
     REQUIRE(
-        render_scene3d_pick(world, &lens, (CF_V2){ inside.x, inside.y }, (render_skip){ 0 })
+        render_scene3d_pick(test_world, &lens, (CF_V2){ inside.x, inside.y }, (render_skip){ 0 })
             .slot == triangle.slot
     );
-    REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ outside.x, outside.y }, (render_skip){ 0 })
+    REQUIRE(!render_scene3d_pick(test_world, &lens, (CF_V2){ outside.x, outside.y }, (render_skip){ 0 })
                  .slot);
     return true;
 }
@@ -2292,7 +2266,7 @@ TEST_CASE(picking_and_bounds_follow_imported_triangles)
     ecs_entity triangle = add_imported_triangle(1);
     REQUIRE(picks_follow_triangle(triangle));
     CF_V3 box[8];
-    REQUIRE(render_scene3d_entity_bounds(world, triangle, box));
+    REQUIRE(render_scene3d_entity_bounds(test_world, triangle, box));
     REQUIRE(near_value(box[0].x, -1) && near_value(box[0].z, -1));
     REQUIRE(near_value(box[7].x, 1) && near_value(box[7].z, 1));
     REQUIRE(fabsf(box[0].y) < 2e-3f && fabsf(box[7].y) < 2e-3f);
@@ -2316,19 +2290,15 @@ TEST_CASE(picks_follow_tiny_triangles_scaled_up)
 TEST_CASE(meshes_near_the_float_limit_draw_bound_and_pick_in_place)
 {
     add_sun(0xffffffffu, (CF_V3){ 1, -1, -.5f })->intensity = 1;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     static CF_Pixel empty[PIXELS], shape[PIXELS];
     memcpy(empty, pixels, sizeof pixels);
-    ecs_entity box = add_solid(
-        (CF_V3){ 0, 1, 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 },
-        0xffffffffu
-    );
+    ecs_entity box = add_solid((CF_V3){ 0, 1, 0 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
     REQUIRE(render(&environment));
     memcpy(shape, pixels, sizeof pixels);
     CF_V3 expected[8];
-    REQUIRE(render_scene3d_entity_bounds(world, box, expected));
+    REQUIRE(render_scene3d_entity_bounds(test_world, box, expected));
     const float size = 2e37f, middle = 1.85e38f, scale = 1e-37f, back = middle * scale;
     render_mesh_asset far = box_mesh();
     for (int i = 0; i < acount(far.vertices); i++) {
@@ -2338,8 +2308,8 @@ TEST_CASE(meshes_near_the_float_limit_draw_bound_and_pick_in_place)
     far.min = (CF_V3){ middle - size / 2, middle - size / 2, middle - size / 2 };
     far.max = (CF_V3){ middle + size / 2, middle + size / 2, middle + size / 2 };
     publish_mesh(&far);
-    const GameGeometry3D shrunk = { GAME_PRIMITIVE_BOX, scale, scale, scale };
-    *GAME_GameGeometry3D_get(world, box) = shrunk;
+    const Geometry3D shrunk = { PRIMITIVE_BOX, scale, scale, scale };
+    *Geometry3D_get(test_world, box) = shrunk;
     place_solid(box, (CF_V3){ -back, 1 - back, -back });
     import_mesh(box);
     REQUIRE(render(&environment));
@@ -2352,7 +2322,7 @@ TEST_CASE(meshes_near_the_float_limit_draw_bound_and_pick_in_place)
     }
     REQUIRE(covered > PIXELS / 8);
     CF_V3 bounds[8];
-    REQUIRE(render_scene3d_entity_bounds(world, box, bounds));
+    REQUIRE(render_scene3d_entity_bounds(test_world, box, bounds));
     for (int i = 0; i < 8; i++) {
         REQUIRE(near_value(bounds[i].x, expected[i].x));
         REQUIRE(near_value(bounds[i].y, expected[i].y));
@@ -2361,10 +2331,10 @@ TEST_CASE(meshes_near_the_float_limit_draw_bound_and_pick_in_place)
     CF_V3 top = render_scene3d_project(&lens, (CF_V3){ 0, 2, 0 });
     CF_V3 beside = render_scene3d_project(&lens, (CF_V3){ 2, 0, 0 });
     REQUIRE(
-        render_scene3d_pick(world, &lens, (CF_V2){ top.x, top.y }, (render_skip){ 0 })
+        render_scene3d_pick(test_world, &lens, (CF_V2){ top.x, top.y }, (render_skip){ 0 })
             .slot == box.slot
     );
-    REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ beside.x, beside.y }, (render_skip){ 0 })
+    REQUIRE(!render_scene3d_pick(test_world, &lens, (CF_V2){ beside.x, beside.y }, (render_skip){ 0 })
                  .slot);
     return true;
 }
@@ -2381,7 +2351,7 @@ static void picks_of(ecs_entity solid, bool picked[PICK_GRID][PICK_GRID])
         for (int x = 0; x < PICK_GRID; x++) {
             CF_V2 ndc = { -.8f + 1.6f * x / (PICK_GRID - 1),
                           -.8f + 1.6f * y / (PICK_GRID - 1) };
-            picked[y][x] = render_scene3d_pick(world, &lens, ndc, (render_skip){ 0 })
+            picked[y][x] = render_scene3d_pick(test_world, &lens, ndc, (render_skip){ 0 })
                                .slot == solid.slot;
         }
     }
@@ -2395,19 +2365,15 @@ TEST_CASE(meshes_wider_than_the_float_limit_draw_bound_and_pick_in_place)
 {
     look((CF_V3){ 0, 16, 16 }, (CF_V3){ 0, 4, 0 }, (CF_V3){ 0, 1, 0 });
     add_sun(0xffffffffu, (CF_V3){ 1, -1, -.5f })->intensity = 1;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     static CF_Pixel empty[PIXELS], shape[PIXELS];
     memcpy(empty, pixels, sizeof pixels);
-    ecs_entity box = add_solid(
-        (CF_V3){ 0, 4, 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 8, 8, 8 },
-        0xffffffffu
-    );
+    ecs_entity box = add_solid((CF_V3){ 0, 4, 0 }, (Geometry3D){ PRIMITIVE_BOX, 8, 8, 8 }, 0xffffffffu);
     REQUIRE(render(&environment));
     memcpy(shape, pixels, sizeof pixels);
     CF_V3 expected[8];
-    REQUIRE(render_scene3d_entity_bounds(world, box, expected));
+    REQUIRE(render_scene3d_entity_bounds(test_world, box, expected));
     bool expected_picks[PICK_GRID][PICK_GRID];
     picks_of(box, expected_picks);
     const float reach = 3e38f, scale = 4 / reach;
@@ -2419,7 +2385,7 @@ TEST_CASE(meshes_wider_than_the_float_limit_draw_bound_and_pick_in_place)
     wide.min = (CF_V3){ -reach, -reach, -reach };
     wide.max = (CF_V3){ reach, reach, reach };
     publish_mesh(&wide);
-    GameGeometry3D *geometry = GAME_GameGeometry3D_get(world, box);
+    Geometry3D *geometry = Geometry3D_get(test_world, box);
     geometry->width = geometry->height = geometry->depth = scale;
     import_mesh(box);
     REQUIRE(render(&environment));
@@ -2432,7 +2398,7 @@ TEST_CASE(meshes_wider_than_the_float_limit_draw_bound_and_pick_in_place)
     }
     REQUIRE(covered > PIXELS / 8);
     CF_V3 bounds[8];
-    REQUIRE(render_scene3d_entity_bounds(world, box, bounds));
+    REQUIRE(render_scene3d_entity_bounds(test_world, box, bounds));
     for (int i = 0; i < 8; i++) {
         REQUIRE(near_value(bounds[i].x, expected[i].x));
         REQUIRE(near_value(bounds[i].y, expected[i].y));
@@ -2566,9 +2532,9 @@ TEST_CASE(republished_meshes_replace_their_gpu_copies)
 {
     render_mesh_asset box = box_mesh();
     publish_mesh(&box);
-    ecs_entity solid = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    ecs_entity solid = add_solid((CF_V3){ 0 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
     import_mesh(solid);
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     REQUIRE(render(&environment));
     CF_Pixel drawn = top();
     REQUIRE(drawn.colors.r > 60 && render_scene3d_last_work(scene3d).meshes == 1);
@@ -2581,7 +2547,7 @@ TEST_CASE(republished_meshes_replace_their_gpu_copies)
     REQUIRE(
         strstr(render_scene3d_error(scene3d), "Mesh content/meshes/test.mesh has not been prepared.")
     );
-    GAME_GameMeshAsset_get(world, solid)->source = "";
+    MeshAsset_get(test_world, solid)->source = "";
     REQUIRE(render(&environment));
     REQUIRE(distance(top(), drawn) <= 3 && render_scene3d_last_work(scene3d).meshes == 0);
     return true;
@@ -2614,7 +2580,7 @@ TEST_CASE(mesh_copies_are_found_in_any_upload_order)
 }
 
 static const CF_V3 eyeward = { 0, 2, 2 }; /* Up and toward the eye. */
-static const GameGeometry3D unit_box = { GAME_PRIMITIVE_BOX, 1, 1, 1 };
+static const Geometry3D unit_box = { PRIMITIVE_BOX, 1, 1, 1 };
 
 /* A translucent blue unit box nearer the eye than a translucent red one
  * blends over it, drawn first as a shape and then as a mesh whose vertices
@@ -2624,7 +2590,7 @@ TEST_CASE(translucent_meshes_sort_by_their_bounds)
 {
     add_solid((CF_V3){ 0, 1, 1 }, unit_box, 0xff000080u);
     ecs_entity blue = add_solid(eyeward, unit_box, 0x0000ff80u);
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     REQUIRE(render(&environment));
     static CF_Pixel shapes[PIXELS];
     memcpy(shapes, pixels, sizeof pixels);
@@ -2644,15 +2610,15 @@ TEST_CASE(translucent_copies_of_a_mesh_sort_by_their_bounds)
 {
     ecs_entity red = add_solid((CF_V3){ 0, 1, 1 }, unit_box, 0xff000080u);
     ecs_entity blue = add_solid(eyeward, unit_box, 0x0000ff80u);
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     REQUIRE(render(&environment));
     static CF_Pixel shapes[PIXELS];
     memcpy(shapes, pixels, sizeof pixels);
     publish_moved_box(eyeward);
     place_solid(red, (CF_V3){ 0, -1, 3 });
-    GameVisualTransform turned = { .yaw = CF_PI, .scale = 1 };
+    VisualTransform turned = { .yaw = CF_PI, .scale = 1 };
     assert(
-        ecs_world_record_add(world, red, GAME_COMPONENT_GameVisualTransform.id, &turned, 0) == ECS_OK
+        ecs_world_record_add(test_world, red, COMPONENT_VisualTransform.id, &turned, 0) == ECS_OK
     );
     place_solid(blue, (CF_V3){ 0 });
     import_mesh(red);
@@ -2665,11 +2631,11 @@ TEST_CASE(translucent_copies_of_a_mesh_sort_by_their_bounds)
 /* Places an entity by a Transform3D, which outranks its Transform. */
 static void place_3d(ecs_entity entity, CF_V3 position, CF_Quat rotation, CF_V3 scale)
 {
-    GameTransform3D transform = { position, rotation, scale };
+    Transform3D transform = { position, rotation, scale };
     assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameTransform3D.id, &transform, 0) == ECS_OK
+        ecs_world_record_add(test_world, entity, COMPONENT_Transform3D.id, &transform, 0) == ECS_OK
     );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
 }
 
 /* The shadow scene's box and a pillar beyond the view's left edge draw first
@@ -2680,28 +2646,20 @@ static void place_3d(ecs_entity entity, CF_V3 position, CF_Quat rotation, CF_V3 
  * with its height and depth swapped. */
 TEST_CASE(transform3d_places_solids_in_their_pose)
 {
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
-    ecs_entity box = add_solid(
-        (CF_V3){ 0, 1, 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 },
-        0xffffffffu
-    );
-    ecs_entity pillar = add_solid(
-        (CF_V3){ -8, 4, 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 8 },
-        0xffffffffu
-    );
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    ecs_entity box = add_solid((CF_V3){ 0, 1, 0 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    ecs_entity pillar = add_solid((CF_V3){ -8, 4, 0 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 8 }, 0xffffffffu);
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
     sun->intensity = 1;
     sun->shadows = true;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     static CF_Pixel placed[PIXELS];
     memcpy(placed, pixels, sizeof placed);
     place_solid(box, (CF_V3){ 5, 7, 5 });
     place_3d(box, (CF_V3){ 0, 1, 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
     place_solid(pillar, (CF_V3){ 5, -7, 5 });
-    *GAME_GameGeometry3D_get(world, pillar) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 4, 1, 4 };
+    *Geometry3D_get(test_world, pillar) = (Geometry3D){ PRIMITIVE_BOX, 4, 1, 4 };
     place_3d(pillar, (CF_V3){ -8, 4, 0 }, cf_quat_identity(), (CF_V3){ .5f, 2, 2 });
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
@@ -2711,10 +2669,10 @@ TEST_CASE(transform3d_places_solids_in_their_pose)
     REQUIRE(matches(placed));
     /* A box two wide, one high and 2.4 deep, upright, then turned a quarter
      * about x from 2.4 high and one deep, shows the same. */
-    *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2.4f, 1 };
-    *GAME_GameTransform3D_get(world, box) = (GameTransform3D){ { 0, .5f, 0 },
-                                                               cf_quat_identity(),
-                                                               { 1, 1, 1 } };
+    *Geometry3D_get(test_world, box) = (Geometry3D){ PRIMITIVE_BOX, 2, 2.4f, 1 };
+    *Transform3D_get(test_world, box) = (Transform3D){ { 0, .5f, 0 },
+                                                       cf_quat_identity(),
+                                                       { 1, 1, 1 } };
     REQUIRE(render(&environment));
     REQUIRE(
         pixel_at((CF_V3){ 0, 1, 0 }).colors.g > 30 && pixel_at(shaded).colors.g == 0
@@ -2722,22 +2680,22 @@ TEST_CASE(transform3d_places_solids_in_their_pose)
     REQUIRE(pixel_at(sunlit[3]).colors.g > 60);
     static CF_Pixel upright[PIXELS];
     memcpy(upright, pixels, sizeof upright);
-    *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 1, 2.4f };
-    GAME_GameTransform3D_get(world, box)
+    *Geometry3D_get(test_world, box) = (Geometry3D){ PRIMITIVE_BOX, 2, 1, 2.4f };
+    Transform3D_get(test_world, box)
         ->rotation = cf_quat_from_axis_angle((CF_V3){ 1, 0, 0 }, CF_PI / 2);
     REQUIRE(render(&environment));
     REQUIRE(matches(upright));
     /* A Visual Transform turns the box within its Transform3D: a quarter
      * about y after a quarter roll about x takes 2.4 wide, one deep and two
      * high to the upright box. */
-    *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2.4f, 1, 2 };
-    GAME_GameTransform3D_get(world, box)
+    *Geometry3D_get(test_world, box) = (Geometry3D){ PRIMITIVE_BOX, 2.4f, 1, 2 };
+    Transform3D_get(test_world, box)
         ->rotation = cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, CF_PI / 2);
-    GameVisualTransform rolled = { .roll = CF_PI / 2, .scale = 1 };
+    VisualTransform rolled = { .roll = CF_PI / 2, .scale = 1 };
     assert(
-        ecs_world_record_add(world, box, GAME_COMPONENT_GameVisualTransform.id, &rolled, 0) == ECS_OK
+        ecs_world_record_add(test_world, box, COMPONENT_VisualTransform.id, &rolled, 0) == ECS_OK
     );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     REQUIRE(render(&environment));
     REQUIRE(matches(upright));
     return true;
@@ -2748,34 +2706,31 @@ TEST_CASE(transform3d_places_solids_in_their_pose)
  * bounds follow it before any propagation. */
 TEST_CASE(transform3d_children_pick_and_bound_under_their_parent)
 {
-    ecs_entity parent = ecs_world_create_entity(world);
+    ecs_entity parent = ecs_world_create_entity(test_world);
     place_3d(
         parent,
         (CF_V3){ 1, 0, 0 },
         cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, CF_PI / 2),
         (CF_V3){ 1, 1, 1 }
     );
-    ecs_entity child = add(
-        GAME_COMPONENT_GameGeometry3D.id,
-        &(GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 3, 1 }
-    );
+    ecs_entity child = add(COMPONENT_Geometry3D.id, &(Geometry3D){ PRIMITIVE_BOX, 1, 3, 1 });
     place_3d(child, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
-    REQUIRE(ecs_world_record_add_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
-    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_world_record_add_pair(test_world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
     const CF_V3 on[] = { { -.2f, 0, 0 }, { 2.2f, 0, 0 } },
                 off[] = { { -1.2f, 0, 0 }, { 1, 0, -1.5f } };
     for (int i = 0; i < 2; i++) {
         CF_V3 hit = render_scene3d_project(&lens, on[i]),
               miss = render_scene3d_project(&lens, off[i]);
         REQUIRE(
-            render_scene3d_pick(world, &lens, (CF_V2){ hit.x, hit.y }, (render_skip){ 0 })
+            render_scene3d_pick(test_world, &lens, (CF_V2){ hit.x, hit.y }, (render_skip){ 0 })
                 .slot == child.slot
         );
-        REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ miss.x, miss.y }, (render_skip){ 0 })
+        REQUIRE(!render_scene3d_pick(test_world, &lens, (CF_V2){ miss.x, miss.y }, (render_skip){ 0 })
                      .slot);
     }
     CF_V3 corners[8];
-    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    REQUIRE(render_scene3d_entity_bounds(test_world, child, corners));
     CF_V3 low = corners[0], high = corners[0];
     for (int i = 1; i < 8; i++) {
         low = cf_min_v3(low, corners[i]);
@@ -2794,40 +2749,33 @@ TEST_CASE(transform3d_models_pick_and_bound_at_their_pose)
     REQUIRE(test_register_model_sphere("PlacedSphere", .5f));
     ecs_entity model = add_solid(
         (CF_V3){ -1.5f, 0, 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 },
+        (Geometry3D){ PRIMITIVE_BOX, 1, 1, 1 },
         0xffffffffu
     );
-    GameSdfSurface3D surface = { .enabled = true };
-    GameShader binding = { .shape = "PlacedSphere" };
+    SdfSurface3D surface = { .enabled = true };
+    Shader binding = { .shape = "PlacedSphere" };
     REQUIRE(
-        ecs_world_record_add(world, model, GAME_COMPONENT_GameSdfSurface3D.id, &surface, 0) == ECS_OK
+        ecs_world_record_add(test_world, model, COMPONENT_SdfSurface3D.id, &surface, 0) == ECS_OK
     );
-    REQUIRE(
-        ecs_world_record_add(world, model, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
-    );
+    REQUIRE(ecs_world_record_add(test_world, model, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
     place_3d(model, (CF_V3){ 1.5f, 0, 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
     CF_V3 placed = render_scene3d_project(&lens, (CF_V3){ 1.5f, 0, 0 });
     CF_V3 flat = render_scene3d_project(&lens, (CF_V3){ -1.5f, 0, 0 });
     for (int alone = 0; alone < 2; alone++) {
         if (alone) {
             REQUIRE(
-                ecs_world_record_remove(
-                    world,
-                    model,
-                    GAME_COMPONENT_GameTransform.id,
-                    0
-                ) == ECS_OK
+                ecs_world_record_remove(test_world, model, COMPONENT_Transform.id, 0) == ECS_OK
             );
-            REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+            REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
         }
         REQUIRE(
-            render_scene3d_pick(world, &lens, (CF_V2){ placed.x, placed.y }, (render_skip){ 0 })
+            render_scene3d_pick(test_world, &lens, (CF_V2){ placed.x, placed.y }, (render_skip){ 0 })
                 .slot == model.slot
         );
-        REQUIRE(!render_scene3d_pick(world, &lens, (CF_V2){ flat.x, flat.y }, (render_skip){ 0 })
+        REQUIRE(!render_scene3d_pick(test_world, &lens, (CF_V2){ flat.x, flat.y }, (render_skip){ 0 })
                      .slot);
         CF_V3 corners[8];
-        REQUIRE(render_scene3d_entity_bounds(world, model, corners));
+        REQUIRE(render_scene3d_entity_bounds(test_world, model, corners));
         REQUIRE(fabsf(corners[0].x - 1) < 1e-3f && fabsf(corners[7].x - 2) < 1e-3f);
     }
     return true;
@@ -2841,29 +2789,29 @@ TEST_CASE(transform3d_models_pick_and_bound_at_their_pose)
  * large. A Transform3D that flattens a solid hides it. */
 TEST_CASE(mirroring_transform3d_keeps_faces_outward)
 {
-    ecs_entity box = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    ecs_entity box = add_solid((CF_V3){ 0 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
     place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
     add_sun(0xffffffffu, (CF_V3){ -1, -2, -3 })->intensity = 1;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     render_mesh_asset mesh = box_mesh();
     publish_mesh(&mesh);
     for (int imported = 0; imported < 2; imported++) {
         if (imported) {
             import_mesh(box);
         }
-        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1, 1, 1 };
+        Transform3D_get(test_world, box)->scale = (CF_V3){ 1, 1, 1 };
         REQUIRE(render(&environment));
         REQUIRE(top().colors.g > 30 && front().colors.g > 30);
         static CF_Pixel upright[PIXELS];
         memcpy(upright, pixels, sizeof upright);
-        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ -1, 1, 1 };
+        Transform3D_get(test_world, box)->scale = (CF_V3){ -1, 1, 1 };
         REQUIRE(render(&environment));
         REQUIRE(!render_scene3d_error(scene3d)[0]);
         REQUIRE(matches(upright));
-        GameGeometry3D shape = *GAME_GameGeometry3D_get(world, box);
-        GameGeometry3D huge = { GAME_PRIMITIVE_BOX, 2e16f, 2e16f, 2e16f };
-        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ -1e-16f, 1e-16f, 1e-16f };
-        *GAME_GameGeometry3D_get(world, box) = huge;
+        Geometry3D shape = *Geometry3D_get(test_world, box);
+        Geometry3D huge = { PRIMITIVE_BOX, 2e16f, 2e16f, 2e16f };
+        Transform3D_get(test_world, box)->scale = (CF_V3){ -1e-16f, 1e-16f, 1e-16f };
+        *Geometry3D_get(test_world, box) = huge;
         REQUIRE(render(&environment));
         REQUIRE(!render_scene3d_error(scene3d)[0]);
         REQUIRE(matches(upright));
@@ -2877,18 +2825,15 @@ TEST_CASE(mirroring_transform3d_keeps_faces_outward)
             vast.min = cf_mul_v3_f(vast.min, 2e16f);
             vast.max = cf_mul_v3_f(vast.max, 2e16f);
             publish_mesh(&vast);
-            *GAME_GameGeometry3D_get(world, box) = (GameGeometry3D){ GAME_PRIMITIVE_BOX,
-                                                                     1,
-                                                                     1,
-                                                                     1 };
+            *Geometry3D_get(test_world, box) = (Geometry3D){ PRIMITIVE_BOX, 1, 1, 1 };
             REQUIRE(render(&environment));
             REQUIRE(!render_scene3d_error(scene3d)[0]);
             REQUIRE(matches(upright));
             mesh = box_mesh();
             publish_mesh(&mesh);
         }
-        *GAME_GameGeometry3D_get(world, box) = shape;
-        GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1, 0, 1 };
+        *Geometry3D_get(test_world, box) = shape;
+        Transform3D_get(test_world, box)->scale = (CF_V3){ 1, 0, 1 };
         REQUIRE(render(&environment));
         REQUIRE(!render_scene3d_error(scene3d)[0] && !top().colors.g);
     }
@@ -2900,10 +2845,10 @@ TEST_CASE(mirroring_transform3d_keeps_faces_outward)
  * normals are 1e-30 long, too short to normalize directly. */
 TEST_CASE(lopsided_mesh_models_keep_their_normals)
 {
-    ecs_entity box = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    ecs_entity box = add_solid((CF_V3){ 0 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
     place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
     add_sun(0xffffffffu, (CF_V3){ -1, -2, -3 })->intensity = 1;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     render_mesh_asset mesh = box_mesh();
     publish_mesh(&mesh);
     import_mesh(box);
@@ -2918,7 +2863,7 @@ TEST_CASE(lopsided_mesh_models_keep_their_normals)
     mesh.min.x *= 1e30f;
     mesh.max.x *= 1e30f;
     publish_mesh(&mesh);
-    GAME_GameTransform3D_get(world, box)->scale = (CF_V3){ 1e-30f, 1, 1 };
+    Transform3D_get(test_world, box)->scale = (CF_V3){ 1e-30f, 1, 1 };
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
     REQUIRE(matches(upright));
@@ -2932,42 +2877,37 @@ TEST_CASE(lopsided_mesh_models_keep_their_normals)
  * width underflows its whole frame's x axis to zero has none. */
 TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
 {
-    ecs_entity parent = ecs_world_create_entity(world);
+    ecs_entity parent = ecs_world_create_entity(test_world);
     place_3d(
         parent,
         (CF_V3){ 0 },
         cf_quat_from_axis_angle(cf_norm_v3((CF_V3){ 1, 2, 3 }), 1.14f),
         (CF_V3){ 1, 0, 1 }
     );
-    ecs_entity child = add(
-        GAME_COMPONENT_GameGeometry3D.id,
-        &(GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 }
-    );
+    ecs_entity child = add(COMPONENT_Geometry3D.id, &(Geometry3D){ PRIMITIVE_BOX, 1, 1, 1 });
     place_3d(
         child,
         (CF_V3){ 0 },
         cf_quat_from_axis_angle(cf_norm_v3((CF_V3){ 3, -1, 2 }), 2.62f),
         (CF_V3){ 1, 1, 1 }
     );
-    REQUIRE(ecs_world_record_add_pair(world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
-    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_world_record_add_pair(test_world, child, ECS_CHILD_OF, parent, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
     CF_V3 corners[8];
-    REQUIRE(!render_scene3d_entity_bounds(world, child, corners));
-    *GAME_GameTransform3D_get(world, parent) = (GameTransform3D){
-        { 0 },
-        cf_quat_identity(),
-        { 1e-16f, 1e-16f, 1e-16f }
-    };
-    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
+    REQUIRE(!render_scene3d_entity_bounds(test_world, child, corners));
+    *Transform3D_get(test_world, parent) = (Transform3D){ { 0 },
+                                                          cf_quat_identity(),
+                                                          { 1e-16f, 1e-16f, 1e-16f } };
+    REQUIRE(render_scene3d_entity_bounds(test_world, child, corners));
     CF_Quat turn = cf_quat_from_axis_angle((CF_V3){ 0, 0, 1 }, CF_PI / 4);
-    GAME_GameTransform3D_get(world, parent)->scale = (CF_V3){ 1e-6f, 1, 1 };
-    GAME_GameTransform3D_get(world, child)->rotation = turn;
-    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
-    GAME_GameTransform3D_get(world, parent)->scale = (CF_V3){ 1e-25f, 1, 1 };
-    GAME_GameTransform3D_get(world, child)->rotation = cf_quat_identity();
-    REQUIRE(render_scene3d_entity_bounds(world, child, corners));
-    GAME_GameGeometry3D_get(world, child)->width = 1e-25f;
-    REQUIRE(!render_scene3d_entity_bounds(world, child, corners));
+    Transform3D_get(test_world, parent)->scale = (CF_V3){ 1e-6f, 1, 1 };
+    Transform3D_get(test_world, child)->rotation = turn;
+    REQUIRE(render_scene3d_entity_bounds(test_world, child, corners));
+    Transform3D_get(test_world, parent)->scale = (CF_V3){ 1e-25f, 1, 1 };
+    Transform3D_get(test_world, child)->rotation = cf_quat_identity();
+    REQUIRE(render_scene3d_entity_bounds(test_world, child, corners));
+    Geometry3D_get(test_world, child)->width = 1e-25f;
+    REQUIRE(!render_scene3d_entity_bounds(test_world, child, corners));
     return true;
 }
 
@@ -2975,44 +2915,41 @@ TEST_CASE(flattened_transform3d_frames_hide_at_any_scale)
  * an authoring error, as a value that is not finite is, and never draws. */
 TEST_CASE(overflowing_transform3d_frames_are_authoring_errors)
 {
-    ecs_entity box = add(
-        GAME_COMPONENT_GameGeometry3D.id,
-        &(GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1 }
-    );
+    ecs_entity box = add(COMPONENT_Geometry3D.id, &(Geometry3D){ PRIMITIVE_BOX, 1, 1, 1 });
     place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1e20f, 1e20f, 1e20f });
-    GameVisualTransform grown = { .scale = 1e20f };
+    VisualTransform grown = { .scale = 1e20f };
     REQUIRE(
-        ecs_world_record_add(world, box, GAME_COMPONENT_GameVisualTransform.id, &grown, 0) == ECS_OK
+        ecs_world_record_add(test_world, box, COMPONENT_VisualTransform.id, &grown, 0) == ECS_OK
     );
-    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    GameGlobalTransform3D transform = game_transform_world_3d(world, box);
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
+    GlobalTransform3D transform = transform_world_3d(test_world, box);
     scene3d_visual visuals[SCENE3D_PART_LIMIT];
     const render_mesh_asset *mesh;
     char error[128];
-    int parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    int parts = render_scene3d_visuals(test_world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
     REQUIRE(parts == -1);
     REQUIRE(!strcmp(error, "Visual transform needs finite values and nonnegative scale."));
-    GAME_GameVisualTransform_get(world, box)->scale = 1;
-    parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    VisualTransform_get(test_world, box)->scale = 1;
+    parts = render_scene3d_visuals(test_world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
     REQUIRE(parts == 1);
     /* So is a Geometry3D, or a part's position, that carries the frame past
      * it. */
     const char *beyond = "3D Geometry needs a placement within float range.";
-    GAME_GameGeometry3D_get(world, box)->width = 1e20f;
-    parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    Geometry3D_get(test_world, box)->width = 1e20f;
+    parts = render_scene3d_visuals(test_world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
     REQUIRE(parts == -1 && !strcmp(error, beyond));
-    GAME_GameGeometry3D_get(world, box)->width = 1;
+    Geometry3D_get(test_world, box)->width = 1;
     scene3d_parts far = { .count = 1 };
-    far.parts[0] = (scene3d_part){ .primitive = GAME_PRIMITIVE_BOX,
+    far.parts[0] = (scene3d_part){ .primitive = PRIMITIVE_BOX,
                                    .dimensions = { 1, 1, 1 },
                                    .position = { 1e20f, 0, 0 } };
     REQUIRE(render_scene3d_parts_publish("far", &far, error, sizeof error));
-    GameMeshParts authored = { .parts = "far" };
+    MeshParts authored = { .parts = "far" };
     REQUIRE(
-        ecs_world_record_add(world, box, GAME_COMPONENT_GameMeshParts.id, &authored, 0) == ECS_OK
+        ecs_world_record_add(test_world, box, COMPONENT_MeshParts.id, &authored, 0) == ECS_OK
     );
-    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    parts = render_scene3d_visuals(world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
+    parts = render_scene3d_visuals(test_world, box, NULL, &transform, visuals, &mesh, error, sizeof error);
     render_scene3d_parts_clear();
     REQUIRE(parts == -1 && !strcmp(error, beyond));
     return true;
@@ -3024,45 +2961,39 @@ TEST_CASE(overflowing_transform3d_frames_are_authoring_errors)
  * once the eye turns to its 2D position. */
 TEST_CASE(fog_culls_transform3d_solids_where_they_draw)
 {
-    GameFog settings = { .origin = { -8, -8 },
-                         .columns = 16,
-                         .rows = 16,
-                         .cell_size = 1,
-                         .color = 0xff0000ffu };
-    add(GAME_COMPONENT_GameFog.id, &settings);
-    ecs_entity eye = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 0, 0 });
-    GameVision vision = { .radius = 3 };
-    REQUIRE(ecs_world_record_add(world, eye, GAME_COMPONENT_GameVision.id, &vision, 0) == ECS_OK);
-    ecs_entity box = add_solid(
-        (CF_V3){ 6, 0, 6 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 },
-        0xffffffffu
-    );
-    GameRenderState state = { .visibility_culled = true };
-    REQUIRE(
-        ecs_world_record_add(world, box, GAME_COMPONENT_GameRenderState.id, &state, 0) == ECS_OK
-    );
+    Fog settings = { .origin = { -8, -8 },
+                     .columns = 16,
+                     .rows = 16,
+                     .cell_size = 1,
+                     .color = 0xff0000ffu };
+    add(COMPONENT_Fog.id, &settings);
+    ecs_entity eye = add(COMPONENT_Transform.id, &(Transform){ 0, 0 });
+    Vision vision = { .radius = 3 };
+    REQUIRE(ecs_world_record_add(test_world, eye, COMPONENT_Vision.id, &vision, 0) == ECS_OK);
+    ecs_entity box = add_solid((CF_V3){ 6, 0, 6 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    RenderState state = { .visibility_culled = true };
+    REQUIRE(ecs_world_record_add(test_world, box, COMPONENT_RenderState.id, &state, 0) == ECS_OK);
     place_3d(box, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
     add_sun(0xffffffffu, (CF_V3){ -1, -2, -3 })->intensity = 1;
-    game_visibility *visibility = game_visibility_new(world, NULL);
-    runtime = engine_new(world, &(engine_modules){ .visibility = visibility });
-    GameEnvironment environment = unlit_environment();
-    bool seen = !game_visibility_update(visibility, 0) &&
-                render(&environment) && top().colors.g > 30;
-    *GAME_GameTransform_get(world, eye) = (GameTransform){ 6, 6 };
-    bool hidden = !game_visibility_update(visibility, 0) &&
-                  render(&environment) && !top().colors.g;
+    visibility *visibility = visibility_new(test_world, NULL);
+    runtime = engine_new(test_world, &(engine_modules){ .visibility = visibility });
+    Environment environment = unlit_environment();
+    bool seen = !visibility_update(visibility, 0) && render(&environment) &&
+                top().colors.g > 30;
+    *Transform_get(test_world, eye) = (Transform){ 6, 6 };
+    bool hidden = !visibility_update(visibility, 0) && render(&environment) &&
+                  !top().colors.g;
     engine_free(runtime);
     runtime = NULL;
-    game_visibility_free(visibility);
+    visibility_free(visibility);
     REQUIRE(seen && hidden);
     return true;
 }
 
 /* Uniform white ambient light alone, which occlusion dims. */
-static GameEnvironment ambient_environment(GameOcclusion occlusion)
+static Environment ambient_environment(Occlusion occlusion)
 {
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     environment.ambient_sky = environment.ambient_ground = 0xffffffffu;
     environment.ambient_intensity = .5f;
     environment.occlusion = occlusion;
@@ -3079,13 +3010,13 @@ static const CF_V3 crease_floor = { 0, 0, 1.15f }, crease_face = { 0, .15f, 1 },
 TEST_CASE(ambient_occlusion_darkens_where_surfaces_meet)
 {
     add_box_on_floor();
-    GameEnvironment environment = ambient_environment(GAME_OCCLUSION_OFF);
+    Environment environment = ambient_environment(OCCLUSION_OFF);
     REQUIRE(render(&environment));
     CF_Pixel floor = pixel_at(crease_floor), face = pixel_at(crease_face),
              open = pixel_at(open_floor), top = pixel_at(roof);
     /* Without occlusion the floor is lit evenly. */
     REQUIRE(floor.colors.g > 60 && distance(floor, open) <= 3);
-    for (int quality = GAME_OCCLUSION_LOW; quality <= GAME_OCCLUSION_HIGH; quality++) {
+    for (int quality = OCCLUSION_LOW; quality <= OCCLUSION_HIGH; quality++) {
         environment.occlusion = quality;
         REQUIRE(render(&environment));
         REQUIRE(!render_scene3d_error(scene3d)[0]);
@@ -3101,13 +3032,13 @@ TEST_CASE(ambient_occlusion_darkens_where_surfaces_meet)
 TEST_CASE(ambient_occlusion_leaves_direct_light_alone)
 {
     add_shadow_scene()->shadows = true;
-    GameEnvironment environment = unlit_environment();
-    environment.occlusion = GAME_OCCLUSION_OFF;
+    Environment environment = unlit_environment();
+    environment.occlusion = OCCLUSION_OFF;
     REQUIRE(render(&environment));
     static CF_Pixel open[PIXELS];
     memcpy(open, pixels, sizeof pixels);
     REQUIRE(pixel_at(crease_floor).colors.g > 60);
-    environment.occlusion = GAME_OCCLUSION_HIGH;
+    environment.occlusion = OCCLUSION_HIGH;
     REQUIRE(render(&environment));
     REQUIRE(!memcmp(pixels, open, sizeof pixels));
     return true;
@@ -3118,13 +3049,13 @@ TEST_CASE(ambient_occlusion_leaves_direct_light_alone)
 TEST_CASE(ambient_occlusion_passes_translucent_solids)
 {
     add_box_on_floor();
-    add_solid((CF_V3){ 0, .5f, 1.6f }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 1, .05f }, 0xfffffffeu);
+    add_solid((CF_V3){ 0, .5f, 1.6f }, (Geometry3D){ PRIMITIVE_BOX, 2, 1, .05f }, 0xfffffffeu);
     CF_V3 before = { 0, 0, 1.75f };
-    GameEnvironment environment = ambient_environment(GAME_OCCLUSION_OFF);
+    Environment environment = ambient_environment(OCCLUSION_OFF);
     REQUIRE(render(&environment));
     CF_Pixel panel = pixel_at(crease_floor), floor = pixel_at(before);
     REQUIRE(panel.colors.g > 60);
-    environment.occlusion = GAME_OCCLUSION_HIGH;
+    environment.occlusion = OCCLUSION_HIGH;
     REQUIRE(render(&environment));
     REQUIRE(distance(pixel_at(crease_floor), panel) <= 3);
     REQUIRE(distance(pixel_at(before), floor) <= 3);
@@ -3136,17 +3067,17 @@ TEST_CASE(ambient_occlusion_passes_translucent_solids)
 TEST_CASE(ambient_occlusion_settings_must_be_valid)
 {
     add_box_on_floor();
-    GameEnvironment environment = ambient_environment(GAME_OCCLUSION_MEDIUM);
+    Environment environment = ambient_environment(OCCLUSION_MEDIUM);
     const float radii[] = { 0, -1, NAN, INFINITY };
     for (int i = 0; i < 4; i++) {
         environment.occlusion_radius = radii[i];
         REQUIRE(!render(&environment));
         REQUIRE(strstr(render_scene3d_error(scene3d), "occlusion radius"));
     }
-    environment.occlusion = GAME_OCCLUSION_OFF;
+    environment.occlusion = OCCLUSION_OFF;
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
-    environment.occlusion = GAME_OCCLUSION_HIGH + 1;
+    environment.occlusion = OCCLUSION_HIGH + 1;
     environment.occlusion_radius = 1;
     REQUIRE(!render(&environment));
     REQUIRE(strstr(render_scene3d_error(scene3d), "Off, Low, Medium or High"));
@@ -3154,9 +3085,9 @@ TEST_CASE(ambient_occlusion_settings_must_be_valid)
 }
 
 /* No light but what a test adds, bounced at the given quality. */
-static GameEnvironment bounced_environment(GameGlobalIllumination quality)
+static Environment bounced_environment(GlobalIllumination quality)
 {
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     environment.global_illumination = quality;
     return environment;
 }
@@ -3164,10 +3095,10 @@ static GameEnvironment bounced_environment(GameGlobalIllumination quality)
 /* The floor add_box_on_floor's box stands on. */
 static ecs_entity add_ground(unsigned color)
 {
-    return add_solid((CF_V3){ 0, -.1f, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f }, color);
+    return add_solid((CF_V3){ 0, -.1f, 0 }, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f }, color);
 }
 
-static bool render_bounced(GameEnvironment environment, int quality)
+static bool render_bounced(Environment environment, int quality)
 {
     environment.global_illumination = quality;
     return render(&environment) && !render_scene3d_error(scene3d)[0];
@@ -3182,14 +3113,14 @@ static const CF_V3 box_front = { 0, 1, 1 };
 TEST_CASE(global_illumination_bounces_light_between_solids)
 {
     add_ground(0xff0000ffu);
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
     sun->intensity = 1;
     sun->shadows = true;
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_OFF);
     REQUIRE(render(&environment));
     REQUIRE(pixel_at(box_front).colors.r == 0);
-    REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+    REQUIRE(render_bounced(environment, GLOBAL_ILLUMINATION_LOW));
     CF_Pixel face = pixel_at(box_front);
     REQUIRE(face.colors.r > 20 && face.colors.r > face.colors.g + 15);
     return true;
@@ -3203,20 +3134,20 @@ TEST_CASE(global_illumination_reaches_across_vast_solids)
 {
     ecs_entity block = add_solid(
         (CF_V3){ 0, -5e12f, 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1e13f, 1e13f, 1e13f },
+        (Geometry3D){ PRIMITIVE_BOX, 1e13f, 1e13f, 1e13f },
         0xff0000ffu
     );
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
     add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 })->intensity = 1;
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_LOW);
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_LOW);
     REQUIRE(render(&environment));
     CF_Pixel face = pixel_at(box_front);
     REQUIRE(face.colors.r > 20 && face.colors.r > face.colors.g + 15);
-    *GAME_GameGeometry3D_get(world, block) = (GameGeometry3D){ GAME_PRIMITIVE_BOX,
-                                                               1e20f,
-                                                               1e20f,
-                                                               1e20f,
-                                                               -5e19f };
+    *Geometry3D_get(test_world, block) = (Geometry3D){ PRIMITIVE_BOX,
+                                                       1e20f,
+                                                       1e20f,
+                                                       1e20f,
+                                                       -5e19f };
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
     REQUIRE(pixel_at(box_front).colors.r == 0);
@@ -3228,20 +3159,16 @@ TEST_CASE(global_illumination_reaches_across_vast_solids)
 TEST_CASE(global_illumination_carries_emitted_light)
 {
     add_ground(0xffffffffu);
-    ecs_entity glow = add_solid(
-        (CF_V3){ 0, .5f, 4 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 4, 1, 1 },
-        0xffffffffu
-    );
-    GameMaterial *material = GAME_GameMaterial_get(world, glow);
+    ecs_entity glow = add_solid((CF_V3){ 0, .5f, 4 }, (Geometry3D){ PRIMITIVE_BOX, 4, 1, 1 }, 0xffffffffu);
+    Material *material = Material_get(test_world, glow);
     material->emission_color = 0xff8000ffu;
     material->emission_intensity = 4;
     material->emission_multiplier = 1;
     const CF_V3 near = { 0, 0, 1.5f };
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_OFF);
     REQUIRE(render(&environment));
     REQUIRE(pixel_at(near).colors.r == 0);
-    REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+    REQUIRE(render_bounced(environment, GLOBAL_ILLUMINATION_LOW));
     CF_Pixel floor = pixel_at(near);
     REQUIRE(floor.colors.r > 10 && floor.colors.r > floor.colors.b + 5);
     return true;
@@ -3253,7 +3180,7 @@ TEST_CASE(global_illumination_carries_emitted_light)
 TEST_CASE(global_illumination_keeps_open_ground_lit_as_the_ambient_colors)
 {
     add_ground(0xffffffffu);
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_OFF);
     environment.ambient_sky = 0x80c0ffffu;
     environment.ambient_ground = 0x402000ffu;
     environment.ambient_intensity = .5f;
@@ -3264,8 +3191,7 @@ TEST_CASE(global_illumination_keeps_open_ground_lit_as_the_ambient_colors)
         ambient[i] = pixel_at(spots[i]);
     }
     REQUIRE(ambient[0].colors.b > 60);
-    for (int quality = GAME_GLOBAL_ILLUMINATION_LOW;
-         quality <= GAME_GLOBAL_ILLUMINATION_HIGH;
+    for (int quality = GLOBAL_ILLUMINATION_LOW; quality <= GLOBAL_ILLUMINATION_HIGH;
          quality++) {
         REQUIRE(render_bounced(environment, quality));
         for (int i = 0; i < 3; i++) {
@@ -3280,7 +3206,7 @@ TEST_CASE(global_illumination_keeps_open_ground_lit_as_the_ambient_colors)
 TEST_CASE(global_illumination_settings_must_be_valid)
 {
     add_box_on_floor();
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_HIGH + 1);
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_HIGH + 1);
     REQUIRE(!render(&environment));
     REQUIRE(
         strstr(render_scene3d_error(scene3d), "global illumination must be Off, Low, Medium or High")
@@ -3288,11 +3214,11 @@ TEST_CASE(global_illumination_settings_must_be_valid)
     for (int i = 0; i < 342; i++) {
         add_solid_at(
             (float)(i % 18),
-            (GameGeometry3D){ GAME_PRIMITIVE_BOX_FRAME, .5f, .5f, .5f, (float)(i / 18) },
+            (Geometry3D){ PRIMITIVE_BOX_FRAME, .5f, .5f, .5f, (float)(i / 18) },
             0xffffffffu
         );
     }
-    environment.global_illumination = GAME_GLOBAL_ILLUMINATION_LOW;
+    environment.global_illumination = GLOBAL_ILLUMINATION_LOW;
     REQUIRE(!render(&environment));
     REQUIRE(strstr(render_scene3d_error(scene3d), "at most 4096 solids; the scene has 4106"));
     return true;
@@ -3311,22 +3237,22 @@ static void renew()
 TEST_CASE(global_illumination_lights_pass_their_bulbs)
 {
     add_ground(0xff0000ffu);
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
     const CF_V3 bulb = { 0, 3, .5f };
-    add_solid(bulb, (GameGeometry3D){ GAME_PRIMITIVE_SPHERE, .4f, .4f, .4f }, 0xffffffffu);
+    add_solid(bulb, (Geometry3D){ PRIMITIVE_SPHERE, .4f, .4f, .4f }, 0xffffffffu);
     ecs_entity lamp = add_lamp(bulb, 4, 8);
-    GAME_GamePointLight_get(world, lamp)->shadows = true;
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    PointLight_get(test_world, lamp)->shadows = true;
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_OFF);
     REQUIRE(render(&environment));
     REQUIRE(pixel_at(box_front).colors.r == 0);
-    REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+    REQUIRE(render_bounced(environment, GLOBAL_ILLUMINATION_LOW));
     CF_Pixel face = pixel_at(box_front);
     REQUIRE(face.colors.r > 20 && face.colors.r > face.colors.g + 15);
     return true;
 }
 
 /* The light on the white box's face after eight frames. */
-static int box_front_after_frames(GameEnvironment *environment)
+static int box_front_after_frames(Environment *environment)
 {
     for (int i = 0; i < 8; i++) {
         bool drawn = render(environment);
@@ -3342,14 +3268,14 @@ static int box_front_after_frames(GameEnvironment *environment)
 TEST_CASE(global_illumination_lights_pass_frames_around_them)
 {
     add_ground(0xff0000ffu);
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
     const CF_V3 bulb = { 0, 3, .5f };
     ecs_entity lamp = add_lamp(bulb, 4, 8);
-    GAME_GamePointLight_get(world, lamp)->shadows = true;
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_LOW);
+    PointLight_get(test_world, lamp)->shadows = true;
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_LOW);
     int open = box_front_after_frames(&environment);
     REQUIRE(open > 20);
-    add_solid(bulb, (GameGeometry3D){ GAME_PRIMITIVE_BOX_FRAME, 1.2f, 1.2f, 1.2f }, 0xffffffffu);
+    add_solid(bulb, (Geometry3D){ PRIMITIVE_BOX_FRAME, 1.2f, 1.2f, 1.2f }, 0xffffffffu);
     renew();
     int framed = box_front_after_frames(&environment);
     REQUIRE(framed * 10 > open * 9);
@@ -3381,16 +3307,14 @@ TEST_CASE(global_illumination_sees_out_of_mesh_boxes)
     render_mesh_asset mesh = corner_triangles();
     publish_mesh(&mesh);
     add_ground(0xff0000ffu);
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
     import_mesh(
-        add_solid((CF_V3){ 0, 2, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 12, 12, 4 }, 0xffffffffu)
+        add_solid((CF_V3){ 0, 2, 0 }, (Geometry3D){ PRIMITIVE_BOX, 12, 12, 4 }, 0xffffffffu)
     );
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
     sun->intensity = 1;
     sun->shadows = true;
-    REQUIRE(
-        render_bounced(bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF), GAME_GLOBAL_ILLUMINATION_LOW)
-    );
+    REQUIRE(render_bounced(bounced_environment(GLOBAL_ILLUMINATION_OFF), GLOBAL_ILLUMINATION_LOW));
     CF_Pixel face = pixel_at(box_front);
     REQUIRE(face.colors.r > 20 && face.colors.r > face.colors.g + 15);
     return true;
@@ -3403,28 +3327,24 @@ TEST_CASE(global_illumination_sees_out_of_mesh_boxes)
 TEST_CASE(global_illumination_falls_back_where_no_probe_holds_light)
 {
     add_ground(0xffffffffu);
-    ecs_entity around = add_solid(
-        (CF_V3){ 0 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 40, 40, 40 },
-        0xffffffffu
-    );
-    add_solid((CF_V3){ -25, 0, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, .2f, .2f }, 0xffffffffu);
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    ecs_entity around = add_solid((CF_V3){ 0 }, (Geometry3D){ PRIMITIVE_BOX, 40, 40, 40 }, 0xffffffffu);
+    add_solid((CF_V3){ -25, 0, 0 }, (Geometry3D){ PRIMITIVE_BOX, .2f, .2f, .2f }, 0xffffffffu);
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_OFF);
     environment.ambient_sky = 0x80c0ffffu;
     environment.ambient_ground = 0x402000ffu;
     environment.ambient_intensity = .5f;
     REQUIRE(render(&environment));
     CF_Pixel ambient = pixel_at((CF_V3){ 0 });
     REQUIRE(ambient.colors.b > 60);
-    REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+    REQUIRE(render_bounced(environment, GLOBAL_ILLUMINATION_LOW));
     REQUIRE(distance(pixel_at((CF_V3){ 0 }), ambient) <= 1);
-    GAME_GameTransform_get(world, around)->x = 30;
+    Transform_get(test_world, around)->x = 30;
     for (int i = 0; i < 4; i++) {
-        REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+        REQUIRE(render_bounced(environment, GLOBAL_ILLUMINATION_LOW));
     }
     REQUIRE(distance(pixel_at((CF_V3){ 0 }), ambient) > 1);
-    GAME_GameTransform_get(world, around)->x = 0;
-    REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+    Transform_get(test_world, around)->x = 0;
+    REQUIRE(render_bounced(environment, GLOBAL_ILLUMINATION_LOW));
     REQUIRE(distance(pixel_at((CF_V3){ 0 }), ambient) <= 1);
     return true;
 }
@@ -3434,21 +3354,21 @@ TEST_CASE(global_illumination_falls_back_where_no_probe_holds_light)
 TEST_CASE(global_illumination_finds_every_solid_through_its_bvh)
 {
     ecs_entity ground = add_ground(0xff0000ffu);
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
     sun->intensity = 1;
     sun->shadows = true;
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_LOW);
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_LOW);
     REQUIRE(render(&environment));
     CF_Pixel whole = pixel_at(box_front);
     REQUIRE(whole.colors.r > 20);
-    assert(ecs_world_destroy_entity(world, ground) == ECS_OK);
+    assert(ecs_world_destroy_entity(test_world, ground) == ECS_OK);
     const float tile = 16.0f / 12;
     for (int i = 0; i < 144; i++) {
         CF_V3 center = { ((float)(i % 12) + .5f) * tile - 8,
                          -.1f,
                          ((float)(i / 12) + .5f) * tile - 8 };
-        add_solid(center, (GameGeometry3D){ GAME_PRIMITIVE_BOX, tile, tile, .2f }, 0xff0000ffu);
+        add_solid(center, (Geometry3D){ PRIMITIVE_BOX, tile, tile, .2f }, 0xff0000ffu);
     }
     renew();
     REQUIRE(render(&environment));
@@ -3462,15 +3382,15 @@ TEST_CASE(global_illumination_finds_every_solid_through_its_bvh)
 static void add_roof()
 {
     add_ground(0xffffffffu);
-    add_solid((CF_V3){ 0, 1.6f, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 4, 4, .2f }, 0xffffffffu);
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    add_solid((CF_V3){ 0, 1.6f, 0 }, (Geometry3D){ PRIMITIVE_BOX, 4, 4, .2f }, 0xffffffffu);
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
     sun->intensity = 1;
     sun->shadows = true;
     look((CF_V3){ 0, .5f, 6 }, (CF_V3){ 0, .3f, 0 }, (CF_V3){ 0, 1, 0 });
 }
 
 /* The ground's light under the roof after `frames` more frames. */
-static int under_roof(GameEnvironment *environment, int frames)
+static int under_roof(Environment *environment, int frames)
 {
     for (int i = 0; i < frames; i++) {
         bool drawn = render(environment);
@@ -3484,15 +3404,15 @@ static int under_roof(GameEnvironment *environment, int frames)
 TEST_CASE(global_illumination_gathers_light_over_frames)
 {
     add_roof();
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_LOW);
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_LOW);
     REQUIRE(under_roof(&environment, 1) < 5);
     int gathered = under_roof(&environment, 7);
     REQUIRE(gathered > 30);
-    add_solid((CF_V3){ 12, 0, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, .2f, .2f }, 0xffffffffu);
+    add_solid((CF_V3){ 12, 0, 0 }, (Geometry3D){ PRIMITIVE_BOX, .2f, .2f, .2f }, 0xffffffffu);
     REQUIRE(under_roof(&environment, 1) > gathered / 2);
-    environment.global_illumination = GAME_GLOBAL_ILLUMINATION_OFF;
+    environment.global_illumination = GLOBAL_ILLUMINATION_OFF;
     under_roof(&environment, 1);
-    environment.global_illumination = GAME_GLOBAL_ILLUMINATION_LOW;
+    environment.global_illumination = GLOBAL_ILLUMINATION_LOW;
     REQUIRE(under_roof(&environment, 1) < 5);
     return true;
 }
@@ -3514,8 +3434,8 @@ static bool timed(const char *name)
 TEST_CASE(gpu_timing_names_the_3d_passes)
 {
     add_shadow_scene()->shadows = true;
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_LOW);
-    environment.occlusion = GAME_OCCLUSION_LOW;
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_LOW);
+    environment.occlusion = OCCLUSION_LOW;
     render_gpu_timing_enable(RENDER_GPU_TIMING_SYNC, false);
     render_gpu_timing_start();
     bool drawn = render(&environment);
@@ -3530,10 +3450,10 @@ TEST_CASE(gpu_timing_names_the_3d_passes)
 /* The two-unit box at the origin, drawn with surface material `name`. */
 static ecs_entity add_surface_box(const char *name)
 {
-    ecs_entity box = add_solid((CF_V3){ 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
-    GameShader binding = { .material = name };
-    assert(ecs_world_record_add(world, box, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK);
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity box = add_solid((CF_V3){ 0 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2 }, 0xffffffffu);
+    Shader binding = { .material = name };
+    assert(ecs_world_record_add(test_world, box, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     return box;
 }
 
@@ -3554,7 +3474,7 @@ TEST_CASE(mirrors_reflect_the_sky_in_its_directions)
     publish_octant_sky();
     REQUIRE(test_register_surface("Mirror", 0, 1));
     add_surface_box("Mirror");
-    GameEnvironment environment = sky_environment();
+    Environment environment = sky_environment();
     for (int quarters = 0; quarters < 2; quarters++) {
         environment.sky_rotation = 90.0f * quarters;
         REQUIRE(render(&environment));
@@ -3594,10 +3514,10 @@ TEST_CASE(rough_surfaces_blur_the_sky_they_reflect)
     REQUIRE(test_register_surface("Mirror", 0, 1));
     REQUIRE(test_register_surface("Rough", 1, 1));
     ecs_entity box = add_surface_box("Mirror");
-    GameEnvironment environment = sky_environment();
+    Environment environment = sky_environment();
     int mean[2][3] = { 0 };
     for (int i = 0; i < 2; i++) {
-        GAME_GameShader_get(world, box)->material = i ? "Rough" : "Mirror";
+        Shader_get(test_world, box)->material = i ? "Rough" : "Mirror";
         REQUIRE(render(&environment));
         int count = 0, sums[3] = { 0 };
         for (int y = 0; y < SIDE; y++) {
@@ -3656,10 +3576,10 @@ TEST_CASE(color_ramps_color_surfaces_from_any_table_offset)
     }
     REQUIRE(test_register_ramp("Ramp", 2, red, green));
     ecs_entity box = add_surface_box("Filler 0");
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     REQUIRE(shows_ramp(top(), gray));
-    GAME_GameShader_get(world, box)->material = "Ramp";
+    Shader_get(test_world, box)->material = "Ramp";
     REQUIRE(render(&environment));
     REQUIRE(shows_ramp(top(), (const float[]){ .55f, .25f, .4f }));
     unsigned compiles = render_shader_compile_count();
@@ -3699,7 +3619,7 @@ TEST_CASE(imported_mesh_groups_take_their_own_materials)
     REQUIRE(test_register_ramp("Blue", 2, blue, blue));
     publish_box_top("Red");
     import_mesh(add_surface_box("Blue"));
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     REQUIRE(shows_ramp(top(), red) && shows_ramp(front(), blue));
     publish_box_top("Missing");
@@ -3717,7 +3637,7 @@ TEST_CASE(imported_meshes_carry_texture_and_part_coordinates)
     REQUIRE(test_register_coordinate("Object X", "Shader ObjectPosition"));
     ecs_entity box = add_surface_box("U");
     import_mesh(box);
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     render_mesh_asset mesh = box_mesh();
     for (int i = 0; i < acount(mesh.vertices); i++) {
         mesh.vertices[i].uv = (CF_V2){ .25f, .5f };
@@ -3745,7 +3665,7 @@ TEST_CASE(imported_meshes_carry_texture_and_part_coordinates)
         }
     }
     publish_mesh(&mesh);
-    GAME_GameShader_get(world, box)->material = "Part X";
+    Shader_get(test_world, box)->material = "Part X";
     REQUIRE(render(&environment));
     REQUIRE(shows_ramp(top(), (const float[]){ .4f, .4f, .4f }));
     mesh = box_mesh();
@@ -3753,7 +3673,7 @@ TEST_CASE(imported_meshes_carry_texture_and_part_coordinates)
     REQUIRE(render(&environment));
     static CF_Pixel part[PIXELS];
     memcpy(part, pixels, sizeof pixels);
-    GAME_GameShader_get(world, box)->material = "Object X";
+    Shader_get(test_world, box)->material = "Object X";
     REQUIRE(render(&environment));
     /* The top's x = 0.6 is the mesh's x = 0.3. */
     REQUIRE(pixel_at((CF_V3){ .6f, 1, 0 }).colors.g > 60);
@@ -3802,8 +3722,8 @@ static void publish_square(CF_V3 u, CF_V3 v, CF_V4 tangent, bool projected)
 /* How bright the ground square's center shows with material `name`. */
 static int square_light(ecs_entity square, const char *name)
 {
-    GAME_GameShader_get(world, square)->material = name;
-    GameEnvironment environment = unlit_environment();
+    Shader_get(test_world, square)->material = name;
+    Environment environment = unlit_environment();
     if (!render(&environment)) {
         return -1;
     }
@@ -3828,7 +3748,7 @@ TEST_CASE(normal_maps_follow_mesh_tangents)
     publish_square(z, x, (CF_V4){ 0 }, false);
     ecs_entity square = add_surface_box("Flat");
     import_mesh(square);
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 });
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 });
     sun->intensity = 1;
     int level = square_light(square, "Flat"), facing = square_light(square, "AlongU");
     REQUIRE(level > 0 && facing > level + 10);
@@ -3844,11 +3764,11 @@ TEST_CASE(normal_maps_follow_mesh_tangents)
     REQUIRE(away >= 0 && away + 10 < along);
     REQUIRE(abs(square_light(square, "AlongU") - along) <= 3);
     publish_square(x, z, (CF_V4){ 0, 0, 1, 1 }, false);
-    GameVisualTransform turned = { .yaw = CF_PI / 2, .scale = 1 };
+    VisualTransform turned = { .yaw = CF_PI / 2, .scale = 1 };
     assert(
-        ecs_world_record_add(world, square, GAME_COMPONENT_GameVisualTransform.id, &turned, 0) == ECS_OK
+        ecs_world_record_add(test_world, square, COMPONENT_VisualTransform.id, &turned, 0) == ECS_OK
     );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     REQUIRE(abs(square_light(square, "AlongU") - along) <= 3);
     return true;
 }
@@ -3915,7 +3835,7 @@ TEST_CASE(stretched_transform3d_keeps_mesh_tangents)
     place_3d(square, (CF_V3){ 0 }, cf_quat_identity(), (CF_V3){ 1, 1, 1 });
     int facing = square_light(square, "AlongU");
     REQUIRE(facing > 0);
-    GAME_GameTransform3D_get(world, square)->scale = (CF_V3){ 1, 1e7f, 1 };
+    Transform3D_get(test_world, square)->scale = (CF_V3){ 1, 1e7f, 1 };
     REQUIRE(abs(square_light(square, "AlongU") - facing) <= 3);
     return true;
 }
@@ -3930,13 +3850,13 @@ TEST_CASE(occlusion_dims_only_ambient_light)
         REQUIRE(test_register_occlusion(names[i], occlusion[i]));
     }
     ecs_entity box = add_surface_box(names[0]);
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     environment.ambient_sky = 0x00ff00ffu;
     environment.ambient_ground = 0x00ff00ffu;
     environment.ambient_intensity = .5f;
     int green[3];
     for (int i = 0; i < 3; i++) {
-        GAME_GameShader_get(world, box)->material = names[i];
+        Shader_get(test_world, box)->material = names[i];
         REQUIRE(render(&environment));
         green[i] = top().colors.g;
     }
@@ -3945,19 +3865,19 @@ TEST_CASE(occlusion_dims_only_ambient_light)
 
     publish_uniform_sky((const unsigned char[4]){ 128, 128, 128, 128 });
     environment = sky_environment();
-    GAME_GameShader_get(world, box)->material = names[0];
+    Shader_get(test_world, box)->material = names[0];
     REQUIRE(render(&environment));
     REQUIRE(top().colors.g > 60);
-    GAME_GameShader_get(world, box)->material = names[2];
+    Shader_get(test_world, box)->material = names[2];
     REQUIRE(render(&environment));
     REQUIRE(!top().colors.r && !top().colors.g && !top().colors.b);
 
     add_sun(0xff0000ffu, (CF_V3){ 0, -2, 0 });
     environment = unlit_environment();
-    GAME_GameShader_get(world, box)->material = names[0];
+    Shader_get(test_world, box)->material = names[0];
     REQUIRE(render(&environment));
     CF_Pixel open = top();
-    GAME_GameShader_get(world, box)->material = names[2];
+    Shader_get(test_world, box)->material = names[2];
     REQUIRE(render(&environment));
     REQUIRE(open.colors.r > 150 && distance(top(), open) <= 1);
     return true;
@@ -3972,14 +3892,14 @@ TEST_CASE(global_illumination_leaves_surfaces_seven_images)
     REQUIRE(test_register_images("Eight images", 8, false));
     ecs_entity box = add_surface_box("Eight images");
     add_sun(0xffffffffu, (CF_V3){ 0, -2, 0 });
-    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    Environment environment = bounced_environment(GLOBAL_ILLUMINATION_OFF);
     REQUIRE(render(&environment));
-    environment.global_illumination = GAME_GLOBAL_ILLUMINATION_LOW;
+    environment.global_illumination = GLOBAL_ILLUMINATION_LOW;
     REQUIRE(!render(&environment));
     REQUIRE(
         strstr(render_scene3d_error(scene3d), "Eight images reads 8 images; with global illumination on, a 3D surface reads at most 7.")
     );
-    GAME_GameShader_get(world, box)->material = "Seven images";
+    Shader_get(test_world, box)->material = "Seven images";
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
     REQUIRE(top().colors.r > 150);
@@ -4003,14 +3923,14 @@ TEST_CASE(alpha_modes_decide_how_opacity_draws)
     look_level();
     publish_uniform_sky((const unsigned char[4]){ 128, 0, 128, 128 });
     ecs_entity box = add_surface_box(modes[0].name);
-    GAME_GameTransform_get(world, box)->y = -6;
-    GameEnvironment environment = sky_environment();
+    Transform_get(test_world, box)->y = -6;
+    Environment environment = sky_environment();
     CF_Pixel shown[4];
     for (int i = 0; i < 4; i++) {
         REQUIRE(test_register_alpha(modes[i].name, modes[i].mode, .3f, modes[i].cutoff));
         int id = render_shader_find(modes[i].name);
         REQUIRE(render_shader_may_be_transparent(id) == (modes[i].mode == SHADER_ALPHA_BLEND));
-        GAME_GameShader_get(world, box)->material = modes[i].name;
+        Shader_get(test_world, box)->material = modes[i].name;
         REQUIRE(render(&environment));
         shown[i] = pixel(SIDE / 2, SIDE / 2);
     }
@@ -4029,14 +3949,14 @@ TEST_CASE(masks_drop_pixels_whose_opacity_is_not_a_number)
     look_level();
     publish_uniform_sky((const unsigned char[4]){ 128, 0, 128, 128 });
     ecs_entity box = add_surface_box("Kept");
-    GAME_GameTransform_get(world, box)->y = -6;
-    GameEnvironment environment = sky_environment();
+    Transform_get(test_world, box)->y = -6;
+    Environment environment = sky_environment();
     REQUIRE(test_register_alpha("Kept", SHADER_ALPHA_MASK, .5f, .4f));
     REQUIRE(render(&environment));
     CF_Pixel open = pixel(4, 4);
     REQUIRE(pixel(SIDE / 2, SIDE / 2).colors.g > 200);
     REQUIRE(test_register_unknown_opacity("Unknown"));
-    GAME_GameShader_get(world, box)->material = "Unknown";
+    Shader_get(test_world, box)->material = "Unknown";
     REQUIRE(render(&environment));
     REQUIRE(distance(pixel(SIDE / 2, SIDE / 2), open) <= 1);
     return true;
@@ -4046,19 +3966,19 @@ TEST_CASE(masks_drop_pixels_whose_opacity_is_not_a_number)
  * the sun through. */
 TEST_CASE(opaque_and_masked_surfaces_cast_shadows)
 {
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
     ecs_entity box = add_surface_box("Blended");
-    GAME_GameGeometry3D_get(world, box)->elevation = 1;
+    Geometry3D_get(test_world, box)->elevation = 1;
     add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 })->shadows = true;
     REQUIRE(test_register_alpha("Blended", SHADER_ALPHA_BLEND, .5f, .5f));
     REQUIRE(test_register_alpha("Opaque", SHADER_ALPHA_OPAQUE, .5f, .5f));
     REQUIRE(test_register_alpha("Kept", SHADER_ALPHA_MASK, .5f, .4f));
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     REQUIRE(pixel_at(shaded).colors.g > 60);
     const char *casters[] = { "Opaque", "Kept" };
     for (int i = 0; i < 2; i++) {
-        GAME_GameShader_get(world, box)->material = casters[i];
+        Shader_get(test_world, box)->material = casters[i];
         REQUIRE(render(&environment));
         REQUIRE(pixel_at(shaded).colors.g == 0);
     }
@@ -4070,12 +3990,12 @@ TEST_CASE(opaque_and_masked_surfaces_cast_shadows)
 TEST_CASE(masked_surfaces_cast_cut_out_shadows)
 {
     REQUIRE(test_register_half_mask("Half"));
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
     ecs_entity box = add_surface_box("Half");
-    GAME_GameGeometry3D_get(world, box)->elevation = 1;
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    Geometry3D_get(test_world, box)->elevation = 1;
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
     sun->shadows = true;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     CF_V3 cut = { shaded.x, 0, -shaded.z };
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
@@ -4092,7 +4012,7 @@ TEST_CASE(masked_surfaces_cast_cut_out_shadows)
     ecs_entity lamp = add_lamp((CF_V3){ -3, 4, 0 }, 2, 20);
     REQUIRE(render(&environment));
     CF_Pixel open = pixel_at(cut);
-    GAME_GamePointLight_get(world, lamp)->shadows = true;
+    PointLight_get(test_world, lamp)->shadows = true;
     REQUIRE(render(&environment));
     REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 1);
     REQUIRE(open.colors.g > 30 && distance(pixel_at(cut), open) <= 3);
@@ -4106,11 +4026,11 @@ TEST_CASE(masked_surfaces_cast_cut_out_shadows)
 TEST_CASE(view_dependent_masks_cast_shadows_seen_from_the_light)
 {
     REQUIRE(test_register_view_mask("Facing"));
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
     ecs_entity box = add_surface_box("Facing");
-    GAME_GameGeometry3D_get(world, box)->elevation = 1;
-    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
-    GameEnvironment environment = unlit_environment();
+    Geometry3D_get(test_world, box)->elevation = 1;
+    DirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
     REQUIRE(pixel_at(shaded).colors.g > 60);
@@ -4121,7 +4041,7 @@ TEST_CASE(view_dependent_masks_cast_shadows_seen_from_the_light)
     ecs_entity lamp = add_lamp((CF_V3){ -3, 4, 0 }, 2, 20);
     REQUIRE(render(&environment));
     REQUIRE(pixel_at(shaded).colors.g > 30);
-    GAME_GamePointLight_get(world, lamp)->shadows = true;
+    PointLight_get(test_world, lamp)->shadows = true;
     REQUIRE(render(&environment));
     REQUIRE(render_scene3d_last_work(scene3d).light_shadows == 1);
     REQUIRE(pixel_at(shaded).colors.g == 0);
@@ -4135,28 +4055,22 @@ TEST_CASE(view_dependent_masks_cast_shadows_seen_from_the_light)
 TEST_CASE(masked_solids_outside_the_view_cut_their_shadows)
 {
     REQUIRE(test_register_half_mask("Half"));
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
     for (int i = 0; i < 600; i++) {
-        add_solid_at(60, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1, 1 }, 0xffffffffu);
+        add_solid_at(60, (Geometry3D){ PRIMITIVE_BOX, 1, 1, 1, 1 }, 0xffffffffu);
     }
     /* Beyond the left edge of the view and spanning z = -2 to 0, it keeps
      * z = -1 to 0, which shades the floor there up to x = 1. */
-    ecs_entity pillar = add_solid(
-        (CF_V3){ -8, 4, -1 },
-        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 8 },
-        0xffffffffu
-    );
-    GameShader binding = { .material = "Half" };
-    assert(
-        ecs_world_record_add(world, pillar, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
-    );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity pillar = add_solid((CF_V3){ -8, 4, -1 }, (Geometry3D){ PRIMITIVE_BOX, 2, 2, 8 }, 0xffffffffu);
+    Shader binding = { .material = "Half" };
+    assert(ecs_world_record_add(test_world, pillar, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     for (int i = 0; i < 600; i++) {
-        add_solid_at(60, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1, 1 }, 0xffffffffu);
+        add_solid_at(60, (Geometry3D){ PRIMITIVE_BOX, 1, 1, 1, 1 }, 0xffffffffu);
     }
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1, 1, 1, .5f }, 0xff0000ffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 1, 1, 1, .5f }, 0xff0000ffu);
     add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 })->shadows = true;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
     CF_V3 kept = { -1.6f, 0, -.5f }, cut = { -1.6f, 0, -1.5f },
@@ -4175,18 +4089,18 @@ TEST_CASE(ambient_occlusion_follows_masks)
 {
     REQUIRE(test_register_alpha("Cut", SHADER_ALPHA_MASK, .2f, .5f));
     REQUIRE(test_register_alpha("Kept", SHADER_ALPHA_MASK, .5f, .4f));
-    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    add_solid_at(0, (Geometry3D){ PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
     ecs_entity box = add_surface_box("Cut");
-    GAME_GameGeometry3D_get(world, box)->elevation = 1;
-    GameEnvironment environment = ambient_environment(GAME_OCCLUSION_OFF);
+    Geometry3D_get(test_world, box)->elevation = 1;
+    Environment environment = ambient_environment(OCCLUSION_OFF);
     REQUIRE(render(&environment));
     static CF_Pixel open[PIXELS];
     memcpy(open, pixels, sizeof pixels);
-    environment.occlusion = GAME_OCCLUSION_MEDIUM;
+    environment.occlusion = OCCLUSION_MEDIUM;
     REQUIRE(render(&environment));
     REQUIRE(!render_scene3d_error(scene3d)[0]);
     REQUIRE(matches(open));
-    GAME_GameShader_get(world, box)->material = "Kept";
+    Shader_get(test_world, box)->material = "Kept";
     REQUIRE(render(&environment));
     CF_Pixel floor = open[pixel_index(crease_floor)];
     REQUIRE(pixel_at(crease_floor).colors.g + 8 < floor.colors.g);
@@ -4355,7 +4269,7 @@ TEST_CASE(imported_standard_materials_shade_as_their_factors)
     ecs_entity square = add_surface_box("Images_Look");
     import_mesh(square);
     add_sun(0xffffffffu, (CF_V3){ 0, -1, -1 })->intensity = 1;
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     environment.ambient_sky = 0xffffffffu;
     environment.ambient_ground = 0xffffffffu;
     environment.ambient_intensity = .5f;
@@ -4447,7 +4361,7 @@ static int imported_light(
     if (!import_model(f, name, members)) {
         return -1;
     }
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     return render(&environment) ? pixel_at((CF_V3){ 0 }).colors.g : -1;
 }
 
@@ -4591,7 +4505,7 @@ static bool transform_model(
  * baked control, and unchanged negative control. No full renderer suite. */
 TEST_CASE(imported_texture_transforms_match_baked_uvs)
 {
-    GameEnvironment environment = unlit_environment();
+    Environment environment = unlit_environment();
     environment.ambient_sky = 0xffffffffu;
     environment.ambient_ground = 0xffffffffu;
     environment.ambient_intensity = .5f;

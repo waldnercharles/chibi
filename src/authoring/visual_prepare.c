@@ -18,9 +18,9 @@
 #include <stdlib.h>
 #include <string.h>
 static bool append(
-    game_player_asset **assets,
+    player_asset **assets,
     const char *name,
-    game_player_asset_kind kind,
+    player_asset_kind kind,
     unsigned char *data,
     size_t length,
     size_t *total,
@@ -29,7 +29,7 @@ static bool append(
 )
 {
     if (!data || !length || acount(*assets) == 4096 ||
-        length > GAME_PACKAGE_MAX_BYTES - *total) {
+        length > PACKAGE_MAX_BYTES - *total) {
         free(data);
         if (size) {
             snprintf(error, size, "Prepared visual collection exceeds count or byte limits");
@@ -39,15 +39,15 @@ static bool append(
     *total += length;
     apush(
         *assets,
-        ((game_player_asset){ .name = xstrdup(name),
-                              .kind = kind,
-                              .data = data,
-                              .length = length,
-                              .content_hash = game_player_asset_fingerprint(data, length) })
+        ((player_asset){ .name = xstrdup(name),
+                         .kind = kind,
+                         .data = data,
+                         .length = length,
+                         .content_hash = player_asset_fingerprint(data, length) })
     );
     return true;
 }
-void authoring_visual_prepared_free(game_player_asset *assets)
+void authoring_visual_prepared_free(player_asset *assets)
 {
     for (int i = 0; i < acount(assets); i++) {
         free((void *)assets[i].name);
@@ -55,7 +55,7 @@ void authoring_visual_prepared_free(game_player_asset *assets)
     }
     afree(assets);
 }
-static bool contains(const game_player_asset *assets, const char *name, game_player_asset_kind kind)
+static bool contains(const player_asset *assets, const char *name, player_asset_kind kind)
 {
     for (int i = 0; i < acount(assets); i++) {
         if (assets[i].kind == kind && !strcmp(assets[i].name, name)) {
@@ -65,9 +65,9 @@ static bool contains(const game_player_asset *assets, const char *name, game_pla
     return false;
 }
 /* Adds the resident sky at `key` unless it is empty or already added. */
-static bool append_sky(game_player_asset **assets, const char *key, size_t *total, char *error, size_t size)
+static bool append_sky(player_asset **assets, const char *key, size_t *total, char *error, size_t size)
 {
-    if (!key || !key[0] || contains(*assets, key, GAME_PLAYER_ASSET_SKY)) {
+    if (!key || !key[0] || contains(*assets, key, PLAYER_ASSET_SKY)) {
         return true;
     }
     const render_sky *sky = render_sky_find(key);
@@ -80,19 +80,19 @@ static bool append_sky(game_player_asset **assets, const char *key, size_t *tota
     unsigned char *bytes = NULL;
     size_t length = 0;
     return render_sky_prepared_write(sky, &bytes, &length, error, size) &&
-           append(assets, key, GAME_PLAYER_ASSET_SKY, bytes, length, total, error, size);
+           append(assets, key, PLAYER_ASSET_SKY, bytes, length, total, error, size);
 }
 bool authoring_visual_prepare(
-    const game_scene *const *scenes,
+    const scene *const *scenes,
     int scene_count,
-    game_player_asset **result,
+    player_asset **result,
     char *error,
     size_t size
 )
 {
     assert(result && scene_count >= 0 && (!scene_count || scenes) && (!size || error));
     *result = NULL;
-    if (scene_count > GAME_PLAYER_MAX_ASSETS) {
+    if (scene_count > PLAYER_MAX_ASSETS) {
         if (size) {
             snprintf(error, size, "Prepared visual scene count exceeds limit");
         }
@@ -123,7 +123,7 @@ bool authoring_visual_prepare(
             }
             goto fail;
         }
-        if (!append(result, asset->name, GAME_PLAYER_ASSET_SHADER, bytes, length, &total, error, size)) {
+        if (!append(result, asset->name, PLAYER_ASSET_SHADER, bytes, length, &total, error, size)) {
             goto fail;
         }
         if (asset->is_model) {
@@ -135,19 +135,19 @@ bool authoring_visual_prepare(
                 }
                 goto fail;
             }
-            if (!append(result, asset->name, GAME_PLAYER_ASSET_MODEL, bytes, length, &total, error, size)) {
+            if (!append(result, asset->name, PLAYER_ASSET_MODEL, bytes, length, &total, error, size)) {
                 goto fail;
             }
         }
     }
     size_t length = 0;
     unsigned char *values = shader_values_save(&length);
-    if (!append(result, "parameters", GAME_PLAYER_ASSET_SHADER_VALUES, values, length, &total, error, size)) {
+    if (!append(result, "parameters", PLAYER_ASSET_SHADER_VALUES, values, length, &total, error, size)) {
         goto fail;
     }
     unsigned char *parts = NULL;
     if (!render_scene3d_parts_save(&parts, &length, error, size) ||
-        !append(result, "parts", GAME_PLAYER_ASSET_PARTS, parts, length, &total, error, size)) {
+        !append(result, "parts", PLAYER_ASSET_PARTS, parts, length, &total, error, size)) {
         goto fail;
     }
     for (int i = 0; i < render_image_source_count(); i++) {
@@ -160,27 +160,21 @@ bool authoring_visual_prepare(
             }
             goto fail;
         }
-        if (!append(result, key, GAME_PLAYER_ASSET_IMAGE, bytes, length, &total, error, size)) {
+        if (!append(result, key, PLAYER_ASSET_IMAGE, bytes, length, &total, error, size)) {
             goto fail;
         }
     }
     for (int i = 0; i < scene_count; i++) {
-        for (int j = 0; j < game_scene_object_count(scenes[i]); j++) {
-            for (int k = 0; k < game_scene_object_component_count(scenes[i], j); k++) {
-                game_scene_component component = game_scene_object_component_at(scenes[i], j, k);
-                if (component.desc->id == GAME_COMPONENT_GameEnvironment.id &&
-                    !append_sky(
-                        result,
-                        ((const GameEnvironment *)component.data)->sky,
-                        &total,
-                        error,
-                        size
-                    )) {
+        for (int j = 0; j < scene_object_count(scenes[i]); j++) {
+            for (int k = 0; k < scene_object_component_count(scenes[i], j); k++) {
+                scene_component component = scene_object_component_at(scenes[i], j, k);
+                if (component.desc->id == COMPONENT_Environment.id &&
+                    !append_sky(result, ((const Environment *)component.data)->sky, &total, error, size)) {
                     goto fail;
                 }
                 const char
                     *source = authoring_component_mesh(component.desc, component.data);
-                if (!source || contains(*result, source, GAME_PLAYER_ASSET_MESH)) {
+                if (!source || contains(*result, source, PLAYER_ASSET_MESH)) {
                     continue;
                 }
                 const render_mesh_asset *mesh = render_mesh_asset_load(source, error, size);
@@ -188,7 +182,7 @@ bool authoring_visual_prepare(
                 size_t length = 0;
                 if (!mesh ||
                     !render_mesh_asset_prepared_write(mesh, &bytes, &length, error, size) ||
-                    !append(result, source, GAME_PLAYER_ASSET_MESH, bytes, length, &total, error, size)) {
+                    !append(result, source, PLAYER_ASSET_MESH, bytes, length, &total, error, size)) {
                     goto fail;
                 }
             }

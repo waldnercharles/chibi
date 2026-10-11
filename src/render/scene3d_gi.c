@@ -45,9 +45,9 @@ typedef struct
 } probe_quality;
 
 static const probe_quality qualities[] = {
-    [GAME_GLOBAL_ILLUMINATION_LOW] = { 512, 32 },
-    [GAME_GLOBAL_ILLUMINATION_MEDIUM] = { 2048, 64 },
-    [GAME_GLOBAL_ILLUMINATION_HIGH] = { 4096, 128 },
+    [GLOBAL_ILLUMINATION_LOW] = { 512, 32 },
+    [GLOBAL_ILLUMINATION_MEDIUM] = { 2048, 64 },
+    [GLOBAL_ILLUMINATION_HIGH] = { 4096, 128 },
 };
 
 /* The share of last frame's light that each frame keeps, which averages the
@@ -82,7 +82,7 @@ typedef struct
 
 struct render_scene3d_gi
 {
-    GameGlobalIllumination quality;
+    GlobalIllumination quality;
     /* The solids in their BVH leaves' order, a row each, and the BVH's
      * nodes. */
     CF_Texture solids, nodes;
@@ -95,8 +95,8 @@ struct render_scene3d_gi
     /* The irradiance tiles' rows, then the depth tiles', for the quality's
      * most probes. Each frame reads one and writes the other. */
     CF_Canvas atlas[2];
-    int current;                 /* The atlas that holds the probes' light. */
-    GameGlobalIllumination made; /* The quality the targets are for, if any. */
+    int current;             /* The atlas that holds the probes' light. */
+    GlobalIllumination made; /* The quality the targets are for, if any. */
     CF_Texture dark;
     CF_Shader trace, update;
     CF_Material material;
@@ -121,13 +121,13 @@ render_scene3d_gi *render_scene3d_gi_new()
 static void free_targets(render_scene3d_gi *gi)
 {
     gi->frames = 0;
-    if (gi->made == GAME_GLOBAL_ILLUMINATION_OFF) {
+    if (gi->made == GLOBAL_ILLUMINATION_OFF) {
         return;
     }
     cf_destroy_canvas(gi->rays);
     cf_destroy_canvas(gi->atlas[0]);
     cf_destroy_canvas(gi->atlas[1]);
-    gi->made = GAME_GLOBAL_ILLUMINATION_OFF;
+    gi->made = GLOBAL_ILLUMINATION_OFF;
 }
 
 void render_scene3d_gi_free(render_scene3d_gi *gi)
@@ -160,22 +160,17 @@ void render_scene3d_gi_reset(render_scene3d_gi *gi)
     gi->frames = 0;
 }
 
-bool render_scene3d_gi_prepare(
-    render_scene3d_gi *gi,
-    const GameEnvironment *environment,
-    char *error,
-    size_t size
-)
+bool render_scene3d_gi_prepare(render_scene3d_gi *gi, const Environment *environment, char *error, size_t size)
 {
-    GameGlobalIllumination quality = environment->global_illumination;
-    gi->quality = GAME_GLOBAL_ILLUMINATION_OFF;
+    GlobalIllumination quality = environment->global_illumination;
+    gi->quality = GLOBAL_ILLUMINATION_OFF;
     gi->shown = false;
-    if ((unsigned)quality > GAME_GLOBAL_ILLUMINATION_HIGH) {
+    if ((unsigned)quality > GLOBAL_ILLUMINATION_HIGH) {
         snprintf(error, size, "Environment global illumination must be Off, Low, Medium or High.");
         return false;
     }
     gi->quality = quality;
-    if (quality == GAME_GLOBAL_ILLUMINATION_OFF) {
+    if (quality == GLOBAL_ILLUMINATION_OFF) {
         free_targets(gi);
     }
     return true;
@@ -183,14 +178,14 @@ bool render_scene3d_gi_prepare(
 
 bool render_scene3d_gi_active(const render_scene3d_gi *gi)
 {
-    return gi->quality != GAME_GLOBAL_ILLUMINATION_OFF;
+    return gi->quality != GLOBAL_ILLUMINATION_OFF;
 }
 
 /* The unit shape fits the unit cube, but for the flat triangle, which reaches
  * 2/3 along x. */
 static float reach_x(int primitive)
 {
-    return primitive == GAME_PRIMITIVE_TRIANGLE ? 2.0f / 3 : .5f;
+    return primitive == PRIMITIVE_TRIANGLE ? 2.0f / 3 : .5f;
 }
 
 /* The world box around a solid, as its center and half extents. */
@@ -490,7 +485,7 @@ static void upload_solids(render_scene3d_gi *gi, const render_scene3d_gi_solid *
     for (int i = 0; i < count; i++) {
         const render_scene3d_gi_solid *solid = &solids[gi->order[i]];
         CF_M4x4 shape = solid->frame;
-        if (solid->primitive == GAME_PRIMITIVE_CAPSULE) {
+        if (solid->primitive == PRIMITIVE_CAPSULE) {
             shape = cf_mul_m4(shape, cf_m4_scale((CF_V3){ 2, 1, 2 }));
         }
         CF_V4 *row = &gi->texels[i * SOLID_TEXELS];

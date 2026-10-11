@@ -113,8 +113,8 @@ static void report_phases(double *samples, int frames)
 static bool run_patch(int solver, int side, int frames, int workers, bool collision, bool measured, uint64_t *hash)
 {
     material_fluid *fluid = make_patch(solver, side, collision);
-    game_task_pool *pool = game_task_pool_acquire_workers(workers);
-    material_fluid_set_tasks(fluid, game_task_pool_tasks(pool));
+    task_pool *pool = task_pool_acquire_workers(workers);
+    material_fluid_set_tasks(fluid, task_pool_tasks(pool));
     /* Keep the entire moving patch active, independent of its spreading. */
     fluid_region region = { -1000000, -1000000, 2000000, 2000000 };
     fluid_body body = { .position = { 0, -side * .5f - 4 } };
@@ -123,7 +123,7 @@ static bool run_patch(int solver, int side, int frames, int workers, bool collis
     for (int frame = 0; frame < frames; frame++) {
         material_fluid_profile profile = { 0 };
         double start = clock_ms();
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         material_fluid_tick_profiled(
             fluid,
             1.f / 60,
@@ -136,7 +136,7 @@ static bool run_patch(int solver, int side, int frames, int workers, bool collis
             collision ? 1 : 0,
             &profile
         );
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         double values[PHASE_COUNT] = {
             clock_ms() - start,    profile.reactions_ms,
             profile.gas_flow_ms,   profile.index_ms,
@@ -156,7 +156,7 @@ static bool run_patch(int solver, int side, int frames, int workers, bool collis
             collision ? "collision" : "patch",
             side,
             frames,
-            game_task_pool_tasks(pool)->workers
+            task_pool_tasks(pool)->workers
         );
         report_phases(samples, frames);
     }
@@ -176,7 +176,7 @@ static bool run_patch(int solver, int side, int frames, int workers, bool collis
     *hash = state_hash(fluid);
     free(samples);
     material_fluid_free(fluid);
-    game_task_pool_release(pool);
+    task_pool_release(pool);
     return true;
 }
 
@@ -231,8 +231,8 @@ TEST_CASE(material_benchmark_thermal_exchange)
             REQUIRE(material_fluid_add(fluid, p));
         }
     }
-    game_task_pool *pool = game_task_pool_acquire_workers(BENCHMARK_WORKERS);
-    material_fluid_set_tasks(fluid, game_task_pool_tasks(pool));
+    task_pool *pool = task_pool_acquire_workers(BENCHMARK_WORKERS);
+    material_fluid_set_tasks(fluid, task_pool_tasks(pool));
     fluid_region region = { -100000, -100000, 200000, 200000 };
     double start = 0, reactions = 0;
     for (int frame = -WARMUP; frame < FRAMES; frame++) {
@@ -240,9 +240,9 @@ TEST_CASE(material_benchmark_thermal_exchange)
             start = clock_ms();
         }
         material_fluid_profile profile = { 0 };
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         material_fluid_tick_profiled(fluid, 1.f / 60, 64, &region, 1, NULL, 0, NULL, 0, &profile);
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         if (frame >= 0) {
             reactions += profile.reactions_ms;
         }
@@ -258,7 +258,7 @@ TEST_CASE(material_benchmark_thermal_exchange)
         "reaction_ms=%.6f tick_ms=%.6f energy=%.6f\n",
         SIDE,
         FRAMES,
-        game_task_pool_tasks(pool)->workers,
+        task_pool_tasks(pool)->workers,
         reactions / FRAMES,
         tick,
         energy
@@ -266,7 +266,7 @@ TEST_CASE(material_benchmark_thermal_exchange)
     /* Each hot parcel holds 1 * 1 * 2 and each cold one none. */
     REQUIRE(count == SIDE * SIDE && fabs(energy - SIDE * SIDE) < 1e-2 * SIDE * SIDE);
     material_fluid_free(fluid);
-    game_task_pool_release(pool);
+    task_pool_release(pool);
     return true;
 }
 
@@ -292,8 +292,8 @@ TEST_CASE(material_benchmark_gas_flow)
             REQUIRE(material_fluid_add(fluid, p));
         }
     }
-    game_task_pool *pool = game_task_pool_acquire_workers(BENCHMARK_WORKERS);
-    material_fluid_set_tasks(fluid, game_task_pool_tasks(pool));
+    task_pool *pool = task_pool_acquire_workers(BENCHMARK_WORKERS);
+    material_fluid_set_tasks(fluid, task_pool_tasks(pool));
     fluid_region region = { -100000, -100000, 200000, 200000 };
     fluid_body bodies[] = { { .velocity = { 30, -15 }, .angle = .3f },
                             { .position = { -20, 30 }, .velocity = { -5, 12 } } };
@@ -305,9 +305,9 @@ TEST_CASE(material_benchmark_gas_flow)
             start = clock_ms();
         }
         material_fluid_profile profile = { 0 };
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         material_fluid_tick_profiled(fluid, 1.f / 60, 64, &region, 1, bodies, 2, obstacles, 2, &profile);
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         if (frame >= 0) {
             gas += profile.gas_flow_ms;
         }
@@ -317,7 +317,7 @@ TEST_CASE(material_benchmark_gas_flow)
         "tick_ms=%.6f hash=%016" PRIx64 "\n",
         SIDE,
         FRAMES,
-        game_task_pool_tasks(pool)->workers,
+        task_pool_tasks(pool)->workers,
         gas / FRAMES,
         (clock_ms() - start) / FRAMES,
         material_fluid_flow_hash(fluid)
@@ -326,7 +326,7 @@ TEST_CASE(material_benchmark_gas_flow)
     material_fluid_particles(fluid, &count);
     REQUIRE(count == SIDE * SIDE && gas > 0);
     material_fluid_free(fluid);
-    game_task_pool_release(pool);
+    task_pool_release(pool);
     return true;
 }
 

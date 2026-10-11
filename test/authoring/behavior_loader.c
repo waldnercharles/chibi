@@ -20,9 +20,9 @@
 
 static char root[] = "/tmp/chibi-loader-XXXXXX";
 static ecs_world *ecs;
-static game_preview_world *world;
-static game_prototype_preview *preview;
-static game_prototype *prototype;
+static preview_world *live;
+static prototype_preview *preview;
+static prototype *test_prototype;
 static av_value *components;
 
 static void write_behavior(const char *name, const char *text)
@@ -40,10 +40,9 @@ static void remove_behavior(const char *name)
     unlink(path);
 }
 
-static game_prototype_registry registry()
+static prototype_registry registry()
 {
-    return (game_prototype_registry){ GAME_REGISTRY_COMPONENTS,
-                                      GAME_REGISTRY_COMPONENT_COUNT };
+    return (prototype_registry){ REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
 }
 
 static void setup()
@@ -57,16 +56,16 @@ static void setup()
 
 static void cleanup()
 {
-    game_prototype_preview_free(preview);
+    prototype_preview_free(preview);
     preview = NULL;
-    game_preview_world_free(world);
-    world = NULL;
+    preview_world_free(live);
+    live = NULL;
     ecs_world_free(ecs);
     ecs = NULL;
     av_value_free(components);
     components = NULL;
-    game_prototype_free(prototype);
-    prototype = NULL;
+    prototype_free(test_prototype);
+    test_prototype = NULL;
     remove_behavior("Counter");
     remove_behavior("Broken");
     char behaviors[512];
@@ -83,7 +82,7 @@ static int load(char *messages, size_t size)
     fflush(stderr);
     int previous = dup(STDERR_FILENO);
     assert(previous >= 0 && dup2(fileno(capture), STDERR_FILENO) >= 0);
-    int loaded = app_behavior_fixtures_load(world, preview, root);
+    int loaded = app_behavior_fixtures_load(live, preview, root);
     fflush(stderr);
     assert(dup2(previous, STDERR_FILENO) >= 0);
     close(previous);
@@ -94,26 +93,26 @@ static int load(char *messages, size_t size)
     return loaded;
 }
 
-static int applied(game_preview_world *w)
+static int applied(preview_world *w)
 {
-    const authoring_sources *sources = game_preview_sources_applied(w);
+    const authoring_sources *sources = preview_sources_applied(w);
     return sources ? authoring_sources_count(sources) : 0;
 }
 
 TEST_CASE(sources_load_into_both_worlds_or_neither)
 {
-    game_prototype_registry prototypes = registry();
+    prototype_registry prototypes = registry();
     ecs = ecs_world_new();
-    world = game_preview_world_new(ecs);
-    preview = game_prototype_preview_new(&prototypes);
-    game_preview_world *live = game_prototype_preview_live(preview);
+    live = preview_world_new(ecs);
+    preview = prototype_preview_new(&prototypes);
+    preview_world *preview_live = prototype_preview_live(preview);
     write_behavior("Counter", "behavior Counter {\n    steps := 0\n    on Tick {\n        steps += 1\n    }\n}\n");
     char messages[4096];
     REQUIRE(load(messages, sizeof messages) == 1);
-    REQUIRE(applied(world) == 1 && applied(live) == 1);
+    REQUIRE(applied(live) == 1 && applied(preview_live) == 1);
     char path[512];
     snprintf(path, sizeof path, "%s/behaviors/Counter.chibi", root);
-    const authoring_source *counter = game_preview_source_find(world, path, true);
+    const authoring_source *counter = preview_source_find(live, path, true);
     REQUIRE(counter && counter->valid);
 
     /* One broken source refuses the whole collection; both worlds keep the
@@ -122,38 +121,38 @@ TEST_CASE(sources_load_into_both_worlds_or_neither)
     REQUIRE(load(messages, sizeof messages) == -1);
     REQUIRE(strstr(messages, "Could not load graph asset") && strstr(messages, root));
     REQUIRE(strstr(messages, "(source preparation)"));
-    REQUIRE(applied(world) == 1 && applied(live) == 1);
+    REQUIRE(applied(live) == 1 && applied(preview_live) == 1);
     return true;
 }
 
 TEST_CASE(failed_scene_launch_destroys_entities_before_their_strings)
 {
-    game_prototype_registry prototypes = registry();
+    prototype_registry prototypes = registry();
     char error[256] = "";
-    prototype = game_prototype_load(
-        "name \"StringOwner\"\ncomponents {\n    GameUi "
+    test_prototype = prototype_load(
+        "name \"StringOwner\"\ncomponents {\n    Ui "
         "document=\"prototype\"\n}\n",
         &prototypes,
         error,
         sizeof error
     );
-    REQUIRE(prototype);
-    preview = game_prototype_preview_new(&prototypes);
-    av_doc *doc = av_doc_read("GameUi document=\"scene override string\"\n", error, sizeof error);
+    REQUIRE(test_prototype);
+    preview = prototype_preview_new(&prototypes);
+    av_doc *doc = av_doc_read("Ui document=\"scene override string\"\n", error, sizeof error);
     REQUIRE(doc);
     components = av_value_copy(av_doc_root(doc));
     av_doc_free(doc);
     const char *missing[] = { "MissingPreviewBehavior" };
-    const game_prototype_preview_scene_entity entity = { .prototype = prototype,
-                                                         .parent = -1,
-                                                         .components = components,
-                                                         .behaviors = missing,
-                                                         .behavior_count = 1,
-                                                         .own_behaviors = true };
+    const prototype_preview_scene_entity entity = { .prototype = test_prototype,
+                                                    .parent = -1,
+                                                    .components = components,
+                                                    .behaviors = missing,
+                                                    .behavior_count = 1,
+                                                    .own_behaviors = true };
     REQUIRE(
-        game_prototype_preview_launch_scene(preview, &entity, 1, error, sizeof error) == ECS_ERR_COMMAND
+        prototype_preview_launch_scene(preview, &entity, 1, error, sizeof error) == ECS_ERR_COMMAND
     );
-    REQUIRE(ecs_world_live_count(game_prototype_preview_world(preview)) == 0);
+    REQUIRE(ecs_world_live_count(prototype_preview_world(preview)) == 0);
     return true;
 }
 

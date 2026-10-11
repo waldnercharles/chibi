@@ -39,7 +39,7 @@ typedef enum
     RENDER_RADIANCE_DEBUG_SHADING_NORMALS,
 } render_radiance_debug_view;
 
-/* HRC settings that GameHRC2D does not author: experiments and internal
+/* HRC settings that HRC2D does not author: experiments and internal
  * tuning for tests, previews and the HRC lab. Games draw with
  * render_radiance_lab_defaults(). */
 typedef struct
@@ -93,8 +93,8 @@ bool render_radiance_set_settings(render_radiance *radiance, render_radiance_set
  * Notes describes each change, or is empty.
  * render_radiance_set_lighting accepts every normalized value, and fails
  * without one or when its resources cannot be allocated. */
-GameHRC2D render_radiance_normalize(GameHRC2D lighting, char *notes, size_t size);
-bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting, render_radiance_lab lab);
+HRC2D render_radiance_normalize(HRC2D lighting, char *notes, size_t size);
+bool render_radiance_set_lighting(render_radiance *radiance, HRC2D lighting, render_radiance_lab lab);
 /* Feeds adaptive resolution one frame's scene GPU time, measured by its
  * owner; call it before laying out the next frame. */
 void render_radiance_frame_time(render_radiance *radiance, double gpu_ms);
@@ -121,9 +121,9 @@ render_radiance_status render_radiance_get_status(const render_radiance *radianc
  * Depth candidates count coarse tiles, excluding child and leaf refinement. */
 typedef struct
 {
-    GameHRCSurfaceMode mode;
+    HRCSurfaceMode mode;
     int cells, block;
-    GameHRCDepthVisibility visibility;
+    HRCDepthVisibility visibility;
     size_t candidates, visibility_taps, blur_quadrant_fetches;
     /* Optional Depth history pass cells and allocated RGBA16F target bytes. */
     int temporal_cells;

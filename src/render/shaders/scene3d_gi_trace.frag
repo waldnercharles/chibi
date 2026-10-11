@@ -30,7 +30,7 @@ const int STACK = 32;
 // What a ray starting inside a solid reports: no light, at almost no
 // distance, negative so that the update counts it.
 const float INSIDE = -0.0001;
-// GameGeometry3D primitives (runtime/components.h).
+// Geometry3D primitives (runtime/components.h).
 const int BOX = 0;
 const int BALL = 1;
 const int CAPSULE = 2;

@@ -89,7 +89,7 @@ At 10% the Scene view was still generating terrain; the rest of its frame is gen
 
 ### Re-measuring
 
-On an idle machine, from a copy of `projects/arena2d` with zoom scenes (`SandboxZ40` copies Sandbox with `GameCamera width=4000.0 height=2500.0` on its Camera; 20% and 10% double and quadruple that):
+On an idle machine, from a copy of `projects/arena2d` with zoom scenes (`SandboxZ40` copies Sandbox with `Camera width=4000.0 height=2500.0` on its Camera; 20% and 10% double and quadruple that):
 
 ```sh
 make build-release BUILD_TARGET=chibi_ctl

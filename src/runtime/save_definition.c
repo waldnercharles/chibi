@@ -2,24 +2,22 @@
 
 #include "runtime/save_native.h"
 
-static const native_parameter_definition READ_IN[] = { GAME_SAVE_READ_INPUTS(NATIVE_PORT) };
-static const native_parameter_definition READ_OUT[] = { GAME_SAVE_READ_OUTPUTS(NATIVE_PORT) };
-static const native_parameter_definition SET_IN[] = { GAME_SAVE_SET_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition READ_IN[] = { SAVE_READ_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition READ_OUT[] = { SAVE_READ_OUTPUTS(NATIVE_PORT) };
+static const native_parameter_definition SET_IN[] = { SAVE_SET_INPUTS(NATIVE_PORT) };
 static const native_parameter_definition READ_NUMBER_IN[] = {
-    GAME_SAVE_READ_NUMBER_INPUTS(NATIVE_PORT)
+    SAVE_READ_NUMBER_INPUTS(NATIVE_PORT)
 };
 static const native_parameter_definition READ_NUMBER_OUT[] = {
-    GAME_SAVE_READ_NUMBER_OUTPUTS(NATIVE_PORT)
+    SAVE_READ_NUMBER_OUTPUTS(NATIVE_PORT)
 };
 static const native_parameter_definition SET_NUMBER_IN[] = {
-    GAME_SAVE_SET_NUMBER_INPUTS(NATIVE_PORT)
+    SAVE_SET_NUMBER_INPUTS(NATIVE_PORT)
 };
-static const native_parameter_definition REMOVE_IN[] = { GAME_SAVE_REMOVE_INPUTS(NATIVE_PORT) };
-static const native_parameter_definition EXEC[] = { GAME_SAVE_EXEC(NATIVE_PORT) };
-static const native_parameter_definition THEN[] = { GAME_SAVE_THEN(NATIVE_PORT) };
-static const native_parameter_definition COMMIT_OUT[] = {
-    GAME_SAVE_COMMIT_OUTPUTS(NATIVE_PORT)
-};
+static const native_parameter_definition REMOVE_IN[] = { SAVE_REMOVE_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition EXEC[] = { SAVE_EXEC(NATIVE_PORT) };
+static const native_parameter_definition THEN[] = { SAVE_THEN(NATIVE_PORT) };
+static const native_parameter_definition COMMIT_OUT[] = { SAVE_COMMIT_OUTPUTS(NATIVE_PORT) };
 #define ACTION(KEY, NAME, SOURCE, INPUTS, OUTPUTS)                             \
     { .canonical_name = NAME,                                                  \
       KEY##_PRESENTATION,                                                      \
@@ -32,8 +30,8 @@ static const native_parameter_definition COMMIT_OUT[] = {
       .completion_output = 0,                                                  \
       .effects = SCRIPT_EFFECT_HOST }
 static const native_capability_definition DEFINITIONS[] = {
-    { .canonical_name = GAME_SAVE_READ_NAME,
-      GAME_SAVE_READ_PRESENTATION,
+    { .canonical_name = SAVE_READ_NAME,
+      SAVE_READ_PRESENTATION,
       .source_name = "read_saved_text",
       .kind = SCRIPT_CAPABILITY_FUNCTION,
       .pure = true,
@@ -43,9 +41,9 @@ static const native_capability_definition DEFINITIONS[] = {
       .output_count = NATIVE_COUNT(READ_OUT),
       .completion_output = -1,
       .effects = SCRIPT_EFFECT_READ },
-    ACTION(GAME_SAVE_SET, GAME_SAVE_SET_NAME, "set_saved_text", SET_IN, THEN),
-    { .canonical_name = GAME_SAVE_READ_NUMBER_NAME,
-      GAME_SAVE_READ_NUMBER_PRESENTATION,
+    ACTION(SAVE_SET, SAVE_SET_NAME, "set_saved_text", SET_IN, THEN),
+    { .canonical_name = SAVE_READ_NUMBER_NAME,
+      SAVE_READ_NUMBER_PRESENTATION,
       .source_name = "read_saved_number",
       .kind = SCRIPT_CAPABILITY_FUNCTION,
       .pure = true,
@@ -55,10 +53,10 @@ static const native_capability_definition DEFINITIONS[] = {
       .output_count = NATIVE_COUNT(READ_NUMBER_OUT),
       .completion_output = -1,
       .effects = SCRIPT_EFFECT_READ },
-    ACTION(GAME_SAVE_SET_NUMBER, GAME_SAVE_SET_NUMBER_NAME, "set_saved_number", SET_NUMBER_IN, THEN),
-    ACTION(GAME_SAVE_REMOVE, GAME_SAVE_REMOVE_NAME, "remove_saved_text", REMOVE_IN, THEN),
-    ACTION(GAME_SAVE_COMMIT, GAME_SAVE_COMMIT_NAME, "commit_save", EXEC, COMMIT_OUT),
-    ACTION(GAME_SAVE_DISCARD, GAME_SAVE_DISCARD_NAME, "discard_save_changes", EXEC, THEN),
+    ACTION(SAVE_SET_NUMBER, SAVE_SET_NUMBER_NAME, "set_saved_number", SET_NUMBER_IN, THEN),
+    ACTION(SAVE_REMOVE, SAVE_REMOVE_NAME, "remove_saved_text", REMOVE_IN, THEN),
+    ACTION(SAVE_COMMIT, SAVE_COMMIT_NAME, "commit_save", EXEC, COMMIT_OUT),
+    ACTION(SAVE_DISCARD, SAVE_DISCARD_NAME, "discard_save_changes", EXEC, THEN),
 };
 #define BIND(NAME, CALL, ACCESS)                                               \
     {                                                                          \
@@ -68,15 +66,15 @@ static const native_capability_definition DEFINITIONS[] = {
         }                                                                      \
     }
 static const native_definition_binding BINDINGS[] = {
-    BIND(GAME_SAVE_READ_NAME, GAME_SAVE_READ_CALL, GAME_SAVE_READ_ACCESS),
-    BIND(GAME_SAVE_SET_NAME, GAME_SAVE_SET_CALL, GAME_SAVE_WRITE_ACCESS),
-    BIND(GAME_SAVE_READ_NUMBER_NAME, GAME_SAVE_READ_NUMBER_CALL, GAME_SAVE_READ_ACCESS),
-    BIND(GAME_SAVE_SET_NUMBER_NAME, GAME_SAVE_SET_NUMBER_CALL, GAME_SAVE_WRITE_ACCESS),
-    BIND(GAME_SAVE_REMOVE_NAME, GAME_SAVE_REMOVE_CALL, GAME_SAVE_WRITE_ACCESS),
-    BIND(GAME_SAVE_COMMIT_NAME, GAME_SAVE_COMMIT_CALL, GAME_SAVE_WRITE_ACCESS),
-    BIND(GAME_SAVE_DISCARD_NAME, GAME_SAVE_DISCARD_CALL, GAME_SAVE_WRITE_ACCESS),
+    BIND(SAVE_READ_NAME, SAVE_READ_CALL, SAVE_READ_ACCESS),
+    BIND(SAVE_SET_NAME, SAVE_SET_CALL, SAVE_WRITE_ACCESS),
+    BIND(SAVE_READ_NUMBER_NAME, SAVE_READ_NUMBER_CALL, SAVE_READ_ACCESS),
+    BIND(SAVE_SET_NUMBER_NAME, SAVE_SET_NUMBER_CALL, SAVE_WRITE_ACCESS),
+    BIND(SAVE_REMOVE_NAME, SAVE_REMOVE_CALL, SAVE_WRITE_ACCESS),
+    BIND(SAVE_COMMIT_NAME, SAVE_COMMIT_CALL, SAVE_WRITE_ACCESS),
+    BIND(SAVE_DISCARD_NAME, SAVE_DISCARD_CALL, SAVE_WRITE_ACCESS),
 };
-const native_definition_pack GAME_SAVE_DEFINITION_PACK = {
+const native_definition_pack SAVE_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
     .definition_count = NATIVE_COUNT(DEFINITIONS),
     .bindings = BINDINGS,

@@ -153,8 +153,8 @@ int authoring_project_compile(const char *project, const char *scene, const char
     }
     authoring_graph_catalog_config config = {
         .native = native,
-        .types = GAME_TYPE_PACK,
-        .components = { GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
+        .types = TYPE_PACK,
+        .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT }
     };
     authoring_graph_catalog *graphs = authoring_graph_catalog_new(config, error, sizeof error);
     if (!graphs) {
@@ -166,13 +166,12 @@ int authoring_project_compile(const char *project, const char *scene, const char
     const registry_pack *const *packs = authoring_graph_catalog_packs(graphs, &pack_count);
     registry_set_packs(packs, pack_count);
     authoring_project_artifact artifact = { 0 };
-    authoring_project_options options = {
-        .project = project,
-        .scene = scene,
-        .native = native,
-        .components = { GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT },
-        .modules = GAME_WORLD_MODULES_ALL
-    };
+    authoring_project_options options = { .project = project,
+                                          .scene = scene,
+                                          .native = native,
+                                          .components = { REGISTRY_COMPONENTS,
+                                                          REGISTRY_COMPONENT_COUNT },
+                                          .modules = WORLD_MODULES_ALL };
     bool valid = authoring_project_prepare(&options, &artifact, error, sizeof error);
     registry_set_packs(NULL, 0);
     authoring_graph_catalog_free(graphs);

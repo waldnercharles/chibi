@@ -30,15 +30,15 @@ static const float QUARTER_TURN = 1.5707963268f, EIGHTH_TURN = .7853981634f;
 static ecs_world *world;
 static render_scene3d *scene3d;
 static render_scene3d_post *post;
-static game_particles *particles;
+static particles *test_particles;
 static CF_Pixel first[PIXELS], second[PIXELS];
 
 static void fresh_world()
 {
     ecs_world_free(world);
     world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
 }
 
@@ -47,14 +47,14 @@ static void setup()
     fresh_world();
     scene3d = render_scene3d_new();
     post = render_scene3d_post_new();
-    particles = game_particles_new();
+    test_particles = particles_new();
 }
 
 static void teardown()
 {
     render_scene3d_free(scene3d);
     render_scene3d_post_free(post);
-    game_particles_free(particles);
+    particles_free(test_particles);
     ecs_world_free(world);
     world = NULL;
     render_scene3d_parts_clear();
@@ -70,19 +70,17 @@ static void add(ecs_entity entity, const ecs_component_desc *component, const vo
 static ecs_entity add_shape(int primitive, CF_V3 position, unsigned color)
 {
     ecs_entity entity = ecs_world_create_entity(world);
+    add(entity, &COMPONENT_Transform, &(Transform){ position.x, position.z });
     add(entity,
-        &GAME_COMPONENT_GameTransform,
-        &(GameTransform){ position.x, position.z });
-    add(entity,
-        &GAME_COMPONENT_GameGeometry3D,
-        &(GameGeometry3D){ primitive, 2, 2, 2, position.y });
-    add(entity, &GAME_COMPONENT_GameMaterial, &(GameMaterial){ .scene = color });
+        &COMPONENT_Geometry3D,
+        &(Geometry3D){ primitive, 2, 2, 2, position.y });
+    add(entity, &COMPONENT_Material, &(Material){ .scene = color });
     return entity;
 }
 
 static void turn(ecs_entity entity, float radians)
 {
-    add(entity, &GAME_COMPONENT_GameOrientation, &(GameOrientation){ .radians = radians });
+    add(entity, &COMPONENT_Orientation, &(Orientation){ .radians = radians });
 }
 
 /* Looks at the origin from 8 units in front. */
@@ -124,16 +122,25 @@ static CF_V2 project(const render_scene3d_camera *camera, CF_V3 point)
 /* Draws the world through `camera` and reads back the tone-mapped output. */
 static bool render(const render_scene3d_camera *camera, CF_Pixel *pixels)
 {
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     environment.bloom_strength = 0;
-    environment.occlusion = GAME_OCCLUSION_OFF;
+    environment.occlusion = OCCLUSION_OFF;
     if (!render_scene3d_post_prepare(post, SIDE, SIDE, &environment)) {
         return false;
     }
     CF_Canvas canvas = render_scene3d_post_target(post);
     cf_canvas_set_clear_color(canvas, (CF_Color){ 0, 0, 0, 1 });
     cf_app_update(NULL);
-    bool drawn = render_scene3d_draw(scene3d, world, particles, camera, 0, NULL, &environment, (render_skip){ 0 });
+    bool drawn = render_scene3d_draw(
+        scene3d,
+        world,
+        test_particles,
+        camera,
+        0,
+        NULL,
+        &environment,
+        (render_skip){ 0 }
+    );
     cf_render_to(canvas, true);
     bool processed = render_scene3d_post_process(post, 0);
     cf_app_draw_onto_screen(false);
@@ -214,15 +221,14 @@ TEST_CASE(overhead_cameras_center_and_map_the_ground)
 TEST_CASE(picks_find_the_nearest_solid_of_each_primitive)
 {
     render_scene3d_camera camera = front_camera();
-    for (int primitive = GAME_PRIMITIVE_BOX; primitive <= GAME_PRIMITIVE_TETRAHEDRON;
+    for (int primitive = PRIMITIVE_BOX; primitive <= PRIMITIVE_TETRAHEDRON;
          primitive++) {
         fresh_world();
         add_shape(primitive, (CF_V3){ 0, 0, 0 }, 0x0000ffffu);
         ecs_entity near = add_shape(primitive, (CF_V3){ 0, 0, 3 }, 0xff0000ffu);
         /* The tetrahedron's apex is not at its center, so probe its body. */
-        CF_V3 probe = primitive == GAME_PRIMITIVE_TETRAHEDRON
-                        ? (CF_V3){ -.4f, -.4f, 3 }
-                        : (CF_V3){ 0, 0, 3 };
+        CF_V3 probe = primitive == PRIMITIVE_TETRAHEDRON ? (CF_V3){ -.4f, -.4f, 3 }
+                                                         : (CF_V3){ 0, 0, 3 };
         REQUIRE(picks(&camera, project(&camera, probe), near));
         REQUIRE(!picks_any(&camera, (CF_V2){ .98f, .98f }));
     }
@@ -231,13 +237,13 @@ TEST_CASE(picks_find_the_nearest_solid_of_each_primitive)
 
 TEST_CASE(turned_bounds_fit_frame_and_clip)
 {
-    ecs_entity entity = add_shape(GAME_PRIMITIVE_BOX, (CF_V3){ 30, 20, -10 }, 0xffffffffu);
-    GameGeometry3D *shape = GAME_GameGeometry3D_get(world, entity);
+    ecs_entity entity = add_shape(PRIMITIVE_BOX, (CF_V3){ 30, 20, -10 }, 0xffffffffu);
+    Geometry3D *shape = Geometry3D_get(world, entity);
     shape->width = 8;
     shape->depth = 2;
     shape->height = 40;
     turn(entity, EIGHTH_TURN);
-    REQUIRE(!GAME_GameAppearance_has(world, entity));
+    REQUIRE(!Appearance_has(world, entity));
     CF_V3 corners[8];
     REQUIRE(render_scene3d_entity_bounds(world, entity, corners));
     /* Headings turn through the deterministic cosine and sine, which are
@@ -269,17 +275,13 @@ TEST_CASE(turned_bounds_fit_frame_and_clip)
     }
     /* A box crossing the near plane keeps finite bounds; one behind has none. */
     render_scene3d_camera camera = front_camera();
-    *GAME_GameTransform_get(world, entity) = (GameTransform){ 0, 7.95f };
-    *GAME_GameGeometry3D_get(world, entity) = (GameGeometry3D){ GAME_PRIMITIVE_BOX,
-                                                                2,
-                                                                2,
-                                                                2,
-                                                                0 };
+    *Transform_get(world, entity) = (Transform){ 0, 7.95f };
+    *Geometry3D_get(world, entity) = (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2, 0 };
     REQUIRE(render_scene3d_entity_bounds(world, entity, corners));
     CF_Aabb clipped;
     REQUIRE(render_scene3d_screen_bounds(&camera, corners, &clipped));
     REQUIRE(isfinite(clipped.min.x + clipped.min.y + clipped.max.x + clipped.max.y));
-    GAME_GameTransform_get(world, entity)->y = 20;
+    Transform_get(world, entity)->y = 20;
     REQUIRE(render_scene3d_entity_bounds(world, entity, corners));
     REQUIRE(!render_scene3d_screen_bounds(&camera, corners, &clipped));
     return true;
@@ -290,8 +292,7 @@ TEST_CASE(turned_bounds_fit_frame_and_clip)
 TEST_CASE(flat_triangles_turn_about_their_area_center)
 {
     render_scene3d_camera camera = vertical_camera(8);
-    for (int primitive = GAME_PRIMITIVE_TRIANGLE_OUTLINE;
-         primitive <= GAME_PRIMITIVE_TRIANGLE;
+    for (int primitive = PRIMITIVE_TRIANGLE_OUTLINE; primitive <= PRIMITIVE_TRIANGLE;
          primitive++) {
         CF_V3 triangles[SCENE3D_MESH_TRIANGLE_LIMIT][3];
         int count = render_scene3d_mesh_triangles(primitive, triangles);
@@ -311,16 +312,16 @@ TEST_CASE(flat_triangles_turn_about_their_area_center)
         REQUIRE(area > 0 && cf_len_v3(cf_mul_v3_f(centroid, 1 / area)) < .00001f);
         fresh_world();
         ecs_entity entity = add_shape(primitive, (CF_V3){ 0 }, 0xffffffffu);
-        GAME_GameGeometry3D_get(world, entity)->height = .1f;
+        Geometry3D_get(world, entity)->height = .1f;
         turn(entity, 0);
         for (int step = 0; step < 8; step++) {
             float angle = step * EIGHTH_TURN;
-            GAME_GameOrientation_get(world, entity)->radians = angle;
+            Orientation_get(world, entity)->radians = angle;
             CF_V3 bounds[8];
             REQUIRE(render_scene3d_entity_bounds(world, entity, bounds));
             CF_M4x4 rotation = cf_m4_from_trs(
                 (CF_V3){ 0 },
-                game_visual_rotation(angle, (CF_V3){ 0 }),
+                visual_rotation(angle, (CF_V3){ 0 }),
                 (CF_V3){ 1, 1, 1 }
             );
             CF_M4x4 inverse = cf_m4_invert(rotation);
@@ -328,7 +329,7 @@ TEST_CASE(flat_triangles_turn_about_their_area_center)
             CF_V3 maximum = cf_m4_transform_point(inverse, bounds[7]);
             REQUIRE(fabsf(minimum.x + 2.0f / 3) < .0001f && fabsf(maximum.x - 4.0f / 3) < .0001f);
             REQUIRE(fabsf(maximum.z - minimum.z - 2) < .0001f);
-            REQUIRE(picks(&camera, (CF_V2){ 0 }, entity) == (primitive == GAME_PRIMITIVE_TRIANGLE));
+            REQUIRE(picks(&camera, (CF_V2){ 0 }, entity) == (primitive == PRIMITIVE_TRIANGLE));
             CF_V3 edge = cf_m4_transform_point(rotation, (CF_V3){ 1.0f / 3 - .04f, 0, .44f });
             REQUIRE(picks(&camera, project(&camera, edge), entity));
         }
@@ -339,12 +340,12 @@ TEST_CASE(flat_triangles_turn_about_their_area_center)
 TEST_CASE(every_solid_primitive_draws)
 {
     render_scene3d_camera camera = front_camera();
-    for (int primitive = GAME_PRIMITIVE_BOX; primitive <= GAME_PRIMITIVE_TETRAHEDRON;
+    for (int primitive = PRIMITIVE_BOX; primitive <= PRIMITIVE_TETRAHEDRON;
          primitive++) {
         fresh_world();
         add_shape(primitive, (CF_V3){ 0 }, 0xffffffffu);
         REQUIRE(render(&camera, first));
-        int red = primitive == GAME_PRIMITIVE_TETRAHEDRON
+        int red = primitive == PRIMITIVE_TETRAHEDRON
                     ? brightness(first, &camera, (CF_V3){ -.4f, -.4f, 0 })
                     : first[SIDE / 2 * SIDE + SIDE / 2].colors.r;
         REQUIRE(red > 60);
@@ -359,7 +360,7 @@ TEST_CASE(nearer_solids_win_in_any_order)
         fresh_world();
         for (int i = 0; i < 2; i++) {
             bool near = i == order;
-            add_shape(GAME_PRIMITIVE_BOX, (CF_V3){ 0, 0, near ? 3 : 0 }, near ? 0xff0000ffu : 0x0000ffffu);
+            add_shape(PRIMITIVE_BOX, (CF_V3){ 0, 0, near ? 3 : 0 }, near ? 0xff0000ffu : 0x0000ffffu);
         }
         REQUIRE(render(&camera, order ? second : first));
     }
@@ -385,14 +386,14 @@ TEST_CASE(parallel_geometry_draws_what_serial_geometry_does)
     REQUIRE(authoring_parts_prepare(parts, error, sizeof error));
     for (int i = 0; i < 1537; i++) {
         ecs_entity entity = add_shape(
-            i % 2 ? GAME_PRIMITIVE_BOX : GAME_PRIMITIVE_OCTAHEDRON,
+            i % 2 ? PRIMITIVE_BOX : PRIMITIVE_OCTAHEDRON,
             (CF_V3){ (i % 32 - 15.5f) * .15f, (i / 32 - 23.5f) * .15f, (i % 3) * .1f },
             i % 3 ? 0x4080ffffu : 0xff804080u
         );
-        GameGeometry3D *shape = GAME_GameGeometry3D_get(world, entity);
+        Geometry3D *shape = Geometry3D_get(world, entity);
         shape->width = shape->height = shape->depth = .1f;
         if (i % 200 == 0) {
-            add(entity, &GAME_COMPONENT_GameMeshParts, &(GameMeshParts){ .parts = parts });
+            add(entity, &COMPONENT_MeshParts, &(MeshParts){ .parts = parts });
         }
     }
     render_scene3d_camera camera = front_camera();
@@ -409,12 +410,8 @@ TEST_CASE(parallel_geometry_draws_what_serial_geometry_does)
 /* A tall turned box framed by its own fit fills 1 / 1.2 of the image. */
 TEST_CASE(fitted_bounds_frame_what_draws)
 {
-    ecs_entity entity = add_shape(GAME_PRIMITIVE_BOX, (CF_V3){ 0, 15, 0 }, 0xffffffffu);
-    *GAME_GameGeometry3D_get(world, entity) = (GameGeometry3D){ GAME_PRIMITIVE_BOX,
-                                                                8,
-                                                                2,
-                                                                30,
-                                                                15 };
+    ecs_entity entity = add_shape(PRIMITIVE_BOX, (CF_V3){ 0, 15, 0 }, 0xffffffffu);
+    *Geometry3D_get(world, entity) = (Geometry3D){ PRIMITIVE_BOX, 8, 2, 30, 15 };
     turn(entity, .7f);
     CF_V3 points[8];
     REQUIRE(render_scene3d_entity_bounds(world, entity, points));
@@ -466,12 +463,8 @@ static bool outline_matches(
 
 TEST_CASE(prisms_draw_and_pick_their_heading)
 {
-    ecs_entity entity = add_shape(GAME_PRIMITIVE_TRIANGLE_PRISM, (CF_V3){ 0 }, 0xffffffffu);
-    *GAME_GameGeometry3D_get(world, entity) = (GameGeometry3D){ GAME_PRIMITIVE_TRIANGLE_PRISM,
-                                                                4,
-                                                                3,
-                                                                1,
-                                                                .4f };
+    ecs_entity entity = add_shape(PRIMITIVE_TRIANGLE_PRISM, (CF_V3){ 0 }, 0xffffffffu);
+    *Geometry3D_get(world, entity) = (Geometry3D){ PRIMITIVE_TRIANGLE_PRISM, 4, 3, 1, .4f };
     turn(entity, 0);
     render_scene3d_camera camera = vertical_camera(8);
     /* Wide at the back and narrow at the +X tip. */
@@ -483,7 +476,7 @@ TEST_CASE(prisms_draw_and_pick_their_heading)
     };
     for (int step = 0; step < 8; step++) {
         float angle = step * EIGHTH_TURN;
-        GAME_GameOrientation_get(world, entity)->radians = angle;
+        Orientation_get(world, entity)->radians = angle;
         REQUIRE(render(&camera, first));
         CF_V3 corners[8];
         CF_Aabb bounds;
@@ -508,12 +501,8 @@ TEST_CASE(prisms_draw_and_pick_their_heading)
  * diamond. */
 TEST_CASE(octahedra_draw_and_pick_a_closed_solid)
 {
-    ecs_entity entity = add_shape(GAME_PRIMITIVE_OCTAHEDRON, (CF_V3){ 0 }, 0xffffffffu);
-    *GAME_GameGeometry3D_get(world, entity) = (GameGeometry3D){ GAME_PRIMITIVE_OCTAHEDRON,
-                                                                4,
-                                                                3,
-                                                                2,
-                                                                0 };
+    ecs_entity entity = add_shape(PRIMITIVE_OCTAHEDRON, (CF_V3){ 0 }, 0xffffffffu);
+    *Geometry3D_get(world, entity) = (Geometry3D){ PRIMITIVE_OCTAHEDRON, 4, 3, 2, 0 };
     turn(entity, 0);
     /* The last two of each lie inside the box but outside the diamond. */
     static const CF_V3 overhead_samples[] = {
@@ -530,7 +519,7 @@ TEST_CASE(octahedra_draw_and_pick_a_closed_solid)
     };
     for (int view = 0; view < 10; view++) {
         float angle = view < 8 ? view * EIGHTH_TURN : 0;
-        GAME_GameOrientation_get(world, entity)->radians = angle;
+        Orientation_get(world, entity)->radians = angle;
         render_scene3d_camera camera = view < 8  ? vertical_camera(8)
                                      : view == 8 ? vertical_camera(-8)
                                                  : front_camera();
@@ -547,14 +536,10 @@ TEST_CASE(octahedra_draw_and_pick_a_closed_solid)
  * the parts draw and pick as the solid did. */
 TEST_CASE(tetrahedron_parts_compose_an_octahedron)
 {
-    ecs_entity entity = add_shape(GAME_PRIMITIVE_OCTAHEDRON, (CF_V3){ 0 }, 0xffffffffu);
-    *GAME_GameGeometry3D_get(world, entity) = (GameGeometry3D){ GAME_PRIMITIVE_OCTAHEDRON,
-                                                                4,
-                                                                3,
-                                                                2,
-                                                                0 };
-    GameVisualTransform visual = { .pitch = .31f, .yaw = .22f, .roll = .5f, .scale = .8f };
-    add(entity, &GAME_COMPONENT_GameVisualTransform, &visual);
+    ecs_entity entity = add_shape(PRIMITIVE_OCTAHEDRON, (CF_V3){ 0 }, 0xffffffffu);
+    *Geometry3D_get(world, entity) = (Geometry3D){ PRIMITIVE_OCTAHEDRON, 4, 3, 2, 0 };
+    VisualTransform visual = { .pitch = .31f, .yaw = .22f, .roll = .5f, .scale = .8f };
+    add(entity, &COMPONENT_VisualTransform, &visual);
     render_scene3d_camera camera = front_camera();
     REQUIRE(render(&camera, first));
     bool before[225];
@@ -566,7 +551,7 @@ TEST_CASE(tetrahedron_parts_compose_an_octahedron)
         int x = i & 1 ? 1 : -1, y = i & 2 ? 1 : -1, z = i & 4 ? 1 : -1;
         bool even = x * y * z > 0;
         parts.parts[i] = (scene3d_part){
-            .primitive = GAME_PRIMITIVE_TETRAHEDRON,
+            .primitive = PRIMITIVE_TETRAHEDRON,
             .dimensions = even ? (CF_V3){ 2, 1, 1.5f } : (CF_V3){ 1.5f, 1, 2 },
             .position = { x, y * .5f, z * .75f },
             .rotation = { 0,
@@ -576,7 +561,7 @@ TEST_CASE(tetrahedron_parts_compose_an_octahedron)
     }
     char *text = authoring_parts_write(&parts), error[256];
     bool prepared = authoring_parts_prepare(text, error, sizeof error);
-    add(entity, &GAME_COMPONENT_GameMeshParts, &(GameMeshParts){ .parts = text });
+    add(entity, &COMPONENT_MeshParts, &(MeshParts){ .parts = text });
     bool drawn = render(&camera, second);
     bool same_picks = true;
     for (int i = 0; i < 225; i++) {
@@ -584,7 +569,7 @@ TEST_CASE(tetrahedron_parts_compose_an_octahedron)
         same_picks &= picks_any(&camera, point) == before[i];
     }
     /* A zero scale hides the composed body from bounds and picks. */
-    GAME_GameVisualTransform_get(world, entity)->scale = 0;
+    VisualTransform_get(world, entity)->scale = 0;
     CF_V3 bounds[8];
     bool unbounded = !render_scene3d_entity_bounds(world, entity, bounds);
     bool unpicked = !picks_any(&camera, (CF_V2){ 0 });
@@ -601,17 +586,17 @@ TEST_CASE(tetrahedron_parts_compose_an_octahedron)
 TEST_CASE(polygons_draw_and_pick_the_same_outline)
 {
     render_scene3d_camera camera = vertical_camera(8);
-    const int primitives[] = { GAME_PRIMITIVE_CHEVRON_PYRAMID,
-                               GAME_PRIMITIVE_BOX_FRAME,
-                               GAME_PRIMITIVE_TRIANGLE_OUTLINE,
-                               GAME_PRIMITIVE_TRIANGLE };
+    const int primitives[] = { PRIMITIVE_CHEVRON_PYRAMID,
+                               PRIMITIVE_BOX_FRAME,
+                               PRIMITIVE_TRIANGLE_OUTLINE,
+                               PRIMITIVE_TRIANGLE };
     const CF_V3 solid[] = { { 0 }, { .88f, .88f, 0 }, { 1.0f / 3 - .04f, 0, .44f }, { 0 } };
     const CF_V3 hole[] = { { -.95f, 0, 0 }, { 0 }, { 0 } };
     for (int i = 0; i < 4; i++) {
         fresh_world();
         ecs_entity entity = add_shape(primitives[i], (CF_V3){ 0 }, 0xffffffffu);
-        if (primitives[i] >= GAME_PRIMITIVE_TRIANGLE_OUTLINE) {
-            GAME_GameGeometry3D_get(world, entity)->height = .1f;
+        if (primitives[i] >= PRIMITIVE_TRIANGLE_OUTLINE) {
+            Geometry3D_get(world, entity)->height = .1f;
         }
         REQUIRE(render(&camera, first));
         REQUIRE(brightness(first, &camera, solid[i]) > 40);
@@ -629,15 +614,15 @@ TEST_CASE(polygons_draw_and_pick_the_same_outline)
 TEST_CASE(box_frame_parts_match_their_frame)
 {
     const unsigned color = 0xf07888ffu;
-    ecs_entity source = add_shape(GAME_PRIMITIVE_BOX_FRAME, (CF_V3){ 0 }, color);
-    GameGeometry3D shape = { .primitive = GAME_PRIMITIVE_BOX_FRAME,
-                             .width = 4,
-                             .height = 2,
-                             .depth = 3 };
-    *GAME_GameGeometry3D_get(world, source) = shape;
-    GameVisualTransform visual = { .pitch = .31f, .yaw = .22f, .roll = .5f, .scale = .8f };
+    ecs_entity source = add_shape(PRIMITIVE_BOX_FRAME, (CF_V3){ 0 }, color);
+    Geometry3D shape = { .primitive = PRIMITIVE_BOX_FRAME,
+                         .width = 4,
+                         .height = 2,
+                         .depth = 3 };
+    *Geometry3D_get(world, source) = shape;
+    VisualTransform visual = { .pitch = .31f, .yaw = .22f, .roll = .5f, .scale = .8f };
     const float heading = .35f;
-    add(source, &GAME_COMPONENT_GameVisualTransform, &visual);
+    add(source, &COMPONENT_VisualTransform, &visual);
     turn(source, heading);
     render_scene3d_camera camera = front_camera();
     REQUIRE(render(&camera, first));
@@ -647,22 +632,20 @@ TEST_CASE(box_frame_parts_match_their_frame)
     }
     CF_M4x4 frame = cf_m4_from_trs(
         (CF_V3){ 0 },
-        game_visual_rotation(heading, (CF_V3){ visual.pitch, visual.yaw, visual.roll }),
+        visual_rotation(heading, (CF_V3){ visual.pitch, visual.yaw, visual.roll }),
         (CF_V3){ visual.scale, visual.scale, visual.scale }
     );
     assert(ecs_world_destroy_entity(world, source) == ECS_OK);
-    for (int i = 0; i < game_visual_part_count(shape.primitive); i++) {
-        game_visual_part part = game_visual_part_at(shape, i);
+    for (int i = 0; i < visual_part_count(shape.primitive); i++) {
+        visual_part part = visual_part_at(shape, i);
         CF_V3 center = cf_m4_transform_point(frame, part.center);
         ecs_entity piece = add_shape(part.primitive, center, color);
-        *GAME_GameGeometry3D_get(world, piece) = (GameGeometry3D){
-            .primitive = part.primitive,
-            .width = part.dimensions.x,
-            .height = part.dimensions.y,
-            .depth = part.dimensions.z,
-            .elevation = center.y
-        };
-        add(piece, &GAME_COMPONENT_GameVisualTransform, &visual);
+        *Geometry3D_get(world, piece) = (Geometry3D){ .primitive = part.primitive,
+                                                      .width = part.dimensions.x,
+                                                      .height = part.dimensions.y,
+                                                      .depth = part.dimensions.z,
+                                                      .elevation = center.y };
+        add(piece, &COMPONENT_VisualTransform, &visual);
         turn(piece, heading);
     }
     REQUIRE(render(&camera, second));
@@ -679,22 +662,16 @@ TEST_CASE(box_frame_parts_match_their_frame)
 TEST_CASE(repeated_primitives_share_instanced_draws)
 {
     render_scene3d_camera camera = front_camera();
-    const int repeated[] = { GAME_PRIMITIVE_BOX,
-                             GAME_PRIMITIVE_TRIANGLE_PRISM,
-                             GAME_PRIMITIVE_OCTAHEDRON };
+    const int repeated[] = { PRIMITIVE_BOX, PRIMITIVE_TRIANGLE_PRISM, PRIMITIVE_OCTAHEDRON };
     for (int p = 0; p < (int)(sizeof repeated / sizeof *repeated); p++) {
         fresh_world();
         for (int i = 0; i < 256; i++) {
             ecs_entity entity = ecs_world_create_entity(world);
+            add(entity, &COMPONENT_Transform, &(Transform){ (i % 16 - 7.5f) * .3f, 0 });
             add(entity,
-                &GAME_COMPONENT_GameTransform,
-                &(GameTransform){ (i % 16 - 7.5f) * .3f, 0 });
-            add(entity,
-                &GAME_COMPONENT_GameGeometry3D,
-                &(GameGeometry3D){ repeated[p], .2f, .2f, .2f, (i / 16 - 7.5f) * .3f });
-            add(entity,
-                &GAME_COMPONENT_GameMaterial,
-                &(GameMaterial){ .scene = 0x4080ffffu });
+                &COMPONENT_Geometry3D,
+                &(Geometry3D){ repeated[p], .2f, .2f, .2f, (i / 16 - 7.5f) * .3f });
+            add(entity, &COMPONENT_Material, &(Material){ .scene = 0x4080ffffu });
         }
         cf_draw3d_stats(); /* Reading resets the counts, so earlier draws drop out. */
         REQUIRE(render(&camera, first));

@@ -8,9 +8,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-game_scene *authoring_scene_prepare(
-    const game_scene_document *document,
-    const game_prototype *const *objects,
+scene *authoring_scene_prepare(
+    const scene_document *document,
+    const prototype *const *objects,
     int count,
     char *error,
     size_t size
@@ -33,7 +33,7 @@ game_scene *authoring_scene_prepare(
      * indices. */
     authoring_objects records = { 0 };
     for (int i = 0; i < count; i++) {
-        const game_scene_entity *entity = &document->entities[i];
+        const scene_entity *entity = &document->entities[i];
         authoring_objects_add(&records, objects[i], entity->name, entity->parent);
     }
     for (int i = 0; i < count; i++) {
@@ -42,7 +42,7 @@ game_scene *authoring_scene_prepare(
     for (int i = 0; i < count; i++) {
         authoring_objects_add_links(&records, i, objects[i], true, document, NULL);
     }
-    game_scene_spec spec = {
+    scene_spec spec = {
         .name = document->name,
         .ui = document->ui,
         .perspective = document->perspective,

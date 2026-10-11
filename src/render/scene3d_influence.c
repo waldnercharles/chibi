@@ -19,8 +19,8 @@ enum
 typedef struct
 {
     ecs_entity entity;
-    GameTransform anchor;
-    GameSurfaceInfluence source;
+    Transform anchor;
+    SurfaceInfluence source;
     float touched;
     bool active;
 } influence_sample;
@@ -143,15 +143,14 @@ void render_influences_collect(
         influences->samples[i].active = false;
         influences->scores[i] = score(&influences->samples[i], time);
     }
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameSurfaceInfluence.id };
+    ecs_component_id required[] = { COMPONENT_Transform.id,
+                                    COMPONENT_SurfaceInfluence.id };
     ecs_query query;
     if (ecs_query_begin(world, &query, required, 2) == ECS_OK) {
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
-            GameTransform position = engine_render_transform(runtime, world, entity)
-                                         .position;
-            GameSurfaceInfluence source = *GAME_GameSurfaceInfluence_get_const(world, entity);
+            Transform position = engine_render_transform(runtime, world, entity).position;
+            SurfaceInfluence source = *SurfaceInfluence_get_const(world, entity);
             if (!isfinite(position.x) || !isfinite(position.y) ||
                 !isfinite(source.strength) || !isfinite(source.radius) ||
                 !isfinite(source.linger) || !isfinite(source.inner_radius) ||

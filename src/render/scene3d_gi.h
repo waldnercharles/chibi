@@ -61,7 +61,7 @@ void render_scene3d_gi_reset(render_scene3d_gi *gi);
  * while it is Off. Returns false with an error for an unknown one. */
 bool render_scene3d_gi_prepare(
     render_scene3d_gi *gi,
-    const GameEnvironment *environment,
+    const Environment *environment,
     char *error,
     size_t size
 );

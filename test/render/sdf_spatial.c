@@ -69,30 +69,27 @@ static bool read_pixels(CF_Texture texture, float **result)
 static ecs_entity actor(ecs_world *world, bool sdf, const char *name)
 {
     ecs_entity entity = ecs_world_create_entity(world);
-    GameGeometry3D bounds = { .primitive = GAME_PRIMITIVE_BOX,
-                              .width = 24,
-                              .depth = 24,
-                              .height = 24 };
-    GameVisualTransform transform = { .scale = .25f };
-    GameOrientation orientation = { 0 };
-    GameMaterial material = { .scene = sdf ? 0xff0000ff : 0x0000ffff,
-                              .albedo = sdf ? 0xff0000ff : 0x0000ffff,
-                              .absorption = 1,
-                              .edge_light = 1 };
-    GameShader shader = { .shape = name };
-    GameSdfSurface3D sdf_surface = { true };
-    GameMeshSurface2D mesh_surface = { true };
+    Geometry3D bounds = { .primitive = PRIMITIVE_BOX, .width = 24, .depth = 24, .height = 24 };
+    VisualTransform transform = { .scale = .25f };
+    Orientation orientation = { 0 };
+    Material material = { .scene = sdf ? 0xff0000ff : 0x0000ffff,
+                          .albedo = sdf ? 0xff0000ff : 0x0000ffff,
+                          .absorption = 1,
+                          .edge_light = 1 };
+    Shader shader = { .shape = name };
+    SdfSurface3D sdf_surface = { true };
+    MeshSurface2D mesh_surface = { true };
 #define ADD(type, value)                                                       \
-    assert(ecs_world_record_add(world, entity, GAME_COMPONENT_##type.id, &(value), 0) == ECS_OK)
-    ADD(GameGeometry3D, bounds);
-    ADD(GameVisualTransform, transform);
-    ADD(GameOrientation, orientation);
-    ADD(GameMaterial, material);
+    assert(ecs_world_record_add(world, entity, COMPONENT_##type.id, &(value), 0) == ECS_OK)
+    ADD(Geometry3D, bounds);
+    ADD(VisualTransform, transform);
+    ADD(Orientation, orientation);
+    ADD(Material, material);
     if (sdf) {
-        ADD(GameShader, shader);
-        ADD(GameSdfSurface3D, sdf_surface);
+        ADD(Shader, shader);
+        ADD(SdfSurface3D, sdf_surface);
     } else {
-        ADD(GameMeshSurface2D, mesh_surface);
+        ADD(MeshSurface2D, mesh_surface);
     }
 #undef ADD
     assert(ecs_world_apply_commands(world) == ECS_OK);
@@ -191,10 +188,10 @@ TEST_CASE(spatial_scratch_matches_one_scratch)
     behavior_asset *shape = sphere();
     ecs_world *world = ecs_world_new();
     const ecs_component_desc *components[] = {
-        &GAME_COMPONENT_GameGeometry3D,   &GAME_COMPONENT_GameVisualTransform,
-        &GAME_COMPONENT_GameOrientation,  &GAME_COMPONENT_GameMaterial,
-        &GAME_COMPONENT_GameShader,       &GAME_COMPONENT_GameSdfSurface3D,
-        &GAME_COMPONENT_GameMeshSurface2D
+        &COMPONENT_Geometry3D,   &COMPONENT_VisualTransform,
+        &COMPONENT_Orientation,  &COMPONENT_Material,
+        &COMPONENT_Shader,       &COMPONENT_SdfSurface3D,
+        &COMPONENT_MeshSurface2D
     };
     for (int i = 0; i < 7; i++) {
         REQUIRE(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
@@ -204,7 +201,7 @@ TEST_CASE(spatial_scratch_matches_one_scratch)
         actors[i] = (render_mesh_material_actor){ actor(world, true, shape->name),
                                                   { i ? 35 : -35, 0 } };
         if (i == 2) {
-            GameMaterial *m = GAME_GameMaterial_get(world, actors[i].entity);
+            Material *m = Material_get(world, actors[i].entity);
             m->scene = m->albedo = 0x0000ffff;
         }
     }

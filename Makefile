@@ -17,7 +17,7 @@ DEBUG_BUILD_DIR ?= build-debug
 RELEASE_BUILD_DIR ?= build-release
 SDK_REFLECT_BUILD_DIR ?= build-sdk-reflect
 PLAYER_OUTPUT ?= dist/chibi-player-$(shell uname -s | tr '[:upper:]' '[:lower:]')-$(shell uname -m)
-UPDATE_GAME_RUNTIME ?= 1
+UPDATE_RUNTIME ?= 1
 WEB_THREADS ?= 0
 WEB_WORKERS ?= 4
 WEB_SUFFIX = $(if $(filter 1,$(WEB_THREADS)),-threads,)
@@ -196,8 +196,8 @@ build-release:
 
 update-game-runtime:
 ifneq ($(wildcard .chibi/game-runtime.json),)
-ifeq ($(UPDATE_GAME_RUNTIME),1)
-	@$(MAKE) package-player UPDATE_GAME_RUNTIME=0
+ifeq ($(UPDATE_RUNTIME),1)
+	@$(MAKE) package-player UPDATE_RUNTIME=0
 	@$(QUIET) install_game_runtime.py -- python3 tools/install_game_runtime.py --package "$(PLAYER_OUTPUT)" --config .chibi/game-runtime.json
 endif
 endif

@@ -11,11 +11,11 @@ static bool sends(const node_desc *desc)
     return !strcmp(desc->name, "Send Event");
 }
 
-static const game_host_event_desc *host_event(const char *name)
+static const host_event_desc *find_host_event(const char *name)
 {
-    for (int i = 0; name && i < GAME_HOST_EVENT_COUNT; i++) {
-        if (!strcmp(GAME_HOST_EVENTS[i].name, name)) {
-            return &GAME_HOST_EVENTS[i];
+    for (int i = 0; name && i < HOST_EVENT_COUNT; i++) {
+        if (!strcmp(HOST_EVENTS[i].name, name)) {
+            return &HOST_EVENTS[i];
         }
     }
     return NULL;
@@ -44,7 +44,7 @@ node_subject node_subject_of(const node *n, const behavior_asset *const *catalog
         return subject;
     }
     if (n->desc == &NODE_Event) {
-        subject.host = host_event(n->reference_name);
+        subject.host = find_host_event(n->reference_name);
     }
     bool event = n->desc == &NODE_Event || n->desc == &NODE_CallEvent ||
                  sends(n->desc);

@@ -14,12 +14,12 @@ static const char *read_text(
     pin_value *out
 )
 {
-    game_save *save = service;
+    save *save = service;
     if (!save) {
         return missing_read;
     }
     assert(ctx->copy_string);
-    const char *text = game_save_get(save, in[0].str);
+    const char *text = save_get(save, in[0].str);
     out[0].b = text != NULL;
     if (!text) {
         text = in[1].str ? in[1].str : "";
@@ -29,13 +29,12 @@ static const char *read_text(
 }
 static const char *set_text(void *service, const pin_value *in, pin_value *)
 {
-    game_save *save = service;
+    save *save = service;
     if (!save) {
         return missing_write;
     }
-    return game_save_set(save, in[0].str, in[1].str ? in[1].str : "")
-             ? NULL
-             : game_save_error(save);
+    return save_set(save, in[0].str, in[1].str ? in[1].str : "") ? NULL
+                                                                 : save_error(save);
 }
 static const char *read_number(void *service, const pin_value *in, pin_value *out)
 {
@@ -43,7 +42,7 @@ static const char *read_number(void *service, const pin_value *in, pin_value *ou
         return missing_read;
     }
     out[1].d = in[1].d;
-    out[0].b = game_save_get_number(service, in[0].str, &out[1].d);
+    out[0].b = save_get_number(service, in[0].str, &out[1].d);
     return NULL;
 }
 static const char *set_number(void *service, const pin_value *in, pin_value *)
@@ -51,17 +50,15 @@ static const char *set_number(void *service, const pin_value *in, pin_value *)
     if (!service) {
         return missing_write;
     }
-    return game_save_set_number(service, in[0].str, in[1].d)
-             ? NULL
-             : game_save_error(service);
+    return save_set_number(service, in[0].str, in[1].d) ? NULL : save_error(service);
 }
 static const char *remove_text(void *service, const pin_value *in, pin_value *)
 {
-    game_save *save = service;
+    save *save = service;
     if (!save) {
         return missing_write;
     }
-    return game_save_remove(save, in[0].str) ? NULL : game_save_error(save);
+    return save_remove(save, in[0].str) ? NULL : save_error(save);
 }
 static const char *commit(
     const behavior_function_context *,
@@ -75,7 +72,7 @@ static const char *commit(
     int *selected
 )
 {
-    game_save *save = service;
+    save *save = service;
     if (!save) {
         return missing_write;
     }
@@ -83,7 +80,7 @@ static const char *commit(
     (void)argument_count;
     (void)result_count;
     (void)outcome_count;
-    *selected = game_save_commit(save) ? 0 : 1;
+    *selected = save_commit(save) ? 0 : 1;
     return NULL;
 }
 static const char *discard(void *service, const pin_value *, pin_value *)
@@ -91,43 +88,43 @@ static const char *discard(void *service, const pin_value *, pin_value *)
     if (!service) {
         return missing_write;
     }
-    game_save_discard(service);
+    save_discard(service);
     return NULL;
 }
-const node_host_call GAME_SAVE_READ_CALL = {
+const node_host_call SAVE_READ_CALL = {
     .service = "game.save",
     .context = read_text,
     .missing_service = missing_read,
 };
-const node_host_call GAME_SAVE_SET_CALL = {
+const node_host_call SAVE_SET_CALL = {
     .service = "game.save",
     .invoke = set_text,
     .missing_service = missing_write,
 };
-const node_host_call GAME_SAVE_READ_NUMBER_CALL = {
+const node_host_call SAVE_READ_NUMBER_CALL = {
     .service = "game.save",
     .invoke = read_number,
     .missing_service = missing_read,
 };
-const node_host_call GAME_SAVE_SET_NUMBER_CALL = {
+const node_host_call SAVE_SET_NUMBER_CALL = {
     .service = "game.save",
     .invoke = set_number,
     .missing_service = missing_write,
 };
-const node_host_call GAME_SAVE_REMOVE_CALL = {
+const node_host_call SAVE_REMOVE_CALL = {
     .service = "game.save",
     .invoke = remove_text,
     .missing_service = missing_write,
 };
-const node_host_call GAME_SAVE_COMMIT_CALL = {
+const node_host_call SAVE_COMMIT_CALL = {
     .service = "game.save",
     .action = commit,
     .missing_service = missing_write,
 };
-const node_host_call GAME_SAVE_DISCARD_CALL = {
+const node_host_call SAVE_DISCARD_CALL = {
     .service = "game.save",
     .invoke = discard,
     .missing_service = missing_write,
 };
-const node_access GAME_SAVE_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
-const node_access GAME_SAVE_WRITE_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+const node_access SAVE_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+const node_access SAVE_WRITE_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };

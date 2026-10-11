@@ -47,10 +47,10 @@ static bool same_name(const char *a, const char *b)
 }
 static void header(execution_wire *wire)
 {
-    uint64_t identity = magic, version = GAME_SCENE_PREPARED_VERSION;
+    uint64_t identity = magic, version = SCENE_PREPARED_VERSION;
     execution_wire_u64(wire, &identity);
     execution_wire_u64(wire, &version);
-    if (!wire->error && (identity != magic || version != GAME_SCENE_PREPARED_VERSION)) {
+    if (!wire->error && (identity != magic || version != SCENE_PREPARED_VERSION)) {
         wire->error = "Prepared scene magic or version is unsupported";
     }
 }
@@ -68,7 +68,7 @@ static void real(execution_wire *wire, float *f)
     }
     *f = value.f;
 }
-static void settings(execution_wire *wire, game_physics_settings *p)
+static void settings(execution_wire *wire, physics_settings *p)
 {
     execution_wire_int(wire, &p->workers);
     execution_wire_int(wire, &p->substeps);
@@ -77,7 +77,7 @@ static void settings(execution_wire *wire, game_physics_settings *p)
     execution_wire_bool(wire, &p->force_drive);
     real(wire, &p->contact_hertz);
     real(wire, &p->contact_damping);
-    if (!wire->error && !game_physics_settings_valid(*p)) {
+    if (!wire->error && !physics_settings_valid(*p)) {
         wire->error = "Prepared scene physics settings are invalid";
     }
 }
@@ -117,7 +117,7 @@ static const ecs_component_desc *resolve(execution_wire *wire, ecs_component_cat
 }
 static void component(
     execution_wire *wire,
-    game_scene_component *row,
+    scene_component *row,
     ecs_component_catalog catalog,
     char *diagnostic,
     size_t diagnostic_size
@@ -211,59 +211,53 @@ static void component(
                       "row";
     }
     if (!wire->error && wire->reading) {
-        *row = (game_scene_component){ desc, value.ptr };
+        *row = (scene_component){ desc, value.ptr };
     }
 }
-static void object_link(execution_wire *wire, game_scene_link *value)
+static void object_link(execution_wire *wire, scene_link *value)
 {
     execution_wire_int(wire, &value->object);
     execution_wire_int(wire, &value->component);
     execution_wire_int(wire, &value->field);
     execution_wire_int(wire, &value->target);
 }
-static void write_scene(execution_wire *wire, const game_scene *scene, char *diagnostic, size_t diagnostic_size)
+static void write_scene(execution_wire *wire, const scene *scene, char *diagnostic, size_t diagnostic_size)
 {
-    const char *name = game_scene_name(scene), *ui = game_scene_ui(scene);
-    bool perspective = game_scene_perspective(scene);
-    game_physics_settings physics = game_scene_physics(scene);
+    const char *name = scene_name(scene), *ui = scene_ui(scene);
+    bool perspective = scene_perspective(scene);
+    physics_settings physics = scene_physics(scene);
     execution_wire_string(wire, &name);
     execution_wire_string(wire, &ui);
     execution_wire_bool(wire, &perspective);
     settings(wire, &physics);
-    int objects = game_scene_object_count(scene);
+    int objects = scene_object_count(scene);
     count(wire, &objects);
     for (int i = 0; !wire->error && i < objects; i++) {
-        const char *object_name = game_scene_object_name(scene, i);
+        const char *object_name = scene_object_name(scene, i);
         execution_wire_string(wire, &object_name);
-        int parent = game_scene_object_parent(scene, i);
+        int parent = scene_object_parent(scene, i);
         execution_wire_int(wire, &parent);
-        int components = game_scene_object_component_count(scene, i);
+        int components = scene_object_component_count(scene, i);
         count(wire, &components);
         for (int j = 0; !wire->error && j < components; j++) {
-            game_scene_component row = game_scene_object_component_at(scene, i, j);
+            scene_component row = scene_object_component_at(scene, i, j);
             component(wire, &row, (ecs_component_catalog){ 0 }, diagnostic, diagnostic_size);
         }
-        int behaviors = game_scene_object_behavior_count(scene, i);
+        int behaviors = scene_object_behavior_count(scene, i);
         count(wire, &behaviors);
         for (int j = 0; !wire->error && j < behaviors; j++) {
-            const char *behavior = game_scene_object_behavior(scene, i, j);
+            const char *behavior = scene_object_behavior(scene, i, j);
             execution_wire_string(wire, &behavior);
         }
     }
-    int links = game_scene_link_count(scene);
+    int links = scene_link_count(scene);
     count(wire, &links);
     for (int i = 0; !wire->error && i < links; i++) {
-        game_scene_link one = game_scene_link_at(scene, i);
+        scene_link one = scene_link_at(scene, i);
         object_link(wire, &one);
     }
 }
-bool game_scene_prepared_write(
-    const game_scene *scene,
-    unsigned char **data,
-    size_t *length,
-    char *error,
-    size_t size
-)
+bool scene_prepared_write(const scene *scene, unsigned char **data, size_t *length, char *error, size_t size)
 {
     assert(scene && data && length && (!size || error));
     *data = NULL;
@@ -285,7 +279,7 @@ bool game_scene_prepared_write(
     }
     return true;
 }
-game_scene *game_scene_prepared_read_budget(
+scene *scene_prepared_read_budget(
     const void *data,
     size_t length,
     ecs_component_catalog catalog,
@@ -312,22 +306,22 @@ game_scene *game_scene_prepared_read_budget(
                             .owned_bytes = EXECUTION_WIRE_MAX_BYTES - budget,
                             .storage_budget = &allocation_budget };
     header(&wire);
-    game_scene_spec spec = { 0 };
+    scene_spec spec = { 0 };
     execution_wire_string(&wire, &spec.name);
     execution_wire_string(&wire, &spec.ui);
     execution_wire_bool(&wire, &spec.perspective);
     settings(&wire, &spec.physics);
     count(&wire, &spec.object_count);
-    game_scene_object *objects = allocate(&wire, spec.object_count, sizeof *objects);
+    scene_object *objects = allocate(&wire, spec.object_count, sizeof *objects);
     int *parents = allocate(&wire, spec.object_count, sizeof *parents);
     spec.objects = objects;
     spec.parents = parents;
     for (int i = 0; !wire.error && i < spec.object_count; i++) {
-        game_scene_object *object = &objects[i];
+        scene_object *object = &objects[i];
         execution_wire_string(&wire, &object->name);
         execution_wire_int(&wire, &parents[i]);
         count(&wire, &object->component_count);
-        game_scene_component *components = allocate(&wire, object->component_count, sizeof *components);
+        scene_component *components = allocate(&wire, object->component_count, sizeof *components);
         object->components = components;
         for (int j = 0; !wire.error && j < object->component_count; j++) {
             component(&wire, &components[j], catalog, diagnostic, sizeof diagnostic);
@@ -340,7 +334,7 @@ game_scene *game_scene_prepared_read_budget(
         }
     }
     count(&wire, &spec.link_count);
-    game_scene_link *links = allocate(&wire, spec.link_count, sizeof *links);
+    scene_link *links = allocate(&wire, spec.link_count, sizeof *links);
     spec.links = links;
     for (int i = 0; !wire.error && i < spec.link_count; i++) {
         object_link(&wire, &links[i]);
@@ -348,15 +342,15 @@ game_scene *game_scene_prepared_read_budget(
     if (!wire.error && wire.offset != wire.size) {
         wire.error = "Prepared scene has trailing input";
     }
-    game_scene *scene = wire.error ? NULL : game_scene_prepare(&spec, error, size);
+    scene *scene = wire.error ? NULL : scene_prepare(&spec, error, size);
     if (wire.error) {
         error_text(error, size, wire.error);
     }
     if (scene) {
-        size_t bytes = game_scene_storage_bytes(scene);
+        size_t bytes = scene_storage_bytes(scene);
         if (bytes > budget) {
             error_text(error, size, "Prepared scene retained storage budget exceeded");
-            game_scene_free(scene);
+            scene_free(scene);
             scene = NULL;
         } else {
             *remaining -= bytes;
@@ -366,7 +360,7 @@ game_scene *game_scene_prepared_read_budget(
     return scene;
 }
 
-game_scene *game_scene_prepared_read(
+scene *scene_prepared_read(
     const void *data,
     size_t length,
     ecs_component_catalog catalog,
@@ -375,5 +369,5 @@ game_scene *game_scene_prepared_read(
 )
 {
     size_t remaining = EXECUTION_WIRE_MAX_BYTES;
-    return game_scene_prepared_read_budget(data, length, catalog, &remaining, error, size);
+    return scene_prepared_read_budget(data, length, catalog, &remaining, error, size);
 }

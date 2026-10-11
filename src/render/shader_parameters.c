@@ -15,7 +15,7 @@ const node_host_call RENDER_MATERIAL_PARAMETER_CALL = { .service = "ecs.world",
 const node_host_call RENDER_SHAPE_PARAMETER_CALL = { .service = "ecs.world",
                                                      .invoke = shape };
 const node_access RENDER_SHADER_PARAMETER_ACCESS = {
-    .reads = &GAME_COMPONENT_GameShader.id,
+    .reads = &COMPONENT_Shader.id,
     .read_count = 1,
     .flags = NODE_EFFECT_PARALLEL | NODE_EFFECT_ENTITY_SCOPED | NODE_EFFECT_HOST_SINK,
     .target_input = 0

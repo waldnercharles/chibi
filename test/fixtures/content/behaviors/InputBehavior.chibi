@@ -1,5 +1,5 @@
 behavior "InputBehavior" {
-    action set_gamevelocity = set_game_velocity("MovementActions"."Movement Velocity"(input.Direction, self.Movement))
+    action set_gamevelocity = set_velocity("MovementActions"."Movement Velocity"(input.Direction, self.Movement))
     on Input as input {
         if self.Dash {
             if 0.0 < self.Dash.remaining {

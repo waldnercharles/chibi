@@ -98,20 +98,20 @@ static void wide_setup()
 
 /* The lighting these cases were calibrated with: the reference lighting with
  * no fog, feedback or specular, lit by Depth thickness. */
-static GameHRC2D calibrated()
+static HRC2D calibrated()
 {
-    GameHRC2D lighting = test_reference_lighting();
+    HRC2D lighting = test_reference_lighting();
     lighting.adaptive = lighting.feedback = false;
     lighting.fog = lighting.shadow_floor = 0;
     lighting.specular = 0;
-    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    lighting.surface_mode = HRC_SURFACE_DEPTH;
     return lighting;
 }
 
 /* Depth thickness gathering 16 units around 12-unit-thick receivers. */
-static GameHRC2D depth_lighting()
+static HRC2D depth_lighting()
 {
-    GameHRC2D lighting = calibrated();
+    HRC2D lighting = calibrated();
     lighting.radiance_hysteresis = 1;
     lighting.surface_radius = lighting.surface_depth_radius = 16;
     lighting.surface_relief = 1;
@@ -122,7 +122,7 @@ static GameHRC2D depth_lighting()
 /* Lights `view` from the inputs, continuing from the light HRC holds, and
  * reads the output back. Every pixel must be finite; `color` is the RGB at
  * the center. */
-static bool lit(GameHRC2D lighting, render_view_2d view, float color[3])
+static bool lit(HRC2D lighting, render_view_2d view, float color[3])
 {
     REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     render_radiance_inputs inputs = { .material = { .scene = textures[SCENE],
@@ -151,7 +151,7 @@ static bool lit(GameHRC2D lighting, render_view_2d view, float color[3])
 }
 
 /* lit() from a reset. */
-static bool lit_fresh(GameHRC2D lighting, render_view_2d view, float color[3])
+static bool lit_fresh(HRC2D lighting, render_view_2d view, float color[3])
 {
     render_radiance_reset(radiance);
     return lit(lighting, view, color);
@@ -228,7 +228,7 @@ static void slab_scene(int scene)
 }
 
 /* The red light at the center of `scene` from a reset. */
-static bool slab_light(int scene, GameHRC2D lighting, float *red)
+static bool slab_light(int scene, HRC2D lighting, float *red)
 {
     float color[3];
     slab_scene(scene);
@@ -264,7 +264,7 @@ static void small_source(float x, float y, float width)
 }
 
 /* The red light at the center from a small source at (x, y), from a reset. */
-static bool source_light(GameHRC2D lighting, float x, float y, float width, float *red)
+static bool source_light(HRC2D lighting, float x, float y, float width, float *red)
 {
     float color[3];
     small_source(x, y, width);
@@ -281,7 +281,7 @@ typedef struct
 
 /* The red light at the center from a small source of `width` at `distance`
  * in each of 24 directions around it. */
-static bool ring(GameHRC2D lighting, float distance, float width, red_range *light)
+static bool ring(HRC2D lighting, float distance, float width, red_range *light)
 {
     enum
     {
@@ -305,21 +305,21 @@ static bool ring(GameHRC2D lighting, float distance, float width, red_range *lig
  * cells of 4 x 4 pixels. Bounded segments walk each candidate as well. */
 TEST_CASE(depth_light_reaches_closed_receivers_within_its_budget)
 {
-    GameHRC2D lighting = depth_lighting();
-    lighting.surface_mode = GAME_HRC_SURFACE_BLUR;
+    HRC2D lighting = depth_lighting();
+    lighting.surface_mode = HRC_SURFACE_BLUR;
     float blur[3], depth[3];
     slab_scene(OPEN);
     REQUIRE(lit(lighting, test_centered(SIDE), blur));
     REQUIRE(fabsf(blur[0]) < .001f);
-    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    lighting.surface_mode = HRC_SURFACE_DEPTH;
     REQUIRE(lit(lighting, test_centered(SIDE), depth));
     REQUIRE(depth[0] > .001f);
     render_surface_work work = render_radiance_surface_work(radiance);
-    REQUIRE(work.mode == GAME_HRC_SURFACE_DEPTH && work.block == 4 && work.cells == 64);
+    REQUIRE(work.mode == HRC_SURFACE_DEPTH && work.block == 4 && work.cells == 64);
     REQUIRE(work.candidates == (size_t)work.cells * 49);
     REQUIRE(work.visibility_taps == (size_t)work.cells * 96);
     REQUIRE(!work.blur_quadrant_fetches);
-    lighting.surface_depth_visibility = GAME_HRC_DEPTH_VISIBILITY_SEGMENTS;
+    lighting.surface_depth_visibility = HRC_DEPTH_VISIBILITY_SEGMENTS;
     REQUIRE(lit(lighting, test_centered(SIDE), depth));
     work = render_radiance_surface_work(radiance);
     REQUIRE(work.visibility_taps == (size_t)work.cells * 96 + work.candidates * 48);
@@ -329,14 +329,14 @@ TEST_CASE(depth_light_reaches_closed_receivers_within_its_budget)
 /* Switching Depth thickness off brings blur's light back. */
 TEST_CASE(depth_light_switches_back_to_blur)
 {
-    GameHRC2D lighting = depth_lighting();
-    lighting.surface_mode = GAME_HRC_SURFACE_BLUR;
+    HRC2D lighting = depth_lighting();
+    lighting.surface_mode = HRC_SURFACE_BLUR;
     float blur[3], depth[3], restored[3];
     slab_scene(OPEN);
     REQUIRE(lit(lighting, test_centered(SIDE), blur));
-    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    lighting.surface_mode = HRC_SURFACE_DEPTH;
     REQUIRE(lit(lighting, test_centered(SIDE), depth));
-    lighting.surface_mode = GAME_HRC_SURFACE_BLUR;
+    lighting.surface_mode = HRC_SURFACE_BLUR;
     REQUIRE(lit(lighting, test_centered(SIDE), restored));
     for (int c = 0; c < 3; c++) {
         REQUIRE(fabsf(restored[c] - blur[c]) < .001f);
@@ -350,7 +350,7 @@ TEST_CASE(depth_light_switches_back_to_blur)
  * strip, so the receiver keeps a little less. */
 TEST_CASE(slabs_shadow_only_the_light_they_cross)
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     float open, crossing, below, above, unlit;
     REQUIRE(slab_light(OPEN, lighting, &open) && slab_light(CROSSING, lighting, &crossing));
     REQUIRE(slab_light(BELOW, lighting, &below) && slab_light(ABOVE, lighting, &above));
@@ -363,7 +363,7 @@ TEST_CASE(slabs_shadow_only_the_light_they_cross)
 
 TEST_CASE(receivers_tilted_toward_the_light_take_more)
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     float flat, tilted;
     REQUIRE(slab_light(OPEN, lighting, &flat) && slab_light(TILTED, lighting, &tilted));
     REQUIRE(tilted > flat * 1.05f);
@@ -376,7 +376,7 @@ TEST_CASE(receivers_tilted_toward_the_light_take_more)
  * less. */
 TEST_CASE(slabs_shadow_by_height_unless_they_glow)
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     float open, clear, glowing;
     REQUIRE(slab_light(OPEN, lighting, &open) && slab_light(CLEAR, lighting, &clear));
     REQUIRE(slab_light(GLOWING, lighting, &glowing));
@@ -389,7 +389,7 @@ TEST_CASE(slabs_shadow_by_height_unless_they_glow)
  * and sources of equal power light it alike at any size. */
 TEST_CASE(small_sources_light_every_direction_by_their_power)
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     red_range light[3];
     for (int size = 0; size < 3; size++) {
         REQUIRE(ring(lighting, 8, (float)(size + 1), &light[size]));
@@ -406,7 +406,7 @@ TEST_CASE(small_sources_light_every_direction_by_their_power)
 
 TEST_CASE(depth_light_falls_off_with_distance)
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     red_range near, far;
     REQUIRE(ring(lighting, 8, 1, &near) && ring(lighting, 12, 1, &far));
     REQUIRE(far.mean > .00001f && far.mean < near.mean * .95f);
@@ -416,7 +416,7 @@ TEST_CASE(depth_light_falls_off_with_distance)
 /* A source keeps its light at every half-pixel position. */
 TEST_CASE(sources_between_pixels_keep_their_light)
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     float least = INFINITY, most = 0;
     for (int shift = 0; shift < 4; shift++) {
         float red;
@@ -434,7 +434,7 @@ TEST_CASE(sources_between_pixels_keep_their_light)
  * be the gather's cells popping. */
 TEST_CASE(moving_sources_light_smoothly_across_tiles)
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     float previous = 0, least = INFINITY, most = 0, jump = 0;
     for (int frame = 0; frame <= 16; frame++) {
         float x = 23 + frame * .125f, red;
@@ -459,7 +459,7 @@ TEST_CASE(moving_sources_light_smoothly_across_tiles)
  * surface inside the radius. */
 TEST_CASE(light_fades_out_at_the_depth_radius)
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     lighting.surface_depth_radius = 8;
     float first = 0, last = 0, jump = 0;
     for (int frame = 0; frame <= 32; frame++) {
@@ -490,7 +490,7 @@ TEST_CASE(light_fades_out_at_the_depth_radius)
  * averaging partial tiles must not brighten it. */
 TEST_CASE(sources_at_the_view_edge_keep_the_light_left_in_view)
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     lighting.surface_depth_radius = 32;
     float reference = 0, last = 0;
     for (int frame = 0; frame <= 8; frame++) {
@@ -523,11 +523,11 @@ TEST_CASE(perspective_views_take_depth_light)
 
 /* Depth thickness over HRC's own light, tone mapped by AgX at half
  * intensity. The case's solves show the lit frame. */
-static GameHRC2D fill_lighting()
+static HRC2D fill_lighting()
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     lab.debug_view = RENDER_RADIANCE_DEBUG_NORMAL;
-    lighting.tone_mapping = GAME_HRC_TONE_AGX;
+    lighting.tone_mapping = HRC_TONE_AGX;
     lighting.intensity = .5f;
     return lighting;
 }
@@ -549,7 +549,7 @@ static void open_scene(int scene, float tilt, float edge)
 }
 
 /* The red light at the center of open_scene() from a reset. */
-static bool open_light(int scene, float tilt, float edge, GameHRC2D lighting, float *red)
+static bool open_light(int scene, float tilt, float edge, HRC2D lighting, float *red)
 {
     float color[3];
     open_scene(scene, tilt, edge);
@@ -565,7 +565,7 @@ static bool open_light(int scene, float tilt, float edge, GameHRC2D lighting, fl
 TEST_CASE(depth_gain_adds_only_to_closed_receivers)
 {
     static const float absorption[] = { 0, 1, 20 };
-    GameHRC2D lighting = fill_lighting();
+    HRC2D lighting = fill_lighting();
     float steps[3][3];
     for (int a = 0; a < 3; a++) {
         open_scene(OPEN, 0, .5f);
@@ -605,7 +605,7 @@ TEST_CASE(depth_gain_adds_only_to_closed_receivers)
  * between neighboring pixels across the shadow. */
 TEST_CASE(open_receivers_shade_hrc_light_by_facing_and_height)
 {
-    GameHRC2D lighting = fill_lighting();
+    HRC2D lighting = fill_lighting();
     float flat, toward, away, shadowed, plain, plain_shadowed;
     REQUIRE(open_light(OPEN, 0, 1, lighting, &flat));
     REQUIRE(open_light(OPEN, .6f, 1, lighting, &toward));
@@ -635,7 +635,7 @@ TEST_CASE(open_receivers_shade_hrc_light_by_facing_and_height)
 
 TEST_CASE(depth_gain_keeps_shadows_and_unlit_scenes_dark)
 {
-    GameHRC2D lighting = fill_lighting();
+    HRC2D lighting = fill_lighting();
     lighting.surface_depth_gain = 4;
     float open[3], crossing[3], unlit[3];
     slab_scene(OPEN);
@@ -683,7 +683,7 @@ static void middle_row(const int *xs, int count, int c, float *values)
 
 /* The ambient light Depth thickness lets through, shown in blue by the light
  * direction view, at the columns `xs` of wall_scene(`glow`). */
-static bool occlusion_at(GameHRC2D lighting, bool glow, const int *xs, int count, float *values)
+static bool occlusion_at(HRC2D lighting, bool glow, const int *xs, int count, float *values)
 {
     float center[3];
     render_radiance_debug_view view = lab.debug_view;
@@ -703,11 +703,10 @@ static bool occlusion_at(GameHRC2D lighting, bool glow, const int *xs, int count
 TEST_CASE(walls_occlude_ambient_light_by_their_height)
 {
     static const int xs[] = { 19, 14, 8, 2 };
-    for (int mode = GAME_HRC_DEPTH_VISIBILITY_MASK;
-         mode <= GAME_HRC_DEPTH_VISIBILITY_SEGMENTS;
+    for (int mode = HRC_DEPTH_VISIBILITY_MASK; mode <= HRC_DEPTH_VISIBILITY_SEGMENTS;
          mode++) {
-        GameHRC2D lighting = fill_lighting();
-        lighting.surface_depth_visibility = (GameHRCDepthVisibility)mode;
+        HRC2D lighting = fill_lighting();
+        lighting.surface_depth_visibility = (HRCDepthVisibility)mode;
         lighting.ambient = 1;
         float occlusion[4], glow[4], ambient[4], shadow_floor[4], flat[4], center[3];
         REQUIRE(occlusion_at(lighting, true, xs, 4, glow));
@@ -732,7 +731,7 @@ TEST_CASE(walls_occlude_ambient_light_by_their_height)
         middle_row(xs, 4, 0, shadow_floor);
         lighting.ambient = 1;
         lighting.shadow_floor = 0;
-        lighting.surface_mode = GAME_HRC_SURFACE_BLUR;
+        lighting.surface_mode = HRC_SURFACE_BLUR;
         REQUIRE(lit_fresh(lighting, test_centered(SIDE), center));
         middle_row(xs, 4, 0, flat);
         for (int i = 0; i < 4; i++) {
@@ -758,7 +757,7 @@ static void floor_scene(bool closed, float floor, float height)
 }
 
 /* The red at the center of floor_scene() from a reset. */
-static bool floor_light(GameHRC2D lighting, bool closed, float floor, float height, float *red)
+static bool floor_light(HRC2D lighting, bool closed, float floor, float height, float *red)
 {
     float color[3];
     floor_scene(closed, floor, height);
@@ -773,7 +772,7 @@ static bool floor_light(GameHRC2D lighting, bool closed, float floor, float heig
  * at all. */
 TEST_CASE(closed_receivers_take_the_light_hrc_brings_open_ones)
 {
-    GameHRC2D lighting = fill_lighting();
+    HRC2D lighting = fill_lighting();
     lighting.surface_depth_radius = 32;
     for (int falloff = 0; falloff < 3; falloff++) {
         lighting.falloff = (float)falloff;
@@ -807,7 +806,7 @@ static void dark_receiver(float gloss)
 
 TEST_CASE(glossy_receivers_take_highlights_by_the_depth_gain)
 {
-    GameHRC2D lighting = fill_lighting();
+    HRC2D lighting = fill_lighting();
     lighting.specular = 1;
     float matte[3], glossy[3], none[3], doubled[3];
     dark_receiver(0);
@@ -828,7 +827,7 @@ TEST_CASE(glossy_receivers_take_highlights_by_the_depth_gain)
  * around it, but reconstruction must not lend it the receiver's gloss. */
 TEST_CASE(matte_patches_take_no_gloss_from_around_them)
 {
-    GameHRC2D lighting = fill_lighting();
+    HRC2D lighting = fill_lighting();
     dark_receiver(.6f);
     for (int y = 12; y < 20; y++) {
         for (int x = 12; x < 20; x++) {
@@ -849,9 +848,9 @@ TEST_CASE(matte_patches_take_no_gloss_from_around_them)
  * the receiver and lets a crossing slab shadow it. */
 TEST_CASE(every_depth_quality_lights_and_shadows)
 {
-    GameHRC2D lighting = depth_lighting();
-    for (int quality = GAME_HRC_DEPTH_LOW; quality <= GAME_HRC_DEPTH_HIGH; quality++) {
-        lighting.surface_depth_quality = (GameHRCDepthQuality)quality;
+    HRC2D lighting = depth_lighting();
+    for (int quality = HRC_DEPTH_LOW; quality <= HRC_DEPTH_HIGH; quality++) {
+        lighting.surface_depth_quality = (HRCDepthQuality)quality;
         for (int near = 0; near < 2; near++) {
             float open, crossing;
             lab.surface_depth_near_detail = near;
@@ -872,7 +871,7 @@ TEST_CASE(every_depth_quality_lights_and_shadows)
  * that dims sharply, a changed distance falloff, and on a reset. */
 TEST_CASE(depth_history_keeps_still_light_and_drops_changes)
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     lighting.surface_depth_history = .9f;
     float initial[3], held[3], tilted[3], dimmed[3], fresh[3], turned[3],
         unlit[3], restored[3];
@@ -949,9 +948,9 @@ TEST_CASE(depth_history_keeps_still_light_and_drops_changes)
 }
 
 /* Depth history strength left at zero takes the default. */
-static GameHRC2D default_history()
+static HRC2D default_history()
 {
-    GameHRC2D lighting = depth_lighting();
+    HRC2D lighting = depth_lighting();
     lighting.surface_depth_history = 0;
     return lighting;
 }
@@ -960,7 +959,7 @@ static GameHRC2D default_history()
  * light in one frame and settles near the new light. */
 TEST_CASE(depth_history_settles_on_brighter_light)
 {
-    GameHRC2D lighting = default_history();
+    HRC2D lighting = default_history();
     float instant[3], initial[3], first[3], settled[3];
     slab_scene(OPEN);
     for (int p = 0; p < PIXELS; p++) {
@@ -989,7 +988,7 @@ TEST_CASE(depth_history_settles_on_brighter_light)
  * of its new light in one frame and settles near it. */
 TEST_CASE(depth_history_settles_on_open_shading)
 {
-    GameHRC2D lighting = fill_lighting();
+    HRC2D lighting = fill_lighting();
     lighting.surface_depth_history = 0;
     float instant, initial, color[3];
     REQUIRE(open_light(OPEN, .2f, 1, lighting, &instant));
@@ -1013,7 +1012,7 @@ TEST_CASE(depth_history_settles_on_open_shading)
  * changes across it, so history must come from the moved cell. */
 TEST_CASE(depth_history_follows_the_camera)
 {
-    GameHRC2D lighting = default_history();
+    HRC2D lighting = default_history();
     lighting.surface_depth_temporal = true;
     slab_scene(OPEN);
     for (int y = 0; y < SIDE; y++) {
@@ -1052,7 +1051,7 @@ TEST_CASE(depth_history_follows_the_camera)
  * jump at the crossing though every input changes smoothly. */
 TEST_CASE(mixed_color_sources_light_smoothly)
 {
-    GameHRC2D lighting = calibrated();
+    HRC2D lighting = calibrated();
     lighting.surface_radius = lighting.surface_depth_radius = 128;
     lighting.surface_thickness = 0;
     float previous[3] = { 0 }, step = 0, least = INFINITY;
@@ -1151,10 +1150,10 @@ static void segment_scene(float blocker_x)
  * blocker stands beyond the light. */
 TEST_CASE(segments_shadow_only_receivers_behind_blockers)
 {
-    GameHRC2D lighting = calibrated();
+    HRC2D lighting = calibrated();
     lighting.surface_radius = lighting.surface_depth_radius = 384;
     lighting.surface_thickness = 12;
-    lighting.surface_depth_visibility = GAME_HRC_DEPTH_VISIBILITY_SEGMENTS;
+    lighting.surface_depth_visibility = HRC_DEPTH_VISIBILITY_SEGMENTS;
     const float blockers[] = { 0, NAN, -100 };
     float means[3], color[3];
     for (int i = 0; i < 3; i++) {
@@ -1202,7 +1201,7 @@ static void steep_plane(bool detached)
  * centers borrows none of the plane's light. */
 TEST_CASE(steep_planes_light_every_pixel_but_detached_strips)
 {
-    GameHRC2D lighting = calibrated();
+    HRC2D lighting = calibrated();
     lighting.surface_radius = lighting.surface_depth_radius = 1024;
     lighting.surface_thickness = 0;
     float color[3];
@@ -1380,9 +1379,9 @@ TEST_CASE(surface_gather_stays_dark_without_light_in_reach)
  * is gone, the receiver keeps none of it though history would hold it. */
 TEST_CASE(surface_gather_light_restarts_when_the_view_turns)
 {
-    GameHRC2D lighting = calibrated();
+    HRC2D lighting = calibrated();
     lighting.specular = 1;
-    lighting.surface_mode = GAME_HRC_SURFACE_GATHER;
+    lighting.surface_mode = HRC_SURFACE_GATHER;
     lighting.surface_radius = 8;
     lighting.surface_relief = 1;
     lighting.radiance_hysteresis = .05f;

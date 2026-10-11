@@ -54,7 +54,7 @@ static bool finite_transform(const authoring_scene_node *node)
     if (!node->has_transform_3d) {
         return true;
     }
-    const GameTransform3D *t = &node->transform_3d;
+    const Transform3D *t = &node->transform_3d;
     return finite_3d(t->position) && finite_3d(t->scale) &&
            isfinite(t->rotation.x) && isfinite(t->rotation.y) &&
            isfinite(t->rotation.z) && isfinite(t->rotation.w);
@@ -74,7 +74,7 @@ static int validate(const authoring_scene_node *nodes, int count, bool ordered, 
             (ordered && node->parent >= i)) {
             return fail(error, size, "Objects need valid identities and parents before their children.");
         }
-        if (game_scene_entity_validate_name(node->name, false, error, size)) {
+        if (scene_entity_validate_name(node->name, false, error, size)) {
             return -1;
         }
         for (int j = 0; j < i; j++) {
@@ -82,7 +82,7 @@ static int validate(const authoring_scene_node *nodes, int count, bool ordered, 
                 return fail(error, size, "An object occurs more than once in the scene.");
             }
             if (node->parent == nodes[j].parent &&
-                game_scene_entity_validate_name(
+                scene_entity_validate_name(
                     node->name,
                     !strcmp(node->name, nodes[j].name),
                     error,
@@ -94,7 +94,7 @@ static int validate(const authoring_scene_node *nodes, int count, bool ordered, 
         int depth = 0;
         for (int at = i; at >= 0; at = nodes[at].parent) {
             if (nodes[at].parent < -1 || nodes[at].parent >= count ||
-                ++depth > GAME_SCENE_DEPTH_MAX) {
+                ++depth > SCENE_DEPTH_MAX) {
                 return fail(error, size, "This move would exceed the scene hierarchy depth limit or create a cycle.");
             }
         }
@@ -120,15 +120,15 @@ static int transform_parent(const authoring_scene_node *nodes, int index, bool s
     return parent;
 }
 
-static GameGlobalTransform2D world_2d(const authoring_scene_node *nodes, int index)
+static GlobalTransform2D world_2d(const authoring_scene_node *nodes, int index)
 {
     if (index < 0) {
-        return (GameGlobalTransform2D){ 0 };
+        return (GlobalTransform2D){ 0 };
     }
     const authoring_scene_node *node = &nodes[index];
-    GameGlobalTransform2D parent = world_2d(nodes, transform_parent(nodes, index, false));
+    GlobalTransform2D parent = world_2d(nodes, transform_parent(nodes, index, false));
     cos_sin turn = cos_sin_compute(parent.radians);
-    return (GameGlobalTransform2D){
+    return (GlobalTransform2D){
         .position = { parent.position.x + turn.c * node->position.x -
                           turn.s * node->position.y,
                       parent.position.y + turn.s * node->position.x +
@@ -143,7 +143,7 @@ static CF_M4x4 world_3d(const authoring_scene_node *nodes, int index)
     if (index < 0) {
         return cf_m4_identity();
     }
-    const GameTransform3D *t = &nodes[index].transform_3d;
+    const Transform3D *t = &nodes[index].transform_3d;
     CF_Quat q = t->rotation;
     q = q.x || q.y || q.z || q.w ? cf_quat_norm(q) : cf_quat_identity();
     CF_M4x4 local = cf_m4_from_trs(t->position, q, t->scale);
@@ -194,7 +194,7 @@ static int preserve_3d(authoring_scene_node *node, CF_M4x4 world, CF_M4x4 parent
     }
     CF_M4x4 inverse = cf_m4_invert(parent);
     CF_M4x4 local = cf_mul_m4(inverse, world);
-    GameTransform3D *t = &node->transform_3d;
+    Transform3D *t = &node->transform_3d;
     if (!matches(cf_mul_m4(parent, inverse), cf_m4_identity()) || !nonsingular(local)) {
         return fail(error, size, "Cannot preserve a singular or numerically unstable 3D placement.");
     }
@@ -211,8 +211,8 @@ static int preserve_3d(authoring_scene_node *node, CF_M4x4 world, CF_M4x4 parent
 
 static int preserve_2d(
     authoring_scene_node *node,
-    GameGlobalTransform2D world,
-    GameGlobalTransform2D parent,
+    GlobalTransform2D world,
+    GlobalTransform2D parent,
     char *error,
     size_t size
 )

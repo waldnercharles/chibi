@@ -15,30 +15,29 @@
  * includes, rebased and detached components, spawning, captured overrides and
  * scene round trips. */
 
-static ecs_component_catalog game_components()
+static ecs_component_catalog components()
 {
-    return (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS,
-                                    GAME_REGISTRY_COMPONENT_COUNT };
+    return (ecs_component_catalog){ REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
 }
-static game_prototype *prototype, *copy;
+static prototype *test_prototype, *copy;
 static ecs_world *world;
 static char *saved, *again;
-static game_scene_document *scene, *loaded;
+static scene_document *scene, *loaded;
 static av_value *values;
 static char **owned_strings;
 
 static void cleanup()
 {
-    game_prototype_free(prototype);
-    game_prototype_free(copy);
+    prototype_free(test_prototype);
+    prototype_free(copy);
     ecs_world_free(world);
     free(saved);
     free(again);
-    game_scene_document_free(scene);
-    game_scene_document_free(loaded);
+    scene_document_free(scene);
+    scene_document_free(loaded);
     av_value_free(values);
-    game_prototype_owned_strings_free(owned_strings);
-    prototype = copy = NULL;
+    prototype_owned_strings_free(owned_strings);
+    test_prototype = copy = NULL;
     world = NULL;
     saved = again = NULL;
     scene = loaded = NULL;
@@ -52,7 +51,7 @@ static bool rebases(const char *local, const char *previous, const char *current
     av_value *before = test_read_asset_value(previous);
     av_value *after = test_read_asset_value(current);
     av_value *wanted = test_read_asset_value(expected);
-    av_value *actual = game_prototype_rebase_component_value(input, before, after);
+    av_value *actual = prototype_rebase_component_value(input, before, after);
     bool same = actual && av_equals(actual, wanted);
     av_value_free(input);
     av_value_free(before);
@@ -67,7 +66,7 @@ static bool refuses_rebase(const char *local, const char *previous, const char *
     av_value *input = test_read_asset_value(local);
     av_value *before = test_read_asset_value(previous);
     av_value *after = test_read_asset_value(current);
-    av_value *actual = game_prototype_rebase_component_value(input, before, after);
+    av_value *actual = prototype_rebase_component_value(input, before, after);
     av_value_free(input);
     av_value_free(before);
     av_value_free(after);
@@ -99,7 +98,7 @@ TEST_CASE(rebase_keeps_local_values_over_evolving_defaults)
 
     av_value *empty = test_read_asset_value("");
     av_doc *null_doc = av_doc_new();
-    av_value *rebased = game_prototype_rebase_component_value(av_null(null_doc), empty, empty);
+    av_value *rebased = prototype_rebase_component_value(av_null(null_doc), empty, empty);
     av_doc_free(null_doc);
     av_value_free(empty);
     REQUIRE(!rebased);
@@ -125,33 +124,33 @@ TEST_CASE(retained_strings_survive_clones_and_renames)
                                                   .element_size = sizeof(char *),
                                                   .type = &type };
     const ecs_component_desc *components[] = { &component };
-    game_prototype_registry registry = { components, 1, NULL, NULL };
+    prototype_registry registry = { components, 1, NULL, NULL };
     char error[256];
-    prototype = game_prototype_load(
+    test_prototype = prototype_load(
         "name \"StringOwner\"\ncomponents {\n    test.Label "
         "text=\"customized\"\n}\n",
         &registry,
         error,
         sizeof error
     );
-    REQUIRE(prototype && game_prototype_detach_component(prototype, "Label") == 0);
-    copy = game_prototype_clone(prototype, error, sizeof error);
-    game_prototype_free(prototype);
-    prototype = NULL;
-    REQUIRE(copy && game_prototype_add_component(copy, &component) == 0);
+    REQUIRE(test_prototype && prototype_detach_component(test_prototype, "Label") == 0);
+    copy = prototype_clone(test_prototype, error, sizeof error);
+    prototype_free(test_prototype);
+    test_prototype = NULL;
+    REQUIRE(copy && prototype_add_component(copy, &component) == 0);
     pin_value value;
-    REQUIRE(game_prototype_read_field(copy, "test.Label", "text", &value) == 0);
+    REQUIRE(prototype_read_field(copy, "test.Label", "text", &value) == 0);
     REQUIRE(value.type == PIN_STR && strcmp(value.str, "customized") == 0);
-    REQUIRE(game_prototype_detach_component(copy, "test.Label") == 0);
-    saved = game_prototype_save(copy);
+    REQUIRE(prototype_detach_component(copy, "test.Label") == 0);
+    saved = prototype_save(copy);
 
     ecs_component_desc renamed = component;
     renamed.name = "DisplayLabel";
     const ecs_component_desc *renamed_components[] = { &renamed };
-    game_prototype_registry renamed_registry = { renamed_components, 1, NULL, NULL };
-    prototype = game_prototype_load(saved, &renamed_registry, error, sizeof error);
-    REQUIRE(prototype && game_prototype_add_component(prototype, &renamed) == 0);
-    REQUIRE(game_prototype_read_field(prototype, "DisplayLabel", "text", &value) == 0);
+    prototype_registry renamed_registry = { renamed_components, 1, NULL, NULL };
+    test_prototype = prototype_load(saved, &renamed_registry, error, sizeof error);
+    REQUIRE(test_prototype && prototype_add_component(test_prototype, &renamed) == 0);
+    REQUIRE(prototype_read_field(test_prototype, "DisplayLabel", "text", &value) == 0);
     REQUIRE(value.type == PIN_STR && strcmp(value.str, "customized") == 0);
     return true;
 }
@@ -160,15 +159,14 @@ TEST_CASE(retained_strings_survive_clones_and_renames)
  * entities until reattached with their retained values. */
 TEST_CASE(detached_components_spawn_absent_and_reattach)
 {
-    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
-                                         GAME_REGISTRY_COMPONENT_COUNT };
+    prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
     char error[256];
-    prototype = game_prototype_load(
+    test_prototype = prototype_load(
         "name \"Retained\"\n"
         "components {\n"
-        "    GameTransform x=10 y=20\n"
-        "    GameHealth current=73 maximum=100\n"
-        "    GameInput {\n"
+        "    Transform x=10 y=20\n"
+        "    Health current=73 maximum=100\n"
+        "    Input {\n"
         "        move x=3 y=4\n"
         "    }\n"
         "}\n",
@@ -176,18 +174,18 @@ TEST_CASE(detached_components_spawn_absent_and_reattach)
         error,
         sizeof error
     );
-    REQUIRE(prototype);
-    again = game_prototype_save(prototype);
-    REQUIRE(game_prototype_detach_component(prototype, "GameHealth") == 0);
-    REQUIRE(game_prototype_detach_component(prototype, "GameInput") == 0);
-    REQUIRE(game_prototype_detach_component(prototype, "GameHealth") == -1);
+    REQUIRE(test_prototype);
+    again = prototype_save(test_prototype);
+    REQUIRE(prototype_detach_component(test_prototype, "Health") == 0);
+    REQUIRE(prototype_detach_component(test_prototype, "Input") == 0);
+    REQUIRE(prototype_detach_component(test_prototype, "Health") == -1);
     pin_value value;
-    REQUIRE(game_prototype_read_field(prototype, "GameHealth", "current", &value) == -1);
-    saved = game_prototype_save(prototype);
-    game_prototype_free(prototype);
-    prototype = game_prototype_load(saved, &registry, error, sizeof error);
-    REQUIRE(prototype && acount(prototype->detached_components) == 2);
-    copy = game_prototype_clone(prototype, error, sizeof error);
+    REQUIRE(prototype_read_field(test_prototype, "Health", "current", &value) == -1);
+    saved = prototype_save(test_prototype);
+    prototype_free(test_prototype);
+    test_prototype = prototype_load(saved, &registry, error, sizeof error);
+    REQUIRE(test_prototype && acount(test_prototype->detached_components) == 2);
+    copy = prototype_clone(test_prototype, error, sizeof error);
     REQUIRE(copy && acount(copy->detached_components) == 2);
 
     world = ecs_world_new();
@@ -195,29 +193,29 @@ TEST_CASE(detached_components_spawn_absent_and_reattach)
         REQUIRE(ecs_world_register_component(world, registry.components[i], NULL) == ECS_OK);
     }
     ecs_entity entity;
-    REQUIRE(game_prototype_spawn_components(prototype, world, &entity, error, sizeof error) == 0);
-    REQUIRE(GAME_GameTransform_has(world, entity));
-    REQUIRE(!GAME_GameHealth_has(world, entity));
-    REQUIRE(!GAME_GameInput_has(world, entity));
-    REQUIRE(game_prototype_add_component(copy, &GAME_COMPONENT_GameInput) == 0);
-    REQUIRE(game_prototype_add_component(copy, &GAME_COMPONENT_GameHealth) == 0);
+    REQUIRE(prototype_spawn_components(test_prototype, world, &entity, error, sizeof error) == 0);
+    REQUIRE(Transform_has(world, entity));
+    REQUIRE(!Health_has(world, entity));
+    REQUIRE(!Input_has(world, entity));
+    REQUIRE(prototype_add_component(copy, &COMPONENT_Input) == 0);
+    REQUIRE(prototype_add_component(copy, &COMPONENT_Health) == 0);
     REQUIRE(acount(copy->detached_components) == 0);
-    REQUIRE(acount(prototype->detached_components) == 2);
+    REQUIRE(acount(test_prototype->detached_components) == 2);
     free(saved);
-    saved = game_prototype_save(copy);
+    saved = prototype_save(copy);
     REQUIRE(strcmp(again, saved) == 0);
-    REQUIRE(game_prototype_spawn_components(copy, world, &entity, error, sizeof error) == 0);
-    REQUIRE(GAME_GameHealth_get(world, entity)->current == 73);
-    REQUIRE(GAME_GameInput_get(world, entity)->move.x == 3);
-    REQUIRE(GAME_GameInput_get(world, entity)->move.y == 4);
+    REQUIRE(prototype_spawn_components(copy, world, &entity, error, sizeof error) == 0);
+    REQUIRE(Health_get(world, entity)->current == 73);
+    REQUIRE(Input_get(world, entity)->move.x == 3);
+    REQUIRE(Input_get(world, entity)->move.y == 4);
 
-    game_prototype *invalid = game_prototype_load(
+    prototype *invalid = prototype_load(
         "name \"Invalid\"\n"
         "components {\n"
-        "    (object)GameHealth\n"
+        "    (object)Health\n"
         "}\n"
         "detached_components {\n"
-        "    (object)GameHealth\n"
+        "    (object)Health\n"
         "}\n",
         &registry,
         error,
@@ -229,15 +227,15 @@ TEST_CASE(detached_components_spawn_absent_and_reattach)
 
 static const char *base_enemy = "name \"BaseEnemy\"\n"
                                 "components {\n"
-                                "    GameHealth current=50 maximum=50\n"
-                                "    GameTransform x=1 y=2\n"
+                                "    Health current=50 maximum=50\n"
+                                "    Transform x=1 y=2\n"
                                 "}\n"
                                 "(array)behaviors \"idle.graph\"\n";
 static const char *derived_enemy = "name \"Enemy\"\n"
                                    "identity \"enemy-id\"\n"
                                    "(array)includes \"BaseEnemy\"\n"
                                    "components {\n"
-                                   "    GameHealth current=100\n"
+                                   "    Health current=100\n"
                                    "}\n"
                                    "(array)behaviors \"attack.graph\"\n";
 static const char *cycle_a = "name \"CycleA\"\n(array)includes \"CycleB\"\n";
@@ -264,17 +262,17 @@ static int attach(ecs_world *, ecs_entity, const char *graph_name, void *)
 }
 
 /* The game's components, with BaseEnemy to include. */
-static game_prototype_registry enemies()
+static prototype_registry enemies()
 {
     return (
-        game_prototype_registry
-    ){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT, find_base, NULL };
+        prototype_registry
+    ){ REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT, find_base, NULL };
 }
 
-static const GameHealth *health_of(const game_prototype *p)
+static const Health *health_of(const prototype *p)
 {
     for (int i = 0; i < acount(p->components); i++) {
-        if (strcmp(p->components[i].desc->name, "GameHealth") == 0) {
+        if (strcmp(p->components[i].desc->name, "Health") == 0) {
             return p->components[i].data;
         }
     }
@@ -286,20 +284,20 @@ static const GameHealth *health_of(const game_prototype *p)
  * cycles are refused. */
 TEST_CASE(prototype_includes_override_and_save_deterministically)
 {
-    game_prototype_registry registry = enemies();
+    prototype_registry registry = enemies();
     char error[256];
-    prototype = game_prototype_load(derived_enemy, &registry, error, sizeof error);
-    REQUIRE(prototype && strcmp(prototype->name, "Enemy") == 0);
-    REQUIRE(acount(prototype->components) == 2);
-    const GameHealth *health = health_of(prototype);
+    test_prototype = prototype_load(derived_enemy, &registry, error, sizeof error);
+    REQUIRE(test_prototype && strcmp(test_prototype->name, "Enemy") == 0);
+    REQUIRE(acount(test_prototype->components) == 2);
+    const Health *health = health_of(test_prototype);
     REQUIRE(health && health->current == 100 && health->maximum == 50);
-    saved = game_prototype_save(prototype);
-    copy = game_prototype_load(
+    saved = prototype_save(test_prototype);
+    copy = prototype_load(
         "(array)behaviors \"attack.graph\" \"idle.graph\"\n"
         "identity \"enemy-id\"\n"
         "components {\n"
-        "    GameTransform y=2 x=1\n"
-        "    GameHealth maximum=50 current=100\n"
+        "    Transform y=2 x=1\n"
+        "    Health maximum=50 current=100\n"
         "}\n"
         "name \"Enemy\"\n",
         &registry,
@@ -307,29 +305,29 @@ TEST_CASE(prototype_includes_override_and_save_deterministically)
         sizeof error
     );
     REQUIRE(copy);
-    again = game_prototype_save(copy);
+    again = prototype_save(copy);
     REQUIRE(saved && again && strcmp(saved, again) == 0);
-    REQUIRE(strstr(saved, "GameTransform") && strstr(saved, "GameHealth"));
-    game_prototype_free(prototype);
-    game_prototype_free(copy);
+    REQUIRE(strstr(saved, "Transform") && strstr(saved, "Health"));
+    prototype_free(test_prototype);
+    prototype_free(copy);
     free(again);
-    prototype = game_prototype_load("name \"Plain\"\n", &registry, error, sizeof error);
-    copy = game_prototype_load("name \"Other\"\n", &registry, error, sizeof error);
-    again = prototype ? game_prototype_save(prototype) : NULL;
-    REQUIRE(prototype && copy && again);
-    REQUIRE(strcmp(game_prototype_identity(prototype), game_prototype_identity(copy)) != 0);
+    test_prototype = prototype_load("name \"Plain\"\n", &registry, error, sizeof error);
+    copy = prototype_load("name \"Other\"\n", &registry, error, sizeof error);
+    again = test_prototype ? prototype_save(test_prototype) : NULL;
+    REQUIRE(test_prototype && copy && again);
+    REQUIRE(strcmp(prototype_identity(test_prototype), prototype_identity(copy)) != 0);
     REQUIRE(!strstr(again, "identity"));
 
-    game_prototype_registry missing = { GAME_REGISTRY_COMPONENTS, 1, find_base, NULL };
-    REQUIRE(!game_prototype_load(derived_enemy, &missing, error, sizeof error));
-    REQUIRE(strstr(error, "GameHealth"));
-    const game_prototype_registry cycles = {
-        GAME_REGISTRY_COMPONENTS,
-        GAME_REGISTRY_COMPONENT_COUNT,
+    prototype_registry missing = { REGISTRY_COMPONENTS, 1, find_base, NULL };
+    REQUIRE(!prototype_load(derived_enemy, &missing, error, sizeof error));
+    REQUIRE(strstr(error, "Health"));
+    const prototype_registry cycles = {
+        REGISTRY_COMPONENTS,
+        REGISTRY_COMPONENT_COUNT,
         find_cycle,
         NULL,
     };
-    REQUIRE(!game_prototype_load(cycle_a, &cycles, error, sizeof error));
+    REQUIRE(!prototype_load(cycle_a, &cycles, error, sizeof error));
     REQUIRE(strstr(error, "cycle"));
     return true;
 }
@@ -338,76 +336,76 @@ TEST_CASE(prototype_includes_override_and_save_deterministically)
  * stay editable data, and a live entity captures as sparse overrides. */
 TEST_CASE(prototype_spawns_edits_and_captures_overrides)
 {
-    game_prototype_registry registry = enemies();
+    prototype_registry registry = enemies();
     char error[256];
-    prototype = game_prototype_load(derived_enemy, &registry, error, sizeof error);
-    REQUIRE(prototype);
+    test_prototype = prototype_load(derived_enemy, &registry, error, sizeof error);
+    REQUIRE(test_prototype);
     world = ecs_world_new();
-    REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
-    REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &COMPONENT_Transform, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &COMPONENT_Health, NULL) == ECS_OK);
     attached = 0;
-    const game_prototype_spawn_hooks hooks = { attach, NULL };
+    const prototype_spawn_hooks hooks = { attach, NULL };
     ecs_entity entity = { 0 };
     /* Behavior-bearing prototypes cannot silently skip attachment. */
     REQUIRE(
-        game_prototype_spawn(prototype, world, NULL, &entity, error, sizeof error) == ECS_ERR_ARGUMENT
+        prototype_spawn(test_prototype, world, NULL, &entity, error, sizeof error) == ECS_ERR_ARGUMENT
     );
     REQUIRE(ecs_world_live_count(world) == 0 && strstr(error, "attach hook"));
-    REQUIRE(game_prototype_spawn(prototype, world, &hooks, &entity, error, sizeof error) == ECS_OK);
+    REQUIRE(prototype_spawn(test_prototype, world, &hooks, &entity, error, sizeof error) == ECS_OK);
     REQUIRE(attached == 2 && ecs_entity_is_alive(world, entity));
 
     pin_value field = { 0 };
-    REQUIRE(game_prototype_read_field(prototype, "GameHealth", "current", &field) == 0);
+    REQUIRE(prototype_read_field(test_prototype, "Health", "current", &field) == 0);
     REQUIRE(field.i == 100);
     pin_value edited = { .type = PIN_I32, .i = 101 };
-    REQUIRE(game_prototype_write_field(prototype, "GameHealth", "current", edited) == 0);
-    REQUIRE(game_prototype_read_field(prototype, "GameHealth", "current", &field) == 0);
+    REQUIRE(prototype_write_field(test_prototype, "Health", "current", edited) == 0);
+    REQUIRE(prototype_read_field(test_prototype, "Health", "current", &field) == 0);
     REQUIRE(field.i == 101);
     edited.i = 100;
-    REQUIRE(game_prototype_write_field(prototype, "GameHealth", "current", edited) == 0);
-    REQUIRE(game_prototype_add_graph(prototype, "debug.graph") == 0);
-    REQUIRE(game_prototype_has_graph(prototype, "debug.graph"));
-    REQUIRE(game_prototype_remove_graph(prototype, "debug.graph") == 0);
-    REQUIRE(!game_prototype_has_graph(prototype, "debug.graph"));
-    REQUIRE(game_prototype_remove_component(prototype, "GameTransform") == 0);
-    REQUIRE(acount(prototype->components) == 1);
-    REQUIRE(game_prototype_add_native_component(prototype, &GAME_COMPONENT_GameTransform) == 0);
-    REQUIRE(acount(prototype->components) == 2);
+    REQUIRE(prototype_write_field(test_prototype, "Health", "current", edited) == 0);
+    REQUIRE(prototype_add_graph(test_prototype, "debug.graph") == 0);
+    REQUIRE(prototype_has_graph(test_prototype, "debug.graph"));
+    REQUIRE(prototype_remove_graph(test_prototype, "debug.graph") == 0);
+    REQUIRE(!prototype_has_graph(test_prototype, "debug.graph"));
+    REQUIRE(prototype_remove_component(test_prototype, "Transform") == 0);
+    REQUIRE(acount(test_prototype->components) == 1);
+    REQUIRE(prototype_add_native_component(test_prototype, &COMPONENT_Transform) == 0);
+    REQUIRE(acount(test_prototype->components) == 2);
 
-    copy = game_prototype_clone(prototype, error, sizeof error);
+    copy = prototype_clone(test_prototype, error, sizeof error);
     REQUIRE(copy);
-    GAME_GameHealth_get(world, entity)->current = 7;
-    values = game_prototype_capture_overrides_value(copy, world, entity);
+    Health_get(world, entity)->current = 7;
+    values = prototype_capture_overrides_value(copy, world, entity);
     REQUIRE(values);
-    const av_value *health = av_obj_get(values, "GAME.GameHealth");
+    const av_value *health = av_obj_get(values, "Health");
     REQUIRE(av_get_int(av_obj_get(health, "current")) == 7);
     REQUIRE(!av_obj_get(health, "maximum"));
     av_value_free(values);
 
     /* Sparse field overrides apply without zeroing sibling fields. */
-    values = test_read_asset_value("GameHealth current=7\n");
+    values = test_read_asset_value("Health current=7\n");
     ecs_entity overridden = { 0 };
-    REQUIRE(game_prototype_spawn(copy, world, &hooks, &overridden, error, sizeof error) == ECS_OK);
+    REQUIRE(prototype_spawn(copy, world, &hooks, &overridden, error, sizeof error) == ECS_OK);
     REQUIRE(
-        game_prototype_apply_components_value(world, overridden, values, &registry, &owned_strings, error, sizeof error) ==
+        prototype_apply_components_value(world, overridden, values, &registry, &owned_strings, error, sizeof error) ==
         0
     );
-    REQUIRE(GAME_GameHealth_get(world, overridden)->current == 7);
-    REQUIRE(GAME_GameHealth_get(world, overridden)->maximum == 50);
+    REQUIRE(Health_get(world, overridden)->current == 7);
+    REQUIRE(Health_get(world, overridden)->maximum == 50);
     av_value_free(values);
     values = NULL;
 
-    GAME_GameHealth_get(world, entity)->current = 100;
-    game_prototype_free(copy);
-    copy = game_prototype_capture_entity("CapturedEnemy", world, entity, &registry);
+    Health_get(world, entity)->current = 100;
+    prototype_free(copy);
+    copy = prototype_capture_entity("CapturedEnemy", world, entity, &registry);
     REQUIRE(copy);
-    values = game_prototype_components_value(copy);
-    REQUIRE(values && av_obj_get(values, "GAME.GameHealth"));
+    values = prototype_components_value(copy);
+    REQUIRE(values && av_obj_get(values, "Health"));
 
     /* Freeing a prototype does not change what it spawned. */
-    game_prototype_free(prototype);
-    prototype = NULL;
-    const GameHealth *spawned = GAME_GameHealth_get(world, entity);
+    prototype_free(test_prototype);
+    test_prototype = NULL;
+    const Health *spawned = Health_get(world, entity);
     REQUIRE(spawned && spawned->current == 100 && spawned->maximum == 50);
     return true;
 }
@@ -417,7 +415,7 @@ TEST_CASE(prototype_spawns_edits_and_captures_overrides)
 TEST_CASE(scene_documents_save_reflected_values_readably)
 {
     char error[256];
-    scene = game_scene_document_load(
+    scene = scene_document_load(
         "version 1\n"
         "name \"Readable\"\n"
         "(array)entities {\n"
@@ -425,9 +423,9 @@ TEST_CASE(scene_documents_save_reflected_values_readably)
         "        name \"Fluid\"\n"
         "        prototype \"Base\"\n"
         "        components {\n"
-        "            GameFluidVolume kind=1 color=966781183 absorption=0.035\n"
-        "            GameTransform x=0.15000000596046448 y=-0.0\n"
-        "            GameCollider category=16\n"
+        "            FluidVolume kind=1 color=966781183 absorption=0.035\n"
+        "            Transform x=0.15000000596046448 y=-0.0\n"
+        "            Collider category=16\n"
         "        }\n"
         "    }\n"
         "}\n",
@@ -435,16 +433,16 @@ TEST_CASE(scene_documents_save_reflected_values_readably)
         sizeof error
     );
     REQUIRE(scene);
-    saved = game_scene_document_save(scene, game_components());
+    saved = scene_document_save(scene, components());
     REQUIRE(saved && strstr(saved, "kind=\"Liquid\"") && strstr(saved, "color=0x399fe8ff"));
     REQUIRE(strstr(saved, "absorption=0.035") && strstr(saved, "x=0.15"));
     REQUIRE(strstr(saved, "y=-0.0") && strstr(saved, "category=16"));
-    loaded = game_scene_document_load(saved, error, sizeof error);
+    loaded = scene_document_load(saved, error, sizeof error);
     REQUIRE(loaded);
-    again = game_scene_document_save(loaded, game_components());
+    again = scene_document_save(loaded, components());
     REQUIRE(again && !strcmp(saved, again));
-    av_value *before = av_obj_get(scene->entities[0].components, "GameTransform");
-    av_value *after = av_obj_get(loaded->entities[0].components, "GameTransform");
+    av_value *before = av_obj_get(scene->entities[0].components, "Transform");
+    av_value *after = av_obj_get(loaded->entities[0].components, "Transform");
     float a = (float)av_get_num(av_obj_get(before, "x"));
     float b = (float)av_get_num(av_obj_get(after, "x"));
     REQUIRE(!memcmp(&a, &b, sizeof a));
@@ -458,58 +456,58 @@ TEST_CASE(scene_documents_save_reflected_values_readably)
 TEST_CASE(scene_documents_round_trip_entities_and_physics)
 {
     const char *behaviors[] = { "SceneBehavior", "Damage" };
-    scene = game_scene_document_new("CombatScene");
-    REQUIRE(scene && game_scene_document_add_entity(scene, -1, "Player", "PlayerPrototype") == 0);
-    REQUIRE(game_scene_document_set_entity_behaviors(scene, 0, behaviors, 2) == 0);
-    values = test_read_asset_value("GameHealth current=7 maximum=9\n");
-    REQUIRE(game_scene_document_set_entity_components(scene, 0, values) == 0);
-    REQUIRE(av_obj_get(scene->entities[0].components, "GameHealth"));
+    scene = scene_document_new("CombatScene");
+    REQUIRE(scene && scene_document_add_entity(scene, -1, "Player", "PlayerPrototype") == 0);
+    REQUIRE(scene_document_set_entity_behaviors(scene, 0, behaviors, 2) == 0);
+    values = test_read_asset_value("Health current=7 maximum=9\n");
+    REQUIRE(scene_document_set_entity_components(scene, 0, values) == 0);
+    REQUIRE(av_obj_get(scene->entities[0].components, "Health"));
     av_value_free(values);
 
-    values = test_read_asset_value("GameAppearance shape=0\n");
-    REQUIRE(game_scene_document_set_entity_components(scene, 0, values) == 0);
-    saved = game_scene_document_save(scene, game_components());
+    values = test_read_asset_value("Appearance shape=0\n");
+    REQUIRE(scene_document_set_entity_components(scene, 0, values) == 0);
+    saved = scene_document_save(scene, components());
     char error[256];
     av_doc *labeled = av_doc_read(saved, error, sizeof error);
     av_value *entity = labeled
                          ? av_arr_get(av_obj_get(av_doc_root(labeled), "entities"), 0)
                          : NULL;
-    av_value *appearance = av_obj_get(av_obj_get(entity, "components"), "GameAppearance");
+    av_value *appearance = av_obj_get(av_obj_get(entity, "components"), "Appearance");
     bool label = labeled && av_is_str(av_obj_get(appearance, "shape"));
     av_doc_free(labeled);
     REQUIRE(label);
-    REQUIRE(av_get_int(av_obj_get(av_obj_get(values, "GameAppearance"), "shape")) == 0);
+    REQUIRE(av_get_int(av_obj_get(av_obj_get(values, "Appearance"), "shape")) == 0);
     av_value_free(values);
     free(saved);
     saved = NULL;
 
     values = test_read_asset_value(
-        "GameHealth current=7 maximum=9\n"
-        "GameAppearance shape=4294967296\n"
+        "Health current=7 maximum=9\n"
+        "Appearance shape=4294967296\n"
     );
-    REQUIRE(game_scene_document_set_entity_components(scene, 0, values) == 0);
-    scene->physics = (game_physics_settings){ .workers = 8,
-                                              .substeps = 2,
-                                              .sleep = false,
-                                              .continuous = true,
-                                              .force_drive = true,
-                                              .contact_hertz = 15,
-                                              .contact_damping = 1 };
-    saved = game_scene_document_save(scene, game_components());
+    REQUIRE(scene_document_set_entity_components(scene, 0, values) == 0);
+    scene->physics = (physics_settings){ .workers = 8,
+                                         .substeps = 2,
+                                         .sleep = false,
+                                         .continuous = true,
+                                         .force_drive = true,
+                                         .contact_hertz = 15,
+                                         .contact_damping = 1 };
+    saved = scene_document_save(scene, components());
     REQUIRE(saved && strstr(saved, "4294967296"));
-    loaded = game_scene_document_load(saved, error, sizeof error);
-    REQUIRE(loaded && game_physics_settings_equal(scene->physics, loaded->physics));
+    loaded = scene_document_load(saved, error, sizeof error);
+    REQUIRE(loaded && physics_settings_equal(scene->physics, loaded->physics));
     REQUIRE(acount(loaded->entities) == 1);
-    const game_scene_entity *player = &loaded->entities[0];
+    const scene_entity *player = &loaded->entities[0];
     REQUIRE(!strcmp(player->name, "Player") && !strcmp(player->prototype, "PlayerPrototype"));
-    REQUIRE(av_obj_get(player->components, "GameHealth"));
+    REQUIRE(av_obj_get(player->components, "Health"));
     REQUIRE(acount(player->behaviors) == 2 && !strcmp(player->behaviors[1], "Damage"));
-    again = game_scene_document_save(loaded, game_components());
+    again = scene_document_save(loaded, components());
     REQUIRE(again && !strcmp(saved, again));
 
-    game_scene_document_free(loaded);
-    loaded = game_scene_document_load("version 1\nname \"Minimal\"\n(array)entities\n", error, sizeof error);
-    REQUIRE(loaded && game_physics_settings_equal(loaded->physics, game_physics_defaults()));
+    scene_document_free(loaded);
+    loaded = scene_document_load("version 1\nname \"Minimal\"\n(array)entities\n", error, sizeof error);
+    REQUIRE(loaded && physics_settings_equal(loaded->physics, physics_defaults()));
     return true;
 }
 
@@ -527,13 +525,13 @@ TEST_CASE(scene_documents_refuse_invalid_physics_names_and_versions)
             "version 1\nname \"Invalid\"\n(array)entities\nphysics { %s }\n",
             invalid_physics[i]
         );
-        loaded = game_scene_document_load(text, error, sizeof error);
+        loaded = scene_document_load(text, error, sizeof error);
         REQUIRE(!loaded && strstr(error, "physics"));
     }
-    scene = game_scene_document_new("Duplicate");
-    REQUIRE(scene && game_scene_document_add_entity(scene, -1, "A", "P") == 0);
-    REQUIRE(game_scene_document_add_entity(scene, -1, "A", "P") != 0);
-    loaded = game_scene_document_load("version 2\nname \"Bad\"\n(array)entities\n", error, sizeof error);
+    scene = scene_document_new("Duplicate");
+    REQUIRE(scene && scene_document_add_entity(scene, -1, "A", "P") == 0);
+    REQUIRE(scene_document_add_entity(scene, -1, "A", "P") != 0);
+    loaded = scene_document_load("version 2\nname \"Bad\"\n(array)entities\n", error, sizeof error);
     REQUIRE(!loaded && strstr(error, "version 1"));
     return true;
 }

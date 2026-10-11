@@ -14,19 +14,19 @@ static ui_document document;
 static text_edit *edits;
 static ui_document_event_range *ranges;
 static char *text, *replacement, *value;
-static game_ui_document prepared_ui, decoded_ui;
-static game_ui_font font, decoded_font;
+static prepared_ui_document prepared_ui, decoded_ui;
+static ui_font font, decoded_font;
 static unsigned char *ui_bytes, *font_bytes;
 static ui_source_resource *dependencies;
-static game_ui_documents *prepared_table;
+static ui_documents *prepared_table;
 
 static void cleanup()
 {
-    game_ui_document_free(&prepared_ui);
-    game_ui_document_free(&decoded_ui);
-    game_ui_font_free(&font);
-    game_ui_font_free(&decoded_font);
-    game_ui_documents_free(prepared_table);
+    prepared_ui_document_free(&prepared_ui);
+    prepared_ui_document_free(&decoded_ui);
+    ui_font_free(&font);
+    ui_font_free(&decoded_font);
+    ui_documents_free(prepared_table);
     prepared_table = NULL;
     free(ui_bytes);
     free(font_bytes);
@@ -116,25 +116,19 @@ TEST_CASE(prepared_ui_records_own_resources_and_reject_partial_input)
 {
     char error[192];
     size_t length = 0;
-    prepared_ui = (game_ui_document){
+    prepared_ui = (prepared_ui_document){
         .name = xstrdup("Hud"),
         .markup = xstrdup("<img src='content/art/a.png#nearest'/><span>Score</span>"),
         .style = xstrdup(".score { font-family: Inter; }"),
         .body = xstrdup("class='game'")
     };
-    apush(
-        prepared_ui.resources,
-        ((game_ui_resource){ GAME_UI_RESOURCE_IMAGE, xstrdup("content/art/a.png") })
-    );
-    apush(
-        prepared_ui.resources,
-        ((game_ui_resource){ GAME_UI_RESOURCE_FONT, xstrdup("font/Inter/400/normal") })
-    );
-    REQUIRE(game_ui_document_prepared_write(&prepared_ui, &ui_bytes, &length, error, sizeof error));
-    game_ui_document_free(&prepared_ui);
+    apush(prepared_ui.resources, ((ui_resource){ UI_RESOURCE_IMAGE, xstrdup("content/art/a.png") }));
+    apush(prepared_ui.resources, ((ui_resource){ UI_RESOURCE_FONT, xstrdup("font/Inter/400/normal") }));
+    REQUIRE(ui_document_prepared_write(&prepared_ui, &ui_bytes, &length, error, sizeof error));
+    prepared_ui_document_free(&prepared_ui);
     size_t remaining = 8192;
     REQUIRE(
-        game_ui_document_prepared_read_budget(ui_bytes, length, &remaining, &decoded_ui, error, sizeof error)
+        ui_document_prepared_read_budget(ui_bytes, length, &remaining, &decoded_ui, error, sizeof error)
     );
     REQUIRE(!strcmp(decoded_ui.body, "class='game'") && acount(decoded_ui.resources) == 2);
     REQUIRE(
@@ -144,29 +138,29 @@ TEST_CASE(prepared_ui_records_own_resources_and_reject_partial_input)
     char *saved = decoded_ui.markup;
     size_t before = remaining;
     REQUIRE(
-        !game_ui_document_prepared_read_budget(NULL, length, &remaining, &decoded_ui, error, sizeof error)
+        !ui_document_prepared_read_budget(NULL, length, &remaining, &decoded_ui, error, sizeof error)
     );
     REQUIRE(
-        !game_ui_document_prepared_read_budget(ui_bytes, length - 1, &remaining, &decoded_ui, error, sizeof error)
+        !ui_document_prepared_read_budget(ui_bytes, length - 1, &remaining, &decoded_ui, error, sizeof error)
     );
     ui_bytes[8] = 2;
     REQUIRE(
-        !game_ui_document_prepared_read_budget(ui_bytes, length, &remaining, &decoded_ui, error, sizeof error)
+        !ui_document_prepared_read_budget(ui_bytes, length, &remaining, &decoded_ui, error, sizeof error)
     );
     ui_bytes[8] = 1;
     REQUIRE(decoded_ui.markup == saved && remaining == before);
     size_t zero = 0;
     REQUIRE(
-        !game_ui_document_prepared_read_budget(ui_bytes, length, &zero, &decoded_ui, error, sizeof error)
+        !ui_document_prepared_read_budget(ui_bytes, length, &zero, &decoded_ui, error, sizeof error)
     );
     REQUIRE(decoded_ui.markup == saved && zero == 0);
-    prepared_table = game_ui_documents_new_budget(&remaining, true);
+    prepared_table = ui_documents_new_budget(&remaining, true);
     REQUIRE(prepared_table);
-    REQUIRE(!game_ui_documents_add_owned_budget(prepared_table, &decoded_ui, &zero));
+    REQUIRE(!ui_documents_add_owned_budget(prepared_table, &decoded_ui, &zero));
     REQUIRE(decoded_ui.markup == saved && zero == 0);
-    REQUIRE(game_ui_documents_add_owned_budget(prepared_table, &decoded_ui, &remaining));
-    REQUIRE(!decoded_ui.markup && game_ui_documents_count(prepared_table) == 1);
-    REQUIRE(!strcmp(game_ui_documents_at(prepared_table, 0)->name, "Hud"));
+    REQUIRE(ui_documents_add_owned_budget(prepared_table, &decoded_ui, &remaining));
+    REQUIRE(!decoded_ui.markup && ui_documents_count(prepared_table) == 1);
+    REQUIRE(!strcmp(ui_documents_at(prepared_table, 0)->name, "Hud"));
     /* Neutral envelope validates extents, not font interpretation; real font
      * acceptance belongs to RmlUi staging. This one-table fixture is bounded. */
     unsigned char *face = xcalloc(28, 1);
@@ -174,16 +168,16 @@ TEST_CASE(prepared_ui_records_own_resources_and_reject_partial_input)
     face[5] = 1;
     memcpy(face + 12, "head", 4);
     face[23] = 28;
-    font = (game_ui_font){ .key = xstrdup("font/Test/400/normal"),
-                           .family = xstrdup("Test"),
-                           .data = face,
-                           .length = 28,
-                           .weight = 400,
-                           .fallback = true };
-    REQUIRE(game_ui_font_prepared_write(&font, &font_bytes, &length, error, sizeof error));
-    game_ui_font_free(&font);
+    font = (ui_font){ .key = xstrdup("font/Test/400/normal"),
+                      .family = xstrdup("Test"),
+                      .data = face,
+                      .length = 28,
+                      .weight = 400,
+                      .fallback = true };
+    REQUIRE(ui_font_prepared_write(&font, &font_bytes, &length, error, sizeof error));
+    ui_font_free(&font);
     REQUIRE(
-        game_ui_font_prepared_read_budget(font_bytes, length, &remaining, &decoded_font, error, sizeof error)
+        ui_font_prepared_read_budget(font_bytes, length, &remaining, &decoded_font, error, sizeof error)
     );
     REQUIRE(
         decoded_font.length == 28 && decoded_font.weight == 400 &&
@@ -192,15 +186,13 @@ TEST_CASE(prepared_ui_records_own_resources_and_reject_partial_input)
     const unsigned char *saved_face = decoded_font.data;
     before = remaining;
     REQUIRE(
-        !game_ui_font_prepared_read_budget(font_bytes, length - 1, &remaining, &decoded_font, error, sizeof error)
+        !ui_font_prepared_read_budget(font_bytes, length - 1, &remaining, &decoded_font, error, sizeof error)
     );
     REQUIRE(decoded_font.data == saved_face && remaining == before);
     ((unsigned char *)decoded_font.data)[23] = 29;
     unsigned char *invalid = NULL;
     size_t invalid_size = 0;
-    REQUIRE(
-        !game_ui_font_prepared_write(&decoded_font, &invalid, &invalid_size, error, sizeof error)
-    );
+    REQUIRE(!ui_font_prepared_write(&decoded_font, &invalid, &invalid_size, error, sizeof error));
     REQUIRE(!invalid && invalid_size == 0);
     return true;
 }

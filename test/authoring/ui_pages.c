@@ -59,8 +59,8 @@ TEST_CASE(scene_pages_bind_and_rename_with_their_scenes)
         "<slot/>\n",
         "<slot/>\n",
     };
-    game_prototype_registry registry = { .components = GAME_REGISTRY_COMPONENTS,
-                                         .component_count = GAME_REGISTRY_COMPONENT_COUNT };
+    prototype_registry registry = { .components = REGISTRY_COMPONENTS,
+                                    .component_count = REGISTRY_COMPONENT_COUNT };
     refactor_project project = { refs, texts, &registry };
     char error[256] = "";
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = shell };

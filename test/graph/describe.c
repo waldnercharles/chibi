@@ -71,7 +71,7 @@ TEST_CASE(nodes_read_their_types_and_components_sentences)
     REQUIRE(
         placed_describes(graph_add_node(asset->graph, &NODE_Branch), NODE_Branch.description)
     );
-    const ecs_component_desc *health = &GAME_COMPONENT_GameHealth;
+    const ecs_component_desc *health = &COMPONENT_Health;
     const char *type = health->type->name;
     char text[256];
     snprintf(text, sizeof text, "Reads %s from Entity, which defaults to Self.", type);
@@ -91,16 +91,14 @@ TEST_CASE(nodes_read_their_types_and_components_sentences)
 
 TEST_CASE(events_read_their_own_sentences)
 {
-    const game_host_event_desc *tick = &GAME_HOST_EVENTS[GAME_HOST_EVENT_TICK];
-    REQUIRE(
-        placed_describes(handler(game_host_event_name(GAME_HOST_EVENT_TICK)), tick->description)
-    );
+    const host_event_desc *tick = &HOST_EVENTS[HOST_EVENT_TICK];
+    REQUIRE(placed_describes(handler(host_event_name(HOST_EVENT_TICK)), tick->description));
     REQUIRE(placed_describes(handler("Hit"), "An entity was struck."));
     REQUIRE(placed_describes(handler("Quiet"), NODE_Event.description));
     node *send = graph_add_node(asset->graph, graph_palette_node("Send Event"));
     REQUIRE(graph_set_node_reference(asset->graph, send, 0, "Hit") == 0);
     REQUIRE(placed_describes(send, "Sends Hit to Entity."));
-    const game_host_event_desc *contact = &GAME_HOST_EVENTS[GAME_HOST_EVENT_CONTACT_BEGIN];
+    const host_event_desc *contact = &HOST_EVENTS[HOST_EVENT_CONTACT_BEGIN];
     node_subject host = { .desc = &NODE_Event, .host = contact };
     REQUIRE(describes(&host, contact->description));
     return true;

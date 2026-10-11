@@ -556,11 +556,12 @@ they glow, small, moving, edge and mixed-color sources, falloff to the depth
 radius, perspective views, the depth gain on receivers that absorb, as much at
 a Material's full absorption as opaque, receivers that absorb nothing taking
 HRC's light by facing and height, smoothly, gloss,
-every depth quality, depth history, segments and steep planes. The surface
+every depth quality, depth history of light and of that shading, segments and
+steep planes. The surface
 gather pass alone must take each quadrant's light, find crests past gaps and
 stay dark without light in reach, and surface gather light must restart when
 the view turns. Its cases share one HRC, since a new one compiles all of HRC's
-shaders. It passes 1930 assertions in 10.5 seconds, 19.3 with an empty shader
+shaders. It passes 2070 assertions in 11.5 seconds, 20.9 with an empty shader
 cache.
 `material-sampling` draws shapes into the material raster alone in a hidden
 65 x 49 app: small circles must emit their area wherever they land on the pixel

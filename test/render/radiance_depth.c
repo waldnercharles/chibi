@@ -818,6 +818,30 @@ TEST_CASE(depth_history_settles_on_brighter_light)
     return true;
 }
 
+/* Depth history also holds how Depth shades HRC's light on a receiver that
+ * absorbs nothing: tilted a little toward the strip, the receiver takes part
+ * of its new light in one frame and settles near it. */
+TEST_CASE(depth_history_settles_on_open_shading)
+{
+    GameHRC2D lighting = fill_lighting();
+    lighting.surface_depth_history = 0;
+    float instant, initial, color[3];
+    REQUIRE(open_light(OPEN, .2f, 1, lighting, &instant));
+    lighting.surface_depth_temporal = true;
+    REQUIRE(open_light(OPEN, 0, 1, lighting, &initial));
+    open_scene(OPEN, .2f, 1);
+    REQUIRE(lit(lighting, test_centered(SIDE), color));
+    float first = color[0];
+    for (int frame = 0; frame < 24; frame++) {
+        REQUIRE(lit(lighting, test_centered(SIDE), color));
+    }
+    float step = instant - initial;
+    REQUIRE(step > initial * .02f);
+    REQUIRE(first > initial && first < instant - step * .2f);
+    REQUIRE(fabsf(color[0] - instant) < step * .25f);
+    return true;
+}
+
 /* The camera moves one cell right, and the same strip moves four pixels
  * left. Any history sample on the plane looks plausible, but its light
  * changes across it, so history must come from the moved cell. */
@@ -1250,6 +1274,7 @@ void test_render_radiance_depth()
     RUN_TEST_CASE(every_depth_quality_lights_and_shadows);
     RUN_TEST_CASE(depth_history_keeps_still_light_and_drops_changes);
     RUN_TEST_CASE(depth_history_settles_on_brighter_light);
+    RUN_TEST_CASE(depth_history_settles_on_open_shading);
     RUN_TEST_CASE(depth_history_follows_the_camera);
     RUN_TEST_CASE(surface_gather_light_restarts_when_the_view_turns);
     pu_setup(wide_setup, teardown);

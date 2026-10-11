@@ -167,9 +167,11 @@ if(TARGET Chibi::render)
     endif()
 endif()
 
-# Mesh surfaces read the mesh parts project preparation publishes.
+# Mesh surfaces and 3D shapes read the mesh parts project preparation
+# publishes.
 if(TARGET Chibi::render AND TARGET Chibi::project_preparation)
-    target_sources(test_tools PRIVATE ../render/appearance_geometry.c ../render/mesh_surface.c)
+    target_sources(test_tools PRIVATE ../render/appearance_geometry.c ../render/mesh_surface.c
+        ../render/scene3d_post.c ../render/scene3d_shapes.c)
     target_link_libraries(test_tools PRIVATE Chibi::project_preparation)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_GEOMETRY=1)
 endif()

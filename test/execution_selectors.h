@@ -77,3 +77,9 @@ CHIBI_GPU_SELECTOR("--mesh-materials")
 /* SDF surface quality, trace work, gradients and spatial scratch groups in a
  * hidden 96x80 app, with readback. */
 CHIBI_GPU_SELECTOR("--sdf-quality")
+/* 3D tone mapping, bloom, exposure and draw state over an HDR emitter
+ * pattern in a hidden app, with readback. */
+CHIBI_GPU_SELECTOR("--scene3d-post")
+/* 3D primitive framing, picking, bounds and drawing in a hidden 128x128 app,
+ * with readback. */
+CHIBI_GPU_SELECTOR("--scene3d-shapes")

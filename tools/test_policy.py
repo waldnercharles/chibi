@@ -42,6 +42,8 @@ NATIVE = {
     ('--material-cameras',): 'Reviewed hidden 96x80 app: six orbit camera cases for projected bounds, centered circles, frontmost mesh and SDF surfaces, 2D layer planes, a centered four-actor cross and emissive SDF centroids, with readback; GPU; docs/testing.md',
     ('--mesh-materials',): 'Reviewed hidden 96x80 app: eight material raster mesh cases for visible faces, depth between meshes, ordered layers, planes, subpixel coverage, padded views, imported mesh UVs and perspective cards, with readback; GPU; docs/testing.md',
     ('--sdf-quality',): 'Reviewed hidden 96x80 app: ten SDF surface cases for program specialization, analytic spheres, thin rings, planes and creases, trace work, analytic gradients and their fallback, and spatial scratch groups, with readback; GPU; docs/testing.md',
+    ('--scene3d-post',): 'Reviewed hidden app: nine 3D post-processing cases for the HDR target and Neutral tone map, bloom threshold, strength, radius, edges and resizes, exposure, non-finite sources, draw state and retained output, with readback; GPU; docs/testing.md',
+    ('--scene3d-shapes',): 'Reviewed hidden 128x128 app: thirteen 3D primitive cases for overhead framing, picking, turned bounds, flat triangles, drawing, depth order, parallel geometry, prisms, octahedra, composed parts, polygons and box frame parts, with readback; GPU; docs/testing.md',
     ('--shader-programs',): 'Reviewed hidden 64x64 app: eleven ramp recompile, preview, raster, offset, capacity and program-id cases and image texture routes through raster and fragment programs, with readback; GPU; docs/testing.md',
     ('--radiance-surface',): 'Reviewed hidden 128x128 app: HRC silhouettes, relief facing and below the light, world-space surface depth, directional surface colors in every shadow mode, and surface light history, with readback; GPU; docs/testing.md',
     ('--radiance-horizons4',): 'Reviewed hidden 128x128 app: four-direction horizons following moving relief, their hierarchy against the fine scan, and their cache against fresh horizons over 15 stages for 8 option sets, with readback; GPU; docs/testing.md',
@@ -173,6 +175,12 @@ TOOLS = {
     # Ten reviewed hidden-app 96x80 SDF surface cases: specialization, analytic spheres, thin rings,
     # planes and creases, trace work, gradients and their fallback, and spatial scratch groups.
     'sdf-quality': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--sdf-quality'],
+    # Nine reviewed hidden-app 3D post-processing cases: HDR target and tone map, bloom, exposure,
+    # non-finite sources, edges, radius across sizes, draw state and retained output.
+    'scene3d-post': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-post'],
+    # Thirteen reviewed hidden-app 128x128 3D primitive cases: framing, picking, bounds, drawing,
+    # depth order, parallel geometry, outlines, composed parts and box frame parts.
+    'scene3d-shapes': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-shapes'],
     # Hidden-app 128x128 HRC surface light through relief materials: silhouettes, relief facing
     # the light, world-space depth, directional colors in every shadow mode and history.
     'radiance-surface': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-surface'],
@@ -560,7 +568,7 @@ def main():
                             'material-ramps', 'radiance-surface', 'radiance-horizons4',
                             'radiance-horizons8', 'material-pixels', 'shader-parity',
                             'shader-programs', 'material-cameras', 'mesh-materials',
-                            'sdf-quality'):
+                            'sdf-quality', 'scene3d-post', 'scene3d-shapes'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])
         return run_commands([TOOLS[arguments[0]]])

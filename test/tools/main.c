@@ -59,6 +59,8 @@ void test_device_controls();
 #ifdef CHIBI_TEST_RENDER_GEOMETRY
 void test_appearance_geometry();
 void test_mesh_surface();
+void test_scene3d_post();
+void test_scene3d_shapes();
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
 void test_render_material_ramps();
@@ -210,7 +212,8 @@ int main(int argc, char **argv)
          mesh_files = false, model_import = false, model_graphs = false,
          model_catalog = false, render_geometry = false, shader_graphs = false,
          shader_parity = false, shader_programs = false,
-         material_cameras = false, mesh_materials = false, sdf_quality = false;
+         material_cameras = false, mesh_materials = false, sdf_quality = false,
+         scene3d_post = false, scene3d_shapes = false;
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
@@ -289,6 +292,8 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_RENDER_GEOMETRY
     render_geometry = argc == 2 && !strcmp(argv[1], "--render-geometry");
+    scene3d_post = argc == 2 && !strcmp(argv[1], "--scene3d-post");
+    scene3d_shapes = argc == 2 && !strcmp(argv[1], "--scene3d-shapes");
 #endif
 #ifdef CHIBI_TEST_MODEL_GRAPHS
     model_graphs = argc == 2 && !strcmp(argv[1], "--model-graphs");
@@ -327,8 +332,9 @@ int main(int argc, char **argv)
         !material_sampling && !scene2d && !scene3d && !material_ramps &&
         !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
         !sky_files && !mesh_files && !model_import && !model_graphs &&
-        !model_catalog && !shader_graphs && !shader_parity && !shader_programs &&
-        !material_cameras && !mesh_materials && !sdf_quality && !persistent_store &&
+        !model_catalog && !shader_graphs && !shader_parity &&
+        !shader_programs && !material_cameras && !mesh_materials &&
+        !sdf_quality && !scene3d_post && !scene3d_shapes && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
         !source_numeric && !source_material && !source_presentation &&
@@ -357,7 +363,7 @@ int main(int argc, char **argv)
             "--sky-files | --mesh-files | --model-import | --model-graphs | "
             "--model-catalog | --shader-graphs | --shader-parity | "
             "--shader-programs | --material-cameras | --mesh-materials | "
-            "--sdf-quality | "
+            "--sdf-quality | --scene3d-post | --scene3d-shapes | "
             "--persistent-store | "
             "--whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
@@ -514,9 +520,15 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_RENDER_GEOMETRY
-    if (render_geometry) {
-        test_appearance_geometry();
-        test_mesh_surface();
+    if (render_geometry || scene3d_post || scene3d_shapes) {
+        if (scene3d_post) {
+            test_scene3d_post();
+        } else if (scene3d_shapes) {
+            test_scene3d_shapes();
+        } else {
+            test_appearance_geometry();
+            test_mesh_surface();
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

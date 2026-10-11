@@ -48,8 +48,8 @@ group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 `radiance`, `radiance-depth`, `radiance-surface`, `radiance-horizons4`,
 `radiance-horizons8`, `material-pixels`, `material-sampling`, `scene2d`,
 `scene3d`, `scene3d-gles`, `material-ramps`, `shader-parity`,
-`shader-programs`, `material-cameras`, `mesh-materials` and `sdf-quality`
-render through a hidden window,
+`shader-programs`, `material-cameras`, `mesh-materials`, `sdf-quality`,
+`scene3d-post` and `scene3d-shapes` render through a hidden window,
 which needs a display and a GPU driver the CI job does not set up, so they stay
 out of the group; run them with `python3 tools/test_policy.py tool <name>`.
 
@@ -748,6 +748,27 @@ Build and run these three like `interior-border`, with `AGENT_SELECTOR` set to
 the selector. They pass under ASan/UBSan on Vulkan llvmpipe, whose worker threads
 leak 112 bytes as they do for `material-ramps`, so they run with
 `detect_leaks=0`.
+`scene3d-post` selects nine hidden-app cases of 3D post-processing over an
+emitter pattern drawn straight into its HDR target: the target keeps scene
+light and the Neutral tone map matches a CPU reference, bloom spreads past its
+threshold while zero strength, zero radius or a high threshold leave the image
+untouched, exposure scales it, infinite channels tone map to white and NaN ones
+to black, bloom clamps at the image edge, its radius follows the viewport height
+and crosses blur levels smoothly, outputs take sizes down to one pixel,
+processing keeps the caller's transform, projection, scissor and viewport, and
+invalid settings keep the last output. It passes 59 assertions in 1.5 seconds.
+`scene3d-shapes` selects thirteen hidden-app 128x128 cases of the 3D path's
+primitive solids lit by the Environment's ambient light. Overhead cameras
+center and map the ground, picks find the nearest solid of every primitive,
+turned bounds fit, frame and clip at the near plane, and flat triangles turn
+about their area center. Every solid primitive draws, nearer solids win in any
+order, parallel geometry draws exactly what serial geometry does for 1,537
+actors, fitted bounds frame what draws, prisms and octahedra draw and pick
+their outline at eight headings and from below, eight tetrahedron parts
+compose an octahedron, polygons' notches and holes stay empty in both the mesh
+and picks, and a box frame's twelve part entities match the frame. It passes
+1,067 assertions in 2 seconds. Run both like `interior-border`; they also run
+with `detect_leaks=0` for llvmpipe's 112 bytes.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

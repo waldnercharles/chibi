@@ -677,6 +677,16 @@ edits, renames and removals, and model surfaces: bounds, transforms, empty
 intersections and perspective picking. It needs a compiler build, uses one
 temporary folder and passes 1,355 assertions in 0.4 seconds under ASan/UBSan
 with leak checks, without a window.
+`render-geometry` checks render geometry without a window: appearance shapes'
+bounds, containment, points and rotated bounds, refusing geometry that is not
+finite and positive, and mesh surfaces' world bounds, banking with a visual
+roll, frontmost picks, compound mesh parts that project preparation publishes,
+and unit normals on every supported primitive. It passes 817 assertions in
+0.05 seconds under ASan/UBSan with leak checks.
+`arena` checks the support arena allocator: growth that keeps earlier
+allocations intact and aligned, a reset that hands back the retained blocks in
+order, and a zero-initialized arena. It passes 354 assertions in 0.06
+seconds.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

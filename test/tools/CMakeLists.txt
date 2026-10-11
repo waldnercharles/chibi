@@ -77,7 +77,8 @@ target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
 add_executable(test_tools main.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
-    validate_project.c test_policy.c validation_plan.c publish.c web_storage.c webgpu_staging.c $<TARGET_OBJECTS:chibi_sdk_contracts>
+    validate_project.c test_policy.c validation_plan.c publish.c web_storage.c webgpu_staging.c ../support/arena.c
+    $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
     "${CHIBI_TOOL_ROOT}/third_party/yyjson/yyjson.c")
@@ -164,6 +165,13 @@ if(TARGET Chibi::render)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
         target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
     endif()
+endif()
+
+# Mesh surfaces read the mesh parts project preparation publishes.
+if(TARGET Chibi::render AND TARGET Chibi::project_preparation)
+    target_sources(test_tools PRIVATE ../render/appearance_geometry.c ../render/mesh_surface.c)
+    target_link_libraries(test_tools PRIVATE Chibi::project_preparation)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_GEOMETRY=1)
 endif()
 
 # Image preparation decodes and imports files, so only compiler builds have it.

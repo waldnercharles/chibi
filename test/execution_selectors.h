@@ -9,6 +9,10 @@ CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
 CHIBI_CPU_SELECTOR("--model-graphs")
 /* Models and materials in the renderer's shader catalog, without a window. */
 CHIBI_CPU_SELECTOR("--model-catalog")
+/* Appearance and mesh surface geometry, without a window. */
+CHIBI_CPU_SELECTOR("--render-geometry")
+/* The support arena allocator. */
+CHIBI_CPU_SELECTOR("--arena")
 
 /* Explicit opt-in checks against installed products; each runs under the
  * shared 60-second supervisor. */

@@ -36,6 +36,7 @@ void test_tool_ecs_hierarchy();
 void test_tool_ecs_world();
 void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
+void test_arena();
 void test_tool_validate_project(const char *binary);
 void test_tool_prototype_expansion(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
@@ -54,6 +55,10 @@ void test_render_material_borders();
 void test_render_scene2d();
 void test_render_scene3d(bool gles);
 void test_device_controls();
+#endif
+#ifdef CHIBI_TEST_RENDER_GEOMETRY
+void test_appearance_geometry();
+void test_mesh_surface();
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
 void test_render_material_ramps();
@@ -182,6 +187,7 @@ int main(int argc, char **argv)
     bool webgpu_staging = argc == 2 && !strcmp(argv[1], "--webgpu-staging");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
+    bool arena = argc == 2 && !strcmp(argv[1], "--arena");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
@@ -194,7 +200,7 @@ int main(int argc, char **argv)
          scene3d = false, material_ramps = false, radiance_surface = false,
          material_pixels = false, box3d = false, sky_files = false,
          mesh_files = false, model_import = false, model_graphs = false,
-         model_catalog = false;
+         model_catalog = false, render_geometry = false;
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
@@ -271,6 +277,9 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_MESH_PREPARATION
     mesh_files = argc == 2 && !strcmp(argv[1], "--mesh-files");
 #endif
+#ifdef CHIBI_TEST_RENDER_GEOMETRY
+    render_geometry = argc == 2 && !strcmp(argv[1], "--render-geometry");
+#endif
 #ifdef CHIBI_TEST_MODEL_GRAPHS
     model_graphs = argc == 2 && !strcmp(argv[1], "--model-graphs");
 #ifdef CHIBI_TEST_RENDER_RUNTIME
@@ -292,13 +301,14 @@ int main(int argc, char **argv)
 #endif
     if (argc != 1 && !corpus && !coverage && !shader_parameters && !source_edit &&
         !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
-        !package && !unit && !web_storage && !webgpu_staging &&
-        !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics && !physics3d &&
-        !transforms && !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
-        !scene2d && !scene3d && !material_ramps && !radiance_surface &&
-        !radiance_horizons && !material_pixels && !box3d && !sky_files && !mesh_files &&
+        !package && !unit && !web_storage && !webgpu_staging && !query_benchmark &&
+        !arena && !prepared && !read && !scene && !scene_prepared && !native &&
+        !native_values && !native_catalog && !physics && !physics3d &&
+        !transforms && !render_resources && !render_geometry &&
+        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
+        !radiance_depth && !material_sampling && !scene2d && !scene3d &&
+        !material_ramps && !radiance_surface && !radiance_horizons &&
+        !material_pixels && !box3d && !sky_files && !mesh_files &&
         !model_import && !model_graphs && !model_catalog && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
@@ -309,14 +319,15 @@ int main(int argc, char **argv)
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
             "--web-storage | "
             "--webgpu-staging | "
-            "--ecs-query-benchmark | "
+            "--ecs-query-benchmark | --arena | "
             "--validate-project chibi_ctl | "
             "--prototype-expansion chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
             "| --physics | --physics3d | --transforms "
-            "| --render-resources | --interior-border | --viewport-resize | "
+            "| --render-resources | --render-geometry | --interior-border | "
+            "--viewport-resize | "
             "--sdf-visibility | "
             "--radiance | --radiance-depth | --material-sampling | --scene2d | "
             "--scene3d | "
@@ -481,6 +492,14 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
 #endif
+#ifdef CHIBI_TEST_RENDER_GEOMETRY
+    if (render_geometry) {
+        test_appearance_geometry();
+        test_mesh_surface();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
 #ifdef CHIBI_TEST_MODEL_GRAPHS
     if (model_graphs) {
         test_modeling();
@@ -559,6 +578,8 @@ int main(int argc, char **argv)
         test_tool_web_storage();
     } else if (query_benchmark) {
         test_tool_ecs_query_benchmark();
+    } else if (arena) {
+        test_arena();
     } else {
         test_tool_execution_policy();
         test_tool_types();

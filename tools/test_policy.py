@@ -79,6 +79,8 @@ TOOLS = {
     'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-parameters-prepared'],
     # Reviewed fixed ECS query workloads; compare builds through benchmark_trials.
     'ecs-query-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query-benchmark'],
+    # Two reviewed arena cases: aligned growth, block reuse after reset and a zero-initialized arena.
+    'arena': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--arena'],
     # Reviewed four fixed scheduling cases, including verified source cohorts and mixed phase membership.
     'system-schedule': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--system-schedule'],
     # Same admitted eleven fixed source-system cases through installed public consumer, VM and SLJIT.
@@ -115,6 +117,9 @@ TOOLS = {
     # and halves, sky irradiance, the split-sum table, sky publication, HRC view layout and lighting
     # normalization, and pure desktop key/stick mapping; no window, GPU, fonts or files.
     'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--render-resources'],
+    # Seven reviewed CPU-only render geometry cases: appearance bounds, picking and rotation, and mesh
+    # surfaces' bounds, banking, frontmost picks, compound parts and primitive normals; no window.
+    'render-geometry': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--render-geometry'],
     # Two reviewed hidden-app 64x64 cases: Cute's interior border on a circle and a diamond,
     # opaque and translucent, through the instanced and tiled draw paths. The agent runs the
     # render-enabled test_tools of its selected build directory.

@@ -3,9 +3,9 @@
 #include "runtime/material_fluid.h"
 #include "runtime/materials.h"
 #include "runtime/particles.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
-#include <stdio.h>
 
 static fluid_contact contact_for(int kind, float body_speed, unsigned color)
 {
@@ -27,12 +27,12 @@ static fluid_contact contact_for(int kind, float body_speed, unsigned color)
     return result;
 }
 
-static void quiet_rest()
+TEST_CASE(quiet_rest)
 {
     material_fluid *fluid = material_fluid_new(10, 4);
     material_fluid_set_flow(fluid, (fluid_flow_settings){ 20, 2, .1f });
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
-    assert(material_fluid_add(
+    REQUIRE(material_fluid_add(
         fluid,
         (
             fluid_particle
@@ -44,11 +44,12 @@ static void quiet_rest()
     material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
     int count;
     material_fluid_contacts(fluid, &count);
-    assert(count == 0);
+    REQUIRE(count == 0);
     material_fluid_free(fluid);
+    return true;
 }
 
-static void bounded_contacts()
+TEST_CASE(bounded_contacts)
 {
     enum
     {
@@ -66,7 +67,7 @@ static void bounded_contacts()
                                   .owner = (uint64_t)i + 1 };
         bodies[i].swept = true;
         obstacles[i] = (fluid_obstacle){ .body = i, .radius = 5 };
-        assert(material_fluid_add(
+        REQUIRE(material_fluid_add(
             fluid,
             (fluid_particle){ .position = { x + 3, 0 },
                               .mass = .01f,
@@ -79,8 +80,9 @@ static void bounded_contacts()
     material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, bodies, PARTICLES, obstacles, PARTICLES);
     int count;
     material_fluid_contacts(fluid, &count);
-    assert(count == MATERIAL_FLUID_CONTACT_LIMIT);
+    REQUIRE(count == MATERIAL_FLUID_CONTACT_LIMIT);
     material_fluid_free(fluid);
+    return true;
 }
 
 static fluid_contact box_sweep(float start, float end, float speed)
@@ -109,11 +111,11 @@ static fluid_contact box_sweep(float start, float end, float speed)
     return result;
 }
 
-static void swept_and_rotating_bodies()
+TEST_CASE(swept_and_rotating_bodies)
 {
     material_fluid *fluid = material_fluid_new(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
-    assert(material_fluid_add(
+    REQUIRE(material_fluid_add(
         fluid,
         (
             fluid_particle
@@ -129,20 +131,20 @@ static void swept_and_rotating_bodies()
     material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
     int count;
     const fluid_contact *contacts = material_fluid_contacts(fluid, &count);
-    assert(count == 1 && contacts[0].closing_speed > 1000);
-    assert(body.impulse.x < 0);
+    REQUIRE(count == 1 && contacts[0].closing_speed > 1000);
+    REQUIRE(body.impulse.x < 0);
     const fluid_particle *particles = material_fluid_particles(fluid, &count);
-    assert(count == 1 && particles[0].position.x > body.position.x + obstacle.radius);
+    REQUIRE(count == 1 && particles[0].position.x > body.position.x + obstacle.radius);
     material_fluid_free(fluid);
 
     fluid_contact rightward = box_sweep(-20, 20, 2400);
     fluid_contact leftward = box_sweep(20, -20, -2400);
-    assert(rightward.closing_speed > 2000 && rightward.normal.x > .99f);
-    assert(leftward.closing_speed > 2000 && leftward.normal.x < -.99f);
+    REQUIRE(rightward.closing_speed > 2000 && rightward.normal.x > .99f);
+    REQUIRE(leftward.closing_speed > 2000 && leftward.normal.x < -.99f);
 
     fluid = material_fluid_new(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
-    assert(material_fluid_add(
+    REQUIRE(material_fluid_add(
         fluid,
         (
             fluid_particle
@@ -152,15 +154,16 @@ static void swept_and_rotating_bodies()
     obstacle = (fluid_obstacle){ .body = 0, .half_size = { 10, 10 } };
     material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
     contacts = material_fluid_contacts(fluid, &count);
-    assert(count == 1 && contacts[0].closing_speed > 100);
+    REQUIRE(count == 1 && contacts[0].closing_speed > 100);
     material_fluid_free(fluid);
+    return true;
 }
 
-static void fast_particle_sweeps_stationary_wall()
+TEST_CASE(fast_particle_sweeps_stationary_wall)
 {
     material_fluid *fluid = material_fluid_new(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
-    assert(material_fluid_add(
+    REQUIRE(material_fluid_add(
         fluid,
         (fluid_particle){ .position = { -20, 0 },
                           .velocity = { 4800, 0 },
@@ -175,18 +178,19 @@ static void fast_particle_sweeps_stationary_wall()
     material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
     int count;
     const fluid_contact *contacts = material_fluid_contacts(fluid, &count);
-    assert(count == 1 && contacts[0].closing_speed > 4000);
+    REQUIRE(count == 1 && contacts[0].closing_speed > 4000);
     const fluid_particle *particles = material_fluid_particles(fluid, &count);
-    assert(count == 1 && particles[0].position.x < -6);
-    assert(particles[0].velocity.x <= 0);
+    REQUIRE(count == 1 && particles[0].position.x < -6);
+    REQUIRE(particles[0].velocity.x <= 0);
     material_fluid_free(fluid);
+    return true;
 }
 
-static void huge_diagonal_particle_sweep()
+TEST_CASE(huge_diagonal_particle_sweep)
 {
     material_fluid *fluid = material_fluid_new(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
-    assert(material_fluid_add(
+    REQUIRE(material_fluid_add(
         fluid,
         (fluid_particle){ .position = { -1000, -1000 },
                           .velocity = { 240000, 240000 },
@@ -201,17 +205,18 @@ static void huge_diagonal_particle_sweep()
     material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
     int count;
     const fluid_contact *contacts = material_fluid_contacts(fluid, &count);
-    assert(count == 1 && contacts[0].closing_speed > 200000);
+    REQUIRE(count == 1 && contacts[0].closing_speed > 200000);
     const fluid_particle *particles = material_fluid_particles(fluid, &count);
-    assert(count == 1 && particles[0].position.x < -6);
+    REQUIRE(count == 1 && particles[0].position.x < -6);
     material_fluid_free(fluid);
+    return true;
 }
 
-static void huge_sweep()
+TEST_CASE(huge_sweep)
 {
     material_fluid *fluid = material_fluid_new(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
-    assert(material_fluid_add(
+    REQUIRE(material_fluid_add(
         fluid,
         (
             fluid_particle
@@ -227,8 +232,9 @@ static void huge_sweep()
     material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
     int count;
     const fluid_contact *contacts = material_fluid_contacts(fluid, &count);
-    assert(count == 1 && contacts[0].closing_speed > 100000000.f);
+    REQUIRE(count == 1 && contacts[0].closing_speed > 100000000.f);
     material_fluid_free(fluid);
+    return true;
 }
 
 static int ecs_contact_spray_count(int maximum)
@@ -274,17 +280,18 @@ static int ecs_contact_spray_count(int maximum)
     return emitted;
 }
 
-static void ecs_contact_sprays_are_transient()
+TEST_CASE(ecs_contact_sprays_are_transient)
 {
-    assert(ecs_contact_spray_count(4) > 0);
-    assert(ecs_contact_spray_count(0) == 0);
+    REQUIRE(ecs_contact_spray_count(4) > 0);
+    REQUIRE(ecs_contact_spray_count(0) == 0);
+    return true;
 }
 
-static void repeat_step_resets_contacts()
+TEST_CASE(repeat_step_resets_contacts)
 {
     material_fluid *fluid = material_fluid_new(10, 4);
     material_fluid_set_contact_settings(fluid, (fluid_contact_settings){ 10, 20 });
-    assert(material_fluid_add(
+    REQUIRE(material_fluid_add(
         fluid,
         (
             fluid_particle
@@ -296,12 +303,13 @@ static void repeat_step_resets_contacts()
     material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
     int count;
     material_fluid_contacts(fluid, &count);
-    assert(count == 1);
+    REQUIRE(count == 1);
     body.velocity = (fluid_vec){ 0 };
     material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, &obstacle, 1);
     material_fluid_contacts(fluid, &count);
-    assert(count == 0);
+    REQUIRE(count == 0);
     material_fluid_free(fluid);
+    return true;
 }
 
 static bool same_contact(fluid_contact a, fluid_contact b)
@@ -313,26 +321,31 @@ static bool same_contact(fluid_contact a, fluid_contact b)
            a.kind == b.kind && a.contacts == b.contacts;
 }
 
-void test_material_reactions()
+TEST_CASE(contact_responses)
 {
-    quiet_rest();
     fluid_contact moderate = contact_for(FLUID_GAS, 80, 0x80c0ffff);
     fluid_contact repeat = contact_for(FLUID_GAS, 80, 0x80c0ffff);
     fluid_contact strong = contact_for(FLUID_GAS, 160, 0x80c0ffff);
-    assert(same_contact(moderate, repeat));
-    assert(moderate.kind == FLUID_GAS && moderate.body == 41);
-    assert(moderate.closing_speed >= 10 && moderate.mass > 0);
-    assert(strong.closing_speed > moderate.closing_speed);
-    assert(strong.impulse > moderate.impulse);
+    REQUIRE(same_contact(moderate, repeat));
+    REQUIRE(moderate.kind == FLUID_GAS && moderate.body == 41);
+    REQUIRE(moderate.closing_speed >= 10 && moderate.mass > 0);
+    REQUIRE(strong.closing_speed > moderate.closing_speed);
+    REQUIRE(strong.impulse > moderate.impulse);
     fluid_contact liquid = contact_for(FLUID_LIQUID, 80, 0x22aaffff);
-    assert(liquid.kind == FLUID_LIQUID && liquid.color == 0x22aaffff);
-    assert(liquid.normal.y > .99f);
-    fast_particle_sweeps_stationary_wall();
-    huge_diagonal_particle_sweep();
-    swept_and_rotating_bodies();
-    huge_sweep();
-    ecs_contact_sprays_are_transient();
-    repeat_step_resets_contacts();
-    bounded_contacts();
-    puts("PASS: bounded material contact responses, speed thresholds and fluid coloring");
+    REQUIRE(liquid.kind == FLUID_LIQUID && liquid.color == 0x22aaffff);
+    REQUIRE(liquid.normal.y > .99f);
+    return true;
+}
+
+void test_material_reactions()
+{
+    RUN_TEST_CASE(quiet_rest);
+    RUN_TEST_CASE(contact_responses);
+    RUN_TEST_CASE(fast_particle_sweeps_stationary_wall);
+    RUN_TEST_CASE(huge_diagonal_particle_sweep);
+    RUN_TEST_CASE(swept_and_rotating_bodies);
+    RUN_TEST_CASE(huge_sweep);
+    RUN_TEST_CASE(ecs_contact_sprays_are_transient);
+    RUN_TEST_CASE(repeat_step_resets_contacts);
+    RUN_TEST_CASE(bounded_contacts);
 }

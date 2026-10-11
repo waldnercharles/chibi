@@ -51,6 +51,8 @@ void test_render_radiance();
 void test_render_radiance_depth();
 void test_render_material_sampling();
 void test_render_material_borders();
+void test_render_material_coefficients();
+void test_render_material_lod();
 void test_render_scene2d();
 void test_render_scene3d(bool gles);
 void test_render_scene3d_gi(bool gles);
@@ -108,6 +110,47 @@ void test_graph_signature();
 void test_graph_collapse();
 void test_graph_problems();
 void test_vector_nodes();
+#endif
+#ifdef CHIBI_TEST_MATERIAL_RUNTIME
+void test_material_destruction();
+void test_material_fluids();
+void test_material_mpm();
+void test_material_thermal();
+void test_material_reactions();
+void test_material_simulation();
+void test_material_mixed();
+void test_material_obstacles();
+void test_material_particle_index();
+void test_material_blast();
+void test_material_constitutive();
+void test_material_detail();
+void test_material_impulse();
+void test_material_benchmark();
+void test_contact_benchmark();
+void test_native_catalog_enable();
+enum
+{
+    MATERIAL_NONE,
+    MATERIAL_DESTRUCTION,
+    MATERIAL_FLUIDS,
+    MATERIAL_MPM,
+    MATERIAL_THERMAL,
+    MATERIAL_SIMULATION,
+    MATERIAL_ECS,
+    MATERIAL_BENCHMARK,
+    CONTACT_BENCHMARK,
+    MATERIAL_SELECTORS
+};
+static const char *const material_selectors[MATERIAL_SELECTORS] = {
+    [MATERIAL_DESTRUCTION] = "--material-destruction",
+    [MATERIAL_FLUIDS] = "--material-fluids",
+    [MATERIAL_MPM] = "--material-mpm",
+    [MATERIAL_THERMAL] = "--material-thermal",
+    [MATERIAL_SIMULATION] = "--material-simulation",
+    [MATERIAL_ECS] = "--material-ecs",
+    [MATERIAL_BENCHMARK] = "--material-benchmark",
+    [CONTACT_BENCHMARK] = "--contact-benchmark",
+};
 #endif
 #ifdef CHIBI_TEST_BOX3D
 void test_box3d();
@@ -183,7 +226,7 @@ int main(int argc, char **argv)
          radiance_depth = false, material_sampling = false, scene2d = false,
          scene3d = false, material_ramps = false, radiance_surface = false,
          material_pixels = false, box3d = false, sky_files = false,
-         mesh_files = false, model_import = false;
+         mesh_files = false, model_import = false, material_render = false;
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
@@ -194,6 +237,15 @@ int main(int argc, char **argv)
          system_schedule = false, source_systems = false, source_edit = false,
          new_asset = false, asset_refactor = false;
     int corpus = 0;
+    /* The material selector given, or none. */
+    int material = 0;
+#ifdef CHIBI_TEST_MATERIAL_RUNTIME
+    for (int i = MATERIAL_NONE + 1; argc == 2 && i < MATERIAL_SELECTORS; i++) {
+        if (!strcmp(argv[1], material_selectors[i])) {
+            material = i;
+        }
+    }
+#endif
     bool coverage = false;
     bool graph_document = false, graph_presentation = false,
          graph_functions = false, vector_nodes = false;
@@ -241,6 +293,7 @@ int main(int argc, char **argv)
     radiance = argc == 2 && !strcmp(argv[1], "--radiance");
     radiance_depth = argc == 2 && !strcmp(argv[1], "--radiance-depth");
     material_sampling = argc == 2 && !strcmp(argv[1], "--material-sampling");
+    material_render = argc == 2 && !strcmp(argv[1], "--material-render");
     scene2d = argc == 2 && !strcmp(argv[1], "--scene2d");
     bool scene3d_gi = argc == 2 && (!strcmp(argv[1], "--scene3d-gi") ||
                                     !strcmp(argv[1], "--scene3d-gi-gles"));
@@ -298,7 +351,8 @@ int main(int argc, char **argv)
         !owned_tick && !parallel_tick && !source_features && !source_numeric &&
         !source_material && !source_presentation && !system_schedule &&
         !source_systems && !validate_project && !expansion && !graph_document &&
-        !graph_presentation && !graph_functions && !vector_nodes) {
+        !graph_presentation && !graph_functions && !vector_nodes &&
+        !material_render && !material) {
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
@@ -311,7 +365,8 @@ int main(int argc, char **argv)
             "test_language | --prepared-read directory | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
             "| --physics | --physics3d | --transforms "
-            "| --render-resources | --interior-border | --viewport-resize | "
+            "| --render-resources | --material-render | --interior-border | "
+            "--viewport-resize | "
             "--sdf-visibility | "
             "--radiance | --radiance-depth | --material-sampling | --scene2d | "
             "--scene3d | --scene3d-gles | --scene3d-gi | --scene3d-gi-gles | "
@@ -319,6 +374,10 @@ int main(int argc, char **argv)
             "--radiance-horizons8 | --material-pixels | "
             "--box3d | "
             "--sky-files | --mesh-files | --model-import | "
+            "--material-destruction | --material-fluids | --material-mpm | "
+            "--material-thermal | "
+            "--material-simulation | --material-ecs | --material-benchmark | "
+            "--contact-benchmark | "
             "--persistent-store | "
             "--whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
@@ -426,9 +485,37 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
 #endif
+#ifdef CHIBI_TEST_MATERIAL_RUNTIME
+    if (material) {
+        test_native_catalog_enable(); /* Contact and material events copy a CF_V2. */
+        switch (material) {
+            case MATERIAL_DESTRUCTION: test_material_destruction(); break;
+            case MATERIAL_FLUIDS: test_material_fluids(); break;
+            case MATERIAL_MPM: test_material_mpm(); break;
+            case MATERIAL_THERMAL: test_material_thermal(); break;
+            case MATERIAL_SIMULATION:
+                test_material_simulation();
+                test_material_mixed();
+                test_material_obstacles();
+                test_material_particle_index();
+                test_material_reactions();
+                break;
+            case MATERIAL_ECS:
+                test_material_blast();
+                test_material_constitutive();
+                test_material_detail();
+                test_material_impulse();
+                break;
+            case MATERIAL_BENCHMARK: test_material_benchmark(); break;
+            case CONTACT_BENCHMARK: test_contact_benchmark(); break;
+        }
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     if (render_resources || interior_border || viewport_resize || radiance ||
-        radiance_depth || material_sampling || scene2d || scene3d) {
+        radiance_depth || material_sampling || scene2d || scene3d || material_render) {
         if (interior_border) {
             test_render_interior_border();
         } else if (viewport_resize) {
@@ -445,6 +532,9 @@ int main(int argc, char **argv)
             test_render_scene3d_gi(scene3d_gles);
         } else if (scene3d) {
             test_render_scene3d(scene3d_gles);
+        } else if (material_render) {
+            test_render_material_coefficients();
+            test_render_material_lod();
         } else {
             test_render_resources();
             test_render_radiance_layout();

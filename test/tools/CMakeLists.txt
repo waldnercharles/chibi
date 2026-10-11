@@ -142,7 +142,8 @@ if(TARGET Chibi::render)
     add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/hidden_app.c
         ../render/memory_images.c
         ../render/radiance.c ../render/radiance_depth.c ../render/material_borders.c
-        ../render/material_sampling.c ../render/scene2d.c ../render/scene3d.c
+        ../render/material_sampling.c ../render/material_coefficients.c ../render/material_lod.c
+        ../render/scene2d.c ../render/scene3d.c
         device_controls.c ../render/interior_border.c ../render/viewport_resize.c ../draw_backend.cpp)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
@@ -269,6 +270,19 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
             add_dependencies(test_tools chibi_ctl)
         endif()
     endif()
+endif()
+
+# Material simulation cases drive internal solver headers directly, and run
+# authored components through a preview world.
+if(TARGET Chibi::entity_runtime AND TARGET Chibi::project_preparation AND TARGET Chibi::render)
+    target_sources(test_tools PRIVATE ../runtime/materials.c ../runtime/reference_cave.c
+        ../runtime/material_blast.c ../runtime/material_constitutive.c ../runtime/material_detail.c
+        ../runtime/material_impulse.c ../runtime/material_mixed.c ../runtime/material_mpm.c
+        ../runtime/material_obstacles.c ../runtime/material_particle_index.c
+        ../runtime/material_reactions.c ../runtime/material_simulation.c ../runtime/material_thermal.c
+        ../runtime/material_benchmark.c ../runtime/contact_benchmark.c)
+    target_link_libraries(test_tools PRIVATE Chibi::project_preparation Chibi::render)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MATERIAL_RUNTIME=1)
 endif()
 
 add_executable(benchmark_trials "${CHIBI_TOOL_ROOT}/tools/benchmark.c"

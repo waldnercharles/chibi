@@ -1,5 +1,6 @@
 #include "runtime/material_fluid.h"
 #include "support/array.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -32,7 +33,7 @@ static void finite_parcel(fluid_particle p)
     assert(isfinite(determinant) && determinant > 0);
 }
 
-static void contained_liquid()
+TEST_CASE(contained_liquid)
 {
     material_fluid *fluid = material_fluid_new(3, 64);
     fluid_mpm_settings config = settings();
@@ -42,7 +43,7 @@ static void contained_liquid()
         for (int x = 0; x < 8; x++) {
             fluid_particle p = parcel(x - 3.5f, y - 3.5f);
             p.velocity = (fluid_vec){ 5, 2 };
-            assert(material_fluid_add(fluid, p));
+            REQUIRE(material_fluid_add(fluid, p));
         }
     }
     fluid_body body = { 0 };
@@ -56,24 +57,25 @@ static void contained_liquid()
         material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, &body, 1, walls, 4);
         int count;
         const fluid_particle *p = material_fluid_particles(fluid, &count);
-        assert(count == 64);
+        REQUIRE(count == 64);
         fluid_mpm_state state = material_fluid_mpm_state(fluid);
-        assert(state.advanced_time > 0 && state.advanced_time <= 1.f / 60);
-        assert(state.substeps > 0 && state.substeps <= config.max_substeps);
+        REQUIRE(state.advanced_time > 0 && state.advanced_time <= 1.f / 60);
+        REQUIRE(state.substeps > 0 && state.substeps <= config.max_substeps);
         for (int i = 0; i < count; i++) {
             finite_parcel(p[i]);
             /* Inner wall faces are at +/-11; contacts retain parcel radius. */
-            assert(fabsf(p[i].position.x) <= 10.501f);
-            assert(fabsf(p[i].position.y) <= 10.501f);
+            REQUIRE(fabsf(p[i].position.x) <= 10.501f);
+            REQUIRE(fabsf(p[i].position.y) <= 10.501f);
             contacted |= fabsf(p[i].position.x) > 10.4f ||
                          fabsf(p[i].position.y) > 10.4f;
         }
     }
-    assert(contacted);
+    REQUIRE(contacted);
     material_fluid_free(fluid);
+    return true;
 }
 
-static void sleeping_deformation()
+TEST_CASE(sleeping_deformation)
 {
     material_fluid *paused = material_fluid_new(3, 25);
     material_fluid *reference = material_fluid_new(3, 25);
@@ -84,8 +86,8 @@ static void sleeping_deformation()
             fluid_particle p = parcel(x - 2, y - 2);
             p.constitutive.shear_modulus = 8;
             p.velocity = (fluid_vec){ p.position.x * .4f + 2, -p.position.y * .3f + 1 };
-            assert(material_fluid_add(paused, p));
-            assert(material_fluid_add(reference, p));
+            REQUIRE(material_fluid_add(paused, p));
+            REQUIRE(material_fluid_add(reference, p));
         }
     }
     fluid_region region = { -64, -64, 128, 128 };
@@ -95,19 +97,19 @@ static void sleeping_deformation()
     }
     int count;
     const fluid_particle *p = material_fluid_particles(paused, &count);
-    assert(count == 25);
+    REQUIRE(count == 25);
     fluid_particle saved[25];
     memcpy(saved, p, sizeof(saved));
     bool deformed = false;
     for (int i = 0; i < count; i++) {
         deformed |= fabsf(p[i].deformation.f[0] - 1) > .001f;
     }
-    assert(deformed);
+    REQUIRE(deformed);
     for (int tick = 0; tick < 120; tick++) {
         material_fluid_tick(paused, 1.f / 60, 64, NULL, 0, NULL, 0, NULL, 0);
-        assert(material_fluid_active_count(paused) == 0);
+        REQUIRE(material_fluid_active_count(paused) == 0);
         p = material_fluid_particles(paused, &count);
-        assert(count == 25 && !memcmp(saved, p, sizeof(saved)));
+        REQUIRE(count == 25 && !memcmp(saved, p, sizeof(saved)));
     }
     for (int tick = 0; tick < 30; tick++) {
         material_fluid_tick(paused, 1.f / 60, 64, &region, 1, NULL, 0, NULL, 0);
@@ -115,48 +117,50 @@ static void sleeping_deformation()
         int other_count;
         p = material_fluid_particles(paused, &count);
         const fluid_particle *other = material_fluid_particles(reference, &other_count);
-        assert(count == other_count && !memcmp(p, other, sizeof(saved)));
+        REQUIRE(count == other_count && !memcmp(p, other, sizeof(saved)));
     }
     material_fluid_free(paused);
     material_fluid_free(reference);
+    return true;
 }
 
-static void expiry_and_chunk_queries()
+TEST_CASE(expiry_and_chunk_queries)
 {
     material_fluid *fluid = material_fluid_new(2, 8);
     fluid_particle p = parcel(0, 0);
     p.lifetime = .001f;
-    assert(material_fluid_add(fluid, p));
-    assert(material_fluid_add(fluid, parcel(1000, 0)));
-    assert(material_fluid_add(fluid, parcel(8, 0)));
+    REQUIRE(material_fluid_add(fluid, p));
+    REQUIRE(material_fluid_add(fluid, parcel(1000, 0)));
+    REQUIRE(material_fluid_add(fluid, parcel(8, 0)));
     fluid_region near = { 0, 0, 16, 16 };
     material_fluid_tick(fluid, 1.f / 60, 64, &near, 1, NULL, 0, NULL, 0);
     int count, *ids = NULL;
     const fluid_particle *particles = material_fluid_particles(fluid, &count);
-    assert(count == 2 && particles[0].position.x == 8 && particles[1].position.x == 1000);
-    assert(material_fluid_active_count(fluid) == 1);
+    REQUIRE(count == 2 && particles[0].position.x == 8 && particles[1].position.x == 1000);
+    REQUIRE(material_fluid_active_count(fluid) == 1);
     material_fluid_query(fluid, near, &ids);
-    assert(acount(ids) == 1 && ids[0] == 0);
+    REQUIRE(acount(ids) == 1 && ids[0] == 0);
     material_fluid_query(fluid, (fluid_region){ 1000, 0, 0, 0 }, &ids);
-    assert(acount(ids) == 1 && ids[0] == 1);
+    REQUIRE(acount(ids) == 1 && ids[0] == 1);
     p = parcel(-1000, 0);
     p.velocity.x = 120;
-    assert(material_fluid_add(fluid, p));
+    REQUIRE(material_fluid_add(fluid, p));
     fluid_region far = { -1000, 0, 1, 1 };
     material_fluid_query(fluid, far, &ids);
-    assert(acount(ids) == 1 && ids[0] == 2);
+    REQUIRE(acount(ids) == 1 && ids[0] == 2);
     for (int tick = 0; tick < 32; tick++) {
         material_fluid_tick(fluid, 1.f / 60, 64, &far, 1, NULL, 0, NULL, 0);
     }
     material_fluid_query(fluid, far, &ids);
-    assert(acount(ids) == 0);
+    REQUIRE(acount(ids) == 0);
     material_fluid_query(fluid, (fluid_region){ -950, 0, 0, 0 }, &ids);
-    assert(acount(ids) == 1 && ids[0] == 2);
+    REQUIRE(acount(ids) == 1 && ids[0] == 2);
     afree(ids);
     material_fluid_free(fluid);
+    return true;
 }
 
-static void bounded_stiff_work()
+TEST_CASE(bounded_stiff_work)
 {
     material_fluid *fluid = material_fluid_new(3, 4);
     fluid_mpm_settings config = settings();
@@ -167,25 +171,26 @@ static void bounded_stiff_work()
     p.constitutive.bulk_modulus = 100000000;
     p.constitutive.shear_modulus = 1000000;
     p.velocity.x = 10;
-    assert(material_fluid_add(fluid, p));
+    REQUIRE(material_fluid_add(fluid, p));
     fluid_region region = { -64, -64, 128, 128 };
     for (int tick = 0; tick < 60; tick++) {
         material_fluid_profile profile;
         material_fluid_tick_profiled(fluid, 1.f / 60, 64, &region, 1, NULL, 0, NULL, 0, &profile);
         fluid_mpm_state state = material_fluid_mpm_state(fluid);
-        assert(state.limited && state.substeps == 1);
-        assert(profile.mpm_limited_steps == 1 && profile.mpm_substeps == 1);
-        assert(state.advanced_time > 0 && state.advanced_time < 1.f / 60);
+        REQUIRE(state.limited && state.substeps == 1);
+        REQUIRE(profile.mpm_limited_steps == 1 && profile.mpm_substeps == 1);
+        REQUIRE(state.advanced_time > 0 && state.advanced_time < 1.f / 60);
         int count;
         const fluid_particle *particles = material_fluid_particles(fluid, &count);
-        assert(count == 1);
+        REQUIRE(count == 1);
         finite_parcel(particles[0]);
-        assert(particles[0].position.x < .1f);
+        REQUIRE(particles[0].position.x < .1f);
     }
     material_fluid_free(fluid);
+    return true;
 }
 
-static void separated_liquid_pressure()
+TEST_CASE(separated_liquid_pressure)
 {
     material_fluid *alone = material_fluid_new(6, 32);
     material_fluid *separated = material_fluid_new(6, 32);
@@ -193,15 +198,15 @@ static void separated_liquid_pressure()
         for (int x = 0; x < 4; x++) {
             fluid_particle p = parcel(-1.5f - x * .5f, y * .5f - .75f);
             p.radius = .25f;
-            assert(material_fluid_add(alone, p));
-            assert(material_fluid_add(separated, p));
+            REQUIRE(material_fluid_add(alone, p));
+            REQUIRE(material_fluid_add(separated, p));
         }
     }
     for (int y = 0; y < 4; y++) {
         for (int x = 0; x < 4; x++) {
             fluid_particle p = parcel(1.5f + x * .5f, y * .5f - .75f);
             p.radius = .25f;
-            assert(material_fluid_add(separated, p));
+            REQUIRE(material_fluid_add(separated, p));
         }
     }
     fluid_region region = { -32, -32, 64, 64 };
@@ -213,13 +218,13 @@ static void separated_liquid_pressure()
         int count, other_count;
         const fluid_particle *left = material_fluid_particles(alone, &count);
         const fluid_particle *both = material_fluid_particles(separated, &other_count);
-        assert(count == 16 && other_count == 32);
+        REQUIRE(count == 16 && other_count == 32);
         for (int i = 0; i < count; i++) {
-            assert(
+            REQUIRE(
                 left[i].position.x == both[i].position.x &&
                 left[i].position.y == both[i].position.y
             );
-            assert(
+            REQUIRE(
                 left[i].velocity.x == both[i].velocity.x &&
                 left[i].velocity.y == both[i].velocity.y
             );
@@ -227,13 +232,14 @@ static void separated_liquid_pressure()
     }
     material_fluid_free(alone);
     material_fluid_free(separated);
+    return true;
 }
 
 void test_material_simulation()
 {
-    contained_liquid();
-    sleeping_deformation();
-    expiry_and_chunk_queries();
-    bounded_stiff_work();
-    separated_liquid_pressure();
+    RUN_TEST_CASE(contained_liquid);
+    RUN_TEST_CASE(sleeping_deformation);
+    RUN_TEST_CASE(expiry_and_chunk_queries);
+    RUN_TEST_CASE(bounded_stiff_work);
+    RUN_TEST_CASE(separated_liquid_pressure);
 }

@@ -125,6 +125,24 @@ TOOLS = {
     'source-native-numeric-queries': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-native-numeric-queries'],
     # One reviewed source material case; four payload types, two backends, CPU shader stage only.
     'source-native-material': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-native-material'],
+    # Material masks, destruction, fragments, debris, cave fields and streamed terrain; CPU only.
+    'material-destruction': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-destruction'],
+    # Particle fluid sleep, cohesion, splits, body response, gas flow and worker parity; CPU only.
+    'material-fluids': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-fluids'],
+    # MPM transfer, recovery, transactions, worker parity, colliders and two 3000-step pools; CPU only.
+    'material-mpm': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-mpm'],
+    # Fluid heat exchange, walls, dormancy, quenching, worker parity and authored thermal state; CPU only.
+    'material-thermal': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-thermal'],
+    # Fluid containment, mixed phases, obstacle and particle indexes and contact responses; CPU only.
+    'material-simulation': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-simulation'],
+    # Blast craters, constitutive models, appearance detail and fluid impulses through ECS components; CPU only.
+    'material-ecs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-ecs'],
+    # Four fixed fluid workloads on four workers with timings; compare builds through benchmark_trials.
+    'material-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-benchmark'],
+    # Four fixed 2D collider lattices with first and steady step timings; compare through benchmark_trials.
+    'contact-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--contact-benchmark'],
+    # CPU-only material raster coefficients and mask LOD levels; no window or GPU.
+    'material-render': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-render'],
     # Reviewed CPU-only renderer cases: typed transaction/lifetime, sprite image sets, sky face layout
     # and halves, sky irradiance, the split-sum table, sky publication, HRC view layout and lighting
     # normalization, and pure desktop key/stick mapping; no window, GPU, fonts or files.

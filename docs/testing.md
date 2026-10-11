@@ -238,6 +238,39 @@ children use plans a rewrite of each child in its parent's text, and a parent
 that includes another prototype keeps its includes and only its own children.
 Four in-memory prototypes, no files, CPU only.
 
+The material simulation selectors run without a window or GPU; wall times are
+under ASan/UBSan through the production supervisor on a shared four-core host.
+`--material-destruction` checks material masks and their cover rectangles,
+carving and fragment extraction, contours, callback queues and capacity
+fallback, damage rounding, debris, fuel blasts reaching bodies as Material
+Impact events, and `CaveField.kdl` baked against an independent reference cave
+and streamed as terrain through preview worlds: 26 cases, 2,700 assertions,
+2.7 seconds. `--material-fluids` checks the particle fluid's sleeping,
+cohesion, liquid splits and merges, body response, gas flow, buoyancy and
+mixing barriers, and serial against worker parity of particles and the flow
+grid: 12 cases, 34,828 assertions, 13 seconds. `--material-mpm` checks the MPM
+solver's transfers, elastic recovery, transactional failure, worker parity,
+collider momentum and two 3000-step hydrostatic pools: 9 cases, 13,464
+assertions, 4.0 seconds. `--material-thermal` checks heat exchange between
+parcels, across walls and openings, dormancy, quenching, worker parity and
+authored thermal components: 12 cases, 9,469 assertions, 7.6 seconds.
+`--material-simulation` checks contained liquids, sleeping deformation,
+expiry, mixed phases, the obstacle and particle indexes, and contact
+responses: 27 cases, 179,416 assertions, 0.5 seconds. `--material-ecs` checks
+blast craters, constitutive models, appearance detail and fluid impulses that
+turn bodies through authored components: 10 cases, 4,737 assertions, 0.9
+seconds. `--material-render` checks the material raster's linear coefficients
+and the mask LOD levels: 6 cases, 2,723 assertions, 0.2 seconds.
+
+`--material-benchmark` times four fixed fluid workloads on four workers: a DDR
+patch and an MPM collision, 32 by 32 parcels for 30 frames, each equal to its
+serial run; heat exchange over 48 by 48 parcels, conserving energy; and gas
+flow around two bodies over 64 by 64 parcels. It prints per-phase timings and
+passes 6,404 assertions in 8.2 seconds. `--contact-benchmark` times the first
+and steady 2D physics steps of 1,000 and 4,000 circle colliders, apart and
+overlapping, and passes 96 assertions in 1.4 seconds. Compare builds through
+`benchmark_trials`.
+
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against
 `build-release/bin/chibi_ctl`. Each scaffolds a temporary

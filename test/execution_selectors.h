@@ -9,6 +9,15 @@ CHIBI_CPU_SELECTOR("--graph-document")
 CHIBI_CPU_SELECTOR("--graph-presentation")
 CHIBI_CPU_SELECTOR("--graph-functions")
 CHIBI_CPU_SELECTOR("--vector-nodes")
+CHIBI_CPU_SELECTOR("--material-destruction")
+CHIBI_CPU_SELECTOR("--material-fluids")
+CHIBI_CPU_SELECTOR("--material-mpm")
+CHIBI_CPU_SELECTOR("--material-thermal")
+CHIBI_CPU_SELECTOR("--material-simulation")
+CHIBI_CPU_SELECTOR("--material-ecs")
+CHIBI_CPU_SELECTOR("--material-benchmark")
+CHIBI_CPU_SELECTOR("--contact-benchmark")
+CHIBI_CPU_SELECTOR("--material-render")
 
 /* Explicit opt-in checks against installed products; each runs under the
  * shared 60-second supervisor. */

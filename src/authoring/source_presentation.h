@@ -22,6 +22,7 @@ typedef struct
     source_presentation_kind kind;
     script_range range;
     int function, record, operation, entry;
+    int called_function;
     int display_class;
     int node_kind, node_record;
     uint64_t port_name, function_name;
@@ -65,6 +66,12 @@ bool authoring_source_presentation_matches(
     const authoring_source_presentation *,
     const script_analysis *,
     const script_catalog *
+);
+/* Local authored callee graph, or zero for a native/imported/non-call origin. */
+uint64_t authoring_source_presentation_call_graph(
+    const authoring_source_presentation *,
+    uint64_t graph,
+    uint64_t node
 );
 int authoring_source_presentation_origin_count(const authoring_source_presentation *);
 const source_presentation_origin *authoring_source_presentation_origin_at(

@@ -196,6 +196,20 @@ static bool collision(
 )
 {
     const script_catalog *catalog = authoring_navigation_catalog(index);
+    if (target.kind == AUTHORING_FIELD) {
+        const script_catalog_type
+            *owner = script_catalog_type_by_id(catalog, target.owner);
+        if (!owner) {
+            return true;
+        }
+        for (int i = 0; i < owner->field_count; i++) {
+            const script_catalog_field *field = &owner->fields[i];
+            if (field->id != target.id && script_name_matches(field->name, name)) {
+                return true;
+            }
+        }
+        return false;
+    }
     if (target.kind == AUTHORING_PROGRAM) {
         for (int d = 0; d < authoring_navigation_document_count(index); d++) {
             const script_analysis *a = authoring_navigation_document_at(index, d)
@@ -488,7 +502,7 @@ authoring_rename_plan *authoring_source_rename(
         bytes += n;
     }
     const authoring_reference *definition = authoring_navigation_definition(index, target);
-    if (!definition || target.kind == AUTHORING_TYPE || target.kind == AUTHORING_FIELD) {
+    if (!definition || target.kind == AUTHORING_TYPE) {
         fail(error, size, "Target has no editable source declaration");
         return NULL;
     }

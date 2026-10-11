@@ -17,6 +17,12 @@ typedef struct
     int prefix;
     bool inline_value;
 } source_edit_connection;
+/* A fused call keeps its expression origin for argument edits and a complete
+ * statement origin for operations on the execution spine. Pins stay values. */
+const source_presentation_origin *source_edit_statement_origin(
+    const authoring_source_presentation *,
+    const source_presentation_origin *
+);
 source_edit_connection source_edit_producer(
     const script_analysis *,
     const script_catalog *,

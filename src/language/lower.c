@@ -2450,6 +2450,42 @@ static int call(lower *l, const script_expression *e)
     }
     return host_result(l, result_first, e->type, e->range);
 }
+static int keyed_getter(lower *l, const script_expression *e, const script_catalog_field *field)
+{
+    const script_catalog_capability *cap = script_catalog_capability_by_id(l->catalog, e->read);
+    script_lower_host host = { 0 };
+    if (!cap || !l->bindings || !l->bindings->host ||
+        !l->bindings->host(l->bindings->user, e->read, &host) || !host.call) {
+        error(l, e->range, "Keyed field has no linked getter");
+        return -1;
+    }
+    if (l->initializing && (!cap->pure || host.call->service)) {
+        error(l, e->range, "State initializer requires a service-free pure capability");
+        return -1;
+    }
+    assert(cap->parameter_count == 1 && cap->result_count == 1);
+    pin_value key = initial(l, cap->parameters[0].type);
+    key.str = field->read_key;
+    pin_value result = initial(l, e->type);
+    int index = linked_host(l->builder, host.call, host.access, &key, 1, &result, 1);
+    if (!behavior_function_builder_host_identity(
+            l->builder,
+            index,
+            cap->id,
+            script_catalog_capability_abi(l->catalog, cap)
+        )) {
+        error(l, e->range, "Cannot link keyed getter declaration identity");
+    }
+    emit(
+        l,
+        (behavior_function_instruction){ .op = BF_HOST_CALL,
+                                         .left = BEHAVIOR_FUNCTION_HOST_DATA,
+                                         .target = index,
+                                         .node_id = e->member },
+        e->range
+    );
+    return host_result(l, behavior_function_builder_host_results(l->builder, index), e->type, e->range);
+}
 static int component_value(lower *l, const script_expression *e, bool presence)
 {
     const script_catalog_type *type = script_catalog_type_by_id(l->catalog, e->capability);
@@ -2709,6 +2745,10 @@ static int symbol_value(lower *l, const script_expression *e)
     }
     if (l->initializing) {
         error(l, e->range, "State initializer depends on invocation storage");
+        return -1;
+    }
+    if (s->type.flags & SCRIPT_TYPE_NAMESPACE) {
+        error(l, e->range, "A namespace has no value; choose one of its named fields");
         return -1;
     }
     if (s->kind == SCRIPT_GLOBAL && l->bindings && l->bindings->global) {
@@ -3400,6 +3440,18 @@ static int expression_value(lower *l, int index)
                 );
             }
             if (e->read) {
+                const script_catalog_type
+                    *type = script_catalog_type_by_id(l->catalog, receiver->type.nominal);
+                const script_catalog_field *field = NULL;
+                for (int i = 0; type && i < type->field_count; i++) {
+                    if (type->fields[i].id == e->member) {
+                        field = &type->fields[i];
+                        break;
+                    }
+                }
+                if (field && field->read_key) {
+                    return keyed_getter(l, e, field);
+                }
                 script_argument receiver_argument = { .value = e->left,
                                                       .parameter = 0,
                                                       .range = e->range };
@@ -5040,6 +5092,9 @@ execution_module_plan *script_lower(
     m->id = script_catalog_id("module", a->identity);
     for (int i = 0; i < catalog->type_count; i++) {
         const script_catalog_type *type = &catalog->types[i];
+        if (type->type.flags & SCRIPT_TYPE_NAMESPACE) {
+            continue;
+        }
         const char *name = type->name;
         if (name) {
             size_t size = strlen(name) + 1;

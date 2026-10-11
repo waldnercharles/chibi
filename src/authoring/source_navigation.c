@@ -506,18 +506,31 @@ authoring_navigation *authoring_navigation_new_project(
             definition->text,
             definition->text_kind
         );
-        authoring_target target = { definition->kind == SCRIPT_CAPABILITY_PROTOTYPE
+        authoring_target target = { definition->field ? AUTHORING_FIELD
+                                    : definition->kind == SCRIPT_CAPABILITY_PROTOTYPE
                                         ? AUTHORING_PROTOTYPE
                                         : AUTHORING_CALLABLE,
                                     -1,
                                     definition->id,
-                                    0 };
+                                    definition->owner };
+        script_type type = { .storage = PIN_FLOW };
+        if (definition->field) {
+            const script_catalog_type
+                *owner = script_catalog_type_by_id(catalog, definition->owner);
+            assert(owner);
+            int found = -1;
+            for (int field = 0; field < owner->field_count; field++) {
+                if (owner->fields[field].id == definition->id) {
+                    found = field;
+                    break;
+                }
+            }
+            assert(found >= 0);
+            type = owner->fields[found].type;
+        }
         add_reference(
             index,
-            (authoring_reference){ target,
-                                   { document, definition->range },
-                                   AUTHORING_DEFINE,
-                                   { .storage = PIN_FLOW } }
+            (authoring_reference){ target, { document, definition->range }, AUTHORING_DEFINE, type }
         );
     }
     for (int i = 0; i < reference_count; i++) {

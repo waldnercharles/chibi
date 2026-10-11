@@ -56,16 +56,29 @@ static const char driver_setup
          "if mode == 'no-reader':\n"
          "    policy.enable_subreaper = lambda: True\n"
          "    policy.process_children = unavailable\n";
-static const char driver_routes
-    [] = "if sys.argv[2] == 'cpu-route':\n"
-         "    import agent\n"
-         "    selector = sys.argv[5]\n"
-         "    if selector not in agent.runnable_selectors(agent.CPU, "
-         "agent.CPU_SELECTORS):\n"
-         "        sys.exit(2)\n"
-         "    command = agent.selector_command(selector, agent.CPU_SELECTORS)\n"
-         "    print(Path(command[0]).name, command[-1])\n"
-         "    sys.exit(0)\n";
+static const char driver_routes[] =
+    "if sys.argv[2] == 'cpu-route':\n"
+    "    import agent\n"
+    "    selector = sys.argv[5]\n"
+    "    if selector not in agent.runnable_selectors(agent.CPU, "
+    "agent.CPU_SELECTORS):\n"
+    "        sys.exit(2)\n"
+    "    command = agent.selector_command(selector, agent.CPU_SELECTORS)\n"
+    "    print(Path(command[0]).name, command[-1])\n"
+    "    sys.exit(0)\n"
+    "if sys.argv[2] == 'group-members':\n"
+    "    print(' '.join(policy.GROUPS[sys.argv[5]]))\n"
+    "    sys.exit(0)\n"
+    /* Selectors listed in two groups, and Release chibi_ctl users outside
+       the projects group, whose make target is the one that builds it. */
+    "if sys.argv[2] == 'misplaced-selectors':\n"
+    "    names = [n for group in policy.GROUPS.values() for n in group]\n"
+    "    ctl = {n for n, command in policy.TOOLS.items()\n"
+    "           if any(Path(a).name == 'chibi_ctl' for a in command[1:])}\n"
+    "    print(' '.join(sorted({n for n in names if names.count(n) > 1} |\n"
+    "        {n for n in ctl & set(names) if n not in "
+    "policy.GROUPS['projects']})))\n"
+    "    sys.exit(0)\n";
 static const char driver_source[] =
     "try:\n"
     "    if sys.argv[2] == '_supervise':\n"
@@ -199,6 +212,17 @@ static void reset_markers()
     }
 }
 
+static bool output_is(const char *action, const char *argument, const char *expected)
+{
+    if (run(action, argument) != 0) {
+        return false;
+    }
+    char *output = tool_read(logpath);
+    bool exact = output && !strcmp(output, expected);
+    free(output);
+    return exact;
+}
+
 TEST_CASE(material_cpu_routes_reach_exact_dispatcher)
 {
     const char *selectors[] = {
@@ -207,16 +231,24 @@ TEST_CASE(material_cpu_routes_reach_exact_dispatcher)
         "--material-render",      "--material-benchmark",  "--contact-benchmark"
     };
     for (int i = 0; i < (int)(sizeof selectors / sizeof *selectors); i++) {
-        REQUIRE(run("cpu-route", selectors[i]) == 0);
         char expected[128];
         snprintf(expected, sizeof expected, "test_tools %s\n", selectors[i]);
-        char *output = tool_read(logpath);
-        bool exact = output && !strcmp(output, expected);
-        free(output);
-        REQUIRE(exact);
+        REQUIRE(output_is("cpu-route", selectors[i], expected));
     }
     REQUIRE(run("cpu-route", "--material-unknown") == 2);
     REQUIRE(run("cpu-route", "--material-pixels") == 2);
+    return true;
+}
+
+TEST_CASE(project_selectors_run_in_their_own_group)
+{
+    REQUIRE(output_is(
+        "group-members",
+        "projects",
+        "mesh-files model-import validate-project prototype-expansion "
+        "controller feature-coverage render-fixture\n"
+    ));
+    REQUIRE(output_is("misplaced-selectors", "-", "\n"));
     return true;
 }
 
@@ -584,6 +616,7 @@ void test_tool_test_policy()
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
     RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
+    RUN_TEST_CASE(project_selectors_run_in_their_own_group);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);
     RUN_TEST_CASE(studio_resources_require_recorded_generation);

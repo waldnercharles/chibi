@@ -549,7 +549,7 @@ depth quality, depth history, segments and steep planes. The surface gather
 pass alone must take each quadrant's light, find crests past gaps and stay dark
 without light in reach, and surface gather light must restart when the view
 turns. Its cases share one HRC, since a new one compiles all of HRC's shaders.
-It passes 1760 assertions in 8.1 seconds, 15.6 with an empty shader cache.
+It passes 1811 assertions in 9.3 seconds, 18.4 with an empty shader cache.
 `radiance-surface` lights solids through relief materials in its own hidden
 128 x 128 app and from the pinned lighting of `radiance`:
 edge light only on a silhouette's lit side, relief facing the light and below

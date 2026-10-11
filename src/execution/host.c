@@ -37,6 +37,21 @@ void behavior_function_free_data(behavior_data_storage *data)
     afree(data->calls);
     free(data);
 }
+void behavior_function_reset_data(behavior_data_storage *data)
+{
+    if (!data) {
+        return;
+    }
+    const behavior_function *f = data->function;
+    for (int i = 0; i < acount(f->data_values); i++) {
+        behavior_function_data_value v = f->data_values[i];
+        data->values[i] = v.initial;
+        if (v.size) {
+            memset(data->buffers[i], 0, v.size);
+            data->values[i].ptr = data->buffers[i];
+        }
+    }
+}
 void behavior_function_prepare_data(
     const behavior_function *f,
     const service_binding *services,

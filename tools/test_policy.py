@@ -393,6 +393,10 @@ TOOLS = {
     # Reviewed public module consumer; finite ECS/behavior lifecycle on VM and SLJIT.
     'language-headless': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                          '--headless'],
+    # Reviewed CPU-only scalar benchmark: VM/SLJIT x inline/helper, five 200-dispatch trials
+    # each with 100 loop iterations, four warmups, no frames/files/GPU; shared60s.
+    'script-benchmark': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                         '--script-benchmark'],
     # Reviewed source-to-runtime event/system/binding cases with finite supplied-time steps.
     'language-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--program'],
@@ -440,7 +444,7 @@ GROUPS = {
     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 'material-thermal',
                   'material-simulation', 'material-ecs', 'material-render', 'material-benchmark',
                   'contact-benchmark'],
-    'language': ['language', 'language-semantic', 'language-execution', 'language-program',
+    'language': ['language', 'language-semantic', 'language-execution', 'language-program', 'script-benchmark',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime'],

@@ -20,7 +20,7 @@ add_library(test_behavior_consumer OBJECT headless_consumer.c)
 target_include_directories(test_behavior_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
 target_link_libraries(test_behavior_consumer PRIVATE Chibi::behavior_runtime)
 target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-add_executable(test_language main.c syntax.c semantic.c execution.c program.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
+add_executable(test_language main.c syntax.c semantic.c execution.c program.c benchmark.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
 target_include_directories(test_language PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
 target_compile_definitions(test_language PRIVATE
     CHIBI_LANGUAGE_EXAMPLE_DIR="${CHIBI_LANGUAGE_TEST_ROOT}/examples/language")

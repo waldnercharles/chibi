@@ -292,6 +292,8 @@ void behavior_function_prepare_data(
     behavior_data_storage **storage
 );
 void behavior_function_free_data(behavior_data_storage *storage);
+/* Begin a fresh invocation while retaining this function's backing buffers. */
+void behavior_function_reset_data(behavior_data_storage *storage);
 void behavior_function_copy_activation(
     const behavior_function *function,
     behavior_function_activation *target,

@@ -4864,6 +4864,111 @@ TEST_CASE(program_assignments_and_reference_writes_do_not_allocate)
     return true;
 }
 
+TEST_CASE(program_repeated_helpers_have_bounded_allocations)
+{
+    const char
+        *source = "behavior B { n: double = 0;"
+                  "function Twice(x: double) -> (v: double) { return x * 2 }"
+                  "on Impulse(amount, enabled) { i := 0.0; while i < 256 {"
+                  "n += Twice(i); i += 1 } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        xalloc_stats before, after;
+        xalloc_stats_get(&before);
+        uint64_t blocks = arena_block_allocations();
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        xalloc_stats_get(&after);
+        REQUIRE(number_state(instance, "n", 65280));
+        /* A single activation can repeat an ordinary helper without allocating
+         * a fresh invocation and arena on each iteration. */
+        REQUIRE(after.calls - before.calls < 64);
+        REQUIRE(arena_block_allocations() - blocks < 16);
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+
+TEST_CASE(program_reused_helpers_reset_locals_and_preserve_nested_calls)
+{
+    const char
+        *source = "behavior B { n: double = 0; m: double = 0;"
+                  "function Add(x: ref double, v: double) -> (r: double) {"
+                  "scratch: double = 0; if v > 0 { scratch = v }"
+                  "x += scratch; return x }"
+                  "function Other(v: double) -> (r: double) { return v * 10 }"
+                  "function Count(v: double) -> (r: double) {"
+                  "if v <= 0 { return 0 } return Count(v - 1) + 1 }"
+                  "function Outer(v: double) -> (r: double) { return Count(v) "
+                  "+ Other(v) }"
+                  "on Impulse(amount, enabled) {"
+                  "n += Add(m, 2); n += Add(m, -1);"
+                  "n += Other(3); n += Add(m, 4);"
+                  "n += Outer(3); n += Outer(2); n += Count(4); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 99));
+        REQUIRE(number_state(instance, "m", 6));
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+
+TEST_CASE(program_reused_helpers_keep_managed_results_and_resume_fresh_locals)
+{
+    const char
+        *source = "behavior B { n: double = 0; text: string = \"\";"
+                  "function Text() -> (r: string) { return managed_text() }"
+                  "function Tiles(v: double) -> (r: double[]) { return [v, v + "
+                  "1] }"
+                  "function Work(pause: bool) -> (r: double) {"
+                  "local: double = 0; if !pause { local = 7; return local }"
+                  "await Delay(1); return local }"
+                  "on Impulse(amount, enabled) {"
+                  "saved := Text(); replacement := Text(); text = saved;"
+                  "first := Tiles(3); second := Tiles(9); second[0] = 100;"
+                  "n = first[0] + first[1] + second[0];"
+                  "n += await Work(false); n += await Work(true); } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        managed_text_calls = 0;
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 114));
+        REQUIRE(memory_text_state(instance, "text", 0));
+        REQUIRE(execution_instance_pending(instance) == 1);
+        REQUIRE(execution_program_update(program, 1, 0, 10000) == FLOW_OK);
+        REQUIRE(number_state(instance, "n", 114));
+        REQUIRE(memory_text_state(instance, "text", 0));
+        REQUIRE(managed_text_calls == 2);
+        REQUIRE(execution_instance_pending(instance) == 0);
+    }
+    return true;
+}
+
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
@@ -4929,5 +5034,8 @@ void test_language_program()
     RUN_TEST_CASE(program_parameters_defaults_and_contextual_words);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);
+    RUN_TEST_CASE(program_repeated_helpers_have_bounded_allocations);
+    RUN_TEST_CASE(program_reused_helpers_reset_locals_and_preserve_nested_calls);
+    RUN_TEST_CASE(program_reused_helpers_keep_managed_results_and_resume_fresh_locals);
     pu_clear_setup();
 }

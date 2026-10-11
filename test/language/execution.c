@@ -373,6 +373,65 @@ TEST_CASE(execution_linked_function_returns_checked_value)
     return true;
 }
 
+static int rebound_values[2];
+static const char *rebound_host(void *service, const pin_value *, pin_value *results)
+{
+    if (results[0].type != PIN_I32 || results[0].i != 17) {
+        return "helper retained its previous host result";
+    }
+    assert(host_calls < 2);
+    rebound_values[host_calls++] = *(const int *)service;
+    results[0].i = *(const int *)service;
+    return NULL;
+}
+
+TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service)
+{
+    builder = behavior_function_builder_new();
+    pin_value initial = { .type = PIN_I32, .i = 17 };
+    const node_host_call host = { .service = "fixture.rebound", .invoke = rebound_host };
+    const node_access access = { .flags = NODE_EFFECT_HOST_SINK };
+    int capability = behavior_function_builder_host(builder, &host, &access, NULL, 0, &initial, 1);
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = capability,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    callee = function;
+    function = NULL;
+    behavior_function_builder_free(builder);
+    builder = behavior_function_builder_new();
+    int call = behavior_function_builder_call(builder, callee, NULL, 0, NULL, 0);
+    emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    emit((behavior_function_instruction){ .op = BF_SUSPEND });
+    emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(behavior_function_compile(callee));
+    REQUIRE(behavior_function_compile(function));
+    int first = 31, second = 73;
+    apush(log_services, ((service_binding){ "fixture.rebound", &first }));
+    for (int backend = 0; backend < 2; backend++) {
+        release_invocation();
+        behavior_function_activation_init(function, &activation);
+        context = (behavior_function_context){ .activation = &activation,
+                                               .budget = 100 };
+        behavior_function_bind_storage(&context, &storage);
+        log_services[0].value = &first;
+        REQUIRE(behavior_function_bind(function, &context, log_services, 0));
+        host_calls = 0;
+        REQUIRE(behavior_function_run(function, &context, backend == 1) == FLOW_SUSPENDED_RESULT);
+        REQUIRE(host_calls == 1 && rebound_values[0] == first);
+        /* The completed helper remains available while its parent is suspended.
+         * Reusing it must initialize its host values and select current services. */
+        log_services[0].value = &second;
+        behavior_function_rebind_services(function, &context, log_services);
+        REQUIRE(behavior_function_run(function, &context, backend == 1) == FLOW_OK);
+        REQUIRE(host_calls == 2 && rebound_values[1] == second);
+    }
+    return true;
+}
+
 TEST_CASE(execution_verifier_rejects_invalid_banks_and_metadata)
 {
     const behavior_function_instruction invalid[] = {
@@ -856,6 +915,7 @@ void test_language_execution()
     RUN_TEST_CASE(execution_verifier_rejects_invalid_banks_and_metadata);
     RUN_TEST_CASE(execution_verifier_rejects_signature_and_local_type_mismatches);
     RUN_TEST_CASE(execution_linked_function_returns_checked_value);
+    RUN_TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service);
     RUN_TEST_CASE(execution_integer_bitwise_preserves_width_and_masked_shifts);
     RUN_TEST_CASE(execution_bitwise_verifier_rejects_non_integer_and_mismatched_operands);
     RUN_TEST_CASE(execution_print_string_is_synchronous_and_preserves_context);

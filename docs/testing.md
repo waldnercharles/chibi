@@ -147,6 +147,30 @@ budgets remain 1,000 steps. There are no engine frames, processes, sleeps or GPU
 work. Debug Clang 23 with ASan/UBSan passed 12 cases and 1,638 assertions in 0.881
 seconds on 2026-10-07 (`.chibi/architecture/language-program-fields.log`).
 
+`python3 tools/test_policy.py tool script-benchmark` measures default compiler
+execution of equivalent inline arithmetic and authored scalar helper calls on
+VM and SLJIT. Four in-memory modules each run one correctness warmup and five
+trials of 200 dispatches with 100 loop iterations: 400,400 total iterations.
+pico_unit checks the exact result before timing and after each trial. Output
+reports monotonic elapsed time, allocation-wrapper calls/requested bytes and
+arena block allocations; requested bytes are cumulative, not live memory.
+Compilation is excluded from trial timing. This CPU-only selector has no engine
+frames, GPU, files, processes or sleeps and runs under the shared 60-second
+production supervisor deadline. The permanent selector passed 64 assertions in
+0.215 seconds on 2026-10-11 (macOS arm64, Clang 23, Release, no sanitizers).
+Set `CHIBI_LANGUAGE_BUILD_DIR` to the Release build's `test/language` directory
+when comparing performance; the default build may enable sanitizers.
+
+Against `f3ff608c1`, completed-call storage reuse reduced median helper-loop
+dispatch time from 24.220 to 11.250 microseconds on SLJIT and 59.985 to 41.450
+microseconds on VM. Each dispatch makes 100 helper calls. SLJIT allocation-wrapper
+calls fell from 710 to 17 per dispatch and requested bytes from 643,888 to 9,512;
+VM calls fell from 912 to 21 and bytes from 691,104 to 10,792. Each activation
+retains at most one completed frame with at most 64 KiB of backing storage, then
+frees it at teardown. These are CPU microbenchmarks, not rendered frame rates.
+The Tetris `8cac6a7` project uses an input contract newer than this baseline, so
+no whole-game speedup is claimed from these measurements.
+
 `python3 tools/test_policy.py tool language-navigation` selects eleven reviewed
 in-memory cases for shadowing, capture rejection, cross-file renames, escaped
 names, event aliases, reflected members, signatures, completion recovery and

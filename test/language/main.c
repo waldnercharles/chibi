@@ -9,6 +9,7 @@ void test_language_corpus(const char *manifest);
 void test_language_execution();
 void test_language_semantic();
 void test_language_program();
+void test_language_benchmark();
 void test_language_headless();
 void test_language_format();
 void test_language_navigation();
@@ -30,6 +31,7 @@ int main(int argc, char **argv)
     bool corpus = argc == 4 && !strcmp(argv[2], "--corpus");
     bool semantic = argc == 2 && !strcmp(argv[1], "--semantic");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
+    bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool headless = argc == 2 && !strcmp(argv[1], "--headless");
     bool navigation = argc == 2 && !strcmp(argv[1], "--navigation");
@@ -42,14 +44,15 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !execution && !semantic && !program && !headless &&
-         !navigation && !publication && !field_runtime && !prototype && !ui_authoring &&
-         !text_format && !graph_model && !graph_authoring && !model_runtime &&
-         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+        (!format && !prepared && !execution && !semantic && !benchmark && !program &&
+         !headless && !navigation && !publication && !field_runtime && !prototype &&
+         !ui_authoring && !text_format && !graph_model && !graph_authoring &&
+         !model_runtime && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
-            "| --program | --headless | --navigation | --publication | "
+            "| --program | --script-benchmark | --headless | --navigation | "
+            "--publication | "
             "--field-runtime | --prototype-document | --ui-authoring | "
             "--text-format | --graph-model | --graph-authoring | "
             "--model-runtime | "
@@ -60,7 +63,9 @@ int main(int argc, char **argv)
         return 2;
     }
     pu_display_time(true);
-    if (model_runtime) {
+    if (benchmark) {
+        test_language_benchmark();
+    } else if (model_runtime) {
         test_model_runtime();
     } else if (graph_authoring) {
         test_graph_authoring();

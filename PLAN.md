@@ -1,3 +1,65 @@
+# Script helper-call optimization, 2026-10-11
+
+Start from `f3ff608c1697f0491ac4d2ae052a864ede1200f7` in the isolated
+`cwaldner/script-call-optimization` worktree. Reduce the measured allocation
+cost of ordinary authored helper calls on VM and SLJIT without changing source
+semantics, project formats, rendering policy, or authored game assets.
+
+The current `BF_INVOKE` path allocates a frame, arena, activation and value banks
+for each helper call. Keep that execution protocol and its existing debugger,
+request, task, error and cancellation handling. Each root invocation will own
+one spare completed frame, bounded to 64 KiB of retained backing storage. Reuse
+function-sized activation and data buffers only for the same callee. Reset all
+logical state/defaults on borrow and rebind services. Copy returned values and
+run the existing leave callback before retiring a frame. Inactive storage must
+never participate in context traversal or payload tracing. Failure frees active
+frames; final teardown also frees cached storage. Callees with an alternate
+optimized body rebuild activation buffers because inspection can select a
+different buffer layout. Source programs remain authoritative.
+
+Implementation:
+- `src/execution/call.c`: own, reset, bound and release reusable completed frames.
+- `src/execution/host.c` / execution declarations if required: restore data bank
+  defaults without changing buffer ownership.
+- `test/language/program.c`: allocation regression and reuse/lifetime cases.
+- `test/language/benchmark.c`, dispatcher, CMake and test policy: finite repeatable
+  default-compiler helper/inline comparison with exact output assertions.
+- `docs/testing.md`: benchmark bounds and measured evidence.
+
+Verification:
+- Run the new allocation regression before the runtime change and see it fail.
+- Compare baseline/candidate Release benchmarks with exact output parity.
+- Exercise changing arguments, different callees, nesting, retained managed
+  results, references, waits, cancellation, debugger and failure paths.
+- Run admitted language/native/tooling groups under their shared 60-second
+  deadlines; keep builds separate, full GPU/Studio coverage quarantined.
+- Review ownership/lifetimes independently and run targeted sanitizer coverage.
+- Reproduce a fixed Tetris CPU profile on baseline and candidate when compatible;
+  do not equate CPU-only timing with end-to-end FPS.
+
+Completed on 2026-10-11: the new allocation regression failed on the baseline
+and passes with reuse on both backends. The Release benchmark passed its 64
+output assertions before and after; SLJIT helper dispatch measured about 2.2x
+faster, VM about 1.4x faster, with approximately 98% fewer allocation calls.
+Timing samples are short and machine dependent; allocation counts are stable.
+See `docs/testing.md` for workload bounds and measurements.
+
+`make test-native`, `make test-language-all` and `make test-tools` passed under
+their shared deadlines (9.649s, 1.362s and 21.210s respectively). ASan/UBSan
+execution, program and publication selectors passed 80 cases/3,801 assertions.
+The normal Release product build and `make check-format` passed. The clean baseline also needed
+`<unistd.h>` in two existing `mkdtemp` test consumers on this macOS SDK.
+Independent review checked call ownership, teardown, service rebinding and
+benchmark comparability; optimized alternate bodies rebuild their activation
+storage to avoid reusing differently sized VM buffers. Full GPU/Studio suites
+remain quarantined. The base engine cannot load Tetris `8cac6a7`'s newer input
+contract, so no rendered FPS or whole-game improvement is claimed. Local logs remain in
+`.chibi/script-optimization`; temporary binaries and the copied game are removed.
+
+Earlier architecture work follows for historical context.
+
+---
+
 # Engine SDK and Chibi language implementation
 
 > Historical plan and delivery evidence for the 2026-10-08 SDK extraction.

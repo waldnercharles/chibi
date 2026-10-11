@@ -1174,6 +1174,9 @@ typedef enum
     GAME_HRC_DEPTH_EMITTERS_PROXIES NODE_NAME("Uniform material proxies"),
 } GameHRCDepthEmitters;
 
+/* 2D lighting by holographic radiance cascades: light from emissive
+ * materials, with shadows, bounce and fog. The first entity's settings light
+ * the scene; a scene without one draws its materials unlit. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
 {
     /* Finest light grid as a fraction of the padded canvas; 0.5 solves one
@@ -1191,14 +1194,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     GameHRCGather gather_resolution;
     /* Steps lighting down while the scene's GPU time misses target_fps, first
      * gather when Auto, then resolution by halves down to min_resolution, and
-     * back up when there is room. It measures GPU time, so frames limited by
-     * the CPU or vsync keep their lighting. Needs Metal's GPU timestamps. */
+     * back up when there is room. Where the GPU reports its time (Metal, and
+     * WebGL with timer queries), frames limited by the CPU or vsync keep their
+     * lighting; elsewhere it judges the whole frame's interval. */
     bool adaptive;
     /* Frame rate adaptive keeps the scene's GPU work within. */
     float target_fps NODE_UNIT("fps");
     /* Lowest resolution adaptive may choose. */
     float min_resolution NODE_RANGE(0.1, 1);
-    /* Gain of the unlit scene color added to the frame. */
+    /* Gain of the unlit scene color added to the frame. 1 shows materials as
+     * drawn, and lower values darken what light does not reach. */
     float ambient;
     /* Brightness of emissive surfaces as drawn; the light they cast is
      * unchanged. */
@@ -1295,11 +1300,12 @@ GameHRC2D;
 
 static inline GameHRC2D game_hrc2d_defaults()
 {
-    return (GameHRC2D){ .resolution = 1,
+    return (GameHRC2D){ .resolution = .5f,
                         .adaptive = true,
                         .target_fps = 60,
                         .min_resolution = .25f,
-                        .intensity = 7.5f,
+                        .ambient = 1,
+                        .intensity = 1,
                         .fog = 1,
                         .falloff = 1,
                         .bounce_intensity = 1,

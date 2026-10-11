@@ -45,9 +45,10 @@ build.
 `build-language/` for the `test-language*` targets. Add a case to the selector
 that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
-`scene3d`, `scene3d-gles` and `material-ramps` render through a hidden window,
-which needs a display and a GPU driver the CI job does not set up, so they stay
-out of the group; run them with `python3 tools/test_policy.py tool <name>`.
+`scene2d`, `scene3d`, `scene3d-gles` and `material-ramps` render through a
+hidden window, which needs a display and a GPU driver the CI job does not set
+up, so they stay out of the group; run them with
+`python3 tools/test_policy.py tool <name>`.
 
 CI runs the build, both groups and `make test-tools` on Linux and macOS. On
 Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
@@ -521,6 +522,11 @@ backend has one, so there a failure means Cute's tile shaders did not load.
 hidden app. The first requested size must replace the canvas on that draw, and
 a later size only once it has been requested for two more draws. Build and run
 it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`.
+`scene2d` draws 2D scenes through the scene renderer and an engine viewport in a
+hidden 64 x 64 app and reads back the app canvas. A scene without `GameHRC2D`
+must show its materials unlit, `game_hrc2d_defaults()` lighting must keep them
+visible, and the unlit view or removing the settings must stop lighting. Build
+and run it like `interior-border` with `AGENT_SELECTOR=--scene2d`.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
 near clipping, a mixed 2D layer, and a later frame without the occluder) with

@@ -81,6 +81,9 @@ struct app_scene_renderer
        one the background shows. */
     float grid, background_grid;
     bool unlit, fogless; /* app_scene_renderer_set_view */
+    /* Whether the last frame was lit: the view is lit and the scene has
+     * GameHRC2D settings. HRC lights it where the backend has HRC. */
+    bool lit;
     /* The scene's GPU work each frame, for adaptive lighting resolution. */
     render_gpu_span span;
     /* Without GPU timestamps, the previous frame's start in ticks. */
@@ -225,16 +228,24 @@ int app_scene_renderer_particle_count(const app_scene_renderer *renderer)
 
 void app_scene_renderer_set_view(app_scene_renderer *renderer, bool unlit, bool fogless)
 {
-    if (renderer->unlit != unlit) {
-        renderer->span = (render_gpu_span){ 0 };
-        renderer->frame_start = 0;
-        renderer->background_valid = false;
-        if (renderer->radiance) {
-            render_radiance_reset(renderer->radiance);
-        }
-    }
     renderer->unlit = unlit;
     renderer->fogless = fogless;
+}
+
+/* Starts or stops HRC. Its light and timing from before it stopped no longer
+ * describe the scene. */
+static void set_lit(app_scene_renderer *renderer, bool lit)
+{
+    if (renderer->lit == lit) {
+        return;
+    }
+    renderer->lit = lit;
+    renderer->span = (render_gpu_span){ 0 };
+    renderer->frame_start = 0;
+    renderer->background_valid = false;
+    if (renderer->radiance) {
+        render_radiance_reset(renderer->radiance);
+    }
 }
 
 /* The fog of war over the frame, unless the view leaves it out. */
@@ -421,7 +432,7 @@ int app_scene_renderer_material_pieces(const app_scene_renderer *renderer)
 
 bool app_scene_renderer_lighting_status(const app_scene_renderer *renderer, render_radiance_status *status)
 {
-    if (!renderer || !renderer->radiance || renderer->unlit) {
+    if (!renderer || !renderer->radiance || !renderer->lit) {
         return false;
     }
     *status = render_radiance_get_status(renderer->radiance);
@@ -1441,11 +1452,11 @@ static render_view_2d padded_view(
        .center_y = camera->center_y };
 }
 
+/* The first GameHRC2D's settings. A scene without one draws its materials
+ * unlit, at the defaults' ambient and intensity. */
 static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2 *flat)
 {
-    GameHRC2D lighting = renderer->radiance
-                           ? game_hrc2d_defaults()
-                           : (GameHRC2D){ .ambient = 1, .intensity = 1 };
+    GameHRC2D lighting = game_hrc2d_defaults();
     ecs_component_id component = GAME_COMPONENT_GameHRC2D.id;
     ecs_query query;
     int settings = 0;
@@ -1459,6 +1470,7 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
         }
         ecs_query_end(&query);
     }
+    set_lit(renderer, !renderer->unlit && settings > 0);
     if (renderer->shadow_override) {
         lighting.surface_shadow_mode = renderer->shadow_mode;
     }
@@ -1499,7 +1511,7 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
     renderer->particle_focal_length = lighting.particle_focal_length;
     *flat = (CF_V2){ lighting.ambient, lighting.intensity };
     renderer->lighting = lighting;
-    if (!renderer->unlit && renderer->radiance &&
+    if (renderer->lit && renderer->radiance &&
         !render_radiance_set_lighting(renderer->radiance, lighting)) {
         snprintf(renderer->error, sizeof renderer->error, "HRC could not allocate its lighting resources.");
         return false;
@@ -1631,7 +1643,7 @@ static CF_Texture scene_background(
     }
     if (renderer->grid > 0) {
         /* The backdrop is linear light the presentation exposes. */
-        float exposure = !renderer->unlit && renderer->lighting.tone_mapping > 0
+        float exposure = renderer->lit && renderer->lighting.tone_mapping > 0
                            ? renderer->lighting.exposure
                            : 0;
         render_grid_2d_draw(renderer->grid, screen, span.x / (float)renderer->width, exp2f(-exposure));
@@ -1696,14 +1708,14 @@ bool app_scene_renderer_draw(
     initialize_resources(renderer);
     renderer->skip = skip;
     double gpu_ms;
-    while (!renderer->unlit && renderer->radiance &&
+    while (renderer->lit && renderer->radiance &&
            render_gpu_span_take(&renderer->span, &gpu_ms)) {
         render_radiance_frame_time(renderer->radiance, gpu_ms);
     }
     /* Without GPU timestamps, as on the web, adaptive lighting judges the
      * whole frame's interval, which includes the rest of the frame's work
      * and the wait for the display. */
-    if (!renderer->unlit && renderer->radiance && !render_gpu_span_available()) {
+    if (renderer->lit && renderer->radiance && !render_gpu_span_available()) {
         uint64_t now = cf_get_ticks();
         if (renderer->frame_start) {
             double ms = (double)(now - renderer->frame_start) * 1000 /
@@ -1738,7 +1750,7 @@ bool app_scene_renderer_draw(
     if (!scene_lighting(renderer, world, &flat)) {
         return false;
     }
-    if (!renderer->raster || (!renderer->radiance && !renderer->unlit)) {
+    if (!renderer->raster || (!renderer->radiance && renderer->lit)) {
         /* This is a supported rendering path, not a scene error. Its status is
          * available in the renderer diagnostics without covering the game. */
         renderer->error[0] = '\0';
@@ -1793,7 +1805,7 @@ bool app_scene_renderer_draw(
         .output_width = width,
         .output_height = height,
     };
-    if (!renderer->unlit) {
+    if (renderer->lit) {
         render_radiance_settings radiance = render_radiance_get_settings(
             renderer->radiance
         );
@@ -1811,7 +1823,7 @@ bool app_scene_renderer_draw(
     int raster_width = frame.raster_width;
     int raster_height = frame.raster_height;
     /* Unlit frames can resize the materials without resizing HRC. */
-    if (!renderer->unlit &&
+    if (renderer->lit &&
         !render_radiance_resize(renderer->radiance, raster_width, raster_height)) {
         return false;
     }
@@ -1856,7 +1868,7 @@ bool app_scene_renderer_draw(
         return false;
     }
     CHIBI_TRACE_ZONE_BEGIN(raster_zone, "Material raster submission");
-    if (!renderer->unlit) {
+    if (renderer->lit) {
         render_gpu_span_begin(&renderer->span);
     }
     render_gpu_timing_start();
@@ -1882,7 +1894,7 @@ bool app_scene_renderer_draw(
     }
     render_gpu_timing_mark("Material raster");
     render_material_textures textures = render_material_raster_textures(renderer->raster);
-    bool emitter_proxies = !renderer->unlit &&
+    bool emitter_proxies = renderer->lit &&
                            renderer->lighting.surface_mode == GAME_HRC_SURFACE_DEPTH &&
                            renderer->lighting.surface_depth_gain > 0 &&
                            renderer->lighting.surface_depth_emitters ==
@@ -1928,7 +1940,7 @@ bool app_scene_renderer_draw(
     };
     inputs.background = scene_background(renderer, world, &camera);
     render_gpu_timing_mark("Background");
-    bool hdr = !renderer->unlit && renderer->lighting.tone_mapping > 0;
+    bool hdr = renderer->lit && renderer->lighting.tone_mapping > 0;
     CF_Canvas composite = renderer->output;
     if (hdr) {
         if (!renderer->hdr) {
@@ -1940,9 +1952,9 @@ bool app_scene_renderer_draw(
         }
         composite = render_post_2d_target(renderer->hdr);
     }
-    bool composed = renderer->unlit
-                      ? draw_unlit(renderer, inputs, flat)
-                      : render_radiance_draw(renderer->radiance, inputs, view, composite);
+    bool composed = renderer->lit
+                      ? render_radiance_draw(renderer->radiance, inputs, view, composite)
+                      : draw_unlit(renderer, inputs, flat);
     if (!composed) {
         return false;
     }
@@ -1979,7 +1991,7 @@ bool app_scene_renderer_draw(
         }
         render_gpu_timing_mark("Reflections");
     }
-    if (!renderer->unlit) {
+    if (renderer->lit) {
         render_gpu_span_end(&renderer->span);
     }
     cf_draw_canvas(
@@ -2080,14 +2092,14 @@ void app_scene_renderer_set_horizon_reuse(app_scene_renderer *renderer, unsigned
 
 render_surface_work app_scene_renderer_surface_work(const app_scene_renderer *renderer)
 {
-    return renderer->radiance && !renderer->unlit
+    return renderer->radiance && renderer->lit
              ? render_radiance_surface_work(renderer->radiance)
              : (render_surface_work){ 0 };
 }
 
 render_horizon_work app_scene_renderer_horizon_work(const app_scene_renderer *renderer)
 {
-    return renderer->radiance && !renderer->unlit
+    return renderer->radiance && renderer->lit
              ? render_radiance_horizon_work(renderer->radiance)
              : (render_horizon_work){ 0 };
 }

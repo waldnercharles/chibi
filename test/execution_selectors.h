@@ -21,6 +21,9 @@ CHIBI_GPU_SELECTOR("--viewport-resize")
 /* Meshes and SDFs hiding each other in a hidden 96x80 app, with and without
  * hidden-surface rejection and its depth snapshot copies, with readback. */
 CHIBI_GPU_SELECTOR("--sdf-visibility")
+/* The 2D scene renderer's lighting cases in a hidden 64x64 app, with
+ * readback. */
+CHIBI_GPU_SELECTOR("--scene2d")
 /* The 3D renderer's cases in a hidden 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--scene3d")
 /* The same cases on GLES, under xvfb-run on Linux. */

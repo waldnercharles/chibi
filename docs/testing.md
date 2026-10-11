@@ -27,15 +27,19 @@ more than documentation, and `make build` links `chibi`, `chibi-compile` and
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
 make test-native         # every other CPU test_tools selector with checked-in inputs, one 60-second deadline
 make test-materials      # the material simulation selectors, one 60-second deadline
+make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
 make test-language-all   # every test_language selector, one 60-second deadline
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
-`make test-native` also builds an unsanitized Release `chibi_ctl` in
-`build-release/` for `validate-project`, which starts `chibi_ctl` dozens of
-times; each start builds the authoring catalog, and under ASan those starts
-alone take longer than the deadline.
+`make test-projects` also builds an unsanitized Release `chibi_ctl` in
+`build-release/` for `validate-project`, `prototype-expansion`, `controller` and
+`render-fixture`. `validate-project` starts `chibi_ctl` dozens of times; each
+start builds the authoring catalog, and under ASan those starts alone take
+longer than the deadline. The project selectors left the native group when it
+reached 58 of its 60 seconds on a 4-core Linux container (2026-10-11): feature
+coverage, mesh files, project validation and model import alone took 33 s.
 
 `python3 tools/test_policy.py tool <name>` runs one entry of that table against
 the drivers `make test-build` produced and that Release `chibi_ctl`; set
@@ -48,12 +52,14 @@ that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 `radiance`, `radiance-depth`, `radiance-surface`, `radiance-horizons4`,
 `radiance-horizons8`, `material-pixels`, `material-sampling`, `scene2d`,
-`scene3d`, `scene3d-gles`, `scene3d-gi`, `scene3d-gi-gles` and `material-ramps`
-render through a hidden window, which needs a display and a GPU driver the CI
-job does not set up, so they stay out of the group; run them with
+`scene3d`, `scene3d-gles`, `scene3d-gi`, `scene3d-gi-gles`, `material-ramps`,
+`shader-parity`, `shader-programs`, `material-cameras`, `mesh-materials`,
+`sdf-quality`, `scene3d-post` and `scene3d-shapes` render through a hidden
+window, which needs a display and a GPU driver the CI job does not set up, so
+they stay out of the group; run them with
 `python3 tools/test_policy.py tool <name>`.
 
-CI runs the build, the three groups and `make test-tools` on Linux and macOS. On
+CI runs the build, the four groups and `make test-tools` on Linux and macOS. On
 Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
 one-minute step timeout (the test supervisor needs POSIX signals) and builds
 Studio against the installed SDK, without running tests. The Windows jobs are
@@ -91,7 +97,7 @@ gap. The check fails when a catalog entry is in neither the scenes nor that
 list, when a listed entry has no reason comment above it, and when a listed
 entry becomes used. A PR that adds a component, native function or event uses it
 in a feature-coverage scene; it lists the entry as a gap only with a reason. The
-`native` group, and so CI, runs it on the fixture.
+`projects` group, and so CI, runs it on the fixture.
 
 ## Temporary 60-second policy
 
@@ -168,7 +174,7 @@ ASan/UBSan on VM and SLJIT. Its new fixed case checks exact signed/unsigned 64-b
 limits, values above 2^53, contextual nominal enums and five out-of-range rejects.
 
 `python3 tools/test_policy.py tool controller` runs five C command-response cases
-against `build-release/bin/chibi_ctl`, also included in `make test-native`.
+against `build-release/bin/chibi_ctl`, also included in `make test-projects`.
 Set `CHIBI_CTL` and `CHIBI_TOOLS_BUILD_DIR` to select isolated builds. Independent
 review admitted seven tiny generated files per case, two scene entities, thirteen
 owned child processes capped at ten seconds each, and twenty total fixed
@@ -239,6 +245,35 @@ before each independent run, as Studio may migrate that build copy on startup.
 Exactly one `Studio 3D camera accepted: frames=30` line is required; incomplete,
 repeated or diagnostic-bearing output fails. C policy regressions check those
 completion requirements. The first supervised camera execution remains pending.
+
+`make agent-gpu-test AGENT_SELECTOR=--studio-scene-gizmo3d` admits the
+independently reviewed native gizmo fixture: six in-memory prototypes and eight
+actors, forty-two hidden 1920x1080 frames at fixed 1/60 dt under one shared
+60-second deadline. Queued SDL gestures exercise world/local movement, grid
+snapping, Orientation and mirrored-parent rotation, local scaling, undo/redo,
+Escape, focus-loss and hidden-panel cancellation, and refusal beneath sheared
+or singular parents. It uses the same installed-SDK provenance, disposable
+three-file project and resource-generation checks as the camera route above.
+Refresh the complete acceptance source manifest after fixture edits (twenty
+files with the shared 3D fixture and collider acceptance).
+Exactly one `Studio 3D gizmo accepted: frames=42` line is required; an older
+38-frame fixture, incomplete run, duplicate marker or runtime diagnostic fails.
+The C policy case checks completion and rejection; the first supervised GPU
+execution remains pending. This admission covers only this fixed fixture.
+
+`make agent-gpu-test AGENT_SELECTOR=--studio-scene-collider3d` admits the
+independently reviewed native collider fixture: three in-memory prototypes and
+three actors, twenty-six hidden 1920x1080 frames at fixed 1/60 dt under one shared
+60-second deadline. Queued SDL input edits a stretched box face, a sphere's
+radius and a capsule's height with typed undo/redo, rejects parallel-axis and
+nonfinite begins, refuses hidden handles, and cancels a face move with Escape or
+H-during-drag while restoring dirty/history state.
+It uses the same installed-SDK, complete twenty-file source manifest, disposable
+project and resource-generation checks as the gizmo route. Exactly one
+`Studio 3D collider handles accepted: frames=26` line is required; incomplete,
+repeated, unrelated or diagnostic-bearing output fails. A C policy case checks
+those requirements. The first supervised execution remains pending, and this
+route admits only the fixed collider fixture.
 
 The four graph selectors compose the application's graph palette (core, shader,
 field and native nodes over the game's components) into the registry and edit
@@ -601,6 +636,7 @@ make test-list
 | `test-tools` | Complete C tooling and process integration group under one shared deadline. |
 | `test-native` | Every other CPU `test_tools` selector with checked-in inputs under one shared deadline. |
 | `test-materials` | The CPU material simulation selectors under one shared deadline. |
+| `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
 | `test-language-all` | Every `test_language` selector under one shared deadline. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
@@ -864,6 +900,118 @@ ground by a parent, scaled past float's volume or square, and carried past
 its range. It needs a compiler build, uses one temporary folder and passes
 176 assertions under ASan/UBSan with leak checks, without processes or
 GPU.
+`model-graphs` selects 39 model graph compile cases: primitive solids,
+transforms, booleans and smooth unions with their distances and conservative
+bounds, functions, radial and linear arrays, runtime parameters prepared
+without recompiling, expressions, hit resolvers and their part limits,
+profiles extruded, revolved, offset and swept, rims, level sets, Bézier and
+pivoted sections, anchors, models that instance other models with overrides,
+stable part paths and cycle diagnostics, part inspection, and sampled SDF
+atlases that validate, interpolate, extend past their border and bake a mesh,
+with save and reload roundtrips. It needs a compiler build and passes 3,419
+assertions in 0.4 seconds under ASan/UBSan with leak checks, without files,
+world or GPU.
+`model-catalog` selects 27 cases of models and materials in the renderer's
+shader catalog: runtime parameters whose binding texts preparation must accept
+before a snapshot reads them, refusing a value past its range, Set Shape
+Parameter overrides and their cache, slot-scoped material parameters and
+ambiguous unscoped names, saved model sources that validate against their
+materials and shader libraries, material slots that own hits through CSG,
+transforms and instances, parameter and ramp limits across slots, catalog
+edits, renames and removals, and model surfaces: bounds, transforms, empty
+intersections and perspective picking. It needs a compiler build, uses one
+temporary folder and passes 1,355 assertions in 0.4 seconds under ASan/UBSan
+with leak checks, without a window.
+`render-geometry` checks render geometry without a window: appearance shapes'
+bounds, containment, points and rotated bounds, refusing geometry that is not
+finite and positive, and mesh surfaces' world bounds, banking with a visual
+roll, frontmost picks, compound mesh parts that project preparation publishes,
+and unit normals on every supported primitive. It passes 817 assertions in
+0.05 seconds under ASan/UBSan with leak checks.
+`arena` checks the support arena allocator: growth that keeps earlier
+allocations intact and aligned, a reset that hands back the retained blocks in
+order, and a zero-initialized arena. It passes 354 assertions in 0.06
+seconds.
+`shader-graphs` selects 15 shader graph cases on the CPU: planar and
+cylindrical mappings, bump and normal-map frames through part transforms and
+scaled seams, sampled and triplanar heights, triplanar axes, decal volumes,
+nested derivatives the validator refuses, generated GLSL that never names the
+reserved `sample`, mapping, Fresnel, remap and Voronoi effects, color ramps
+whose stops the node owns through save and load, and image textures by color
+space, filter and wrap, with their missing-image diagnostics and authored
+settings. It needs a compiler build and passes 166 assertions in 0.08 seconds
+under ASan/UBSan with leak checks, without files or a window.
+`shader-parity` selects six hidden-app 32x32 cases that run a compute shader of
+shader graph GLSL and compare it with the CPU evaluator: decal masks, effects
+over seven input sets, ramps and cells, image textures over every color space,
+filter and wrap at finite and nonfinite UVs, and a sampled SDF's distances and
+normals at 256 points. A sampled SDF image must keep its pixels, texture and
+last good shader when a reload's digest differs or an edit is refused. Build
+and run it like `interior-border` with `AGENT_SELECTOR=--shader-parity`. It
+passes 64 assertions in 2.3 seconds under ASan/UBSan with leak checks on Vulkan
+llvmpipe.
+`shader-programs` selects eleven hidden-app 64x64 cases. A ramp's numeric edit
+reaches fragment, 3D preview and raster programs without a recompile, and a
+structural edit recompiles once; a raster keeps its last good frame when a
+shader fails to compile or ramps pass the table's capacity; two materials read
+their own table offsets; and program sets keep their ids as the table grows.
+Image textures route through materials with more images than a program binds,
+smooth unions of different materials, fragment programs sampling like the CPU
+across seams, shapes cut by an image's alpha, and a reload past the side limit
+that keeps the last good image. It reads its images from memory. Build and run
+it like `interior-border` with `AGENT_SELECTOR=--shader-programs`. It passes
+70,156 assertions in 6 seconds under ASan/UBSan on Vulkan llvmpipe, whose
+worker threads leak 112 bytes as they do for `material-ramps`, so it runs with
+`detect_leaks=0`.
+`material-cameras` selects six hidden-app 96x80 cases of the material
+raster's orbit camera. Projected bounds of a box under oblique, rolled and
+near-plane cameras must hold every corner an independent clip keeps, and an
+eye circling the view's center must keep its basis and radius. A mesh and an
+SDF swap which is in front as the camera turns half way around, a 2D layer's
+marker lands where a scalar projection puts it, an eye circling a four-actor
+cross sees each side in turn, and emissive SDF spheres project their emission
+where the orbiting eye sees them until an opaque mesh hides one. It passes
+8,045 assertions in 4.8 seconds.
+`mesh-materials` selects eight hidden-app 96x80 cases of meshes in the material
+raster: a box's visible faces, relief and emission, hidden parts that add
+nothing, depth between meshes rather than actor order, ordered 2D layers that
+override it, pitched and rolled planes, even subpixel coverage, padded views
+across a resize, imported meshes that sample their own UVs and hide their back
+faces, and perspective cards of known size, depth, side faces and near-plane
+crops. It passes 151 assertions in 4.6 seconds.
+`sdf-quality` selects ten hidden-app 96x80 cases of SDF surfaces: programs
+specialized for one shape, a growing sphere's analytic heights and normals at
+every resolution, pixel error and normal mode, a thin ring's coverage and hole,
+planes and creases that keep real faces, a rasterized tilted box top, trace and
+normal evaluation counts, analytic gradients under transforms and their
+fallback for unsupported and singular graphs, and spatial scratch groups that
+draw what one scratch does with less work. It passes 118 assertions in 4.3
+seconds.
+Build and run these three like `interior-border`, with `AGENT_SELECTOR` set to
+the selector. They pass under ASan/UBSan on Vulkan llvmpipe, whose worker threads
+leak 112 bytes as they do for `material-ramps`, so they run with
+`detect_leaks=0`.
+`scene3d-post` selects nine hidden-app cases of 3D post-processing over an
+emitter pattern drawn straight into its HDR target: the target keeps scene
+light and the Neutral tone map matches a CPU reference, bloom spreads past its
+threshold while zero strength, zero radius or a high threshold leave the image
+untouched, exposure scales it, infinite channels tone map to white and NaN ones
+to black, bloom clamps at the image edge, its radius follows the viewport height
+and crosses blur levels smoothly, outputs take sizes down to one pixel,
+processing keeps the caller's transform, projection, scissor and viewport, and
+invalid settings keep the last output. It passes 59 assertions in 1.5 seconds.
+`scene3d-shapes` selects thirteen hidden-app 128x128 cases of the 3D path's
+primitive solids lit by the Environment's ambient light. Overhead cameras
+center and map the ground, picks find the nearest solid of every primitive,
+turned bounds fit, frame and clip at the near plane, and flat triangles turn
+about their area center. Every solid primitive draws, nearer solids win in any
+order, parallel geometry draws exactly what serial geometry does for 1,537
+actors, fitted bounds frame what draws, prisms and octahedra draw and pick
+their outline at eight headings and from below, eight tetrahedron parts
+compose an octahedron, polygons' notches and holes stay empty in both the mesh
+and picks, and a box frame's twelve part entities match the frame. It passes
+1,067 assertions in 2 seconds. Run both like `interior-border`; they also run
+with `detect_leaks=0` for llvmpipe's 112 bytes.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

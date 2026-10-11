@@ -56,16 +56,26 @@ static const char driver_setup
          "if mode == 'no-reader':\n"
          "    policy.enable_subreaper = lambda: True\n"
          "    policy.process_children = unavailable\n";
-static const char driver_routes
-    [] = "if sys.argv[2] == 'cpu-route':\n"
-         "    import agent\n"
-         "    selector = sys.argv[5]\n"
-         "    if selector not in agent.runnable_selectors(agent.CPU, "
-         "agent.CPU_SELECTORS):\n"
-         "        sys.exit(2)\n"
-         "    command = agent.selector_command(selector, agent.CPU_SELECTORS)\n"
-         "    print(Path(command[0]).name, command[-1])\n"
-         "    sys.exit(0)\n";
+static const char driver_routes[] =
+    "if sys.argv[2] == 'cpu-route':\n"
+    "    import agent\n"
+    "    selector = sys.argv[5]\n"
+    "    if selector not in agent.runnable_selectors(agent.CPU, "
+    "agent.CPU_SELECTORS):\n"
+    "        sys.exit(2)\n"
+    "    command = agent.selector_command(selector, agent.CPU_SELECTORS)\n"
+    "    print(Path(command[0]).name, command[-1])\n"
+    "    sys.exit(0)\n"
+    /* Every group owns unique selectors; grouped Release controller users
+     * belong to the target that builds that controller. */
+    "if sys.argv[2] == 'misplaced-selectors':\n"
+    "    names = [n for group in policy.GROUPS.values() for n in group]\n"
+    "    ctl = {n for n, command in policy.TOOLS.items()\n"
+    "           if any(Path(a).name == 'chibi_ctl' for a in command[1:])}\n"
+    "    print(' '.join(sorted({n for n in names if names.count(n) > 1} |\n"
+    "        {n for n in ctl & set(names) if n not in "
+    "policy.GROUPS['projects']})))\n"
+    "    sys.exit(0)\n";
 static const char driver_source[] =
     "try:\n"
     "    if sys.argv[2] == '_supervise':\n"
@@ -220,6 +230,86 @@ TEST_CASE(material_cpu_routes_reach_exact_dispatcher)
     return true;
 }
 
+/* Real CLI/supervisor dispatch with disposable child drivers: no project work
+ * runs, and C checks which selector each production group launches. */
+static int run_group(const char *group)
+{
+    char policy_path[PATH_MAX];
+    int length = snprintf(policy_path, sizeof policy_path, "%s/tools/test_policy.py", tool_root());
+    assert(length > 0 && length < (int)sizeof policy_path);
+    const char *names[] = { "CHIBI_TOOLS_BUILD_DIR", "CHIBI_LANGUAGE_BUILD_DIR" };
+    char *saved[2];
+    for (int i = 0; i < 2; i++) {
+        const char *value = getenv(names[i]);
+        saved[i] = value ? xstrdup(value) : NULL;
+        assert(!setenv(names[i], directory, 1));
+    }
+    const char *args[] = { "python3", policy_path, "group", group, NULL };
+    int status = tool_run(args, tool_root(), logpath);
+    for (int i = 0; i < 2; i++) {
+        if (saved[i]) {
+            assert(!setenv(names[i], saved[i], 1));
+        } else {
+            assert(!unsetenv(names[i]));
+        }
+        free(saved[i]);
+    }
+    return status;
+}
+
+TEST_CASE(project_group_keeps_all_project_commands_out_of_native)
+{
+    char child[PATH_MAX], commands[PATH_MAX], source[PATH_MAX + 128];
+    path(commands, "group-commands");
+    int length = snprintf(source, sizeof source, "#!/bin/sh\nprintf '%%s\\n' \"$1\" >> '%s'\n", commands);
+    REQUIRE(length > 0 && length < (int)sizeof source);
+    const char *drivers[] = { "test_tools", "test_language" };
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        tool_write(child, source);
+        REQUIRE(!chmod(child, 0700));
+    }
+    REQUIRE(run_group("projects") == 0);
+    char *output = tool_read(commands);
+    const char
+        *expected = "--mesh-files\n--model-import\n--validate-project\n"
+                    "--prototype-expansion\n--controller\n--feature-coverage\n"
+                    "--render-fixture\n";
+    bool exact = output && !strcmp(output, expected);
+    free(output);
+    REQUIRE(exact);
+    REQUIRE(!unlink(commands));
+    REQUIRE(run_group("native") == 0);
+    output = tool_read(commands);
+    bool separate = output && *output;
+    const char *selectors[] = {
+        "--mesh-files\n",          "--model-import\n", "--validate-project\n",
+        "--prototype-expansion\n", "--controller\n",   "--feature-coverage\n",
+        "--render-fixture\n"
+    };
+    for (int i = 0; separate && i < (int)(sizeof selectors / sizeof *selectors); i++) {
+        separate = !strstr(output, selectors[i]);
+    }
+    free(output);
+    REQUIRE(separate);
+    REQUIRE(!unlink(commands));
+    for (int i = 0; i < 2; i++) {
+        path(child, drivers[i]);
+        REQUIRE(!unlink(child));
+    }
+    return true;
+}
+
+TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects)
+{
+    REQUIRE(run("misplaced-selectors", "-") == 0);
+    char *output = tool_read(logpath);
+    bool exact = output && !strcmp(output, "\n");
+    free(output);
+    REQUIRE(exact);
+    return true;
+}
+
 TEST_CASE(studio_acceptance_requires_exact_completion)
 {
     char filename[PATH_MAX];
@@ -305,6 +395,61 @@ TEST_CASE(studio_camera_requires_thirty_clean_frames)
     for (int i = 0; i < (int)(sizeof rejected / sizeof *rejected); i++) {
         tool_write(filename, rejected[i]);
         REQUIRE(run("studio-result", "--studio-scene-camera") == 2);
+    }
+    return true;
+}
+
+TEST_CASE(studio_collider_requires_twenty_six_clean_frames)
+{
+    char filename[PATH_MAX];
+    path(filename, "studio-output");
+    tool_write(filename, "Studio 3D collider handles accepted: frames=26\n");
+    REQUIRE(run("studio-result", "--studio-scene-collider3d") == 0);
+    char *output = tool_read(logpath);
+    bool complete = output && strstr(output, "\"frames\": 26");
+    free(output);
+    REQUIRE(complete);
+    REQUIRE(run("studio-result", "--studio-scene-gizmo3d") == 2);
+    const char *rejected[] = {
+        "",
+        "Studio 3D collider handles accepted: frames=18\n",
+        "Studio 3D collider handles accepted: frames=25\n",
+        "prefix Studio 3D collider handles accepted: frames=26\n",
+        ("Studio 3D collider handles accepted: frames=26\nStudio 3D collider "
+         "handles accepted: frames=26\n"),
+        "Studio 3D collider handles accepted: frames=26\nStudio UI: failed\n",
+        ("Studio 3D collider handles accepted: frames=26\nruntime frame "
+         "failed\n"),
+    };
+    for (int i = 0; i < (int)(sizeof rejected / sizeof *rejected); i++) {
+        tool_write(filename, rejected[i]);
+        REQUIRE(run("studio-result", "--studio-scene-collider3d") == 2);
+    }
+    return true;
+}
+
+TEST_CASE(studio_gizmo_requires_forty_two_clean_frames)
+{
+    char filename[PATH_MAX];
+    path(filename, "studio-output");
+    tool_write(filename, "Studio 3D gizmo accepted: frames=42\n");
+    REQUIRE(run("studio-result", "--studio-scene-gizmo3d") == 0);
+    char *output = tool_read(logpath);
+    bool complete = output && strstr(output, "\"frames\": 42");
+    free(output);
+    REQUIRE(complete);
+    REQUIRE(run("studio-result", "--studio-scene-camera") == 2);
+    const char *rejected[] = {
+        "Studio 3D gizmo accepted: frames=38\n",
+        "Studio 3D gizmo accepted: frames=41\n",
+        "prefix Studio 3D gizmo accepted: frames=42\n",
+        ("Studio 3D gizmo accepted: frames=42\nStudio 3D gizmo accepted: "
+         "frames=42\n"),
+        "Studio 3D gizmo accepted: frames=42\nruntime frame failed\n",
+    };
+    for (int i = 0; i < (int)(sizeof rejected / sizeof *rejected); i++) {
+        tool_write(filename, rejected[i]);
+        REQUIRE(run("studio-result", "--studio-scene-gizmo3d") == 2);
     }
     return true;
 }
@@ -584,8 +729,12 @@ void test_tool_test_policy()
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
     RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
+    RUN_TEST_CASE(project_group_keeps_all_project_commands_out_of_native);
+    RUN_TEST_CASE(group_selectors_are_unique_and_controller_users_are_projects);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
     RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);
+    RUN_TEST_CASE(studio_gizmo_requires_forty_two_clean_frames);
+    RUN_TEST_CASE(studio_collider_requires_twenty_six_clean_frames);
     RUN_TEST_CASE(studio_resources_require_recorded_generation);
     RUN_TEST_CASE(studio_acceptance_source_records_match_files);
     RUN_TEST_CASE(exit_and_aggregate_deadlines);

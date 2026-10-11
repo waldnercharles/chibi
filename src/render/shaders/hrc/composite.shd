@@ -31,7 +31,6 @@ layout(set = 3, binding = 1) uniform shd_uniforms
     vec4 surface_map;
     int linear_output;
     float world_per_px;
-    float reconstruction_threshold;
     int horizon_directions;
     int surface_mode;
     float surface_thickness;
@@ -46,6 +45,8 @@ layout(set = 3, binding = 1) uniform shd_uniforms
 #include "hrc/surface_geometry.shd"
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+// Transmittance difference over which reconstruction weights fall off.
+const float RECONSTRUCTION_SIGMA = 0.1;
 
 float reconstruction_transmittance(ivec2 p, ivec2 sample_size, ivec2 full_size)
 {
@@ -74,8 +75,7 @@ vec4 reconstruction_weights(vec2 uv, ivec2 sample_size, ivec2 full_size,
     float t10 = reconstruction_transmittance(p10, sample_size, full_size) - target;
     float t01 = reconstruction_transmittance(p01, sample_size, full_size) - target;
     float t11 = reconstruction_transmittance(p11, sample_size, full_size) - target;
-    float sigma = max(reconstruction_threshold, 0.02);
-    float sigma2 = 2.0 * sigma * sigma;
+    float sigma2 = 2.0 * RECONSTRUCTION_SIGMA * RECONSTRUCTION_SIGMA;
     return vec4((1.0 - f.x) * (1.0 - f.y) * exp(-(t00 * t00) / sigma2),
                 f.x * (1.0 - f.y) * exp(-(t10 * t10) / sigma2),
                 (1.0 - f.x) * f.y * exp(-(t01 * t01) / sigma2),

@@ -94,17 +94,6 @@ typedef struct
     CF_Texture cover;
 } render_material_textures;
 
-/* Independent, reduced-resolution uniform emitter proxies. Source alpha is
- * fractional coverage. Moments contain luminance-weighted UV, camera elevation
- * / 1024 and world radius. RGB and
- * moments are stored at 1/1024 scale to widen FP16 additive headroom; normalize
- * them by source luminance before constructing the emission hierarchy. */
-typedef struct
-{
-    CF_Texture source, moments;
-    int width, height, sources;
-} render_emitter_textures;
-
 typedef render_view_2d render_material_view;
 
 typedef struct render_material_raster render_material_raster;
@@ -171,20 +160,6 @@ void render_material_raster_set_sdf_trace_debug(render_material_raster *raster, 
 /* Both optimizations default on; disable for matched rendering comparisons. */
 void render_material_raster_set_spatial_scratch(render_material_raster *raster, bool enabled);
 void render_material_raster_set_hidden_rejection(render_material_raster *raster, bool enabled);
-/* Empty material bindings only: graph-authored emission is excluded. Disk
- * proxies approximate projected shape area; no geometry or source depth test.
- * Disabling releases the optional targets and clears the returned textures. */
-void render_material_raster_set_capture_emitters(render_material_raster *raster, bool enabled);
-bool render_material_raster_capture_emitters(
-    render_material_raster *raster,
-    ecs_world *world,
-    const render_material_entity *entities,
-    int count,
-    const render_mesh_material_actor *meshes,
-    int mesh_count,
-    render_material_view view
-);
-render_emitter_textures render_material_raster_emitter_textures(const render_material_raster *raster);
 
 /* Surface work sums ordered scratch groups; surface_capacity_pixels is the
  * peak retained scratch allocation, reused by those groups. */

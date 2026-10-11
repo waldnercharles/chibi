@@ -303,6 +303,8 @@ fixture. Each runs independently under the shared 60-second supervisor deadline:
 
 | Agent selector | Hidden frames | Accepted interaction |
 | --- | ---: | --- |
+| `--studio-scene-collider3d` | 26 | Scaled box, sphere and capsule handles, typed history, parallel/nonfinite and hidden-handle rejection, Escape/H cancellation; three actors |
+| `--studio-scene-gizmo3d` | 42 | World/local move, snapping, rotation/scaling, history and cancellation; six prototypes/eight actors |
 | `--studio-graph-pointer` | 19 | SDL node selection, wire navigation, Find keys and pointer selection, Escape focus, Home framing |
 | `--studio-asset-pointer` | 20 | SDL filter typing, list/grid clicks with modifiers, exact visible identities and selection |
 | `--studio-debugger-source-history` | 47 | SDL source breakpoint, play, invalid draft, undo/redo, retained paused cursor and value, step and stop |

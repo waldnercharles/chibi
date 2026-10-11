@@ -26,10 +26,23 @@ HEALTH = None
 NEXT = 'make test-policy-inventory'
 CPU_SELECTORS = {
     '--compile-installed-space-cadet': 'compile-installed-space-cadet',
+    '--contact-benchmark': 'contact-benchmark',
+    '--material-destruction': 'material-destruction',
+    '--material-fluids': 'material-fluids',
+    '--material-mpm': 'material-mpm',
+    '--material-thermal': 'material-thermal',
+    '--material-simulation': 'material-simulation',
+    '--material-ecs': 'material-ecs',
+    '--material-benchmark': 'material-benchmark',
+    '--material-render': 'material-render',
+    '--graph-document': 'graph-document',
+    '--graph-functions': 'graph-functions',
+    '--graph-presentation': 'graph-presentation',
     '--source-edit': 'source-edit',
     '--source-presentation': 'source-presentation',
     '--source-systems': 'source-systems',
     '--system-schedule': 'system-schedule',
+    '--vector-nodes': 'vector-nodes',
 }
 INSTALLED_PLAYERS = {'--player-installed-space-cadet-vm', '--player-installed-space-cadet-sljit'}
 PLAYER_SELECTORS = {
@@ -42,8 +55,10 @@ STUDIO_SELECTORS = {'--studio-source-edit': 'studio-source-edit',
                     '--studio-outliner-move': 'studio-outliner-move',
                     '--studio-graph-pointer': 'studio-graph-pointer',
                     '--studio-asset-pointer': 'studio-asset-pointer',
-                    '--studio-debugger-source-history': 'studio-debugger-source-history'}
+                    '--studio-debugger-source-history': 'studio-debugger-source-history',
+                    '--studio-scene-camera': 'studio-scene-camera'}
 STUDIO_ACCEPTANCE = {
+    '--studio-scene-camera': ('--scene-camera', 30, 'Studio 3D camera accepted: frames=30'),
     '--studio-scene-move': ('--scene-move', 2, 'Studio scene move accepted: frames=2'),
     '--studio-outliner-move': ('--outliner-move', 21, 'Studio outliner move accepted: frames=21'),
     '--studio-source-edit': ('--source-edit', 4, 'Studio source edit accepted: frames=4 edits=1 undo=1 redo=1'),

@@ -181,7 +181,7 @@ static void setup()
         "}\n"
     );
     write_file(paths[DRIFT], "system Drift(position: Transform) {\n    position.x += dt\n}\n");
-    write_file(paths[4], "name \"Actor\"\ncomponents {\n    (object)GAME.GameTransform\n}\n");
+    write_file(paths[4], "name \"Actor\"\ncomponents {\n    (object)GAME.GameTransform\n    (object)GAME.GameInput\n    (object)GAME.GameAim\n}\n");
     write_file(paths[5], "name \"Driver\"\ncomponents {\n    GAME.EngineSystem asset=\"Drift\"\n}\n");
     write_file(
         paths[6],
@@ -474,7 +474,7 @@ TEST_CASE(controller_inspection_and_execution_status)
     return true;
 }
 
-static void profile(int warmup, int frames, bool details)
+static void profile(int warmup, int frames, bool details, const char *devices)
 {
     begin("profile_scenario", NULL);
     yyjson_mut_obj_add_str(request, input, "kind", "scene");
@@ -482,6 +482,16 @@ static void profile(int warmup, int frames, bool details)
     yyjson_mut_obj_add_int(request, input, "warmup_frames", warmup);
     yyjson_mut_obj_add_int(request, input, "frames", frames);
     yyjson_mut_obj_add_bool(request, input, "behavior_details", details);
+    yyjson_mut_val *samples = yyjson_mut_obj_add_arr(request, input, "inputs");
+    yyjson_mut_val *sample = yyjson_mut_arr_add_obj(request, samples);
+    yyjson_mut_val *aim = yyjson_mut_obj_add_obj(request, sample, "aim");
+    yyjson_mut_obj_add_real(request, aim, "x", 1);
+    yyjson_mut_obj_add_real(request, aim, "y", 0);
+    yyjson_mut_obj_add_bool(request, aim, "firing", true);
+    yyjson_mut_obj_add_bool(request, aim, "point", false);
+    if (devices) {
+        yyjson_mut_obj_add_arr(request, sample, devices);
+    }
     send();
 }
 
@@ -563,9 +573,11 @@ static bool profile_rows(yyjson_val *value, int measured)
 
 TEST_CASE(controller_profile_accounts_for_measured_execution)
 {
-    profile(2, 4, true);
-    profile(2, 4, false);
-    profile(0, 6, true);
+    /* Explicit aim must survive empty keyboard/controller snapshots, including
+     * later frames that retain those snapshots. All three runs end identically. */
+    profile(2, 4, true, NULL);
+    profile(2, 4, false, "controls");
+    profile(0, 6, true, "controllers");
     REQUIRE(run() == 0 && ok(0) && ok(1) && ok(2));
     bool accounted = profile_rows(result(0), 4);
     if (!accounted) {
@@ -622,7 +634,7 @@ TEST_CASE(controller_profile_accounts_for_measured_execution)
 
 TEST_CASE(controller_profile_excludes_warmup_only_run)
 {
-    profile(2, 0, true);
+    profile(2, 0, true, NULL);
     REQUIRE(run() == 0 && ok(0));
     REQUIRE(uint_is(get(get(result(0), "timing"), "sampled_frames"), 0));
     yyjson_val *samples = get(result(0), "source_profile");

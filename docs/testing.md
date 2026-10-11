@@ -25,7 +25,8 @@ more than documentation, and `make build` links `chibi`, `chibi-compile` and
 
 ```sh
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
-make test-native         # every CPU test_tools selector with checked-in inputs, one 60-second deadline
+make test-native         # every other CPU test_tools selector with checked-in inputs, one 60-second deadline
+make test-materials      # the material simulation selectors, one 60-second deadline
 make test-language-all   # every test_language selector, one 60-second deadline
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
@@ -52,7 +53,7 @@ render through a hidden window, which needs a display and a GPU driver the CI
 job does not set up, so they stay out of the group; run them with
 `python3 tools/test_policy.py tool <name>`.
 
-CI runs the build, both groups and `make test-tools` on Linux and macOS. On
+CI runs the build, the three groups and `make test-tools` on Linux and macOS. On
 Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
 one-minute step timeout (the test supervisor needs POSIX signals) and builds
 Studio against the installed SDK, without running tests. The Windows jobs are
@@ -217,6 +218,48 @@ Later document/Studio integrations are unverified.
 It also runs two component presentation cases on two fixed in-memory documents:
 the engine's tabs, icons and reflected units and ranges, and a document
 overriding them key by key.
+
+`make agent-gpu-test AGENT_SELECTOR=--studio-scene-camera` admits one fixed
+native Studio camera case, with one in-memory cube and thirty hidden 1920x1080
+frames at fixed 1/60 dt under one shared 60-second deadline. Queued SDL input
+exercises orbit, pan, anchored dolly, same-frame right-button/W flight,
+fractional diagonal wheel pan, an above-horizon press, focus-loss cleanup and
+checkpoint lens retention. This does not admit the broader Studio acceptance
+suite or establish web input coverage.
+
+Use the existing absolute `CHIBI_STUDIO_SOURCE`, `CHIBI_STUDIO_BUILD` and
+`CHIBI_STUDIO_ACCEPTANCE_EVIDENCE` paths. The evidence must match the current
+acceptance binary, SDK, compile inputs, extraction metadata, every file under
+`tests/acceptance`, and the recorded Studio/UI resource generation. Refresh that
+complete source manifest after camera fixture changes; do not reuse an earlier
+sixteen-file snapshot or omit new files. The existing 8–32-file, 256 KiB-per-file
+bounds and file/directory symlink rejection still apply. Restore the source
+`projects/studio/project.kdl` into the build's `share/chibi/studio/project.kdl`
+before each independent run, as Studio may migrate that build copy on startup.
+Exactly one `Studio 3D camera accepted: frames=30` line is required; incomplete,
+repeated or diagnostic-bearing output fails. C policy regressions check those
+completion requirements. The first supervised camera execution remains pending.
+
+The four graph selectors compose the application's graph palette (core, shader,
+field and native nodes over the game's components) into the registry and edit
+in-memory graphs; no files, worlds, processes or GPU work run.
+`--graph-document` runs fourteen cases: node comments and comment frames through
+graph documents, input and EXEC edge lookups across edits, pastes, remapped IDs,
+malformed fan-out and four concurrent first readers, stable node and pin IDs,
+reflected Make/Break descriptors, literal defaults and edge replacement. It passes
+256 assertions in 0.36 seconds with ASan/UBSan.
+`--graph-presentation` runs fourteen cases: which nodes fold inline, arrangement
+skipping inline nodes, presentations through asset value documents, expression
+text for behavior, component, shader and field nodes, Find in graph and node
+hover sentences. It passes 128 assertions in 0.51 seconds with ASan/UBSan.
+`--graph-functions` runs eighteen cases: function and macro signature edits,
+purity, defaults, moves and variable promotion reaching every call, Collapse to
+Macro and Expand Node, and catalog problems of two linked shader libraries. It
+passes 170 assertions in 0.50 seconds with ASan/UBSan.
+`--vector-nodes` runs one case on the vector kernels: normalize at extremes,
+zero scale and the palette's Direction To through a saved graph. It passes 42
+assertions in 0.20 seconds with ASan/UBSan.
+
 `--system-schedule` admits only `test_system_schedule`: fixed access/order cases,
 62 small CPU engine frames and a serial/parallel 128-entity, 20-frame comparison.
 The scheduler benchmark and broad material aggregates remain quarantined. This
@@ -235,6 +278,46 @@ a storage failure. CPU only; the folder is removed afterwards.
 children use plans a rewrite of each child in its parent's text, and a parent
 that includes another prototype keeps its includes and only its own children.
 Four in-memory prototypes, no files, CPU only.
+
+Material tests are split by masks/damage, cave/terrain, fluids, body destruction,
+fragments and debris; a shared fixture owns setup and coverage invariants.
+The fixed largest inputs are a 2048 by 768 cave, a 192 by 192 flow grid,
+and two 192-particle MPM pools of 3000 steps each. Worker cases use four workers.
+No material selector creates a window, child process or network connection;
+the group runs once under one shared 60-second deadline.
+
+The material simulation selectors run without a window or GPU; wall times are
+under ASan/UBSan through the production supervisor on a shared four-core host.
+`--material-destruction` checks material masks and their cover rectangles,
+carving and fragment extraction, contours, callback queues and capacity
+fallback, damage rounding, debris, fuel blasts reaching bodies as Material
+Impact events, and `CaveField.kdl` baked against an independent reference cave
+and streamed as terrain through preview worlds: 26 cases, 2,700 assertions,
+2.7 seconds. `--material-fluids` checks the particle fluid's sleeping,
+cohesion, liquid splits and merges, body response, gas flow, buoyancy and
+mixing barriers, and serial against worker parity of particles and the flow
+grid: 12 cases, 34,828 assertions, 13 seconds. `--material-mpm` checks the MPM
+solver's transfers, elastic recovery, transactional failure, worker parity,
+collider momentum and two 3000-step hydrostatic pools: 9 cases, 13,464
+assertions, 4.0 seconds. `--material-thermal` checks heat exchange between
+parcels, across walls and openings, dormancy, quenching, worker parity and
+authored thermal components: 12 cases, 9,469 assertions, 7.6 seconds.
+`--material-simulation` checks contained liquids, sleeping deformation,
+expiry, mixed phases, the obstacle and particle indexes, and contact
+responses: 27 cases, 179,416 assertions, 0.5 seconds. `--material-ecs` checks
+blast craters, constitutive models, appearance detail and fluid impulses that
+turn bodies through authored components: 10 cases, 4,737 assertions, 0.9
+seconds. `--material-render` checks the material raster's linear coefficients
+and the mask LOD levels: 6 cases, 2,723 assertions, 0.2 seconds.
+
+`--material-benchmark` times four fixed fluid workloads on four workers: a DDR
+patch and an MPM collision, 32 by 32 parcels for 30 frames, each equal to its
+serial run; heat exchange over 48 by 48 parcels, conserving energy; and gas
+flow around two bodies over 64 by 64 parcels. It prints per-phase timings and
+passes 6,404 assertions in 8.2 seconds. `--contact-benchmark` times the first
+and steady 2D physics steps of 1,000 and 4,000 circle colliders, apart and
+overlapping, and passes 96 assertions in 1.4 seconds. Compare builds through
+`benchmark_trials`.
 
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against
@@ -423,7 +506,8 @@ make test-list
 | --- | --- |
 | `test`, `test-short` | Six pure C execution-policy unit cases under one deadline. |
 | `test-tools` | Complete C tooling and process integration group under one shared deadline. |
-| `test-native` | Every CPU `test_tools` selector with checked-in inputs under one shared deadline. |
+| `test-native` | Every other CPU `test_tools` selector with checked-in inputs under one shared deadline. |
+| `test-materials` | The CPU material simulation selectors under one shared deadline. |
 | `test-language-all` | Every `test_language` selector under one shared deadline. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |
@@ -544,10 +628,10 @@ backend has one, so there a failure means Cute's tile shaders did not load.
 `viewport-resize` creates an engine viewport at a 640 x 360 placeholder in a
 hidden app. The first requested size must replace the canvas on that draw, and
 a later size only once it has been requested for two more draws. A press above
-a level perspective view's horizon must still be captured, without a ground
-point, and one below it must land on the ground. Build and run it like
-`interior-border` with `AGENT_SELECTOR=--viewport-resize`.
-Its fifth case draws one 64 x 64 UI frame containing a translucent red rectangle
+a level perspective horizon stays captured without a ground point; below it,
+the pointer lands on the ground. Build and run it like `interior-border` with
+`AGENT_SELECTOR=--viewport-resize`.
+Its fourth case draws one 64 x 64 UI frame containing a translucent red rectangle
 and a red glyph over opaque blue. One readback compares direct presentation with
 the public straight-alpha texture copied into the other half of the target.
 It requires correct source-over color, partial glyph coverage, and straight RGB

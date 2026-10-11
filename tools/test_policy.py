@@ -19,6 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
+    ('--studio-scene-camera',): 'First supervised measurement: independently reviewed one in-memory cube, SDL orbit/pan/anchored dolly, same-frame RMB+W flight, fractional diagonal wheel pan, above-horizon press and checkpoint lens retention, focus-loss cleanup; thirty hidden1920x1080frames, disposable3file fixture, shared60s',
     ('--preview-components',): 'Independently reviewed first CPU measurement: four tiny project files, one declared float component and entity, two previews with two steps each, missing-scene and invalid-declaration cleanup, no GPU/process/network; shared60s',
     ('--studio-scene-move',): 'Reviewed installed SDK hierarchy move integration: bounded 2D picking and two-object 3D model/checkpoint cases, atomic moves, history and collaboration; two hidden frames, shared60s',
     ('--studio-outliner-move',): 'Reviewed installed Studio pointer and keyboard hierarchy moves: one three-object 2D scene, before/inside/after/root, grouped selection and rejection; twenty-one hidden frames, shared60s',
@@ -35,7 +36,7 @@ NATIVE = {
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
     ('--player-installed-space-cadet-sljit',): 'Pinned installed player SLJIT, four hidden1280x720frames, exact8resources, shared60seconds',
     ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
-    ('--viewport-resize',): 'Reviewed hidden 64x64 app: viewport initial/later resize behavior, a press captured above a perspective horizon, plus one 64x64 UI frame/readback checking translucent rectangle and glyph source-over against the public straight-alpha texture; GPU, shared 60s; docs/testing.md',
+    ('--viewport-resize',): 'Reviewed hidden 64x64 app: viewport initial/later resize behavior, captures presses above a perspective horizon without a ground point, plus one 64x64 UI frame/readback checking translucent rectangle and glyph source-over against the public straight-alpha texture; GPU, shared 60s; docs/testing.md',
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
     ('--radiance',): 'Reviewed hidden 128x128 app: HRC emitter, wall, absorption, bounce and transparent-feedback transport, reset, resize and reused capacity, split color, fractional cells, reduced reconstruction, fitted lighting, every resolution combination, the adaptive ladder, GPU pass timing, and the extend and filter passes alone, with readback; GPU; docs/testing.md',
     ('--radiance-depth',): 'Reviewed hidden 32x32 app with 32x32 and 128x128 targets: HRC Depth thickness light through slabs that block by height unless they glow, from small, moving, edge and mixed-color sources, its falloff, perspective, depth gain on closed receivers, open receivers shading HRC light by facing and height, gloss, every quality, history, segments and steep planes, and the surface gather by quadrant, crest, reach and turning view, with readback; GPU; docs/testing.md',
@@ -58,6 +59,19 @@ NATIVE = {
     ('--source-edit',): 'Independently reviewed nine fixed source-edit cases, tiny inputs and checked transactions including extraction/inline/signature/binding/capture and layout, no files/world/runtime/GPU; docs/testing.md',
     ('--ecs-query-benchmark',): 'Reviewed three fixed ECS query workloads, 4096 entities x 2000 passes each, CPU only; run through benchmark_trials',
     ('--system-schedule',): 'First supervised measurement; independently reviewed fixed dependency/order cases, 62 small engine frames and serial/parallel 128 entities x 20 frames, CPU only; docs/testing.md',
+    ('--material-destruction',): 'Material damage, terrain preparation, debris, blasts and their impacts on bodies; 26 cases, fixed grids, CPU only; docs/testing.md',
+    ('--material-fluids',): 'Fluid flow, cohesion, buoyancy and cave fields; 12 cases, fixed grids, CPU only; docs/testing.md',
+    ('--material-mpm',): 'MPM particles and their grid transfer; 9 cases, fixed grids, CPU only; docs/testing.md',
+    ('--material-thermal',): 'Heat transfer, phase changes and energy conservation; 12 cases, fixed grids, CPU only; docs/testing.md',
+    ('--material-simulation',): 'Solver steps, mixed cells, obstacles, particle index and reactions; 27 cases, fixed grids, CPU only; docs/testing.md',
+    ('--material-ecs',): 'Material ECS blasts, constitutive response, detail and impulses; 10 cases, CPU only; docs/testing.md',
+    ('--material-render',): 'Material coefficient extraction and level of detail; 6 cases, CPU only; docs/testing.md',
+    ('--material-benchmark',): 'Fixed DDR, MPM, thermal and gas workloads; serial and four-worker hashes must match, energy conserved; CPU only; docs/testing.md',
+    ('--contact-benchmark',): 'Fixed 2D contact workload with its timing; 2 cases, CPU only; docs/testing.md',
+    ('--graph-document',): 'Graph documents over the composed node palette: comments, frames, edge indexes across edits and paste, concurrent readers, ID stability and literals; 14 cases, in-memory, CPU only; docs/testing.md',
+    ('--graph-presentation',): 'Inline folding, arrangement, expression text, find and hover sentences over the palette; 14 cases, in-memory, CPU only; docs/testing.md',
+    ('--graph-functions',): 'Function and macro signatures, collapse/expand and linked shader library problems; 18 cases, in-memory, CPU only; docs/testing.md',
+    ('--vector-nodes',): 'Vector kernels and the palette vector node bindings and defaults; one case, CPU only; docs/testing.md',
     ('--source-presentation',): 'Independently reviewed five small source/palette cases, graph ownership/layout, invalid drafts, callable-local scope and readable formulas with retained calls/effects, plus two component presentation cases on two in-memory documents, CPU only; docs/testing.md',
 }
 EXAMPLE_LABS = ('local_mesh_sampled', 'hrc_lab', 'modeling_lab', 'sdf_lab', 'suzanne_sampled')
@@ -75,6 +89,7 @@ TOOLS = {
     # CHIBI_STUDIO_IDLE_PROJECT must be a disposable acceptance/project clone.
     'studio-panel-idle': [str(Path(os.environ.get('CHIBI_STUDIO_BUILD', 'build-studio')) / 'bin/studio-acceptance'),
                           '--panel-idle', '--project-root', os.environ.get('CHIBI_STUDIO_IDLE_PROJECT', '')],
+    'studio-scene-camera': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-scene-camera'],
     'studio-scene-move': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-scene-move'],
     'studio-outliner-move': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-outliner-move'],
     'tilemap-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--tilemap-project'],
@@ -121,6 +136,14 @@ TOOLS = {
     'persistent-store': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--persistent-store'],
     # Reviewed three source presentation/default/layout and actual native palette composition cases, CPU only.
     'source-presentation': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-presentation'],
+    # Graph documents over the composed palette: comments, frames, edge indexes, IDs and literals, CPU only.
+    'graph-document': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--graph-document'],
+    # Inline folding, arrangement, expression text, find and hover sentences over the palette, CPU only.
+    'graph-presentation': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--graph-presentation'],
+    # Function and macro signatures, collapse/expand and shader library problems, CPU only.
+    'graph-functions': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--graph-functions'],
+    # Vector kernels and the palette's Direction To and Make_CF_V2 defaults, CPU only.
+    'vector-nodes': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--vector-nodes'],
     # Reviewed fixed SDK/player install, managed migration and packaging fixtures; one shared deadline.
     'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
     # Reviewed nominal alias ownership and nested error-source case, both backends, bounded 16 preparations.
@@ -145,6 +168,24 @@ TOOLS = {
     'source-native-numeric-queries': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-native-numeric-queries'],
     # One reviewed source material case; four payload types, two backends, CPU shader stage only.
     'source-native-material': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-native-material'],
+    # Material masks, destruction, fragments, debris, cave fields and streamed terrain; CPU only.
+    'material-destruction': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-destruction'],
+    # Particle fluid sleep, cohesion, splits, body response, gas flow and worker parity; CPU only.
+    'material-fluids': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-fluids'],
+    # MPM transfer, recovery, transactions, worker parity, colliders and two 3000-step pools; CPU only.
+    'material-mpm': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-mpm'],
+    # Fluid heat exchange, walls, dormancy, quenching, worker parity and authored thermal state; CPU only.
+    'material-thermal': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-thermal'],
+    # Fluid containment, mixed phases, obstacle and particle indexes and contact responses; CPU only.
+    'material-simulation': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-simulation'],
+    # Blast craters, constitutive models, appearance detail and fluid impulses through ECS components; CPU only.
+    'material-ecs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-ecs'],
+    # Four fixed fluid workloads on four workers with timings; compare builds through benchmark_trials.
+    'material-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-benchmark'],
+    # Four fixed 2D collider lattices with first and steady step timings; compare through benchmark_trials.
+    'contact-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--contact-benchmark'],
+    # CPU-only material raster coefficients and mask LOD levels; no window or GPU.
+    'material-render': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--material-render'],
     # Reviewed CPU-only renderer cases: typed transaction/lifetime, sprite image sets, sky face layout
     # and halves, sky irradiance, the split-sum table, sky publication, HRC view layout and lighting
     # normalization, and pure desktop key/stick mapping; no window, GPU, fonts or files.
@@ -288,7 +329,13 @@ GROUPS = {
                'source-native-numeric-queries', 'source-native-material', 'source-presentation',
                'system-schedule', 'source-systems', 'source-edit', 'new-asset', 'asset-refactor',
                'validate-project', 'prototype-expansion', 'controller', 'shader-parameters-prepared',
-               'language-prepared', 'ecs-query-benchmark', 'feature-coverage', 'render-fixture', 'preview-components'],
+               'language-prepared', 'ecs-query-benchmark', 'feature-coverage', 'render-fixture', 'preview-components', 'graph-document', 'graph-presentation', 'graph-functions', 'vector-nodes'],
+    # Independently reviewed fixed CPU workloads: cave<=2048x768, flow<=192x192,
+    # two192-particle3000-stepMPM pools, four workers, no windows/children/network.
+    # First measurement of the combined candidate remains under one shared60s.
+    'materials': ['material-destruction', 'material-fluids', 'material-mpm', 'material-thermal',
+                  'material-simulation', 'material-ecs', 'material-render', 'material-benchmark',
+                  'contact-benchmark'],
     'language': ['language', 'language-semantic', 'language-execution', 'language-program',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
@@ -566,7 +613,7 @@ def main():
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
         if arguments[0] in tuple(f'installed-example-{lab}' for lab in EXAMPLE_LABS) + ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
-                            'studio-graph-visibility', 'studio-graph-pointer', 'studio-asset-pointer', 'studio-debugger-source-history', 'studio-scene-move', 'studio-outliner-move', 'interior-border', 'viewport-resize', 'sdf-visibility',
+                            'studio-graph-visibility', 'studio-graph-pointer', 'studio-asset-pointer', 'studio-debugger-source-history', 'studio-scene-move', 'studio-outliner-move', 'studio-scene-camera', 'interior-border', 'viewport-resize', 'sdf-visibility',
                             'radiance', 'radiance-depth', 'material-sampling', 'scene2d', 'scene3d',
                             'scene3d-gles', 'scene3d-gi', 'scene3d-gi-gles',
                             'material-ramps', 'radiance-surface', 'radiance-horizons4',

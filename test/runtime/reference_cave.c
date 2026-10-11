@@ -1,5 +1,7 @@
 
 
+#include "test/runtime/reference_cave.h"
+
 #include "support/cos_sin.h"
 #include "support/xalloc.h"
 

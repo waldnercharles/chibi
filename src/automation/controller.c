@@ -9369,14 +9369,19 @@ static int apply_scenario_input(
         memcpy(context->controllers, input->controllers, sizeof context->controllers);
         context->devices_sampled = true;
     }
-    bool firing = context->aim_firing;
+    bool firing = false;
     if (context->devices_sampled &&
         engine_sample_devices(runtime, context->controls, context->controllers, &firing) <
             0) {
         snprintf(error, error_size, "invalid authored action binding");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    if (engine_sample_aim(runtime, context->aim, firing, context->aim_point) < 0) {
+    if (engine_sample_aim(
+            runtime,
+            context->aim,
+            context->aim_firing || firing,
+            context->aim_point
+        ) < 0) {
         snprintf(error, error_size, "scenario aim input failed");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }

@@ -319,6 +319,99 @@ and steady 2D physics steps of 1,000 and 4,000 circle colliders, apart and
 overlapping, and passes 96 assertions in 1.4 seconds. Compare builds through
 `benchmark_trials`.
 
+`--asset-values` runs nine cases on KDL asset text and the native value tree:
+typed scalars at the 64-bit limits, slashdash, annotated arrays and source
+ranges; reals and floats that read back bit for bit and write plainly;
+escaped separators; thirteen malformed documents reported with a line and
+column; owned snapshots and subtrees; ordered objects; exact numeric
+equality; and JSON that owns its strings. 172 assertions in 0.05 seconds with
+ASan/UBSan; in memory, CPU only.
+
+`--ui-document` runs fifteen cases on UI documents and RCSS: composition,
+rejected markup, page bodies with imported stylesheets, widgets expanded with
+slots, attributes and cycles refused, source lines traced through widgets,
+scoping, named events and self bindings, then RCSS nesting, errors by line,
+custom properties, line maps through joins and imports read once. 79
+assertions in 0.06 seconds with ASan/UBSan; a few files in a temporary folder.
+
+`--text-files` runs three cases: a file watch sees same-size edits, atomic
+replacements and removals at most once a second; a text overlay reads in
+place of its file however its path is spelled; text edits apply against the
+original text. 16 assertions in 0.06 seconds with ASan/UBSan.
+
+`--fmt` runs two cases on the vendored fmt library: positional, typed and
+aligned arguments with escaped braces, and the runtime specifier path Format
+Text takes, where an out-of-range placeholder renders empty. 12 assertions in
+0.05 seconds with ASan/UBSan.
+
+`--particles` runs three cases on particle bursts without a renderer: curves
+and one long step matching many short ones, deterministic emission that
+rejected input does not disturb, and bursts capped at the particle limit with
+finite values that expire each at its own lifetime. 6,259 assertions in 0.07
+seconds with ASan/UBSan.
+
+`--png-encoding` runs one case: Cute's PNG encoder, which screenshots use,
+declares the 32K zlib window it references and round-trips the pixels. No
+window or GPU; 3 assertions in 0.07 seconds with ASan/UBSan.
+
+`--project-document` runs three cases: manifests older than the oldest
+upgradable version or newer than this build are refused, a new project opens
+with an empty start scene and is never written over, and the language and
+material contract fixture projects resolve their own content. 4 assertions in
+0.08 seconds with ASan/UBSan; temporary projects only.
+
+`--prototype-documents` runs eight cases on prototypes and scene documents in
+memory: a rebase keeps local values over evolving defaults, retained strings
+survive clones and renames, detached components spawn absent and reattach,
+includes and overrides save deterministically, spawned edits capture as
+overrides, and scene documents save reflected values readably, round-trip
+entities and physics, and refuse invalid physics names and versions. 192
+assertions in 0.08 seconds with ASan/UBSan; no files.
+
+`--reference-index` runs five cases on the authoring reference index: assets
+keep their identity by path and key, graphs index every kind of symbol against
+the game's reflected packs, prototypes, objects and UI documents are indexed,
+calls climb through handlers and detect cycles, and a scene's UI pages bind to
+and rename with their scene. 72 assertions in 0.36 seconds with ASan/UBSan.
+
+`--asset-source` runs six cases on asset source text: completion of unset
+properties, components, fields and values (in prototype and scene drafts),
+navigation into event payloads, reconciliation that keeps authored text, and
+parsing incomplete drafts. Canonical component identities resolve completion and
+hover, while an unknown qualifier does not resolve the component. The original
+five cases passed 505 assertions in 0.32 seconds with ASan/UBSan; the added
+identity case requires validation on this candidate.
+
+`--behavior-loader` runs two cases: the application loader prepares a content
+root's sources into the authoring world and a prototype preview's live world,
+and one broken source refuses the whole collection, names its root and stage
+and leaves both worlds on the generation they had; a preview scene launch that
+fails destroys its entities before releasing their component override strings.
+11 assertions in 0.23 seconds with ASan/UBSan; a temporary folder.
+
+`--engine-clock` runs six cases on the engine's 60 Hz fixed clock over a
+preview engine and one kinematic body: 30, 60, 120 and 144 Hz displays all run
+sixty steps a second with systems at each step's time, hitches and overload are
+capped at eight steps and reported, pause, Step, resume and reset hold wall
+time, time scale changes how often steps run, display frames interpolate poses
+without moving bodies, and an engine without optional modules still steps.
+436 assertions in 0.18 seconds with ASan/UBSan.
+
+`--preview-layout` runs two cases on preview graph definitions: moving
+automatically arranged nodes leaves a definition saved and applied while moving
+a placed node is an unsaved edit, and component access nodes keep their file
+entries wherever arrangement puts them. 26 assertions in 0.25 seconds with
+ASan/UBSan.
+
+`--fields` runs fourteen cases on field graphs compiled to field programs:
+deterministic cos/sin, atan2 and exponentials against golden bits, primitives
+that bake as they sample, parameters and compile errors, noise and
+composition, row evaluation matching scalar samples, repeated inputs,
+functions, multiple results, terrain chunks and connectivity, and streaming
+tiles that restore and retry failed slices, plus linked-library publication
+and rollback. The original thirteen cases passed 3,308 assertions in 0.36 seconds
+with ASan/UBSan; the added publication case requires validation on this candidate.
+
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against
 `build-release/bin/chibi_ctl`. Each scaffolds a temporary
@@ -792,3 +885,14 @@ The prepared-format-v5 state capture passes three compiler writer cases and 161
 assertions, seven separate runtime consumer cases and 396 assertions, and one
 process supervisor case with five assertions in 0.791 seconds. Its new state case
 checks retained banks across publication and restart, plus retrigger deadlines.
+
+The `--fields` selector also checks native field artifact publication with one
+pure scalar library, one dependent field and three single-cell evaluations.
+A valid library edit publishes a new field revision and value; an unsupported
+operation refuses the replacement and preserves the previous revision and value.
+This replaces the obsolete test that registered an executable library graph in
+the preview and edited a `.chibi` presentation as executable state. Preview
+executable libraries now require canonical source publication. The existing
+`FieldShapes.chibi` to `MaterialIslands.kdl` linkage gap remains: the native graph
+loader reads KDL documents and does not lower authored `.chibi` libraries into
+field artifacts. This check does not claim that linkage or source hot-apply works.

@@ -1,4 +1,6 @@
+#include "authoring/preview.h"
 #include "authoring/shader_prepare.h"
+#include "ecs/ecs.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
@@ -922,6 +924,59 @@ TEST_CASE(scoped_namespace_collision)
     return true;
 }
 
+TEST_CASE(live_rename_updates_applied_sources)
+{
+    ecs_world *ecs = ecs_world_new();
+    game_preview_world *world = game_preview_world_new(ecs);
+    behavior_asset *paint = material("LiveRenamePaint", 1, 0, 0);
+    game_preview_definition
+        *paint_definition = game_preview_definition_new(paint->name, paint);
+    REQUIRE(!game_preview_add_definition(world, paint_definition));
+    behavior_asset *base = model("LiveRenameBase");
+    node *body = part(base->graph, "Body", 2);
+    node *paint_slot = slot(base->graph, "Paint", paint->name);
+    connect(base->graph, paint_slot, body, 1);
+    publish(base->graph, body);
+    game_preview_definition *base_definition = game_preview_definition_new(base->name, base);
+    REQUIRE(!game_preview_add_definition(world, base_definition));
+    behavior_asset *parent = model("LiveRenameParent");
+    node *instance = graph_add_node(parent->graph, &NODE_ModelInstance);
+    instance->reference_asset = graph_own_str(parent->graph, base->name, strlen(base->name));
+    pin_spec override = { .name = "Paint",
+                          .type = PIN_STR,
+                          .type_name = "MaterialAsset",
+                          .declaration_id = paint_slot->id,
+                          .default_value = { .type = PIN_STR,
+                                             .type_name = "MaterialAsset",
+                                             .str = paint->name } };
+    REQUIRE(graph_add_pin(parent->graph, instance, false, &override) == 0);
+    publish(parent->graph, instance);
+    uint64_t instance_id = instance->id;
+    game_preview_definition
+        *parent_definition = game_preview_definition_new(parent->name, parent);
+    REQUIRE(!game_preview_add_definition(world, parent_definition));
+    REQUIRE(!game_preview_rename_definition(world, "LiveRenameBase", "LiveRenamedBase"));
+    REQUIRE(!strcmp(base_definition->working->name, "LiveRenamedBase"));
+    REQUIRE(!strcmp(base_definition->applied->name, "LiveRenamedBase"));
+    REQUIRE(!strcmp(instance->reference_asset, "LiveRenamedBase"));
+    node *applied_instance = graph_node_by_id(parent_definition->applied->graph, instance_id);
+    REQUIRE(applied_instance && !strcmp(applied_instance->reference_asset, "LiveRenamedBase"));
+    REQUIRE(!game_preview_rename_definition(world, "LiveRenamePaint", "LiveRenamedPaint"));
+    REQUIRE(!strcmp(paint_definition->working->name, "LiveRenamedPaint"));
+    REQUIRE(!strcmp(paint_definition->applied->name, "LiveRenamedPaint"));
+    REQUIRE(!strcmp(instance->input_pins[0].default_value.str, "LiveRenamedPaint"));
+    /* Each rename publishes a new applied clone of the dependent model. */
+    applied_instance = graph_node_by_id(parent_definition->applied->graph, instance_id);
+    REQUIRE(applied_instance);
+    REQUIRE(!strcmp(applied_instance->input_pins[0].default_value.str, "LiveRenamedPaint"));
+    REQUIRE(!game_preview_remove_definition(world, "LiveRenameParent"));
+    REQUIRE(!game_preview_remove_definition(world, "LiveRenamedBase"));
+    REQUIRE(!game_preview_remove_definition(world, "LiveRenamedPaint"));
+    game_preview_world_free(world);
+    ecs_world_free(ecs);
+    return true;
+}
+
 static void teardown()
 {
     authoring_shader_catalog_clear();
@@ -943,6 +998,7 @@ void test_model_materials()
     RUN_TEST_CASE(flattened_parameter_limit);
     RUN_TEST_CASE(combined_ramp_limit);
     RUN_TEST_CASE(scoped_namespace_collision);
+    RUN_TEST_CASE(live_rename_updates_applied_sources);
     pu_clear_setup();
     test_graph_packs_restore();
 }

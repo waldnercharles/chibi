@@ -370,7 +370,10 @@ int game_preview_add_definition(game_preview_world *world, game_preview_definiti
     if (!linked) {
         return registration_error(definition, message[0] ? message : graph_last_error());
     }
-    if (graph_asset_compile(linked, &definition->diagnostics)) {
+    /* Like an update, a model validates against the renderer's shader catalog,
+     * which holds the materials it references, when it is upserted below. */
+    if (linked->domain != BEHAVIOR_DOMAIN_MODEL &&
+        graph_asset_compile(linked, &definition->diagnostics)) {
         behavior_asset_free(linked);
         return -1;
     }

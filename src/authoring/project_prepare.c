@@ -504,9 +504,6 @@ bool authoring_project_prepare(
             goto done;
         }
     }
-    if (!authoring_native_graphs_prepare(project.content, fields, error, size)) {
-        goto done;
-    }
     native = authoring_language_catalog_new(
         &(authoring_language_catalog_input){ .native = options->native },
         error,
@@ -523,6 +520,9 @@ bool authoring_project_prepare(
         BEHAVIOR_BYTECODE
     );
     if (!sources || !sources_valid(sources, error, size)) {
+        goto done;
+    }
+    if (!authoring_native_graphs_prepare(project.content, sources, fields, error, size)) {
         goto done;
     }
     native_prepared_context event_context = { .native = options->native };

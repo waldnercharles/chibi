@@ -32,6 +32,16 @@ CHIBI_CPU_SELECTOR("--material-ecs")
 CHIBI_CPU_SELECTOR("--material-benchmark")
 CHIBI_CPU_SELECTOR("--contact-benchmark")
 CHIBI_CPU_SELECTOR("--material-render")
+/* Model graphs compiled to distance programs, bounds and hit resolvers. */
+CHIBI_CPU_SELECTOR("--model-graphs")
+/* Models and materials in the renderer's shader catalog, without a window. */
+CHIBI_CPU_SELECTOR("--model-catalog")
+/* Appearance and mesh surface geometry, without a window. */
+CHIBI_CPU_SELECTOR("--render-geometry")
+/* The support arena allocator. */
+CHIBI_CPU_SELECTOR("--arena")
+/* Shader graphs evaluated on the CPU and compiled to GLSL, without a window. */
+CHIBI_CPU_SELECTOR("--shader-graphs")
 
 /* Explicit opt-in checks against installed products; each runs under the
  * shared 60-second supervisor. */
@@ -45,6 +55,8 @@ CHIBI_GPU_SELECTOR("--studio-graph-pointer")
 CHIBI_GPU_SELECTOR("--studio-asset-pointer")
 CHIBI_GPU_SELECTOR("--studio-debugger-source-history")
 CHIBI_GPU_SELECTOR("--studio-scene-camera")
+CHIBI_GPU_SELECTOR("--studio-scene-gizmo3d")
+CHIBI_GPU_SELECTOR("--studio-scene-collider3d")
 /* Cute's interior border on two shapes in a hidden 64x64 app, through the
  * instanced and tiled draw paths, with readback. */
 CHIBI_GPU_SELECTOR("--interior-border")
@@ -98,3 +110,25 @@ CHIBI_GPU_SELECTOR("--installed-example-hrc_lab")
 CHIBI_GPU_SELECTOR("--installed-example-modeling_lab")
 CHIBI_GPU_SELECTOR("--installed-example-sdf_lab")
 CHIBI_GPU_SELECTOR("--installed-example-suzanne_sampled")
+
+/* Compute shaders of shader graph GLSL against the CPU evaluator in a hidden
+ * 32x32 app, with readback. */
+CHIBI_GPU_SELECTOR("--shader-parity")
+/* Ramp recompiles, program tables and image texture routes through raster,
+ * fragment and 3D preview programs in a hidden 64x64 app, with readback. */
+CHIBI_GPU_SELECTOR("--shader-programs")
+/* Orbit cameras over material raster meshes, SDFs and 2D layers in a hidden
+ * 96x80 app, with readback. */
+CHIBI_GPU_SELECTOR("--material-cameras")
+/* Material raster meshes' faces, depth, layers, coverage and imported UVs in
+ * a hidden 96x80 app, with readback. */
+CHIBI_GPU_SELECTOR("--mesh-materials")
+/* SDF surface quality, trace work, gradients and spatial scratch groups in a
+ * hidden 96x80 app, with readback. */
+CHIBI_GPU_SELECTOR("--sdf-quality")
+/* 3D tone mapping, bloom, exposure and draw state over an HDR emitter
+ * pattern in a hidden app, with readback. */
+CHIBI_GPU_SELECTOR("--scene3d-post")
+/* 3D primitive framing, picking, bounds and drawing in a hidden 128x128 app,
+ * with readback. */
+CHIBI_GPU_SELECTOR("--scene3d-shapes")

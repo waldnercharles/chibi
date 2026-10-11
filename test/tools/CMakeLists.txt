@@ -76,8 +76,9 @@ target_include_directories(chibi_scene_consumer PRIVATE "${CMAKE_CURRENT_BINARY_
 target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
-add_executable(test_tools main.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
-    validate_project.c tetris.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c webgpu_staging.c $<TARGET_OBJECTS:chibi_sdk_contracts>
+add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
+    validate_project.c tetris.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c webgpu_staging.c ../support/arena.c
+    $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
     "${CHIBI_TOOL_ROOT}/third_party/yyjson/yyjson.c")
@@ -243,6 +244,15 @@ if(TARGET Chibi::render)
     endif()
 endif()
 
+# Mesh surfaces and 3D shapes read the mesh parts project preparation
+# publishes.
+if(TARGET Chibi::render AND TARGET Chibi::project_preparation)
+    target_sources(test_tools PRIVATE ../render/appearance_geometry.c ../render/mesh_surface.c
+        ../render/scene3d_post.c ../render/scene3d_shapes.c)
+    target_link_libraries(test_tools PRIVATE Chibi::project_preparation)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_GEOMETRY=1)
+endif()
+
 # Image preparation decodes and imports files, so only compiler builds have it.
 if(TARGET Chibi::image_preparation)
     add_library(chibi_image_preparation_consumer OBJECT ../authoring/sky_files.c)
@@ -268,6 +278,26 @@ if(TARGET Chibi::model_authoring)
     target_link_libraries(test_tools PRIVATE Chibi::model_authoring Chibi::shader_preparation
         Chibi::mesh_runtime Chibi::graph_authoring Chibi::graph_compilation Chibi::graph_model)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MESH_PREPARATION=1)
+endif()
+
+# Model graphs compile to distance programs, bounds and hit resolvers.
+if(TARGET Chibi::model_authoring)
+    target_sources(test_tools PRIVATE ../graph/packs.c ../graph/modeling.c ../graph/model_constructive.c
+        ../graph/model_profiles.c ../graph/model_reuse.c ../graph/model_inspection.c
+        ../graph/model_sampled.c)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
+    target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
+    # Models and materials in the renderer's shader catalog, and shader graphs
+    # the renderer compiles.
+    if(TARGET Chibi::render)
+        target_sources(test_tools PRIVATE ../graph/model_parameters.c ../graph/model_material_scope.c
+            ../graph/model_validation.c ../graph/model_materials.c ../graph/model_preview.c ../graph/model_surface.c
+            ../graph/shader_detail.c ../render/shader_effects.c ../render/shader_image.c
+            ../render/shader_parity.c ../render/shader_program.c ../render/shader_image_routes.c
+            ../render/camera_orbit.c ../render/camera_plane.c ../render/camera_centered_orbit.c
+            ../render/camera_emitter_orbit.c ../render/mesh_material.c ../render/sdf_quality.c
+            ../render/sdf_spatial.c)
+    endif()
 endif()
 
 # Model import reads glTF files and writes content files, so only compiler

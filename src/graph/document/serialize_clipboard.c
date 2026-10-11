@@ -1,6 +1,7 @@
 #include "graph/authoring/asset_edit.h"
 #include "graph/document/serialize_internal.h"
 #include "graph/model/local.h"
+#include "graph/model/value_copy.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
 
@@ -42,6 +43,24 @@ int graph_append_value(graph *g, av_value *document, float dx, float dy)
                 graph_free(tmp);
                 free(tmp);
                 return -1;
+            }
+        }
+    }
+    /* Nodes move below, but their defaults cannot borrow the temporary arena. */
+    for (int i = 0; i < acount(tmp->nodes); i++) {
+        node *n = tmp->nodes[i];
+        for (int side = 0; side < 2; side++) {
+            pin_spec *pins = side ? n->output_pins : n->input_pins;
+            int count = side ? n->output_count : n->input_count;
+            for (int p = 0; p < count; p++) {
+                pin_value owned;
+                if (pin_value_copy_to_graph(g, &owned, &pins[p].default_value)) {
+                    serialize_error_set("cannot retain pasted pin default");
+                    graph_free(tmp);
+                    free(tmp);
+                    return -1;
+                }
+                pins[p].default_value = owned;
             }
         }
     }

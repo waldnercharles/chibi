@@ -92,8 +92,7 @@ typedef struct
     bool hidden_rejection, spatial_scratch;
     GameSurfaceQuality quality;
     GameHRCShadowMode shadow_mode;
-    unsigned horizon_reuse_mask;
-    GameHRC2D horizon_reuse;
+    render_radiance_lab lab;
     const char *capture_path;
     /* Optional raw RGBA8 file receiving every measured frame. */
     const char *frames_path;
@@ -188,13 +187,7 @@ static bool render_scene(
         if (options->shadow_override) {
             app_scene_renderer_set_shadow_mode(scene.renderer, options->shadow_mode);
         }
-        if (options->horizon_reuse_mask) {
-            app_scene_renderer_set_horizon_reuse(
-                scene.renderer,
-                options->horizon_reuse_mask,
-                options->horizon_reuse
-            );
-        }
+        app_scene_renderer_set_lab(scene.renderer, options->lab);
         app_scene_renderer_set_sdf_trace_debug(scene.renderer, options->sdf_trace_debug);
         app_scene_renderer_set_hidden_rejection(scene.renderer, options->hidden_rejection);
         app_scene_renderer_set_spatial_scratch(scene.renderer, options->spatial_scratch);
@@ -439,10 +432,10 @@ static bool surface_quality_options(yyjson_val *root, preview_options *options, 
             return false;
         }
         const char *names[] = { "fuse_relief", "cache", "reproject", "hierarchy" };
-        bool *values[] = { &options->horizon_reuse.horizon_fuse_relief,
-                           &options->horizon_reuse.horizon_cache,
-                           &options->horizon_reuse.horizon_reproject,
-                           &options->horizon_reuse.horizon_hierarchy };
+        bool *values[] = { &options->lab.horizon_fuse_relief,
+                           &options->lab.horizon_cache,
+                           &options->lab.horizon_reproject,
+                           &options->lab.horizon_hierarchy };
         size_t index, count;
         yyjson_val *key, *value;
         yyjson_obj_foreach(reuse, index, count, key, value)
@@ -457,7 +450,6 @@ static bool surface_quality_options(yyjson_val *root, preview_options *options, 
                 snprintf(error, size, "horizon_reuse supports only boolean fuse_relief, cache, reproject and hierarchy");
                 return false;
             }
-            options->horizon_reuse_mask |= 1u << field;
             *values[field] = yyjson_get_bool(value);
         }
     }
@@ -618,6 +610,7 @@ char *chibi_scene_preview_handle(const char *request, const char *default_root, 
         .frozen = yyjson_get_bool(freeze),
         .pass_timing = yyjson_get_bool(pass_timing),
         .pass_detail = yyjson_get_bool(pass_detail),
+        .lab = render_radiance_lab_defaults(),
         .capture_path = capture_path,
         .frames_path = frames_path
     };

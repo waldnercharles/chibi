@@ -1147,45 +1147,6 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameStarfield2D)
 }
 GameStarfield2D;
 
-/* Color detail of HRC lighting relative to its resolution. */
-typedef enum
-{
-    GAME_HRC_COLOR_FULL,
-    GAME_HRC_COLOR_HALF,
-    GAME_HRC_COLOR_QUARTER,
-    GAME_HRC_COLOR_EIGHTH,
-} GameHRCColor;
-
-/* Resolution of HRC's received-light image relative to the canvas. */
-typedef enum
-{
-    GAME_HRC_GATHER_FULL,
-    GAME_HRC_GATHER_HALF,
-    GAME_HRC_GATHER_AUTO,
-} GameHRCGather;
-
-typedef enum
-{
-    GAME_HRC_UPSCALE_PLAIN_BILINEAR NODE_NAME("Plain bilinear"),
-    GAME_HRC_UPSCALE_EDGE_AWARE NODE_NAME("Edge aware"),
-    GAME_HRC_UPSCALE_JOINT_BILATERAL NODE_NAME("Joint bilateral"),
-    GAME_HRC_UPSCALE_FIVE_TAP_CROSS NODE_NAME("Five tap cross"),
-} GameHRCUpscale;
-
-typedef enum
-{
-    GAME_HRC_DEBUG_NORMAL,
-    GAME_HRC_DEBUG_SCENE,
-    GAME_HRC_DEBUG_EMISSION,
-    GAME_HRC_DEBUG_ABSORPTION,
-    GAME_HRC_DEBUG_ALBEDO,
-    GAME_HRC_DEBUG_FLUENCE,
-    GAME_HRC_DEBUG_NORMALS,
-    GAME_HRC_DEBUG_SURFACE_LIGHT NODE_NAME("Surface light"),
-    GAME_HRC_DEBUG_LIGHT_DIRECTION NODE_NAME("Light direction"),
-    GAME_HRC_DEBUG_SHADING_NORMALS NODE_NAME("Shading normals"),
-} GameHRCDebugView;
-
 typedef enum
 {
     GAME_HRC_TONE_CLAMP,
@@ -1220,15 +1181,11 @@ typedef enum
     GAME_HRC_DEPTH_VISIBILITY_SEGMENTS NODE_NAME("Bounded segments"),
 } GameHRCDepthVisibility;
 
-typedef enum
-{
-    GAME_HRC_DEPTH_EMITTERS_VISIBLE NODE_NAME("Visible surfaces"),
-    GAME_HRC_DEPTH_EMITTERS_PROXIES NODE_NAME("Uniform material proxies"),
-} GameHRCDepthEmitters;
-
 /* 2D lighting by holographic radiance cascades: light from emissive
  * materials, with shadows, bounce and fog. The first entity's settings light
- * the scene; a scene without one draws its materials unlit. */
+ * the scene; a scene without one draws its materials unlit. HRC's
+ * experiments and internal tuning are not authored here; tests and the HRC
+ * lab set them (docs/hrc-lab.md). */
 typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
 {
     /* Finest light grid as a fraction of the padded canvas; 0.5 solves one
@@ -1236,34 +1193,32 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * cost scales with its area. 1, 0.5, 0.25 and 0.125 give whole-pixel
      * cells. With adaptive on, the highest resolution it uses. */
     float resolution NODE_RANGE(0.1, 1);
-    /* Color detail relative to resolution. Below Full, a brightness-only
-     * transport solves at resolution and color on a grid 2, 4 or 8 times
-     * coarser; color then blurs where differently colored lights meet. */
-    GameHRCColor color_resolution;
-    /* Received-light image: gather, temporal filtering and bounce, at the full
-     * canvas or half of it. Half saves about 2 ms at 1080p and softens sharp
-     * shadow edges. Auto lets adaptive choose, before it lowers resolution. */
-    GameHRCGather gather_resolution;
     /* Steps lighting down while the scene's GPU time misses target_fps, first
-     * gather when Auto, then resolution by halves down to min_resolution, and
-     * back up when there is room. Where the GPU reports its time (Metal, and
+     * color detail, then resolution by halves down to 0.25, and back up when
+     * there is room. Where the GPU reports its time (Metal, and
      * WebGL with timer queries), frames limited by the CPU or vsync keep their
      * lighting; elsewhere it judges the whole frame's interval. */
     bool adaptive;
     /* Frame rate adaptive keeps the scene's GPU work within. */
     float target_fps NODE_UNIT("fps");
-    /* Lowest resolution adaptive may choose. */
-    float min_resolution NODE_RANGE(0.1, 1);
     /* Gain of the unlit scene color added to the frame. 1 shows materials as
-     * drawn, and lower values darken what light does not reach. */
+     * drawn, and lower values darken what light does not reach. In Depth
+     * thickness, taller surfaces nearby hide part of it, as they would hide
+     * the sky. */
     float ambient;
+    /* Light from the sky above a side view: open ground receives this color.
+     * Solids that absorb light block it like any light, so overhangs shade
+     * the ground beneath them and caves stay dark; falloff never dims it.
+     * In Depth thickness, heights nearby hide part of it, as for ambient.
+     * Black, the default, has no sky. */
+    unsigned sky NODE_COLOR;
     /* Brightness of emissive surfaces as drawn; the light they cast is
      * unchanged. */
     float intensity;
     /* Brightness of light seen in open air: the glow around lights. */
     float fog;
     /* Fraction of a solid's albedo that stays visible where no light reaches
-     * it. */
+     * it. Depth thickness hides part of it like ambient. */
     float shadow_floor;
     /* How quickly light dims with distance; zero keeps it at full strength
      * across the view. */
@@ -1280,22 +1235,6 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     /* Current-frame weight of received light: 1 disables temporal smoothing,
      * and lower values retain more history. */
     float radiance_hysteresis NODE_RANGE(0, 1);
-    /* How received light is upsampled from the transport grid: 0 bilinear,
-     * 1 bilinear that turns nearest at absorption edges, 2 joint bilateral on
-     * absorption, 3 five-tap cross. Ignored with a luminance transport. */
-    GameHRCUpscale upscale_mode;
-    /* Absorption difference that upscale modes 1 and 2 treat as an edge. */
-    float upscale_threshold;
-    /* 0 draws the lit frame; 1 scene, 2 emission, 3 transmittance, 4 albedo,
-     * 5 received light, 6 normals, 7 surface light, 8 dominant light
-     * direction, 9 shading normals. */
-    GameHRCDebugView debug_view;
-    /* Perspective distance for particles: raised particles scale by
-     * focal / (focal + elevation). */
-    float particle_focal_length;
-    /* Cascade levels traced through the scene. Higher levels are extended
-     * from the ones below, which is cheaper but less exact. */
-    int trace_levels NODE_RANGE(1, 5);
     /* Feeds light reflected by lit surfaces back into the transport as bounce
      * light. */
     bool feedback;
@@ -1306,7 +1245,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * Depth thickness is the 2.5D mode: it gathers visible emission past
      * anything with height, and on solids that absorb nothing shades the HRC
      * light by their facing and those heights. Light passes over a prop that
-     * absorbs nothing where the prop is lower than the light. */
+     * absorbs nothing where the prop is lower than the light. Heights within
+     * the depth radius also hide ambient light, darkening the foot of a wall
+     * and the floor around a prop. */
     GameHRCSurfaceMode surface_mode;
     /* Screen-plane reach in project units for Depth thickness mode. A solid
      * that absorbs nothing shades all its HRC light by the lights within
@@ -1319,30 +1260,20 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     GameHRCDepthQuality surface_depth_quality;
     /* Segments share one bounded visibility query per coarse source tile. */
     GameHRCDepthVisibility surface_depth_visibility;
-    /* Independent proxies preserve camera-hidden uniform material emitters;
-     * shader-authored emission is excluded in this experimental source mode. */
-    GameHRCDepthEmitters surface_depth_emitters;
-    /* Refine nearby sources whose directions differ across a source tile. */
-    bool surface_depth_near_detail;
     /* Blend visibility bins and reconstruction boundaries, in [0, 1]. */
     float surface_depth_shadow_softness NODE_RANGE(0, 1);
     /* Reproject and validate a short history of the Depth contribution. */
     bool surface_depth_temporal;
     /* Maximum previous-frame weight; zero selects the default of 0.65. */
     float surface_depth_history;
-    /* How far below its visible top a surface blocks Depth light, in
-     * project units. A light that absorbs nothing never blocks. */
+    /* How far below its visible top a surface blocks Depth light and ambient
+     * light, in project units. A light that absorbs nothing never blocks. */
     float surface_thickness;
     /* Sideways reach of nearby light relative to its height above the plane;
      * larger values deepen normal-mapped relief. */
     float surface_relief;
     /* Local heightfield visibility; horizons store four or eight azimuths. */
     GameHRCShadowMode surface_shadow_mode;
-    /* Independent horizon experiments. False keeps the reference submission. */
-    bool horizon_fuse_relief;
-    bool horizon_cache;
-    bool horizon_reproject;
-    bool horizon_hierarchy;
     /* Outward tilt of solid normals near silhouettes, which catches rim light. */
     float surface_bevel;
     /* Gain of glossy highlights on solids with low material roughness. */
@@ -1362,7 +1293,6 @@ static inline GameHRC2D game_hrc2d_defaults()
     return (GameHRC2D){ .resolution = .5f,
                         .adaptive = true,
                         .target_fps = 60,
-                        .min_resolution = .25f,
                         .ambient = 1,
                         .intensity = 1,
                         .fog = 1,
@@ -1370,10 +1300,6 @@ static inline GameHRC2D game_hrc2d_defaults()
                         .bounce_intensity = 1,
                         .bounce_hysteresis = .8f,
                         .radiance_hysteresis = .8f,
-                        .upscale_mode = GAME_HRC_UPSCALE_EDGE_AWARE,
-                        .upscale_threshold = .1f,
-                        .particle_focal_length = 300,
-                        .trace_levels = 3,
                         .feedback = true,
                         .surface_radius = 24,
                         .surface_depth_radius = 128,

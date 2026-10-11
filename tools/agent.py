@@ -25,6 +25,7 @@ START = time.monotonic()
 HEALTH = None
 NEXT = 'make test-policy-inventory'
 CPU_SELECTORS = {
+    '--arena': 'arena',
     '--asset-source': 'asset-source',
     '--asset-values': 'asset-values',
     '--behavior-loader': 'behavior-loader',
@@ -44,12 +45,16 @@ CPU_SELECTORS = {
     '--material-simulation': 'material-simulation',
     '--material-ecs': 'material-ecs',
     '--material-render': 'material-render',
+    '--model-catalog': 'model-catalog',
+    '--model-graphs': 'model-graphs',
     '--particles': 'particles',
     '--png-encoding': 'png-encoding',
     '--preview-layout': 'preview-layout',
     '--project-document': 'project-document',
     '--prototype-documents': 'prototype-documents',
     '--reference-index': 'reference-index',
+    '--render-geometry': 'render-geometry',
+    '--shader-graphs': 'shader-graphs',
     '--source-edit': 'source-edit',
     '--source-presentation': 'source-presentation',
     '--source-systems': 'source-systems',
@@ -70,8 +75,12 @@ STUDIO_SELECTORS = {'--studio-source-edit': 'studio-source-edit',
                     '--studio-graph-pointer': 'studio-graph-pointer',
                     '--studio-asset-pointer': 'studio-asset-pointer',
                     '--studio-debugger-source-history': 'studio-debugger-source-history',
-                    '--studio-scene-camera': 'studio-scene-camera'}
+                    '--studio-scene-camera': 'studio-scene-camera',
+                    '--studio-scene-gizmo3d': 'studio-scene-gizmo3d',
+                    '--studio-scene-collider3d': 'studio-scene-collider3d'}
 STUDIO_ACCEPTANCE = {
+    '--studio-scene-collider3d': ('--scene-collider3d', 26, 'Studio 3D collider handles accepted: frames=26'),
+    '--studio-scene-gizmo3d': ('--scene-gizmo3d', 42, 'Studio 3D gizmo accepted: frames=42'),
     '--studio-scene-camera': ('--scene-camera', 30, 'Studio 3D camera accepted: frames=30'),
     '--studio-scene-move': ('--scene-move', 2, 'Studio scene move accepted: frames=2'),
     '--studio-outliner-move': ('--outliner-move', 21, 'Studio outliner move accepted: frames=21'),
@@ -89,7 +98,11 @@ RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize':
                     '--scene3d-gi': 'scene3d-gi', '--scene3d-gi-gles': 'scene3d-gi-gles',
                     '--material-ramps': 'material-ramps', '--radiance-surface': 'radiance-surface',
                     '--radiance-horizons4': 'radiance-horizons4', '--radiance-horizons8': 'radiance-horizons8',
-                    '--material-pixels': 'material-pixels', '--texture-transform': 'texture-transform'}
+                    '--material-pixels': 'material-pixels', '--shader-parity': 'shader-parity',
+                    '--shader-programs': 'shader-programs', '--material-cameras': 'material-cameras',
+                    '--mesh-materials': 'mesh-materials', '--sdf-quality': 'sdf-quality',
+                    '--scene3d-post': 'scene3d-post', '--scene3d-shapes': 'scene3d-shapes',
+                    '--texture-transform': 'texture-transform'}
 RENDER_SELECTORS |= {f'--installed-example-{lab}': f'installed-example-{lab}' for lab in
                      ('local_mesh_sampled', 'hrc_lab', 'modeling_lab', 'sdf_lab', 'suzanne_sampled')}
 GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS

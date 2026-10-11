@@ -7,6 +7,61 @@
 
 #include <stdbool.h>
 typedef struct render_radiance render_radiance;
+
+/* Color detail relative to the light grid. */
+typedef enum
+{
+    RENDER_RADIANCE_COLOR_FULL,
+    RENDER_RADIANCE_COLOR_HALF,
+    RENDER_RADIANCE_COLOR_QUARTER,
+    RENDER_RADIANCE_COLOR_EIGHTH,
+} render_radiance_color;
+
+/* Resolution of the received-light image relative to the canvas. */
+typedef enum
+{
+    RENDER_RADIANCE_GATHER_FULL,
+    RENDER_RADIANCE_GATHER_HALF,
+    RENDER_RADIANCE_GATHER_AUTO,
+} render_radiance_gather;
+
+typedef enum
+{
+    RENDER_RADIANCE_DEBUG_NORMAL,
+    RENDER_RADIANCE_DEBUG_SCENE,
+    RENDER_RADIANCE_DEBUG_EMISSION,
+    RENDER_RADIANCE_DEBUG_ABSORPTION,
+    RENDER_RADIANCE_DEBUG_ALBEDO,
+    RENDER_RADIANCE_DEBUG_FLUENCE,
+    RENDER_RADIANCE_DEBUG_NORMALS,
+    RENDER_RADIANCE_DEBUG_SURFACE_LIGHT,
+    RENDER_RADIANCE_DEBUG_LIGHT_DIRECTION,
+    RENDER_RADIANCE_DEBUG_SHADING_NORMALS,
+} render_radiance_debug_view;
+
+/* HRC settings that GameHRC2D does not author: experiments and internal
+ * tuning for tests, previews and the HRC lab. Games draw with
+ * render_radiance_lab_defaults(). */
+typedef struct
+{
+    /* Below Full, a brightness-only transport solves at the resolution and
+     * color on a grid 2, 4 or 8 times coarser. */
+    render_radiance_color color_resolution;
+    /* Gather, temporal filtering and bounce at the full canvas or half of it;
+     * Auto lets adaptive halve it before it coarsens color. */
+    render_radiance_gather gather_resolution;
+    /* Cascade levels traced through the scene, in [1, 5]. Higher levels are
+     * extended from the ones below. */
+    int trace_levels;
+    /* Draws one of HRC's inputs or intermediate images instead of the lit
+     * frame. */
+    render_radiance_debug_view debug_view;
+    /* Refine nearby Depth sources whose directions differ across a tile. */
+    bool surface_depth_near_detail;
+    /* Horizon reuse experiments; false keeps the reference submission. */
+    bool horizon_fuse_relief, horizon_cache, horizon_reproject, horizon_hierarchy;
+} render_radiance_lab;
+render_radiance_lab render_radiance_lab_defaults();
 typedef struct
 {
     /* Color's grid as a fraction of the canvas. */
@@ -22,8 +77,6 @@ typedef struct
 typedef struct
 {
     render_material_textures material;
-    /* Optional independent source field for uniform material emitters. */
-    render_emitter_textures emitters;
     /* Optional: the backdrop behind open space. */
     CF_Texture background;
 } render_radiance_inputs;
@@ -38,9 +91,10 @@ render_radiance_settings render_radiance_get_settings(const render_radiance *rad
 bool render_radiance_set_settings(render_radiance *radiance, render_radiance_settings settings);
 /* Lighting fitted to what HRC supports: each field clamped into its range.
  * Notes describes each change, or is empty.
- * render_radiance_set_lighting accepts every normalized value. */
+ * render_radiance_set_lighting accepts every normalized value, and fails
+ * without one or when its resources cannot be allocated. */
 GameHRC2D render_radiance_normalize(GameHRC2D lighting, char *notes, size_t size);
-bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting);
+bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting, render_radiance_lab lab);
 /* Feeds adaptive resolution one frame's scene GPU time, measured by its
  * owner; call it before laying out the next frame. */
 void render_radiance_frame_time(render_radiance *radiance, double gpu_ms);
@@ -51,7 +105,7 @@ typedef struct
 {
     /* The finest grid and received-light image in use, and color's detail. */
     float resolution;
-    GameHRCColor color;
+    render_radiance_color color;
     bool gather_half;
     /* The latest scene GPU time, or -1 without GPU timestamps, and the time
      * a frame at target_fps allows. */
@@ -70,8 +124,6 @@ typedef struct
     GameHRCSurfaceMode mode;
     int cells, block;
     GameHRCDepthVisibility visibility;
-    int emitter_sources, emitter_pixels;
-    size_t emitter_bytes;
     size_t candidates, visibility_taps, blur_quadrant_fetches;
     /* Optional Depth history pass cells and allocated RGBA16F target bytes. */
     int temporal_cells;

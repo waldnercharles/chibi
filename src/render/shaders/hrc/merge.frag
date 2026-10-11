@@ -4,7 +4,11 @@
 // Odd probe x (Eq 14): trace one T_n step outward to reach R_{n+1} probes.
 // Even probe x (Eq 15-17): average direct R_{n+1} lookup with traced T_{n+1} path.
 //
-// R_N is implicitly zero; the top merge never reads a previous fluence level.
+// Nothing lights a ray from beyond the hierarchy, past R_N or the domain. In
+// RGB, R's alpha holds the share of each direction's cone whose rays leave it
+// unblocked heading up the world, toward the sky. Canvas rows run down the
+// world, so quadrant 3 marches up, quadrant 1 down, and quadrants 0 and 2
+// head up in their lower and upper halves of directions.
 //
 // Level layout:
 //   T: element = probe_x * (2^n + 1) + slot of k, row = y
@@ -37,12 +41,17 @@ layout(set = 2, binding = 4) uniform sampler2D u_r_prev;
 // and lower (y) sub-cones.
 layout(set = 2, binding = 5) uniform sampler2D u_weights;
 
-HRC_LIGHT merge_r(Interval near, HRC_LIGHT far_rad)
+HRC_FLUENCE merge_r(Interval near, HRC_FLUENCE far_rad)
 {
 	// Distance falloff: attenuate far light by this cascade's interval length.
 	// Exponential compounding across levels gives total atten = exp(-falloff * dist).
 	float atten = u_falloff > 0.0 ? exp(-u_falloff * float(1 << u_cascade)) : 1.0;
+#ifdef HRC_SCALAR
 	return near.rad + exp(-near.tau) * far_rad * atten;
+#else
+	// The sky lies beyond any distance, so falloff leaves its share alone.
+	return vec4(near.rad, 0.0) + exp(-near.tau) * far_rad * vec4(vec3(atten), 1.0);
+#endif
 }
 
 Interval T_load(sampler2D level_tex, int n, int probe_x, int k, int y)
@@ -62,20 +71,32 @@ Interval T_load(sampler2D level_tex, int n, int probe_x, int k, int y)
 	return interval_fetch(level_tex, hrc_texel(element, y, u_transposed));
 }
 
-HRC_LIGHT R_load(int probe_x, int i, int y)
+// What reaches level-n direction i from beyond the hierarchy.
+HRC_FLUENCE R_beyond(int n, int i)
+{
+#ifdef HRC_SCALAR
+	return vec2(0.0);
+#else
+	int mid = 1 << (n - 1);
+	bool up = u_rotate == 3 || (u_rotate == 0 && i < mid) || (u_rotate == 2 && i >= mid);
+	return vec4(vec3(0.0), up ? 1.0 : 0.0);
+#endif
+}
+
+HRC_FLUENCE R_load(int probe_x, int i, int y)
 {
 	int n = u_cascade + 1;
-	if (n >= u_cascade_count) return HRC_LIGHT(0.0);
+	if (n >= u_cascade_count) return R_beyond(n, i);
 	int directions = 1 << n;
 	int num_probes = probe_count(u_world_w, n);
 	if (probe_x < 0 || probe_x >= num_probes || i < 0 || i >= directions || y < 0 || y >= u_world_h) {
-		return HRC_LIGHT(0.0);
+		return R_beyond(n, i);
 	}
 	int element = hrc_parity_slot(probe_x, num_probes) * directions + i;
-	return light_fetch(u_r_prev, hrc_texel(element, y, u_transposed));
+	return fluence_fetch(u_r_prev, hrc_texel(element, y, u_transposed));
 }
 
-HRC_LIGHT merge_odd(int probe_x, int i, int y, vec2 w)
+HRC_FLUENCE merge_odd(int probe_x, int i, int y, vec2 w)
 {
 	int next_probe_x = (probe_x + 1) / 2;
 	int pow2n = 1 << u_cascade;
@@ -87,16 +108,16 @@ HRC_LIGHT merge_odd(int probe_x, int i, int y, vec2 w)
 	       w.y * merge_r(lower, R_load(next_probe_x, 2 * i, y + 2 * i - pow2n));
 }
 
-HRC_LIGHT merge_even(int probe_x, int i, int y, vec2 w)
+HRC_FLUENCE merge_even(int probe_x, int i, int y, vec2 w)
 {
 	int next_probe_x = probe_x / 2;
 	int far_probe_x = next_probe_x + 1;
 	int pow2n1 = 1 << (u_cascade + 1);
-	HRC_LIGHT far = w.x * merge_r(T_load(u_t_next, u_cascade + 1, next_probe_x, 2 * (i + 1), y),
-	                              R_load(far_probe_x, 2 * i + 1, y + 2 * 2 * (i + 1) - pow2n1)) +
-	                w.y * merge_r(T_load(u_t_next, u_cascade + 1, next_probe_x, 2 * i, y),
-	                              R_load(far_probe_x, 2 * i, y + 2 * 2 * i - pow2n1));
-	HRC_LIGHT near = w.x * R_load(next_probe_x, 2 * i + 1, y) + w.y * R_load(next_probe_x, 2 * i, y);
+	HRC_FLUENCE far = w.x * merge_r(T_load(u_t_next, u_cascade + 1, next_probe_x, 2 * (i + 1), y),
+	                                R_load(far_probe_x, 2 * i + 1, y + 2 * 2 * (i + 1) - pow2n1)) +
+	                  w.y * merge_r(T_load(u_t_next, u_cascade + 1, next_probe_x, 2 * i, y),
+	                                R_load(far_probe_x, 2 * i, y + 2 * 2 * i - pow2n1));
+	HRC_FLUENCE near = w.x * R_load(next_probe_x, 2 * i + 1, y) + w.y * R_load(next_probe_x, 2 * i, y);
 	return (near + far) * 0.5;
 }
 
@@ -109,7 +130,7 @@ void main()
 	int i = er.x - slot * directions;
 	int probe_x = hrc_parity_item(slot, num_probes);
 	vec2 w = texelFetch(u_weights, ivec2(i, u_cascade), 0).xy;
-	HRC_LIGHT light = (probe_x % 2 == 0) ? merge_even(probe_x, i, er.y, w)
-	                                     : merge_odd(probe_x, i, er.y, w);
-	out_value = light_texel(light);
+	HRC_FLUENCE light = (probe_x % 2 == 0) ? merge_even(probe_x, i, er.y, w)
+	                                       : merge_odd(probe_x, i, er.y, w);
+	out_value = fluence_texel(light);
 }

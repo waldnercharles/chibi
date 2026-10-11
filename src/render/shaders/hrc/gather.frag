@@ -11,7 +11,9 @@
 // its color's proportions at the luminance's brightness.
 //
 // A fragment pass stores total light, far light for bounce, and the four RGB
-// quadrant contributions. When the work grid is coarser than the canvas,
+// quadrant contributions. Each quadrant's fluence carries in alpha its share
+// that sees the sky (see merge.frag): quadrants add the sky's light, and total
+// light keeps it apart in alpha. When the work grid is coarser than the canvas,
 // near-field steps come from u_near, which holds each canvas pixel's step once;
 // see near.frag.
 
@@ -31,6 +33,7 @@ layout(set = 2, binding = 6) uniform sampler2D u_f3;
 layout(set = 2, binding = 7) uniform sampler2D u_luminance;
 layout(set = 2, binding = 8) uniform sampler2D u_near;
 
+// A holds the share of the sky the pixel sees: one on open ground.
 layout(location = 0) out vec4 out_light;
 layout(location = 1) out vec4 out_far;
 // RGB contributions from +x, +y (down the texture), -x and -y. Each already
@@ -51,20 +54,24 @@ layout(set = 3, binding = 0) uniform uniform_block
 	int u_out_w;
 	int u_out_h;
 	int u_split;
-	int u_upscale_mode;
-	float u_upscale_threshold;
 	float u_bounce_intensity;
 	vec2 u_history_offset;
 	int u_history_valid;
 	vec4 u_crop_uv;
+	vec3 u_sky;
 };
 
 #include "hrc_common.shd"
 #include "hrc/near_step.shd"
 
-void output_quadrant(int rot, vec3 light)
+// Absorption difference that reconstruction treats as an edge.
+const float UPSCALE_THRESHOLD = 0.1;
+
+// The sky lights half the circle around open ground, so twice each
+// quadrant's share gives it the whole sky color.
+void output_quadrant(int rot, vec3 light, float sky)
 {
-	vec4 value = vec4(light * 0.25, 1.0);
+	vec4 value = vec4((light + u_sky * (2.0 * sky)) * 0.25, 1.0);
 	if (rot == 0) out_q0 = value;
 	else if (rot == 1) out_q1 = value;
 	else if (rot == 2) out_q2 = value;
@@ -72,30 +79,25 @@ void output_quadrant(int rot, vec3 light)
 }
 
 // Quadrant fluence at a color pixel; nothing arrives from outside the domain.
-vec3 F_load(int rot, ivec2 p)
+vec4 F_load(int rot, ivec2 p)
 {
-	if (any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, ivec2(u_color_w, u_color_h)))) return vec3(0.0);
-	if (rot == 0) return texelFetch(u_f0, p, 0).rgb;
-	if (rot == 1) return texelFetch(u_f1, p, 0).rgb;
-	if (rot == 2) return texelFetch(u_f2, p, 0).rgb;
-	return texelFetch(u_f3, p, 0).rgb;
+	if (any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, ivec2(u_color_w, u_color_h)))) return vec4(0.0);
+	if (rot == 0) return texelFetch(u_f0, p, 0);
+	if (rot == 1) return texelFetch(u_f1, p, 0);
+	if (rot == 2) return texelFetch(u_f2, p, 0);
+	return texelFetch(u_f3, p, 0);
 }
 
 // Hardware-filtered quadrant fluence at a continuous color-pixel position.
 // Textures may keep a larger capacity; filtering stays inside the domain.
-vec3 F_filtered(int rot, vec2 grid)
+vec4 F_filtered(int rot, vec2 grid)
 {
 	grid = clamp(grid, vec2(0.0), vec2(u_color_w - 1, u_color_h - 1));
 	vec2 uv = (grid + 0.5) / vec2(textureSize(u_f0, 0));
-	if (rot == 0) return textureLod(u_f0, uv, 0.0).rgb;
-	if (rot == 1) return textureLod(u_f1, uv, 0.0).rgb;
-	if (rot == 2) return textureLod(u_f2, uv, 0.0).rgb;
-	return textureLod(u_f3, uv, 0.0).rgb;
-}
-
-vec3 F_world_load(int rot, ivec2 p)
-{
-	return F_load(rot, clamp(p, ivec2(0), ivec2(u_color_w - 1, u_color_h - 1)));
+	if (rot == 0) return textureLod(u_f0, uv, 0.0);
+	if (rot == 1) return textureLod(u_f1, uv, 0.0);
+	if (rot == 2) return textureLod(u_f2, uv, 0.0);
+	return textureLod(u_f3, uv, 0.0);
 }
 
 // Split lighting: color with this luminance, or grey where color has none.
@@ -200,21 +202,24 @@ void main()
 		float trn = near.a;
 		vec3 near_rad = near.rgb + (1.0 - trn) * bounce;
 		vec3 total = vec3(0.0), raw = vec3(0.0);
+		float sky = 0.0;
 		vec4 luminance = u_split != 0 ? texelFetch(u_luminance, canvas_pos, 0) : vec4(0.0);
 		for (int rot = 0; rot < 4; rot++) {
-			vec3 far_rad = u_split != 0
-			                 ? F_filtered(rot, color_grid(canvas_pos))
-			                 : F_load(rot, canvas_pos);
+			vec4 far = u_split != 0
+			             ? F_filtered(rot, color_grid(canvas_pos))
+			             : F_load(rot, canvas_pos);
+			vec3 far_rad = far.rgb;
 			vec3 quadrant = near_rad + trn * far_rad;
 			if (u_split != 0) {
 				quadrant = with_luminance(quadrant, dot(near_rad, HRC_LUMA) + trn * luminance[rot]);
 				far_rad = with_luminance(far_rad, luminance[rot]);
 			}
 			total += quadrant;
-			output_quadrant(rot, quadrant);
+			sky += trn * far.a;
+			output_quadrant(rot, quadrant, trn * far.a);
 			raw += far_rad;
 		}
-		out_light = vec4(total * 0.25, 1.0);
+		out_light = vec4(total * 0.25, sky * 0.5);
 		out_far = vec4(raw * 0.25, 1.0);
 		return;
 	}
@@ -225,39 +230,16 @@ void main()
 	ivec2 g0 = ivec2(floor(grid_f));
 	vec2 frac = grid_f - vec2(g0);
 
-	// Precompute edge factor for minmax mode (mode 1).
-	float edge = 0.0;
-	if (u_upscale_mode == 1) {
-		ivec2 c00 = clamp(g0, ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
-		ivec2 c11 = clamp(g0 + ivec2(1, 1), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
-		float t00 = texelFetch(u_source_filtered, c00, 0).a;
-		float t10 = texelFetch(u_source_filtered, ivec2(c11.x, c00.y), 0).a;
-		float t01 = texelFetch(u_source_filtered, ivec2(c00.x, c11.y), 0).a;
-		float t11 = texelFetch(u_source_filtered, c11, 0).a;
-		float mn = min(min(t00, t10), min(t01, t11));
-		float mx = max(max(t00, t10), max(t01, t11));
-		edge = smoothstep(0.0, u_upscale_threshold, mx - mn);
-	}
-
-	// Precompute bilateral weights (mode 2).
-	float bw00 = 1.0, bw10 = 1.0, bw01 = 1.0, bw11 = 1.0;
-	if (u_upscale_mode == 2) {
-		vec2 uv_center = (vec2(canvas_pos) + 0.5) / vec2(u_canvas_w, u_canvas_h);
-		float t_center = textureLod(u_source, uv_center, 0.0).a;
-		ivec2 c00 = clamp(g0, ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
-		ivec2 c10 = clamp(g0 + ivec2(1, 0), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
-		ivec2 c01 = clamp(g0 + ivec2(0, 1), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
-		ivec2 c11 = clamp(g0 + ivec2(1, 1), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
-		float sigma2 = 2.0 * u_upscale_threshold * u_upscale_threshold;
-		float d00 = texelFetch(u_source_filtered, c00, 0).a - t_center;
-		float d10 = texelFetch(u_source_filtered, c10, 0).a - t_center;
-		float d01 = texelFetch(u_source_filtered, c01, 0).a - t_center;
-		float d11 = texelFetch(u_source_filtered, c11, 0).a - t_center;
-		bw00 = exp(-(d00 * d00) / sigma2);
-		bw10 = exp(-(d10 * d10) / sigma2);
-		bw01 = exp(-(d01 * d01) / sigma2);
-		bw11 = exp(-(d11 * d11) / sigma2);
-	}
+	// Absorption edges turn bilinear toward the nearest probe.
+	ivec2 c00 = clamp(g0, ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+	ivec2 c11 = clamp(g0 + ivec2(1, 1), ivec2(0), ivec2(u_work_w - 1, u_work_h - 1));
+	float t00 = texelFetch(u_source_filtered, c00, 0).a;
+	float t10 = texelFetch(u_source_filtered, ivec2(c11.x, c00.y), 0).a;
+	float t01 = texelFetch(u_source_filtered, ivec2(c00.x, c11.y), 0).a;
+	float t11 = texelFetch(u_source_filtered, c11, 0).a;
+	float mn = min(min(t00, t10), min(t01, t11));
+	float mx = max(max(t00, t10), max(t01, t11));
+	float edge = smoothstep(0.0, UPSCALE_THRESHOLD, mx - mn);
 
 	// Sample center pixel once for all quadrants (step 0 of trace_cminus1).
 	vec4 center = stored_step(canvas_pos, 1.0);
@@ -266,7 +248,7 @@ void main()
 	vec3 center_rad = center.rgb;
 
 	// Split lighting: every quadrant's luminance from one image, blended toward
-	// the nearest work probe at absorption edges like color in mode 1.
+	// the nearest work probe at absorption edges like color.
 	vec4 luminance = vec4(0.0);
 	vec2 grid_c = grid_f;
 	if (u_split != 0) {
@@ -282,71 +264,35 @@ void main()
 
 	vec3 total = vec3(0.0);
 	vec3 total_raw = vec3(0.0);
+	float sky = 0.0;
 	for (int rot = 0; rot < 4; rot++) {
 		ivec2 s0 = g0;
-		vec3 r0;
+		vec4 far;
 		if (u_split != 0) {
 			// Color supplies only proportions; bilinear on its coarser grid.
-			r0 = F_filtered(rot, grid_c);
-		} else if (u_upscale_mode == 1) {
-			// Edge: blend bilinear -> nearest at absorption edges.
-			r0 = F_filtered(rot, grid_f);
-			if (edge > 0.0) {
-				r0 = mix(r0, F_load(rot, s0 + ivec2(step(vec2(0.5), frac))), edge);
-			}
-		} else if (u_upscale_mode == 2) {
-			vec3 v00 = F_load(rot, s0);
-			vec3 v10 = F_load(rot, s0 + ivec2(1, 0));
-			vec3 v01 = F_load(rot, s0 + ivec2(0, 1));
-			vec3 v11 = F_load(rot, s0 + ivec2(1, 1));
-			// Joint bilateral: bilinear weights modulated by transmittance similarity.
-			float w00 = (1.0 - frac.x) * (1.0 - frac.y) * bw00;
-			float w10 = frac.x          * (1.0 - frac.y) * bw10;
-			float w01 = (1.0 - frac.x) * frac.y          * bw01;
-			float w11 = frac.x          * frac.y          * bw11;
-			float wsum = w00 + w10 + w01 + w11;
-			if (wsum > 1e-6)
-				r0 = (v00 * w00 + v10 * w10 + v01 * w01 + v11 * w11) / wsum;
-			else
-				r0 = (frac.x < 0.5 && frac.y < 0.5) ? v00
-				   : (frac.x >= 0.5 && frac.y < 0.5) ? v10
-				   : (frac.x < 0.5)                   ? v01
-				   :                                     v11;
-		} else if (u_upscale_mode == 3) {
-			// Five-tap cross reconstruction. The nearest work probe is the center;
-			// distance from it distributes weight to the four axial neighbors. This
-			// keeps a single emissive probe from being diluted across four corners.
-			ivec2 center_cell = ivec2(floor(grid_f + vec2(0.5)));
-			vec2 center_delta = grid_f - vec2(center_cell);
-			float wc = max(0.0, 1.0 - abs(center_delta.x) - abs(center_delta.y));
-			float wl = max(0.0, -center_delta.x);
-			float wr = max(0.0, center_delta.x);
-			float wb = max(0.0, -center_delta.y);
-			float wt = max(0.0, center_delta.y);
-			vec3 vc = F_world_load(rot, center_cell);
-			vec3 vl = F_world_load(rot, center_cell + ivec2(-1, 0));
-			vec3 vr = F_world_load(rot, center_cell + ivec2(1, 0));
-			vec3 vb = F_world_load(rot, center_cell + ivec2(0, -1));
-			vec3 vt = F_world_load(rot, center_cell + ivec2(0, 1));
-			float wsum = wc + wl + wr + wb + wt;
-			r0 = wsum > 1e-6 ? (vc * wc + vl * wl + vr * wr + vb * wb + vt * wt) / wsum : vc;
+			far = F_filtered(rot, grid_c);
 		} else {
-			// Mode 0: plain bilinear.
-			r0 = F_filtered(rot, grid_f);
+			// Edge: blend bilinear -> nearest at absorption edges.
+			far = F_filtered(rot, grid_f);
+			if (edge > 0.0) {
+				far = mix(far, F_load(rot, s0 + ivec2(step(vec2(0.5), frac))), edge);
+			}
 		}
 
 		Interval cminus1 = trace_cminus1(canvas_pos, rot, center_rad, center_tau, center_T);
 		float trn = exp(-cminus1.tau);
+		vec3 r0 = far.rgb;
 		vec3 quadrant = cminus1.rad + trn * r0;
 		if (u_split != 0) {
 			quadrant = with_luminance(quadrant, dot(cminus1.rad, HRC_LUMA) + trn * luminance[rot]);
 			r0 = with_luminance(r0, luminance[rot]);
 		}
 		total += quadrant;
-		output_quadrant(rot, quadrant);
+		sky += trn * far.a;
+		output_quadrant(rot, quadrant, trn * far.a);
 		total_raw += r0;
 	}
 
-	out_light = vec4(total * 0.25, 1.0);
+	out_light = vec4(total * 0.25, sky * 0.5);
 	out_far = vec4(total_raw * 0.25, 1.0);
 }

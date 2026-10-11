@@ -1,4 +1,0 @@
-// Both RGB density and weighted moments use this storage scale in the
-// independent RGBA16F additive capture. Decode RGB at its first reduction;
-// divide moments by encoded luminance before restoring depth world units.
-const float EMITTER_STORAGE_SCALE = 1024.0;

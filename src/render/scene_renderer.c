@@ -171,6 +171,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
         render_fog_free(renderer->fog);
     }
     render_radiance_free(renderer->radiance);
+    render_gpu_span_discard(&renderer->span);
     if (renderer->gpu_clock) {
         render_gpu_clock_release();
     }
@@ -240,7 +241,7 @@ static void set_lit(app_scene_renderer *renderer, bool lit)
         return;
     }
     renderer->lit = lit;
-    renderer->span = (render_gpu_span){ 0 };
+    render_gpu_span_discard(&renderer->span);
     renderer->frame_start = 0;
     renderer->background_valid = false;
     if (renderer->radiance) {

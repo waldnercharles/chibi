@@ -70,6 +70,9 @@ void render_gpu_span_end(render_gpu_span *span);
 /* Takes the oldest span whose GPU work finished: its milliseconds, in the
  * order the spans ended. Never waits; false when none has finished. */
 bool render_gpu_span_take(render_gpu_span *span, double *ms);
+/* Drops the spans not yet taken and releases what they hold, leaving an empty
+ * span. Call it when their times no longer matter and before freeing a span. */
+void render_gpu_span_discard(render_gpu_span *span);
 
 /* Timestamp hosts call this on the committing thread immediately before each
  * command buffer commit. Returns the buffer's id, or 0 when it is not tracked. */

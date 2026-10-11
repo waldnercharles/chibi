@@ -170,6 +170,39 @@ static int configure_fixture(const char *source, const char *search, const char 
     return tool_run(argv, source, log_path);
 }
 
+TEST_CASE(native_exports_have_package_owners)
+{
+    char filename[1024];
+    path(filename, tool_root(), "sdk/native.cmake");
+    char *cmake = tool_read(filename);
+    path(filename, tool_root(), "tools/package_sdk.py");
+    char *packager = tool_read(filename);
+    REQUIRE(cmake && packager);
+    char *inventory = strstr(packager, "\nNATIVE_TARGETS = {");
+    REQUIRE(inventory);
+    char *end = strchr(inventory, '}');
+    REQUIRE(end);
+    *end = 0;
+    int exports = 0;
+    const char *cursor = cmake;
+    while ((cursor = strstr(cursor, "EXPORT_NAME "))) {
+        cursor += strlen("EXPORT_NAME ");
+        char name[128];
+        REQUIRE(sscanf(cursor, "%127[a-z_0-9]", name) == 1);
+        char quoted[132];
+        snprintf(quoted, sizeof quoted, "'%s'", name);
+        if (!strstr(inventory, quoted)) {
+            fprintf(stderr, "Native export has no package owner: %s\n", name);
+        }
+        REQUIRE(strstr(inventory, quoted));
+        exports++;
+    }
+    REQUIRE(exports > 0);
+    free(packager);
+    free(cmake);
+    return true;
+}
+
 TEST_CASE(warm_configuration_preserves_input_invalidation)
 {
     char source[1024], filename[1024], bin[1024], search[8192], calls[1024];
@@ -520,6 +553,7 @@ void test_tool_package()
     snprintf(engine, sizeof engine, "{\"manifest_format\":1,\"build_id\":\"fixture-engine\",\"project_version\":%d}\n", CHIBI_PROJECT_VERSION);
     tool_write(filename, engine);
     write_profile(-1);
+    RUN_TEST_CASE(native_exports_have_package_owners);
     RUN_TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages);
     RUN_TEST_CASE(package_installation_preserves_game_and_rejects_corruption);
     RUN_TEST_CASE(warm_configuration_preserves_input_invalidation);

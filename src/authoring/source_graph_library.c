@@ -116,6 +116,7 @@ static const script_statement *returned(const script_analysis *a, const script_f
     return body;
 }
 
+/* Scalar ports, and parameter defaults that are constants for the entry pins. */
 static bool lowerable(const script_analysis *a, const script_function *f)
 {
     if (f->kind != SCRIPT_FUNCTION_AUTHORED || !f->pure || f->symbol < 0 ||
@@ -123,7 +124,10 @@ static bool lowerable(const script_analysis *a, const script_function *f)
         return false;
     }
     for (int i = 0; i < f->parameter_count; i++) {
-        if (!scalar(a->symbols[f->parameters[i]].type)) {
+        const script_symbol *p = &a->symbols[f->parameters[i]];
+        if (!scalar(p->type) ||
+            (p->initializer >= 0 &&
+             a->expressions[p->initializer].kind != SCRIPT_EXPR_CONSTANT)) {
             return false;
         }
     }
@@ -149,14 +153,19 @@ static void lower_function(
     assert(g);
     lowering l = { a, catalog, f, g, graph_node_by_id(g, g->entry_id) };
     node *ret = graph_node_by_id(g, g->return_id);
+    bool fed = true;
     for (int i = 0; i < f->parameter_count; i++) {
-        add_pin(g, l.entry, 1, &a->symbols[f->parameters[i]]);
+        const script_symbol *p = &a->symbols[f->parameters[i]];
+        add_pin(g, l.entry, 1, p);
+        if (p->initializer >= 0) {
+            const pin_value *value = &a->expressions[p->initializer].constant;
+            fed &= !graph_set_pin_default(g, l.entry, 1, i, value);
+        }
     }
     for (int i = 0; i < f->result_count; i++) {
         add_pin(g, ret, 0, &a->symbols[f->results[i]]);
     }
     const script_statement *exit = returned(a, f);
-    bool fed = true;
     for (int i = 0; fed && i < exit->child_count; i++) {
         fed = feed(&l, a->statements[exit->children[i]].second, ret, i);
     }

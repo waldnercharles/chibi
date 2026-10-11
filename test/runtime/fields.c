@@ -980,6 +980,40 @@ TEST_CASE(field_links_source_library)
     return true;
 }
 
+/* A call added for a lowered function takes its parameters' defaults. */
+TEST_CASE(field_source_library_keeps_parameter_defaults)
+{
+    const char
+        *text = "library \"Discs\" {\n"
+                "    pure function \"Disc\"(X: float = 0.0, Y: float = 0.0, "
+                "Radius: float = 40.0) -> (Value: float = 0.0) {\n"
+                "        return field_circle(entry.X, entry.Y, entry.Radius)\n"
+                "    }\n"
+                "}\n";
+    test_source_fixture fixture = test_source_prepare("content/libraries/Discs.chibi", text);
+    behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
+    REQUIRE(acount(libraries) == 1);
+    graph *disc = behavior_asset_find_graph_by_name(libraries[0], "Disc");
+    REQUIRE(disc);
+    behavior_asset *field = behavior_asset_new("DiscField");
+    field->domain = BEHAVIOR_DOMAIN_FIELD;
+    node *call = behavior_asset_add_function_call_node(field, disc);
+    node *output = add(field, "Field Output");
+    REQUIRE(call && output && !graph_connect_data(field->graph, call, 0, output, 0));
+    char error[256];
+    const behavior_asset *catalog = libraries[0];
+    behavior_asset *linked = behavior_asset_link_libraries(field, &catalog, 1, error, sizeof error);
+    REQUIRE(linked);
+    field_program *p = compile(linked);
+    REQUIRE(p && sample(p, 0, 0) == -40);
+    field_program_free(p);
+    behavior_asset_free(linked);
+    behavior_asset_free(field);
+    authoring_source_graph_libraries_free(libraries);
+    test_source_free(&fixture);
+    return true;
+}
+
 static char root[] = "/tmp/chibi-fields-XXXXXX";
 
 static void copy_fixture(const char *folder, const char *file)
@@ -1092,6 +1126,7 @@ void test_fields()
     RUN_TEST_CASE(field_functions);
     RUN_TEST_CASE(field_multiple_results);
     RUN_TEST_CASE(field_links_source_library);
+    RUN_TEST_CASE(field_source_library_keeps_parameter_defaults);
     RUN_TEST_CASE(field_source_library_hot_apply);
     RUN_TEST_CASE(field_terrain_chunks_and_connectivity);
     test_game_graph_packs_clear();

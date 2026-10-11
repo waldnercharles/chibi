@@ -8,6 +8,7 @@
 #include "graph/compiler/field_program.h"
 #include "graph/compiler/structure_internal.h"
 #include "graph/document/serialize.h"
+#include "graph/model/graph_internal.h"
 #include "graph/model/local.h"
 #include "graph/model/pin_conv.h"
 #include "graph/model/reactive.h"
@@ -263,29 +264,27 @@ static void pass_incompatible_edges(compile_report *out, const graph *g)
  * 1 in-progress, 2 done); a back edge onto an in-progress node closes one
  * cycle and produces exactly one diagnostic at the edge's source. Edges to
  * or from disabled nodes are excluded (CMPL-18). */
-static void cycle_dfs(const graph *g, uint64_t id, uint8_t *state, compile_report *out)
+static void cycle_dfs(const graph *g, int slot, uint8_t *state, compile_report *out)
 {
-    const node *n = graph_node_by_id(g, id);
-    if (!n) {
-        return;
-    }
-    state[id] = 1;
+    const node *n = g->id_table[slot];
+    state[slot] = 1;
     for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
-        if (e->kind != GRAPH_EDGE_DATA || e->from_id != id) {
+        if (e->kind != GRAPH_EDGE_DATA || e->from_id != n->id) {
             continue;
         }
-        const node *to = graph_node_by_id(g, e->to_id);
-        if (!to || to->disabled) {
+        int target = graph_node_slot(g, e->to_id);
+        if (target < 0 || g->id_table[target]->disabled) {
             continue;
         }
-        if (state[e->to_id] == 0) {
-            cycle_dfs(g, e->to_id, state, out);
-        } else if (state[e->to_id] == 1) {
+        const node *to = g->id_table[target];
+        if (state[target] == 0) {
+            cycle_dfs(g, target, state, out);
+        } else if (state[target] == 1) {
             emit(
                 out,
                 CMPL_ERROR,
-                id,
+                n->id,
                 e->from_pin_id,
                 CMPL_RULE_DATA_CYCLE,
                 "data cycle: '%s' feeds '%s', which reaches back",
@@ -294,18 +293,23 @@ static void cycle_dfs(const graph *g, uint64_t id, uint8_t *state, compile_repor
             );
         }
     }
-    state[id] = 2;
+    state[slot] = 2;
 }
 
 static void pass_data_cycles(compile_report *out, const graph *g, arena *tmp)
 {
     size_t n_ids = acount(g->id_table);
+    if (!n_ids) {
+        return;
+    }
     uint8_t *state = (uint8_t *)arena_alloc(tmp, n_ids);
     memset(state, 0, n_ids);
     for (int i = 0; i < acount(g->nodes); i++) {
         const node *n = g->nodes[i];
-        if (!n->disabled && state[n->id] == 0) {
-            cycle_dfs(g, n->id, state, out);
+        int slot = graph_node_slot(g, n->id);
+        assert(slot >= 0);
+        if (!n->disabled && state[slot] == 0) {
+            cycle_dfs(g, slot, state, out);
         }
     }
 }

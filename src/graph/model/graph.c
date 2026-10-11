@@ -9,7 +9,6 @@
 #include "types/catalog.h"
 
 #include <assert.h>
-#include <limits.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -112,13 +111,48 @@ uint64_t graph_alloc_id(graph *g)
     return id;
 }
 
+static int node_lower_bound(const graph *g, uint64_t id)
+{
+    int first = 0, end = acount(g->id_table);
+    while (first < end) {
+        int middle = first + (end - first) / 2;
+        if (g->id_table[middle]->id < id) {
+            first = middle + 1;
+        } else {
+            end = middle;
+        }
+    }
+    return first;
+}
+
+int graph_node_slot(const graph *g, uint64_t id)
+{
+    if (!g || !id) {
+        return -1;
+    }
+    int slot = node_lower_bound(g, id);
+    return slot < acount(g->id_table) && g->id_table[slot]->id == id ? slot : -1;
+}
+
 static void graph_index_node(graph *g, node *n)
 {
-    size_t want = (size_t)n->id + 1;
-    while ((size_t)acount(g->id_table) < want) {
-        apush(g->id_table, NULL);
+    int count = acount(g->id_table);
+    if (!count || alast(g->id_table)->id < n->id) {
+        apush(g->id_table, n);
+        return;
     }
-    g->id_table[n->id] = n;
+    int slot = node_lower_bound(g, n->id);
+    if (slot < count && g->id_table[slot]->id == n->id) {
+        g->id_table[slot] = n;
+        return;
+    }
+    asetlen(g->id_table, count + 1);
+    memmove(
+        g->id_table + slot + 1,
+        g->id_table + slot,
+        (size_t)(count - slot) * sizeof *g->id_table
+    );
+    g->id_table[slot] = n;
 }
 
 void graph_reindex(graph *g)
@@ -427,9 +461,14 @@ int graph_remove_node(graph *g, node *n)
         g->edges[w++] = *e;
     }
     asetlen(g->edges, w);
-    if (n->id < (uint64_t)acount(g->id_table)) {
-        g->id_table[n->id] = NULL;
-    }
+    int slot = graph_node_slot(g, n->id);
+    assert(slot >= 0);
+    memmove(
+        g->id_table + slot,
+        g->id_table + slot + 1,
+        (size_t)(acount(g->id_table) - slot - 1) * sizeof *g->id_table
+    );
+    asetlen(g->id_table, acount(g->id_table) - 1);
     free(n->input_pins);
     free(n->output_pins);
     free(n);
@@ -499,43 +538,69 @@ static node *edge_to_node(const graph *g, const edge *e, int *pin)
     return n;
 }
 
+static int compare_edge_group(const void *left, const void *right)
+{
+    const graph_edge_group *a = left, *b = right;
+    if (a->id != b->id) {
+        return a->id < b->id ? -1 : 1;
+    }
+    return (a->first > b->first) - (a->first < b->first);
+}
+
+/* Group equal IDs without changing the authored edge traversal order. */
+static void compact_edge_groups(graph_edge_group *groups, int *next)
+{
+    asort(groups, compare_edge_group);
+    int count = 0, last = 0;
+    for (int i = 0; i < acount(groups); i++) {
+        graph_edge_group entry = groups[i];
+        if (count && groups[count - 1].id == entry.id) {
+            groups[count - 1].count++;
+            if (next) {
+                next[last - 1] = entry.first;
+            }
+        } else {
+            groups[count++] = entry;
+        }
+        last = entry.first;
+    }
+    asetlen(groups, count);
+}
+
+static const graph_edge_group *find_edge_group(const graph_edge_group *groups, uint64_t id)
+{
+    int first = 0, end = acount(groups);
+    while (first < end) {
+        int middle = first + (end - first) / 2;
+        if (groups[middle].id < id) {
+            first = middle + 1;
+        } else {
+            end = middle;
+        }
+    }
+    return first < acount(groups) && groups[first].id == id ? &groups[first] : NULL;
+}
+
 static void index_edges(const graph *g, graph_edge_index *index)
 {
-    uint64_t input = 0, output = 0, source = 0;
+    aclear(index->inputs);
+    aclear(index->outputs);
+    aclear(index->sources);
+    asetlen(index->next, acount(g->edges));
+    memset(index->next, 0, (size_t)acount(index->next) * sizeof *index->next);
     for (int i = 0; i < acount(g->edges); i++) {
         const edge *e = &g->edges[i];
-        if (e->from_id > source) {
-            source = e->from_id;
-        }
-        if (e->kind == GRAPH_EDGE_DATA && e->to_pin_id > input) {
-            input = e->to_pin_id;
-        }
-        if (e->kind == GRAPH_EDGE_EXEC && e->from_pin_id > output) {
-            output = e->from_pin_id;
-        }
-    }
-    assert(input < INT_MAX && output < INT_MAX && source < INT_MAX);
-    asetlen(index->inputs, (int)input + 1);
-    asetlen(index->outputs, (int)output + 1);
-    asetlen(index->next, acount(g->edges));
-    asetlen(index->sources, (int)source + 1);
-    memset(index->inputs, 0, (size_t)acount(index->inputs) * sizeof *index->inputs);
-    memset(index->outputs, 0, (size_t)acount(index->outputs) * sizeof *index->outputs);
-    memset(index->sources, 0, (size_t)acount(index->sources) * sizeof *index->sources);
-    for (int i = acount(g->edges) - 1; i >= 0; i--) {
-        const edge *e = &g->edges[i];
-        int *only = &index->sources[e->from_id];
-        *only = *only ? -1 : i + 1;
+        apush(index->sources, ((graph_edge_group){ e->from_id, i + 1, 1 }));
         if (e->kind == GRAPH_EDGE_DATA) {
-            index->inputs[e->to_pin_id] = i + 1;
+            apush(index->inputs, ((graph_edge_group){ e->to_pin_id, i + 1, 1 }));
         }
         if (e->kind == GRAPH_EDGE_EXEC) {
-            exec_edges *edges = &index->outputs[e->from_pin_id];
-            index->next[i] = edges->first;
-            edges->first = i + 1;
-            edges->count++;
+            apush(index->outputs, ((graph_edge_group){ e->from_pin_id, i + 1, 1 }));
         }
     }
+    compact_edge_groups(index->inputs, NULL);
+    compact_edge_groups(index->outputs, index->next);
+    compact_edge_groups(index->sources, NULL);
     atomic_store_explicit(&index->revision, g->topology_revision, memory_order_release);
 }
 
@@ -564,9 +629,18 @@ const edge *graph_input_edge(const graph *g, const node *n, int pin)
 {
     graph_edge_index *index = graph_edges_index(g);
     uint64_t id = n->input_pins[pin].id;
-    int slot = index && id < (uint64_t)acount(index->inputs) ? index->inputs[id] : 0;
+    const graph_edge_group *group = index ? find_edge_group(index->inputs, id) : NULL;
+    int slot = group ? group->first : 0;
     const edge *e = slot ? &g->edges[slot - 1] : NULL;
     return e && e->to_id == n->id ? e : NULL;
+}
+
+const edge *graph_only_output_edge(const graph *g, const node *n)
+{
+    graph_edge_index *index = graph_edges_index(g);
+    const graph_edge_group *group = index ? find_edge_group(index->sources, n->id)
+                                          : NULL;
+    return group && group->count == 1 ? &g->edges[group->first - 1] : NULL;
 }
 
 bool graph_vector_descriptor(const node_desc *desc)
@@ -660,9 +734,8 @@ int graph_exec_output_target(const graph *g, const node *n, int pin, int order, 
     }
     graph_edge_index *index = graph_edges_index(g);
     uint64_t id = n->output_pins[pin].id;
-    int slot = index && id < (uint64_t)acount(index->outputs)
-                 ? index->outputs[id].first
-                 : 0;
+    const graph_edge_group *group = index ? find_edge_group(index->outputs, id) : NULL;
+    int slot = group ? group->first : 0;
     for (; slot; slot = index->next[slot - 1]) {
         const edge *e = &g->edges[slot - 1];
         if (e->from_id == n->id && e->exec_order == order) {
@@ -682,15 +755,16 @@ int graph_exec_output_edges(const graph *g, const node *n, int pin, const edge *
     *first = NULL;
     graph_edge_index *index = graph_edges_index(g);
     uint64_t id = n->output_pins[pin].id;
-    if (!index || id >= (uint64_t)acount(index->outputs) || !index->outputs[id].first) {
+    const graph_edge_group *group = index ? find_edge_group(index->outputs, id) : NULL;
+    if (!group) {
         return 0;
     }
-    const edge *e = &g->edges[index->outputs[id].first - 1];
+    const edge *e = &g->edges[group->first - 1];
     if (e->from_id != n->id) {
         return 0;
     }
     *first = e;
-    return index->outputs[id].count;
+    return group->count;
 }
 
 int graph_exec_target_at(const graph *g, const node *n, int pin, int order, node **dst, int *dst_pin)
@@ -700,10 +774,8 @@ int graph_exec_target_at(const graph *g, const node *n, int pin, int order, node
 
 node *graph_node_by_id(const graph *g, uint64_t id)
 {
-    if (!g || id == 0 || id >= (uint64_t)acount(g->id_table)) {
-        return NULL;
-    }
-    return g->id_table[id];
+    int slot = graph_node_slot(g, id);
+    return slot >= 0 ? g->id_table[slot] : NULL;
 }
 
 const pin_spec *graph_pin_by_id(const node *n, uint64_t id, int *is_output, int *index)

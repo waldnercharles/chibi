@@ -6,23 +6,27 @@
 
 #include <stdatomic.h>
 
-typedef struct exec_edges
+typedef struct graph_edge_group
 {
+    uint64_t id;
     int first;
     int count;
-} exec_edges;
+} graph_edge_group;
 
 typedef struct graph_edge_index
 {
-    int *inputs;         /* Destination pin ID -> edge slot + 1. */
-    exec_edges *outputs; /* Source pin ID -> EXEC edge slots. */
-    int *next;    /* EXEC edge slot -> next slot + 1, in authored edge order. */
-    int *sources; /* Source node ID -> its only outgoing edge slot + 1, or -1. */
+    graph_edge_group *inputs; /* Sorted destination pin IDs, first DATA edge. */
+    graph_edge_group *outputs; /* Sorted source pin IDs, authored EXEC order. */
+    int *next; /* EXEC edge slot -> next slot + 1, in authored edge order. */
+    graph_edge_group *sources; /* Sorted source node IDs, outgoing edge counts. */
     atomic_ullong revision;
     atomic_flag building;
 } graph_edge_index;
 
 int graph_contains_node(const graph *g, const node *n);
+
+/* Compact index slot, or -1. IDs change only before graph_reindex. */
+int graph_node_slot(const graph *g, uint64_t id);
 
 void graph_changed(graph *g);
 
@@ -49,6 +53,8 @@ node *graph_edge_source(const graph *g, const edge *e, int *pin);
 graph_edge_index *graph_edges_index(const graph *g);
 
 const edge *graph_input_edge(const graph *g, const node *n, int pin);
+
+const edge *graph_only_output_edge(const graph *g, const node *n);
 
 bool graph_vector_descriptor(const node_desc *desc);
 

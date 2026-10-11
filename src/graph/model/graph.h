@@ -86,7 +86,7 @@ typedef struct graph
     uint64_t entry_id;
     uint64_t return_id;
     int call_depth_limit;
-    node **id_table; /* id -> node*, NULL after removal; O(1) lookup */
+    node **id_table; /* Compact pointers sorted by authored ID; O(log N) lookup. */
     edge *edges;
     struct graph_local *locals;
     struct graph_edge_index *edge_index; /* Shared lazy edge index; never serialized. */

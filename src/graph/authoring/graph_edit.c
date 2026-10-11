@@ -255,11 +255,7 @@ static const edge *inline_edge(const graph *g, const node *n)
             return NULL;
         }
     }
-    graph_edge_index *index = graph_edges_index(g);
-    int slot = index && n->id < (uint64_t)acount(index->sources)
-                 ? index->sources[n->id]
-                 : 0;
-    const edge *outgoing = slot > 0 ? &g->edges[slot - 1] : NULL;
+    const edge *outgoing = graph_only_output_edge(g, n);
     if (!outgoing || outgoing->kind != GRAPH_EDGE_DATA || outgoing->to_id == n->id) {
         return NULL;
     }
@@ -322,7 +318,7 @@ static int inline_size(const graph *g, const node *n, const node *forced, int re
 }
 static bool node_indexed(const graph *g, const node *n)
 {
-    return g && n && n->id < (uint64_t)acount(g->id_table) && g->id_table[n->id] == n;
+    return n && graph_node_by_id(g, n->id) == n;
 }
 bool graph_node_is_inline(const graph *g, const node *n)
 {

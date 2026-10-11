@@ -46,6 +46,8 @@ RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize':
                     '--sdf-visibility': 'sdf-visibility',
                     '--scene3d': 'scene3d', '--scene3d-gles': 'scene3d-gles',
                     '--material-ramps': 'material-ramps'}
+RENDER_SELECTORS |= {f'--installed-example-{lab}': f'installed-example-{lab}' for lab in
+                     ('local_mesh_sampled', 'hrc_lab', 'modeling_lab', 'sdf_lab', 'suzanne_sampled')}
 GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS
 PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
     ('font', f'font/Inter/{weight}/normal') for weight in (400, 500, 600, 700)

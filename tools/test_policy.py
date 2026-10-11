@@ -34,7 +34,7 @@ NATIVE = {
     ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky, ramps, imported meshes and their normal maps, imported glTF Standard materials and tangent frames, Transform3D placement and mirroring, occlusion, ambient occlusion, alpha modes and masked shadows with readback; GPU; docs/rendering-3d.md',
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
     ('--material-ramps',): 'Reviewed hidden 64x64 app: four color ramp table cases through 2D and material raster shaders; GPU; docs/testing.md',
-    ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
+    ('--shader-parameters-prepared',): 'Independently reviewed two CPU cases: tiny material/two-parameter codec and generation rejection, plus three-node parameterized model/four prepared records<64KiB staged within2MiB; no GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
     ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and six refusals, CPU only; docs/testing.md',
     ('--asset-refactor',): 'One asset rename case: four in-memory prototypes, planned rewrites of a nested child and of a child that an including prototype adds, no files, CPU only; docs/testing.md',
@@ -43,6 +43,12 @@ NATIVE = {
     ('--system-schedule',): 'First supervised measurement; independently reviewed fixed dependency/order cases, 62 small engine frames and serial/parallel 128 entities x 20 frames, CPU only; docs/testing.md',
     ('--source-presentation',): 'Independently reviewed five small source/palette cases, graph ownership/layout, invalid drafts, callable-local scope and readable formulas with retained calls/effects, plus two component presentation cases on two in-memory documents, CPU only; docs/testing.md',
 }
+EXAMPLE_LABS = ('local_mesh_sampled', 'hrc_lab', 'modeling_lab', 'sdf_lab', 'suzanne_sampled')
+for lab in EXAMPLE_LABS:
+    NATIVE[(f'--installed-example-{lab}',)] = (
+        'Independently reviewed first measurement: one pinned lab tree<=512files/32MiB, '
+        'verified installed package pins, one compile<=20s, source removal/relocation, '
+        'four hidden320x180frames/readback<=25s; sampled box also missing-input compile<=10s and two CLI rejections<=5s each; C PNG landmarks, shared60s')
 TOOLS = {
     'tilemap-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--tilemap-project'],
     'tilemap': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--tilemap'],
@@ -200,6 +206,10 @@ TOOLS = {
 
 }
 # Every admitted selector of each built driver, run under one shared deadline.
+for lab in EXAMPLE_LABS:
+    TOOLS[f'installed-example-{lab}'] = [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                                        f'--installed-example-{lab}']
+
 GROUPS = {
     'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'physics3d', 'transforms',
                'box3d', 'sky-files', 'mesh-files', 'model-import', 'tilemap',
@@ -486,7 +496,7 @@ def main():
     if args.action == 'tool':
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
-        if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
+        if arguments[0] in tuple(f'installed-example-{lab}' for lab in EXAMPLE_LABS) + ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
                             'studio-graph-visibility', 'interior-border', 'viewport-resize', 'sdf-visibility',
                             'scene3d', 'scene3d-gles',
                             'material-ramps'):

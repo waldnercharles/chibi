@@ -44,6 +44,7 @@ void test_tool_scene();
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
+void test_installed_examples(const char *name);
 void test_render_interior_border();
 void test_render_viewport_resize();
 void test_render_scene3d(bool gles);
@@ -136,6 +137,21 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
+    const char *example = NULL;
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+    static const char *const examples[] = { "local_mesh_sampled",
+                                            "hrc_lab",
+                                            "modeling_lab",
+                                            "sdf_lab",
+                                            "suzanne_sampled" };
+    for (int i = 0; i < 5; i++) {
+        char selector[128];
+        snprintf(selector, sizeof selector, "--installed-example-%s", examples[i]);
+        if (argc == 2 && !strcmp(argv[1], selector)) {
+            example = examples[i];
+        }
+    }
+#endif
     bool tilemap = false, tilemap_project = false;
 #ifdef CHIBI_TEST_TILEMAP
     tilemap = argc == 2 && !strcmp(argv[1], "--tilemap");
@@ -233,9 +249,9 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !coverage && !shader_parameters && !source_edit &&
-        !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
-        !package && !unit && !web_storage && !webgpu_staging &&
+    if (argc != 1 && !example && !corpus && !coverage && !shader_parameters &&
+        !source_edit && !new_asset && !asset_refactor && !tilemap &&
+        !tilemap_project && !package && !unit && !web_storage && !webgpu_staging &&
         !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
         !native && !native_values && !native_catalog && !physics && !physics3d &&
         !transforms && !render_resources && !interior_border && !viewport_resize &&
@@ -280,6 +296,13 @@ int main(int argc, char **argv)
     }
     tool_init();
     pu_display_time(true);
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+    if (example) {
+        test_installed_examples(example);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     source_runtime_active = corpus || coverage || shader_parameters ||
                             source_edit || new_asset || asset_refactor ||

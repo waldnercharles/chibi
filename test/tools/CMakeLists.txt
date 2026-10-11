@@ -139,6 +139,7 @@ if(TARGET chibi_box3d)
 endif()
 
 if(TARGET Chibi::render)
+    target_sources(test_tools PRIVATE installed_examples.c)
     add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/scene3d.c
         device_controls.c ../render/interior_border.c ../render/viewport_resize.c ../draw_backend.cpp)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")

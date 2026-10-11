@@ -28,3 +28,10 @@ CHIBI_GPU_SELECTOR("--scene3d-gles")
 /* Color ramp table cases through 2D and material raster shaders in a hidden
  * 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--material-ramps")
+
+/* Pinned installed examples: one start scene, four 320x180 frames each. */
+CHIBI_GPU_SELECTOR("--installed-example-local_mesh_sampled")
+CHIBI_GPU_SELECTOR("--installed-example-hrc_lab")
+CHIBI_GPU_SELECTOR("--installed-example-modeling_lab")
+CHIBI_GPU_SELECTOR("--installed-example-sdf_lab")
+CHIBI_GPU_SELECTOR("--installed-example-suzanne_sampled")

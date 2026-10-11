@@ -3373,11 +3373,12 @@ TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
     rmdir(root);
     return true;
 }
-/* Migrates a version 17 project whose scene and prototype deform shapes. */
+/* Removes obsolete motion from a version 17 project while preserving an
+ * unrelated SdfMotion scene name. */
 TEST_CASE(program_version_17_sdf_motion_is_removed)
 {
     const char *scene = "version 1\n"
-                        "name \"Start\"\n"
+                        "name \"SdfMotion\"\n"
                         "(array)entities {\n"
                         "    - {\n"
                         "        name \"Enemy\"\n"
@@ -3425,7 +3426,7 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
     const char *expected[] = {
         NULL,
         "version 1\n"
-        "name \"Start\"\n"
+        "name \"SdfMotion\"\n"
         "(array)entities {\n"
         "    - {\n"
         "        name \"Enemy\"\n"
@@ -3475,7 +3476,7 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
           "Escaped.chibi uses GAME.GameSdfMotion" },
         { "content/Scenario.kdl",
           "name \"Wobble\"\ncomponent \"GAME.GameSdfMotion\"\n",
-          "Scenario.kdl uses GameSdfMotion" },
+          "Scenario.kdl uses GAME.GameSdfMotion" },
     };
     for (size_t u = 0; u < sizeof uses / sizeof *uses; u++) {
         const char *kept[][2] = {

@@ -24,6 +24,9 @@ NATIVE = {
     ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
     ('--webgpu-staging',): 'Reviewed C-owned isolated headless Chrome: one64x64quad for120 frames, peak64MiB staging/reuse, two pending-readback ownership checks, allocator restore before callback drain, one app recreation with stale loss, one validation error and real device loss; callback phases<=1s within startup+execution55s/shared60s; docs/testing.md',
     ('--studio-graph-visibility',): 'Reviewed actual installed Studio graph visibility, scene draft history and tilemap viewport bounds/layer picking; two temporary entities and four CPU picks, disposable three-file fixture and isolated prefs, ten hidden 1920x1080 frames at fixed 1/60, shared60s',
+    ('--studio-graph-pointer',): 'First supervised measurement: independently reviewed Counter node pointer selection, wire keys, Find result keys/click/focus, nineteen hidden1920x1080frames, disposable3file fixture, shared60s',
+    ('--studio-asset-pointer',): 'First supervised measurement: independently reviewed four tiny prototypes, SDL filtered list/grid selection and modifiers, twenty hidden1920x1080frames, disposable3file fixture, shared60s',
+    ('--studio-debugger-source-history',): 'First supervised measurement: independently reviewed one in-memory Counter actor, SDL breakpoint/play/invalid text/undo/redo/step/stop, retained cursor and runtime value assertions, forty-seven hidden1920x1080frames, at most ten source-level steps, shared60s',
     ('--studio-source-edit',): 'Reviewed actual installed Studio edit/undo/redo, disposable3file212byteproject+isolatedprefs, fourhidden1920x1080frames, shared60s',
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
@@ -47,6 +50,9 @@ TOOLS = {
     'tilemap-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--tilemap-project'],
     'tilemap': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--tilemap'],
     'studio-graph-visibility': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-graph-visibility'],
+    'studio-graph-pointer': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-graph-pointer'],
+    'studio-asset-pointer': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-asset-pointer'],
+    'studio-debugger-source-history': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-debugger-source-history'],
     'studio-source-edit': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-source-edit'],
     'compile-installed-space-cadet': [sys.executable, str(ROOT / 'tools/agent.py'), 'test', '--', '--compile-installed-space-cadet'],
     'player-installed-space-cadet-vm': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--player-installed-space-cadet-vm'],
@@ -487,7 +493,7 @@ def main():
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
         if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
-                            'studio-graph-visibility', 'interior-border', 'viewport-resize', 'sdf-visibility',
+                            'studio-graph-visibility', 'studio-graph-pointer', 'studio-asset-pointer', 'studio-debugger-source-history', 'interior-border', 'viewport-resize', 'sdf-visibility',
                             'scene3d', 'scene3d-gles',
                             'material-ramps'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),

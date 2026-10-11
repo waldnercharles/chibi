@@ -1,3 +1,4 @@
+#include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -6,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -13,10 +15,12 @@ static char directory[PATH_MAX], driver[PATH_MAX], logpath[PATH_MAX];
 
 /* Python only invokes the production supervisor and injects unavailable host
  * capabilities. Native processes supply fixtures; pico_unit owns assertions. */
+static const char
+    driver_imports[] = "import json, os, signal, subprocess, sys, time\n"
+                       "from pathlib import Path\n"
+                       "sys.path.insert(0, sys.argv[1])\n"
+                       "import test_policy as policy\n";
 static const char driver_source[] =
-    "import json, os, signal, subprocess, sys, time\n"
-    "sys.path.insert(0, sys.argv[1])\n"
-    "import test_policy as policy\n"
     "policy.__file__ = os.path.join(os.path.dirname(__file__), "
     "'supervisor.py')\n"
     "signal.signal(signal.SIGTERM, policy.terminate)\n"
@@ -61,6 +65,12 @@ static const char driver_source[] =
     "        output = open(root + '/studio-output').read()\n"
     "        print(json.dumps(agent.studio_acceptance_output(sys.argv[5], "
     "output)))\n"
+    "        sys.exit(0)\n"
+    "    if action == 'studio-source':\n"
+    "        import agent\n"
+    "        records = json.loads(open(root + '/studio-records.json').read())\n"
+    "        agent.studio_acceptance_sources(Path(root) / 'studio-source', "
+    "records)\n"
     "        sys.exit(0)\n"
     "    if action == 'exit':\n"
     "        result = policy.run_commands([[worker, 'exit', sys.argv[5]]], 6)\n"
@@ -109,7 +119,7 @@ static const char driver_source[] =
     "    sys.exit(result)\n"
     "except (policy.TerminationRequested, KeyboardInterrupt):\n"
     "    sys.exit(130)\n"
-    "except RuntimeError as error:\n"
+    "except (RuntimeError, ValueError) as error:\n"
     "    print(error, file=sys.stderr)\n"
     "    sys.exit(2)\n";
 
@@ -203,6 +213,137 @@ TEST_CASE(studio_acceptance_requires_exact_completion)
         tool_write(filename, repeated);
         REQUIRE(run("studio-result", "--studio-graph-visibility") == 2);
     }
+    const char *selectors[] = { "--studio-graph-pointer",
+                                "--studio-asset-pointer",
+                                "--studio-debugger-source-history" };
+    const char *success[] = {
+        "Studio graph pointer accepted: frames=19\n",
+        "Studio asset pointer accepted: frames=20\n",
+        "Studio debugger source history accepted: frames=47\n"
+    };
+    for (int i = 0; i < 3; i++) {
+        tool_write(filename, success[i]);
+        REQUIRE(run("studio-result", selectors[i]) == 0);
+        REQUIRE(run("studio-result", selectors[(i + 1) % 3]) == 2);
+    }
+    return true;
+}
+
+enum
+{
+    STUDIO_SOURCE_BYTES = 65537,
+    STUDIO_SOURCE_OVERSIZE_BYTES = 262145
+};
+static const char *const studio_source_members[] = {
+    "main.c",    "host.c",      "application.c", "debugger.c", "debugger.h",
+    "README.md", "project.kdl", "Counter.chibi", "Start.kdl"
+};
+
+static void studio_source_path(char *output, const char *member)
+{
+    char relative[128];
+    int length = snprintf(relative, sizeof relative, "studio-source/tests/acceptance/%s", member);
+    assert(length > 0 && (size_t)length < sizeof relative);
+    path(output, relative);
+}
+
+static void write_studio_main(size_t bytes, char first)
+{
+    char filename[PATH_MAX];
+    studio_source_path(filename, "main.c");
+    char *text = xmalloc(bytes + 1);
+    memset(text, 'a', bytes);
+    text[0] = first;
+    text[bytes] = 0;
+    tool_write(filename, text);
+    free(text);
+}
+
+/* These fixed hashes cover the C-created bytes, including the over-limit file. */
+static void write_studio_records(size_t main_bytes)
+{
+    assert(main_bytes == STUDIO_SOURCE_BYTES || main_bytes == STUDIO_SOURCE_OVERSIZE_BYTES);
+    const char *main_hash = main_bytes == STUDIO_SOURCE_BYTES
+                              ? "008ffc88d3c96a9f307524eb361e47c5222a887fc45fa0"
+                                "c1fb8d429c5c23b430"
+                              : "c592f4a6b099700b5050ce8bc67367f0c8f44810203124"
+                                "e86405c3e7b6f1a2ba";
+    const char *one_hash = "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b98"
+                           "07785afee48bb";
+    char filename[PATH_MAX];
+    path(filename, "studio-records.json");
+    FILE *file = fopen(filename, "wb");
+    assert(file);
+    assert(fputs("{", file) >= 0);
+    for (int i = 0;
+         i < (int)(sizeof studio_source_members / sizeof *studio_source_members);
+         i++) {
+        assert(
+            fprintf(
+                file,
+                "%s\"tests/acceptance/%s\":{\"bytes\":%zu,\"sha256\":\"%s\"}",
+                i ? "," : "",
+                studio_source_members[i],
+                i ? (size_t)1 : main_bytes,
+                i ? one_hash : main_hash
+            ) > 0
+        );
+    }
+    assert(fputs("}\n", file) >= 0);
+    assert(fclose(file) == 0);
+}
+
+static bool studio_source_rejected(const char *reason)
+{
+    REQUIRE(run("studio-source", NULL) == 2);
+    char *output = tool_read(logpath);
+    bool rejected = output && strstr(output, reason);
+    free(output);
+    REQUIRE(rejected);
+    return true;
+}
+
+TEST_CASE(studio_acceptance_source_records_match_files)
+{
+    const char *folders[] = { "studio-source",
+                              "studio-source/tests",
+                              "studio-source/tests/acceptance" };
+    char filename[PATH_MAX];
+    for (int i = 0; i < 3; i++) {
+        path(filename, folders[i]);
+        REQUIRE(mkdir(filename, 0700) == 0);
+    }
+    write_studio_main(STUDIO_SOURCE_BYTES, 'a');
+    for (int i = 1;
+         i < (int)(sizeof studio_source_members / sizeof *studio_source_members);
+         i++) {
+        studio_source_path(filename, studio_source_members[i]);
+        tool_write(filename, "a");
+    }
+    write_studio_records(STUDIO_SOURCE_BYTES);
+    REQUIRE(run("studio-source", NULL) == 0);
+
+    studio_source_path(filename, "debugger.h");
+    REQUIRE(unlink(filename) == 0);
+    REQUIRE(studio_source_rejected("studio_acceptance_source_records_changed"));
+    tool_write(filename, "a");
+    studio_source_path(filename, "unrecorded.c");
+    tool_write(filename, "a");
+    REQUIRE(studio_source_rejected("studio_acceptance_source_records_changed"));
+    REQUIRE(unlink(filename) == 0);
+
+    write_studio_main(STUDIO_SOURCE_BYTES, 'b');
+    REQUIRE(studio_source_rejected("studio_acceptance_source_changed"));
+    write_studio_main(STUDIO_SOURCE_BYTES, 'a');
+    studio_source_path(filename, "debugger.h");
+    REQUIRE(unlink(filename) == 0 && symlink("host.c", filename) == 0);
+    REQUIRE(studio_source_rejected("studio_acceptance_source_size_changed"));
+    REQUIRE(unlink(filename) == 0);
+    tool_write(filename, "a");
+
+    write_studio_main(STUDIO_SOURCE_OVERSIZE_BYTES, 'a');
+    write_studio_records(STUDIO_SOURCE_OVERSIZE_BYTES);
+    REQUIRE(studio_source_rejected("studio_acceptance_source_size_changed"));
     return true;
 }
 
@@ -309,8 +450,13 @@ void test_tool_test_policy()
     assert(mkdtemp(directory));
     path(driver, "driver.py");
     path(logpath, "output.log");
-    tool_write(driver, driver_source);
+    FILE *script = fopen(driver, "wb");
+    assert(script);
+    assert(fputs(driver_imports, script) >= 0);
+    assert(fputs(driver_source, script) >= 0);
+    assert(fclose(script) == 0);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
+    RUN_TEST_CASE(studio_acceptance_source_records_match_files);
     RUN_TEST_CASE(exit_and_aggregate_deadlines);
     RUN_TEST_CASE(descendant_cleanup);
     RUN_TEST_CASE(portable_nested_cleanup_preserves_sibling);

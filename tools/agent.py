@@ -37,10 +37,16 @@ PLAYER_SELECTORS = {
     '--player-installed-space-cadet-sljit': 'player-installed-space-cadet-sljit',
 }
 STUDIO_SELECTORS = {'--studio-source-edit': 'studio-source-edit',
-                    '--studio-graph-visibility': 'studio-graph-visibility'}
+                    '--studio-graph-visibility': 'studio-graph-visibility',
+                    '--studio-graph-pointer': 'studio-graph-pointer',
+                    '--studio-asset-pointer': 'studio-asset-pointer',
+                    '--studio-debugger-source-history': 'studio-debugger-source-history'}
 STUDIO_ACCEPTANCE = {
     '--studio-source-edit': ('--source-edit', 4, 'Studio source edit accepted: frames=4 edits=1 undo=1 redo=1'),
     '--studio-graph-visibility': ('--graph-visibility', 10, 'Studio graph visibility accepted: frames=10'),
+    '--studio-graph-pointer': ('--graph-pointer', 19, 'Studio graph pointer accepted: frames=19'),
+    '--studio-asset-pointer': ('--asset-pointer', 20, 'Studio asset pointer accepted: frames=20'),
+    '--studio-debugger-source-history': ('--debugger-source-history', 47, 'Studio debugger source history accepted: frames=47'),
 }
 RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize': 'viewport-resize',
                     '--sdf-visibility': 'sdf-visibility',
@@ -68,7 +74,7 @@ def runnable_selectors(classified, mappings):
 
 
 def studio_resource_preflight(build):
-    resources = {'studio': (261, 436675, '3ae7676c6de4a45db6dc2faadd29a9cf7dde2ea09409f1a008af4df4a4a65689'),
+    resources = {'studio': (264, 450406, 'be09f90b2472bf48a7e3486fbd26759da8eff47886d7914558f3209d0a995296'),
                  'ui': (2, 297, '8505446e5ec71ec7c070f17b6729e0f6c41e2f9666dc7218b3c80a2f2d184e92')}
     for name, (count, length, digest) in resources.items():
         base = build / 'share/chibi' / name
@@ -114,6 +120,22 @@ def bounded_read(path, limit):
     return data
 
 
+def studio_acceptance_sources(source, records):
+    acceptance_files = {p.relative_to(source).as_posix()
+                        for p in (source / 'tests/acceptance').rglob('*') if p.is_file()}
+    if not isinstance(records, dict) or not 8 <= len(records) <= 32 or set(records) != acceptance_files:
+        raise ValueError('studio_acceptance_source_records_changed')
+    for name, record in records.items():
+        relative = Path(name)
+        if relative.is_absolute() or '..' in relative.parts or not name.startswith('tests/acceptance/'):
+            raise ValueError('studio_acceptance_source_path_invalid')
+        path = source / relative
+        if path.is_symlink() or path.stat().st_size != record['bytes'] or record['bytes'] > 256 * 1024:
+            raise ValueError('studio_acceptance_source_size_changed')
+        if hashlib.sha256(path.read_bytes()).hexdigest() != record['sha256']:
+            raise ValueError('studio_acceptance_source_changed')
+
+
 def studio_acceptance_preflight(selector):
     _, frames, success = STUDIO_ACCEPTANCE[selector]
     source = Path(os.environ.get('CHIBI_STUDIO_SOURCE', ''))
@@ -143,18 +165,7 @@ def studio_acceptance_preflight(selector):
         raise ValueError('studio_acceptance_build_not_verified')
     if hashlib.sha256(bounded_read(build / 'compile_commands.json', 64 * 1024 * 1024)).hexdigest() != evidence.get('compile_commands_sha256'):
         raise ValueError('studio_acceptance_compile_inputs_changed')
-    records = evidence.get('files')
-    if not isinstance(records, dict) or len(records) != 8:
-        raise ValueError('studio_acceptance_source_records_changed')
-    for name, record in records.items():
-        relative = Path(name)
-        if relative.is_absolute() or '..' in relative.parts or not name.startswith('tests/acceptance/'):
-            raise ValueError('studio_acceptance_source_path_invalid')
-        path = source / relative
-        if path.is_symlink() or path.stat().st_size != record['bytes'] or record['bytes'] > 65536:
-            raise ValueError('studio_acceptance_source_size_changed')
-        if hashlib.sha256(path.read_bytes()).hexdigest() != record['sha256']:
-            raise ValueError('studio_acceptance_source_changed')
+    studio_acceptance_sources(source, evidence.get('files'))
     sdk = Path(evidence['sdk'])
     if hashlib.sha256(bounded_read(sdk / 'lib/cmake/Chibi/ChibiConfig.cmake', 1024 * 1024)).hexdigest() != native.get('sdk_config_sha256'):
         raise ValueError('studio_acceptance_sdk_changed')
@@ -516,8 +527,7 @@ def main():
                 if args.selector in STUDIO_SELECTORS:
                     log.seek(0)
                     execution_evidence = studio_acceptance_output(args.selector, log.read())
-        reason = ('admitted_studio_graph_visibility_completed' if args.selector == '--studio-graph-visibility' else
-                  'admitted_studio_source_edit_completed' if args.selector == '--studio-source-edit' else
+        reason = ('admitted_studio_acceptance_completed' if args.selector in STUDIO_SELECTORS else
                   'admitted_installed_compile_completed' if args.selector == '--compile-installed-space-cadet' else
                   'admitted_four_frame_player_completed' if preflight else 'selected_assertions_passed')
         return report('passed', reason,

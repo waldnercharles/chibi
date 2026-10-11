@@ -7,6 +7,8 @@ CHIBI_CPU_SELECTOR("--system-schedule")
 CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
 /* Model graphs compiled to distance programs, bounds and hit resolvers. */
 CHIBI_CPU_SELECTOR("--model-graphs")
+/* Models and materials in the renderer's shader catalog, without a window. */
+CHIBI_CPU_SELECTOR("--model-catalog")
 
 /* Explicit opt-in checks against installed products; each runs under the
  * shared 60-second supervisor. */

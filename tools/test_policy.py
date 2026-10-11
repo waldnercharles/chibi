@@ -185,9 +185,14 @@ TOOLS = {
     # nothing left behind, warnings, left-out vertices, meshes too large to write and baked tangent frames;
     # one temporary folder, no GPU.
     'model-import': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--model-import'],
-    # Thirty-six reviewed model graph compile cases: solids, transforms, booleans, functions, arrays,
-    # profiles, sweeps, anchors, parameters, hits and instanced references; no files, world or GPU.
+    # Thirty-nine reviewed model graph compile cases: solids, transforms, booleans, functions, arrays,
+    # profiles, sweeps, anchors, parameters, hits, instanced references, inspection and sampled SDFs;
+    # no files, world or GPU.
     'model-graphs': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--model-graphs'],
+    # Twenty-seven reviewed cases of models and materials in the renderer's shader catalog: runtime
+    # parameters and their prepared texts, slot-scoped material parameters, saved-source validation,
+    # material slots, hits and limits, surfaces, bounds and picking; one temporary folder, no GPU.
+    'model-catalog': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--model-catalog'],
     # Nine reviewed native cases: retained spawn generations, a three-step physics world, prepared player handoff/rejection, named scene loading and conflicting-binding refusal, sound requests, declared components, per-step action state and recorded taps, and held actions across a pause.
     'native-runtime': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--native'],
     # 2D physics through ECS and Contact Begin events: motion, contacts, masks, queries and parallel collection.

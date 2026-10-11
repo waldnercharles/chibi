@@ -196,9 +196,15 @@ endif()
 # Model graphs compile to distance programs, bounds and hit resolvers.
 if(TARGET Chibi::model_authoring)
     target_sources(test_tools PRIVATE ../graph/packs.c ../graph/modeling.c ../graph/model_constructive.c
-        ../graph/model_profiles.c ../graph/model_reuse.c)
+        ../graph/model_profiles.c ../graph/model_reuse.c ../graph/model_inspection.c
+        ../graph/model_sampled.c)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
+    # Models and materials in the renderer's shader catalog.
+    if(TARGET Chibi::render)
+        target_sources(test_tools PRIVATE ../graph/model_parameters.c ../graph/model_material_scope.c
+            ../graph/model_validation.c ../graph/model_materials.c ../graph/model_surface.c)
+    endif()
 endif()
 
 # Model import reads glTF files and writes content files, so only compiler

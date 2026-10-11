@@ -655,15 +655,28 @@ ground by a parent, scaled past float's volume or square, and carried past
 its range. It needs a compiler build, uses one temporary folder and passes
 176 assertions under ASan/UBSan with leak checks, without processes or
 GPU.
-`model-graphs` selects 36 model graph compile cases: primitive solids,
+`model-graphs` selects 39 model graph compile cases: primitive solids,
 transforms, booleans and smooth unions with their distances and conservative
 bounds, functions, radial and linear arrays, runtime parameters prepared
 without recompiling, expressions, hit resolvers and their part limits,
 profiles extruded, revolved, offset and swept, rims, level sets, Bézier and
-pivoted sections, anchors, and models that instance other models with
-overrides, stable part paths and cycle diagnostics, with save and reload
-roundtrips. It needs a compiler build and passes 3,355 assertions in 0.4
-seconds under ASan/UBSan with leak checks, without files, world or GPU.
+pivoted sections, anchors, models that instance other models with overrides,
+stable part paths and cycle diagnostics, part inspection, and sampled SDF
+atlases that validate, interpolate, extend past their border and bake a mesh,
+with save and reload roundtrips. It needs a compiler build and passes 3,419
+assertions in 0.4 seconds under ASan/UBSan with leak checks, without files,
+world or GPU.
+`model-catalog` selects 27 cases of models and materials in the renderer's
+shader catalog: runtime parameters whose binding texts preparation must accept
+before a snapshot reads them, refusing a value past its range, Set Shape
+Parameter overrides and their cache, slot-scoped material parameters and
+ambiguous unscoped names, saved model sources that validate against their
+materials and shader libraries, material slots that own hits through CSG,
+transforms and instances, parameter and ramp limits across slots, catalog
+edits, renames and removals, and model surfaces: bounds, transforms, empty
+intersections and perspective picking. It needs a compiler build, uses one
+temporary folder and passes 1,355 assertions in 0.4 seconds under ASan/UBSan
+with leak checks, without a window.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

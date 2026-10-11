@@ -22,35 +22,12 @@ component GameFragmentGlow
 component GameMaterialFrame
 component GameFluidVolume
 
-# 3D rendering and surfaces: owned by the 3D renderer roadmap (R items).
-component GameGeometry3D
-component GameSdfSurface3D
-component GameSurfaceQuality
-component GameSurfaceInfluence
-component GameMeshAsset
-component GameMeshParts
-component GameMeshSurface2D
-component GameShader
-component GamePointLight
-component GameDirectionalLight
-component GameSpotLight
-component GameEnvironment
-component GameFog
-component GameReflection
-component GameVisualTransform
-component GameVisualMotion
-component GameRenderState
-function Primitive Part
-function Transform Visual Offset
-function Trigger Visual Reaction
-
-# 2D lighting, sky and camera.
+# 2D lighting and sky.
 component GameHRC2D
 component GameStarfield2D
-component GameCamera
 
-# Visibility and fog of war.
-component GameVision
+# Visibility queries: the rendering scene authors fog and a vision source but
+# does not query sight from a behavior.
 function Visibility At
 
 # Combat, encounters and pickups: gameplay modules a combat scene would cover.

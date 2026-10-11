@@ -77,7 +77,7 @@ target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
 add_executable(test_tools main.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
-    validate_project.c test_policy.c validation_plan.c publish.c web_storage.c webgpu_staging.c $<TARGET_OBJECTS:chibi_sdk_contracts>
+    validate_project.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c webgpu_staging.c $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
     "${CHIBI_TOOL_ROOT}/third_party/yyjson/yyjson.c")
@@ -249,6 +249,11 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
             target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FEATURE_COVERAGE=1
                 CHIBI_CTL_PATH="$<TARGET_FILE:chibi_ctl>")
             add_dependencies(test_tools chibi_ctl)
+        endif()
+        if(TARGET chibi_automation)
+            target_sources(test_tools PRIVATE preview_components.c)
+            target_link_libraries(test_tools PRIVATE chibi_automation)
+            target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PREVIEW_COMPONENTS=1)
         endif()
     endif()
 endif()

@@ -9522,6 +9522,7 @@ static int advance_request_scenario(
 struct chibi_preview_run
 {
     scenario_context context;
+    declared_components *declared;
     scenario_sequence sequence;
     yyjson_doc *request;
     char *page;       /* the project's default root ui document, or NULL */
@@ -9574,6 +9575,7 @@ void chibi_preview_free(chibi_preview_run *run)
     }
     free_sequence(&run->sequence);
     scenario_context_free(&run->context);
+    declared_components_free(run->declared);
     yyjson_doc_free(run->request);
     free(run->page);
     free(run);
@@ -9608,6 +9610,10 @@ int chibi_automation_preview(
     }
     chibi_preview_run *run = xcalloc(1, sizeof *run);
     run->request = doc;
+    if (!load_declared(root, &run->declared, error, error_size)) {
+        chibi_preview_free(run);
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
     scenario_context *context = &run->context;
     /* Preparing registers the shader libraries, materials and shapes the
        renderer draws with, as every scenario shares them. */

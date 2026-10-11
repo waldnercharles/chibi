@@ -19,6 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
+    ('--preview-components',): 'Independently reviewed first CPU measurement: four tiny project files, one declared float component and entity, two previews with two steps each, missing-scene and invalid-declaration cleanup, no GPU/process/network; shared60s',
     ('--tilemap-project',): 'Reviewed first CPU measurement: fixed sibling Celeste project, pinned local git baseline56ca9d48<=64KiB, Room<=16KiB, Level<=4KiB,1472cells230oldtiles/fiveactors, three owned controller children<=10s each including two headless simulation frames<=15entities, no GPU/network; shared60s',
     ('--tilemap',): 'Independently reviewed seven fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, one <=4KiB KDL and 64x16 PNG preparation, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',
     ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
@@ -56,6 +57,12 @@ TOOLS = {
     # Catalog coverage of the all-features fixture, and four frames of each of its scenes.
     'feature-coverage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
                          '--feature-coverage', str(ROOT / 'test/fixtures/feature-coverage')],
+    # Independently reviewed first measurement: one CPU Rendering3D snapshot,
+    # four simulation frames, ten live entities,
+    # one controller child limited to ten seconds inside the shared deadline.
+    'render-fixture': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--render-fixture',
+                       str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
+    'preview-components': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--preview-components'],
     # One new-asset scaffolding case in a temporary content folder.
     'new-asset': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--new-asset'],
     # One asset rename case over in-memory prototypes.
@@ -209,7 +216,7 @@ GROUPS = {
                'source-native-numeric-queries', 'source-native-material', 'source-presentation',
                'system-schedule', 'source-systems', 'source-edit', 'new-asset', 'asset-refactor',
                'validate-project', 'prototype-expansion', 'shader-parameters-prepared',
-               'language-prepared', 'ecs-query-benchmark', 'feature-coverage'],
+               'language-prepared', 'ecs-query-benchmark', 'feature-coverage', 'render-fixture', 'preview-components'],
     'language': ['language', 'language-semantic', 'language-execution', 'language-program',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',

@@ -1,0 +1,6 @@
+name "SurfaceView"
+components {
+    GAME.GameCamera height=84.0 width=112.0
+    GAME.GameSurfaceQuality resolution="Full" sdf_normal_mode="Tetrahedral" sdf_pixel_error=0.25
+    GAME.GameTransform y=4.0
+}

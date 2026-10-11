@@ -320,11 +320,19 @@ into a character that walks and slides. Each step physics moves it by its
 and drops the part of the velocity that pushes into it, so a script can add
 gravity every frame without it building up while the character stands.
 Physics writes `on_floor` and `floor_normal`, a surface within 45 degrees of
-up, against gravity. The character stops at dynamic bodies and other
-characters as at walls, does not ride moving platforms, and needs a radius of
-at least 2 cm. Colliders under it must be sensors, because only its capsule
-moves and slides. It turns by its `Transform3D`; physics keeps its body's
-`angular_velocity` at zero.
+up, against gravity. While grounded, it rides its supporting collider's body,
+including translation and rotation from physics or authored transforms. Carry
+is swept against other solids and stays separate from `linear_velocity`.
+Jumping away from the floor or walking off releases support without inheriting
+platform momentum. Removing or replacing the supporting collider also releases
+it. A child collider uses its actual ancestor body's motion.
+
+The character stops at dynamic bodies and other characters as at walls and
+needs a radius of at least 2 cm. Colliders under it must be sensors, because
+only its capsule moves and slides. It turns by its `Transform3D`; platform
+rotation carries its position without turning it. Physics keeps its body's
+`angular_velocity` at zero. `MovingPlatforms3D` in the feature-coverage fixture
+shows translating and rotating platforms with capsule riders.
 
 `GAME.GameJoint3D` joins the body at or above its entity to the body at or
 above `other`, or to the world when `other` is zero, at the entity's position.

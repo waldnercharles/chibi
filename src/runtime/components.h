@@ -1439,9 +1439,12 @@ GameGravity3D;
  * into it, so gravity a script adds does not build up while it stands. on_floor
  * says whether it ended the step on a surface within 45 degrees of up, against
  * gravity, and floor_normal is that surface's normal. Physics writes both. It
- * stops at dynamic bodies and other characters as at walls, does not ride
- * moving platforms, and carries only sensor colliders under it. It turns by
- * its Transform3D; physics keeps its Body3D angular velocity at zero. */
+ * rides the translation and rotation of its supporting collider's body, with
+ * carry swept against other solids. Carry does not add to linear_velocity;
+ * moving away from the floor releases it without inherited momentum. It stops
+ * at dynamic bodies and other characters as at walls, and carries only sensor
+ * colliders under it. It turns by its Transform3D; platform rotation moves its
+ * position without turning it, and physics keeps angular velocity at zero. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameCharacter3D)
 {
     bool on_floor;

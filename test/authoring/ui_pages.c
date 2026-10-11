@@ -4,38 +4,49 @@
 #include "authoring/reference_index.h"
 #include "runtime/component_catalog.h"
 #include "support/array.h"
-#include "test/suite_internal.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
 #include <string.h>
 
-static const reference *only_use(const reference_index *index, int asset)
+static const reference *only_use(const reference_index *refs, int asset)
 {
     const reference **uses = NULL;
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = asset };
-    reference_index_find_uses(index, symbol, &uses);
+    reference_index_find_uses(refs, symbol, &uses);
     const reference *use = acount(uses) == 1 ? uses[0] : NULL;
     afree(uses);
     return use;
 }
 
-void test_ui_pages()
+static reference_index *refs;
+static refactor_plan plan;
+
+static void cleanup()
 {
-    reference_index *index = reference_index_new();
-    int dock = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.kdl", NULL);
-    int bay = reference_index_add_asset(index, REFERENCE_ASSET_SCENE, "Bay", "content/scenes/Bay.kdl", NULL);
-    int shell = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Shell", "content/ui/Shell.rml", NULL);
-    int page = reference_index_add_asset(index, REFERENCE_ASSET_UI, "Page", "content/ui/Page.rml", NULL);
-    reference_index_add_page(index, dock, "Shell", "Page");
-    reference_index_add_page(index, bay, NULL, "Page");
-    reference_index_add_page(index, bay, "", NULL);
-    const reference *own = only_use(index, shell), *inherited = only_use(index, page);
+    refactor_plan_free(&plan);
+    reference_index_free(refs);
+    refs = NULL;
+}
+
+TEST_CASE(scene_pages_bind_and_rename_with_their_scenes)
+{
+    refs = reference_index_new();
+    int dock = reference_index_add_asset(refs, REFERENCE_ASSET_SCENE, "Dock", "content/scenes/Dock.kdl", NULL);
+    int bay = reference_index_add_asset(refs, REFERENCE_ASSET_SCENE, "Bay", "content/scenes/Bay.kdl", NULL);
+    int shell = reference_index_add_asset(refs, REFERENCE_ASSET_UI, "Shell", "content/ui/Shell.rml", NULL);
+    int page = reference_index_add_asset(refs, REFERENCE_ASSET_UI, "Page", "content/ui/Page.rml", NULL);
+    reference_index_add_page(refs, dock, "Shell", "Page");
+    reference_index_add_page(refs, bay, NULL, "Page");
+    reference_index_add_page(refs, bay, "", NULL);
+    const reference *own = only_use(refs, shell), *inherited = only_use(refs, page);
     bool edges = own && own->source == dock && own->role == REFERENCE_BIND &&
                  !strcmp(own->component, REFERENCE_SCENE_PAGE) &&
                  reference_dependency(own) == shell && inherited &&
                  inherited->source == bay &&
                  !strcmp(inherited->component, REFERENCE_PROJECT_PAGE);
-    test_check(edges, "a scene binds its page: its own ui:, else the project's");
+    /* A scene binds its page: its own ui:, else the project's. */
+    REQUIRE(edges);
 
     const char *texts[] = {
         "version 1\n"
@@ -50,8 +61,7 @@ void test_ui_pages()
     };
     game_prototype_registry registry = { .components = GAME_REGISTRY_COMPONENTS,
                                          .component_count = GAME_REGISTRY_COMPONENT_COUNT };
-    refactor_project project = { index, texts, &registry };
-    refactor_plan plan = { 0 };
+    refactor_project project = { refs, texts, &registry };
     char error[256] = "";
     reference_symbol symbol = { .kind = REFERENCE_SYMBOL_ASSET, .asset = shell };
     bool renamed = refactor_rename(&project, symbol, "Frame", &plan, error, sizeof error) ==
@@ -69,7 +79,14 @@ void test_ui_pages()
     bool refused = refactor_rename(&project, symbol, "Frame", &plan, error, sizeof error) !=
                        0 &&
                    strstr(error, "project.kdl");
-    test_check(followed && refused, "renaming a page rewrites the scenes naming it and refuses the project's default");
-    refactor_plan_free(&plan);
-    reference_index_free(index);
+    /* Renaming a page rewrites the scenes naming it and refuses the project's default. */
+    REQUIRE(followed && refused);
+    return true;
+}
+
+void test_ui_pages()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(scene_pages_bind_and_rename_with_their_scenes);
+    pu_clear_setup();
 }

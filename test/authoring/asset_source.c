@@ -4,8 +4,9 @@
 #include "graph/model/registry.h"
 #include "support/array.h"
 #include "support/asset_text.h"
+#include "test/support/game_graph_packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 
-#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,7 +23,7 @@ static bool has_completion(const asset_source_completions *choices, const char *
 
 /* Executable source facts come from the shared canonical frontend. KDL
  * property completion remains independently covered below. */
-static void test_source_payload_navigation()
+TEST_CASE(asset_source_navigates_event_payloads)
 {
     const char
         *text = "behavior Payload { on Tick(dt) { first:=dt; second:=dt; } }";
@@ -39,33 +40,37 @@ static void test_source_payload_navigation()
                                      .tick_event = 100 };
     script_syntax *syntax = script_parse(text);
     script_analysis *analysis = script_analyze(syntax, &catalog);
-    assert(analysis->valid);
+    REQUIRE(analysis->valid);
     const authoring_document document = { .path = "Payload.chibi",
                                           .syntax = syntax,
                                           .analysis = analysis };
     authoring_navigation *navigation = authoring_navigation_new(&document, 1, &catalog);
     int offset = (int)(strstr(text, "first:=dt") - text) + 7;
     const authoring_reference *use = authoring_navigation_at(navigation, 0, offset);
-    assert(use);
+    REQUIRE(use);
     const authoring_reference *definition = authoring_navigation_definition(navigation, use->target);
-    assert(definition && definition->location.range.start == (int)(strstr(text, "dt)") - text));
+    REQUIRE(definition && definition->location.range.start == (int)(strstr(text, "dt)") - text));
     int references = 0;
     for (int i = 0; i < authoring_navigation_reference_count(navigation); i++) {
         const authoring_reference *reference = authoring_navigation_reference_at(navigation, i);
         references += reference->kind == AUTHORING_READ &&
                       authoring_target_equal(reference->target, use->target);
     }
-    assert(references == 2);
+    REQUIRE(references == 2);
     char *hover = authoring_source_hover(navigation, 0, offset);
-    assert(hover && !strcmp(hover, "dt: float"));
+    REQUIRE(hover && !strcmp(hover, "dt: float"));
     free(hover);
     authoring_navigation_free(navigation);
     script_analysis_free(analysis);
     script_syntax_free(syntax);
+    return true;
 }
 
-static void test_property_completion()
+/* Completion offers the properties a component has not set yet, through
+ * qualified and quoted names, braced fields and incomplete drafts. */
+TEST_CASE(asset_source_completes_unset_properties)
 {
+    REQUIRE(test_game_graph_packs_set());
     /* Use declared packs so qualified and quoted names exercise the same
      * reflection metadata as loaded projects, including incomplete drafts. */
     for (int p = 0; p < registry_pack_count(); p++) {
@@ -85,7 +90,7 @@ static void test_property_completion()
             asset_source *source = asset_source_parse(draft);
             asset_source_completions choices;
             asset_source_complete(source, (int)strlen(draft), "Test.kdl", NULL, 0, &choices);
-            assert(!has_completion(&choices, a) && has_completion(&choices, b));
+            REQUIRE(!has_completion(&choices, a) && has_completion(&choices, b));
             asset_source_completions_free(&choices);
             asset_source_free(source);
 
@@ -95,11 +100,11 @@ static void test_property_completion()
             int at = (int)(strstr(draft, "=0  ") - draft) + 4;
             source = asset_source_parse(draft);
             asset_source_complete(source, at, "Test.kdl", NULL, 0, &choices);
-            assert(!has_completion(&choices, a) && !has_completion(&choices, b));
+            REQUIRE(!has_completion(&choices, a) && !has_completion(&choices, b));
             asset_source_completions_free(&choices);
             at = (int)(strstr(draft, "=0  ") - draft) + 4 + (int)strlen(b);
             asset_source_complete(source, at, "Test.kdl", NULL, 0, &choices);
-            assert(has_completion(&choices, b));
+            REQUIRE(has_completion(&choices, b));
             asset_source_completions_free(&choices);
             asset_source_free(source);
 
@@ -108,13 +113,13 @@ static void test_property_completion()
             snprintf(draft, sizeof draft, "components {\n %s {\n %s 0\n ", literal, a);
             source = asset_source_parse(draft);
             asset_source_complete(source, (int)strlen(draft), "Test.kdl", NULL, 0, &choices);
-            assert(!has_completion(&choices, a) && has_completion(&choices, b));
+            REQUIRE(!has_completion(&choices, a) && has_completion(&choices, b));
             asset_source_completions_free(&choices);
             asset_source_free(source);
             snprintf(draft, sizeof draft, "components {\n %s %s=0\n %s ", literal, a, literal);
             source = asset_source_parse(draft);
             asset_source_complete(source, (int)strlen(draft), "Test.kdl", NULL, 0, &choices);
-            assert(has_completion(&choices, a) && has_completion(&choices, b));
+            REQUIRE(has_completion(&choices, a) && has_completion(&choices, b));
             asset_source_completions_free(&choices);
             asset_source_free(source);
             /* An invalid numeric draft must not hide property completion or
@@ -122,7 +127,7 @@ static void test_property_completion()
             snprintf(draft, sizeof draft, "components {\n %s %s=0oops ", literal, a);
             source = asset_source_parse(draft);
             asset_source_complete(source, (int)strlen(draft), "Test.kdl", NULL, 0, &choices);
-            assert(!has_completion(&choices, a) && has_completion(&choices, b));
+            REQUIRE(!has_completion(&choices, a) && has_completion(&choices, b));
             asset_source_completions_free(&choices);
             asset_source_free(source);
 
@@ -144,8 +149,8 @@ static void test_property_completion()
                 );
                 source = asset_source_parse(draft);
                 asset_source_complete(source, (int)strlen(draft), "Test.kdl", NULL, 0, &choices);
-                assert(!has_completion(&choices, nested->fields[0].name));
-                assert(has_completion(&choices, nested->fields[1].name));
+                REQUIRE(!has_completion(&choices, nested->fields[0].name));
+                REQUIRE(has_completion(&choices, nested->fields[1].name));
                 asset_source_completions_free(&choices);
                 asset_source_free(source);
                 break;
@@ -153,12 +158,13 @@ static void test_property_completion()
             free(literal);
         }
     }
+    return true;
 }
 
-void test_asset_source()
+/* Reconciling edits into authored source keeps its comments and spacing,
+ * replaces only what changed and keeps declaration order. */
+TEST_CASE(asset_source_reconcile_keeps_authored_text)
 {
-    test_property_completion();
-    test_source_payload_navigation();
     {
         const char *source = "// palette\ncolor 966781183 // water\namount "
                              "0.035000000000000003\n";
@@ -168,9 +174,9 @@ void test_asset_source()
         av_obj_set(values, root, "amount", av_float(values, 0.035f));
         char error[256];
         char *saved = asset_source_reconcile(source, root, error, sizeof error);
-        assert(saved && !strcmp(saved, "// palette\ncolor 0x399fe8ff // water\namount 0.035\n"));
+        REQUIRE(saved && !strcmp(saved, "// palette\ncolor 0x399fe8ff // water\namount 0.035\n"));
         char *again = asset_source_reconcile(saved, root, error, sizeof error);
-        assert(again && !strcmp(saved, again));
+        REQUIRE(again && !strcmp(saved, again));
         free(again);
         free(saved);
         av_doc_free(values);
@@ -185,9 +191,9 @@ void test_asset_source()
                                 "    GAME.GameTransform x=1\n}\n";
         char error[256];
         av_doc *target = av_doc_read(canonical, error, sizeof error);
-        assert(target);
+        REQUIRE(target);
         char *saved = asset_source_reconcile(source, av_doc_root(target), error, sizeof error);
-        assert(saved && !strcmp(saved, canonical));
+        REQUIRE(saved && !strcmp(saved, canonical));
         free(saved);
         av_doc_free(target);
     }
@@ -198,13 +204,13 @@ void test_asset_source()
                 "components {\n  Body speed=12 enabled=#true // tuning\n}\n";
     char error[256];
     av_doc *doc = av_doc_read(text, error, sizeof error);
-    assert(doc);
+    REQUIRE(doc);
     av_value *root = av_doc_root(doc);
     av_value *body = av_obj_get(av_obj_get(root, "components"), "Body");
     av_obj_set(doc, body, "speed", av_sint(doc, 24));
     char *edited = asset_source_reconcile(text, root, error, sizeof error);
-    assert(edited);
-    assert(!strcmp(
+    REQUIRE(edited);
+    REQUIRE(!strcmp(
         edited,
         "// authored header\nname  \"Player\" // retain this\n"
         "components {\n  Body speed=24 enabled=#true // tuning\n}\n"
@@ -212,17 +218,17 @@ void test_asset_source()
     free(edited);
     av_obj_add_str(doc, root, "identity", "player");
     edited = asset_source_reconcile(text, root, error, sizeof error);
-    assert(edited && strstr(edited, "// authored header") && strstr(edited, "// tuning"));
+    REQUIRE(edited && strstr(edited, "// authored header") && strstr(edited, "// tuning"));
     av_doc *check = av_doc_read(edited, error, sizeof error);
-    assert(check && av_equals(av_doc_root(check), root));
+    REQUIRE(check && av_equals(av_doc_root(check), root));
     av_doc_free(check);
     free(edited);
     av_obj_remove_key(body, "enabled");
     av_obj_add_int(doc, body, "mass", 5);
     edited = asset_source_reconcile(text, root, error, sizeof error);
-    assert(edited && strstr(edited, "// tuning"));
+    REQUIRE(edited && strstr(edited, "// tuning"));
     check = av_doc_read(edited, error, sizeof error);
-    assert(check && av_equals(av_doc_root(check), root));
+    REQUIRE(check && av_equals(av_doc_root(check), root));
     av_doc_free(check);
     free(edited);
     av_doc_free(doc);
@@ -231,15 +237,13 @@ void test_asset_source()
      * while retaining the surrounding and trailing comments exactly. */
     text = "// list header\n(array)items 1 2 // list note\n";
     doc = av_doc_read(text, error, sizeof error);
-    assert(doc);
+    REQUIRE(doc);
     root = av_doc_root(doc);
     av_arr_append(av_obj_get(root, "items"), av_sint(doc, 3));
     edited = asset_source_reconcile(text, root, error, sizeof error);
-    assert(edited && !strcmp(edited, "// list header\n(array)items 1 2 3 // list note\n"));
+    REQUIRE(edited && !strcmp(edited, "// list header\n(array)items 1 2 3 // list note\n"));
     free(edited);
     av_doc_free(doc);
-    text = "// authored header\nname  \"Player\" // retain this\n"
-           "components {\n  Body speed=12 enabled=#true // tuning\n}\n";
 
     text = "// list header\n(array)items {\n  - value=1 // keep one\n  - "
            "value=2 // keep two\n} // list note\n";
@@ -249,12 +253,12 @@ void test_asset_source()
     av_value *third = av_arr_add_obj(doc, objects);
     av_obj_add_int(doc, third, "value", 3);
     edited = asset_source_reconcile(text, root, error, sizeof error);
-    assert(
+    REQUIRE(
         edited && strstr(edited, "// keep one") &&
         strstr(edited, "// keep two") && strstr(edited, "// list note")
     );
     check = av_doc_read(edited, error, sizeof error);
-    assert(check && av_equals(av_doc_root(check), root));
+    REQUIRE(check && av_equals(av_doc_root(check), root));
     av_doc_free(check);
     free(edited);
     av_doc_free(doc);
@@ -268,14 +272,14 @@ void test_asset_source()
     av_value *position = av_obj_add_obj(doc, body, "position");
     av_obj_add_int(doc, position, "x", 3);
     edited = asset_source_reconcile(text, root, error, sizeof error);
-    assert(edited && strstr(edited, "// header") && strstr(edited, "// tuning"));
+    REQUIRE(edited && strstr(edited, "// header") && strstr(edited, "// tuning"));
     check = av_doc_read(edited, error, sizeof error);
-    assert(check && av_equals(av_doc_root(check), root));
+    REQUIRE(check && av_equals(av_doc_root(check), root));
     av_doc_free(check);
     free(edited);
     av_obj_set(doc, root, "Body", av_bool(doc, true));
     edited = asset_source_reconcile(text, root, error, sizeof error);
-    assert(edited && !strcmp(edited, "// header\nBody #true // tuning\n"));
+    REQUIRE(edited && !strcmp(edited, "// header\nBody #true // tuning\n"));
     free(edited);
     av_doc_free(doc);
     text = "name  \"Player\" // retain this\n";
@@ -284,14 +288,12 @@ void test_asset_source()
     av_value *list = av_obj_add_arr(doc, root, "name");
     av_arr_add_str(doc, list, "Player");
     edited = asset_source_reconcile(text, root, error, sizeof error);
-    assert(edited && strstr(edited, "(array)name") && strstr(edited, "// retain this"));
+    REQUIRE(edited && strstr(edited, "(array)name") && strstr(edited, "// retain this"));
     check = av_doc_read(edited, error, sizeof error);
-    assert(check && av_equals(av_doc_root(check), root));
+    REQUIRE(check && av_equals(av_doc_root(check), root));
     av_doc_free(check);
     free(edited);
     av_doc_free(doc);
-    text = "// authored header\nname  \"Player\" // retain this\n"
-           "components {\n  Body speed=12 enabled=#true // tuning\n}\n";
 
     /* Pin maps carry meaningful declaration order. Renaming a field replaces
      * its key in place instead of removing it and appending it after siblings. */
@@ -304,33 +306,51 @@ void test_asset_source()
         error,
         sizeof error
     );
-    assert(doc && target);
+    REQUIRE(doc && target);
     edited = asset_source_reconcile(text, av_doc_root(target), error, sizeof error);
-    assert(edited && strstr(edited, "Points id=103 type=int // payload"));
+    REQUIRE(edited && strstr(edited, "Points id=103 type=int // payload"));
     check = av_doc_read(edited, error, sizeof error);
     av_value *outputs = av_obj_get(av_doc_root(check), "outputs");
-    assert(!strcmp(av_get_str(av_obj_key_at(outputs, 1)), "Points"));
-    assert(!strcmp(av_get_str(av_obj_key_at(outputs, 2)), "Source"));
+    REQUIRE(!strcmp(av_get_str(av_obj_key_at(outputs, 1)), "Points"));
+    REQUIRE(!strcmp(av_get_str(av_obj_key_at(outputs, 2)), "Source"));
     av_doc_free(check);
     av_doc_free(target);
     av_doc_free(doc);
     free(edited);
-    text = "// authored header\nname  \"Player\" // retain this\n"
-           "components {\n  Body speed=12 enabled=#true // tuning\n}\n";
 
-    /* Incomplete source still highlights the edited token and marks an error. */
+    return true;
+}
+
+/* Incomplete source still highlights the edited token and marks an error;
+ * value locations identify a field however it is formatted. */
+TEST_CASE(asset_source_parses_incomplete_drafts)
+{
+    const char
+        *text = "// authored header\nname  \"Player\" // retain this\n"
+                "components {\n  Body speed=12 enabled=#true // tuning\n}\n";
     asset_source *source = asset_source_parse("name \"unterminated");
-    assert(!source->document && acount(source->diagnostics) > 0);
-    assert(acount(source->spans) == 2);
-    assert(!strcmp(source->spans[1].cls, "tok-string"));
+    REQUIRE(!source->document && acount(source->diagnostics) > 0);
+    REQUIRE(acount(source->spans) == 2);
+    REQUIRE(!strcmp(source->spans[1].cls, "tok-string"));
     asset_source_free(source);
 
     /* Value locations identify the field independent of formatting. */
     source = asset_source_parse(text);
     const char *name = NULL;
     const av_value *value = asset_source_value_at(source, (int)(strstr(text, "12") - text), &name);
-    assert(value && av_get_int(value) == 12 && !strcmp(name, "speed"));
+    REQUIRE(value && av_get_int(value) == 12 && !strcmp(name, "speed"));
     asset_source_free(source);
+    return true;
+}
+
+/* Completion names components on a new line, fields after a value, quoted
+ * qualified names that resolve their fields, and boolean values; a wrongly
+ * typed value is a diagnostic. */
+TEST_CASE(asset_source_completes_components_fields_and_values)
+{
+    REQUIRE(test_game_graph_packs_set());
+    asset_source *source;
+    char error[256];
 
     /* A new component line completes component names rather than the fields
      * of the preceding inline component, even while the document is incomplete. */
@@ -355,18 +375,19 @@ void test_asset_source()
         for (int choice = 0; choice < acount(completions.items); choice++) {
             found |= !strcmp(completions.items[choice].label, type->name);
         }
-        assert(found);
+        REQUIRE(found);
         asset_source_completions_free(&completions);
         asset_source_free(source);
         break;
     }
 
+    /* A scene entity's component block completes the component's fields. */
     if (type_catalog_find("GameTransform")) {
         const char
             *draft = "version 1\nname \"Sandbox\"\n(array)entities {\n    - {\n"
                      "        name \"Player\"\n        prototype \"Player\"\n  "
                      "      components {\n"
-                     "            GAME.GameTransform x=-320.0 y\n        }\n   "
+                     "            GameTransform x=-320.0 y\n        }\n   "
                      " }\n}\n";
         int at = (int)(strstr(draft, "-320.0 y") - draft) + 8;
         source = asset_source_parse(draft);
@@ -376,7 +397,7 @@ void test_asset_source()
         for (int i = 0; i < acount(completions.items); i++) {
             found |= !strcmp(completions.items[i].label, "y");
         }
-        assert(found);
+        REQUIRE(found);
         asset_source_completions_free(&completions);
         asset_source_free(source);
     }
@@ -401,10 +422,12 @@ void test_asset_source()
                 choice = &completions.items[i];
             }
         }
-        assert(choice && choice->insert && choice->insert[0] == '"');
+        REQUIRE(choice && choice->insert && choice->insert[0] == '"');
         snprintf(draft, sizeof draft, "components {\n    %s\n}\n", choice->insert);
         av_doc *accepted = av_doc_read(draft, error, sizeof error);
-        assert(accepted && av_obj_get(av_obj_get(av_doc_root(accepted), "components"), qualified));
+        REQUIRE(
+            accepted && av_obj_get(av_obj_get(av_doc_root(accepted), "components"), qualified)
+        );
         av_doc_free(accepted);
         if (type->field_count) {
             snprintf(
@@ -428,7 +451,7 @@ void test_asset_source()
             for (int i = 0; i < acount(fields.items); i++) {
                 found |= !strcmp(fields.items[i].label, type->fields[0].name);
             }
-            assert(found);
+            REQUIRE(found);
             asset_source_completions_free(&fields);
             asset_source_free(context_source);
         }
@@ -474,7 +497,7 @@ void test_asset_source()
                 for (int choice = 0; choice < acount(completions.items); choice++) {
                     found |= !strcmp(completions.items[choice].label, "#true");
                 }
-                assert(found);
+                REQUIRE(found);
                 asset_source_completions_free(&completions);
                 asset_source_free(source);
                 snprintf(
@@ -485,11 +508,24 @@ void test_asset_source()
                     field->name
                 );
                 source = asset_source_parse(draft);
-                assert(source->document && acount(source->diagnostics));
+                REQUIRE(source->document && acount(source->diagnostics));
                 asset_source_free(source);
                 free(type_literal);
-                return;
+                return true;
             }
         }
     }
+    REQUIRE(!"a reflected component has a boolean field");
+    return true;
+}
+
+void test_asset_source()
+{
+    pu_setup(NULL, test_game_graph_packs_clear);
+    RUN_TEST_CASE(asset_source_completes_unset_properties);
+    RUN_TEST_CASE(asset_source_navigates_event_payloads);
+    RUN_TEST_CASE(asset_source_reconcile_keeps_authored_text);
+    RUN_TEST_CASE(asset_source_parses_incomplete_drafts);
+    RUN_TEST_CASE(asset_source_completes_components_fields_and_values);
+    pu_clear_setup();
 }

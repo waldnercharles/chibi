@@ -198,11 +198,20 @@ void test_png_encoding();
 #ifdef CHIBI_TEST_PROJECT_DOCUMENT
 void test_project_document();
 #endif
+#ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
+void test_prototype_documents();
+void test_reference_index();
+void test_ui_pages();
+void test_asset_source();
+#endif
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
 static const char *const document_selectors[] = {
-    "--asset-values", "--ui-document",  "--text-files",       "--fmt",
-    "--particles",    "--png-encoding", "--project-document",
+    "--asset-values",     "--ui-document",
+    "--text-files",       "--fmt",
+    "--particles",        "--png-encoding",
+    "--project-document", "--prototype-documents",
+    "--reference-index",  "--asset-source",
 };
 
 static bool selected(int argc, char **argv, const char *name)
@@ -263,6 +272,23 @@ static bool run_document_suites(int argc, char **argv)
 #ifdef CHIBI_TEST_PROJECT_DOCUMENT
     if (selected(argc, argv, "--project-document")) {
         test_project_document();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
+    /* These read the game's reflected types through the type catalog. */
+    source_runtime_active = true;
+    if (selected(argc, argv, "--prototype-documents")) {
+        test_prototype_documents();
+        return true;
+    }
+    if (selected(argc, argv, "--reference-index")) {
+        test_reference_index();
+        test_ui_pages();
+        return true;
+    }
+    if (selected(argc, argv, "--asset-source")) {
+        test_asset_source();
         return true;
     }
 #endif
@@ -496,7 +522,8 @@ int main(int argc, char **argv)
             "manifest | --prepare-corpora manifest | --prepare-corpora-sljit "
             "manifest | --feature-coverage project | --asset-values | "
             "--ui-document | --text-files | --fmt | --particles | "
-            "--png-encoding | --project-document]\n",
+            "--png-encoding | --project-document | --prototype-documents | "
+            "--reference-index | --asset-source]\n",
             argv[0]
         );
         return 2;

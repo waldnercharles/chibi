@@ -351,6 +351,16 @@ if(TARGET Chibi::entity_runtime AND TARGET Chibi::project_preparation AND TARGET
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MATERIAL_RUNTIME=1)
 endif()
 
+# Authoring documents over the game's reflected components and graph nodes:
+# prototype and scene documents, the reference index and asset source edits.
+if(TARGET chibi_source_runtime_consumer AND TARGET Chibi::graph_catalog)
+    target_sources(test_tools PRIVATE ../authoring/prototype_documents.c ../authoring/reference_index.c
+        ../authoring/ui_pages.c ../authoring/asset_source.c ../support/game_graph_packs.c)
+    target_link_libraries(test_tools PRIVATE Chibi::graph_catalog Chibi::graph_authoring Chibi::reference_index
+        Chibi::prototype_document Chibi::scene_document Chibi::native_types)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_AUTHORING_DOCUMENTS=1)
+endif()
+
 add_executable(benchmark_trials "${CHIBI_TOOL_ROOT}/tools/benchmark.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c")
 target_include_directories(benchmark_trials PRIVATE "${CHIBI_TOOL_ROOT}/src")

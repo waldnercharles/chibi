@@ -261,6 +261,12 @@ TOOLS = {
     'png-encoding': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--png-encoding'],
     # Project manifests: version gates, creation and the two contract fixture projects.
     'project-document': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--project-document'],
+    # Prototype rebases, detached components, includes and scene documents in memory.
+    'prototype-documents': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--prototype-documents'],
+    # Reference index over assets, graphs, documents and calls; scene UI page renames.
+    'reference-index': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--reference-index'],
+    # Asset source completion, hover, navigation and reconciliation of drafts.
+    'asset-source': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-source'],
     # Reviewed whitespace-only CST formatter, finite cases and bounded production source manifest.
     'language-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--format', '--corpus',

@@ -313,6 +313,25 @@ with an empty start scene and is never written over, and the language and
 material contract fixture projects resolve their own content. 4 assertions in
 0.08 seconds with ASan/UBSan; temporary projects only.
 
+`--prototype-documents` runs eight cases on prototypes and scene documents in
+memory: a rebase keeps local values over evolving defaults, retained strings
+survive clones and renames, detached components spawn absent and reattach,
+includes and overrides save deterministically, spawned edits capture as
+overrides, and scene documents save reflected values readably, round-trip
+entities and physics, and refuse invalid physics names and versions. 192
+assertions in 0.08 seconds with ASan/UBSan; no files.
+
+`--reference-index` runs five cases on the authoring reference index: assets
+keep their identity by path and key, graphs index every kind of symbol against
+the game's reflected packs, prototypes, objects and UI documents are indexed,
+calls climb through handlers and detect cycles, and a scene's UI pages bind to
+and rename with their scene. 72 assertions in 0.36 seconds with ASan/UBSan.
+
+`--asset-source` runs five cases on asset source text: completion of unset
+properties, components, fields and values (in prototype and scene drafts),
+navigation into event payloads, reconciliation that keeps authored text, and
+parsing incomplete drafts. 505 assertions in 0.32 seconds with ASan/UBSan.
+
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against
 `build-release/bin/chibi_ctl`. Each scaffolds a temporary

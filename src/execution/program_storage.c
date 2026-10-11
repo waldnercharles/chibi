@@ -5,21 +5,26 @@
 
 #include <assert.h>
 
-static void add_activation(execution_activation ***values, execution_activation *a)
+/* Collect once the payload allocated since the last collection outgrows what
+ * it kept, so many live tasks don't each trace every task on every run. */
+#define PAYLOAD_COLLECT_MIN_BYTES ((size_t)4 * 1024)
+
+/* Each activation is listed by its own instance once it has run. */
+static bool listed(const execution_activation *a)
 {
-    for (int i = 0; i < acount(*values); i++) {
-        if ((*values)[i] == a) {
-            return;
+    for (int i = 0; i < acount(a->instance->activations); i++) {
+        if (a->instance->activations[i] == a) {
+            return true;
         }
     }
-    apush(*values, a);
+    return false;
 }
 static void scope_activations(const execution_program *p, execution_activation ***values)
 {
     for (int i = 0; i < acount(p->instances); i++) {
         const execution_instance *instance = p->instances[i];
         for (int j = 0; j < acount(instance->activations); j++) {
-            add_activation(values, instance->activations[j]);
+            apush(*values, instance->activations[j]);
         }
     }
 }
@@ -30,17 +35,46 @@ static execution_activation **activations(const execution_program *p, execution_
     for (int i = 0; i < acount(p->imports); i++) {
         scope_activations(p->imports[i], &values);
     }
-    if (extra) {
-        add_activation(&values, extra);
+    if (extra && !listed(extra)) {
+        apush(values, extra);
     }
     return values;
 }
-static void mark(void *user, const void *address)
+typedef struct
 {
-    execution_activation **values = user;
-    for (int i = 0; i < acount(values); i++) {
-        arena_mark(&values[i]->payload, address);
+    size_t allocated, kept;
+    bool running;
+} payload_totals;
+static void add_totals(payload_totals *totals, const execution_activation *a)
+{
+    totals->allocated += a->payload.allocated;
+    totals->kept += a->payload.kept;
+    totals->running |= a->running;
+}
+static void scope_totals(const execution_program *p, payload_totals *totals)
+{
+    totals->running |= p->running != NULL;
+    for (int i = 0; i < acount(p->instances); i++) {
+        const execution_instance *instance = p->instances[i];
+        for (int j = 0; j < acount(instance->activations); j++) {
+            add_totals(totals, instance->activations[j]);
+        }
     }
+}
+/* Whether the payload has outgrown the last collection while nothing runs: a
+ * nested synchronous invocation has not saved its live slots. */
+static bool collection_due(const execution_program *p, const execution_activation *extra)
+{
+    payload_totals totals = { 0 };
+    scope_totals(p, &totals);
+    for (int i = 0; i < acount(p->imports); i++) {
+        scope_totals(p->imports[i], &totals);
+    }
+    if (extra && !listed(extra)) {
+        add_totals(&totals, extra);
+    }
+    return !totals.running && totals.allocated >= PAYLOAD_COLLECT_MIN_BYTES &&
+           totals.allocated >= totals.kept;
 }
 static void trace_action_values(const execution_activation *a, arena_marker marker, void *user)
 {
@@ -59,38 +93,22 @@ static void trace_action_values(const execution_activation *a, arena_marker mark
 void program_collect_payloads(execution_program *p, execution_activation *extra)
 {
     p = p->owner_program;
-    if (p->running) {
-        return; /* A nested synchronous invocation has not saved its live slots. */
-    }
-    for (int i = 0; i < acount(p->imports); i++) {
-        if (p->imports[i]->running) {
-            return;
-        }
+    if (!collection_due(p, extra)) {
+        return;
     }
     execution_activation **values = activations(p, extra);
+    arena **arenas = NULL;
     for (int i = 0; i < acount(values); i++) {
-        if (values[i]->running) {
-            afree(values);
-            return;
-        }
+        apush(arenas, &values[i]->payload);
     }
+    arena_collection c;
+    arena_collect_begin(&c, arenas, acount(arenas));
     for (int i = 0; i < acount(values); i++) {
-        arena_collect_begin(&values[i]->payload);
+        behavior_function_trace_values(values[i]->function, &values[i]->context, arena_collect_mark, &c);
+        trace_action_values(values[i], arena_collect_mark, &c);
     }
-    for (int i = 0; i < acount(values); i++) {
-        behavior_function_trace_values(values[i]->function, &values[i]->context, mark, values);
-        trace_action_values(values[i], mark, values);
-    }
-    bool progress;
-    do {
-        progress = false;
-        for (int i = 0; i < acount(values); i++) {
-            progress |= arena_trace_marked(&values[i]->payload, mark, values);
-        }
-    } while (progress);
-    for (int i = 0; i < acount(values); i++) {
-        arena_sweep(&values[i]->payload);
-    }
+    arena_collect_end(&c);
+    afree(arenas);
     afree(values);
 }
 execution_memory_usage execution_program_memory_usage(const execution_program *p)

@@ -280,7 +280,9 @@ graph's computed base color and emission don't reach them. Translucent and
 masked solids and Triangle Outlines let rays through. Global illumination
 traces at most 4096 solids, a Box Frame counting as twelve, and more is an
 error. The grid fits every opaque solid, so one far from the rest, such as a
-projectile flying off, spreads the probes thinner while it lasts.
+projectile flying off, spreads the probes thinner while it lasts. Solids
+spanning more than about 1e18 units pass what the shaders' float math holds, so
+such a scene takes its light without global illumination.
 
 The probes' light takes one of the 16 samplers SDL lets a fragment shader
 bind on every backend, after the scene's six maps, so it works on Vulkan,
@@ -680,20 +682,22 @@ floor near it, both black without global illumination. The red floor still does
 so lit by a shadowed point light inside its bulb, within a tenth as brightly
 through a Box Frame around the light as without it, and inside a hollow mesh's
 box; a floor of 144 tiles, whose BVH takes more than a row of its texture,
-gives the same light as one floor box. Open ground under a blue sky color and a
-brown ground color keeps its ambient light within four levels at every quality,
-and exactly when every probe lies inside a solid around the view, from the
-frame the solid moves around lit probes as from the first. Ground under a roof,
-which takes its light in two bounces, is dark on the first frame and lit after
-eight; it keeps over half that light through a refit of the grid and starts
-dark again after a frame with global illumination off. An unknown quality is
-rejected, and so are 4104 Box Frame beams, past the 4096 solids rays trace; a
-material reading eight images is rejected with global illumination on and draws
-with it off, and one reading seven and a ramp, which fill all 16 samplers,
-draws with it on. Pass timing charges the scene's setup, the shadow maps,
-ambient occlusion and global illumination to passes of their own. Debug
-ASan+UBSan on Vulkan llvmpipe passed its 12 cases and 62 assertions in 8.9
-seconds on 2026-10-11, and in 5.4 seconds on GLES.
+gives the same light as one floor box. A red block 1e13 units wide, whose
+volume passes float's range, still lights the face, and one 1e20 units wide
+leaves it the light it has without global illumination. Open ground under a
+blue sky color and a brown ground color keeps its ambient light within four
+levels at every quality, and exactly when every probe lies inside a solid
+around the view, from the frame the solid moves around lit probes as from the
+first. Ground under a roof, which takes its light in two bounces, is dark on
+the first frame and lit after eight; it keeps over half that light through a
+refit of the grid and starts dark again after a frame with global illumination
+off. An unknown quality is rejected, and so are 4104 Box Frame beams, past the
+4096 solids rays trace; a material reading eight images is rejected with global
+illumination on and draws with it off, and one reading seven and a ramp, which
+fill all 16 samplers, draws with it on. Pass timing charges the scene's setup,
+the shadow maps, ambient occlusion and global illumination to passes of their
+own. Debug ASan+UBSan on Vulkan llvmpipe passed its 13 cases and 67 assertions
+in 9.3 seconds on 2026-10-11, and in 5.4 seconds on GLES.
 
 `python3 tools/test_policy.py tool render-resources` checks on the CPU that the
 sky's cube faces follow the GPU's face selection table and hold exact half

@@ -3193,6 +3193,34 @@ TEST_CASE(global_illumination_bounces_light_between_solids)
     return true;
 }
 
+/* A sunlit red block 1e13 units wide under the white box lights the box's
+ * face, though its volume and its frame's inverse pass float's range. One
+ * 1e20 units wide, past what the shaders' float math holds, leaves the face
+ * the light it takes without global illumination. */
+TEST_CASE(global_illumination_reaches_across_vast_solids)
+{
+    ecs_entity block = add_solid(
+        (CF_V3){ 0, -5e12f, 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 1e13f, 1e13f, 1e13f },
+        0xff0000ffu
+    );
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 })->intensity = 1;
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_LOW);
+    REQUIRE(render(&environment));
+    CF_Pixel face = pixel_at(box_front);
+    REQUIRE(face.colors.r > 20 && face.colors.r > face.colors.g + 15);
+    *GAME_GameGeometry3D_get(world, block) = (GameGeometry3D){ GAME_PRIMITIVE_BOX,
+                                                               1e20f,
+                                                               1e20f,
+                                                               1e20f,
+                                                               -5e19f };
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(pixel_at(box_front).colors.r == 0);
+    return true;
+}
+
 /* An emissive solid below the view lights the floor near it, where no light
  * reaches. */
 TEST_CASE(global_illumination_carries_emitted_light)
@@ -4604,6 +4632,7 @@ void test_render_scene3d_gi(bool gles)
 {
     open_app(gles);
     RUN_TEST_CASE(global_illumination_bounces_light_between_solids);
+    RUN_TEST_CASE(global_illumination_reaches_across_vast_solids);
     RUN_TEST_CASE(global_illumination_carries_emitted_light);
     RUN_TEST_CASE(global_illumination_keeps_open_ground_lit_as_the_ambient_colors);
     RUN_TEST_CASE(global_illumination_settings_must_be_valid);

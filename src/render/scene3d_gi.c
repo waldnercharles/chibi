@@ -59,6 +59,10 @@ static const float margin = .125f;
 /* A refit grid whose spacing would shrink below this share of the current
  * one, as when the solids gather into a small part of it, replaces it. */
 static const float coarsest = .5f;
+/* The widest grid the shaders' float math holds: they square distances
+ * across it, which must stay within float's range. Wider scenes take their
+ * light without global illumination. */
+static const float widest_grid = 1e18f;
 
 /* A grid of probes: the first one, the spacing between them and their count
  * along each axis. */
@@ -210,11 +214,12 @@ static int product(const int counts[3])
 static float spacing_for(CF_V3 extent, int budget, int counts[3])
 {
     float widest = fmaxf(fmaxf(extent.x, extent.y), fmaxf(extent.z, 1e-6f));
-    /* Flat extents still hold two layers of probes. */
+    /* Flat extents still hold two layers of probes. The volume of extents a
+     * float holds can pass a float's range, but not a double's. */
     float thinnest = widest / 64;
-    float volume = fmaxf(extent.x, thinnest) * fmaxf(extent.y, thinnest) *
-                   fmaxf(extent.z, thinnest);
-    float spacing = cbrtf(volume / (float)budget);
+    double volume = (double)fmaxf(extent.x, thinnest) *
+                    fmaxf(extent.y, thinnest) * fmaxf(extent.z, thinnest);
+    float spacing = (float)cbrt(volume / budget);
     for (;;) {
         const float sides[3] = { extent.x, extent.y, extent.z };
         for (int i = 0; i < 3; i++) {
@@ -226,6 +231,15 @@ static float spacing_for(CF_V3 extent, int budget, int counts[3])
         }
         spacing *= 1.05f;
     }
+}
+
+static float longest_side(const probe_grid *grid)
+{
+    int most = grid->counts[0];
+    for (int i = 1; i < 3; i++) {
+        most = grid->counts[i] > most ? grid->counts[i] : most;
+    }
+    return (float)(most - 1) * grid->spacing;
 }
 
 /* Whether a grid still covers the solids' box without being much coarser
@@ -434,10 +448,42 @@ static void build(render_scene3d_gi *gi, const render_scene3d_gi_solid *solids, 
     build(gi, solids, first + half, count - half, depth + 1);
 }
 
+/* The rows of a frame's inverse, which take world points into its unit
+ * shape. They are worked in double: a general inverse multiplies three of
+ * the frame's entries, which passes float's range for frames over about
+ * 7e12 units. Frames that draw are never flat (scene3d_visual.c). */
+static void unit_rows(CF_M4x4 frame, CF_V4 rows[3])
+{
+    const float *m = frame.elements;
+    double cofactors[3][3];
+    for (int r = 0; r < 3; r++) {
+        for (int c = 0; c < 3; c++) {
+            int r1 = (r + 1) % 3, r2 = (r + 2) % 3, c1 = (c + 1) % 3,
+                c2 = (c + 2) % 3;
+            /* Row r of column c is m[4 * c + r]. */
+            cofactors[r][c] = (double)m[4 * c1 + r1] * m[4 * c2 + r2] -
+                              (double)m[4 * c2 + r1] * m[4 * c1 + r2];
+        }
+    }
+    double determinant = m[0] * cofactors[0][0] + m[4] * cofactors[0][1] +
+                         m[8] * cofactors[0][2];
+    assert(determinant != 0);
+    for (int r = 0; r < 3; r++) {
+        const double inverse[3] = { cofactors[0][r] / determinant,
+                                    cofactors[1][r] / determinant,
+                                    cofactors[2][r] / determinant };
+        double offset = inverse[0] * m[12] + inverse[1] * m[13] + inverse[2] * m[14];
+        rows[r] = (CF_V4){ (float)inverse[0],
+                           (float)inverse[1],
+                           (float)inverse[2],
+                           (float)-offset };
+    }
+}
+
 /* Each solid's row, in its BVH leaf's order: the rows taking world points
  * into its shape's space, where a capsule's caps are round; its albedo and
- * primitive; its emission and whether it is a mesh's box; and the world
- * sphere around it, which rays test first. */
+ * primitive; its emission and whether it is a mesh's box; the world sphere
+ * around it, which rays test first; and the edges of its drawn box. */
 static void upload_solids(render_scene3d_gi *gi, const render_scene3d_gi_solid *solids, int count)
 {
     asetlen(gi->texels, count * SOLID_TEXELS);
@@ -447,14 +493,8 @@ static void upload_solids(render_scene3d_gi *gi, const render_scene3d_gi_solid *
         if (solid->primitive == GAME_PRIMITIVE_CAPSULE) {
             shape = cf_mul_m4(shape, cf_m4_scale((CF_V3){ 2, 1, 2 }));
         }
-        CF_M4x4 inverse = cf_m4_invert(shape);
         CF_V4 *row = &gi->texels[i * SOLID_TEXELS];
-        for (int r = 0; r < 3; r++) {
-            row[r] = (CF_V4){ inverse.elements[r],
-                              inverse.elements[4 + r],
-                              inverse.elements[8 + r],
-                              inverse.elements[12 + r] };
-        }
+        unit_rows(shape, row);
         row[3] = (CF_V4){ solid->albedo.x,
                           solid->albedo.y,
                           solid->albedo.z,
@@ -627,8 +667,12 @@ bool render_scene3d_gi_update(
     resize(gi);
     const probe_quality *quality = &qualities[gi->quality];
     fit(gi, solids, count, quality->probes);
-    int nodes = upload_bvh(gi, solids, count);
     const probe_grid *grid = &gi->grid;
+    if (longest_side(grid) > widest_grid) {
+        gi->frames = 0;
+        return true;
+    }
+    int nodes = upload_bvh(gi, solids, count);
     bool held = gi->frames > 0;
     CF_V4 lit[3], columns[3];
     atlas_grid(gi, &gi->lit, held, lit);

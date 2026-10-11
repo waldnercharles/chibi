@@ -1,0 +1,492 @@
+// A 10 by 20 Tetris-style well with SRS rotation and wall kicks, a 7-bag,
+// hold, a ghost piece, lock delay and basic line/drop scoring. Cells are 16
+// units and +y is down. Rows 0 and 1 are hidden above the well.
+behavior Tetris {
+    columns := 10
+    rows := 22
+    hidden := 2
+    cellSize := 16
+
+    // Shapes in their spawn rotation, as x, y pairs in an N by N box, in piece
+    // order I O T S Z J L (kinds 1 to 7).
+    shapes := [
+        0, 1, 1, 1, 2, 1, 3, 1,
+        0, 0, 1, 0, 0, 1, 1, 1,
+        1, 0, 0, 1, 1, 1, 2, 1,
+        1, 0, 2, 0, 0, 1, 1, 1,
+        0, 0, 1, 0, 1, 1, 2, 1,
+        0, 0, 0, 1, 1, 1, 2, 1,
+        2, 0, 0, 1, 1, 1, 2, 1
+    ]
+    boxes := [4, 2, 3, 3, 3, 3, 3]
+    spawnColumns := [3, 4, 3, 3, 3, 3, 3]
+
+    // SRS wall kicks for a clockwise turn from rotation 0, 1, 2 and 3: five
+    // x, y tests each, with +y up as the guideline writes them. A
+    // counterclockwise turn from r tries the clockwise kicks from r - 1,
+    // negated.
+    kicks := [
+        0, 0, -1, 0, -1, 1, 0, -2, -1, -2,
+        0, 0, 1, 0, 1, -1, 0, 2, 1, 2,
+        0, 0, 1, 0, 1, 1, 0, -2, 1, -2,
+        0, 0, -1, 0, -1, -1, 0, 2, -1, 2
+    ]
+    kicksI := [
+        0, 0, -2, 0, 1, 0, -2, -1, 1, 2,
+        0, 0, -1, 0, 2, 0, -1, 2, 2, -1,
+        0, 0, 2, 0, -1, 0, 2, 1, -1, -2,
+        0, 0, 1, 0, -2, 0, 1, -2, -2, 1
+    ]
+
+    // Colors for empty, I, O, T, S, Z, J, L and the ghost.
+    palette: uint[] = [
+        0x161824ff, 0x31c7efff, 0xf7d308ff, 0xad4d9cff, 0x42b642ff, 0xef2029ff, 0x5a65adff, 0xef7921ff, 0x30344aff
+    ]
+    ghost := 8
+    lineScores := [0, 100, 300, 500, 800]
+
+    // Each piece's four cells in each rotation, as x, y pairs.
+    pieceCells: number[]
+    board: number[]
+    view: number[]
+    painted: number[]
+    cells: entity[]
+    nextCells: entity[]
+    holdCells: entity[]
+    ready := false
+
+    bag := [1, 2, 3, 4, 5, 6, 7]
+    bagAt := 7
+    piece := 0
+    turn := 0
+    px := 0
+    py := 0
+    next := 0
+    held := 0
+    canHold := true
+
+    fallTimer := 0
+    lockTimer := 0
+    lockResets := 0
+    lowest := 0
+    dasDir := 0
+    dasTimer := 0
+    das := 0.17
+    arr := 0.05
+    lockDelay := 0.5
+    softInterval := 0.05
+
+    score := 0
+    lines := 0
+    level := 1
+    over := false
+    // Whether anything shown changed since the last Paint.
+    dirty := true
+
+    on Begin {
+        // Spawn first: each await traces every array in this behavior, so
+        // filling the tables before the 232 spawns makes Begin twice as slow.
+        for (r in hidden..rows - 1) {
+            for (c in 0..columns - 1) {
+                cells = array_add(cells, await SpawnCell(vec2(c, r - hidden) * cellSize))
+            }
+        }
+        for (i in 0..15) {
+            at := vec2(i % 4, floor(i / 4)) * cellSize
+            nextCells = array_add(nextCells, await SpawnCell(at + vec2(184, 16)))
+            holdCells = array_add(holdCells, await SpawnCell(at + vec2(-88, 16)))
+        }
+        BuildRotations()
+        for (i in 0..rows * columns - 1) {
+            board = array_add(board, 0)
+            view = array_add(view, 0)
+        }
+        for (i in 0..length(cells) - 1) {
+            painted = array_add(painted, -1)
+        }
+        next = Draw()
+        SpawnPiece()
+        ready = true
+    }
+
+    function SpawnCell(at: CF_V2) {
+        cell := await spawn(Cell)
+        cell.Transform = at + vec2(cellSize / 2, cellSize / 2)
+        return cell
+    }
+
+    // ------------------------------------------------------------ pieces
+
+    // Turns each spawn shape clockwise in its box: (x, y) becomes
+    // (n - 1 - y, x).
+    function BuildRotations() {
+        for (kind in 0..6) {
+            n := boxes[kind]
+            for (r in 0..3) {
+                for (i in 0..3) {
+                    x := shapes[kind * 8 + i * 2]
+                    y := shapes[kind * 8 + i * 2 + 1]
+                    for (t in 1..r) {
+                        turned := n - 1 - y
+                        y = x
+                        x = turned
+                    }
+                    pieceCells = array_add(pieceCells, x)
+                    pieceCells = array_add(pieceCells, y)
+                }
+            }
+        }
+    }
+
+    function CellX(kind: number, r: number, i: number) {
+        return pieceCells[((kind - 1) * 4 + r) * 8 + i * 2]
+    }
+
+    function CellY(kind: number, r: number, i: number) {
+        return pieceCells[((kind - 1) * 4 + r) * 8 + i * 2 + 1]
+    }
+
+    // Whether a piece fits on the board. The top of the hidden rows is a
+    // ceiling, so an upward kick can't lift a cell off the board.
+    function Fits(kind: number, r: number, x: number, y: number) {
+        for (i in 0..3) {
+            cx := x + CellX(kind, r, i)
+            cy := y + CellY(kind, r, i)
+            if cx < 0 || cx >= columns || cy < 0 || cy >= rows {
+                return false
+            }
+            if board[cy * columns + cx] != 0 {
+                return false
+            }
+        }
+        return true
+    }
+
+    // The next kind from a shuffled bag of all seven.
+    function Draw() {
+        if bagAt == 7 {
+            for (i in 0..5) {
+                j := i + floor(random_range(0, 7 - i))
+                swapped := bag[i]
+                bag[i] = bag[j]
+                bag[j] = swapped
+            }
+            bagAt = 0
+        }
+        bagAt += 1
+        return bag[bagAt - 1]
+    }
+
+    function SpawnPiece() {
+        Enter(next)
+        next = Draw()
+        canHold = true
+    }
+
+    function Enter(kind: number) {
+        dirty = true
+        piece = kind
+        turn = 0
+        px = spawnColumns[kind - 1]
+        py = 0
+        lowest = py
+        fallTimer = 0
+        lockTimer = 0
+        lockResets = 0
+        if !Fits(piece, turn, px, py) {
+            GameOver()
+            return
+        }
+        // Guideline pieces drop one row as they enter.
+        if Fits(piece, turn, px, py + 1) {
+            py += 1
+        }
+    }
+
+    function HoldPiece() {
+        if !canHold {
+            return
+        }
+        swapped := held
+        held = piece
+        if swapped == 0 {
+            SpawnPiece()
+        } else {
+            Enter(swapped)
+        }
+        canHold = false
+    }
+
+    // ------------------------------------------------------------ moves
+
+    function Shift(dx: number) {
+        if !Fits(piece, turn, px + dx, py) {
+            return false
+        }
+        px += dx
+        dirty = true
+        Moved()
+        return true
+    }
+
+    // Turns by 1 (clockwise) or 3 (counterclockwise), trying each SRS kick.
+    function Rotate(by: number) {
+        if piece == 2 {
+            return
+        }
+        to := cast<int>(turn + by) % 4
+        from := turn
+        sign := 1
+        if by == 3 {
+            from = to
+            sign = -1
+        }
+        for (t in 0..4) {
+            dx := 0
+            dy := 0
+            if piece == 1 {
+                dx = kicksI[from * 10 + t * 2]
+                dy = kicksI[from * 10 + t * 2 + 1]
+            } else {
+                dx = kicks[from * 10 + t * 2]
+                dy = kicks[from * 10 + t * 2 + 1]
+            }
+            if Fits(piece, to, px + dx * sign, py - dy * sign) {
+                px += dx * sign
+                py -= dy * sign
+                turn = to
+                dirty = true
+                Moved()
+                return
+            }
+        }
+    }
+
+    // A move on the stack restarts the lock delay, at most 15 times per row.
+    function Moved() {
+        if lockResets < 15 && !Fits(piece, turn, px, py + 1) {
+            lockTimer = 0
+            lockResets += 1
+        }
+    }
+
+    function HardDrop() {
+        while Fits(piece, turn, px, py + 1) {
+            py += 1
+            score += 2
+        }
+        Lock()
+    }
+
+    function Fall(dt: number) {
+        // The guideline speed curve, which stops getting faster at level 20.
+        speed := min(level, 20) - 1
+        interval := pow(0.8 - speed * 0.007, speed)
+        soft := input.SoftDrop.held && interval > softInterval
+        if soft {
+            interval = softInterval
+        }
+        if !Fits(piece, turn, px, py + 1) {
+            fallTimer = 0
+            lockTimer += dt
+            if lockTimer >= lockDelay {
+                Lock()
+            }
+            return
+        }
+        // Time saved up at a slower speed must not drop a piece at once when
+        // soft drop starts.
+        fallTimer = min(fallTimer, interval) + dt
+        while fallTimer >= interval && Fits(piece, turn, px, py + 1) {
+            fallTimer -= interval
+            py += 1
+            dirty = true
+            if soft {
+                score += 1
+            }
+            if py > lowest {
+                lowest = py
+                lockResets = 0
+                lockTimer = 0
+            }
+        }
+    }
+
+    function Lock() {
+        dirty = true
+        above := true
+        for (i in 0..3) {
+            y := py + CellY(piece, turn, i)
+            board[y * columns + px + CellX(piece, turn, i)] = piece
+            if y >= hidden {
+                above = false
+            }
+        }
+        if above {
+            GameOver()
+            return
+        }
+        cleared := ClearLines()
+        if cleared > 0 {
+            score += lineScores[cleared] * level
+            lines += cleared
+            level = 1 + floor(lines / 10)
+            play_tone(520 + cleared * 120, 880, 0.12 + cleared * 0.04, 0.3)
+        } else {
+            play_tone(180, 120, 0.05, 0.2)
+        }
+        SpawnPiece()
+    }
+
+    // Removes full rows and moves the rows above them down.
+    function ClearLines() {
+        cleared := 0
+        r := rows - 1
+        while r >= 0 {
+            full := true
+            for (c in 0..columns - 1) {
+                if board[r * columns + c] == 0 {
+                    full = false
+                }
+            }
+            if full {
+                cleared += 1
+                row := r
+                while row > 0 {
+                    for (c in 0..columns - 1) {
+                        board[row * columns + c] = board[(row - 1) * columns + c]
+                    }
+                    row -= 1
+                }
+                for (c in 0..columns - 1) {
+                    board[c] = 0
+                }
+            } else {
+                r -= 1
+            }
+        }
+        return cleared
+    }
+
+    function GameOver() {
+        over = true
+        set_ui_text(Element: "#over", Text: "GAME OVER")
+        set_ui_text(Element: "#restart", Text: "Press Enter")
+    }
+
+    // ------------------------------------------------------------ input
+
+    function Steer(dt: number) {
+        if input.Left.pressed {
+            Shift(-1)
+            dasDir = -1
+            dasTimer = 0
+        }
+        if input.Right.pressed {
+            Shift(1)
+            dasDir = 1
+            dasTimer = 0
+        }
+        holding := (dasDir < 0 && input.Left.held) || (dasDir > 0 && input.Right.held)
+        if !holding {
+            dasDir = 0
+            if input.Left.held {
+                dasDir = -1
+            }
+            if input.Right.held {
+                dasDir = 1
+            }
+            dasTimer = 0
+            return
+        }
+        dasTimer += dt
+        while dasTimer >= das {
+            dasTimer -= arr
+            if !Shift(dasDir) {
+                dasTimer = das
+                return
+            }
+        }
+    }
+
+    on Tick(dt) {
+        if over {
+            if input.Restart.pressed {
+                reload_scene()
+            }
+            return
+        }
+        if !ready {
+            return
+        }
+        if input.Hold.pressed {
+            HoldPiece()
+            if over {
+                Paint()
+                return
+            }
+        }
+        if input.Rotate.pressed {
+            Rotate(1)
+        }
+        if input.RotateBack.pressed {
+            Rotate(3)
+        }
+        Steer(dt)
+        if input.HardDrop.pressed {
+            HardDrop()
+        } else {
+            Fall(dt)
+        }
+        if dirty {
+            Paint()
+        }
+    }
+
+    // ------------------------------------------------------------ drawing
+
+    function Paint() {
+        dirty = false
+        for (i in 0..rows * columns - 1) {
+            view[i] = board[i]
+        }
+        if !over {
+            drop := py
+            while Fits(piece, turn, px, drop + 1) {
+                drop += 1
+            }
+            for (i in 0..3) {
+                x := px + CellX(piece, turn, i)
+                view[(drop + CellY(piece, turn, i)) * columns + x] = ghost
+            }
+            for (i in 0..3) {
+                x := px + CellX(piece, turn, i)
+                view[(py + CellY(piece, turn, i)) * columns + x] = piece
+            }
+        }
+        for (i in 0..length(cells) - 1) {
+            kind := view[hidden * columns + i]
+            if painted[i] != kind {
+                painted[i] = kind
+                cells[i].Appearance.Color = palette[kind]
+            }
+        }
+        Preview(nextCells, next)
+        Preview(holdCells, held)
+        set_ui_text(Element: "#score", Text: format_text("{0}", score))
+        set_ui_text(Element: "#level", Text: format_text("{0}", level))
+        set_ui_text(Element: "#lines", Text: format_text("{0}", lines))
+    }
+
+    function Preview(grid: entity[], kind: number) {
+        for (i in 0..15) {
+            grid[i].Appearance.Color = palette[0]
+        }
+        if kind == 0 {
+            return
+        }
+        for (i in 0..3) {
+            grid[CellY(kind, 0, i) * 4 + CellX(kind, 0, i)].Appearance.Color = palette[kind]
+        }
+    }
+}

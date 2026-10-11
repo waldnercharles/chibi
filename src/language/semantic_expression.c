@@ -255,12 +255,14 @@ static int number_constant(analyzer *a, TSNode node, script_type expected, bool 
         fits = fits && fabsl(value) <=
                            (result.type.storage == PIN_F32 ? FLT_MAX : DBL_MAX);
     }
-    bool exact_integer = integer && !strpbrk(text, ".eE");
+    /* Hex digits include e, so only decimal literals have an exponent. */
+    int base = strpbrk(text, "xX") ? 16 : 10;
+    bool exact_integer = integer && (base == 16 || !strpbrk(text, ".eE"));
     uint64_t exact = 0;
     int64_t exact_signed = 0;
     if (exact_integer && !unsigned_integer) {
         errno = 0;
-        intmax_t parsed = strtoimax(text, &end, 10);
+        intmax_t parsed = strtoimax(text, &end, base);
         fits = parsed >= INT64_MIN && parsed <= INT64_MAX;
         exact_signed = fits ? (int64_t)parsed : 0;
         fits = fits && !*end && errno != ERANGE &&
@@ -268,7 +270,7 @@ static int number_constant(analyzer *a, TSNode node, script_type expected, bool 
                (result.type.storage == PIN_I64 || (long double)exact_signed < limit);
     } else if (exact_integer) {
         errno = 0;
-        uintmax_t parsed = strtoumax(text, &end, 10);
+        uintmax_t parsed = strtoumax(text, &end, base);
         exact = parsed <= UINT64_MAX ? (uint64_t)parsed : 0;
         uint64_t maximum = UINT64_MAX;
         switch (result.type.storage) {

@@ -81,6 +81,8 @@ TEST_CASE(world_margins_follow_the_camera_on_whole_cells)
 {
     render_view_2d_frame first;
     REQUIRE(lay_out(base_view, &first));
+    REQUIRE(first.raster_width % RENDER_VIEW_2D_RASTER_STEP == 0);
+    REQUIRE(first.raster_height % RENDER_VIEW_2D_RASTER_STEP == 0);
     for (int i = 0; i < 128; i++) {
         view_case moving = base_view;
         moving.center_x = -5 + i * .13f;

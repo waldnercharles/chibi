@@ -57,7 +57,7 @@ TEST_CASE(mesh_surfaces_bound_bank_pick_and_compound)
     REQUIRE(close_value(surface.max.z, 23));
     float height;
     REQUIRE(render_mesh_surface_pick(&surface, position, &height));
-    close_value(height, 9); /* Frontmost face is +Y, not the back face. */
+    REQUIRE(close_value(height, 9)); /* Frontmost face is +Y, not the back face. */
     REQUIRE(!render_mesh_surface_pick(&surface, (CF_V2){ 15, 20 }, &height));
     CF_V2 min, max;
     REQUIRE(render_geometry_2d_mesh_bounds(world, entity, NULL, &min, &max, error, sizeof error));

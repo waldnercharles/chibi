@@ -1,9 +1,9 @@
 #include "render/radiance.h"
 
+#include "hidden_app.h"
 #include "render/fullscreen.h"
 #include "render/gpu_timing.h"
 #include "render/material_raster.h"
-#include "render/scene_renderer.h"
 #include "render/view_2d.h"
 #include "third_party/pico_headers/pico_unit.h"
 #if CHIBI_TEST_MATERIAL_GRAPHS
@@ -341,19 +341,6 @@ static bool resize_targets(int size, CF_PixelFormat format)
            render_radiance_resize(radiance, size, size);
 }
 
-static bool read_canvas(CF_Canvas target, void *data, int size)
-{
-    CF_Readback readback = cf_canvas_readback(target);
-    assert(readback.id);
-    while (!cf_readback_ready(readback)) {
-        cf_sleep(1);
-    }
-    bool read = cf_readback_size(readback) == size &&
-                cf_readback_data(readback, data, size) == size;
-    cf_destroy_readback(readback);
-    return read;
-}
-
 /* `world` units square around the origin. */
 static render_view_2d centered(float world)
 {
@@ -393,7 +380,7 @@ static bool draw(const render_material_entity *entities, int count, int size, re
 
 static bool read_pixels(int size)
 {
-    return read_canvas(canvas, pixels, size * size * (int)sizeof *pixels);
+    return test_read_canvas(canvas, pixels, size * size * (int)sizeof *pixels);
 }
 
 /* Lights size x size pixels showing as many world units around the origin
@@ -431,31 +418,9 @@ static bool pixels_match(const CF_Pixel *a, const CF_Pixel *b, int count)
     return true;
 }
 
-static float half_value(uint16_t value)
-{
-    int exponent = (value >> 10) & 31;
-    int mantissa = value & 1023;
-    float result = exponent == 31 ? (mantissa ? NAN : INFINITY)
-                 : exponent ? ldexpf(1 + mantissa / 1024.0f, exponent - 15)
-                            : ldexpf((float)mantissa, -24);
-    return value & 0x8000 ? -result : result;
-}
-
-/* Reads `count` pixels of one of the raster's RGBA16F textures. */
-static bool read_texture(CF_Texture texture, uint16_t *halves, int count)
-{
-    CF_CanvasParams params = cf_canvas_defaults(0, 0);
-    params.attach_target = texture;
-    CF_Canvas target = cf_make_canvas(params);
-    assert(target.id);
-    bool read = read_canvas(target, halves, count * 4 * (int)sizeof *halves);
-    cf_destroy_canvas(target);
-    return read;
-}
-
 static float texel(const uint16_t *halves, int x, int channel)
 {
-    return half_value(halves[4 * (SIDE / 2 * SIDE + x) + channel]);
+    return test_half(halves[4 * (SIDE / 2 * SIDE + x) + channel]);
 }
 
 /* The emitter lights open space green from its disc and red from its border,
@@ -472,13 +437,13 @@ TEST_CASE(emitters_light_open_space_through_their_materials)
     REQUIRE(solve(scene, 2, SIDE, 4));
     static uint16_t halves[PIXELS * 4];
     render_material_textures textures = render_material_raster_textures(raster);
-    REQUIRE(read_texture(textures.source, halves, PIXELS));
+    REQUIRE(test_read_texture(textures.source, halves, PIXELS));
     REQUIRE(fabsf(texel(halves, 36, 1) - .08f) < .002f);
     REQUIRE(fabsf(texel(halves, 43, 0) - .2f) < .002f);
     /* Optical depth is the mean absorption. */
     REQUIRE(fabsf(texel(halves, 64, 3) - 1) < .002f);
     /* A plain solid carries no bump tilt, edge light or gloss. */
-    REQUIRE(read_texture(textures.normal, halves, PIXELS));
+    REQUIRE(test_read_texture(textures.normal, halves, PIXELS));
     for (int channel = 0; channel < 4; channel++) {
         REQUIRE(fabsf(texel(halves, 43, channel)) < .002f);
     }
@@ -937,7 +902,7 @@ enum
 static bool joins_paths(CF_Canvas decoded, float segments[4][4])
 {
     float values[WORLD_H][CURR_W][4];
-    if (!read_canvas(decoded, values, (int)sizeof values)) {
+    if (!test_read_canvas(decoded, values, (int)sizeof values)) {
         return false;
     }
     double paths[2][4];
@@ -1107,11 +1072,11 @@ TEST_CASE(filter_keeps_light_true_to_the_current_frame)
         cf_draw_elements();
         cf_app_draw_onto_screen(false);
         static uint16_t halves[W * H][4];
-        REQUIRE(read_canvas(filtered, halves, (int)sizeof halves));
+        REQUIRE(test_read_canvas(filtered, halves, (int)sizeof halves));
         for (int y = 1; y < H - 1; y++) {
             for (int x = 1; x < W - 1; x++) {
                 int i = y * W + x;
-                worst = fmaxf(worst, fabsf(half_value(halves[i][0]) - current[i][0]));
+                worst = fmaxf(worst, fabsf(test_half(halves[i][0]) - current[i][0]));
             }
         }
     }
@@ -1152,7 +1117,7 @@ static void surface_teardown()
 /* Reads size x size pixels of the HDR canvas into `hdr`. */
 static bool read_hdr(int size)
 {
-    return read_canvas(canvas, hdr, size * size * 4 * (int)sizeof *hdr);
+    return test_read_canvas(canvas, hdr, size * size * 4 * (int)sizeof *hdr);
 }
 
 /* Lights the view for `frames` frames from a reset into the HDR canvas and
@@ -1235,7 +1200,7 @@ TEST_CASE(silhouettes_light_from_their_lit_side)
         REQUIRE(render_radiance_set_lighting(radiance, lighting));
         REQUIRE(solve(pieces, 2, SIDE, 12));
         REQUIRE(green_at(41) < 2);
-        REQUIRE(read_texture(render_material_raster_textures(raster).source, hdr, PIXELS));
+        REQUIRE(test_read_texture(render_material_raster_textures(raster).source, hdr, PIXELS));
         REQUIRE(no_emission(hdr));
         REQUIRE(solve(pieces, 3, SIDE, 12));
         REQUIRE(green_at(41) > 10 && green_at(64) < 2 && green_at(86) < 2);
@@ -1263,7 +1228,7 @@ TEST_CASE(relief_facing_the_light_shines_brighter)
         if (i) {
             continue;
         }
-        REQUIRE(read_texture(render_material_raster_textures(raster).normal, hdr, PIXELS));
+        REQUIRE(test_read_texture(render_material_raster_textures(raster).normal, hdr, PIXELS));
         REQUIRE(fabsf(texel(hdr, SIDE / 2, 0) + .6f) < .01f);
         REQUIRE(fabsf(texel(hdr, SIDE / 2, 1)) < .01f);
         REQUIRE(fabsf(texel(hdr, SIDE / 2, 2) - 1.5f) < .01f);
@@ -1337,7 +1302,7 @@ static bool center_red_blue(float result[2])
     for (int y = 62; y <= 65; y++) {
         for (int x = 62; x <= 65; x++) {
             int p = (y * SIDE + x) * 4;
-            float red = half_value(hdr[p]), blue = half_value(hdr[p + 2]);
+            float red = test_half(hdr[p]), blue = test_half(hdr[p + 2]);
             if (!isfinite(red + blue)) {
                 return false;
             }
@@ -1435,7 +1400,7 @@ static float face_difference(const uint16_t *a, const uint16_t *b)
         for (int x = 58; x < 63; x++) {
             for (int channel = 0; channel < 3; channel++) {
                 int p = (y * SIDE + x) * 4 + channel;
-                float va = half_value(a[p]), vb = half_value(b[p]);
+                float va = test_half(a[p]), vb = test_half(b[p]);
                 if (!isfinite(va + vb)) {
                     return INFINITY;
                 }
@@ -1522,7 +1487,7 @@ static bool solve_with(
 static bool light_matches(const uint16_t *a, const uint16_t *b, int count, float tolerance)
 {
     for (int i = 0; i < 4 * count; i++) {
-        float va = half_value(a[i]), vb = half_value(b[i]);
+        float va = test_half(a[i]), vb = test_half(b[i]);
         if (!isfinite(va + vb) || fabsf(va - vb) >= tolerance) {
             return false;
         }
@@ -1586,10 +1551,12 @@ TEST_CASE(horizons_follow_moving_relief)
             continue;
         }
         int row = size / 2 * size;
-        REQUIRE(half_value(moved[4 * (row + size / 2) + 2]) > .99f);
+        REQUIRE(test_half(moved[4 * (row + size / 2) + 2]) > .99f);
         int gap = (int)(size * .5f - 3.f * size / SIDE);
-        REQUIRE(read_texture(render_material_raster_textures(raster).cover, hdr, size * size));
-        REQUIRE(half_value(hdr[4 * (row + gap) + 1]) < .5f);
+        REQUIRE(
+            test_read_texture(render_material_raster_textures(raster).cover, hdr, size * size)
+        );
+        REQUIRE(test_half(hdr[4 * (row + gap) + 1]) < .5f);
     }
     return true;
 }
@@ -1605,17 +1572,17 @@ typedef struct
 static bool compare_hierarchy(const uint16_t *approx, const uint16_t *fine, hierarchy_error *result)
 {
     static uint16_t cover[PIXELS * 4];
-    if (!read_texture(render_material_raster_textures(raster).cover, cover, PIXELS)) {
+    if (!test_read_texture(render_material_raster_textures(raster).cover, cover, PIXELS)) {
         return false;
     }
     double error = 0, visibility = 0;
     *result = (hierarchy_error){ 0 };
     for (int i = 0; i < PIXELS; i++) {
-        float a = half_value(approx[i * 4 + 2]), b = half_value(fine[i * 4 + 2]);
+        float a = test_half(approx[i * 4 + 2]), b = test_half(fine[i * 4 + 2]);
         if (!isfinite(a + b) || a < -.002f || a > 1.002f) {
             return false;
         }
-        if (half_value(cover[i * 4 + 1]) < .5f) {
+        if (test_half(cover[i * 4 + 1]) < .5f) {
             continue;
         }
         error += fabsf(a - b);
@@ -1627,8 +1594,8 @@ static bool compare_hierarchy(const uint16_t *approx, const uint16_t *fine, hier
     result->mean_error = result->samples ? (float)(error / result->samples) : 1;
     result->mean_visibility = result->samples ? (float)(visibility / result->samples)
                                               : 0;
-    result->center = half_value(approx[center]);
-    result->fine_center = half_value(fine[center]);
+    result->center = test_half(approx[center]);
+    result->fine_center = test_half(fine[center]);
     return true;
 }
 
@@ -1692,11 +1659,11 @@ static bool dirty_tiles(int size, int *dirty, int *total)
     int tiles = (size + 15) / 16;
     *total = tiles * tiles;
     *dirty = 0;
-    if (!read_texture(render_radiance_horizon_dirty_texture(radiance), mask, *total)) {
+    if (!test_read_texture(render_radiance_horizon_dirty_texture(radiance), mask, *total)) {
         return false;
     }
     for (int i = 0; i < *total; i++) {
-        float red = half_value(mask[i * 4]);
+        float red = test_half(mask[i * 4]);
         if (!isfinite(red) || red < 0 || red > 1) {
             return false;
         }
@@ -1855,20 +1822,9 @@ TEST_CASE(cached_horizons_match_fresh_ones)
 
 #endif
 
-/* Opens the hidden SIDE x SIDE app the cases draw in. */
-static void open_app(const char *title)
-{
-    setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
-    setenv("CHIBI_RENDER_SHADER_DIR", CHIBI_SOURCE_ROOT "/src/render/shaders", 0);
-    CF_AppOptionFlags options = CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT;
-    CF_Result made = cf_make_app(title, 0, 0, 0, SIDE, SIDE, options, NULL);
-    assert(!cf_is_error(made));
-    app_scene_renderer_initialize();
-}
-
 void test_render_radiance()
 {
-    open_app("radiance");
+    test_open_hidden_app("radiance", SIDE, SIDE);
     pu_setup(setup, teardown);
     RUN_TEST_CASE(emitters_light_open_space_through_their_materials);
     RUN_TEST_CASE(walls_block_light_by_their_absorption);
@@ -1893,7 +1849,7 @@ void test_render_radiance()
 #if CHIBI_TEST_MATERIAL_GRAPHS
 void test_render_radiance_surface()
 {
-    open_app("radiance surface");
+    test_open_hidden_app("radiance surface", SIDE, SIDE);
     pu_setup(surface_setup, surface_teardown);
     RUN_TEST_CASE(silhouettes_light_from_their_lit_side);
     RUN_TEST_CASE(relief_facing_the_light_shines_brighter);
@@ -1910,7 +1866,7 @@ void test_render_radiance_horizons(int directions)
 {
     assert(directions == 4 || directions == 8);
     horizon_mode = directions == 4 ? GAME_HRC_SHADOW_HORIZON4 : GAME_HRC_SHADOW_HORIZON8;
-    open_app("radiance horizons");
+    test_open_hidden_app("radiance horizons", SIDE, SIDE);
     pu_setup(surface_setup, surface_teardown);
     RUN_TEST_CASE(horizons_follow_moving_relief);
     RUN_TEST_CASE(horizon_hierarchy_matches_the_fine_scan);

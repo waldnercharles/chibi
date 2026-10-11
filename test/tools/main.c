@@ -48,6 +48,7 @@ void test_render_interior_border();
 void test_render_viewport_resize();
 void test_render_radiance_layout();
 void test_render_radiance();
+void test_render_radiance_depth();
 void test_render_scene2d();
 void test_render_scene3d(bool gles);
 void test_device_controls();
@@ -163,9 +164,9 @@ int main(int argc, char **argv)
          physics = false, physics3d = false, transforms = false,
          render_resources = false, interior_border = false,
          viewport_resize = false, sdf_visibility = false, radiance = false,
-         scene2d = false, scene3d = false, material_ramps = false,
-         radiance_surface = false, box3d = false, sky_files = false,
-         mesh_files = false, model_import = false;
+         radiance_depth = false, scene2d = false, scene3d = false,
+         material_ramps = false, radiance_surface = false, box3d = false,
+         sky_files = false, mesh_files = false, model_import = false;
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
@@ -213,6 +214,7 @@ int main(int argc, char **argv)
     interior_border = argc == 2 && !strcmp(argv[1], "--interior-border");
     viewport_resize = argc == 2 && !strcmp(argv[1], "--viewport-resize");
     radiance = argc == 2 && !strcmp(argv[1], "--radiance");
+    radiance_depth = argc == 2 && !strcmp(argv[1], "--radiance-depth");
     scene2d = argc == 2 && !strcmp(argv[1], "--scene2d");
     bool scene3d_gles = argc == 2 && !strcmp(argv[1], "--scene3d-gles");
     scene3d = scene3d_gles || (argc == 2 && !strcmp(argv[1], "--scene3d"));
@@ -254,9 +256,9 @@ int main(int argc, char **argv)
         !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
         !package && !unit && !web_storage && !webgpu_staging &&
         !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics &&
-        !physics3d && !transforms && !render_resources && !interior_border &&
-        !viewport_resize && !sdf_visibility && !radiance && !scene2d && !scene3d &&
+        !native && !native_values && !native_catalog && !physics && !physics3d &&
+        !transforms && !render_resources && !interior_border && !viewport_resize &&
+        !sdf_visibility && !radiance && !radiance_depth && !scene2d && !scene3d &&
         !material_ramps && !radiance_surface && !radiance_horizons && !box3d &&
         !sky_files && !mesh_files && !model_import && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
@@ -277,7 +279,8 @@ int main(int argc, char **argv)
             "| --physics | --physics3d | --transforms "
             "| --render-resources | --interior-border | --viewport-resize | "
             "--sdf-visibility | "
-            "--radiance | --scene2d | --scene3d | --scene3d-gles | "
+            "--radiance | --radiance-depth | --scene2d | --scene3d | "
+            "--scene3d-gles | "
             "--material-ramps | --radiance-surface | --radiance-horizons4 | "
             "--radiance-horizons8 | "
             "--box3d | "
@@ -366,13 +369,15 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     if (render_resources || interior_border || viewport_resize || radiance ||
-        scene2d || scene3d) {
+        radiance_depth || scene2d || scene3d) {
         if (interior_border) {
             test_render_interior_border();
         } else if (viewport_resize) {
             test_render_viewport_resize();
         } else if (radiance) {
             test_render_radiance();
+        } else if (radiance_depth) {
+            test_render_radiance_depth();
         } else if (scene2d) {
             test_render_scene2d();
         } else if (scene3d) {

@@ -24,6 +24,10 @@ CHIBI_GPU_SELECTOR("--sdf-visibility")
 /* HRC's transport, adaptive steps, timing and single passes in a hidden
  * 128x128 app, with readback. */
 CHIBI_GPU_SELECTOR("--radiance")
+/* HRC's Depth thickness surface light and its surface gather from material
+ * inputs written by hand, in a hidden 32x32 app drawing 32x32 and 128x128
+ * targets, with readback. */
+CHIBI_GPU_SELECTOR("--radiance-depth")
 /* The 2D scene renderer's lighting cases in a hidden 64x64 app, with
  * readback. */
 CHIBI_GPU_SELECTOR("--scene2d")

@@ -45,10 +45,10 @@ build.
 `build-language/` for the `test-language*` targets. Add a case to the selector
 that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
-`radiance`, `radiance-surface`, `radiance-horizons4`, `radiance-horizons8`,
-`scene2d`, `scene3d`, `scene3d-gles` and `material-ramps` render through a
-hidden window, which needs a display and a GPU driver the CI job does
-not set up, so they stay out of the group; run them with
+`radiance`, `radiance-depth`, `radiance-surface`, `radiance-horizons4`,
+`radiance-horizons8`, `scene2d`, `scene3d`, `scene3d-gles` and `material-ramps`
+render through a hidden window, which needs a display and a GPU driver the CI
+job does not set up, so they stay out of the group; run them with
 `python3 tools/test_policy.py tool <name>`.
 
 CI runs the build, both groups and `make test-tools` on Linux and macOS. On
@@ -540,12 +540,22 @@ lighting they were calibrated with (finest grid, no ambient, intensity 7.5)
 rather than the authoring defaults. On lavapipe it passes 645 assertions in
 24.3 seconds, 30.5 seconds with an empty shader cache. HRC's view layout and
 lighting normalization run without a GPU in `render-resources`.
-`radiance-surface` lights solids through relief materials in the same app
-and from the same pinned lighting:
+`radiance-depth` lights Depth thickness from material inputs written by hand,
+in a hidden 32 x 32 app with 128 x 128 targets for light that travels farther,
+from the same pinned lighting but with color at half resolution: slabs that
+shadow only the light they cross, small, moving, edge and mixed-color sources,
+falloff to the depth radius, perspective views, the depth gain, gloss, every
+depth quality, depth history, segments and steep planes. The surface gather
+pass alone must take each quadrant's light, find crests past gaps and stay dark
+without light in reach, and surface gather light must restart when the view
+turns. Its cases share one HRC, since a new one compiles all of HRC's shaders.
+It passes 1760 assertions in 8.1 seconds, 15.6 with an empty shader cache.
+`radiance-surface` lights solids through relief materials in its own hidden
+128 x 128 app and from the pinned lighting of `radiance`:
 edge light only on a silhouette's lit side, relief facing the light and below
 a ceiling, a surface radius in world units, surface colors that keep the
 direction they came from in every shadow mode, and surface light history. It
-passes 84 assertions in 26.0 seconds, 30.8 with an empty shader cache.
+passes 86 assertions in 26.0 seconds, 30.8 with an empty shader cache.
 `radiance-horizons4` and `radiance-horizons8` check relief shadows with four
 and eight horizon directions: horizons that follow moving relief without a
 reset, the horizon hierarchy against the fine scan, and the horizon cache

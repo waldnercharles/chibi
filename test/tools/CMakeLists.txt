@@ -139,9 +139,9 @@ if(TARGET chibi_box3d)
 endif()
 
 if(TARGET Chibi::render)
-    add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/radiance.c
-        ../render/scene2d.c ../render/scene3d.c device_controls.c ../render/interior_border.c
-        ../render/viewport_resize.c ../draw_backend.cpp)
+    add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/hidden_app.c
+        ../render/radiance.c ../render/radiance_depth.c ../render/scene2d.c ../render/scene3d.c
+        device_controls.c ../render/interior_border.c ../render/viewport_resize.c ../draw_backend.cpp)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
     target_link_libraries(chibi_render_consumer PRIVATE Chibi::render)

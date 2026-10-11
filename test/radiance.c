@@ -752,8 +752,6 @@ int test_radiance()
     extern bool test_camera_centered_orbit();
     extern bool test_camera_emitter_orbit();
     extern bool test_camera_plane();
-    extern bool test_surface_gather();
-    extern bool test_surface_depth();
     extern bool test_sdf_spatial();
     extern int test_shader_program_gpu();
     extern int test_shader_graph_gpu();
@@ -800,8 +798,6 @@ int test_radiance()
     ok &= test_camera_centered_orbit();
     ok &= test_camera_emitter_orbit();
     ok &= test_camera_plane();
-    ok &= test_surface_gather();
-    ok &= test_surface_depth();
     ok &= test_sdf_spatial();
     if (canvas.id) {
         cf_destroy_canvas(canvas);

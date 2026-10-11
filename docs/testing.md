@@ -47,7 +47,8 @@ that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 `radiance`, `radiance-depth`, `radiance-surface`, `radiance-horizons4`,
 `radiance-horizons8`, `material-pixels`, `material-sampling`, `scene2d`,
-`scene3d`, `scene3d-gles` and `material-ramps` render through a hidden window,
+`scene3d`, `scene3d-gles`, `material-ramps`, `shader-parity` and
+`shader-programs` render through a hidden window,
 which needs a display and a GPU driver the CI job does not set up, so they stay
 out of the group; run them with `python3 tools/test_policy.py tool <name>`.
 
@@ -687,6 +688,37 @@ and unit normals on every supported primitive. It passes 817 assertions in
 allocations intact and aligned, a reset that hands back the retained blocks in
 order, and a zero-initialized arena. It passes 354 assertions in 0.06
 seconds.
+`shader-graphs` selects 15 shader graph cases on the CPU: planar and
+cylindrical mappings, bump and normal-map frames through part transforms and
+scaled seams, sampled and triplanar heights, triplanar axes, decal volumes,
+nested derivatives the validator refuses, generated GLSL that never names the
+reserved `sample`, mapping, Fresnel, remap and Voronoi effects, color ramps
+whose stops the node owns through save and load, and image textures by color
+space, filter and wrap, with their missing-image diagnostics and authored
+settings. It needs a compiler build and passes 166 assertions in 0.08 seconds
+under ASan/UBSan with leak checks, without files or a window.
+`shader-parity` selects six hidden-app 32x32 cases that run a compute shader of
+shader graph GLSL and compare it with the CPU evaluator: decal masks, effects
+over seven input sets, ramps and cells, image textures over every color space,
+filter and wrap at finite and nonfinite UVs, and a sampled SDF's distances and
+normals at 256 points. A sampled SDF image must keep its pixels, texture and
+last good shader when a reload's digest differs or an edit is refused. Build
+and run it like `interior-border` with `AGENT_SELECTOR=--shader-parity`. It
+passes 64 assertions in 2.3 seconds under ASan/UBSan with leak checks on Vulkan
+llvmpipe.
+`shader-programs` selects eleven hidden-app 64x64 cases. A ramp's numeric edit
+reaches fragment, 3D preview and raster programs without a recompile, and a
+structural edit recompiles once; a raster keeps its last good frame when a
+shader fails to compile or ramps pass the table's capacity; two materials read
+their own table offsets; and program sets keep their ids as the table grows.
+Image textures route through materials with more images than a program binds,
+smooth unions of different materials, fragment programs sampling like the CPU
+across seams, shapes cut by an image's alpha, and a reload past the side limit
+that keeps the last good image. It reads its images from memory. Build and run
+it like `interior-border` with `AGENT_SELECTOR=--shader-programs`. It passes
+70,156 assertions in 6 seconds under ASan/UBSan on Vulkan llvmpipe, whose
+worker threads leak 112 bytes as they do for `material-ramps`, so it runs with
+`detect_leaks=0`.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
 lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp

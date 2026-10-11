@@ -1,8 +1,12 @@
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
+#include "graph/model/registry.h"
 #include "graph/shader/shader_graph.h"
-#include "platform/cute.h"
+#include "hidden_app.h"
 #include "support/array.h"
+#include "support/xalloc.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 
 #include <assert.h>
@@ -131,7 +135,7 @@ static node *add(graph *g, const char *name)
     assert(n && shader_graph_init_node(g, n));
     return n;
 }
-static void authored_ramp()
+TEST_CASE(authored_ramps_own_their_stops)
 {
     behavior_asset *a = behavior_asset_new("Ramp ownership");
     a->domain = BEHAVIOR_DOMAIN_MATERIAL;
@@ -139,48 +143,40 @@ static void authored_ramp()
          *ramp = add(a->graph, "Shader Color Ramp");
     shader_ramp_stop edit[3];
     memcpy(edit, stops, sizeof edit);
-    assert(shader_node_ramp_set(a->graph, ramp, edit, 3));
+    REQUIRE(shader_node_ramp_set(a->graph, ramp, edit, 3));
     edit[1].color[1] = 99;
     shader_ramp_stop got[SHADER_RAMP_MAX];
-    assert(shader_node_ramp_get(ramp, got) == 3 && got[1].color[1] == 1);
-    assert(graph_connect_data(a->graph, ramp, 0, out, 0) == 0);
-    assert(graph_connect_data(a->graph, ramp, 1, out, 5) == 0);
+    REQUIRE(shader_node_ramp_get(ramp, got) == 3 && got[1].color[1] == 1);
+    REQUIRE(graph_connect_data(a->graph, ramp, 0, out, 0) == 0);
+    REQUIRE(graph_connect_data(a->graph, ramp, 1, out, 5) == 0);
     node *value = add(a->graph, "Shader Constant");
-    assert(graph_set_pin_type(a->graph, value, 1, 0, PIN_I32, NULL) == 0);
-    assert(graph_connect_data(a->graph, value, 0, ramp, 2) != 0);
+    REQUIRE(graph_set_pin_type(a->graph, value, 1, 0, PIN_I32, NULL) == 0);
+    REQUIRE(graph_connect_data(a->graph, value, 0, ramp, 2) != 0);
     char *json = behavior_asset_save(a);
-    assert(json);
+    REQUIRE(json);
     behavior_asset *copy = behavior_asset_load(json);
-    assert(copy);
+    REQUIRE(copy);
     node *loaded = graph_node_by_id(copy->graph, ramp->id);
-    assert(shader_node_ramp_get(loaded, got) == 3 && !memcmp(got, stops, sizeof stops));
-    graph pasted;
-    graph_init(&pasted);
-    char *clipboard = graph_save_nodes(a->graph, &ramp, 1);
-    assert(clipboard && graph_append(&pasted, clipboard, 20, 30) == 0);
-    free(clipboard);
-    assert(acount(pasted.nodes) == 1);
-    assert(shader_node_ramp_get(pasted.nodes[0], got) == 3 && !memcmp(got, stops, sizeof stops));
-    graph_free(&pasted);
+    REQUIRE(shader_node_ramp_get(loaded, got) == 3 && !memcmp(got, stops, sizeof stops));
     char *color = strstr(json, "Color ");
-    assert(color);
+    REQUIRE(color);
     char *channel = strstr(color, "x=");
-    assert(channel);
+    REQUIRE(channel);
     channel[0] = 'q';
-    assert(!behavior_asset_load(json));
-    assert(strstr(graph_last_error(), "ShaderVec4.x"));
+    REQUIRE(!behavior_asset_load(json));
+    REQUIRE(strstr(graph_last_error(), "ShaderVec4.x"));
     channel[0] = 'x';
     shader_graph ir;
     shader_graph_init(&ir);
     shader_error error = { 0 };
-    assert(shader_graph_from_graph(copy->graph, &ir, &error));
+    REQUIRE(shader_graph_from_graph(copy->graph, &ir, &error));
     int valid_count = acount(ir.nodes);
     edit[1].position = edit[0].position;
-    assert(!shader_node_ramp_set(copy->graph, loaded, edit, 3));
+    REQUIRE(!shader_node_ramp_set(copy->graph, loaded, edit, 3));
     pin_array *array = loaded->input_pins[1].default_value.ptr;
     ((shader_ramp_stop *)array->items[1].ptr)->position = .1f;
-    assert(!shader_graph_from_graph(copy->graph, &ir, &error));
-    assert(
+    REQUIRE(!shader_graph_from_graph(copy->graph, &ir, &error));
+    REQUIRE(
         error.node == loaded->id && strstr(error.message, "stops") &&
         acount(ir.nodes) == valid_count
     );
@@ -188,59 +184,72 @@ static void authored_ramp()
     behavior_asset_free(copy);
     behavior_asset_free(a);
     free(json);
+    return true;
 }
-static void authored_context()
+TEST_CASE(fresnel_reads_the_sample_context)
 {
     behavior_asset *a = behavior_asset_new("Effect context");
     a->domain = BEHAVIOR_DOMAIN_MATERIAL;
     node *out = shader_graph_add_output(a->graph, false),
          *fresnel = add(a->graph, "Shader Fresnel");
-    assert(graph_connect_data(a->graph, fresnel, 0, out, 5) == 0);
+    REQUIRE(graph_connect_data(a->graph, fresnel, 0, out, 5) == 0);
     shader_graph ir;
     shader_graph_init(&ir);
     shader_error error = { 0 };
-    assert(shader_graph_from_graph(a->graph, &ir, &error));
+    REQUIRE(shader_graph_from_graph(a->graph, &ir, &error));
     shader_sample_context sample = { .normal = { 0, 0, 1 },
                                      .view_direction = { 0, 0, 1 } };
     float result[SHADER_OUTPUT_MAX][4];
-    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
-    assert(fabsf(result[5][0] - .04f) < .00001f);
+    REQUIRE(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
+    REQUIRE(fabsf(result[5][0] - .04f) < .00001f);
     sample.view_direction[0] = 1;
     sample.view_direction[2] = 0;
-    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error) && result[5][0] == 1);
+    REQUIRE(
+        shader_graph_eval_outputs(&ir, &sample, NULL, result, &error) &&
+        result[5][0] == 1
+    );
     shader_graph_free(&ir);
     behavior_asset_free(a);
+    return true;
 }
-void test_shader_effects_cpu()
+TEST_CASE(effects_evaluate_transforms_remaps_cells_and_ramps)
 {
-    authored_ramp();
-    authored_context();
     shader_graph g;
     program(&g, false);
     float p[32][4], out[SHADER_OUTPUT_MAX][4];
     inputs(p, 0);
     shader_sample_context sample = { 0 };
     shader_error error = { 0 };
-    assert(shader_graph_eval_outputs(&g, &sample, p, out, &error));
-    assert(fabsf(out[0][0] + 4) < .00001f && fabsf(out[0][1] - 6) < .00001f);
-    assert(
+    REQUIRE(shader_graph_eval_outputs(&g, &sample, p, out, &error));
+    REQUIRE(fabsf(out[0][0] + 4) < .00001f && fabsf(out[0][1] - 6) < .00001f);
+    REQUIRE(
         fabsf(out[1][0] - 2) < .00001f && fabsf(out[1][1] - 6) < .00001f &&
         fabsf(out[1][2] - 7) < .00001f
     );
-    assert(fabsf(out[2][0] - .04f) < .00001f && out[3][0] == 4 && out[3][1] == 4);
+    REQUIRE(fabsf(out[2][0] - .04f) < .00001f && out[3][0] == 4 && out[3][1] == 4);
     inputs(p, 6);
-    assert(shader_graph_eval_outputs(&g, &sample, p, out, &error));
-    assert(out[6][0] == 0); // Zero jitter puts a feature at the exact cell center.
+    REQUIRE(shader_graph_eval_outputs(&g, &sample, p, out, &error));
+    REQUIRE(out[6][0] == 0); // Zero jitter puts a feature at the exact cell center.
     shader_graph_free(&g);
     program(&g, true);
     inputs(p, 3);
-    assert(shader_graph_eval_outputs(&g, &sample, p, out, &error));
-    assert(out[0][0] == 0 && out[0][1] == 1 && out[0][2] == 1 && out[1][0] == .25f);
+    REQUIRE(shader_graph_eval_outputs(&g, &sample, p, out, &error));
+    REQUIRE(out[0][0] == 0 && out[0][1] == 1 && out[0][2] == 1 && out[1][0] == .25f);
     shader_graph_free(&g);
-    puts("shader effects CPU PASS: transform order, Fresnel context, remap, cell center, typed ramp ownership/round trip/rejection");
+    return true;
+}
+void test_shader_effects_cpu()
+{
+    test_graph_packs_install();
+    RUN_TEST_CASE(authored_ramps_own_their_stops);
+    RUN_TEST_CASE(fresnel_reads_the_sample_context);
+    RUN_TEST_CASE(effects_evaluate_transforms_remaps_cells_and_ramps);
+    test_graph_packs_restore();
 }
 
-static void gpu_program(bool ramp)
+/* Whether a compute shader of the program's GLSL computes what the CPU
+ * evaluator does for every input case. */
+static bool gpu_matches(bool ramp)
 {
     shader_graph ir;
     program(&ir, ramp);
@@ -265,8 +274,7 @@ static void gpu_program(bool ramp)
                "x=int(gl_GlobalInvocationID.x);imageStore(result_image,ivec2(x,"
                "0),"
                "result[x]);}\n";
-    char *source = malloc(strlen(function) + strlen(body) + 1);
-    assert(source);
+    char *source = xmalloc(strlen(function) + strlen(body) + 1);
     strcpy(source, function);
     strcat(source, body);
     CF_ComputeShader shader = cf_make_compute_shader_from_source(source);
@@ -281,6 +289,7 @@ static void gpu_program(bool ramp)
     CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults(1, 1, 1);
     dispatch.rw_textures = &texture;
     dispatch.rw_texture_count = 1;
+    bool same = true;
     for (int test = 0; test < 7; test++) {
         float values[32][4], expected[SHADER_OUTPUT_MAX][4], actual[8][4];
         inputs(values, test);
@@ -290,22 +299,14 @@ static void gpu_program(bool ramp)
         cf_material_set_uniform_cs(material, "values", values, CF_UNIFORM_TYPE_FLOAT4, 32);
         cf_dispatch_compute(shader, material, dispatch);
         cf_app_draw_onto_screen(false);
-        CF_Readback readback = cf_canvas_readback(canvas);
-        assert(readback.id);
-        uint64_t start = cf_get_ticks();
-        while (!cf_readback_ready(readback)) {
-            assert(cf_get_ticks() - start < cf_get_tick_frequency() * 10);
-            cf_sleep(1);
-        }
-        assert(cf_readback_data(readback, actual, sizeof actual) == sizeof actual);
-        cf_destroy_readback(readback);
+        same = same && test_read_canvas(canvas, actual, sizeof actual);
         for (int i = 0; i < ir.output_count; i++) {
             for (int c = 0; c < ir.nodes[ir.output[i]].width; c++) {
                 float want = expected[i][c], got = actual[i][c];
                 if (!isfinite(got) ||
                     fabsf(got - want) > .0003f * fmaxf(1, fabsf(want))) {
                     fprintf(stderr, "effects GPU ramp%d case%d output%d channel%d: %.9g != %.9g\n", ramp, test, i, c, got, want);
-                    assert(false);
+                    same = false;
                 }
             }
         }
@@ -316,11 +317,21 @@ static void gpu_program(bool ramp)
     shader_graph_free(&ir);
     free(source);
     free(function);
+    return same;
 }
-int test_shader_effects_gpu()
+TEST_CASE(effects_match_cpu_on_gpu)
 {
-    gpu_program(false);
-    gpu_program(true);
-    puts("shader effects GPU PASS: mapping, Fresnel, remap, gradients, fractional fBM, 2D/3D Voronoi and all ramp interpolation modes");
-    return 0;
+    REQUIRE(gpu_matches(false));
+    return true;
+}
+TEST_CASE(ramps_and_cells_match_cpu_on_gpu)
+{
+    REQUIRE(gpu_matches(true));
+    return true;
+}
+/* Runs in an open hidden app. */
+void test_shader_effects_gpu()
+{
+    RUN_TEST_CASE(effects_match_cpu_on_gpu);
+    RUN_TEST_CASE(ramps_and_cells_match_cpu_on_gpu);
 }

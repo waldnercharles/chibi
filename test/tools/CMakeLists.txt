@@ -208,10 +208,13 @@ if(TARGET Chibi::model_authoring)
         ../graph/model_sampled.c)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
-    # Models and materials in the renderer's shader catalog.
+    # Models and materials in the renderer's shader catalog, and shader graphs
+    # the renderer compiles.
     if(TARGET Chibi::render)
         target_sources(test_tools PRIVATE ../graph/model_parameters.c ../graph/model_material_scope.c
-            ../graph/model_validation.c ../graph/model_materials.c ../graph/model_surface.c)
+            ../graph/model_validation.c ../graph/model_materials.c ../graph/model_surface.c
+            ../graph/shader_detail.c ../render/shader_effects.c ../render/shader_image.c
+            ../render/shader_parity.c ../render/shader_program.c ../render/shader_image_routes.c)
     endif()
 endif()
 

@@ -129,6 +129,11 @@ void test_model_material_scope();
 void test_model_validation();
 void test_model_materials();
 void test_model_surface();
+void test_shader_detail();
+void test_shader_effects_cpu();
+void test_shader_image_cpu();
+void test_shader_parity();
+void test_shader_programs();
 #endif
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
@@ -200,7 +205,8 @@ int main(int argc, char **argv)
          scene3d = false, material_ramps = false, radiance_surface = false,
          material_pixels = false, box3d = false, sky_files = false,
          mesh_files = false, model_import = false, model_graphs = false,
-         model_catalog = false, render_geometry = false;
+         model_catalog = false, render_geometry = false, shader_graphs = false,
+         shader_parity = false, shader_programs = false;
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
@@ -284,8 +290,12 @@ int main(int argc, char **argv)
     model_graphs = argc == 2 && !strcmp(argv[1], "--model-graphs");
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     model_catalog = argc == 2 && !strcmp(argv[1], "--model-catalog");
+    shader_graphs = argc == 2 && !strcmp(argv[1], "--shader-graphs");
+    shader_parity = argc == 2 && !strcmp(argv[1], "--shader-parity");
+    shader_programs = argc == 2 && !strcmp(argv[1], "--shader-programs");
 #endif
-    graph_types = model_graphs || model_catalog;
+    graph_types = model_graphs || model_catalog || shader_graphs ||
+                  shader_parity || shader_programs;
 #endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     model_import = argc == 2 && !strcmp(argv[1], "--model-import");
@@ -304,15 +314,15 @@ int main(int argc, char **argv)
         !package && !unit && !web_storage && !webgpu_staging && !query_benchmark &&
         !arena && !prepared && !read && !scene && !scene_prepared && !native &&
         !native_values && !native_catalog && !physics && !physics3d &&
-        !transforms && !render_resources && !render_geometry &&
-        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
-        !radiance_depth && !material_sampling && !scene2d && !scene3d &&
-        !material_ramps && !radiance_surface && !radiance_horizons &&
-        !material_pixels && !box3d && !sky_files && !mesh_files &&
-        !model_import && !model_graphs && !model_catalog && !persistent_store &&
-        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
-        !whole_select && !owned_tick && !parallel_tick && !source_features &&
-        !source_numeric && !source_material && !source_presentation &&
+        !transforms && !render_resources && !render_geometry && !interior_border &&
+        !viewport_resize && !sdf_visibility && !radiance && !radiance_depth &&
+        !material_sampling && !scene2d && !scene3d && !material_ramps &&
+        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
+        !sky_files && !mesh_files && !model_import && !model_graphs &&
+        !model_catalog && !shader_graphs && !shader_parity && !shader_programs &&
+        !persistent_store && !whole_alias && !whole_math && !whole_integer &&
+        !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
+        !source_features && !source_numeric && !source_material && !source_presentation &&
         !system_schedule && !source_systems && !validate_project && !expansion) {
         fprintf(
             stderr,
@@ -336,7 +346,8 @@ int main(int argc, char **argv)
             "--radiance-horizons8 | --material-pixels | "
             "--box3d | "
             "--sky-files | --mesh-files | --model-import | --model-graphs | "
-            "--model-catalog | "
+            "--model-catalog | --shader-graphs | --shader-parity | "
+            "--shader-programs | "
             "--persistent-store | "
             "--whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
@@ -518,6 +529,19 @@ int main(int argc, char **argv)
         test_model_validation();
         test_model_materials();
         test_model_surface();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (shader_graphs || shader_parity || shader_programs) {
+        if (shader_parity) {
+            test_shader_parity();
+        } else if (shader_programs) {
+            test_shader_programs();
+        } else {
+            test_shader_detail();
+            test_shader_effects_cpu();
+            test_shader_image_cpu();
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

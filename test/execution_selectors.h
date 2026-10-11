@@ -13,6 +13,8 @@ CHIBI_CPU_SELECTOR("--model-catalog")
 CHIBI_CPU_SELECTOR("--render-geometry")
 /* The support arena allocator. */
 CHIBI_CPU_SELECTOR("--arena")
+/* Shader graphs evaluated on the CPU and compiled to GLSL, without a window. */
+CHIBI_CPU_SELECTOR("--shader-graphs")
 
 /* Explicit opt-in checks against installed products; each runs under the
  * shared 60-second supervisor. */
@@ -60,3 +62,9 @@ CHIBI_GPU_SELECTOR("--radiance-horizons8")
 /* The material raster's graph materials and fluids, the light HRC gives
  * fluids, and crystal reflections in a hidden 128x128 app, with readback. */
 CHIBI_GPU_SELECTOR("--material-pixels")
+/* Compute shaders of shader graph GLSL against the CPU evaluator in a hidden
+ * 32x32 app, with readback. */
+CHIBI_GPU_SELECTOR("--shader-parity")
+/* Ramp recompiles, program tables and image texture routes through raster,
+ * fragment and 3D preview programs in a hidden 64x64 app, with readback. */
+CHIBI_GPU_SELECTOR("--shader-programs")

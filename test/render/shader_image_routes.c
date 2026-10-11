@@ -1,18 +1,25 @@
 #include "authoring/shader_prepare.h"
 #include "graph/authoring/graph_edit.h"
+#include "graph/model/registry.h"
 #include "graph/shader/shader_graph.h"
-#include "platform/cute.h"
+#include "hidden_app.h"
+#include "memory_images.h"
 #include "render/material_raster.h"
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
 #include "render/shader_images.h"
+#include "runtime/images/catalog.h"
+#include "support/xalloc.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+
+/* Materials and shapes of image textures, drawn by the material raster and
+ * the fragment programs, from images the catalog reads from memory. */
 
 enum
 {
@@ -21,17 +28,34 @@ enum
     IMAGES = 10
 };
 
-static void save_image(const char *path, CF_Pixel *pixels, int width, int height)
+/* One color image per material, then an alpha image for the shape and an
+ * asymmetric one for sampling seams. */
+enum
 {
-    CF_Image image = { width, height, pixels };
-    void *bytes = NULL;
-    int size = 0;
-    assert(!cf_is_error(cf_image_save_png_to_memory(&image, &bytes, &size)));
-    FILE *file = fopen(path, "wb");
-    assert(file && fwrite(bytes, 1, (size_t)size, file) == (size_t)size);
-    assert(!fclose(file));
-    cf_free(bytes);
-}
+    ALPHA = IMAGES,
+    SAMPLING,
+    IMAGE_COUNT
+};
+
+static const char *const keys[IMAGE_COUNT] = {
+    "content/routes/0.PNG",     "content/routes/1.PNG",
+    "content/routes/2.PNG",     "content/routes/3.PNG",
+    "content/routes/4.PNG",     "content/routes/5.PNG",
+    "content/routes/6.PNG",     "content/routes/7.PNG",
+    "content/routes/8.PNG",     "content/routes/9.PNG",
+    "content/routes/Alpha.png", "content/routes/Sampling.png"
+};
+static CF_Pixel colors[IMAGES];
+static const CF_Pixel alpha[] = { { .colors = { 255, 0, 0, 0 } },
+                                  { .colors = { 0, 255, 0, 255 } },
+                                  { .colors = { 0, 0, 255, 255 } },
+                                  { .colors = { 255, 255, 255, 0 } } };
+static const CF_Pixel asymmetric[] = { { .colors = { 32, 64, 96, 255 } },
+                                       { .colors = { 224, 16, 48, 255 } },
+                                       { .colors = { 40, 200, 80, 255 } },
+                                       { .colors = { 96, 128, 240, 255 } } };
+static test_image images[IMAGE_COUNT];
+static int materials[IMAGES];
 
 static node *image_node(graph *g, const char *key)
 {
@@ -92,7 +116,7 @@ static int image_shape(const char *key)
     return id;
 }
 
-static int eight_image_material(char keys[IMAGES][256])
+static int eight_image_material()
 {
     behavior_asset *asset = behavior_asset_new("Image route eight inputs");
     asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
@@ -114,35 +138,9 @@ static int eight_image_material(char keys[IMAGES][256])
     return id;
 }
 
-static void readback(CF_Canvas canvas, void *pixels, int bytes)
-{
-    CF_Readback read = cf_canvas_readback(canvas);
-    assert(read.id);
-    uint64_t start = cf_get_ticks();
-    while (!cf_readback_ready(read)) {
-        assert(cf_get_ticks() - start < cf_get_tick_frequency() * 10);
-        cf_sleep(1);
-    }
-    assert(cf_readback_data(read, pixels, bytes) == bytes);
-    cf_destroy_readback(read);
-}
-
 static void read_scene(render_material_raster *raster, uint16_t pixels[PIXELS * 4])
 {
-    CF_CanvasParams params = cf_canvas_defaults(0, 0);
-    params.attach_target = render_material_raster_textures(raster).scene;
-    CF_Canvas canvas = cf_make_canvas(params);
-    assert(canvas.id);
-    readback(canvas, pixels, PIXELS * 4 * (int)sizeof *pixels);
-    cf_destroy_canvas(canvas);
-}
-
-static float half(uint16_t value)
-{
-    int exponent = (value >> 10) & 31, mantissa = value & 1023;
-    float result = exponent ? ldexpf(1 + mantissa / 1024.0f, exponent - 15)
-                            : ldexpf((float)mantissa, -24);
-    return value & 0x8000 ? -result : result;
+    assert(test_read_texture(render_material_raster_textures(raster).scene, pixels, PIXELS));
 }
 
 static render_material_entity entity(int material, float x, float y)
@@ -169,25 +167,26 @@ static bool raster_draw(render_material_raster *raster, const render_material_en
     return ok;
 }
 
-static void raster_checks(const int materials[IMAGES], const CF_Pixel colors[IMAGES], int eight, int shape)
+/* Ten image materials draw in one raster pass, smooth unions of different
+ * materials match flat colors, and a rejected batch keeps the last frame. */
+TEST_CASE(rasters_draw_more_images_than_a_program_binds)
 {
+    int shape = image_shape(keys[ALPHA]);
+    int eight = eight_image_material();
     render_material_raster *raster = render_material_raster_new();
-    assert(raster && render_material_raster_resize(raster, SIDE, SIDE));
+    REQUIRE(raster && render_material_raster_resize(raster, SIDE, SIDE));
     render_material_entity actors[IMAGES + 2];
     for (int i = 0; i < IMAGES; i++) {
         actors[i] = entity(materials[i], -54 + i * 12, 35);
     }
-    if (!raster_draw(raster, actors, IMAGES)) {
-        fprintf(stderr, "Image raster: %s\n", render_material_raster_error(raster));
-        assert(false);
-    }
+    REQUIRE(raster_draw(raster, actors, IMAGES));
     uint16_t before[PIXELS * 4], after[PIXELS * 4];
     read_scene(raster, before);
     for (int i = 0; i < IMAGES; i++) {
         int at = ((64 - 35) * SIDE + 64 - 54 + i * 12) * 4;
         const unsigned char *color = (const unsigned char *)&colors[i];
         for (int c = 0; c < 4; c++) {
-            assert(fabsf(half(before[at + c]) - color[c] / 255.0f) < .003f);
+            REQUIRE(fabsf(test_half(before[at + c]) - color[c] / 255.0f) < .003f);
         }
     }
     memmove(actors + 1, actors, IMAGES * sizeof *actors);
@@ -196,11 +195,11 @@ static void raster_checks(const int materials[IMAGES], const CF_Pixel colors[IMA
     actors[0].metaball_group = actors[IMAGES + 1].metaball_group = 1;
     actors[0].metaball_blend = actors[IMAGES + 1].metaball_blend = 12;
     actors[0].radius = actors[IMAGES + 1].radius = 7;
-    assert(raster_draw(raster, actors, IMAGES + 2));
+    REQUIRE(raster_draw(raster, actors, IMAGES + 2));
     read_scene(raster, before);
     /* This bridge is outside either circle alone, and inside their smooth union. */
     int bridge = ((64 - 7) * SIDE + 64) * 4;
-    assert(half(before[bridge + 3]) > .9f);
+    REQUIRE(test_half(before[bridge + 3]) > .9f);
     render_material_entity flat[IMAGES + 2];
     memcpy(flat, actors, sizeof flat);
     for (int i = 0; i < IMAGES + 2; i++) {
@@ -211,42 +210,40 @@ static void raster_checks(const int materials[IMAGES], const CF_Pixel colors[IMA
             flat[i].scene[c] = pixel[c] / 255.0f;
         }
     }
-    assert(raster_draw(raster, flat, IMAGES + 2));
+    REQUIRE(raster_draw(raster, flat, IMAGES + 2));
     read_scene(raster, after);
     for (int i = 0; i < PIXELS * 4; i++) {
-        assert(fabsf(half(before[i]) - half(after[i])) < .003f);
+        REQUIRE(fabsf(test_half(before[i]) - test_half(after[i])) < .003f);
     }
     for (int i = 0; i < IMAGES + 2; i++) {
         actors[i].metaball_group = 1;
     }
-    assert(!raster_draw(raster, actors, IMAGES + 2));
-    assert(strstr(render_material_raster_error(raster), "Metaball group 1"));
+    REQUIRE(!raster_draw(raster, actors, IMAGES + 2));
+    REQUIRE(strstr(render_material_raster_error(raster), "Metaball group 1"));
     read_scene(raster, before);
-    assert(!memcmp(before, after, sizeof before));
+    REQUIRE(!memcmp(before, after, sizeof before));
     render_material_entity too_many = entity(eight, 0, 0);
     too_many.reserved[1] = (float)shape;
-    assert(!raster_draw(raster, &too_many, 1));
-    assert(strstr(render_material_raster_error(raster), "material/shape"));
+    REQUIRE(!raster_draw(raster, &too_many, 1));
+    REQUIRE(strstr(render_material_raster_error(raster), "material/shape"));
     read_scene(raster, before);
-    assert(!memcmp(before, after, sizeof before));
+    REQUIRE(!memcmp(before, after, sizeof before));
     render_material_raster_free(raster);
+    return true;
 }
 
-static void fragment_checks(const int materials[IMAGES], const CF_Pixel colors[IMAGES])
+TEST_CASE(fragments_draw_each_material_image)
 {
     render_programs *programs = render_programs_new(RENDER_PROGRAM_FRAGMENT);
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
-    assert(canvas.id);
+    REQUIRE(canvas.id);
     render_material_entity actors[IMAGES];
     int programs_for_actor[IMAGES];
     shader_error error = { 0 };
     for (int i = 0; i < IMAGES; i++) {
         actors[i] = entity(materials[i], -54 + i * 12, 0);
         programs_for_actor[i] = render_shader_fragment_prepare(programs, &actors[i], &error);
-        if (!programs_for_actor[i]) {
-            fprintf(stderr, "Image fragment: %s\n", error.message);
-            assert(false);
-        }
+        REQUIRE(programs_for_actor[i]);
     }
     cf_app_update(NULL);
     cf_draw_push();
@@ -258,15 +255,16 @@ static void fragment_checks(const int materials[IMAGES], const CF_Pixel colors[I
     cf_draw_pop();
     cf_app_draw_onto_screen(false);
     CF_Pixel pixels[PIXELS];
-    readback(canvas, pixels, sizeof pixels);
+    REQUIRE(test_read_canvas(canvas, pixels, sizeof pixels));
     for (int i = 0; i < IMAGES; i++) {
         CF_Pixel pixel = pixels[64 * SIDE + 64 - 54 + i * 12];
-        assert(abs(pixel.colors.r - colors[i].colors.r) <= 2);
-        assert(abs(pixel.colors.g - colors[i].colors.g) <= 2);
-        assert(abs(pixel.colors.b - colors[i].colors.b) <= 2);
+        REQUIRE(abs(pixel.colors.r - colors[i].colors.r) <= 2);
+        REQUIRE(abs(pixel.colors.g - colors[i].colors.g) <= 2);
+        REQUIRE(abs(pixel.colors.b - colors[i].colors.b) <= 2);
     }
     cf_destroy_canvas(canvas);
     render_programs_free(programs);
+    return true;
 }
 
 static int sampling_material(const char *key, int settings)
@@ -304,27 +302,26 @@ static int sampling_material(const char *key, int settings)
     return id;
 }
 
-static void fragment_sampling(const char *key)
+/* Every filter, wrap and color space draws what the CPU samples on both sides
+ * of the image's seams, through either draw filter. */
+TEST_CASE(fragments_sample_like_the_cpu_across_seams)
 {
     render_programs *programs = render_programs_new(RENDER_PROGRAM_FRAGMENT);
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
-    assert(canvas.id);
+    REQUIRE(canvas.id);
     /* Mapping puts exact image seams at pixels 32/64/96, with samples on both
      * sides, at texel centers, and outside the original UV range. */
     int coordinates[] = { 1,  15, 16, 31, 32, 33, 47, 48,
                           63, 64, 65, 79, 80, 95, 96, 126 };
     for (int settings = 0; settings < 8; settings++) {
-        int material = sampling_material(key, settings);
+        int material = sampling_material(keys[SAMPLING], settings);
         render_material_entity actor = entity(material, 0, 0);
         actor.shape_type = RENDER_SHAPE_BOX;
         actor.extent[0] = actor.extent[1] = SIDE * .5f;
         actor.points[0] = actor.points[1] = SIDE * .5f;
         shader_error error = { 0 };
         int program = render_shader_fragment_prepare(programs, &actor, &error);
-        if (!program) {
-            fprintf(stderr, "Image sampling fragment: %s\n", error.message);
-            assert(false);
-        }
+        REQUIRE(program);
         for (int draw_filter = 0; draw_filter < 2; draw_filter++) {
             cf_app_update(NULL);
             cf_draw_push();
@@ -337,7 +334,7 @@ static void fragment_sampling(const char *key)
             cf_draw_pop();
             cf_app_draw_onto_screen(false);
             CF_Pixel pixels[PIXELS];
-            readback(canvas, pixels, sizeof pixels);
+            REQUIRE(test_read_canvas(canvas, pixels, sizeof pixels));
             for (int yi = 0; yi < 16; yi++) {
                 for (int xi = 0; xi < 16; xi++) {
                     int x = coordinates[xi], y = coordinates[yi];
@@ -345,7 +342,7 @@ static void fragment_sampling(const char *key)
                         .uv = { (x + .5f) / SIDE, (y + .5f) / SIDE },
                     };
                     float expected[SHADER_OUTPUT_MAX][4];
-                    assert(render_shader_sample(material, &sample, NULL, expected, &error));
+                    REQUIRE(render_shader_sample(material, &sample, NULL, expected, &error));
                     const unsigned char *actual = (const unsigned char *)&pixels[y * SIDE + x];
                     for (int channel = 0; channel < 3; channel++) {
                         int reference = (int)lroundf(expected[0][channel] * 255);
@@ -362,7 +359,7 @@ static void fragment_sampling(const char *key)
                                 actual[channel],
                                 reference
                             );
-                            assert(false);
+                            return false;
                         }
                     }
                 }
@@ -371,75 +368,83 @@ static void fragment_sampling(const char *key)
     }
     cf_destroy_canvas(canvas);
     render_programs_free(programs);
+    return true;
 }
 
-int test_shader_image_routes()
+/* Shapes of an image's alpha contain the points its alpha covers. */
+TEST_CASE(image_shapes_contain_what_their_alpha_covers)
 {
-    char directory[] = "content/image-routes-XXXXXX";
-    assert(mkdtemp(directory));
-    char keys[IMAGES][256];
-    int materials[IMAGES];
-    CF_Pixel colors[IMAGES];
+    image_shape(keys[ALPHA]);
+    GameShader binding = { .shape = "Image route shape" };
+    float none[2] = { 0 };
+    REQUIRE(
+        render_shader_contains(&binding, NULL, (ecs_entity){ 0 }, (float[2]){ -2, 2 }, none, 0)
+    );
+    REQUIRE(
+        !render_shader_contains(&binding, NULL, (ecs_entity){ 0 }, (float[2]){ 2, 2 }, none, 0)
+    );
+    return true;
+}
+
+/* A reload past the resident side limit keeps the last good image. */
+TEST_CASE(oversized_reloads_keep_the_last_good_image)
+{
+    char message[256];
+    REQUIRE(render_image_reload(keys[0], message, sizeof message));
+    CF_Pixel *wide = xcalloc(RENDER_IMAGE_SIDE_MAX + 1, sizeof *wide);
+    images[0] = (test_image){ keys[0],
+                              RENDER_IMAGE_SIDE_MAX + 1,
+                              1,
+                              (const unsigned char *)wide };
+    bool rejected = !render_image_reload(keys[0], message, sizeof message);
+    images[0] = (test_image){ keys[0], 1, 1, (const unsigned char *)&colors[0] };
+    free(wide);
+    REQUIRE(rejected && strstr(message, "resident limit"));
+    int width = 0, height = 0;
+    REQUIRE(render_image_info(keys[0], &width, &height) && width == 1 && height == 1);
+    shader_sample_context sample = { .uv = { .5f, .5f } };
+    shader_error error = { 0 };
+    float sampled[SHADER_OUTPUT_MAX][4];
+    REQUIRE(render_shader_sample(materials[0], &sample, NULL, sampled, &error));
+    REQUIRE(fabsf(sampled[0][0] - colors[0].colors.r / 255.0f) < .0001f);
+    REQUIRE(render_image_reload(keys[0], message, sizeof message));
+    return true;
+}
+
+/* Mounts the images and publishes a material of each color image. */
+static void setup()
+{
     for (int i = 0; i < IMAGES; i++) {
-        snprintf(keys[i], sizeof keys[i], "%s/%d.PNG", directory, i);
         colors[i] = (CF_Pixel){ .colors = { (uint8_t)(32 + 17 * i),
                                             (uint8_t)(220 - 13 * i),
                                             (uint8_t)(64 + 11 * i),
                                             255 } };
-        save_image(keys[i], &colors[i], 1, 1);
+        images[i] = (test_image){ keys[i], 1, 1, (const unsigned char *)&colors[i] };
+    }
+    images[ALPHA] = (test_image){ keys[ALPHA], 2, 2, (const unsigned char *)alpha };
+    images[SAMPLING] = (test_image){ keys[SAMPLING], 2, 2, (const unsigned char *)asymmetric };
+    test_mount_images(images, IMAGE_COUNT);
+    for (int i = 0; i < IMAGES; i++) {
         char name[64];
         snprintf(name, sizeof name, "Image route %d", i);
         materials[i] = material(name, keys[i]);
     }
-    char alpha_key[256];
-    snprintf(alpha_key, sizeof alpha_key, "%s/Alpha.png", directory);
-    CF_Pixel alpha[] = { { .colors = { 255, 0, 0, 0 } },
-                         { .colors = { 0, 255, 0, 255 } },
-                         { .colors = { 0, 0, 255, 255 } },
-                         { .colors = { 255, 255, 255, 0 } } };
-    save_image(alpha_key, alpha, 2, 2);
-    int shape = image_shape(alpha_key);
-    GameShader binding = { .shape = "Image route shape" };
-    assert(
-        render_shader_contains(&binding, NULL, (ecs_entity){ 0 }, (float[2]){ -2, 2 }, (float[2]){ 0 }, 0)
-    );
-    assert(
-        !render_shader_contains(&binding, NULL, (ecs_entity){ 0 }, (float[2]){ 2, 2 }, (float[2]){ 0 }, 0)
-    );
-    int eight = eight_image_material(keys);
-    raster_checks(materials, colors, eight, shape);
-    fragment_checks(materials, colors);
-    char sampling_key[256];
-    snprintf(sampling_key, sizeof sampling_key, "%s/Sampling.png", directory);
-    CF_Pixel asymmetric[] = { { .colors = { 32, 64, 96, 255 } },
-                              { .colors = { 224, 16, 48, 255 } },
-                              { .colors = { 40, 200, 80, 255 } },
-                              { .colors = { 96, 128, 240, 255 } } };
-    save_image(sampling_key, asymmetric, 2, 2);
-    fragment_sampling(sampling_key);
-    CF_Pixel *wide = calloc(RENDER_IMAGE_SIDE_MAX + 1, sizeof *wide);
-    assert(wide);
-    save_image(keys[0], wide, RENDER_IMAGE_SIDE_MAX + 1, 1);
-    free(wide);
-    char message[256];
-    assert(!render_image_reload(keys[0], message, sizeof message));
-    assert(strstr(message, "2048"));
-    int width = 0, height = 0;
-    assert(render_image_info(keys[0], &width, &height) && width == 1 && height == 1);
-    shader_sample_context sample = { .uv = { .5f, .5f } };
-    shader_error error = { 0 };
-    float sampled[SHADER_OUTPUT_MAX][4];
-    assert(render_shader_sample(materials[0], &sample, NULL, sampled, &error));
-    assert(fabsf(sampled[0][0] - colors[0].colors.r / 255.0f) < .0001f);
-    save_image(keys[0], &colors[0], 1, 1);
-    assert(render_image_reload(keys[0], message, sizeof message));
+}
+
+static void teardown()
+{
     authoring_shader_catalog_clear();
-    for (int i = 0; i < IMAGES; i++) {
-        assert(!unlink(keys[i]));
-    }
-    assert(!unlink(alpha_key));
-    assert(!unlink(sampling_key));
-    assert(!rmdir(directory));
-    puts("image routes PASS: more than eight scene images, fragment/compute pixels, authored fragment filter/wrap/color-space seams, smooth-union batching, shape picking and retained output on budget failure");
-    return 0;
+    render_images_clear();
+}
+
+/* Runs in an open hidden app with the graph packs installed. */
+void test_shader_image_routes()
+{
+    pu_setup(setup, teardown);
+    RUN_TEST_CASE(image_shapes_contain_what_their_alpha_covers);
+    RUN_TEST_CASE(rasters_draw_more_images_than_a_program_binds);
+    RUN_TEST_CASE(fragments_draw_each_material_image);
+    RUN_TEST_CASE(fragments_sample_like_the_cpu_across_seams);
+    RUN_TEST_CASE(oversized_reloads_keep_the_last_good_image);
+    pu_clear_setup();
 }

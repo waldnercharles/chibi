@@ -1,8 +1,8 @@
 #include "graph/shader/shader_graph.h"
-#include "platform/cute.h"
-#include "render/scene_renderer.h"
+#include "hidden_app.h"
+#include "support/xalloc.h"
+#include "third_party/pico_headers/pico_unit.h"
 
-#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,8 +13,13 @@
 #define QUOTED(x) QUOTE(x)
 #define OUTPUT_ROWS QUOTED(SHADER_OUTPUT_MAX)
 
-int test_shader_image_routes();
-int test_shader_program_gpu();
+/* Compute shaders of shader graph GLSL compute what the CPU evaluator does. */
+
+void test_shader_effects_gpu();
+void test_shader_image_gpu();
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+void test_model_sampled_gpu();
+#endif
 
 static int parameter(shader_graph *g, int slot)
 {
@@ -22,7 +27,7 @@ static int parameter(shader_graph *g, int slot)
     g->nodes[i].parameter = slot;
     return i;
 }
-static void decal_gpu()
+TEST_CASE(decal_masks_match_cpu_on_gpu)
 {
     shader_graph graph;
     shader_graph_init(&graph);
@@ -44,7 +49,7 @@ static void decal_gpu()
     graph.output[0] = mask;
     shader_error error = { 0 };
     char *function = shader_graph_glsl_named(&graph, "decal_test", &error);
-    assert(function);
+    REQUIRE(function);
     const char *body =
         "layout(local_size_x=1,local_size_y=1,local_size_z=1) in;\n"
         "layout(set=1,binding=0,rgba32f) uniform image2D result_image;\n"
@@ -62,18 +67,17 @@ static void decal_gpu()
         "s.uv_from_world[0]=vec3(1,0,0);s.uv_from_world[1]=vec3(0,0,1);"
         "decal_test(s,p,result);imageStore(result_image,ivec2(0),result[0]);}"
         "\n";
-    char *source = malloc(strlen(function) + strlen(body) + 1);
-    assert(source);
+    char *source = xmalloc(strlen(function) + strlen(body) + 1);
     strcpy(source, function);
     strcat(source, body);
     CF_ComputeShader shader = cf_make_compute_shader_from_source(source);
-    assert(shader.id);
+    REQUIRE(shader.id);
     CF_Material material = cf_make_material();
     CF_CanvasParams params = cf_canvas_defaults(1, 1);
     params.target.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
     params.target.usage |= CF_TEXTURE_USAGE_COMPUTE_STORAGE_WRITE_BIT;
     CF_Canvas canvas = cf_make_canvas(params);
-    assert(canvas.id);
+    REQUIRE(canvas.id);
     CF_Texture texture = cf_canvas_get_target(canvas);
     CF_ComputeDispatch dispatch = cf_compute_dispatch_defaults(1, 1, 1);
     dispatch.rw_textures = &texture;
@@ -96,25 +100,14 @@ static void decal_gpu()
         for (int axis = 0; axis < 3; axis++) {
             sample.part_from_world[axis][axis] = 1;
         }
-        assert(shader_graph_eval_outputs(&graph, &sample, values, expected, &error));
-        assert(fabsf(expected[0][0] - cases[i][4]) < .0001f);
+        REQUIRE(shader_graph_eval_outputs(&graph, &sample, values, expected, &error));
+        REQUIRE(fabsf(expected[0][0] - cases[i][4]) < .0001f);
         cf_app_update(NULL);
         cf_material_set_uniform_cs(material, "values", values, CF_UNIFORM_TYPE_FLOAT4, 32);
         cf_dispatch_compute(shader, material, dispatch);
         cf_app_draw_onto_screen(false);
-        CF_Readback readback = cf_canvas_readback(canvas);
-        assert(readback.id);
-        uint64_t start = cf_get_ticks();
-        while (!cf_readback_ready(readback)) {
-            assert(cf_get_ticks() - start < cf_get_tick_frequency() * 10);
-            cf_sleep(1);
-        }
-        assert(cf_readback_data(readback, actual, sizeof actual) == sizeof actual);
-        cf_destroy_readback(readback);
-        if (!isfinite(actual[0]) || fabsf(actual[0] - cases[i][4]) > .001f) {
-            fprintf(stderr, "Decal GPU case %d: %.9g expected %.9g\n", i, actual[0], cases[i][4]);
-            assert(false);
-        }
+        REQUIRE(test_read_canvas(canvas, actual, sizeof actual));
+        REQUIRE(isfinite(actual[0]) && fabsf(actual[0] - cases[i][4]) <= .001f);
     }
     cf_destroy_canvas(canvas);
     cf_destroy_material(material);
@@ -122,28 +115,16 @@ static void decal_gpu()
     shader_graph_free(&graph);
     free(source);
     free(function);
+    return true;
 }
-int test_shader_detail_gpu(const char *program)
+void test_shader_parity()
 {
-    CF_Result result = cf_make_app(
-        "Surface detail GPU regression",
-        0,
-        0,
-        0,
-        32,
-        32,
-        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
-        program
-    );
-    if (cf_is_error(result)) {
-        fprintf(stderr, "%s\n", result.details);
-        return 1;
-    }
-    app_scene_renderer_initialize();
-    decal_gpu();
-    int failed = test_shader_image_routes();
-    failed |= test_shader_program_gpu();
+    test_open_hidden_app("shader-parity", 32, 32);
+    RUN_TEST_CASE(decal_masks_match_cpu_on_gpu);
+    test_shader_effects_gpu();
+    test_shader_image_gpu();
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+    test_model_sampled_gpu();
+#endif
     cf_destroy_app();
-    puts("Surface detail GPU PASS: hard/soft decal boundaries and facing cutoff");
-    return failed;
 }

@@ -1,4 +1,5 @@
 #include "platform/cute.h"
+#include "render/scene3d.h"
 #include "render/viewport.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "ui/rml.h"
@@ -15,6 +16,93 @@ enum
 };
 static rml_backend *ui_backend;
 static CF_Canvas ui_target, ui_texture_view;
+static engine_viewport *camera_viewport;
+
+static void cleanup_camera()
+{
+    engine_viewport_free(camera_viewport);
+    camera_viewport = NULL;
+}
+
+TEST_CASE(explicit_camera_preserves_authored_edges_across_aspects)
+{
+    camera_viewport = engine_viewport_new(UI_SIDE, UI_SIDE);
+    REQUIRE(camera_viewport);
+    const int sizes[][2] = { { 640, 360 }, { 300, 600 }, { 1200, 500 }, { 640, 360 } };
+    const float fovs[] = { 0, CF_PI / 3 };
+    for (int lens = 0; lens < 2; lens++) {
+        engine_viewport_view view = {
+            .width = 16,
+            .height = 9,
+            .lens = { .eye = { 7, 4, 20 },
+                      .forward = { 0, 0, -1 },
+                      .up = { 0, 1, 0 },
+                      .fov = fovs[lens],
+                      .near_clip = 0.1f,
+                      .far_clip = 100 },
+        };
+        engine_viewport_set_view(camera_viewport, &view);
+        float fov = view.lens.fov > 0 ? view.lens.fov : 35 * CF_PI / 180;
+        float half_height = 10 * tanf(fov / 2);
+        for (int size = 0; size < 4; size++) {
+            REQUIRE(
+                !engine_viewport_request_resize(camera_viewport, sizes[size][0], sizes[size][1])
+            );
+            render_scene3d_camera camera;
+            engine_viewport_get_camera3d(camera_viewport, &camera);
+            REQUIRE(cf_len_v3(cf_sub_v3(camera.eye, view.lens.eye)) < 0.00001f);
+            for (int corner = 0; corner < 4; corner++) {
+                CF_V3 point = {
+                    view.lens.eye.x + (corner & 1 ? 1 : -1) * half_height *
+                                          view.width / view.height,
+                    view.lens.eye.y + (corner & 2 ? 1 : -1) * half_height,
+                    view.lens.eye.z - 10,
+                };
+                CF_V3 projected = render_scene3d_project(&camera, point);
+                REQUIRE(fabsf(projected.x) <= 1.00001f && fabsf(projected.y) <= 1.00001f);
+                REQUIRE(fmaxf(fabsf(projected.x), fabsf(projected.y)) > 0.9999f);
+                CF_Ray3 ray = render_scene3d_ray(
+                    &camera,
+                    (CF_V2){ projected.x, projected.y }
+                );
+                REQUIRE(cf_len_v3(cf_cross_v3(cf_sub_v3(point, ray.p), ray.d)) < 0.001f);
+            }
+            engine_viewport_view retained;
+            engine_viewport_get_view(camera_viewport, &retained);
+            REQUIRE(retained.lens.fov == view.lens.fov);
+            engine_viewport_camera fitted;
+            engine_viewport_get_camera(camera_viewport, &fitted);
+            REQUIRE(
+                fitted.lens.near_clip == view.lens.near_clip &&
+                fitted.lens.far_clip == view.lens.far_clip
+            );
+        }
+    }
+    return true;
+}
+
+TEST_CASE(fitted_camera_keeps_a_valid_wide_angle)
+{
+    camera_viewport = engine_viewport_new(UI_SIDE, UI_SIDE);
+    REQUIRE(camera_viewport);
+    engine_viewport_set_view(
+        camera_viewport,
+        &(engine_viewport_view){
+            .width = 16,
+            .height = 9,
+            .lens = { .forward = { 0, 0, -1 }, .up = { 0, 1, 0 }, .fov = nextafterf(CF_PI, 0) },
+        }
+    );
+    engine_viewport_camera fitted;
+    engine_viewport_get_camera(camera_viewport, &fitted);
+    REQUIRE(fitted.lens.fov > 0 && fitted.lens.fov < CF_PI);
+    render_scene3d_camera camera;
+    engine_viewport_get_camera3d(camera_viewport, &camera);
+    for (int i = 0; i < 16; i++) {
+        REQUIRE(isfinite(camera.projection.elements[i]));
+    }
+    return true;
+}
 
 static void cleanup_ui()
 {
@@ -247,6 +335,9 @@ void test_render_viewport_resize()
     RUN_TEST_CASE(first_request_replaces_the_placeholder_at_once);
     RUN_TEST_CASE(later_sizes_wait_until_held_for_two_draws);
     RUN_TEST_CASE(a_matching_first_request_keeps_later_sizes_waiting);
+    pu_setup(NULL, cleanup_camera);
+    RUN_TEST_CASE(explicit_camera_preserves_authored_edges_across_aspects);
+    RUN_TEST_CASE(fitted_camera_keeps_a_valid_wide_angle);
     pu_setup(NULL, cleanup_ui);
     RUN_TEST_CASE(transparent_ui_presents_source_over_and_exports_straight_alpha);
     pu_clear_setup();

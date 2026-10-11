@@ -440,6 +440,32 @@ TEST_CASE(prepared_debug_source_points_write_after_analysis_retirement)
     return true;
 }
 
+TEST_CASE(prepared_arithmetic_generation_keeps_transient_verifier_storage_separate)
+{
+    catalog = (script_catalog){ .capabilities = capabilities, .capability_count = 2 };
+    char text[8192] = "behavior Arithmetic { count:int=0;"
+                      "on Tick { count=count";
+    size_t used = strlen(text);
+    for (int i = 1; i <= PREPARED_TEST_ARITHMETIC_STEPS; i++) {
+        int written = snprintf(text + used, sizeof text - used, "+%d", i);
+        REQUIRE(written > 0 && (size_t)written < sizeof text - used);
+        used += (size_t)written;
+    }
+    REQUIRE(used + 4 <= sizeof text);
+    memcpy(text + used, ";}}", 4);
+    REQUIRE(compile_source(text));
+    REQUIRE(save("arithmetic.prepared"));
+    char path[PREPARED_TEST_MAX_PATH];
+    int n = snprintf(path, sizeof path, "%s/arithmetic-state.txt", directory);
+    REQUIRE(n > 0 && n < (int)sizeof path);
+    FILE *file = fopen(path, "w");
+    REQUIRE(file);
+    int written = fprintf(file, "%llu\n", (unsigned long long)state_id);
+    bool closed = fclose(file) == 0;
+    REQUIRE(written > 0 && closed);
+    return true;
+}
+
 void test_language_prepared_write(const char *path)
 {
     directory = path;
@@ -449,5 +475,6 @@ void test_language_prepared_write(const char *path)
     RUN_TEST_CASE(prepared_state_action_generations_write_after_catalog_retirement);
     RUN_TEST_CASE(prepared_field_observer_generation_preserves_authoritative_schema);
     RUN_TEST_CASE(prepared_debug_source_points_write_after_analysis_retirement);
+    RUN_TEST_CASE(prepared_arithmetic_generation_keeps_transient_verifier_storage_separate);
     pu_clear_setup();
 }

@@ -31,6 +31,7 @@ static const ecs_component_desc prepared_counter_component = {
 };
 enum
 {
+    PREPARED_TEST_ARITHMETIC_STEPS = 192,
     PREPARED_TEST_MAX_BYTES = 512 * 1024,
     PREPARED_TEST_MAX_PATH = 4096
 };

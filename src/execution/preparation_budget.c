@@ -26,8 +26,9 @@ static size_t bank(size_t n, size_t width)
     }
     return sum(sizeof(dyna_hdr), product(n < 16 ? 16 : n * 2, width));
 }
-size_t behavior_function_preparation_bytes(const behavior_function *f)
+size_t behavior_function_preparation_bytes(const behavior_function *f, size_t *scratch_bytes)
 {
+    *scratch_bytes = SIZE_MAX;
     size_t count = acount(f->instructions), slots = acount(f->slots);
     size_t locals = acount(f->locals), data = acount(f->data_values);
     size_t values = sum(slots, locals), pauses = 0;
@@ -98,7 +99,8 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
         }
         scratch = sum(scratch, product((size_t)f->host_calls[i].outcome_count, sizeof(uint64_t)));
     }
-    return sum(retained, scratch);
+    *scratch_bytes = scratch;
+    return retained;
 }
 
 static void *copy_bytes(arena *storage, const void *source, size_t bytes, size_t budget)

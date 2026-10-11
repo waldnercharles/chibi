@@ -70,6 +70,7 @@ execution_module *execution_prepared_read(
 );
 /* Shared canonical decoded-storage budget. Decode allocations are reserved
  * before growth; finalizer liveness/suspension storage also has a preflight.
+ * Temporary verifier storage has a separate bounded preflight.
  * Success charges the finalized module's actual owned canonical capacity;
  * failure leaves remaining unchanged. Imports are charged once by the owning
  * package, backend compiler/code caches and live instance banks separately. */

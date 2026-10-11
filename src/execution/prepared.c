@@ -802,24 +802,29 @@ bool execution_prepared_write(
 static bool preparation_budget(prepared_context *c)
 {
     execution_wire *w = &c->wire;
-    size_t bytes = execution_module_preparation_bytes(c->plan);
-    size_t effects = execution_module_effects_bytes(c->plan);
-    if (effects > SIZE_MAX - bytes) {
-        w->error = "prepared effects exceed allocation budget";
-        return false;
-    }
-    bytes += effects;
-    if (bytes == SIZE_MAX) {
+    size_t scratch = execution_module_preparation_bytes(c->plan);
+    size_t bytes = execution_module_effects_bytes(c->plan);
+    if (scratch == SIZE_MAX || bytes == SIZE_MAX) {
         w->error = "prepared module closure exceeds preparation limit";
         return false;
     }
     for (int i = 0; i < acount(c->functions); i++) {
-        size_t next = behavior_function_preparation_bytes(c->functions[i]);
+        size_t temporary;
+        size_t next = behavior_function_preparation_bytes(c->functions[i], &temporary);
         if (next > SIZE_MAX - bytes) {
             w->error = "prepared finalization count exceeds budget";
             return false;
         }
         bytes += next;
+        /* Definitions and module publication run sequentially. Their temporary
+         * verifier banks do not consume the retained artifact budget. */
+        if (temporary > scratch) {
+            scratch = temporary;
+        }
+    }
+    if (scratch > EXECUTION_WIRE_MAX_BYTES) {
+        w->error = "prepared scratch storage exceeds allocation budget";
+        return false;
     }
     size_t services = 1;
     for (int i = 0; i < acount(c->functions); i++) {

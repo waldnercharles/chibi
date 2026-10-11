@@ -1,11 +1,12 @@
 #pragma once
 #include "execution/definition.h"
 #include "execution/module_builder.h"
-/* Additional peak allocation bound for decoded verification/finalization.
+/* Additional retained allocation bound for decoded verification/finalization.
  * Decoded payloads stay owned; no optimizer or payload snapshot is run.
+ * Transient verification/finalization storage is reported separately in scratch.
  * Installed descriptor copies use a separate bounded arena allocation path.
  * SIZE_MAX reports an unsupported count or overflow. */
-size_t behavior_function_preparation_bytes(const behavior_function *);
+size_t behavior_function_preparation_bytes(const behavior_function *, size_t *scratch);
 bool behavior_function_own_decoded(behavior_function *, size_t arena_budget);
 
 /* Allocation-free closure walk bounds publication scratch before allocation.

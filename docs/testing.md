@@ -594,7 +594,7 @@ steep planes. The surface
 gather pass alone must take each quadrant's light, find crests past gaps and
 stay dark without light in reach, and surface gather light must restart when
 the view turns. Its cases share one HRC, since a new one compiles all of HRC's
-shaders. It passes 2174 assertions in 12.4 seconds, 22.5 with an empty shader
+shaders. It passes 2276 assertions in 11.9 seconds, 20.6 with an empty shader
 cache.
 `material-sampling` draws shapes into the material raster alone in a hidden
 65 x 49 app: small circles must emit their area wherever they land on the pixel

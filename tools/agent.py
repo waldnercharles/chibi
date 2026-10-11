@@ -47,6 +47,7 @@ RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize':
                     '--radiance': 'radiance', '--radiance-depth': 'radiance-depth',
                     '--material-sampling': 'material-sampling',
                     '--scene2d': 'scene2d', '--scene3d': 'scene3d', '--scene3d-gles': 'scene3d-gles',
+                    '--scene3d-gi': 'scene3d-gi', '--scene3d-gi-gles': 'scene3d-gi-gles',
                     '--material-ramps': 'material-ramps', '--radiance-surface': 'radiance-surface',
                     '--radiance-horizons4': 'radiance-horizons4', '--radiance-horizons8': 'radiance-horizons8',
                     '--material-pixels': 'material-pixels'}
@@ -487,7 +488,7 @@ def main():
             if not Path(command[0]).is_file():
                 return report('blocked', 'render_tools_not_built', selector=args.selector,
                               build_command=f'make build BUILD_DIR={args.build_dir} BUILD_TARGET=test_tools')
-            if args.selector == '--scene3d-gles':
+            if args.selector.endswith('-gles'):
                 # GLES needs a display, and Xvfb provides one on Linux.
                 if not shutil.which('xvfb-run'):
                     return report('blocked', 'gles_requires_xvfb_run', selector=args.selector)

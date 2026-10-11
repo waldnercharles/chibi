@@ -37,6 +37,10 @@ bool test_register_view_mask(const char *name);
 /* An unlit masked material whose Opacity is NaN over its surface, as the
  * fraction of U scaled past the float limit is, with an Alpha Cutoff of 0.5. */
 bool test_register_unknown_opacity(const char *name);
+/* A lit material whose base color sums `count` images, each its own
+ * content/images/test-N.png of one white pixel, and with `ramp`, a white
+ * Color Ramp. */
+bool test_register_images(const char *name, int count, bool ramp);
 /* A lit .6 gray material for 2D relief. Its Normal leans by `tilt` sideways
  * (x) and up (z), its roughness is constant, and its Height is `height` world
  * units plus `slope` times world x. */

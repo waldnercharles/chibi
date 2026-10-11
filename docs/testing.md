@@ -47,9 +47,10 @@ that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 `radiance`, `radiance-depth`, `radiance-surface`, `radiance-horizons4`,
 `radiance-horizons8`, `material-pixels`, `material-sampling`, `scene2d`,
-`scene3d`, `scene3d-gles` and `material-ramps` render through a hidden window,
-which needs a display and a GPU driver the CI job does not set up, so they stay
-out of the group; run them with `python3 tools/test_policy.py tool <name>`.
+`scene3d`, `scene3d-gles`, `scene3d-gi`, `scene3d-gi-gles` and `material-ramps`
+render through a hidden window, which needs a display and a GPU driver the CI
+job does not set up, so they stay out of the group; run them with
+`python3 tools/test_policy.py tool <name>`.
 
 CI runs the build, both groups and `make test-tools` on Linux and macOS. On
 Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
@@ -661,12 +662,13 @@ lie past the 4 KB of a uniform block SDL's Vulkan backend exposes. That ramp
 must show its color through a 2D draw shader and in the material raster's
 scene target. The third case only compiles every program kind with the table,
 which cannot catch a binding collision, and the fourth counts the ramp table
-among the samplers a raster batch binds, which GLES3 limits to 16, and among
-those of a 3D shadow program, which binds none of the lit pass's maps. Build and
-run it like `interior-border` with `AGENT_SELECTOR=--material-ramps`; it needs
-the material graphs of the main build. It passes 36 assertions in 2.5 seconds under
-ASan/UBSan on Vulkan llvmpipe, whose worker threads leak 112 bytes, so it runs
-with `detect_leaks=0`.
+among the samplers a raster batch binds, which GLES3 limits to 16, among those
+of a 3D shadow program, which binds none of the lit pass's maps, and among
+those of the lit pass with global illumination's probes and without them.
+Build and run it like `interior-border` with `AGENT_SELECTOR=--material-ramps`;
+it needs the material graphs of the main build. It passes 43 assertions in 2.2
+seconds under ASan/UBSan on Vulkan llvmpipe, whose worker threads leak 112
+bytes, so it runs with `detect_leaks=0`.
 `graph-model` selects two independently reviewed public consumer cases for nested
 value copies, opaque artifact replacement/destruction and topology mutation
 rules. They pass 25 assertions in 0.355 seconds under ASan/UBSan. The consumer

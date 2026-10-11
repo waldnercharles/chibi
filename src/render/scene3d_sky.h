@@ -23,6 +23,12 @@ bool render_scene3d_sky_prepare(
     char *error,
     size_t size
 );
+/* The sky's brightness, zero without a sky; its specular cube's last mip;
+ * and the cosine and sine of its turn. */
+CF_V4 render_scene3d_sky_light(const render_scene3d_sky *sky);
+/* The nine spherical harmonics of the sky's irradiance, before its turn and
+ * brightness. */
+CF_V4 *render_scene3d_sky_irradiance(render_scene3d_sky *sky);
 /* Sets the sky light uniforms and textures every 3D surface shader reads,
  * whether a sky shows or not; unbind clears the textures. */
 void render_scene3d_sky_bind(render_scene3d_sky *sky);

@@ -37,6 +37,8 @@ NATIVE = {
     ('--scene2d',): 'Reviewed hidden 64x64 app: 2D scene renderer drawing a scene without lighting settings unlit, default lighting keeping materials visible, and the unlit view or removed settings stopping lighting, normal-mapped sprites facing toward and away from a light with and without a Material, and sprite maps that are missing or the wrong size and relief that is not finite, with readback; GPU; docs/testing.md',
     ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky, ramps, imported meshes and their normal maps, imported glTF Standard materials and tangent frames, Transform3D placement and mirroring, occlusion, ambient occlusion, alpha modes and masked shadows with readback; GPU; docs/rendering-3d.md',
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
+    ('--scene3d-gi',): 'Reviewed hidden 64x64 app: 3D global illumination cases for bounced and emitted light, open ground, bulbs and frames around lights, mesh boxes, the probes\' fallback, the BVH, vast solids, light over frames and refits, limits, pass timing and a 16-sampler material, with readback; GPU; docs/rendering-3d.md',
+    ('--scene3d-gi-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D global illumination cases; GPU, Linux; docs/rendering-3d.md',
     ('--material-ramps',): 'Reviewed hidden 64x64 app: four color ramp table cases through 2D and material raster shaders; GPU; docs/testing.md',
     ('--radiance-surface',): 'Reviewed hidden 128x128 app: HRC silhouettes, relief facing and below the light, world-space surface depth, directional surface colors in every shadow mode, and surface light history, with readback; GPU; docs/testing.md',
     ('--radiance-horizons4',): 'Reviewed hidden 128x128 app: four-direction horizons following moving relief, their hierarchy against the fine scan, and their cache against fresh horizons over 15 stages for 8 option sets, with readback; GPU; docs/testing.md',
@@ -144,6 +146,10 @@ TOOLS = {
     # The same renders on GLES, the WebGL 2 fallback's backend. GLES needs a display, so the
     # agent runs it under xvfb-run; Linux only.
     'scene3d-gles': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-gles'],
+    # Hidden-app 64x64 renders of global illumination, apart from the rest so each selector
+    # compiles its shaders within the time limit; then the same on GLES under xvfb-run.
+    'scene3d-gi': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-gi'],
+    'scene3d-gi-gles': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-gi-gles'],
     # Four reviewed hidden-app 64x64 cases: a ramp past 4 KB of the ramp table through a 2D draw
     # shader and the material raster, every program kind compiling the table, and the table
     # counted among a raster batch's samplers.
@@ -520,7 +526,7 @@ def main():
         if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
                             'studio-graph-visibility', 'interior-border', 'viewport-resize', 'sdf-visibility',
                             'radiance', 'radiance-depth', 'material-sampling', 'scene2d', 'scene3d',
-                            'scene3d-gles',
+                            'scene3d-gles', 'scene3d-gi', 'scene3d-gi-gles',
                             'material-ramps', 'radiance-surface', 'radiance-horizons4',
                             'radiance-horizons8', 'material-pixels'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),

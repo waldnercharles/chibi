@@ -31,7 +31,7 @@ struct render_scene3d_sky
     CF_Texture specular; /* The sky prefiltered for one roughness per mip. */
     CF_Canvas faces[SPECULAR_MIPS][6];
     CF_Texture split_sum;
-    float irradiance[9][4];
+    CF_V4 irradiance[9];
     uint64_t identity; /* The resident sky the cube holds. */
     bool shown;
     float rotation; /* Radians about +y. */
@@ -194,9 +194,10 @@ static void make_cube(render_scene3d_sky *sky, const render_sky *source)
     float coefficients[9][3];
     render_sky_irradiance(source, coefficients);
     for (int i = 0; i < 9; i++) {
-        for (int c = 0; c < 3; c++) {
-            sky->irradiance[i][c] = coefficients[i][c];
-        }
+        sky->irradiance[i] = (CF_V4){ coefficients[i][0],
+                                      coefficients[i][1],
+                                      coefficients[i][2],
+                                      0 };
     }
     prefilter(sky, edge);
     sky->identity = source->identity;
@@ -242,14 +243,22 @@ bool render_scene3d_sky_prepare(
     return true;
 }
 
-void render_scene3d_sky_bind(render_scene3d_sky *sky)
+CF_V4 render_scene3d_sky_light(const render_scene3d_sky *sky)
 {
-    /* Brightness, zero without a sky; the specular cube's last mip; and the
-     * cosine and sine of the sky's turn. */
-    CF_V4 light = { sky->shown ? sky->scale : 0,
+    return (CF_V4){ sky->shown ? sky->scale : 0,
                     SPECULAR_MIPS - 1,
                     cosf(sky->rotation),
                     sinf(sky->rotation) };
+}
+
+CF_V4 *render_scene3d_sky_irradiance(render_scene3d_sky *sky)
+{
+    return sky->irradiance;
+}
+
+void render_scene3d_sky_bind(render_scene3d_sky *sky)
+{
+    CF_V4 light = render_scene3d_sky_light(sky);
     cf_draw3d_set_uniform("scene_sky_light", &light, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_sky_irradiance", sky->irradiance, CF_UNIFORM_TYPE_FLOAT4, 9);
     cf_draw3d_set_texture("scene_sky_specular", sky->specular);

@@ -1,0 +1,72 @@
+// What the probes' trace and update passes share: the atlas of light the
+// probes held last frame and their grid, this frame's probes, how their rays
+// are turned, and the light that rays find. Each pass declares the rest it
+// reads.
+layout(location = 0) out vec4 result;
+layout(set = 2, binding = 0) uniform sampler2D scene_gi;
+layout(set = 3, binding = 0) uniform uniform_block {
+    vec4 scene_gi_grid[3];
+    // This frame's probes, which differ from the atlas's where the grid was
+    // refit: the first one and the spacing between them, and their count
+    // along each axis and the distance their depths are measured in.
+    vec4 gi_probes[2];
+    // This frame's turn of every probe's rays, as matrix columns.
+    vec4 gi_turn[3];
+    // Rays per probe, the nodes of the solids' BVH, the farthest a ray
+    // reaches, and nothing.
+    vec4 gi_trace;
+    // The share of the atlas's irradiance and of its depths that each texel
+    // keeps, 1 where the probes moved since the atlas's, and nothing.
+    vec4 gi_keep;
+    vec4 gi_sun_direction;
+    vec4 gi_sun_color;
+    vec4 gi_ambient_sky;
+    vec4 gi_ambient_ground;
+    vec4 gi_sky_light;
+    vec4 gi_sky_irradiance[9];
+    // The lights, how many of the first cast shadows, and whether the sun
+    // does.
+    vec4 gi_light_count;
+    vec4 gi_light_positions[32];
+    vec4 gi_light_colors[32];
+    vec4 gi_light_cones[32];
+};
+
+#include "scene3d_gi.shd"
+
+// The rays canvas's width: each row holds the rays of as many probes as fit,
+// so that it stays within the 4096 texels every backend allows. Matches
+// scene3d_gi.c's RAY_ROW.
+const int GI_RAY_ROW = 4096;
+
+ivec3 gi_probe_counts()
+{
+    return ivec3(gi_probes[1].xyz);
+}
+
+// Where this frame's probe stands.
+vec3 gi_probe_at(int probe)
+{
+    ivec3 counts = gi_probe_counts();
+    ivec3 cell = ivec3(probe % counts.x, probe / counts.x % counts.y, probe / (counts.x * counts.y));
+    return gi_probes[0].xyz + vec3(cell) * gi_probes[0].w;
+}
+
+// The rays canvas texel of a probe's ray.
+ivec2 gi_ray_texel(int probe, int ray)
+{
+    int rays = int(gi_trace.x), probes = GI_RAY_ROW / rays;
+    return ivec2(probe % probes * rays + ray, probe / probes);
+}
+
+// Ray i of each probe's rays: spherical Fibonacci points, evenly spread over
+// the sphere, turned by this frame's turn.
+vec3 gi_ray(int i)
+{
+    float count = gi_trace.x;
+    float phi = 6.283185307179586 * fract(float(i) * 0.6180339887498949);
+    float z = 1.0 - (2.0 * float(i) + 1.0) / count;
+    float r = sqrt(max(0.0, 1.0 - z * z));
+    vec3 d = vec3(r * cos(phi), r * sin(phi), z);
+    return mat3(gi_turn[0].xyz, gi_turn[1].xyz, gi_turn[2].xyz) * d;
+}

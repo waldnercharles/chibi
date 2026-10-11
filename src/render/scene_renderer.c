@@ -346,7 +346,9 @@ static bool scene3d_finish(app_scene_renderer *renderer, bool submitted)
     bool processed = false;
     if (submitted) {
         cf_render_to(render_scene3d_post_target(renderer->post), true);
+        render_gpu_timing_mark("3D surfaces");
         processed = render_scene3d_post_process(renderer->post, renderer->time);
+        render_gpu_timing_mark("3D post-processing");
         if (!processed) {
             snprintf(
                 renderer->error,
@@ -389,6 +391,7 @@ bool app_scene_renderer_draw3d(
         return false;
     }
     render_scene3d_set_size(renderer->scene3d, width, height);
+    render_gpu_timing_start();
     bool drawn = scene3d_finish(
         renderer,
         render_scene3d_draw(

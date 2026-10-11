@@ -149,38 +149,16 @@ bool render_scene3d_occlusion_active(const render_scene3d_occlusion *occlusion)
     return occlusion->quality != GAME_OCCLUSION_OFF;
 }
 
-static CF_Shader make_shader(const char *fragment_name, char *error, size_t size)
-{
-    char *vertex = render_shader_source("hrc/pass.vert");
-    char *fragment = render_shader_source(fragment_name);
-    CF_Shader shader = { 0 };
-    if (vertex && fragment) {
-        shader = cf_make_shader_from_source(vertex, fragment);
-    }
-    if (!shader.id) {
-        snprintf(
-            error,
-            size,
-            "Occlusion shader %s: %s",
-            fragment_name,
-            vertex && fragment ? cf_shader_compile_error() : "cannot read its sources"
-        );
-    }
-    free(vertex);
-    free(fragment);
-    return shader;
-}
-
 static bool load_passes(render_scene3d_occlusion *occlusion, char *error, size_t size)
 {
     if (occlusion->search.id) {
         return true;
     }
-    CF_Shader search = make_shader("scene3d_occlusion.frag", error, size);
+    CF_Shader search = render_pass_shader("scene3d_occlusion.frag", error, size);
     if (!search.id) {
         return false;
     }
-    CF_Shader blur = make_shader("scene3d_occlusion_blur.frag", error, size);
+    CF_Shader blur = render_pass_shader("scene3d_occlusion_blur.frag", error, size);
     if (!blur.id) {
         cf_destroy_shader(search);
         return false;

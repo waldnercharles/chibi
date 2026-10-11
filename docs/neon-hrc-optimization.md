@@ -8,8 +8,8 @@
 
 This log predates the 2026-09-28 field redesign. In its measurements, `scale`
 is the RGB grid. `luminance_scale` of 2, 4 or 8 times `scale` is now
-`resolution` with `color_resolution` Half, Quarter or Eighth, and
-`reconstruction_scale: 0.5` is `gather_resolution: Half`. See
+`resolution` with the lab's `color_resolution` Half, Quarter or Eighth, and
+`reconstruction_scale: 0.5` is the lab's `gather_resolution: Half`. See
 [the HRC lab](hrc-lab.md#resolution-settings).
 
 The first retained HRC optimization packs angular radiance into four bytes per

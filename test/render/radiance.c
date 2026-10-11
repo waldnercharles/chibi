@@ -222,18 +222,15 @@ TEST_CASE(lighting_outside_hrc_ranges_is_fitted_and_noted)
     REQUIRE(!notes[0] && fitted.resolution == defaults.resolution);
     GameHRC2D wild = defaults;
     wild.resolution = 2;
-    wild.min_resolution = 0;
-    wild.color_resolution = (GameHRCColor)7;
-    wild.gather_resolution = (GameHRCGather)-1;
-    wild.trace_levels = 9;
+    wild.surface_mode = (GameHRCSurfaceMode)7;
+    wild.surface_depth_quality = (GameHRCDepthQuality)-1;
     wild.bloom = 2;
     wild.exposure = NAN;
     fitted = render_radiance_normalize(wild, notes, sizeof notes);
-    REQUIRE(fitted.resolution == 1 && fitted.min_resolution == .1f);
-    REQUIRE(fitted.color_resolution == GAME_HRC_COLOR_EIGHTH);
-    REQUIRE(fitted.gather_resolution == GAME_HRC_GATHER_FULL);
-    REQUIRE(fitted.trace_levels == 5 && fitted.bloom == 1 && fitted.exposure == 0);
-    REQUIRE(strstr(notes, "resolution 2 -> 1") && strstr(notes, "trace_levels 9 -> 5"));
+    REQUIRE(fitted.resolution == 1 && fitted.surface_mode == GAME_HRC_SURFACE_DEPTH);
+    REQUIRE(fitted.surface_depth_quality == GAME_HRC_DEPTH_LOW);
+    REQUIRE(fitted.bloom == 1 && fitted.exposure == 0);
+    REQUIRE(strstr(notes, "resolution 2 -> 1") && strstr(notes, "surface_mode 7 -> 2"));
     render_radiance_normalize(fitted, notes, sizeof notes);
     REQUIRE(!notes[0]);
     return true;
@@ -262,7 +259,9 @@ static void setup()
     assert(raster && radiance && canvas.id);
     assert(render_material_raster_resize(raster, SIDE, SIDE));
     assert(render_radiance_resize(radiance, SIDE, SIDE));
-    assert(render_radiance_set_lighting(radiance, test_reference_lighting()));
+    assert(
+        render_radiance_set_lighting(radiance, test_reference_lighting(), render_radiance_lab_defaults())
+    );
 }
 
 static void teardown()
@@ -493,7 +492,11 @@ TEST_CASE(reused_capacity_matches_a_fresh_grid)
         render_radiance *shared = radiance;
         radiance = render_radiance_new();
         bool fresh = radiance &&
-                     render_radiance_set_lighting(radiance, test_reference_lighting()) &&
+                     render_radiance_set_lighting(
+                         radiance,
+                         test_reference_lighting(),
+                         render_radiance_lab_defaults()
+                     ) &&
                      render_radiance_set_settings(radiance, settings) &&
                      render_radiance_resize(radiance, 64, 64) &&
                      solve(&light, 1, 64, 4);
@@ -544,13 +547,14 @@ TEST_CASE(split_luminance_stays_close_to_full_color)
     render_material_entity open[] = { test_emitter(), receiver(.2f) };
     render_material_entity blocked[] = { test_emitter(), test_wall(), receiver(.2f) };
     GameHRC2D lighting = clear_lighting();
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    render_radiance_lab lab = render_radiance_lab_defaults();
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     REQUIRE(solve(open, 2, SIDE, 8));
     double full_light = receiver_light();
     memcpy(full, pixels, sizeof full);
     for (int shift = 1; shift <= 2; shift++) {
-        lighting.color_resolution = (GameHRCColor)shift;
-        REQUIRE(render_radiance_set_lighting(radiance, lighting));
+        lab.color_resolution = (render_radiance_color)shift;
+        REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
         REQUIRE(render_radiance_get_settings(radiance).scale == 1.f / (float)(1 << shift));
         REQUIRE(solve(open, 2, SIDE, 8));
         double split_light = receiver_light();
@@ -574,11 +578,11 @@ TEST_CASE(fractional_cells_absorb_as_whole_ones)
     GameHRC2D lighting = clear_lighting();
     lighting.feedback = false;
     lighting.resolution = .5f;
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, render_radiance_lab_defaults()));
     REQUIRE(solve(scene, 3, SIDE, 2));
     double whole = receiver_light();
     lighting.resolution = .52f;
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, render_radiance_lab_defaults()));
     REQUIRE(solve(scene, 3, SIDE, 2));
     REQUIRE(fabs(receiver_light() - whole) < whole * .03);
     return true;
@@ -606,16 +610,18 @@ TEST_CASE(reduced_reconstruction_keeps_sparks_and_thin_walls)
     render_material_entity open[] = { spark(), receiver(0) };
     render_material_entity blocked[] = { spark(), thin, receiver(0) };
     GameHRC2D lighting = clear_lighting();
+    render_radiance_lab lab = render_radiance_lab_defaults();
     lighting.feedback = false;
     double full_gather = 0;
     for (int split = 0; split <= 1; split++) {
         for (int half = 0; half <= 1; half++) {
             /* Color at a half either way; split solves brightness at full. */
             lighting.resolution = split ? 1 : .5f;
-            lighting.color_resolution = split ? GAME_HRC_COLOR_HALF : GAME_HRC_COLOR_FULL;
-            lighting.gather_resolution = half ? GAME_HRC_GATHER_HALF
-                                              : GAME_HRC_GATHER_FULL;
-            REQUIRE(render_radiance_set_lighting(radiance, lighting));
+            lab.color_resolution = split ? RENDER_RADIANCE_COLOR_HALF
+                                         : RENDER_RADIANCE_COLOR_FULL;
+            lab.gather_resolution = half ? RENDER_RADIANCE_GATHER_HALF
+                                         : RENDER_RADIANCE_GATHER_FULL;
+            REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
             REQUIRE(solve(open, 2, SIDE, 4));
             double lit = receiver_light();
             REQUIRE(solve(blocked, 3, SIDE, 4));
@@ -639,19 +645,20 @@ TEST_CASE(reduced_reconstruction_keeps_sparks_and_thin_walls)
 TEST_CASE(fitted_lighting_applies_to_a_live_renderer)
 {
     char notes[256];
+    render_radiance_lab lab = render_radiance_lab_defaults();
     GameHRC2D wild = game_hrc2d_defaults();
     wild.resolution = 2;
-    wild.trace_levels = 9;
+    wild.surface_mode = (GameHRCSurfaceMode)9;
     wild.exposure = NAN;
-    REQUIRE(!render_radiance_set_lighting(radiance, wild));
+    REQUIRE(!render_radiance_set_lighting(radiance, wild, lab));
     REQUIRE(
-        render_radiance_set_lighting(radiance, render_radiance_normalize(wild, notes, sizeof notes))
+        render_radiance_set_lighting(radiance, render_radiance_normalize(wild, notes, sizeof notes), lab)
     );
     GameHRC2D coarse = game_hrc2d_defaults();
     coarse.adaptive = false;
     coarse.resolution = .1f;
-    coarse.color_resolution = GAME_HRC_COLOR_EIGHTH;
-    REQUIRE(render_radiance_set_lighting(radiance, coarse));
+    lab.color_resolution = RENDER_RADIANCE_COLOR_EIGHTH;
+    REQUIRE(render_radiance_set_lighting(radiance, coarse, lab));
     REQUIRE(render_radiance_resize(radiance, SIDE, SIDE));
     return true;
 }
@@ -688,12 +695,13 @@ TEST_CASE(every_lighting_combination_applies_and_lays_out)
         REQUIRE(render_radiance_resize(radiance, sizes[size][0], sizes[size][1]));
         for (int i = 0; i < 8 * 4 * 2 * 2; i++) {
             GameHRC2D lighting = game_hrc2d_defaults();
+            render_radiance_lab lab = render_radiance_lab_defaults();
             lighting.resolution = resolutions[i / 16];
-            lighting.color_resolution = (GameHRCColor)(i / 4 % 4);
-            lighting.gather_resolution = i / 2 % 2 ? GAME_HRC_GATHER_HALF
-                                                   : GAME_HRC_GATHER_FULL;
+            lab.color_resolution = (render_radiance_color)(i / 4 % 4);
+            lab.gather_resolution = i / 2 % 2 ? RENDER_RADIANCE_GATHER_HALF
+                                              : RENDER_RADIANCE_GATHER_FULL;
             lighting.adaptive = i % 2;
-            REQUIRE(render_radiance_set_lighting(radiance, lighting));
+            REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
             REQUIRE(view_fits());
         }
     }
@@ -707,7 +715,7 @@ static void feed_time(double ms, int frames)
     }
 }
 
-static bool rung_is(int rung, float resolution, GameHRCColor color, bool gather_half)
+static bool rung_is(int rung, float resolution, render_radiance_color color, bool gather_half)
 {
     render_radiance_status status = render_radiance_get_status(radiance);
     return status.rung == rung && status.resolution == resolution &&
@@ -720,14 +728,15 @@ static bool rung_is(int rung, float resolution, GameHRCColor color, bool gather_
  * measured cost of the step above fits, and restarts when the ladder changes. */
 TEST_CASE(adaptive_steps_down_then_back_up)
 {
-    const GameHRCColor half = GAME_HRC_COLOR_HALF, quarter = GAME_HRC_COLOR_QUARTER;
+    const render_radiance_color half = RENDER_RADIANCE_COLOR_HALF,
+                                quarter = RENDER_RADIANCE_COLOR_QUARTER;
     GameHRC2D lighting = game_hrc2d_defaults();
+    render_radiance_lab lab = render_radiance_lab_defaults();
     lighting.resolution = 1;
-    lighting.color_resolution = half;
-    lighting.gather_resolution = GAME_HRC_GATHER_AUTO;
-    lighting.min_resolution = .25f;
+    lab.color_resolution = half;
+    lab.gather_resolution = RENDER_RADIANCE_GATHER_AUTO;
     lighting.target_fps = 125; /* 8 ms */
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     REQUIRE(render_radiance_get_status(radiance).rungs == 5);
     REQUIRE(rung_is(0, 1, half, false));
     REQUIRE(render_radiance_get_settings(radiance).min_scale == .125f);
@@ -755,13 +764,13 @@ TEST_CASE(adaptive_steps_down_then_back_up)
     REQUIRE(rung_is(3, .5f, half, true));
     /* Authoring that keeps the ladder keeps the step; a new ladder restarts. */
     lighting.target_fps = 250;
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     REQUIRE(rung_is(3, .5f, half, true));
     lighting.resolution = .5f;
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     REQUIRE(rung_is(0, .5f, half, false));
     lighting.adaptive = false;
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     REQUIRE(render_radiance_get_status(radiance).rungs == 1);
     REQUIRE(render_radiance_get_settings(radiance).scale == .25f);
     feed_time(50, 120);
@@ -769,7 +778,7 @@ TEST_CASE(adaptive_steps_down_then_back_up)
     /* Frame intervals at the display's rate fit; missed frames step down. */
     lighting.adaptive = true;
     lighting.target_fps = 60;
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     for (int i = 0; i < 120; i++) {
         render_radiance_frame_interval(radiance, 1000.0 / 60 + (i % 2 ? 1.5 : -.5));
     }
@@ -1146,9 +1155,10 @@ TEST_CASE(silhouettes_light_from_their_lit_side)
     pieces[2].pos[0] = -38;
     for (int levels = 1; levels <= 3; levels += 2) {
         GameHRC2D lighting = clear_lighting();
-        lighting.trace_levels = levels;
+        render_radiance_lab lab = render_radiance_lab_defaults();
+        lab.trace_levels = levels;
         lighting.surface_radius = 12;
-        REQUIRE(render_radiance_set_lighting(radiance, lighting));
+        REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
         REQUIRE(solve(pieces, 2, SIDE, 12));
         REQUIRE(green_at(41) < 2);
         REQUIRE(test_read_texture(render_material_raster_textures(raster).source, hdr, PIXELS));
@@ -1164,7 +1174,9 @@ TEST_CASE(silhouettes_light_from_their_lit_side)
  * than relief facing away. */
 TEST_CASE(relief_facing_the_light_shines_brighter)
 {
-    REQUIRE(render_radiance_set_lighting(radiance, surface_lighting()));
+    REQUIRE(
+        render_radiance_set_lighting(radiance, surface_lighting(), render_radiance_lab_defaults())
+    );
     const char *names[] = { "Relief facing the light", "Flat relief", "Relief facing away" };
     const float tilts[] = { -.75f, 0, .75f };
     int face[3];
@@ -1193,7 +1205,9 @@ TEST_CASE(relief_facing_the_light_shines_brighter)
  * scale lights half as many pixels deep into a solid. */
 TEST_CASE(surface_light_reaches_a_world_space_depth)
 {
-    REQUIRE(render_radiance_set_lighting(radiance, surface_lighting()));
+    REQUIRE(
+        render_radiance_set_lighting(radiance, surface_lighting(), render_radiance_lab_defaults())
+    );
     const int face_x = SIDE / 2 - 40;
     int depth[2] = { 0 };
     for (int zoom = 0; zoom < 2; zoom++) {
@@ -1225,7 +1239,9 @@ TEST_CASE(surface_light_reaches_a_world_space_depth)
  * relief facing up. */
 TEST_CASE(relief_below_a_ceiling_faces_down_to_the_light)
 {
-    REQUIRE(render_radiance_set_lighting(radiance, surface_lighting()));
+    REQUIRE(
+        render_radiance_set_lighting(radiance, surface_lighting(), render_radiance_lab_defaults())
+    );
     const char *names[] = { "Relief facing down", "Relief facing up" };
     int below[2];
     for (int i = 0; i < 2; i++) {
@@ -1312,7 +1328,7 @@ TEST_CASE(surface_colors_keep_their_directions)
         lighting.ambient = lighting.shadow_floor = 0;
         lighting.tone_mapping = GAME_HRC_TONE_AGX;
         lighting.surface_shadow_mode = modes[mode];
-        REQUIRE(render_radiance_set_lighting(radiance, lighting));
+        REQUIRE(render_radiance_set_lighting(radiance, lighting, render_radiance_lab_defaults()));
         render_material_entity scene[4];
         opposing_lights(scene);
         float open[3][2];
@@ -1370,19 +1386,20 @@ TEST_CASE(surface_light_history_follows_its_hysteresis)
     static uint16_t instant[PIXELS * 4], changed[PIXELS * 4], settled[PIXELS * 4];
     REQUIRE(resize_targets(SIDE, HDR));
     GameHRC2D lighting = clear_lighting();
+    render_radiance_lab lab = render_radiance_lab_defaults();
     lighting.feedback = false;
     lighting.surface_radius = 12;
     lighting.surface_bevel = lighting.specular = 0;
     lighting.tone_mapping = GAME_HRC_TONE_AGX;
-    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
+    lab.debug_view = RENDER_RADIANCE_DEBUG_SURFACE_LIGHT;
     lighting.radiance_hysteresis = 1;
     render_material_entity scene[] = { test_emitter(), lit_wall(6, 1.5f) };
     scene[0].pos[0] = -26;
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     REQUIRE(solve_hdr(scene, 2, 12));
     memcpy(instant, hdr, sizeof instant);
     lighting.radiance_hysteresis = .2f;
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     scene[0].pos[0] = -28;
     REQUIRE(solve_hdr(scene, 2, 20));
     scene[0].pos[0] = -26;
@@ -1405,15 +1422,22 @@ TEST_CASE(surface_light_history_follows_its_hysteresis)
  * in both modes reach Linux's limit of 65530 mappings. */
 static GameHRCShadowMode horizon_mode;
 
-/* Relief shadows from horizons in `mode`, shown as visibility in blue. */
+/* Relief shadows from horizons in `mode`, shown as visibility in blue with
+ * horizon_lab(). */
 static GameHRC2D horizon_lighting(GameHRCShadowMode mode)
 {
     GameHRC2D lighting = surface_lighting();
     lighting.feedback = false;
     lighting.radiance_hysteresis = 1;
     lighting.surface_shadow_mode = mode;
-    lighting.debug_view = GAME_HRC_DEBUG_LIGHT_DIRECTION;
     return lighting;
+}
+
+static render_radiance_lab horizon_lab()
+{
+    render_radiance_lab lab = render_radiance_lab_defaults();
+    lab.debug_view = RENDER_RADIANCE_DEBUG_LIGHT_DIRECTION;
+    return lab;
 }
 
 /* Resets `hrc` and lights one frame of `view` through it into `hdr`. Later
@@ -1478,7 +1502,7 @@ TEST_CASE(horizons_follow_moving_relief)
     static uint16_t moved[PIXELS * 4];
     float ridge = relief_material("Moving ridge", (test_relief){ .roughness = 1, .height = 12 });
     const int sizes[] = { SIDE, SIDE, SIDE, SIDE, 64, SIDE };
-    REQUIRE(render_radiance_set_lighting(radiance, horizon_lighting(horizon_mode)));
+    REQUIRE(render_radiance_set_lighting(radiance, horizon_lighting(horizon_mode), horizon_lab()));
     render_material_entity scene[3];
     ridge_scene(scene, ridge);
     for (int stage = 0; stage < 6; stage++) {
@@ -1564,9 +1588,10 @@ TEST_CASE(horizon_hierarchy_matches_the_fine_scan)
     float ridge = relief_material("Low ridge", (test_relief){ .roughness = 1, .height = 6 });
     render_view_2d view = test_centered(32);
     GameHRC2D lighting = horizon_lighting(horizon_mode);
-    REQUIRE(render_radiance_set_lighting(other, lighting));
-    lighting.horizon_hierarchy = true;
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    render_radiance_lab lab = horizon_lab();
+    REQUIRE(render_radiance_set_lighting(other, lighting, lab));
+    lab.horizon_hierarchy = true;
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     render_material_entity scene[3];
     ridge_scene(scene, ridge);
     scene[0].pos[0] = -12;
@@ -1668,11 +1693,13 @@ static bool cache_holds(GameHRCShadowMode mode, unsigned options, float ridge)
     fresh.resolution = .5f;
     /* Raw HDR, without display dithering that changes by frame. */
     fresh.tone_mapping = GAME_HRC_TONE_AGX;
-    fresh.horizon_hierarchy = options & REUSE_HIERARCHY;
     GameHRC2D cached = fresh;
-    cached.horizon_fuse_relief = options & REUSE_FUSED;
-    cached.horizon_cache = true;
-    cached.horizon_reproject = options & REUSE_REPROJECT;
+    render_radiance_lab fresh_lab = horizon_lab();
+    fresh_lab.horizon_hierarchy = options & REUSE_HIERARCHY;
+    render_radiance_lab cached_lab = fresh_lab;
+    cached_lab.horizon_fuse_relief = options & REUSE_FUSED;
+    cached_lab.horizon_cache = true;
+    cached_lab.horizon_reproject = options & REUSE_REPROJECT;
     render_material_entity scene[6];
     cached_scene(scene, ridge);
     render_view_2d view = test_centered(SIDE);
@@ -1719,7 +1746,7 @@ static bool cache_holds(GameHRCShadowMode mode, unsigned options, float ridge)
                                                                            : GAME_HRC_SHADOW_HORIZON4;
                 break;
             case 14:
-                cached.horizon_fuse_relief = !cached.horizon_fuse_relief;
+                cached_lab.horizon_fuse_relief = !cached_lab.horizon_fuse_relief;
                 break;
         }
         /* Stage 4 removes the first ridge, and stage 5 brings it back. */
@@ -1730,8 +1757,8 @@ static bool cache_holds(GameHRCShadowMode mode, unsigned options, float ridge)
                 active[count++] = scene[i];
             }
         }
-        REQUIRE(render_radiance_set_lighting(radiance, cached));
-        REQUIRE(render_radiance_set_lighting(other, fresh));
+        REQUIRE(render_radiance_set_lighting(radiance, cached, cached_lab));
+        REQUIRE(render_radiance_set_lighting(other, fresh, fresh_lab));
         REQUIRE(draw(active, count, size, view, 1));
         render_horizon_work work = render_radiance_horizon_work(radiance);
         int dirty, total;
@@ -1748,16 +1775,16 @@ static bool cache_holds(GameHRCShadowMode mode, unsigned options, float ridge)
         REQUIRE((stage != 1 && stage != 2) || !dirty);
         REQUIRE(stage < 3 || stage > 5 || dirty);
         REQUIRE(!moved || !reprojects || (work.reproject_passes == 1 && dirty));
-        REQUIRE(work.fused_packs == (cached.horizon_fuse_relief ? 1 : 0));
-        REQUIRE(work.pack_passes == (cached.horizon_fuse_relief ? 0 : 1));
+        REQUIRE(work.fused_packs == (cached_lab.horizon_fuse_relief ? 1 : 0));
+        REQUIRE(work.pack_passes == (cached_lab.horizon_fuse_relief ? 0 : 1));
         REQUIRE(matches_fresh(active, count, size, view));
         /* The shaded light matches as well as the visibility. */
-        cached.debug_view = fresh.debug_view = GAME_HRC_DEBUG_NORMAL;
-        REQUIRE(render_radiance_set_lighting(radiance, cached));
-        REQUIRE(render_radiance_set_lighting(other, fresh));
+        cached_lab.debug_view = fresh_lab.debug_view = RENDER_RADIANCE_DEBUG_NORMAL;
+        REQUIRE(render_radiance_set_lighting(radiance, cached, cached_lab));
+        REQUIRE(render_radiance_set_lighting(other, fresh, fresh_lab));
         REQUIRE(draw(active, count, size, view, 1));
         REQUIRE(matches_fresh(active, count, size, view));
-        cached.debug_view = fresh.debug_view = GAME_HRC_DEBUG_LIGHT_DIRECTION;
+        cached_lab.debug_view = fresh_lab.debug_view = RENDER_RADIANCE_DEBUG_LIGHT_DIRECTION;
     }
     return true;
 }

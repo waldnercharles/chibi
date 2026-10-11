@@ -33,7 +33,6 @@ layout(set = 3, binding = 0) uniform uniform_block
     int u_near_detail;
     float u_shadow_softness;
     int u_visibility_mode;
-    int u_independent_emitters;
     float u_relief;
 };
 #include "hrc/brdf.shd"
@@ -168,31 +167,17 @@ float source_visibility(vec3 delta, float distance, float azimuth)
 // The walk covers the complete segment with a fixed quality budget. When the
 // footprint exceeds that budget this is explicit undersampling, never an
 // unfinished walk declared clear. Screen-space slabs cannot see hidden layers.
-float segment_visibility(vec4 emitter, float source_radius)
+float segment_visibility(vec4 emitter)
 {
     vec2 size = vec2(textureSize(u_cover, 0));
     vec2 pixels = (emitter.xy - receiver_uv) * size;
     float extent = max(abs(pixels.x), abs(pixels.y));
     int budget = u_source_axis <= 4 ? 32 : (u_source_axis <= 6 ? 48 : 64);
     int steps = min(max(int(ceil(extent)), 1), budget);
-    // Proxy sources radiate from a finite volume. Stop at that volume's
-    // boundary so an opaque emitter's own front slab cannot eclipse its centre.
-    // The radius belongs to the source, not its coarse tile or depth variance.
-    float end = 1.0;
-    if (source_radius > 0.0) {
-        float distance = length(position_at(emitter.xy, emitter.z) - receiver_origin);
-        end = max(1.0 - source_radius / max(distance, 1e-6), 0.0);
-        if (u_projection.z > 0.0) {
-            float d0 = max(u_projection.z - receiver_origin.z, 0.001);
-            float d1 = max(u_projection.z - emitter.z, 0.001);
-            end = end * d1 / max(mix(d0, d1, end), 0.001);
-        }
-    }
     float visible = 1.0;
     for (int i = 0; i < 64; i++) {
         if (i >= steps) break;
         float t = (float(i) + 0.5) / float(steps);
-        if (t >= end) break;
         // Avoid testing the receiver and emitter's own rasterized footprint.
         if (t * extent < 1.0 || (1.0 - t) * extent < 1.0) continue;
         vec2 uv = mix(receiver_uv, emitter.xy, t);
@@ -282,7 +267,7 @@ void source_value(int level, ivec2 p, float area, float fraction)
     if (any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, size))) return;
     vec4 light = emission_at(level, p);
     if (light.a <= 0.0) return;
-    if (level == 0 && u_independent_emitters == 0) {
+    if (level == 0) {
         // The fractional estimate weight must be applied to emission, outside
         // receive's area clamp, so blending estimates never changes energy.
         source_pixels(p, area / float(block * block), fraction);
@@ -321,8 +306,7 @@ void source_estimate(int level, ivec2 p, float area, float fraction)
     float distance = length(position_at(emitter.xy, emitter.z) - receiver_origin);
     float extent = float(block) * pixel_world * 1.4142135624;
     float depth_scale = max(u_thickness, pixel_world * 4.0);
-    float depth_detail = u_independent_emitters != 0 ? 0.0
-        : smoothstep(depth_scale * 0.5, depth_scale * 1.5, emitter.w);
+    float depth_detail = smoothstep(depth_scale * 0.5, depth_scale * 1.5, emitter.w);
     float power = max(dot(light.rgb, LUMA), 1e-12);
     vec3 chroma = light.rgb / power;
     float variation = 0.0;
@@ -388,8 +372,7 @@ void gather_sources(vec2 uv)
                 vec4 light = emission_at(level, p);
                 if (light.a <= 0.0) continue;
                 vec4 emitter = emitter_at(level, p);
-                tile_visibility = segment_visibility(emitter,
-                    u_independent_emitters != 0 ? emitter.w : 0.0);
+                tile_visibility = segment_visibility(emitter);
             }
             source_cell(level, p, area, blend);
         }

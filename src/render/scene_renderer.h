@@ -30,8 +30,8 @@ void app_scene_renderer_set_spatial_scratch(app_scene_renderer *renderer, bool e
 void app_scene_renderer_set_surface_quality(app_scene_renderer *renderer, GameSurfaceQuality quality);
 void app_scene_renderer_set_sdf_trace_debug(app_scene_renderer *renderer, bool enabled);
 void app_scene_renderer_set_shadow_mode(app_scene_renderer *renderer, GameHRCShadowMode mode);
-/* Bits 0..3 override relief fusion, cache, reprojection and hierarchy. */
-void app_scene_renderer_set_horizon_reuse(app_scene_renderer *renderer, unsigned mask, GameHRC2D values);
+/* HRC's lab settings, render_radiance_lab_defaults() until set. */
+void app_scene_renderer_set_lab(app_scene_renderer *renderer, render_radiance_lab lab);
 render_surface_work app_scene_renderer_surface_work(const app_scene_renderer *renderer);
 render_horizon_work app_scene_renderer_horizon_work(const app_scene_renderer *renderer);
 render_mesh_material_work app_scene_renderer_mesh_work(const app_scene_renderer *renderer);

@@ -37,6 +37,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Perspective distance for particles: raised particles scale by
+ * focal / (focal + elevation). */
+#define PARTICLE_FOCAL_LENGTH 300.f
+
 typedef struct
 {
     ecs_entity entity;
@@ -63,8 +67,7 @@ struct app_scene_renderer
     GameHRCShadowMode shadow_mode;
     bool quality_override, shadow_override, sdf_trace_debug;
     bool hidden_rejection, spatial_scratch;
-    unsigned horizon_reuse_mask;
-    GameHRC2D horizon_reuse;
+    render_radiance_lab lab;
     render_fluid_raster *fluid;
     render_radiance *radiance;
     /* HDR presentation for tone-mapped 2D scenes. */
@@ -102,7 +105,7 @@ struct app_scene_renderer
     engine_viewport_camera camera;
     int width, height;
     int raster_width, raster_height;
-    float pixel_aa, time, particle_focal_length;
+    float pixel_aa, time;
     render_programs *fragment;
     int *fragment_programs;
     char error[256];
@@ -121,6 +124,7 @@ app_scene_renderer *app_scene_renderer_new()
     app_scene_renderer *renderer = xcalloc(1, sizeof(app_scene_renderer));
     renderer->hidden_rejection = true;
     renderer->spatial_scratch = true;
+    renderer->lab = render_radiance_lab_defaults();
     return renderer;
 }
 
@@ -1406,8 +1410,8 @@ static bool collect(
             unsigned color = particle_color(particle->color, particle->end_color, age);
             float length = particle->stretch *
                            hypotf(particle->velocity.x, particle->velocity.y);
-            float focal = renderer->particle_focal_length;
-            float perspective = focal / fmaxf(1, focal + particle->elevation);
+            float perspective = PARTICLE_FOCAL_LENGTH /
+                                fmaxf(1, PARTICLE_FOCAL_LENGTH + particle->elevation);
             diameter *= perspective;
             length *= perspective;
             GameAppearance appearance = {
@@ -1543,20 +1547,9 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
     if (renderer->shadow_override) {
         lighting.surface_shadow_mode = renderer->shadow_mode;
     }
-    if (renderer->horizon_reuse_mask & 1) {
-        lighting.horizon_fuse_relief = renderer->horizon_reuse.horizon_fuse_relief;
-    }
-    if (renderer->horizon_reuse_mask & 2) {
-        lighting.horizon_cache = renderer->horizon_reuse.horizon_cache;
-    }
-    if (renderer->horizon_reuse_mask & 4) {
-        lighting.horizon_reproject = renderer->horizon_reuse.horizon_reproject;
-    }
-    if (renderer->horizon_reuse_mask & 8) {
-        lighting.horizon_hierarchy = renderer->horizon_reuse.horizon_hierarchy;
-    }
+    render_radiance_lab lab = renderer->lab;
     if (renderer->sdf_trace_debug) {
-        lighting.debug_view = GAME_HRC_DEBUG_SCENE;
+        lab.debug_view = RENDER_RADIANCE_DEBUG_SCENE;
         lighting.tone_mapping = GAME_HRC_TONE_CLAMP;
         lighting.bloom = 0;
     }
@@ -1577,11 +1570,10 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
         size_t used = strlen(renderer->warning);
         snprintf(renderer->warning + used, sizeof renderer->warning - used, "Lighting adjusted: %s.", notes);
     }
-    renderer->particle_focal_length = lighting.particle_focal_length;
     *flat = (CF_V2){ lighting.ambient, lighting.intensity };
     renderer->lighting = lighting;
     if (renderer->lit && renderer->radiance &&
-        !render_radiance_set_lighting(renderer->radiance, lighting)) {
+        !render_radiance_set_lighting(renderer->radiance, lighting, lab)) {
         snprintf(renderer->error, sizeof renderer->error, "HRC could not allocate its lighting resources.");
         return false;
     }
@@ -1963,27 +1955,6 @@ bool app_scene_renderer_draw(
     }
     render_gpu_timing_mark("Material raster");
     render_material_textures textures = render_material_raster_textures(renderer->raster);
-    bool emitter_proxies = renderer->lit &&
-                           renderer->lighting.surface_mode == GAME_HRC_SURFACE_DEPTH &&
-                           renderer->lighting.surface_depth_gain > 0 &&
-                           renderer->lighting.surface_depth_emitters ==
-                               GAME_HRC_DEPTH_EMITTERS_PROXIES;
-    render_material_raster_set_capture_emitters(renderer->raster, emitter_proxies);
-    if (!render_material_raster_capture_emitters(
-            renderer->raster,
-            world,
-            renderer->entities,
-            acount(renderer->entities),
-            renderer->meshes,
-            acount(renderer->meshes),
-            view
-        )) {
-        snprintf(renderer->error, sizeof renderer->error, "Emitter proxy capture could not allocate or draw");
-        return false;
-    }
-    if (emitter_proxies) {
-        render_gpu_timing_mark("Emitter proxies");
-    }
 
     const game_materials *materials = engine_materials(runtime);
     if (materials && game_materials_fluid(materials)) {
@@ -2003,10 +1974,7 @@ bool app_scene_renderer_draw(
         }
         render_gpu_timing_mark("Fluid raster");
     }
-    render_radiance_inputs inputs = {
-        .material = textures,
-        .emitters = render_material_raster_emitter_textures(renderer->raster)
-    };
+    render_radiance_inputs inputs = { .material = textures };
     inputs.background = scene_background(renderer, world, &camera);
     render_gpu_timing_mark("Background");
     bool hdr = renderer->lit && renderer->lighting.tone_mapping > 0;
@@ -2153,10 +2121,9 @@ void app_scene_renderer_set_shadow_mode(app_scene_renderer *renderer, GameHRCSha
     renderer->shadow_mode = mode;
     renderer->shadow_override = true;
 }
-void app_scene_renderer_set_horizon_reuse(app_scene_renderer *renderer, unsigned mask, GameHRC2D values)
+void app_scene_renderer_set_lab(app_scene_renderer *renderer, render_radiance_lab lab)
 {
-    renderer->horizon_reuse_mask = mask;
-    renderer->horizon_reuse = values;
+    renderer->lab = lab;
 }
 
 render_surface_work app_scene_renderer_surface_work(const app_scene_renderer *renderer)

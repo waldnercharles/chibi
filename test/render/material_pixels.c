@@ -786,10 +786,11 @@ static bool volume_color(float color[3])
 static bool set_fluid_lighting(int trace_levels)
 {
     GameHRC2D lighting = test_reference_lighting();
+    render_radiance_lab lab = render_radiance_lab_defaults();
     lighting.adaptive = lighting.feedback = false;
-    lighting.trace_levels = trace_levels;
+    lab.trace_levels = trace_levels;
     lighting.fog = 0;
-    return render_radiance_set_lighting(radiance, lighting);
+    return render_radiance_set_lighting(radiance, lighting, lab);
 }
 
 /* A volume of `kind` right of the wall's place takes the green or blue light

@@ -11,12 +11,22 @@ calibration is deliberately restrained:
 
 - emitter `emission_intensity = 0.03`, `emission_multiplier = 1`
 - HRC `intensity = 7.5`, `ambient = 0`, `shadow_floor = 0`, `fog = 0.2`
-- `trace_levels = 3`, adaptive resolution disabled, reconstruction mode 1
+- lab `trace_levels = 3`, adaptive resolution disabled, edge-aware reconstruction
 
 `emission_multiplier` remains an explicit material control. It is already one,
 so removing it would not change these images or save meaningful work. Lowering
 the authored emission intensity is the source-only exposure control. HRC
 intensity is a later composite gain and affects received light as well.
+
+## Lab settings
+
+`GameHRC2D` holds what a game tunes. Color and gather detail, traced cascade
+levels, debug views, Depth's near-source refinement and the horizon reuse
+experiments are lab settings in `render_radiance_lab`
+(`src/render/radiance.h`). Games draw with `render_radiance_lab_defaults()`:
+full color and gather, three traced levels and the lit frame. Render tests set
+the lab directly. Scene preview requests set only the horizon experiments,
+with `horizon_reuse`; the other lab settings keep their defaults there.
 
 ## Tuning safely
 
@@ -36,37 +46,30 @@ timestamps.
 With `adaptive` on, `resolution` is a ceiling. Turn it off while comparing
 values, so the resolution you set is the one you see.
 
-| Goal | `resolution` | `color_resolution` |
+| Goal | `resolution` | lab `color_resolution` |
 | --- | ---: | --- |
 | Reference | 1 | Full |
 | Close to reference, cheaper | 1 | Half |
 | Sharp brightness, cheaper color | 1 | Quarter |
 | Arena default | 0.5 | Full |
 
-## Reconstruction modes
+## Reconstruction
 
-The `upscale_mode` field selects how the low-resolution RGB radiance probes are
-reconstructed at canvas resolution:
-
-| Mode | Reconstruction |
-| ---: | --- |
-| 0 | Plain bilinear interpolation. |
-| 1 | Bilinear interpolation blended toward the nearest probe at absorption edges. |
-| 2 | Joint bilateral interpolation weighted by transmittance similarity. |
-| 3 | Five-tap cross: the center probe plus its four axial neighbors. |
-
-Mode 1 is the current default. Mode 3 is the five-tap experiment; it preserves
-small emissive probes well, but its quality change depends on the fixture. In
-the basalt Sandbox at 1080p it matched mode 1 at resolutions 0.5 and 0.35 while
-costing about 0.6 ms more.
+Gather reconstructs the low-resolution RGB radiance probes at canvas
+resolution by bilinear interpolation blended toward the nearest probe where
+absorption changes by more than 0.1 (`HRC_UPSCALE_THRESHOLD`). Earlier
+revisions also offered plain bilinear, joint bilateral and a five-tap cross as
+`upscale_mode` 0, 2 and 3. They were removed: the five-tap cross preserved
+small emissive probes well, but in the basalt Sandbox at 1080p it matched the
+edge-aware mode at resolutions 0.5 and 0.35 while costing about 0.6 ms more.
 
 ## Resolution settings
 
 | Setting | What it controls |
 | --- | --- |
 | `resolution` | The finest light grid, as a fraction of the padded canvas. Brightness keeps this detail; most lighting cost scales with its area. |
-| `color_resolution` | Color's grid relative to `resolution`: Full, Half, Quarter or Eighth. Below Full, a brightness-only transport runs at `resolution` and the RGB transport on the coarser grid. |
-| `gather_resolution` | The received-light image: gather, temporal filtering and bounce, which turn cascade 0 into light per pixel, at the full canvas or half of it. Auto lets adaptive choose. Material raster and composite stay full resolution. |
+| lab `color_resolution` | Color's grid relative to `resolution`: Full, Half, Quarter or Eighth. Below Full, a brightness-only transport runs at `resolution` and the RGB transport on the coarser grid. |
+| lab `gather_resolution` | The received-light image: gather, temporal filtering and bounce, which turn cascade 0 into light per pixel, at the full canvas or half of it. Auto lets adaptive choose. Material raster and composite stay full resolution. |
 
 The padded canvas is a whole multiple of 8 pixels, so resolutions of 1, 1/2,
 1/4 and 1/8 have cells of whole pixels at every output size, and so does color
@@ -91,8 +94,8 @@ between rungs that keep whole-pixel cells:
 2. With `gather_resolution: Auto`, gather at half resolution.
 3. Color one step coarser at a time, down to Quarter, at the authored
    `resolution`.
-4. `resolution` halved, then halved again, down to `min_resolution`, with
-   the authored `color_resolution`.
+4. `resolution` halved, then halved again, down to 0.25, with the lab's
+   `color_resolution`.
 
 It averages 30 frames per decision. It steps down after two averages in a row
 exceed the frame's time, and ignores the next 30 frames while history refills.

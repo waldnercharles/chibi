@@ -38,6 +38,9 @@ static float data[INPUTS][WIDE * WIDE][4];
 static CF_Texture textures[INPUTS];
 static CF_Canvas output;
 static render_radiance *radiance;
+/* The lab settings this case's solves use. Each case starts with color at
+ * half resolution and Depth thickness's surface light shown alone. */
+static render_radiance_lab lab;
 static int side;
 static uint16_t halves[WIDE * WIDE * 4];
 
@@ -55,6 +58,9 @@ static CF_Texture make_input(int size)
 static void open_targets(int size)
 {
     side = size;
+    lab = render_radiance_lab_defaults();
+    lab.color_resolution = RENDER_RADIANCE_COLOR_HALF;
+    lab.debug_view = RENDER_RADIANCE_DEBUG_SURFACE_LIGHT;
     for (int i = 0; i < INPUTS; i++) {
         textures[i] = make_input(size);
     }
@@ -91,17 +97,14 @@ static void wide_setup()
 }
 
 /* The lighting these cases were calibrated with: the reference lighting with
- * color at half resolution, no fog, feedback or specular, and Depth
- * thickness's surface light shown alone. */
+ * no fog, feedback or specular, lit by Depth thickness. */
 static GameHRC2D calibrated()
 {
     GameHRC2D lighting = test_reference_lighting();
-    lighting.color_resolution = GAME_HRC_COLOR_HALF;
     lighting.adaptive = lighting.feedback = false;
     lighting.fog = lighting.shadow_floor = 0;
     lighting.specular = 0;
     lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
-    lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
     return lighting;
 }
 
@@ -121,7 +124,7 @@ static GameHRC2D depth_lighting()
  * the center. */
 static bool lit(GameHRC2D lighting, render_view_2d view, float color[3])
 {
-    REQUIRE(render_radiance_set_lighting(radiance, lighting));
+    REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
     render_radiance_inputs inputs = { .material = { .scene = textures[SCENE],
                                                     .source = textures[SOURCE],
                                                     .albedo = textures[ALBEDO],
@@ -511,11 +514,11 @@ TEST_CASE(perspective_views_take_depth_light)
 }
 
 /* Depth thickness over HRC's own light, tone mapped by AgX at half
- * intensity. */
+ * intensity. The case's solves show the lit frame. */
 static GameHRC2D fill_lighting()
 {
     GameHRC2D lighting = depth_lighting();
-    lighting.debug_view = GAME_HRC_DEBUG_NORMAL;
+    lab.debug_view = RENDER_RADIANCE_DEBUG_NORMAL;
     lighting.tone_mapping = GAME_HRC_TONE_AGX;
     lighting.intensity = .5f;
     return lighting;
@@ -699,7 +702,7 @@ TEST_CASE(every_depth_quality_lights_and_shadows)
         lighting.surface_depth_quality = (GameHRCDepthQuality)quality;
         for (int near = 0; near < 2; near++) {
             float open, crossing;
-            lighting.surface_depth_near_detail = near;
+            lab.surface_depth_near_detail = near;
             lighting.surface_depth_shadow_softness = near ? .5f : 0;
             REQUIRE(
                 slab_light(OPEN, lighting, &open) &&

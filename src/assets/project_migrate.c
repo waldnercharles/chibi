@@ -2939,6 +2939,61 @@ static bool collected(char **paths, const char *path)
     }
     return false;
 }
+/* Removes the GameHRC2D fields version 22 moves out of authoring from the
+ * component under each of `components`' names, and from the field list of a
+ * component presentation. Returns whether any were there. */
+static bool drop_lab_fields(av_value *components)
+{
+    static const char *const names[] = { "GAME.GameHRC2D", "GameHRC2D" };
+    static const char *const fields[] = {
+        "color_resolution",       "gather_resolution",
+        "min_resolution",         "upscale_mode",
+        "upscale_threshold",      "debug_view",
+        "particle_focal_length",  "trace_levels",
+        "surface_depth_emitters", "surface_depth_near_detail",
+        "horizon_fuse_relief",    "horizon_cache",
+        "horizon_reproject",      "horizon_hierarchy",
+    };
+    bool changed = false;
+    for (size_t i = 0; av_is_obj(components) && i < sizeof names / sizeof *names; i++) {
+        av_value *component = av_obj_get(components, names[i]);
+        av_value *presented = av_is_obj(component) ? av_obj_get(component, "fields")
+                                                   : NULL;
+        for (size_t j = 0; av_is_obj(component) && j < sizeof fields / sizeof *fields;
+             j++) {
+            changed |= av_obj_remove_key(component, fields[j]);
+            changed |= av_is_obj(presented) &&
+                       av_obj_remove_key(presented, fields[j]);
+        }
+    }
+    return changed;
+}
+/* Returns an owned copy of a scene, prototype or component presentation
+ * `asset` without the GameHRC2D fields version 22 removes, or NULL when it
+ * has none. */
+static char *drop_lab_settings(const char *asset)
+{
+    char message[128];
+    av_doc *document = asset_text_read(asset, message, sizeof message);
+    av_value *root = document ? av_doc_root(document) : NULL;
+    if (!av_is_obj(root)) {
+        av_doc_free(document);
+        return NULL;
+    }
+    bool changed = drop_lab_fields(av_obj_get(root, "components"));
+    changed |= drop_lab_fields(av_obj_get(root, "detached_components"));
+    av_value *entities = av_obj_get(root, "entities");
+    for (size_t i = 0; av_is_arr(entities) && i < av_arr_size(entities); i++) {
+        av_value *entity = av_arr_get(entities, i);
+        if (av_is_obj(entity)) {
+            changed |= drop_lab_fields(av_obj_get(entity, "components"));
+            changed |= drop_lab_fields(av_obj_get(entity, "retained_components"));
+        }
+    }
+    char *migrated = changed ? asset_text_write(root) : NULL;
+    av_doc_free(document);
+    return migrated;
+}
 int chibi_project_migrate_content(
     const char *content,
     const char *start_scene,
@@ -2951,11 +3006,11 @@ int chibi_project_migrate_content(
         return migrate_components(content, error, error_size);
     }
     char **paths = NULL;
-    /* Versions 15, 16, 18 and 19 change scenes and prototypes, and version 21
-     * changes materials, wherever the project keeps them; every other step
-     * changes scripts. */
+    /* Versions 15, 16, 18, 19 and 22 change scenes and prototypes, and
+     * version 21 changes materials, wherever the project keeps them; every
+     * other step changes scripts. */
     bool declarative = from == 14 || from == 15 || from == 17 || from == 18 ||
-                       from == 20;
+                       from == 20 || from == 21;
     int status = collect_sources(
         content,
         declarative ? DECLARATIVE_ASSET_EXTENSION : ".chibi",
@@ -3061,6 +3116,12 @@ int chibi_project_migrate_content(
                 migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
                 for (int i = 0; i < count; i++) {
                     migrated[i] = surface_outputs(sources[i]);
+                }
+                break;
+            case 21:
+                migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+                for (int i = 0; i < count; i++) {
+                    migrated[i] = drop_lab_settings(sources[i]);
                 }
                 break;
             default: assert(false);

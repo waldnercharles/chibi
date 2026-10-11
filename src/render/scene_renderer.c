@@ -504,7 +504,6 @@ static bool append_entity(
 {
     CF_V2 min, max;
     if (!isfinite(position->x) || !isfinite(position->y) ||
-        !isfinite(appearance->relief) ||
         !game_appearance_rotated_bounds(appearance, angle, &min, &max)) {
         return false;
     }

@@ -91,7 +91,7 @@ bool render_geometry_2d_project(
     result.stroke_width *= scale;
     result.relief *= scale;
     if (!isfinite(result.width) || !isfinite(result.height) ||
-        result.width <= 0 || result.height <= 0) {
+        !isfinite(result.relief) || result.width <= 0 || result.height <= 0) {
         return false;
     }
     *appearance = result;

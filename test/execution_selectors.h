@@ -28,3 +28,5 @@ CHIBI_GPU_SELECTOR("--scene3d-gles")
 /* Color ramp table cases through 2D and material raster shaders in a hidden
  * 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--material-ramps")
+/* One hidden 64x64 app, seven glTF transform/control comparisons, 21 frames. */
+CHIBI_GPU_SELECTOR("--texture-transform")

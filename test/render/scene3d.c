@@ -38,6 +38,7 @@
 
 #include <errno.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 #include <assert.h>
@@ -3854,6 +3855,14 @@ static bool make_drawable(const char *key)
         behavior_asset *asset = load_material(bytes);
         shader_error error = { 0 };
         drawable = asset && render_shader_upsert(asset, &error);
+        if (!drawable) {
+            fprintf(
+                stderr,
+                "Cannot prepare imported material %s: %s\n",
+                key,
+                asset ? error.message : "cannot load material graph"
+            );
+        }
         if (asset) {
             behavior_asset_free(asset);
         }
@@ -3885,6 +3894,9 @@ static bool import_model(const gltf_fixture *f, const char *name, const char *me
     bool imported = gltf_fixture_write(f, source, members) &&
                     model_import(content, source, name, &report, error, sizeof error) &&
                     render_image_mount_content(content, error, sizeof error);
+    if (!imported) {
+        fprintf(stderr, "Cannot import rendering fixture %s: %s\n", name, error);
+    }
     for (int i = 0; imported && i < acount(report.written); i++) {
         imported = make_drawable(report.written[i]);
     }
@@ -4093,6 +4105,170 @@ TEST_CASE(imported_normal_maps_tilt_toward_the_top_of_their_image)
     gltf_fixture_free(&f);
     return true;
 }
+
+/* A varying atlas makes each slot's UV lookup observable. Normal texels
+ * remain in the upper hemisphere and tilt toward both tangent axes. */
+static bool transform_atlas(gltf_fixture *f, bool normal)
+{
+    CF_Pixel atlas[16];
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            atlas[y * 4 + x] = normal
+                                 ? (CF_Pixel){ .colors = { 140 + x * 20, 145 + y * 20, 235, 255 } }
+                                 : (CF_Pixel){ .colors = { 30 + x * 65,
+                                                           35 + y * 60,
+                                                           230 - x * 45,
+                                                           255 } };
+        }
+    }
+    CF_Image image = { 4, 4, atlas };
+    void *png = NULL;
+    int length = 0;
+    if (cf_is_error(cf_image_save_png_to_memory(&image, &png, &length))) {
+        return false;
+    }
+    gltf_fixture_image(f, "atlas.png", png, (size_t)length);
+    cf_free(png);
+    return true;
+}
+
+/* One slot transformed in its material, baked into its UV accessor, or
+ * left unchanged. Authored tangents deliberately stay fixed in all forms. */
+static bool transform_model(
+    const gltf_fixture *f,
+    const char *name,
+    int slot,
+    int uv,
+    int tangent,
+    const char *transform
+)
+{
+    char reference[512], material[1024], attributes[128], members[2048];
+    snprintf(reference, sizeof reference, "{\"index\":0%s}", transform);
+    static const char *const slots[] = { "baseColorTexture",
+                                         "metallicRoughnessTexture",
+                                         "occlusionTexture",
+                                         "emissiveTexture",
+                                         "normalTexture" };
+    if (slot < 2) {
+        snprintf(
+            material,
+            sizeof material,
+            "\"pbrMetallicRoughness\":{\"%s\":%s,\"metallicFactor\":%g}",
+            slots[slot],
+            reference,
+            slot == 0 ? 0.0 : 1.0
+        );
+    } else {
+        snprintf(
+            material,
+            sizeof material,
+            "\"pbrMetallicRoughness\":{\"metallicFactor\":0},"
+            "\"emissiveFactor\":[%g,%g,%g],\"%s\":%s",
+            slot == 3 ? 1.0 : 0.0,
+            slot == 3 ? 1.0 : 0.0,
+            slot == 3 ? 1.0 : 0.0,
+            slots[slot],
+            reference
+        );
+    }
+    snprintf(attributes, sizeof attributes, "\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":%d", uv);
+    if (tangent >= 0) {
+        size_t used = strlen(attributes);
+        snprintf(attributes + used, sizeof attributes - used, ",\"TANGENT\":%d", tangent);
+    }
+    snprintf(
+        members,
+        sizeof members,
+        "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[{"
+        "\"attributes\":{%s},\"indices\":3,\"material\":0}]}],"
+        "\"textures\":[{\"source\":0}],\"materials\":[{\"name\":\"Map\",%s}]",
+        attributes,
+        material
+    );
+    return import_model(f, name, members);
+}
+
+/* Seven independent slot/frame contracts, three draws each: transformed,
+ * baked control, and unchanged negative control. No full renderer suite. */
+TEST_CASE(imported_texture_transforms_match_baked_uvs)
+{
+    GameEnvironment environment = unlit_environment();
+    environment.ambient_sky = 0xffffffffu;
+    environment.ambient_ground = 0xffffffffu;
+    environment.ambient_intensity = .5f;
+    add_sun(0xffffffffu, (CF_V3){ -.5f, -1, -1 })->intensity = 1;
+    bool entity = false;
+    for (int variant = 0; variant < 7; variant++) {
+        int slot = variant < 4 ? variant : 4;
+        bool authored = variant == 6, mirrored = variant == 5;
+        /* Arbitrary rotation with unequal scales also checks the generated
+         * normal tangent's direction, beyond axis-aligned quarter turns. */
+        float rotation = variant <= 4 ? .4f : mirrored ? 0 : 1.57079632679f;
+        float sx = mirrored ? -.6f : .6f, sy = .35f;
+        float ox = variant <= 4 ? .2f : .8f, oy = .1f, baked[8];
+        float c = cosf(rotation), s = sinf(rotation);
+        for (int i = 0; i < 4; i++) {
+            float u = upright_uvs[i * 2], v = upright_uvs[i * 2 + 1];
+            baked[i * 2] = ox + c * sx * u - s * sy * v;
+            baked[i * 2 + 1] = oy + s * sx * u + c * sy * v;
+        }
+        gltf_fixture f = { 0 };
+        gltf_fixture_square(&f, upright_uvs);
+        int uv = gltf_fixture_floats(&f, baked, 4, 2), tangent = -1;
+        if (authored) {
+            tangent = gltf_fixture_floats(
+                &f,
+                (const float[]){ 1, 0, 0, -1, 1, 0, 0, -1, 1, 0, 0, -1, 1, 0, 0, -1 },
+                4,
+                4
+            );
+        }
+        REQUIRE(transform_atlas(&f, slot == 4));
+        char transform[256], name[64];
+        snprintf(
+            transform,
+            sizeof transform,
+            ",\"extensions\":{\"KHR_texture_transform\":{"
+            "\"offset\":[%.9g,%.9g],\"scale\":[%.9g,%.9g],\"rotation\":%.9g}}",
+            ox,
+            oy,
+            sx,
+            sy,
+            rotation
+        );
+        snprintf(name, sizeof name, "Transform%d", variant);
+        REQUIRE(transform_model(&f, name, slot, 2, tangent, transform));
+        if (!entity) {
+            import_mesh(add_surface_box("Transform0_Map"));
+            entity = true;
+        }
+        REQUIRE(render(&environment));
+        CF_Pixel transformed[PIXELS];
+        memcpy(transformed, pixels, sizeof pixels);
+        snprintf(name, sizeof name, "Baked%d", variant);
+        REQUIRE(transform_model(&f, name, slot, uv, tangent, ""));
+        REQUIRE(render(&environment));
+        int maximum = 0;
+        for (int i = 0; i < PIXELS; i++) {
+            int difference = distance(pixels[i], transformed[i]);
+            maximum = difference > maximum ? difference : maximum;
+        }
+        REQUIRE(matches(transformed));
+        snprintf(name, sizeof name, "Plain%d", variant);
+        REQUIRE(transform_model(&f, name, slot, 2, tangent, ""));
+        REQUIRE(render(&environment));
+        int changed = 0;
+        for (int i = 0; i < PIXELS; i++) {
+            changed += distance(pixels[i], transformed[i]) > 5;
+        }
+        REQUIRE(changed > 20);
+        printf("texture-transform variant=%d max_rgb_error=%d negative_control_pixels=%d frames=3\n", variant, maximum, changed);
+        gltf_fixture_free(&f);
+    }
+    return true;
+}
+
 #endif
 #endif
 
@@ -4215,4 +4391,33 @@ void test_render_scene3d(bool gles)
 #endif
     pu_clear_setup();
     cf_destroy_app();
+}
+
+/* Dedicated bounded GPU assertion, registered separately from scene3d. */
+void test_render_texture_transform()
+{
+#if CHIBI_TEST_MATERIAL_GRAPHS && CHIBI_TEST_MODEL_IMPORT
+#ifdef __linux__
+    setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+#endif
+    setenv("CHIBI_RENDER_SHADER_DIR", CHIBI_SOURCE_ROOT "/src/render/shaders", 0);
+    CF_Result made = cf_make_app(
+        "texture-transform",
+        0,
+        0,
+        0,
+        SIDE,
+        SIDE,
+        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
+        NULL
+    );
+    assert(!cf_is_error(made));
+    app_scene_renderer_initialize();
+    pu_setup(setup, teardown);
+    RUN_TEST_CASE(imported_texture_transforms_match_baked_uvs);
+    pu_clear_setup();
+    cf_destroy_app();
+#else
+    assert(!"Texture transform checks require material graphs and model import");
+#endif
 }

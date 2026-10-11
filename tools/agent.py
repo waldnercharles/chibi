@@ -45,7 +45,7 @@ STUDIO_ACCEPTANCE = {
 RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize': 'viewport-resize',
                     '--sdf-visibility': 'sdf-visibility',
                     '--scene3d': 'scene3d', '--scene3d-gles': 'scene3d-gles',
-                    '--material-ramps': 'material-ramps'}
+                    '--material-ramps': 'material-ramps', '--texture-transform': 'texture-transform'}
 GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS
 PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
     ('font', f'font/Inter/{weight}/normal') for weight in (400, 500, 600, 700)

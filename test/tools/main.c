@@ -52,6 +52,9 @@ void test_device_controls();
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
 void test_render_material_ramps();
 void test_render_sdf_visibility();
+#ifdef CHIBI_TEST_MODEL_IMPORT
+void test_render_texture_transform();
+#endif
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
@@ -159,7 +162,7 @@ int main(int argc, char **argv)
          render_resources = false, interior_border = false,
          viewport_resize = false, sdf_visibility = false, scene3d = false,
          material_ramps = false, box3d = false, sky_files = false,
-         mesh_files = false, model_import = false;
+         mesh_files = false, model_import = false, texture_transform = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -223,7 +226,11 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     model_import = argc == 2 && !strcmp(argv[1], "--model-import");
-    model_import_types = model_import || scene3d;
+#ifdef CHIBI_TEST_MATERIAL_GRAPHS
+    texture_transform = argc == 2 && !strcmp(argv[1], "--texture-transform");
+    material_graphs |= texture_transform;
+#endif
+    model_import_types = model_import || scene3d || texture_transform;
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     native_catalog = argc == 2 && !strcmp(argv[1], "--native-catalog");
@@ -239,8 +246,8 @@ int main(int argc, char **argv)
         !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
         !native && !native_values && !native_catalog && !physics && !physics3d &&
         !transforms && !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !scene3d && !material_ramps && !box3d &&
-        !sky_files && !mesh_files && !model_import && !persistent_store &&
+        !sdf_visibility && !scene3d && !material_ramps && !texture_transform &&
+        !box3d && !sky_files && !mesh_files && !model_import && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
         !source_numeric && !source_material && !source_presentation &&
@@ -260,6 +267,7 @@ int main(int argc, char **argv)
             "| --render-resources | --interior-border | --viewport-resize | "
             "--sdf-visibility | "
             "--scene3d | --scene3d-gles | --material-ramps | "
+            "--texture-transform | "
             "--box3d | "
             "--sky-files | --mesh-files | --model-import | "
             "--persistent-store | "
@@ -361,6 +369,13 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
+#ifdef CHIBI_TEST_MODEL_IMPORT
+    if (texture_transform) {
+        test_render_texture_transform();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
     if (material_ramps || sdf_visibility) {
         if (sdf_visibility) {
             test_render_sdf_visibility();

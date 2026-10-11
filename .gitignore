@@ -63,3 +63,6 @@ build-web-sdk/
 build-web-sdk-threads/
 build-studio-web/
 build-studio-web-threads/
+
+build-wasm-language/
+build-wasm-language-threads/

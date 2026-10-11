@@ -541,7 +541,9 @@ static bool write_info_plist(const chibi_export_spec *spec, const char *staging,
         "\t<key>CFBundleVersion</key><string>1</string>\n"
         "\t<key>LSApplicationCategoryType</"
         "key><string>public.app-category.games</string>\n"
-        "\t<key>NSHighResolutionCapable</key><true/>\n");
+        "\t<key>NSHighResolutionCapable</key><true/>\n"
+        "\t<key>NSMicrophoneUsageDescription</key><string>Respond to audio "
+        "from an input you select.</string>\n");
     if (spec->icon) {
         put(&text, "\t<key>CFBundleIconFile</key><string>");
         put_xml(&text, name);

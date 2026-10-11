@@ -898,6 +898,26 @@ int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point)
     return FLOW_OK;
 }
 
+int engine_sample_pointer_ray(engine *engine, input_pointer_ray pointer)
+{
+    CF_V3 o = pointer.origin, d = pointer.direction;
+    if (!engine ||
+        (pointer.active &&
+         (!isfinite(o.x) || !isfinite(o.y) || !isfinite(o.z) || !isfinite(d.x) ||
+          !isfinite(d.y) || !isfinite(d.z) || (!d.x && !d.y && !d.z)))) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (!engine->input) {
+        return FLOW_ERR_STATE;
+    }
+    if (engine->replay) {
+        return FLOW_OK;
+    }
+    pointer.active &= engine->playing && engine->focus == ENGINE_FOCUS_VIEWPORT;
+    engine_input_pointer(engine->input, pointer);
+    return FLOW_OK;
+}
+
 static int flush_initializers(engine *engine)
 {
     if (!engine->modules.entities) {

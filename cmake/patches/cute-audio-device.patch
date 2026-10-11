@@ -1,0 +1,28 @@
+diff --git a/include/cute_audio.h b/include/cute_audio.h
+--- a/include/cute_audio.h
++++ b/include/cute_audio.h
+@@ -18,6 +18,9 @@
+ #ifdef __cplusplus
+ extern "C" {
+ #endif // __cplusplus
++
++/* Opened SDL playback device, for an application-owned postmix observer. */
++CF_API uint32_t CF_CALL cf_audio_get_sdl_device(void);
+ 
+ /**
+  * @struct   CF_Sound
+diff --git a/src/cute_audio.cpp b/src/cute_audio.cpp
+--- a/src/cute_audio.cpp
++++ b/src/cute_audio.cpp
+@@ -29,6 +29,11 @@
+ #define CUTE_SOUND_FREE(mem, ctx) cf_free(mem)
+ #include <cute/cute_sound.h>
+ 
++uint32_t cf_audio_get_sdl_device()
++{
++	return SDL_GetAudioStreamDevice(s_ctx->stream);
++}
++
+ CF_Audio cf_audio_load_ogg(const char* path)
+ {
+ 	size_t size;

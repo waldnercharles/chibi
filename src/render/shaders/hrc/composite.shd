@@ -45,6 +45,7 @@ layout(set = 3, binding = 1) uniform shd_uniforms
 #include "color.shd"
 #include "hrc/brdf.shd"
 #include "hrc/surface_geometry.shd"
+#include "hrc/depth_shading.shd"
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
 // Transmittance difference over which reconstruction weights fall off.
@@ -201,7 +202,7 @@ void depth_surface_sample(ivec2 p, float spatial, vec3 n,
     // Depth changes the light HRC brings from the lights it sees. When they
     // bring much less than all of HRC's light, the rest, from lights out of
     // its reach or that HRC barely brings, stays as it is.
-    vec4 shade = texelFetch(surface_q3, p, 0);
+    vec4 shade = depth_unpack_shading(texelFetch(surface_q3, p, 0));
     float hrc = dot(sample_fluence(receiver / canvas_size).rgb, LUMA);
     float known = max(max(shade.x, DEPTH_KNOWN_SHARE * hrc), 1e-6);
     shading += vec2(max(1.0 + shade.w / known, 0.0), shade.z) * weight;

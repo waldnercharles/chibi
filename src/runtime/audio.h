@@ -8,6 +8,22 @@
 /* Deterministic audio requests. Scripts queue voices and set the music and
  * bus volumes here; a playback host drains the voices and mirrors the rest. */
 typedef struct audio audio;
+typedef enum
+{
+    AUDIO_IDLE,
+    AUDIO_WAITING,
+    AUDIO_READY,
+    AUDIO_UNAVAILABLE,
+    AUDIO_DENIED,
+    AUDIO_ENDED
+} audio_status;
+typedef struct
+{
+    float level, bass, mid, treble, onset;
+    bool active;
+    int source;
+    audio_status status;
+} audio_measurement;
 typedef struct
 {
     float frequency, end_frequency, duration, volume, pan, noise;
@@ -64,6 +80,11 @@ float audio_volume(const audio *audio, audio_bus bus);
 uint64_t audio_generation(const audio *audio);
 uint64_t audio_count(const audio *audio);
 uint64_t audio_hash(const audio *audio);
+/* Source 0 observes the game's output; source 1 requests external audio.
+ * The playback host publishes a snapshot before the next game tick. */
+int audio_source(const audio *audio, uint64_t *serial);
+audio_measurement audio_get_analysis(const audio *audio);
+void audio_set_analysis(audio *audio, audio_measurement analysis);
 /* Owned mono PCM WAV. Headless tests and the playback host share synthesis. */
 unsigned char *tone_wav(tone tone, int *size);
 extern const node_host_call AUDIO_TONE_CALL;
@@ -73,5 +94,8 @@ extern const node_host_call AUDIO_STOP_MUSIC_CALL;
 extern const node_host_call AUDIO_MASTER_VOLUME_CALL;
 extern const node_host_call AUDIO_MUSIC_VOLUME_CALL;
 extern const node_host_call AUDIO_SOUND_VOLUME_CALL;
+extern const node_host_call AUDIO_SOURCE_CALL;
+extern const node_host_call AUDIO_ANALYSIS_CALL;
 extern const node_access AUDIO_ACCESS;
+extern const node_access AUDIO_READ_ACCESS;
 #endif

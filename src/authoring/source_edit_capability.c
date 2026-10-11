@@ -3,6 +3,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -114,6 +115,222 @@ static char *reference(
     }
     return quoted(catalog, catalog->capabilities[index].name, error, size);
 }
+static void variable_read_name(const script_analysis *a, const char *variable, char out[64])
+{
+    char base[48];
+    int length = 0;
+    for (const char *p = variable; *p && length < 40; p++) {
+        if ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || *p == '_' ||
+            (length && *p >= '0' && *p <= '9')) {
+            base[length++] = *p;
+        }
+    }
+    if (!length) {
+        memcpy(base, "read", 4);
+        length = 4;
+    }
+    memcpy(base + length, "Value", 6);
+    for (int ordinal = 1;; ordinal++) {
+        if (ordinal == 1) {
+            snprintf(out, 64, "%s", base);
+        } else {
+            snprintf(out, 64, "%s%d", base, ordinal);
+        }
+        bool used = false;
+        for (int i = 0; i < a->symbol_count; i++) {
+            used |= !strcmp(a->symbols[i].name, out);
+        }
+        if (!used) {
+            return;
+        }
+    }
+}
+/* Variable creation uses the declared state identity, never a mutable graph
+ * variable or a generated getter/setter capability. */
+static bool create_variable_access(
+    const script_analysis *a,
+    const script_catalog *catalog,
+    const authoring_source_presentation *p,
+    const authoring_edit_request *r,
+    source_edit_changes *change,
+    char *error,
+    size_t size
+)
+{
+    const script_symbol *state = NULL;
+    const source_presentation_origin *declaration = NULL;
+    for (int i = 0; i < a->symbol_count; i++) {
+        if (a->symbols[i].id == r->symbol &&
+            (a->symbols[i].kind == SCRIPT_STATE ||
+             a->symbols[i].kind == SCRIPT_SHARED_STATE)) {
+            state = &a->symbols[i];
+            break;
+        }
+    }
+    if (!state) {
+        return fail(error, size, "Choose a declared variable");
+    }
+    for (int i = 0; i < authoring_source_presentation_origin_count(p); i++) {
+        const source_presentation_origin *o = authoring_source_presentation_origin_at(p, i);
+        if (o->kind == SOURCE_PRESENTATION_SYMBOL && !o->pin &&
+            a->symbols[o->record].id == state->id) {
+            declaration = o;
+            break;
+        }
+    }
+    if (!declaration) {
+        return fail(error, size, "Variable declaration is no longer available");
+    }
+    bool set = r->kind == AUTHORING_EDIT_CREATE_VARIABLE_SET;
+    if ((!set && r->producer) || (set && (!state->writable || r->previous)) ||
+        (!r->origin && !r->previous)) {
+        return fail(error, size, "Choose a variable access and an executable source position");
+    }
+    char *name = quoted(catalog, state->name, error, size);
+    if (!name) {
+        return false;
+    }
+    char *reference = NULL;
+    append(&reference, "state.%s", name);
+    free(name);
+    name = take(&reference);
+    source_edit_connection destination = { .text = name,
+                                           .type = state->type,
+                                           .symbol = state->id };
+    if (!set && r->previous) {
+        const source_presentation_origin *target = origin(p, r->previous);
+        if (!target || target->kind != SOURCE_PRESENTATION_EXPRESSION) {
+            free(name);
+            return fail(error, size, "Choose a current value input for Get Variable");
+        }
+        apush(change->patches, ((text_edit){ target->range.start, target->range.end, xstrdup(name) }));
+        change->text = source_edit_check_connection(
+            a,
+            catalog,
+            text_edits_apply(a->text, change->patches, acount(change->patches)),
+            &destination,
+            declaration,
+            target->range.start + 6,
+            error,
+            size
+        );
+        free(name);
+        if (!change->text) {
+            source_edit_changes_free(change);
+            return false;
+        }
+        return true;
+    }
+    source_edit_connection producer = { 0 };
+    char *value = NULL;
+    bool self_assignment = false;
+    int producer_prefix = 0;
+    if (set && r->producer) {
+        producer = source_edit_producer(a, catalog, p, r->producer, r->producer_result, error, size);
+        if (!producer.text) {
+            free(name);
+            return false;
+        }
+        for (int i = 0; i < a->symbol_count; i++) {
+            const script_symbol *source = &a->symbols[i];
+            if (source->id != producer.symbol ||
+                (source->kind != SCRIPT_STATE && source->kind != SCRIPT_SHARED_STATE)) {
+                continue;
+            }
+            char *quoted_name = quoted(catalog, source->name, error, size);
+            if (!quoted_name) {
+                free(name);
+                free(producer.text);
+                return false;
+            }
+            char *reference = NULL;
+            append(&reference, "state.%s", quoted_name);
+            free(quoted_name);
+            free(producer.text);
+            producer.text = take(&reference);
+            producer_prefix = 6;
+            break;
+        }
+        value = xstrdup(producer.text);
+    } else if (set) {
+        pin_value zero = { .type = state->type.storage,
+                           .container = state->type.container };
+        const script_catalog_type
+            *type = script_catalog_type_by_id(catalog, state->type.nominal);
+        zero.type_name = type ? type->name : NULL;
+        if (zero.type == PIN_STR || zero.type == PIN_NAME) {
+            zero.str = "";
+        }
+        value = authoring_source_literal(catalog, state->type, r->value ? r->value : &zero, error, size);
+        if (!value && r->value) {
+            free(name);
+            return false;
+        }
+        if (!value) {
+            value = xstrdup(name);
+            self_assignment = true;
+        }
+    }
+    char local[64];
+    variable_read_name(a, state->name, local);
+    char *fragment = NULL;
+    append(&fragment, set ? "%s = %s;" : "%s := %s;", set ? name : local, set ? value : name);
+    char *text = take(&fragment);
+    authoring_edit_request insert = *r;
+    insert.kind = AUTHORING_EDIT_APPEND_BODY;
+    insert.fragment = text;
+    bool ok = source_edit_structural(a, catalog, p, &insert, change, error, size);
+    int first = -1;
+    if (ok) {
+        assert(acount(change->patches) == 1);
+        first = change->patches[0].start + 1;
+        change->text = source_edit_check_connection(
+            a,
+            catalog,
+            change->text,
+            &destination,
+            declaration,
+            first + (set ? 0 : (int)strlen(local) + 4) + 6,
+            error,
+            size
+        );
+        ok = change->text != NULL;
+    }
+    if (ok && self_assignment) {
+        change->text = source_edit_check_connection(
+            a,
+            catalog,
+            change->text,
+            &destination,
+            declaration,
+            first + (int)strlen(name) + 3 + 6,
+            error,
+            size
+        );
+        ok = change->text != NULL;
+    }
+    if (ok && producer.text) {
+        change->text = source_edit_check_connection(
+            a,
+            catalog,
+            change->text,
+            &producer,
+            origin(p, r->producer),
+            first + (int)strlen(name) + 3 + producer_prefix,
+            error,
+            size
+        );
+        ok = change->text != NULL;
+    }
+    free(name);
+    free(text);
+    free(value);
+    free(producer.text);
+    if (!ok) {
+        source_edit_changes_free(change);
+    }
+    return ok;
+}
 bool source_edit_capability(
     const script_analysis *a,
     const script_catalog *catalog,
@@ -124,6 +341,10 @@ bool source_edit_capability(
     size_t size
 )
 {
+    if (r->kind == AUTHORING_EDIT_CREATE_VARIABLE_GET ||
+        r->kind == AUTHORING_EDIT_CREATE_VARIABLE_SET) {
+        return create_variable_access(a, catalog, p, r, change, error, size);
+    }
     const script_catalog_capability *c = capability(catalog, r);
     if (r->kind == AUTHORING_EDIT_CREATE_EVENT) {
         int index = r->reference

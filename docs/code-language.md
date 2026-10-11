@@ -106,6 +106,35 @@ and nominal values require an explicit type. `elapsed: number = 0;` spells out t
 type; native storage types such as `float` and `int64` remain available when precision
 or a reflected interface needs them. Formatting keeps a declared type unless inference produces the same storage.
 
+The graph derives variable operations from these declarations. Declaring
+`level: entity` and assigning `level = globals.Level` produces a **Set Level**
+node with one entity-valued **Value** input. It stores the named scene entity in
+this behavior instance's `level` variable. The assignment does not change scenes
+or rewrite the global binding. The same mechanism produces **Set Score** from
+`score = 10`; no native node registration or C code is needed.
+
+In Studio, add a variable in **Members**, then edit its **Name**, **Type** and
+default in **Properties**. The node chooser offers its **Get** and **Set**
+operations. Dragging the variable onto the graph creates a Get; Alt-dragging
+creates a Set. These edits update the same source and use normal undo.
+
+An authored function is the reusable way to create a custom operation. Its
+parameters become inputs and its results become outputs. A call uses the same
+definition wherever it appears. Small pure calls can be folded into their
+consumer's input without changing the source or the number of evaluations.
+Use **Open Function** on a call or its folded input to inspect the definition.
+**Inline Function into Caller** instead replaces a supported call with its body
+in the source as one undoable edit. The definition remains available for other
+calls. **Fold into Input** and **Show Input Nodes** only change presentation.
+
+Adding a standalone variable **Get** creates a named local read, such as
+`levelValue := state."level"`. Its execution pins show when the read occurs; its
+output retains that value. Choosing the variable as an existing input's source
+reads it when that consumer runs. The `state` qualifier identifies the declared
+state even when a local parameter has the same name. A newly added **Set** uses
+a zero default where one can be written, or the variable's current value for
+types such as entities; edit its Value input to choose the intended source.
+
 Names may be identifiers or quoted display names. Prototype references in native
 prototype arguments resolve project symbols, such as `spawn(MovementEmitter)`.
 Component references resolve reflected symbols. Source member paths use short
@@ -392,6 +421,40 @@ Changing a system's source or query currently restarts its registration: pending
 continuations are cancelled, and both entity-private and shared state start from
 the authored defaults. Compatible behavior instance reload does not preserve
 state across this system registration replacement.
+
+### Named scene entities
+
+The built-in `globals` namespace exposes entities named by authored
+`GlobalBinding` components. It is available in behaviors, libraries and systems:
+
+```chibi
+behavior CameraFollow {
+    player: entity
+    on Begin {
+        player = globals.Player
+    }
+    on Tick {
+        self.Transform = player.Transform
+    }
+}
+```
+
+Names are discovered from the project's prototypes and scenes before Play.
+`globals.Player` has type `entity`; it needs no string lookup or cast.
+Completion after `globals.` lists the declared names, and an unknown name is a
+source error. Definition, references and rename connect a member to its authored
+bindings. A name may be reused in different scenes; two entities cannot publish
+the same name in one running scene.
+
+Each read resolves the binding in the current scene. A declared name absent from
+that scene is a runtime error. Assigning the result to a behavior variable,
+as above, captures that handle rather than maintaining a live binding; it does
+not retarget the variable when the scene changes.
+
+Namespace members are read-only references: assign to an entity's writable
+component, such as `globals.Player.Transform`, rather than to `globals.Player`.
+The namespace itself is not a value. These bindings do not declare shared scalar
+variables or persistent save data.
 
 ### Input actions
 

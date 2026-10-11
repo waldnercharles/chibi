@@ -1,5 +1,9 @@
 behavior InputProbe {
     on Input {
+        pointer := get_pointer_ray()
+        if pointer.Active {
+            self.Aim.direction = vec2(pointer.Direction.x, pointer.Direction.z)
+        }
         self.Transform += Direction
         if input.Shoot.held {
             self.Aim.firing = true

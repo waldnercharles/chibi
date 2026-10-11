@@ -86,9 +86,9 @@ endif()
 set(render_sources appearance_geometry.c scene_renderer.c shader_fragment.c shader_preview.c
     shader_publish.c screenshot.c material.c material_lod.c shader_images.c
     shader_program.c fog.c material_raster.c fluid_raster.c
-    reflections.c radiance.c post_2d.c gpu_timing.c viewport.c audio.c geometry_2d.c grid_2d.c
+    reflections.c radiance.c post_2d.c gpu_timing.c viewport.c audio.c audio_input.c audio_web.c geometry_2d.c grid_2d.c
     mesh_surface.c mesh_material.c scene3d.c scene3d_geometry.c scene3d_influence.c scene3d_mesh_cache.c
-    scene3d_visual.c scene3d_trail.c scene3d_camera.c scene3d_pick.c scene3d_post.c scene3d_shadow.c scene3d_occlusion.c scene3d_gi.c
+    scene3d_visual.c scene3d_trail.c scene3d_particles.c scene3d_camera.c scene3d_pick.c scene3d_post.c scene3d_shadow.c scene3d_occlusion.c scene3d_gi.c
     scene3d_light_shadow.c scene3d_sky.c field_image.c ui.c device_controls.c)
 list(TRANSFORM render_sources PREPEND "${CHIBI_SDK_ROOT}/src/render/")
 add_library(chibi_renderer STATIC ${render_sources}
@@ -129,7 +129,12 @@ list(APPEND CHIBI_SDK_TARGETS chibi_platform chibi_ui_host chibi_renderer)
 # The deployed player links only prepared runtime packages. The web SDK
 # builds its browser player only on request, outside the SDK package.
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
-    add_executable(chibi-player "${CHIBI_SDK_ROOT}/src/host/player_main.c")
+    add_executable(chibi-player "${CHIBI_SDK_ROOT}/src/host/player_main.c"
+        "${CHIBI_SDK_ROOT}/src/host/player_url.c")
+    set(player_private "${CMAKE_CURRENT_BINARY_DIR}/private/player")
+    configure_file("${CHIBI_SDK_ROOT}/src/host/player_url.h" "${player_private}/host/player_url.h" COPYONLY)
+    configure_file("${CHIBI_SDK_ROOT}/src/host/player_clock.h" "${player_private}/host/player_clock.h" COPYONLY)
+    target_include_directories(chibi-player PRIVATE "${player_private}")
     target_link_libraries(chibi-player PRIVATE Chibi::render Chibi::player
         Chibi::native_prepared Chibi::host_native_default)
     set_target_properties(chibi-player PROPERTIES LINKER_LANGUAGE CXX)

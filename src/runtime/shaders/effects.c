@@ -287,9 +287,14 @@ const char *shader_effects_glsl()
            "  uvec3 corner=uvec3(uint(i&1),uint((i>>1)&1),uint((i>>2)&1));\n"
            "  corners[i]=sgx_hash((cell+corner)&uvec3(4095u));\n"
            " }\n"
-           " for(int axis=0;axis<3;axis++) for(int i=0;i<(4>>axis);i++) {\n"
-           "  float a=corners[i*2], b=corners[i*2+1]; "
+           " for(int axis=0;axis<3;axis++) {\n"
+           /* Keep shifts out of comparisons: Cute's WGSL printer drops their
+            * parentheses, making `i < 4 >> axis` look like a template. */
+           "  int count=4>>axis;\n"
+           "  for(int i=0;i<count;i++) {\n"
+           "   float a=corners[i*2], b=corners[i*2+1]; "
            "corners[i]=a+(b-a)*t[axis];\n"
+           "  }\n"
            " }\n"
            " return corners[0];\n"
            "}\n"

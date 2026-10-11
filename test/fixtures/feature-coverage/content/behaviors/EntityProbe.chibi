@@ -1,6 +1,6 @@
 behavior EntityProbe {
     on Begin {
-        spawner: handle<"ecs.entity"> = get_global_variable("Spawner")
+        spawner := globals.Spawner
         await set_global_variable("Spawned", Value: int = 0)
         drone := await spawn_prototype(Drone)
         debris := "Debris" /* Reaches the spawn through a local. */

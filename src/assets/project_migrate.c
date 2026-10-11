@@ -93,13 +93,14 @@ static bool is_name(TSNode node)
 {
     return is(node, "identifier") || is(node, "string");
 }
-static void collect(TSNode node, int file, TSNode library, function **functions)
+static void collect(TSNode node, int file, TSNode library, bool macros, function **functions)
 {
     if (is(node, "library")) {
         library = ts_node_child_by_field_name(node, "name", 4);
     }
     /* An action has no body; it never waits and shadows functions. */
-    if (is(node, "function_declaration") || is(node, "action_declaration")) {
+    if (is(node, "function_declaration") || is(node, "action_declaration") ||
+        (macros && is(node, "macro_declaration"))) {
         apush(
             *functions,
             ((function){ .file = file,
@@ -110,7 +111,7 @@ static void collect(TSNode node, int file, TSNode library, function **functions)
         );
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        collect(ts_node_named_child(node, i), file, library, functions);
+        collect(ts_node_named_child(node, i), file, library, macros, functions);
     }
 }
 static TSNode outer(TSNode node)
@@ -243,7 +244,7 @@ char **chibi_migrate_task_calls(const char *const *sources, int count)
     script_syntax **syntax = xmalloc((size_t)(count + 1) * sizeof *syntax);
     for (int i = 0; i < count; i++) {
         syntax[i] = script_parse(sources[i]);
-        collect(ts_tree_root_node(syntax[i]->tree), i, (TSNode){ 0 }, &c.functions);
+        collect(ts_tree_root_node(syntax[i]->tree), i, (TSNode){ 0 }, false, &c.functions);
     }
     for (bool changed = true; changed;) {
         changed = false;
@@ -3089,6 +3090,91 @@ static bool native_source_call(const char *text)
     free(normalized);
     return found;
 }
+/* These are the version 22 reflected type categories, not the live catalog. */
+static bool native_type_operation(const char *type, const char *operation)
+{
+    static const char *const enums[] = { "BodyType",
+                                         "Collider3DShape",
+                                         "ColliderShape",
+                                         "Control",
+                                         "FluidKind",
+                                         "GlobalIllumination",
+                                         "HRCColor",
+                                         "HRCDebugView",
+                                         "HRCDepthEmitters",
+                                         "HRCDepthQuality",
+                                         "HRCDepthVisibility",
+                                         "HRCGather",
+                                         "HRCShadowMode",
+                                         "HRCSurfaceMode",
+                                         "HRCToneMapping",
+                                         "HRCUpscale",
+                                         "Joint3DKind",
+                                         "JointKind",
+                                         "Occlusion",
+                                         "PadControl",
+                                         "ParticleShape",
+                                         "SdfNormalMode",
+                                         "Shape",
+                                         "SurfaceResolution",
+                                         "ToneMapping" };
+    for (size_t i = 0; i < sizeof enums / sizeof *enums; i++) {
+        if (!strcmp(type, enums[i])) {
+            return false;
+        }
+    }
+    if (!strcmp(operation, "Make_") || !strcmp(operation, "Break_")) {
+        return true;
+    }
+    if (!strcmp(type, "ParticleCurve")) {
+        return false;
+    }
+    if (!strcmp(operation, "Unwrap_")) {
+        static const char *const wrappers[] = {
+            "EncounterMember", "Experience", "Fuel",      "GlobalBinding",
+            "Gravity",         "Gravity3D",  "Igniter",   "Input",
+            "MaterialCavity",  "MeshAsset",  "MeshParts", "MeshSurface2D",
+            "Movement",        "Orientation"
+        };
+        for (size_t i = 0; i < sizeof wrappers / sizeof *wrappers; i++) {
+            if (!strcmp(type, wrappers[i])) {
+                return true;
+            }
+        }
+        return false;
+    }
+    if (!strcmp(type, "GlobalTransform2D") || !strcmp(type, "GlobalTransform3D")) {
+        return !strcmp(operation, "Get_") || !strcmp(operation, "GetEntity_") ||
+               !strcmp(operation, "Has_") || !strcmp(operation, "HasEntity_");
+    }
+    return true;
+}
+static bool native_canonical_call(const char *name)
+{
+    static const char *const calls[] = { "game_move_transform",
+                                         "game_transform_to_cf",
+                                         "game_transform_from_cf" };
+    for (size_t i = 0; i < sizeof calls / sizeof *calls; i++) {
+        if (!strcmp(name, calls[i])) {
+            return true;
+        }
+    }
+    static const char *const operations[] = {
+        "GetEntity_", "SetEntity_", "HasEntity_", "Get_",   "Set_",   "Has_",
+        "Add_",       "Remove_",    "Make_",      "Break_", "Unwrap_"
+    };
+    for (size_t i = 0; i < sizeof operations / sizeof *operations; i++) {
+        size_t length = strlen(operations[i]);
+        if (strncmp(name, operations[i], length) || strncmp(name + length, "Game", 4)) {
+            continue;
+        }
+        const char *type = unprefixed_native(name + length, strlen(name + length));
+        if (type && !strcmp(name + length + 4, type)) {
+            return native_type_operation(type, operations[i]);
+        }
+    }
+    return false;
+}
 static bool name_byte(char c)
 {
     return isalnum((unsigned char)c) || c == '_';
@@ -3253,16 +3339,42 @@ static bool component_argument(const char *text, TSNode node)
     return !ts_node_eq(argument, node) ||
            ts_node_eq(ts_node_named_child(parent, 0), node);
 }
-static void source_prefix_edits(const corpus *context, TSNode node, replacement **out)
+static bool prefix_callee(const corpus *context, int file, TSNode target)
 {
-    const char *text = context->sources[0];
-    TSNode parent = ts_node_parent(node);
-    bool type = is(node, "type_name");
-    bool target = is_name(node) && is(parent, "call_expression") &&
-                  ts_node_eq(node, ts_node_child_by_field_name(parent, "function", 8));
-    if (target && callee(context, 0, node)) {
-        target = false;
+    if (callee(context, file, target)) {
+        return true;
     }
+    if (is_name(target)) {
+        char *name = name_text(context->sources[file], target);
+        bool native = native_canonical_call(name);
+        free(name);
+        /* Exact native catalog keys win over imported short-name aliases. */
+        if (native) {
+            return false;
+        }
+    }
+    /* The authored catalog also exposes library callables by their short
+     * names. Local declarations keep callee's lexical scope rules. */
+    for (int i = 0; is_name(target) && i < acount(context->functions); i++) {
+        const function *f = &context->functions[i];
+        if (!ts_node_is_null(f->library) && !ts_node_is_null(f->body) &&
+            similar_name(context->sources[file], target, context->sources[f->file], f->name)) {
+            return true;
+        }
+    }
+    return false;
+}
+static void source_prefix_edits(const corpus *context, int file, TSNode node, replacement **out)
+{
+    const char *text = context->sources[file];
+    TSNode parent = ts_node_parent(node);
+    bool call_target = !ts_node_is_null(parent) && is(parent, "call_expression") &&
+                       ts_node_eq(node, ts_node_child_by_field_name(parent, "function", 8));
+    if (call_target && prefix_callee(context, file, node)) {
+        return;
+    }
+    bool type = is(node, "type_name");
+    bool target = is_name(node) && call_target;
     bool selector = is(node, "string") && component_argument(text, node);
     bool member = is_name(node) && is(parent, "member_expression") &&
                   ts_node_eq(node, ts_node_child_by_field_name(parent, "member", 6));
@@ -3271,15 +3383,15 @@ static void source_prefix_edits(const corpus *context, TSNode node, replacement 
         return;
     }
     for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
-        source_prefix_edits(context, ts_node_named_child(node, i), out);
+        source_prefix_edits(context, file, ts_node_named_child(node, i), out);
     }
 }
 static void collect_prefix_edits(const char *text, TSNode root, replacement **out)
 {
     const char *sources[] = { text };
     corpus context = { .sources = sources };
-    collect(root, 0, (TSNode){ 0 }, &context.functions);
-    source_prefix_edits(&context, root, out);
+    collect(root, 0, (TSNode){ 0 }, true, &context.functions);
+    source_prefix_edits(&context, 0, root, out);
     afree(context.functions);
 }
 static bool prefix_field(const char *name)
@@ -3459,7 +3571,7 @@ static bool metadata_prefixes(yyjson_mut_doc *document, yyjson_mut_val *value, b
 }
 /* Source-bound graph IDs and layout survive the rename. Only metadata bound
  * to the old source gets a new hash; already stale metadata stays stale. */
-static char *prefix_metadata(const char *json, const char *before, const char *after)
+static char *prefix_metadata(const char *json, const char *before, const char *after, replacement *edits)
 {
     yyjson_doc *parsed = yyjson_read(json, strlen(json), 0);
     if (!parsed || !yyjson_is_obj(yyjson_doc_get_root(parsed))) {
@@ -3474,10 +3586,6 @@ static char *prefix_metadata(const char *json, const char *before, const char *a
     prefix_hash(after, new_hash);
     const char *bound = yyjson_mut_get_str(yyjson_mut_obj_get(root, "source_hash"));
     if (strcmp(before, after) && bound && !strcmp(bound, old_hash)) {
-        replacement *edits = NULL;
-        script_syntax *syntax = script_parse(before);
-        collect_prefix_edits(before, ts_tree_root_node(syntax->tree), &edits);
-        qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
         yyjson_mut_val *anchors = yyjson_mut_obj_get(root, "anchors"), *anchor;
         size_t i, count;
         yyjson_mut_arr_foreach(anchors, i, count, anchor)
@@ -3496,14 +3604,67 @@ static char *prefix_metadata(const char *json, const char *before, const char *a
             yyjson_mut_str(document, "source_hash"),
             yyjson_mut_strcpy(document, new_hash)
         );
-        script_syntax_free(syntax);
-        prefix_edits_free(edits);
         changed = true;
     }
     char *out = changed ? yyjson_mut_write(document, 0, NULL) : NULL;
     yyjson_mut_doc_free(document);
     yyjson_doc_free(parsed);
     return out;
+}
+
+static char **migrate_prefixes(char **sources, char **paths, int count, char *error, size_t error_size)
+{
+    corpus context = { .sources = (const char *const *)sources };
+    script_syntax **syntax = xcalloc((size_t)count, sizeof *syntax);
+    replacement **edits = xcalloc((size_t)count, sizeof *edits);
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count; i++) {
+        if (has_suffix(paths[i], ".chibi")) {
+            syntax[i] = script_parse(sources[i]);
+            collect(
+                ts_tree_root_node(syntax[i]->tree),
+                i,
+                (TSNode){ 0 },
+                true,
+                &context.functions
+            );
+        }
+    }
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (syntax[i]) {
+            source_prefix_edits(&context, i, ts_tree_root_node(syntax[i]->tree), &edits[i]);
+            migrated[i] = prefix_apply(sources[i], edits[i]);
+        } else if (!has_suffix(paths[i], ".chibi.meta")) {
+            migrated[i] = chibi_migrate_prefixes(sources[i], false, error, error_size);
+        }
+    }
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi.meta")) {
+            continue;
+        }
+        size_t length = strlen(paths[i]) - strlen(".meta");
+        for (int j = 0; j < count; j++) {
+            if (strlen(paths[j]) == length && !memcmp(paths[i], paths[j], length)) {
+                migrated[i] = prefix_metadata(
+                    sources[i],
+                    sources[j],
+                    migrated[j] ? migrated[j] : sources[j],
+                    edits[j]
+                );
+                break;
+            }
+        }
+    }
+    for (int i = 0; i < count; i++) {
+        if (syntax[i]) {
+            script_syntax_free(syntax[i]);
+        }
+        prefix_edits_free(edits[i]);
+    }
+    free(syntax);
+    free(edits);
+    afree(context.functions);
+    return migrated;
 }
 
 static int collect_sources(const char *directory, const char *suffix, char ***paths, char *error, size_t error_size)
@@ -3747,37 +3908,9 @@ int chibi_project_migrate_content(
                 }
                 break;
             case 22:
-                migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
-                for (int i = 0; i < count && !status; i++) {
-                    if (has_suffix(paths[i], ".chibi.meta")) {
-                        continue;
-                    }
-                    error[0] = '\0';
-                    migrated[i] = chibi_migrate_prefixes(
-                        sources[i],
-                        has_suffix(paths[i], ".chibi"),
-                        error,
-                        error_size
-                    );
-                    status = error[0] ? -1 : 0;
-                }
-                for (int i = 0; i < count && !status; i++) {
-                    if (!has_suffix(paths[i], ".chibi.meta")) {
-                        continue;
-                    }
-                    size_t length = strlen(paths[i]) - strlen(".meta");
-                    for (int j = 0; j < count; j++) {
-                        if (strlen(paths[j]) == length &&
-                            !memcmp(paths[i], paths[j], length)) {
-                            migrated[i] = prefix_metadata(
-                                sources[i],
-                                sources[j],
-                                migrated[j] ? migrated[j] : sources[j]
-                            );
-                            break;
-                        }
-                    }
-                }
+                error[0] = '\0';
+                migrated = migrate_prefixes(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
                 break;
             default: assert(false);
         }

@@ -206,7 +206,9 @@ TEST_CASE(execution_branches_state_and_host_calls)
     REQUIRE(behavior_function_builder_patch_target(builder, jump, end));
     REQUIRE(finish());
     REQUIRE(behavior_function_compile(function));
+#ifndef __EMSCRIPTEN__
     REQUIRE(behavior_function_entry(function) != NULL);
+#endif
     for (int backend = 0; backend < 2; backend++) {
         pin_value variable = initial, output = result;
         argument.d = 3;

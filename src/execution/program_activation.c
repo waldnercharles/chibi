@@ -289,7 +289,7 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     a->status = behavior_function_run(
         a->function,
         &a->context,
-        a->instance->program->module->backend == BEHAVIOR_SLJIT
+        a->instance->program->module->backend != BEHAVIOR_BYTECODE
     );
     if (observed->observer) {
         clock_t end = clock();
@@ -331,6 +331,10 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     }
     program_inspection_finish(a);
     program_continuation_finish(a);
-    program_collect_payloads(a->instance->program, a);
+    /* Completed calls release their whole payload arena. Collect only calls
+     * that can retain values across another resume or outstanding request. */
+    if (!a->finished || acount(a->requests)) {
+        program_collect_payloads(a->instance->program, a);
+    }
     return a->status;
 }

@@ -353,6 +353,10 @@ static bool render_scene(
         measurement->particles = particles_count(
             prototype_preview_particles(scene.preview)
         );
+        int rendered_particles = app_scene_renderer_particle_count(scene.renderer);
+        if (rendered_particles > measurement->particles) {
+            measurement->particles = rendered_particles;
+        }
         measurement->entities = ecs_world_live_count(
             prototype_preview_world(scene.preview)
         );

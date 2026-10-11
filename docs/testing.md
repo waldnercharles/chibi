@@ -101,6 +101,65 @@ in a feature-coverage scene; it lists the entry as a gap only with a reason. The
 
 ## Temporary 60-second policy
 
+The compiled-runtime rollout passed native, language, tooling, materials and
+project groups under their shared 60-second deadlines. Browser Wasm execution
+passed in serial and pthread configurations. URL gesture coverage passed nine
+cases; the browser audio transport passed two C cases (six assertions) in
+1.372 seconds including its native launcher. Permission and capture endpoints
+are mocked; this does not claim real external recording coverage.
+
+Negative controls reproduced the helper-name migration, particle-as-material,
+resize pointer and delayed-audio bugs before the fixes. The particle preview
+rendered 128 particles and an occluding box in two GPU frames at 320×180 on
+Metal/Cocoa (3.630 seconds including startup). This is rendering evidence, not
+a steady-state performance measurement. The broader `scene3d` check aborts in
+the existing sky path because Metal rejects an unused 128-byte instance-buffer
+layout; the sky source, Cute revision and instance-buffer patch are unchanged.
+Full native/render/Studio coverage remains disabled, not passed.
+
+`player-url` runs nine C-owned URL gesture lifecycle cases through nine short
+Node invocations. It drives the production browser bridge with fake browser
+events and records URL-open requests without a browser, network or GPU. Its
+first combined supervised run passed nine cases and 67 assertions in 2.278
+seconds.
+
+`player-clock` compiles the player's actual clock initialization for both native
+and browser hosts and records the Cute limiter setter. Two C cases verify that
+native enables 60 FPS pacing while the browser leaves pacing to
+requestAnimationFrame. Both cases and four assertions passed within the native
+group's 3.534-second run; restoring the unconditional setter fails the browser
+case. The cases use no clocks, sleeps, windows or GPU.
+
+The browser player previously enabled Cute's native 60 FPS sleep/spin limiter
+inside requestAnimationFrame. Removing that second limiter changed bounded
+Stillwater samples from 58.8 FPS to 120.0 FPS in both Solo and Duet on the same
+browser at a 2560×1440 canvas (1280×720 CSS, DPR 2). Each sample discarded 120
+warmup frames and measured 2.5 seconds. Mean synchronous frame-callback time
+fell from 16.7 ms to 3.08 ms for Solo and 3.46 ms for Duet; the respective 95th
+percentiles were 4.5 and 5.0 ms. Callback time excludes asynchronous GPU
+completion. These are short local measurements, not a sustained or cross-device
+frame-rate guarantee.
+
+`audio-analysis` runs eleven fixed PCM, frequency-band, amplitude, silence,
+source-selection and snapshot cases, plus one dummy-SDL mixer lifetime case.
+The mixer case shares a two-second callback deadline. It opens no graphics or
+real recording device. `audio-browser` separately drives the Wasm capture bridge
+through the C browser harness; it requires the matching browser test build and
+is excluded from the native audio aggregate.
+
+`shader-webgpu` compiles three generated programs with Cute's runtime shader
+compiler: the noise fragment program and particle vertex programs with and
+without Index usage. The vertex cases read the checked-in shader source, limited
+to 64 KiB, and inspect WGSL and Metal output. They open no app or GPU device.
+`shader-parameters-prepared` runs nine bounded CPU cases covering parameter
+codecs, model and particle staging, signatures and helper linking, rejected mesh
+material use, preview reload/rename failures, and source-budget reclamation for
+129 zero-count particle entities. GPU particle rendering remains separate.
+The combined candidate's first supervised runs passed all twelve audio cases and
+298 assertions in 1.238 seconds, and all three shader compiler cases and 32
+assertions in 0.770 seconds. These measurements do not cover browser capture,
+GPU particle drawing, or the expanded parameter selector.
+
 The retired frontend experiment's five source inputs are preserved as historical
 syntax fixtures in `test/fixtures/language/prototype`. Its earlier parser tests
 do not establish production semantic or execution coverage.
@@ -149,7 +208,8 @@ seconds on 2026-10-07 (`.chibi/architecture/language-program-fields.log`).
 
 `python3 tools/test_policy.py tool script-benchmark` measures default compiler
 execution of equivalent inline arithmetic and authored scalar helper calls on
-VM and SLJIT. Four in-memory modules each run one correctness warmup and five
+VM and the platform's compiled backend (SLJIT natively, Wasm on the web).
+Four in-memory modules each run one correctness warmup and five
 trials of 200 dispatches with 100 loop iterations: 400,400 total iterations.
 pico_unit checks the exact result before timing and after each trial. Output
 reports monotonic elapsed time, allocation-wrapper calls/requested bytes and
@@ -170,6 +230,55 @@ retains at most one completed frame with at most 64 KiB of backing storage, then
 frees it at teardown. These are CPU microbenchmarks, not rendered frame rates.
 The Tetris `8cac6a7` project uses an input contract newer than this baseline, so
 no whole-game speedup is claimed from these measurements.
+
+Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. Add
+`WEB_THREADS=1` to build and test the worker configuration. Both compile the
+same C language dispatcher with Emscripten Release, embed its small language
+examples, and run under the production 60-second deadline. Configuration and
+build time are separate. Node runs the Wasm, execution, program, headless,
+publication and scalar benchmark selectors. Chrome runs the same selectors
+except headless through `test_tools --wasm-browser`, with GPU use disabled and
+a 55-second internal process deadline. The fixture owns and removes its browser
+profile. `CHIBI_WASM_BENCHMARK_ONLY=1` selects only the fixed C benchmark for
+baseline comparison.
+
+Wasm cases assert actual generated-entry calls, exact integer widths, arrays,
+helper continuations, budgets, prepared generation ownership and canonical
+scratch capacity after a smaller VM body. The cache case keeps 257 functions
+live and checks that repeated passes add no compilations. Separate checks cover
+retirement without recompiling unrelated functions and pthread table cleanup.
+The default-backend and scratch-capacity checks failed with their prior behavior
+restored. Linking the previous loader made both cache regressions fail on their
+compilation-count assertions. Full GPU/Studio coverage remains quarantined.
+
+On 2026-10-11, Chrome passed 91 cases/5,007 assertions in 0.907 seconds; its
+pthread configuration passed 92 cases/5,041 assertions in 0.943 seconds. Node
+also passed both configurations, including the headless selector. The native
+language group passed under ASan/UBSan in 57.116 seconds. These are CPU checks;
+they do not validate browser rendering or establish a 60 FPS Tetris result.
+
+The Release benchmark compared the original VM at `06e7b1a2b` with this Wasm
+backend using the same C workload, Emscripten settings and exact output checks.
+Five trials produced these median microseconds per dispatch in Chrome:
+
+| Workload | Original VM | Current diagnostic VM | Wasm JIT | Speedup over original VM |
+| --- | ---: | ---: | ---: | ---: |
+| Inline arithmetic | 25.900 | 28.475 | 11.850 | 2.19x |
+| Authored helper calls | 48.525 | 56.925 | 36.700 | 1.32x |
+
+Extracting shared runtime effects makes the diagnostic VM 9.9% and 17.3% slower
+in these workloads; the speedups above use the original VM as their baseline.
+Node measured Wasm speedups of 2.23x and 1.40x over that same original VM. The
+pthread Chrome build measured 11.450 and 35.475 microseconds per Wasm dispatch;
+the original baseline was serial, so this is not a matching pthread comparison.
+
+Chrome Wasm publication took 1.065 ms for the inline module and 0.190 ms for the
+helper module. These are individual cold observations for small modules, not
+compile-time percentiles or bounds for a whole game. Publication is synchronous;
+workers also pay compilation on first use. Steady execution reuses live entries.
+Samples, build provenance, artifact hashes and logs remain under
+`.chibi/wasm-jit/benchmark-final.json` and `.chibi/wasm-jit/baseline/`. Temporary
+baseline and sanitizer builds have been removed.
 
 `python3 tools/test_policy.py tool language-navigation` selects eleven reviewed
 in-memory cases for shadowing, capture rejection, cross-file renames, escaped
@@ -787,12 +896,21 @@ a later size only once it has been requested for two more draws. A press above
 a level perspective horizon stays captured without a ground point; below it,
 the pointer lands on the ground. Build and run it like `interior-border` with
 `AGENT_SELECTOR=--viewport-resize`.
-Its fourth case draws one 64 x 64 UI frame containing a translucent red rectangle
+Four additional cases check default and authored lens settings across four
+aspect requests, the finite projection of a field of view just below pi, and the
+pointer ray against one displayed 64 x 64 image. Camera projection and ray
+inversion must agree, authored lens values remain unchanged, and out-of-image
+or non-perspective pointer requests must fail. A requested camera or resize keeps
+the pointer ray aligned with the last presented camera until the next draw.
+These checks stay in the same hidden app and shared deadline.
+Its UI case draws one 64 x 64 frame containing a translucent red rectangle
 and a red glyph over opaque blue. One readback compares direct presentation with
 the public straight-alpha texture copied into the other half of the target.
 It requires correct source-over color, partial glyph coverage, and straight RGB
-in the exported texture. The four-case selector passed in 1.219 seconds under the shared 60-second
-deadline on macOS with the native Metal renderer. The old presentation path
+in the exported texture. The earlier four-case workload passed in 1.219 seconds under the shared 60-second
+deadline on macOS with the native Metal renderer. That measurement does not cover
+the current nine-case selector. The combined nine-case run passed in 2.448
+seconds of execution, or 2.668 seconds including the production supervisor. The old presentation path
 failed the new case with red 255 where source-over required 128. Vulkan discovery
 was unavailable on this host and does not describe the Metal execution. Use `make agent-gpu-test BUILD_DIR=<render-build>
 AGENT_SELECTOR=--viewport-resize` after building that directory's `test_tools`.
@@ -840,14 +958,18 @@ with its absorption, walls hiding
 ambient light by their height in both visibility modes, soft visibility that
 keeps a light on an open floor's plane and past a slab's top or bottom as lit
 as hard visibility does, gloss, every depth quality, depth history of light
-and of that shading, segments and steep planes. The surface gather pass alone
+and of that shading, segments and steep planes. A bright grazing source with
+strong relief keeps the same displayed light when its power increases a hundred
+times and the receiver albedo decreases by the same factor, in both visibility
+modes and through fresh and retained Depth history. The surface gather pass alone
 must take each quadrant's light, find crests past gaps and stay dark without
 light in reach, and surface gather light must restart when the view turns.
 Its cases share one HRC, since a new one compiles all of HRC's shaders. The
-reviewed 33-case workload also checks that changing falloff drops stale Depth
-history; it passes 2427 assertions in 10.7 seconds on lavapipe, 20.0 with an
-empty shader cache. Its 31 earlier cases passed in 5.6 seconds on the native
-macOS backend.
+reviewed 34-case workload also checks that changing falloff drops stale Depth
+history. The bright-source case fails without the shared-exponent storage for
+the brought light and signed shading sums. All 34 cases pass in 6.4 seconds
+on the native macOS backend. The earlier 33 cases passed 2427 assertions in
+10.7 seconds on lavapipe, 20.0 with an empty shader cache.
 `material-sampling` draws shapes into the material raster alone in a hidden
 65 x 49 app: small circles must emit their area wherever they land on the pixel
 grid and at twice the resolution, overlapping tiles must keep their draw order,

@@ -1,7 +1,6 @@
 #include "execution/artifact.h"
 
-#include "execution/wasm.h"
-#include "support/array.h"
+#include "execution/wasm_jit.h"
 #include "support/xalloc.h"
 
 #include <stdlib.h>
@@ -35,7 +34,6 @@ void execution_artifact_free(execution_artifact *artifact)
     behavior_jit_free(artifact->inspection_code);
     free(artifact->resume_addresses);
     free(artifact->inspection_addresses);
-    behavior_expression_wasm_free(artifact->wasm);
-    afree(artifact->wasm_regions);
+    execution_wasm_jit_free(artifact->wasm_jit);
     free(artifact);
 }

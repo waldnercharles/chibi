@@ -1195,6 +1195,144 @@ TEST_CASE(rename_input_action_edits_the_input_map_and_scripts)
     return true;
 }
 
+/* Scene binders can define one global name in multiple scenes. Each declaration
+ * and qualified use must share the same field identity. */
+static bool scene_globals_project()
+{
+    static const script_catalog_parameter key = { .name = "key",
+                                                  .type = { .storage = PIN_STR } };
+    static const script_catalog_parameter entity = { .name = "entity",
+                                                     .type = { .storage = PIN_HANDLE,
+                                                               .nominal = 31 } };
+    static const script_catalog_field bindings[] = {
+        { .id = 40,
+          .name = "Level",
+          .type = { .storage = PIN_HANDLE, .nominal = 31 },
+          .read = 200,
+          .read_key = "Level" },
+        { .id = 41,
+          .name = "Camera",
+          .type = { .storage = PIN_HANDLE, .nominal = 31 },
+          .read = 200,
+          .read_key = "Camera" },
+    };
+    static const script_catalog_type scene_types[] = {
+        { .id = 30,
+          .name = "SceneGlobals",
+          .type = { .storage = PIN_STR, .nominal = 30, .flags = SCRIPT_TYPE_NAMESPACE },
+          .fields = bindings,
+          .field_count = 2 },
+        { .id = 31, .name = "entity", .type = { .storage = PIN_HANDLE, .nominal = 31 } },
+    };
+    static const script_catalog_global scene_globals[] = {
+        { .id = 301,
+          .name = "globals",
+          .type = { .storage = PIN_STR, .nominal = 30, .flags = SCRIPT_TYPE_NAMESPACE } },
+    };
+    static const source_catalog_definition definitions[] = {
+        { .id = 40,
+          .field = true,
+          .owner = 30,
+          .name = "Level",
+          .path = "scenes/First.kdl",
+          .text = "GlobalBinder {\n    Name \"Level\"\n}\n",
+          .range = { 24, 31, 2, 10 } },
+        { .id = 40,
+          .field = true,
+          .owner = 30,
+          .name = "Level",
+          .path = "scenes/Second.kdl",
+          .text = "GlobalBinder {\n    Name \"Level\"\n}\n",
+          .range = { 24, 31, 2, 10 } },
+        { .id = 41,
+          .field = true,
+          .owner = 30,
+          .name = "Camera",
+          .path = "scenes/Camera.kdl",
+          .text = "GlobalBinder {\n    Name \"Camera\"\n}\n",
+          .range = { 24, 32, 2, 10 } },
+    };
+    const char *sources[] = { "behavior App { on Tick { level:=globals.Level; "
+                              "other:=globals.level; label:=\"Level\"; } }" };
+    base_catalog();
+    capabilities[1] = (script_catalog_capability){ .id = 200,
+                                                   .name = "GetGlobal",
+                                                   .parameters = &key,
+                                                   .parameter_count = 1,
+                                                   .results = &entity,
+                                                   .result_count = 1,
+                                                   .effects = SCRIPT_EFFECT_READ,
+                                                   .completion_outcome = -1 };
+    catalog.capability_count = 2;
+    catalog.types = scene_types;
+    catalog.type_count = 2;
+    catalog.globals = scene_globals;
+    catalog.global_count = 1;
+    catalog.entity_type = 31;
+    bool valid = load(sources, 1);
+    authoring_navigation_free(navigation);
+    navigation = authoring_navigation_new_declarations(documents, 1, &catalog, definitions, 3);
+    return valid;
+}
+
+TEST_CASE(navigation_connects_scene_globals_and_completes_typed_bindings)
+{
+    REQUIRE(scene_globals_project());
+    const authoring_reference *level = at(0, "Level;"), *other = at(0, "level; label");
+    REQUIRE(level && other);
+    REQUIRE(
+        level->target.kind == AUTHORING_FIELD && level->target.owner == 30 &&
+        level->target.id == 40
+    );
+    REQUIRE(authoring_target_equal(level->target, other->target));
+    REQUIRE(references(level->target) == 4);
+    const authoring_reference
+        *definition = authoring_navigation_definition(navigation, level->target);
+    REQUIRE(definition && definition->location.document == 1);
+    REQUIRE(definition->type.storage == PIN_HANDLE && definition->type.nominal == 31);
+    const authoring_reference *second = authoring_navigation_at(navigation, 2, 25);
+    REQUIRE(
+        second && second->kind == AUTHORING_DEFINE &&
+        authoring_target_equal(second->target, level->target)
+    );
+    const char *text = documents[0].syntax->text;
+    int cursor = (int)(strstr(text, "globals.Level") - text) + 8;
+    authoring_source_complete(navigation, 0, cursor, &completions);
+    const authoring_completion *item = completion("Level");
+    REQUIRE(item && authoring_target_equal(item->target, level->target));
+    REQUIRE(completion("Camera"));
+    return true;
+}
+
+TEST_CASE(rename_scene_global_updates_all_binders_and_qualified_uses)
+{
+    REQUIRE(scene_globals_project());
+    const authoring_reference *level = at(0, "Level;");
+    REQUIRE(level);
+    REQUIRE(!plan_rename(level->target, "Camera"));
+    REQUIRE(!plan_rename(level->target, "camera"));
+    REQUIRE(plan_rename(level->target, "World"));
+    REQUIRE(plan->count == 4);
+    edited = apply(0);
+    REQUIRE(edited && strstr(edited, "globals.World; other:=globals.World; label:=\"Level\""));
+    for (int document = 1; document <= 2; document++) {
+        free(edited);
+        edited = authoring_rename_document(
+            plan,
+            document,
+            authoring_navigation_document_text(navigation, document),
+            error,
+            sizeof error
+        );
+        REQUIRE(edited && !strcmp(edited, "GlobalBinder {\n    Name \"World\"\n}\n"));
+    }
+    REQUIRE(plan_rename(level->target, "Main Level"));
+    free(edited);
+    edited = apply(0);
+    REQUIRE(edited && strstr(edited, "globals.\"Main Level\""));
+    return true;
+}
+
 void test_language_navigation()
 {
     pu_setup(NULL, cleanup);
@@ -1219,5 +1357,7 @@ void test_language_navigation()
     RUN_TEST_CASE(rename_declared_events_preserves_exact_rml_tokens);
     RUN_TEST_CASE(navigation_connects_input_actions_to_the_input_map);
     RUN_TEST_CASE(rename_input_action_edits_the_input_map_and_scripts);
+    RUN_TEST_CASE(navigation_connects_scene_globals_and_completes_typed_bindings);
+    RUN_TEST_CASE(rename_scene_global_updates_all_binders_and_qualified_uses);
     pu_setup(NULL, NULL);
 }

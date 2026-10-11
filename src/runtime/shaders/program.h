@@ -222,6 +222,14 @@ int shader_graph_add_image(shader_graph *g, const shader_image_source *source);
 const char *shader_op_name(shader_op op);
 int shader_op_inputs(shader_op op);
 bool shader_graph_validate(const shader_graph *g, shader_error *error);
+/* Particle functions return Position:vec3, Size:float, Color:vec4 and use only
+ * numeric operations plus time/beat. Slots 0..2 are Index, Count and Seed. */
+bool shader_graph_particle_validate(const shader_graph *, shader_error *);
+bool shader_particle_parameters_validate(
+    char *const names[SHADER_PARAMETER_MAX],
+    const int widths[SHADER_PARAMETER_MAX],
+    shader_error *
+);
 /* Evaluates once into caller-owned storage for acount(g->nodes) values.
  * Bounds programs consume numeric intermediate values without resampling geometry. */
 bool shader_graph_eval_values(

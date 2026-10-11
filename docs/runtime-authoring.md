@@ -303,6 +303,94 @@ Scenarios hash every audio request, and `runtime_snapshot` counts the sounds and
 tones played in `sound_cues`. Studio play mode cannot play sound files yet, so
 `play_sound` and `play_music` fail there with "No sound named".
 
+`get_audio_analysis()` reads the playback host's measured PCM. `Level`, `Bass`,
+`Mid`, `Treble` and `Onset` are numbers from 0 to 1. Level is absolute RMS;
+the approximate bands split at 250 Hz and 2500 Hz. Onset measures a rise in
+energy, with no tempo or beat prediction. Levels have a 20 ms attack and 120 ms
+release. Apply visual sensitivity in authored code. Stereo channels retain
+their own energy, including when their waveforms have opposite polarity.
+
+`set_audio_source(0)` analyzes the game output after its music, effects and
+volume controls. `set_audio_source(1)` requests external audio. The browser
+asks for a tab, window or screen on the current or next user gesture; select
+one with audio sharing enabled. Support depends on the browser and selected
+source. Native players select an installed loopback input such as Background
+Music or BlackHole. Route the music player's output to that virtual device.
+`CHIBI_AUDIO_INPUT` selects an exact recording-device name instead. The player
+never selects the default microphone implicitly. PulseAudio monitors require
+`SDL_AUDIO_INCLUDE_MONITORS=1` before launch. Captured audio stays in memory
+for analysis and is neither saved nor played back.
+
+`Source` reports 0 or 1. `Status` reports idle (0), waiting (1), ready (2),
+unavailable (3), denied or cancelled (4), or ended (5). `Active` means recent
+PCM arrived while the playback host was running; an active source can be
+silent. Pausing, changing the source or resetting the session clears the
+measurements. Headless scenarios have no playback samples and return zeros.
+Keep capture state and visual responses separate from deterministic game rules.
+
+## External URLs and pointer picking
+
+`open_url("https://example.org/help")` requests an external browser page.
+`request := await open_url(Url: "https://example.org/help")` also returns
+`request.Accepted`. This means the enabled host queued its own copy of the URL,
+not that a browser opened or loaded it. URLs must start with lowercase
+`http://` or `https://`, have a nonempty host, and contain no credentials,
+whitespace, control characters or backslashes. Other protocols are rejected.
+Each request replaces the preceding request, including an invalid request.
+
+The interactive player opts in. Headless tooling, hidden players and players
+with `--frames` reject requests. Native players ask the OS to open the URL and
+print an error if it rejects the handoff. Browser players consume the recent
+trusted input's transient activation, even when a quick click or keyup finished
+before the authored frame. If the request precedes activation, it waits only
+for that same input's release.
+Popups use `noopener,noreferrer`. Browser blocking is not reported as success.
+The request expires after five seconds and cancels on a new keydown or
+pointerdown, pause, scene change, page hide or shutdown. An expired request
+never borrows a later gesture. Call `cancel_open_url()` when changing modes or
+abandoning a provider choice.
+Opening a provider neither captures nor authorizes access to its audio.
+
+`get_pointer_ray()` returns `Active`, `Origin` and `Direction` in world space.
+The player samples the ray through the displayed 3D image before the fixed
+step. It is inactive outside that image, when input is unfocused or captured by
+UI, and in hosts without a 3D pointer. Authored hit testing can intersect the
+ray with a plane or pass it to `raycast_3d`. Input recordings retain the ray;
+scenario keys can store `pointer { origin x=0 y=0 z=10; direction x=0 y=0 z=-1; }`.
+Controller `input_timeline` entries accept the same `pointer` object with
+`origin` and `direction` objects containing `x`, `y`, `z`. Omitting `pointer`
+holds the previous ray; setting it to JSON `null` clears it.
+
+## GPU particle fields
+
+Put `ParticleField3D`, `Geometry3D` and `Shader` on one transformed entity in a
+3D scene. Geometry must be a tetrahedron (`primitive=6`) or octahedron
+(`primitive=5`) with positive dimensions. `Shader.material` names a pure
+shader-library function as `Library.Function`. Its first arguments are
+`Index:float`, `Count:float`, `Seed:float`, followed by named float or
+`ShaderVec2/3/4` uniforms, with at most 32 arguments total. Its results are
+exactly `Position:ShaderVec3`, `Size:float`, `Color:ShaderVec4`, in that order.
+Position is local to the entity, Size scales the geometry, and Color is HDR RGBA.
+Uniform defaults and `Shader.parameters` use the existing material parameter
+path, including `set_material_parameter()`.
+
+Set `ParticleField3D.count`, `seed`, and `time` explicitly. Shader Time reads
+this component clock; it advances only when an authored behavior changes it.
+Time must be finite and nonnegative. Numeric math, vectors, noise, mapping and
+time/beat reads are available. Textures, ramps, scene influences, surface
+coordinates and fragment derivatives are rejected. There are at most 128 field
+sources and 1,048,576 particles in one scene. A zero count hides a field.
+
+With `additive=#true`, particles blend additively and test opaque scene depth
+without writing depth or sorting individual drops. Fields emit their authored
+color and do not cast shadows or contribute to HRC. The vertex shader computes
+positions and colors; each particle has no CPU simulation state or entity.
+Per-frame CPU updates scale with the number of fields. Each instance retains
+four bytes, uploaded when its count changes, rather than a position/color upload
+every frame. `test/fixtures/feature-coverage` contains the `NativeRainField`
+scene: 128 falling lattice drops at a fixed one-second clock, with an opaque
+box for inspecting depth occlusion.
+
 ## Simulate 3D bodies
 
 An entity with `Transform3D` and `Collider3D` collides in the

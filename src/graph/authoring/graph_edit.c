@@ -237,10 +237,13 @@ static bool inline_input(const graph *g, const node *n, int pin)
 static const edge *inline_edge(const graph *g, const node *n)
 {
     /* A flow node such as a pure function's Function Entry has no exec pins
-     * but anchors its graph. */
+     * but anchors its graph. Source presentation calls encode effects with
+     * exec pins, so a read-only call with one result can fold like a formula.
+     * Executable function nodes retain their existing presentation. */
     if (n->disabled || n->desc->flow_kind != NODE_FLOW_NONE ||
         node_behavior_for(n) != NODE_BEHAVIOR_PURE ||
-        n->desc->pure_kind == NODE_PURE_FUNCTION ||
+        (n->desc->pure_kind == NODE_PURE_FUNCTION &&
+         (!n->desc->metadata_only || n->output_count != 1)) ||
         n->desc->pure_kind == NODE_PURE_COPY) {
         return NULL;
     }
@@ -299,7 +302,8 @@ static int inline_size(const graph *g, const node *n, const node *forced, int re
         return 0;
     }
     bool automatic = presentation == NODE_PRESENTATION_AUTO;
-    if (automatic && (g->math_expression || annotated(n))) {
+    if ((automatic && g->math_expression) ||
+        ((automatic || n->desc->pure_kind == NODE_PURE_FUNCTION) && annotated(n))) {
         return 0;
     }
     int size = 1;

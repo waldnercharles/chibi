@@ -111,6 +111,7 @@ void source_view_origin(
         .pin = pin,
         .kind = kind,
         .function = p->function,
+        .called_function = -1,
         .display_class = n ? n->desc->display_class : -1,
         .node_kind = node_kind,
         .node_record = node_record,
@@ -143,6 +144,9 @@ void source_view_origin(
             break;
         case SOURCE_PRESENTATION_EXPRESSION:
             o.operation = p->analysis->expressions[record].kind;
+            if (o.operation == SCRIPT_EXPR_CALL) {
+                o.called_function = p->analysis->expressions[record].right;
+            }
             o.entry = p->analysis->expressions[record].entry;
             o.effects = p->analysis->expressions[record].effects;
             o.type = p->analysis->expressions[record].type;
@@ -217,6 +221,38 @@ void source_view_origin(
         }
         return;
     }
+}
+void source_view_describe(source_projection *p, node *n, const char *text)
+{
+    assert(n->desc->metadata_only);
+    node_desc *desc = (node_desc *)n->desc;
+    desc->description = source_view_own(p->graph, text);
+}
+void source_view_describe_variable(source_projection *p, node *n, const script_symbol *symbol, bool write)
+{
+    const char *scope = "local";
+    switch (symbol->kind) {
+        case SCRIPT_STATE:
+            scope = p->analysis->kind == SCRIPT_PROGRAM_SYSTEM
+                      ? "this entity's state"
+                      : "this behavior instance's";
+            break;
+        case SCRIPT_SHARED_STATE: scope = "this system's shared"; break;
+        case SCRIPT_PARAMETER: scope = "this call's parameter"; break;
+        case SCRIPT_RESULT: scope = "this call's result"; break;
+        case SCRIPT_LOCAL: break;
+        default: return;
+    }
+    char description[512];
+    snprintf(
+        description,
+        sizeof description,
+        "%s %s variable '%s'.",
+        write ? "Updates" : "Reads",
+        scope,
+        symbol->name
+    );
+    source_view_describe(p, n, description);
 }
 node *source_view_box(
     source_projection *p,

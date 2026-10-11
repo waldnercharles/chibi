@@ -4,6 +4,7 @@
 #include "authoring/native_bindings.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_metadata.h"
+#include "backend.h"
 #include "ecs/ecs.h"
 #include "execution/delay.h"
 #include "execution/inspection.h"
@@ -359,8 +360,24 @@ static const char *action_pressed(arena *, const pin_value *in, int count, pin_v
 }
 static const node_host_call held_call = { .value = action_held };
 static const node_host_call pressed_call = { .value = action_pressed };
+static ecs_entity bound_level;
+static bool binding_available;
+static const char *scene_binding(arena *, const pin_value *in, int count, pin_value *out)
+{
+    assert(count == 1 && !strcmp(in[0].str, "Level"));
+    if (!binding_available) {
+        return "Get Global Variable references an unknown value";
+    }
+    out->u64 = ecs_entity_to_u64(bound_level);
+    return NULL;
+}
+static const node_host_call scene_binding_call = { .value = scene_binding };
 static bool host(void *, uint64_t id, script_lower_host *out)
 {
+    if (id == script_catalog_id("capability", "Get Global Variable")) {
+        *out = (script_lower_host){ .call = &scene_binding_call };
+        return true;
+    }
     if (id == script_catalog_id("capability", INPUT_ACTION_HELD) ||
         id == script_catalog_id("capability", INPUT_ACTION_PRESSED)) {
         bool held = id == script_catalog_id("capability", INPUT_ACTION_HELD);
@@ -519,7 +536,7 @@ TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
 {
     char source[EXAMPLE_SOURCE_CAPACITY];
     REQUIRE(read_example(CHIBI_LANGUAGE_EXAMPLE_DIR "/accumulator.chibi", source));
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         prepare();
         REQUIRE(compile(source, backends[i]));
@@ -549,7 +566,7 @@ TEST_CASE(program_system_membership_exit_cancels_pending_work)
 {
     char source[EXAMPLE_SOURCE_CAPACITY];
     REQUIRE(read_example(CHIBI_LANGUAGE_EXAMPLE_DIR "/motion.chibi", source));
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         prepare();
         ecs_entity moving = positioned(1, true), stationary = positioned(10, false);
@@ -580,7 +597,7 @@ TEST_CASE(program_component_binding_runs_and_source_cycle_is_rejected)
 {
     char source[EXAMPLE_SOURCE_CAPACITY];
     REQUIRE(read_example(CHIBI_LANGUAGE_EXAMPLE_DIR "/binding.chibi", source));
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         prepare();
         ecs_entity entity = positioned(6, false);
@@ -624,7 +641,7 @@ TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_re
                         ":= await library_work();"
                         "local_count = values.local_count; position_x = "
                         "values.position_x; } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile_module(library_source, backends[b]));
@@ -709,7 +726,7 @@ TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_ow
     const char *source = "system Shared(position: Position) { shared total: "
                          "double = 0; state local_count: double = 0;"
                          "total += 1; local_count += 1; position.y = total; }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -771,7 +788,7 @@ TEST_CASE(program_managed_state_survives_overwrite_and_multiple_resumes)
                   "text = \"changed\"; await Delay(1); observed = saved; saved "
                   "= text;"
                   "text = \"final\"; await Delay(1); observed = saved; } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -843,7 +860,7 @@ TEST_CASE(program_result_tuple_copies_survive_mutation_loop_and_resume)
                  "saved = current; await Delay(1);"
                  "second += saved.total; after_text = saved.message; i += 1; } "
                  "} }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -883,7 +900,7 @@ TEST_CASE(program_array_literals_are_fresh_copies)
         "kept = [1, 2]; kept[0] = kept[0] + 10; loop_total = 0; i: double = 0; "
         "while i < 2 { row: double[] = [3, 4]; row[0] = row[0] + 1; "
         "loop_total += row[0]; i += 1; } } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -927,7 +944,7 @@ TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_res
                        "1; i += 1; }";
     const char *starts[] = { "on Impulse(amount, enabled) {", "function Run() -> () {" };
     const char *ends[] = { "}", "} on Impulse(amount, enabled) { await Run(); }" };
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int outlined = 0; outlined < 2; outlined++) {
         char source[2048];
         int size = snprintf(
@@ -991,6 +1008,70 @@ TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_res
     }
     return true;
 }
+TEST_CASE(program_completed_payloads_are_released_without_marking)
+{
+    const char *
+        source = "behavior Completed { seen: double = 0;"
+                 "function Pair(n: double) -> (first: double, second: double) {"
+                 "return(n, n + 1); }"
+                 "on Impulse(amount, enabled) {"
+                 "i := 0; while i < 512 { current := Pair(i);"
+                 "values: double[] = [current.first, current.second];"
+                 "seen = values[0] + values[1]; i += 1; } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        uint64_t marks = arena_collect_marks();
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 1023));
+        REQUIRE(execution_instance_pending(instance) == 0);
+        execution_memory_usage complete = execution_program_memory_usage(program);
+        REQUIRE(complete.payload_bytes == 0 && complete.payload_capacity == 0);
+        /* The completed call owns no suspended work. Free its payloads
+         * directly instead of tracing values that will all be destroyed. */
+        REQUIRE(arena_collect_marks() == marks);
+    }
+    return true;
+}
+TEST_CASE(program_temporary_payloads_preserve_roots_across_collection)
+{
+    const char *source =
+        "behavior Payloads { seen: double = 0;"
+        "function Pair(n: double) -> (first: double, second: double) {"
+        "return(n, n + 1); }"
+        "on Impulse(amount, enabled) {"
+        "saved := Pair(40); kept: double[] = [2, 3, 5];"
+        "i := 0; while i < 512 {"
+        "current := Pair(i); values: double[] = [current.first, "
+        "current.second];"
+        "self.Position.x = values[0]; self.Position.y = values[1]; i += 1; }"
+        "await Delay(1); seen = saved.first + saved.second + kept[0] + kept[2];"
+        "} }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = positioned(0, false);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(instance) == 1);
+        const program_position *updated = ecs_component_data_const(world, owner, 501);
+        REQUIRE(updated && updated->x == 511 && updated->y == 512);
+        REQUIRE(execution_program_update(program, 1, 0, 1000000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 88));
+        REQUIRE(execution_instance_pending(instance) == 0);
+        execution_memory_usage complete = execution_program_memory_usage(program);
+        REQUIRE(complete.payload_bytes == 0 && complete.payload_capacity == 0);
+    }
+    return true;
+}
 TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach)
 {
     const char *source = "behavior Timers { early_count: double = 0; "
@@ -999,7 +1080,7 @@ TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_det
                          "on Impulse(amount, enabled) { early(); late(); }"
                          "after early.Completed { early_count += 1; }"
                          "after late.Completed { late_count += 1; } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -1055,7 +1136,7 @@ TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics)
                   "  }\n"
                   "  on Impulse(amount, enabled) { output := Outline(); }\n"
                   "}";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -1115,7 +1196,7 @@ TEST_CASE(program_failed_call_stacks_unwind_at_once)
                          "function Middle() { n += Inner() }"
                          "function Outer() { Middle() }"
                          "on Impulse(amount, enabled) { Outer() } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -1174,7 +1255,7 @@ TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits)
                  "low=-9223372036854775808; high=9223372036854775807; "
                  "unsigned_max=18446744073709551615; precise=9007199254740993; "
                  "mode=2147483647; } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     const char *const names[] = { "low", "high", "unsigned_max", "precise", "mode" };
     script_catalog_type types[3];
     script_catalog exact_catalog = catalog;
@@ -1273,7 +1354,7 @@ TEST_CASE(program_concrete_assignments_preserve_name_byte_and_handle_storage)
                   "copied_handle=source_handle; copied_big=source_big; "
                   "count+=1; "
                   "count+=1; } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     const char *names[] = { "copied_byte", "copied_name", "copied_handle", "copied_big", "count" };
     for (int b = 0; b < 2; b++) {
         prepare();
@@ -1373,7 +1454,7 @@ TEST_CASE(program_source_float_width_conversion_preserves_native_input)
         *source = "behavior Widths { widened:double=0; narrowed:float=0; "
                   "on Tick { widened=cast<double>(NativeFloat()); "
                   "narrowed=cast<float>(widened+0.25); } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     static const script_catalog_parameter result = { .name = "amount",
                                                      .type = { .storage = PIN_F32 } };
     enum
@@ -1441,7 +1522,7 @@ TEST_CASE(program_int_to_float_compare_and_cast_run_on_vm_and_sljit)
                          "below:bool=false; "
                          "scaled:float=0; on Tick { below = level < count; "
                          "scaled = cast<float>(count); } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         syntax = script_parse(source);
@@ -1505,7 +1586,7 @@ TEST_CASE(program_state_actions_demand_inputs_route_and_preserve_per_owner_state
         " after door.Exit{gate_hits+=1;}"
         " after multi.Out0{multi_a+=1;} after multi.Out1{multi_b+=1;}"
         "}";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile_pack(source, backends[b], &NATIVE_STATE_DEFINITION_PACK));
@@ -1565,7 +1646,7 @@ TEST_CASE(program_retrigger_retains_original_payload_and_evaluates_each_duration
         " action pending=retriggerable_delay(Duration:Duration());"
         " on Impulse as signal(amount,enabled){pending();}"
         " after pending.Completed{completions+=1;captured=signal.amount;} }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile_pack(source, backends[b], &NATIVE_STATE_DEFINITION_PACK));
@@ -1612,7 +1693,7 @@ TEST_CASE(program_debugger_steps_without_replaying_and_retains_owned_watches)
                          "on Tick { values:=Work(); observed=values.Value; "
                          "text=values.Text; "
                          "await Delay(1); observed+=10; } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         cleanup();
         REQUIRE(compile_module(source, backends[b]));
@@ -1749,7 +1830,7 @@ static const char *const task_source =
     "out = await t; if !t { seen += 10; } } }";
 TEST_CASE(program_task_runs_to_first_suspension_then_beside_caller)
 {
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(task_source, backends[b]));
@@ -1787,7 +1868,7 @@ TEST_CASE(program_task_cancel_cascades_and_wakes_awaiters)
                   "on Impulse(amount, enabled) { if enabled { worker = "
                   "Outer(); Watch(); } "
                   "else { cancel worker; cancel worker; } } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -1825,7 +1906,7 @@ TEST_CASE(program_task_cancelling_itself_stops_at_once)
                  "function Wait() -> () { got = 1 + await self_task }"
                  "on Impulse(amount, enabled) { worker = P(); self_task = Q(); "
                  "Wait(); inline = R() } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -1859,7 +1940,7 @@ TEST_CASE(program_task_owns_tasks_started_by_its_continuations)
                   "after act { yield; Spin() }"
                   "on Impulse(amount, enabled) { if enabled { worker = P() } "
                   "else { cancel worker } } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -1890,7 +1971,7 @@ TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task)
     const char *bodies[] = { "yield; cancel worker; hit = 1",
                              "cancel worker; hit = 1",
                              "yield; await worker" };
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int c = 0; c < 3; c++) {
         char source[EXAMPLE_SOURCE_CAPACITY];
         int length = snprintf(
@@ -1942,7 +2023,7 @@ TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles)
                          "else if amount == 1 { Short(); } "
                          "else if amount == 3 { got = await first } else { "
                          "Long(); } } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -1988,7 +2069,7 @@ TEST_CASE(program_task_stops_with_owner_and_does_not_block_events)
                   "function Spin() -> () { while true { ticks += 1; yield; } }"
                   "on Impulse(amount, enabled) { if enabled { Spin(); } hits "
                   "+= 1; } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -2027,7 +2108,7 @@ TEST_CASE(program_many_tasks_collect_in_linear_mark_work)
                   "await Delay(1); done += row[0] - n + 1; }"
                   "on Impulse(amount, enabled) { for (i in 1..amount) { "
                   "Wait(i) } } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -2116,7 +2197,7 @@ TEST_CASE(program_nested_functions_wait_for_themselves)
                         "function Outer() -> (v: double) { "
                         "function Inner() { yield } return 3 }"
                         "on Impulse(amount, enabled) { x := Outer(); n = x } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(plain, backends[b]));
@@ -2162,7 +2243,7 @@ TEST_CASE(program_version_11_references_migrate_to_values)
     bound = chibi_migrate_references("f(Value: ref int split &count, Other: true & ok)");
     REQUIRE(bound && !strcmp(bound, "f(Value: ref int split count, Other: true & ok)"));
     free(bound);
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(migrated, backends[b]));
@@ -2287,6 +2368,7 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     char *migrated = chibi_migrate_results(source);
     REQUIRE(migrated && !strcmp(migrated, expected));
     REQUIRE(!chibi_migrate_results(expected));
+#ifndef __EMSCRIPTEN__
     /* Links at the staging paths are replaced, not written through, and
      * only the top-level version node changes. */
     char root[] = "/tmp/chibi-migrate-XXXXXX", path[256], outside[256],
@@ -2345,7 +2427,8 @@ TEST_CASE(program_version_12_results_migrate_to_returns)
     snprintf(path, sizeof path, "%s/content", root);
     rmdir(path);
     rmdir(root);
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+#endif
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(migrated, backends[b]));
@@ -2419,7 +2502,7 @@ TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits)
     );
     free(all[0]);
     free(all);
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(migrated, backends[b]));
@@ -2747,7 +2830,7 @@ TEST_CASE(program_version_16_locals_migrate_to_declarations)
     REQUIRE(!chibi_migrate_locals(qualified, &unchanged, error, sizeof error));
     REQUIRE(unchanged && !strstr(unchanged, "local") && strstr(unchanged, "n = (n + 1) + X"));
     free(unchanged);
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(migrated, backends[b]));
@@ -3246,7 +3329,7 @@ TEST_CASE(program_input_actions_read_through_typed_names)
                          "        pressed = input.jump.pressed;\n"
                          "    }\n"
                          "}\n";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         prepare();
         REQUIRE(compile_catalog(source, backends[i], view));
@@ -3279,6 +3362,159 @@ TEST_CASE(program_input_actions_read_through_typed_names)
         script_syntax_free(wrong);
     }
     source_catalog_free(project);
+    return true;
+}
+TEST_CASE(program_scene_bindings_are_typed_names_before_play)
+{
+    script_catalog_capability *native_capabilities = NULL;
+    for (int i = 0; i < catalog.capability_count; i++) {
+        apush(native_capabilities, catalog.capabilities[i]);
+    }
+    const script_catalog_parameter key = { .name = "Name",
+                                           .type = { .storage = PIN_NAME } };
+    const script_catalog_parameter value = {
+        .name = "Value",
+        .type = { .storage = PIN_FLOW, .flags = SCRIPT_TYPE_UNTYPED }
+    };
+    apush(
+        native_capabilities,
+        ((script_catalog_capability){
+            .id = script_catalog_id("capability", "Get Global Variable"),
+            .name = "Get Global Variable",
+            .kind = SCRIPT_CAPABILITY_FUNCTION,
+            .parameters = &key,
+            .parameter_count = 1,
+            .results = &value,
+            .result_count = 1,
+            .pure = true,
+            .effects = SCRIPT_EFFECT_READ,
+        })
+    );
+    script_catalog native = catalog;
+    native.capabilities = native_capabilities;
+    native.capability_count = acount(native_capabilities);
+    char root[] = "/tmp/chibi-globals-XXXXXX", prototype[256], scene[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(prototype, sizeof prototype, "%s/prototypes/Room.kdl", root);
+    snprintf(scene, sizeof scene, "%s/scenes/Start.kdl", root);
+    const source_catalog_edit edits[] = {
+        { .path = prototype,
+          .text = "name \"Room\"\ncomponents {\n    GlobalBinding "
+                  "name=\"Level\"\n}\n"
+                  "(array)children {\n    - {\n        name \"Player\"\n       "
+                  " components {\n            GlobalBinding name=\"Player\"\n  "
+                  "      }\n    }\n}\n" },
+        { .path = scene,
+          .text = "name \"Start\"\n(array)entities {\n    - {\n        name "
+                  "\"Room\"\n"
+                  "        components {\n            GlobalBinding "
+                  "name=\"Level\"\n        }\n"
+                  "        (array)children {\n            - {\n                "
+                  "name \"Camera\"\n"
+                  "                components {\n                    "
+                  "GlobalBinding name=\"Camera\"\n                }\n          "
+                  "  }\n        }\n    }\n}\n" },
+    };
+    source_catalog *project = source_catalog_edited(root, &native, edits, 2);
+    REQUIRE(!source_catalog_diagnostic_count(project));
+    const script_catalog *view = source_catalog_view(project);
+    int scope = script_catalog_find_type(view, "SceneGlobals");
+    REQUIRE(scope >= 0 && view->types[scope].field_count == 3);
+    int field = script_catalog_find_field(&view->types[scope], "Level");
+    REQUIRE(field >= 0);
+    const script_catalog_field *level = &view->types[scope].fields[field];
+    REQUIRE(level->type.storage == PIN_HANDLE && level->type.nominal == catalog.entity_type);
+    REQUIRE(!level->writable && !strcmp(level->read_key, "Level"));
+    int definitions = 0;
+    for (int i = 0; i < source_catalog_definition_count(project); i++) {
+        const source_catalog_definition *definition = &source_catalog_definitions(
+            project
+        )[i];
+        if (definition->field) {
+            REQUIRE(definition->owner == view->types[scope].id);
+            REQUIRE(
+                definition->range.end - definition->range.start ==
+                (int)strlen(definition->name) + 2
+            );
+            definitions++;
+        }
+    }
+    REQUIRE(definitions == 4);
+    const char *source = "behavior Reader { x: double = 0; on Tick(dt) { x = "
+                         "globals.Level.Position.x; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int i = 0; i < 2; i++) {
+        prepare();
+        REQUIRE(compile_catalog(source, backends[i], view));
+        bool reads = false;
+        for (int j = 0; j < analysis->expression_count; j++) {
+            const script_expression *expression = &analysis->expressions[j];
+            if (expression->member == level->id) {
+                reads = expression->effects & SCRIPT_EFFECT_READ;
+            }
+        }
+        REQUIRE(reads);
+        bound_level = positioned(12, false);
+        binding_available = true;
+        program = execution_program_new(module, world, NULL);
+        execution_instance *instance = execution_program_attach(
+            program,
+            ecs_entity_to_u64(ecs_world_create_entity(world))
+        );
+        const pin_value dt = { .type = PIN_F64, .d = 1 };
+        REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "x", 12));
+        binding_available = false;
+        REQUIRE(execution_instance_dispatch(instance, 10, &dt, 1, 0, 0, 1000) == FLOW_ERR_INVALID_GRAPH);
+        const execution_program_failure *failure = execution_program_error(program);
+        REQUIRE(failure && failure->kind == BEHAVIOR_FUNCTION_HOST_DATA);
+        REQUIRE(failure->node_id == level->id);
+        REQUIRE(!strcmp(failure->message, "Get Global Variable references an unknown value"));
+    }
+    const char *invalid[] = {
+        "behavior B { on Tick(dt) { x := globals.Leve; } }",
+        "behavior B { on Tick(dt) { globals.Level = self; } }",
+    };
+    for (int i = 0; i < 2; i++) {
+        script_syntax *wrong = script_parse(invalid[i]);
+        script_analysis *checked = script_analyze(wrong, view);
+        REQUIRE(!checked->valid);
+        script_analysis_free(checked);
+        script_syntax_free(wrong);
+    }
+    script_syntax *wrong = script_parse("behavior B { on Tick(dt) { x := globals; } }");
+    script_analysis *checked = script_analyze(wrong, view);
+    REQUIRE(checked->valid);
+    const script_lower_bindings bindings = { .global = global, .host = host };
+    execution_module_plan *plan = script_lower(checked, view, &bindings);
+    REQUIRE(plan && !plan->valid && plan->diagnostic_count);
+    REQUIRE(strstr(plan->diagnostics[0].message, "namespace has no value"));
+    execution_module_plan_free(plan);
+    script_analysis_free(checked);
+    script_syntax_free(wrong);
+    /* Invalid namespace snapshots expose no field definitions with a missing
+     * owner. Navigation can still inspect the surviving project declarations. */
+    const script_catalog_global taken = { .id = 99,
+                                          .name = "globals",
+                                          .type = { .storage = PIN_F64 } };
+    for (int i = 0; i < 2; i++) {
+        script_catalog invalid = native;
+        if (!i) {
+            invalid.globals = &taken;
+            invalid.global_count = 1;
+        } else {
+            invalid.capability_count--;
+        }
+        source_catalog *broken = source_catalog_edited(root, &invalid, edits, 2);
+        REQUIRE(source_catalog_diagnostic_count(broken) == 1);
+        for (int j = 0; j < source_catalog_definition_count(broken); j++) {
+            REQUIRE(!source_catalog_definitions(broken)[j].field);
+        }
+        source_catalog_free(broken);
+    }
+    afree(native_capabilities);
+    source_catalog_free(project);
+    rmdir(root);
     return true;
 }
 /* Migrates a version 15 project whose scene and prototype bind actions, into
@@ -4232,6 +4468,129 @@ TEST_CASE(program_version_22_prefixes_migrate_without_changing_data)
     rmdir(root);
     return true;
 }
+TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers)
+{
+    const char
+        *source = "behavior B {\n"
+                  "    function get_game_input() { }\n"
+                  "    macro get_game_input_custom() -> () { entry Begin {} "
+                  "exit Done; }\n"
+                  "    on Tick(dt: double) {\n"
+                  "        get_game_input()\n"
+                  "        get_game_input_custom()\n"
+                  "        get_game_transform_custom()\n"
+                  "        get_game_transform_macro()\n"
+                  "        \"motion_helpers\".\"get-game-transform-custom\"()\n"
+                  "        \"Motion Helpers\".get_game_transform()\n"
+                  "        \"Motion Helpers\".get_game_transform_macro()\n"
+                  "        p := get_game_velocity()\n"
+                  "        q := Get_GameTransform()\n"
+                  "        Get_GameBodyType()\n"
+                  "        Get_GameGlobalIllumination()\n"
+                  "        self.GameTransform.x = 4\n"
+                  "    }\n"
+                  "}\n";
+    const char
+        *expected = "behavior B {\n"
+                    "    function get_game_input() { }\n"
+                    "    macro get_game_input_custom() -> () { entry Begin {} "
+                    "exit Done; }\n"
+                    "    on Tick(dt: double) {\n"
+                    "        get_game_input()\n"
+                    "        get_game_input_custom()\n"
+                    "        get_game_transform_custom()\n"
+                    "        get_game_transform_macro()\n"
+                    "        "
+                    "\"motion_helpers\".\"get-game-transform-custom\"()\n"
+                    "        \"Motion Helpers\".get_game_transform()\n"
+                    "        \"Motion Helpers\".get_game_transform_macro()\n"
+                    "        p := get_velocity()\n"
+                    "        q := Get_Transform()\n"
+                    "        Get_GameBodyType()\n"
+                    "        Get_GameGlobalIllumination()\n"
+                    "        self.Transform.x = 4\n"
+                    "    }\n"
+                    "}\n";
+    const char
+        *library = "library \"Motion Helpers\" {\n"
+                   "    function \"Get Game Transform Custom\"() { }\n"
+                   "    function get_game_transform() { }\n"
+                   "    function Get_GameBodyType() { }\n"
+                   "    function Get_GameGlobalIllumination() { }\n"
+                   "    function call_helpers() { get_game_transform(); }\n"
+                   "    macro get_game_transform_macro() -> () { entry "
+                   "Begin {} exit Done; }\n"
+                   "}\n";
+    char root[] = "/tmp/chibi-prefix-helpers-XXXXXX", path[256], error[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    char metadata[256];
+    snprintf(
+        metadata,
+        sizeof metadata,
+        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
+        "\"node\"}]}",
+        (size_t)(strstr(source, "self.GameTransform") - source)
+    );
+    char *bound = authoring_source_metadata_bind(metadata, source);
+    REQUIRE(bound);
+    const char *files[][2] = {
+        { "project.kdl", "version 22\ncontent \"content\"\nstart_scene \"Scene.kdl\"\n" },
+        { "content/B.chibi", source },
+        { "content/B.chibi.meta", bound },
+        { "content/Helpers.chibi", library },
+        { "content/Scene.kdl", "version 1\nname \"Scene\"\n(array)entities\n" },
+    };
+    for (int i = 0; i < 5; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        FILE *file = fopen(path, "wb");
+        REQUIRE(file);
+        fputs(files[i][1], file);
+        fclose(file);
+    }
+    free(bound);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 22);
+    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
+    bool source_matches = false, library_matches = false, metadata_matches = false;
+    for (int i = 1; i <= 3; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        FILE *file = fopen(path, "rb");
+        REQUIRE(file);
+        char text[2048];
+        text[fread(text, 1, sizeof text - 1, file)] = '\0';
+        fclose(file);
+        if (i == 1) {
+            source_matches = !strcmp(text, expected);
+            if (!source_matches) {
+                fprintf(stderr, "Migrated helper source differs:\n%s", text);
+            }
+        }
+        if (i == 2) {
+            char anchor[64];
+            snprintf(
+                anchor,
+                sizeof anchor,
+                "\"start\":%zu",
+                (size_t)(strstr(expected, "self.Transform") - expected)
+            );
+            metadata_matches = authoring_source_metadata_matches(text, expected) &&
+                               strstr(text, anchor);
+        }
+        if (i == 3) {
+            library_matches = !strcmp(text, library);
+        }
+    }
+    for (int i = 0; i < 5; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        unlink(path);
+    }
+    snprintf(path, sizeof path, "%s/content", root);
+    rmdir(path);
+    rmdir(root);
+    REQUIRE(source_matches && library_matches && metadata_matches);
+    return true;
+}
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -4241,7 +4600,7 @@ TEST_CASE(program_single_result_call_fields_read_the_result)
                          "on Impulse(amount, enabled) { x := P().v; n += x; y "
                          ":= await W(); n += y.v;"
                          "n += (await W()).v; } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4273,7 +4632,7 @@ TEST_CASE(program_results_are_inferred_from_returns)
                   "on Impulse(amount, enabled) { n += Pick(2, 5); r := "
                   "Split(amount);"
                   " n += r.Low + r.High; n += await Later(1); } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4340,7 +4699,7 @@ TEST_CASE(program_task_with_several_results_awaits_a_tuple)
                          "on Impulse(amount, enabled) { t := P(amount); r := "
                          "await t; n += r.a + r.b;"
                          "n += (await t).b; u := P(2); n += (await u).a; } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4379,7 +4738,7 @@ TEST_CASE(program_library_call_starts_a_task)
         "behavior Owner { n: double = 0; local_count: double = 0;"
         "on Impulse(amount, enabled) { t := library_work(); n += 1;"
         "if t { n += 10; } local_count = (await t).local_count; } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile_module(library_source, backends[b]));
@@ -4415,7 +4774,7 @@ TEST_CASE(program_library_task_writes_the_callers_state)
     const char
         *owner_source = "behavior Owner { n: double = 5;"
                         "on Impulse(amount, enabled) { library_bump(n) } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile_module(library_source, backends[b]));
@@ -4445,7 +4804,7 @@ TEST_CASE(program_task_keeps_state_and_component_references)
                          "yield; x += 1; }"
                          "on Impulse(amount, enabled) { Bump(n); "
                          "Bump(self.Position.x); } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4479,7 +4838,7 @@ TEST_CASE(program_nested_calls_number_indexes_and_mixed_clamp)
                   "on Impulse(amount, enabled) { i := 2; a[i] = 10;"
                   "n = Start() + a[2] + clamp(amount, 0, w); Kick();"
                   "j := 1.5; for (k in 1..j) { n += k } } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile_pack(source, backends[b], &NATIVE_ARITHMETIC_DEFINITION_PACK));
@@ -4506,7 +4865,7 @@ TEST_CASE(program_returns_convert_to_their_result_type)
                   "function Declared() -> (r: double) { return Half(k) }"
                   "on Impulse(amount, enabled) {"
                   "n = First() * 0.5 + Literal() * 0.5 + Declared() } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4526,7 +4885,7 @@ TEST_CASE(program_yield_resumes_on_the_next_update_without_time)
     const char *source = "behavior Y { done: double = 0;"
                          "function Short() { yield; done += 1 }"
                          "on Impulse(amount, enabled) { Short() } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4608,7 +4967,7 @@ TEST_CASE(program_task_state_awaits_its_function_results)
                         "pulse = Charge(time); power = await pulse } }";
     const char *sources[] = { source,    reordered, local,   wrapped,
                               qualified, nested,    sibling, inner };
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 16; b++) {
         prepare();
         REQUIRE(compile(sources[b / 2], backends[b % 2]));
@@ -4653,7 +5012,7 @@ TEST_CASE(program_task_state_awaits_its_function_results)
     for (int i = 0; i < 4; i++) {
         prepare();
         REQUIRE(
-            !compile_pack(writes[i / 2], i % 2 ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE, &NATIVE_STATE_DEFINITION_PACK)
+            !compile_pack(writes[i / 2], i % 2 ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE, &NATIVE_STATE_DEFINITION_PACK)
         );
     }
     return true;
@@ -4701,7 +5060,7 @@ TEST_CASE(program_component_paths_test_presence)
                          "if self.Velocity != nil && self.Position { n += 100 }"
                          "if self.Velocity == nil || self.Velocity.x > 3 { n "
                          "+= 1000 } } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 4; b++) {
         prepare();
         REQUIRE(compile(source, backends[b % 2]));
@@ -4721,7 +5080,7 @@ TEST_CASE(program_branch_completes_inside_action_continuation)
     /* The inner action reads the outer action's result when the outer
      * continuation starts it, before and after resuming. */
     const char *bodies[] = { "n += 1\n inner()", "n += 1\n await Wait()\n inner()" };
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int c = 0; c < 2; c++) {
         char source[EXAMPLE_SOURCE_CAPACITY];
         int length = snprintf(
@@ -4774,7 +5133,7 @@ TEST_CASE(program_parameters_defaults_and_contextual_words)
                          "n = Approach(value, split) + Step(m)\n"
                          "k = await Drain(m)\n"
                          "who = self } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4813,7 +5172,7 @@ TEST_CASE(program_task_shares_boxed_locals)
                          "j * 100 + 2; Relay(z); j += 1; } }"
                          "else { k := 0.0; while k < 2 { p := Pair(k); "
                          "Keep(p.a); k += 1; } } } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4848,7 +5207,7 @@ TEST_CASE(program_assignments_and_reference_writes_do_not_allocate)
                   "< 1000 { x += 1; i += 1; } }"
                   "on Impulse(amount, enabled) { i := 0.0; while i < 1000 "
                   "{ n += 1; i += 1; } Add(m); } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4871,7 +5230,7 @@ TEST_CASE(program_repeated_helpers_have_bounded_allocations)
                   "function Twice(x: double) -> (v: double) { return x * 2 }"
                   "on Impulse(amount, enabled) { i := 0.0; while i < 256 {"
                   "n += Twice(i); i += 1 } } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4912,7 +5271,7 @@ TEST_CASE(program_reused_helpers_reset_locals_and_preserve_nested_calls)
                   "n += Add(m, 2); n += Add(m, -1);"
                   "n += Other(3); n += Add(m, 4);"
                   "n += Outer(3); n += Outer(2); n += Count(4); } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4945,7 +5304,7 @@ TEST_CASE(program_reused_helpers_keep_managed_results_and_resume_fresh_locals)
                   "first := Tiles(3); second := Tiles(9); second[0] = 100;"
                   "n = first[0] + first[1] + second[0];"
                   "n += await Work(false); n += await Work(true); } }";
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         prepare();
         REQUIRE(compile(source, backends[b]));
@@ -4969,6 +5328,41 @@ TEST_CASE(program_reused_helpers_keep_managed_results_and_resume_fresh_locals)
     return true;
 }
 
+static void count_component_write(ecs_world *, ecs_event, ecs_entity, ecs_component_id, void *user)
+{
+    int *count = user;
+    (*count)++;
+}
+
+TEST_CASE(program_component_scalar_reference_writes_do_not_copy_rows)
+{
+    const char *source =
+        "behavior R { function Add(x: ref double, y: ref double) -> () { "
+        "i := 0.0; while i < 1000 { x += 1; y += 1; i += 1; } }"
+        "on Impulse(amount, enabled) { Add(self.Position.x, self.Position.x); "
+        "self.Position.y = 7; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = positioned(5, false);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        int writes = 0;
+        REQUIRE(ecs_world_observe(world, ECS_ON_SET, 501, count_component_write, &writes) > 0);
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        uint64_t blocks = arena_block_allocations();
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        REQUIRE(arena_block_allocations() - blocks < 32);
+        const program_position *position = ecs_component_data_const(world, owner, 501);
+        REQUIRE(position && position->x == 2005 && position->y == 7);
+        REQUIRE(writes == 0);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(writes == 1);
+    }
+    return true;
+}
+
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
@@ -4984,6 +5378,8 @@ void test_language_program()
     RUN_TEST_CASE(program_result_tuple_copies_survive_mutation_loop_and_resume);
     RUN_TEST_CASE(program_array_literals_are_fresh_copies);
     RUN_TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes);
+    RUN_TEST_CASE(program_completed_payloads_are_released_without_marking);
+    RUN_TEST_CASE(program_temporary_payloads_preserve_roots_across_collection);
     RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
     RUN_TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits);
@@ -5011,6 +5407,7 @@ void test_language_program()
     RUN_TEST_CASE(program_input_map_validates_actions);
     RUN_TEST_CASE(program_scene_children_are_referenced);
     RUN_TEST_CASE(program_input_actions_read_through_typed_names);
+    RUN_TEST_CASE(program_scene_bindings_are_typed_names_before_play);
     RUN_TEST_CASE(program_version_16_locals_migrate_to_declarations);
     RUN_TEST_CASE(program_version_17_sdf_motion_is_removed);
     RUN_TEST_CASE(program_version_18_dotted_names_are_renamed);
@@ -5018,6 +5415,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_20_surface_outputs_take_counter_pin_ids);
     RUN_TEST_CASE(program_version_21_lighting_drops_lab_fields);
     RUN_TEST_CASE(program_version_22_prefixes_migrate_without_changing_data);
+    RUN_TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
@@ -5034,6 +5432,7 @@ void test_language_program()
     RUN_TEST_CASE(program_parameters_defaults_and_contextual_words);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);
+    RUN_TEST_CASE(program_component_scalar_reference_writes_do_not_copy_rows);
     RUN_TEST_CASE(program_repeated_helpers_have_bounded_allocations);
     RUN_TEST_CASE(program_reused_helpers_reset_locals_and_preserve_nested_calls);
     RUN_TEST_CASE(program_reused_helpers_keep_managed_results_and_resume_fresh_locals);

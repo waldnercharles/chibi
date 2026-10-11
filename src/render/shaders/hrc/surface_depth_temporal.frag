@@ -26,6 +26,8 @@ layout(set = 3, binding = 0) uniform uniform_block
     int u_valid;
 };
 
+#include "hrc/depth_shading.shd"
+
 vec3 transform_direction(vec3 n)
 {
     return vec3(dot(u_transform0.xyz, n), dot(u_transform1.xyz, n), dot(u_transform2.xyz, n));
@@ -76,7 +78,8 @@ void main()
 
     vec3 lo = current.rgb, hi = current.rgb;
     vec3 spec_lo = material.rgb, spec_hi = material.rgb;
-    vec2 shading = out_q3.xw, shading_lo = shading, shading_hi = shading;
+    vec4 current_shading = depth_unpack_shading(out_q3);
+    vec2 shading = current_shading.xw, shading_lo = shading, shading_hi = shading;
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             ivec2 q = p + ivec2(x, y);
@@ -86,7 +89,7 @@ void main()
             if (n.a < 0.5 || dot(n.xyz, geometry.xyz) < 0.95 || abs(d.a - current.a) > u_sigma * 0.5) continue;
             lo = min(lo, d.rgb);
             hi = max(hi, d.rgb);
-            vec2 shade = texelFetch(u_q3, q, 0).xw;
+            vec2 shade = depth_unpack_shading(texelFetch(u_q3, q, 0)).xw;
             shading_lo = min(shading_lo, shade);
             shading_hi = max(shading_hi, shade);
             vec4 s = texelFetch(u_q1, q, 0);
@@ -101,7 +104,8 @@ void main()
     out_q1.rgb = mix(material.rgb, clamp(old_material.rgb, spec_lo, spec_hi), specular_weight);
     // The light HRC brings a solid that absorbs nothing from the lights Depth
     // sees, and how much Depth changes it.
-    vec2 old_shading = texelFetch(u_prev3, old_p, 0).xw;
+    vec2 old_shading = depth_unpack_shading(texelFetch(u_prev3, old_p, 0)).xw;
     float shading_weight = history_weight(vec3(shading, 0), vec3(old_shading, 0));
-    out_q3.xw = mix(shading, clamp(old_shading, shading_lo, shading_hi), shading_weight);
+    current_shading.xw = mix(shading, clamp(old_shading, shading_lo, shading_hi), shading_weight);
+    out_q3 = depth_pack_shading(current_shading);
 }

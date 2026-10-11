@@ -41,6 +41,7 @@ layout(set = 3, binding = 0) uniform uniform_block
     float u_falloff;
 };
 #include "hrc/brdf.shd"
+#include "hrc/depth_shading.shd"
 
 const float PI = 3.141592653589793;
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -504,5 +505,5 @@ void main()
     out_q0 = vec4(min(closed, vec3(65504)), receiver.x);
     out_q1 = vec4(min(specular, vec3(65504)), receiver_gloss);
     out_q2 = vec4(normal, valid);
-    out_q3 = vec4(brought, 0, sky / sky_total, shading);
+    out_q3 = depth_pack_shading(vec4(brought, 0, sky / sky_total, shading));
 }

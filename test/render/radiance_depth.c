@@ -898,6 +898,43 @@ TEST_CASE(lights_behind_absorbing_walls_leave_hrc_light_unshaded)
     return true;
 }
 
+/* Scaling a finite HDR source and inversely scaling the receiver albedo
+ * leaves its displayed light unchanged. A grazing source and strong relief
+ * require large signed shading sums, even though the final light is modest.
+ * History must retain those finite weighted sums too. */
+TEST_CASE(bright_sources_keep_weighted_depth_shading_finite)
+{
+    for (int mode = HRC_DEPTH_VISIBILITY_MASK; mode <= HRC_DEPTH_VISIBILITY_SEGMENTS;
+         mode++) {
+        HRC2D lighting = fill_lighting();
+        lighting.surface_depth_visibility = (HRCDepthVisibility)mode;
+        lighting.surface_relief = 100;
+        lighting.falloff = 0;
+        float reference[3], bright[3], held[3];
+        for (int exposure = 0; exposure < 2; exposure++) {
+            float power = exposure ? 5000 : 50;
+            open_scene(OPEN, .99f, 1);
+            for (int p = 0; p < PIXELS; p++) {
+                data[ALBEDO][p][3] = 0;
+                for (int c = 0; c < 3; c++) {
+                    data[ALBEDO][p][c] = .005f / power;
+                }
+                if (data[SOURCE][p][0] > 0) {
+                    data[SOURCE][p][0] = power;
+                }
+            }
+            REQUIRE(lit_fresh(lighting, test_centered(SIDE), exposure ? bright : reference));
+        }
+        REQUIRE(reference[0] > .01f && reference[0] < .95f);
+        REQUIRE(fabsf(bright[0] - reference[0]) < reference[0] * .05f);
+        lighting.surface_depth_temporal = true;
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), bright));
+        REQUIRE(lit(lighting, test_centered(SIDE), held));
+        REQUIRE(fabsf(held[0] - reference[0]) < reference[0] * .05f);
+    }
+    return true;
+}
+
 /* A dark receiver, nearly black and tilted toward the half-vector, so gloss
  * shows apart from its diffuse light. The strip stays off the receiver. */
 static void dark_receiver(float gloss)
@@ -1544,6 +1581,7 @@ void test_render_radiance_depth()
     RUN_TEST_CASE(closed_receivers_take_the_light_hrc_brings_open_ones);
     RUN_TEST_CASE(soft_visibility_keeps_lights_on_the_floor);
     RUN_TEST_CASE(lights_behind_absorbing_walls_leave_hrc_light_unshaded);
+    RUN_TEST_CASE(bright_sources_keep_weighted_depth_shading_finite);
     RUN_TEST_CASE(glossy_receivers_take_highlights_by_the_depth_gain);
     RUN_TEST_CASE(matte_patches_take_no_gloss_from_around_them);
     RUN_TEST_CASE(every_depth_quality_lights_and_shadows);

@@ -41,6 +41,7 @@ components {
     MeshSurface2D tab="Material"
     Movement tab="Gameplay"
     ParticleEmitter icon="emitter"
+    ParticleField3D tab="Material" icon="emitter"
     Pickup tab="Gameplay"
     PointLight tab="Material" icon="light"
     Projectile tab="Gameplay" icon="projectile"

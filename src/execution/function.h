@@ -383,8 +383,10 @@ void behavior_function_activation_free(behavior_function_activation *activation)
 void behavior_function_clear_calls(behavior_function_activation *activation);
 void behavior_function_free(behavior_function *function);
 bool behavior_function_compile(behavior_function *function);
-int behavior_function_run(const behavior_function *function, behavior_function_context *ctx, bool native);
-/* Thread-local count of VM scratch initializations, for allocation profiling. */
+/* Compiled execution selects the platform backend: SLJIT or WebAssembly. */
+int behavior_function_run(const behavior_function *function, behavior_function_context *ctx, bool compiled);
+/* Thread-local scratch-bank initializations for allocation profiling; shared
+ * by bytecode and WebAssembly execution. */
 uint64_t behavior_function_vm_allocations();
 /* The exported C function has the same ABI as the SLJIT entry. */
 /* Batchable Tick body embedded in an ordered native row loop. */

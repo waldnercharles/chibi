@@ -19,6 +19,14 @@ CHIBI_CPU_SELECTOR("--engine-clock")
 CHIBI_CPU_SELECTOR("--preview-layout")
 CHIBI_CPU_SELECTOR("--fields")
 CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
+/* C-owned URL gesture lifecycle cases through Node; no browser/network/GPU. */
+CHIBI_CPU_SELECTOR("--player-url")
+/* Both platform clock initializers with a recorded limiter setter; no clocks. */
+CHIBI_CPU_SELECTOR("--player-clock")
+/* PCM analysis and a dummy SDL audio device; no graphics or real recording. */
+CHIBI_CPU_SELECTOR("--audio-analysis")
+/* Three generated shaders compiled to WGSL/MSL without opening a device. */
+CHIBI_CPU_SELECTOR("--shader-webgpu")
 CHIBI_CPU_SELECTOR("--graph-document")
 CHIBI_CPU_SELECTOR("--graph-presentation")
 CHIBI_CPU_SELECTOR("--graph-functions")

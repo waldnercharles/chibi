@@ -106,6 +106,9 @@ int engine_dispatch_input(engine *engine, const char *action, double value, int 
 /* Host input ingress: hold the latest movement/aim sample across fixed steps. */
 int engine_sample_movement(engine *engine, float x, float y);
 int engine_sample_aim(engine *engine, CF_V2 aim, bool firing, bool point);
+/* Host-projected pointer ray, held across fixed steps and recorded for replay.
+ * Active rays have finite coordinates and a nonzero direction. */
+int engine_sample_pointer_ray(engine *engine, input_pointer_ray pointer);
 /* Copies the project's input map. Without input the engine ignores it. */
 void engine_set_input_actions(engine *engine, const input_action *actions, int count);
 /* Held physical controls interpreted through the input map. Ignored while

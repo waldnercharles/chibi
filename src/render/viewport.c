@@ -32,6 +32,8 @@ struct engine_viewport
     bool pointer_active;
     bool perspective;
     CF_V2 image_min, image_size;
+    render_scene3d_camera image_camera;
+    bool image_perspective;
     engine_viewport_pointer pointer;
     int requested_width;
     int requested_height;
@@ -334,6 +336,12 @@ void engine_viewport_get_camera(const engine_viewport *viewport, engine_viewport
     } else {
         width = height * aspect;
     }
+    engine_viewport_lens lens = viewport->lens;
+    if (height > viewport->view_height && cf_dot_v3(lens.forward, lens.forward) > 0) {
+        float fov = lens.fov > 0 ? lens.fov : ENGINE_VIEWPORT_FOV_DEFAULT;
+        float tangent = tanf(fov * 0.5f) * height / viewport->view_height;
+        lens.fov = fminf(2 * atanf(tangent), nextafterf(CF_PI, 0));
+    }
     *camera = (engine_viewport_camera){ viewport->center_x,
                                         viewport->center_y,
                                         width,
@@ -343,7 +351,7 @@ void engine_viewport_get_camera(const engine_viewport *viewport, engine_viewport
                                         viewport->pitch,
                                         viewport->target_elevation,
                                         viewport->roll,
-                                        viewport->lens };
+                                        lens };
 }
 
 void engine_viewport_get_camera3d(const engine_viewport *viewport, render_scene3d_camera *camera)
@@ -402,11 +410,31 @@ bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, floa
     return true;
 }
 
+bool engine_viewport_mouse_ray(const engine_viewport *viewport, CF_Ray3 *ray)
+{
+    CF_V2 mouse = { viewport->host_input.x, viewport->host_input.y };
+    CF_V2 size = viewport->image_size;
+    if (!viewport->perspective || !viewport->image_perspective || size.x <= 0 ||
+        size.y <= 0 || mouse.x < 0 || mouse.y < 0 || mouse.x >= size.x ||
+        mouse.y >= size.y) {
+        return false;
+    }
+    *ray = render_scene3d_ray(
+        &viewport->image_camera,
+        (CF_V2){ 2 * mouse.x / size.x - 1, 1 - 2 * mouse.y / size.y }
+    );
+    return true;
+}
+
 static void draw_viewport_canvas(engine_viewport *viewport)
 {
     cf_draw_push();
     engine_viewport_camera camera;
     engine_viewport_get_camera(viewport, &camera);
+    viewport->image_perspective = viewport->perspective;
+    if (viewport->image_perspective) {
+        viewport->image_camera = render_scene3d_camera_frame(&camera);
+    }
     cf_draw_projection(
         cf_ortho_2d(camera.center_x, camera.center_y, camera.span_width, camera.span_height)
     );

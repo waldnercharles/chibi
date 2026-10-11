@@ -90,6 +90,35 @@ static bool read_flag(av_value *value, bool *out)
     return av_is_bool(value);
 }
 
+static bool read_vector3(av_value *value, CF_V3 *out)
+{
+    av_value *x = av_obj_get(value, "x"), *y = av_obj_get(value, "y"),
+             *z = av_obj_get(value, "z");
+    if (!av_is_obj(value) || av_obj_size(value) != 3 || !av_is_num(x) ||
+        !av_is_num(y) || !av_is_num(z)) {
+        return false;
+    }
+    double vx = av_get_num(x), vy = av_get_num(y), vz = av_get_num(z);
+    if (!isfinite(vx) || !isfinite(vy) || !isfinite(vz) || fabs(vx) > FLT_MAX ||
+        fabs(vy) > FLT_MAX || fabs(vz) > FLT_MAX) {
+        return false;
+    }
+    *out = (CF_V3){ (float)vx, (float)vy, (float)vz };
+    return true;
+}
+
+static bool read_pointer(av_value *value, input_pointer_ray *out)
+{
+    if (!av_is_obj(value) || av_obj_size(value) != 2 ||
+        !read_vector3(av_obj_get(value, "origin"), &out->origin) ||
+        !read_vector3(av_obj_get(value, "direction"), &out->direction)) {
+        return false;
+    }
+    CF_V3 d = out->direction;
+    out->active = d.x || d.y || d.z;
+    return out->active;
+}
+
 static bool read_field(const char *name, av_value *value, input_keyframe *out)
 {
     if (!strcmp(name, "frame")) {
@@ -109,6 +138,9 @@ static bool read_field(const char *name, av_value *value, input_keyframe *out)
     }
     if (!strcmp(name, "controllers")) {
         return read_controllers(value, out);
+    }
+    if (!strcmp(name, "pointer")) {
+        return read_pointer(value, &out->pointer);
     }
     return !strcmp(name, "controls") && read_controls(value, &out->controls);
 }
@@ -234,6 +266,17 @@ static void write_key(av_doc *doc, av_value *keys, const input_keyframe *key)
     }
     if (key->firing) {
         av_obj_add_bool(doc, value, "firing", true);
+    }
+    if (key->pointer.active) {
+        av_value *pointer = av_obj_add_obj(doc, value, "pointer");
+        av_value *origin = av_obj_add_obj(doc, pointer, "origin");
+        av_obj_add_val(doc, origin, "x", av_float(doc, key->pointer.origin.x));
+        av_obj_add_val(doc, origin, "y", av_float(doc, key->pointer.origin.y));
+        av_obj_add_val(doc, origin, "z", av_float(doc, key->pointer.origin.z));
+        av_value *direction = av_obj_add_obj(doc, pointer, "direction");
+        av_obj_add_val(doc, direction, "x", av_float(doc, key->pointer.direction.x));
+        av_obj_add_val(doc, direction, "y", av_float(doc, key->pointer.direction.y));
+        av_obj_add_val(doc, direction, "z", av_float(doc, key->pointer.direction.z));
     }
     int last = INPUT_CONTROLLER_MAX;
     while (last && !key->controllers[last - 1].connected) {

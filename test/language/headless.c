@@ -1,4 +1,5 @@
 #include "authoring/source_prepare.h"
+#include "backend.h"
 #include "ecs/ecs.h"
 #include "execution/log.h"
 #include "execution/prepared.h"
@@ -126,7 +127,7 @@ static bool compile(behavior_backend backend)
 
 TEST_CASE(headless_canonical_module_runs_without_game_services)
 {
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         cleanup();
         REQUIRE(compile(backends[backend]));
@@ -139,7 +140,7 @@ TEST_CASE(headless_canonical_module_runs_without_game_services)
 
 TEST_CASE(headless_prepared_artifact_retires_producer_and_file)
 {
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
         cleanup();
         REQUIRE(compile(backends[backend]));

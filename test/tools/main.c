@@ -6,14 +6,26 @@
 #include <stdio.h>
 #include <string.h>
 
+#if defined(CHIBI_TEST_WEBGPU_STAGING) || defined(CHIBI_TEST_AUDIO_WEB)
 #ifdef CHIBI_TEST_WEBGPU_STAGING
 int test_webgpu_staging_start();
+#endif
+#ifdef CHIBI_TEST_AUDIO_WEB
+int test_web_audio_start();
+#endif
 int main(int argc, char **argv)
 {
-    if (argc != 2 || strcmp(argv[1], "--webgpu-staging")) {
-        return 2;
+#ifdef CHIBI_TEST_AUDIO_WEB
+    if (argc == 2 && !strcmp(argv[1], "--audio-browser")) {
+        return test_web_audio_start();
     }
-    return test_webgpu_staging_start();
+#endif
+#ifdef CHIBI_TEST_WEBGPU_STAGING
+    if (argc == 2 && !strcmp(argv[1], "--webgpu-staging")) {
+        return test_webgpu_staging_start();
+    }
+#endif
+    return 2;
 }
 #else
 #ifdef CHIBI_TEST_TILEMAP
@@ -29,7 +41,15 @@ void test_tool_test_policy();
 void test_tool_validation_plan();
 void test_tool_publish();
 void test_tool_web_storage();
+void test_tool_player_url();
+#ifdef CHIBI_TEST_AUDIO_ANALYSIS
+void test_tool_audio_analysis();
+#endif
+#ifdef CHIBI_TEST_SHADER_WEBGPU
+void test_tool_shader_webgpu();
+#endif
 void test_tool_webgpu_staging();
+void test_tool_wasm_browser();
 void test_tool_types();
 void test_tool_ecs();
 void test_tool_ecs_relationships();
@@ -51,6 +71,10 @@ void test_scene_hierarchy();
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
+void test_particle_fields();
+void test_tool_audio_output();
+void test_tool_audio_browser();
+void test_tool_player_clock();
 void test_installed_examples(const char *name);
 void test_render_interior_border();
 void test_render_viewport_resize();
@@ -97,6 +121,7 @@ bool test_source_runtime_active()
 void test_source_native_features();
 #ifdef CHIBI_TEST_PREVIEW
 void test_preview_preparation();
+void test_preview_shader_libraries();
 #endif
 void test_source_presentation();
 void test_component_presentation();
@@ -233,6 +258,8 @@ void test_field_library();
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
 static const char *const document_selectors[] = {
+    "--player-url",       "--audio-analysis",
+    "--audio-browser",    "--shader-webgpu",
     "--asset-values",     "--ui-document",
     "--text-files",       "--fmt",
     "--particles",        "--png-encoding",
@@ -240,6 +267,7 @@ static const char *const document_selectors[] = {
     "--reference-index",  "--asset-source",
     "--behavior-loader",  "--engine-clock",
     "--preview-layout",   "--fields",
+    "--player-clock",
 };
 
 static bool selected(int argc, char **argv, const char *name)
@@ -260,6 +288,35 @@ static bool document_selector(int argc, char **argv)
 /* Runs the suites of a document selector; false when none is built. */
 static bool run_document_suites(int argc, char **argv)
 {
+    if (selected(argc, argv, "--player-url")) {
+        test_tool_player_url();
+        return true;
+    }
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+    if (selected(argc, argv, "--player-clock")) {
+        test_tool_player_clock();
+        return true;
+    }
+    if (selected(argc, argv, "--audio-browser")) {
+        test_tool_audio_browser();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_AUDIO_ANALYSIS
+    if (selected(argc, argv, "--audio-analysis")) {
+        test_tool_audio_analysis();
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+        test_tool_audio_output();
+#endif
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_SHADER_WEBGPU
+    if (selected(argc, argv, "--shader-webgpu")) {
+        test_tool_shader_webgpu();
+        return true;
+    }
+#endif
 #ifdef CHIBI_TEST_ASSET_VALUES
     if (selected(argc, argv, "--asset-values")) {
         test_asset_text();
@@ -414,6 +471,7 @@ int main(int argc, char **argv)
     bool package = argc == 2 && !strcmp(argv[1], "--package");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
     bool webgpu_staging = argc == 2 && !strcmp(argv[1], "--webgpu-staging");
+    bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool arena = argc == 2 && !strcmp(argv[1], "--arena");
@@ -579,10 +637,10 @@ int main(int argc, char **argv)
     if (argc != 1 && !example && !corpus && !coverage && !preview_components &&
         !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
         !tilemap && !tilemap_project && !package && !unit && !web_storage &&
-        !webgpu_staging && !query_benchmark && !prepared && !read && !scene &&
-        !scene_prepared && !scene_hierarchy && !native && !native_values &&
-        !native_catalog && !physics && !physics3d && !transforms &&
-        !render_resources && !interior_border && !viewport_resize &&
+        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared &&
+        !read && !scene && !scene_prepared && !scene_hierarchy && !native &&
+        !native_values && !native_catalog && !physics && !physics3d &&
+        !transforms && !render_resources && !interior_border && !viewport_resize &&
         !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
         !scene2d && !scene3d && !material_ramps && !texture_transform &&
         !arena && !render_geometry && !radiance_surface && !radiance_horizons &&
@@ -600,7 +658,7 @@ int main(int argc, char **argv)
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
             "--web-storage | "
-            "--webgpu-staging | "
+            "--webgpu-staging | --wasm-browser | "
             "--ecs-query-benchmark | --arena | "
             "--validate-project chibi_ctl | --controller chibi_ctl | "
             "--render-fixture chibi_ctl | --preview-components | "
@@ -644,6 +702,9 @@ int main(int argc, char **argv)
             "manifest | --prepare-corpora manifest | --prepare-corpora-sljit "
             "manifest | --feature-coverage project | --asset-values | "
             "--ui-document | --text-files | --fmt | --particles | "
+            "--player-clock | --audio-analysis | --audio-browser | "
+            "--shader-webgpu | "
+            "--player-url | "
             "--png-encoding | --project-document | --prototype-documents | "
             "--reference-index | --asset-source | --behavior-loader | "
             "--engine-clock | --preview-layout | --fields]\n",
@@ -713,6 +774,12 @@ int main(int argc, char **argv)
         }
         if (shader_parameters) {
             test_shader_parameters_prepared();
+#ifdef CHIBI_TEST_PREVIEW
+            test_preview_shader_libraries();
+#endif
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+            test_particle_fields();
+#endif
         } else if (source_edit) {
             test_source_edit();
         } else if (system_schedule) {
@@ -917,6 +984,8 @@ int main(int argc, char **argv)
 #endif
     if (webgpu_staging) {
         test_tool_webgpu_staging();
+    } else if (wasm_browser) {
+        test_tool_wasm_browser();
     } else if (package) {
         test_tool_package();
     } else if (scene_prepared) {
@@ -956,6 +1025,12 @@ int main(int argc, char **argv)
         test_tool_test_policy();
         test_tool_validation_plan();
         test_tool_publish();
+#ifdef CHIBI_TEST_AUDIO_ANALYSIS
+        test_tool_audio_analysis();
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+        test_tool_audio_output();
+#endif
+#endif
 #ifdef CHIBI_TEST_REFLECT
         test_tool_reflect();
 #endif

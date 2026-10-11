@@ -19,26 +19,36 @@ if(EMSCRIPTEN)
         find_package(Chibi REQUIRED CONFIG)
         set(CHIBI_TEST_PLATFORM Chibi::platform)
     endif()
-    set(CHIBI_TEST_ADOPT_DEVICE 1)
-    if(CHIBI_TEST_WEBGPU_BASELINE)
-        set(CHIBI_TEST_ADOPT_DEVICE 0)
-    endif()
-    configure_file("${CHIBI_TOOL_ROOT}/test/render/webgpu_staging.html"
-        "${CMAKE_CURRENT_BINARY_DIR}/webgpu_staging.html" @ONLY)
-    add_executable(test_tools main.c ../render/webgpu_staging.c ../draw_backend.cpp)
+    add_executable(test_tools main.c)
     target_include_directories(test_tools PRIVATE "${CHIBI_TOOL_ROOT}" "${CHIBI_TOOL_ROOT}/src")
-    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_WEBGPU_STAGING=1
-        CHIBI_TEST_ADOPT_DEVICE=${CHIBI_TEST_ADOPT_DEVICE})
     target_compile_features(test_tools PRIVATE c_std_11)
     target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -Wno-experimental -UNDEBUG)
     target_link_libraries(test_tools PRIVATE ${CHIBI_TEST_PLATFORM})
-    set_target_properties(test_tools PROPERTIES SUFFIX ".html" LINKER_LANGUAGE CXX
-        LINK_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/webgpu_staging.html")
-    target_link_options(test_tools PRIVATE
-        "--shell-file=${CMAKE_CURRENT_BINARY_DIR}/webgpu_staging.html"
-        "-sALLOW_MEMORY_GROWTH=1" "-sSTACK_SIZE=1048576")
-    if(CHIBI_TEST_WEBGPU_BASELINE)
-        target_link_options(test_tools PRIVATE "-sASYNCIFY=1")
+    target_link_options(test_tools PRIVATE "-sALLOW_MEMORY_GROWTH=1" "-sSTACK_SIZE=1048576")
+    set_target_properties(test_tools PROPERTIES SUFFIX ".js" LINKER_LANGUAGE CXX)
+    if(CHIBI_TEST_CUTE_SOURCE)
+        # These diagnostics use WebGPU APIs absent from the normal GLES SDK.
+        set(CHIBI_TEST_ADOPT_DEVICE 1)
+        if(CHIBI_TEST_WEBGPU_BASELINE)
+            set(CHIBI_TEST_ADOPT_DEVICE 0)
+            target_link_options(test_tools PRIVATE "-sASYNCIFY=1")
+        endif()
+        configure_file("${CHIBI_TOOL_ROOT}/test/render/webgpu_staging.html"
+            "${CMAKE_CURRENT_BINARY_DIR}/webgpu_staging.html" @ONLY)
+        target_sources(test_tools PRIVATE ../render/webgpu_staging.c ../draw_backend.cpp)
+        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_WEBGPU_STAGING=1
+            CHIBI_TEST_ADOPT_DEVICE=${CHIBI_TEST_ADOPT_DEVICE})
+        set_target_properties(test_tools PROPERTIES SUFFIX ".html"
+            LINK_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/webgpu_staging.html")
+        target_link_options(test_tools PRIVATE
+            "--shell-file=${CMAKE_CURRENT_BINARY_DIR}/webgpu_staging.html")
+    elseif(TARGET Chibi::render)
+        target_sources(test_tools PRIVATE audio_output.c)
+        target_link_libraries(test_tools PRIVATE Chibi::render)
+        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_AUDIO_WEB=1)
+        target_link_options(test_tools PRIVATE "-Wl,--wrap=SDL_GetTicks")
+    else()
+        message(FATAL_ERROR "Browser audio checks require an SDK with Chibi::render")
     endif()
     return()
 endif()
@@ -77,7 +87,7 @@ target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
 add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
-    validate_project.c tetris.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c webgpu_staging.c ../support/arena.c
+    validate_project.c tetris.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
     $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
@@ -91,6 +101,11 @@ add_dependencies(test_tools policy_worker)
 target_compile_features(test_tools PRIVATE c_std_11)
 target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document)
+if(TARGET Chibi::audio_runtime)
+    target_sources(test_tools PRIVATE audio_analysis.c)
+    target_link_libraries(test_tools PRIVATE Chibi::audio_runtime)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_AUDIO_ANALYSIS=1)
+endif()
 if(TARGET Chibi::scene_authoring)
     add_library(chibi_scene_authoring_consumer OBJECT ../authoring/scene_hierarchy.c)
     target_include_directories(chibi_scene_authoring_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
@@ -133,6 +148,17 @@ if(TARGET Chibi::tilemap_runtime AND TARGET Chibi::asset_text AND TARGET Chibi::
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_TILEMAP_PROJECT=1)
 endif()
 add_custom_target(check-tools COMMAND test_tools DEPENDS test_tools VERBATIM)
+
+# Exercise the runtime GLSL compiler without opening a device. Its compiler
+# header is private to Cute, so these cases require an in-tree build.
+if(TARGET Chibi::platform AND TARGET Chibi::shader_runtime AND NOT CHIBI_INSTALLED_SDK)
+    get_target_property(platform_source Chibi::platform SOURCE_DIR)
+    get_directory_property(cute_source DIRECTORY "${platform_source}" DEFINITION cute_framework_SOURCE_DIR)
+    target_sources(test_tools PRIVATE shader_webgpu.c)
+    target_include_directories(test_tools PRIVATE "${cute_source}/tools")
+    target_link_libraries(test_tools PRIVATE Chibi::shader_runtime Chibi::platform)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SHADER_WEBGPU=1)
+endif()
 
 # KDL asset text and the native value tree it reads into.
 if(TARGET Chibi::asset_text AND TARGET Chibi::asset_json)
@@ -226,7 +252,7 @@ if(TARGET Chibi::render)
     target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
     target_link_libraries(chibi_render_consumer PRIVATE Chibi::render)
     target_compile_options(chibi_render_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_render_consumer>)
+    target_sources(test_tools PRIVATE particle_fields.c audio_output.c player_clock.c $<TARGET_OBJECTS:chibi_render_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::render)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_RUNTIME=1)
     # Surface materials with roughness and metallic come from material graphs, and
@@ -332,7 +358,8 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         ../support/reflected_types.c)
     target_include_directories(chibi_source_runtime_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_source_runtime_consumer PRIVATE Chibi::authoring Chibi::asset_authoring
-        Chibi::behavior_runtime Chibi::arithmetic_capabilities Chibi::host_native_default)
+        Chibi::behavior_runtime Chibi::arithmetic_capabilities Chibi::host_native_default
+        Chibi::graph_authoring Chibi::native_types)
     target_compile_options(chibi_source_runtime_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_source_runtime_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::asset_authoring Chibi::arithmetic_capabilities)

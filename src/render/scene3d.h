@@ -61,6 +61,7 @@ typedef struct
     int cascades;      /* Sun shadow cascades drawn. */
     int light_shadows; /* Point and spot lights whose shadows were drawn. */
     int meshes;        /* Imported meshes held on the GPU. */
+    int particle_fields, mesh_particles; /* GPU field draws and their instances. */
 } render_scene3d_work;
 render_scene3d *render_scene3d_new();
 void render_scene3d_set_parallel(render_scene3d *scene3d, bool enabled);

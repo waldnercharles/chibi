@@ -29,6 +29,7 @@ void engine_input_reset(engine_input *input);
 int engine_input_action(engine_input *input, const char *action, bool pressed);
 void engine_input_movement(engine_input *input, CF_V2 movement);
 void engine_input_aim(engine_input *input, CF_V2 aim, bool firing, bool point);
+void engine_input_pointer(engine_input *input, input_pointer_ray pointer);
 int engine_input_controls(engine_input *input, uint64_t controls, bool *firing);
 int engine_input_devices(
     engine_input *input,
@@ -53,6 +54,7 @@ int engine_input_hold(engine_input *input, const input_keyframe *key);
 extern const node_host_call INPUT_HELD_CALL;
 extern const node_host_call INPUT_PRESSED_CALL;
 extern const node_host_call INPUT_CONTROLLER_CONNECTED_CALL;
+extern const node_host_call INPUT_POINTER_RAY_CALL;
 extern const node_access INPUT_READ_ACCESS;
 
 #endif

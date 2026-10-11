@@ -110,6 +110,29 @@ static const char *member_name(source_projection *p, uint64_t id)
     }
     return "Field";
 }
+static const char *prefixed_name(source_projection *p, const char *prefix, const char *name)
+{
+    size_t size = strlen(prefix) + strlen(name) + 2;
+    char *label = xmalloc(size);
+    snprintf(label, size, "%s %s", prefix, name);
+    const char *owned = source_view_own(p->graph, label);
+    free(label);
+    return owned;
+}
+bool source_view_expression_action(source_projection *p, int index)
+{
+    const script_expression *e = &p->analysis->expressions[index];
+    if (e->kind == SCRIPT_EXPR_JOIN || e->kind == SCRIPT_EXPR_CANCEL ||
+        e->kind == SCRIPT_EXPR_YIELD) {
+        return true;
+    }
+    if (e->kind != SCRIPT_EXPR_CALL) {
+        return false;
+    }
+    const script_catalog_capability *capability = source_view_capability(p, e->capability);
+    return e->awaited || (e->effects & ~SCRIPT_EFFECT_READ) ||
+           (capability && capability->kind == SCRIPT_CAPABILITY_ACTION);
+}
 static void formula_inputs(source_projection *p, int index, int **children, int **arguments)
 {
     if (index < 0) {
@@ -138,19 +161,32 @@ node *source_view_expression(source_projection *p, int index)
         return p->expressions[index];
     }
     const script_expression *e = &p->analysis->expressions[index];
+    /* Lazy effects remain one source operation; exposing both operands would
+     * imply unconditional execution of the short-circuited side. */
+    bool lazy = (e->effects & ~SCRIPT_EFFECT_READ) &&
+                (e->kind == SCRIPT_EXPR_FALLBACK ||
+                 (e->kind == SCRIPT_EXPR_BINARY &&
+                  (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR)));
     /* Keep read-only formulas as one editable source expression. Calls and
      * members retain their ports; operations with effects stay explicit. */
-    bool formula = (e->kind == SCRIPT_EXPR_UNARY ||
-                    e->kind == SCRIPT_EXPR_BINARY || e->kind == SCRIPT_EXPR_CAST) &&
-                   !(e->effects & ~SCRIPT_EFFECT_READ);
+    bool formula = lazy || ((e->kind == SCRIPT_EXPR_UNARY || e->kind == SCRIPT_EXPR_BINARY ||
+                             e->kind == SCRIPT_EXPR_CAST) &&
+                            !(e->effects & ~SCRIPT_EFFECT_READ));
     pin_spec *inputs = NULL, *outputs = NULL;
     int *children = NULL, *arguments = NULL;
-    if (formula) {
+    if (formula && !lazy) {
         formula_inputs(p, e->left, &children, &arguments);
         formula_inputs(p, e->right, &children, &arguments);
     }
     /* Call right identifies an authored function, not an expression record. */
-    if (!formula && e->left >= 0) {
+    bool receiver_argument = false;
+    for (int i = 0; e->kind == SCRIPT_EXPR_CALL && i < e->argument_count; i++) {
+        receiver_argument |= e->arguments[i].value == e->left;
+    }
+    bool namespace_receiver = e->kind == SCRIPT_EXPR_MEMBER && e->left >= 0 &&
+                              (p->analysis->expressions[e->left].type.flags &
+                               SCRIPT_TYPE_NAMESPACE);
+    if (!formula && e->left >= 0 && !receiver_argument && !namespace_receiver) {
         apush(children, e->left);
         apush(arguments, -1);
     }
@@ -161,7 +197,7 @@ node *source_view_expression(source_projection *p, int index)
     const script_catalog_capability *capability = source_view_capability(p, e->capability);
     const script_expression *tuple = source_view_tuple(p, index);
     const script_expression *schema = tuple ? tuple : e;
-    for (int i = 0; i < e->argument_count; i++) {
+    for (int i = 0; !lazy && i < e->argument_count; i++) {
         if (e->arguments[i].value >= 0) {
             apush(children, e->arguments[i].value);
             apush(arguments, i);
@@ -170,14 +206,37 @@ node *source_view_expression(source_projection *p, int index)
     for (int i = 0; i < acount(children); i++) {
         const script_expression *child = &p->analysis->expressions[children[i]];
         const char *name = i == 0 ? "Value" : "Operand";
+        script_type type = child->type;
         int arg = arguments[i];
         if (arg >= 0 && capability && e->arguments[arg].parameter >= 0 &&
             e->arguments[arg].parameter < capability->parameter_count) {
             name = capability->parameters[e->arguments[arg].parameter].name;
+            type = capability->parameters[e->arguments[arg].parameter].type;
+        } else if (
+            arg >= 0 && e->kind == SCRIPT_EXPR_CALL && e->right >= 0 &&
+            e->arguments[arg].parameter >= 0 &&
+            e->arguments[arg].parameter < p->analysis->functions[e->right].parameter_count
+        ) {
+            const script_function *function = &p->analysis->functions[e->right];
+            const script_symbol
+                *parameter = &p->analysis->symbols
+                                  [function->parameters[e->arguments[arg].parameter]];
+            name = parameter->name;
+            type = parameter->type;
         } else if (arg >= 0 && e->arguments[arg].member) {
             name = member_name(p, e->arguments[arg].member);
+        } else if (e->kind == SCRIPT_EXPR_MEMBER) {
+            name = "Target";
+        } else if (e->kind == SCRIPT_EXPR_COMPONENT) {
+            name = "Entity";
         }
-        apush(inputs, source_view_data_pin(p, name, child->type));
+        if ((type.flags & (SCRIPT_TYPE_GENERIC | SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_ERROR)) ||
+            (type.storage == PIN_STRUCT && !type.nominal)) {
+            unsigned reference = type.flags & SCRIPT_TYPE_REFERENCE;
+            type = child->type;
+            type.flags |= reference;
+        }
+        apush(inputs, source_view_data_pin(p, name, type));
     }
     int payload = -1;
     const script_catalog_capability *payload_capability = NULL;
@@ -193,10 +252,16 @@ node *source_view_expression(source_projection *p, int index)
     int count = schema->result_count ? schema->result_count
               : payload >= 0 ? p->analysis->functions[payload].parameter_count
               : payload_capability ? payload_capability->parameter_count
-                                   : 1;
+              : e->type.storage == PIN_FLOW ? 0
+                                            : 1;
     for (int i = 0; i < count; i++) {
         script_type type = schema->result_count ? schema->results[i] : e->type;
         const char *name = source_view_result_name(p, schema, i);
+        if (!schema->result_count && e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0) {
+            name = p->analysis->symbols[e->symbol].name;
+        } else if (!schema->result_count && (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_COMPONENT)) {
+            name = member_name(p, e->member);
+        }
         if (payload >= 0) {
             const script_symbol *
                 field = &p->analysis->symbols[p->analysis->functions[payload].parameters[i]];
@@ -208,9 +273,7 @@ node *source_view_expression(source_projection *p, int index)
         }
         apush(outputs, source_view_data_pin(p, name, type));
     }
-    bool action = e->kind == SCRIPT_EXPR_CALL &&
-                  ((capability && capability->kind == SCRIPT_CAPABILITY_ACTION) ||
-                   e->awaited);
+    bool action = source_view_expression_action(p, index);
     if (action) {
         const char *entry = capability && e->entry >= 0 && e->entry < capability->entry_count
                               ? capability->entries[e->entry]
@@ -221,22 +284,39 @@ node *source_view_expression(source_projection *p, int index)
                 apush(outputs, source_view_flow_pin(p, capability->outcomes[i]));
             }
         } else {
-            apush(outputs, source_view_flow_pin(p, "Completed"));
+            apush(outputs, source_view_flow_pin(p, e->awaited || e->kind == SCRIPT_EXPR_JOIN ? "Completed" : "Then"));
         }
     }
     node *n = source_view_box(
         p,
         formula ? "Expression"
         : e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_COMPONENT
-            ? member_name(p, e->member)
+            ? prefixed_name(p, "Get", member_name(p, e->member))
+        : e->kind == SCRIPT_EXPR_SYMBOL
+            ? prefixed_name(p, "Get", expression_name(p, e))
+        : e->kind == SCRIPT_EXPR_CALL && e->awaited
+            ? prefixed_name(p, "Await", expression_name(p, e))
             : expression_name(p, e),
-        action                            ? NODE_DISPLAY_FUNCTION
-        : e->kind == SCRIPT_EXPR_CONSTANT ? NODE_DISPLAY_LITERAL
-                                          : NODE_DISPLAY_PURE,
+        action || e->kind == SCRIPT_EXPR_CALL ? NODE_DISPLAY_FUNCTION
+        : e->kind == SCRIPT_EXPR_CONSTANT     ? NODE_DISPLAY_LITERAL
+        : e->kind == SCRIPT_EXPR_SYMBOL       ? NODE_DISPLAY_VARIABLE
+                                              : NODE_DISPLAY_PURE,
         inputs,
         outputs
     );
     p->expressions[index] = n;
+    if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0) {
+        source_view_describe_variable(p, n, &p->analysis->symbols[e->symbol], false);
+    } else if (namespace_receiver) {
+        char description[512];
+        snprintf(
+            description,
+            sizeof description,
+            "Reads the scene entity bound to '%s' in globals.",
+            member_name(p, e->member)
+        );
+        source_view_describe(p, n, description);
+    }
     n->reference_id = e->instance ? e->instance : e->capability;
     if (e->symbol >= 0) {
         n->disabled = p->analysis->symbols[e->symbol].disabled;

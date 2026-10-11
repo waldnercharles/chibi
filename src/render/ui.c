@@ -41,8 +41,8 @@ struct ui_mount
     char *markup, *style; /* from the last valid asset */
     rcss_map map;         /* where each line of style came from */
     char error[256];
-    rml_element *root;
-    bool installed; /* root holds the current markup */
+    rml_element_ref *root; /* expires when a conditional host is destroyed */
+    bool installed;        /* root holds the current markup */
     ui_activation *pending;
     rml_element_ref *taken; /* the anchor of the activation last taken */
     uint64_t applied;       /* the model revision already applied */
@@ -95,6 +95,7 @@ void ui_mount_free(ui_mount *m)
     }
     afree(m->pending);
     rml_element_ref_destroy(m->taken);
+    rml_element_ref_destroy(m->root);
     forget_lists(m);
     afree(m->lists);
     free(m->content_root);
@@ -200,8 +201,9 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
     char mounted[256] = "";
     bool same_mount = rml_element_attribute(root, "data-ui", mounted, sizeof mounted) &&
                       !strcmp(mounted, m->name);
-    if (root != m->root || !same_mount) {
-        m->root = root;
+    if (root != ui_mount_root(m) || !same_mount) {
+        rml_element_ref_destroy(m->root);
+        m->root = rml_element_ref_create(root);
         m->installed = false;
         /* Binding moves the root, which binds its children's views again;
            another panel's evaluated markup would leave views RmlUi adds but
@@ -242,26 +244,28 @@ bool ui_mount_sync(ui_mount *m, rml_element *root, rml_listener *listener, doubl
     return restyled;
 }
 
-/* A conditional host can disappear and a new element can reuse its address.
-   Forget it before its owner removes it so a later mount installs fresh markup. */
+/* Drop a host explicitly when its owner switches panels. Destruction also
+ * expires the root reference, so reused element addresses remain unmounted. */
 void ui_mount_detach(ui_mount *m)
 {
     if (!m) {
         return;
     }
+    rml_element_ref_destroy(m->root);
     m->root = NULL;
     m->installed = false;
 }
 
 rml_element *ui_mount_root(const ui_mount *m)
 {
-    return m->root;
+    return m->root ? rml_element_ref_get(m->root) : NULL;
 }
 
 bool ui_mount_holds(const ui_mount *m, rml_element *element)
 {
+    rml_element *root = ui_mount_root(m);
     for (; element; element = rml_element_parent(element)) {
-        if (element == m->root) {
+        if (element == root) {
             return true;
         }
     }
@@ -344,8 +348,9 @@ static void listen_key(ui_mount *m, const rml_event *event)
 {
     char letter[2];
     const char *key = key_name(event->key, letter);
-    for (rml_element *el = event->target;
-         key && el && el != rml_element_parent(m->root);
+    rml_element *root = ui_mount_root(m);
+    assert(root);
+    for (rml_element *el = event->target; key && el && el != rml_element_parent(root);
          el = rml_element_parent(el)) {
         char bindings[256], name[128];
         if (rml_element_attribute(el, "data-keys", bindings, sizeof bindings) > 0 &&
@@ -372,8 +377,9 @@ void ui_mount_listen(ui_mount *m, const rml_event *event)
 
 bool ui_mount_area_key(ui_mount *m, const char *key)
 {
-    rml_element *el = m->installed
-                        ? rml_element_query_selector(m->root, "[data-area-keys]")
+    rml_element *root = ui_mount_root(m);
+    rml_element *el = m->installed && root
+                        ? rml_element_query_selector(root, "[data-area-keys]")
                         : NULL;
     char bindings[256], name[128];
     if (!el ||
@@ -661,13 +667,14 @@ static void apply_element(rml_element *root, ui_element *e)
 
 void ui_mount_apply(ui_mount *m, ui *model, uint64_t entity)
 {
-    if (!m->installed) {
+    rml_element *root = ui_mount_root(m);
+    if (!m->installed || !root) {
         return;
     }
     for (int i = 0; i < ui_element_count(model); i++) {
         ui_element *e = ui_element_at(model, i);
         if (e->entity == entity && e->revision > m->applied) {
-            apply_element(m->root, e);
+            apply_element(root, e);
         }
     }
     m->applied = ui_revision(model);
@@ -696,10 +703,10 @@ static mount_list *list_of(ui_mount *m, rml_element *element)
    once, as Reveal UI List Row asks, and sends `window` (ev.first, ev.count)
    when the rows to show change, as Virtuoso's rangeChanged does, so its
    document's behaviors fill the window in the same frame. */
-static void window_lists(ui_mount *m)
+static void window_lists(ui_mount *m, rml_element *root)
 {
     rml_element *found[8];
-    int count = rml_element_query_selector_all(m->root, "[data-list-rows]", found, 8);
+    int count = rml_element_query_selector_all(root, "[data-list-rows]", found, 8);
     for (int i = 0; i < count && i < 8; i++) {
         char text[32] = "";
         rml_element_attribute(found[i], "data-list-rows", text, sizeof text);
@@ -731,13 +738,14 @@ static void window_lists(ui_mount *m)
 
 void ui_mount_measure(ui_mount *m, ui *model, uint64_t entity)
 {
-    if (!m->installed) {
+    rml_element *root = ui_mount_root(m);
+    if (!m->installed || !root) {
         return;
     }
-    window_lists(m);
+    window_lists(m, root);
     rml_element *found[16];
-    int count = rml_element_query_selector_all(m->root, "[id][data-event-scroll]", found, 16);
-    float dp = rml_context_dp_ratio(rml_element_context(m->root));
+    int count = rml_element_query_selector_all(root, "[id][data-event-scroll]", found, 16);
+    float dp = rml_context_dp_ratio(rml_element_context(root));
     for (int i = 0; i < count && i < 16; i++) {
         char selector[160];
         snprintf(selector, sizeof selector, "#%s", rml_element_id(found[i]));

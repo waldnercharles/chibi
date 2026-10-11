@@ -390,6 +390,14 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
         result.write = f->write;
         result.writable = f->writable && receiver.writable;
         result.effects |= type->component ? SCRIPT_EFFECT_READ : 0;
+        const script_catalog_capability
+            *getter = script_catalog_capability_by_id(a->catalog, f->read);
+        if (getter) {
+            result.effects |= getter->effects;
+        }
+        if (f->read_key) {
+            result.effects |= SCRIPT_EFFECT_READ;
+        }
         if (receiver.kind == SCRIPT_EXPR_MEMBER && receiver.read) {
             result.writable = false;
         }

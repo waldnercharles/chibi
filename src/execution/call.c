@@ -1,4 +1,5 @@
 #include "execution/definition.h"
+#include "execution/runner.h"
 #include "execution/service.h"
 #include "execution/status.h"
 #include "support/arena.h"
@@ -402,7 +403,7 @@ static int return_values(invocation_frame *frame, const behavior_function *paren
 int behavior_function_run_calls(
     const behavior_function *function,
     behavior_function_context *root,
-    bool native
+    bool compiled
 )
 {
     assert(root->activation && root->activation->values);
@@ -423,7 +424,7 @@ int behavior_function_run_calls(
             context = &frame->context;
             refresh(frame, root);
         }
-        int result = behavior_function_run_once(active, context, native);
+        int result = behavior_function_run_once(active, context, compiled);
         if (context->commit_instance) {
             context->commit_instance(context);
         }

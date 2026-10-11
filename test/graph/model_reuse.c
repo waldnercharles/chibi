@@ -3,6 +3,8 @@
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
 #include "support/xalloc.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -56,9 +58,9 @@ static float sample(const model_program *program, float x, float y)
     assert(shader_graph_eval_outputs(&program->shader, &context, NULL, values, &error));
     return values[0][0];
 }
-static void near(float actual, float expected)
+static bool near(float actual, float expected)
 {
-    assert(fabsf(actual - expected) < .0001f);
+    return fabsf(actual - expected) < .0001f;
 }
 static bool dependency(const model_program *program, const char *name)
 {
@@ -69,7 +71,7 @@ static bool dependency(const model_program *program, const char *name)
     }
     return false;
 }
-static void composed_geometry_function()
+TEST_CASE(composed_geometry_function)
 {
     behavior_asset *asset = model("ComposedOffsets");
     graph *g = asset->graph;
@@ -81,38 +83,38 @@ static void composed_geometry_function()
                           .type_name = "Geometry3D",
                           .default_value = { .type = PIN_HANDLE,
                                              .type_name = "Geometry3D" } };
-    assert(graph_add_pin(function, entry, true, &geometry) == 0);
-    assert(graph_add_pin(function, ret, false, &geometry) == 0);
+    REQUIRE(graph_add_pin(function, entry, true, &geometry) == 0);
+    REQUIRE(graph_add_pin(function, ret, false, &geometry) == 0);
     connect(function, translated(function, entry, 2), ret, 0);
     node *inner = behavior_asset_add_function_call_node(asset, function);
     node *outer = behavior_asset_add_function_call_node(asset, function);
-    assert(inner && outer);
+    REQUIRE(inner && outer);
     connect(g, graph_add_node(g, &NODE_ModelSphere), inner, 0);
     connect(g, inner, outer, 0);
     publish(g, outer);
     model_program program;
     model_program_init(&program);
     shader_error error = { 0 };
-    assert(model_compile(asset, &program, &error));
-    near(sample(&program, 4, 0), -1);
-    near(sample(&program, 5, 0), 0);
-    near(sample(&program, 0, 0), 3);
+    REQUIRE(model_compile(asset, &program, &error));
+    REQUIRE(near(sample(&program, 4, 0), -1));
+    REQUIRE(near(sample(&program, 5, 0), 0));
+    REQUIRE(near(sample(&program, 0, 0), 3));
     node *output = g->nodes[acount(g->nodes) - 1];
-    assert(output->desc == &NODE_ModelOutput);
+    REQUIRE(output->desc == &NODE_ModelOutput);
     output->disabled = true;
-    assert(!model_compile(asset, &program, &error));
-    assert(error.node == output->id);
-    near(sample(&program, 4, 0), -1);
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(error.node == output->id);
+    REQUIRE(near(sample(&program, 4, 0), -1));
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
-void test_model_reuse()
+TEST_CASE(instanced_references)
 {
-    composed_geometry_function();
     behavior_asset *base = model("ReusableCapsule"), *parent = model("CapsulePair");
     graph *g = base->graph, *p = parent->graph;
     node *parameter = graph_add_node(g, &NODE_ModelParameter);
-    assert(!graph_set_node_reference(g, parameter, 0, "Half Segment"));
+    REQUIRE(!graph_set_node_reference(g, parameter, 0, "Half Segment"));
     scalar(g, parameter, 0, 2);
     scalar(g, parameter, 1, 0);
     scalar(g, parameter, 2, 10);
@@ -120,7 +122,7 @@ void test_model_reuse()
     scalar(g, capsule, 0, 1);
     connect(g, parameter, capsule, 1);
     node *part = graph_add_node(g, &NODE_ModelPart);
-    assert(!graph_set_node_reference(g, part, 0, "Body"));
+    REQUIRE(!graph_set_node_reference(g, part, 0, "Body"));
     connect(g, capsule, part, 0);
     publish(g, part);
     node *left = instance(p, base->name), *right = instance(p, base->name);
@@ -128,7 +130,7 @@ void test_model_reuse()
                           .type = PIN_F32,
                           .declaration_id = parameter->id,
                           .default_value = { .type = PIN_F32, .f = 0 } };
-    assert(graph_add_pin(p, right, false, &override) == 0);
+    REQUIRE(graph_add_pin(p, right, false, &override) == 0);
     node *pair = graph_add_node(p, &NODE_ModelUnion);
     connect(p, translated(p, left, -10), pair, 0);
     connect(p, translated(p, right, 10), pair, 1);
@@ -137,29 +139,29 @@ void test_model_reuse()
     model_program program;
     model_program_init(&program);
     shader_error error = { 0 };
-    assert(model_compile_with_catalog(parent, catalog, 2, &program, &error));
-    near(sample(&program, -10, 5), 2);
-    near(sample(&program, 10, 5), 4);
-    assert(dependency(&program, base->name));
-    assert(acount(program.parts) == 2);
-    assert(program.parts[0].node == part->id && program.parts[1].node == part->id);
-    assert(strcmp(program.parts[0].path, program.parts[1].path));
+    REQUIRE(model_compile_with_catalog(parent, catalog, 2, &program, &error));
+    REQUIRE(near(sample(&program, -10, 5), 2));
+    REQUIRE(near(sample(&program, 10, 5), 4));
+    REQUIRE(dependency(&program, base->name));
+    REQUIRE(acount(program.parts) == 2);
+    REQUIRE(program.parts[0].node == part->id && program.parts[1].node == part->id);
+    REQUIRE(strcmp(program.parts[0].path, program.parts[1].path));
     char *identity[2] = { xstrdup(program.parts[0].path),
                           xstrdup(program.parts[1].path) };
-    assert(identity[0] && identity[1]);
+    REQUIRE(identity[0] && identity[1]);
 
     scalar(g, parameter, 0, 4);
-    assert(model_compile_with_catalog(parent, catalog, 2, &program, &error));
-    near(sample(&program, -10, 5), 0);
-    near(sample(&program, 10, 5), 4);
-    assert(!graph_set_node_reference(g, parameter, 0, "Segment Length"));
-    assert(!graph_set_node_reference(g, part, 0, "Hull"));
-    assert(model_compile_with_catalog(parent, catalog, 2, &program, &error));
-    near(sample(&program, -10, 5), 0);
-    near(sample(&program, 10, 5), 4);
+    REQUIRE(model_compile_with_catalog(parent, catalog, 2, &program, &error));
+    REQUIRE(near(sample(&program, -10, 5), 0));
+    REQUIRE(near(sample(&program, 10, 5), 4));
+    REQUIRE(!graph_set_node_reference(g, parameter, 0, "Segment Length"));
+    REQUIRE(!graph_set_node_reference(g, part, 0, "Hull"));
+    REQUIRE(model_compile_with_catalog(parent, catalog, 2, &program, &error));
+    REQUIRE(near(sample(&program, -10, 5), 0));
+    REQUIRE(near(sample(&program, 10, 5), 4));
     for (int i = 0; i < 2; i++) {
-        assert(!strcmp(identity[i], program.parts[i].path));
-        assert(!strcmp(program.parts[i].name, "Hull"));
+        REQUIRE(!strcmp(identity[i], program.parts[i].path));
+        REQUIRE(!strcmp(program.parts[i].name, "Hull"));
         free(identity[i]);
     }
 
@@ -167,46 +169,46 @@ void test_model_reuse()
          *parent_source = behavior_asset_save(parent);
     behavior_asset *base_reload = behavior_asset_load(base_source),
                    *parent_reload = behavior_asset_load(parent_source);
-    assert(base_reload && parent_reload);
+    REQUIRE(base_reload && parent_reload);
     const behavior_asset *reloaded[] = { base_reload, parent_reload };
-    assert(model_compile_with_catalog(parent_reload, reloaded, 2, &program, &error));
-    near(sample(&program, -10, 5), 0);
-    near(sample(&program, 10, 5), 4);
-    assert(program.parts[0].node == part->id && program.parts[1].node == part->id);
-    assert(!model_compile_with_catalog(parent, NULL, 0, &program, &error));
-    assert(error.node == left->id || error.node == right->id);
-    near(sample(&program, -10, 5), 0);
-    near(sample(&program, 10, 5), 4);
+    REQUIRE(model_compile_with_catalog(parent_reload, reloaded, 2, &program, &error));
+    REQUIRE(near(sample(&program, -10, 5), 0));
+    REQUIRE(near(sample(&program, 10, 5), 4));
+    REQUIRE(program.parts[0].node == part->id && program.parts[1].node == part->id);
+    REQUIRE(!model_compile_with_catalog(parent, NULL, 0, &program, &error));
+    REQUIRE(error.node == left->id || error.node == right->id);
+    REQUIRE(near(sample(&program, -10, 5), 0));
+    REQUIRE(near(sample(&program, 10, 5), 4));
 
     behavior_asset *a = model("CycleA"), *b = model("CycleB");
     node *ab = instance(a->graph, b->name), *ba = instance(b->graph, a->name);
     publish(a->graph, ab);
     publish(b->graph, ba);
     const behavior_asset *cycle[] = { a, b };
-    assert(!model_compile_with_catalog(a, cycle, 2, &program, &error));
-    assert(error.node == ab->id || error.node == ba->id);
-    assert(strstr(error.message, "cycle") || strstr(error.message, "recursive"));
-    near(sample(&program, 10, 5), 4);
+    REQUIRE(!model_compile_with_catalog(a, cycle, 2, &program, &error));
+    REQUIRE(error.node == ab->id || error.node == ba->id);
+    REQUIRE(strstr(error.message, "cycle") || strstr(error.message, "recursive"));
+    REQUIRE(near(sample(&program, 10, 5), 4));
 
     behavior_asset *array = model("CapsuleRow");
     graph *row = array->graph;
     node *repeated = graph_add_node(row, &NODE_ModelLinearArray);
     connect(row, instance(row, base->name), repeated, 0);
     pin_value count = { .type = PIN_I32, .i = 3 };
-    assert(!graph_set_pin_default(row, repeated, false, 1, &count));
+    REQUIRE(!graph_set_pin_default(row, repeated, false, 1, &count));
     vector(row, repeated, 2, 6, 0, 0);
     publish(row, repeated);
     const behavior_asset *array_catalog[] = { base, array };
-    assert(model_compile_with_catalog(array, array_catalog, 2, &program, &error));
-    near(sample(&program, 0, 0), -1);
-    near(sample(&program, 6, 0), -1);
-    near(sample(&program, 12, 0), -1);
-    near(sample(&program, 3, 0), 2);
-    assert(acount(program.parts) == 3);
+    REQUIRE(model_compile_with_catalog(array, array_catalog, 2, &program, &error));
+    REQUIRE(near(sample(&program, 0, 0), -1));
+    REQUIRE(near(sample(&program, 6, 0), -1));
+    REQUIRE(near(sample(&program, 12, 0), -1));
+    REQUIRE(near(sample(&program, 3, 0), 2));
+    REQUIRE(acount(program.parts) == 3);
     for (int i = 0; i < 3; i++) {
-        assert(program.parts[i].node == part->id);
+        REQUIRE(program.parts[i].node == part->id);
         for (int j = 0; j < i; j++) {
-            assert(strcmp(program.parts[i].path, program.parts[j].path));
+            REQUIRE(strcmp(program.parts[i].path, program.parts[j].path));
         }
     }
 
@@ -220,5 +222,13 @@ void test_model_reuse()
     free(parent_source);
     behavior_asset_free(base);
     behavior_asset_free(parent);
-    puts("Model references, inherited defaults, zero overrides, stable identities, roundtrip and dependency diagnostics: PASS");
+    return true;
+}
+
+void test_model_reuse()
+{
+    test_graph_packs_install();
+    RUN_TEST_CASE(composed_geometry_function);
+    RUN_TEST_CASE(instanced_references);
+    test_graph_packs_restore();
 }

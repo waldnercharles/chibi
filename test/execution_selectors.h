@@ -5,6 +5,8 @@ CHIBI_CPU_SELECTOR("--source-edit")
 CHIBI_CPU_SELECTOR("--source-systems")
 CHIBI_CPU_SELECTOR("--system-schedule")
 CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
+/* Model graphs compiled to distance programs, bounds and hit resolvers. */
+CHIBI_CPU_SELECTOR("--model-graphs")
 
 /* Explicit opt-in checks against installed products; each runs under the
  * shared 60-second supervisor. */

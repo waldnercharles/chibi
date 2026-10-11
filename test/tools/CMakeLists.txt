@@ -193,6 +193,14 @@ if(TARGET Chibi::model_authoring)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MESH_PREPARATION=1)
 endif()
 
+# Model graphs compile to distance programs, bounds and hit resolvers.
+if(TARGET Chibi::model_authoring)
+    target_sources(test_tools PRIVATE ../graph/packs.c ../graph/modeling.c ../graph/model_constructive.c
+        ../graph/model_profiles.c ../graph/model_reuse.c)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
+    target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_MODEL_GRAPHS=1)
+endif()
+
 # Model import reads glTF files and writes content files, so only compiler
 # builds have it. The render cases draw what it writes.
 if(TARGET Chibi::model_import)

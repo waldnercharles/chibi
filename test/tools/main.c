@@ -111,6 +111,12 @@ void test_model_import();
 #ifdef CHIBI_TEST_REFLECT
 void test_tool_reflect();
 #endif
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+void test_modeling();
+void test_model_constructive();
+void test_model_profiles();
+void test_model_reuse();
+#endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
 void test_tool_native();
 void test_tool_native_values();
@@ -131,6 +137,14 @@ static bool material_graphs;
 bool test_material_graphs_active()
 {
     return material_graphs;
+}
+#endif
+
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+static bool graph_types;
+bool test_graph_types_active()
+{
+    return graph_types;
 }
 #endif
 
@@ -170,7 +184,7 @@ int main(int argc, char **argv)
          radiance_depth = false, material_sampling = false, scene2d = false,
          scene3d = false, material_ramps = false, radiance_surface = false,
          material_pixels = false, box3d = false, sky_files = false,
-         mesh_files = false, model_import = false;
+         mesh_files = false, model_import = false, model_graphs = false;
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
@@ -247,6 +261,10 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_MESH_PREPARATION
     mesh_files = argc == 2 && !strcmp(argv[1], "--mesh-files");
 #endif
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+    model_graphs = argc == 2 && !strcmp(argv[1], "--model-graphs");
+    graph_types = model_graphs;
+#endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     model_import = argc == 2 && !strcmp(argv[1], "--model-import");
     model_import_types = model_import || scene3d;
@@ -263,12 +281,12 @@ int main(int argc, char **argv)
         !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
         !package && !unit && !web_storage && !webgpu_staging &&
         !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics &&
-        !physics3d && !transforms && !render_resources && !interior_border &&
-        !viewport_resize && !sdf_visibility && !radiance && !radiance_depth &&
-        !material_sampling && !scene2d && !scene3d && !material_ramps &&
-        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
-        !sky_files && !mesh_files && !model_import && !persistent_store &&
+        !native && !native_values && !native_catalog && !physics && !physics3d &&
+        !transforms && !render_resources && !interior_border && !viewport_resize &&
+        !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
+        !scene2d && !scene3d && !material_ramps && !radiance_surface &&
+        !radiance_horizons && !material_pixels && !box3d && !sky_files &&
+        !mesh_files && !model_import && !model_graphs && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
         !source_numeric && !source_material && !source_presentation &&
@@ -293,7 +311,7 @@ int main(int argc, char **argv)
             "--material-ramps | --radiance-surface | --radiance-horizons4 | "
             "--radiance-horizons8 | --material-pixels | "
             "--box3d | "
-            "--sky-files | --mesh-files | --model-import | "
+            "--sky-files | --mesh-files | --model-import | --model-graphs | "
             "--persistent-store | "
             "--whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
@@ -445,6 +463,16 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_MODEL_IMPORT
     if (model_import) {
         test_model_import();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+    if (model_graphs) {
+        test_modeling();
+        test_model_constructive();
+        test_model_profiles();
+        test_model_reuse();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

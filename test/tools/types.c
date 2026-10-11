@@ -133,6 +133,12 @@ bool test_model_import_active();
 type_catalog_pack test_model_import_types(int index);
 #endif
 
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+/* Model and shader graphs keep vectors and colors in shader-typed defaults,
+ * and their render cases read game-typed components. */
+bool test_graph_types_active();
+type_catalog_pack test_graph_types(int index);
+#endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
 #include "authoring/studio_schema.h"
 bool test_shader_parameters_active();
@@ -140,6 +146,11 @@ type_catalog_pack test_shader_parameters_types();
 #endif
 int type_catalog_pack_count()
 {
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+    if (test_graph_types_active()) {
+        return 2;
+    }
+#endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     if (test_model_import_active()) {
         return 2;
@@ -170,6 +181,11 @@ int type_catalog_pack_count()
 type_catalog_pack type_catalog_pack_at(int index)
 {
     assert(index >= 0 && index < type_catalog_pack_count());
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+    if (test_graph_types_active()) {
+        return test_graph_types(index);
+    }
+#endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     if (test_model_import_active()) {
         return test_model_import_types(index);

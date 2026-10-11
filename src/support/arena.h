@@ -15,7 +15,9 @@ typedef struct arena
     arena_block *current;
     arena_allocation *allocations; /* Live collectable values. */
     arena_allocation *unused;      /* Swept values kept for reuse. */
-    bool collectable;
+    arena_allocation **index;      /* Live values ordered by payload address. */
+    uintptr_t address_begin, address_end; /* Payload bounds, end exclusive. */
+    bool collectable, index_valid;
 } arena;
 
 /* Optional eager allocation; a zero-initialized arena allocates on first use. */
@@ -29,6 +31,8 @@ void arena_free(arena *a);
 bool arena_contains(const arena *a, const void *address);
 /* Thread-local backing-block allocation count; excludes allocations within blocks. */
 uint64_t arena_block_allocations();
+/* Thread-local address comparisons while marking payload roots. */
+uint64_t arena_mark_search_steps();
 /* Opt-in nonmoving value storage. Ordinary arenas retain their bump allocator.
  * Unmarked allocations become reusable after sweep; live addresses stay stable. */
 void arena_init_collectable(arena *a);

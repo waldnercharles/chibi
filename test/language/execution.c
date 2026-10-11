@@ -8,6 +8,7 @@
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
+#include "types/trace.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -662,6 +663,93 @@ static void count_address(void *user, const void *address)
     traced_address *trace = user;
     trace->visits += address == trace->address;
 }
+static void mark_payload(void *user, const void *address)
+{
+    arena_mark(user, address);
+}
+TEST_CASE(execution_scalar_roots_skip_payload_search)
+{
+    arena_init_collectable(&managed);
+    unsigned char *kept = NULL;
+    uintptr_t first = UINTPTR_MAX;
+    for (int i = 0; i < 128; i++) {
+        unsigned char *value = arena_alloc(&managed, 32);
+        if ((uintptr_t)value < first) {
+            first = (uintptr_t)value;
+        }
+        memset(value, i, 32);
+        if (i == 64) {
+            kept = value;
+        }
+    }
+    arena_collect_begin(&managed);
+    uint64_t searched = arena_mark_search_steps();
+    for (int i = 0; i < 512; i++) {
+        pin_value value = { .type = PIN_I32, .i = i };
+        pin_value_trace(&value, mark_payload, &managed);
+    }
+    REQUIRE(arena_mark_search_steps() == searched);
+    for (int i = 0; i < 512; i++) {
+        REQUIRE(!arena_mark(&managed, (const void *)(first - 1)));
+    }
+    REQUIRE(arena_mark_search_steps() - searched <= 512 * 2);
+    REQUIRE(arena_mark(&managed, kept + 17));
+    REQUIRE(!arena_mark(&managed, kept));
+    REQUIRE(!arena_mark(&managed, kept + 32));
+    arena_sweep(&managed);
+    size_t bytes, capacity;
+    arena_usage(&managed, &bytes, &capacity);
+    REQUIRE(bytes == 32 && kept[17] == 64);
+    arena_collect_begin(&managed);
+    REQUIRE(!arena_mark(&managed, NULL));
+    arena_sweep(&managed);
+    arena_usage(&managed, &bytes, &capacity);
+    REQUIRE(bytes == 0);
+    return true;
+}
+TEST_CASE(execution_payload_lookup_scales_and_discards_stale_ranges)
+{
+    enum
+    {
+        COUNT = 4096
+    };
+    unsigned char *values[COUNT];
+    arena_init_collectable(&managed);
+    for (int i = 0; i < COUNT; i++) {
+        values[i] = arena_alloc(&managed, 32);
+        memset(values[i], i % 256, 32);
+    }
+    arena_collect_begin(&managed);
+    uint64_t searched = arena_mark_search_steps();
+    for (int i = 0; i < COUNT; i++) {
+        REQUIRE(arena_mark(&managed, values[i] + 17));
+    }
+    REQUIRE(arena_mark_search_steps() - searched < COUNT * 32);
+    arena_sweep(&managed);
+    size_t bytes, capacity;
+    arena_usage(&managed, &bytes, &capacity);
+    REQUIRE(bytes == COUNT * 32);
+    arena_collect_begin(&managed);
+    REQUIRE(arena_mark(&managed, values[37] + 31));
+    arena_sweep(&managed);
+    arena_usage(&managed, &bytes, &capacity);
+    REQUIRE(bytes == 32 && values[37][31] == 37);
+    unsigned char *smaller = arena_alloc(&managed, 16);
+    arena_collect_begin(&managed);
+    REQUIRE(!arena_mark(&managed, smaller + 16));
+    REQUIRE(!arena_mark(&managed, smaller + 31));
+    REQUIRE(arena_mark(&managed, smaller + 15));
+    arena_sweep(&managed);
+    arena_usage(&managed, &bytes, &capacity);
+    REQUIRE(bytes == 16);
+    arena_reset(&managed);
+    REQUIRE(!arena_mark(&managed, smaller));
+    void *empty = arena_alloc(&managed, 0);
+    REQUIRE(!arena_mark(&managed, empty));
+    unsigned char *fresh = arena_alloc(&managed, 64);
+    REQUIRE(arena_mark(&managed, fresh + 63));
+    return true;
+}
 TEST_CASE(execution_numeric_address_bits_do_not_retain_saved_storage)
 {
     for (int reference = 0; reference < 2; reference++) {
@@ -859,6 +947,8 @@ void test_language_execution()
     RUN_TEST_CASE(execution_integer_bitwise_preserves_width_and_masked_shifts);
     RUN_TEST_CASE(execution_bitwise_verifier_rejects_non_integer_and_mismatched_operands);
     RUN_TEST_CASE(execution_print_string_is_synchronous_and_preserves_context);
+    RUN_TEST_CASE(execution_scalar_roots_skip_payload_search);
+    RUN_TEST_CASE(execution_payload_lookup_scales_and_discards_stale_ranges);
     RUN_TEST_CASE(execution_numeric_address_bits_do_not_retain_saved_storage);
     RUN_TEST_CASE(execution_unary_numeric_operands_ignore_unrelated_address_slot);
     RUN_TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection);

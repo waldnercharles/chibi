@@ -1,5 +1,6 @@
 #include "support/arena.h"
 
+#include "support/array.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -23,12 +24,17 @@ struct arena_allocation
     _Alignas(max_align_t) unsigned char data[];
 };
 static _Thread_local uint64_t block_allocations;
+static _Thread_local uint64_t mark_search_steps;
 /* Keep bounded reuse across safepoints even when payload sizes keep changing. */
 #define ARENA_VALUE_CACHE_BYTES ((size_t)4 * 1024)
 
 uint64_t arena_block_allocations()
 {
     return block_allocations;
+}
+uint64_t arena_mark_search_steps()
+{
+    return mark_search_steps;
 }
 
 static arena_block *new_block(size_t cap)
@@ -49,8 +55,20 @@ void arena_init(arena *a, size_t cap)
     a->current = a->first;
 }
 
+static void include_address(arena *a, const arena_allocation *value)
+{
+    uintptr_t begin = (uintptr_t)value->data;
+    uintptr_t end = (uintptr_t)(value->data + value->size);
+    if (begin < a->address_begin) {
+        a->address_begin = begin;
+    }
+    if (end > a->address_end) {
+        a->address_end = end;
+    }
+}
 static void retire(arena *a, arena_allocation *value)
 {
+    a->index_valid = false;
     value->live = false;
     value->size = 0;
     value->trace = NULL;
@@ -60,6 +78,8 @@ static void retire(arena *a, arena_allocation *value)
 }
 void arena_reset(arena *a)
 {
+    a->address_begin = UINTPTR_MAX;
+    a->address_end = 0;
     while (a->allocations) {
         arena_allocation *value = a->allocations;
         a->allocations = value->next;
@@ -72,12 +92,13 @@ void arena_reset(arena *a)
 }
 void arena_init_collectable(arena *a)
 {
-    *a = (arena){ .collectable = true };
+    *a = (arena){ .address_begin = UINTPTR_MAX, .collectable = true };
 }
 /* Reuses the closest fitting swept value, so allocation never walks the live
  * values. */
 static void *allocate_value(arena *a, size_t size)
 {
+    a->index_valid = false;
     arena_allocation **best = NULL;
     for (arena_allocation **link = &a->unused; *link; link = &(*link)->next) {
         arena_allocation *value = *link;
@@ -104,6 +125,7 @@ static void *allocate_value(arena *a, size_t size)
     value->traced = false;
     value->trace = NULL;
     value->shape = NULL;
+    include_address(a, value);
     return value->data;
 }
 void *arena_alloc(arena *a, size_t size)
@@ -142,6 +164,7 @@ static void free_values(arena_allocation *value)
 }
 void arena_free(arena *a)
 {
+    afree(a->index);
     free_values(a->allocations);
     free_values(a->unused);
     arena_block *block = a->first;
@@ -192,20 +215,54 @@ void arena_collect_begin(arena *a)
         value->traced = false;
     }
 }
+static int allocation_address_compare(const void *left, const void *right)
+{
+    mark_search_steps++;
+    const arena_allocation *a = *(arena_allocation *const *)left;
+    const arena_allocation *b = *(arena_allocation *const *)right;
+    uintptr_t x = (uintptr_t)a->data, y = (uintptr_t)b->data;
+    return (x > y) - (x < y);
+}
+static void index_allocations(arena *a)
+{
+    if (a->index_valid) {
+        return;
+    }
+    aclear(a->index);
+    for (arena_allocation *value = a->allocations; value; value = value->next) {
+        apush(a->index, value);
+    }
+    asort(a->index, allocation_address_compare);
+    a->index_valid = true;
+}
 bool arena_mark(arena *a, const void *address)
 {
+    if (!address || !a->allocations) {
+        return false;
+    }
     uintptr_t pointer = (uintptr_t)address;
-    for (arena_allocation *value = a->allocations; value; value = value->next) {
-        uintptr_t begin = (uintptr_t)value->data;
-        if (value->live && pointer >= begin && pointer - begin < value->size) {
-            if (value->marked) {
-                return false;
-            }
-            value->marked = true;
-            return true;
+    mark_search_steps += 2;
+    if (pointer < a->address_begin || pointer >= a->address_end) {
+        return false;
+    }
+    index_allocations(a);
+    int low = 0, high = acount(a->index);
+    while (low < high) {
+        int middle = low + (high - low) / 2;
+        mark_search_steps++;
+        if ((uintptr_t)a->index[middle]->data <= pointer) {
+            low = middle + 1;
+        } else {
+            high = middle;
         }
     }
-    return false;
+    arena_allocation *value = a->index[low - 1];
+    mark_search_steps++;
+    if (pointer - (uintptr_t)value->data >= value->size || value->marked) {
+        return false;
+    }
+    value->marked = true;
+    return true;
 }
 bool arena_trace_marked(arena *a, arena_marker mark, void *user)
 {
@@ -223,9 +280,12 @@ bool arena_trace_marked(arena *a, arena_marker mark, void *user)
 }
 void arena_sweep(arena *a)
 {
+    a->address_begin = UINTPTR_MAX;
+    a->address_end = 0;
     for (arena_allocation **link = &a->allocations; *link;) {
         arena_allocation *value = *link;
         if (value->marked) {
+            include_address(a, value);
             link = &value->next;
             continue;
         }
@@ -261,7 +321,9 @@ void arena_usage(const arena *a, size_t *bytes, size_t *capacity)
 }
 size_t arena_storage_bytes(const arena *a)
 {
-    size_t bytes = 0;
+    size_t bytes = a->index
+                     ? sizeof(dyna_hdr) + (size_t)acap(a->index) * sizeof *a->index
+                     : 0;
     for (const arena_allocation *value = a->allocations; value; value = value->next) {
         bytes += sizeof *value + value->capacity;
     }

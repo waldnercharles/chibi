@@ -38,11 +38,11 @@ int bench_component(const char *path, int count, int rotation)
     void *library = dlopen(path, RTLD_NOW | RTLD_LOCAL);
     assert(library);
     ecs_world *world = ecs_world_new();
-    assert(!ecs_world_register_component(world, &GAME_COMPONENT_GameHealth, NULL));
+    assert(!ecs_world_register_component(world, &COMPONENT_Health, NULL));
     ecs_entity owner = ecs_world_create_entity(world);
-    assert(!GAME_GameHealth_add(world, owner, 0));
+    assert(!Health_add(world, owner, 0));
     assert(!ecs_world_apply_commands(world));
-    GameHealth *health = GAME_GameHealth_get(world, owner);
+    Health *health = Health_get(world, owner);
     for (int fixture = 0; fixture < 3; fixture++) {
         char name[40];
         snprintf(name, sizeof name, "generated_component%d", fixture);
@@ -56,17 +56,15 @@ int bench_component(const char *path, int count, int rotation)
         arena storage = { 0 };
         pin_value results[3] = { 0 };
         behavior_function_prepare_results(f, results, &storage);
-        GameHealth input = { .current = 4, .maximum = 56 };
-        pin_value args[] = {
-            { .type = PIN_HANDLE, .u64 = ecs_entity_to_u64(owner) },
-            { .type = PIN_STRUCT, .type_name = "GameHealth", .ptr = &input }
-        };
+        Health input = { .current = 4, .maximum = 56 };
+        pin_value args[] = { { .type = PIN_HANDLE, .u64 = ecs_entity_to_u64(owner) },
+                             { .type = PIN_STRUCT, .type_name = "Health", .ptr = &input } };
         for (int scenario = 0; scenario < 5; scenario++) {
             int status = 0;
             behavior_function_context expected = { 0 };
-            GameHealth reference[2] = { 0 };
+            Health reference[2] = { 0 };
             for (int mode = 0; mode < 3; mode++) {
-                *health = (GameHealth){ .current = 12, .maximum = 70 };
+                *health = (Health){ .current = 12, .maximum = 70 };
                 behavior_function_context ctx = {
                     .results = results,
                     .budget = scenario == 4 ? 2 : 100,
@@ -83,8 +81,8 @@ int bench_component(const char *path, int count, int rotation)
                     expected = ctx;
                     status = result;
                     if (!result) {
-                        reference[0] = *(const GameHealth *)results[1].ptr;
-                        reference[1] = *(const GameHealth *)results[2].ptr;
+                        reference[0] = *(const Health *)results[1].ptr;
+                        reference[1] = *(const Health *)results[2].ptr;
                     }
                 } else {
                     assert(result == status && ctx.steps == expected.steps);
@@ -103,7 +101,7 @@ int bench_component(const char *path, int count, int rotation)
                         }
                     } else {
                         for (int i = 0; i < 2; i++) {
-                            const GameHealth *value = results[i + 1].ptr;
+                            const Health *value = results[i + 1].ptr;
                             assert(
                                 value->current == reference[i].current &&
                                 value->maximum == reference[i].maximum
@@ -121,7 +119,7 @@ int bench_component(const char *path, int count, int rotation)
             uint64_t reference = 0;
             for (int order = 0; order < 3; order++) {
                 int mode = (order + rotation) % 3;
-                *health = (GameHealth){ .current = 12, .maximum = 70 };
+                *health = (Health){ .current = 12, .maximum = 70 };
                 behavior_function_context ctx = {
                     .results = results,
                     .budget = 100,
@@ -137,7 +135,7 @@ int bench_component(const char *path, int count, int rotation)
                     int result = mode < 2 ? entries[mode](&ctx)
                                           : behavior_function_run(f, &ctx, false);
                     assert(!result);
-                    checksum += (uint64_t)((const GameHealth *)results[1].ptr)->current;
+                    checksum += (uint64_t)((const Health *)results[1].ptr)->current;
                 }
                 double elapsed = seconds() - start;
                 if (!order) {

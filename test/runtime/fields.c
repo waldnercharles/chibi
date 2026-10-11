@@ -78,7 +78,7 @@ typedef struct
 {
     int enqueues, finishes;
 } inline_executor;
-static void *inline_enqueue(game_task_range *run, int count, int minimum, void *context, void *user)
+static void *inline_enqueue(task_range *run, int count, int minimum, void *context, void *user)
 {
     inline_executor *executor = user;
     assert(count > 0 && minimum > 0);
@@ -282,7 +282,7 @@ static void noise_and_composition()
     field_grid wider = { 16, 32, .125f };
     float serial[16 * 32], submitted[16 * 32];
     inline_executor executor = { 0 };
-    game_task_system tasks = { 2, &executor, inline_enqueue, inline_finish };
+    task_system tasks = { 2, &executor, inline_enqueue, inline_finish };
     assert(
         field_program_bake_rows(p, ctx, wider, 0, wider.height, serial, NULL, error, sizeof error)
     );
@@ -295,28 +295,28 @@ static void noise_and_composition()
         field_grid tiled = { 16, 41, .125f, -2, 3 };
         float expected[16 * 41], repeated[16 * 41];
         assert(field_program_bake(p, ctx, tiled, expected, NULL, error, sizeof error));
-        game_task_pool *pool = game_task_pool_acquire_workers(4);
-        const game_task_system *pool_tasks = game_task_pool_tasks(pool);
+        task_pool *pool = task_pool_acquire_workers(4);
+        const task_system *pool_tasks = task_pool_tasks(pool);
         field_program_baker *baker;
         baker = field_program_baker_new(p, ctx, pool_tasks->workers, error, sizeof error);
         assert(baker);
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         assert(
             field_program_baker_bake_rows(baker, tiled, 0, tiled.height, repeated, pool_tasks, error, sizeof error)
         );
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         assert(!memcmp(expected, repeated, sizeof expected));
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         for (int first = 0; first < tiled.height; first += 16) {
             int count = tiled.height - first < 16 ? tiled.height - first : 16;
             assert(
                 field_program_baker_bake_rows(baker, tiled, first, count, repeated, pool_tasks, error, sizeof error)
             );
         }
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         assert(!memcmp(expected, repeated, sizeof expected));
         field_program_baker_free(baker);
-        game_task_pool_release(pool);
+        task_pool_release(pool);
     }
     for (int y = 0; y < 16; y++) {
         for (int x = 0; x < 16; x++) {
@@ -625,10 +625,10 @@ static void chunks()
 static void library_hot_apply()
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(!ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL));
     }
-    game_preview_world *live = game_preview_world_new(world);
+    preview_world *live = preview_world_new(world);
     const char *paths[] = {
         "test/fixtures/material-contracts/content/libraries/FieldShapes.chibi",
         "test/fixtures/material-contracts/content/fields/MaterialIslands.kdl"
@@ -639,18 +639,16 @@ static void library_hot_apply()
         behavior_asset *asset = test_project_asset(paths[i], json);
         free(json);
         assert(asset);
-        assert(
-            !game_preview_add_definition(live, game_preview_definition_new(asset->name, asset))
-        );
+        assert(!preview_add_definition(live, preview_definition_new(asset->name, asset)));
     }
-    material_fields *fields = game_materials_fields(live->runtime->materials);
+    material_fields *fields = materials_fields(live->runtime->materials);
     char error[256];
     float before, after;
     field_grid grid = { 1, 1, 1, -90, 0 };
     assert(
         material_field_bake_text(fields, "MaterialIslands", NULL, 1, grid, &before, NULL, error, sizeof error)
     );
-    game_preview_definition *library = game_preview_find_definition(live, "FieldShapes");
+    preview_definition *library = preview_find_definition(live, "FieldShapes");
     graph *function = library->working->graphs[1];
     node *circle = NULL;
     for (int i = 0; i < acount(function->nodes); i++) {
@@ -663,23 +661,23 @@ static void library_hot_apply()
     assert(
         !graph_set_pin_default(function, circle, 0, 2, &(pin_value){ .type = PIN_F32, .f = 110 })
     );
-    assert(!game_preview_mark_dirty(library));
-    assert(!game_preview_apply(live, library, error, sizeof error));
+    assert(!preview_mark_dirty(library));
+    assert(!preview_apply(live, library, error, sizeof error));
     assert(material_field_revision(fields, "MaterialIslands") == 2);
     assert(
         material_field_bake_text(fields, "MaterialIslands", NULL, 1, grid, &after, NULL, error, sizeof error)
     );
     assert(after < before - 20);
     assert(graph_add_node(function, registry_node_by_name("Print String")));
-    assert(!game_preview_mark_dirty(library));
-    assert(game_preview_apply(live, library, error, sizeof error) < 0);
+    assert(!preview_mark_dirty(library));
+    assert(preview_apply(live, library, error, sizeof error) < 0);
     assert(material_field_revision(fields, "MaterialIslands") == 2);
     float retained;
     assert(
         material_field_bake_text(fields, "MaterialIslands", NULL, 1, grid, &retained, NULL, error, sizeof error)
     );
     assert(retained == after);
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(world);
 }
 

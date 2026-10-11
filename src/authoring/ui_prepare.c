@@ -12,7 +12,7 @@
 bool authoring_ui_prepare(
     const char *content,
     const char *name,
-    game_ui_document *result,
+    prepared_ui_document *result,
     ui_source_resource **dependencies,
     char *error,
     size_t size
@@ -35,7 +35,7 @@ bool authoring_ui_prepare(
     }
     ui_document source = { 0 };
     char **imports = NULL, **uses = NULL;
-    game_ui_document next = { 0 };
+    prepared_ui_document next = { 0 };
     ui_source_resource *resources = NULL;
     bool valid = ui_document_load(directory, name, &imports, &source, error, size);
     if (!valid) {
@@ -73,9 +73,9 @@ bool authoring_ui_prepare(
     next.markup = source.rml;
     next.style = source.rcss;
     source.rml = source.rcss = NULL;
-    game_ui_document_free(result);
+    prepared_ui_document_free(result);
     *result = next;
-    next = (game_ui_document){ 0 };
+    next = (prepared_ui_document){ 0 };
     ui_source_resources_free(*dependencies);
     *dependencies = resources;
     resources = NULL;
@@ -89,7 +89,7 @@ done:
     afree(imports);
     afree(uses);
     ui_document_free(&source);
-    game_ui_document_free(&next);
+    prepared_ui_document_free(&next);
     ui_source_resources_free(resources);
     return valid;
 }

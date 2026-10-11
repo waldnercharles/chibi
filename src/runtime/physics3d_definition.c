@@ -72,22 +72,20 @@ static const native_capability_definition DEFINITIONS[] = {
 };
 static const native_definition_binding BINDINGS[] = {
     { .canonical_name = PHYSICS3D_RAY_NAME,
-      .implementation = { .call = &GAME_PHYSICS3D_RAYCAST_CALL,
-                          .access = &GAME_PHYSICS3D_READ_ACCESS } },
+      .implementation = { .call = &PHYSICS3D_RAYCAST_CALL,
+                          .access = &PHYSICS3D_READ_ACCESS } },
     { .canonical_name = PHYSICS3D_CAST_NAME,
-      .implementation = { .call = &GAME_PHYSICS3D_CAST_CALL,
-                          .access = &GAME_PHYSICS3D_READ_ACCESS } },
+      .implementation = { .call = &PHYSICS3D_CAST_CALL, .access = &PHYSICS3D_READ_ACCESS } },
     { .canonical_name = PHYSICS3D_CONTACT_NAME,
-      .implementation = { .call = &GAME_PHYSICS3D_CONTACTS_CALL,
-                          .access = &GAME_PHYSICS3D_READ_ACCESS } },
+      .implementation = { .call = &PHYSICS3D_CONTACTS_CALL,
+                          .access = &PHYSICS3D_READ_ACCESS } },
     { .canonical_name = PHYSICS3D_IMPULSE_NAME,
-      .implementation = { .call = &GAME_PHYSICS3D_IMPULSE_CALL,
-                          .access = &GAME_PHYSICS3D_PUSH_ACCESS } },
+      .implementation = { .call = &PHYSICS3D_IMPULSE_CALL,
+                          .access = &PHYSICS3D_PUSH_ACCESS } },
     { .canonical_name = PHYSICS3D_FORCE_NAME,
-      .implementation = { .call = &GAME_PHYSICS3D_FORCE_CALL,
-                          .access = &GAME_PHYSICS3D_PUSH_ACCESS } },
+      .implementation = { .call = &PHYSICS3D_FORCE_CALL, .access = &PHYSICS3D_PUSH_ACCESS } },
 };
-const native_definition_pack GAME_PHYSICS3D_DEFINITION_PACK = {
+const native_definition_pack PHYSICS3D_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
     .definition_count = NATIVE_COUNT(DEFINITIONS),
     .bindings = BINDINGS,

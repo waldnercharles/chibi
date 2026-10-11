@@ -178,7 +178,7 @@ static bool capture(
     render_material_raster *r,
     ecs_world *w,
     ecs_entity e,
-    GameSurfaceQuality quality,
+    SurfaceQuality quality,
     float time,
     float focal,
     float **scene,
@@ -259,12 +259,11 @@ static bool trace_work(render_material_raster *r, ecs_world *world, ecs_entity e
     render_material_raster_set_sdf_trace_debug(r, true);
     bool ok = true;
     for (int candidate = 0; ok && candidate < 5; candidate++) {
-        GameSurfaceQuality q = { .resolution = GAME_SURFACE_FULL,
-                                 .sdf_pixel_error = candidate & 1 ? .25f : 0,
-                                 .sdf_normal_mode = candidate == 4 ? GAME_SDF_NORMAL_ANALYTIC
-                                                  : candidate & 2
-                                                      ? GAME_SDF_NORMAL_TETRAHEDRAL
-                                                      : GAME_SDF_NORMAL_CENTRAL };
+        SurfaceQuality q = { .resolution = SURFACE_FULL,
+                             .sdf_pixel_error = candidate & 1 ? .25f : 0,
+                             .sdf_normal_mode = candidate == 4 ? SDF_NORMAL_ANALYTIC
+                                              : candidate & 2 ? SDF_NORMAL_TETRAHEDRAL
+                                                              : SDF_NORMAL_CENTRAL };
         float *scene = NULL, *height = NULL, *normal = NULL;
         ok = capture(r, world, e, q, 0, 0, &scene, &height, &normal);
         double evaluations = 0, hits = 0, normal_evaluations = 0;
@@ -304,12 +303,12 @@ static bool trace_work(render_material_raster *r, ecs_world *world, ecs_entity e
 }
 static bool gradient_fallback(render_material_raster *r, ecs_world *world, ecs_entity e, bool singular)
 {
-    GameSurfaceQuality q = { .resolution = GAME_SURFACE_FULL,
-                             .sdf_normal_mode = GAME_SDF_NORMAL_TETRAHEDRAL };
+    SurfaceQuality q = { .resolution = SURFACE_FULL,
+                         .sdf_normal_mode = SDF_NORMAL_TETRAHEDRAL };
     float *a = NULL, *ah = NULL, *an = NULL, *b = NULL, *bh = NULL, *bn = NULL;
     render_material_raster_set_sdf_trace_debug(r, true);
     bool ok = capture(r, world, e, q, 0, 0, &a, &ah, &an);
-    q.sdf_normal_mode = GAME_SDF_NORMAL_ANALYTIC;
+    q.sdf_normal_mode = SDF_NORMAL_ANALYTIC;
     ok = ok && capture(r, world, e, q, 0, 0, &b, &bh, &bn);
     int checked = 0;
     for (int i = 0; ok && i < WIDTH * HEIGHT * 4; i += 4) {
@@ -342,19 +341,16 @@ static bool gradient_fallback(render_material_raster *r, ecs_world *world, ecs_e
 }
 static bool transformed_gradient(render_material_raster *r, ecs_world *world, ecs_entity e)
 {
-    GameVisualTransform *transform = GAME_GameVisualTransform_get(world, e);
-    *transform = (GameVisualTransform){ .scale = 1.4f,
-                                        .pitch = .35f,
-                                        .yaw = .7f,
-                                        .roll = -.2f };
-    GAME_GameGeometry3D_get(world, e)->elevation = 3;
+    VisualTransform *transform = VisualTransform_get(world, e);
+    *transform = (VisualTransform){ .scale = 1.4f, .pitch = .35f, .yaw = .7f, .roll = -.2f };
+    Geometry3D_get(world, e)->elevation = 3;
     bool ok = true;
     for (int perspective = 0; ok && perspective < 2; perspective++) {
         float *a = NULL, *ah = NULL, *an = NULL, *b = NULL, *bh = NULL, *bn = NULL;
-        GameSurfaceQuality q = { .resolution = GAME_SURFACE_FULL };
+        SurfaceQuality q = { .resolution = SURFACE_FULL };
         float focal = perspective ? 40 : 0;
         ok = capture(r, world, e, q, 0, focal, &a, &ah, &an);
-        q.sdf_normal_mode = GAME_SDF_NORMAL_ANALYTIC;
+        q.sdf_normal_mode = SDF_NORMAL_ANALYTIC;
         ok = ok && capture(r, world, e, q, 0, focal, &b, &bh, &bn);
         int covered = 0;
         float max_delta = 0;
@@ -385,8 +381,8 @@ static bool transformed_gradient(render_material_raster *r, ecs_world *world, ec
         free(bh);
         free(bn);
     }
-    *transform = (GameVisualTransform){ .scale = 1 };
-    GAME_GameGeometry3D_get(world, e)->elevation = 0;
+    *transform = (VisualTransform){ .scale = 1 };
+    Geometry3D_get(world, e)->elevation = 0;
     return ok;
 }
 bool test_sdf_quality()
@@ -410,53 +406,48 @@ bool test_sdf_quality()
     free(source);
     ecs_world *world = ecs_world_new();
     const ecs_component_desc *components[] = {
-        &GAME_COMPONENT_GameGeometry3D,   &GAME_COMPONENT_GameVisualTransform,
-        &GAME_COMPONENT_GameOrientation,  &GAME_COMPONENT_GameMaterial,
-        &GAME_COMPONENT_GameShader,       &GAME_COMPONENT_GameSdfSurface3D,
-        &GAME_COMPONENT_GameMeshSurface2D
+        &COMPONENT_Geometry3D,   &COMPONENT_VisualTransform,
+        &COMPONENT_Orientation,  &COMPONENT_Material,
+        &COMPONENT_Shader,       &COMPONENT_SdfSurface3D,
+        &COMPONENT_MeshSurface2D
     };
     for (int i = 0; i < 7; i++) {
         assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
     }
     ecs_entity e = ecs_world_create_entity(world);
-    GameGeometry3D bounds = { .primitive = GAME_PRIMITIVE_BOX,
-                              .width = 24,
-                              .height = 24,
-                              .depth = 24 };
-    GameVisualTransform transform = { .scale = 1 };
-    GameOrientation orientation = { 0 };
-    GameMaterial material = { .scene = 0xff0000ff,
-                              .albedo = 0xff0000ff,
-                              .absorption = 1,
-                              .edge_light = 1 };
-    GameShader shader = { .shape = sphere->name };
-    GameSdfSurface3D enabled = { true };
-    GameMeshSurface2D mesh = { false };
+    Geometry3D bounds = { .primitive = PRIMITIVE_BOX, .width = 24, .height = 24, .depth = 24 };
+    VisualTransform transform = { .scale = 1 };
+    Orientation orientation = { 0 };
+    Material material = { .scene = 0xff0000ff,
+                          .albedo = 0xff0000ff,
+                          .absorption = 1,
+                          .edge_light = 1 };
+    Shader shader = { .shape = sphere->name };
+    SdfSurface3D enabled = { true };
+    MeshSurface2D mesh = { false };
 #define ADD(type, value)                                                       \
-    assert(ecs_world_record_add(world, e, GAME_COMPONENT_##type.id, &value, 0) == ECS_OK)
-    ADD(GameGeometry3D, bounds);
-    ADD(GameVisualTransform, transform);
-    ADD(GameOrientation, orientation);
-    ADD(GameMaterial, material);
-    ADD(GameShader, shader);
-    ADD(GameSdfSurface3D, enabled);
-    ADD(GameMeshSurface2D, mesh);
+    assert(ecs_world_record_add(world, e, COMPONENT_##type.id, &value, 0) == ECS_OK)
+    ADD(Geometry3D, bounds);
+    ADD(VisualTransform, transform);
+    ADD(Orientation, orientation);
+    ADD(Material, material);
+    ADD(Shader, shader);
+    ADD(SdfSurface3D, enabled);
+    ADD(MeshSurface2D, mesh);
 #undef ADD
     assert(ecs_world_apply_commands(world) == ECS_OK);
     render_material_raster *r = render_material_raster_new();
     bool ok = r && render_material_raster_resize(r, WIDTH, HEIGHT);
     for (int mode = 0; ok && mode < 12; mode++) {
         for (int frame = 0; ok && frame < 2; frame++) {
-            GameSurfaceQuality q = {
-                .resolution = mode & 1 ? GAME_SURFACE_FULL : GAME_SURFACE_SUPERSAMPLED,
-                .sdf_pixel_error = mode & 2 ? .25f : 0,
-                .sdf_normal_mode = mode >= 8 ? GAME_SDF_NORMAL_ANALYTIC
-                                 : mode & 4  ? GAME_SDF_NORMAL_TETRAHEDRAL
-                                             : GAME_SDF_NORMAL_CENTRAL
-            };
+            SurfaceQuality q = { .resolution = mode & 1 ? SURFACE_FULL : SURFACE_SUPERSAMPLED,
+                                 .sdf_pixel_error = mode & 2 ? .25f : 0,
+                                 .sdf_normal_mode = mode >= 8 ? SDF_NORMAL_ANALYTIC
+                                                  : mode & 4 ? SDF_NORMAL_TETRAHEDRAL
+                                                             : SDF_NORMAL_CENTRAL };
             float *scene = NULL, *height = NULL, *normal = NULL;
             ok = capture(r, world, e, q, frame, 0, &scene, &height, &normal) &&
-                 sphere_pixels(scene, height, normal, 10 + .5f * frame, 0, q.resolution == GAME_SURFACE_SUPERSAMPLED);
+                 sphere_pixels(scene, height, normal, 10 + .5f * frame, 0, q.resolution == SURFACE_SUPERSAMPLED);
             free(scene);
             free(height);
             free(normal);
@@ -464,10 +455,10 @@ bool test_sdf_quality()
     }
     // Projection and inverse instance scale both change the ray footprint.
     for (int scale = 1; ok && scale <= 2; scale++) {
-        GAME_GameVisualTransform_get(world, e)->scale = scale;
-        GameSurfaceQuality q = { .resolution = GAME_SURFACE_FULL,
-                                 .sdf_pixel_error = .25f,
-                                 .sdf_normal_mode = GAME_SDF_NORMAL_ANALYTIC };
+        VisualTransform_get(world, e)->scale = scale;
+        SurfaceQuality q = { .resolution = SURFACE_FULL,
+                             .sdf_pixel_error = .25f,
+                             .sdf_normal_mode = SDF_NORMAL_ANALYTIC };
         float *scene = NULL, *height = NULL, *normal = NULL;
         ok = capture(r, world, e, q, 0, 40, &scene, &height, &normal) &&
              sphere_pixels(scene, height, normal, 10 * scale, 40, false);
@@ -475,17 +466,17 @@ bool test_sdf_quality()
         free(height);
         free(normal);
     }
-    GAME_GameVisualTransform_get(world, e)->scale = 1;
-    GAME_GameShader_get(world, e)->shape = ring->name;
+    VisualTransform_get(world, e)->scale = 1;
+    Shader_get(world, e)->shape = ring->name;
     for (int mode = 0; ok && mode < 4; mode++) {
         int resolution = mode & 1;
         float *a = NULL, *ah = NULL, *an = NULL, *b = NULL, *bh = NULL, *bn = NULL;
-        GameSurfaceQuality reference = { .resolution = resolution };
-        GameSurfaceQuality candidate = {
-            .resolution = resolution,
-            .sdf_pixel_error = mode & 2 ? 0 : .25f,
-            .sdf_normal_mode = mode & 2 ? GAME_SDF_NORMAL_ANALYTIC : GAME_SDF_NORMAL_TETRAHEDRAL
-        };
+        SurfaceQuality reference = { .resolution = resolution };
+        SurfaceQuality candidate = { .resolution = resolution,
+                                     .sdf_pixel_error = mode & 2 ? 0 : .25f,
+                                     .sdf_normal_mode = mode & 2
+                                                          ? SDF_NORMAL_ANALYTIC
+                                                          : SDF_NORMAL_TETRAHEDRAL };
         ok = capture(r, world, e, reference, 0, 0, &a, &ah, &an) &&
              capture(r, world, e, candidate, 0, 0, &b, &bh, &bn);
         int mismatches = 0, covered = 0, partial = 0;
@@ -566,9 +557,9 @@ bool test_sdf_quality()
         free(bn);
     }
     for (int crease = 0; ok && crease < 2; crease++) {
-        GAME_GameShader_get(world, e)->shape = crease ? creased->name : tilted->name;
+        Shader_get(world, e)->shape = crease ? creased->name : tilted->name;
         float *scene = NULL, *height = NULL, *normal = NULL;
-        GameSurfaceQuality q = { 0 };
+        SurfaceQuality q = { 0 };
         ok = capture(r, world, e, q, 0, 0, &scene, &height, &normal);
         if (ok) {
             int center = (40 * WIDTH + 48) * 4;
@@ -601,14 +592,13 @@ bool test_sdf_quality()
     if (ok) {
         // A genuine rasterized tilted box top independently validates plane
         // reconstruction, including a nonzero thickness and elevation.
-        GAME_GameSdfSurface3D_get(world, e)->enabled = false;
-        ((GameMeshSurface2D *)
-             ecs_component_data(world, e, GAME_COMPONENT_GameMeshSurface2D.id))
+        SdfSurface3D_get(world, e)->enabled = false;
+        ((MeshSurface2D *)ecs_component_data(world, e, COMPONENT_MeshSurface2D.id))
             ->enabled = true;
-        GAME_GameGeometry3D_get(world, e)->height = .02f;
-        GAME_GameGeometry3D_get(world, e)->elevation = 2;
-        GAME_GameVisualTransform_get(world, e)->pitch = atanf(.5f);
-        GameSurfaceQuality q = { 0 };
+        Geometry3D_get(world, e)->height = .02f;
+        Geometry3D_get(world, e)->elevation = 2;
+        VisualTransform_get(world, e)->pitch = atanf(.5f);
+        SurfaceQuality q = { 0 };
         float *scene = NULL, *height = NULL, *normal = NULL;
         ok = capture(r, world, e, q, 0, 0, &scene, &height, &normal);
         float max_error = 0;
@@ -627,27 +617,26 @@ bool test_sdf_quality()
         free(scene);
         free(height);
         free(normal);
-        GAME_GameSdfSurface3D_get(world, e)->enabled = true;
-        ((GameMeshSurface2D *)
-             ecs_component_data(world, e, GAME_COMPONENT_GameMeshSurface2D.id))
+        SdfSurface3D_get(world, e)->enabled = true;
+        ((MeshSurface2D *)ecs_component_data(world, e, COMPONENT_MeshSurface2D.id))
             ->enabled = false;
-        GAME_GameGeometry3D_get(world, e)->height = 24;
-        GAME_GameGeometry3D_get(world, e)->elevation = 0;
-        GAME_GameVisualTransform_get(world, e)->pitch = 0;
+        Geometry3D_get(world, e)->height = 24;
+        Geometry3D_get(world, e)->elevation = 0;
+        VisualTransform_get(world, e)->pitch = 0;
     }
-    GAME_GameShader_get(world, e)->shape = ring->name;
+    Shader_get(world, e)->shape = ring->name;
     printf("SDF quality analytic sphere: max_height_error%g max_normal_component_error%g\n", maximum_height_error, maximum_normal_error);
     if (ok) {
         ok = trace_work(r, world, e, "thin-ring");
     }
     ok = ok && transformed_gradient(r, world, e);
-    GAME_GameShader_get(world, e)->shape = sphere->name;
+    Shader_get(world, e)->shape = sphere->name;
     if (ok) {
         ok = trace_work(r, world, e, "sphere");
     }
-    GAME_GameShader_get(world, e)->shape = noisy->name;
+    Shader_get(world, e)->shape = noisy->name;
     ok = ok && gradient_fallback(r, world, e, false);
-    GAME_GameShader_get(world, e)->shape = creased->name;
+    Shader_get(world, e)->shape = creased->name;
     ok = ok && gradient_fallback(r, world, e, true);
     if (!ok) {
         fprintf(stderr, "SDF quality analytic height, normal, time or thin-ring comparison failed\n");

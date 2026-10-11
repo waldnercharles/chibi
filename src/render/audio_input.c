@@ -38,10 +38,10 @@ struct audio_input
     SDL_AudioStream *capture;
     SDL_AudioDeviceID capture_device, capture_physical;
     _Atomic bool removed;
-    game_audio *owner;
+    audio *owner;
     uint64_t generation, serial, last_data;
     int source, web_generation;
-    game_audio_status status;
+    audio_status status;
 };
 /* The browser owns one audio capture stream, just as Cute owns one mixer. */
 static audio_input *web_input;
@@ -132,13 +132,13 @@ static void capture(audio_input *input)
     }
     SDL_free(devices);
     if (!device) {
-        input->status = GAME_AUDIO_UNAVAILABLE;
+        input->status = AUDIO_UNAVAILABLE;
         return;
     }
     SDL_AudioSpec spec = { .format = SDL_AUDIO_F32, .channels = 2, .freq = 44100 };
     input->capture = SDL_OpenAudioDeviceStream(device, &spec, recorded, input);
     if (!input->capture) {
-        input->status = GAME_AUDIO_UNAVAILABLE;
+        input->status = AUDIO_UNAVAILABLE;
         return;
     }
     input->capture_device = SDL_GetAudioStreamDevice(input->capture);
@@ -147,10 +147,10 @@ static void capture(audio_input *input)
     if (!SDL_AddEventWatch(device_event, input) ||
         !SDL_ResumeAudioStreamDevice(input->capture)) {
         close_capture(input);
-        input->status = GAME_AUDIO_UNAVAILABLE;
+        input->status = AUDIO_UNAVAILABLE;
         return;
     }
-    input->status = GAME_AUDIO_READY;
+    input->status = AUDIO_READY;
 }
 #endif
 EMSCRIPTEN_KEEPALIVE void render_audio_web_status(int generation, int state)
@@ -159,9 +159,9 @@ EMSCRIPTEN_KEEPALIVE void render_audio_web_status(int generation, int state)
     if (!input || input->web_generation != generation) {
         return;
     }
-    assert(state >= GAME_AUDIO_IDLE && state <= GAME_AUDIO_ENDED);
+    assert(state >= AUDIO_IDLE && state <= AUDIO_ENDED);
     input->status = state;
-    if (state != GAME_AUDIO_READY) {
+    if (state != AUDIO_READY) {
         audio_analysis_reset(input->analysis);
         input->last_data = 0;
     }
@@ -175,8 +175,7 @@ EMSCRIPTEN_KEEPALIVE void render_audio_web_samples(
 )
 {
     audio_input *input = web_input;
-    if (input && input->web_generation == generation &&
-        input->status == GAME_AUDIO_READY) {
+    if (input && input->web_generation == generation && input->status == AUDIO_READY) {
         samples(input, pcm, frames, channels, rate);
     }
 }
@@ -204,7 +203,7 @@ void audio_input_reset(audio_input *input)
     atomic_store(&input->write, 0);
     input->owner = NULL;
     input->last_data = 0;
-    input->status = GAME_AUDIO_IDLE;
+    input->status = AUDIO_IDLE;
     audio_analysis_reset(input->analysis);
 }
 void audio_input_free(audio_input *input)
@@ -213,32 +212,32 @@ void audio_input_free(audio_input *input)
     audio_analysis_free(input->analysis);
     free(input);
 }
-static void start(audio_input *input, game_audio *audio, int source, uint64_t serial)
+static void start(audio_input *input, audio *audio, int source, uint64_t serial)
 {
     audio_input_reset(input);
     input->owner = audio;
-    input->generation = game_audio_generation(audio);
+    input->generation = audio_generation(audio);
     input->serial = serial;
     input->source = source;
     if (!source) {
         SDL_AudioDeviceID device = cf_audio_get_sdl_device();
-        input->status = GAME_AUDIO_UNAVAILABLE;
+        input->status = AUDIO_UNAVAILABLE;
         if (device && SDL_SetAudioPostmixCallback(device, postmix, input)) {
             if (output_input) {
-                output_input->status = GAME_AUDIO_ENDED;
+                output_input->status = AUDIO_ENDED;
                 output_input->last_data = 0;
                 audio_analysis_reset(output_input->analysis);
             }
             output_input = input;
             input->output = device;
-            input->status = GAME_AUDIO_READY;
+            input->status = AUDIO_READY;
         }
         return;
     }
-    input->status = GAME_AUDIO_WAITING;
+    input->status = AUDIO_WAITING;
 #ifdef __EMSCRIPTEN__
     if (web_input) {
-        web_input->status = GAME_AUDIO_ENDED;
+        web_input->status = AUDIO_ENDED;
         web_input->last_data = 0;
         audio_analysis_reset(web_input->analysis);
     }
@@ -249,17 +248,17 @@ static void start(audio_input *input, game_audio *audio, int source, uint64_t se
     capture(input);
 #endif
 }
-void audio_input_update(audio_input *input, game_audio *audio, bool playing)
+void audio_input_update(audio_input *input, audio *audio, bool playing)
 {
     uint64_t serial;
-    int source = game_audio_source(audio, &serial);
-    if (audio != input->owner || input->generation != game_audio_generation(audio) ||
+    int source = audio_source(audio, &serial);
+    if (audio != input->owner || input->generation != audio_generation(audio) ||
         serial != input->serial) {
         start(input, audio, source, serial);
     }
     if (input->capture && atomic_load(&input->removed)) {
         close_capture(input);
-        input->status = GAME_AUDIO_ENDED;
+        input->status = AUDIO_ENDED;
         input->last_data = 0;
     }
     unsigned read = atomic_load_explicit(&input->read, memory_order_relaxed);
@@ -267,7 +266,7 @@ void audio_input_update(audio_input *input, game_audio *audio, bool playing)
     uint64_t now = SDL_GetTicks();
     while (read != end) {
         audio_block *block = &input->blocks[read];
-        if (playing && input->status == GAME_AUDIO_READY &&
+        if (playing && input->status == AUDIO_READY &&
             now - block->timestamp < INPUT_STALE_MS) {
             audio_analysis_push(
                 input->analysis,
@@ -281,21 +280,21 @@ void audio_input_update(audio_input *input, game_audio *audio, bool playing)
         read = (read + 1) % INPUT_BLOCKS;
         atomic_store_explicit(&input->read, read, memory_order_release);
     }
-    bool active = playing && input->status == GAME_AUDIO_READY &&
-                  input->last_data && now - input->last_data < INPUT_STALE_MS;
+    bool active = playing && input->status == AUDIO_READY && input->last_data &&
+                  now - input->last_data < INPUT_STALE_MS;
     if (!active) {
         audio_analysis_reset(input->analysis);
     }
     audio_analysis_frame frame = audio_analysis_read(input->analysis);
-    game_audio_set_analysis(
+    audio_set_analysis(
         audio,
-        (game_audio_analysis){ .level = frame.level,
-                               .bass = frame.bass,
-                               .mid = frame.mid,
-                               .treble = frame.treble,
-                               .onset = frame.onset,
-                               .active = active,
-                               .source = source,
-                               .status = input->status }
+        (audio_measurement){ .level = frame.level,
+                             .bass = frame.bass,
+                             .mid = frame.mid,
+                             .treble = frame.treble,
+                             .onset = frame.onset,
+                             .active = active,
+                             .source = source,
+                             .status = input->status }
     );
 }

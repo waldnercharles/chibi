@@ -12,7 +12,7 @@ static bool finite_vector(CF_V3 value)
     return isfinite(value.x) && isfinite(value.y) && isfinite(value.z);
 }
 
-static bool valid(const GameVisualMotion *motion)
+static bool valid(const VisualMotion *motion)
 {
     return finite_vector(motion->rotation) &&
            finite_vector(motion->angular_velocity) &&
@@ -23,7 +23,7 @@ static bool valid(const GameVisualMotion *motion)
            motion->reaction_duration >= 0;
 }
 
-static bool advance(GameVisualMotion *motion, float delta, GameVisualTransform *visual, float *elevation)
+static bool advance(VisualMotion *motion, float delta, VisualTransform *visual, float *elevation)
 {
     motion->rotation = cf_add_v3(
         motion->rotation,
@@ -44,13 +44,13 @@ static bool advance(GameVisualMotion *motion, float delta, GameVisualTransform *
            isfinite(*elevation);
 }
 
-int game_visual_motion_tick(ecs_world *world, float delta)
+int visual_motion_tick(ecs_world *world, float delta)
 {
     assert(world);
     if (!isfinite(delta) || delta < 0) {
         return FLOW_ERR_ARGUMENT;
     }
-    ecs_component_id component = GAME_COMPONENT_GameVisualMotion.id;
+    ecs_component_id component = COMPONENT_VisualMotion.id;
     if (!ecs_world_component(world, component)) {
         return FLOW_OK;
     }
@@ -64,16 +64,16 @@ int game_visual_motion_tick(ecs_world *world, float delta)
         }
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
-            GameVisualMotion *motion = GAME_GameVisualMotion_get(world, entity);
-            GameVisualTransform *visual = GAME_GameVisualTransform_get(world, entity);
-            GameGeometry3D *spatial = GAME_GameGeometry3D_get(world, entity);
+            VisualMotion *motion = VisualMotion_get(world, entity);
+            VisualTransform *visual = VisualTransform_get(world, entity);
+            Geometry3D *spatial = Geometry3D_get(world, entity);
             if (!visual || !spatial) {
                 ecs_query_end(&query);
                 return FLOW_ERR_STATE;
             }
             if (!pass) {
-                GameVisualMotion next = *motion;
-                GameVisualTransform resolved = *visual;
+                VisualMotion next = *motion;
+                VisualTransform resolved = *visual;
                 float elevation;
                 if (!valid(motion) || !advance(&next, delta, &resolved, &elevation)) {
                     ecs_query_end(&query);

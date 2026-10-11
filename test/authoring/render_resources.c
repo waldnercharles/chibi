@@ -17,9 +17,9 @@
 
 /* Fixed CPU snapshots only: no app/window, texture upload, draw, files, world
  * or source parsing. Cute's default pixel allocator delegates to malloc/free. */
-static game_player_resource_host host;
+static player_resource_host host;
 static shader_prepared_asset producer;
-static game_ui_document document;
+static prepared_ui_document document;
 static unsigned char *bytes[3];
 static size_t lengths[3];
 static void *pending, *old_generation, *current_generation;
@@ -37,13 +37,13 @@ static void cleanup()
     }
     pending = old_generation = current_generation = NULL;
     shader_prepared_asset_free(&producer);
-    game_ui_document_free(&document);
+    prepared_ui_document_free(&document);
     for (int i = 0; i < 3; i++) {
         free(bytes[i]);
         bytes[i] = NULL;
     }
 }
-static bool inputs(bool replacement, game_player_asset records[3])
+static bool inputs(bool replacement, player_asset records[3])
 {
     for (int i = 0; i < 3; i++) {
         free(bytes[i]);
@@ -78,29 +78,24 @@ static bool inputs(bool replacement, game_player_asset records[3])
     document.markup = xstrdup(replacement ? "<img id='new'/>" : "<img id='old'/>");
     document.style = xstrdup("img { width: 1px; }");
     document.body = xstrdup("class='owned'");
-    apush(
-        document.resources,
-        ((game_ui_resource){ .kind = GAME_UI_RESOURCE_IMAGE, .key = xstrdup(pixel_key) })
-    );
+    apush(document.resources, ((ui_resource){ .kind = UI_RESOURCE_IMAGE, .key = xstrdup(pixel_key) }));
     char error[128];
-    REQUIRE(
-        game_ui_document_prepared_write(&document, &bytes[2], &lengths[2], error, sizeof error)
-    );
+    REQUIRE(ui_document_prepared_write(&document, &bytes[2], &lengths[2], error, sizeof error));
     shader_prepared_asset_free(&producer);
-    game_ui_document_free(&document);
+    prepared_ui_document_free(&document);
     memset(pixels, 0, sizeof pixels);
-    const game_player_asset_kind kinds[] = { GAME_PLAYER_ASSET_SHADER,
-                                             GAME_PLAYER_ASSET_IMAGE,
-                                             GAME_PLAYER_ASSET_UI };
+    const player_asset_kind kinds[] = { PLAYER_ASSET_SHADER,
+                                        PLAYER_ASSET_IMAGE,
+                                        PLAYER_ASSET_UI };
     const char *const names[] = { "OwnedShader", pixel_key, "OwnedPage" };
     for (int i = 0; i < 3; i++) {
         REQUIRE(lengths[i] >= 16 && lengths[i] < 8192);
-        records[i] = (game_player_asset){
+        records[i] = (player_asset){
             .name = names[i],
             .kind = kinds[i],
             .data = bytes[i],
             .length = lengths[i],
-            .content_hash = game_player_asset_fingerprint(bytes[i], lengths[i])
+            .content_hash = player_asset_fingerprint(bytes[i], lengths[i])
         };
     }
     return true;
@@ -120,7 +115,7 @@ static bool sample(bool replacement)
         values[0][2] == (replacement ? 1 : 0)
     );
     REQUIRE(values[1][0] == .25f && values[1][1] == .5f && values[1][2] == .75f);
-    const game_ui_document *page = game_ui_documents_find(game_ui_documents_current(), "OwnedPage");
+    const prepared_ui_document *page = ui_documents_find(ui_documents_current(), "OwnedPage");
     REQUIRE(page && !strcmp(page->markup, replacement ? "<img id='new'/>" : "<img id='old'/>"));
     return true;
 }
@@ -128,12 +123,9 @@ TEST_CASE(prepared_renderer_resources_publish_atomically_and_retain_retired_toke
 {
     host = render_prepared_resources(NULL);
     shader_prepared_asset_init(&producer);
-    REQUIRE(
-        !render_image_source_count() &&
-        !game_ui_documents_count(game_ui_documents_current())
-    );
+    REQUIRE(!render_image_source_count() && !ui_documents_count(ui_documents_current()));
     REQUIRE(!render_shader_find("OwnedShader"));
-    game_player_asset records[3];
+    player_asset records[3];
     REQUIRE(inputs(false, records));
     char error[128] = { 0 };
     size_t remaining = 2 * 1024 * 1024;
@@ -145,7 +137,7 @@ TEST_CASE(prepared_renderer_resources_publish_atomically_and_retain_retired_toke
     pending = NULL;
     REQUIRE(sample(false));
     const char *old_name = render_shader_parameter_name(render_shader_find("OwnedShader"), 0);
-    const game_ui_document *old_page = game_ui_documents_find(game_ui_documents_current(), "OwnedPage");
+    const prepared_ui_document *old_page = ui_documents_find(ui_documents_current(), "OwnedPage");
     shader_image_source resource = { .key = (char *)pixel_key,
                                      .color_space = SHADER_IMAGE_LINEAR,
                                      .filter = SHADER_IMAGE_NEAREST,
@@ -154,7 +146,7 @@ TEST_CASE(prepared_renderer_resources_publish_atomically_and_retain_retired_toke
     REQUIRE(render_image_resolve(NULL, &resource, &old_pixels));
     REQUIRE(inputs(true, records));
     unsigned revision = render_shader_revision();
-    game_player_asset bad[3];
+    player_asset bad[3];
     memcpy(bad, records, sizeof bad);
     bad[1].content_hash ^= UINT64_C(1);
     remaining = 2 * 1024 * 1024;
@@ -165,7 +157,7 @@ TEST_CASE(prepared_renderer_resources_publish_atomically_and_retain_retired_toke
     bad[1].content_hash = 0;
     REQUIRE(!host.stage(host.context, bad, 3, &remaining, error, sizeof error));
     REQUIRE(remaining == 2 * 1024 * 1024 && render_shader_revision() == revision);
-    game_player_asset missing[] = { records[0], records[2] };
+    player_asset missing[] = { records[0], records[2] };
     REQUIRE(!host.stage(host.context, missing, 2, &remaining, error, sizeof error));
     REQUIRE(remaining == 2 * 1024 * 1024 && render_shader_revision() == revision);
     memcpy(bad, records, sizeof bad);
@@ -208,10 +200,7 @@ TEST_CASE(prepared_renderer_resources_publish_atomically_and_retain_retired_toke
     host.retire(host.context, current_generation);
     current_generation = NULL;
     REQUIRE(!render_shader_find("OwnedShader") && !render_image_source_count());
-    REQUIRE(
-        !game_ui_documents_active() &&
-        !game_ui_documents_count(game_ui_documents_current())
-    );
+    REQUIRE(!ui_documents_active() && !ui_documents_count(ui_documents_current()));
     return true;
 }
 /* A sprite's image variant joins a program's sorted image set, and the
@@ -530,20 +519,20 @@ TEST_CASE(split_sum_table_integrates_the_specular_lobe)
     return true;
 }
 static const char *const sky_key = "content/skies/field.hdr";
-static game_scene *environment_scene(const char *sky)
+static scene *environment_scene(const char *sky)
 {
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     environment.sky = sky;
-    game_scene_component component = { &GAME_COMPONENT_GameEnvironment, &environment };
-    game_scene_object object = { .name = "Environment",
-                                 .components = &component,
-                                 .component_count = 1 };
-    game_scene_spec spec = { .name = "Sky",
-                             .physics = game_physics_defaults(),
-                             .objects = &object,
-                             .object_count = 1 };
+    scene_component component = { &COMPONENT_Environment, &environment };
+    scene_object object = { .name = "Environment",
+                            .components = &component,
+                            .component_count = 1 };
+    scene_spec spec = { .name = "Sky",
+                        .physics = physics_defaults(),
+                        .objects = &object,
+                        .object_count = 1 };
     char error[128];
-    game_scene *scene = game_scene_prepare(&spec, error, sizeof error);
+    scene *scene = scene_prepare(&spec, error, sizeof error);
     assert(scene);
     return scene;
 }
@@ -553,12 +542,12 @@ TEST_CASE(prepared_skies_publish_with_their_generation)
     render_sky sky = uniform_sky(16, (const unsigned char[4]){ 128, 64, 32, 129 });
     char error[128] = { 0 };
     REQUIRE(render_sky_prepared_write(&sky, &bytes[0], &lengths[0], error, sizeof error));
-    game_player_asset record = {
+    player_asset record = {
         .name = sky_key,
-        .kind = GAME_PLAYER_ASSET_SKY,
+        .kind = PLAYER_ASSET_SKY,
         .data = bytes[0],
         .length = lengths[0],
-        .content_hash = game_player_asset_fingerprint(bytes[0], lengths[0])
+        .content_hash = player_asset_fingerprint(bytes[0], lengths[0])
     };
     size_t remaining = 2 * 1024 * 1024;
     /* Staging charges the texels; a byte less stages nothing. */
@@ -572,7 +561,7 @@ TEST_CASE(prepared_skies_publish_with_their_generation)
     REQUIRE(tight == 2 * 1024 * 1024 - remaining - 1);
     /* Truncated, mislabeled or duplicated skies stage nothing. */
     remaining = 2 * 1024 * 1024;
-    game_player_asset bad = record;
+    player_asset bad = record;
     bad.length--;
     bad.content_hash = 0;
     REQUIRE(!host.stage(host.context, &bad, 1, &remaining, error, sizeof error));
@@ -582,20 +571,20 @@ TEST_CASE(prepared_skies_publish_with_their_generation)
     REQUIRE(!host.stage(host.context, &bad, 1, &remaining, error, sizeof error));
     REQUIRE(strstr(error, "without parent traversal"));
     REQUIRE(
-        !host.stage(host.context, (game_player_asset[]){ record, record }, 2, &remaining, error, sizeof error)
+        !host.stage(host.context, (player_asset[]){ record, record }, 2, &remaining, error, sizeof error)
     );
     REQUIRE(remaining == 2 * 1024 * 1024);
     pending = host.stage(host.context, &record, 1, &remaining, error, sizeof error);
     REQUIRE(pending);
     REQUIRE(!render_sky_find(sky_key));
     /* Scenes may name only skies their generation carries. */
-    game_scene *named = environment_scene(sky_key),
-               *other = environment_scene("content/skies/dusk.hdr");
+    scene *named = environment_scene(sky_key),
+          *other = environment_scene("content/skies/dusk.hdr");
     REQUIRE(host.scene(host.context, pending, named, error, sizeof error));
     REQUIRE(!host.scene(host.context, pending, other, error, sizeof error));
     REQUIRE(strstr(error, "sky is absent"));
-    game_scene_free(named);
-    game_scene_free(other);
+    scene_free(named);
+    scene_free(other);
     host.commit(host.context, pending, NULL);
     current_generation = pending;
     pending = NULL;

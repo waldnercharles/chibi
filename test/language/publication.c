@@ -63,7 +63,7 @@ static const script_catalog_global self = { .id = 30,
                                                       .nominal = 700 } };
 static script_catalog catalog;
 static ecs_world *world;
-static game_source_registry *registry;
+static source_registry *registry;
 static execution_module *modules[6];
 static script_syntax *syntax;
 static script_analysis *analysis;
@@ -75,7 +75,7 @@ static int host_calls;
 static void cleanup()
 {
     if (registry) {
-        game_source_registry_free(registry);
+        source_registry_free(registry);
     }
     registry = NULL;
     for (int i = 0; i < 6; i++) {
@@ -211,9 +211,9 @@ static bool setup(behavior_backend backend)
     REQUIRE(compile(4, "behavior Service {on Begin {Touch();}}", backend));
     REQUIRE(compile(5, "behavior Schema {bind self.PublicationGhost.value=1;}", backend));
     world = ecs_world_new();
-    registry = game_source_registry_new(world);
-    REQUIRE(game_source_register(registry, "Alpha", modules[0], NULL) == 0);
-    REQUIRE(game_source_register(registry, "Beta", modules[1], NULL) == 0);
+    registry = source_registry_new(world);
+    REQUIRE(source_register(registry, "Alpha", modules[0], NULL) == 0);
+    REQUIRE(source_register(registry, "Beta", modules[1], NULL) == 0);
     execution_module_free(modules[0]);
     execution_module_free(modules[1]);
     modules[0] = modules[1] = NULL;
@@ -226,26 +226,25 @@ TEST_CASE(publication_late_failure_preserves_running_generations)
         cleanup();
         REQUIRE(setup(backends[b]));
         ecs_entity entity = ecs_world_create_entity(world);
-        REQUIRE(game_source_attach(registry, entity, "Alpha", false, 0, 0) == FLOW_OK);
-        execution_program *original = game_source_program(registry, "Alpha");
+        REQUIRE(source_attach(registry, entity, "Alpha", false, 0, 0) == FLOW_OK);
+        execution_program *original = source_program(registry, "Alpha");
         execution_instance *instance = execution_program_instance(original, ecs_entity_to_u64(entity));
         REQUIRE(instance && count_is(original, entity, count_ids[0], 1));
-        REQUIRE(game_source_dispatch(registry, entity, "Wait", NULL, 0, 0, 0) == 1);
+        REQUIRE(source_dispatch(registry, entity, "Wait", NULL, 0, 0, 0) == 1);
         REQUIRE(execution_instance_pending(instance) == 1);
         for (int failure = 4; failure < 6; failure++) {
-            const game_source_publication entries[] = {
+            const source_publication entries[] = {
                 { .name = "Alpha", .previous_name = "Alpha", .module = modules[2] },
                 { .name = "Rejected", .module = modules[failure] },
             };
             char error[192];
             REQUIRE(
-                game_source_publish(registry, entries, 2, NULL, error, sizeof error) !=
-                    FLOW_OK &&
+                source_publish(registry, entries, 2, NULL, error, sizeof error) != FLOW_OK &&
                 error[0]
             );
             REQUIRE(
-                game_source_program(registry, "Alpha") == original &&
-                !game_source_registered(registry, "Rejected")
+                source_program(registry, "Alpha") == original &&
+                !source_registered(registry, "Rejected")
             );
             REQUIRE(execution_program_instance(original, ecs_entity_to_u64(entity)) == instance);
             REQUIRE(
@@ -253,9 +252,9 @@ TEST_CASE(publication_late_failure_preserves_running_generations)
                 execution_instance_pending(instance) == 1 && host_calls == 0
             );
         }
-        REQUIRE(game_source_dispatch(registry, entity, "Pulse", NULL, 0, 1, 0) == 2);
+        REQUIRE(source_dispatch(registry, entity, "Pulse", NULL, 0, 1, 0) == 2);
         REQUIRE(count_is(original, entity, count_ids[0], 2));
-        REQUIRE(game_source_step(registry, 11, 0) == FLOW_OK);
+        REQUIRE(source_step(registry, 11, 0) == FLOW_OK);
         REQUIRE(
             count_is(original, entity, count_ids[0], 102) &&
             execution_instance_pending(instance) == 0
@@ -270,49 +269,46 @@ TEST_CASE(publication_name_swap_preserves_state_and_removal_cancels)
         cleanup();
         REQUIRE(setup(backends[b]));
         ecs_entity entity = ecs_world_create_entity(world);
-        REQUIRE(game_source_attach(registry, entity, "Alpha", false, 0, 0) == FLOW_OK);
-        REQUIRE(game_source_attach(registry, entity, "Beta", false, 0, 0) == FLOW_OK);
-        execution_program *alpha = game_source_program(registry, "Alpha"),
-                          *beta = game_source_program(registry, "Beta");
-        const game_source_publication swap[] = {
+        REQUIRE(source_attach(registry, entity, "Alpha", false, 0, 0) == FLOW_OK);
+        REQUIRE(source_attach(registry, entity, "Beta", false, 0, 0) == FLOW_OK);
+        execution_program *alpha = source_program(registry, "Alpha"),
+                          *beta = source_program(registry, "Beta");
+        const source_publication swap[] = {
             { .name = "Beta", .previous_name = "Alpha", .module = modules[2] },
             { .name = "Alpha", .previous_name = "Beta", .module = modules[3] },
         };
         char error[192];
-        REQUIRE(game_source_publish(registry, swap, 2, NULL, error, sizeof error) == FLOW_OK);
+        REQUIRE(source_publish(registry, swap, 2, NULL, error, sizeof error) == FLOW_OK);
         execution_module_free(modules[2]);
         execution_module_free(modules[3]);
         modules[2] = modules[3] = NULL;
         REQUIRE(
-            game_source_program(registry, "Beta") == alpha &&
-            game_source_program(registry, "Alpha") == beta
+            source_program(registry, "Beta") == alpha &&
+            source_program(registry, "Alpha") == beta
         );
         REQUIRE(
             count_is(alpha, entity, count_ids[0], 1) &&
             count_is(beta, entity, count_ids[1], 7)
         );
-        REQUIRE(game_source_dispatch(registry, entity, "Pulse", NULL, 0, 1, 0) == 2);
+        REQUIRE(source_dispatch(registry, entity, "Pulse", NULL, 0, 1, 0) == 2);
         REQUIRE(
             count_is(alpha, entity, count_ids[0], 11) &&
             count_is(beta, entity, count_ids[1], 27)
         );
-        REQUIRE(game_source_dispatch(registry, entity, "Wait", NULL, 0, 1, 0) == 1);
+        REQUIRE(source_dispatch(registry, entity, "Wait", NULL, 0, 1, 0) == 1);
         REQUIRE(
             execution_instance_pending(
                 execution_program_instance(alpha, ecs_entity_to_u64(entity))
             ) == 1
         );
-        const game_source_publication remove = { .previous_name = "Beta" };
-        REQUIRE(game_source_publish(registry, &remove, 1, NULL, error, sizeof error) == FLOW_OK);
+        const source_publication remove = { .previous_name = "Beta" };
+        REQUIRE(source_publish(registry, &remove, 1, NULL, error, sizeof error) == FLOW_OK);
+        REQUIRE(!source_registered(registry, "Beta") && source_program(registry, "Alpha") == beta);
         REQUIRE(
-            !game_source_registered(registry, "Beta") &&
-            game_source_program(registry, "Alpha") == beta
-        );
-        REQUIRE(
-            game_source_step(registry, 20, 0) == FLOW_OK &&
+            source_step(registry, 20, 0) == FLOW_OK &&
             count_is(beta, entity, count_ids[1], 27)
         );
-        REQUIRE(game_source_detach_entity(registry, entity) == 1);
+        REQUIRE(source_detach_entity(registry, entity) == 1);
         REQUIRE(execution_program_instance(beta, ecs_entity_to_u64(entity)) == NULL);
     }
     return true;
@@ -350,41 +346,41 @@ TEST_CASE(publication_preserves_detached_root_and_imported_shared_state)
         REQUIRE(shared_ids[0] == shared_ids[2] && shared_ids[1] == shared_ids[3]);
         REQUIRE(observed_ids[1] && observed_ids[1] == observed_ids[3]);
         world = ecs_world_new();
-        registry = game_source_registry_new(world);
-        REQUIRE(game_source_register(registry, "Shared", modules[1], NULL) == 0);
+        registry = source_registry_new(world);
+        REQUIRE(source_register(registry, "Shared", modules[1], NULL) == 0);
         execution_module_free(modules[0]);
         execution_module_free(modules[1]);
         modules[0] = modules[1] = NULL;
-        execution_program *program = game_source_program(registry, "Shared");
+        execution_program *program = source_program(registry, "Shared");
         ecs_entity owners[] = { ecs_world_create_entity(world),
                                 ecs_world_create_entity(world) };
         for (int i = 0; i < 2; i++) {
-            REQUIRE(game_source_attach(registry, owners[i], "Shared", true, 0, 0) == 0);
-            REQUIRE(game_source_dispatch(registry, owners[i], "Pulse", NULL, 0, i, 0) == 1);
-            REQUIRE(game_source_pump(registry, i, 0) == 0);
+            REQUIRE(source_attach(registry, owners[i], "Shared", true, 0, 0) == 0);
+            REQUIRE(source_dispatch(registry, owners[i], "Pulse", NULL, 0, i, 0) == 1);
+            REQUIRE(source_pump(registry, i, 0) == 0);
         }
         REQUIRE(count_is(program, owners[0], shared_ids[1], 2));
         REQUIRE(count_is(program, owners[1], shared_ids[1], 2));
         REQUIRE(count_is(program, owners[0], observed_ids[1], 2));
         REQUIRE(count_is(program, owners[1], observed_ids[1], 4));
         for (int i = 0; i < 2; i++) {
-            REQUIRE(game_source_detach_entity(registry, owners[i]) == 1);
+            REQUIRE(source_detach_entity(registry, owners[i]) == 1);
             REQUIRE(execution_program_instance(program, ecs_entity_to_u64(owners[i])) == NULL);
         }
-        const game_source_publication replace = { .name = "Shared",
-                                                  .previous_name = "Shared",
-                                                  .module = modules[3] };
+        const source_publication replace = { .name = "Shared",
+                                             .previous_name = "Shared",
+                                             .module = modules[3] };
         char error[192];
-        REQUIRE(game_source_publish(registry, &replace, 1, NULL, error, sizeof error) == 0);
-        REQUIRE(game_source_program(registry, "Shared") == program);
+        REQUIRE(source_publish(registry, &replace, 1, NULL, error, sizeof error) == 0);
+        REQUIRE(source_program(registry, "Shared") == program);
         execution_module_free(modules[2]);
         execution_module_free(modules[3]);
         modules[2] = modules[3] = NULL;
-        REQUIRE(game_source_attach(registry, owners[0], "Shared", true, 2, 0) == 0);
+        REQUIRE(source_attach(registry, owners[0], "Shared", true, 2, 0) == 0);
         REQUIRE(count_is(program, owners[0], shared_ids[1], 2));
         REQUIRE(count_is(program, owners[0], observed_ids[1], 999));
-        REQUIRE(game_source_dispatch(registry, owners[0], "Pulse", NULL, 0, 2, 0) == 1);
-        REQUIRE(game_source_pump(registry, 2, 0) == 0);
+        REQUIRE(source_dispatch(registry, owners[0], "Pulse", NULL, 0, 2, 0) == 1);
+        REQUIRE(source_pump(registry, 2, 0) == 0);
         REQUIRE(count_is(program, owners[0], shared_ids[1], 12));
         REQUIRE(count_is(program, owners[0], observed_ids[1], 24));
     }
@@ -408,25 +404,25 @@ TEST_CASE(publication_profile_counts_actual_execution_and_retains_origins)
         ));
         uint64_t module_id = execution_module_id(modules[0]);
         world = ecs_world_new();
-        registry = game_source_registry_new(world);
-        REQUIRE(game_source_register(registry, "Alpha", modules[0], NULL) == FLOW_OK);
+        registry = source_registry_new(world);
+        REQUIRE(source_register(registry, "Alpha", modules[0], NULL) == FLOW_OK);
         execution_module_free(modules[0]);
         modules[0] = NULL;
-        REQUIRE(game_source_profile_count(registry) == 0);
-        game_source_profile_enable(registry, true);
+        REQUIRE(source_profile_count(registry) == 0);
+        source_profile_enable(registry, true);
         ecs_entity entity = ecs_world_create_entity(world);
-        REQUIRE(game_source_attach(registry, entity, "Alpha", false, 0, 0) == FLOW_OK);
-        execution_program *program = game_source_program(registry, "Alpha");
+        REQUIRE(source_attach(registry, entity, "Alpha", false, 0, 0) == FLOW_OK);
+        execution_program *program = source_program(registry, "Alpha");
         REQUIRE(count_is(program, entity, count_ids[0], 1));
-        REQUIRE(game_source_dispatch(registry, entity, "Pulse", NULL, 0, 0, 0) == 1);
-        REQUIRE(game_source_dispatch(registry, entity, "Wait", NULL, 0, 0, 0) == 1);
-        REQUIRE(game_source_pump(registry, 1, 0) == FLOW_OK);
+        REQUIRE(source_dispatch(registry, entity, "Pulse", NULL, 0, 0, 0) == 1);
+        REQUIRE(source_dispatch(registry, entity, "Wait", NULL, 0, 0, 0) == 1);
+        REQUIRE(source_pump(registry, 1, 0) == FLOW_OK);
         REQUIRE(count_is(program, entity, count_ids[0], 2));
         uint64_t entries = 0, resumes = 0;
-        int rows = game_source_profile_count(registry);
-        REQUIRE(rows == 3 && game_source_profile_dropped(registry) == 0);
+        int rows = source_profile_count(registry);
+        REQUIRE(rows == 3 && source_profile_dropped(registry) == 0);
         for (int i = 0; i < rows; i++) {
-            const game_source_profile_row *row = game_source_profile_at(registry, i);
+            const source_profile_row *row = source_profile_at(registry, i);
             entries += row->entries;
             resumes += row->resumes;
             REQUIRE(!row->internal && row->function_id && row->module_id == module_id);
@@ -438,37 +434,34 @@ TEST_CASE(publication_profile_counts_actual_execution_and_retains_origins)
             );
         }
         REQUIRE(entries == 3 && resumes == 0);
-        REQUIRE(game_source_pump(registry, 10, 0) == FLOW_OK);
+        REQUIRE(source_pump(registry, 10, 0) == FLOW_OK);
         REQUIRE(count_is(program, entity, count_ids[0], 102));
         entries = resumes = 0;
         for (int i = 0; i < rows; i++) {
-            const game_source_profile_row *row = game_source_profile_at(registry, i);
+            const source_profile_row *row = source_profile_at(registry, i);
             entries += row->entries;
             resumes += row->resumes;
         }
         REQUIRE(entries == 3 && resumes == 1);
-        game_source_profile_enable(registry, false);
-        REQUIRE(game_source_dispatch(registry, entity, "Pulse", NULL, 0, 11, 0) == 1);
+        source_profile_enable(registry, false);
+        REQUIRE(source_dispatch(registry, entity, "Pulse", NULL, 0, 11, 0) == 1);
         REQUIRE(count_is(program, entity, count_ids[0], 103));
-        const game_source_profile_row *retained = game_source_profile_at(registry, 0);
-        REQUIRE(game_source_remove(registry, "Alpha") == 0);
-        REQUIRE(game_source_profile_count(registry) == rows);
+        const source_profile_row *retained = source_profile_at(registry, 0);
+        REQUIRE(source_remove(registry, "Alpha") == 0);
+        REQUIRE(source_profile_count(registry) == rows);
         REQUIRE(
             retained->module_id == module_id &&
             !strcmp(retained->name, "Alpha") && retained->source
         );
         entries = resumes = 0;
         for (int i = 0; i < rows; i++) {
-            const game_source_profile_row *row = game_source_profile_at(registry, i);
+            const source_profile_row *row = source_profile_at(registry, i);
             entries += row->entries;
             resumes += row->resumes;
         }
         REQUIRE(entries == 3 && resumes == 1);
-        game_source_profile_reset(registry);
-        REQUIRE(
-            game_source_profile_count(registry) == 0 &&
-            game_source_profile_dropped(registry) == 0
-        );
+        source_profile_reset(registry);
+        REQUIRE(source_profile_count(registry) == 0 && source_profile_dropped(registry) == 0);
     }
     return true;
 }

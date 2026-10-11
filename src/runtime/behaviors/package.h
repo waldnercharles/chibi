@@ -1,16 +1,15 @@
-#ifndef CHIBI_GAME_PACKAGE_H
-#define CHIBI_GAME_PACKAGE_H
+#ifndef CHIBI_PACKAGE_H
+#define CHIBI_PACKAGE_H
 
 #include "execution/prepared.h"
 #include "runtime/behaviors/module_set.h"
 #include "runtime/behaviors/source.h"
 
-#define GAME_PACKAGE_MAX_MODULES GAME_MODULE_SET_MAX_MODULES
-#define GAME_PACKAGE_MAX_BYTES GAME_MODULE_SET_MAX_BYTES
-#define GAME_PACKAGE_MAX_IMPORT_DEPTH GAME_MODULE_SET_MAX_IMPORT_DEPTH
-#define GAME_PACKAGE_MAX_EVENT_DECLARATIONS                                    \
-    GAME_MODULE_SET_MAX_EVENT_DECLARATIONS
-#define GAME_PACKAGE_MAX_EVENT_FIELDS GAME_MODULE_SET_MAX_EVENT_FIELDS
+#define PACKAGE_MAX_MODULES MODULE_SET_MAX_MODULES
+#define PACKAGE_MAX_BYTES MODULE_SET_MAX_BYTES
+#define PACKAGE_MAX_IMPORT_DEPTH MODULE_SET_MAX_IMPORT_DEPTH
+#define PACKAGE_MAX_EVENT_DECLARATIONS MODULE_SET_MAX_EVENT_DECLARATIONS
+#define PACKAGE_MAX_EVENT_FIELDS MODULE_SET_MAX_EVENT_FIELDS
 
 typedef struct
 {
@@ -18,28 +17,28 @@ typedef struct
     uint64_t id;
     const void *data;
     size_t length;
-} game_package_module;
+} package_module;
 
-typedef struct game_package_collection game_package_collection;
+typedef struct package_collection package_collection;
 /* Decodes immutable modules only, without an ECS world, programs, services or
  * dispatch. Input records and linker are borrowed during this call; accepted
  * collections own copied names and retained roots/imports. Optional original
  * event declarations validate the complete executable closure. Failure leaves
  * remaining unchanged. The budget includes collection metadata and modules. */
-game_package_collection *game_package_read_budget(
-    const game_package_module *,
+package_collection *package_read_budget(
+    const package_module *,
     int count,
     const execution_prepared_linker *,
-    const game_event_catalog *,
+    const event_catalog *,
     behavior_backend,
     size_t *remaining,
     char *error,
     size_t size
 );
-void game_package_collection_free(game_package_collection *);
-int game_package_collection_count(const game_package_collection *);
-const char *game_package_collection_name(const game_package_collection *, int);
-execution_module *game_package_collection_module(const game_package_collection *, int);
+void package_collection_free(package_collection *);
+int package_collection_count(const package_collection *);
+const char *package_collection_name(const package_collection *, int);
+execution_module *package_collection_module(const package_collection *, int);
 
 /* Records, linker callbacks and services are borrowed during loading. Native
  * capability descriptors and services must outlive the returned registry.
@@ -56,9 +55,9 @@ execution_module *game_package_collection_module(const game_package_collection *
  * collisions reject. Commit/discard use the ordinary source stage ownership. */
 /* Shares a remaining canonical decoded-storage budget across every record and
  * retained external import generation. Failure preserves the caller budget. */
-game_source_staging *game_package_stage_budget(
-    game_source_registry *,
-    const game_package_module *,
+source_staging *package_stage_budget(
+    source_registry *,
+    const package_module *,
     int,
     const execution_prepared_linker *,
     const service_binding *,
@@ -67,9 +66,9 @@ game_source_staging *game_package_stage_budget(
     char *error,
     size_t size
 );
-game_source_staging *game_package_stage(
-    game_source_registry *,
-    const game_package_module *,
+source_staging *package_stage(
+    source_registry *,
+    const package_module *,
     int,
     const execution_prepared_linker *,
     const service_binding *,
@@ -77,9 +76,9 @@ game_source_staging *game_package_stage(
     char *error,
     size_t size
 );
-game_source_registry *game_package_load(
+source_registry *package_load(
     ecs_world *,
-    const game_package_module *,
+    const package_module *,
     int count,
     const execution_prepared_linker *,
     const service_binding *,

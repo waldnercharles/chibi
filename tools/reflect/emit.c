@@ -78,7 +78,7 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
 {
     for (int i = 0; i < acount(ctx->structs); i++) {
         const struct_info *s = &ctx->structs[i];
-        fprintf(out, "const type_field %s_%s_fields[] = {\n", g_prefix, s->name);
+        fprintf(out, "const type_field %s%s_fields[] = {\n", symbol_prefix(), s->name);
         for (int j = 0; j < acount(s->fields); j++) {
             const field_info *f = &s->fields[j];
             fprintf(
@@ -98,10 +98,10 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
         }
         fputs("};\n\n", out);
 
-        fprintf(out, "const type_desc %s_T_%s = {\n", g_prefix, s->name);
+        fprintf(out, "const type_desc %sT_%s = {\n", symbol_prefix(), s->name);
         fprintf(out, "    .name = \"%s\",\n", s->name);
         fprintf(out, "    .size = sizeof(%s),\n", s->name);
-        fprintf(out, "    .fields = %s_%s_fields,\n", g_prefix, s->name);
+        fprintf(out, "    .fields = %s%s_fields,\n", symbol_prefix(), s->name);
         fprintf(out, "    .field_count = %d,\n", acount(s->fields));
         if (s->alias_of) {
             fprintf(out, "    .alias_of = \"%s\",\n", s->alias_of);
@@ -109,19 +109,19 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
         fputs("};\n\n", out);
     }
 
-    fprintf(out, "const type_desc *const %s_REGISTRY_TYPES[] = {\n", g_prefix);
+    fprintf(out, "const type_desc *const %sREGISTRY_TYPES[] = {\n", symbol_prefix());
     for (int i = 0; i < acount(ctx->structs); i++) {
-        fprintf(out, "    &%s_T_%s,\n", g_prefix, ctx->structs[i].name);
+        fprintf(out, "    &%sT_%s,\n", symbol_prefix(), ctx->structs[i].name);
     }
     fputs("};\n", out);
-    fprintf(out, "const int %s_REGISTRY_TYPE_COUNT = %d;\n\n", g_prefix, acount(ctx->structs));
+    fprintf(out, "const int %sREGISTRY_TYPE_COUNT = %d;\n\n", symbol_prefix(), acount(ctx->structs));
 
     for (int i = 0; i < acount(ctx->enums); i++) {
         const enum_info *enumeration = &ctx->enums[i];
         fprintf(
             out,
-            "static const enum_value_desc %s_ENUM_%s_VALUES[] = {\n",
-            g_prefix,
+            "static const enum_value_desc %sENUM_%s_VALUES[] = {\n",
+            symbol_prefix(),
             enumeration->name
         );
         for (int j = 0; j < acount(enumeration->values); j++) {
@@ -137,29 +137,29 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
         fprintf(out, "};\n");
         fprintf(
             out,
-            "const enum_desc %s_ENUM_%s = {\n"
+            "const enum_desc %sENUM_%s = {\n"
             "    .name = \"%s\",\n"
-            "    .values = %s_ENUM_%s_VALUES,\n"
+            "    .values = %sENUM_%s_VALUES,\n"
             "    .value_count = %d,\n"
             "};\n\n",
-            g_prefix,
+            symbol_prefix(),
             enumeration->name,
             enumeration->name,
-            g_prefix,
+            symbol_prefix(),
             enumeration->name,
             acount(enumeration->values)
         );
     }
     if (acount(ctx->enums)) {
-        fprintf(out, "const enum_desc *const %s_REGISTRY_ENUMS[] = {\n", g_prefix);
+        fprintf(out, "const enum_desc *const %sREGISTRY_ENUMS[] = {\n", symbol_prefix());
         for (int i = 0; i < acount(ctx->enums); i++) {
-            fprintf(out, "    &%s_ENUM_%s,\n", g_prefix, ctx->enums[i].name);
+            fprintf(out, "    &%sENUM_%s,\n", symbol_prefix(), ctx->enums[i].name);
         }
         fputs("};\n", out);
     } else {
-        fprintf(out, "const enum_desc *const %s_REGISTRY_ENUMS[1] = { NULL };\n", g_prefix);
+        fprintf(out, "const enum_desc *const %sREGISTRY_ENUMS[1] = { NULL };\n", symbol_prefix());
     }
-    fprintf(out, "const int %s_REGISTRY_ENUM_COUNT = %d;\n\n", g_prefix, acount(ctx->enums));
+    fprintf(out, "const int %sREGISTRY_ENUM_COUNT = %d;\n\n", symbol_prefix(), acount(ctx->enums));
 
     int component_count = 0;
     for (int i = 0; i < acount(ctx->structs); i++) {
@@ -169,22 +169,22 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
         }
     }
     if (component_count) {
-        fprintf(out, "const ecs_component_desc *const %s_REGISTRY_COMPONENTS[] = {\n", g_prefix);
+        fprintf(out, "const ecs_component_desc *const %sREGISTRY_COMPONENTS[] = {\n", symbol_prefix());
         for (int i = 0; i < acount(ctx->structs); i++) {
             if (ctx->structs[i].component) {
                 fprintf(
                     out,
-                    "    &%s_COMPONENT_%s,\n",
-                    g_prefix,
+                    "    &%sCOMPONENT_%s,\n",
+                    symbol_prefix(),
                     ctx->structs[i].name
                 );
             }
         }
         fputs("};\n", out);
     } else {
-        fprintf(out, "const void *const %s_REGISTRY_COMPONENTS[1] = { NULL };\n", g_prefix);
+        fprintf(out, "const void *const %sREGISTRY_COMPONENTS[1] = { NULL };\n", symbol_prefix());
     }
-    fprintf(out, "const int %s_REGISTRY_COMPONENT_COUNT = %d;\n\n", g_prefix, component_count);
+    fprintf(out, "const int %sREGISTRY_COMPONENT_COUNT = %d;\n\n", symbol_prefix(), component_count);
 
     int service_count = 0;
     for (int i = 0; i < acount(ctx->fns); i++) {
@@ -206,9 +206,9 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
                 if (!seen) {
                     fprintf(
                         out,
-                        "static const service_desc %s_SERVICE_%d = { \"%s\", "
+                        "static const service_desc %sSERVICE_%d = { \"%s\", "
                         "UINT64_C(%llu) };\n",
-                        g_prefix,
+                        symbol_prefix(),
                         service_count,
                         ctx->fns[i].pservice_type[j],
                         (unsigned long long)stable_service_id(ctx->fns[i].pservice_type[j])
@@ -218,21 +218,21 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
             }
         }
     }
-    fprintf(out, "const service_desc *const %s_REGISTRY_SERVICES[] = {\n", g_prefix);
+    fprintf(out, "const service_desc *const %sREGISTRY_SERVICES[] = {\n", symbol_prefix());
     for (int i = 0; i < service_count; i++) {
-        fprintf(out, "    &%s_SERVICE_%d,\n", g_prefix, i);
+        fprintf(out, "    &%sSERVICE_%d,\n", symbol_prefix(), i);
     }
     fputs("};\n", out);
-    fprintf(out, "const int %s_REGISTRY_SERVICE_COUNT = %d;\n\n", g_prefix, service_count);
+    fprintf(out, "const int %sREGISTRY_SERVICE_COUNT = %d;\n\n", symbol_prefix(), service_count);
 
     fprintf(
         out,
-        "const type_catalog_pack %s_TYPE_PACK = { %s_REGISTRY_TYPES, %d, "
-        "%s_REGISTRY_ENUMS, %d };\n\n",
-        g_prefix,
-        g_prefix,
+        "const type_catalog_pack %sTYPE_PACK = { %sREGISTRY_TYPES, %d, "
+        "%sREGISTRY_ENUMS, %d };\n\n",
+        symbol_prefix(),
+        symbol_prefix(),
         acount(ctx->structs),
-        g_prefix,
+        symbol_prefix(),
         acount(ctx->enums)
     );
     return (reflection_counts){ component_count, service_count };
@@ -243,21 +243,32 @@ static reflection_counts declare_reflection(FILE *out, const collect_ctx *ctx)
     int component_count = 0, service_count = 0;
     for (int i = 0; i < acount(ctx->structs); i++) {
         const struct_info *s = &ctx->structs[i];
-        fprintf(out, "extern const type_desc %s_T_%s;\n", g_prefix, s->name);
-        fprintf(out, "extern const type_field %s_%s_fields[];\n", g_prefix, s->name);
+        fprintf(out, "extern const type_desc %sT_%s;\n", symbol_prefix(), s->name);
+        fprintf(out, "extern const type_field %s%s_fields[];\n", symbol_prefix(), s->name);
         if (!s->component) {
             continue;
         }
         component_count++;
-        fprintf(out, "extern const ecs_component_desc %s_COMPONENT_%s;\n", g_prefix, s->name);
+        fprintf(out, "extern const ecs_component_desc %sCOMPONENT_%s;\n", symbol_prefix(), s->name);
         if (component_unwrap(s)) {
-            fprintf(out, "extern const node_host_call %s_Unwrap_%s_execution;\n", g_prefix, s->name);
+            fprintf(out, "extern const node_host_call %sUnwrap_%s_execution;\n", symbol_prefix(), s->name);
         }
-        fprintf(out, "extern %s *%s_%s_get(ecs_world *, ecs_entity);\n", s->name, g_prefix, s->name);
-        fprintf(out, "extern const %s *%s_%s_get_const(const ecs_world *, ecs_entity);\n", s->name, g_prefix, s->name);
-        fprintf(out, "extern int %s_%s_has(const ecs_world *, ecs_entity);\n", g_prefix, s->name);
-        fprintf(out, "extern int %s_%s_add(ecs_world *, ecs_entity, uint64_t);\n", g_prefix, s->name);
-        fprintf(out, "extern int %s_%s_remove(ecs_world *, ecs_entity, uint64_t);\n", g_prefix, s->name);
+        fprintf(out, "extern %s *%s%s_get(ecs_world *, ecs_entity);\n", s->name, symbol_prefix(), s->name);
+        fprintf(
+            out,
+            "extern const %s *%s%s_get_const(const ecs_world *, ecs_entity);\n",
+            s->name,
+            symbol_prefix(),
+            s->name
+        );
+        fprintf(out, "extern int %s%s_has(const ecs_world *, ecs_entity);\n", symbol_prefix(), s->name);
+        fprintf(out, "extern int %s%s_add(ecs_world *, ecs_entity, uint64_t);\n", symbol_prefix(), s->name);
+        fprintf(
+            out,
+            "extern int %s%s_remove(ecs_world *, ecs_entity, uint64_t);\n",
+            symbol_prefix(),
+            s->name
+        );
     }
     const char **services = NULL;
     for (int i = 0; i < acount(ctx->fns); i++) {
@@ -277,17 +288,17 @@ static reflection_counts declare_reflection(FILE *out, const collect_ctx *ctx)
     }
     service_count = acount(services);
     afree(services);
-    fprintf(out, "extern const type_desc *const %s_REGISTRY_TYPES[];\n", g_prefix);
-    fprintf(out, "extern const enum_desc *const %s_REGISTRY_ENUMS[];\n", g_prefix);
+    fprintf(out, "extern const type_desc *const %sREGISTRY_TYPES[];\n", symbol_prefix());
+    fprintf(out, "extern const enum_desc *const %sREGISTRY_ENUMS[];\n", symbol_prefix());
     for (int i = 0; i < acount(ctx->enums); i++) {
         fprintf(
             out,
-            "extern const enum_desc %s_ENUM_%s;\n",
-            g_prefix,
+            "extern const enum_desc %sENUM_%s;\n",
+            symbol_prefix(),
             ctx->enums[i].name
         );
     }
-    fprintf(out, "extern const service_desc *const %s_REGISTRY_SERVICES[];\n\n", g_prefix);
+    fprintf(out, "extern const service_desc *const %sREGISTRY_SERVICES[];\n\n", symbol_prefix());
     return (reflection_counts){ component_count, service_count };
 }
 
@@ -305,13 +316,7 @@ static void emit_native_header(FILE *out, const collect_ctx *ctx, bool capabilit
             duplicate |= ctx->structs[j].file && !strcmp(ctx->structs[j].file, file);
         }
         if (!duplicate) {
-            fprintf(
-                out,
-                "#include \"%s\"\n",
-                !strcmp(g_prefix, "GAME") && !strcmp(file, "components.h")
-                    ? "runtime/components.h"
-                    : file
-            );
+            fprintf(out, "#include \"%s\"\n", !*g_prefix && !strcmp(file, "components.h") ? "runtime/components.h" : file);
         }
     }
     fputs("#include \"types/type.h\"\n#include \"types/catalog.h\"\n#include \"execution/service.h\"\n", out);

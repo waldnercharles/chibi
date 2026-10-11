@@ -12,9 +12,9 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define CONTROL_ENUM "GameControl"
+#define CONTROL_ENUM "Control"
 #define CONTROL_LIMIT 64
-#define BUTTON_ENUM "GamePadControl"
+#define BUTTON_ENUM "PadControl"
 
 static bool fail(char *error, size_t size, const char *name, const char *message)
 {
@@ -72,7 +72,7 @@ static bool read_action(const char *name, const av_value *value, input_action *o
     }
     *out = (input_action){ .name = name, .firing = firing && av_get_bool(firing) };
     if (sources && !read_sources(sources, &out->controls)) {
-        return fail(error, size, name, "sources must list one or more GameControl labels");
+        return fail(error, size, name, "sources must list one or more Control labels");
     }
     if (!sources && !buttons) {
         return fail(error, size, name, "an action needs sources or controller buttons");
@@ -83,7 +83,7 @@ static bool read_action(const char *name, const av_value *value, input_action *o
         return fail(error, size, name, "controller buttons need a controller slot from 0 to 3");
     }
     if (buttons && !read_buttons(buttons, &out->buttons)) {
-        return fail(error, size, name, "buttons must list one or more GamePadControl labels");
+        return fail(error, size, name, "buttons must list one or more PadControl labels");
     }
     out->controller = controller ? (int)av_get_uint(controller) : 0;
     return true;

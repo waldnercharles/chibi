@@ -52,12 +52,10 @@ void run_behavior_loader_checks()
     write_asset(directory, "MissingLibrary", "behavior MissingLibrary { on Tick { missing := AbsentLibrary.Missing(); } }\n");
 
     ecs_world *ecs = ecs_world_new();
-    game_preview_world *world = game_preview_world_new(ecs);
-    game_prototype_preview *preview = game_prototype_preview_new(
-        &(game_prototype_registry){ 0 }
-    );
+    preview_world *world = preview_world_new(ecs);
+    prototype_preview *preview = prototype_preview_new(&(prototype_registry){ 0 });
     asset = behavior_asset_new("PreviewFailed");
-    assert(game_prototype_preview_register_behavior(preview, asset->name, asset) == 0);
+    assert(prototype_preview_register_behavior(preview, asset->name, asset) == 0);
     json = behavior_asset_save(asset);
     write_asset(directory, "PreviewFailed", json);
     free(json);
@@ -78,8 +76,8 @@ void run_behavior_loader_checks()
     messages[count] = '\0';
     fclose(capture);
 
-    assert(loaded == 1 && game_preview_find_definition(world, "Good"));
-    assert(!game_preview_find_definition(world, "PreviewFailed"));
+    assert(loaded == 1 && preview_find_definition(world, "Good"));
+    assert(!preview_find_definition(world, "PreviewFailed"));
     assert(strstr(messages, "Broken.chibi (deserialize): Expected )"));
     assert(strstr(messages, "Unknown.chibi (deserialize):") && strstr(messages, "Missing"));
     assert(strstr(messages, "Good.chibi (register): A definition with this name is already registered."));
@@ -89,8 +87,8 @@ void run_behavior_loader_checks()
     );
     assert(strstr(messages, "PreviewFailed.chibi (preview):"));
     assert(!strstr(messages, "AuthoringOnly.txt"));
-    game_prototype_preview_free(preview);
-    game_preview_world_free(world);
+    prototype_preview_free(preview);
+    preview_world_free(world);
     ecs_world_free(ecs);
 
     const char *names[] = { "Good",    "Duplicate",      "Broken",

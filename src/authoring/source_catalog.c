@@ -28,7 +28,7 @@ enum
     MAX_DEPTH = 16,
     MAX_PATH = 4096,
     MAX_VALUES = 65536,
-    /* GAME_SCENE_DEPTH_MAX: a scene nested deeper does not load. */
+    /* SCENE_DEPTH_MAX: a scene nested deeper does not load. */
     MAX_ENTITY_DEPTH = 256
 };
 typedef enum

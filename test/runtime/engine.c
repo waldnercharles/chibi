@@ -16,9 +16,9 @@
 typedef struct
 {
     ecs_world *world;
-    game_preview_world *live;
+    preview_world *live;
     engine *runtime;
-    game_prototype_preview *preview;
+    prototype_preview *preview;
     ecs_entity entity;
 } clock_fixture;
 
@@ -50,7 +50,7 @@ static behavior_asset *clock_behavior(bool breakpoint)
         graph_add_pin(g, input, true, &(pin_spec){ .name = "Direction", .type = PIN_STRUCT, .type_name = "CF_V2" }) ==
         1
     );
-    node *velocity = graph_add_node(g, registry_node_by_name("Set_GameVelocity"));
+    node *velocity = graph_add_node(g, registry_node_by_name("Set_Velocity"));
     assert(velocity && graph_connect_exec(g, input, 0, velocity, 0, 0) == 0);
     assert(graph_connect_data(g, input, 1, velocity, 1) == 0);
     clock_log(g, velocity, "input");
@@ -71,27 +71,26 @@ static behavior_asset *clock_behavior(bool breakpoint)
 
 static int clock_attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 {
-    return game_behavior_attach(user, entity, name);
+    return behavior_attach(user, entity, name);
 }
 
 static clock_fixture clock_new(bool preview, bool breakpoint)
 {
     clock_fixture f = { 0 };
-    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
-                                         GAME_REGISTRY_COMPONENT_COUNT };
+    prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
     char error[256];
-    game_prototype *prototype = game_prototype_load(
+    prototype *prototype = prototype_load(
         "name \"Clock\"\n"
         "(array)behaviors \"Clock\"\n"
         "components {\n"
-        "    GameTransform x=0 y=0\n"
-        "    GameVelocity x=0 y=0\n"
-        "    GameBody type=2\n"
-        "    GameCollider radius=1 category=1\n"
-        "    GameInput {\n"
+        "    Transform x=0 y=0\n"
+        "    Velocity x=0 y=0\n"
+        "    Body type=2\n"
+        "    Collider radius=1 category=1\n"
+        "    Input {\n"
         "        move x=0 y=0\n"
         "    }\n"
-        "    GameAim {\n"
+        "    Aim {\n"
         "        direction x=1 y=0\n"
         "        firing #false\n"
         "    }\n"
@@ -103,54 +102,50 @@ static clock_fixture clock_new(bool preview, bool breakpoint)
     assert(prototype);
     behavior_asset *asset = clock_behavior(breakpoint);
     if (preview) {
-        f.preview = game_prototype_preview_new(&registry);
-        assert(game_prototype_preview_register_behavior(f.preview, "Clock", asset) == 0);
-        assert(game_prototype_preview_launch(f.preview, prototype, error, sizeof error) == 0);
+        f.preview = prototype_preview_new(&registry);
+        assert(prototype_preview_register_behavior(f.preview, "Clock", asset) == 0);
+        assert(prototype_preview_launch(f.preview, prototype, error, sizeof error) == 0);
         behavior_asset_free(asset);
-        f.world = game_prototype_preview_world(f.preview);
-        f.runtime = game_prototype_preview_runtime(f.preview);
-        f.entity = game_prototype_preview_entity(f.preview);
+        f.world = prototype_preview_world(f.preview);
+        f.runtime = prototype_preview_runtime(f.preview);
+        f.entity = prototype_preview_entity(f.preview);
     } else {
         f.world = ecs_world_new();
-        for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-            assert(
-                ecs_world_register_component(f.world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
-            );
+        for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+            assert(ecs_world_register_component(f.world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
         }
-        f.live = game_preview_world_new(f.world);
+        f.live = preview_world_new(f.world);
         f.runtime = authoring_engine_new(f.world, f.live->runtime);
+        assert(preview_add_definition(f.live, preview_definition_new("Clock", asset)) == 0);
         assert(
-            game_preview_add_definition(f.live, game_preview_definition_new("Clock", asset)) == 0
-        );
-        assert(
-            game_prototype_spawn(
+            prototype_spawn(
                 prototype,
                 f.world,
-                &(game_prototype_spawn_hooks){ clock_attach, f.live->runtime->behaviors },
+                &(prototype_spawn_hooks){ clock_attach, f.live->runtime->behaviors },
                 &f.entity,
                 error,
                 sizeof error
             ) == 0
         );
     }
-    game_prototype_free(prototype);
+    prototype_free(prototype);
     assert(engine_set_focus(f.runtime, ENGINE_FOCUS_VIEWPORT) == 0);
     return f;
 }
 
-static game_behavior_world *clock_behaviors(clock_fixture *f)
+static behavior_world *clock_behaviors(clock_fixture *f)
 {
-    return f->preview ? game_prototype_preview_behaviors(f->preview)
+    return f->preview ? prototype_preview_behaviors(f->preview)
                       : f->live->runtime->behaviors;
 }
 
 static int clock_logs(clock_fixture *f, const char *message, ecs_entity entity)
 {
-    game_behavior_world *behaviors = clock_behaviors(f);
+    behavior_world *behaviors = clock_behaviors(f);
     int count = 0;
-    for (int i = 0; i < game_behavior_log_count(behaviors); i++) {
-        game_behavior_log_info info;
-        assert(game_behavior_log_info_at(behaviors, i, &info) == 0);
+    for (int i = 0; i < behavior_log_count(behaviors); i++) {
+        behavior_log_info info;
+        assert(behavior_log_info_at(behaviors, i, &info) == 0);
         count += !strcmp(info.message, message) &&
                  (!entity.slot ||
                   ecs_entity_to_u64(info.entity) == ecs_entity_to_u64(entity));
@@ -161,11 +156,11 @@ static int clock_logs(clock_fixture *f, const char *message, ecs_entity entity)
 static void clock_free(clock_fixture *f)
 {
     if (f->preview) {
-        game_prototype_preview_free(f->preview);
+        prototype_preview_free(f->preview);
         return;
     }
     engine_free(f->runtime);
-    game_preview_world_free(f->live);
+    preview_world_free(f->live);
     ecs_world_free(f->world);
 }
 
@@ -174,7 +169,7 @@ static void clock_render(void *user)
     (*(int *)user)++;
 }
 
-static int clock_system(ecs_world *, double now, double, void *user, game_schedule_error *)
+static int clock_system(ecs_world *, double now, double, void *user, schedule_error *)
 {
     double *last = user;
     assert(now > *last && now - *last < ENGINE_FIXED_SECONDS + 1e-10);
@@ -194,10 +189,10 @@ static void cadence_checks()
             assert(
                 engine_register_system(
                     f.runtime,
-                    &(game_schedule_desc){ .name = "clock",
-                                           .phase = SYSTEM_POST_EVENTS,
-                                           .run = clock_system,
-                                           .user = &system_time }
+                    &(schedule_desc){ .name = "clock",
+                                      .phase = SYSTEM_POST_EVENTS,
+                                      .run = clock_system,
+                                      .user = &system_time }
                 ) == 0
             );
             assert(engine_sample_movement(f.runtime, 1, 0) == FLOW_OK);
@@ -206,8 +201,8 @@ static void cadence_checks()
                 assert(engine_frame(f.runtime, (double)i / rates[r]) == FLOW_OK);
             }
             const engine_frame_timing *timing = engine_last_timing(f.runtime);
-            const GameTransform *position = GAME_GameTransform_get_const(f.world, f.entity);
-            const GameAim *aim = GAME_GameAim_get_const(f.world, f.entity);
+            const Transform *position = Transform_get_const(f.world, f.entity);
+            const Aim *aim = Aim_get_const(f.world, f.entity);
             test_check(
                 timing->simulation_steps == 60 && timing->command_apply_count == 60 &&
                     timing->dropped_seconds == 0 && fabs(system_time - 1) < 1e-10 &&
@@ -235,21 +230,16 @@ static void tick_parameter_checks()
         assert(
             graph_add_pin(g, tick, true, &(pin_spec){ "DeltaSeconds", PIN_F32, "float", PIN_DATA }) == 1
         );
-        node *set = graph_add_node(g, registry_node_by_name("Set_GameVelocity_y"));
+        node *set = graph_add_node(g, registry_node_by_name("Set_Velocity_y"));
         assert(set && graph_connect_exec(g, tick, 0, set, 0, 0) == 0);
         assert(graph_connect_data(g, tick, 1, set, 1) == 0);
-        assert(
-            game_preview_add_definition(
-                f.live,
-                game_preview_definition_new(asset->name, asset)
-            ) == 0
-        );
-        assert(game_behavior_attach(f.live->runtime->behaviors, f.entity, "TickParameter") == 0);
-        game_behavior_set_batch_enabled(f.live->runtime->behaviors, batch);
-        game_behavior_set_delta_seconds(f.live->runtime->behaviors, .125);
+        assert(preview_add_definition(f.live, preview_definition_new(asset->name, asset)) == 0);
+        assert(behavior_attach(f.live->runtime->behaviors, f.entity, "TickParameter") == 0);
+        behavior_set_batch_enabled(f.live->runtime->behaviors, batch);
+        behavior_set_delta_seconds(f.live->runtime->behaviors, .125);
         flow_error error;
-        assert(game_behavior_update(f.live->runtime->behaviors, &error) >= 0);
-        test_check(GAME_GameVelocity_get_const(f.world, f.entity)->y == .125f, "the editor Tick parameter receives the simulation delta with batching on and off");
+        assert(behavior_update(f.live->runtime->behaviors, &error) >= 0);
+        test_check(Velocity_get_const(f.world, f.entity)->y == .125f, "the editor Tick parameter receives the simulation delta with batching on and off");
         clock_free(&f);
     }
 }
@@ -262,28 +252,27 @@ static ecs_entity authored_spawn(clock_fixture *f, const char *behavior_path, co
     free(json);
     assert(
         asset &&
-        game_preview_add_definition(f->live, game_preview_definition_new(asset->name, asset)) == 0
+        preview_add_definition(f->live, preview_definition_new(asset->name, asset)) == 0
     );
     json = text_file_read(prototype_path);
     assert(json);
-    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
-                                         GAME_REGISTRY_COMPONENT_COUNT };
+    prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
     char error[256];
-    game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
+    prototype *prototype = prototype_load(json, &registry, error, sizeof error);
     free(json);
     assert(prototype);
     ecs_entity entity;
     assert(
-        game_prototype_spawn(
+        prototype_spawn(
             prototype,
             f->world,
-            &(game_prototype_spawn_hooks){ clock_attach, f->live->runtime->behaviors },
+            &(prototype_spawn_hooks){ clock_attach, f->live->runtime->behaviors },
             &entity,
             error,
             sizeof error
         ) == 0
     );
-    game_prototype_free(prototype);
+    prototype_free(prototype);
     return entity;
 }
 
@@ -291,22 +280,22 @@ static void authored_motion_checks()
 {
     for (int mirrored = 0; mirrored < 2; mirrored++) {
         clock_fixture f = clock_new(false, false);
-        game_behavior_set_deferred(f.live->runtime->behaviors, true);
+        behavior_set_deferred(f.live->runtime->behaviors, true);
         ecs_entity flipper = authored_spawn(
             &f,
             "content/behaviors/OrbitFlipperMotion.chibi",
             "content/prototypes/OrbitFlipper.kdl"
         );
         if (mirrored) {
-            GAME_GameOrientation_get(f.world, flipper)->radians = 3.141593f - .35f;
-            GAME_GameTransform_get(f.world, flipper)->x *= -1;
+            Orientation_get(f.world, flipper)->radians = 3.141593f - .35f;
+            Transform_get(f.world, flipper)->x *= -1;
         }
-        game_behavior_set_deferred(f.live->runtime->behaviors, false);
-        assert(game_behavior_begin_pending(f.live->runtime->behaviors) >= 0);
-        GameTransform origin = *GAME_GameTransform_get_const(f.world, flipper);
-        float rest = GAME_GameOrientation_get_const(f.world, flipper)->radians;
+        behavior_set_deferred(f.live->runtime->behaviors, false);
+        assert(behavior_begin_pending(f.live->runtime->behaviors) >= 0);
+        Transform origin = *Transform_get_const(f.world, flipper);
+        float rest = Orientation_get_const(f.world, flipper)->radians;
         float target = rest + (mirrored ? .9f : -.9f);
-        int control = mirrored ? GAME_CONTROL_M : GAME_CONTROL_Z;
+        int control = mirrored ? CONTROL_M : CONTROL_Z;
         assert(engine_frame(f.runtime, 0) == FLOW_OK);
         int frame = 0;
         bool reached = true;
@@ -316,18 +305,17 @@ static void authored_motion_checks()
             for (int i = 0; i < 10; i++) {
                 assert(engine_frame(f.runtime, ++frame / 60.0) == FLOW_OK);
             }
-            float active = GAME_GameOrientation_get_const(f.world, flipper)->radians;
+            float active = Orientation_get_const(f.world, flipper)->radians;
             reached &= fabsf(active - target) < .002f;
             assert(engine_sample_controls(f.runtime, 0, &firing) >= 0);
             for (int i = 0; i < 10; i++) {
                 assert(engine_frame(f.runtime, ++frame / 60.0) == FLOW_OK);
             }
         }
-        const GameTransform *position = GAME_GameTransform_get_const(f.world, flipper);
+        const Transform *position = Transform_get_const(f.world, flipper);
         test_check(
             reached &&
-                fabsf(GAME_GameOrientation_get_const(f.world, flipper)->radians - rest) <
-                    .002f &&
+                fabsf(Orientation_get_const(f.world, flipper)->radians - rest) < .002f &&
                 hypotf(position->x - origin.x, position->y - origin.y) < .25f,
             "authored flipper motion reaches its stroke and returns to its "
             "pivot for twenty cycles in either direction"
@@ -340,7 +328,7 @@ static void authored_motion_checks()
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
     assert(engine_frame(f.runtime, 1.0 / 60) == FLOW_OK);
     test_check(
-        fabsf(GAME_GameVelocity_get_const(f.world, ball)->y - 350.f / 60) < .001f,
+        fabsf(Velocity_get_const(f.world, ball)->y - 350.f / 60) < .001f,
         "the authored ball graph applies gravity using the Tick output"
     );
     clock_free(&f);
@@ -349,27 +337,24 @@ static void authored_motion_checks()
 static void spawn_cadence_checks(int count)
 {
     clock_fixture f = clock_new(false, false);
-    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
-                                         GAME_REGISTRY_COMPONENT_COUNT };
+    prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
     char error[256];
-    game_prototype *prototype = game_prototype_load(
+    prototype *prototype = prototype_load(
         "name \"ClockChild\"\n"
         "(array)behaviors \"ClockChild\"\n"
         "components {\n"
-        "    GameTransform x=0 y=0\n"
+        "    Transform x=0 y=0\n"
         "}\n",
         &registry,
         error,
         sizeof error
     );
-    assert(prototype && game_entities_register(f.live->runtime->entities, prototype) == 0);
-    game_prototype_free(prototype);
+    assert(prototype && entities_register(f.live->runtime->entities, prototype) == 0);
+    prototype_free(prototype);
     behavior_asset *child = behavior_asset_new("ClockChild");
     assert(behavior_asset_set_owner_type(child, "ecs.entity") == 0);
     clock_log(child->graph, clock_event(child->graph, "Begin"), "child ready");
-    assert(
-        game_preview_add_definition(f.live, game_preview_definition_new("ClockChild", child)) == 0
-    );
+    assert(preview_add_definition(f.live, preview_definition_new("ClockChild", child)) == 0);
 
     behavior_asset *asset = behavior_asset_new("ClockSpawner");
     assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
@@ -377,8 +362,8 @@ static void spawn_cadence_checks(int count)
     node *tick = clock_event(g, "Tick");
     node *loop = graph_add_node(g, registry_node_by_name("ForLoop"));
     node *spawn = graph_add_node(g, registry_node_by_name("Spawn Prototype"));
-    node *make = graph_add_node(g, registry_node_by_name("Make_GameTransform"));
-    node *initialize = graph_add_node(g, registry_node_by_name("SetEntity_GameTransform"));
+    node *make = graph_add_node(g, registry_node_by_name("Make_Transform"));
+    node *initialize = graph_add_node(g, registry_node_by_name("SetEntity_Transform"));
     assert(loop && spawn && make && initialize);
     assert(graph_set_pin_default(g, loop, 0, 1, &(pin_value){ .type = PIN_I32, .i = 0 }) == 0);
     assert(
@@ -393,10 +378,8 @@ static void spawn_cadence_checks(int count)
     assert(graph_connect_exec(g, spawn, 0, initialize, 0, 0) == 0);
     assert(graph_connect_data(g, spawn, 1, initialize, 1) == 0);
     assert(graph_connect_data(g, make, 0, initialize, 2) == 0);
-    assert(
-        game_preview_add_definition(f.live, game_preview_definition_new("ClockSpawner", asset)) == 0
-    );
-    assert(game_behavior_attach(f.live->runtime->behaviors, f.entity, "ClockSpawner") == 0);
+    assert(preview_add_definition(f.live, preview_definition_new("ClockSpawner", asset)) == 0);
+    assert(behavior_attach(f.live->runtime->behaviors, f.entity, "ClockSpawner") == 0);
     assert(engine_sample_movement(f.runtime, 1, 0) == FLOW_OK);
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
     ecs_entity *children = NULL;
@@ -404,10 +387,10 @@ static void spawn_cadence_checks(int count)
     assert(
         engine_register_system(
             f.runtime,
-            &(game_schedule_desc){ .name = "clock",
-                                   .phase = SYSTEM_POST_EVENTS,
-                                   .run = clock_system,
-                                   .user = &system_time }
+            &(schedule_desc){ .name = "clock",
+                              .phase = SYSTEM_POST_EVENTS,
+                              .run = clock_system,
+                              .user = &system_time }
         ) == 0
     );
     const int steps[] = { 1, 4, 6 };
@@ -415,9 +398,9 @@ static void spawn_cadence_checks(int count)
     for (int frame = 0; frame < frames; frame++) {
         int step = steps[frame];
         assert(engine_frame(f.runtime, step * ENGINE_FIXED_SECONDS) == FLOW_OK);
-        game_entities_copy_live(f.live->runtime->entities, &children);
+        entities_copy_live(f.live->runtime->entities, &children);
         const engine_frame_timing *timing = engine_last_timing(f.runtime);
-        const GameTransform *position = GAME_GameTransform_get_const(f.world, f.entity);
+        const Transform *position = Transform_get_const(f.world, f.entity);
         test_check(
             acount(children) == step * count &&
                 clock_logs(&f, "child ready", (ecs_entity){ 0 }) == step * count &&
@@ -428,7 +411,7 @@ static void spawn_cadence_checks(int count)
             "fixed tick without losing movement"
         );
         for (int i = 0; i < acount(children); i++) {
-            assert(GAME_GameTransform_get_const(f.world, children[i])->x == 73);
+            assert(Transform_get_const(f.world, children[i])->x == 73);
         }
     }
     afree(children);
@@ -439,7 +422,7 @@ static void debugger_clock_checks()
 {
     for (int single = 0; single < 2; single++) {
         clock_fixture f = clock_new(false, true);
-        behavior_instance *instance = game_behavior_instance(f.live->runtime->behaviors, f.entity, "Clock");
+        behavior_instance *instance = behavior_instance(f.live->runtime->behaviors, f.entity, "Clock");
         behavior_instance_set_breakpoints_enabled(instance, true);
         assert(engine_frame(f.runtime, 0) == FLOW_OK);
         if (single) {
@@ -487,12 +470,12 @@ static void presentation_checks()
     assert(engine_sample_movement(f.runtime, 1, 0) == FLOW_OK);
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
     assert(engine_frame(f.runtime, .1) == FLOW_OK);
-    float solved = GAME_GameTransform_get_const(f.world, f.entity)->x;
+    float solved = Transform_get_const(f.world, f.entity)->x;
     assert(engine_frame(f.runtime, .1 + ENGINE_FIXED_SECONDS * .5) == FLOW_OK);
     CF_V2 displayed = engine_render_transform(f.runtime, f.world, f.entity).position;
     test_check(
         fabs(displayed.x - (solved - ENGINE_FIXED_SECONDS * .5)) < .00001f &&
-            GAME_GameTransform_get_const(f.world, f.entity)->x == solved &&
+            Transform_get_const(f.world, f.entity)->x == solved &&
             engine_last_timing(f.runtime)->steps == 0,
         "fractional display frames interpolate physics poses without changing "
         "authoritative Transform"
@@ -513,7 +496,7 @@ static void attachment_clock_checks()
             assert(engine_frame(f.runtime, i * ENGINE_FIXED_SECONDS) == FLOW_OK);
         }
         ecs_entity late = ecs_world_create_entity(f.world);
-        assert(game_behavior_attach(clock_behaviors(&f), late, "Clock") == 0);
+        assert(behavior_attach(clock_behaviors(&f), late, "Clock") == 0);
         for (int i = 61; i <= 65; i++) {
             assert(engine_frame(f.runtime, i * ENGINE_FIXED_SECONDS) == FLOW_OK);
         }
@@ -596,7 +579,7 @@ static void action_checks()
 {
     clock_fixture f = clock_new(false, false);
     ecs_entity observer = ecs_world_create_entity(f.world);
-    assert(game_behavior_attach(f.live->runtime->behaviors, observer, "Clock") == 0);
+    assert(behavior_attach(f.live->runtime->behaviors, observer, "Clock") == 0);
     assert(engine_frame(f.runtime, 0) == FLOW_OK);
     flow_error error = { 0 };
     assert(engine_dispatch_input(f.runtime, "Jump", 1, 1, &error) == FLOW_ERR_UNKNOWN_EVENT);
@@ -611,19 +594,19 @@ static void action_checks()
         clock_logs(&f, "fire", f.entity) == 2 && clock_logs(&f, "dash", f.entity) == 1 &&
             clock_logs(&f, "fire", observer) == 0 &&
             clock_logs(&f, "dash", observer) == 0,
-        "quick press/release/press survives catch-up and only GameInput owners "
+        "quick press/release/press survives catch-up and only Input owners "
         "receive Fire/Dash"
     );
     assert(engine_dispatch_input(f.runtime, "Fire", 1, 1, NULL) == 0);
     assert(engine_sample_movement(f.runtime, 1, 0) == FLOW_OK);
     assert(engine_frame(f.runtime, .2) == FLOW_OK);
-    float before = GAME_GameTransform_get_const(f.world, f.entity)->x;
-    assert(ecs_world_record_remove(f.world, f.entity, GAME_COMPONENT_GameInput.id, 0) == ECS_OK);
+    float before = Transform_get_const(f.world, f.entity)->x;
+    assert(ecs_world_record_remove(f.world, f.entity, COMPONENT_Input.id, 0) == ECS_OK);
     assert(ecs_world_apply_commands(f.world) == ECS_OK);
     assert(engine_frame(f.runtime, .3) == FLOW_OK);
     test_check(
-        GAME_GameVelocity_get_const(f.world, f.entity)->x == 0 &&
-            GAME_GameTransform_get_const(f.world, f.entity)->x == before,
+        Velocity_get_const(f.world, f.entity)->x == 0 &&
+            Transform_get_const(f.world, f.entity)->x == before,
         "losing local input ownership sends one zero movement release before "
         "physics"
     );
@@ -634,7 +617,7 @@ static void action_checks()
 
 typedef struct
 {
-    game_entities *entities;
+    entities *entities;
     ecs_entity target;
     bool recursive;
     int calls;
@@ -646,13 +629,13 @@ static int clock_reaction(node *, flow_context *ctx)
     assert(reaction);
     reaction->calls++;
     if (!reaction->recursive && reaction->calls == 2) {
-        game_entities_request_destroy(reaction->entities, reaction->target);
+        entities_request_destroy(reaction->entities, reaction->target);
         return flow_context_continue(ctx, 0);
     }
     pin_value other = { .type = PIN_HANDLE,
                         .type_name = "ecs.entity",
                         .u64 = ecs_entity_to_u64(reaction->target) };
-    int result = game_entities_request_event(
+    int result = entities_request_event(
         reaction->entities,
         reaction->target,
         reaction->recursive ? "Contact Begin" : "Damage",
@@ -676,17 +659,15 @@ static node_desc reaction_desc = {
 static void reaction_checks(bool recursive)
 {
     clock_fixture f = clock_new(false, false);
-    GameCollider *collider = GAME_GameCollider_get(f.world, f.entity);
+    Collider *collider = Collider_get(f.world, f.entity);
     collider->mask = 2;
     collider->sensor = true;
-    GAME_GameBody_get(f.world, f.entity)->type = GAME_BODY_DYNAMIC;
+    Body_get(f.world, f.entity)->type = BODY_DYNAMIC;
     ecs_entity other = ecs_world_create_entity(f.world);
-    assert(GAME_GameTransform_add(f.world, other, 0) == ECS_OK);
-    assert(GAME_GameCollider_add(f.world, other, 0) == ECS_OK);
+    assert(Transform_add(f.world, other, 0) == ECS_OK);
+    assert(Collider_add(f.world, other, 0) == ECS_OK);
     assert(ecs_world_apply_commands(f.world) == ECS_OK);
-    *GAME_GameCollider_get(f.world, other) = (GameCollider){ .radius = 1,
-                                                             .category = 2,
-                                                             .mask = 1 };
+    *Collider_get(f.world, other) = (Collider){ .radius = 1, .category = 2, .mask = 1 };
     behavior_asset *asset = behavior_asset_new("Reactions");
     assert(behavior_asset_set_owner_type(asset, "ecs.entity") == 0);
     const char *events[] = { "Contact Begin", "Damage" };
@@ -705,12 +686,12 @@ static void reaction_checks(bool recursive)
         node *reaction = graph_add_node(asset->graph, &reaction_desc);
         assert(graph_connect_exec(asset->graph, event, 0, reaction, 0, 0) == 0);
     }
-    assert(game_behavior_register_asset(f.live->runtime->behaviors, "Reactions", asset) == 0);
-    assert(game_behavior_attach(f.live->runtime->behaviors, f.entity, "Reactions") == 0);
+    assert(behavior_register_asset(f.live->runtime->behaviors, "Reactions", asset) == 0);
+    assert(behavior_attach(f.live->runtime->behaviors, f.entity, "Reactions") == 0);
     reaction_fixture reaction = { f.live->runtime->entities, f.entity, recursive, 0 };
     assert(
         behavior_instance_bind_service(
-            game_behavior_instance(f.live->runtime->behaviors, f.entity, "Reactions"),
+            behavior_instance(f.live->runtime->behaviors, f.entity, "Reactions"),
             "test.reaction",
             &reaction
         ) == 0
@@ -737,8 +718,8 @@ static void reaction_checks(bool recursive)
     behavior_asset_free(asset);
 }
 
-static game_behavior_profile_row profile_row(
-    const game_behavior_profile_frame *frame,
+static behavior_profile_row profile_row(
+    const behavior_profile_frame *frame,
     const char *behavior,
     const char *event
 )
@@ -749,7 +730,7 @@ static game_behavior_profile_row profile_row(
             return frame->rows[i];
         }
     }
-    return (game_behavior_profile_row){ 0 };
+    return (behavior_profile_row){ 0 };
 }
 
 static uint64_t profile_clock()
@@ -761,14 +742,14 @@ static uint64_t profile_clock()
 
 typedef struct
 {
-    game_behavior_world *world;
+    behavior_world *world;
     ecs_entity target;
 } profile_fixture;
 
 static int profile_dispatch(node *, flow_context *ctx)
 {
     profile_fixture *f = flow_context_service(ctx, "test.profile");
-    assert(game_behavior_dispatch(f->world, f->target, "Work", (flow_inputs){ 0 }, NULL) == 1);
+    assert(behavior_dispatch(f->world, f->target, "Work", (flow_inputs){ 0 }, NULL) == 1);
     return flow_context_continue(ctx, 0);
 }
 
@@ -804,8 +785,8 @@ static node_desc profile_work_desc = {
 static void profile_checks()
 {
     ecs_world *ecs = ecs_world_new();
-    game_behavior_world *world = game_behavior_world_new(ecs);
-    game_behavior_set_profiling(world, true);
+    behavior_world *world = behavior_world_new(ecs);
+    behavior_set_profiling(world, true);
     ecs_entity parent = ecs_world_create_entity(ecs),
                child = ecs_world_create_entity(ecs);
     behavior_asset *outer = behavior_asset_new("Profile Parent");
@@ -841,25 +822,22 @@ static void profile_checks()
         graph_connect_exec(inner->graph, clock_event(inner->graph, "Slow"), 0, delay, 0, 0) == 0
     );
     assert(graph_connect_exec(inner->graph, delay, 0, nested, 0, 0) == 0);
-    assert(game_behavior_register_asset(world, outer->name, outer) == 0);
-    assert(game_behavior_register_asset(world, inner->name, inner) == 0);
-    assert(game_behavior_attach(world, parent, outer->name) == 0);
-    assert(game_behavior_attach(world, child, inner->name) == 0);
+    assert(behavior_register_asset(world, outer->name, outer) == 0);
+    assert(behavior_register_asset(world, inner->name, inner) == 0);
+    assert(behavior_attach(world, parent, outer->name) == 0);
+    assert(behavior_attach(world, child, inner->name) == 0);
     profile_fixture context = { world, child };
     assert(
-        behavior_instance_bind_service(
-            game_behavior_instance(world, parent, outer->name),
-            "test.profile",
-            &context
-        ) == 0
+        behavior_instance_bind_service(behavior_instance(world, parent, outer->name), "test.profile", &context) ==
+        0
     );
-    game_behavior_profile_begin(world);
+    behavior_profile_begin(world);
     uint64_t start = profile_clock();
-    assert(game_behavior_dispatch(world, parent, "Outer", (flow_inputs){ 0 }, NULL) == 1);
+    assert(behavior_dispatch(world, parent, "Outer", (flow_inputs){ 0 }, NULL) == 1);
     uint64_t wall_ns = profile_clock() - start;
-    const game_behavior_profile_frame *frame = game_behavior_profile(world);
-    game_behavior_profile_row outer_row = profile_row(frame, outer->name, "Outer");
-    game_behavior_profile_row work_row = profile_row(frame, inner->name, "Work");
+    const behavior_profile_frame *frame = behavior_profile(world);
+    behavior_profile_row outer_row = profile_row(frame, outer->name, "Outer");
+    behavior_profile_row work_row = profile_row(frame, inner->name, "Work");
     /* Setup can finish within one clock tick. Compare totals in the clock's
      * integer unit so millisecond conversion does not round past wall time. */
     uint64_t accounted_ns = (uint64_t)llround((frame->cpu_ms + frame->setup_ms) * 1000000.0);
@@ -873,14 +851,14 @@ static void profile_checks()
         "nested functions stay in their event while reentrant events are "
         "separated into inclusive and exclusive caller CPU time"
     );
-    assert(game_behavior_dispatch(world, child, "Slow", (flow_inputs){ 0 }, NULL) == 1);
-    game_behavior_profile_begin(world);
-    assert(game_behavior_pump(world, .05) == FLOW_OK);
-    test_check(game_behavior_profile(world)->count == 0, "waiting events accrue no execution time or resumes before their deadline");
-    game_behavior_set_time(world, .1);
-    assert(game_behavior_dispatch(world, child, "Work", (flow_inputs){ 0 }, NULL) == 1);
-    frame = game_behavior_profile(world);
-    game_behavior_profile_row slow = profile_row(frame, inner->name, "Slow");
+    assert(behavior_dispatch(world, child, "Slow", (flow_inputs){ 0 }, NULL) == 1);
+    behavior_profile_begin(world);
+    assert(behavior_pump(world, .05) == FLOW_OK);
+    test_check(behavior_profile(world)->count == 0, "waiting events accrue no execution time or resumes before their deadline");
+    behavior_set_time(world, .1);
+    assert(behavior_dispatch(world, child, "Work", (flow_inputs){ 0 }, NULL) == 1);
+    frame = behavior_profile(world);
+    behavior_profile_row slow = profile_row(frame, inner->name, "Slow");
     work_row = profile_row(frame, inner->name, "Work");
     test_check(
         slow.starts == 0 && slow.resumes == 1 && slow.cpu_ms > 0 &&
@@ -889,33 +867,32 @@ static void profile_checks()
         "dispatching Work retains Slow attribution when the scheduler first "
         "resumes the older activation"
     );
-    game_behavior_set_profiling(world, false);
-    assert(game_behavior_dispatch(world, child, "Work", (flow_inputs){ 0 }, NULL) == 1);
-    test_check(game_behavior_profile(world)->count == 0, "disabled profiling records no intervals");
-    game_behavior_set_profiling(world, true);
-    assert(game_behavior_dispatch(world, child, "Work", (flow_inputs){ 0 }, NULL) == 1);
+    behavior_set_profiling(world, false);
+    assert(behavior_dispatch(world, child, "Work", (flow_inputs){ 0 }, NULL) == 1);
+    test_check(behavior_profile(world)->count == 0, "disabled profiling records no intervals");
+    behavior_set_profiling(world, true);
+    assert(behavior_dispatch(world, child, "Work", (flow_inputs){ 0 }, NULL) == 1);
     ecs_entity second = ecs_world_create_entity(ecs);
-    assert(game_behavior_attach(world, second, inner->name) == 0);
-    assert(game_behavior_dispatch(world, second, "Work", (flow_inputs){ 0 }, NULL) == 1);
-    work_row = profile_row(game_behavior_profile(world), inner->name, "Work");
+    assert(behavior_attach(world, second, inner->name) == 0);
+    assert(behavior_dispatch(world, second, "Work", (flow_inputs){ 0 }, NULL) == 1);
+    work_row = profile_row(behavior_profile(world), inner->name, "Work");
     test_check(work_row.starts == 2, "instances aggregate into one behavior and event row");
-    assert(game_behavior_destroy_entity(world, child) == ECS_OK);
-    assert(game_behavior_destroy_entity(world, second) == ECS_OK);
+    assert(behavior_destroy_entity(world, child) == ECS_OK);
+    assert(behavior_destroy_entity(world, second) == ECS_OK);
     behavior_asset *released;
-    assert(game_behavior_unregister_asset(world, inner->name, &released) == 0 && released == inner);
+    assert(behavior_unregister_asset(world, inner->name, &released) == 0 && released == inner);
     behavior_asset_free(inner);
     test_check(
-        profile_row(game_behavior_profile(world), "Profile Child", "Work").starts == 2,
+        profile_row(behavior_profile(world), "Profile Child", "Work").starts == 2,
         "captured profile labels survive entity destruction and asset removal"
     );
-    game_behavior_profile_begin(world);
+    behavior_profile_begin(world);
     test_check(
-        game_behavior_profile(world)->count == 0 &&
-            game_behavior_profile(world)->cpu_ms == 0 &&
-            game_behavior_profile(world)->setup_ms == 0,
+        behavior_profile(world)->count == 0 && behavior_profile(world)->cpu_ms == 0 &&
+            behavior_profile(world)->setup_ms == 0,
         "a new display frame clears event totals without retaining earlier time"
     );
-    game_behavior_world_free(world);
+    behavior_world_free(world);
     behavior_asset_free(outer);
     ecs_world_free(ecs);
 
@@ -963,27 +940,24 @@ static void reverse_parallel_for(int count, void (*worker)(int, void *), void *u
 void run_parallel_checks(void)
 {
     test_check(
-        GAME_NODE_Get_GameHealth.access &&
-            GAME_NODE_Get_GameHealth.access->read_count == 1 &&
-            GAME_NODE_Get_GameHealth.access->reads[0] ==
-                GAME_COMPONENT_GameHealth.id &&
-            (GAME_NODE_Get_GameHealth.access->flags & NODE_EFFECT_ENTITY_SCOPED),
+        NODE_Get_Health.access && NODE_Get_Health.access->read_count == 1 &&
+            NODE_Get_Health.access->reads[0] == COMPONENT_Health.id &&
+            (NODE_Get_Health.access->flags & NODE_EFFECT_ENTITY_SCOPED),
         "node descriptors declare component reads, writes, and scope "
         "flags"
     );
     test_check(
-        GAME_NODE_Set_GameHealth.access &&
-            (GAME_NODE_Set_GameHealth.access->flags & NODE_EFFECT_ENTITY_SCOPED),
+        NODE_Set_Health.access &&
+            (NODE_Set_Health.access->flags & NODE_EFFECT_ENTITY_SCOPED),
         "generated component writes are entity-scoped"
     );
     test_check(
-        GAME_NODE_Add_GameHealth.access &&
-            (GAME_NODE_Add_GameHealth.access->flags & NODE_EFFECT_STRUCTURAL),
+        NODE_Add_Health.access && (NODE_Add_Health.access->flags & NODE_EFFECT_STRUCTURAL),
         "structural component effects are declared for deferred recording"
     );
 
     behavior_asset *safe = behavior_asset_new("SafeEffects");
-    graph_add_node(safe->graph, &GAME_NODE_Get_GameHealth);
+    graph_add_node(safe->graph, &NODE_Get_Health);
     compile_report safe_report;
     compile_report_init(&safe_report);
     behavior_asset_compile(safe, &safe_report);
@@ -1023,34 +997,34 @@ void run_parallel_checks(void)
     test_check(host_parallel != NULL, "parallel execution is a host-supplied callback, not a core thread pool");
 
     ecs_world *ecs = ecs_world_new();
-    ecs_world_register_component(ecs, &GAME_COMPONENT_GameHealth, NULL);
+    ecs_world_register_component(ecs, &COMPONENT_Health, NULL);
     ecs_entity e1 = ecs_world_create_entity(ecs);
     ecs_entity e2 = ecs_world_create_entity(ecs);
-    game_preview_world *live = game_preview_world_new(ecs);
-    game_preview_definition *definition = game_preview_definition_new("parallel", make_live_behavior_asset());
-    game_preview_add_definition(live, definition);
-    game_behavior_world *behaviors = live->runtime->behaviors;
-    game_behavior_attach(behaviors, e1, "parallel");
-    game_behavior_attach(behaviors, e2, "parallel");
+    preview_world *live = preview_world_new(ecs);
+    preview_definition *definition = preview_definition_new("parallel", make_live_behavior_asset());
+    preview_add_definition(live, definition);
+    behavior_world *behaviors = live->runtime->behaviors;
+    behavior_attach(behaviors, e1, "parallel");
+    behavior_attach(behaviors, e2, "parallel");
     g_parallel_calls = 0;
-    game_behavior_set_parallel_for(behaviors, host_parallel, NULL);
-    game_behavior_pump(behaviors, 1.0);
+    behavior_set_parallel_for(behaviors, host_parallel, NULL);
+    behavior_pump(behaviors, 1.0);
     test_check(g_parallel_calls == 1, "host parallel dispatch reaches reflected behavior effects");
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(ecs);
 
     ecs_world *first = ecs_world_new();
     ecs_world *second = ecs_world_new();
-    ecs_world_register_component(first, &GAME_COMPONENT_GameHealth, NULL);
-    ecs_world_register_component(second, &GAME_COMPONENT_GameHealth, NULL);
+    ecs_world_register_component(first, &COMPONENT_Health, NULL);
+    ecs_world_register_component(second, &COMPONENT_Health, NULL);
     ecs_entity first_entity = ecs_world_create_entity(first);
     ecs_entity second_entity = ecs_world_create_entity(second);
-    GAME_GameHealth_add(first, first_entity, 1);
-    GAME_GameHealth_add(second, second_entity, 1);
+    Health_add(first, first_entity, 1);
+    Health_add(second, second_entity, 1);
     ecs_world_apply_commands(first);
     ecs_world_apply_commands(second);
-    GAME_GameHealth_get(first, first_entity)->current = 42;
-    GAME_GameHealth_get(second, second_entity)->current = 42;
+    Health_get(first, first_entity)->current = 42;
+    Health_get(second, second_entity)->current = 42;
     test_check(ecs_world_hash(first) == ecs_world_hash(second), "a seeded world hash is identical across execution scheduling");
     ecs_world_free(first);
     ecs_world_free(second);

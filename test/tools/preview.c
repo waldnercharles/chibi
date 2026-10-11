@@ -74,9 +74,9 @@ TEST_CASE(preview_loads_declared_components_before_sources_and_keeps_them_alive)
         }
         REQUIRE(status == CHIBI_AUTOMATION_OK && run);
         REQUIRE(type_catalog_find("PreviewCounter"));
-        game_prototype_preview *preview = chibi_preview_runtime(run);
-        ecs_world *world = game_prototype_preview_world(preview);
-        ecs_entity entity = game_prototype_preview_entity(preview);
+        prototype_preview *preview = chibi_preview_runtime(run);
+        ecs_world *world = prototype_preview_world(preview);
+        ecs_entity entity = prototype_preview_entity(preview);
         ecs_component_catalog components = project_components();
         const ecs_component_desc *counter = NULL;
         for (int j = 0; j < components.component_count; j++) {

@@ -42,31 +42,31 @@ static behavior_asset *sphere()
 static ecs_entity actor(ecs_world *world, const char *shape, uint32_t color)
 {
     ecs_entity e = ecs_world_create_entity(world);
-    GameGeometry3D geometry = { .primitive = GAME_PRIMITIVE_BOX,
-                                .width = shape ? 16 : 20,
-                                .depth = shape ? 16 : 20,
-                                .height = shape ? 16 : 20 };
-    GameVisualTransform pose = { .scale = 1 };
-    GameOrientation orientation = { 0 };
-    GameMaterial material = { .scene = color,
-                              .albedo = color,
-                              .emission_color = color,
-                              .emission_intensity = shape ? 4 : 0,
-                              .emission_multiplier = 1,
-                              .edge_light = 1,
-                              .absorption = shape ? 0 : 1 };
-    GameShader shader = { .shape = shape };
-    GameSdfSurface3D sdf = { .enabled = shape != NULL };
-    GameMeshSurface2D mesh = { .enabled = shape == NULL };
+    Geometry3D geometry = { .primitive = PRIMITIVE_BOX,
+                            .width = shape ? 16 : 20,
+                            .depth = shape ? 16 : 20,
+                            .height = shape ? 16 : 20 };
+    VisualTransform pose = { .scale = 1 };
+    Orientation orientation = { 0 };
+    Material material = { .scene = color,
+                          .albedo = color,
+                          .emission_color = color,
+                          .emission_intensity = shape ? 4 : 0,
+                          .emission_multiplier = 1,
+                          .edge_light = 1,
+                          .absorption = shape ? 0 : 1 };
+    Shader shader = { .shape = shape };
+    SdfSurface3D sdf = { .enabled = shape != NULL };
+    MeshSurface2D mesh = { .enabled = shape == NULL };
 #define ADD(type, value)                                                       \
-    assert(ecs_world_record_add(world, e, GAME_COMPONENT_##type.id, &(value), 0) == ECS_OK)
-    ADD(GameGeometry3D, geometry);
-    ADD(GameVisualTransform, pose);
-    ADD(GameOrientation, orientation);
-    ADD(GameMaterial, material);
-    ADD(GameShader, shader);
-    ADD(GameSdfSurface3D, sdf);
-    ADD(GameMeshSurface2D, mesh);
+    assert(ecs_world_record_add(world, e, COMPONENT_##type.id, &(value), 0) == ECS_OK)
+    ADD(Geometry3D, geometry);
+    ADD(VisualTransform, pose);
+    ADD(Orientation, orientation);
+    ADD(Material, material);
+    ADD(Shader, shader);
+    ADD(SdfSurface3D, sdf);
+    ADD(MeshSurface2D, mesh);
 #undef ADD
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return e;
@@ -191,11 +191,11 @@ bool test_camera_emitter_orbit()
     behavior_asset *shape = sphere();
     ecs_world *world = ecs_world_new();
     const ecs_component_desc *components[] = {
-        &GAME_COMPONENT_GameGeometry3D,    &GAME_COMPONENT_GameVisualTransform,
-        &GAME_COMPONENT_GameOrientation,   &GAME_COMPONENT_GameMaterial,
-        &GAME_COMPONENT_GameShader,        &GAME_COMPONENT_GameSdfSurface3D,
-        &GAME_COMPONENT_GameMeshSurface2D, &GAME_COMPONENT_GameMeshParts,
-        &GAME_COMPONENT_GameMeshAsset
+        &COMPONENT_Geometry3D,    &COMPONENT_VisualTransform,
+        &COMPONENT_Orientation,   &COMPONENT_Material,
+        &COMPONENT_Shader,        &COMPONENT_SdfSurface3D,
+        &COMPONENT_MeshSurface2D, &COMPONENT_MeshParts,
+        &COMPONENT_MeshAsset
     };
     for (int i = 0; i < (int)(sizeof components / sizeof *components); i++) {
         assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
@@ -208,11 +208,11 @@ bool test_camera_emitter_orbit()
                                             { blocker, { 245, 45 * 455.0f / 485 } } };
     render_material_raster *r = render_material_raster_new();
     bool ok = render_material_raster_resize(r, WIDTH, HEIGHT);
-    render_material_raster_set_quality(r, (GameSurfaceQuality){ .resolution = GAME_SURFACE_FULL });
+    render_material_raster_set_quality(r, (SurfaceQuality){ .resolution = SURFACE_FULL });
     const float angles[] = { 0, PI * .25f, PI * .5f, PI, PI * 1.5f };
     for (int elevated = 0; elevated < 2; elevated++) {
-        GAME_GameGeometry3D_get(world, cyan)->elevation = elevated ? 25 : 0;
-        GAME_GameGeometry3D_get(world, amber)->elevation = elevated ? -15 : 0;
+        Geometry3D_get(world, cyan)->elevation = elevated ? 25 : 0;
+        Geometry3D_get(world, amber)->elevation = elevated ? -15 : 0;
         for (int i = 0; i < 5; i++) {
             float *source = NULL;
             bool captured = capture(r, world, actors, 2, angles[i], &source);
@@ -227,8 +227,7 @@ bool test_camera_emitter_orbit()
             free(source);
         }
     }
-    GAME_GameGeometry3D_get(world, cyan)
-        ->elevation = GAME_GameGeometry3D_get(world, amber)->elevation = 0;
+    Geometry3D_get(world, cyan)->elevation = Geometry3D_get(world, amber)->elevation = 0;
     float *reference = NULL, *hidden = NULL, *front = NULL, *restored = NULL;
     bool captured = capture(r, world, actors, 2, PI * .5f, &reference) &&
                     capture(r, world, actors, 3, PI * .5f, &hidden);
@@ -239,7 +238,7 @@ bool test_camera_emitter_orbit()
         ok &= baseline.sum > 0 && occluded.sum == 0;
         ok &= inspect(hidden, (CF_V3){ -215, 0, -45 }, PI * .5f, 2, "cyan survives opaque blocker");
     }
-    actors[2].position = (GameTransform){ 185, 45 * 515.0f / 485 };
+    actors[2].position = (Transform){ 185, 45 * 515.0f / 485 };
     captured = captured && capture(r, world, actors, 3, PI * .5f, &front) &&
                capture(r, world, actors, 2, PI * .5f, &restored);
     if (captured) {

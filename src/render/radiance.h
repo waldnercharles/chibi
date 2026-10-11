@@ -39,8 +39,8 @@ bool render_radiance_set_settings(render_radiance *radiance, render_radiance_set
 /* Lighting fitted to what HRC supports: each field clamped into its range.
  * Notes describes each change, or is empty.
  * render_radiance_set_lighting accepts every normalized value. */
-GameHRC2D render_radiance_normalize(GameHRC2D lighting, char *notes, size_t size);
-bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting);
+HRC2D render_radiance_normalize(HRC2D lighting, char *notes, size_t size);
+bool render_radiance_set_lighting(render_radiance *radiance, HRC2D lighting);
 /* Feeds adaptive resolution one frame's scene GPU time, measured by its
  * owner; call it before laying out the next frame. */
 void render_radiance_frame_time(render_radiance *radiance, double gpu_ms);
@@ -51,7 +51,7 @@ typedef struct
 {
     /* The finest grid and received-light image in use, and color's detail. */
     float resolution;
-    GameHRCColor color;
+    HRCColor color;
     bool gather_half;
     /* The latest scene GPU time, or -1 without GPU timestamps, and the time
      * a frame at target_fps allows. */
@@ -67,9 +67,9 @@ render_radiance_status render_radiance_get_status(const render_radiance *radianc
  * Depth candidates count coarse tiles, excluding child and leaf refinement. */
 typedef struct
 {
-    GameHRCSurfaceMode mode;
+    HRCSurfaceMode mode;
     int cells, block;
-    GameHRCDepthVisibility visibility;
+    HRCDepthVisibility visibility;
     int emitter_sources, emitter_pixels;
     size_t emitter_bytes;
     size_t candidates, visibility_taps, blur_quadrant_fetches;

@@ -11,23 +11,23 @@
 #define TAU 6.283185307179586
 #define BLOCK 256
 static audio_analysis *analysis, *other;
-static game_audio *audio;
+static audio *queue;
 
 static void setup()
 {
     analysis = audio_analysis_new();
     other = audio_analysis_new();
-    audio = game_audio_new();
+    queue = audio_new();
 }
 
 static void teardown()
 {
     audio_analysis_free(other);
     audio_analysis_free(analysis);
-    game_audio_free(audio);
+    audio_free(queue);
 }
 
-static void tone(audio_analysis *target, int rate, int frames, float hz, float volume, int channels)
+static void push_tone(audio_analysis *target, int rate, int frames, float hz, float volume, int channels)
 {
     float samples[BLOCK * 8];
     for (int at = 0; at < frames;) {
@@ -62,17 +62,17 @@ static bool near(audio_analysis_frame a, audio_analysis_frame b, float tolerance
 
 TEST_CASE(audio_bands_follow_tone_frequencies)
 {
-    tone(analysis, RATE, RATE, 60, 0.8f, 1);
+    push_tone(analysis, RATE, RATE, 60, 0.8f, 1);
     audio_analysis_frame bass = audio_analysis_read(analysis);
     REQUIRE(bass.bass > bass.mid * 3);
     REQUIRE(bass.bass > bass.treble * 3);
     audio_analysis_reset(analysis);
-    tone(analysis, RATE, RATE, 1000, 0.8f, 1);
+    push_tone(analysis, RATE, RATE, 1000, 0.8f, 1);
     audio_analysis_frame mid = audio_analysis_read(analysis);
     REQUIRE(mid.mid > mid.bass * 2);
     REQUIRE(mid.mid > mid.treble * 2);
     audio_analysis_reset(analysis);
-    tone(analysis, RATE, RATE, 8000, 0.8f, 1);
+    push_tone(analysis, RATE, RATE, 8000, 0.8f, 1);
     audio_analysis_frame treble = audio_analysis_read(analysis);
     REQUIRE(treble.treble > treble.bass * 3);
     REQUIRE(treble.treble > treble.mid * 2);
@@ -82,14 +82,14 @@ TEST_CASE(audio_bands_follow_tone_frequencies)
 
 TEST_CASE(audio_levels_follow_amplitude_and_stay_normalized)
 {
-    tone(analysis, RATE, RATE, 1000, 0.25f, 1);
-    tone(other, RATE, RATE, 1000, 0.5f, 1);
+    push_tone(analysis, RATE, RATE, 1000, 0.25f, 1);
+    push_tone(other, RATE, RATE, 1000, 0.5f, 1);
     audio_analysis_frame low = audio_analysis_read(analysis);
     audio_analysis_frame high = audio_analysis_read(other);
     REQUIRE(fabsf(high.level - low.level * 2) < 0.0001f);
     REQUIRE(fabsf(high.mid - low.mid * 2) < 0.0001f);
     audio_analysis_reset(analysis);
-    tone(analysis, RATE, RATE, 1000, 8, 1);
+    push_tone(analysis, RATE, RATE, 1000, 8, 1);
     high = audio_analysis_read(analysis);
     REQUIRE(high.level == 1);
     REQUIRE(high.bass >= 0 && high.bass <= 1);
@@ -102,18 +102,18 @@ TEST_CASE(audio_levels_follow_amplitude_and_stay_normalized)
 TEST_CASE(audio_silence_and_reset_clear_signal_history)
 {
     REQUIRE(silent(audio_analysis_read(analysis)));
-    tone(analysis, RATE, RATE, 1000, 0, 1);
+    push_tone(analysis, RATE, RATE, 1000, 0, 1);
     REQUIRE(silent(audio_analysis_read(analysis)));
-    tone(analysis, RATE, RATE / 100, 1000, 0.8f, 1);
+    push_tone(analysis, RATE, RATE / 100, 1000, 0.8f, 1);
     REQUIRE(audio_analysis_read(analysis).level > 0);
     audio_analysis_reset(analysis);
     REQUIRE(silent(audio_analysis_read(analysis)));
-    tone(analysis, RATE, RATE, 1000, 0, 1);
+    push_tone(analysis, RATE, RATE, 1000, 0, 1);
     REQUIRE(silent(audio_analysis_read(analysis)));
-    tone(analysis, RATE, RATE / 100, 60, 0.8f, 1);
+    push_tone(analysis, RATE, RATE / 100, 60, 0.8f, 1);
     float previous = audio_analysis_read(analysis).level;
     for (int i = 0; i < 200; i++) {
-        tone(analysis, RATE, RATE / 100, 60, 0, 1);
+        push_tone(analysis, RATE, RATE / 100, 60, 0, 1);
         audio_analysis_frame frame = audio_analysis_read(analysis);
         REQUIRE(frame.level <= previous);
         previous = frame.level;
@@ -124,19 +124,19 @@ TEST_CASE(audio_silence_and_reset_clear_signal_history)
 
 TEST_CASE(audio_onset_requires_rising_pcm_energy)
 {
-    tone(analysis, RATE, RATE, 1000, 0.2f, 1);
+    push_tone(analysis, RATE, RATE, 1000, 0.2f, 1);
     REQUIRE(audio_analysis_read(analysis).onset == 0);
-    tone(analysis, RATE, RATE / 100, 1000, 0.8f, 1);
+    push_tone(analysis, RATE, RATE / 100, 1000, 0.8f, 1);
     audio_analysis_frame peak = audio_analysis_read(analysis);
     REQUIRE(peak.onset > 0.8f);
-    tone(analysis, RATE, RATE / 100, 1000, 0.8f, 1);
+    push_tone(analysis, RATE, RATE / 100, 1000, 0.8f, 1);
     REQUIRE(audio_analysis_read(analysis).onset < peak.onset);
-    tone(analysis, RATE, RATE, 1000, 0.8f, 1);
+    push_tone(analysis, RATE, RATE, 1000, 0.8f, 1);
     REQUIRE(audio_analysis_read(analysis).onset == 0);
-    tone(analysis, RATE, RATE / 100, 1000, 0, 1);
+    push_tone(analysis, RATE, RATE / 100, 1000, 0, 1);
     REQUIRE(audio_analysis_read(analysis).onset == 0);
     audio_analysis_reset(analysis);
-    tone(analysis, RATE, RATE, 60, 0.8f, 1);
+    push_tone(analysis, RATE, RATE, 60, 0.8f, 1);
     REQUIRE(audio_analysis_read(analysis).onset == 0);
     return true;
 }
@@ -177,33 +177,33 @@ TEST_CASE(audio_chunk_boundaries_do_not_change_results_or_allocate)
 
 TEST_CASE(audio_format_changes_discard_old_filter_and_window_state)
 {
-    tone(analysis, RATE, 473, 60, 0.8f, 1);
-    tone(analysis, 44100, 44100, 1000, 0.5f, 1);
-    tone(other, 44100, 44100, 1000, 0.5f, 1);
+    push_tone(analysis, RATE, 473, 60, 0.8f, 1);
+    push_tone(analysis, 44100, 44100, 1000, 0.5f, 1);
+    push_tone(other, 44100, 44100, 1000, 0.5f, 1);
     REQUIRE(near(audio_analysis_read(analysis), audio_analysis_read(other), 0));
     audio_analysis_reset(other);
-    tone(other, RATE, RATE, 1000, 0.5f, 1);
+    push_tone(other, RATE, RATE, 1000, 0.5f, 1);
     REQUIRE(near(audio_analysis_read(analysis), audio_analysis_read(other), 0.01f));
-    tone(analysis, 44100, 437, 60, 0.8f, 1);
+    push_tone(analysis, 44100, 437, 60, 0.8f, 1);
     audio_analysis_reset(other);
-    tone(analysis, 44100, 44100, 1000, 0.5f, 2);
-    tone(other, 44100, 44100, 1000, 0.5f, 2);
+    push_tone(analysis, 44100, 44100, 1000, 0.5f, 2);
+    push_tone(other, 44100, 44100, 1000, 0.5f, 2);
     REQUIRE(near(audio_analysis_read(analysis), audio_analysis_read(other), 0));
     return true;
 }
 
 TEST_CASE(audio_antiphase_channels_keep_their_energy)
 {
-    tone(analysis, RATE, RATE, 1000, 0.8f, 1);
-    tone(other, RATE, RATE, 1000, 0.8f, 2);
+    push_tone(analysis, RATE, RATE, 1000, 0.8f, 1);
+    push_tone(other, RATE, RATE, 1000, 0.8f, 2);
     REQUIRE(near(audio_analysis_read(analysis), audio_analysis_read(other), 0.000001f));
     audio_analysis_reset(other);
-    tone(other, RATE, RATE, 1000, 0.8f, 8);
+    push_tone(other, RATE, RATE, 1000, 0.8f, 8);
     REQUIRE(near(audio_analysis_read(analysis), audio_analysis_read(other), 0.000001f));
     return true;
 }
 
-static bool empty_snapshot(game_audio_analysis frame)
+static bool empty_snapshot(audio_measurement frame)
 {
     return silent((
                audio_analysis_frame
@@ -214,108 +214,105 @@ static bool empty_snapshot(game_audio_analysis frame)
 TEST_CASE(audio_source_changes_clear_published_levels)
 {
     uint64_t before, after;
-    REQUIRE(game_audio_source(audio, &before) == 0);
+    REQUIRE(audio_source(queue, &before) == 0);
     REQUIRE(before > 0);
-    REQUIRE(game_audio_get_analysis(audio).status == GAME_AUDIO_IDLE);
-    game_audio_set_analysis(
-        audio,
-        (game_audio_analysis){ .level = 0.6f, .active = true, .status = GAME_AUDIO_READY }
-    );
+    REQUIRE(audio_get_analysis(queue).status == AUDIO_IDLE);
+    audio_set_analysis(queue, (audio_measurement){ .level = 0.6f, .active = true, .status = AUDIO_READY });
     pin_value source = { .type = PIN_I32, .i = 1 };
-    REQUIRE(!GAME_AUDIO_SOURCE_CALL.invoke(audio, &source, NULL));
-    REQUIRE(game_audio_source(audio, &after) == 1);
+    REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
+    REQUIRE(audio_source(queue, &after) == 1);
     REQUIRE(after > before);
-    game_audio_analysis frame = game_audio_get_analysis(audio);
+    audio_measurement frame = audio_get_analysis(queue);
     REQUIRE(empty_snapshot(frame));
-    REQUIRE(frame.source == 1 && frame.status == GAME_AUDIO_WAITING);
+    REQUIRE(frame.source == 1 && frame.status == AUDIO_WAITING);
     source.i = 0;
-    REQUIRE(!GAME_AUDIO_SOURCE_CALL.invoke(audio, &source, NULL));
-    REQUIRE(game_audio_source(audio, &before) == 0);
+    REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
+    REQUIRE(audio_source(queue, &before) == 0);
     REQUIRE(before > after);
-    frame = game_audio_get_analysis(audio);
+    frame = audio_get_analysis(queue);
     REQUIRE(empty_snapshot(frame));
-    REQUIRE(frame.source == 0 && frame.status == GAME_AUDIO_WAITING);
+    REQUIRE(frame.source == 0 && frame.status == AUDIO_WAITING);
     return true;
 }
 
 TEST_CASE(audio_snapshot_binding_returns_host_measurements)
 {
     pin_value source = { .type = PIN_I32, .i = 1 };
-    REQUIRE(!GAME_AUDIO_SOURCE_CALL.invoke(audio, &source, NULL));
-    game_audio_analysis published = { .level = 0.2f,
-                                      .bass = 0.3f,
-                                      .mid = 0.4f,
-                                      .treble = 0.5f,
-                                      .onset = 0.6f,
-                                      .active = true,
-                                      .source = 1,
-                                      .status = GAME_AUDIO_READY };
-    game_audio_set_analysis(audio, published);
-    game_audio_analysis frame = game_audio_get_analysis(audio);
+    REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
+    audio_measurement published = { .level = 0.2f,
+                                    .bass = 0.3f,
+                                    .mid = 0.4f,
+                                    .treble = 0.5f,
+                                    .onset = 0.6f,
+                                    .active = true,
+                                    .source = 1,
+                                    .status = AUDIO_READY };
+    audio_set_analysis(queue, published);
+    audio_measurement frame = audio_get_analysis(queue);
     REQUIRE(frame.level == published.level);
-    REQUIRE(frame.active && frame.source == 1 && frame.status == GAME_AUDIO_READY);
+    REQUIRE(frame.active && frame.source == 1 && frame.status == AUDIO_READY);
     pin_value output[8] = { 0 };
-    REQUIRE(!GAME_AUDIO_ANALYSIS_CALL.invoke(audio, NULL, output));
+    REQUIRE(!AUDIO_ANALYSIS_CALL.invoke(queue, NULL, output));
     const float expected[] = { 0.2f, 0.3f, 0.4f, 0.5f, 0.6f };
     for (int i = 0; i < 5; i++) {
         REQUIRE(output[i].type == PIN_F32 && output[i].f == expected[i]);
     }
     REQUIRE(output[5].type == PIN_BOOL && output[5].b);
     REQUIRE(output[6].type == PIN_I32 && output[6].i == 1);
-    REQUIRE(output[7].type == PIN_I32 && output[7].i == GAME_AUDIO_READY);
+    REQUIRE(output[7].type == PIN_I32 && output[7].i == AUDIO_READY);
     return true;
 }
 
 TEST_CASE(audio_invalid_and_duplicate_sources_preserve_state)
 {
     pin_value source = { .type = PIN_I32, .i = 1 };
-    REQUIRE(!GAME_AUDIO_SOURCE_CALL.invoke(audio, &source, NULL));
-    game_audio_set_analysis(
-        audio,
-        (game_audio_analysis){ .level = 0.7f, .active = true, .source = 1, .status = GAME_AUDIO_READY }
+    REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
+    audio_set_analysis(
+        queue,
+        (audio_measurement){ .level = 0.7f, .active = true, .source = 1, .status = AUDIO_READY }
     );
     uint64_t before, after;
-    REQUIRE(game_audio_source(audio, &before) == 1);
-    uint64_t count = game_audio_count(audio), hash = game_audio_hash(audio);
-    REQUIRE(!GAME_AUDIO_SOURCE_CALL.invoke(audio, &source, NULL));
-    REQUIRE(game_audio_source(audio, &after) == 1 && before == after);
-    REQUIRE(game_audio_get_analysis(audio).level == 0.7f);
+    REQUIRE(audio_source(queue, &before) == 1);
+    uint64_t count = audio_count(queue), hash = audio_hash(queue);
+    REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
+    REQUIRE(audio_source(queue, &after) == 1 && before == after);
+    REQUIRE(audio_get_analysis(queue).level == 0.7f);
     const int invalid[] = { -1, 2 };
     for (int i = 0; i < 2; i++) {
         source.i = invalid[i];
-        REQUIRE(GAME_AUDIO_SOURCE_CALL.invoke(audio, &source, NULL));
-        REQUIRE(game_audio_source(audio, &after) == 1 && before == after);
-        game_audio_analysis frame = game_audio_get_analysis(audio);
+        REQUIRE(AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
+        REQUIRE(audio_source(queue, &after) == 1 && before == after);
+        audio_measurement frame = audio_get_analysis(queue);
         REQUIRE(frame.level == 0.7f && frame.active && frame.source == 1);
-        REQUIRE(frame.status == GAME_AUDIO_READY);
+        REQUIRE(frame.status == AUDIO_READY);
     }
-    REQUIRE(game_audio_count(audio) == count && game_audio_hash(audio) == hash);
+    REQUIRE(audio_count(queue) == count && audio_hash(queue) == hash);
     return true;
 }
 
 TEST_CASE(audio_queue_reset_clears_capture_request_and_snapshot)
 {
     pin_value source = { .type = PIN_I32, .i = 1 };
-    REQUIRE(!GAME_AUDIO_SOURCE_CALL.invoke(audio, &source, NULL));
-    game_audio_set_analysis(
-        audio,
-        (game_audio_analysis){ .level = 0.7f,
-                               .bass = 0.6f,
-                               .mid = 0.5f,
-                               .treble = 0.4f,
-                               .onset = 0.3f,
-                               .active = true,
-                               .source = 1,
-                               .status = GAME_AUDIO_READY }
+    REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
+    audio_set_analysis(
+        queue,
+        (audio_measurement){ .level = 0.7f,
+                             .bass = 0.6f,
+                             .mid = 0.5f,
+                             .treble = 0.4f,
+                             .onset = 0.3f,
+                             .active = true,
+                             .source = 1,
+                             .status = AUDIO_READY }
     );
-    uint64_t before, after, generation = game_audio_generation(audio);
-    REQUIRE(game_audio_source(audio, &before) == 1);
-    game_audio_reset(audio);
-    REQUIRE(game_audio_source(audio, &after) == 0 && after > before);
-    REQUIRE(game_audio_generation(audio) != generation);
-    game_audio_analysis frame = game_audio_get_analysis(audio);
+    uint64_t before, after, generation = audio_generation(queue);
+    REQUIRE(audio_source(queue, &before) == 1);
+    audio_reset(queue);
+    REQUIRE(audio_source(queue, &after) == 0 && after > before);
+    REQUIRE(audio_generation(queue) != generation);
+    audio_measurement frame = audio_get_analysis(queue);
     REQUIRE(empty_snapshot(frame));
-    REQUIRE(frame.source == 0 && frame.status == GAME_AUDIO_IDLE);
+    REQUIRE(frame.source == 0 && frame.status == AUDIO_IDLE);
     return true;
 }
 

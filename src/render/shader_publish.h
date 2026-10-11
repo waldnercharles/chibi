@@ -7,5 +7,5 @@
  * Publication selects the current resident collection. Replaced collections
  * remain owned until their players retire. Catalog clear requires all players
  * to have retired; resource and rendering calls are thread confined. */
-game_player_resource_host render_prepared_resources(const char *content_root);
+player_resource_host render_prepared_resources(const char *content_root);
 #endif

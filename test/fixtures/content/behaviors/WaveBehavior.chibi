@@ -32,7 +32,7 @@ behavior "WaveBehavior" {
             spawn_prototype()
         }
         after spawn_prototype {
-            spawn_prototype.Entity.Transform = make_game_transform(entry."Player Position".x + state."Side" * state."SpawnDistance", entry."Player Position".y)
+            spawn_prototype.Entity.Transform = make_transform(entry."Player Position".x + state."Side" * state."SpawnDistance", entry."Player Position".y)
             return
         }
     }

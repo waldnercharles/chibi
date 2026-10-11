@@ -12,7 +12,7 @@
 
 /* Managed snapshots survive producer retirement, sibling execution and publication. */
 static ecs_world *world;
-static game_source_registry *registry;
+static source_registry *registry;
 static authoring_source *source;
 static execution_inspector *inspector;
 static uint64_t state_ids[4], captured_id;
@@ -46,7 +46,7 @@ static void cleanup()
     authoring_source_free(source);
     source = NULL;
     if (registry) {
-        game_source_registry_free(registry);
+        source_registry_free(registry);
     }
     registry = NULL;
     if (world) {
@@ -116,8 +116,8 @@ static bool prepare(int kind, behavior_backend backend, bool fails, bool replace
     service_binding *services = NULL;
     apush(services, ((service_binding){ "owned.failure", &world }));
     int status = replace
-                   ? game_source_replace(registry, "Owned", source->module, false)
-                   : game_source_register(registry, "Owned", source->module, services);
+                   ? source_replace(registry, "Owned", source->module, false)
+                   : source_register(registry, "Owned", source->module, services);
     afree(services);
     REQUIRE(!status);
     authoring_source_free(source);
@@ -126,7 +126,7 @@ static bool prepare(int kind, behavior_backend backend, bool fails, bool replace
 }
 static execution_instance *instance(ecs_entity owner)
 {
-    return execution_program_instance(game_source_program(registry, "Owned"), ecs_entity_to_u64(owner));
+    return execution_program_instance(source_program(registry, "Owned"), ecs_entity_to_u64(owner));
 }
 static bool seed(ecs_entity owner, int kind, int id)
 {
@@ -199,7 +199,7 @@ static bool owned_values(ecs_entity owner, int kind, int id, int runs)
 static bool scenario(int kind, behavior_backend backend, bool fails)
 {
     world = ecs_world_new();
-    registry = game_source_registry_new(world);
+    registry = source_registry_new(world);
     REQUIRE(prepare(kind, backend, fails, false));
     ecs_entity owners[3];
     for (int i = 0; i < 3; i++) {
@@ -207,10 +207,10 @@ static bool scenario(int kind, behavior_backend backend, bool fails)
     }
     REQUIRE(!ecs_world_apply_commands(world));
     for (int i = 0; i < 3; i++) {
-        REQUIRE(!game_source_attach(registry, owners[i], "Owned", false, 0, 0));
+        REQUIRE(!source_attach(registry, owners[i], "Owned", false, 0, 0));
         REQUIRE(seed(owners[i], kind, 100 + i));
     }
-    execution_program *program = game_source_program(registry, "Owned");
+    execution_program *program = source_program(registry, "Owned");
     inspector = execution_program_inspector(program);
     REQUIRE(
         inspector &&
@@ -224,7 +224,7 @@ static bool scenario(int kind, behavior_backend backend, bool fails)
                            ? execution_instance_dispatch(
                                  instance(owners[i]),
                                  execution_module_event(
-                                     game_source_attachment_at(registry, 0).module,
+                                     source_attachment_at(registry, 0).module,
                                      "Tick"
                                  ),
                                  NULL,
@@ -233,7 +233,7 @@ static bool scenario(int kind, behavior_backend backend, bool fails)
                                  .25,
                                  1000
                              )
-                           : game_source_dispatch(registry, owners[i], "Tick", NULL, 0, frame, .25);
+                           : source_dispatch(registry, owners[i], "Tick", NULL, 0, frame, .25);
             REQUIRE(fails ? status < 0 : status >= 0);
             if (fails) {
                 const execution_program_failure *failure = execution_program_error(program);
@@ -258,7 +258,7 @@ static bool scenario(int kind, behavior_backend backend, bool fails)
                 REQUIRE(watch_index >= 0);
             }
         }
-        REQUIRE(!game_source_pump(registry, frame + .1, .25));
+        REQUIRE(!source_pump(registry, frame + .1, .25));
         REQUIRE(!execution_program_error(program));
     }
     if (fails) {

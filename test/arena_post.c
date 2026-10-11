@@ -46,7 +46,7 @@ static void *read_canvas(CF_Canvas canvas, int bytes)
     return pixels;
 }
 
-static void scene(fixture *f, int width, int height, GameEnvironment settings, int pattern)
+static void scene(fixture *f, int width, int height, Environment settings, int pattern)
 {
     cf_app_update(NULL);
     if (!render_scene3d_post_prepare(f->post, width, height, &settings)) {
@@ -73,7 +73,7 @@ static CF_Pixel *finish(fixture *f, int width, int height)
     return read_canvas(render_scene3d_post_output(f->post), width * height * (int)sizeof(CF_Pixel));
 }
 
-static CF_Pixel *render(fixture *f, int width, int height, GameEnvironment settings, int pattern)
+static CF_Pixel *render(fixture *f, int width, int height, Environment settings, int pattern)
 {
     scene(f, width, height, settings, pattern);
     return finish(f, width, height);
@@ -93,7 +93,7 @@ static float half_value(uint16_t bits)
 
 static bool hdr_and_tonemap(fixture *f)
 {
-    GameEnvironment settings = render_scene3d_post_defaults();
+    Environment settings = render_scene3d_post_defaults();
     settings.bloom_strength = 0;
     scene(f, 32, 32, settings, 2);
     assert(render_scene3d_post_process(f->post));
@@ -120,7 +120,7 @@ static bool bloom_and_exposure(fixture *f)
         WIDTH = 128,
         COUNT = WIDTH * WIDTH
     };
-    GameEnvironment settings = render_scene3d_post_defaults();
+    Environment settings = render_scene3d_post_defaults();
     settings.bloom_radius = 0.06f;
     settings.bloom_strength = 0;
     CF_Pixel *disabled = render(f, WIDTH, WIDTH, settings, 0);
@@ -154,7 +154,7 @@ static bool bloom_and_exposure(fixture *f)
 
 static bool source_boundaries(fixture *f)
 {
-    GameEnvironment settings = render_scene3d_post_defaults();
+    Environment settings = render_scene3d_post_defaults();
     bool ok = true;
     for (int bloom = 0; bloom <= 1; bloom++) {
         settings.bloom_strength = (float)bloom;
@@ -230,7 +230,7 @@ static CF_V2 glow_spread(const CF_Pixel *pixels, int width, int height)
 
 static bool resize_and_radius(fixture *f)
 {
-    GameEnvironment settings = render_scene3d_post_defaults();
+    Environment settings = render_scene3d_post_defaults();
     settings.bloom_strength = 1;
     settings.bloom_radius = 0.06f;
     CF_Pixel *small = render(f, 256, 128, settings, 0);
@@ -271,7 +271,7 @@ static bool resize_and_radius(fixture *f)
 
 static bool state_and_retention(fixture *f)
 {
-    GameEnvironment settings = render_scene3d_post_defaults();
+    Environment settings = render_scene3d_post_defaults();
     settings.bloom_strength = 0;
     scene(f, 33, 17, settings, 1);
     cf_draw_push();
@@ -300,10 +300,7 @@ static bool state_and_retention(fixture *f)
                            { 0, 0, INFINITY, 0 },
                            { 0, 1, 1, 0.26f } };
     for (int i = 0; i < 5; i++) {
-        GameEnvironment bad = { invalid[i][0],
-                                invalid[i][1],
-                                invalid[i][2],
-                                invalid[i][3] };
+        Environment bad = { invalid[i][0], invalid[i][1], invalid[i][2], invalid[i][3] };
         ok &= !render_scene3d_post_prepare(f->post, 129, 75, &bad) &&
               render_scene3d_post_error(f->post)[0] &&
               !render_scene3d_post_process(f->post) &&

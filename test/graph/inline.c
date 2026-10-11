@@ -407,14 +407,11 @@ static void formatting()
     node *self = add(g, "Self");
     assert(graph_set_pin_type(g, self, 1, 0, PIN_HANDLE, "ecs.entity") == 0);
     node *self_has = add(g, "Has Component");
-    assert(component_node_retarget(g, self_has, GAME_COMPONENT_GameMovement.key) == 0);
+    assert(component_node_retarget(g, self_has, COMPONENT_Movement.key) == 0);
     wire(g, self, 0, self_has, component_node_setting(self_has) + 1);
-    test_check(
-        graph_node_is_inline(g, self) && formats(g, self_has, "has(Self.GameMovement)"),
-        "a wired Self formats as Self"
-    );
+    test_check(graph_node_is_inline(g, self) && formats(g, self_has, "has(Self.Movement)"), "a wired Self formats as Self");
     /* Make Struct reads like the generated Make it lowers to. */
-    const char *structs[] = { "GameHealth", "GameTransform" };
+    const char *structs[] = { "Health", "Transform" };
     for (int i = 0; i < 2; i++) {
         char generated_name[64], generated_text[128], authored_text[128];
         snprintf(generated_name, sizeof generated_name, "Make_%s", structs[i]);
@@ -428,7 +425,7 @@ static void formatting()
         behavior_expression_format(g, second, 0, authored_text, sizeof authored_text, NULL);
         test_check(!strcmp(generated_text, authored_text), "Make Struct formats like its generated Make");
     }
-    node *getter = add(g, "Get_GameMovement");
+    node *getter = add(g, "Get_Movement");
     assert(graph_expose_output_fields(g, getter, 0) == 0);
     int field = -1;
     for (int p = 0; p < getter->output_count; p++) {
@@ -440,12 +437,12 @@ static void formatting()
     wire(g, getter, field, sum, 0);
     wire(g, real(g, 2), 0, sum, 1);
     test_check(
-        graph_node_is_inline(g, getter) && formats(g, sum, "Self.GameMovement.speed + 2"),
+        graph_node_is_inline(g, getter) && formats(g, sum, "Self.Movement.speed + 2"),
         "component field reads format like their bindings"
     );
 
     node *read = add(g, "Get Component");
-    assert(component_node_retarget(g, read, GAME_COMPONENT_GameMovement.key) == 0);
+    assert(component_node_retarget(g, read, COMPONENT_Movement.key) == 0);
     assert(graph_expose_output_fields(g, read, 0) == 0);
     field = -1;
     for (int p = 0; p < read->output_count; p++) {
@@ -457,13 +454,13 @@ static void formatting()
     wire(g, read, field, scaled_read, 0);
     wire(g, real(g, 2), 0, scaled_read, 1);
     node *has = add(g, "Has Component");
-    assert(component_node_retarget(g, has, GAME_COMPONENT_GameMovement.key) == 0);
+    assert(component_node_retarget(g, has, COMPONENT_Movement.key) == 0);
     node *missing = add(g, "Not");
     wire(g, has, 0, missing, 0);
     test_check(
         graph_node_is_inline(g, read) && graph_node_is_inline(g, has) &&
-            formats(g, scaled_read, "Self.GameMovement.speed × 2") &&
-            formats(g, missing, "!has(Self.GameMovement)"),
+            formats(g, scaled_read, "Self.Movement.speed × 2") &&
+            formats(g, missing, "!has(Self.Movement)"),
         "configured component reads fold despite their Component setting"
     );
 
@@ -475,9 +472,9 @@ static void formatting()
     behavior_expression_format(g, reader, 0, text, sizeof text, &reads);
     test_check(
         acount(reads) == 1 && reads[0].start == 0 &&
-            reads[0].length == (int)strlen("Self.GameMovement.speed") &&
+            reads[0].length == (int)strlen("Self.Movement.speed") &&
             reads[0].read.kind == PIN_BINDING_COMPONENT_FIELD &&
-            !strcmp(reads[0].read.component_key, GAME_COMPONENT_GameMovement.key) &&
+            !strcmp(reads[0].read.component_key, COMPONENT_Movement.key) &&
             !strcmp(reads[0].read.field_name, "speed"),
         "formatting lists the component fields a chip reads"
     );

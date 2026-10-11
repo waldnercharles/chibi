@@ -828,7 +828,7 @@ static bool source_parameter_asset(
 }
 
 bool render_shader_binding_sources_validate(
-    const GameShader *binding,
+    const Shader *binding,
     const char *text,
     const behavior_asset *const *sources,
     int count,
@@ -919,7 +919,7 @@ bool render_shader_binding_sources_validate(
 static bool authoring_plain_validate(int index, const char *text, shader_error *error)
 {
     if (render_shader_is_model(index)) {
-        GameShader binding = { .shape = shader_catalog_assets[index - 1].name };
+        Shader binding = { .shape = shader_catalog_assets[index - 1].name };
         return render_shader_binding_parameters_validate(&binding, text, error);
     }
     if (error) {
@@ -1265,7 +1265,7 @@ bool authoring_shader_parameters_prepare(int index, const char *text, shader_err
     parse_parameters(&shader_catalog_assets[index - 1], text, v.shape_values);
     return shader_values_publish(&v, error);
 }
-bool authoring_shader_binding_prepare(const GameShader *binding, shader_error *error)
+bool authoring_shader_binding_prepare(const Shader *binding, shader_error *error)
 {
     const char *text = binding->parameters;
     if (!text || !*text) {
@@ -1322,8 +1322,8 @@ bool authoring_shader_binding_prepare(const GameShader *binding, shader_error *e
 bool render_shader_parameters_validate(int index, const char *text, shader_error *error)
 {
     if (render_shader_is_model(index)) {
-        GameShader b = { .shape = shader_catalog_assets[index - 1].name,
-                         .parameters = (char *)text };
+        Shader b = { .shape = shader_catalog_assets[index - 1].name,
+                     .parameters = (char *)text };
         return authoring_shader_binding_prepare(&b, error);
     }
     return authoring_shader_parameters_prepare(index, text, error);

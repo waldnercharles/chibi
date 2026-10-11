@@ -14,7 +14,7 @@
  * alone cannot grant assignment compatibility. Graph conversion edges and
  * private oracle/budget counters are replaced by actual source contracts. */
 static ecs_world *alias_world;
-static game_source_registry *alias_registry;
+static source_registry *alias_registry;
 static authoring_source *alias_source;
 static execution_inspector *alias_inspector;
 static void alias_cleanup()
@@ -24,7 +24,7 @@ static void alias_cleanup()
     authoring_source_free(alias_source);
     alias_source = NULL;
     if (alias_registry) {
-        game_source_registry_free(alias_registry);
+        source_registry_free(alias_registry);
     }
     alias_registry = NULL;
     if (alias_world) {
@@ -155,14 +155,14 @@ static bool alias_run(bool reverse, bool nested, behavior_backend backend)
     }
     REQUIRE(output);
     alias_world = ecs_world_new();
-    alias_registry = game_source_registry_new(alias_world);
-    REQUIRE(!game_source_register(alias_registry, "AliasCase", alias_source->module, NULL));
+    alias_registry = source_registry_new(alias_world);
+    REQUIRE(!source_register(alias_registry, "AliasCase", alias_source->module, NULL));
     authoring_source_free(alias_source);
     alias_source = NULL;
     ecs_entity owner = ecs_world_create_entity(alias_world);
     REQUIRE(!ecs_world_apply_commands(alias_world));
-    REQUIRE(!game_source_attach(alias_registry, owner, "AliasCase", false, 0, 0));
-    execution_program *program = game_source_program(alias_registry, "AliasCase");
+    REQUIRE(!source_attach(alias_registry, owner, "AliasCase", false, 0, 0));
+    execution_program *program = source_program(alias_registry, "AliasCase");
     alias_inspector = execution_program_inspector(program);
     REQUIRE(alias_inspector);
     uint32_t bits[] = { UINT32_C(0x80000000), UINT32_C(0x7fc12345) };
@@ -170,7 +170,7 @@ static bool alias_run(bool reverse, bool nested, behavior_backend backend)
     _Static_assert(sizeof producer == sizeof bits, "alias payload bit extent");
     memcpy(&producer, bits, sizeof producer);
     pin_value value = { .type = PIN_STRUCT, .type_name = types[from].name, .ptr = &producer };
-    REQUIRE(game_source_dispatch(alias_registry, owner, "Pulse", &value, 1, 0, 0) == 1);
+    REQUIRE(source_dispatch(alias_registry, owner, "Pulse", &value, 1, 0, 0) == 1);
     execution_instance *instance = execution_program_instance(program, ecs_entity_to_u64(owner));
     const pin_value *result = execution_instance_state(instance, output);
     REQUIRE(result && result->type == PIN_STRUCT && result->ptr && result->ptr != &producer);
@@ -180,7 +180,7 @@ static bool alias_run(bool reverse, bool nested, behavior_backend backend)
     REQUIRE(!memcmp(result->ptr, bits, sizeof bits));
     if (nested) {
         value.ptr = NULL;
-        REQUIRE(game_source_dispatch(alias_registry, owner, "Pulse", &value, 1, 1, 0) < 0);
+        REQUIRE(source_dispatch(alias_registry, owner, "Pulse", &value, 1, 1, 0) < 0);
         const execution_program_failure *failure = execution_program_error(program);
         REQUIRE(failure && strstr(failure->message, "Missing alias input"));
         REQUIRE(!strcmp(failure->asset_name, "AliasCase"));

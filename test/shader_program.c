@@ -225,7 +225,7 @@ static void arena_checks(behavior_asset *asset)
     (void)material;
     render_scene3d *arena = render_scene3d_new();
     render_scene3d_post *post = render_scene3d_post_new();
-    GameEnvironment environment = render_scene3d_post_defaults();
+    Environment environment = render_scene3d_post_defaults();
     environment.bloom_strength = 0;
     assert(arena && post && render_scene3d_post_prepare(post, SIDE, SIDE, &environment));
     render_scene3d_camera camera = render_scene3d_camera_make(0, 0, 140, 140);

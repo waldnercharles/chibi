@@ -54,7 +54,7 @@
     PHYSICS_PORT(X, "Entity", PIN_HANDLE, "ecs.entity", PIN_CONTAINER_SINGLE)  \
     PHYSICS_PORT(X, AMOUNT, PIN_STRUCT, "CF_V2", PIN_CONTAINER_SINGLE)
 #define PHYSICS_PUSH_OUTPUTS(X) PHYSICS_EXEC(X, "Then")
-extern const native_definition_pack GAME_PHYSICS_DEFINITION_PACK;
+extern const native_definition_pack PHYSICS_DEFINITION_PACK;
 
 #define PHYSICS_RAY_PRESENTATION                                               \
     .category = "Physics",                                                     \

@@ -22,7 +22,7 @@ typedef struct
     CF_V2 aim;
     bool aim_point; /* aim is a world position rather than a direction */
     bool firing;
-    uint64_t controls; /* held GameControl bits */
+    uint64_t controls; /* held Control bits */
     input_controller_state controllers[INPUT_CONTROLLER_MAX];
 } input_keyframe;
 

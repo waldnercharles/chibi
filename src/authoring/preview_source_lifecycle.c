@@ -4,13 +4,13 @@
 #include <assert.h>
 #include <stdlib.h>
 
-bool game_preview_sources_staged(const game_preview_world *world)
+bool preview_sources_staged(const preview_world *world)
 {
     return world && world->source_state && world->source_state->staging;
 }
-void game_preview_sources_free(game_preview_world *world)
+void preview_sources_free(preview_world *world)
 {
-    game_preview_source_state *state = world->source_state;
+    preview_source_state *state = world->source_state;
     if (!state) {
         return;
     }

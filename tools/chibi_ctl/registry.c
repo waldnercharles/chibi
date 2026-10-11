@@ -1,10 +1,12 @@
-#include <stdbool.h>
 #include "registry.h"
+
 #include "authoring/application_catalog.h"
 #include "authoring/graph_catalog.h"
 #include "graph/nodes/studio_nodes.h"
 #include "runtime/component_catalog.h"
+
 #include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
 
 static authoring_graph_catalog *catalog;
@@ -14,9 +16,11 @@ int type_catalog_pack_count()
 }
 type_catalog_pack type_catalog_pack_at(int index)
 {
-    if (catalog) return authoring_graph_catalog_type_pack_at(catalog, index);
+    if (catalog) {
+        return authoring_graph_catalog_type_pack_at(catalog, index);
+    }
     assert(index == 0);
-    return GAME_TYPE_PACK;
+    return TYPE_PACK;
 }
 bool chibi_ctl_registry_init()
 {
@@ -25,10 +29,16 @@ bool chibi_ctl_registry_init()
     native_capabilities *native = authoring_application_catalog_new(true, error, sizeof error);
     const registry_pack *extra[] = { &STUDIO_PACK };
     if (native) {
-        catalog = authoring_graph_catalog_new((authoring_graph_catalog_config){
-            .native = native, .types = GAME_TYPE_PACK,
-            .components = { GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT },
-            .extra_packs = extra, .extra_count = 1 }, error, sizeof error);
+        catalog = authoring_graph_catalog_new(
+            (authoring_graph_catalog_config){
+                .native = native,
+                .types = TYPE_PACK,
+                .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
+                .extra_packs = extra,
+                .extra_count = 1 },
+            error,
+            sizeof error
+        );
         native_capabilities_free(native);
     }
     if (!catalog) {

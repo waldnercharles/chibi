@@ -3,6 +3,7 @@
 #include "assets/project_migrate.h"
 #include "authoring/native_bindings.h"
 #include "authoring/source_catalog.h"
+#include "authoring/source_metadata.h"
 #include "ecs/ecs.h"
 #include "execution/delay.h"
 #include "execution/inspection.h"
@@ -81,16 +82,16 @@ static const type_desc velocity_type = {
 static const type_desc *const reflected_types[] = { &position_type, &velocity_type };
 /* A few controls, as the input map names them. */
 static const enum_value_desc control_values[] = {
-    { 3, "GAME_CONTROL_SPACE", "Space" },
-    { 30, "GAME_CONTROL_X", "X" },
-    { 32, "GAME_CONTROL_Z", "Z" },
+    { 3, "CONTROL_SPACE", "Space" },
+    { 30, "CONTROL_X", "X" },
+    { 32, "CONTROL_Z", "Z" },
 };
-static const enum_desc control_type = { "GameControl", control_values, 3 };
+static const enum_desc control_type = { "Control", control_values, 3 };
 static const enum_value_desc pad_values[] = {
-    { 1, "GAME_PAD_A", "A" },
-    { 12, "GAME_PAD_DPAD_LEFT", "Dpad Left" },
+    { 1, "PAD_A", "A" },
+    { 12, "PAD_DPAD_LEFT", "Dpad Left" },
 };
-static const enum_desc pad_type = { "GamePadControl", pad_values, 2 };
+static const enum_desc pad_type = { "PadControl", pad_values, 2 };
 static const enum_desc *const program_enums[] = { &control_type, &pad_type };
 type_catalog_pack test_program_types()
 {
@@ -3309,13 +3310,13 @@ TEST_CASE(program_version_15_bindings_migrate_to_the_input_map)
         "        prototype \"Player\"\n"
         "        (array)behaviors\n"
         "        components {\n"
-        "            (object)GAME.GameInput\n"
+        "            (object)Input\n"
         "        }\n"
         "    }\n"
         "}\n",
         "name \"Player\"\n"
         "components {\n"
-        "    (object)GAME.GameInput\n"
+        "    (object)Input\n"
         "}\n",
         "Jump {\n"
         "    (array)sources \"Space\" \"Z\"\n"
@@ -3447,8 +3448,11 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
         { "content/scenes/Start.kdl", scene },
         { "content/prototypes/Enemy.kdl", prototype },
         { "content/Note.chibi", "// GameSdfMotion is gone.\nbehavior Note {\n}\n" },
+        { "content/scenes/SdfMotion.kdl",
+          "// GameSdfMotion is removed.\nversion 1\nname \"SdfMotion\"\n"
+          "description \"GameSdfMotion example\"\n(array)entities\n" },
     };
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         FILE *file = fopen(path, "wb");
         fputs(files[i][1], file);
@@ -3466,15 +3470,16 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
         "        prototype \"Enemy\"\n"
         "        (array)behaviors\n"
         "        components {\n"
-        "            (object)GAME.GameInput\n"
+        "            (object)Input\n"
         "        }\n"
         "    }\n"
         "}\n",
         "name \"Enemy\"\n"
         "(object)components\n",
         files[3][1],
+        files[4][1],
     };
-    for (int i = 1; i < 4; i++) {
+    for (int i = 1; i < 5; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         char text[1024];
         FILE *file = fopen(path, "rb");
@@ -3541,7 +3546,7 @@ TEST_CASE(program_version_17_sdf_motion_is_removed)
     }
     snprintf(path, sizeof path, "%s/%s", root, CHIBI_PROJECT_MANIFEST);
     unlink(path);
-    for (int i = 1; i < 4; i++) {
+    for (int i = 1; i < 5; i++) {
         snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
         unlink(path);
     }
@@ -3867,6 +3872,283 @@ TEST_CASE(program_version_20_surface_outputs_take_counter_pin_ids)
     rmdir(root);
     return true;
 }
+TEST_CASE(program_version_21_prefixes_migrate_without_changing_data)
+{
+    const char
+        *source = "// GameTransform and GAME.GameHealth are documented here.\n"
+                  "behavior B {\n"
+                  "    label: string = \"GAME.GameHealth\"\n"
+                  "    other: GameCustom = null\n"
+                  "    function game_custom() { }\n"
+                  "    function get_game_transform_custom() { }\n"
+                  "    pose: struct<\"GameTransform\"> = null\n"
+                  "    lower: gametransform = null\n"
+                  "    body: enum<\"GameBodyType\"> = \"Dynamic\"\n"
+                  "    button: GamePadControl = \"A\"\n"
+                  "    on Tick(dt: double) {\n"
+                  "        p := get_game_transform()\n"
+                  "        upper := GET_GAME_TRANSFORM()\n"
+                  "        mixed := Get_game_transform()\n"
+                  "        compact := GETGAMETRANSFORM()\n"
+                  "        h := get_component(Component: \"GAME.GameHealth\")\n"
+                  "        any := "
+                  "has_entities_with_component(\"GAME.GameCollider\")\n"
+                  "        count := count_matching_entities([], [{component: "
+                  "\"GAME.GameHealth\"}])\n"
+                  "        x := component(\"GAME.Custom\", \"value\")\n"
+                  "        y := "
+                  "convert<\"Unwrap_GameInput\">(get_game_input())\n"
+                  "        game_move_transform(p, 1, 2)\n"
+                  "        game_custom()\n"
+                  "        get_game_transform_custom()\n"
+                  "        self.GameTransform.x = 4\n"
+                  "        e := self\n"
+                  "        e.GameTransform.x = 5\n"
+                  "    }\n"
+                  "}\n";
+    const char *
+        expected = "// GameTransform and GAME.GameHealth are documented here.\n"
+                   "behavior B {\n"
+                   "    label: string = \"GAME.GameHealth\"\n"
+                   "    other: GameCustom = null\n"
+                   "    function game_custom() { }\n"
+                   "    function get_game_transform_custom() { }\n"
+                   "    pose: struct<\"Transform\"> = null\n"
+                   "    lower: Transform = null\n"
+                   "    body: enum<\"BodyType\"> = \"Dynamic\"\n"
+                   "    button: PadControl = \"A\"\n"
+                   "    on Tick(dt: double) {\n"
+                   "        p := get_transform()\n"
+                   "        upper := GET_TRANSFORM()\n"
+                   "        mixed := Get_transform()\n"
+                   "        compact := GETTRANSFORM()\n"
+                   "        h := get_component(Component: \"Health\")\n"
+                   "        any := has_entities_with_component(\"Collider\")\n"
+                   "        count := count_matching_entities([], [{component: "
+                   "\"Health\"}])\n"
+                   "        x := component(\"Custom\", \"value\")\n"
+                   "        y := convert<\"Unwrap_Input\">(get_input())\n"
+                   "        move_transform(p, 1, 2)\n"
+                   "        game_custom()\n"
+                   "        get_game_transform_custom()\n"
+                   "        self.Transform.x = 4\n"
+                   "        e := self\n"
+                   "        e.Transform.x = 5\n"
+                   "    }\n"
+                   "}\n";
+    const char *asset = "// GAME.GameTransform keeps this comment.\n"
+                        "name \"GAME.GameTransform\"\n"
+                        "components {\n"
+                        "    GAME.GameTransform x=4.0\n"
+                        "    GAME.Custom label=\"GameTransform\"\n"
+                        "    GameHealth current=3\n"
+                        "}\n"
+                        "(array)nodes {\n"
+                        "    - type=\"Get_GameTransform\" "
+                        "description=\"GameTransform\"\n"
+                        "}\n";
+    const char *asset_expected = "// GAME.GameTransform keeps this comment.\n"
+                                 "name \"GAME.GameTransform\"\n"
+                                 "components {\n"
+                                 "    Transform x=4.0\n"
+                                 "    Custom label=\"GameTransform\"\n"
+                                 "    Health current=3\n"
+                                 "}\n"
+                                 "(array)nodes {\n"
+                                 "    - type=\"Get_Transform\" "
+                                 "description=\"GameTransform\"\n"
+                                 "}\n";
+    char error[256] = "";
+    char *migrated = chibi_migrate_prefixes(source, true, error, sizeof error);
+    REQUIRE(migrated && !strcmp(migrated, expected));
+    free(migrated);
+    migrated = chibi_migrate_prefixes(asset, false, error, sizeof error);
+    REQUIRE(migrated && !strcmp(migrated, asset_expected));
+    free(migrated);
+    REQUIRE(!chibi_migrate_prefixes(expected, true, error, sizeof error));
+    REQUIRE(!chibi_migrate_prefixes(asset_expected, false, error, sizeof error));
+    const char *collision = "components {\nGAME.GameHealth current=1\nHealth "
+                            "current=2\n}\n";
+    REQUIRE(!chibi_migrate_prefixes(collision, false, error, sizeof error) && error[0]);
+
+    char root[] = "/tmp/chibi-prefix-migrate-XXXXXX", path[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    size_t old_anchor = (size_t)(strstr(source, "game_move_transform(p") - source),
+           new_anchor = (size_t)(strstr(expected, "move_transform(p") - expected);
+    char metadata[1024];
+    snprintf(
+        metadata,
+        sizeof metadata,
+        "{\"version\":2,\"description\":\"GameTransform\","
+        "\"graphs\":[{\"nodes\":[{\"id\":42,\"type\":\"Break_GameTransform\","
+        "\"x\":17,\"inputs\":[{\"id\":43,\"name\":\"GameTransform\","
+        "\"parents\":[\"GameTransform\"]}]}],"
+        "\"edges\":[{\"from\":\"42.GameTransform\",\"to\":\"44.Value\"}]}],"
+        "\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":\"node\"}]}",
+        old_anchor
+    );
+    char *bound = authoring_source_metadata_bind(metadata, source);
+    REQUIRE(bound);
+    const char *files[][2] = {
+        { "project.kdl", "version 21\ncontent \"content\"\nstart_scene \"Scene.kdl\"\n" },
+        { "content/B.chibi", source },
+        { "content/B.chibi.meta", bound },
+        { "content/Scene.kdl", asset },
+    };
+    for (int i = 0; i < 4; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        FILE *file = fopen(path, "wb");
+        REQUIRE(file);
+        fputs(files[i][1], file);
+        fclose(file);
+    }
+    free(bound);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 21);
+    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
+    snprintf(path, sizeof path, "%s/content/B.chibi.meta", root);
+    FILE *file = fopen(path, "rb");
+    REQUIRE(file);
+    char text[2048], anchor[64];
+    text[fread(text, 1, sizeof text - 1, file)] = '\0';
+    fclose(file);
+    snprintf(anchor, sizeof anchor, "\"start\":%zu", new_anchor);
+    REQUIRE(authoring_source_metadata_matches(text, expected));
+    REQUIRE(strstr(text, "\"type\":\"Break_Transform\"") && strstr(text, anchor));
+    REQUIRE(strstr(text, "\"description\":\"GameTransform\"") && strstr(text, "\"x\":17"));
+    REQUIRE(strstr(text, "\"name\":\"Transform\"") && strstr(text, "\"parents\":[\"Transform\"]"));
+    REQUIRE(strstr(text, "\"from\":\"42.Transform\"") && strstr(text, "\"to\":\"44.Value\""));
+    for (int i = 0; i < 4; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        unlink(path);
+    }
+    snprintf(path, sizeof path, "%s/content", root);
+    rmdir(path);
+    rmdir(root);
+    return true;
+}
+TEST_CASE(program_version_21_prefixes_preserve_resolved_helpers)
+{
+    const char
+        *source = "behavior B {\n"
+                  "    function get_game_input() { }\n"
+                  "    macro get_game_input_custom() -> () { entry Begin {} "
+                  "exit Done; }\n"
+                  "    on Tick(dt: double) {\n"
+                  "        get_game_input()\n"
+                  "        get_game_input_custom()\n"
+                  "        get_game_transform_custom()\n"
+                  "        get_game_transform_macro()\n"
+                  "        \"motion_helpers\".\"get-game-transform-custom\"()\n"
+                  "        \"Motion Helpers\".get_game_transform()\n"
+                  "        \"Motion Helpers\".get_game_transform_macro()\n"
+                  "        p := get_game_velocity()\n"
+                  "        q := Get_GameTransform()\n"
+                  "        Get_GameBodyType()\n"
+                  "        self.GameTransform.x = 4\n"
+                  "    }\n"
+                  "}\n";
+    const char
+        *expected = "behavior B {\n"
+                    "    function get_game_input() { }\n"
+                    "    macro get_game_input_custom() -> () { entry Begin {} "
+                    "exit Done; }\n"
+                    "    on Tick(dt: double) {\n"
+                    "        get_game_input()\n"
+                    "        get_game_input_custom()\n"
+                    "        get_game_transform_custom()\n"
+                    "        get_game_transform_macro()\n"
+                    "        "
+                    "\"motion_helpers\".\"get-game-transform-custom\"()\n"
+                    "        \"Motion Helpers\".get_game_transform()\n"
+                    "        \"Motion Helpers\".get_game_transform_macro()\n"
+                    "        p := get_velocity()\n"
+                    "        q := Get_Transform()\n"
+                    "        Get_GameBodyType()\n"
+                    "        self.Transform.x = 4\n"
+                    "    }\n"
+                    "}\n";
+    const char
+        *library = "library \"Motion Helpers\" {\n"
+                   "    function \"Get Game Transform Custom\"() { }\n"
+                   "    function get_game_transform() { }\n"
+                   "    function Get_GameBodyType() { }\n"
+                   "    function call_helpers() { get_game_transform(); }\n"
+                   "    macro get_game_transform_macro() -> () { entry "
+                   "Begin {} exit Done; }\n"
+                   "}\n";
+    char root[] = "/tmp/chibi-prefix-helpers-XXXXXX", path[256], error[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    char metadata[256];
+    snprintf(
+        metadata,
+        sizeof metadata,
+        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
+        "\"node\"}]}",
+        (size_t)(strstr(source, "self.GameTransform") - source)
+    );
+    char *bound = authoring_source_metadata_bind(metadata, source);
+    REQUIRE(bound);
+    const char *files[][2] = {
+        { "project.kdl", "version 21\ncontent \"content\"\nstart_scene \"Scene.kdl\"\n" },
+        { "content/B.chibi", source },
+        { "content/B.chibi.meta", bound },
+        { "content/Helpers.chibi", library },
+        { "content/Scene.kdl", "version 1\nname \"Scene\"\n(array)entities\n" },
+    };
+    for (int i = 0; i < 5; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        FILE *file = fopen(path, "wb");
+        REQUIRE(file);
+        fputs(files[i][1], file);
+        fclose(file);
+    }
+    free(bound);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 21);
+    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
+    bool source_matches = false, library_matches = false, metadata_matches = false;
+    for (int i = 1; i <= 3; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        FILE *file = fopen(path, "rb");
+        REQUIRE(file);
+        char text[2048];
+        text[fread(text, 1, sizeof text - 1, file)] = '\0';
+        fclose(file);
+        if (i == 1) {
+            source_matches = !strcmp(text, expected);
+            if (!source_matches) {
+                fprintf(stderr, "Migrated helper source differs:\n%s", text);
+            }
+        }
+        if (i == 2) {
+            char anchor[64];
+            snprintf(
+                anchor,
+                sizeof anchor,
+                "\"start\":%zu",
+                (size_t)(strstr(expected, "self.Transform") - expected)
+            );
+            metadata_matches = authoring_source_metadata_matches(text, expected) &&
+                               strstr(text, anchor);
+        }
+        if (i == 3) {
+            library_matches = !strcmp(text, library);
+        }
+    }
+    for (int i = 0; i < 5; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        unlink(path);
+    }
+    snprintf(path, sizeof path, "%s/content", root);
+    rmdir(path);
+    rmdir(root);
+    REQUIRE(source_matches && library_matches && metadata_matches);
+    return true;
+}
+
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -4545,6 +4827,8 @@ void test_language_program()
     RUN_TEST_CASE(program_version_18_dotted_names_are_renamed);
     RUN_TEST_CASE(program_version_19_components_move_to_chibi);
     RUN_TEST_CASE(program_version_20_surface_outputs_take_counter_pin_ids);
+    RUN_TEST_CASE(program_version_21_prefixes_migrate_without_changing_data);
+    RUN_TEST_CASE(program_version_21_prefixes_preserve_resolved_helpers);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);

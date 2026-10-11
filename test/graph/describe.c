@@ -43,7 +43,7 @@ void run_graph_describe_checks()
     node *branch = graph_add_node(g, &NODE_Branch);
     test_check(placed_describes(branch, catalog, 2, NODE_Branch.description), "describe: a node reads its type's sentence");
 
-    const ecs_component_desc *health = &GAME_COMPONENT_GameHealth;
+    const ecs_component_desc *health = &COMPONENT_Health;
     const char *type = health->type->name;
     char text[256];
     snprintf(text, sizeof text, "Reads %s from Entity, which defaults to Self.", type);
@@ -65,14 +65,9 @@ void run_graph_describe_checks()
     test_check(describes(&preset, text), "describe: a Set preset names the field it writes");
 
     node *tick = graph_add_node(g, &NODE_Event);
-    graph_set_event_name(g, tick, game_host_event_name(GAME_HOST_EVENT_TICK));
+    graph_set_event_name(g, tick, host_event_name(HOST_EVENT_TICK));
     test_check(
-        placed_describes(
-            tick,
-            catalog,
-            2,
-            GAME_HOST_EVENTS[GAME_HOST_EVENT_TICK].description
-        ),
+        placed_describes(tick, catalog, 2, HOST_EVENTS[HOST_EVENT_TICK].description),
         "describe: an engine event reads its own sentence"
     );
     node *on_hit = graph_add_node(g, &NODE_Event);
@@ -91,9 +86,9 @@ void run_graph_describe_checks()
     assert(graph_set_node_reference(g, send, 0, "Hit") == 0);
     test_check(placed_describes(send, catalog, 2, "Sends Hit to Entity."), "describe: Send Event names the event it sends");
     node_subject host = { .desc = &NODE_Event,
-                          .host = &GAME_HOST_EVENTS[GAME_HOST_EVENT_CONTACT_BEGIN] };
+                          .host = &HOST_EVENTS[HOST_EVENT_CONTACT_BEGIN] };
     test_check(
-        describes(&host, GAME_HOST_EVENTS[GAME_HOST_EVENT_CONTACT_BEGIN].description),
+        describes(&host, HOST_EVENTS[HOST_EVENT_CONTACT_BEGIN].description),
         "describe: a search result for an engine event reads the event's "
         "sentence"
     );

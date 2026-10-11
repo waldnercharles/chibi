@@ -1,6 +1,6 @@
 name "Binding"
 components {
-    GAME.GameDrive {
+    Drive {
         acceleration 5.0
         target x=3.0 y=4.0
     }

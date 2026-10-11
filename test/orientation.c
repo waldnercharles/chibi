@@ -45,8 +45,8 @@ static test_source_fixture read_behavior(const char *name)
 
 static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 {
-    game_preview_runtime *runtime = user;
-    return game_source_attach(
+    preview_runtime *runtime = user;
+    return source_attach(
         runtime->sources,
         entity,
         name,
@@ -58,60 +58,55 @@ static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 
 static void check_heading(ecs_world *world, ecs_entity entity, float expected)
 {
-    const GameOrientation *heading = GAME_GameOrientation_get_const(world, entity);
+    const Orientation *heading = Orientation_get_const(world, entity);
     assert(heading && isfinite(heading->radians));
     assert(fabsf(heading->radians - expected) < 0.0001f);
 }
 
 static void headings(bool isolated, bool projectile)
 {
-    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
-                                         GAME_REGISTRY_COMPONENT_COUNT };
+    prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
     const char *name = projectile ? "ProjectileBehavior" : "InputBehavior";
     char *text = read_content(
         projectile ? "test/fixtures/content/prototypes/Projectile.kdl"
                    : "test/fixtures/content/prototypes/Player.kdl"
     );
     char error[256];
-    game_prototype *prototype = game_prototype_load(text, &registry, error, sizeof error);
+    prototype *prototype = prototype_load(text, &registry, error, sizeof error);
     free(text);
     assert(prototype);
     for (int i = acount(prototype->graphs) - 1; i >= 0; i--) {
         if (strcmp(prototype->graphs[i], name) != 0) {
-            assert(game_prototype_remove_graph(prototype, prototype->graphs[i]) == 0);
+            assert(prototype_remove_graph(prototype, prototype->graphs[i]) == 0);
         }
     }
-    game_prototype_preview *preview = isolated ? game_prototype_preview_new(&registry)
-                                               : NULL;
+    prototype_preview *preview = isolated ? prototype_preview_new(&registry) : NULL;
     register_test_preview_catalog(preview);
-    ecs_world *world = preview ? game_prototype_preview_world(preview)
-                               : ecs_world_new();
-    game_preview_world *live = NULL;
+    ecs_world *world = preview ? prototype_preview_world(preview) : ecs_world_new();
+    preview_world *live = NULL;
     engine *runtime = NULL;
     test_source_fixture fixture = read_behavior(name);
     if (preview) {
-        test_source_register(game_prototype_preview_live(preview)->runtime, &fixture);
+        test_source_register(prototype_preview_live(preview)->runtime, &fixture);
     } else {
-        for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-            assert(
-                ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
-            );
+        for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+            assert(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
         }
-        live = game_preview_world_new(world);
+        live = preview_world_new(world);
         runtime = authoring_engine_new(world, live->runtime);
         test_source_register(live->runtime, &fixture);
     }
     test_source_free(&fixture);
     ecs_entity entity;
     if (preview) {
-        assert(game_prototype_preview_launch(preview, prototype, error, sizeof error) == 0);
-        entity = game_prototype_preview_entity(preview);
+        assert(prototype_preview_launch(preview, prototype, error, sizeof error) == 0);
+        entity = prototype_preview_entity(preview);
     } else {
         assert(
-            game_prototype_spawn(
+            prototype_spawn(
                 prototype,
                 world,
-                &(game_prototype_spawn_hooks){ attach, live->runtime },
+                &(prototype_spawn_hooks){ attach, live->runtime },
                 &entity,
                 error,
                 sizeof error
@@ -119,8 +114,8 @@ static void headings(bool isolated, bool projectile)
         );
         assert(engine_set_playing(runtime, true) == 0);
     }
-    game_preview_runtime *host = preview ? game_prototype_preview_live(preview)->runtime
-                                         : live->runtime;
+    preview_runtime *host = preview ? prototype_preview_live(preview)->runtime
+                                    : live->runtime;
     check_heading(world, entity, 0);
     simulation_fixture clock = simulation_fixture_new(runtime, preview);
     simulation_advance(&clock, 0);
@@ -132,45 +127,43 @@ static void headings(bool isolated, bool projectile)
         float expected = atan2f(direction.y, direction.x);
         for (int idle = 0; idle < 2; idle++) {
             CF_V2 input = idle ? (CF_V2){ 0 } : direction;
-            GameTransform before = *GAME_GameTransform_get_const(world, entity);
+            Transform before = *Transform_get_const(world, entity);
             if (projectile) {
-                GameProjectile *shot = GAME_GameProjectile_get(world, entity);
-                *GAME_GameVelocity_get(world, entity) = (GameVelocity){
-                    input.x * shot->speed,
-                    input.y * shot->speed
-                };
+                Projectile *shot = Projectile_get(world, entity);
+                *Velocity_get(world, entity) = (Velocity){ input.x * shot->speed,
+                                                           input.y * shot->speed };
             } else {
                 pin_value value = { .type = PIN_STRUCT,
                                     .type_name = "CF_V2",
                                     .ptr = &input };
                 assert(
-                    game_source_dispatch(host->sources, entity, "Input", &value, 1, host->now, host->delta) >= 0
+                    source_dispatch(host->sources, entity, "Input", &value, 1, host->now, host->delta) >= 0
                 );
             }
             simulation_step(&clock);
             check_heading(world, entity, expected);
             if (projectile && !idle) {
-                const GameTransform *after = GAME_GameTransform_get_const(world, entity);
+                const Transform *after = Transform_get_const(world, entity);
                 float dx = after->x - before.x, dy = after->y - before.y;
                 float distance = hypotf(dx, dy);
                 assert(distance > 0);
-                const GameOrientation *heading = GAME_GameOrientation_get_const(world, entity);
+                const Orientation *heading = Orientation_get_const(world, entity);
                 assert(fabsf(dx / distance - cosf(heading->radians)) < .0001f);
                 assert(fabsf(dy / distance - sinf(heading->radians)) < .0001f);
             }
         }
     }
     if (preview) {
-        game_prototype_preview_stop(preview);
-        assert(game_prototype_preview_launch(preview, prototype, error, sizeof error) == 0);
-        check_heading(world, game_prototype_preview_entity(preview), 0);
-        game_prototype_preview_free(preview);
+        prototype_preview_stop(preview);
+        assert(prototype_preview_launch(preview, prototype, error, sizeof error) == 0);
+        check_heading(world, prototype_preview_entity(preview), 0);
+        prototype_preview_free(preview);
     } else {
         engine_free(runtime);
-        game_preview_world_free(live);
+        preview_world_free(live);
         ecs_world_free(world);
     }
-    game_prototype_free(prototype);
+    prototype_free(prototype);
 }
 
 void test_orientation()

@@ -35,7 +35,7 @@ static void set_message(char *message, size_t size, const char *format, ...)
     va_end(args);
 }
 
-static game_preview_definition *find_definition(game_preview_world *world, const char *name)
+static preview_definition *find_definition(preview_world *world, const char *name)
 {
     for (int i = 0; i < acount(world->definitions); i++) {
         if (strcmp(world->definitions[i]->name, name) == 0) {
@@ -45,7 +45,7 @@ static game_preview_definition *find_definition(game_preview_world *world, const
     return NULL;
 }
 
-game_preview_definition *game_preview_definition_new(const char *asset_name, behavior_asset *working)
+preview_definition *preview_definition_new(const char *asset_name, behavior_asset *working)
 {
     if (!asset_name || !asset_name[0] || !working) {
         return NULL;
@@ -54,8 +54,7 @@ game_preview_definition *game_preview_definition_new(const char *asset_name, beh
     if (!applied) {
         return NULL;
     }
-    game_preview_definition *definition = (game_preview_definition *)
-        xcalloc(1, sizeof *definition);
+    preview_definition *definition = (preview_definition *)xcalloc(1, sizeof *definition);
     definition->name = xstrdup(asset_name);
     definition->working = working;
     definition->applied = applied;
@@ -63,10 +62,10 @@ game_preview_definition *game_preview_definition_new(const char *asset_name, beh
     return definition;
 }
 
-game_preview_definition *game_preview_projection_new(const char *name, authoring_source_presentation *presentation)
+preview_definition *preview_projection_new(const char *name, authoring_source_presentation *presentation)
 {
     assert(name && name[0] && presentation);
-    game_preview_definition *definition = xcalloc(1, sizeof *definition);
+    preview_definition *definition = xcalloc(1, sizeof *definition);
     definition->name = xstrdup(name);
     definition->working_presentation = authoring_source_presentation_retain(presentation);
     definition->applied_presentation = authoring_source_presentation_clone(presentation);
@@ -75,8 +74,8 @@ game_preview_definition *game_preview_projection_new(const char *name, authoring
     compile_report_init(&definition->diagnostics);
     return definition;
 }
-int game_preview_projection_set(
-    game_preview_definition *definition,
+int preview_projection_set(
+    preview_definition *definition,
     authoring_source_presentation *presentation,
     bool applied
 )
@@ -84,7 +83,7 @@ int game_preview_projection_set(
     assert(definition && presentation && definition->working_presentation);
     if (applied &&
         (!definition->world ||
-         !game_source_registered(definition->world->runtime->sources, definition->name))) {
+         !source_registered(definition->world->runtime->sources, definition->name))) {
         return -1;
     }
     authoring_source_presentation **slot = applied
@@ -104,7 +103,7 @@ int game_preview_projection_set(
                         ) != 0;
     return 0;
 }
-void game_preview_definition_free(game_preview_definition *definition)
+void preview_definition_free(preview_definition *definition)
 {
     if (!definition) {
         return;
@@ -123,17 +122,17 @@ void game_preview_definition_free(game_preview_definition *definition)
     free(definition);
 }
 
-game_preview_definition *game_preview_find_definition(game_preview_world *world, const char *asset_name)
+preview_definition *preview_find_definition(preview_world *world, const char *asset_name)
 {
     return asset_name ? find_definition(world, asset_name) : NULL;
 }
 
-const char *game_preview_definition_path(const game_preview_definition *definition)
+const char *preview_definition_path(const preview_definition *definition)
 {
     return definition ? definition->path : NULL;
 }
 
-int game_preview_definition_set_path(game_preview_definition *definition, const char *path)
+int preview_definition_set_path(preview_definition *definition, const char *path)
 {
     if (!definition || !path || !path[0]) {
         return -1;
@@ -144,12 +143,12 @@ int game_preview_definition_set_path(game_preview_definition *definition, const 
     return 0;
 }
 
-int game_preview_definition_count(const game_preview_world *world)
+int preview_definition_count(const preview_world *world)
 {
     return world ? acount(world->definitions) : 0;
 }
 
-game_preview_definition *game_preview_definition_at(game_preview_world *world, int index)
+preview_definition *preview_definition_at(preview_world *world, int index)
 {
     if (!world || index < 0 || index >= acount(world->definitions)) {
         return NULL;
@@ -190,7 +189,7 @@ static bool same_document(const behavior_asset *a, const behavior_asset *b)
     return same;
 }
 
-int game_preview_sync_working(game_preview_definition *definition, const behavior_asset *source)
+int preview_sync_working(preview_definition *definition, const behavior_asset *source)
 {
     if (!definition || !source) {
         return -1;
@@ -214,7 +213,7 @@ int game_preview_sync_working(game_preview_definition *definition, const behavio
     return 0;
 }
 
-int game_preview_mark_dirty(game_preview_definition *definition)
+int preview_mark_dirty(preview_definition *definition)
 {
     if (!definition || !behavior_asset_mutable(definition->working)) {
         return -1;
@@ -224,10 +223,10 @@ int game_preview_mark_dirty(game_preview_definition *definition)
     return 0;
 }
 
-game_preview_world *game_preview_world_new(ecs_world *ecs)
+preview_world *preview_world_new(ecs_world *ecs)
 {
-    game_preview_world *world = xcalloc(1, sizeof *world);
-    world->runtime = game_preview_runtime_new(ecs);
+    preview_world *world = xcalloc(1, sizeof *world);
+    world->runtime = preview_runtime_new(ecs);
     if (!world->runtime) {
         free(world);
         return NULL;
@@ -235,35 +234,35 @@ game_preview_world *game_preview_world_new(ecs_world *ecs)
     return world;
 }
 
-void game_preview_world_free(game_preview_world *world)
+void preview_world_free(preview_world *world)
 {
     if (!world) {
         return;
     }
-    assert(!game_preview_sources_staged(world));
+    assert(!preview_sources_staged(world));
     render_shader_clear_world(world->runtime->ecs);
-    game_preview_runtime_free(world->runtime);
+    preview_runtime_free(world->runtime);
     for (int i = 0; i < acount(world->definitions); i++) {
-        game_preview_definition *definition = world->definitions[i];
+        preview_definition *definition = world->definitions[i];
         definition->world = NULL;
         definition->registered = 0;
-        game_preview_definition_free(definition);
+        preview_definition_free(definition);
     }
     afree(world->definitions);
-    game_preview_sources_free(world);
+    preview_sources_free(world);
     free(world);
 }
 
 static behavior_asset *linked_snapshot(
-    game_preview_world *world,
+    preview_world *world,
     const behavior_asset *source,
-    const game_preview_definition *changed,
+    const preview_definition *changed,
     char *message,
     size_t size
 )
 {
     for (int i = 0; i < acount(world->definitions); i++) {
-        const game_preview_definition *definition = world->definitions[i];
+        const preview_definition *definition = world->definitions[i];
         if (definition->working_presentation &&
             (source == definition->working || source == definition->applied)) {
             set_message(message, size, "Source presentations do not supply executable graph state.");
@@ -280,7 +279,7 @@ static behavior_asset *linked_snapshot(
     }
     const behavior_asset **catalog = NULL;
     for (int i = 0; i < acount(world->definitions); i++) {
-        game_preview_definition *d = world->definitions[i];
+        preview_definition *d = world->definitions[i];
         if (!d->working_presentation) {
             apush(catalog, d == changed ? d->working : d->applied);
         }
@@ -334,7 +333,7 @@ static bool validate_shader(const behavior_asset *asset, char *message, size_t s
     return true;
 }
 
-static int registration_error(game_preview_definition *definition, const char *message)
+static int registration_error(preview_definition *definition, const char *message)
 {
     compile_diagnostic diagnostic = { .severity = CMPL_ERROR };
     snprintf(diagnostic.message, sizeof diagnostic.message, "%s", message);
@@ -343,9 +342,9 @@ static int registration_error(game_preview_definition *definition, const char *m
     return -1;
 }
 
-int game_preview_add_definition(game_preview_world *world, game_preview_definition *definition)
+int preview_add_definition(preview_world *world, preview_definition *definition)
 {
-    if (!world || !definition || game_preview_sources_staged(world)) {
+    if (!world || !definition || preview_sources_staged(world)) {
         return -1;
     }
     if (definition->working_presentation) {
@@ -356,13 +355,13 @@ int game_preview_add_definition(game_preview_world *world, game_preview_definiti
     if (definition->world || find_definition(world, definition->name)) {
         return registration_error(definition, "A definition with this name is already registered.");
     }
-    if (game_source_registered(world->runtime->sources, definition->name) ||
+    if (source_registered(world->runtime->sources, definition->name) ||
         definition->working->domain == BEHAVIOR_DOMAIN_EVENT ||
         definition->working->domain == BEHAVIOR_DOMAIN_LIBRARY) {
         return registration_error(definition, "Executable source uses canonical module publication.");
     }
     if (definition->working->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION &&
-        game_host_event_reserved(definition->working->name)) {
+        host_event_reserved(definition->working->name)) {
         return registration_error(definition, "This event name is reserved by the host.");
     }
     char message[256] = { 0 };
@@ -375,7 +374,7 @@ int game_preview_add_definition(game_preview_world *world, game_preview_definiti
         return -1;
     }
     if (linked->domain == BEHAVIOR_DOMAIN_FIELD &&
-        !material_field_compile(game_materials_fields(world->runtime->materials), linked, message, sizeof message)) {
+        !material_field_compile(materials_fields(world->runtime->materials), linked, message, sizeof message)) {
         behavior_asset_free(linked);
         return registration_error(definition, message);
     }
@@ -394,15 +393,15 @@ int game_preview_add_definition(game_preview_world *world, game_preview_definiti
     return 0;
 }
 
-int game_preview_add_projection(game_preview_world *world, game_preview_definition *definition)
+int preview_add_projection(preview_world *world, preview_definition *definition)
 {
-    if (!world || !definition || game_preview_sources_staged(world)) {
+    if (!world || !definition || preview_sources_staged(world)) {
         return -1;
     }
     if (definition->world || find_definition(world, definition->name)) {
         return registration_error(definition, "A definition with this name is already registered.");
     }
-    if (!game_source_registered(world->runtime->sources, definition->name)) {
+    if (!source_registered(world->runtime->sources, definition->name)) {
         return registration_error(definition, "Source projection requires a prepared canonical module.");
     }
     definition->world = world;
@@ -411,13 +410,9 @@ int game_preview_add_projection(game_preview_world *world, game_preview_definiti
     return 0;
 }
 
-static behavior_asset *publish_snapshot(game_preview_definition *, behavior_asset *);
+static behavior_asset *publish_snapshot(preview_definition *, behavior_asset *);
 
-static void replace_applied(
-    game_preview_world *world,
-    game_preview_definition *definition,
-    behavior_asset *snapshot
-)
+static void replace_applied(preview_world *world, preview_definition *definition, behavior_asset *snapshot)
 {
     (void)world;
     behavior_asset *old = publish_snapshot(definition, snapshot);
@@ -450,14 +445,14 @@ static void rename_model_material_references(behavior_asset *asset, const char *
         }
     }
 }
-int game_preview_rename_definition(game_preview_world *world, const char *from, const char *to)
+int preview_rename_definition(preview_world *world, const char *from, const char *to)
 {
-    if (game_preview_sources_staged(world)) {
+    if (preview_sources_staged(world)) {
         return -1;
     }
-    game_preview_definition *definition = find_definition(world, from);
+    preview_definition *definition = find_definition(world, from);
     if (!definition || find_definition(world, to) ||
-        game_source_registered(world->runtime->sources, to)) {
+        source_registered(world->runtime->sources, to)) {
         return -1;
     }
     if (definition->working_presentation) {
@@ -470,7 +465,7 @@ int game_preview_rename_definition(game_preview_world *world, const char *from, 
             return -1;
         }
         for (int i = 0; i < acount(world->definitions); i++) {
-            game_preview_definition *d = world->definitions[i];
+            preview_definition *d = world->definitions[i];
             if (d->working->domain != BEHAVIOR_DOMAIN_MODEL) {
                 continue;
             }
@@ -512,7 +507,7 @@ int game_preview_rename_definition(game_preview_world *world, const char *from, 
         (void)renamed;
         replace_applied(world, definition, snapshot);
         for (int i = 0; i < acount(world->definitions); i++) {
-            game_preview_definition *d = world->definitions[i];
+            preview_definition *d = world->definitions[i];
             if (d->working->domain == BEHAVIOR_DOMAIN_MODEL) {
                 rename_model_material_references(d->working, from, to);
                 behavior_asset *snapshot = behavior_asset_clone(d->applied);
@@ -530,13 +525,13 @@ int game_preview_rename_definition(game_preview_world *world, const char *from, 
     return 0;
 }
 
-int game_preview_remove_projection(game_preview_world *world, const char *name)
+int preview_remove_projection(preview_world *world, const char *name)
 {
     assert(world && name);
-    if (game_preview_sources_staged(world)) {
+    if (preview_sources_staged(world)) {
         return -1;
     }
-    game_preview_definition *definition = game_preview_find_definition(world, name);
+    preview_definition *definition = preview_find_definition(world, name);
     if (!definition || !definition->working_presentation) {
         return -1;
     }
@@ -548,15 +543,15 @@ int game_preview_remove_projection(game_preview_world *world, const char *name)
     }
     definition->registered = 0;
     definition->world = NULL;
-    game_preview_definition_free(definition);
+    preview_definition_free(definition);
     return 0;
 }
-int game_preview_remove_definition(game_preview_world *world, const char *asset_name)
+int preview_remove_definition(preview_world *world, const char *asset_name)
 {
-    if (game_preview_sources_staged(world)) {
+    if (preview_sources_staged(world)) {
         return -1;
     }
-    game_preview_definition *definition = game_preview_find_definition(world, asset_name);
+    preview_definition *definition = preview_find_definition(world, asset_name);
     if (!definition) {
         return -1;
     }
@@ -568,7 +563,7 @@ int game_preview_remove_definition(game_preview_world *world, const char *asset_
         return registration_error(definition, error.message);
     }
     if (definition->working_presentation) {
-        if (game_source_remove(world->runtime->sources, asset_name)) {
+        if (source_remove(world->runtime->sources, asset_name)) {
             return -1;
         }
     }
@@ -580,12 +575,12 @@ int game_preview_remove_definition(game_preview_world *world, const char *asset_
     }
     definition->world = NULL;
     definition->registered = 0;
-    game_preview_definition_free(definition);
+    preview_definition_free(definition);
     return 0;
 }
 
 /* Authoring owns graph snapshots; runtime consumes prepared artifacts only. */
-static behavior_asset *publish_snapshot(game_preview_definition *definition, behavior_asset *snapshot)
+static behavior_asset *publish_snapshot(preview_definition *definition, behavior_asset *snapshot)
 {
     assert(!definition->working_presentation);
     behavior_asset *old = definition->applied;
@@ -594,8 +589,8 @@ static behavior_asset *publish_snapshot(game_preview_definition *definition, beh
 }
 
 static int update_library(
-    game_preview_world *world,
-    game_preview_definition *definition,
+    preview_world *world,
+    preview_definition *definition,
     char *message,
     size_t size,
     bool commit
@@ -622,11 +617,11 @@ static int update_library(
     if (blocked) {
         return -1;
     }
-    game_preview_definition **dependents = NULL;
+    preview_definition **dependents = NULL;
     behavior_asset **snapshots = NULL;
     int status = -1;
     for (int i = 0; i < acount(world->definitions); i++) {
-        game_preview_definition *d = world->definitions[i];
+        preview_definition *d = world->definitions[i];
         if (!shader_domain(d->working->domain) &&
             d->working->domain != BEHAVIOR_DOMAIN_FIELD) {
             continue;
@@ -668,7 +663,7 @@ static int update_library(
         behavior_asset *old = NULL;
         if (snapshots[i]->domain == BEHAVIOR_DOMAIN_FIELD) {
             bool applied = material_field_compile(
-                game_materials_fields(world->runtime->materials),
+                materials_fields(world->runtime->materials),
                 snapshots[i],
                 message,
                 size
@@ -705,8 +700,8 @@ cleanup:
 }
 
 static int update_definition(
-    game_preview_world *world,
-    game_preview_definition *definition,
+    preview_world *world,
+    preview_definition *definition,
     char *message,
     size_t message_size,
     bool restart
@@ -722,7 +717,7 @@ static int update_definition(
         return -1;
     }
     if (definition->working->domain == BEHAVIOR_DOMAIN_EVENT_DEFINITION &&
-        game_host_event_reserved(definition->working->name)) {
+        host_event_reserved(definition->working->name)) {
         set_message(message, message_size, "Event name is reserved for host dispatch");
         return -1;
     }
@@ -770,7 +765,7 @@ static int update_definition(
         return -1;
     }
     if (definition->working->domain == BEHAVIOR_DOMAIN_FIELD &&
-        !material_field_compile(game_materials_fields(world->runtime->materials), snapshot, message, message_size)) {
+        !material_field_compile(materials_fields(world->runtime->materials), snapshot, message, message_size)) {
         behavior_asset_free(snapshot);
         return -1;
     }
@@ -789,12 +784,7 @@ static int update_definition(
     return 0;
 }
 
-int game_preview_can_update_library(
-    game_preview_world *world,
-    game_preview_definition *definition,
-    char *message,
-    size_t size
-)
+int preview_can_update_library(preview_world *world, preview_definition *definition, char *message, size_t size)
 {
     if (!definition || definition->working_presentation ||
         definition->working->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
@@ -804,27 +794,17 @@ int game_preview_can_update_library(
     return update_library(world, definition, message, size, false);
 }
 
-int game_preview_apply(
-    game_preview_world *world,
-    game_preview_definition *definition,
-    char *message,
-    size_t message_size
-)
+int preview_apply(preview_world *world, preview_definition *definition, char *message, size_t message_size)
 {
     return update_definition(world, definition, message, message_size, true);
 }
 
-int game_preview_update(
-    game_preview_world *world,
-    game_preview_definition *definition,
-    char *message,
-    size_t message_size
-)
+int preview_update(preview_world *world, preview_definition *definition, char *message, size_t message_size)
 {
     return update_definition(world, definition, message, message_size, false);
 }
 
-behavior_asset *game_preview_link(game_preview_world *world, const behavior_asset *source)
+behavior_asset *preview_link(preview_world *world, const behavior_asset *source)
 {
     char message[256];
     return linked_snapshot(world, source, NULL, message, sizeof message);

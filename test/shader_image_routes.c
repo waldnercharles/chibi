@@ -399,7 +399,7 @@ int test_shader_image_routes()
                          { .colors = { 255, 255, 255, 0 } } };
     save_image(alpha_key, alpha, 2, 2);
     int shape = image_shape(alpha_key);
-    GameShader binding = { .shape = "Image route shape" };
+    Shader binding = { .shape = "Image route shape" };
     assert(
         render_shader_contains(&binding, NULL, (ecs_entity){ 0 }, (float[2]){ -2, 2 }, (float[2]){ 0 }, 0)
     );

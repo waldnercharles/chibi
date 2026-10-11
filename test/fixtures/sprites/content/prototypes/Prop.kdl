@@ -1,5 +1,5 @@
 name "Prop"
 components {
-    GAME.GameSprite frame_height=16 frame_width=16 image="content/images/props.png" layer=1
-    (object)GAME.GameTransform
+    Sprite frame_height=16 frame_width=16 image="content/images/props.png" layer=1
+    (object)Transform
 }

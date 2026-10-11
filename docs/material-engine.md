@@ -28,13 +28,13 @@ callbacks. Sources must keep their mask addresses stable during callbacks.
 Mask views borrow storage until the next mutation; geometry consumers track the
 mask revision. The ECS fragment adapter copies an explicit presentation/physics
 bundle and omits health, projectiles and attached behaviors. Fragments with a
-material shader keep a `GameMaterialFrame`: where their source's frame sat when
+material shader keep a `MaterialFrame`: where their source's frame sat when
 the material was laid out. World-space material patterns stay attached to the
 piece as it moves.
 
 `MaterialDestructionWorld` bounds retained fragments. `MaterialFluidWorld`
 configures particles, activation regions and fluid chunk size. Liquids fall by
-the scene's `GameGravity`, the gravity that pulls 2D bodies, and hot gas rises
+the scene's `Gravity`, the gravity that pulls 2D bodies, and hot gas rises
 against it; without one, neither does. Either capability
 works independently; its `debris_limit` also bounds crater rock chunks.
 `MaterialBreakProfile` owns kick speeds and crater effects; missing profiles
@@ -48,8 +48,8 @@ bounce off terrain and get shoved by bodies and blasts. A hard knock splits a
 large chunk into two or three pieces, at most twice; every chunk shrinks away
 at the end of its short life and leaves a small puff of the source's smoke
 color. `Damage Material`
-takes the striking entity as `Source`; its `GameMaterial` emission color and
-`GameIgniter` heat describe the impact. `MaterialTerrain` names a field,
+takes the striking entity as `Source`; its `Material` emission color and
+`Igniter` heat describe the impact. `MaterialTerrain` names a field,
 typed parameter object, seed, bounds, cell size, connectivity and collision filters.
 
 ## Procedural fields

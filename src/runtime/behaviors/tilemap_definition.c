@@ -10,19 +10,19 @@
 
 static const char *query(void *service, const pin_value *inputs, pin_value *out, bool box)
 {
-    game_entities *entities = service;
+    entities *entities = service;
     ecs_entity entity = ecs_entity_from_u64(inputs[0].u64);
     const char *error = NULL;
-    const tilemap_grid *grid = game_entities_tilemap(entities, entity, &error);
+    const tilemap_grid *grid = entities_tilemap(entities, entity, &error);
     if (!grid) {
         return error;
     }
-    ecs_world *world = game_entities_world(entities);
-    const GameTransform *position = GAME_GameTransform_get_const(world, entity);
+    ecs_world *world = entities_world(entities);
+    const Transform *position = Transform_get_const(world, entity);
     if (!position) {
         return "Tilemap query requires a Transform";
     }
-    GameGlobalTransform2D transform = game_transform_world_2d(world, entity);
+    GlobalTransform2D transform = transform_world_2d(world, entity);
     float radians = transform.radians;
     if (!isfinite(transform.position.x) || !isfinite(transform.position.y) ||
         !isfinite(radians)) {
@@ -53,18 +53,14 @@ static const char *occupied_in_box(void *service, const pin_value *inputs, pin_v
     return query(service, inputs, out, true);
 }
 
-static const native_parameter_definition FRAME_IN[] = {
-    GAME_TILEMAP_FRAME_INPUTS(NATIVE_PORT)
-};
-static const native_parameter_definition BOX_IN[] = { GAME_TILEMAP_BOX_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition FRAME_IN[] = { TILEMAP_FRAME_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition BOX_IN[] = { TILEMAP_BOX_INPUTS(NATIVE_PORT) };
 static const native_parameter_definition FRAME_OUT[] = {
-    GAME_TILEMAP_OUTPUT(NATIVE_PORT, "Frame")
+    TILEMAP_OUTPUT(NATIVE_PORT, "Frame")
 };
-static const native_parameter_definition BOX_OUT[] = {
-    GAME_TILEMAP_OUTPUT(NATIVE_PORT, "Count")
-};
+static const native_parameter_definition BOX_OUT[] = { TILEMAP_OUTPUT(NATIVE_PORT, "Count") };
 static const native_capability_definition DEFINITIONS[] = {
-    { .canonical_name = GAME_TILEMAP_FRAME_NAME,
+    { .canonical_name = TILEMAP_FRAME_NAME,
       .source_name = "tilemap_frame_at",
       .category = "Tilemap",
       .description = "Returns the frame at a world point, or -1 for an empty "
@@ -77,7 +73,7 @@ static const native_capability_definition DEFINITIONS[] = {
       .input_count = NATIVE_COUNT(FRAME_IN),
       .outputs = FRAME_OUT,
       .output_count = NATIVE_COUNT(FRAME_OUT) },
-    { .canonical_name = GAME_TILEMAP_BOX_NAME,
+    { .canonical_name = TILEMAP_BOX_NAME,
       .source_name = "tilemap_occupied_in_box",
       .category = "Tilemap",
       .description = "Counts occupied cells with positive-area overlap with a "
@@ -97,12 +93,12 @@ static const node_host_call FRAME_CALL = { .service = "game.entities",
 static const node_host_call BOX_CALL = { .service = "game.entities",
                                          .invoke = occupied_in_box };
 static const native_definition_binding BINDINGS[] = {
-    { .canonical_name = GAME_TILEMAP_FRAME_NAME,
+    { .canonical_name = TILEMAP_FRAME_NAME,
       .implementation = { .call = &FRAME_CALL, .access = &ACCESS } },
-    { .canonical_name = GAME_TILEMAP_BOX_NAME,
+    { .canonical_name = TILEMAP_BOX_NAME,
       .implementation = { .call = &BOX_CALL, .access = &ACCESS } },
 };
-const native_definition_pack GAME_TILEMAP_DEFINITION_PACK = {
+const native_definition_pack TILEMAP_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
     .definition_count = NATIVE_COUNT(DEFINITIONS),
     .bindings = BINDINGS,

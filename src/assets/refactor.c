@@ -26,8 +26,8 @@
 
 #define NAME_MAX_LENGTH 120
 
-/* GameMeshParts.parts holds code parts, each naming its material. */
-#define MESH_PARTS "GameMeshParts.parts"
+/* MeshParts.parts holds code parts, each naming its material. */
+#define MESH_PARTS "MeshParts.parts"
 
 /* An asset the plan edits: parsed on first use, unless only deleted. */
 typedef struct
@@ -35,8 +35,8 @@ typedef struct
     int asset;
     bool parsed;
     behavior_asset *graphs; /* declarative graph assets */
-    game_prototype *prototype;
-    game_scene_document *scene;
+    prototype *prototype;
+    scene_document *scene;
     char *rml; /* a ui asset's markup */
     char *name;
     char *metadata;
@@ -83,9 +83,9 @@ static void release(loaded *l)
 {
     behavior_asset_free(l->graphs);
     if (l->prototype) {
-        game_prototype_free(l->prototype);
+        prototype_free(l->prototype);
     }
-    game_scene_document_free(l->scene);
+    scene_document_free(l->scene);
     free(l->rml);
     l->rml = NULL;
     l->graphs = NULL;
@@ -121,10 +121,10 @@ static bool read_asset(
         case REFERENCE_ASSET_PROTOTYPE:
             /* As written: renames edit its own content, and the prototypes it
              * names may be renamed in the same plan. */
-            l->prototype = game_prototype_load_authored(text, project->registry, why, size);
+            l->prototype = prototype_load_authored(text, project->registry, why, size);
             return l->prototype != NULL;
         case REFERENCE_ASSET_SCENE:
-            l->scene = game_scene_document_load(text, why, size);
+            l->scene = scene_document_load(text, why, size);
             return l->scene != NULL;
         case REFERENCE_ASSET_UI: return read_markup(text, l, why, size);
         case REFERENCE_ASSET_KIND_COUNT: break;
@@ -188,10 +188,9 @@ static char *saved_source(const refactor_project *, reference_asset_kind kind, l
     switch (kind) {
         case REFERENCE_ASSET_SYSTEM:
         case REFERENCE_ASSET_BEHAVIOR: return NULL;
-        case REFERENCE_ASSET_PROTOTYPE:
-            return game_prototype_save(l->prototype);
+        case REFERENCE_ASSET_PROTOTYPE: return prototype_save(l->prototype);
         case REFERENCE_ASSET_SCENE:
-            return game_scene_document_save(l->scene, project_components());
+            return scene_document_save(l->scene, project_components());
         case REFERENCE_ASSET_KIND_COUNT: break;
         default: return behavior_asset_save(l->graphs);
     }
@@ -249,7 +248,7 @@ static bool same_place(const reference *a, const reference *b)
            same_text(a->component, b->component);
 }
 
-/* The field a reference's component names: GameUi.document's document. */
+/* The field a reference's component names: Ui.document's document. */
 static const char *component_field(const reference *r)
 {
     const char *dot = strchr(r->component, '.');
@@ -332,7 +331,7 @@ static node *node_at(work *w, loaded *l, const reference *r, graph **g)
     return n;
 }
 
-/* A struct default's field, as a GameShader value's material. */
+/* A struct default's field, as a Shader value's material. */
 static bool rename_struct_field(
     work *w,
     graph *g,
@@ -447,7 +446,7 @@ static bool swappable(work *w, char *const *list, const char *from, const char *
 
 static bool rename_prototype_field(
     work *w,
-    game_prototype *prototype,
+    prototype *prototype,
     const reference *r,
     const char *from,
     const char *to,
@@ -457,11 +456,11 @@ static bool rename_prototype_field(
     char component[128];
     component_of(r, component, sizeof component);
     pin_value current = { 0 };
-    game_prototype_read_field(prototype, component, component_field(r), &current);
+    prototype_read_field(prototype, component, component_field(r), &current);
     int count;
     char *renamed = value_renamed(r, current.str, from, to, &count);
     bool ok = renamed_count(w, r, count, expected) &&
-              (game_prototype_write_field(
+              (prototype_write_field(
                    prototype,
                    component,
                    component_field(r),
@@ -479,20 +478,11 @@ static av_value *override_components(av_value *root)
     return components ? components : root;
 }
 
-/* An override names a component by name, or by its GAME. key. */
-static av_value *override_component(av_value *components, const char *name)
-{
-    char key[160];
-    snprintf(key, sizeof key, "GAME.%s", name);
-    av_value *value = av_obj_get(components, name);
-    return value ? value : av_obj_get(components, key);
-}
-
 /* An object's overrides with the field renamed. An object whose overrides
    leave the field to its prototype holds nothing to rename here. */
 static bool rename_override(
     work *w,
-    game_scene_document *scene,
+    scene_document *scene,
     int entity,
     const reference *r,
     const char *from,
@@ -504,7 +494,7 @@ static bool rename_override(
     av_value *copy = components ? av_value_copy(components) : NULL;
     char component[128];
     av_value *value = av_obj_get(
-        override_component(override_components(copy), component_of(r, component, sizeof component)),
+        av_obj_get(override_components(copy), component_of(r, component, sizeof component)),
         component_field(r)
     );
     int count = 0;
@@ -513,7 +503,7 @@ static bool rename_override(
     bool ok = !value || renamed_count(w, r, count, expected);
     if (ok && renamed) {
         av_set_str(value, renamed);
-        ok = game_scene_document_set_entity_components(scene, entity, copy) == 0 ||
+        ok = scene_document_set_entity_components(scene, entity, copy) == 0 ||
              fail(w, "could not set %s on %s", r->component, r->object);
     }
     free(renamed);
@@ -529,7 +519,7 @@ static bool rename_page(work *w, loaded *l, const reference *r, const char *from
         return fail(w, "project.kdl names %s as its scenes' page; point it at another first", from);
     }
     bool named = same_text(l->scene->ui, from);
-    game_scene_document_set_ui(l->scene, to);
+    scene_document_set_ui(l->scene, to);
     return renamed_count(w, r, named, expected);
 }
 
@@ -537,21 +527,21 @@ static bool rename_page(work *w, loaded *l, const reference *r, const char *from
 static bool rename_entity(
     work *w,
     loaded *l,
-    game_scene_document *scene,
+    scene_document *scene,
     const reference *r,
     const char *from,
     const char *to,
     int expected
 )
 {
-    int entity = game_scene_document_entity_index(scene, r->object);
+    int entity = scene_document_entity_index(scene, r->object);
     if (entity < 0) {
         return fail(w, "%s has no object %s", asset_name(w, l->asset), r->object);
     }
-    game_scene_entity *object = &scene->entities[entity];
+    scene_entity *object = &scene->entities[entity];
     if (r->role == REFERENCE_USE) {
         return renamed_count(w, r, same_text(object->prototype, from), 1) &&
-               (game_scene_document_set_entity_prototype(scene, entity, to) == 0 ||
+               (scene_document_set_entity_prototype(scene, entity, to) == 0 ||
                 fail(w, "could not place %s as %s", to, r->object));
     }
     if (r->role != REFERENCE_ATTACH) {
@@ -566,7 +556,7 @@ static bool rename_entity(
     for (int i = 0; i < acount(object->behaviors); i++) {
         apush(names, strcmp(object->behaviors[i], from) ? object->behaviors[i] : to);
     }
-    bool ok = game_scene_document_set_entity_behaviors(scene, entity, names, acount(names)) ==
+    bool ok = scene_document_set_entity_behaviors(scene, entity, names, acount(names)) ==
               0;
     afree(names);
     return ok || fail(w, "could not attach %s to %s", to, r->object);
@@ -574,7 +564,7 @@ static bool rename_entity(
 
 static bool rename_prototype(work *w, loaded *l, const reference *r, const char *from, const char *to, int expected)
 {
-    game_prototype *prototype = l->prototype;
+    prototype *prototype = l->prototype;
     if (r->object) {
         return rename_entity(w, l, prototype->children, r, from, to, expected);
     }
@@ -584,8 +574,8 @@ static bool rename_prototype(work *w, loaded *l, const reference *r, const char 
                  : fail(w, "cannot rename a reference in %s", prototype->name);
     }
     return swappable(w, prototype->graphs, from, to) &&
-           ((game_prototype_remove_graph(prototype, from) == 0 &&
-             game_prototype_add_graph(prototype, to) == 0) ||
+           ((prototype_remove_graph(prototype, from) == 0 &&
+             prototype_add_graph(prototype, to) == 0) ||
             fail(w, "could not attach %s to %s", to, prototype->name));
 }
 
@@ -743,7 +733,7 @@ static bool name_asset(work *w, int asset, const char *to)
 static bool rename_event(work *w, const char *from, const char *to)
 {
     reference_symbol event = event_named(w, from);
-    if (game_host_event_reserved(from) || game_host_event_reserved(to)) {
+    if (host_event_reserved(from) || host_event_reserved(to)) {
         return fail(w, "the engine names its host events");
     }
     if (!file_safe(w, to) || (event.asset >= 0 && !name_asset(w, event.asset, to))) {

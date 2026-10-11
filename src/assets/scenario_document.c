@@ -13,7 +13,7 @@
 #include <string.h>
 
 #define SCENARIO_FRAMES_MAX 108000
-#define CONTROL_ENUM "GameControl"
+#define CONTROL_ENUM "Control"
 
 static bool fail(char *error, size_t error_size, const char *message)
 {
@@ -48,7 +48,7 @@ static bool read_controls(av_value *value, uint64_t *out)
         int control;
         if (!av_is_str(label) ||
             !type_catalog_enum_value(CONTROL_ENUM, av_get_str(label), &control) ||
-            control <= GAME_CONTROL_NONE || control >= GAME_CONTROL_COUNT) {
+            control <= CONTROL_NONE || control >= CONTROL_COUNT) {
             return false;
         }
         *out |= UINT64_C(1) << control;
@@ -74,8 +74,8 @@ static bool read_controllers(av_value *value, input_keyframe *out)
             av_value *label = av_arr_get(buttons, j);
             int button;
             if (!out->controllers[i].connected || !av_is_str(label) ||
-                !type_catalog_enum_value("GamePadControl", av_get_str(label), &button) ||
-                button <= GAME_PAD_NONE || button >= GAME_PAD_COUNT) {
+                !type_catalog_enum_value("PadControl", av_get_str(label), &button) ||
+                button <= PAD_NONE || button >= PAD_COUNT) {
                 return false;
             }
             out->controllers[i].buttons |= UINT32_C(1) << button;
@@ -133,7 +133,7 @@ static bool read_key(av_value *value, int frames, input_keyframe *out, char *err
                 error_size,
                 "key field %s is unknown or invalid: movement is within -1..1, "
                 "aim is finite, "
-                "aim_point and firing are booleans, controls are GameControl "
+                "aim_point and firing are booleans, controls are Control "
                 "labels",
                 av_get_str(name)
             );
@@ -248,9 +248,9 @@ static void write_key(av_doc *doc, av_value *keys, const input_keyframe *key)
                 continue;
             }
             av_value *buttons = av_obj_add_arr(doc, state, "buttons");
-            for (int button = GAME_PAD_NONE + 1; button < GAME_PAD_COUNT; button++) {
+            for (int button = PAD_NONE + 1; button < PAD_COUNT; button++) {
                 if (key->controllers[i].buttons & (UINT32_C(1) << button)) {
-                    av_arr_add_str(doc, buttons, type_catalog_enum_label("GamePadControl", button));
+                    av_arr_add_str(doc, buttons, type_catalog_enum_label("PadControl", button));
                 }
             }
         }
@@ -259,7 +259,7 @@ static void write_key(av_doc *doc, av_value *keys, const input_keyframe *key)
         return;
     }
     av_value *controls = av_obj_add_arr(doc, value, "controls");
-    for (int control = GAME_CONTROL_NONE + 1; control < GAME_CONTROL_COUNT; control++) {
+    for (int control = CONTROL_NONE + 1; control < CONTROL_COUNT; control++) {
         if (key->controls & (UINT64_C(1) << control)) {
             av_arr_add_str(doc, controls, type_catalog_enum_label(CONTROL_ENUM, control));
         }

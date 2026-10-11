@@ -7,7 +7,7 @@
 #include <string.h>
 
 static ecs_world *world;
-static game_source_registry *registry;
+static source_registry *registry;
 static authoring_source *prepared;
 static execution_module *retained;
 static int *publication_override;
@@ -35,7 +35,7 @@ static const char *read_value(void *user, const pin_value *, pin_value *out)
     out[0] = (pin_value){ .type = PIN_I32, .i = *(int *)user };
     if (swap_service) {
         swap_service = false;
-        swap_status = game_source_bind_service(registry, "tick.value", &values[1]);
+        swap_status = source_bind_service(registry, "tick.value", &values[1]);
     }
     return NULL;
 }
@@ -52,7 +52,7 @@ static bool host(void *, uint64_t id, script_lower_host *out)
 static void setup()
 {
     world = ecs_world_new();
-    registry = game_source_registry_new(world);
+    registry = source_registry_new(world);
     swap_service = false;
     registry_services = false;
     publication_override = NULL;
@@ -65,7 +65,7 @@ static void cleanup()
     execution_module_free(retained);
     retained = NULL;
     if (registry) {
-        game_source_registry_free(registry);
+        source_registry_free(registry);
     }
     registry = NULL;
     if (world) {
@@ -94,13 +94,13 @@ static bool publish(int index, const char *name, const char *text, behavior_back
                                 publication_override ? publication_override : &values[0] })
         );
     }
-    game_source_publication entry = { .name = name,
-                                      .previous_name = replace ? name : NULL,
-                                      .module = prepared->module };
-    int status = game_source_publish(registry, &entry, 1, services, NULL, 0);
+    source_publication entry = { .name = name,
+                                 .previous_name = replace ? name : NULL,
+                                 .module = prepared->module };
+    int status = source_publish(registry, &entry, 1, services, NULL, 0);
     afree(services);
     if (status) {
-        fprintf(stderr, "source Tick publication: %s\n", game_source_error(registry));
+        fprintf(stderr, "source Tick publication: %s\n", source_error(registry));
     }
     REQUIRE(!status);
     execution_module_free(retained);
@@ -112,7 +112,7 @@ static bool publish(int index, const char *name, const char *text, behavior_back
 }
 static int count(const char *name, ecs_entity owner, int index)
 {
-    execution_program *program = game_source_program(registry, name);
+    execution_program *program = source_program(registry, name);
     execution_instance *instance = execution_program_instance(program, ecs_entity_to_u64(owner));
     const pin_value *value = instance
                                ? execution_instance_state(instance, count_id[index])
@@ -124,7 +124,7 @@ TEST_CASE(source_tick_rebinds_service_after_current_host_call)
     registry_services = true;
     for (int variant = 0; variant < 2; variant++) {
         char service_name[] = "tick.value";
-        REQUIRE(!game_source_bind_service(registry, service_name, &values[0]));
+        REQUIRE(!source_bind_service(registry, service_name, &values[0]));
         memset(service_name, 'x', sizeof service_name - 1);
         behavior_backend backend = variant ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
         publication_override = &values[1];
@@ -137,51 +137,51 @@ TEST_CASE(source_tick_rebinds_service_after_current_host_call)
         ));
         ecs_entity owner = ecs_world_create_entity(world);
         REQUIRE(!ecs_world_apply_commands(world));
-        game_source_publication defaults = { .name = "Defaults", .module = retained };
-        REQUIRE(!game_source_publish(registry, &defaults, 1, NULL, NULL, 0));
-        REQUIRE(!game_source_attach(registry, owner, "Defaults", false, 0, 0));
+        source_publication defaults = { .name = "Defaults", .module = retained };
+        REQUIRE(!source_publish(registry, &defaults, 1, NULL, NULL, 0));
+        REQUIRE(!source_attach(registry, owner, "Defaults", false, 0, 0));
         /* Dispatch counts matching registered modules, including unattached Counter. */
-        REQUIRE(game_source_dispatch(registry, owner, "Tick", NULL, 0, 0, .25) == 2);
+        REQUIRE(source_dispatch(registry, owner, "Tick", NULL, 0, 0, .25) == 2);
         REQUIRE(count("Defaults", owner, 0) == 1);
-        REQUIRE(game_source_detach_entity(registry, owner) == 1);
-        REQUIRE(!game_source_remove(registry, "Defaults"));
-        REQUIRE(!game_source_attach(registry, owner, "Counter", false, 0, 0));
-        REQUIRE(game_source_dispatch(registry, owner, "Tick", NULL, 0, 0, .25) == 1);
+        REQUIRE(source_detach_entity(registry, owner) == 1);
+        REQUIRE(!source_remove(registry, "Defaults"));
+        REQUIRE(!source_attach(registry, owner, "Counter", false, 0, 0));
+        REQUIRE(source_dispatch(registry, owner, "Tick", NULL, 0, 0, .25) == 1);
         REQUIRE(count("Counter", owner, 0) == 2);
-        game_source_publication entry = { .name = "Counter",
-                                          .previous_name = "Counter",
-                                          .module = retained };
-        REQUIRE(!game_source_publish(registry, &entry, 1, NULL, NULL, 0));
-        REQUIRE(game_source_dispatch(registry, owner, "Tick", NULL, 0, 1, .25) == 1);
+        source_publication entry = { .name = "Counter",
+                                     .previous_name = "Counter",
+                                     .module = retained };
+        REQUIRE(!source_publish(registry, &entry, 1, NULL, NULL, 0));
+        REQUIRE(source_dispatch(registry, owner, "Tick", NULL, 0, 1, .25) == 1);
         REQUIRE(count("Counter", owner, 0) == 4);
         service_binding *overrides = NULL;
         apush(overrides, ((service_binding){ "tick.value", &override_value }));
-        int status = game_source_publish(registry, &entry, 1, overrides, NULL, 0);
+        int status = source_publish(registry, &entry, 1, overrides, NULL, 0);
         afree(overrides);
         REQUIRE(!status);
-        REQUIRE(game_source_dispatch(registry, owner, "Tick", NULL, 0, 2, .25) == 1);
+        REQUIRE(source_dispatch(registry, owner, "Tick", NULL, 0, 2, .25) == 1);
         REQUIRE(count("Counter", owner, 0) == 8);
-        REQUIRE(!game_source_bind_service(registry, "tick.value", &values[0]));
-        REQUIRE(game_source_bind_service(registry, "tick.value", NULL) != 0);
-        REQUIRE(!game_source_publish(registry, &entry, 1, NULL, NULL, 0));
-        REQUIRE(game_source_dispatch(registry, owner, "Tick", NULL, 0, 3, .25) == 1);
+        REQUIRE(!source_bind_service(registry, "tick.value", &values[0]));
+        REQUIRE(source_bind_service(registry, "tick.value", NULL) != 0);
+        REQUIRE(!source_publish(registry, &entry, 1, NULL, NULL, 0));
+        REQUIRE(source_dispatch(registry, owner, "Tick", NULL, 0, 3, .25) == 1);
         REQUIRE(count("Counter", owner, 0) == 9);
-        REQUIRE(game_source_detach_entity(registry, owner) == 1);
-        REQUIRE(!game_source_attach(registry, owner, "Counter", false, 4, 0));
+        REQUIRE(source_detach_entity(registry, owner) == 1);
+        REQUIRE(!source_attach(registry, owner, "Counter", false, 4, 0));
         swap_service = true;
-        REQUIRE(game_source_dispatch(registry, owner, "Tick", NULL, 0, 4, .25) == 1);
+        REQUIRE(source_dispatch(registry, owner, "Tick", NULL, 0, 4, .25) == 1);
         REQUIRE(!swap_service && !swap_status && count("Counter", owner, 0) == 1);
-        REQUIRE(game_source_dispatch(registry, owner, "Tick", NULL, 0, 5, .25) == 1);
+        REQUIRE(source_dispatch(registry, owner, "Tick", NULL, 0, 5, .25) == 1);
         REQUIRE(count("Counter", owner, 0) == 3);
-        REQUIRE(game_source_detach_entity(registry, owner) == 1);
+        REQUIRE(source_detach_entity(registry, owner) == 1);
     }
     return true;
 }
 static int dispatch_all(double now)
 {
-    int status = game_source_dispatch_all(registry, "Tick", NULL, 0, now, .25);
+    int status = source_dispatch_all(registry, "Tick", NULL, 0, now, .25);
     if (status != 2) {
-        fprintf(stderr, "Tick dispatched %d registered modules: %s\n", status, game_source_error(registry));
+        fprintf(stderr, "Tick dispatched %d registered modules: %s\n", status, source_error(registry));
     }
     return status;
 }
@@ -199,25 +199,25 @@ TEST_CASE(source_tick_preserves_incremental_attachment_state_and_order)
     }
     REQUIRE(!ecs_world_apply_commands(world));
     for (int i = 0; i < 4; i++) {
-        REQUIRE(!game_source_attach(registry, owners[i], "Counter", false, 0, 0));
+        REQUIRE(!source_attach(registry, owners[i], "Counter", false, 0, 0));
     }
     REQUIRE(dispatch_all(0) == 2);
     for (int i = 0; i < 4; i++) {
         REQUIRE(count("Counter", owners[i], 0) == 11);
     }
     const char *alternate[] = { "Alternate" };
-    REQUIRE(!game_source_set_attachments(registry, owners[1], alternate, 1, false, 1, .25));
+    REQUIRE(!source_set_attachments(registry, owners[1], alternate, 1, false, 1, .25));
     REQUIRE(dispatch_all(1) == 2);
     REQUIRE(count("Counter", owners[0], 0) == 12 && count("Counter", owners[2], 0) == 12);
     REQUIRE(count("Alternate", owners[1], 1) == 11);
     const char *ordered[] = { "Alternate", "Counter" };
-    REQUIRE(!game_source_set_attachments(registry, owners[0], ordered, 2, false, 2, .25));
-    REQUIRE(game_source_attachment_count(registry) == 5);
+    REQUIRE(!source_set_attachments(registry, owners[0], ordered, 2, false, 2, .25));
+    REQUIRE(source_attachment_count(registry) == 5);
     uint64_t sequence = 0;
     bool order = false;
-    for (int i = 0; i + 1 < game_source_attachment_count(registry); i++) {
-        game_source_attachment_info a = game_source_attachment_at(registry, i);
-        game_source_attachment_info b = game_source_attachment_at(registry, i + 1);
+    for (int i = 0; i + 1 < source_attachment_count(registry); i++) {
+        source_attachment_info a = source_attachment_at(registry, i);
+        source_attachment_info b = source_attachment_at(registry, i + 1);
         if (ecs_entity_to_u64(a.entity) == ecs_entity_to_u64(owners[0]) &&
             !strcmp(a.name, "Alternate")) {
             order = !strcmp(b.name, "Counter") &&
@@ -228,8 +228,8 @@ TEST_CASE(source_tick_preserves_incremental_attachment_state_and_order)
     REQUIRE(order && sequence);
     REQUIRE(dispatch_all(2) == 2);
     REQUIRE(count("Counter", owners[0], 0) == 13 && count("Alternate", owners[0], 1) == 11);
-    REQUIRE(game_source_detach_entity(registry, owners[2]) == 1);
-    REQUIRE(!game_source_attach(registry, owners[2], "Counter", false, 3, .25));
+    REQUIRE(source_detach_entity(registry, owners[2]) == 1);
+    REQUIRE(!source_attach(registry, owners[2], "Counter", false, 3, .25));
     REQUIRE(dispatch_all(3) == 2);
     REQUIRE(count("Counter", owners[2], 0) == 11 && count("Counter", owners[3], 0) == 14);
     REQUIRE(
@@ -238,8 +238,8 @@ TEST_CASE(source_tick_preserves_incremental_attachment_state_and_order)
     REQUIRE(dispatch_all(4) == 2);
     REQUIRE(count("Counter", owners[0], 0) == 15 && count("Counter", owners[2], 0) == 12);
     bool retained = false;
-    for (int i = 0; i < game_source_attachment_count(registry); i++) {
-        game_source_attachment_info info = game_source_attachment_at(registry, i);
+    for (int i = 0; i < source_attachment_count(registry); i++) {
+        source_attachment_info info = source_attachment_at(registry, i);
         retained |= info.sequence == sequence && !strcmp(info.name, "Counter");
     }
     REQUIRE(retained);

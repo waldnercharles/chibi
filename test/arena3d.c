@@ -27,8 +27,8 @@ enum
 static ecs_world *new_world()
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     return world;
 }
@@ -36,18 +36,12 @@ static ecs_world *new_world()
 static ecs_entity add_shape(ecs_world *world, int primitive, CF_V3 position, unsigned color)
 {
     ecs_entity entity = ecs_world_create_entity(world);
-    GameTransform transform = { position.x, position.z };
-    GameGeometry3D shape = { primitive, 2, 2, 2, position.y };
-    GameMaterial material = { .scene = color };
-    assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameTransform.id, &transform, 0) == ECS_OK
-    );
-    assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameGeometry3D.id, &shape, 0) == ECS_OK
-    );
-    assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameMaterial.id, &material, 0) == ECS_OK
-    );
+    Transform transform = { position.x, position.z };
+    Geometry3D shape = { primitive, 2, 2, 2, position.y };
+    Material material = { .scene = color };
+    assert(ecs_world_record_add(world, entity, COMPONENT_Transform.id, &transform, 0) == ECS_OK);
+    assert(ecs_world_record_add(world, entity, COMPONENT_Geometry3D.id, &shape, 0) == ECS_OK);
+    assert(ecs_world_record_add(world, entity, COMPONENT_Material.id, &material, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return entity;
 }
@@ -116,15 +110,15 @@ static bool camera_checks()
 static bool pick_checks()
 {
     render_scene3d_camera camera = front_camera();
-    for (int primitive = GAME_PRIMITIVE_BOX; primitive <= GAME_PRIMITIVE_TETRAHEDRON;
+    for (int primitive = PRIMITIVE_BOX; primitive <= PRIMITIVE_TETRAHEDRON;
          primitive++) {
         ecs_world *world = new_world();
         add_shape(world, primitive, (CF_V3){ 0, 0, 0 }, 0x0000ffffu);
         ecs_entity near = add_shape(world, primitive, (CF_V3){ 0, 0, 3 }, 0xff0000ffu);
         CF_V3 probe = render_scene3d_project(
             &camera,
-            primitive == GAME_PRIMITIVE_TETRAHEDRON ? (CF_V3){ -.4f, -.4f, 3 }
-                                                    : (CF_V3){ 0, 0, 3 }
+            primitive == PRIMITIVE_TETRAHEDRON ? (CF_V3){ -.4f, -.4f, 3 }
+                                               : (CF_V3){ 0, 0, 3 }
         );
         ecs_entity hit = render_scene3d_pick(
             world,
@@ -147,17 +141,15 @@ static bool pick_checks()
 static bool bounds_checks()
 {
     ecs_world *world = new_world();
-    ecs_entity entity = add_shape(world, GAME_PRIMITIVE_BOX, (CF_V3){ 30, 20, -10 }, 0xffffffffu);
-    GameGeometry3D *shape = GAME_GameGeometry3D_get(world, entity);
+    ecs_entity entity = add_shape(world, PRIMITIVE_BOX, (CF_V3){ 30, 20, -10 }, 0xffffffffu);
+    Geometry3D *shape = Geometry3D_get(world, entity);
     shape->width = 8;
     shape->depth = 2;
     shape->height = 40;
-    GameOrientation yaw = { .radians = 0.7853981634f };
-    assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameOrientation.id, &yaw, 0) == ECS_OK
-    );
+    Orientation yaw = { .radians = 0.7853981634f };
+    assert(ecs_world_record_add(world, entity, COMPONENT_Orientation.id, &yaw, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(!GAME_GameAppearance_has(world, entity));
+    assert(!Appearance_has(world, entity));
     CF_V3 corners[8] = { 0 };
     bool ok = render_scene3d_entity_bounds(world, entity, corners);
     ok &= fabsf(corners[7].x - 32.12132f) < 0.0001f;
@@ -213,16 +205,16 @@ static bool bounds_checks()
         ok &= framed && projected_bounds;
     }
     render_scene3d_camera camera = front_camera();
-    *GAME_GameTransform_get(world, entity) = (GameTransform){ 0, 7.95f };
-    shape = GAME_GameGeometry3D_get(world, entity);
-    *shape = (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 0 };
+    *Transform_get(world, entity) = (Transform){ 0, 7.95f };
+    shape = Geometry3D_get(world, entity);
+    *shape = (Geometry3D){ PRIMITIVE_BOX, 2, 2, 2, 0 };
     assert(render_scene3d_entity_bounds(world, entity, corners));
     CF_Aabb clipped = { 0 };
     bool near_clip = render_scene3d_screen_bounds(&camera, corners, &clipped);
     near_clip &= isfinite(
         clipped.min.x + clipped.min.y + clipped.max.x + clipped.max.y
     );
-    GAME_GameTransform_get(world, entity)->y = 20;
+    Transform_get(world, entity)->y = 20;
     assert(render_scene3d_entity_bounds(world, entity, corners));
     bool behind = !render_scene3d_screen_bounds(&camera, corners, &clipped);
     if (!near_clip || !behind) {
@@ -258,13 +250,13 @@ static render_scene3d_work geometry_work;
 static bool render(ecs_world *world, const render_scene3d_camera *camera, CF_Pixel *pixels)
 {
     render_scene3d_post *post = render_scene3d_post_new();
-    GameEnvironment environment = render_scene3d_post_defaults();
+    Environment environment = render_scene3d_post_defaults();
     environment.bloom_strength = 0;
     assert(render_scene3d_post_prepare(post, SIDE, SIDE, &environment));
     CF_Canvas canvas = render_scene3d_post_target(post);
     render_scene3d *arena = render_scene3d_new();
     render_scene3d_set_parallel(arena, !serial_geometry);
-    game_particles *particles = game_particles_new();
+    particles *particles = particles_new();
     assert(canvas.id && arena);
     cf_canvas_set_clear_color(canvas, (CF_Color){ 0, 0, 0, 1 });
     cf_app_update(NULL);
@@ -275,7 +267,7 @@ static bool render(ecs_world *world, const render_scene3d_camera *camera, CF_Pix
     cf_app_draw_onto_screen(false);
     ok &= read_pixels(render_scene3d_post_output(post), pixels);
     render_scene3d_free(arena);
-    game_particles_free(particles);
+    particles_free(particles);
     render_scene3d_post_free(post);
     return ok;
 }
@@ -298,16 +290,10 @@ static int brightness(const CF_Pixel *pixels, const render_scene3d_camera *camer
 static bool fitted_render_check(CF_Pixel *pixels)
 {
     ecs_world *world = new_world();
-    ecs_entity entity = add_shape(world, GAME_PRIMITIVE_BOX, (CF_V3){ 0, 15, 0 }, 0xffffffffu);
-    *GAME_GameGeometry3D_get(world, entity) = (GameGeometry3D){ GAME_PRIMITIVE_BOX,
-                                                                8,
-                                                                2,
-                                                                30,
-                                                                15 };
-    GameOrientation yaw = { .radians = 0.7f };
-    assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameOrientation.id, &yaw, 0) == ECS_OK
-    );
+    ecs_entity entity = add_shape(world, PRIMITIVE_BOX, (CF_V3){ 0, 15, 0 }, 0xffffffffu);
+    *Geometry3D_get(world, entity) = (Geometry3D){ PRIMITIVE_BOX, 8, 2, 30, 15 };
+    Orientation yaw = { .radians = 0.7f };
+    assert(ecs_world_record_add(world, entity, COMPONENT_Orientation.id, &yaw, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     CF_V3 points[8];
     assert(render_scene3d_entity_bounds(world, entity, points));
@@ -343,31 +329,25 @@ static bool fitted_render_check(CF_Pixel *pixels)
 static bool prism_checks(CF_Pixel *pixels)
 {
     ecs_world *world = new_world();
-    ecs_entity entity = add_shape(world, GAME_PRIMITIVE_TRIANGLE_PRISM, (CF_V3){ 0 }, 0xffffffffu);
-    *GAME_GameGeometry3D_get(world, entity) = (GameGeometry3D){ GAME_PRIMITIVE_TRIANGLE_PRISM,
-                                                                4,
-                                                                3,
-                                                                1,
-                                                                0.4f };
-    GameOrientation orientation = { 0 };
+    ecs_entity entity = add_shape(world, PRIMITIVE_TRIANGLE_PRISM, (CF_V3){ 0 }, 0xffffffffu);
+    *Geometry3D_get(world, entity) = (Geometry3D){ PRIMITIVE_TRIANGLE_PRISM, 4, 3, 1, 0.4f };
+    Orientation orientation = { 0 };
     assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameOrientation.id, &orientation, 0) == ECS_OK
+        ecs_world_record_add(world, entity, COMPONENT_Orientation.id, &orientation, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    game_preview_world *live = game_preview_world_new(world);
+    preview_world *live = preview_world_new(world);
     char *json = text_file_read("content/behaviors/TwinStickInputBehavior.chibi");
     assert(json);
     behavior_asset *asset = test_project_asset("content/behaviors/TwinStickInputBehavior.chibi", json);
     free(json);
     assert(asset);
     asset = link_test_libraries(asset);
-    assert(
-        game_preview_add_definition(live, game_preview_definition_new(asset->name, asset)) == 0
-    );
-    assert(game_behavior_attach(live->runtime->behaviors, entity, "TwinStickInputBehavior") == 0);
-    GameAim aim = { 0 };
-    assert(ecs_world_record_add(world, entity, GAME_COMPONENT_GameAim.id, &aim, 0) == ECS_OK);
-    assert(GAME_GameVelocity_add(world, entity, 0) == ECS_OK);
+    assert(preview_add_definition(live, preview_definition_new(asset->name, asset)) == 0);
+    assert(behavior_attach(live->runtime->behaviors, entity, "TwinStickInputBehavior") == 0);
+    Aim aim = { 0 };
+    assert(ecs_world_record_add(world, entity, COMPONENT_Aim.id, &aim, 0) == ECS_OK);
+    assert(Velocity_add(world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     engine *runtime = authoring_engine_new(world, live->runtime);
     render_scene3d_camera camera = front_camera();
@@ -383,7 +363,7 @@ static bool prism_checks(CF_Pixel *pixels)
     bool ok = true;
     for (int turn = 0; turn < 8; turn++) {
         float angle = turn * 0.7853981634f;
-        GAME_GameAim_get(world, entity)->direction = (CF_V2){ cosf(angle), sinf(angle) };
+        Aim_get(world, entity)->direction = (CF_V2){ cosf(angle), sinf(angle) };
         assert(engine_frame(runtime, turn / 60.0) == FLOW_OK);
         bool rendered = render(world, &camera, pixels);
         CF_V3 corners[8];
@@ -435,7 +415,7 @@ static bool prism_checks(CF_Pixel *pixels)
     }
     ok &= underside > 40;
     engine_free(runtime);
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(world);
     return ok;
 }
@@ -443,15 +423,11 @@ static bool prism_checks(CF_Pixel *pixels)
 static bool octahedron_checks(CF_Pixel *pixels)
 {
     ecs_world *world = new_world();
-    ecs_entity entity = add_shape(world, GAME_PRIMITIVE_OCTAHEDRON, (CF_V3){ 0 }, 0xffffffffu);
-    *GAME_GameGeometry3D_get(world, entity) = (GameGeometry3D){ GAME_PRIMITIVE_OCTAHEDRON,
-                                                                4,
-                                                                3,
-                                                                2,
-                                                                0 };
-    GameOrientation orientation = { 0 };
+    ecs_entity entity = add_shape(world, PRIMITIVE_OCTAHEDRON, (CF_V3){ 0 }, 0xffffffffu);
+    *Geometry3D_get(world, entity) = (Geometry3D){ PRIMITIVE_OCTAHEDRON, 4, 3, 2, 0 };
+    Orientation orientation = { 0 };
     assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameOrientation.id, &orientation, 0) == ECS_OK
+        ecs_world_record_add(world, entity, COMPONENT_Orientation.id, &orientation, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
     /* The last two points lie inside the box but outside the diamond outline.
@@ -471,7 +447,7 @@ static bool octahedron_checks(CF_Pixel *pixels)
     bool ok = true;
     for (int view = 0; view < 10; view++) {
         float angle = view < 8 ? view * 0.7853981634f : 0;
-        GAME_GameOrientation_get(world, entity)->radians = angle;
+        Orientation_get(world, entity)->radians = angle;
         render_scene3d_camera camera = front_camera();
         if (view < 8) {
             camera.view = cf_look_at((CF_V3){ 0, 8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, -1 });
@@ -513,15 +489,11 @@ static bool octahedron_checks(CF_Pixel *pixels)
 static bool composed_visuals(CF_Pixel *first, CF_Pixel *second)
 {
     ecs_world *world = new_world();
-    ecs_entity entity = add_shape(world, GAME_PRIMITIVE_OCTAHEDRON, (CF_V3){ 0 }, 0xffffffffu);
-    *GAME_GameGeometry3D_get(world, entity) = (GameGeometry3D){ GAME_PRIMITIVE_OCTAHEDRON,
-                                                                4,
-                                                                3,
-                                                                2,
-                                                                0 };
-    GameVisualTransform transform = { .pitch = .31f, .yaw = .22f, .roll = .5f, .scale = .8f };
+    ecs_entity entity = add_shape(world, PRIMITIVE_OCTAHEDRON, (CF_V3){ 0 }, 0xffffffffu);
+    *Geometry3D_get(world, entity) = (Geometry3D){ PRIMITIVE_OCTAHEDRON, 4, 3, 2, 0 };
+    VisualTransform transform = { .pitch = .31f, .yaw = .22f, .roll = .5f, .scale = .8f };
     assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameVisualTransform.id, &transform, 0) == ECS_OK
+        ecs_world_record_add(world, entity, COMPONENT_VisualTransform.id, &transform, 0) == ECS_OK
     );
     assert(ecs_world_apply_commands(world) == ECS_OK);
     render_scene3d_camera camera = front_camera();
@@ -538,7 +510,7 @@ static bool composed_visuals(CF_Pixel *first, CF_Pixel *second)
         int x = i & 1 ? 1 : -1, y = i & 2 ? 1 : -1, z = i & 4 ? 1 : -1;
         bool even = x * y * z > 0;
         parts.parts[i] = (scene3d_part){
-            .primitive = GAME_PRIMITIVE_TETRAHEDRON,
+            .primitive = PRIMITIVE_TETRAHEDRON,
             .dimensions = even ? (CF_V3){ 2, 1, 1.5f } : (CF_V3){ 1.5f, 1, 2 },
             .position = { x, y * .5f, z * .75f },
             .rotation = { 0,
@@ -547,10 +519,8 @@ static bool composed_visuals(CF_Pixel *first, CF_Pixel *second)
         };
     }
     char *json = authoring_parts_write(&parts);
-    GameMeshParts mesh = { .parts = json };
-    assert(
-        ecs_world_record_add(world, entity, GAME_COMPONENT_GameMeshParts.id, &mesh, 0) == ECS_OK
-    );
+    MeshParts mesh = { .parts = json };
+    assert(ecs_world_record_add(world, entity, COMPONENT_MeshParts.id, &mesh, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     ok &= render(world, &camera, second);
     int changed = 0;
@@ -563,7 +533,7 @@ static bool composed_visuals(CF_Pixel *first, CF_Pixel *second)
         ok &= (render_scene3d_pick(world, &camera, point, (render_skip){ 0 }).slot !=
                0) == before[i];
     }
-    GAME_GameVisualTransform_get(world, entity)->scale = 0;
+    VisualTransform_get(world, entity)->scale = 0;
     CF_V3 bounds[8];
     ok &= !render_scene3d_entity_bounds(world, entity, bounds);
     ok &= !render_scene3d_pick(world, &camera, (CF_V2){ 0 }, (render_skip){ 0 }).slot;
@@ -580,10 +550,10 @@ static bool polygon_visuals(CF_Pixel *pixels)
     render_scene3d_camera camera = front_camera();
     camera.view = cf_look_at((CF_V3){ 0, 8, 0 }, (CF_V3){ 0 }, (CF_V3){ 0, 0, -1 });
     camera.eye = (CF_V3){ 0, 8, 0 };
-    const int primitives[] = { GAME_PRIMITIVE_CHEVRON_PYRAMID,
-                               GAME_PRIMITIVE_BOX_FRAME,
-                               GAME_PRIMITIVE_TRIANGLE_OUTLINE,
-                               GAME_PRIMITIVE_TRIANGLE };
+    const int primitives[] = { PRIMITIVE_CHEVRON_PYRAMID,
+                               PRIMITIVE_BOX_FRAME,
+                               PRIMITIVE_TRIANGLE_OUTLINE,
+                               PRIMITIVE_TRIANGLE };
     const CF_V3 solid[] = { { 0 }, { .88f, .88f, 0 }, { 1.0f / 3 - .04f, 0, .44f }, { 0 } };
     /* The ship's center is filled; its concave rear notch stays outside the mesh. */
     const CF_V3 hole[] = { { -.95f, 0, 0 }, { 0 }, { 0 } };
@@ -592,7 +562,7 @@ static bool polygon_visuals(CF_Pixel *pixels)
         ecs_world *world = new_world();
         ecs_entity entity = add_shape(world, primitives[i], (CF_V3){ 0 }, 0xffffffffu);
         if (i >= 2) {
-            GAME_GameGeometry3D_get(world, entity)->height = .1f;
+            Geometry3D_get(world, entity)->height = .1f;
         }
         ok &= render(world, &camera, pixels);
         CF_V3 ndc = render_scene3d_project(&camera, solid[i]);
@@ -617,8 +587,7 @@ static bool polygon_visuals(CF_Pixel *pixels)
 static bool centered_triangles()
 {
     bool ok = true;
-    for (int primitive = GAME_PRIMITIVE_TRIANGLE_OUTLINE;
-         primitive <= GAME_PRIMITIVE_TRIANGLE;
+    for (int primitive = PRIMITIVE_TRIANGLE_OUTLINE; primitive <= PRIMITIVE_TRIANGLE;
          primitive++) {
         CF_V3 triangles[SCENE3D_MESH_TRIANGLE_LIMIT][3];
         int count = render_scene3d_mesh_triangles(primitive, triangles);
@@ -638,10 +607,10 @@ static bool centered_triangles()
         ok &= area > 0 && cf_len_v3(cf_mul_v3_f(centroid, 1 / area)) < .00001f;
         ecs_world *world = new_world();
         ecs_entity entity = add_shape(world, primitive, (CF_V3){ 0 }, 0xffffffffu);
-        GAME_GameGeometry3D_get(world, entity)->height = .1f;
-        GameOrientation heading = { 0 };
+        Geometry3D_get(world, entity)->height = .1f;
+        Orientation heading = { 0 };
         assert(
-            ecs_world_record_add(world, entity, GAME_COMPONENT_GameOrientation.id, &heading, 0) == ECS_OK
+            ecs_world_record_add(world, entity, COMPONENT_Orientation.id, &heading, 0) == ECS_OK
         );
         assert(ecs_world_apply_commands(world) == ECS_OK);
         render_scene3d_camera camera = front_camera();
@@ -649,12 +618,12 @@ static bool centered_triangles()
         camera.eye = (CF_V3){ 0, 8, 0 };
         for (int step = 0; step < 8; step++) {
             float angle = step * .7853981634f;
-            GAME_GameOrientation_get(world, entity)->radians = angle;
+            Orientation_get(world, entity)->radians = angle;
             CF_V3 bounds[8];
             ok &= render_scene3d_entity_bounds(world, entity, bounds);
             CF_M4x4 rotation = cf_m4_from_trs(
                 (CF_V3){ 0 },
-                game_visual_rotation(angle, (CF_V3){ 0 }),
+                visual_rotation(angle, (CF_V3){ 0 }),
                 (CF_V3){ 1, 1, 1 }
             );
             CF_M4x4 inverse = cf_m4_invert(rotation);
@@ -665,7 +634,7 @@ static bool centered_triangles()
             ok &= fabsf(maximum.z - minimum.z - 2) < .0001f;
             bool picked_center = render_scene3d_pick(world, &camera, (CF_V2){ 0 }, (render_skip){ 0 })
                                      .slot == entity.slot;
-            ok &= picked_center == (primitive == GAME_PRIMITIVE_TRIANGLE);
+            ok &= picked_center == (primitive == PRIMITIVE_TRIANGLE);
             CF_V3 edge = cf_m4_transform_point(rotation, (CF_V3){ 1.0f / 3 - .04f, 0, .44f });
             CF_V3 ndc = render_scene3d_project(&camera, edge);
             ok &= render_scene3d_pick(world, &camera, (CF_V2){ ndc.x, ndc.y }, (render_skip){ 0 })
@@ -683,20 +652,16 @@ static bool frame_parts(CF_Pixel *before, CF_Pixel *after)
 {
     ecs_world *world = new_world();
     const unsigned color = 0xf07888ffu;
-    ecs_entity source = add_shape(world, GAME_PRIMITIVE_BOX_FRAME, (CF_V3){ 0 }, color);
-    GameGeometry3D shape = { .primitive = GAME_PRIMITIVE_BOX_FRAME,
-                             .width = 4,
-                             .height = 2,
-                             .depth = 3 };
-    *GAME_GameGeometry3D_get(world, source) = shape;
-    GameVisualTransform visual = { .pitch = .31f, .yaw = .22f, .roll = .5f, .scale = .8f };
-    GameOrientation heading = { .radians = .35f };
-    assert(
-        ecs_world_record_add(world, source, GAME_COMPONENT_GameVisualTransform.id, &visual, 0) == ECS_OK
-    );
-    assert(
-        ecs_world_record_add(world, source, GAME_COMPONENT_GameOrientation.id, &heading, 0) == ECS_OK
-    );
+    ecs_entity source = add_shape(world, PRIMITIVE_BOX_FRAME, (CF_V3){ 0 }, color);
+    Geometry3D shape = { .primitive = PRIMITIVE_BOX_FRAME,
+                         .width = 4,
+                         .height = 2,
+                         .depth = 3 };
+    *Geometry3D_get(world, source) = shape;
+    VisualTransform visual = { .pitch = .31f, .yaw = .22f, .roll = .5f, .scale = .8f };
+    Orientation heading = { .radians = .35f };
+    assert(ecs_world_record_add(world, source, COMPONENT_VisualTransform.id, &visual, 0) == ECS_OK);
+    assert(ecs_world_record_add(world, source, COMPONENT_Orientation.id, &heading, 0) == ECS_OK);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     render_scene3d_camera camera = front_camera();
     bool ok = render(world, &camera, before), hits[625];
@@ -706,36 +671,26 @@ static bool frame_parts(CF_Pixel *before, CF_Pixel *after)
     }
     CF_M4x4 frame = cf_m4_from_trs(
         (CF_V3){ 0 },
-        game_visual_rotation(
+        visual_rotation(
             heading.radians,
             (CF_V3){ visual.pitch, visual.yaw, visual.roll }
         ),
         (CF_V3){ visual.scale, visual.scale, visual.scale }
     );
     assert(ecs_world_destroy_entity(world, source) == ECS_OK);
-    for (int i = 0; i < game_visual_part_count(shape.primitive); i++) {
-        game_visual_part part = game_visual_part_at(shape, i);
+    for (int i = 0; i < visual_part_count(shape.primitive); i++) {
+        visual_part part = visual_part_at(shape, i);
         CF_V3 center = cf_m4_transform_point(frame, part.center);
         ecs_entity piece = add_shape(world, part.primitive, center, color);
-        *GAME_GameGeometry3D_get(world, piece) = (GameGeometry3D){
-            .primitive = part.primitive,
-            .width = part.dimensions.x,
-            .height = part.dimensions.y,
-            .depth = part.dimensions.z,
-            .elevation = center.y
-        };
+        *Geometry3D_get(world, piece) = (Geometry3D){ .primitive = part.primitive,
+                                                      .width = part.dimensions.x,
+                                                      .height = part.dimensions.y,
+                                                      .depth = part.dimensions.z,
+                                                      .elevation = center.y };
         assert(
-            ecs_world_record_add(
-                world,
-                piece,
-                GAME_COMPONENT_GameVisualTransform.id,
-                &visual,
-                0
-            ) == ECS_OK
+            ecs_world_record_add(world, piece, COMPONENT_VisualTransform.id, &visual, 0) == ECS_OK
         );
-        assert(
-            ecs_world_record_add(world, piece, GAME_COMPONENT_GameOrientation.id, &heading, 0) == ECS_OK
-        );
+        assert(ecs_world_record_add(world, piece, COMPONENT_Orientation.id, &heading, 0) == ECS_OK);
     }
     assert(ecs_world_apply_commands(world) == ECS_OK);
     ok &= render(world, &camera, after);
@@ -764,27 +719,21 @@ static bool parallel_geometry(CF_Pixel *first, CF_Pixel *second)
     for (int i = 0; i < 1537; i++) {
         ecs_entity entity = add_shape(
             world,
-            i % 2 ? GAME_PRIMITIVE_BOX : GAME_PRIMITIVE_OCTAHEDRON,
+            i % 2 ? PRIMITIVE_BOX : PRIMITIVE_OCTAHEDRON,
             (CF_V3){ (i % 32 - 15.5f) * .15f, (i / 32 - 23.5f) * .15f, (i % 3) * .1f },
             i % 3 ? 0x4080ffffu : 0xff804080u
         );
-        GameGeometry3D *shape = GAME_GameGeometry3D_get(world, entity);
+        Geometry3D *shape = Geometry3D_get(world, entity);
         shape->width = shape->height = shape->depth = .1f;
         if (i % 200 == 0) {
-            GameMeshParts parts = { .parts = "(array)- {\n"
-                                             "    - {\n"
-                                             "        primitive 0\n"
-                                             "        (array)size 0.1 0.1 0.1\n"
-                                             "        (array)rotation 0 0.3 0\n"
-                                             "    }\n"
-                                             "}\n" };
-            assert(!ecs_world_record_add(
-                world,
-                entity,
-                GAME_COMPONENT_GameMeshParts.id,
-                &parts,
-                0
-            ));
+            MeshParts parts = { .parts = "(array)- {\n"
+                                         "    - {\n"
+                                         "        primitive 0\n"
+                                         "        (array)size 0.1 0.1 0.1\n"
+                                         "        (array)rotation 0 0.3 0\n"
+                                         "    }\n"
+                                         "}\n" };
+            assert(!ecs_world_record_add(world, entity, COMPONENT_MeshParts.id, &parts, 0));
             assert(!ecs_world_apply_commands(world));
         }
     }
@@ -827,7 +776,7 @@ int test_arena3d()
         ecs_world *world = new_world();
         for (int i = 0; i < 2; i++) {
             bool near = i == order;
-            add_shape(world, GAME_PRIMITIVE_BOX, (CF_V3){ 0, 0, near ? 3 : 0 }, near ? 0xff0000ffu : 0x0000ffffu);
+            add_shape(world, PRIMITIVE_BOX, (CF_V3){ 0, 0, near ? 3 : 0 }, near ? 0xff0000ffu : 0x0000ffffu);
         }
         depth &= render(world, &camera, order ? second : first);
         ecs_world_free(world);
@@ -851,7 +800,7 @@ int test_arena3d()
     }
 
     ecs_world *world = new_world();
-    add_shape(world, GAME_PRIMITIVE_BOX, (CF_V3){ 0 }, 0xffffffffu);
+    add_shape(world, PRIMITIVE_BOX, (CF_V3){ 0 }, 0xffffffffu);
     camera.view = cf_look_at((CF_V3){ 5, 4, 7 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
     camera.eye = (CF_V3){ 5, 4, 7 };
     bool lighting = render(world, &camera, first);
@@ -862,12 +811,12 @@ int test_arena3d()
 
     camera = front_camera();
     bool primitives = true;
-    for (int primitive = GAME_PRIMITIVE_BOX; primitive <= GAME_PRIMITIVE_TETRAHEDRON;
+    for (int primitive = PRIMITIVE_BOX; primitive <= PRIMITIVE_TETRAHEDRON;
          primitive++) {
         world = new_world();
         add_shape(world, primitive, (CF_V3){ 0 }, 0xffffffffu);
         bool visible = render(world, &camera, first);
-        int red = primitive == GAME_PRIMITIVE_TETRAHEDRON
+        int red = primitive == PRIMITIVE_TETRAHEDRON
                     ? brightness(first, &camera, (CF_V3){ -.4f, -.4f, 0 })
                     : first[SIDE / 2 * SIDE + SIDE / 2].colors.r;
         visible &= red > 60;
@@ -877,9 +826,7 @@ int test_arena3d()
         primitives &= visible;
         ecs_world_free(world);
     }
-    const int repeated[] = { GAME_PRIMITIVE_BOX,
-                             GAME_PRIMITIVE_TRIANGLE_PRISM,
-                             GAME_PRIMITIVE_OCTAHEDRON };
+    const int repeated[] = { PRIMITIVE_BOX, PRIMITIVE_TRIANGLE_PRISM, PRIMITIVE_OCTAHEDRON };
     bool batching = true;
     int instances = 0, commands = 0;
     for (int primitive = 0; primitive < (int)(sizeof repeated / sizeof *repeated);
@@ -892,7 +839,7 @@ int test_arena3d()
                 (CF_V3){ (i % 16 - 7.5f) * 0.3f, (i / 16 - 7.5f) * 0.3f, 0 },
                 0x4080ffffu
             );
-            GameGeometry3D *shape = GAME_GameGeometry3D_get(world, entity);
+            Geometry3D *shape = Geometry3D_get(world, entity);
             shape->width = shape->depth = shape->height = 0.2f;
         }
         cf_draw3d_stats(); /* Read-and-reset excludes the earlier render cases. */

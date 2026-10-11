@@ -1,38 +1,38 @@
-#ifndef CHIBI_GAME_UI_H
-#define CHIBI_GAME_UI_H
+#ifndef CHIBI_UI_H
+#define CHIBI_UI_H
 
 #include "support/asset_value.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 
-/* What behaviors set on the elements of GameUi documents, keyed by entity and
+/* What behaviors set on the elements of Ui documents, keyed by entity and
  * the RCSS selector that picks the elements. A presenter applies each setting
  * to every match in the documents it shows and records input values back
  * under `#id`, so UI state stays headless and part of the world. */
-typedef struct game_ui game_ui;
+typedef struct ui ui;
 
-typedef struct game_ui_class
+typedef struct ui_class
 {
     char *name;
     bool on;
-} game_ui_class;
+} ui_class;
 
 /* An RCSS property set inline; a NULL value leaves it to the stylesheets. */
-typedef struct game_ui_style
+typedef struct ui_property_override
 {
     char *property;
     char *value;
-} game_ui_style;
+} ui_property_override;
 
-typedef struct game_ui_element
+typedef struct ui_element
 {
     uint64_t entity;
     char *selector;
-    char *text;             /* NULL until set */
-    game_ui_class *classes; /* the last setting of each class */
-    game_ui_style *styles;  /* the last setting of each property */
-    int visible;            /* -1 until set, else 0 or 1 */
+    char *text;                   /* NULL until set */
+    ui_class *classes;            /* the last setting of each class */
+    ui_property_override *styles; /* the last setting of each property */
+    int visible;                  /* -1 until set, else 0 or 1 */
     bool has_value;
     float value;
     bool focus;     /* requested and not yet applied */
@@ -46,76 +46,63 @@ typedef struct game_ui_element
     bool measured;
     float scroll_top, view_height, content_height;
     uint64_t revision; /* the ui revision of its last change */
-} game_ui_element;
+} ui_element;
 
 /* A value behaviors gave an entity's documents, which bind it as
  * self.<name>: a number, text, flag, list or record, owned as a native value. */
-typedef struct game_ui_datum
+typedef struct ui_datum
 {
     uint64_t entity;
     char *name;
     av_value *value;
     uint64_t revision; /* the ui revision of its last change */
-} game_ui_datum;
+} ui_datum;
 
-game_ui *game_ui_new();
-void game_ui_free(game_ui *ui);
-void game_ui_reset(game_ui *ui);
+ui *ui_new();
+void ui_free(ui *ui);
+void ui_reset(ui *ui);
 
 /* Each returns false, changing nothing, for an empty selector or an invalid
  * argument. */
-bool game_ui_set_text(game_ui *ui, uint64_t entity, const char *element, const char *text);
-bool game_ui_set_class(game_ui *ui, uint64_t entity, const char *element, const char *name, bool on);
-bool game_ui_set_visible(game_ui *ui, uint64_t entity, const char *element, bool visible);
+bool ui_set_text(ui *ui, uint64_t entity, const char *element, const char *text);
+bool ui_set_class(ui *ui, uint64_t entity, const char *element, const char *name, bool on);
+bool ui_set_visible(ui *ui, uint64_t entity, const char *element, bool visible);
 /* Sets an RCSS property, such as "width" to "40%", on the matches; an empty
  * value returns it to the stylesheets. */
-bool game_ui_set_style(
-    game_ui *ui,
-    uint64_t entity,
-    const char *element,
-    const char *property,
-    const char *value
-);
-bool game_ui_set_value(game_ui *ui, uint64_t entity, const char *element, float value);
-bool game_ui_focus(game_ui *ui, uint64_t entity, const char *element);
+bool ui_set_style(ui *ui, uint64_t entity, const char *element, const char *property, const char *value);
+bool ui_set_value(ui *ui, uint64_t entity, const char *element, float value);
+bool ui_focus(ui *ui, uint64_t entity, const char *element);
 /* Clicks the first element the selector matches, as the player would. */
-bool game_ui_click(game_ui *ui, uint64_t entity, const char *element);
+bool ui_click(ui *ui, uint64_t entity, const char *element);
 /* Moves focus `step` places through the elements the selector matches, from
  * the one that holds focus, wrapping at the ends. */
-bool game_ui_move_focus(game_ui *ui, uint64_t entity, const char *element, int step);
+bool ui_move_focus(ui *ui, uint64_t entity, const char *element, int step);
 /* Opens the first match, a popover, at (`x`, `y`) in the document's pixels,
  * as a context menu opens at the pointer. */
-bool game_ui_show_popover(game_ui *ui, uint64_t entity, const char *element, float x, float y);
+bool ui_show_popover(ui *ui, uint64_t entity, const char *element, float x, float y);
 /* Scrolls row `row` of the matches, lists their presenter windows
  * (data-list-rows), into view once, as Virtuoso's scrollToIndex does. */
-bool game_ui_reveal_row(game_ui *ui, uint64_t entity, const char *element, int row);
+bool ui_reveal_row(ui *ui, uint64_t entity, const char *element, int row);
 /* Records where a presenter measured the element scrolled, in dp: how far
  * down, and the heights of its view and its content. A measurement is not a
  * setting, so presenters do not apply it back. */
-void game_ui_measure(
-    game_ui *ui,
-    uint64_t entity,
-    const char *element,
-    float scroll_top,
-    float view_height,
-    float content_height
-);
+void ui_measure(ui *ui, uint64_t entity, const char *element, float scroll_top, float view_height, float content_height);
 /* The value last set under this selector, or false when none was. */
-bool game_ui_value(const game_ui *ui, uint64_t entity, const char *element, float *value);
+bool ui_value(const ui *ui, uint64_t entity, const char *element, float *value);
 /* Copies `value` into self.<name>. False for a missing value or an invalid
  * path: a word, then words or list indices after dots ("items.2.name"). */
-bool game_ui_set_data(game_ui *ui, uint64_t entity, const char *name, const av_value *value);
-/* Drops an entity's elements and data, as when its GameUi goes away. */
-void game_ui_forget(game_ui *ui, uint64_t entity);
+bool ui_set_data(ui *ui, uint64_t entity, const char *name, const av_value *value);
+/* Drops an entity's elements and data, as when its Ui goes away. */
+void ui_forget(ui *ui, uint64_t entity);
 
 /* For presenters: bumped by every change. */
-uint64_t game_ui_revision(const game_ui *ui);
-int game_ui_element_count(const game_ui *ui);
-game_ui_element *game_ui_element_at(game_ui *ui, int index);
-int game_ui_data_count(const game_ui *ui);
-const game_ui_datum *game_ui_data_at(const game_ui *ui, int index);
+uint64_t ui_revision(const ui *ui);
+int ui_element_count(const ui *ui);
+ui_element *ui_element_at(ui *ui, int index);
+int ui_data_count(const ui *ui);
+const ui_datum *ui_data_at(const ui *ui, int index);
 
 /* Last measured scroll/view/content heights; outputs zero when unknown. */
-bool game_ui_scroll(const game_ui *, uint64_t entity, const char *selector, float values[3]);
+bool ui_scroll(const ui *, uint64_t entity, const char *selector, float values[3]);
 
 #endif

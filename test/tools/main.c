@@ -32,6 +32,9 @@ void test_tool_web_storage();
 void test_tool_audio_analysis();
 #endif
 void test_tool_webgpu_staging();
+#ifdef CHIBI_TEST_SHADER_WEBGPU
+void test_tool_shader_webgpu();
+#endif
 void test_tool_types();
 void test_tool_ecs();
 void test_tool_ecs_relationships();
@@ -177,6 +180,10 @@ int main(int argc, char **argv)
     int corpus = 0;
     bool coverage = false;
     bool audio_analysis = false;
+    bool shader_webgpu = false;
+#ifdef CHIBI_TEST_SHADER_WEBGPU
+    shader_webgpu = argc == 2 && !strcmp(argv[1], "--shader-webgpu");
+#endif
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
     audio_analysis = argc == 2 && !strcmp(argv[1], "--audio-analysis");
 #endif
@@ -247,11 +254,11 @@ int main(int argc, char **argv)
     if (argc != 1 && !corpus && !coverage && !shader_parameters && !source_edit &&
         !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
         !package && !unit && !web_storage && !webgpu_staging && !audio_analysis &&
-        !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics && !physics3d &&
-        !transforms && !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !scene3d && !material_ramps && !box3d &&
-        !sky_files && !mesh_files && !model_import && !persistent_store &&
+        !shader_webgpu && !query_benchmark && !prepared && !read && !scene &&
+        !scene_prepared && !native && !native_values && !native_catalog && !physics &&
+        !physics3d && !transforms && !render_resources && !interior_border &&
+        !viewport_resize && !sdf_visibility && !scene3d && !material_ramps &&
+        !box3d && !sky_files && !mesh_files && !model_import && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
         !source_numeric && !source_material && !source_presentation &&
@@ -262,6 +269,7 @@ int main(int argc, char **argv)
             "--web-storage | "
             "--audio-analysis | "
             "--webgpu-staging | "
+            "--shader-webgpu | "
             "--ecs-query-benchmark | "
             "--validate-project chibi_ctl | "
             "--prototype-expansion chibi_ctl | "
@@ -292,6 +300,13 @@ int main(int argc, char **argv)
     }
     tool_init();
     pu_display_time(true);
+#ifdef CHIBI_TEST_SHADER_WEBGPU
+    if (shader_webgpu) {
+        test_tool_shader_webgpu();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
     if (audio_analysis) {
         test_tool_audio_analysis();

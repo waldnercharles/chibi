@@ -7,6 +7,6 @@ typedef struct audio_input audio_input;
 audio_input *audio_input_new();
 void audio_input_free(audio_input *input);
 void audio_input_reset(audio_input *input);
-void audio_input_update(audio_input *input, game_audio *audio, bool playing);
+void audio_input_update(audio_input *input, audio *audio, bool playing);
 
 #endif

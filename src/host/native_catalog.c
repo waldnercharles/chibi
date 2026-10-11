@@ -29,11 +29,11 @@ native_capabilities *host_native_catalog_new(
         return NULL;
     }
     native_capability_definition *events = NULL;
-    native_parameter_definition *payloads[GAME_HOST_EVENT_COUNT] = { 0 };
-    for (int i = 0; i < GAME_HOST_EVENT_COUNT; i++) {
-        const game_host_event_desc *event = &GAME_HOST_EVENTS[i];
+    native_parameter_definition *payloads[HOST_EVENT_COUNT] = { 0 };
+    for (int i = 0; i < HOST_EVENT_COUNT; i++) {
+        const host_event_desc *event = &HOST_EVENTS[i];
         for (int j = 0; j < event->payload_count; j++) {
-            const game_event_field *field = &event->payload[j];
+            const event_field *field = &event->payload[j];
             apush(
                 payloads[i],
                 ((native_parameter_definition){ .name = field->name,
@@ -62,7 +62,7 @@ native_capabilities *host_native_catalog_new(
             .base = { .entity_type = script_catalog_id("type", "ecs.entity"),
                       .tick_event = script_catalog_id(
                           "event",
-                          GAME_HOST_EVENTS[GAME_HOST_EVENT_TICK].name
+                          HOST_EVENTS[HOST_EVENT_TICK].name
                       ) },
             .definitions = events,
             .definition_count = acount(events) })
@@ -77,7 +77,7 @@ native_capabilities *host_native_catalog_new(
     );
     afree(selected);
     afree(events);
-    for (int i = 0; i < GAME_HOST_EVENT_COUNT; i++) {
+    for (int i = 0; i < HOST_EVENT_COUNT; i++) {
         afree(payloads[i]);
     }
     return out;

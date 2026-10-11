@@ -12,7 +12,7 @@ behavior "MovementTrailBehavior" {
         after entry {
             state."Particle Carry" = state."Particle Carry" + "Emission Budget"(delta_time())
             while state."Particle Carry" >= 1.0 {
-                await emit_directed_particles(convert<"game_transform_to_cf">(self.Transform) + multiply(multiply(vec2_norm(entry.Direction), B: plain float = -1.0), B: plain float = 9.0), multiply(vec2_norm(entry.Direction), B: plain float = -1.0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
+                await emit_directed_particles(convert<"transform_to_cf">(self.Transform) + multiply(multiply(vec2_norm(entry.Direction), B: plain float = -1.0), B: plain float = 9.0), multiply(vec2_norm(entry.Direction), B: plain float = -1.0), 1, 4288223999, 1291911040, 30.0, 60.0, 0.2, 0.4, 2.0, 4.0, 1.571, 4.0, 8.0, 0.2, 0.4, 1.5, 0.0, 0)
                 state."Particle Carry" = state."Particle Carry" - 1.0
             }
             return

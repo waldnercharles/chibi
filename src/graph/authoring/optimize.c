@@ -440,9 +440,6 @@ void graph_local_name(const graph *g, const node *n, int pin, char *name, size_t
     if (!strncmp(source, "Get_", 4)) {
         source += 4;
     }
-    if (!strncmp(source, "Game", 4)) {
-        source += 4;
-    }
     char base[100];
     int at = 0;
     bool upper = true;

@@ -11,9 +11,9 @@
 #include <assert.h>
 #include <string.h>
 
-const char *game_physics_native_raycast(
+const char *physics_native_raycast(
     ecs_world *world,
-    game_entities *entities,
+    entities *entities,
     const pin_value *inputs,
     arena *storage,
     pin_value *out
@@ -22,8 +22,8 @@ const char *game_physics_native_raycast(
     if (!world || !entities || !inputs[0].ptr || !inputs[1].ptr) {
         return "Raycast requires a game world and Start and End vectors";
     }
-    game_ray_hit hit;
-    if (game_physics_raycast(
+    ray_hit hit;
+    if (physics_raycast(
             world,
             entities,
             *(CF_V2 *)inputs[0].ptr,
@@ -49,9 +49,9 @@ const char *game_physics_native_raycast(
     return NULL;
 }
 
-const char *game_physics_native_contacts(
+const char *physics_native_contacts(
     ecs_world *world,
-    game_entities *entities,
+    entities *entities,
     const pin_value *inputs,
     arena *a,
     pin_value *out
@@ -61,7 +61,7 @@ const char *game_physics_native_contacts(
         return "Get Contact Entities requires a game world";
     }
     ecs_entity *handles = NULL;
-    int result = game_physics_contact_entities(
+    int result = physics_contact_entities(
         world,
         entities,
         ecs_entity_from_u64(inputs[0].u64),
@@ -111,7 +111,7 @@ static const char *raycast_host(
 )
 {
     pin_value value[5] = { 0 };
-    const char *error = game_physics_native_raycast(
+    const char *error = physics_native_raycast(
         context_world(context),
         entities,
         in,
@@ -137,7 +137,7 @@ static const char *contacts_host(
 )
 {
     pin_value value = { 0 };
-    const char *error = game_physics_native_contacts(
+    const char *error = physics_native_contacts(
         context_world(context),
         entities,
         in,
@@ -150,13 +150,13 @@ static const char *contacts_host(
     out->ptr = value.ptr;
     return NULL;
 }
-const node_host_call GAME_PHYSICS_RAYCAST_CALL = { .service = "game.entities",
-                                                   .context = raycast_host,
-                                                   .reusable = true };
-const node_host_call GAME_PHYSICS_CONTACTS_CALL = { .service = "game.entities",
-                                                    .context = contacts_host,
-                                                    .reusable = true };
-const node_access GAME_PHYSICS_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+const node_host_call PHYSICS_RAYCAST_CALL = { .service = "game.entities",
+                                              .context = raycast_host,
+                                              .reusable = true };
+const node_host_call PHYSICS_CONTACTS_CALL = { .service = "game.entities",
+                                               .context = contacts_host,
+                                               .reusable = true };
+const node_access PHYSICS_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
 
 static const char missing_impulse[] = "Apply Impulse requires a physics world";
 static const char missing_force[] = "Apply Force requires a physics world";
@@ -166,7 +166,7 @@ static const char *impulse_call(void *service, const pin_value *in, pin_value *)
     if (!service) {
         return missing_impulse;
     }
-    if (!in[1].ptr || game_physics_apply_impulse(
+    if (!in[1].ptr || physics_apply_impulse(
                           service,
                           ecs_entity_from_u64(in[0].u64),
                           *(const CF_V2 *)in[1].ptr
@@ -181,7 +181,7 @@ static const char *force_call(void *service, const pin_value *in, pin_value *)
     if (!service) {
         return missing_force;
     }
-    if (!in[1].ptr || game_physics_apply_force(
+    if (!in[1].ptr || physics_apply_force(
                           service,
                           ecs_entity_from_u64(in[0].u64),
                           *(const CF_V2 *)in[1].ptr
@@ -191,10 +191,10 @@ static const char *force_call(void *service, const pin_value *in, pin_value *)
     return NULL;
 }
 
-const node_host_call GAME_PHYSICS_IMPULSE_CALL = { .service = "game.physics",
-                                                   .invoke = impulse_call,
-                                                   .missing_service = missing_impulse };
-const node_host_call GAME_PHYSICS_FORCE_CALL = { .service = "game.physics",
-                                                 .invoke = force_call,
-                                                 .missing_service = missing_force };
-const node_access GAME_PHYSICS_PUSH_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+const node_host_call PHYSICS_IMPULSE_CALL = { .service = "game.physics",
+                                              .invoke = impulse_call,
+                                              .missing_service = missing_impulse };
+const node_host_call PHYSICS_FORCE_CALL = { .service = "game.physics",
+                                            .invoke = force_call,
+                                            .missing_service = missing_force };
+const node_access PHYSICS_PUSH_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };

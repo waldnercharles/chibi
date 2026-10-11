@@ -1179,7 +1179,7 @@ bool shader_catalog_validate_model_values(
     model_bounds bounds;
     return model_program_prepare(&shape->model, incoming, prepared, &bounds, error);
 }
-bool render_shader_binding_parameters_validate(const GameShader *binding, const char *text, shader_error *error)
+bool render_shader_binding_parameters_validate(const Shader *binding, const char *text, shader_error *error)
 {
     int shape_id = binding ? render_shader_find(binding->shape) : 0;
     int material_id = binding ? render_shader_find(binding->material) : 0;
@@ -1371,7 +1371,7 @@ bool render_shader_model_snapshot(
     if (!render_shader_is_model(index)) {
         return false;
     }
-    const GameShader *binding = world ? GAME_GameShader_get_const(world, entity) : NULL;
+    const Shader *binding = world ? Shader_get_const(world, entity) : NULL;
     int material_id = binding ? render_shader_find(binding->material) : 0;
     shader_asset *asset = &shader_catalog_assets[index - 1];
     const shader_asset *material = material_id
@@ -1537,7 +1537,7 @@ bool render_shader_bounds(int index, float bounds[2])
            isfinite(bounds[1]);
 }
 bool render_shader_contains(
-    const GameShader *binding,
+    const Shader *binding,
     ecs_world *world,
     ecs_entity entity,
     const float local[2],
@@ -1652,7 +1652,7 @@ const char *shader_catalog_write_parameter_value(void *service, const pin_value 
     ecs_world *world = service;
     pin_value target = inputs[0], name = inputs[1], value = inputs[2];
     ecs_entity entity = ecs_entity_from_u64(target.u64);
-    const GameShader *binding = world ? GAME_GameShader_get_const(world, entity) : NULL;
+    const Shader *binding = world ? Shader_get_const(world, entity) : NULL;
     int id = binding ? render_shader_find(shape ? binding->shape : binding->material)
                      : 0;
     if (!id || !name.str) {

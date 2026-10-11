@@ -129,6 +129,17 @@ if(TARGET Chibi::tilemap_runtime AND TARGET Chibi::asset_text AND TARGET Chibi::
 endif()
 add_custom_target(check-tools COMMAND test_tools DEPENDS test_tools VERBATIM)
 
+# The runtime uses Cute's compiler to translate generated GLSL to WGSL. Its
+# compiler header is private to Cute, so exercise it only in an in-tree build.
+if(TARGET Chibi::platform AND TARGET Chibi::shader_runtime AND NOT CHIBI_INSTALLED_SDK)
+    get_target_property(platform_source Chibi::platform SOURCE_DIR)
+    get_directory_property(cute_source DIRECTORY "${platform_source}" DEFINITION cute_framework_SOURCE_DIR)
+    target_sources(test_tools PRIVATE shader_webgpu.c)
+    target_include_directories(test_tools PRIVATE "${cute_source}/tools")
+    target_link_libraries(test_tools PRIVATE Chibi::shader_runtime Chibi::platform)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SHADER_WEBGPU=1)
+endif()
+
 # Reflection cases drive the native generator that SDK packages are built with.
 if(CHIBI_REFLECT_EXECUTABLE)
     target_sources(test_tools PRIVATE reflect.c)

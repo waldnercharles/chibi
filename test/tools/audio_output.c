@@ -10,60 +10,60 @@
 #include <stdlib.h>
 #include <string.h>
 
-static game_audio *queue;
+static audio *queue;
 static render_audio *output;
-static game_audio *replacement_queue;
+static audio *replacement_queue;
 static render_audio *replacement_output;
 
 static void setup()
 {
-    queue = game_audio_new();
+    queue = audio_new();
     output = render_audio_new();
 }
 static void teardown()
 {
     if (replacement_output) {
         render_audio_free(replacement_output);
-        game_audio_free(replacement_queue);
+        audio_free(replacement_queue);
         replacement_output = NULL;
         replacement_queue = NULL;
     }
     if (output) {
         render_audio_free(output);
     }
-    game_audio_free(queue);
+    audio_free(queue);
 }
 TEST_CASE(audio_output_measures_the_real_mixer_and_resets_across_sources)
 {
-    REQUIRE(game_audio_tone(
+    REQUIRE(audio_tone(
         queue,
-        (game_tone){ .frequency = 100, .end_frequency = 100, .duration = 1, .volume = 0.8f, .pan = 0.5f }
+        (tone){ .frequency = 100, .end_frequency = 100, .duration = 1, .volume = 0.8f, .pan = 0.5f }
     ));
-    game_audio_analysis frame = { 0 };
+    audio_measurement frame = { 0 };
     uint64_t deadline = SDL_GetTicks() + 2000;
     while (SDL_GetTicks() < deadline) {
         render_audio_update(output, queue, true);
-        frame = game_audio_get_analysis(queue);
+        frame = audio_get_analysis(queue);
         if (frame.level > 0.03f) {
             break;
         }
         SDL_Delay(5);
     }
-    REQUIRE(frame.active && frame.status == GAME_AUDIO_READY && frame.source == 0);
+    REQUIRE(frame.active && frame.status == AUDIO_READY && frame.source == 0);
     REQUIRE(frame.level > 0.03f && frame.bass > frame.treble * 4);
     render_audio_update(output, queue, false);
-    frame = game_audio_get_analysis(queue);
+    frame = audio_get_analysis(queue);
     REQUIRE(!frame.active && !frame.level && !frame.onset);
     pin_value source = { .type = PIN_I32, .i = 1 };
-    REQUIRE(!GAME_AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
+    REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
     render_audio_update(output, queue, true);
-    frame = game_audio_get_analysis(queue);
-    REQUIRE(frame.source == 1 && frame.status == GAME_AUDIO_UNAVAILABLE);
+    frame = audio_get_analysis(queue);
+    REQUIRE(frame.source == 1 && frame.status == AUDIO_UNAVAILABLE);
     REQUIRE(!frame.active && !frame.level && !frame.bass && !frame.onset);
     source.i = 0;
-    REQUIRE(!GAME_AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
+    REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
     render_audio_update(output, queue, true);
-    REQUIRE(game_audio_get_analysis(queue).source == 0);
+    REQUIRE(audio_get_analysis(queue).source == 0);
     /* Only the dummy driver is running. Its fake recording device checks
      * disconnect handling without opening a microphone or loopback input. */
     int count;
@@ -73,41 +73,41 @@ TEST_CASE(audio_output_measures_the_real_mixer_and_resets_across_sources)
     SDL_free(devices);
     SDL_setenv_unsafe("CHIBI_AUDIO_INPUT", SDL_GetAudioDeviceName(device), 1);
     source.i = 1;
-    REQUIRE(!GAME_AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
+    REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
     render_audio_update(output, queue, true);
-    REQUIRE(game_audio_get_analysis(queue).status == GAME_AUDIO_READY);
+    REQUIRE(audio_get_analysis(queue).status == AUDIO_READY);
     SDL_Event removed = { .adevice = { .type = SDL_EVENT_AUDIO_DEVICE_REMOVED,
                                        .which = device,
                                        .recording = true } };
     REQUIRE(SDL_PushEvent(&removed));
     render_audio_update(output, queue, true);
-    frame = game_audio_get_analysis(queue);
-    REQUIRE(frame.status == GAME_AUDIO_ENDED && !frame.active && !frame.level);
-    game_audio_reset(queue);
+    frame = audio_get_analysis(queue);
+    REQUIRE(frame.status == AUDIO_ENDED && !frame.active && !frame.level);
+    audio_reset(queue);
     render_audio_update(output, queue, false);
-    frame = game_audio_get_analysis(queue);
+    frame = audio_get_analysis(queue);
     REQUIRE(!frame.active && !frame.level && !frame.onset);
     render_audio_update(output, NULL, false);
     /* Replacing an observer transfers the single mixer callback. Destroying
      * its previous owner must not unregister the replacement's callback. */
     render_audio_update(output, queue, true);
-    replacement_queue = game_audio_new();
+    replacement_queue = audio_new();
     replacement_output = render_audio_new();
-    REQUIRE(game_audio_tone(
+    REQUIRE(audio_tone(
         replacement_queue,
-        (game_tone){ .frequency = 100, .end_frequency = 100, .duration = 1, .volume = 0.8f, .pan = 0.5f }
+        (tone){ .frequency = 100, .end_frequency = 100, .duration = 1, .volume = 0.8f, .pan = 0.5f }
     ));
     render_audio_update(replacement_output, replacement_queue, true);
     render_audio_update(output, queue, true);
-    REQUIRE(game_audio_get_analysis(queue).status == GAME_AUDIO_ENDED);
+    REQUIRE(audio_get_analysis(queue).status == AUDIO_ENDED);
     render_audio_free(output);
     output = NULL;
     render_audio_update(replacement_output, replacement_queue, false);
-    frame = game_audio_get_analysis(replacement_queue);
+    frame = audio_get_analysis(replacement_queue);
     REQUIRE(!frame.active && !frame.level);
     while (SDL_GetTicks() < deadline) {
         render_audio_update(replacement_output, replacement_queue, true);
-        frame = game_audio_get_analysis(replacement_queue);
+        frame = audio_get_analysis(replacement_queue);
         if (frame.level > 0.03f) {
             break;
         }

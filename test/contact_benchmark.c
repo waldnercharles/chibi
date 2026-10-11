@@ -26,25 +26,25 @@ static double seconds()
 static void measure(int count, float spacing)
 {
     ecs_world *ecs = ecs_world_new();
-    require(ecs_world_register_component(ecs, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
-    require(ecs_world_register_component(ecs, &GAME_COMPONENT_GameCollider, NULL) == ECS_OK);
-    game_preview_world *live = game_preview_world_new(ecs);
+    require(ecs_world_register_component(ecs, &COMPONENT_Transform, NULL) == ECS_OK);
+    require(ecs_world_register_component(ecs, &COMPONENT_Collider, NULL) == ECS_OK);
+    preview_world *live = preview_world_new(ecs);
     for (int i = 0; i < count; i++) {
         ecs_entity entity = ecs_world_create_entity(ecs);
-        require(GAME_GameTransform_add(ecs, entity, 0) == ECS_OK);
-        require(GAME_GameCollider_add(ecs, entity, 0) == ECS_OK);
+        require(Transform_add(ecs, entity, 0) == ECS_OK);
+        require(Collider_add(ecs, entity, 0) == ECS_OK);
         require(ecs_world_apply_commands(ecs) == ECS_OK);
-        *GAME_GameTransform_get(ecs, entity) = (GameTransform){ (float)(i % 64) * spacing,
-                                                                (float)(i / 64) * spacing };
-        *GAME_GameCollider_get(ecs, entity) = (GameCollider){ 8.0f, 1, 1 };
+        *Transform_get(ecs, entity) = (Transform){ (float)(i % 64) * spacing,
+                                                   (float)(i / 64) * spacing };
+        *Collider_get(ecs, entity) = (Collider){ 8.0f, 1, 1 };
     }
     double start = seconds();
-    require(game_physics_tick(live->runtime->physics, 0) == 0);
+    require(physics_tick(live->runtime->physics, 0) == 0);
     double first = seconds() - start;
-    game_entities_reset(live->runtime->entities);
+    entities_reset(live->runtime->entities);
     start = seconds();
     for (int i = 0; i < PASSES; i++) {
-        require(game_physics_tick(live->runtime->physics, 0) == 0);
+        require(physics_tick(live->runtime->physics, 0) == 0);
     }
     double average = (seconds() - start) / PASSES;
     printf(
@@ -56,7 +56,7 @@ static void measure(int count, float spacing)
         PASSES
     );
     fflush(stdout);
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(ecs);
 }
 

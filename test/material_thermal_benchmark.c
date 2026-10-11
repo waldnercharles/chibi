@@ -63,8 +63,8 @@ int main(int argc, char **argv)
             assert(material_fluid_add(fluid, p));
         }
     }
-    game_task_pool *pool = game_task_pool_acquire_workers(workers);
-    material_fluid_set_tasks(fluid, game_task_pool_tasks(pool));
+    task_pool *pool = task_pool_acquire_workers(workers);
+    material_fluid_set_tasks(fluid, task_pool_tasks(pool));
     fluid_region region = { -100000, -100000, 200000, 200000 };
     int warmup = quench ? 0 : 5;
     double start = 0, reactions = 0;
@@ -73,9 +73,9 @@ int main(int argc, char **argv)
             start = seconds();
         }
         material_fluid_profile profile = { 0 };
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         material_fluid_tick_profiled(fluid, 1.f / 60, 64, &region, 1, NULL, 0, NULL, 0, &profile);
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         if (frame >= 0) {
             reactions += profile.reactions_ms;
         }
@@ -106,7 +106,7 @@ int main(int argc, char **argv)
         warmup,
         side,
         frames,
-        game_task_pool_tasks(pool)->workers,
+        task_pool_tasks(pool)->workers,
         count,
         reactions / frames,
         total,
@@ -118,5 +118,5 @@ int main(int argc, char **argv)
         burning
     );
     material_fluid_free(fluid);
-    game_task_pool_release(pool);
+    task_pool_release(pool);
 }

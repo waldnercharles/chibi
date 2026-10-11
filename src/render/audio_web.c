@@ -197,7 +197,7 @@ void render_audio_web_stop()
 #else
 void render_audio_web_start(int generation)
 {
-    render_audio_web_status(generation, GAME_AUDIO_UNAVAILABLE);
+    render_audio_web_status(generation, AUDIO_UNAVAILABLE);
 }
 
 void render_audio_web_stop() {}

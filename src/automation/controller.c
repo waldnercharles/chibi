@@ -163,7 +163,7 @@ typedef struct
     const asset_family *family;
     char filename[256];
     char relative[512];
-    char name[GAME_PROTOTYPE_NAME_MAX + 1]; /* once read; see asset_name */
+    char name[PROTOTYPE_NAME_MAX + 1]; /* once read; see asset_name */
 } asset_ref;
 
 typedef struct
@@ -391,7 +391,7 @@ static const contract_field CONTRACT_RUN_SCENARIO[] = {
     { "name", "string", true, "Prototype or scene asset name." },
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 108000." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
-    { "inputs", "array", false, "Per-frame movement, aim, controls, controllers, actions, UI interactions and typed entity-targeted events. Controllers is an array of up to four {connected,buttons} slots; buttons are GamePadControl labels or integers." },
+    { "inputs", "array", false, "Per-frame movement, aim, controls, controllers, actions, UI interactions and typed entity-targeted events. Controllers is an array of up to four {connected,buttons} slots; buttons are PadControl labels or integers." },
     { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing zero-based frame order; each frame is below frames; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
@@ -404,8 +404,8 @@ static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
     { "component_limit", "uint64", false, "Maximum number of components per entity; maximum 64." },
     { "field_limit", "uint64", false, "Maximum number of reflected fields per component; maximum 128." },
     { "behavior_limit", "uint64", false, "Maximum number of behavior attachments per entity; maximum 64." },
-    { "fields", "string[]", false, "Optional reflected field selectors such as GameTransform.x." },
-    { "inputs", "array", false, "Per-frame movement, aim, controls, controllers, actions, UI interactions and typed entity-targeted events. Controllers is an array of up to four {connected,buttons} slots; buttons are GamePadControl labels or integers." },
+    { "fields", "string[]", false, "Optional reflected field selectors such as Transform.x." },
+    { "inputs", "array", false, "Per-frame movement, aim, controls, controllers, actions, UI interactions and typed entity-targeted events. Controllers is an array of up to four {connected,buttons} slots; buttons are PadControl labels or integers." },
     { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
@@ -432,7 +432,7 @@ static const contract_field CONTRACT_SEARCH_NODES[] = {
     { "query", "string", false, "Words that must all start a word in a node's or event's name, keywords, pin names or expression function; omit it and the filters to list the domain's node types and events." },
     { "domain", "string", false, "Filter to behavior, shader, field, or system nodes." },
     { "pin_type", "string", false, "Require a matching pin type or struct type name." },
-    { "wire_from", "string", false, "Type of an output to wire from (exec, float, GameHealth, array<int>); ranks nodes by the input that takes it." },
+    { "wire_from", "string", false, "Type of an output to wire from (exec, float, Health, array<int>); ranks nodes by the input that takes it." },
     { "wire_to", "string", false, "Type of an input to wire into; ranks nodes by the output that feeds it." },
     { "pin_container", "string", false, "Require a matching pin container: single, array, set, or map." },
     { "pin_kind", "string", false, "Require a matching pin kind: data or exec." },
@@ -440,7 +440,7 @@ static const contract_field CONTRACT_SEARCH_NODES[] = {
     { "limit", "integer", false, "Page size, default 10, maximum 50." },
     { "offset", "integer", false, "Zero-based page offset." },
     { "include_pins", "boolean", false, "Include typed pins, default true." },
-    { "behavior", "string", false, "A behavior asset's name: offer only the UI events of the GameUi documents on the prototypes and scene objects that attach it." },
+    { "behavior", "string", false, "A behavior asset's name: offer only the UI events of the Ui documents on the prototypes and scene objects that attach it." },
 };
 static const contract_field CONTRACT_DESCRIBE_COMPONENTS[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -886,11 +886,11 @@ static int load_asset(
     size_t error_size
 );
 
-static game_prototype_registry project_registry()
+static prototype_registry project_registry()
 {
     ecs_component_catalog catalog = project_components();
-    return (game_prototype_registry){ .components = catalog.components,
-                                      .component_count = catalog.component_count };
+    return (prototype_registry){ .components = catalog.components,
+                                 .component_count = catalog.component_count };
 }
 
 static const ecs_component_desc *automation_query_component(const char *name, void *)
@@ -1427,7 +1427,7 @@ static void catalog_scan_entities(catalog_asset *asset, yyjson_val *entities, co
     {
         const char *name = yyjson_is_obj(entity) ? request_string(entity, "name")
                                                  : NULL;
-        if (!name || !name[0] || depth >= GAME_SCENE_DEPTH_MAX) {
+        if (!name || !name[0] || depth >= SCENE_DEPTH_MAX) {
             continue;
         }
         size_t size = (parent ? strlen(parent) + 1 : 0) + strlen(name) + 1;
@@ -1558,7 +1558,7 @@ static char *ui_styles(const char *root, const char *name)
     return text;
 }
 
-/* UI assets hold RML markup, and RCSS beside it, that GameUi components
+/* UI assets hold RML markup, and RCSS beside it, that Ui components
  * show. */
 static bool read_ui_asset(const char *root, const char *name, char *error, size_t error_size)
 {
@@ -1756,9 +1756,9 @@ static const char *include_prototype(const char *name, void *user)
     return text;
 }
 
-static game_prototype_registry prototype_registry(prototype_includes *includes)
+static prototype_registry registry_with_includes(prototype_includes *includes)
 {
-    game_prototype_registry registry = project_registry();
+    prototype_registry registry = project_registry();
     registry.include = include_prototype;
     registry.include_user = includes;
     return registry;
@@ -1841,14 +1841,14 @@ static void catalog_validate_asset(
         behavior_asset_free(behavior);
     } else if (family->loader == ASSET_PROTOTYPE) {
         prototype_includes includes = { root };
-        game_prototype_registry registry = prototype_registry(&includes);
+        prototype_registry registry = registry_with_includes(&includes);
         char error[256] = { 0 };
-        game_prototype *prototype = game_prototype_load(json, &registry, error, sizeof error);
+        prototype *prototype = prototype_load(json, &registry, error, sizeof error);
         if (!prototype) {
             asset->errors = 1;
             catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
         } else {
-            game_prototype_free(prototype);
+            prototype_free(prototype);
         }
         prototype_includes_free(&includes);
     } else if (family->loader == ASSET_EDITOR || family->loader == ASSET_SCENARIO) {
@@ -1862,12 +1862,12 @@ static void catalog_validate_asset(
         }
     } else {
         char error[256] = { 0 };
-        game_scene_document *scene = game_scene_document_load(json, error, sizeof error);
+        scene_document *scene = scene_document_load(json, error, sizeof error);
         if (!scene) {
             asset->errors = 1;
             catalog_add_diagnostic(asset, "error", 0, "LOAD", error);
         } else {
-            game_scene_document_free(scene);
+            scene_document_free(scene);
         }
     }
     asset->valid = asset->errors == 0;
@@ -1974,19 +1974,19 @@ static void catalog_add_content(
         case ASSET_PROTOTYPE: {
             /* What an included prototype holds is its references, not this
              * one's, which only names it. */
-            game_prototype_registry registry = project_registry();
-            game_prototype *prototype = game_prototype_load_authored(text, &registry, error, sizeof error);
+            prototype_registry registry = project_registry();
+            prototype *prototype = prototype_load_authored(text, &registry, error, sizeof error);
             if (prototype) {
                 reference_index_add_prototype(index, asset->reference, prototype);
-                game_prototype_free(prototype);
+                prototype_free(prototype);
             }
             return;
         }
         case ASSET_SCENE: {
-            game_scene_document *scene = game_scene_document_load(text, error, sizeof error);
+            scene_document *scene = scene_document_load(text, error, sizeof error);
             for (int i = 0; scene && i < acount(scene->entities); i++) {
-                const game_scene_entity *entity = &scene->entities[i];
-                char *path = game_scene_document_entity_path(scene, i);
+                const scene_entity *entity = &scene->entities[i];
+                char *path = scene_document_entity_path(scene, i);
                 reference_object object = {
                     .name = path,
                     .prototype = entity->prototype,
@@ -2000,7 +2000,7 @@ static void catalog_add_content(
             if (scene) {
                 reference_index_add_page(index, asset->reference, scene->ui, page);
             }
-            game_scene_document_free(scene);
+            scene_document_free(scene);
             return;
         }
         case ASSET_UI:
@@ -5331,11 +5331,11 @@ static void add_behavior_execution_status(
 static int collect_source_execution(
     yyjson_mut_doc *doc,
     yyjson_mut_val *object,
-    game_preview_world *preview,
+    preview_world *preview,
     behavior_execution_status *status
 )
 {
-    const authoring_sources *sources = game_preview_sources_applied(preview);
+    const authoring_sources *sources = preview_sources_applied(preview);
     yyjson_mut_val *modules = yyjson_mut_obj_add_arr(doc, object, "source_modules");
     ecs_world *world = preview->runtime->ecs;
     int count = 0;
@@ -5345,10 +5345,8 @@ static int collect_source_execution(
             source->analysis->kind != SCRIPT_PROGRAM_SYSTEM) {
             continue;
         }
-        execution_program *program = game_source_program(
-            preview->runtime->sources,
-            source->analysis->name
-        );
+        execution_program *
+            program = source_program(preview->runtime->sources, source->analysis->name);
         if (!program) {
             continue;
         }
@@ -5623,7 +5621,7 @@ static int read_asset_file(
     if (!fits) {
         free(*json);
         *json = NULL;
-        snprintf(error, error_size, "%s declares a name longer than %d bytes", ref->relative, GAME_PROTOTYPE_NAME_MAX);
+        snprintf(error, error_size, "%s declares a name longer than %d bytes", ref->relative, PROTOTYPE_NAME_MAX);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     return CHIBI_AUTOMATION_OK;
@@ -5920,26 +5918,26 @@ static char *canonical_asset(
             return canonical_source(sources, json, path, metadata, error, error_size);
         case ASSET_PROTOTYPE: {
             prototype_includes includes = { root };
-            game_prototype_registry registry = prototype_registry(&includes);
+            prototype_registry registry = registry_with_includes(&includes);
             /* It must resolve, but saves as authored: its own content, naming
              * its includes and children's prototypes. */
-            game_prototype *prototype = game_prototype_load(json, &registry, error, error_size);
-            game_prototype *authored = prototype
-                                         ? game_prototype_load_authored(json, &registry, error, error_size)
-                                         : NULL;
-            char *text = authored ? game_prototype_save(authored) : NULL;
-            game_prototype_free(authored);
-            game_prototype_free(prototype);
+            prototype *resolved = prototype_load(json, &registry, error, error_size);
+            prototype *authored = resolved
+                                    ? prototype_load_authored(json, &registry, error, error_size)
+                                    : NULL;
+            char *text = authored ? prototype_save(authored) : NULL;
+            prototype_free(authored);
+            prototype_free(resolved);
             prototype_includes_free(&includes);
             return text;
         }
         case ASSET_SCENE: {
-            game_scene_document *scene = game_scene_document_load(json, error, error_size);
+            scene_document *scene = scene_document_load(json, error, error_size);
             if (!scene) {
                 return NULL;
             }
-            char *text = game_scene_document_save(scene, project_components());
-            game_scene_document_free(scene);
+            char *text = scene_document_save(scene, project_components());
+            scene_document_free(scene);
             return text;
         }
         case ASSET_EDITOR:
@@ -6538,9 +6536,9 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         }
     } else if (ref.family->loader == ASSET_PROTOTYPE) {
         prototype_includes includes = { root };
-        game_prototype_registry registry = prototype_registry(&includes);
+        prototype_registry registry = registry_with_includes(&includes);
         char load_error[256] = { 0 };
-        game_prototype *prototype = game_prototype_load(json, &registry, load_error, sizeof load_error);
+        prototype *prototype = prototype_load(json, &registry, load_error, sizeof load_error);
         if (!prototype) {
             errors = 1;
             add_load_diagnostic(result->doc, diagnostics, load_error);
@@ -6552,7 +6550,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
                 "components",
                 acount(prototype->components)
             );
-            game_prototype_free(prototype);
+            prototype_free(prototype);
             if (validate_prototype_bindings(root, json, load_error, sizeof load_error) !=
                 CHIBI_AUTOMATION_OK) {
                 errors = 1;
@@ -6575,14 +6573,14 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
         }
     } else {
         char load_error[256] = { 0 };
-        game_scene_document *scene = game_scene_document_load(json, load_error, sizeof load_error);
+        scene_document *scene = scene_document_load(json, load_error, sizeof load_error);
         if (!scene) {
             errors = 1;
             add_load_diagnostic(result->doc, diagnostics, load_error);
         } else {
             yyjson_mut_obj_add_strcpy(result->doc, value, "scene_name", scene->name);
             yyjson_mut_obj_add_int(result->doc, value, "entities", acount(scene->entities));
-            game_scene_document_free(scene);
+            scene_document_free(scene);
             if (validate_scene_dependencies(root, json, load_error, sizeof load_error) !=
                 CHIBI_AUTOMATION_OK) {
                 errors = 1;
@@ -6683,7 +6681,7 @@ static int validate_ui_folder(const char *root, yyjson_mut_doc *doc, yyjson_mut_
    a problem of the project; returns how many, at most one. */
 static int validate_sounds(const char *root, yyjson_mut_doc *doc, yyjson_mut_val *project)
 {
-    game_player_asset *sounds = NULL;
+    player_asset *sounds = NULL;
     char error[512];
     bool valid = authoring_sounds_prepare(chibi_automation_content(root), &sounds, error, sizeof error);
     authoring_visual_prepared_free(sounds);
@@ -6705,12 +6703,11 @@ static int validate_preparation(const char *root, yyjson_mut_doc *doc, yyjson_mu
         error,
         sizeof error
     );
-    authoring_project_options options = {
-        .project = root,
-        .native = native,
-        .components = { GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT },
-        .modules = GAME_WORLD_MODULES_ALL
-    };
+    authoring_project_options options = { .project = root,
+                                          .native = native,
+                                          .components = { REGISTRY_COMPONENTS,
+                                                          REGISTRY_COMPONENT_COUNT },
+                                          .modules = WORLD_MODULES_ALL };
     authoring_project_artifact artifact = { 0 };
     bool valid = native &&
                  authoring_project_prepare(&options, &artifact, error, sizeof error);
@@ -7117,18 +7114,17 @@ static int load_behavior_family_assets(
 }
 
 /* Scenarios use the application's canonical declaration and source pipeline. */
-static int register_shared_assets(const char *root, game_prototype_preview *preview, char *error, size_t error_size)
+static int register_shared_assets(const char *root, prototype_preview *preview, char *error, size_t error_size)
 {
     const char *content = chibi_automation_content(root);
     /* The preview's live world is the only world, so nothing registers twice. */
-    int loaded = app_behavior_fixtures_load(game_prototype_preview_live(preview), NULL, content);
-    bool sounds = loaded >= 0 &&
-                  authoring_sounds_load(
-                      content,
-                      engine_audio(game_prototype_preview_runtime(preview)),
-                      error,
-                      error_size
-                  );
+    int loaded = app_behavior_fixtures_load(prototype_preview_live(preview), NULL, content);
+    bool sounds = loaded >= 0 && authoring_sounds_load(
+                                     content,
+                                     engine_audio(prototype_preview_runtime(preview)),
+                                     error,
+                                     error_size
+                                 );
     if (loaded < 0) {
         set_error(error, error_size, "project source or native asset preparation failed; see preparation diagnostics");
     }
@@ -7295,14 +7291,14 @@ typedef struct
     asset_ref prototype_ref;
     size_t prototype_bytes;
     uint64_t prototype_hash;
-    game_prototype_registry registry;
+    prototype_registry registry;
     prototype_includes includes;
-    game_prototype *prototype;
-    game_scene_document *scene;
+    prototype *prototype;
+    scene_document *scene;
     int loads; /* scenes started by Load Scene */
-    game_prototype **scene_prototypes;
-    game_prototype_preview_scene_entity *scene_entities;
-    game_prototype_preview *preview;
+    prototype **scene_prototypes;
+    prototype_preview_scene_entity *scene_entities;
+    prototype_preview *preview;
     asset_entry *runtime_assets;
     uint64_t runtime_hash;
     char *initial_saved_state;
@@ -7313,32 +7309,28 @@ typedef struct
     input_controller_state controllers[INPUT_CONTROLLER_MAX];
 } scenario_context;
 
-static game_scene_flow *scenario_scenes(const scenario_context *context)
+static scene_flow *scenario_scenes(const scenario_context *context)
 {
-    return game_world_scenes(
-        game_prototype_preview_live(context->preview)->runtime->owner
-    );
+    return world_scenes(prototype_preview_live(context->preview)->runtime->owner);
 }
 
 /* Mixes in the current scene's name: two scenes can leave the same state
  * yet answer Current Scene differently. Prototype scenarios have no scene. */
 static uint64_t scenario_scene_hash(const scenario_context *context, uint64_t hash)
 {
-    const char *scene = game_scene_flow_current(scenario_scenes(context));
+    const char *scene = scene_flow_current(scenario_scenes(context));
     return scene ? scenario_hash_bytes(hash, scene, strlen(scene)) : hash;
 }
 
 static uint64_t scenario_state_hash(scenario_context *context)
 {
-    uint64_t hash = scenario_world_hash(game_prototype_preview_world(context->preview));
-    char *saved = game_save_export(
-        game_prototype_preview_live(context->preview)->runtime->save
-    );
+    uint64_t hash = scenario_world_hash(prototype_preview_world(context->preview));
+    char *saved = save_export(prototype_preview_live(context->preview)->runtime->save);
     hash = scenario_hash_bytes(hash, saved, strlen(saved));
     free(saved);
-    engine *runtime = game_prototype_preview_runtime(context->preview);
-    GameFog fog;
-    const unsigned char *cells = game_visibility_cells(engine_visibility(runtime), &fog);
+    engine *runtime = prototype_preview_runtime(context->preview);
+    Fog fog;
+    const unsigned char *cells = visibility_cells(engine_visibility(runtime), &fog);
     if (cells) {
         hash = scenario_hash_bytes(
             hash,
@@ -7347,12 +7339,12 @@ static uint64_t scenario_state_hash(scenario_context *context)
         );
     }
     uint64_t parameters = render_shader_overrides_hash(
-        game_prototype_preview_world(context->preview)
+        prototype_preview_world(context->preview)
     );
     hash = scenario_hash_bytes(hash, &parameters, sizeof parameters);
-    uint64_t sounds = game_audio_hash(engine_audio(runtime));
-    if (game_materials_enabled(engine_materials(runtime))) {
-        game_material_state materials = game_materials_inspect(engine_materials(runtime));
+    uint64_t sounds = audio_hash(engine_audio(runtime));
+    if (materials_enabled(engine_materials(runtime))) {
+        material_state materials = materials_inspect(engine_materials(runtime));
         hash = scenario_hash_bytes(hash, &materials.hash, sizeof materials.hash);
     }
     return scenario_scene_hash(context, scenario_hash_bytes(hash, &sounds, sizeof sounds));
@@ -7362,25 +7354,23 @@ typedef struct
 {
     uint64_t ecs, saved_state, visibility, shader_overrides, materials, audio, scene;
     uint64_t physics_bodies, physics_contacts, physics_events;
-    game_material_hash_parts material;
+    material_hash_parts material;
 } scenario_hash_parts;
 
 static scenario_hash_parts scenario_state_hash_parts(scenario_context *context)
 {
     const uint64_t seed = UINT64_C(1099511628211);
     scenario_hash_parts parts = {
-        .ecs = scenario_world_hash(game_prototype_preview_world(context->preview)),
+        .ecs = scenario_world_hash(prototype_preview_world(context->preview)),
         .saved_state = seed,
         .visibility = seed
     };
-    char *saved = game_save_export(
-        game_prototype_preview_live(context->preview)->runtime->save
-    );
+    char *saved = save_export(prototype_preview_live(context->preview)->runtime->save);
     parts.saved_state = scenario_hash_bytes(parts.saved_state, saved, strlen(saved));
     free(saved);
-    engine *runtime = game_prototype_preview_runtime(context->preview);
-    GameFog fog;
-    const unsigned char *cells = game_visibility_cells(engine_visibility(runtime), &fog);
+    engine *runtime = prototype_preview_runtime(context->preview);
+    Fog fog;
+    const unsigned char *cells = visibility_cells(engine_visibility(runtime), &fog);
     if (cells) {
         parts.visibility = scenario_hash_bytes(
             parts.visibility,
@@ -7389,16 +7379,16 @@ static scenario_hash_parts scenario_state_hash_parts(scenario_context *context)
         );
     }
     parts.shader_overrides = render_shader_overrides_hash(
-        game_prototype_preview_world(context->preview)
+        prototype_preview_world(context->preview)
     );
-    if (game_materials_enabled(engine_materials(runtime))) {
-        parts.material = game_materials_hash_parts(engine_materials(runtime));
+    if (materials_enabled(engine_materials(runtime))) {
+        parts.material = materials_hash_parts(engine_materials(runtime));
         parts.materials = parts.material.hash;
     }
-    parts.audio = game_audio_hash(engine_audio(runtime));
+    parts.audio = audio_hash(engine_audio(runtime));
     parts.scene = scenario_scene_hash(context, seed);
-    game_physics_hashes physics = game_physics_hash(
-        game_prototype_preview_live(context->preview)->runtime->physics
+    physics_hashes physics = physics_hash(
+        prototype_preview_live(context->preview)->runtime->physics
     );
     parts.physics_bodies = physics.body_state;
     parts.physics_contacts = physics.contact_pairs;
@@ -7435,10 +7425,10 @@ static void add_scenario_hash_parts(yyjson_mut_doc *doc, yyjson_mut_val *value, 
 
 static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context)
 {
-    engine *runtime = game_prototype_preview_runtime(context->preview);
-    yyjson_mut_obj_add_uint(doc, value, "sound_cues", game_audio_count(engine_audio(runtime)));
-    if (game_materials_enabled(engine_materials(runtime))) {
-        game_material_state state = game_materials_inspect(engine_materials(runtime));
+    engine *runtime = prototype_preview_runtime(context->preview);
+    yyjson_mut_obj_add_uint(doc, value, "sound_cues", audio_count(engine_audio(runtime)));
+    if (materials_enabled(engine_materials(runtime))) {
+        material_state state = materials_inspect(engine_materials(runtime));
         yyjson_mut_val *material = yyjson_mut_obj_add_obj(doc, value, "materials");
         yyjson_mut_obj_add_int(doc, material, "particles", state.particles);
         yyjson_mut_obj_add_int(doc, material, "active_particles", state.active_particles);
@@ -7474,8 +7464,8 @@ static void add_presentation_state(yyjson_mut_doc *doc, yyjson_mut_val *value, c
         yyjson_mut_obj_add_int(doc, material, "chunks", state.chunks);
         add_hash_named(doc, material, "hash", state.hash);
     }
-    GameFog fog;
-    const unsigned char *cells = game_visibility_cells(engine_visibility(runtime), &fog);
+    Fog fog;
+    const unsigned char *cells = visibility_cells(engine_visibility(runtime), &fog);
     yyjson_mut_val *sight = yyjson_mut_obj_add_obj(doc, value, "visibility");
     yyjson_mut_obj_add_bool(doc, sight, "enabled", cells != NULL);
     if (!cells) {
@@ -7499,23 +7489,21 @@ static int scenario_saved_state(scenario_context *context, yyjson_val *request, 
                : context->scenario_saved_state
                    ? av_json_write(context->scenario_saved_state)
                    : xstrdup("{}");
-    game_save *save = game_prototype_preview_live(context->preview)->runtime->save;
-    bool valid = game_save_import(save, json);
+    save *save = prototype_preview_live(context->preview)->runtime->save;
+    bool valid = save_import(save, json);
     free(json);
     if (!valid) {
-        set_error(error, size, game_save_error(save));
+        set_error(error, size, save_error(save));
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     free(context->initial_saved_state);
-    context->initial_saved_state = game_save_export(save);
+    context->initial_saved_state = save_export(save);
     return CHIBI_AUTOMATION_OK;
 }
 
 static void add_saved_state(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context)
 {
-    char *json = game_save_export(
-        game_prototype_preview_live(context->preview)->runtime->save
-    );
+    char *json = save_export(prototype_preview_live(context->preview)->runtime->save);
     yyjson_doc *state = yyjson_read(json, strlen(json), 0);
     yyjson_mut_obj_add_val(doc, value, "saved_state", yyjson_val_mut_copy(doc, yyjson_doc_get_root(state)));
     yyjson_doc_free(state);
@@ -7542,11 +7530,11 @@ static int advance_request_scenario(
 static void clear_scenario_scene(scenario_context *context)
 {
     for (int i = 0; i < acount(context->scene_prototypes); i++) {
-        game_prototype_free(context->scene_prototypes[i]);
+        prototype_free(context->scene_prototypes[i]);
     }
     afree(context->scene_prototypes);
     afree(context->scene_entities);
-    game_scene_document_free(context->scene);
+    scene_document_free(context->scene);
     context->scene = NULL;
 }
 
@@ -7557,8 +7545,8 @@ static void scenario_context_free(scenario_context *context)
     }
     free(context->initial_saved_state);
     free_asset_entries(context->runtime_assets);
-    game_prototype_preview_free(context->preview);
-    game_prototype_free(context->prototype);
+    prototype_preview_free(context->preview);
+    prototype_free(context->prototype);
     clear_scenario_scene(context);
     prototype_includes_free(&context->includes);
     free(context->root);
@@ -7590,13 +7578,13 @@ static int scenario_mount_content(const char *root, scenario_context *context, c
 
 static int register_preview_behavior_name(
     const char *,
-    game_prototype_preview *preview,
+    prototype_preview *preview,
     const char *name,
     char *error,
     size_t error_size
 )
 {
-    if (game_source_registered(game_prototype_preview_sources(preview), name)) {
+    if (source_registered(prototype_preview_sources(preview), name)) {
         return CHIBI_AUTOMATION_OK;
     }
     snprintf(error, error_size, "prepared behavior module %s is not registered", name);
@@ -7637,15 +7625,15 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
         }
         char *normalized = scenario_prototype_text(json, hash);
         free(json);
-        game_prototype *prototype = normalized
-                                      ? game_prototype_load(normalized, &context->registry, error, error_size)
-                                      : NULL;
+        prototype *prototype = normalized
+                                 ? prototype_load(normalized, &context->registry, error, error_size)
+                                 : NULL;
         free(normalized);
         if (!prototype) {
             status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             break;
         }
-        status = game_prototype_preview_register_prototype(context->preview, prototype) == 0
+        status = prototype_preview_register_prototype(context->preview, prototype) == 0
                    ? CHIBI_AUTOMATION_OK
                    : CHIBI_AUTOMATION_EXECUTION_ERROR;
         for (int j = 0; j < acount(prototype->graphs) && status == CHIBI_AUTOMATION_OK;
@@ -7658,7 +7646,7 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
                 error_size
             );
         }
-        game_prototype_free(prototype);
+        prototype_free(prototype);
     }
     context->runtime_assets = entries;
     context->runtime_hash = UINT64_C(14695981039346656037);
@@ -7673,12 +7661,10 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
     }
     /* Sounds are no catalog asset, but which ones loaded decides what
      * play_sound finds, so a replay checks them too. */
-    const game_audio *audio = engine_audio(
-        game_prototype_preview_runtime(context->preview)
-    );
-    if (game_audio_sound_count(audio)) {
+    const audio *audio = engine_audio(prototype_preview_runtime(context->preview));
+    if (audio_sound_count(audio)) {
         char hash[17];
-        snprintf(hash, sizeof hash, "%016llx", (unsigned long long)game_audio_library_hash(audio));
+        snprintf(hash, sizeof hash, "%016llx", (unsigned long long)audio_library_hash(audio));
         catalog_hash_text(&context->runtime_hash, hash);
     }
     return status;
@@ -7711,10 +7697,10 @@ static int prepare_scenario(
     }
 
     context->includes = (prototype_includes){ root };
-    context->registry = prototype_registry(&context->includes);
+    context->registry = registry_with_includes(&context->includes);
     char *scenario_json = scenario_prototype_text(prototype_json, context->prototype_hash);
     context->prototype = scenario_json
-                           ? game_prototype_load(scenario_json, &context->registry, error, error_size)
+                           ? prototype_load(scenario_json, &context->registry, error, error_size)
                            : NULL;
     free(scenario_json);
     free(prototype_json);
@@ -7726,7 +7712,7 @@ static int prepare_scenario(
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
 
-    context->preview = game_prototype_preview_new(&context->registry);
+    context->preview = prototype_preview_new(&context->registry);
     if (!context->preview) {
         scenario_context_free(context);
         set_error(error, error_size, "could not create prototype preview");
@@ -7766,19 +7752,19 @@ static int prepare_scenario(
  * entities it starts with. */
 static int enter_scenario_scene(scenario_context *context, const char *json, char *error, size_t error_size)
 {
-    context->scene = game_scene_document_load(json, error, error_size);
+    context->scene = scene_document_load(json, error, error_size);
     if (!context->scene) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     /* The document checked the settings, and no scene bodies remain. */
-    int configured = game_prototype_preview_configure_physics(
+    int configured = prototype_preview_configure_physics(
         context->preview,
         context->scene->physics
     );
     assert(configured == 0);
     (void)configured;
     for (int i = 0; i < acount(context->scene->entities); i++) {
-        game_scene_entity *entity = &context->scene->entities[i];
+        scene_entity *entity = &context->scene->entities[i];
         asset_ref prototype_ref = { 0 };
         char *prototype_json = NULL;
         uint64_t prototype_hash = 0;
@@ -7798,24 +7784,23 @@ static int enter_scenario_scene(scenario_context *context, const char *json, cha
             return status;
         }
         char *scenario_json = scenario_prototype_text(prototype_json, prototype_hash);
-        game_prototype *
-            prototype = scenario_json
-                          ? game_prototype_load(scenario_json, &context->registry, error, error_size)
-                          : NULL;
+        prototype *prototype = scenario_json
+                                 ? prototype_load(scenario_json, &context->registry, error, error_size)
+                                 : NULL;
         free(scenario_json);
         free(prototype_json);
         if (!prototype) {
             return CHIBI_AUTOMATION_VALIDATION_ERROR;
         }
-        if (game_prototype_preview_register_prototype(context->preview, prototype) != 0) {
-            game_prototype_free(prototype);
+        if (prototype_preview_register_prototype(context->preview, prototype) != 0) {
+            prototype_free(prototype);
             set_error(error, error_size, "could not register scene prototype");
             return CHIBI_AUTOMATION_EXECUTION_ERROR;
         }
         apush(context->scene_prototypes, prototype);
         apush(
             context->scene_entities,
-            ((game_prototype_preview_scene_entity){
+            ((prototype_preview_scene_entity){
                 .name = entity->name,
                 .prototype = prototype,
                 .parent = entity->parent,
@@ -7862,9 +7847,9 @@ static void list_scenario_scenes(scenario_context *context, const char *start)
             apush(names, asset_name_from_filename(context->runtime_assets[i].filename));
         }
     }
-    game_scene_flow *flow = scenario_scenes(context);
-    game_scene_flow_set(flow, (const char *const *)names, acount(names));
-    game_scene_flow_enter(flow, start);
+    scene_flow *flow = scenario_scenes(context);
+    scene_flow_set(flow, (const char *const *)names, acount(names));
+    scene_flow_enter(flow, start);
     for (int i = 0; i < acount(names); i++) {
         free(names[i]);
     }
@@ -7898,8 +7883,8 @@ static int prepare_scene_scenario(
     }
     context->root = xstrdup(root);
     context->includes = (prototype_includes){ context->root };
-    context->registry = prototype_registry(&context->includes);
-    context->preview = game_prototype_preview_new(&context->registry);
+    context->registry = registry_with_includes(&context->includes);
+    context->preview = prototype_preview_new(&context->registry);
     if (!context->preview) {
         free(scene_json);
         scenario_context_free(context);
@@ -7978,7 +7963,7 @@ static void replay_scenario_input(scenario_context *context, const scenario_docu
     if (scenario) {
         context->scenario_saved_state = scenario->saved_state;
         engine_replay_input(
-            game_prototype_preview_runtime(context->preview),
+            prototype_preview_runtime(context->preview),
             scenario->keys,
             acount(scenario->keys),
             scenario->seed
@@ -8058,13 +8043,13 @@ static int handle_scene_scenario(const char *root, yyjson_val *request, response
         result->doc,
         value,
         "live_entities",
-        ecs_world_live_count(game_prototype_preview_world(context.preview))
+        ecs_world_live_count(prototype_preview_world(context.preview))
     );
     yyjson_mut_obj_add_uint(
         result->doc,
         value,
         "authored_entities",
-        game_prototype_preview_entity_count(context.preview)
+        prototype_preview_entity_count(context.preview)
     );
     add_scenario_timing(result->doc, value, frames, fixed_dt);
     add_saved_state(result->doc, value, &context);
@@ -8078,16 +8063,14 @@ static int handle_scene_scenario(const char *root, yyjson_val *request, response
 /* Each program retains its first failure until explicitly cleared. */
 static void add_behavior_failures(yyjson_mut_doc *doc, yyjson_mut_val *value, const scenario_context *context)
 {
-    game_preview_world *preview = game_prototype_preview_live(context->preview);
-    const authoring_sources *sources = game_preview_sources_applied(preview);
+    preview_world *preview = prototype_preview_live(context->preview);
+    const authoring_sources *sources = preview_sources_applied(preview);
     yyjson_mut_val *failures = yyjson_mut_obj_add_arr(doc, value, "behavior_failures");
     int count = 0;
     for (int i = 0; sources && i < authoring_sources_count(sources); i++) {
         const authoring_source *source = authoring_sources_at(sources, i);
-        execution_program *program = game_source_program(
-            preview->runtime->sources,
-            source->analysis->name
-        );
+        execution_program *
+            program = source_program(preview->runtime->sources, source->analysis->name);
         const execution_program_failure *error = program
                                                    ? execution_program_error(program)
                                                    : NULL;
@@ -8147,19 +8130,15 @@ static bool runtime_snapshot_limit(
 static int launch_scenario(scenario_context *context, char *error, size_t error_size)
 {
     char launch_error[256] = { 0 };
-    int launch = context->scene_target ? game_prototype_preview_launch_scene(
-                                             context->preview,
-                                             context->scene_entities,
-                                             acount(context->scene_entities),
-                                             launch_error,
-                                             sizeof launch_error
-                                         )
-                                       : game_prototype_preview_launch(
-                                             context->preview,
-                                             context->prototype,
-                                             launch_error,
-                                             sizeof launch_error
-                                         );
+    int launch = context->scene_target
+                   ? prototype_preview_launch_scene(
+                         context->preview,
+                         context->scene_entities,
+                         acount(context->scene_entities),
+                         launch_error,
+                         sizeof launch_error
+                     )
+                   : prototype_preview_launch(context->preview, context->prototype, launch_error, sizeof launch_error);
     if (launch != ECS_OK) {
         set_error(error, error_size, launch_error[0] ? launch_error : "could not launch scenario");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
@@ -8171,9 +8150,8 @@ static int launch_scenario(scenario_context *context, char *error, size_t error_
  * does between frames: the clock, input and recordings go on. */
 static int follow_scenario_scene(scenario_context *context, char *error, size_t error_size)
 {
-    char *next = context->scene_target
-                   ? game_scene_flow_take(scenario_scenes(context))
-                   : NULL;
+    char *next = context->scene_target ? scene_flow_take(scenario_scenes(context))
+                                       : NULL;
     if (!next) {
         return CHIBI_AUTOMATION_OK;
     }
@@ -8193,12 +8171,12 @@ static int follow_scenario_scene(scenario_context *context, char *error, size_t 
     );
     if (status == CHIBI_AUTOMATION_OK) {
         /* Begin runs inside start, so the new name must be current first. */
-        game_scene_flow_enter(scenario_scenes(context), next);
-        game_prototype_preview_end_scene(context->preview);
+        scene_flow_enter(scenario_scenes(context), next);
+        prototype_preview_end_scene(context->preview);
         clear_scenario_scene(context);
         status = enter_scenario_scene(context, json, reason, sizeof reason);
     }
-    if (status == CHIBI_AUTOMATION_OK && game_prototype_preview_start_scene(
+    if (status == CHIBI_AUTOMATION_OK && prototype_preview_start_scene(
                                              context->preview,
                                              context->scene_entities,
                                              acount(context->scene_entities),
@@ -8218,10 +8196,8 @@ static int follow_scenario_scene(scenario_context *context, char *error, size_t 
 
 static int tick_scenario(scenario_context *context, double now, char *error, size_t error_size)
 {
-    if (game_prototype_preview_tick(context->preview, now) != 0) {
-        const char *message = engine_error(
-            game_prototype_preview_runtime(context->preview)
-        );
+    if (prototype_preview_tick(context->preview, now) != 0) {
+        const char *message = engine_error(prototype_preview_runtime(context->preview));
         set_error(error, error_size, message ? message : "scenario frame failed");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
@@ -8243,7 +8219,7 @@ static int advance_scenario(
     /* Like the player's first frame, this one runs no step and follows no
      * scene. The player begins its start scene in the next frame's step,
      * with its first Tick, and follows a scene Begin asked for after that. */
-    if (game_prototype_preview_tick(context->preview, 0) != 0) {
+    if (prototype_preview_tick(context->preview, 0) != 0) {
         set_error(error, error_size, "could not initialize scenario clock");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
@@ -8267,7 +8243,7 @@ typedef struct
     double events_ms;
     double systems_ms;
     double rendering_ms;
-    game_physics_profile physics_profile;
+    physics_profile physics_profile;
 } scenario_profile_timing;
 
 typedef struct
@@ -8285,10 +8261,10 @@ typedef struct
     double physics_ms;
     double systems_ms;
     double rendering_ms;
-    game_physics_profile physics_profile;
+    physics_profile physics_profile;
 } scenario_profile_frame;
 
-static void add_box2d_profile(yyjson_mut_doc *doc, yyjson_mut_val *object, const game_physics_box2d_profile *profile)
+static void add_box2d_profile(yyjson_mut_doc *doc, yyjson_mut_val *object, const physics_box2d_profile *profile)
 {
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "box2d_ms");
 #define ADD_PROFILE(name, field)                                               \
@@ -8318,7 +8294,7 @@ static void add_box2d_profile(yyjson_mut_doc *doc, yyjson_mut_val *object, const
 #undef ADD_PROFILE
 }
 
-static void sum_box2d_profile(game_physics_box2d_profile *total, const game_physics_box2d_profile *sample)
+static void sum_box2d_profile(physics_box2d_profile *total, const physics_box2d_profile *sample)
 {
 #define SUM_PROFILE(field) total->field += sample->field
     SUM_PROFILE(step_ms);
@@ -8346,7 +8322,7 @@ static void sum_box2d_profile(game_physics_box2d_profile *total, const game_phys
 #undef SUM_PROFILE
 }
 
-static void add_physics_profile(yyjson_mut_doc *doc, yyjson_mut_val *object, const game_physics_profile *profile)
+static void add_physics_profile(yyjson_mut_doc *doc, yyjson_mut_val *object, const physics_profile *profile)
 {
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(doc, object, "physics_detail_ms");
     yyjson_mut_obj_add_real(doc, value, "synchronize", profile->synchronize_ms);
@@ -8426,7 +8402,7 @@ static void add_physics_profile(yyjson_mut_doc *doc, yyjson_mut_val *object, con
     add_box2d_profile(doc, value, &profile->box2d);
 }
 
-static void sum_physics_profile(game_physics_profile *total, const game_physics_profile *sample)
+static void sum_physics_profile(physics_profile *total, const physics_profile *sample)
 {
     total->synchronize_ms += sample->synchronize_ms;
     total->solve_ms += sample->solve_ms;
@@ -8471,7 +8447,7 @@ static void profile_add_timing(
     scenario_profile_timing *total,
     scenario_profile_frame **frames,
     const engine_frame_timing *timing,
-    const game_physics_profile *physics,
+    const physics_profile *physics,
     uint64_t previous_steps,
     uint64_t previous_commands,
     double previous_dropped,
@@ -8672,7 +8648,7 @@ static int step_sequence(
 static void add_source_profile(
     yyjson_mut_doc *doc,
     yyjson_mut_val *value,
-    const game_source_registry *registry,
+    const source_registry *registry,
     bool enabled,
     bool registered
 )
@@ -8681,13 +8657,13 @@ static void add_source_profile(
     yyjson_mut_obj_add_bool(doc, profile, "available", enabled);
     yyjson_mut_obj_add_bool(doc, profile, "enabled", enabled);
     yyjson_mut_obj_add_bool(doc, profile, "registered", registered);
-    yyjson_mut_obj_add_uint(doc, profile, "dropped_samples", game_source_profile_dropped(registry));
-    yyjson_mut_obj_add_int(doc, profile, "row_limit", GAME_SOURCE_PROFILE_ROWS_MAX);
+    yyjson_mut_obj_add_uint(doc, profile, "dropped_samples", source_profile_dropped(registry));
+    yyjson_mut_obj_add_int(doc, profile, "row_limit", SOURCE_PROFILE_ROWS_MAX);
     yyjson_mut_obj_add_str(doc, profile, "scope", "actual function activation entries and resumes; wait polling excluded");
     yyjson_mut_obj_add_str(doc, profile, "timing", "inclusive process CPU time; nested samples overlap and synchronous outlined calls remain in their parent sample");
     yyjson_mut_val *rows = yyjson_mut_obj_add_arr(doc, profile, "rows");
-    for (int i = 0; i < game_source_profile_count(registry); i++) {
-        const game_source_profile_row *sample = game_source_profile_at(registry, i);
+    for (int i = 0; i < source_profile_count(registry); i++) {
+        const source_profile_row *sample = source_profile_at(registry, i);
         yyjson_mut_val *row = yyjson_mut_obj(doc);
         yyjson_mut_obj_add_uint(doc, row, "module_id", sample->module_id);
         yyjson_mut_obj_add_uint(doc, row, "function_id", sample->function_id);
@@ -8794,15 +8770,12 @@ static int profile_scenario(
         status = launch_scenario(&context, error, sizeof error);
     }
     if (status == CHIBI_AUTOMATION_OK) {
-        engine_set_behavior_profiling(game_prototype_preview_runtime(context.preview), behavior_details);
-        game_source_profile_enable(game_prototype_preview_sources(context.preview), behavior_details);
-        game_physics_set_profiling(
-            game_prototype_preview_live(context.preview)->runtime->physics,
-            true
-        );
+        engine_set_behavior_profiling(prototype_preview_runtime(context.preview), behavior_details);
+        source_profile_enable(prototype_preview_sources(context.preview), behavior_details);
+        physics_set_profiling(prototype_preview_live(context.preview)->runtime->physics, true);
     }
     if (status == CHIBI_AUTOMATION_OK &&
-        game_prototype_preview_tick(context.preview, 0) != 0) {
+        prototype_preview_tick(context.preview, 0) != 0) {
         snprintf(error, sizeof error, "could not initialize scenario clock");
         status = CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
@@ -8812,7 +8785,7 @@ static int profile_scenario(
     xalloc_stats previous_allocations = { 0 };
     if (status == CHIBI_AUTOMATION_OK) {
         const engine_frame_timing *initial = engine_last_timing(
-            game_prototype_preview_runtime(context.preview)
+            prototype_preview_runtime(context.preview)
         );
         previous_steps = initial->simulation_steps;
         previous_commands = initial->command_apply_count;
@@ -8820,7 +8793,7 @@ static int profile_scenario(
         xalloc_stats_get(&previous_allocations);
         for (uint64_t frame = 0; frame < total_frames; frame++) {
             if (behavior_details && frame == warmup) {
-                game_source_profile_reset(game_prototype_preview_sources(context.preview));
+                source_profile_reset(prototype_preview_sources(context.preview));
             }
             int step_status = CHIBI_AUTOMATION_OK;
             if (sampled_inputs) {
@@ -8834,7 +8807,7 @@ static int profile_scenario(
             }
             if (frame < warmup) {
                 const engine_frame_timing *sample = engine_last_timing(
-                    game_prototype_preview_runtime(context.preview)
+                    prototype_preview_runtime(context.preview)
                 );
                 previous_steps = sample->simulation_steps;
                 previous_commands = sample->command_apply_count;
@@ -8842,14 +8815,14 @@ static int profile_scenario(
                 xalloc_stats_get(&previous_allocations);
                 continue;
             }
-            const engine *runtime = game_prototype_preview_runtime(context.preview);
+            const engine *runtime = prototype_preview_runtime(context.preview);
             const engine_frame_timing *sample = engine_last_timing(runtime);
             profile_add_timing(
                 &timing,
                 &samples,
                 sample,
-                game_physics_last_profile(
-                    game_prototype_preview_live(context.preview)->runtime->physics
+                physics_last_profile(
+                    prototype_preview_live(context.preview)->runtime->physics
                 ),
                 previous_steps,
                 previous_commands,
@@ -8887,27 +8860,25 @@ static int profile_scenario(
         result->doc,
         value,
         "live_entities",
-        ecs_world_live_count(game_prototype_preview_world(context.preview))
+        ecs_world_live_count(prototype_preview_world(context.preview))
     );
     yyjson_mut_obj_add_uint(
         result->doc,
         value,
         "authored_entities",
-        game_prototype_preview_entity_count(context.preview)
+        prototype_preview_entity_count(context.preview)
     );
     behavior_execution_status execution = { .ready = true };
     int source_modules = collect_source_execution(
         result->doc,
         value,
-        game_prototype_preview_live(context.preview),
+        prototype_preview_live(context.preview),
         &execution
     );
     add_behavior_execution_status(result->doc, value, &execution, false);
-    game_source_registry *source_registry = game_prototype_preview_sources(
-        context.preview
-    );
+    source_registry *source_registry = prototype_preview_sources(context.preview);
     add_source_profile(result->doc, value, source_registry, behavior_details, source_modules > 0);
-    game_source_profile_enable(source_registry, false);
+    source_profile_enable(source_registry, false);
     add_profile_timing(result->doc, value, &timing, samples);
     add_profile_allocations(result->doc, value, &allocations, timing.frames);
     afree(samples);
@@ -9038,14 +9009,14 @@ static bool parse_scenario_action_array(yyjson_val *actions, scenario_input *inp
 static ecs_entity scenario_entity(const scenario_context *context, const char *name)
 {
     if (!name) {
-        return game_prototype_preview_entity(context->preview);
+        return prototype_preview_entity(context->preview);
     }
     if (!context->scene_target) {
         return (ecs_entity){ 0 };
     }
-    int index = game_scene_document_entity_index(context->scene, name);
+    int index = scene_document_entity_index(context->scene, name);
     return index < 0 ? (ecs_entity){ 0 }
-                     : game_prototype_preview_entity_at(context->preview, index);
+                     : prototype_preview_entity_at(context->preview, index);
 }
 
 static bool scenario_event_value(const scenario_context *context, yyjson_val *item, pin_value *out)
@@ -9073,7 +9044,7 @@ static bool scenario_event_value(const scenario_context *context, yyjson_val *it
                               ? scenario_entity(context, yyjson_get_str(value))
                               : (ecs_entity){ 0 };
         if (context &&
-            !ecs_entity_is_alive(game_prototype_preview_world(context->preview), entity)) {
+            !ecs_entity_is_alive(prototype_preview_world(context->preview), entity)) {
             return false;
         }
         *out = (pin_value){ .type = PIN_HANDLE,
@@ -9119,8 +9090,8 @@ static bool parse_scenario_controllers(yyjson_val *value, scenario_input *out, c
         yyjson_val *buttons = yyjson_obj_get(state, "buttons");
         if (!yyjson_is_obj(state) || !yyjson_is_bool(connected) ||
             yyjson_obj_size(state) != 1 + (buttons != NULL) ||
-            (buttons && (!yyjson_is_arr(buttons) ||
-                         yyjson_arr_size(buttons) >= GAME_PAD_COUNT))) {
+            (buttons &&
+             (!yyjson_is_arr(buttons) || yyjson_arr_size(buttons) >= PAD_COUNT))) {
             snprintf(error, size, "controller slots need connected and optional buttons");
             return false;
         }
@@ -9129,16 +9100,15 @@ static bool parse_scenario_controllers(yyjson_val *value, scenario_input *out, c
             yyjson_val *button = yyjson_arr_get(buttons, j);
             int code = 0;
             if (yyjson_is_str(button)) {
-                type_catalog_enum_value("GamePadControl", yyjson_get_str(button), &code);
+                type_catalog_enum_value("PadControl", yyjson_get_str(button), &code);
             } else if (yyjson_is_int(button)) {
                 int64_t number = yyjson_get_sint(button);
-                if (number > GAME_PAD_NONE && number < GAME_PAD_COUNT) {
+                if (number > PAD_NONE && number < PAD_COUNT) {
                     code = (int)number;
                 }
             }
-            if (!out->controllers[i].connected || code <= GAME_PAD_NONE ||
-                code >= GAME_PAD_COUNT) {
-                snprintf(error, size, "controller buttons need a connected slot and GamePadControl labels or values");
+            if (!out->controllers[i].connected || code <= PAD_NONE || code >= PAD_COUNT) {
+                snprintf(error, size, "controller buttons need a connected slot and PadControl labels or values");
                 return false;
             }
             out->controllers[i].buttons |= UINT32_C(1) << code;
@@ -9230,17 +9200,16 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
     }
     yyjson_val *controls = yyjson_obj_get(value, "controls");
     if (controls) {
-        if (!yyjson_is_arr(controls) || yyjson_arr_size(controls) >= GAME_CONTROL_COUNT) {
-            snprintf(error, error_size, "controls must be an array of GameControl values");
+        if (!yyjson_is_arr(controls) || yyjson_arr_size(controls) >= CONTROL_COUNT) {
+            snprintf(error, error_size, "controls must be an array of Control values");
             return false;
         }
         out->has_controls = true;
         for (size_t i = 0; i < yyjson_arr_size(controls); i++) {
             yyjson_val *source = yyjson_arr_get(controls, i);
             int64_t code = yyjson_get_sint(source);
-            if (!yyjson_is_int(source) || code <= GAME_CONTROL_NONE ||
-                code >= GAME_CONTROL_COUNT) {
-                snprintf(error, error_size, "control code is outside GameControl");
+            if (!yyjson_is_int(source) || code <= CONTROL_NONE || code >= CONTROL_COUNT) {
+                snprintf(error, error_size, "control code is outside Control");
                 return false;
             }
             out->controls |= UINT64_C(1) << code;
@@ -9284,7 +9253,7 @@ static yyjson_mut_val *add_scenario_input(yyjson_mut_doc *doc, yyjson_mut_val *a
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
     if (input->has_controls) {
         yyjson_mut_val *controls = yyjson_mut_obj_add_arr(doc, object, "controls");
-        for (int i = 1; i < GAME_CONTROL_COUNT; i++) {
+        for (int i = 1; i < CONTROL_COUNT; i++) {
             if (input->controls & (UINT64_C(1) << i)) {
                 yyjson_mut_arr_add_int(doc, controls, i);
             }
@@ -9301,7 +9270,7 @@ static yyjson_mut_val *add_scenario_input(yyjson_mut_doc *doc, yyjson_mut_val *a
                 input->controllers[i].connected
             );
             yyjson_mut_val *buttons = yyjson_mut_obj_add_arr(doc, state, "buttons");
-            for (int button = GAME_PAD_NONE + 1; button < GAME_PAD_COUNT; button++) {
+            for (int button = PAD_NONE + 1; button < PAD_COUNT; button++) {
                 if (input->controllers[i].buttons & (UINT32_C(1) << button)) {
                     yyjson_mut_arr_add_int(doc, buttons, button);
                 }
@@ -9347,7 +9316,7 @@ static int apply_scenario_input(
     size_t error_size
 )
 {
-    engine *runtime = game_prototype_preview_runtime(context->preview);
+    engine *runtime = prototype_preview_runtime(context->preview);
     if (input->has_movement &&
         engine_sample_movement(runtime, (float)input->movement_x, (float)input->movement_y) <
             0) {
@@ -9379,32 +9348,31 @@ static int apply_scenario_input(
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     /* A UI activation as the presenter delivers it: a value first, then the
-       event the element emits to its GameUi entity. */
+       event the element emits to its Ui entity. */
     for (size_t i = 0; i < yyjson_arr_size(input->ui); i++) {
         yyjson_val *action = yyjson_arr_get(input->ui, i);
         ecs_entity target = scenario_entity(context, request_string(action, "target"));
         yyjson_val *value = yyjson_obj_get(action, "value");
-        if (!GAME_GameUi_has(game_prototype_preview_world(context->preview), target)) {
-            snprintf(error, error_size, "UI target must be an entity with GameUi");
+        if (!Ui_has(prototype_preview_world(context->preview), target)) {
+            snprintf(error, error_size, "UI target must be an entity with Ui");
             return CHIBI_AUTOMATION_INVALID_REQUEST;
         }
         if (value) {
-            game_ui_set_value(
+            ui_set_value(
                 engine_ui(runtime),
                 ecs_entity_to_u64(target),
                 request_string(action, "element"),
                 (float)yyjson_get_num(value)
             );
         }
-        game_entities_request_event(
-            game_prototype_preview_entities(context->preview),
+        entities_request_event(
+            prototype_preview_entities(context->preview),
             target,
             request_string(action, "event"),
             (execution_arguments){ 0 }
         );
     }
-    game_preview_runtime *behaviors = game_prototype_preview_live(context->preview)
-                                          ->runtime;
+    preview_runtime *behaviors = prototype_preview_live(context->preview)->runtime;
     engine_input_failure flow = { 0 };
     if (input->events) {
         size_t count = yyjson_arr_size(input->events);
@@ -9412,7 +9380,7 @@ static int apply_scenario_input(
             yyjson_val *event = yyjson_arr_get(input->events, i);
             const char *name = request_string(event, "name");
             ecs_entity entity = scenario_entity(context, request_string(event, "target"));
-            if (!ecs_entity_is_alive(game_prototype_preview_world(context->preview), entity)) {
+            if (!ecs_entity_is_alive(prototype_preview_world(context->preview), entity)) {
                 snprintf(error, error_size, "event target is missing or no longer alive");
                 return CHIBI_AUTOMATION_INVALID_REQUEST;
             }
@@ -9425,7 +9393,7 @@ static int apply_scenario_input(
                     return CHIBI_AUTOMATION_INVALID_REQUEST;
                 }
             }
-            if (game_source_dispatch(
+            if (source_dispatch(
                     behaviors->sources,
                     entity,
                     name,
@@ -9434,7 +9402,7 @@ static int apply_scenario_input(
                     behaviors->now,
                     behaviors->delta
                 ) < 0) {
-                snprintf(error, error_size, "%s", game_source_error(behaviors->sources));
+                snprintf(error, error_size, "%s", source_error(behaviors->sources));
                 return CHIBI_AUTOMATION_EXECUTION_ERROR;
             }
         }
@@ -9442,7 +9410,7 @@ static int apply_scenario_input(
 
     for (int i = 0; i < input->action_count; i++) {
         flow = (engine_input_failure){ 0 };
-        if (game_prototype_preview_input(
+        if (prototype_preview_input(
                 context->preview,
                 input->actions[i].name,
                 input->actions[i].pressed ? 1 : 0,
@@ -9480,7 +9448,7 @@ static int run_scenario_inputs(
         }
         observations->world_hash[frame] = scenario_state_hash(context);
         observations->live_entities[frame] = ecs_world_live_count(
-            game_prototype_preview_world(context->preview)
+            prototype_preview_world(context->preview)
         );
     }
     observations->has_live_entities = true;
@@ -9600,14 +9568,14 @@ struct chibi_preview_run
     bool perspective; /* at launch */
 };
 
-game_prototype_preview *chibi_preview_runtime(chibi_preview_run *run)
+prototype_preview *chibi_preview_runtime(chibi_preview_run *run)
 {
     return run->context.preview;
 }
 
 const char *chibi_preview_page(const chibi_preview_run *run)
 {
-    const game_scene_document *scene = run->context.scene;
+    const scene_document *scene = run->context.scene;
     return scene && scene->ui ? scene->ui : run->page;
 }
 
@@ -9712,9 +9680,9 @@ int chibi_automation_preview(
         run->page = manifest_string(root, "ui");
         run->perspective = context->scene
                              ? context->scene->perspective
-                             : GAME_GameGeometry3D_has(
-                                   game_prototype_preview_world(context->preview),
-                                   game_prototype_preview_entity(context->preview)
+                             : Geometry3D_has(
+                                   prototype_preview_world(context->preview),
+                                   prototype_preview_entity(context->preview)
                                );
         *out = run;
         return status;
@@ -9961,7 +9929,7 @@ static void add_snapshot_component(
     const ecs_world *world,
     ecs_entity entity,
     const ecs_component_desc *component,
-    const game_prototype_registry *registry,
+    const prototype_registry *registry,
     yyjson_val *field_selectors,
     uint64_t field_limit
 )
@@ -9984,7 +9952,7 @@ static void add_snapshot_component(
         return;
     }
 
-    av_value *component_value = game_prototype_entity_component_value(world, entity, component, registry);
+    av_value *component_value = prototype_entity_component_value(world, entity, component, registry);
     char *fields_json = component_value ? av_json_write(component_value) : NULL;
     av_value_free(component_value);
     yyjson_doc *fields_doc = fields_json
@@ -10068,14 +10036,9 @@ static void add_snapshot_component(
     free(order);
 }
 
-static void add_snapshot_behavior(
-    yyjson_mut_doc *doc,
-    yyjson_mut_val *array,
-    game_preview_runtime *runtime,
-    int index
-)
+static void add_snapshot_behavior(yyjson_mut_doc *doc, yyjson_mut_val *array, preview_runtime *runtime, int index)
 {
-    game_source_attachment_info info = game_source_attachment_at(runtime->sources, index);
+    source_attachment_info info = source_attachment_at(runtime->sources, index);
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
     yyjson_mut_obj_add_strcpy(doc, object, "asset", info.name);
     yyjson_mut_obj_add_uint(doc, object, "sequence", info.sequence);
@@ -10108,15 +10071,15 @@ static void add_snapshot_behavior(
     yyjson_mut_obj_add_int(doc, state, "begin", info.begin);
 }
 
-/* What behaviors set on GameUi documents, as a presenter would show it: each
+/* What behaviors set on Ui documents, as a presenter would show it: each
  * entity's selectors with the text, value, visibility and classes set under
  * them. */
-static void add_snapshot_ui(yyjson_mut_doc *doc, yyjson_mut_val *object, game_preview_runtime *behaviors)
+static void add_snapshot_ui(yyjson_mut_doc *doc, yyjson_mut_val *object, preview_runtime *behaviors)
 {
-    game_ui *ui = behaviors->ui;
+    ui *ui = behaviors->ui;
     yyjson_mut_val *array = yyjson_mut_obj_add_arr(doc, object, "ui");
-    for (int i = 0; i < game_ui_element_count(ui); i++) {
-        const game_ui_element *e = game_ui_element_at(ui, i);
+    for (int i = 0; i < ui_element_count(ui); i++) {
+        const ui_element *e = ui_element_at(ui, i);
         yyjson_mut_val *record = yyjson_mut_arr_add_obj(doc, array);
         yyjson_mut_obj_add_uint(doc, record, "entity", e->entity);
         yyjson_mut_obj_add_strcpy(doc, record, "element", e->selector);
@@ -10148,8 +10111,8 @@ static yyjson_mut_val *add_snapshot_entity(
     yyjson_mut_val *array,
     ecs_world *world,
     ecs_entity entity,
-    game_preview_runtime *behaviors,
-    const game_prototype_registry *registry,
+    preview_runtime *behaviors,
+    const prototype_registry *registry,
     yyjson_val *field_selectors,
     uint64_t component_limit,
     uint64_t field_limit,
@@ -10197,8 +10160,8 @@ static yyjson_mut_val *add_snapshot_entity(
 
     int behavior_count = 0, emitted_behaviors = 0;
     yyjson_mut_val *attachments = yyjson_mut_obj_add_arr(doc, object, "behaviors");
-    for (int i = 0; i < game_source_attachment_count(behaviors->sources); i++) {
-        game_source_attachment_info info = game_source_attachment_at(behaviors->sources, i);
+    for (int i = 0; i < source_attachment_count(behaviors->sources); i++) {
+        source_attachment_info info = source_attachment_at(behaviors->sources, i);
         if (ecs_entity_to_u64(info.entity) != ecs_entity_to_u64(entity)) {
             continue;
         }
@@ -10292,9 +10255,8 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
         response_error(result, exit_code, status, error);
         return -1;
     }
-    ecs_world *world = game_prototype_preview_world(context.preview);
-    game_preview_runtime *behaviors = game_prototype_preview_live(context.preview)
-                                          ->runtime;
+    ecs_world *world = prototype_preview_world(context.preview);
+    preview_runtime *behaviors = prototype_preview_live(context.preview)->runtime;
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(
         result->doc,
@@ -10312,7 +10274,7 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
         result->doc,
         value,
         "particle_count",
-        game_particles_count(game_prototype_preview_particles(context.preview))
+        particles_count(prototype_preview_particles(context.preview))
     );
     uint32_t live_entities = ecs_world_live_count(world);
     yyjson_mut_obj_add_uint(result->doc, value, "live_entities", live_entities);
@@ -10338,9 +10300,9 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
             behavior_limit
         );
         for (int i = 0; i < acount(context.scene->entities); i++) {
-            ecs_entity authored = game_prototype_preview_entity_at(context.preview, i);
+            ecs_entity authored = prototype_preview_entity_at(context.preview, i);
             if (ecs_entity_to_u64(authored) == ecs_entity_to_u64(entity)) {
-                char *path = game_scene_document_entity_path(context.scene, i);
+                char *path = scene_document_entity_path(context.scene, i);
                 yyjson_mut_obj_add_strcpy(result->doc, record, "name", path);
                 free(path);
                 yyjson_mut_obj_add_strcpy(
@@ -10356,12 +10318,12 @@ static int handle_scene_runtime_snapshot(const char *root, yyjson_val *request, 
     }
     yyjson_mut_obj_add_bool(result->doc, value, "entities_truncated", live_entities > emitted_entities);
     add_snapshot_ui(result->doc, value, behaviors);
-    int log_count = game_preview_runtime_log_count(behaviors);
+    int log_count = preview_runtime_log_count(behaviors);
     yyjson_mut_obj_add_int(result->doc, value, "log_count", log_count);
     yyjson_mut_val *logs = yyjson_mut_obj_add_arr(result->doc, value, "logs");
     int emitted_logs = 0;
     for (int i = 0; i < log_count && emitted_logs < RUNTIME_SNAPSHOT_MAX_LOGS; i++) {
-        const game_preview_log *info = game_preview_runtime_log_at(behaviors, i);
+        const preview_log *info = preview_runtime_log_at(behaviors, i);
         yyjson_mut_val *log = yyjson_mut_arr_add_obj(result->doc, logs);
         yyjson_mut_obj_add_uint(result->doc, log, "entity", info->owner);
         yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info->program ? info->program : "");
@@ -10471,9 +10433,8 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
         return -1;
     }
 
-    ecs_world *world = game_prototype_preview_world(context.preview);
-    game_preview_runtime *behaviors = game_prototype_preview_live(context.preview)
-                                          ->runtime;
+    ecs_world *world = prototype_preview_world(context.preview);
+    preview_runtime *behaviors = prototype_preview_live(context.preview)->runtime;
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     add_asset_identity(
         result->doc,
@@ -10491,7 +10452,7 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
         result->doc,
         value,
         "particle_count",
-        game_particles_count(game_prototype_preview_particles(context.preview))
+        particles_count(prototype_preview_particles(context.preview))
     );
     uint32_t live_entities = ecs_world_live_count(world);
     yyjson_mut_obj_add_uint(result->doc, value, "live_entities", live_entities);
@@ -10523,12 +10484,12 @@ static int handle_runtime_snapshot(const char *root, yyjson_val *request, respon
     }
     yyjson_mut_obj_add_bool(result->doc, value, "entities_truncated", live_entities > emitted_entities);
     add_snapshot_ui(result->doc, value, behaviors);
-    int log_count = game_preview_runtime_log_count(behaviors);
+    int log_count = preview_runtime_log_count(behaviors);
     yyjson_mut_obj_add_int(result->doc, value, "log_count", log_count);
     yyjson_mut_val *logs = yyjson_mut_obj_add_arr(result->doc, value, "logs");
     int emitted_logs = 0;
     for (int i = 0; i < log_count && emitted_logs < RUNTIME_SNAPSHOT_MAX_LOGS; i++) {
-        const game_preview_log *info = game_preview_runtime_log_at(behaviors, i);
+        const preview_log *info = preview_runtime_log_at(behaviors, i);
         yyjson_mut_val *log = yyjson_mut_arr_add_obj(result->doc, logs);
         yyjson_mut_obj_add_uint(result->doc, log, "entity", info->owner);
         yyjson_mut_obj_add_strcpy(result->doc, log, "asset", info->program ? info->program : "");
@@ -10888,7 +10849,7 @@ static void add_component_schema(
     response *result,
     yyjson_mut_val *components,
     const ecs_component_desc *component,
-    const game_prototype_registry *registry
+    const prototype_registry *registry
 )
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(result->doc, components);
@@ -10930,7 +10891,7 @@ static void add_component_schema(
             yyjson_mut_obj_add_str(result->doc, entry, "description", field->description);
         }
     }
-    av_value *defaults_value = game_prototype_native_defaults_value(registry, component);
+    av_value *defaults_value = prototype_native_defaults_value(registry, component);
     char *defaults_json = defaults_value ? av_json_write(defaults_value) : NULL;
     av_value_free(defaults_value);
     if (!defaults_json) {
@@ -10968,7 +10929,7 @@ static int handle_describe_components(yyjson_val *request, response *result, int
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     yyjson_mut_val *components = yyjson_mut_obj_add_arr(result->doc, value, "components");
-    game_prototype_registry registry = project_registry();
+    prototype_registry registry = project_registry();
     if (names) {
         yyjson_arr_iter iterator = yyjson_arr_iter_with(names);
         yyjson_val *name;
@@ -11151,10 +11112,10 @@ static bool defined_event(const project_events *events, const char *name)
             return true;
         }
     }
-    return game_host_event_reserved(name);
+    return host_event_reserved(name);
 }
 
-/* The names of the ui documents whose events reach `behavior`: the GameUi
+/* The names of the ui documents whose events reach `behavior`: the Ui
  * documents on what attaches it (reference_index_attached_documents). They
  * live as long as the catalog snapshot. */
 static int attached_ui_documents(
@@ -11334,7 +11295,7 @@ typedef struct
 {
     const node_desc *desc;
     const component_node_preset *preset;
-    const game_host_event_desc *host;
+    const host_event_desc *host;
     const behavior_asset *definition;
     const ui_event *ui;
     const ui_data_binding *binding; /* a Set UI Data that sets it */
@@ -11405,7 +11366,7 @@ static void append_word(char *text, size_t size, int *used, const char *word)
     }
 }
 
-/* A preset reads as its access, its type and its field: "Set GameHealth
+/* A preset reads as its access, its type and its field: "Set Health
  * current". Get, a whole-value Set, Make and Break also carry every field. */
 static int preset_score(const component_node_preset *preset, const char *query)
 {
@@ -11771,8 +11732,8 @@ static void add_node_outline(
         }
     } else {
         yyjson_mut_val *events = yyjson_mut_obj_add_arr(doc, value, "events");
-        for (int i = 0; i < GAME_HOST_EVENT_COUNT; i++) {
-            yyjson_mut_arr_add_str(doc, events, GAME_HOST_EVENTS[i].name);
+        for (int i = 0; i < HOST_EVENT_COUNT; i++) {
+            yyjson_mut_arr_add_str(doc, events, HOST_EVENTS[i].name);
         }
         for (int i = 0; i < acount(project->definitions); i++) {
             yyjson_mut_arr_add_strcpy(doc, events, project->definitions[i]->name);
@@ -11815,8 +11776,8 @@ static node_match *node_candidates(
     for (int i = 0; i < acount(presets); i++) {
         apush(matches, ((node_match){ .desc = presets[i].desc, .preset = &presets[i] }));
     }
-    for (int i = 0; i < GAME_HOST_EVENT_COUNT; i++) {
-        apush(matches, ((node_match){ .desc = &NODE_Event, .host = &GAME_HOST_EVENTS[i] }));
+    for (int i = 0; i < HOST_EVENT_COUNT; i++) {
+        apush(matches, ((node_match){ .desc = &NODE_Event, .host = &HOST_EVENTS[i] }));
     }
     const node_desc *send = registry_node_by_name("Send Event");
     for (int i = 0; i < acount(project->definitions); i++) {
@@ -11834,7 +11795,7 @@ static node_match *node_candidates(
     return matches;
 }
 
-/* A pin type as searchNodes writes it: "exec", "any", "float", "GameHealth",
+/* A pin type as searchNodes writes it: "exec", "any", "float", "Health",
  * "ecs.entity" or "array<int>". */
 static bool wire_pin(const char *text, pin_spec *out)
 {
@@ -11934,7 +11895,7 @@ static int handle_search_nodes(const char *root, yyjson_val *request, response *
         (wire_to_text && !wire_pin(wire_to_text, &wire_to)) ||
         (yyjson_obj_get(request, "wire_from") && !wire_from_text) ||
         (yyjson_obj_get(request, "wire_to") && !wire_to_text)) {
-        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "wire_from and wire_to take a pin type as searchNodes writes it, such as exec, float, GameHealth or array<int>");
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "wire_from and wire_to take a pin type as searchNodes writes it, such as exec, float, Health or array<int>");
         return -1;
     }
     if ((yyjson_obj_get(request, "query") && !query) ||
@@ -12082,7 +12043,7 @@ static int handle_preview_field(const char *root, yyjson_val *request, response 
     return 0;
 }
 
-static int validate_shader_binding(const char *root, const GameShader *binding, char *error, size_t error_size)
+static int validate_shader_binding(const char *root, const Shader *binding, char *error, size_t error_size)
 {
     if (!binding) {
         return CHIBI_AUTOMATION_OK;
@@ -12135,7 +12096,7 @@ static int validate_shader_binding(const char *root, const GameShader *binding, 
                 acount(sources),
                 &diagnostic
             )) {
-            snprintf(error, error_size, "GameShader.parameters: %s", diagnostic.message);
+            snprintf(error, error_size, "Shader.parameters: %s", diagnostic.message);
             status = CHIBI_AUTOMATION_VALIDATION_ERROR;
         }
     }
@@ -12143,8 +12104,8 @@ static int validate_shader_binding(const char *root, const GameShader *binding, 
     return status;
 }
 
-/* A GameUi component names a UI document the project has. */
-static int validate_ui_binding(const char *root, const GameUi *ui, char *error, size_t error_size)
+/* A Ui component names a UI document the project has. */
+static int validate_ui_binding(const char *root, const Ui *ui, char *error, size_t error_size)
 {
     if (!ui || !ui->document || !ui->document[0] || ui_exists(root, ui->document)) {
         return CHIBI_AUTOMATION_OK;
@@ -12155,15 +12116,15 @@ static int validate_ui_binding(const char *root, const GameUi *ui, char *error, 
 
 /* The shader bindings and UI documents of a resolved prototype and its
  * children resolve. */
-static int spawned_bindings(const char *root, const game_prototype *prototype, char *error, size_t error_size)
+static int spawned_bindings(const char *root, const prototype *prototype, char *error, size_t error_size)
 {
     int status = CHIBI_AUTOMATION_OK;
     for (int i = 0; i < acount(prototype->components) && status == CHIBI_AUTOMATION_OK;
          i++) {
-        const game_prototype_component *component = &prototype->components[i];
-        if (!strcmp(component->desc->name, "GameShader")) {
+        const prototype_component *component = &prototype->components[i];
+        if (!strcmp(component->desc->name, "Shader")) {
             status = validate_shader_binding(root, component->data, error, error_size);
-        } else if (!strcmp(component->desc->name, "GameUi")) {
+        } else if (!strcmp(component->desc->name, "Ui")) {
             status = validate_ui_binding(root, component->data, error, error_size);
         }
     }
@@ -12180,21 +12141,21 @@ static int spawned_bindings(const char *root, const game_prototype *prototype, c
 static int validate_prototype_bindings(const char *root, const char *text, char *error, size_t error_size)
 {
     prototype_includes includes = { root };
-    game_prototype_registry registry = prototype_registry(&includes);
-    game_prototype *prototype = game_prototype_load(text, &registry, error, error_size);
+    prototype_registry registry = registry_with_includes(&includes);
+    prototype *prototype = prototype_load(text, &registry, error, error_size);
     if (!prototype) {
         prototype_includes_free(&includes);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     int status = spawned_bindings(root, prototype, error, error_size);
-    game_prototype_free(prototype);
+    prototype_free(prototype);
     prototype_includes_free(&includes);
     return status;
 }
 
 /* Adds each behavior the prototype's spawn attaches, its own and its
  * children's, to `names` once. */
-static void spawned_behaviors(const game_prototype *prototype, const char ***names)
+static void spawned_behaviors(const prototype *prototype, const char ***names)
 {
     for (int i = 0; i < acount(prototype->graphs); i++) {
         bool seen = false;
@@ -12210,12 +12171,7 @@ static void spawned_behaviors(const game_prototype *prototype, const char ***nam
     }
 }
 
-static int validate_prototype_behaviors(
-    const char *root,
-    const game_prototype *prototype,
-    char *error,
-    size_t error_size
-)
+static int validate_prototype_behaviors(const char *root, const prototype *prototype, char *error, size_t error_size)
 {
     const char **names = NULL;
     spawned_behaviors(prototype, &names);
@@ -12292,21 +12248,20 @@ static int validate_scene_behavior(const char *root, const char *name, char *err
 
 /* Every entity path a scene's component values name is one of its entities'. */
 static int validate_scene_paths(
-    const game_scene_document *scene,
-    const game_prototype_registry *registry,
+    const scene_document *scene,
+    const prototype_registry *registry,
     char *error,
     size_t error_size
 )
 {
     int status = CHIBI_AUTOMATION_OK;
     for (int i = 0; i < acount(scene->entities) && status == CHIBI_AUTOMATION_OK; i++) {
-        const game_scene_entity *entity = &scene->entities[i];
-        game_prototype_link
-            *links = entity->components
-                       ? game_prototype_components_links(registry, entity->components)
-                       : NULL;
+        const scene_entity *entity = &scene->entities[i];
+        prototype_link *links = entity->components
+                                  ? prototype_components_links(registry, entity->components)
+                                  : NULL;
         for (int j = 0; j < acount(links) && status == CHIBI_AUTOMATION_OK; j++) {
-            if (game_scene_document_entity_index(scene, links[j].path) < 0) {
+            if (scene_document_entity_index(scene, links[j].path) < 0) {
                 snprintf(
                     error,
                     error_size,
@@ -12320,28 +12275,28 @@ static int validate_scene_paths(
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
         }
-        game_prototype_links_free(links);
+        prototype_links_free(links);
     }
     return status;
 }
 
 static int validate_scene_dependencies(const char *root, const char *json, char *error, size_t error_size)
 {
-    game_scene_document *scene = game_scene_document_load(json, error, error_size);
+    scene_document *scene = scene_document_load(json, error, error_size);
     if (!scene) {
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     if (scene->ui && !ui_exists(root, scene->ui)) {
         set_errorf(error, error_size, "Unknown UI document '%s'", scene->ui);
-        game_scene_document_free(scene);
+        scene_document_free(scene);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
     prototype_includes includes = { root };
-    game_prototype_registry registry = prototype_registry(&includes);
+    prototype_registry registry = registry_with_includes(&includes);
     int status = validate_scene_paths(scene, &registry, error, error_size);
     bool fallout = false;
     for (int i = 0; i < acount(scene->entities) && status == CHIBI_AUTOMATION_OK; i++) {
-        game_scene_entity *entity = &scene->entities[i];
+        scene_entity *entity = &scene->entities[i];
         asset_ref prototype_ref = { 0 };
         char *prototype_json = NULL;
         status = load_named_asset(
@@ -12362,7 +12317,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
             free(prototype_json);
             break;
         }
-        game_prototype *prototype = game_prototype_load(prototype_json, &registry, error, error_size);
+        prototype *prototype = prototype_load(prototype_json, &registry, error, error_size);
         if (!prototype) {
             free(prototype_json);
             status = CHIBI_AUTOMATION_VALIDATION_ERROR;
@@ -12387,13 +12342,13 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
             }
             ecs_entity actor = { 0 };
             if (status == CHIBI_AUTOMATION_OK &&
-                game_prototype_spawn_components(prototype, world, &actor, error, error_size) !=
+                prototype_spawn_components(prototype, world, &actor, error, error_size) !=
                     ECS_OK) {
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
             char **component_strings = NULL;
             if (status == CHIBI_AUTOMATION_OK && entity->components &&
-                game_prototype_apply_components_value(
+                prototype_apply_components_value(
                     world,
                     actor,
                     entity->components,
@@ -12405,20 +12360,15 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
                 status = CHIBI_AUTOMATION_VALIDATION_ERROR;
             }
             if (status == CHIBI_AUTOMATION_OK) {
-                status = validate_shader_binding(
-                    root,
-                    GAME_GameShader_get_const(world, actor),
-                    error,
-                    error_size
-                );
+                status = validate_shader_binding(root, Shader_get_const(world, actor), error, error_size);
             }
             if (status == CHIBI_AUTOMATION_OK) {
-                status = validate_ui_binding(root, GAME_GameUi_get_const(world, actor), error, error_size);
+                status = validate_ui_binding(root, Ui_get_const(world, actor), error, error_size);
             }
             ecs_world_free(world);
-            game_prototype_owned_strings_free(component_strings);
+            prototype_owned_strings_free(component_strings);
         }
-        game_prototype_free(prototype);
+        prototype_free(prototype);
         for (int behavior = 0;
              behavior < acount(entity->behaviors) && status == CHIBI_AUTOMATION_OK;
              behavior++) {
@@ -12429,7 +12379,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
             );
         }
     }
-    game_scene_document_free(scene);
+    scene_document_free(scene);
     prototype_includes_free(&includes);
     return status != CHIBI_AUTOMATION_OK
              ? status

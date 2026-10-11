@@ -57,21 +57,18 @@ const node_desc *test_ui_probe_node(const char *event)
     return desc;
 }
 
-void test_ui_probe_attach(game_preview_world *live, ecs_entity entity, behavior_asset *asset, ui_probe *probe)
+void test_ui_probe_attach(preview_world *live, ecs_entity entity, behavior_asset *asset, ui_probe *probe)
 {
     apush(assets, asset);
-    assert(game_behavior_register_asset(live->runtime->behaviors, asset->name, asset) == 0);
-    assert(game_behavior_attach(live->runtime->behaviors, entity, asset->name) == 0);
-    behavior_instance *instance = game_behavior_instance(
-        live->runtime->behaviors,
-        entity,
-        asset->name
-    );
+    assert(behavior_register_asset(live->runtime->behaviors, asset->name, asset) == 0);
+    assert(behavior_attach(live->runtime->behaviors, entity, asset->name) == 0);
+    behavior_instance
+        *instance = behavior_instance(live->runtime->behaviors, entity, asset->name);
     assert(instance && behavior_instance_bind_service(instance, "test.ui_probe", probe) == 0);
 }
 
 void test_ui_probe_events(
-    game_preview_world *live,
+    preview_world *live,
     ecs_entity entity,
     const char *const *events,
     int count,
@@ -86,7 +83,7 @@ void test_ui_probe_events(
     for (int i = 0; i < count; i++) {
         node *event = graph_add_node(asset->graph, registry_node_by_name("Event"));
         assert(event && graph_set_event_name(asset->graph, event, events[i]) == 0);
-        game_preview_definition *declared = game_preview_find_definition(live, events[i]);
+        preview_definition *declared = preview_find_definition(live, events[i]);
         if (declared) {
             assert(graph_event_apply(asset->graph, event, declared->working) == 0);
         }

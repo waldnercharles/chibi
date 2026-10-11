@@ -22,10 +22,10 @@ static void message(char *error, size_t size, const char *text)
         snprintf(error, size, "%s", text);
     }
 }
-static game_preview_definition *projection_at_path(game_preview_world *world, const char *path)
+static preview_definition *projection_at_path(preview_world *world, const char *path)
 {
     for (int i = 0; i < acount(world->definitions); i++) {
-        game_preview_definition *definition = world->definitions[i];
+        preview_definition *definition = world->definitions[i];
         if (definition->working_presentation && definition->path &&
             !strcmp(definition->path, path)) {
             return definition;
@@ -33,16 +33,16 @@ static game_preview_definition *projection_at_path(game_preview_world *world, co
     }
     return NULL;
 }
-static void refresh_presentations(game_preview_world *world, bool applied)
+static void refresh_presentations(preview_world *world, bool applied)
 {
-    game_preview_source_state *state = world->source_state;
+    preview_source_state *state = world->source_state;
     const authoring_sources *sources = state->working;
     for (int i = 0; i < authoring_sources_count(sources); i++) {
         const authoring_source *source = authoring_sources_at(sources, i);
         if (!source->analysis->name) {
             continue;
         }
-        game_preview_definition *definition = projection_at_path(world, source->path);
+        preview_definition *definition = projection_at_path(world, source->path);
         if (!definition && !applied) {
             continue;
         }
@@ -55,12 +55,9 @@ static void refresh_presentations(game_preview_world *world, bool applied)
             continue;
         }
         if (!definition) {
-            definition = game_preview_projection_new(source->analysis->name, presentation);
-            int path_status = game_preview_definition_set_path(
-                definition,
-                source->path
-            );
-            int status = game_preview_add_projection(world, definition);
+            definition = preview_projection_new(source->analysis->name, presentation);
+            int path_status = preview_definition_set_path(definition, source->path);
+            int status = preview_add_projection(world, definition);
             assert(!path_status && !status);
             (void)path_status;
             (void)status;
@@ -69,13 +66,13 @@ static void refresh_presentations(game_preview_world *world, bool applied)
                 free(definition->name);
                 definition->name = xstrdup(source->analysis->name);
             }
-            int status = game_preview_projection_set(definition, presentation, false);
+            int status = preview_projection_set(definition, presentation, false);
             assert(!status);
             if (applied) {
                 authoring_source_presentation *copy = authoring_source_presentation_clone(
                     presentation
                 );
-                status = game_preview_projection_set(definition, copy, true);
+                status = preview_projection_set(definition, copy, true);
                 authoring_source_presentation_free(copy);
                 assert(!status);
             }
@@ -104,9 +101,9 @@ static int candidate_status(const authoring_sources *sources, char *error, size_
     message(error, size, "Source collection has no valid executable generation");
     return -1;
 }
-static int prepare(game_preview_world *world, char *error, size_t size)
+static int prepare(preview_world *world, char *error, size_t size)
 {
-    game_preview_source_state *state = world->source_state;
+    preview_source_state *state = world->source_state;
     if (state->staging) {
         message(error, size, "Source publication is staged");
         return -1;
@@ -135,7 +132,7 @@ static int prepare(game_preview_world *world, char *error, size_t size)
     return candidate_status(next, error, size);
 }
 static int prepare_sources(
-    game_preview_world *world,
+    preview_world *world,
     const char *root,
     behavior_backend backend,
     native_capabilities *table,
@@ -175,15 +172,15 @@ static int prepare_sources(
     if (!native) {
         return -1;
     }
-    game_preview_source_state *state = xcalloc(1, sizeof *state);
+    preview_source_state *state = xcalloc(1, sizeof *state);
     state->root = xstrdup(root);
     state->backend = backend;
     state->native = native;
     world->source_state = state;
     return prepare(world, error, size);
 }
-int game_preview_sources_prepare(
-    game_preview_world *world,
+int preview_sources_prepare(
+    preview_world *world,
     const char *root,
     behavior_backend backend,
     char *error,
@@ -192,8 +189,8 @@ int game_preview_sources_prepare(
 {
     return prepare_sources(world, root, backend, NULL, error, size);
 }
-int game_preview_sources_prepare_with_catalog(
-    game_preview_world *world,
+int preview_sources_prepare_with_catalog(
+    preview_world *world,
     const char *root,
     behavior_backend backend,
     native_capabilities *table,
@@ -204,16 +201,16 @@ int game_preview_sources_prepare_with_catalog(
     assert(table);
     return prepare_sources(world, root, backend, table, error, size);
 }
-int game_preview_sources_mirror(
-    game_preview_world *destination,
-    const game_preview_world *source,
+int preview_sources_mirror(
+    preview_world *destination,
+    const preview_world *source,
     bool applied,
     char *error,
     size_t size
 )
 {
     assert(destination && source);
-    const game_preview_source_state *origin = source->source_state;
+    const preview_source_state *origin = source->source_state;
     const authoring_sources *selected = origin ? (applied ? origin->applied
                                                           : origin->working)
                                                : NULL;
@@ -221,7 +218,7 @@ int game_preview_sources_mirror(
         message(error, size, "A source mirror requires an exact valid generation");
         return -1;
     }
-    game_preview_source_state *state = destination->source_state;
+    preview_source_state *state = destination->source_state;
     if (state && (state->staging || strcmp(state->root, origin->root) ||
                   state->backend != origin->backend)) {
         message(error, size, "Source mirror destination is staged or has a different content root/backend");
@@ -242,18 +239,18 @@ int game_preview_sources_mirror(
     authoring_sources *previous_applied = state->applied;
     bool retained = selected != state->applied;
     state->working = retained ? authoring_sources_retain(selected) : state->applied;
-    game_preview_source_staging *stage = game_preview_sources_stage(destination, NULL, error, size);
+    preview_source_staging *stage = preview_sources_stage(destination, NULL, error, size);
     if (!stage) {
         if (retained) {
             authoring_sources_free(state->working);
         }
         state->working = previous;
         if (created) {
-            game_preview_sources_free(destination);
+            preview_sources_free(destination);
         }
         return -1;
     }
-    game_preview_sources_commit(stage);
+    preview_sources_commit(stage);
     if (previous != previous_applied) {
         authoring_sources_free(previous);
     }
@@ -277,7 +274,7 @@ static void edits_free(source_catalog_edit *edits)
     afree(edits);
 }
 static bool merged_edits(
-    const game_preview_source_state *state,
+    const preview_source_state *state,
     const source_catalog_edit *edits,
     int count,
     bool replace,
@@ -355,7 +352,7 @@ static bool merged_edits(
     return true;
 }
 static int edit_sources(
-    game_preview_world *world,
+    preview_world *world,
     const source_catalog_edit *edits,
     int count,
     bool replace,
@@ -364,7 +361,7 @@ static int edit_sources(
 )
 {
     assert(world);
-    game_preview_source_state *state = world->source_state;
+    preview_source_state *state = world->source_state;
     if (state && state->staging) {
         message(error, size, "Source publication is staged");
         return -1;
@@ -378,8 +375,8 @@ static int edit_sources(
     state->replace_sources |= replace;
     return prepare(world, error, size);
 }
-int game_preview_sources_edit(
-    game_preview_world *world,
+int preview_sources_edit(
+    preview_world *world,
     const source_catalog_edit *edits,
     int count,
     char *error,
@@ -388,8 +385,8 @@ int game_preview_sources_edit(
 {
     return edit_sources(world, edits, count, false, error, size);
 }
-int game_preview_sources_replace(
-    game_preview_world *world,
+int preview_sources_replace(
+    preview_world *world,
     const source_catalog_edit *edits,
     int count,
     char *error,
@@ -398,19 +395,13 @@ int game_preview_sources_replace(
 {
     return edit_sources(world, edits, count, true, error, size);
 }
-int game_preview_source_edit(
-    game_preview_world *world,
-    const char *path,
-    const char *text,
-    char *error,
-    size_t size
-)
+int preview_source_edit(preview_world *world, const char *path, const char *text, char *error, size_t size)
 {
     source_catalog_edit edit = { .path = path, .text = text };
-    return game_preview_sources_edit(world, &edit, 1, error, size);
+    return preview_sources_edit(world, &edit, 1, error, size);
 }
-authoring_sources *game_preview_sources_candidate(
-    const game_preview_world *world,
+authoring_sources *preview_sources_candidate(
+    const preview_world *world,
     const source_catalog_edit *edits,
     int count,
     bool replace,
@@ -419,7 +410,7 @@ authoring_sources *game_preview_sources_candidate(
 )
 {
     assert(world);
-    const game_preview_source_state *state = world->source_state;
+    const preview_source_state *state = world->source_state;
     source_catalog_edit *merged = NULL;
     if (!merged_edits(state, edits, count, replace, &merged, error, size)) {
         return NULL;
@@ -436,15 +427,15 @@ authoring_sources *game_preview_sources_candidate(
     candidate_status(candidate, error, size);
     return candidate;
 }
-int game_preview_sources_validate(
-    const game_preview_world *world,
+int preview_sources_validate(
+    const preview_world *world,
     const source_catalog_edit *edits,
     int count,
     char *error,
     size_t size
 )
 {
-    authoring_sources *candidate = game_preview_sources_candidate(world, edits, count, false, error, size);
+    authoring_sources *candidate = preview_sources_candidate(world, edits, count, false, error, size);
     if (!candidate) {
         return -1;
     }
@@ -452,7 +443,7 @@ int game_preview_sources_validate(
     authoring_sources_free(candidate);
     return valid ? 0 : -1;
 }
-const authoring_source *game_preview_source_at_path(const authoring_sources *sources, const char *path)
+const authoring_source *preview_source_at_path(const authoring_sources *sources, const char *path)
 {
     if (!sources) {
         return NULL;
@@ -465,8 +456,8 @@ const authoring_source *game_preview_source_at_path(const authoring_sources *sou
     }
     return NULL;
 }
-int game_preview_source_apply(
-    game_preview_world *world,
+int preview_source_apply(
+    preview_world *world,
     const char *path,
     const char *text,
     bool restart,
@@ -474,38 +465,33 @@ int game_preview_source_apply(
     size_t size
 )
 {
-    int status = game_preview_source_edit(world, path, text, error, size);
+    int status = preview_source_edit(world, path, text, error, size);
     return status
              ? status
-             : game_preview_sources_publish(world, restart ? path : NULL, error, size);
+             : preview_sources_publish(world, restart ? path : NULL, error, size);
 }
-const authoring_sources *game_preview_sources_working(const game_preview_world *world)
+const authoring_sources *preview_sources_working(const preview_world *world)
 {
     return world->source_state ? world->source_state->working : NULL;
 }
-const authoring_sources *game_preview_sources_applied(const game_preview_world *world)
+const authoring_sources *preview_sources_applied(const preview_world *world)
 {
     return world->source_state ? world->source_state->applied : NULL;
 }
-int game_preview_sources_overlay_count(const game_preview_world *world)
+int preview_sources_overlay_count(const preview_world *world)
 {
     return world->source_state ? acount(world->source_state->edits) : 0;
 }
-const source_catalog_edit *game_preview_sources_overlay_at(const game_preview_world *world, int index)
+const source_catalog_edit *preview_sources_overlay_at(const preview_world *world, int index)
 {
     assert(
         world->source_state && index >= 0 && index < acount(world->source_state->edits)
     );
     return &world->source_state->edits[index];
 }
-const authoring_source *game_preview_source_find(
-    const game_preview_world *world,
-    const char *path,
-    bool applied
-)
+const authoring_source *preview_source_find(const preview_world *world, const char *path, bool applied)
 {
-    const authoring_sources *sources = applied
-                                         ? game_preview_sources_applied(world)
-                                         : game_preview_sources_working(world);
-    return game_preview_source_at_path(sources, path);
+    const authoring_sources *sources = applied ? preview_sources_applied(world)
+                                               : preview_sources_working(world);
+    return preview_source_at_path(sources, path);
 }

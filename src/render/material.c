@@ -36,7 +36,7 @@ static void absorption(unsigned filter, float alpha, float coefficient, float ou
     out[3] = amount > 0 ? 1 : 0;
 }
 
-bool game_material_extract(const GameMaterial *material, game_material_coefficients *out)
+bool material_extract(const Material *material, material_coefficients *out)
 {
     assert(material && out);
     float intensity = material->emission_intensity * material->emission_multiplier;
@@ -46,7 +46,7 @@ bool game_material_extract(const GameMaterial *material, game_material_coefficie
         material->edge_light < 0 || material->edge_light > 8) {
         return false;
     }
-    game_material_coefficients result = { 0 };
+    material_coefficients result = { 0 };
     unpack(material->scene, result.scene);
     unpack(material->albedo, result.albedo);
     unpack(material->border_scene, result.border_scene);

@@ -25,6 +25,7 @@ START = time.monotonic()
 HEALTH = None
 NEXT = 'make test-policy-inventory'
 CPU_SELECTORS = {
+    '--shader-webgpu': 'shader-webgpu',
     '--audio-analysis': 'audio-analysis',
     '--compile-installed-space-cadet': 'compile-installed-space-cadet',
     '--source-edit': 'source-edit',
@@ -266,13 +267,13 @@ def installed_space_cadet(selector):
         raise ValueError('compiler_player_runtime_contract_mismatch')
     pin_path = project / '.chibi-engine.json'
     if pin_path.stat().st_size > 65536:
-        raise ValueError('game_pin_oversize')
+        raise ValueError('pin_oversize')
     pin = json.loads(pin_path.read_text())
     expected = dict(format=2, kind='player', build_id=player['build_id'],
                     engine_build_id=player['engine']['build_id'], sdk_build_id=player['sdk']['build_id'],
                     package_version=player['package_version'], requirements=player['requirements'])
     if pin != expected:
-        raise ValueError('game_pin_differs_from_installed_manifest')
+        raise ValueError('pin_differs_from_installed_manifest')
     paths = [project / 'project.kdl'] + sorted(p for p in (project / 'content').rglob('*') if p.is_file())
     if len(paths) != 36 or sum(p.stat().st_size for p in paths) != 144741:
         raise ValueError('SpaceCadet_source_membership_or_bytes_changed')
@@ -286,7 +287,7 @@ def installed_space_cadet(selector):
     for path in (project / '.chibi', artifact.parent, artifact, Path(str(artifact) + '.resources.json')):
         if path.is_symlink():
             raise ValueError('installed_prepared_handoff_must_not_be_symlink')
-    evidence = dict(game_root=str(project), player_build_id=player['build_id'],
+    evidence = dict(root=str(project), player_build_id=player['build_id'],
                     compiler_build_id=compiler['build_id'], source_fingerprint=fingerprint)
     if selector == '--compile-installed-space-cadet':
         binary = sdk / 'bin/chibi-compile'

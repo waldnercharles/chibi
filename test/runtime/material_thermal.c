@@ -243,11 +243,11 @@ static void quench_and_reignite()
 
 typedef struct
 {
-    const game_task_system *pool;
+    const task_system *pool;
     int submissions;
 } thermal_executor;
 
-static void *enqueue_thermal(game_task_range *run, int count, int minimum, void *context, void *user)
+static void *enqueue_thermal(task_range *run, int count, int minimum, void *context, void *user)
 {
     thermal_executor *executor = user;
     executor->submissions++;
@@ -281,18 +281,18 @@ static void parallel_exchange()
             assert(material_fluid_add(serial, p));
             assert(material_fluid_add(parallel, p));
         }
-        game_task_pool *pool = game_task_pool_acquire_workers(4);
-        thermal_executor executor = { .pool = game_task_pool_tasks(pool) };
-        game_task_system tasks = { .workers = executor.pool->workers,
-                                   .user = &executor,
-                                   .enqueue = enqueue_thermal,
-                                   .finish = finish_thermal };
+        task_pool *pool = task_pool_acquire_workers(4);
+        thermal_executor executor = { .pool = task_pool_tasks(pool) };
+        task_system tasks = { .workers = executor.pool->workers,
+                              .user = &executor,
+                              .enqueue = enqueue_thermal,
+                              .finish = finish_thermal };
         material_fluid_set_tasks(parallel, &tasks);
         for (int i = 0; i < 5; i++) {
             step(serial);
-            game_task_pool_begin(pool, true);
+            task_pool_begin(pool, true);
             step(parallel);
-            game_task_pool_end(pool);
+            task_pool_end(pool);
         }
         int count, other_count;
         const fluid_particle *a = material_fluid_particles(serial, &count);
@@ -306,7 +306,7 @@ static void parallel_exchange()
         assert(count == other_count && !memcmp(a, b, (size_t)count * sizeof *a));
         material_fluid_free(serial);
         material_fluid_free(parallel);
-        game_task_pool_release(pool);
+        task_pool_release(pool);
     }
 }
 
@@ -320,19 +320,19 @@ static void add_component(
     assert(ecs_world_record_add(world, entity, type->id, value, 0) == ECS_OK);
 }
 
-static game_preview_world *thermal_world(ecs_world **world)
+static preview_world *thermal_world(ecs_world **world)
 {
     *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(*world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(*world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_preview_world *live = game_preview_world_new(*world);
+    preview_world *live = preview_world_new(*world);
     ecs_entity config = ecs_world_create_entity(*world);
     MaterialFluidWorld settings = { .chunk_size = 64,
                                     .buffer = 32,
                                     .kernel = 10,
                                     .particle_limit = 16 };
-    add_component(*world, config, &GAME_COMPONENT_MaterialFluidWorld, &settings);
+    add_component(*world, config, &COMPONENT_MaterialFluidWorld, &settings);
     assert(ecs_world_apply_commands(*world) == ECS_OK);
     return live;
 }
@@ -340,16 +340,16 @@ static game_preview_world *thermal_world(ecs_world **world)
 static ecs_entity add_volume(ecs_world *world, float x, float heat, MaterialThermal thermal)
 {
     ecs_entity entity = ecs_world_create_entity(world);
-    GameFluidVolume volume = { .kind = FLUID_LIQUID,
-                               .width = 1,
-                               .height = 1,
-                               .spacing = 4,
-                               .mass = 1,
-                               .color = 0x4080ffff };
-    add_component(world, entity, &GAME_COMPONENT_GameTransform, &(GameTransform){ x, 0 });
-    add_component(world, entity, &GAME_COMPONENT_GameFluidVolume, &volume);
-    add_component(world, entity, &GAME_COMPONENT_GameIgniter, &(GameIgniter){ heat });
-    add_component(world, entity, &GAME_COMPONENT_MaterialThermal, &thermal);
+    FluidVolume volume = { .kind = FLUID_LIQUID,
+                           .width = 1,
+                           .height = 1,
+                           .spacing = 4,
+                           .mass = 1,
+                           .color = 0x4080ffff };
+    add_component(world, entity, &COMPONENT_Transform, &(Transform){ x, 0 });
+    add_component(world, entity, &COMPONENT_FluidVolume, &volume);
+    add_component(world, entity, &COMPONENT_Igniter, &(Igniter){ heat });
+    add_component(world, entity, &COMPONENT_MaterialThermal, &thermal);
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return entity;
 }
@@ -357,84 +357,80 @@ static ecs_entity add_volume(ecs_world *world, float x, float heat, MaterialTher
 static void authored_volumes()
 {
     ecs_world *world;
-    game_preview_world *live = thermal_world(&world);
+    preview_world *live = thermal_world(&world);
     ecs_entity hot = add_volume(world, -2, 10, (MaterialThermal){ 2, 1000 });
     add_volume(world, 2, 0, (MaterialThermal){ 4, 1000 });
-    assert(!game_materials_prepare(live->runtime->materials));
+    assert(!materials_prepare(live->runtime->materials));
     int count;
-    const fluid_particle *p = material_fluid_particles(
-        game_materials_fluid(live->runtime->materials),
-        &count
-    );
+    const fluid_particle
+        *p = material_fluid_particles(materials_fluid(live->runtime->materials), &count);
     assert(count == 2 && p[0].thermal.capacity == 2 && p[1].thermal.capacity == 4);
     assert(p[0].thermal.conductivity == 1000 && p[1].thermal.conductivity == 1000);
     /* A moving inspection body activates the volume without combustion or a camera. */
     fluid_body body = { .velocity = { 2, 0 } };
-    game_materials_tick(live->runtime->materials, 1.f / 60, &body, 1, NULL, 0);
-    p = material_fluid_particles(game_materials_fluid(live->runtime->materials), &count);
+    materials_tick(live->runtime->materials, 1.f / 60, &body, 1, NULL, 0);
+    p = material_fluid_particles(materials_fluid(live->runtime->materials), &count);
     assert(p[0].heat < 10 && p[1].heat > 0 && fabs(energy(p, count) - 20) < .0001);
-    uint64_t hash = game_materials_inspect(live->runtime->materials).hash;
-    GAME_MaterialThermal_get(world, hot)->capacity = 0;
-    assert(game_materials_prepare(live->runtime->materials));
-    assert(game_materials_inspect(live->runtime->materials).hash == hash);
-    GAME_MaterialThermal_get(world, hot)->capacity = 2;
-    GAME_MaterialThermal_get(world, hot)->conductivity = -1;
-    assert(game_materials_prepare(live->runtime->materials));
-    GAME_MaterialThermal_get(world, hot)->conductivity = 0;
-    assert(!game_materials_prepare(live->runtime->materials));
-    game_preview_world_free(live);
+    uint64_t hash = materials_inspect(live->runtime->materials).hash;
+    MaterialThermal_get(world, hot)->capacity = 0;
+    assert(materials_prepare(live->runtime->materials));
+    assert(materials_inspect(live->runtime->materials).hash == hash);
+    MaterialThermal_get(world, hot)->capacity = 2;
+    MaterialThermal_get(world, hot)->conductivity = -1;
+    assert(materials_prepare(live->runtime->materials));
+    MaterialThermal_get(world, hot)->conductivity = 0;
+    assert(!materials_prepare(live->runtime->materials));
+    preview_world_free(live);
     ecs_world_free(world);
 }
 
 static void authored_emitter()
 {
     ecs_world *world;
-    game_preview_world *live = thermal_world(&world);
-    assert(!game_materials_prepare(live->runtime->materials));
+    preview_world *live = thermal_world(&world);
+    assert(!materials_prepare(live->runtime->materials));
     ecs_entity entity = ecs_world_create_entity(world);
-    GameParticleEmitter style = game_particle_emitter_defaults();
+    ParticleEmitter style = particle_emitter_defaults();
     style.fluid = true;
     style.fluid_kind = FLUID_LIQUID;
     style.fluid_mass = 3;
     style.rate = 0;
     style.burst_count = 1;
-    add_component(world, entity, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
-    add_component(world, entity, &GAME_COMPONENT_GameParticleEmitter, &style);
-    add_component(world, entity, &GAME_COMPONENT_MaterialThermal, &(MaterialThermal){ 7, 12 });
+    add_component(world, entity, &COMPONENT_Transform, &(Transform){ 0 });
+    add_component(world, entity, &COMPONENT_ParticleEmitter, &style);
+    add_component(world, entity, &COMPONENT_MaterialThermal, &(MaterialThermal){ 7, 12 });
     assert(ecs_world_apply_commands(world) == ECS_OK);
-    game_particle_emitters *emitters = game_particle_emitters_new(NULL);
-    game_particle_emitters_bind_materials(emitters, live->runtime->materials);
+    particle_emitters *emitters = particle_emitters_new(NULL);
+    particle_emitters_bind_materials(emitters, live->runtime->materials);
     char error[256];
-    assert(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof error));
+    assert(particle_emitters_collect(emitters, world, NULL, 0, error, sizeof error));
     int count;
-    const fluid_particle *p = material_fluid_particles(
-        game_materials_fluid(live->runtime->materials),
-        &count
-    );
+    const fluid_particle
+        *p = material_fluid_particles(materials_fluid(live->runtime->materials), &count);
     assert(
         count == 1 && p[0].mass == 3 && p[0].thermal.capacity == 7 &&
         p[0].thermal.conductivity == 12
     );
-    GAME_MaterialThermal_get(world, entity)->capacity = 0;
-    assert(!game_particle_emitters_collect(emitters, world, NULL, .1, error, sizeof error));
-    material_fluid_particles(game_materials_fluid(live->runtime->materials), &count);
+    MaterialThermal_get(world, entity)->capacity = 0;
+    assert(!particle_emitters_collect(emitters, world, NULL, .1, error, sizeof error));
+    material_fluid_particles(materials_fluid(live->runtime->materials), &count);
     assert(count == 1);
-    game_particle_emitters_free(emitters);
-    game_preview_world_free(live);
+    particle_emitters_free(emitters);
+    preview_world_free(live);
     ecs_world_free(world);
 }
 
 static uint64_t thermal_hash(fluid_thermal thermal)
 {
     ecs_world *world;
-    game_preview_world *live = thermal_world(&world);
-    assert(!game_materials_prepare(live->runtime->materials));
+    preview_world *live = thermal_world(&world);
+    assert(!materials_prepare(live->runtime->materials));
     fluid_particle p = parcel(0, 0, 2, 1, 1);
     p.thermal = thermal;
-    assert(game_materials_emit(live->runtime->materials, p));
-    uint64_t hash = game_materials_inspect(live->runtime->materials).hash;
-    assert(game_materials_inspect(live->runtime->materials).hash == hash);
-    game_preview_world_free(live);
+    assert(materials_emit(live->runtime->materials, p));
+    uint64_t hash = materials_inspect(live->runtime->materials).hash;
+    assert(materials_inspect(live->runtime->materials).hash == hash);
+    preview_world_free(live);
     ecs_world_free(world);
     return hash;
 }

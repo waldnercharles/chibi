@@ -39,11 +39,11 @@ static test_source_fixture read_behavior(const char *path)
     return fixture;
 }
 
-static game_prototype *read_prototype(const char *path, const game_prototype_registry *registry)
+static prototype *read_prototype(const char *path, const prototype_registry *registry)
 {
     char *text = read_content(path);
     char error[256];
-    game_prototype *prototype = game_prototype_load(text, registry, error, sizeof error);
+    prototype *prototype = prototype_load(text, registry, error, sizeof error);
     free(text);
     assert(prototype);
     return prototype;
@@ -52,7 +52,7 @@ static game_prototype *read_prototype(const char *path, const game_prototype_reg
 static ecs_entity projectile_in(ecs_world *world)
 {
     ecs_query query;
-    ecs_component_id id = GAME_COMPONENT_GameProjectile.id;
+    ecs_component_id id = COMPONENT_Projectile.id;
     assert(ecs_query_begin(world, &query, &id, 1) == ECS_OK);
     ecs_entity result = { 0 }, found;
     while (ecs_query_next(&query, &found)) {
@@ -65,8 +65,8 @@ static ecs_entity projectile_in(ecs_world *world)
 
 static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 {
-    game_preview_runtime *runtime = user;
-    return game_source_attach(
+    preview_runtime *runtime = user;
+    return source_attach(
         runtime->sources,
         entity,
         name,
@@ -78,30 +78,27 @@ static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 
 void test_projectile()
 {
-    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
-                                         GAME_REGISTRY_COMPONENT_COUNT };
-    game_prototype *player = read_prototype("test/fixtures/content/prototypes/Player.kdl", &registry);
-    game_prototype *projectile = read_prototype("test/fixtures/content/prototypes/Projectile.kdl", &registry);
+    prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
+    prototype *player = read_prototype("test/fixtures/content/prototypes/Player.kdl", &registry);
+    prototype *projectile = read_prototype("test/fixtures/content/prototypes/Projectile.kdl", &registry);
     const char *names[] = { "InputBehavior",         "WeaponBehavior",
                             "AutoWeaponBehavior",    "ProjectileBehavior",
                             "HealthBehavior",        "ProjectileHitBehavior",
                             "PlayerContactBehavior", "MovementTrailBehavior" };
     for (int isolated = 0; isolated < 2; isolated++) {
         ecs_world *world = isolated ? NULL : ecs_world_new();
-        game_preview_world *live = NULL;
+        preview_world *live = NULL;
         engine *runtime = NULL;
-        game_prototype_preview *preview = NULL;
+        prototype_preview *preview = NULL;
         if (isolated) {
-            preview = game_prototype_preview_new(&registry);
+            preview = prototype_preview_new(&registry);
             register_test_preview_catalog(preview);
-            world = game_prototype_preview_world(preview);
+            world = prototype_preview_world(preview);
         } else {
-            for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-                assert(
-                    ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
-                );
+            for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+                assert(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
             }
-            live = game_preview_world_new(world);
+            live = preview_world_new(world);
             register_damage_event(live);
             runtime = authoring_engine_new(world, live->runtime);
         }
@@ -116,7 +113,7 @@ void test_projectile()
             snprintf(path, sizeof path, "%s/%s.chibi", root, names[i]);
             test_source_fixture fixture = read_behavior(path);
             test_source_register(
-                preview ? game_prototype_preview_live(preview)->runtime : live->runtime,
+                preview ? prototype_preview_live(preview)->runtime : live->runtime,
                 &fixture
             );
             test_source_free(&fixture);
@@ -124,17 +121,17 @@ void test_projectile()
         char error[256];
         ecs_entity owner;
         if (isolated) {
-            assert(game_prototype_preview_register_prototype(preview, projectile) == 0);
-            assert(game_prototype_preview_launch(preview, player, error, sizeof error) == 0);
-            owner = game_prototype_preview_entity(preview);
+            assert(prototype_preview_register_prototype(preview, projectile) == 0);
+            assert(prototype_preview_launch(preview, player, error, sizeof error) == 0);
+            owner = prototype_preview_entity(preview);
 
         } else {
-            assert(game_entities_register(live->runtime->entities, projectile) == 0);
+            assert(entities_register(live->runtime->entities, projectile) == 0);
             assert(
-                game_prototype_spawn(
+                prototype_spawn(
                     player,
                     world,
-                    &(game_prototype_spawn_hooks){ attach, live->runtime },
+                    &(prototype_spawn_hooks){ attach, live->runtime },
                     &owner,
                     error,
                     sizeof error
@@ -148,117 +145,113 @@ void test_projectile()
         simulation_action(&clock, "Fire");
         ecs_entity shot = projectile_in(world);
         assert(shot.slot && shot.slot != owner.slot);
-        float origin = GAME_GameTransform_get_const(world, owner)->x;
-        assert(fabsf(GAME_GameTransform_get_const(world, shot)->x - origin - 7.0f) < 0.01f);
-        assert(
-            GAME_GameCollider_get_const(world, shot)->ignore_entity ==
-            ecs_entity_to_u64(owner)
-        );
-        assert(GAME_GameVelocity_get_const(world, shot)->x == 420);
+        float origin = Transform_get_const(world, owner)->x;
+        assert(fabsf(Transform_get_const(world, shot)->x - origin - 7.0f) < 0.01f);
+        assert(Collider_get_const(world, shot)->ignore_entity == ecs_entity_to_u64(owner));
+        assert(Velocity_get_const(world, shot)->x == 420);
         simulation_advance(&clock, 0.1);
-        assert(fabsf(GAME_GameTransform_get_const(world, shot)->x - origin - 42.0f) < 0.01f);
+        assert(fabsf(Transform_get_const(world, shot)->x - origin - 42.0f) < 0.01f);
         simulation_advance(&clock, 2.1);
         assert(!ecs_entity_is_alive(world, shot));
         assert(!projectile_in(world).slot);
         assert(
-            game_prototype_write_field(
+            prototype_write_field(
                 projectile,
-                "GameProjectile",
+                "Projectile",
                 "speed",
                 (pin_value){ .type = PIN_F32, .f = 100.0f }
             ) == 0
         );
         assert(
-            game_prototype_write_field(
+            prototype_write_field(
                 projectile,
-                "GameProjectile",
+                "Projectile",
                 "lifetime",
                 (pin_value){ .type = PIN_F32, .f = 0.2f }
             ) == 0
         );
         if (isolated) {
-            assert(game_prototype_preview_register_prototype(preview, projectile) == 0);
+            assert(prototype_preview_register_prototype(preview, projectile) == 0);
 
         } else {
-            assert(game_entities_register(live->runtime->entities, projectile) == 0);
+            assert(entities_register(live->runtime->entities, projectile) == 0);
         }
         simulation_action(&clock, "Fire");
         shot = projectile_in(world);
         assert(shot.slot);
-        const GameProjectile *state = GAME_GameProjectile_get_const(world, shot);
+        const Projectile *state = Projectile_get_const(world, shot);
         assert(state->speed == 100.0f && state->lifetime == 0.2f);
-        assert(GAME_GameVelocity_get_const(world, shot)->x == 100);
+        assert(Velocity_get_const(world, shot)->x == 100);
         simulation_advance(&clock, clock.time + 0.18);
         assert(ecs_entity_is_alive(world, shot));
         simulation_advance(&clock, clock.time + 0.04);
         assert(!ecs_entity_is_alive(world, shot));
         assert(
-            game_prototype_write_field(
+            prototype_write_field(
                 projectile,
-                "GameProjectile",
+                "Projectile",
                 "speed",
                 (pin_value){ .type = PIN_F32, .f = 420.0f }
             ) == 0
         );
         assert(
-            game_prototype_write_field(
+            prototype_write_field(
                 projectile,
-                "GameProjectile",
+                "Projectile",
                 "lifetime",
                 (pin_value){ .type = PIN_F32, .f = 2.0f }
             ) == 0
         );
         ecs_entity wall = ecs_world_create_entity(world);
-        assert(GAME_GameTransform_add(world, wall, 0) == ECS_OK);
-        assert(GAME_GameCollider_add(world, wall, 0) == ECS_OK);
-        assert(GAME_GameBody_add(world, wall, 0) == ECS_OK);
+        assert(Transform_add(world, wall, 0) == ECS_OK);
+        assert(Collider_add(world, wall, 0) == ECS_OK);
+        assert(Body_add(world, wall, 0) == ECS_OK);
         assert(ecs_world_apply_commands(world) == ECS_OK);
-        const GameTransform *player_position = GAME_GameTransform_get_const(world, owner);
-        *GAME_GameTransform_get(world, wall) = (GameTransform){ player_position->x + 14,
-                                                                player_position->y };
-        *GAME_GameCollider_get(world, wall) = (GameCollider){ .shape = GAME_COLLIDER_BOX,
-                                                              .width = 2,
-                                                              .height = 80,
-                                                              .category = 8,
-                                                              .mask = 7 };
+        const Transform *player_position = Transform_get_const(world, owner);
+        *Transform_get(world, wall) = (Transform){ player_position->x + 14,
+                                                   player_position->y };
+        *Collider_get(world, wall) = (Collider){ .shape = COLLIDER_BOX,
+                                                 .width = 2,
+                                                 .height = 80,
+                                                 .category = 8,
+                                                 .mask = 7 };
         assert(
-            game_prototype_write_field(
+            prototype_write_field(
                 projectile,
-                "GameProjectile",
+                "Projectile",
                 "speed",
                 (pin_value){ .type = PIN_F32, .f = 4800 }
             ) == 0
         );
         assert(
-            (preview ? game_prototype_preview_register_prototype(preview, projectile)
-                     : game_entities_register(live->runtime->entities, projectile)) == 0
+            (preview ? prototype_preview_register_prototype(preview, projectile)
+                     : entities_register(live->runtime->entities, projectile)) == 0
         );
-        game_particles *particles = preview
-                                      ? game_prototype_preview_particles(preview)
-                                      : live->runtime->particles;
-        int before_impact = game_particles_count(particles);
+        particles *particles = preview ? prototype_preview_particles(preview)
+                                       : live->runtime->particles;
+        int before_impact = particles_count(particles);
         simulation_action(&clock, "Fire");
         assert(!projectile_in(world).slot);
         assert(ecs_entity_is_alive(world, wall));
-        assert(GAME_GameHealth_get_const(world, owner)->current == 100);
-        assert(game_particles_count(particles) == before_impact + 12);
+        assert(Health_get_const(world, owner)->current == 100);
+        assert(particles_count(particles) == before_impact + 12);
         assert(
-            game_prototype_write_field(
+            prototype_write_field(
                 projectile,
-                "GameProjectile",
+                "Projectile",
                 "speed",
                 (pin_value){ .type = PIN_F32, .f = 420 }
             ) == 0
         );
         if (isolated) {
-            game_prototype_preview_free(preview);
+            prototype_preview_free(preview);
         } else {
             engine_free(runtime);
-            game_preview_world_free(live);
+            preview_world_free(live);
             ecs_world_free(world);
         }
     }
-    game_prototype_free(projectile);
-    game_prototype_free(player);
+    prototype_free(projectile);
+    prototype_free(player);
     puts("projectile PASS: authored launch velocity, shooter exclusion, expiry and fast shots against an adjacent thin wall in both hosts");
 }

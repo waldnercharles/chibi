@@ -19,9 +19,9 @@
 typedef struct
 {
     ecs_world *world;
-    game_preview_world *live;
+    preview_world *live;
     engine *engine;
-    game_prototype_preview *preview;
+    prototype_preview *preview;
     ecs_entity player;
     simulation_fixture clock;
 } host;
@@ -53,8 +53,8 @@ static test_source_fixture behavior(const char *name)
 
 static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
 {
-    game_preview_runtime *runtime = user;
-    return game_source_attach(
+    preview_runtime *runtime = user;
+    return source_attach(
         runtime->sources,
         entity,
         name,
@@ -64,18 +64,18 @@ static int attach(ecs_world *, ecs_entity entity, const char *name, void *user)
     );
 }
 
-static void launch(host *h, const game_prototype *player)
+static void launch(host *h, const prototype *player)
 {
     char error[256];
     if (h->preview) {
-        assert(game_prototype_preview_launch(h->preview, player, error, sizeof error) == 0);
-        h->player = game_prototype_preview_entity(h->preview);
+        assert(prototype_preview_launch(h->preview, player, error, sizeof error) == 0);
+        h->player = prototype_preview_entity(h->preview);
     } else {
         assert(
-            game_prototype_spawn(
+            prototype_spawn(
                 player,
                 h->world,
-                &(game_prototype_spawn_hooks){ attach, h->live->runtime },
+                &(prototype_spawn_hooks){ attach, h->live->runtime },
                 &h->player,
                 error,
                 sizeof error
@@ -83,22 +83,22 @@ static void launch(host *h, const game_prototype *player)
         );
         assert(engine_set_playing(h->engine, true) == 0);
     }
-    *GAME_GameTransform_get(h->world, h->player) = (GameTransform){ 0 };
+    *Transform_get(h->world, h->player) = (Transform){ 0 };
 }
 
-static host create(bool isolated, const game_prototype_registry *registry, const game_prototype *player)
+static host create(bool isolated, const prototype_registry *registry, const prototype *player)
 {
     host h = { 0 };
     if (isolated) {
-        h.preview = game_prototype_preview_new(registry);
+        h.preview = prototype_preview_new(registry);
         register_test_preview_catalog(h.preview);
-        h.world = game_prototype_preview_world(h.preview);
+        h.world = prototype_preview_world(h.preview);
     } else {
         h.world = ecs_world_new();
         for (int i = 0; i < registry->component_count; i++) {
             assert(ecs_world_register_component(h.world, registry->components[i], NULL) == ECS_OK);
         }
-        h.live = game_preview_world_new(h.world);
+        h.live = preview_world_new(h.world);
         register_damage_event(h.live);
         h.engine = authoring_engine_new(h.world, h.live->runtime);
     }
@@ -106,7 +106,7 @@ static host create(bool isolated, const game_prototype_registry *registry, const
     for (int i = 0; i < 2; i++) {
         test_source_fixture fixture = behavior(names[i]);
         test_source_register(
-            h.preview ? game_prototype_preview_live(h.preview)->runtime : h.live->runtime,
+            h.preview ? prototype_preview_live(h.preview)->runtime : h.live->runtime,
             &fixture
         );
         test_source_free(&fixture);
@@ -123,43 +123,42 @@ static void tick(host *h, double time)
 
 static void health(host *h, int expected)
 {
-    const GameHealth *value = GAME_GameHealth_get_const(h->world, h->player);
+    const Health *value = Health_get_const(h->world, h->player);
     assert(value && value->current == expected);
 }
 
 static ecs_entity body(host *h, unsigned category, int health)
 {
     ecs_entity entity = ecs_world_create_entity(h->world);
-    assert(GAME_GameTransform_add(h->world, entity, 0) == ECS_OK);
-    assert(GAME_GameCollider_add(h->world, entity, 0) == ECS_OK);
-    assert(GAME_GameBody_add(h->world, entity, 0) == ECS_OK);
-    assert(GAME_GameHealth_add(h->world, entity, 0) == ECS_OK);
+    assert(Transform_add(h->world, entity, 0) == ECS_OK);
+    assert(Collider_add(h->world, entity, 0) == ECS_OK);
+    assert(Body_add(h->world, entity, 0) == ECS_OK);
+    assert(Health_add(h->world, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(h->world) == ECS_OK);
-    *GAME_GameTransform_get(h->world, entity) = (GameTransform){ 0 };
-    *GAME_GameCollider_get(h->world, entity) = (GameCollider){ .radius = 12,
-                                                               .category = category,
-                                                               .mask = 1,
-                                                               .sensor = true };
-    *GAME_GameHealth_get(h->world, entity) = (GameHealth){ health, health };
+    *Transform_get(h->world, entity) = (Transform){ 0 };
+    *Collider_get(h->world, entity) = (Collider){ .radius = 12,
+                                                  .category = category,
+                                                  .mask = 1,
+                                                  .sensor = true };
+    *Health_get(h->world, entity) = (Health){ health, health };
     return entity;
 }
 
 static void move(host *h, ecs_entity entity, float x)
 {
-    *GAME_GameTransform_get(h->world, entity) = (GameTransform){ x, 0 };
+    *Transform_get(h->world, entity) = (Transform){ x, 0 };
 }
 
 static void damage(host *h, int amount)
 {
-    game_preview_runtime *runtime = h->preview
-                                      ? game_prototype_preview_live(h->preview)->runtime
-                                      : h->live->runtime;
-    execution_program *program = game_source_program(runtime->sources, "HealthBehavior");
+    preview_runtime *runtime = h->preview ? prototype_preview_live(h->preview)->runtime
+                                          : h->live->runtime;
+    execution_program *program = source_program(runtime->sources, "HealthBehavior");
     assert(program && execution_program_instance(program, ecs_entity_to_u64(h->player)));
     pin_value values[] = { { .type = PIN_I32, .type_name = "int", .i = amount },
                            { .type = PIN_HANDLE, .type_name = "ecs.entity", .u64 = 0 } };
     assert(
-        game_source_dispatch(
+        source_dispatch(
             runtime->sources,
             h->player,
             "Damage",
@@ -171,7 +170,7 @@ static void damage(host *h, int amount)
     );
 }
 
-static void attacks(bool isolated, const game_prototype_registry *registry, const game_prototype *player)
+static void attacks(bool isolated, const prototype_registry *registry, const prototype *player)
 {
     host h = create(isolated, registry, player);
     tick(&h, 0);
@@ -204,7 +203,7 @@ static void attacks(bool isolated, const game_prototype_registry *registry, cons
     health(&h, 55);
     move(&h, enemy, 1000);
     tick(&h, 1.8);
-    GAME_GameCollider_get(h.world, h.player)->mask = 3;
+    Collider_get(h.world, h.player)->mask = 3;
     body(&h, 2, 0);
     body(&h, 2, -1);
     body(&h, 1, 50);
@@ -224,7 +223,7 @@ static void attacks(bool isolated, const game_prototype_registry *registry, cons
     assert(!ecs_entity_is_alive(h.world, h.player));
     move(&h, enemy, 1000);
     if (h.preview) {
-        game_prototype_preview_stop(h.preview);
+        prototype_preview_stop(h.preview);
     } else {
         assert(engine_set_playing(h.engine, false) == 0);
         engine_reset(h.engine);
@@ -236,29 +235,28 @@ static void attacks(bool isolated, const game_prototype_registry *registry, cons
     tick(&h, 10);
     health(&h, 90);
     if (h.preview) {
-        game_prototype_preview_free(h.preview);
+        prototype_preview_free(h.preview);
         return;
     }
     engine_free(h.engine);
-    game_preview_world_free(h.live);
+    preview_world_free(h.live);
     ecs_world_free(h.world);
 }
 
 void test_enemy_attack()
 {
-    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
-                                         GAME_REGISTRY_COMPONENT_COUNT };
+    prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
     char *text = read_file("test/fixtures/content/prototypes/Player.kdl");
     char error[256];
-    game_prototype *player = game_prototype_load(text, &registry, error, sizeof error);
+    prototype *player = prototype_load(text, &registry, error, sizeof error);
     free(text);
     assert(player);
-    assert(game_prototype_remove_graph(player, "InputBehavior") == 0);
-    assert(game_prototype_remove_graph(player, "WeaponBehavior") == 0);
-    assert(game_prototype_remove_graph(player, "AutoWeaponBehavior") == 0);
-    assert(game_prototype_remove_graph(player, "MovementTrailBehavior") == 0);
+    assert(prototype_remove_graph(player, "InputBehavior") == 0);
+    assert(prototype_remove_graph(player, "WeaponBehavior") == 0);
+    assert(prototype_remove_graph(player, "AutoWeaponBehavior") == 0);
+    assert(prototype_remove_graph(player, "MovementTrailBehavior") == 0);
     attacks(false, &registry, player);
     attacks(true, &registry, player);
-    game_prototype_free(player);
+    prototype_free(player);
     puts("enemy attack PASS: contact-begin cooldown, filtering, damage bypass, both hosts, engine pause and fresh player state");
 }

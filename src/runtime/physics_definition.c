@@ -59,19 +59,15 @@ static const native_capability_definition DEFINITIONS[] = {
 };
 static const native_definition_binding BINDINGS[] = {
     { .canonical_name = PHYSICS_RAY_NAME,
-      .implementation = { .call = &GAME_PHYSICS_RAYCAST_CALL,
-                          .access = &GAME_PHYSICS_READ_ACCESS } },
+      .implementation = { .call = &PHYSICS_RAYCAST_CALL, .access = &PHYSICS_READ_ACCESS } },
     { .canonical_name = PHYSICS_CONTACT_NAME,
-      .implementation = { .call = &GAME_PHYSICS_CONTACTS_CALL,
-                          .access = &GAME_PHYSICS_READ_ACCESS } },
+      .implementation = { .call = &PHYSICS_CONTACTS_CALL, .access = &PHYSICS_READ_ACCESS } },
     { .canonical_name = PHYSICS_IMPULSE_NAME,
-      .implementation = { .call = &GAME_PHYSICS_IMPULSE_CALL,
-                          .access = &GAME_PHYSICS_PUSH_ACCESS } },
+      .implementation = { .call = &PHYSICS_IMPULSE_CALL, .access = &PHYSICS_PUSH_ACCESS } },
     { .canonical_name = PHYSICS_FORCE_NAME,
-      .implementation = { .call = &GAME_PHYSICS_FORCE_CALL,
-                          .access = &GAME_PHYSICS_PUSH_ACCESS } },
+      .implementation = { .call = &PHYSICS_FORCE_CALL, .access = &PHYSICS_PUSH_ACCESS } },
 };
-const native_definition_pack GAME_PHYSICS_DEFINITION_PACK = {
+const native_definition_pack PHYSICS_DEFINITION_PACK = {
     .definitions = DEFINITIONS,
     .definition_count = NATIVE_COUNT(DEFINITIONS),
     .bindings = BINDINGS,

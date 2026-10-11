@@ -50,9 +50,9 @@ behavior "DashBehavior" {
         }
     }
     function "Advance Dash"() {
-        action set_gamedash_remaining = set_game_dash_remaining(max(self.Dash.remaining - delta_time(), B: float = 0.0))
+        action set_gamedash_remaining = set_dash_remaining(max(self.Dash.remaining - delta_time(), B: float = 0.0))
         after entry {
-            set_gamedash_remaining()
+            set_dash_remaining()
         }
         after set_gamedash_remaining {
             if 0.0 < set_gamedash_remaining.Value.remaining {

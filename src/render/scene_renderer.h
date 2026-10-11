@@ -27,11 +27,11 @@ void app_scene_renderer_set_sdf_batch_limit(app_scene_renderer *renderer, int li
 /* Capture overrides. Without these, the scene's authored settings apply. */
 void app_scene_renderer_set_hidden_rejection(app_scene_renderer *renderer, bool enabled);
 void app_scene_renderer_set_spatial_scratch(app_scene_renderer *renderer, bool enabled);
-void app_scene_renderer_set_surface_quality(app_scene_renderer *renderer, GameSurfaceQuality quality);
+void app_scene_renderer_set_surface_quality(app_scene_renderer *renderer, SurfaceQuality quality);
 void app_scene_renderer_set_sdf_trace_debug(app_scene_renderer *renderer, bool enabled);
-void app_scene_renderer_set_shadow_mode(app_scene_renderer *renderer, GameHRCShadowMode mode);
+void app_scene_renderer_set_shadow_mode(app_scene_renderer *renderer, HRCShadowMode mode);
 /* Bits 0..3 override relief fusion, cache, reprojection and hierarchy. */
-void app_scene_renderer_set_horizon_reuse(app_scene_renderer *renderer, unsigned mask, GameHRC2D values);
+void app_scene_renderer_set_horizon_reuse(app_scene_renderer *renderer, unsigned mask, HRC2D values);
 render_surface_work app_scene_renderer_surface_work(const app_scene_renderer *renderer);
 render_horizon_work app_scene_renderer_horizon_work(const app_scene_renderer *renderer);
 render_mesh_material_work app_scene_renderer_mesh_work(const app_scene_renderer *renderer);
@@ -60,7 +60,7 @@ void app_scene_renderer_set_grid(app_scene_renderer *renderer, float increment);
 bool app_scene_renderer_draw(
     app_scene_renderer *renderer,
     ecs_world *world,
-    const game_particles *particles,
+    const particles *particles,
     engine_viewport *viewport,
     const engine *runtime,
     render_skip skip
@@ -68,7 +68,7 @@ bool app_scene_renderer_draw(
 bool app_scene_renderer_draw3d(
     app_scene_renderer *renderer,
     ecs_world *world,
-    const game_particles *particles,
+    const particles *particles,
     const render_scene3d_camera *camera,
     engine_viewport *viewport,
     const engine *runtime,

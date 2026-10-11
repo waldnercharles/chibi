@@ -208,7 +208,7 @@ A game's toolchain pin should retain the manifest's `kind` and complete
 `build_id`. Its build consumes `find_package(Chibi CONFIG REQUIRED)` through the
 installed prefix. Release/runtime consumers link `Chibi::behavior_runtime` and
 load prepared byte records through `execution_prepared_read` or
-`game_package_load`. Compiler and authoring consumers link the SDK targets while
+`package_load`. Compiler and authoring consumers link the SDK targets while
 preparing those records. Native capability and type catalogs supply stable IDs
 and declaration/layout ABIs; the loader rejects incompatible linkage.
 

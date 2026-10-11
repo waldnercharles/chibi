@@ -34,17 +34,13 @@ static bool plain(const type_field *field)
     }
 }
 
-game_prototype_field *game_prototype_instance_overrides(
-    const game_prototype *base,
-    const ecs_world *world,
-    ecs_entity entity
-)
+prototype_field *prototype_instance_overrides(const prototype *base, const ecs_world *world, ecs_entity entity)
 {
-    game_prototype_field *found = NULL;
+    prototype_field *found = NULL;
     for (int i = 0; i < acount(base->components); i++) {
-        const game_prototype_component *component = &base->components[i];
+        const prototype_component *component = &base->components[i];
         const ecs_component_desc *desc = component->desc;
-        if (desc->id == GAME_COMPONENT_GameTransform.id ||
+        if (desc->id == COMPONENT_Transform.id ||
             !ecs_component_has(world, entity, desc->id)) {
             continue;
         }
@@ -57,18 +53,18 @@ game_prototype_field *game_prototype_instance_overrides(
             }
             pin_read_field(component->data, field, &inherited);
             if (!pin_value_equal(&value, &inherited)) {
-                apush(found, ((game_prototype_field){ desc, f }));
+                apush(found, ((prototype_field){ desc, f }));
             }
         }
     }
     return found;
 }
 
-void game_prototype_apply_instance(
-    game_prototype *prototype,
+void prototype_apply_instance(
+    prototype *prototype,
     const ecs_world *world,
     ecs_entity entity,
-    const game_prototype_field *fields,
+    const prototype_field *fields,
     int count
 )
 {
@@ -76,7 +72,7 @@ void game_prototype_apply_instance(
         const ecs_component_desc *desc = fields[i].component;
         pin_value value = { 0 };
         ecs_component_read_field(world, entity, desc->id, fields[i].field, &value);
-        game_prototype_write_field(
+        prototype_write_field(
             prototype,
             desc->name,
             desc->type->fields[fields[i].field].name,
@@ -85,42 +81,42 @@ void game_prototype_apply_instance(
     }
 }
 
-game_prototype *game_prototype_from_instance(
+prototype *prototype_from_instance(
     const char *name,
-    const game_prototype *base,
+    const prototype *base,
     const ecs_world *world,
     ecs_entity entity,
     const char *const *behaviors,
     int behavior_count
 )
 {
-    game_prototype *prototype = game_prototype_capture_entity(name, world, entity, base->registry);
-    const game_prototype_component *placement = NULL;
+    prototype *captured = prototype_capture_entity(name, world, entity, base->registry);
+    const prototype_component *placement = NULL;
     for (int i = 0; i < acount(base->components); i++) {
-        if (base->components[i].desc->id == GAME_COMPONENT_GameTransform.id) {
+        if (base->components[i].desc->id == COMPONENT_Transform.id) {
             placement = &base->components[i];
         }
     }
-    for (int i = 0; placement && i < acount(prototype->components); i++) {
-        if (prototype->components[i].desc->id == GAME_COMPONENT_GameTransform.id) {
+    for (int i = 0; placement && i < acount(captured->components); i++) {
+        if (captured->components[i].desc->id == COMPONENT_Transform.id) {
             memcpy(
-                prototype->components[i].data,
+                captured->components[i].data,
                 placement->data,
                 placement->desc->element_size
             );
         }
     }
     if (!placement) {
-        game_prototype_remove_component(prototype, GAME_COMPONENT_GameTransform.name);
+        prototype_remove_component(captured, COMPONENT_Transform.name);
     }
     for (int i = 0; i < behavior_count; i++) {
-        game_prototype_add_graph(prototype, behaviors[i]);
+        prototype_add_graph(captured, behaviors[i]);
     }
     /* Its text still points into the world: a copy of its own owns it. */
-    char *text = game_prototype_save(prototype);
+    char *text = prototype_save(captured);
     char error[256];
-    game_prototype *owned = game_prototype_load(text, base->registry, error, sizeof error);
+    prototype *owned = prototype_load(text, base->registry, error, sizeof error);
     free(text);
-    game_prototype_free(prototype);
+    prototype_free(captured);
     return owned;
 }

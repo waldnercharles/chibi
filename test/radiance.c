@@ -293,15 +293,15 @@ static bool reconstruction_sampling(render_material_raster *raster)
     float reference_open = 0;
     for (int split = 0; split <= 1 && ok; split++) {
         for (int reconstruction = 0; reconstruction <= 1 && ok; reconstruction++) {
-            GameHRC2D lighting = game_hrc2d_defaults();
+            HRC2D lighting = hrc2d_defaults();
             lighting.adaptive = false;
             lighting.feedback = false;
             lighting.fog = 0;
             /* Color at 0.5 either way; split solves brightness at 1. */
             lighting.resolution = split ? 1 : .5f;
-            lighting.color_resolution = split ? GAME_HRC_COLOR_HALF : GAME_HRC_COLOR_FULL;
-            lighting.gather_resolution = reconstruction ? GAME_HRC_GATHER_HALF
-                                                        : GAME_HRC_GATHER_FULL;
+            lighting.color_resolution = split ? HRC_COLOR_HALF : HRC_COLOR_FULL;
+            lighting.gather_resolution = reconstruction ? HRC_GATHER_HALF
+                                                        : HRC_GATHER_FULL;
             ok = render_radiance_set_lighting(radiance, lighting) &&
                  render_radiance_resize(radiance, SIDE, SIDE);
             CF_Pixel open[PIXELS], blocked[PIXELS];
@@ -339,13 +339,13 @@ static bool reconstruction_sampling(render_material_raster *raster)
         }
     }
     if (ok) {
-        GameHRC2D lighting = game_hrc2d_defaults();
+        HRC2D lighting = hrc2d_defaults();
         lighting.adaptive = false;
         lighting.feedback = false;
         lighting.fog = 0;
         lighting.resolution = 1;
-        lighting.color_resolution = GAME_HRC_COLOR_HALF;
-        lighting.gather_resolution = GAME_HRC_GATHER_HALF;
+        lighting.color_resolution = HRC_COLOR_HALF;
+        lighting.gather_resolution = HRC_GATHER_HALF;
         CF_Pixel small_pixels[64 * 64];
         render_material_entity small_entities[] = { spark, receiver };
         ok = render_radiance_set_lighting(radiance, lighting) &&
@@ -417,16 +417,12 @@ static bool read_hdr_texture(CF_Texture texture, uint16_t *pixels, int count)
 static bool material_parameter_writes(const behavior_asset *material, int id)
 {
     ecs_world *world = ecs_world_new();
-    bool ok = ecs_world_register_component(world, &GAME_COMPONENT_GameShader, NULL) ==
-              ECS_OK;
+    bool ok = ecs_world_register_component(world, &COMPONENT_Shader, NULL) == ECS_OK;
     ecs_entity first = ecs_world_create_entity(world),
                second = ecs_world_create_entity(world);
-    GameShader binding = { .material = material->name,
-                           .parameters = "(array)Tint 0 1 0\n" };
-    ok &= ecs_world_record_add(world, first, GAME_COMPONENT_GameShader.id, &binding, 0) ==
-          ECS_OK;
-    ok &= ecs_world_record_add(world, second, GAME_COMPONENT_GameShader.id, &binding, 0) ==
-          ECS_OK;
+    Shader binding = { .material = material->name, .parameters = "(array)Tint 0 1 0\n" };
+    ok &= ecs_world_record_add(world, first, COMPONENT_Shader.id, &binding, 0) == ECS_OK;
+    ok &= ecs_world_record_add(world, second, COMPONENT_Shader.id, &binding, 0) == ECS_OK;
     ok &= ecs_world_apply_commands(world) == ECS_OK;
     behavior_asset *behavior = behavior_asset_new("Material parameter writer");
     graph *g = behavior->graph;
@@ -595,7 +591,7 @@ static bool graph_material_pixels(render_material_raster *raster)
     entity.reserved[1] = (float)render_shader_find(shape->name);
     entity.shape_type = RENDER_SHAPE_BOX;
     entity.points[0] = entity.points[1] = 8;
-    GameShader shape_binding = { .shape = shape->name };
+    Shader shape_binding = { .shape = shape->name };
     ok &= render_shader_contains(
         &shape_binding,
         NULL,
@@ -833,7 +829,7 @@ static bool silhouette_lighting(
     int trace_levels
 )
 {
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = false;
     lighting.fog = 0;
     lighting.trace_levels = trace_levels;
@@ -919,7 +915,7 @@ static int green_at(const CF_Pixel *pixels, int x)
  * reaches a world-space depth into it and lights relief facing its source. */
 static bool surface_lighting(render_material_raster *raster, render_radiance *radiance, CF_Canvas canvas)
 {
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = false;
     lighting.fog = 0;
     lighting.surface_radius = 12;
@@ -1033,13 +1029,13 @@ static bool surface_rgb(const uint16_t *pixels, float result[2])
 
 /* Keep RGB attached to its incident direction: opposing colors must respond
  * independently to a banked normal, including when one path is occluded. */
-static bool directional_surface_colors(render_material_raster *raster, GameHRCShadowMode shadow_mode)
+static bool directional_surface_colors(render_material_raster *raster, HRCShadowMode shadow_mode)
 {
     render_radiance *radiance = render_radiance_new();
     CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
     params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
     CF_Canvas canvas = cf_make_canvas(params);
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = lighting.feedback = false;
     lighting.ambient = lighting.fog = lighting.shadow_floor = 0;
     lighting.surface_radius = 12;
@@ -1162,10 +1158,10 @@ static bool directional_surface_colors(render_material_raster *raster, GameHRCSh
     return ok;
 }
 
-static bool horizon_work_matches(const render_radiance *radiance, int size, GameHRCShadowMode mode)
+static bool horizon_work_matches(const render_radiance *radiance, int size, HRCShadowMode mode)
 {
     render_horizon_work work = render_radiance_horizon_work(radiance);
-    int directions = mode == GAME_HRC_SHADOW_HORIZON4 ? 4 : 8;
+    int directions = mode == HRC_SHADOW_HORIZON4 ? 4 : 8;
     bool ok = work.builds == 1 && work.pixels == size * size &&
               work.directions == directions &&
               work.canvas_bytes == (size_t)size * size * (directions == 4 ? 16 : 24);
@@ -1188,13 +1184,13 @@ static bool horizon_work_matches(const render_radiance *radiance, int size, Game
 /* Rebuild visibility from current height and coverage, even without resetting
  * transport. Moving a height-only ridge must not leave its old horizon behind;
  * an uncovered gap stops the bounded scan before a detached ridge. */
-static bool horizon_updates(render_material_raster *raster, GameHRCShadowMode shadow_mode)
+static bool horizon_updates(render_material_raster *raster, HRCShadowMode shadow_mode)
 {
     render_radiance *radiance = render_radiance_new();
     CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
     params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
     CF_Canvas canvas = cf_make_canvas(params);
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = lighting.feedback = false;
     lighting.radiance_hysteresis = 1;
     lighting.surface_radius = 12;
@@ -1382,14 +1378,14 @@ static bool horizon_dirty_counts(render_radiance *radiance, int size, int *dirty
 }
 static bool horizon_reuse_sequence(
     render_material_raster *raster,
-    GameHRCShadowMode mode,
+    HRCShadowMode mode,
     bool fused,
     bool reproject,
     bool hierarchy
 )
 {
     render_radiance *cached = render_radiance_new(), *fresh = render_radiance_new();
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = lighting.feedback = false;
     lighting.resolution = .5f;
     lighting.radiance_hysteresis = 1;
@@ -1398,10 +1394,10 @@ static bool horizon_reuse_sequence(
     lighting.surface_bevel = lighting.specular = 0;
     lighting.surface_shadow_mode = mode;
     // Raw HDR bypasses frame-dependent display dithering during parity checks.
-    lighting.tone_mapping = GAME_HRC_TONE_AGX;
+    lighting.tone_mapping = HRC_TONE_AGX;
     lighting.debug_view = 8;
     lighting.horizon_hierarchy = hierarchy;
-    GameHRC2D reference = lighting;
+    HRC2D reference = lighting;
     lighting.horizon_fuse_relief = fused;
     lighting.horizon_cache = true;
     lighting.horizon_reproject = reproject;
@@ -1484,9 +1480,9 @@ static bool horizon_reuse_sequence(
             size = SIDE;
         }
         if (stage == 13) {
-            lighting.surface_shadow_mode = reference.surface_shadow_mode = mode == GAME_HRC_SHADOW_HORIZON4
-                                                                             ? GAME_HRC_SHADOW_HORIZON8
-                                                                             : GAME_HRC_SHADOW_HORIZON4;
+            lighting.surface_shadow_mode = reference.surface_shadow_mode = mode == HRC_SHADOW_HORIZON4
+                                                                             ? HRC_SHADOW_HORIZON8
+                                                                             : HRC_SHADOW_HORIZON4;
         }
         if (stage == 14) {
             lighting.horizon_fuse_relief = !lighting.horizon_fuse_relief;
@@ -1621,10 +1617,10 @@ static behavior_asset *horizon_height_material(const char *name, float slope, fl
     }
     return material;
 }
-static bool horizon_hierarchy_quality(render_material_raster *raster, GameHRCShadowMode mode)
+static bool horizon_hierarchy_quality(render_material_raster *raster, HRCShadowMode mode)
 {
     render_radiance *approx = render_radiance_new(), *fine = render_radiance_new();
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = lighting.feedback = false;
     lighting.radiance_hysteresis = 1;
     lighting.surface_radius = 12;
@@ -1632,7 +1628,7 @@ static bool horizon_hierarchy_quality(render_material_raster *raster, GameHRCSha
     lighting.surface_bevel = lighting.specular = 0;
     lighting.surface_shadow_mode = mode;
     lighting.debug_view = 8;
-    GameHRC2D reference = lighting;
+    HRC2D reference = lighting;
     lighting.horizon_hierarchy = true;
     behavior_asset *plane = horizon_height_material("Hierarchy flat plane", 0, 0),
                    *ramp = horizon_height_material("Hierarchy shallow ramp", .1f, 0),
@@ -1744,7 +1740,7 @@ static bool surface_history(render_material_raster *raster)
     CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
     params.target.pixel_format = CF_PIXEL_FORMAT_R16G16B16A16_FLOAT;
     CF_Canvas canvas = cf_make_canvas(params);
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = lighting.feedback = false;
     lighting.fog = 0;
     lighting.surface_radius = 12;
@@ -1812,7 +1808,7 @@ static bool fluid_lighting(
                                   .height = SIDE,
                                   .crop_max_u = 1,
                                   .crop_max_v = 1 };
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = lighting.feedback = false;
     lighting.trace_levels = trace_levels;
     lighting.fog = 0;
@@ -2075,14 +2071,14 @@ static bool split_luminance_transport(render_material_raster *raster, CF_Canvas 
     render_material_entity blocked_scene[] = { emitter(), wall(), receiver };
     static CF_Pixel full[PIXELS], split[PIXELS], blocked[PIXELS];
     render_radiance *radiance = render_radiance_new();
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = false;
     lighting.fog = 0;
     bool ok = radiance && render_radiance_set_lighting(radiance, lighting) &&
               render_radiance_resize(radiance, SIDE, SIDE) &&
               solve(raster, radiance, canvas, open_scene, 2, SIDE, 8, full);
     for (int shift = 1; shift <= 2 && ok; shift++) {
-        lighting.color_resolution = (GameHRCColor)shift;
+        lighting.color_resolution = (HRCColor)shift;
         ok = render_radiance_set_lighting(radiance, lighting) &&
              render_radiance_get_settings(radiance).scale ==
                  1.0f / (float)(1 << shift) &&
@@ -2131,7 +2127,7 @@ static bool fractional_cells(render_material_raster *raster, CF_Canvas canvas)
     render_material_entity scene[] = { emitter(), haze, receiver };
     static CF_Pixel whole[PIXELS], fractional[PIXELS];
     render_radiance *radiance = render_radiance_new();
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.adaptive = false;
     lighting.feedback = false;
     lighting.fog = 0;
@@ -2419,32 +2415,32 @@ static bool view_grid()
 static bool normalized_lighting(render_radiance *radiance)
 {
     char notes[256];
-    GameHRC2D defaults = game_hrc2d_defaults();
-    GameHRC2D fitted = render_radiance_normalize(defaults, notes, sizeof notes);
+    HRC2D defaults = hrc2d_defaults();
+    HRC2D fitted = render_radiance_normalize(defaults, notes, sizeof notes);
     bool ok = !notes[0] && fitted.resolution == defaults.resolution;
 
-    GameHRC2D wild = defaults;
+    HRC2D wild = defaults;
     wild.resolution = 2;
     wild.min_resolution = 0;
-    wild.color_resolution = (GameHRCColor)7;
-    wild.gather_resolution = (GameHRCGather)-1;
+    wild.color_resolution = (HRCColor)7;
+    wild.gather_resolution = (HRCGather)-1;
     wild.trace_levels = 9;
     wild.bloom = 2;
     wild.exposure = NAN;
     fitted = render_radiance_normalize(wild, notes, sizeof notes);
     ok &= fitted.resolution == 1 && fitted.min_resolution == .1f &&
-          fitted.color_resolution == GAME_HRC_COLOR_EIGHTH &&
-          fitted.gather_resolution == GAME_HRC_GATHER_FULL &&
+          fitted.color_resolution == HRC_COLOR_EIGHTH &&
+          fitted.gather_resolution == HRC_GATHER_FULL &&
           fitted.trace_levels == 5 && fitted.bloom == 1 &&
           fitted.exposure == 0 && strstr(notes, "resolution 2 -> 1") &&
           strstr(notes, "trace_levels 9 -> 5") &&
           render_radiance_set_lighting(radiance, fitted);
 
     /* The coarsest color at the lowest resolution still has a grid. */
-    GameHRC2D coarse = defaults;
+    HRC2D coarse = defaults;
     coarse.adaptive = false;
     coarse.resolution = .1f;
-    coarse.color_resolution = GAME_HRC_COLOR_EIGHTH;
+    coarse.color_resolution = HRC_COLOR_EIGHTH;
     ok &= render_radiance_set_lighting(radiance, coarse) &&
           render_radiance_resize(radiance, SIDE, SIDE) &&
           render_radiance_set_lighting(radiance, defaults);
@@ -2488,12 +2484,11 @@ static bool lighting_transitions()
         ok = render_radiance_resize(radiance, sizes[size][0], sizes[size][1]);
         for (int i = 0; i < 8 * 4 * 2 * 2 && ok; i++) {
             int r = i / 16, color = i / 4 % 4, half = i / 2 % 2, adaptive = i % 2;
-            GameHRC2D lighting = game_hrc2d_defaults();
+            HRC2D lighting = hrc2d_defaults();
             lighting.adaptive = adaptive;
             lighting.resolution = resolutions[r];
-            lighting.color_resolution = (GameHRCColor)color;
-            lighting.gather_resolution = half ? GAME_HRC_GATHER_HALF
-                                              : GAME_HRC_GATHER_FULL;
+            lighting.color_resolution = (HRCColor)color;
+            lighting.gather_resolution = half ? HRC_GATHER_HALF : HRC_GATHER_FULL;
             ok = render_radiance_set_lighting(radiance, lighting) &&
                  lighting_view_fits(radiance);
             if (!ok) {
@@ -2522,7 +2517,7 @@ static void feed_lighting_time(render_radiance *radiance, double ms, int frames)
     }
 }
 
-static bool rung_is(render_radiance *radiance, int rung, float resolution, GameHRCColor color, bool gather_half)
+static bool rung_is(render_radiance *radiance, int rung, float resolution, HRCColor color, bool gather_half)
 {
     render_radiance_status status = render_radiance_get_status(radiance);
     return status.rung == rung && status.resolution == resolution &&
@@ -2535,11 +2530,11 @@ static bool rung_is(render_radiance *radiance, int rung, float resolution, GameH
  * measured cost of the step above fits, and restarts when the ladder changes. */
 static bool adaptive_ladder(render_radiance *radiance)
 {
-    const GameHRCColor half = GAME_HRC_COLOR_HALF, quarter = GAME_HRC_COLOR_QUARTER;
-    GameHRC2D lighting = game_hrc2d_defaults();
+    const HRCColor half = HRC_COLOR_HALF, quarter = HRC_COLOR_QUARTER;
+    HRC2D lighting = hrc2d_defaults();
     lighting.resolution = 1;
     lighting.color_resolution = half;
-    lighting.gather_resolution = GAME_HRC_GATHER_AUTO;
+    lighting.gather_resolution = HRC_GATHER_AUTO;
     lighting.min_resolution = .25f;
     lighting.target_fps = 125; /* 8 ms */
     bool ok = render_radiance_set_lighting(radiance, lighting) &&
@@ -2812,9 +2807,9 @@ int test_radiance()
         ok &= fluid_lighting(raster, radiance, canvas, levels);
     }
     ok &= surface_lighting(raster, radiance, canvas);
-    const GameHRCShadowMode shadow_modes[] = { GAME_HRC_SHADOW_REFERENCE,
-                                               GAME_HRC_SHADOW_HORIZON4,
-                                               GAME_HRC_SHADOW_HORIZON8 };
+    const HRCShadowMode shadow_modes[] = { HRC_SHADOW_REFERENCE,
+                                           HRC_SHADOW_HORIZON4,
+                                           HRC_SHADOW_HORIZON8 };
     for (int mode = 0; mode < 3; mode++) {
         ok &= directional_surface_colors(raster, shadow_modes[mode]);
         if (mode) {

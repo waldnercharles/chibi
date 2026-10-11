@@ -21,20 +21,20 @@ struct render_audio
     audio_input *input;
     voice voices[VOICES];
     int next;
-    const game_audio *source;
+    const audio *source;
     uint64_t generation, music_serial;
     CF_Audio *sounds; /* decoded on first play, by library index */
-    float volumes[GAME_AUDIO_BUSES];
+    float volumes[AUDIO_BUSES];
     bool music, paused; /* music: the mixer may hold a track of ours */
 };
 render_audio *render_audio_new()
 {
-    render_audio *audio = xcalloc(1, sizeof(render_audio));
-    audio->input = audio_input_new();
-    for (int i = 0; i < GAME_AUDIO_BUSES; i++) {
-        audio->volumes[i] = 1;
+    render_audio *renderer = xcalloc(1, sizeof(render_audio));
+    renderer->input = audio_input_new();
+    for (int i = 0; i < AUDIO_BUSES; i++) {
+        renderer->volumes[i] = 1;
     }
-    return audio;
+    return renderer;
 }
 static void release(voice *v)
 {
@@ -49,117 +49,117 @@ static void release(voice *v)
     }
     *v = (voice){ 0 };
 }
-static void set_volume(render_audio *audio, game_audio_bus bus, float volume)
+static void set_volume(render_audio *renderer, audio_bus bus, float volume)
 {
-    if (audio->volumes[bus] == volume) {
+    if (renderer->volumes[bus] == volume) {
         return;
     }
-    audio->volumes[bus] = volume;
+    renderer->volumes[bus] = volume;
     switch (bus) {
-        case GAME_AUDIO_MASTER: cf_audio_set_global_volume(volume); break;
-        case GAME_AUDIO_MUSIC: cf_music_set_volume(volume); break;
-        case GAME_AUDIO_SOUNDS: cf_audio_set_sound_volume(volume); break;
-        case GAME_AUDIO_BUSES: assert(false);
+        case AUDIO_MASTER: cf_audio_set_global_volume(volume); break;
+        case AUDIO_MUSIC: cf_music_set_volume(volume); break;
+        case AUDIO_SOUNDS: cf_audio_set_sound_volume(volume); break;
+        case AUDIO_BUSES: assert(false);
     }
 }
-static void set_paused(render_audio *audio, bool paused)
+static void set_paused(render_audio *renderer, bool paused)
 {
-    if (audio->paused != paused) {
-        audio->paused = paused;
+    if (renderer->paused != paused) {
+        renderer->paused = paused;
         cf_audio_set_pause(paused);
     }
 }
 /* Silences everything this host started and restores the mixer. */
-static void forget(render_audio *audio)
+static void forget(render_audio *renderer)
 {
-    audio_input_reset(audio->input);
+    audio_input_reset(renderer->input);
     for (int i = 0; i < VOICES; i++) {
-        release(&audio->voices[i]);
+        release(&renderer->voices[i]);
     }
-    if (audio->music) {
+    if (renderer->music) {
         cf_music_stop(0);
-        audio->music = false;
+        renderer->music = false;
     }
-    audio->music_serial = 0;
-    set_paused(audio, false);
+    renderer->music_serial = 0;
+    set_paused(renderer, false);
     /* The mixer defers freeing a source until its last voice stops. */
-    for (int i = 0; i < acount(audio->sounds); i++) {
-        if (audio->sounds[i].id) {
-            cf_audio_destroy(audio->sounds[i]);
+    for (int i = 0; i < acount(renderer->sounds); i++) {
+        if (renderer->sounds[i].id) {
+            cf_audio_destroy(renderer->sounds[i]);
         }
     }
-    afree(audio->sounds);
-    for (int i = 0; i < GAME_AUDIO_BUSES; i++) {
-        set_volume(audio, i, 1);
+    afree(renderer->sounds);
+    for (int i = 0; i < AUDIO_BUSES; i++) {
+        set_volume(renderer, i, 1);
     }
 }
-void render_audio_free(render_audio *audio)
+void render_audio_free(render_audio *renderer)
 {
-    forget(audio);
-    audio_input_free(audio->input);
-    free(audio);
+    forget(renderer);
+    audio_input_free(renderer->input);
+    free(renderer);
 }
-static CF_Audio decoded(render_audio *audio, const game_audio *queue, int index)
+static CF_Audio decoded(render_audio *renderer, const audio *queue, int index)
 {
-    assert(index < acount(audio->sounds));
-    CF_Audio *cached = &audio->sounds[index];
+    assert(index < acount(renderer->sounds));
+    CF_Audio *cached = &renderer->sounds[index];
     if (cached->id) {
         return *cached;
     }
     size_t length;
-    void *data = (void *)game_audio_sound(queue, index, &length);
-    switch (game_sound_format_of(data, length)) {
-        case GAME_SOUND_WAV:
+    void *data = (void *)audio_sound(queue, index, &length);
+    switch (sound_format_of(data, length)) {
+        case SOUND_WAV:
             *cached = cf_audio_load_wav_from_memory(data, (int)length);
             break;
-        case GAME_SOUND_OGG:
+        case SOUND_OGG:
             *cached = cf_audio_load_ogg_from_memory(data, (int)length);
             break;
-        case GAME_SOUND_INVALID: assert(false);
+        case SOUND_INVALID: assert(false);
     }
     return *cached;
 }
-static void follow_music(render_audio *audio, const game_audio *queue)
+static void follow_music(render_audio *renderer, const audio *queue)
 {
     float fade;
     uint64_t serial;
-    int track = game_audio_music(queue, &fade, &serial);
-    if (serial == audio->music_serial) {
+    int track = audio_music(queue, &fade, &serial);
+    if (serial == renderer->music_serial) {
         return;
     }
-    audio->music_serial = serial;
+    renderer->music_serial = serial;
     /* Cute leaves a track it replaces playing; a fading one stays ours until
      * forget cuts it. */
-    if (audio->music) {
+    if (renderer->music) {
         cf_music_stop(track < 0 ? fade : 0);
     }
     if (track < 0) {
         return;
     }
-    CF_Audio source = decoded(audio, queue, track);
+    CF_Audio source = decoded(renderer, queue, track);
     if (!source.id) {
         return;
     }
     cf_music_set_loop(true);
     cf_music_play(source, fade);
-    audio->music = true;
+    renderer->music = true;
 }
-static void play(render_audio *audio, const game_audio *queue, game_voice played)
+static void play(render_audio *renderer, const audio *queue, audio_voice played)
 {
     voice v = { .owned = played.sound < 0 };
     if (v.owned) {
         int size;
-        unsigned char *wav = game_tone_wav(played.tone, &size);
+        unsigned char *wav = tone_wav(played.tone, &size);
         v.audio = cf_audio_load_wav_from_memory(wav, size);
         free(wav);
     } else {
-        v.audio = decoded(audio, queue, played.sound);
+        v.audio = decoded(renderer, queue, played.sound);
     }
     if (!v.audio.id) {
         return;
     }
-    voice *slot = &audio->voices[audio->next];
-    audio->next = (audio->next + 1) % VOICES;
+    voice *slot = &renderer->voices[renderer->next];
+    renderer->next = (renderer->next + 1) % VOICES;
     release(slot);
     CF_SoundParams params = cf_sound_params_defaults();
     params.volume = played.volume;
@@ -168,59 +168,56 @@ static void play(render_audio *audio, const game_audio *queue, game_voice played
     *slot = v;
 }
 /* A new session, its end, a reset or a new sound starts over. */
-static void follow_source(render_audio *audio, const game_audio *queue)
+static void follow_source(render_audio *renderer, const audio *queue)
 {
-    if (audio->source == queue &&
-        (!queue || audio->generation == game_audio_generation(queue))) {
+    if (renderer->source == queue &&
+        (!queue || renderer->generation == audio_generation(queue))) {
         return;
     }
-    forget(audio);
-    audio->source = queue;
+    forget(renderer);
+    renderer->source = queue;
     if (!queue) {
         return;
     }
-    audio->generation = game_audio_generation(queue);
-    for (int i = 0; i < game_audio_sound_count(queue); i++) {
-        apush(audio->sounds, (CF_Audio){ 0 });
+    renderer->generation = audio_generation(queue);
+    for (int i = 0; i < audio_sound_count(queue); i++) {
+        apush(renderer->sounds, (CF_Audio){ 0 });
     }
 }
-void render_audio_update(render_audio *audio, game_audio *queue, bool playing)
+void render_audio_update(render_audio *renderer, audio *queue, bool playing)
 {
     /* Cute has no mixer when SDL audio fails to start. */
     if (!SDL_WasInit(SDL_INIT_AUDIO)) {
         if (queue) {
             uint64_t serial;
-            int source = game_audio_source(queue, &serial);
-            game_audio_set_analysis(
-                queue,
-                (game_audio_analysis){ .source = source, .status = GAME_AUDIO_UNAVAILABLE }
-            );
+            int source = audio_source(queue, &serial);
+            audio_set_analysis(queue, (audio_measurement){ .source = source, .status = AUDIO_UNAVAILABLE });
         }
         return;
     }
-    follow_source(audio, queue);
+    follow_source(renderer, queue);
     if (!queue) {
         return;
     }
     for (int i = 0; i < VOICES; i++) {
-        voice *v = &audio->voices[i];
+        voice *v = &renderer->voices[i];
         if (v->audio.id && !cf_sound_is_active(v->sound)) {
             release(v);
         }
     }
-    set_paused(audio, !playing);
-    audio_input_update(audio->input, queue, playing);
+    set_paused(renderer, !playing);
+    audio_input_update(renderer->input, queue, playing);
     if (!playing) {
         return;
     }
-    for (int i = 0; i < GAME_AUDIO_BUSES; i++) {
-        set_volume(audio, i, game_audio_volume(queue, i));
+    for (int i = 0; i < AUDIO_BUSES; i++) {
+        set_volume(renderer, i, audio_volume(queue, i));
     }
-    follow_music(audio, queue);
+    follow_music(renderer, queue);
     /* Only the newest voices fit; older ones would be cut at once. */
-    game_voice audible[VOICES], taken[VOICES];
+    audio_voice audible[VOICES], taken[VOICES];
     int total = 0;
-    for (int count; (count = game_audio_take(queue, taken, VOICES));) {
+    for (int count; (count = audio_take(queue, taken, VOICES));) {
         for (int i = 0; i < count; i++) {
             if (taken[i].volume > 0) {
                 audible[total++ % VOICES] = taken[i];
@@ -228,6 +225,6 @@ void render_audio_update(render_audio *audio, game_audio *queue, bool playing)
         }
     }
     for (int i = total > VOICES ? total - VOICES : 0; i < total; i++) {
-        play(audio, queue, audible[i % VOICES]);
+        play(renderer, queue, audible[i % VOICES]);
     }
 }

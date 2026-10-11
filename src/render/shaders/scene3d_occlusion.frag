@@ -5,7 +5,7 @@
 // slices' turn and the steps' offsets change over each 4x4 block of texels,
 // which the blur averages.
 // Reference: https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accurate_Indirect_Occlusion_NEW%20VERSION_COLOR.pdf
-// and XeGTAO, https://github.com/GameTechDev/XeGTAO
+// and XeGTAO, https://github.com/TechDev/XeGTAO
 #include "scene3d_occlusion.shd"
 
 const float PI = 3.141592653589793;

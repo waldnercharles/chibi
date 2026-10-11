@@ -83,7 +83,7 @@ void engine_viewport_get_pointer(const engine_viewport *viewport, engine_viewpor
 bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, float *y);
 /* The runtime whose audio plays while a session is shown. */
 void engine_viewport_set_runtime(engine_viewport *viewport, const engine *runtime);
-/* Shows `world`'s GameUi documents from content_root/ui over the scene
+/* Shows `world`'s Ui documents from content_root/ui over the scene
  * (render/ui.h). */
 void engine_viewport_set_ui(engine_viewport *viewport, const ui_world *world, const char *content_root);
 /* The host's frame time in seconds, which the documents' transitions follow,

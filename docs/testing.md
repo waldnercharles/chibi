@@ -25,7 +25,8 @@ more than documentation, and `make build` links `chibi`, `chibi-compile` and
 
 ```sh
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
-make test-native         # every CPU test_tools selector with checked-in inputs, one 60-second deadline
+make test-native         # every other CPU test_tools selector with checked-in inputs, one 60-second deadline
+make test-materials      # the material simulation selectors, one 60-second deadline
 make test-language-all   # every test_language selector, one 60-second deadline
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
@@ -52,7 +53,7 @@ render through a hidden window, which needs a display and a GPU driver the CI
 job does not set up, so they stay out of the group; run them with
 `python3 tools/test_policy.py tool <name>`.
 
-CI runs the build, both groups and `make test-tools` on Linux and macOS. On
+CI runs the build, the three groups and `make test-tools` on Linux and macOS. On
 Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
 one-minute step timeout (the test supervisor needs POSIX signals) and builds
 Studio against the installed SDK, without running tests. The Windows jobs are
@@ -458,7 +459,8 @@ make test-list
 | --- | --- |
 | `test`, `test-short` | Six pure C execution-policy unit cases under one deadline. |
 | `test-tools` | Complete C tooling and process integration group under one shared deadline. |
-| `test-native` | Every CPU `test_tools` selector with checked-in inputs under one shared deadline. |
+| `test-native` | Every other CPU `test_tools` selector with checked-in inputs under one shared deadline. |
+| `test-materials` | The CPU material simulation selectors under one shared deadline. |
 | `test-language-all` | Every `test_language` selector under one shared deadline. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |

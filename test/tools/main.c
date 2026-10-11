@@ -341,18 +341,18 @@ int main(int argc, char **argv)
         !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
         !package && !unit && !web_storage && !webgpu_staging &&
         !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics && !physics3d &&
-        !transforms && !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
-        !scene2d && !scene3d && !material_ramps && !radiance_surface &&
-        !radiance_horizons && !material_pixels && !box3d && !sky_files &&
-        !mesh_files && !model_import && !persistent_store && !whole_alias &&
-        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
-        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
-        !source_material && !source_presentation && !system_schedule &&
-        !source_systems && !validate_project && !expansion && !graph_document &&
-        !graph_presentation && !graph_functions && !vector_nodes &&
-        !material_render && !material) {
+        !native && !native_values && !native_catalog && !physics &&
+        !physics3d && !transforms && !render_resources && !interior_border &&
+        !viewport_resize && !sdf_visibility && !radiance && !radiance_depth &&
+        !material_sampling && !scene2d && !scene3d && !material_ramps &&
+        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
+        !sky_files && !mesh_files && !model_import && !persistent_store &&
+        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
+        !whole_select && !owned_tick && !parallel_tick && !source_features &&
+        !source_numeric && !source_material && !source_presentation &&
+        !system_schedule && !source_systems && !validate_project &&
+        !expansion && !graph_document && !graph_presentation &&
+        !graph_functions && !vector_nodes && !material_render && !material) {
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "

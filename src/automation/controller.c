@@ -6027,8 +6027,9 @@ static int format_component(const char *root, const char *name, bool check)
 /* A regular file, not a link: formatting rewrites it in place. */
 static bool regular_file(const char *folder, const char *name)
 {
-    char *path = xmalloc(strlen(folder) + strlen(name) + 2);
-    sprintf(path, "%s/%s", folder, name);
+    size_t size = strlen(folder) + strlen(name) + 2;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s", folder, name);
     struct stat info;
     bool regular = !lstat(path, &info) && S_ISREG(info.st_mode);
     free(path);
@@ -8792,8 +8793,6 @@ static int profile_scenario(
         status = launch_scenario(&context, error, sizeof error);
     }
     if (status == CHIBI_AUTOMATION_OK) {
-        engine_set_behavior_profiling(game_prototype_preview_runtime(context.preview), behavior_details);
-        game_source_profile_enable(game_prototype_preview_sources(context.preview), behavior_details);
         game_physics_set_profiling(
             game_prototype_preview_live(context.preview)->runtime->physics,
             true
@@ -8818,7 +8817,10 @@ static int profile_scenario(
         xalloc_stats_get(&previous_allocations);
         for (uint64_t frame = 0; frame < total_frames; frame++) {
             if (behavior_details && frame == warmup) {
-                game_source_profile_reset(game_prototype_preview_sources(context.preview));
+                game_source_profile_enable(
+                    game_prototype_preview_sources(context.preview),
+                    true
+                );
             }
             int step_status = CHIBI_AUTOMATION_OK;
             if (sampled_inputs) {

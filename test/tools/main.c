@@ -37,6 +37,7 @@ void test_tool_ecs_world();
 void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
 void test_tool_validate_project(const char *binary);
+void test_tool_controller(const char *binary);
 void test_tool_prototype_expansion(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
 void test_tool_prepared_runtime(const char *directory);
@@ -152,6 +153,7 @@ int main(int argc, char **argv)
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
+    bool controller = argc == 3 && !strcmp(argv[1], "--controller");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
     bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
     bool native = false, native_values = false, native_catalog = false,
@@ -239,19 +241,19 @@ int main(int argc, char **argv)
         !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
         !native && !native_values && !native_catalog && !physics && !physics3d &&
         !transforms && !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !scene3d && !material_ramps && !box3d &&
-        !sky_files && !mesh_files && !model_import && !persistent_store &&
-        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
-        !whole_select && !owned_tick && !parallel_tick && !source_features &&
-        !source_numeric && !source_material && !source_presentation &&
-        !system_schedule && !source_systems && !validate_project && !expansion) {
+        !sdf_visibility && !scene3d && !material_ramps && !box3d && !sky_files &&
+        !mesh_files && !model_import && !persistent_store && !whole_alias &&
+        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
+        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
+        !source_material && !source_presentation && !system_schedule &&
+        !source_systems && !validate_project && !expansion && !controller) {
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
             "--web-storage | "
             "--webgpu-staging | "
             "--ecs-query-benchmark | "
-            "--validate-project chibi_ctl | "
+            "--validate-project chibi_ctl | --controller chibi_ctl | "
             "--prototype-expansion chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
@@ -444,6 +446,8 @@ int main(int argc, char **argv)
         test_tool_prepared(argv[2], argv[0]);
     } else if (read) {
         test_tool_prepared_runtime(argv[2]);
+    } else if (controller) {
+        test_tool_controller(argv[2]);
     } else if (validate_project) {
         test_tool_validate_project(argv[2]);
     } else if (expansion) {

@@ -1,0 +1,9 @@
+version 21
+name "Tetris"
+content "content"
+start_scene "scenes/Start.kdl"
+application {
+    title "Tetris"
+    width 960
+    height 720
+}

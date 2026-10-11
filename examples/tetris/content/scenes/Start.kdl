@@ -1,0 +1,7 @@
+version 1
+name "Start"
+(array)entities {
+    - name="Camera" prototype="Camera"
+    - name="Well" prototype="Well"
+    - name="Board" prototype="Board"
+}

@@ -51,6 +51,67 @@ static bool same_component(const ecs_component_desc *a, const ecs_component_desc
            a->index == b->index &&
            ecs_layout_hash(a->type) == ecs_layout_hash(b->type);
 }
+typedef struct
+{
+    const ecs_component_desc *desc;
+    int object;
+} component_row;
+enum
+{
+    COMPONENT_ID,
+    COMPONENT_NAME,
+    COMPONENT_KEY
+};
+static int compare_id(const void *left, const void *right)
+{
+    const component_row *a = left, *b = right;
+    if (a->desc->id != b->desc->id) {
+        return a->desc->id < b->desc->id ? -1 : 1;
+    }
+    return (a->object > b->object) - (a->object < b->object);
+}
+static int compare_name(const void *left, const void *right)
+{
+    const component_row *a = left, *b = right;
+    int order = strcmp(a->desc->name, b->desc->name);
+    return order ? order : (a->object > b->object) - (a->object < b->object);
+}
+static int compare_key(const void *left, const void *right)
+{
+    const component_row *a = left, *b = right;
+    const char *x = a->desc->key, *y = b->desc->key;
+    int order = x && y ? strcmp(x, y) : (x != NULL) - (y != NULL);
+    return order ? order : (a->object > b->object) - (a->object < b->object);
+}
+static bool row_identity(const ecs_component_desc *a, const ecs_component_desc *b, int kind)
+{
+    switch (kind) {
+        case COMPONENT_ID: return a->id == b->id;
+        case COMPONENT_NAME: return same_name(a->name, b->name);
+        case COMPONENT_KEY:
+            return a->key && b->key && same_name(a->key, b->key);
+    }
+    assert(false);
+    return false;
+}
+/* Sorting each identity groups conflicts without scanning all prior objects. */
+static bool rows_valid(component_row *rows, int kind, char *error, size_t size)
+{
+    int first = 0;
+    for (int i = 1; i < acount(rows); i++) {
+        if (!row_identity(rows[first].desc, rows[i].desc, kind)) {
+            first = i;
+            continue;
+        }
+        if (rows[i - 1].object == rows[i].object) {
+            return fail(error, size, "prepared scene object component is duplicated");
+        }
+        if (!same_component(rows[first].desc, rows[i].desc)) {
+            return fail(error, size, "prepared scene component identity has conflicting layouts");
+        }
+    }
+    return true;
+}
 static bool link_valid(const game_scene_spec *spec, game_scene_link link)
 {
     if (link.object < 0 || link.object >= spec->object_count ||
@@ -77,6 +138,7 @@ game_scene *game_scene_prepare(const game_scene_spec *spec, char *error, size_t 
         fail(error, size, "invalid prepared scene metadata");
         return NULL;
     }
+    component_row *rows = NULL;
     game_scene *scene = xcalloc(1, sizeof *scene);
     scene->references = 1;
     scene->spec = *spec;
@@ -130,28 +192,6 @@ game_scene *game_scene_prepare(const game_scene_spec *spec, char *error, size_t 
                 fail(error, size, "prepared scene component layout hash differs");
                 goto failed;
             }
-            for (int object = 0; object < i; object++) {
-                for (int field = 0; field < objects[object].component_count; field++) {
-                    const ecs_component_desc
-                        *previous = objects[object].components[field].desc;
-                    if ((previous->id == desc->id ||
-                         (previous->key && desc->key &&
-                          same_name(previous->key, desc->key)) ||
-                         same_name(previous->name, desc->name)) &&
-                        !same_component(previous, desc)) {
-                        fail(error, size, "prepared scene component identity has conflicting layouts");
-                        goto failed;
-                    }
-                }
-            }
-            for (int k = 0; k < j; k++) {
-                const ecs_component_desc *previous = components[k].desc;
-                if (previous->id == desc->id || same_name(previous->name, desc->name) ||
-                    (previous->key && desc->key && same_name(previous->key, desc->key))) {
-                    fail(error, size, "prepared scene object component is duplicated");
-                    goto failed;
-                }
-            }
             ecs_component_desc *copy = arena_alloc(&scene->storage, sizeof *copy);
             *copy = *desc;
             copy->name = own(&scene->storage, desc->name);
@@ -164,6 +204,7 @@ game_scene *game_scene_prepare(const game_scene_spec *spec, char *error, size_t 
                 goto failed;
             }
             components[j] = (game_scene_component){ copy, data };
+            apush(rows, ((component_row){ copy, i }));
         }
         const char **behaviors = arena_alloc(
             &scene->storage,
@@ -184,6 +225,21 @@ game_scene *game_scene_prepare(const game_scene_spec *spec, char *error, size_t 
             behaviors[j] = own(&scene->storage, input->behaviors[j]);
         }
     }
+    if (acount(rows) > 1) {
+        qsort(rows, (size_t)acount(rows), sizeof *rows, compare_id);
+        if (!rows_valid(rows, COMPONENT_ID, error, size)) {
+            goto failed;
+        }
+        qsort(rows, (size_t)acount(rows), sizeof *rows, compare_name);
+        if (!rows_valid(rows, COMPONENT_NAME, error, size)) {
+            goto failed;
+        }
+        qsort(rows, (size_t)acount(rows), sizeof *rows, compare_key);
+        if (!rows_valid(rows, COMPONENT_KEY, error, size)) {
+            goto failed;
+        }
+    }
+    afree(rows);
     if (spec->link_count < 0 || (spec->link_count && !spec->links)) {
         fail(error, size, "invalid prepared scene links");
         goto failed;
@@ -199,6 +255,7 @@ game_scene *game_scene_prepare(const game_scene_spec *spec, char *error, size_t 
     }
     return scene;
 failed:
+    afree(rows);
     game_scene_free(scene);
     return NULL;
 }

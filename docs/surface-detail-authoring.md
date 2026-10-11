@@ -68,6 +68,13 @@ A common UV scale leaves normal strength unchanged; unequal scales and mirrored
 UVs affect the corresponding tangent components. Fully collapsed UVs preserve
 the base normal. A rank-one mapping can still supply one tangent component.
 
+`OpenGL Tangent (+Y)` uses a unit orthogonal frame instead: texture density
+and shear do not change normal strength. glTF imports select this mode. They
+transform the Image Texture UV, keep the Normal Map UV at its mesh default,
+and preserve supplied tangents or generate missing ones from the transformed
+normal coordinates. Reimport an older model to get this material mode, or
+select it on a hand-made normal map intended for a unit tangent frame.
+
 Normal image ancestors must explicitly select **Linear data**. Image Texture
 and Triplanar Texture share the existing image variant/settings contract.
 Height data should also use Linear data, as the examples do. Color photographs

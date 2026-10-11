@@ -1,23 +1,35 @@
 #include "authoring/shader_prepare.h"
+#include "authoring/visual_prepare.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
 #include "graph/shader/shader_graph.h"
 #include "render/shader_catalog.h"
+#include "render/shader_publish.h"
 #include "render/shader_values.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static behavior_asset *asset;
+static game_player_asset *visual_assets;
+static game_player_resource_host resource_host;
+static void *resource_pending;
 static unsigned char *payload;
 static const registry_pack **previous_packs;
 static bool registry_changed;
 static void cleanup()
 {
+    if (resource_pending) {
+        resource_host.discard(resource_host.context, resource_pending);
+        resource_pending = NULL;
+    }
+    authoring_visual_prepared_free(visual_assets);
+    visual_assets = NULL;
     free(payload);
     payload = NULL;
     behavior_asset_free(asset);
@@ -110,6 +122,59 @@ TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
     return true;
 }
 
+TEST_CASE(model_parameters_match_reconstructed_prepared_generation)
+{
+    for (int i = 0; i < registry_pack_count(); i++) {
+        apush(previous_packs, registry_pack_at(i));
+    }
+    const registry_pack *packs[] = { &MODEL_PACK };
+    registry_set_packs(packs, 1);
+    registry_changed = true;
+    asset = behavior_asset_new("Prepared model parameters");
+    asset->domain = BEHAVIOR_DOMAIN_MODEL;
+    graph *g = asset->graph;
+    node *radius = graph_add_node(g, &NODE_ModelParameter);
+    REQUIRE(!graph_set_node_reference(g, radius, 0, "Radius"));
+    const float values[] = { 2, 1, 4 };
+    for (int i = 0; i < 3; i++) {
+        pin_value value = { .type = PIN_F32, .f = values[i] };
+        REQUIRE(!graph_set_pin_default(g, radius, false, i, &value));
+    }
+    node *sphere = graph_add_node(g, &NODE_ModelSphere);
+    REQUIRE(!graph_connect_data(g, radius, 0, sphere, 0));
+    REQUIRE(!graph_connect_data(g, sphere, 0, model_graph_add_output(g), 0));
+    shader_error diagnostic = { 0 };
+    const behavior_asset *models[] = { asset };
+    REQUIRE(render_shader_models_upsert(models, 1, &diagnostic));
+    int shader = render_shader_find(asset->name);
+    REQUIRE(shader);
+    REQUIRE(render_shader_parameters_validate(shader, "Radius 3\n", &diagnostic));
+    char error[512];
+    REQUIRE(authoring_visual_prepare(NULL, 0, &visual_assets, error, sizeof error));
+    REQUIRE(acount(visual_assets) == 4);
+    size_t bytes = 0;
+    for (int i = 0; i < acount(visual_assets); i++) {
+        bytes += visual_assets[i].length;
+    }
+    REQUIRE(bytes < 65536);
+    resource_host = render_prepared_resources(NULL);
+    size_t remaining = 2 * 1024 * 1024;
+    resource_pending = resource_host.stage(
+        resource_host.context,
+        visual_assets,
+        acount(visual_assets),
+        &remaining,
+        error,
+        sizeof error
+    );
+    if (!resource_pending) {
+        printf("Prepared model parameter stage: %s\n", error);
+    }
+    REQUIRE(resource_pending);
+    REQUIRE(remaining < 2 * 1024 * 1024);
+    return true;
+}
+
 type_catalog_pack test_shader_parameters_types()
 {
     return (type_catalog_pack){ .types = SHADER_PACK.types,
@@ -122,4 +187,5 @@ void test_shader_parameters_prepared()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(shader_parameters_persist_and_reject_stale_generations);
+    RUN_TEST_CASE(model_parameters_match_reconstructed_prepared_generation);
 }

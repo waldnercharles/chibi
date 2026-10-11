@@ -1,0 +1,12 @@
+name "MovingPlatformsView"
+components {
+    GAME.GameCamera height=360.0 width=640.0
+    GAME.GameDirectionalLight {
+        color 0xffffffff
+        direction x=0.45 y=-0.85 z=-0.4
+        intensity 2.8
+        shadows #true
+    }
+    GAME.GameEnvironment ambient_ground=0x303840ff ambient_intensity=1.0 ambient_sky=0x8090a0ff
+    (object)GAME.GameTransform
+}

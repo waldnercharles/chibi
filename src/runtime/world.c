@@ -69,7 +69,7 @@ static bool valid_controls(uint64_t controls)
     _Static_assert(GAME_CONTROL_COUNT < 64, "control bitset");
     const uint64_t all = ((UINT64_C(1) << GAME_CONTROL_COUNT) - 1) &
                          ~(UINT64_C(1) << GAME_CONTROL_NONE);
-    return controls && !(controls & ~all);
+    return !(controls & ~all);
 }
 bool game_world_actions_valid(const input_action *actions, int count)
 {
@@ -78,7 +78,11 @@ bool game_world_actions_valid(const input_action *actions, int count)
     }
     for (int i = 0; i < count; i++) {
         const char *name = actions[i].name;
-        if (!name || !name[0] || !valid_controls(actions[i].controls)) {
+        uint32_t all_buttons = ((UINT32_C(1) << GAME_PAD_COUNT) - 1) & ~UINT32_C(1);
+        if (!name || !name[0] || !valid_controls(actions[i].controls) ||
+            (!actions[i].controls && !actions[i].buttons) ||
+            actions[i].controller < 0 || actions[i].controller >= INPUT_CONTROLLER_MAX ||
+            (actions[i].buttons & ~all_buttons)) {
             return false;
         }
         for (int j = 0; j < i; j++) {

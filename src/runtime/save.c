@@ -7,6 +7,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -96,6 +97,37 @@ const char *game_save_get(const game_save *save, const char *key)
 {
     int index = find_entry(save, key);
     return index < 0 ? NULL : save->entries[index].text;
+}
+
+bool game_save_get_number(const game_save *save, const char *key, double *number)
+{
+    assert(number);
+    const char *text = game_save_get(save, key);
+    if (!text || !text[0]) {
+        return false;
+    }
+    yyjson_val value;
+    const char *end = yyjson_read_number(text, &value, 0, NULL, NULL);
+    if (!end || *end || !isfinite(yyjson_get_num(&value))) {
+        return false;
+    }
+    *number = yyjson_get_num(&value);
+    return true;
+}
+
+bool game_save_set_number(game_save *save, const char *key, double number)
+{
+    if (!isfinite(number)) {
+        return fail(save, "Saved numbers must be finite");
+    }
+    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+    yyjson_mut_doc_set_root(doc, yyjson_mut_real(doc, number));
+    char *text = yyjson_mut_write(doc, 0, NULL);
+    yyjson_mut_doc_free(doc);
+    assert(text);
+    bool valid = game_save_set(save, key, text);
+    free(text);
+    return valid;
 }
 
 bool game_save_set(game_save *save, const char *key, const char *text)
@@ -250,6 +282,38 @@ bool game_save_open(game_save *save, const char *path)
         save->path = xstrdup(path);
     }
     return loaded;
+}
+
+bool game_save_open_project(game_save *save, const char *project_name, const char *directory, const char *override)
+{
+    if (override) {
+        return game_save_open(save, override);
+    }
+    if (!project_name || !project_name[0]) {
+        return fail(save, "Save project name is empty");
+    }
+    /* FNV-1a keeps names, including path separators and Unicode, in one bounded
+     * filesystem component. The same manifest name keeps its key on export. */
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (const unsigned char *p = (const unsigned char *)project_name; *p; p++) {
+        hash = (hash ^ *p) * UINT64_C(1099511628211);
+    }
+    char key[48];
+    snprintf(key, sizeof key, "chibi-save-%016llx.json", (unsigned long long)hash);
+#ifdef __EMSCRIPTEN__
+    (void)directory;
+    return game_save_open(save, key);
+#else
+    if (!directory || !directory[0]) {
+        return fail(save, "Save storage directory is unavailable");
+    }
+    size_t size = strlen(directory) + sizeof key + 1;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s", directory, key);
+    bool opened = game_save_open(save, path);
+    free(path);
+    return opened;
+#endif
 }
 
 static bool write_storage(game_save *save, const char *json)

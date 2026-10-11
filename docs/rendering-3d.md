@@ -473,7 +473,8 @@ with children yet, and nothing reads the nodes until skinning and animation do.
 
 - **Frames**: UVs copy as they are, since glTF and Chibi both put (0, 0) at an
   image's top left. Tangents take the engine's frame, whose bitangent points
-  down the image, toward +v: the import generates them as the engine does,
+  down the image, toward +v: the import generates them from the normal
+  texture's transformed UVs when that texture is present,
   and negates the w of a primitive's authored tangents, since glTF's
   bitangent points up the image. A primitive without normals gets each
   triangle's flat normal. A node that mirrors, by the signs of its and its
@@ -495,19 +496,32 @@ with children yet, and nothing reads the nodes until skinning and animation do.
   images sample as sRGB color and the others as linear data. Metallic reads
   the blue channel of the metallic-roughness image and roughness its green;
   occlusion is `mix(1, red, strength)`; normal images use the OpenGL
-  convention, whose green tilts up the image. Alpha Mode and Alpha Cutoff carry
-  over, and `KHR_materials_unlit` sets Unlit. An unlit material keeps only its
-  base color and its image, since glTF makes its other properties fallbacks
+  tangent convention, whose green tilts up the image and whose unit frame
+  keeps UV density from changing the normal direction. Alpha Mode and Alpha
+  Cutoff carry over, and `KHR_materials_unlit` sets Unlit. An unlit material
+  keeps only its base color and its image, since glTF makes its other properties fallbacks
   for viewers that light it. An image has one filter, its sampler's
   `magFilter`: `NEAREST` samples Nearest and anything else Bilinear, with a
   warning when its `minFilter` differs. Engine images have no mip levels, so
   a mipmapped `minFilter` reads the full image, as every image does, without
   a warning. A sampler that clamps both axes samples Clamp; every other wrap
   repeats, with a warning.
+- **Texture transforms**: each of the five texture slots independently applies
+  `KHR_texture_transform`: scale, counterclockwise rotation in radians about
+  the UV origin, then offset. The material writes a Mapping node only for a
+  nonidentity transform, converting radians to the node's degrees. Mesh UVs
+  stay unchanged so one slot cannot move another slot's image. An extension's
+  `texCoord` overrides its textureInfo value, but the effective set must be
+  `TEXCOORD_0`. Zero and negative scales are valid. A supplied tangent frame
+  stays authoritative even when the normal lookup is transformed; missing
+  tangents use the transformed normal coordinates. This follows the
+  [extension's transform order](https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_texture_transform)
+  and the [Khronos renderer's tangent handling](https://github.com/KhronosGroup/glTF-Sample-Renderer/blob/main/source/Renderer/shaders/material_info.glsl).
 - **Refused**: a required extension other than `KHR_materials_unlit`,
-  `KHR_materials_emissive_strength` and `KHR_texture_transform`; a texture
-  transform other than the identity; a texture that reads a UV set other than
-  `TEXCOORD_0`; an image that is not a PNG or JPEG of 1 to 2048 pixels a side;
+  `KHR_materials_emissive_strength` and `KHR_texture_transform`; malformed or
+  nonfinite texture transforms, or ones that overflow on used UVs; a texture
+  that reads a UV set other than `TEXCOORD_0`; an image that is not a PNG or
+  JPEG of 1 to 2048 pixels a side;
   a material factor beyond float range; primitives that are not triangles; a
   buffer or image named by an absolute path or a scheme other than `data:`, or
   one that `..` or a symbolic link leads outside the model's folder; a model
@@ -713,6 +727,15 @@ preparation and refusals the same way, and
 `python3 tools/test_policy.py tool model-import` checks the files a glTF
 import writes, its names, refusals, warnings, left-out vertices and tangent
 frames.
+
+For texture transforms, build `test_tools` with `make build BUILD_TARGET=test_tools`
+and run `make agent-gpu-test AGENT_SELECTOR=--texture-transform`. Pass the same
+`BUILD_DIR` to both commands when using another build folder. This focused
+check draws 21 frames in one hidden 64 x 64 app. It compares each PBR texture
+slot with an equivalent baked-UV model and an unchanged negative control,
+including generated, mirrored and supplied normal tangents. `--model-import`
+also checks transform defaults, malformed fields and overflow, UV-set overrides,
+transactional refusal, glTF/GLB parity and the prepared normal-frame mode.
 
 `test/fixtures/scene3d` is the manual preview scene and enables every feature
 above.

@@ -75,6 +75,11 @@
     STUDIO_PORT(X, "Object", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE) \
     STUDIO_PORT(X, "Type", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)   \
     STUDIO_PORT(X, "Payload", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)
+#define STUDIO_MOVE_IN_PORTS(X)                                                                    \
+    STUDIO_PORT(X, "Exec", NATIVE_PARAMETER_EXEC, PIN_FLOW, NULL, PIN_CONTAINER_SINGLE)            \
+    STUDIO_PORT(X, "Object", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE) \
+    STUDIO_PORT(X, "Target", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE) \
+    STUDIO_PORT(X, "Zone", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)
 #define STUDIO_FILTER_IN_PORTS(X)                                                       \
     STUDIO_PORT(X, "Exec", NATIVE_PARAMETER_EXEC, PIN_FLOW, NULL, PIN_CONTAINER_SINGLE) \
     STUDIO_PORT(X, "Filter", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)
@@ -130,6 +135,9 @@
 #define STUDIO_DROP_ON_OBJECT_NAME "Drop on Object"
 #define STUDIO_DROP_ON_OBJECT_INPUTS(X) STUDIO_DROP_IN_PORTS(X)
 #define STUDIO_DROP_ON_OBJECT_OUTPUTS(X) STUDIO_THEN_OUT_PORTS(X)
+#define STUDIO_MOVE_OBJECTS_NAME "Move Objects"
+#define STUDIO_MOVE_OBJECTS_INPUTS(X) STUDIO_MOVE_IN_PORTS(X)
+#define STUDIO_MOVE_OBJECTS_OUTPUTS(X) STUDIO_THEN_OUT_PORTS(X)
 #define STUDIO_SET_FILTER_NAME "Set Object Filter"
 #define STUDIO_SET_FILTER_INPUTS(X) STUDIO_FILTER_IN_PORTS(X)
 #define STUDIO_SET_FILTER_OUTPUTS(X) STUDIO_THEN_OUT_PORTS(X)
@@ -269,6 +277,14 @@
       STUDIO_NODE_DROP_ON_OBJECT,                                              \
       STUDIO_DROP_ON_OBJECT_NAME,                                              \
       "drop_on_object",                                                        \
+      SCRIPT_CAPABILITY_ACTION,                                                \
+      false,                                                                   \
+      true,                                                                    \
+      0)                                                                       \
+    X(MOVE_OBJECTS,                                                            \
+      STUDIO_NODE_MOVE_OBJECTS,                                                \
+      STUDIO_MOVE_OBJECTS_NAME,                                                \
+      "move_objects",                                                          \
       SCRIPT_CAPABILITY_ACTION,                                                \
       false,                                                                   \
       true,                                                                    \

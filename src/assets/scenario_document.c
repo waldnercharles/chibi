@@ -56,6 +56,34 @@ static bool read_controls(av_value *value, uint64_t *out)
     return true;
 }
 
+static bool read_controllers(av_value *value, input_keyframe *out)
+{
+    if (!av_is_arr(value) || av_arr_size(value) > INPUT_CONTROLLER_MAX) {
+        return false;
+    }
+    for (size_t i = 0; i < av_arr_size(value); i++) {
+        av_value *state = av_arr_get(value, i);
+        av_value *connected = av_obj_get(state, "connected");
+        av_value *buttons = av_obj_get(state, "buttons");
+        if (!av_is_obj(state) || av_obj_size(state) != 1 + (buttons != NULL) ||
+            !av_is_bool(connected) || (buttons && !av_is_arr(buttons))) {
+            return false;
+        }
+        out->controllers[i].connected = av_get_bool(connected);
+        for (size_t j = 0; buttons && j < av_arr_size(buttons); j++) {
+            av_value *label = av_arr_get(buttons, j);
+            int button;
+            if (!out->controllers[i].connected || !av_is_str(label) ||
+                !type_catalog_enum_value("GamePadControl", av_get_str(label), &button) ||
+                button <= GAME_PAD_NONE || button >= GAME_PAD_COUNT) {
+                return false;
+            }
+            out->controllers[i].buttons |= UINT32_C(1) << button;
+        }
+    }
+    return true;
+}
+
 static bool read_flag(av_value *value, bool *out)
 {
     *out = av_get_bool(value);
@@ -78,6 +106,9 @@ static bool read_field(const char *name, av_value *value, input_keyframe *out)
     }
     if (!strcmp(name, "firing")) {
         return read_flag(value, &out->firing);
+    }
+    if (!strcmp(name, "controllers")) {
+        return read_controllers(value, out);
     }
     return !strcmp(name, "controls") && read_controls(value, &out->controls);
 }
@@ -203,6 +234,26 @@ static void write_key(av_doc *doc, av_value *keys, const input_keyframe *key)
     }
     if (key->firing) {
         av_obj_add_bool(doc, value, "firing", true);
+    }
+    int last = INPUT_CONTROLLER_MAX;
+    while (last && !key->controllers[last - 1].connected) {
+        last--;
+    }
+    if (last) {
+        av_value *controllers = av_obj_add_arr(doc, value, "controllers");
+        for (int i = 0; i < last; i++) {
+            av_value *state = av_arr_add_obj(doc, controllers);
+            av_obj_add_bool(doc, state, "connected", key->controllers[i].connected);
+            if (!key->controllers[i].buttons) {
+                continue;
+            }
+            av_value *buttons = av_obj_add_arr(doc, state, "buttons");
+            for (int button = GAME_PAD_NONE + 1; button < GAME_PAD_COUNT; button++) {
+                if (key->controllers[i].buttons & (UINT32_C(1) << button)) {
+                    av_arr_add_str(doc, buttons, type_catalog_enum_label("GamePadControl", button));
+                }
+            }
+        }
     }
     if (!key->controls) {
         return;

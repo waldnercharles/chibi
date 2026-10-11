@@ -295,6 +295,23 @@ static bool prepare_graphs(resource_generation *g, size_t *budget, shader_error 
             return false;
         }
         size_t bytes = strlen(a->glsl) + 1;
+        if (a->is_model) {
+            snprintf(prefix, sizeof prefix, "sg_asset_%d_hit", i + 1);
+            char *hit = shader_graph_glsl_named(&a->model.hit_shader, prefix, error);
+            if (!hit) {
+                return false;
+            }
+            size_t hit_bytes = strlen(hit);
+            if (hit_bytes > *budget || bytes > *budget - hit_bytes) {
+                free(hit);
+                snprintf(error->message, sizeof error->message, "Prepared renderer ownership budget exceeded");
+                return false;
+            }
+            a->glsl = xrealloc(a->glsl, bytes + hit_bytes);
+            memcpy(a->glsl + bytes - 1, hit, hit_bytes + 1);
+            bytes += hit_bytes;
+            free(hit);
+        }
         if (bytes > *budget) {
             snprintf(error->message, sizeof error->message, "Prepared renderer ownership budget exceeded");
             return false;

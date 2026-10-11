@@ -12,6 +12,11 @@ CHIBI_GPU_SELECTOR("--player-installed-space-cadet-vm")
 CHIBI_GPU_SELECTOR("--player-installed-space-cadet-sljit")
 CHIBI_GPU_SELECTOR("--studio-source-edit")
 CHIBI_GPU_SELECTOR("--studio-graph-visibility")
+CHIBI_GPU_SELECTOR("--studio-scene-move")
+CHIBI_GPU_SELECTOR("--studio-outliner-move")
+CHIBI_GPU_SELECTOR("--studio-graph-pointer")
+CHIBI_GPU_SELECTOR("--studio-asset-pointer")
+CHIBI_GPU_SELECTOR("--studio-debugger-source-history")
 /* Cute's interior border on two shapes in a hidden 64x64 app, through the
  * instanced and tiled draw paths, with readback. */
 CHIBI_GPU_SELECTOR("--interior-border")
@@ -56,3 +61,12 @@ CHIBI_GPU_SELECTOR("--radiance-horizons8")
 /* The material raster's graph materials and fluids, the light HRC gives
  * fluids, and crystal reflections in a hidden 128x128 app, with readback. */
 CHIBI_GPU_SELECTOR("--material-pixels")
+/* One hidden 64x64 app, seven glTF transform/control comparisons, 21 frames. */
+CHIBI_GPU_SELECTOR("--texture-transform")
+
+/* Pinned installed examples: one start scene, four 320x180 frames each. */
+CHIBI_GPU_SELECTOR("--installed-example-local_mesh_sampled")
+CHIBI_GPU_SELECTOR("--installed-example-hrc_lab")
+CHIBI_GPU_SELECTOR("--installed-example-modeling_lab")
+CHIBI_GPU_SELECTOR("--installed-example-sdf_lab")
+CHIBI_GPU_SELECTOR("--installed-example-suzanne_sampled")

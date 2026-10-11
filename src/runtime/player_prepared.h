@@ -1,6 +1,6 @@
 #pragma once
 
-#define GAME_PLAYER_PREPARED_VERSION 11
+#define GAME_PLAYER_PREPARED_VERSION 12
 #include "runtime/player.h"
 
 #define GAME_PLAYER_PREPARED_MAX_BYTES (64 * 1024 * 1024)
@@ -10,6 +10,7 @@
  * unset; the icon is a PNG path relative to the host's resource root. */
 typedef struct
 {
+    char *project_name; /* Stable save identity; independent of display title. */
     char *title;
     int width, height;
     bool fullscreen;

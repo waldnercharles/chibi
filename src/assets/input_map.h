@@ -11,6 +11,11 @@
  *         (array)sources "Mouse Left" "Pad Right Trigger"
  *         firing #true
  *     }
+ *     P2Left {
+ *         (array)sources "J"
+ *         controller 1
+ *         (array)buttons "Dpad Left" "Left Stick Left"
+ *     }
  *     Jump {
  *         (array)sources "Space"
  *     }

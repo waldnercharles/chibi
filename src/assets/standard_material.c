@@ -4,6 +4,7 @@
 #include "graph/shader/shader_graph.h"
 
 #include <assert.h>
+#include <math.h>
 #include <string.h>
 
 enum
@@ -108,6 +109,26 @@ static node *texture(graph *g, const standard_texture *source, shader_image_colo
         SHADER_IMAGE_INPUT_FILTER,
         (pin_value){ .type = PIN_I32, .i = source->filter });
     set(g, n, SHADER_IMAGE_INPUT_WRAP, (pin_value){ .type = PIN_I32, .i = source->wrap });
+    if (source->offset[0] || source->offset[1] || source->scale[0] != 1 ||
+        source->scale[1] != 1 || source->rotation) {
+        node *mapping = add(g, "Shader Mapping");
+        float offset[2] = { source->offset[0], source->offset[1] };
+        float scale[2] = { source->scale[0], source->scale[1] };
+        /* Mapping uses degrees. Reduce via sine/cosine before conversion so
+         * even a finite angle near FLT_MAX stays finite and keeps its phase. */
+        float degrees = atan2f(sinf(source->rotation), cosf(source->rotation)) *
+                        57.29577951308232f;
+        set(g,
+            mapping,
+            1,
+            (pin_value){ .type = PIN_STRUCT, .type_name = "ShaderVec2", .ptr = offset });
+        set(g, mapping, 2, (pin_value){ .type = PIN_F32, .f = degrees });
+        set(g,
+            mapping,
+            3,
+            (pin_value){ .type = PIN_STRUCT, .type_name = "ShaderVec2", .ptr = scale });
+        wire(g, mapping, 0, n, SHADER_IMAGE_INPUT_UV);
+    }
     return n;
 }
 
@@ -144,7 +165,10 @@ static void normal(graph *g, node *output, const standard_material *material)
         return;
     }
     node *map = add(g, "Shader Normal Map");
-    set(g, map, NORMAL_MAP_CONVENTION, (pin_value){ .type = PIN_I32, .i = SHADER_NORMAL_OPENGL });
+    set(g,
+        map,
+        NORMAL_MAP_CONVENTION,
+        (pin_value){ .type = PIN_I32, .i = SHADER_NORMAL_OPENGL_TANGENT });
     wire(g, image, IMAGE_COLOR, map, NORMAL_MAP_COLOR);
     wire(g, scalar(g, STANDARD_NORMAL_SCALE, material->normal_scale), 0, map, NORMAL_MAP_STRENGTH);
     wire(g, map, 0, output, SHADER_SURFACE_NORMAL);

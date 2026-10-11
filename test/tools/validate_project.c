@@ -1428,6 +1428,78 @@ TEST_CASE(scenarios_hold_input_actions)
     return true;
 }
 
+TEST_CASE(scenarios_hold_controller_slots)
+{
+    const char *folders[] = { "game/content/prototypes", "game/content/behaviors" };
+    for (int i = 0; i < 2; i++) {
+        char directory[256];
+        path(directory, sizeof directory, folders[i]);
+        REQUIRE(mkdir(directory, 0755) == 0 || errno == EEXIST);
+    }
+    write_file(
+        "game/content/input.kdl",
+        "Left {\n (array)sources \"Z\"\n controller 0\n"
+        " (array)buttons \"Dpad Left\"\n}\n"
+        "Confirm {\n controller 1\n (array)buttons \"A\"\n}\n"
+    );
+    write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n (object)GAME.GameTransform\n}\n");
+    write_file(
+        "game/content/behaviors/Controls.chibi",
+        "behavior Controls {\n on Tick {\n x := 0\n"
+        " if input.Left.held { x += 1 }\n"
+        " if input.Confirm.held { x += 10 }\n"
+        " if controller_connected(0) { x += 100 }\n"
+        " if controller_connected(1) { x += 1000 }\n"
+        " self.Transform = vec2(x, 0)\n }\n}\n"
+    );
+    write_file(
+        "game/content/scenes/Start.kdl",
+        "version 1\nname \"Start\"\n(array)entities {\n"
+        " - name=\"Dot\" prototype=\"Dot\" {\n"
+        " (array)behaviors \"Controls\"\n }\n}\n"
+    );
+    /* A sparse sample holds both devices across fixed steps. */
+    const char *request = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
+                          "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":3,"
+                          "\"input_timeline\":[{\"frame\":0,\"input\":{"
+                          "\"controllers\":["
+                          "{\"connected\":true,\"buttons\":[\"Dpad Left\"]},"
+                          "{\"connected\":true,\"buttons\":[1]}]}}]}";
+    REQUIRE(ctl(true, request) == 0 && snapshot_x() == 1111);
+    /* All slots omitted from an explicit array disconnect; keyboard persists
+     * when only controllers change, then releases while slot one rejoins. */
+    request = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
+              "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":3,"
+              "\"input_timeline\":["
+              "{\"frame\":0,\"input\":{\"controls\":[40],\"controllers\":[]}},"
+              "{\"frame\":1,\"input\":{\"controllers\":["
+              "{\"connected\":false},{\"connected\":true,\"buttons\":[\"Dpad "
+              "Left\"]}]}},"
+              "{\"frame\":2,\"input\":{\"controls\":[],\"controllers\":["
+              "{\"connected\":false},{\"connected\":true,\"buttons\":[\"A\"]}]}"
+              "}]}";
+    REQUIRE(ctl(true, request) == 0 && snapshot_x() == 1010);
+    const char *invalid[] = {
+        "[{\"connected\":false,\"buttons\":[\"A\"]}]",
+        "[{\"connected\":true,\"buttons\":[\"Count\"]}]",
+        ("[{\"connected\":false},{\"connected\":false},{\"connected\":false},"
+         "{\"connected\":false},{\"connected\":false}]"),
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        char bad[1024];
+        snprintf(
+            bad,
+            sizeof bad,
+            "{\"contract\":1,\"operation\":\"runtime_snapshot\","
+            "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1,"
+            "\"inputs\":[{\"controllers\":%s}]}",
+            invalid[i]
+        );
+        REQUIRE(ctl(true, bad) != 0 && strstr(failure(), "controller"));
+    }
+    return true;
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -1458,6 +1530,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(prototype_children_come_with_their_instance);
     RUN_TEST_CASE(scene_joints_name_their_other_by_path);
     RUN_TEST_CASE(scenarios_hold_input_actions);
+    RUN_TEST_CASE(scenarios_hold_controller_slots);
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     RUN_TEST_CASE(unit_mismatches_are_warnings);
     pu_clear_setup();

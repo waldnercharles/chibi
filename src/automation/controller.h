@@ -7,7 +7,8 @@
 typedef struct game_prototype_preview game_prototype_preview;
 typedef struct chibi_preview_run chibi_preview_run;
 /* Tooling scene preparation shared by headless scenarios and GPU previews.
- * Returns an owned running preview; the caller must initialize rendering first. */
+ * Returns an owned running preview. Rendering hosts initialize rendering first;
+ * headless callers can prepare, step and inspect without a renderer. */
 int chibi_automation_preview(
     const char *root,
     const char *request,

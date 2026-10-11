@@ -24,6 +24,7 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -363,15 +364,20 @@ static bool name_image(import *in, int image)
     return true;
 }
 
-/* The sampler a material's texture uses, as an engine filter and wrap. */
-static void sample(import *in, int material, standard_texture_slot slot, standard_texture *out)
+static yyjson_val *texture_info(const import *in, int material, standard_texture_slot slot)
 {
     yyjson_val *owner = json_material(in, material);
     if (slot == STANDARD_TEXTURE_BASE_COLOR ||
         slot == STANDARD_TEXTURE_METALLIC_ROUGHNESS) {
         owner = yyjson_obj_get(owner, "pbrMetallicRoughness");
     }
-    yyjson_val *info = yyjson_obj_get(owner, TEXTURE_KEYS[slot]);
+    return yyjson_obj_get(owner, TEXTURE_KEYS[slot]);
+}
+
+/* The sampler a material's texture uses, as an engine filter and wrap. */
+static void sample(import *in, int material, standard_texture_slot slot, standard_texture *out)
+{
+    yyjson_val *info = texture_info(in, material, slot);
     yyjson_val *texture = item(
         yyjson_obj_get(in->root, "textures"),
         (int)yyjson_get_int(yyjson_obj_get(info, "index"))
@@ -417,6 +423,130 @@ static void sample(import *in, int material, standard_texture_slot slot, standar
     }
 }
 
+/* The decoder supplies defaults, but malformed JSON fields must not quietly
+ * become identity or zero. All persisted values must fit in a finite float. */
+static bool texture_transform(import *in, int material, standard_texture_slot slot, standard_texture *out)
+{
+    yyjson_val *info = texture_info(in, material, slot);
+    yyjson_val *extension = yyjson_obj_get(yyjson_obj_get(info, "extensions"), "KHR_texture_transform");
+    yyjson_val *coordinate = yyjson_obj_get(extension, "texCoord");
+    if (!coordinate) {
+        coordinate = yyjson_obj_get(info, "texCoord");
+    }
+    if (coordinate && (!yyjson_is_int(coordinate) || yyjson_get_num(coordinate) < 0 ||
+                       yyjson_get_num(coordinate) > INT_MAX)) {
+        return fail(
+            in,
+            "Material %s's %s has an invalid texCoord",
+            in->materials[material],
+            TEXTURE_KEYS[slot]
+        );
+    }
+    int uv_set = coordinate ? (int)yyjson_get_int(coordinate) : 0;
+    if (uv_set != 0) {
+        return fail(
+            in,
+            "Material %s's %s reads TEXCOORD_%d; import reads only TEXCOORD_0",
+            in->materials[material],
+            TEXTURE_KEYS[slot],
+            uv_set
+        );
+    }
+    out->scale[0] = out->scale[1] = 1;
+    if (!extension) {
+        return true;
+    }
+    const char *fields[] = { "offset", "scale", "rotation" };
+    float *values[] = { out->offset, out->scale, &out->rotation };
+    for (int field = 0; field < 3; field++) {
+        yyjson_val *value = yyjson_obj_get(extension, fields[field]);
+        int count = field == 2 ? 1 : 2;
+        bool valid = yyjson_is_obj(extension) &&
+                     (!value || count == 1 ||
+                      (yyjson_is_arr(value) && yyjson_arr_size(value) == 2));
+        for (int i = 0; valid && value && i < count; i++) {
+            yyjson_val *number = count == 1 ? value : item(value, i);
+            valid = yyjson_is_num(number) && isfinite((float)yyjson_get_num(number));
+            if (valid) {
+                values[field][i] = (float)yyjson_get_num(number);
+            }
+        }
+        if (!valid) {
+            return fail(
+                in,
+                "Material %s's %s has an invalid texture transform %s",
+                in->materials[material],
+                TEXTURE_KEYS[slot],
+                fields[field]
+            );
+        }
+    }
+    return true;
+}
+
+static bool unlit(const import *in, int material)
+{
+    return yyjson_obj_get(yyjson_obj_get(json_material(in, material), "extensions"), "KHR_materials_unlit") !=
+           NULL;
+}
+
+static const CM_TextureRef *texture_ref(const CM_Material *m, standard_texture_slot slot)
+{
+    switch (slot) {
+        case STANDARD_TEXTURE_BASE_COLOR: return &m->base_color_texture;
+        case STANDARD_TEXTURE_METALLIC_ROUGHNESS:
+            return &m->metallic_roughness_texture;
+        case STANDARD_TEXTURE_NORMAL: return &m->normal_texture;
+        case STANDARD_TEXTURE_OCCLUSION: return &m->occlusion_texture;
+        case STANDARD_TEXTURE_EMISSION: return &m->emissive_texture;
+        default: assert(false); return NULL;
+    }
+}
+
+/* Check actual used UVs as well as finite parameters: valid floats can
+ * overflow during shader scale, rotation or translation. */
+static bool part_texture_transforms(
+    import *in,
+    int material,
+    const render_mesh_asset *part,
+    standard_texture *normal
+)
+{
+    if (material < 0 || !acount(part->vertices)) {
+        return true;
+    }
+    for (int slot = 0; slot < STANDARD_TEXTURE_COUNT; slot++) {
+        if ((unlit(in, material) && slot != STANDARD_TEXTURE_BASE_COLOR) ||
+            texture_ref(&in->model->materials[material], slot)->image < 0) {
+            continue;
+        }
+        standard_texture transform = { 0 };
+        if (!texture_transform(in, material, slot, &transform)) {
+            return false;
+        }
+        float c = cosf(transform.rotation), s = sinf(transform.rotation);
+        for (int i = 0; i < acount(part->vertices); i++) {
+            CF_V2 uv = part->vertices[i].uv;
+            float u = uv.x * transform.scale[0], v = uv.y * transform.scale[1];
+            float x = c * u - s * v, y = s * u + c * v;
+            if (!isfinite(u) || !isfinite(v) || !isfinite(x) || !isfinite(y) ||
+                !isfinite(x + transform.offset[0]) ||
+                !isfinite(y + transform.offset[1])) {
+                return fail(
+                    in,
+                    "Material %s's %s transforms UVs beyond float range",
+                    in->materials[material],
+                    TEXTURE_KEYS[slot]
+                );
+            }
+        }
+        if (slot == STANDARD_TEXTURE_NORMAL) {
+            *normal = transform;
+        }
+    }
+    return true;
+}
+
 /* The engine form of a glTF texture slot, after checking the import can
  * sample it as glTF does. */
 static bool texture(
@@ -435,18 +565,8 @@ static bool texture(
     if (ref->image >= in->model->image_count) {
         return fail(in, "Material %s's %s names a missing image", name, TEXTURE_KEYS[slot]);
     }
-    if (ref->uv_set != 0) {
-        return fail(
-            in,
-            "Material %s's %s reads TEXCOORD_%d; import reads only TEXCOORD_0",
-            name,
-            TEXTURE_KEYS[slot],
-            ref->uv_set
-        );
-    }
-    if (ref->offset[0] || ref->offset[1] || ref->scale[0] != 1 ||
-        ref->scale[1] != 1 || ref->rotation) {
-        return fail(in, "Material %s's %s transforms its UVs, which import does not support", name, TEXTURE_KEYS[slot]);
+    if (!texture_transform(in, material, slot, out)) {
+        return false;
     }
     if (!name_image(in, ref->image)) {
         return false;
@@ -502,7 +622,7 @@ static bool standard(import *in, int index, standard_material *out)
         "emissiveStrength"
     );
     float emissive = strength ? (float)yyjson_get_num(strength) : 1;
-    out->unlit = yyjson_obj_get(extensions, "KHR_materials_unlit") != NULL;
+    out->unlit = unlit(in, index);
     memcpy(out->base_color, m->base_color, sizeof out->base_color);
     out->metallic = m->metallic;
     out->roughness = m->roughness;
@@ -525,17 +645,11 @@ static bool standard(import *in, int index, standard_material *out)
     if (m->double_sided) {
         warn(in, "Material %s draws single-sided.", in->materials[index]);
     }
-    const CM_TextureRef *refs[STANDARD_TEXTURE_COUNT] = {
-        [STANDARD_TEXTURE_BASE_COLOR] = &m->base_color_texture,
-        [STANDARD_TEXTURE_METALLIC_ROUGHNESS] = &m->metallic_roughness_texture,
-        [STANDARD_TEXTURE_NORMAL] = &m->normal_texture,
-        [STANDARD_TEXTURE_OCCLUSION] = &m->occlusion_texture,
-        [STANDARD_TEXTURE_EMISSION] = &m->emissive_texture,
-    };
     for (int slot = 0; slot < STANDARD_TEXTURE_COUNT; slot++) {
         /* Like its emission, an unlit material's other images are fallbacks. */
         bool fallback = out->unlit && slot != STANDARD_TEXTURE_BASE_COLOR;
-        if (!fallback && !texture(in, index, slot, refs[slot], &out->textures[slot])) {
+        if (!fallback &&
+            !texture(in, index, slot, texture_ref(m, slot), &out->textures[slot])) {
             return false;
         }
     }
@@ -610,7 +724,13 @@ static int key_of(const CM_Primitive *p, const kept_part *k, int corner)
  * authored tangent with its w negated, since glTF's bitangent points up the
  * image. Without normals, each triangle's corners get its own flat normal, as
  * glTF requires. */
-static void primitive_part(const CM_Primitive *p, yyjson_val *json, const kept_part *k, render_mesh_asset *part)
+static bool primitive_part(
+    import *in,
+    const CM_Primitive *p,
+    yyjson_val *json,
+    const kept_part *k,
+    render_mesh_asset *part
+)
 {
     for (int i = 0; i < acount(k->keys); i++) {
         int key = k->keys[i], source = k->flat ? (int)p->indices[key] : key;
@@ -641,11 +761,32 @@ static void primitive_part(const CM_Primitive *p, yyjson_val *json, const kept_p
             apush(part->indices, k->place[key_of(p, k, k->triangles[t] + j)]);
         }
     }
-    render_mesh_asset_tangents(part);
     /* glTF ignores the tangents of a primitive without normals. */
     bool authored = !k->flat && has_attribute(json, "TANGENT") && p->tangents;
+    int material = primitive_material(in->model, p);
+    standard_texture transform = { .scale = { 1, 1 } };
+    if (!part_texture_transforms(in, material, part, &transform)) {
+        return false;
+    }
+    bool mapped = !authored && material >= 0 && !unlit(in, material) &&
+                  in->model->materials[material].normal_texture.image >= 0;
+    if (mapped) {
+        float c = cosf(transform.rotation), s = sinf(transform.rotation);
+        for (int i = 0; i < acount(part->vertices); i++) {
+            CF_V2 uv = part->vertices[i].uv;
+            float u = uv.x * transform.scale[0], v = uv.y * transform.scale[1];
+            /* Translation cannot change the tangent frame; omitting it avoids
+             * cancellation when a large offset swallows small UV differences. */
+            CF_V2 turned = { c * u - s * v, s * u + c * v };
+            part->vertices[i].uv = turned;
+        }
+    }
+    render_mesh_asset_tangents(part);
     for (int i = 0; i < acount(part->vertices); i++) {
         render_mesh_surface_vertex *vertex = &part->vertices[i];
+        int key = k->keys[i], source = k->flat ? (int)p->indices[key] : key;
+        vertex->uv = p->uvs ? (CF_V2){ p->uvs[source * 2], p->uvs[source * 2 + 1] }
+                            : (CF_V2){ 0 };
         const float *t = authored ? p->tangents + k->keys[i] * 4 : NULL;
         CF_V3 direction = t ? unit(v3(t), (CF_V3){ 0 }) : (CF_V3){ 0 };
         if (cf_len_v3(direction) > 0) {
@@ -655,6 +796,7 @@ static void primitive_part(const CM_Primitive *p, yyjson_val *json, const kept_p
                                        t[3] < 0 ? 1.0f : -1.0f };
         }
     }
+    return true;
 }
 
 static bool finite_frame(CF_M4x4 m)
@@ -896,8 +1038,10 @@ static bool bake_mesh(import *in, render_mesh_asset *mesh)
                 }
                 if (baked) {
                     render_mesh_asset part = { 0 };
-                    primitive_part(p, json, &kept, &part);
-                    bake(mesh, &part, frames[n], mirrors(model, n));
+                    baked = primitive_part(in, p, json, &kept, &part);
+                    if (baked) {
+                        bake(mesh, &part, frames[n], mirrors(model, n));
+                    }
                     render_mesh_asset_free(&part);
                 }
                 kept_part_free(&kept);

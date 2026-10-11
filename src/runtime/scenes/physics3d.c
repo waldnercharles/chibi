@@ -52,6 +52,15 @@ typedef struct
     bool follower; /* Placed by a ChildOf parent with a Transform3D. */
 } placement;
 
+/* A character retains handles, never pointers into the resizable body table.
+ * The contact point and normal are local to the support's physical body. */
+typedef struct
+{
+    b3ShapeId shape;
+    b3Transform pose;
+    b3Vec3 point, normal, start;
+} character_support;
+
 /* One per entity slot while the entity has a collider. */
 typedef struct
 {
@@ -72,6 +81,7 @@ typedef struct
     pose placed;
     CF_V3 linear_velocity, angular_velocity; /* As last set or written back. */
     pose start, end; /* A moving root's solved poses around the last step. */
+    character_support support;
 } body_record;
 
 /* A mesh's collision data, built from the mesh catalog when a hull or mesh
@@ -745,6 +755,7 @@ static b3ShapeId create_shape(
     def.filter.categoryBits = collider->category;
     def.filter.maskBits = collider->mask;
     def.isSensor = collider->sensor;
+    def.enablePreSolveEvents = record->character;
     /* Box3D sensors can't visit a mesh; collect_mesh_overlaps pairs them. */
     def.enableSensorEvents = collider->shape != GAME_COLLIDER3D_MESH;
     if (record->follower && collider->sensor) {
@@ -801,6 +812,8 @@ static void create_body(game_physics3d *physics, body_record *record, pose at)
     def.type = record->follower ? b3_kinematicBody : body_type(record->type);
     def.position = to_b3(at.position);
     def.rotation = quat_to_b3(at.rotation);
+    /* Recycled contacts bypass the support pre-solve callback. */
+    def.enableContactRecycling = !record->character;
     record->body = b3CreateBody(physics->simulation, &def);
     record->carrier = record->entity.slot;
     add_shape(physics, record, record->body, b3Transform_identity);
@@ -850,6 +863,7 @@ static bool same_collider(const GameCollider3D *a, const GameCollider3D *b)
  * shapes overlap where it lands. */
 static void teleport(game_physics3d *physics, body_record *record, pose at)
 {
+    record->support = (character_support){ 0 };
     int capacity = b3Body_GetContactCapacity(record->body);
     asetlen(physics->contacts, capacity);
     int count = b3Body_GetContactData(record->body, physics->contacts, capacity);
@@ -929,6 +943,7 @@ static void own_body(
         return;
     }
     if (reshaped) {
+        record->support = (character_support){ 0 };
         b3DestroyShape(record->shape, true);
         add_shape(physics, record, record->body, b3Transform_identity);
     }
@@ -1720,14 +1735,18 @@ static const float FLOOR_COSINE = .70710678f;
 typedef struct
 {
     b3BodyId self;
+    b3ShapeId exclude;
+    b3Vec3 origin;
     b3CollisionPlane planes[CHARACTER_PLANES];
+    b3ShapeId shapes[CHARACTER_PLANES];
+    b3Vec3 points[CHARACTER_PLANES];
     int count;
 } character_contact;
 
 static bool blocks(b3ShapeId shape, void *context)
 {
     const character_contact *contact = context;
-    return !b3Shape_IsSensor(shape) &&
+    return !b3Shape_IsSensor(shape) && !B3_ID_EQUALS(shape, contact->exclude) &&
            !B3_ID_EQUALS(b3Shape_GetBody(shape), contact->self);
 }
 
@@ -1738,6 +1757,8 @@ static bool gather_planes(b3ShapeId shape, const b3PlaneResult *planes, int coun
         return true;
     }
     for (int i = 0; i < count && contact->count < CHARACTER_PLANES; i++) {
+        contact->shapes[contact->count] = shape;
+        contact->points[contact->count] = b3Add(contact->origin, planes[i].point);
         contact->planes[contact->count++] = (b3CollisionPlane){ planes[i].plane,
                                                                 FLT_MAX,
                                                                 0,
@@ -1748,44 +1769,54 @@ static bool gather_planes(b3ShapeId shape, const b3PlaneResult *planes, int coun
 
 /* What the character stands on: the plane it touches that faces up the most,
  * when that is within 45 degrees of up. */
-static GameCharacter3D stand(const character_contact *contact, b3Vec3 up)
+static void stand(game_physics3d *physics, body_record *record, const character_contact *contact, b3Vec3 up)
 {
     GameCharacter3D out = { 0 };
+    record->support = (character_support){ 0 };
     float best = FLOOR_COSINE;
     for (int i = 0; i < contact->count; i++) {
         b3Vec3 normal = contact->planes[i].plane.normal;
         if (b3Dot(normal, up) >= best) {
             best = b3Dot(normal, up);
             out = (GameCharacter3D){ true, from_b3(normal) };
+            b3ShapeId shape = contact->shapes[i];
+            b3Transform at = to_b3_transform(body_pose(b3Shape_GetBody(shape)));
+            record->support = (character_support){
+                .shape = shape,
+                .pose = at,
+                .point = b3InvTransformPoint(at, contact->points[i]),
+                .normal = b3InvRotateVector(at.q, normal),
+            };
         }
     }
-    return out;
+    *GAME_GameCharacter3D_get(physics->world, record->entity) = out;
 }
 
-/* Moves the character's capsule by its velocity over delta with Box3D's
- * mover, puts its body where the capsule ends, and writes what it stands on. */
-static void move_character(game_physics3d *physics, body_record *record, float delta, b3Vec3 up)
+/* Every displacement, including support correction, uses the same casts. */
+static void move_capsule(game_physics3d *physics, body_record *record, b3Vec3 target, character_contact *contact)
 {
-    GameBody3D *body = GAME_GameBody3D_get(physics->world, record->entity);
     pose at = body_pose(record->body);
     b3Vec3 origin = to_b3(at.position);
+    contact->self = record->body;
+    contact->origin = origin;
     float radius, half;
     capsule_extent(&record->collider, record->scale, &radius, &half);
     b3Vec3 axis = to_b3(cf_mul_q_v3(at.rotation, cf_v3(0, half, 0)));
     b3Capsule local = { b3Neg(axis), axis, radius };
     b3QueryFilter filter = { .categoryBits = record->collider.category,
                              .maskBits = record->collider.mask };
-    character_contact contact = { .self = record->body };
-    b3Vec3 target = b3MulSV(delta, to_b3(body->linear_velocity)),
-           moved = b3Vec3_zero, step = b3Vec3_zero;
+    b3Vec3 moved = b3Vec3_zero, step = b3Vec3_zero;
     for (int pass = 0;; pass++) {
         b3Capsule mover = { b3Add(local.center1, moved),
                             b3Add(local.center2, moved),
                             radius };
-        contact.count = 0;
-        b3World_CollideMover(physics->simulation, origin, &mover, filter, gather_planes, &contact);
-        b3PlaneSolverResult
-            solved = b3SolvePlanes(b3Sub(target, moved), contact.planes, contact.count);
+        contact->count = 0;
+        b3World_CollideMover(physics->simulation, origin, &mover, filter, gather_planes, contact);
+        b3PlaneSolverResult solved = b3SolvePlanes(
+            b3Sub(target, moved),
+            contact->planes,
+            contact->count
+        );
         if (pass == CHARACTER_PASSES ||
             (pass > 0 &&
              b3LengthSquared(step) < CHARACTER_TOLERANCE * CHARACTER_TOLERANCE)) {
@@ -1798,22 +1829,82 @@ static void move_character(game_physics3d *physics, body_record *record, float d
             solved.delta,
             filter,
             blocks,
-            &contact
+            contact
         );
         step = b3MulSV(fraction, solved.delta);
         moved = b3Add(moved, step);
     }
+    b3Body_SetTransform(record->body, b3Add(origin, moved), quat_to_b3(at.rotation));
+}
+
+static void clip_character(game_physics3d *physics, body_record *record, const character_contact *contact)
+{
+    GameBody3D *body = GAME_GameBody3D_get(physics->world, record->entity);
     body->linear_velocity = from_b3(
-        b3ClipVector(to_b3(body->linear_velocity), contact.planes, contact.count)
+        b3ClipVector(to_b3(body->linear_velocity), contact->planes, contact->count)
     );
     record->linear_velocity = body->linear_velocity;
-    b3Body_SetTransform(record->body, b3Add(origin, moved), quat_to_b3(at.rotation));
-    *GAME_GameCharacter3D_get(physics->world, record->entity) = stand(&contact, up);
+}
+
+/* A replaced shape, changed filter or floor direction releases the rider.
+ * A shape under another character can be a floor, but never carries it. */
+static bool supported(const game_physics3d *physics, const body_record *record, b3Vec3 up)
+{
+    b3ShapeId shape = record->support.shape;
+    if (!b3Shape_IsValid(shape) || b3Shape_IsSensor(shape)) {
+        return false;
+    }
+    b3Filter filter = b3Shape_GetFilter(shape);
+    if (!(filter.categoryBits & record->collider.mask) ||
+        !(filter.maskBits & record->collider.category)) {
+        return false;
+    }
+    uintptr_t slot = (uintptr_t)b3Shape_GetUserData(shape);
+    if (physics->bodies[physics->bodies[slot].carrier].character) {
+        return false;
+    }
+    b3Transform at = to_b3_transform(body_pose(b3Shape_GetBody(shape)));
+    b3Vec3 normal = b3RotateVector(at.q, record->support.normal);
+    const GameBody3D *body = GAME_GameBody3D_get_const(physics->world, record->entity);
+    return b3Dot(normal, up) >= FLOOR_COSINE &&
+           b3Dot(normal, to_b3(body->linear_velocity)) <= 1e-5f;
+}
+
+static void move_character(game_physics3d *physics, body_record *record, float delta, b3Vec3 up)
+{
+    character_contact contact = { 0 };
+    if (!b3Shape_IsValid(record->support.shape)) {
+        move_capsule(physics, record, b3Vec3_zero, &contact);
+        stand(physics, record, &contact, up);
+    }
+    GameBody3D *body = GAME_GameBody3D_get(physics->world, record->entity);
+    b3Vec3 velocity = to_b3(body->linear_velocity), carry = b3Vec3_zero;
+    if (supported(physics, record, up)) {
+        character_support *support = &record->support;
+        b3Transform at = to_b3_transform(body_pose(b3Shape_GetBody(support->shape)));
+        b3Vec3 normal = b3RotateVector(at.q, support->normal);
+        velocity = b3MulSub(velocity, b3MinFloat(0, b3Dot(velocity, normal)), normal);
+        body->linear_velocity = from_b3(velocity);
+        support->start = b3TransformPoint(at, support->point);
+        carry = b3Sub(support->start, b3TransformPoint(support->pose, support->point));
+        contact.exclude = support->shape;
+    } else {
+        record->support = (character_support){ 0 };
+    }
+    move_capsule(physics, record, b3MulAdd(carry, delta, velocity), &contact);
+    clip_character(physics, record, &contact);
 }
 
 static bool moving_character(const body_record *record)
 {
     return record->character && B3_IS_NON_NULL(record->body);
+}
+
+static b3Vec3 character_up(CF_V3 acceleration)
+{
+    return b3LengthSquared(to_b3(acceleration)) > 0
+             ? b3Normalize(b3Neg(to_b3(acceleration)))
+             : (b3Vec3){ 0, 1, 0 };
 }
 
 /* Moves every character before the step, one after another so each meets the
@@ -1822,9 +1913,7 @@ static bool moving_character(const body_record *record)
  * Up opposes gravity. */
 static void move_characters(game_physics3d *physics, float delta, CF_V3 acceleration)
 {
-    b3Vec3 up = b3LengthSquared(to_b3(acceleration)) > 0
-                  ? b3Normalize(b3Neg(to_b3(acceleration)))
-                  : (b3Vec3){ 0, 1, 0 };
+    b3Vec3 up = character_up(acceleration);
     for (int i = 0; i < acount(physics->bodies); i++) {
         body_record *record = &physics->bodies[i];
         if (moving_character(record)) {
@@ -1847,6 +1936,60 @@ static void move_characters(game_physics3d *physics, float delta, CF_V3 accelera
     }
 }
 
+/* Sweep the actual support travel after the solve, then find the final floor.
+ * Authored support movement was applied before the step. Keep the character
+ * start pose for interpolation. */
+static bool finish_characters(game_physics3d *physics, CF_V3 acceleration)
+{
+    bool moved = false;
+    b3Vec3 up = character_up(acceleration);
+    for (int i = 0; i < acount(physics->bodies); i++) {
+        body_record *record = &physics->bodies[i];
+        if (!moving_character(record)) {
+            continue;
+        }
+        moved = true;
+        character_contact contact = { 0 };
+        b3Vec3 settle = b3Vec3_zero;
+        if (b3Shape_IsValid(record->support.shape)) {
+            const character_support *support = &record->support;
+            b3Transform at = to_b3_transform(body_pose(b3Shape_GetBody(support->shape)));
+            b3Vec3
+                correction = b3Sub(b3TransformPoint(at, support->point), support->start);
+            contact.exclude = support->shape;
+            move_capsule(physics, record, correction, &contact);
+            /* Keep contact inside the mover's skin after roundoff in the
+             * two integrated poses, including a descending platform. */
+            settle = b3MulSV(-2 * B3_LINEAR_SLOP, up);
+        }
+        contact.exclude = b3_nullShapeId;
+        move_capsule(physics, record, settle, &contact);
+        clip_character(physics, record, &contact);
+        stand(physics, record, &contact, up);
+    }
+    return moved;
+}
+
+/* The mover handles a rider's support contact. Let that support accelerate
+ * freely during the solve; a kinematic capsule otherwise acts as a ceiling.
+ * Box3D can call this on workers, so only read the stable body table. */
+static bool solve_character_contact(b3ShapeId a, b3ShapeId b, b3Pos, b3Vec3, void *context)
+{
+    const game_physics3d *physics = context;
+    const body_record *first = &physics->bodies[(uintptr_t)b3Shape_GetUserData(a)];
+    const body_record *second = &physics->bodies[(uintptr_t)b3Shape_GetUserData(b)];
+    return !(first->character && B3_ID_EQUALS(first->support.shape, b)) &&
+           !(second->character && B3_ID_EQUALS(second->support.shape, a));
+}
+
+static void step_world(game_physics3d *physics, float delta)
+{
+    physics->slot_count = 0;
+    game_task_pool_begin(physics->pool, physics->body_count >= PARALLEL_BODY_MINIMUM);
+    b3World_Step(physics->simulation, delta, physics->settings.substeps);
+    game_task_pool_end(physics->pool);
+}
+
 static void step(game_physics3d *physics, float delta)
 {
     for (int i = 0; i < acount(physics->bodies); i++) {
@@ -1855,10 +1998,7 @@ static void step(game_physics3d *physics, float delta)
             record->start = body_pose(record->body);
         }
     }
-    physics->slot_count = 0;
-    game_task_pool_begin(physics->pool, physics->body_count >= PARALLEL_BODY_MINIMUM);
-    b3World_Step(physics->simulation, delta, physics->settings.substeps);
-    game_task_pool_end(physics->pool);
+    step_world(physics, delta);
 }
 
 /* Applies the queued pushes to the dynamic bodies they still name. */
@@ -1905,8 +2045,13 @@ int game_physics3d_tick(game_physics3d *physics, float delta_seconds)
     if (delta_seconds > 0) {
         move_characters(physics, delta_seconds, acceleration);
         apply_pushes(physics);
+        b3World_SetPreSolveCallback(physics->simulation, solve_character_contact, physics);
     }
     step(physics, delta_seconds);
+    b3World_SetPreSolveCallback(physics->simulation, NULL, NULL);
+    if (delta_seconds > 0 && finish_characters(physics, acceleration)) {
+        step_world(physics, 0); /* Refresh final contacts and carried sensors. */
+    }
     write_back(physics);
     current_pairs(physics);
     return dispatch_pairs(physics);

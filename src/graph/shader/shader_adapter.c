@@ -375,10 +375,11 @@ static int lower_node(lowering *l, scope *s, const node *n, int pin)
                            ? 3
                        : op == SHADER_NORMAL_MAP ? 4
                                                  : -1;
-    if (detail_setting >= 0 && (n->input_pins[detail_setting].type != PIN_I32 ||
-                                n->input_pins[detail_setting].default_value.i < 0 ||
-                                n->input_pins[detail_setting].default_value.i >
-                                    (op == SHADER_NORMAL_MAP ? 1 : 2))) {
+    if (detail_setting >= 0 &&
+        (n->input_pins[detail_setting].type != PIN_I32 ||
+         n->input_pins[detail_setting].default_value.i < 0 ||
+         n->input_pins[detail_setting].default_value.i >
+             (op == SHADER_NORMAL_MAP ? SHADER_NORMAL_OPENGL_TANGENT : 2))) {
         return error(l, n->id, "Invalid surface detail setting selection");
     }
     int setting = op == SHADER_GRADIENT ? 1 : stop_count ? 2 : -1;

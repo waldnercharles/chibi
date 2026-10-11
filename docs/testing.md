@@ -166,6 +166,25 @@ The 13-case program selector now passes 1,689 assertions in 0.884 seconds with
 ASan/UBSan on VM and SLJIT. Its new fixed case checks exact signed/unsigned 64-bit
 limits, values above 2^53, contextual nominal enums and five out-of-range rejects.
 
+`python3 tools/test_policy.py tool controller` runs five C command-response cases
+against `build-release/bin/chibi_ctl`, also included in `make test-native`.
+Set `CHIBI_CTL` and `CHIBI_TOOLS_BUILD_DIR` to select isolated builds. Independent
+review admitted seven tiny generated files per case, two scene entities, thirteen
+owned child processes capped at ten seconds each, and twenty total fixed
+simulation steps under the shared sixty-second deadline. Each fixture is formatted
+through `chibi_ctl --format`, and its files are removed after the case.
+
+The cases check canonical definitions and references, exact rename edits without
+file mutation, origin/location round-trips, invalid-draft diagnostics, graph and
+system inspection, pin/layout flags, and prepared execution backends. Runtime
+profiles match sample generation IDs to registered modules and check per-handler
+entries, a delayed resume, owner identities, source ranges, and measured frame
+accounting. They cover profiling disabled, zero warmup, and zero measured frames
+after warmup. Sampling starts only at the first measured frame. Module IDs are
+compared within one response; they are not cross-process identity guarantees.
+These CPU command checks do not exercise Studio, rendered graph gestures, GPU
+profiling, or performance thresholds.
+
 `python3 tools/test_policy.py tool runtime-scene` runs two public SDK consumer
 cases with four entities/two scene instances, owned component payloads, deferred
 Begin, rollback and cancellation. The normal Debug runtime-only consumer passed
@@ -526,6 +545,16 @@ backend has one, so there a failure means Cute's tile shaders did not load.
 hidden app. The first requested size must replace the canvas on that draw, and
 a later size only once it has been requested for two more draws. Build and run
 it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`.
+Its fourth case draws one 64 x 64 UI frame containing a translucent red rectangle
+and a red glyph over opaque blue. One readback compares direct presentation with
+the public straight-alpha texture copied into the other half of the target.
+It requires correct source-over color, partial glyph coverage, and straight RGB
+in the exported texture. The four-case selector passed in 1.219 seconds under the shared 60-second
+deadline on macOS with the native Metal renderer. The old presentation path
+failed the new case with red 255 where source-over required 128. Vulkan discovery
+was unavailable on this host and does not describe the Metal execution. Use `make agent-gpu-test BUILD_DIR=<render-build>
+AGENT_SELECTOR=--viewport-resize` after building that directory's `test_tools`.
+
 `scene2d` draws 2D scenes through the scene renderer and an engine viewport in a
 hidden 64 x 64 app and reads back the app canvas. A scene without `GameHRC2D`
 must show its materials unlit, `game_hrc2d_defaults()` lighting must keep them

@@ -168,6 +168,37 @@ TEST_CASE(language_numeric_literal_storage_limits)
     REQUIRE(found);
     return true;
 }
+static const script_expression *constant_of(pin_type storage)
+{
+    for (int i = 0; i < analysis->expression_count; i++) {
+        const script_expression *expression = &analysis->expressions[i];
+        if (expression->kind == SCRIPT_EXPR_CONSTANT &&
+            expression->type.storage == storage) {
+            return expression;
+        }
+    }
+    return NULL;
+}
+TEST_CASE(language_hex_literal_fills_integer_storage)
+{
+    parse("behavior Colors { color: uint = 0xf7d308ff; }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(analysis->valid);
+    REQUIRE(constant_of(PIN_U32)->constant.u == 0xf7d308ffu);
+    parse("behavior Colors { color: uint = 0xef; }");
+    REQUIRE(analysis->valid);
+    REQUIRE(constant_of(PIN_U32)->constant.u == 0xef);
+    parse("behavior Colors { mask: uint64 = 0xffffffffffffffff; }");
+    REQUIRE(analysis->valid);
+    REQUIRE(constant_of(PIN_U64)->constant.u64 == UINT64_MAX);
+    parse("behavior Colors { mask: int = -0x10; }");
+    REQUIRE(analysis->valid);
+    REQUIRE(constant_of(PIN_I32)->constant.i == -16);
+    parse("behavior Colors { mask: int8 = 0xff; }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Numeric literal is outside the range of int8"));
+    return true;
+}
 TEST_CASE(language_vector_operator_resolves_catalog_identity)
 {
     parse("system Motion(position: Position) { position = position + position; }");
@@ -589,6 +620,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_optional_component_requires_presence_guard);
     RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
+    RUN_TEST_CASE(language_hex_literal_fills_integer_storage);
     RUN_TEST_CASE(language_vector_operator_resolves_catalog_identity);
     RUN_TEST_CASE(language_pure_call_chain_rejects_effects);
     RUN_TEST_CASE(language_discarded_pure_result_rejected);

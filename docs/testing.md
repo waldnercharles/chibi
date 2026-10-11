@@ -543,9 +543,11 @@ tiled case fails when Cute's compute renderer is unavailable. Every SDL_GPU
 backend has one, so there a failure means Cute's tile shaders did not load.
 `viewport-resize` creates an engine viewport at a 640 x 360 placeholder in a
 hidden app. The first requested size must replace the canvas on that draw, and
-a later size only once it has been requested for two more draws. Build and run
-it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`.
-Its fourth case draws one 64 x 64 UI frame containing a translucent red rectangle
+a later size only once it has been requested for two more draws. A press above
+a level perspective view's horizon must still be captured, without a ground
+point, and one below it must land on the ground. Build and run it like
+`interior-border` with `AGENT_SELECTOR=--viewport-resize`.
+Its fifth case draws one 64 x 64 UI frame containing a translucent red rectangle
 and a red glyph over opaque blue. One readback compares direct presentation with
 the public straight-alpha texture copied into the other half of the target.
 It requires correct source-over color, partial glyph coverage, and straight RGB

@@ -581,13 +581,14 @@ static void capture_viewport_pointer(engine_viewport *viewport, const viewport_i
     pointer->ndc_y = 1 - 2 * io->mouse.y / size.y;
     pointer->press_ndc_x = 2 * viewport->press_origin.x / size.x - 1;
     pointer->press_ndc_y = 1 - 2 * viewport->press_origin.y / size.y;
+    /* A perspective pointer above the horizon still picks and drags by its
+       ray; only its point on the ground is missing. */
     CF_V2 world;
-    if (!pointer_world(viewport, (CF_V2){ pointer->ndc_x, pointer->ndc_y }, &world)) {
-        cancel_viewport_pointer(viewport);
-        return;
+    pointer->grounded = pointer_world(viewport, (CF_V2){ pointer->ndc_x, pointer->ndc_y }, &world);
+    if (pointer->grounded) {
+        pointer->world_x = world.x;
+        pointer->world_y = world.y;
     }
-    pointer->world_x = world.x;
-    pointer->world_y = world.y;
     pointer->hovered = io->hovered && io->mouse.x >= 0 && io->mouse.y >= 0 &&
                        io->mouse.x < size.x && io->mouse.y < size.y;
     snprintf(

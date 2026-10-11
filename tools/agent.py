@@ -25,8 +25,14 @@ START = time.monotonic()
 HEALTH = None
 NEXT = 'make test-policy-inventory'
 CPU_SELECTORS = {
+    '--asset-source': 'asset-source',
+    '--asset-values': 'asset-values',
+    '--behavior-loader': 'behavior-loader',
     '--compile-installed-space-cadet': 'compile-installed-space-cadet',
     '--contact-benchmark': 'contact-benchmark',
+    '--engine-clock': 'engine-clock',
+    '--fields': 'fields',
+    '--fmt': 'fmt',
     '--graph-document': 'graph-document',
     '--graph-functions': 'graph-functions',
     '--graph-presentation': 'graph-presentation',
@@ -38,10 +44,18 @@ CPU_SELECTORS = {
     '--material-render': 'material-render',
     '--material-simulation': 'material-simulation',
     '--material-thermal': 'material-thermal',
+    '--particles': 'particles',
+    '--png-encoding': 'png-encoding',
+    '--preview-layout': 'preview-layout',
+    '--project-document': 'project-document',
+    '--prototype-documents': 'prototype-documents',
+    '--reference-index': 'reference-index',
     '--source-edit': 'source-edit',
     '--source-presentation': 'source-presentation',
     '--source-systems': 'source-systems',
     '--system-schedule': 'system-schedule',
+    '--text-files': 'text-files',
+    '--ui-document': 'ui-document',
     '--vector-nodes': 'vector-nodes',
 }
 INSTALLED_PLAYERS = {'--player-installed-space-cadet-vm', '--player-installed-space-cadet-sljit'}

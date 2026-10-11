@@ -87,6 +87,7 @@ static void setup()
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     scene3d = render_scene3d_new();
+    render_scene3d_set_size(scene3d, SIDE, SIDE);
     post = render_scene3d_post_new();
     particles = game_particles_new();
     lens = camera();
@@ -3055,6 +3056,100 @@ TEST_CASE(fog_culls_transform3d_solids_where_they_draw)
     return true;
 }
 
+/* Uniform white ambient light alone, which occlusion dims. */
+static GameEnvironment ambient_environment(GameOcclusion occlusion)
+{
+    GameEnvironment environment = unlit_environment();
+    environment.ambient_sky = environment.ambient_ground = 0xffffffffu;
+    environment.ambient_intensity = .5f;
+    environment.occlusion = occlusion;
+    return environment;
+}
+
+/* Around add_box_on_floor's box: floor just in front of it, its front face
+ * just above the floor, floor beyond the radius, and its roof. */
+static const CF_V3 crease_floor = { 0, 0, 1.15f }, crease_face = { 0, .15f, 1 },
+                   open_floor = { -2.2f, 0, -1.5f }, roof = { 0, 2, 0 };
+
+/* Occlusion darkens the ambient light where the box meets the floor at every
+ * quality, and leaves open floor and the roof alone. */
+TEST_CASE(ambient_occlusion_darkens_where_surfaces_meet)
+{
+    add_box_on_floor();
+    GameEnvironment environment = ambient_environment(GAME_OCCLUSION_OFF);
+    REQUIRE(render(&environment));
+    CF_Pixel floor = pixel_at(crease_floor), face = pixel_at(crease_face),
+             open = pixel_at(open_floor), top = pixel_at(roof);
+    /* Without occlusion the floor is lit evenly. */
+    REQUIRE(floor.colors.g > 60 && distance(floor, open) <= 3);
+    for (int quality = GAME_OCCLUSION_LOW; quality <= GAME_OCCLUSION_HIGH; quality++) {
+        environment.occlusion = quality;
+        REQUIRE(render(&environment));
+        REQUIRE(!render_scene3d_error(scene3d)[0]);
+        REQUIRE(pixel_at(crease_floor).colors.g + 8 < floor.colors.g);
+        REQUIRE(pixel_at(crease_face).colors.g + 8 < face.colors.g);
+        REQUIRE(distance(pixel_at(open_floor), open) <= 6);
+        REQUIRE(distance(pixel_at(roof), top) <= 6);
+    }
+    return true;
+}
+
+/* Occlusion leaves the sun's light alone. */
+TEST_CASE(ambient_occlusion_leaves_direct_light_alone)
+{
+    add_shadow_scene()->shadows = true;
+    GameEnvironment environment = unlit_environment();
+    environment.occlusion = GAME_OCCLUSION_OFF;
+    REQUIRE(render(&environment));
+    static CF_Pixel open[PIXELS];
+    memcpy(open, pixels, sizeof pixels);
+    REQUIRE(pixel_at(crease_floor).colors.g > 60);
+    environment.occlusion = GAME_OCCLUSION_HIGH;
+    REQUIRE(render(&environment));
+    REQUIRE(!memcmp(pixels, open, sizeof pixels));
+    return true;
+}
+
+/* A translucent panel in front of the crease neither takes the occlusion of
+ * the crease behind it nor occludes the floor it stands on. */
+TEST_CASE(ambient_occlusion_passes_translucent_solids)
+{
+    add_box_on_floor();
+    add_solid((CF_V3){ 0, .5f, 1.6f }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 1, .05f }, 0xfffffffeu);
+    CF_V3 before = { 0, 0, 1.75f };
+    GameEnvironment environment = ambient_environment(GAME_OCCLUSION_OFF);
+    REQUIRE(render(&environment));
+    CF_Pixel panel = pixel_at(crease_floor), floor = pixel_at(before);
+    REQUIRE(panel.colors.g > 60);
+    environment.occlusion = GAME_OCCLUSION_HIGH;
+    REQUIRE(render(&environment));
+    REQUIRE(distance(pixel_at(crease_floor), panel) <= 3);
+    REQUIRE(distance(pixel_at(before), floor) <= 3);
+    return true;
+}
+
+/* Occlusion needs a known quality and, while it is on, a positive finite
+ * radius; projects saved before it had one leave it off. */
+TEST_CASE(ambient_occlusion_settings_must_be_valid)
+{
+    add_box_on_floor();
+    GameEnvironment environment = ambient_environment(GAME_OCCLUSION_MEDIUM);
+    const float radii[] = { 0, -1, NAN, INFINITY };
+    for (int i = 0; i < 4; i++) {
+        environment.occlusion_radius = radii[i];
+        REQUIRE(!render(&environment));
+        REQUIRE(strstr(render_scene3d_error(scene3d), "occlusion radius"));
+    }
+    environment.occlusion = GAME_OCCLUSION_OFF;
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    environment.occlusion = GAME_OCCLUSION_HIGH + 1;
+    environment.occlusion_radius = 1;
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_error(scene3d), "Off, Low, Medium or High"));
+    return true;
+}
+
 #if CHIBI_TEST_MATERIAL_GRAPHS
 /* The two-unit box at the origin, drawn with surface material `name`. */
 static ecs_entity add_surface_box(const char *name)
@@ -3674,6 +3769,31 @@ TEST_CASE(masked_solids_outside_the_view_cut_their_shadows)
     return true;
 }
 
+/* A masked box occludes the floor with the pixels it keeps alone: cut out
+ * entirely, it leaves the crease open. No light casts shadows, so only the
+ * occlusion's depth pass needs its masked program. */
+TEST_CASE(ambient_occlusion_follows_masks)
+{
+    REQUIRE(test_register_alpha("Cut", SHADER_ALPHA_MASK, .2f, .5f));
+    REQUIRE(test_register_alpha("Kept", SHADER_ALPHA_MASK, .5f, .4f));
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f, -.1f }, 0xffffffffu);
+    ecs_entity box = add_surface_box("Cut");
+    GAME_GameGeometry3D_get(world, box)->elevation = 1;
+    GameEnvironment environment = ambient_environment(GAME_OCCLUSION_OFF);
+    REQUIRE(render(&environment));
+    static CF_Pixel open[PIXELS];
+    memcpy(open, pixels, sizeof pixels);
+    environment.occlusion = GAME_OCCLUSION_MEDIUM;
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(matches(open));
+    GAME_GameShader_get(world, box)->material = "Kept";
+    REQUIRE(render(&environment));
+    CF_Pixel floor = open[pixel_index(crease_floor)];
+    REQUIRE(pixel_at(crease_floor).colors.g + 8 < floor.colors.g);
+    return true;
+}
+
 #if CHIBI_TEST_MODEL_IMPORT
 /* The folder models import into, removed with the images they made
  * resident. */
@@ -4066,6 +4186,10 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(flattened_transform3d_frames_hide_at_any_scale);
     RUN_TEST_CASE(overflowing_transform3d_frames_are_authoring_errors);
     RUN_TEST_CASE(fog_culls_transform3d_solids_where_they_draw);
+    RUN_TEST_CASE(ambient_occlusion_darkens_where_surfaces_meet);
+    RUN_TEST_CASE(ambient_occlusion_leaves_direct_light_alone);
+    RUN_TEST_CASE(ambient_occlusion_passes_translucent_solids);
+    RUN_TEST_CASE(ambient_occlusion_settings_must_be_valid);
 #if CHIBI_TEST_MATERIAL_GRAPHS
     RUN_TEST_CASE(mirrors_reflect_the_sky_in_its_directions);
     RUN_TEST_CASE(rough_surfaces_blur_the_sky_they_reflect);
@@ -4083,6 +4207,7 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(masked_surfaces_cast_cut_out_shadows);
     RUN_TEST_CASE(view_dependent_masks_cast_shadows_seen_from_the_light);
     RUN_TEST_CASE(masked_solids_outside_the_view_cut_their_shadows);
+    RUN_TEST_CASE(ambient_occlusion_follows_masks);
 #if CHIBI_TEST_MODEL_IMPORT
     RUN_TEST_CASE(imported_standard_materials_shade_as_their_factors);
     RUN_TEST_CASE(imported_normal_maps_tilt_toward_the_top_of_their_image);

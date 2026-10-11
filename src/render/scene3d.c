@@ -6,6 +6,7 @@
 #include "render/scene3d_influence.h"
 #include "render/scene3d_light_shadow.h"
 #include "render/scene3d_mesh_cache.h"
+#include "render/scene3d_occlusion.h"
 #include "render/scene3d_shadow.h"
 #include "render/scene3d_sky.h"
 #include "render/scene3d_trail.h"
@@ -102,6 +103,8 @@ struct render_scene3d
     float sun_spread; /* Tangent of half the sun's angular diameter. */
     render_scene3d_shadow *shadow;
     render_scene3d_light_shadow *light_shadow;
+    render_scene3d_occlusion *occlusion;
+    int width, height; /* The canvas later draws fill, in pixels. */
     CF_M4x4 *shadow_boxes;
     int *near_boxes; /* Boxes that can cast into the current light. */
     CF_Texture parameters;
@@ -157,6 +160,7 @@ render_scene3d *render_scene3d_new()
     scene3d->influences = render_influences_new();
     scene3d->shadow = render_scene3d_shadow_new();
     scene3d->light_shadow = render_scene3d_light_shadow_new();
+    scene3d->occlusion = render_scene3d_occlusion_new();
     scene3d->trails = render_scene3d_trails_new();
     scene3d->sky = render_scene3d_sky_new();
     scene3d->emitters = game_particle_emitters_new(NULL);
@@ -186,6 +190,12 @@ int render_scene3d_particle_count(const render_scene3d *scene3d)
            game_particles_count(game_particle_emitters_particles(scene3d->emitters));
 }
 
+void render_scene3d_set_size(render_scene3d *scene3d, int width, int height)
+{
+    scene3d->width = width;
+    scene3d->height = height;
+}
+
 void render_scene3d_reset(render_scene3d *scene3d)
 {
     scene3d->simulation_particles = 0;
@@ -207,6 +217,7 @@ void render_scene3d_free(render_scene3d *scene3d)
     render_influences_free(scene3d->influences);
     render_scene3d_shadow_free(scene3d->shadow);
     render_scene3d_light_shadow_free(scene3d->light_shadow);
+    render_scene3d_occlusion_free(scene3d->occlusion);
     afree(scene3d->shadow_boxes);
     afree(scene3d->near_boxes);
     render_scene3d_trails_free(scene3d->trails);
@@ -1184,6 +1195,59 @@ static bool draw_light_shadows(render_scene3d *scene3d, int receivers)
     return true;
 }
 
+/* The lit pass's state: translucent draws blend without writing depth, and a
+ * mirroring frame turns its triangles' winding, so it culls the other side. */
+static CF_RenderState lit_state(bool transparent, bool mirrored)
+{
+    CF_RenderState state = cf_render_state_3d_defaults();
+    state.cull_mode = mirrored ? CF_CULL_MODE_FRONT : CF_CULL_MODE_BACK;
+    if (transparent) {
+        state.depth_write_enabled = false;
+        state.blend.enabled = true;
+        state.blend.rgb_src_blend_factor = CF_BLENDFACTOR_SRC_ALPHA;
+        state.blend.rgb_dst_blend_factor = CF_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+        state.blend.alpha_src_blend_factor = CF_BLENDFACTOR_ONE;
+        state.blend.alpha_dst_blend_factor = CF_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+    }
+    return state;
+}
+
+/* Opaque solids write their depth from the camera, culled as the lit pass
+ * culls them, for the occlusion that dims their ambient light. */
+static bool draw_occlusion(render_scene3d *scene3d, const render_scene3d_camera *camera)
+{
+    render_scene3d_occlusion *occlusion = scene3d->occlusion;
+    if (!render_scene3d_occlusion_active(occlusion)) {
+        return true;
+    }
+    if (!render_scene3d_occlusion_begin(
+            occlusion,
+            camera,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        )) {
+        return false;
+    }
+    bool mirrored = false;
+    cf_draw3d_push_render_state(lit_state(false, mirrored));
+    for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
+        const scene3d_draw *draw = &scene3d->buffer.draws[i];
+        if (draw->transparent) {
+            break;
+        }
+        bool mirrors = render_scene3d_frame_mirrors(draw->solid.frame);
+        if (mirrors != mirrored) {
+            mirrored = mirrors;
+            cf_draw3d_pop_render_state();
+            cf_draw3d_push_render_state(lit_state(false, mirrored));
+        }
+        cast(scene3d, draw);
+    }
+    cf_draw3d_pop_render_state();
+    render_scene3d_occlusion_end(occlusion);
+    return true;
+}
+
 /* The sky and trails go between opaque and translucent surfaces: the sky
  * fills what opaque ones left open, and translucent ones blend over both. */
 static void draw_behind_translucents(render_scene3d *scene3d, const render_scene3d_camera *camera)
@@ -1231,11 +1295,13 @@ static int prepare_program(render_scene3d *scene3d, render_programs *programs, i
     return program;
 }
 
-/* Compiles the shadow program a masked draw needs while a light casts
- * shadows, and uploads the draw's mesh. Returns false with a binding error. */
+/* Compiles the depth program a masked draw needs while a light casts shadows
+ * or occlusion reads the camera's depth, and uploads the draw's mesh. Returns
+ * false with a binding error. */
 static bool prepare_solid(render_scene3d *scene3d, scene3d_draw *draw)
 {
-    if (draw->masked && casts_shadows(scene3d)) {
+    if (draw->masked && (casts_shadows(scene3d) ||
+                         render_scene3d_occlusion_active(scene3d->occlusion))) {
         draw->shadow_program = prepare_program(
             scene3d,
             shadow_programs(scene3d, &draw->solid),
@@ -1265,23 +1331,6 @@ static bool prepare_draws(render_scene3d *scene3d)
         }
     }
     return true;
-}
-
-/* The lit pass's state: translucent draws blend without writing depth, and a
- * mirroring frame turns its triangles' winding, so it culls the other side. */
-static CF_RenderState lit_state(bool transparent, bool mirrored)
-{
-    CF_RenderState state = cf_render_state_3d_defaults();
-    state.cull_mode = mirrored ? CF_CULL_MODE_FRONT : CF_CULL_MODE_BACK;
-    if (transparent) {
-        state.depth_write_enabled = false;
-        state.blend.enabled = true;
-        state.blend.rgb_src_blend_factor = CF_BLENDFACTOR_SRC_ALPHA;
-        state.blend.rgb_dst_blend_factor = CF_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-        state.blend.alpha_src_blend_factor = CF_BLENDFACTOR_ONE;
-        state.blend.alpha_dst_blend_factor = CF_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
-    }
-    return state;
 }
 
 static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera, float time)
@@ -1353,6 +1402,11 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         return false;
     }
     see_from((CF_V4){ camera->eye.x, camera->eye.y, camera->eye.z, 1 });
+    if (!draw_occlusion(scene3d, camera)) {
+        cf_draw3d_set_texture("scene_parameters", (CF_Texture){ 0 });
+        return false;
+    }
+    render_scene3d_occlusion_bind(scene3d->occlusion, true);
     render_scene3d_shadow_bind(scene3d->shadow, cascades);
     render_scene3d_light_shadow_bind(scene3d->light_shadow);
     render_scene3d_sky_bind(scene3d->sky);
@@ -1377,6 +1431,8 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         if (draw->transparent != transparent || mirrors != mirrored) {
             if (draw->transparent && !transparent) {
                 draw_behind_translucents(scene3d, camera);
+                /* The occlusion describes the opaque surfaces behind them. */
+                render_scene3d_occlusion_bind(scene3d->occlusion, false);
             }
             transparent = draw->transparent;
             mirrored = mirrors;
@@ -1392,6 +1448,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     render_scene3d_shadow_unbind();
     render_scene3d_light_shadow_unbind();
     render_scene3d_sky_unbind();
+    render_scene3d_occlusion_unbind();
     cf_draw3d_pop_view();
     cf_draw3d_pop_projection();
     if (!transparent) {
@@ -1550,6 +1607,14 @@ bool render_scene3d_draw(
             environment,
             scene3d->binding_error,
             sizeof scene3d->binding_error
+        ) ||
+        !render_scene3d_occlusion_prepare(
+            scene3d->occlusion,
+            environment,
+            scene3d->width,
+            scene3d->height,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
         )) {
         return false;
     }
@@ -1622,11 +1687,21 @@ bool render_scene3d_preview_material(
     GameDirectionalLight sun = game_directional_light_defaults();
     sun.shadows = false;
     GameEnvironment environment = game_environment_defaults();
+    /* A lone sphere has nothing near it to occlude. */
+    environment.occlusion = GAME_OCCLUSION_OFF;
     set_sun(scene3d, &sun);
     set_ambient(scene3d, &environment);
     if (!render_scene3d_sky_prepare(
             scene3d->sky,
             &environment,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        ) ||
+        !render_scene3d_occlusion_prepare(
+            scene3d->occlusion,
+            &environment,
+            0,
+            0,
             scene3d->binding_error,
             sizeof scene3d->binding_error
         )) {

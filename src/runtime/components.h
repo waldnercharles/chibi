@@ -596,6 +596,17 @@ typedef enum
     GAME_TONE_MAPPING_NEUTRAL NODE_NAME("Neutral"),
 } GameToneMapping;
 
+/* How finely screen-space ambient occlusion searches the 3D view. Low and
+ * Medium work at half resolution; High works at full resolution with the
+ * most samples. */
+typedef enum
+{
+    GAME_OCCLUSION_OFF NODE_NAME("Off"),
+    GAME_OCCLUSION_LOW NODE_NAME("Low"),
+    GAME_OCCLUSION_MEDIUM NODE_NAME("Medium"),
+    GAME_OCCLUSION_HIGH NODE_NAME("High"),
+} GameOcclusion;
+
 /* Scene-wide display settings. Exposure is in stops; bloom radius is a fraction
  * of viewport height. Zero strength disables bloom. The 3D ambient light blends
  * from the ground color below to the sky color above; colors are 0xRRGGBBAA in
@@ -607,7 +618,10 @@ typedef enum
  * behind the 3D scene; it lights the scene in place of the ambient colors. Sky
  * rotation turns it and its light about the up axis in degrees,
  * counterclockwise seen from above; sky exposure brightens both in stops, from
- * -20 to 20. */
+ * -20 to 20. Occlusion darkens the ambient and sky light where nearby 3D
+ * surfaces hide the sky from each other, such as creases and the ground
+ * beneath objects, searching up to occlusion radius world units, which must
+ * be positive while it is on; direct light is left alone. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
 {
     float exposure NODE_UNIT("EV");
@@ -623,6 +637,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
     const char *sky;
     float sky_rotation;
     float sky_exposure NODE_UNIT("EV");
+    GameOcclusion occlusion;
+    float occlusion_radius NODE_UNIT("u");
 }
 GameEnvironment;
 
@@ -634,7 +650,9 @@ static inline GameEnvironment game_environment_defaults()
                               .ambient_sky = 0x2b3345ffu,
                               .ambient_ground = 0x0f121affu,
                               .ambient_intensity = 1,
-                              .adaptation_speed = 2 };
+                              .adaptation_speed = 2,
+                              .occlusion = GAME_OCCLUSION_MEDIUM,
+                              .occlusion_radius = 1 };
 }
 
 /* Light from an infinitely distant source, such as the sun. Direction is the

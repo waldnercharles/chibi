@@ -189,9 +189,13 @@ TEST_CASE(ramp_tables_count_among_program_samplers)
     REQUIRE(register_ramps());
     REQUIRE(render_program_samplers(RENDER_PROGRAM_RASTER_ACCUMULATE, &set) == 13);
     REQUIRE(render_program_samplers(RENDER_PROGRAM_RASTER, &set) == 8);
-    REQUIRE(render_program_samplers(RENDER_PROGRAM_SCENE3D, &set) == 14);
+    REQUIRE(render_program_samplers(RENDER_PROGRAM_SCENE3D, &set) == 15);
     /* Shadow programs read the parameters, images and ramps, but no maps. */
     REQUIRE(render_program_samplers(RENDER_PROGRAM_SCENE3D_SHADOW, &set) == 9);
+    /* The lit pass's widest set fills GLES3's 16 samplers exactly. */
+    REQUIRE(render_shader_set_add_image(&set, 8, NULL));
+    REQUIRE(set.count == RENDER_SHADER_IMAGE_MAX);
+    REQUIRE(render_program_samplers(RENDER_PROGRAM_SCENE3D, &set) == 16);
     return true;
 }
 

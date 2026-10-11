@@ -45,6 +45,8 @@ build.
 `build-language/` for the `test-language*` targets. Add a case to the selector
 that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
+`radiance`, `radiance-depth`, `radiance-surface`, `radiance-horizons4`,
+`radiance-horizons8`, `material-pixels`, `material-sampling`, `scene2d`,
 `scene3d`, `scene3d-gles` and `material-ramps` render through a hidden window,
 which needs a display and a GPU driver the CI job does not set up, so they stay
 out of the group; run them with `python3 tools/test_policy.py tool <name>`.
@@ -279,11 +281,13 @@ use no renderer, sleeps or child processes. Its exact dispatcher runs only regis
 validation and these cases. The migrated selector is independently reviewed and
 admitted for its first supervised capture.
 
-`python3 tools/test_policy.py tool tilemap` selects seven reviewed C cases for
+`python3 tools/test_policy.py tool tilemap` selects eight reviewed C cases for
 owned grid decoding and cache invalidation, half-open point lookup, exact rotated
 rectangle overlap, transformed bounds and native ECS binding lifetimes. Each
 grid has at most four cells and no rendering or engine frames run. A decorative
-prototype also checks atlas preparation and owned prepared data without gameplay.
+prototype also checks, without gameplay, that its atlas and its normal and height
+maps are prepared and that it owns its prepared data, and a map of another size
+must fail preparation.
 
 `python3 tools/test_policy.py tool tilemap-project` admits two project acceptance
 cases when the tooling build includes asset authoring. It reads only the sibling
@@ -521,6 +525,79 @@ backend has one, so there a failure means Cute's tile shaders did not load.
 hidden app. The first requested size must replace the canvas on that draw, and
 a later size only once it has been requested for two more draws. Build and run
 it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`.
+`scene2d` draws 2D scenes through the scene renderer and an engine viewport in a
+hidden 64 x 64 app and reads back the app canvas. A scene without `GameHRC2D`
+must show its materials unlit, `game_hrc2d_defaults()` lighting must keep them
+visible, and the unlit view or removing the settings must stop lighting. A
+sprite whose normal map faces a light must be lit more than flat normals, and
+mirrored, less, unless a Material turns its edge light off; a map must be loaded
+and the size of its image, and relief finite. Build and run it like
+`interior-border` with `AGENT_SELECTOR=--scene2d`.
+`radiance` runs HRC in a hidden 128 x 128 app and reads it back: an emitter
+lighting open space through its material, opaque, finite, bouncing and nearly
+transparent walls, reset, empty and resized grids, reused capacity against a
+fresh grid, color two and four times coarser than brightness, work cells of
+fractional pixels, a spark and a thin wall through split color and a
+half-resolution gather, lighting that normalization fitted, every resolution,
+color and gather combination, the adaptive ladder, GPU pass timing, and the
+extend and filter passes alone against CPU references. The cases pin the
+lighting they were calibrated with (finest grid, no ambient, intensity 7.5)
+rather than the authoring defaults. On lavapipe it passes 645 assertions in
+24.3 seconds, 30.5 seconds with an empty shader cache. HRC's view layout and
+lighting normalization run without a GPU in `render-resources`, and so do
+material borders: rectangles that cover exactly the cells near empty space,
+their build scratch, and their cache's hits, replacement, eviction, limits and
+a crowd of 20,000 masks.
+`radiance-depth` lights Depth thickness from material inputs written by hand,
+in a hidden 32 x 32 app with 128 x 128 targets for light that travels farther,
+from the same pinned lighting but with color at half resolution: slabs that
+shadow only the light they cross, by height whether or not they absorb, unless
+they glow, small, moving, edge and mixed-color sources, falloff to the depth
+radius, perspective views, the depth gain on receivers that absorb, as much at
+a Material's full absorption as opaque, receivers that absorb nothing taking
+HRC's light by facing and height, smoothly, gloss,
+every depth quality, depth history of light and of that shading, segments and
+steep planes. The surface
+gather pass alone must take each quadrant's light, find crests past gaps and
+stay dark without light in reach, and surface gather light must restart when
+the view turns. Its cases share one HRC, since a new one compiles all of HRC's
+shaders. It passes 2070 assertions in 11.5 seconds, 20.9 with an empty shader
+cache.
+`material-sampling` draws shapes into the material raster alone in a hidden
+65 x 49 app: small circles must emit their area wherever they land on the pixel
+grid and at twice the resolution, overlapping tiles must keep their draw order,
+a moving ring of boxes in one tile group must keep its emission, and every
+merged border must write the five targets its cells do. It passes 1330
+assertions in 2.4 seconds, 3.2 with an empty shader cache.
+`radiance-surface` lights solids through relief materials in its own hidden
+128 x 128 app and from the pinned lighting of `radiance`:
+edge light only on a silhouette's lit side, relief facing the light and below
+a ceiling, a surface radius in world units, surface colors that keep the
+direction they came from in every shadow mode, and surface light history. It
+passes 86 assertions in 26.0 seconds, 30.8 with an empty shader cache.
+`radiance-horizons4` and `radiance-horizons8` check relief shadows with four
+and eight horizon directions: horizons that follow moving relief without a
+reset, the horizon hierarchy against the fine scan, and the horizon cache
+against fresh horizons through 15 stages of light, geometry, camera, reset,
+resize, mode and fusion changes for all 8 sets of fusion, reprojection and
+hierarchy. Each passes 2866 assertions in 23.3 seconds, 30.7 with an empty
+shader cache. They run apart because lavapipe maps GPU memory a page at a
+time: the cache case peaks between 46000 and 56000 of Linux's 65530 mappings
+per process.
+`material-pixels` checks what the material raster draws for HRC in a hidden
+128 x 128 app: Set Material Parameter overriding one entity until its world is
+cleared, a world-space material following its layout frame, a graph material's
+parameter through the raster and its own fragment program inside a shape graph's
+circle, mixed batches of graph boxes, plain boxes and meshes uploading only what
+they draw, a sprite's normal and height maps tilting and raising each texel,
+mirrored and turned with it, and fluids landing where game Y points down, gas
+joining and parting, crisp unlit liquid edges, burning cores, plumes without
+holes, fading parcels and wisps along their velocity. Gas and liquid must take
+HRC's light and the wall's shadow with one and three traced cascades, a
+refracting liquid must bend only the background behind it, and a crystal must
+mirror the scene beside it. It passes 587 assertions in 11.5 seconds, 22.3 with
+an empty shader cache.
+These selectors need the material graphs of the main build.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
 near clipping, a mixed 2D layer, and a later frame without the occluder) with

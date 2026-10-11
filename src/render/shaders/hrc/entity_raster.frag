@@ -268,17 +268,46 @@ float evaluate_sdf(vec2 local_p, Entity e)
     return d;
 }
 
-// The sprite's texel under a point inside its box. points_45 is the frame's
-// uv rect and points_67.x its image variant. The top clamp keeps an edge
-// pixel inside the frame rather than on its neighbour.
-vec4 sprite_texel(vec2 local_p, Entity e)
+// The sprite's image uv under a point inside its box. points_45 is the
+// frame's uv rect. The top clamp keeps an edge pixel inside the frame rather
+// than on its neighbour.
+vec2 sprite_uv(vec2 local_p, Entity e)
 {
     vec2 t = vec2(local_p.x, -local_p.y) / (2.0 * abs(e.points_01.xy)) + 0.5;
     t = clamp(t, vec2(0.0), vec2(0.9999));
-    return sg_image_sample(int(e.points_67.x), mix(e.points_45.xy, e.points_45.zw, t));
+    return mix(e.points_45.xy, e.points_45.zw, t);
+}
+
+// The sprite's texel; points_67.x is its image variant.
+vec4 sprite_texel(vec2 local_p, Entity e)
+{
+    return sg_image_sample(int(e.points_67.x), sprite_uv(local_p, e));
 }
 
 #include "color.shd"
+
+// The sprite's tilt and height. points_67.y is its normal map variant, whose
+// red is image right and green image up, points_67.z its height map variant
+// and points_67.w its relief. A mirrored frame mirrors its normals, which the
+// sprite's rotation turns into world axes. A normal facing away keeps a
+// maximal tilt, as a material's does.
+void sprite_relief(vec2 local_p, Entity e, inout vec4 surface, out float height)
+{
+    vec2 uv = sprite_uv(local_p, e);
+    if (e.points_67.y > 0.0) {
+        vec3 n = sg_image_sample(int(e.points_67.y), uv).rgb * 2.0 - 1.0;
+        if (e.points_45.z < e.points_45.x) n.x = -n.x;
+        vec2 tilt = vec2(e.inv_rot.x * n.x + e.inv_rot.z * n.y,
+                         e.inv_rot.y * n.x + e.inv_rot.w * n.y);
+        float n2 = dot(n, n);
+        tilt = n2 > 1e-8 ? tilt * inversesqrt(n2) : vec2(0.0);
+        float t2 = dot(tilt, tilt);
+        if (n.z <= 0.0 && t2 > 1e-8) tilt *= 0.999 * inversesqrt(t2);
+        surface.xy = tilt;
+    }
+    height = e.points_67.w;
+    if (e.points_67.z > 0.0) height *= sg_image_sample(int(e.points_67.z), uv).r;
+}
 
 vec4 unpack_color(vec4 p) { return p; }
 
@@ -700,6 +729,7 @@ void main()
         }
         vec4 surface = vec4(0.0, 0.0, e.reserved2, 0.0);
         float height = 0.0;
+        if (e.shape_type == SHAPE_SPRITE) sprite_relief(local_p, e, surface, height);
         if (e.reserved0 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[floatBitsToUint(e.simulation_time.y)+uint(p)];
             sg_dispatch_2d(int(e.reserved0), local_p, material_pos, half_size, e.inv_rot, e.simulation_time.x, parameters, graph_output);

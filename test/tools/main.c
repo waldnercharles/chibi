@@ -46,12 +46,21 @@ void test_scene_prepared();
 void test_render_resources();
 void test_render_interior_border();
 void test_render_viewport_resize();
+void test_render_radiance_layout();
+void test_render_radiance();
+void test_render_radiance_depth();
+void test_render_material_sampling();
+void test_render_material_borders();
+void test_render_scene2d();
 void test_render_scene3d(bool gles);
 void test_device_controls();
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
 void test_render_material_ramps();
 void test_render_sdf_visibility();
+void test_render_radiance_surface();
+void test_render_material_pixels();
+void test_render_radiance_horizons(int directions);
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
@@ -157,9 +166,13 @@ int main(int argc, char **argv)
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
          render_resources = false, interior_border = false,
-         viewport_resize = false, sdf_visibility = false, scene3d = false,
-         material_ramps = false, box3d = false, sky_files = false,
+         viewport_resize = false, sdf_visibility = false, radiance = false,
+         radiance_depth = false, material_sampling = false, scene2d = false,
+         scene3d = false, material_ramps = false, radiance_surface = false,
+         material_pixels = false, box3d = false, sky_files = false,
          mesh_files = false, model_import = false;
+    /* The horizon directions --radiance-horizons4 or 8 checks. */
+    int radiance_horizons = 0;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -204,12 +217,25 @@ int main(int argc, char **argv)
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
     interior_border = argc == 2 && !strcmp(argv[1], "--interior-border");
     viewport_resize = argc == 2 && !strcmp(argv[1], "--viewport-resize");
+    radiance = argc == 2 && !strcmp(argv[1], "--radiance");
+    radiance_depth = argc == 2 && !strcmp(argv[1], "--radiance-depth");
+    material_sampling = argc == 2 && !strcmp(argv[1], "--material-sampling");
+    scene2d = argc == 2 && !strcmp(argv[1], "--scene2d");
     bool scene3d_gles = argc == 2 && !strcmp(argv[1], "--scene3d-gles");
     scene3d = scene3d_gles || (argc == 2 && !strcmp(argv[1], "--scene3d"));
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
     material_ramps = argc == 2 && !strcmp(argv[1], "--material-ramps");
     sdf_visibility = argc == 2 && !strcmp(argv[1], "--sdf-visibility");
-    material_graphs = scene3d || material_ramps;
+    radiance_surface = argc == 2 && !strcmp(argv[1], "--radiance-surface");
+    material_pixels = argc == 2 && !strcmp(argv[1], "--material-pixels");
+    if (argc == 2 && !strcmp(argv[1], "--radiance-horizons4")) {
+        radiance_horizons = 4;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--radiance-horizons8")) {
+        radiance_horizons = 8;
+    }
+    material_graphs = scene3d || material_ramps || radiance_surface ||
+                      radiance_horizons || material_pixels;
 #endif
 #endif
 #ifdef CHIBI_TEST_BOX3D
@@ -237,9 +263,11 @@ int main(int argc, char **argv)
         !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
         !package && !unit && !web_storage && !webgpu_staging &&
         !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics && !physics3d &&
-        !transforms && !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !scene3d && !material_ramps && !box3d &&
+        !native && !native_values && !native_catalog && !physics &&
+        !physics3d && !transforms && !render_resources && !interior_border &&
+        !viewport_resize && !sdf_visibility && !radiance && !radiance_depth &&
+        !material_sampling && !scene2d && !scene3d && !material_ramps &&
+        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
         !sky_files && !mesh_files && !model_import && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
@@ -259,7 +287,11 @@ int main(int argc, char **argv)
             "| --physics | --physics3d | --transforms "
             "| --render-resources | --interior-border | --viewport-resize | "
             "--sdf-visibility | "
-            "--scene3d | --scene3d-gles | --material-ramps | "
+            "--radiance | --radiance-depth | --material-sampling | --scene2d | "
+            "--scene3d | "
+            "--scene3d-gles | "
+            "--material-ramps | --radiance-surface | --radiance-horizons4 | "
+            "--radiance-horizons8 | --material-pixels | "
             "--box3d | "
             "--sky-files | --mesh-files | --model-import | "
             "--persistent-store | "
@@ -345,15 +377,26 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
-    if (render_resources || interior_border || viewport_resize || scene3d) {
+    if (render_resources || interior_border || viewport_resize || radiance ||
+        radiance_depth || material_sampling || scene2d || scene3d) {
         if (interior_border) {
             test_render_interior_border();
         } else if (viewport_resize) {
             test_render_viewport_resize();
+        } else if (radiance) {
+            test_render_radiance();
+        } else if (radiance_depth) {
+            test_render_radiance_depth();
+        } else if (material_sampling) {
+            test_render_material_sampling();
+        } else if (scene2d) {
+            test_render_scene2d();
         } else if (scene3d) {
             test_render_scene3d(scene3d_gles);
         } else {
             test_render_resources();
+            test_render_radiance_layout();
+            test_render_material_borders();
             test_device_controls();
         }
         pu_print_stats();
@@ -361,9 +404,16 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
-    if (material_ramps || sdf_visibility) {
+    if (material_ramps || sdf_visibility || radiance_surface ||
+        radiance_horizons || material_pixels) {
         if (sdf_visibility) {
             test_render_sdf_visibility();
+        } else if (material_pixels) {
+            test_render_material_pixels();
+        } else if (radiance_surface) {
+            test_render_radiance_surface();
+        } else if (radiance_horizons) {
+            test_render_radiance_horizons(radiance_horizons);
         } else {
             test_render_material_ramps();
         }

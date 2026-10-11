@@ -33,7 +33,7 @@ void main()
     if (geometry.a < 0.5) return;
 
     vec3 diffuse_sum = vec3(0), specular_sum = vec3(0);
-    float total = 0.0, specular_total = 0.0;
+    float total = 0.0, specular_total = 0.0, shading = 0.0;
     float sigma = max(u_sigma * 0.5, 0.001);
     vec3 origin = surface_position(surface_receiver_pixel(center, u_canvas_size, u_projection.w),
                                    receiver.a, u_projection, u_world_per_px);
@@ -56,6 +56,7 @@ void main()
             float boundary = smoothstep(0.9, 1.0, agreement) * (1.0 - smoothstep(0.6, 1.0, abs(dz)));
             weight *= mix(1.0, boundary, u_shadow_softness);
             diffuse_sum += max(diffuse.rgb, vec3(0)) * weight;
+            shading += texelFetch(u_q3, p, 0).w * weight;
             vec4 specular = texelFetch(u_q1, p, 0);
             float specular_weight = weight * max(1.0 - abs(material.a - specular.a) * 10.0, 0.0);
             specular_sum += max(specular.rgb, vec3(0)) * specular_weight;
@@ -67,4 +68,5 @@ void main()
     // retaining its weight rather than renormalizing only the lit neighbors.
     out_q0.rgb = diffuse_sum / total;
     out_q1.rgb = specular_sum / max(specular_total, 1e-6);
+    out_q3.w = shading / total;
 }

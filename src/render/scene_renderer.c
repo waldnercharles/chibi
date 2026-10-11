@@ -81,6 +81,9 @@ struct app_scene_renderer
        one the background shows. */
     float grid, background_grid;
     bool unlit, fogless; /* app_scene_renderer_set_view */
+    /* Whether the last frame was lit: the view is lit and the scene has
+     * GameHRC2D settings. HRC lights it where the backend has HRC. */
+    bool lit;
     /* The scene's GPU work each frame, for adaptive lighting resolution. */
     render_gpu_span span;
     /* Without GPU timestamps, the previous frame's start in ticks. */
@@ -168,6 +171,7 @@ void app_scene_renderer_free(app_scene_renderer *renderer)
         render_fog_free(renderer->fog);
     }
     render_radiance_free(renderer->radiance);
+    render_gpu_span_discard(&renderer->span);
     if (renderer->gpu_clock) {
         render_gpu_clock_release();
     }
@@ -225,16 +229,24 @@ int app_scene_renderer_particle_count(const app_scene_renderer *renderer)
 
 void app_scene_renderer_set_view(app_scene_renderer *renderer, bool unlit, bool fogless)
 {
-    if (renderer->unlit != unlit) {
-        renderer->span = (render_gpu_span){ 0 };
-        renderer->frame_start = 0;
-        renderer->background_valid = false;
-        if (renderer->radiance) {
-            render_radiance_reset(renderer->radiance);
-        }
-    }
     renderer->unlit = unlit;
     renderer->fogless = fogless;
+}
+
+/* Starts or stops HRC. Its light and timing from before it stopped no longer
+ * describe the scene. */
+static void set_lit(app_scene_renderer *renderer, bool lit)
+{
+    if (renderer->lit == lit) {
+        return;
+    }
+    renderer->lit = lit;
+    render_gpu_span_discard(&renderer->span);
+    renderer->frame_start = 0;
+    renderer->background_valid = false;
+    if (renderer->radiance) {
+        render_radiance_reset(renderer->radiance);
+    }
 }
 
 /* The fog of war over the frame, unless the view leaves it out. */
@@ -421,7 +433,7 @@ int app_scene_renderer_material_pieces(const app_scene_renderer *renderer)
 
 bool app_scene_renderer_lighting_status(const app_scene_renderer *renderer, render_radiance_status *status)
 {
-    if (!renderer || !renderer->radiance || renderer->unlit) {
+    if (!renderer || !renderer->radiance || !renderer->lit) {
         return false;
     }
     *status = render_radiance_get_status(renderer->radiance);
@@ -560,29 +572,86 @@ static bool append_entity(
 
 typedef struct
 {
-    int image, width, height, cell_width, cell_height, columns, frames;
+    int image, normal_map, height_map;
+    int width, height, cell_width, cell_height, columns, frames;
 } sprite_atlas;
 
-static bool load_sprite_atlas(
-    app_scene_renderer *renderer,
-    const char *image_key,
-    int frame_width,
-    int frame_height,
-    sprite_atlas *atlas
-)
+/* The resident variant of image `key` in `color_space`, sampled texel by
+ * texel. */
+static int sprite_image(const char *key, shader_image_color_space color_space, shader_error *error)
 {
-    shader_image_source source = { .key = (char *)image_key,
-                                   .color_space = SHADER_IMAGE_SRGB,
+    shader_image_source source = { .key = (char *)key,
+                                   .color_space = color_space,
                                    .filter = SHADER_IMAGE_NEAREST,
                                    .wrap = SHADER_IMAGE_CLAMP };
+    return render_image_variant_resident(&source, error);
+}
+
+/* Resolves a sprite's linear map `key` into `map`, zero when it has none. The
+ * map must be laid out like the atlas's image. */
+static bool load_sprite_map(
+    app_scene_renderer *renderer,
+    const char *key,
+    const sprite_atlas *atlas,
+    int *map
+)
+{
+    *map = 0;
+    if (!key || !*key) {
+        return true;
+    }
     shader_error error = { 0 };
-    atlas->image = render_image_variant_resident(&source, &error);
-    if (!atlas->image || !render_image_info(image_key, &atlas->width, &atlas->height)) {
+    int width, height;
+    *map = sprite_image(key, SHADER_IMAGE_LINEAR, &error);
+    if (!*map || !render_image_info(key, &width, &height)) {
+        snprintf(
+            renderer->error,
+            sizeof renderer->error,
+            "Sprite map: %s",
+            error.message
+        );
+        return false;
+    }
+    if (width != atlas->width || height != atlas->height) {
+        snprintf(
+            renderer->error,
+            sizeof renderer->error,
+            "Sprite map %s is %dx%d, not the %dx%d of its image",
+            key,
+            width,
+            height,
+            atlas->width,
+            atlas->height
+        );
+        return false;
+    }
+    return true;
+}
+
+static bool load_sprite_atlas(app_scene_renderer *renderer, const GameSprite *sprite, sprite_atlas *atlas)
+{
+    if (!isfinite(sprite->relief)) {
+        snprintf(
+            renderer->error,
+            sizeof renderer->error,
+            "Sprite %s has no finite relief",
+            sprite->image
+        );
+        return false;
+    }
+    shader_error error = { 0 };
+    atlas->image = sprite_image(sprite->image, SHADER_IMAGE_SRGB, &error);
+    if (!atlas->image ||
+        !render_image_info(sprite->image, &atlas->width, &atlas->height)) {
         snprintf(renderer->error, sizeof renderer->error, "Sprite: %s", error.message);
         return false;
     }
-    atlas->cell_width = frame_width > 0 ? frame_width : atlas->width;
-    atlas->cell_height = frame_height > 0 ? frame_height : atlas->height;
+    if (!load_sprite_map(renderer, sprite->normal_map, atlas, &atlas->normal_map) ||
+        !load_sprite_map(renderer, sprite->height_map, atlas, &atlas->height_map)) {
+        return false;
+    }
+    atlas->cell_width = sprite->frame_width > 0 ? sprite->frame_width : atlas->width;
+    atlas->cell_height = sprite->frame_height > 0 ? sprite->frame_height : atlas->height;
     atlas->columns = atlas->width / atlas->cell_width;
     atlas->frames = atlas->columns * (atlas->height / atlas->cell_height);
     return true;
@@ -629,6 +698,14 @@ static bool append_sprite_frame(
     draw->points[10] = sprite->flip_x ? u0 : u1;
     draw->points[11] = v0 + (float)atlas->cell_height / (float)atlas->height;
     draw->points[12] = (float)atlas->image;
+    draw->points[13] = (float)atlas->normal_map;
+    draw->points[14] = (float)atlas->height_map;
+    draw->points[15] = sprite->relief;
+    /* Maps shade a sprite through the surface light a Material's edge_light
+     * scales, so without a Material it takes that light in full. */
+    if (!material && (atlas->normal_map || atlas->height_map)) {
+        draw->reserved[2] = 1;
+    }
     return true;
 }
 
@@ -641,13 +718,7 @@ static bool append_sprite(
 )
 {
     sprite_atlas atlas;
-    return load_sprite_atlas(
-               renderer,
-               sprite->image,
-               sprite->frame_width,
-               sprite->frame_height,
-               &atlas
-           ) &&
+    return load_sprite_atlas(renderer, sprite, &atlas) &&
            append_sprite_frame(renderer, position, sprite, angle, material, &atlas);
 }
 
@@ -861,12 +932,18 @@ static bool append_tilemap(
         );
         return false;
     }
+    GameSprite sprite = { .image = map->image,
+                          .frame_width = map->frame_width,
+                          .frame_height = map->frame_height,
+                          .layer = map->layer,
+                          .normal_map = map->normal_map,
+                          .height_map = map->height_map,
+                          .relief = map->relief };
     sprite_atlas atlas;
-    if (!load_sprite_atlas(renderer, map->image, map->frame_width, map->frame_height, &atlas)) {
+    if (!load_sprite_atlas(renderer, &sprite, &atlas)) {
         return false;
     }
     float c = cosf(shown.radians), s = sinf(shown.radians);
-    GameSprite sprite = { .image = map->image, .layer = map->layer };
     material_rect bounds = { .width = (float)map->frame_width,
                              .height = (float)map->frame_height };
     for (int row = 0; row < map->rows; row++) {
@@ -1441,11 +1518,11 @@ static render_view_2d padded_view(
        .center_y = camera->center_y };
 }
 
+/* The first GameHRC2D's settings. A scene without one draws its materials
+ * unlit, at the defaults' ambient and intensity. */
 static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2 *flat)
 {
-    GameHRC2D lighting = renderer->radiance
-                           ? game_hrc2d_defaults()
-                           : (GameHRC2D){ .ambient = 1, .intensity = 1 };
+    GameHRC2D lighting = game_hrc2d_defaults();
     ecs_component_id component = GAME_COMPONENT_GameHRC2D.id;
     ecs_query query;
     int settings = 0;
@@ -1459,6 +1536,7 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
         }
         ecs_query_end(&query);
     }
+    set_lit(renderer, !renderer->unlit && settings > 0);
     if (renderer->shadow_override) {
         lighting.surface_shadow_mode = renderer->shadow_mode;
     }
@@ -1499,7 +1577,7 @@ static bool scene_lighting(app_scene_renderer *renderer, ecs_world *world, CF_V2
     renderer->particle_focal_length = lighting.particle_focal_length;
     *flat = (CF_V2){ lighting.ambient, lighting.intensity };
     renderer->lighting = lighting;
-    if (!renderer->unlit && renderer->radiance &&
+    if (renderer->lit && renderer->radiance &&
         !render_radiance_set_lighting(renderer->radiance, lighting)) {
         snprintf(renderer->error, sizeof renderer->error, "HRC could not allocate its lighting resources.");
         return false;
@@ -1631,7 +1709,7 @@ static CF_Texture scene_background(
     }
     if (renderer->grid > 0) {
         /* The backdrop is linear light the presentation exposes. */
-        float exposure = !renderer->unlit && renderer->lighting.tone_mapping > 0
+        float exposure = renderer->lit && renderer->lighting.tone_mapping > 0
                            ? renderer->lighting.exposure
                            : 0;
         render_grid_2d_draw(renderer->grid, screen, span.x / (float)renderer->width, exp2f(-exposure));
@@ -1696,14 +1774,14 @@ bool app_scene_renderer_draw(
     initialize_resources(renderer);
     renderer->skip = skip;
     double gpu_ms;
-    while (!renderer->unlit && renderer->radiance &&
+    while (renderer->lit && renderer->radiance &&
            render_gpu_span_take(&renderer->span, &gpu_ms)) {
         render_radiance_frame_time(renderer->radiance, gpu_ms);
     }
     /* Without GPU timestamps, as on the web, adaptive lighting judges the
      * whole frame's interval, which includes the rest of the frame's work
      * and the wait for the display. */
-    if (!renderer->unlit && renderer->radiance && !render_gpu_span_available()) {
+    if (renderer->lit && renderer->radiance && !render_gpu_span_available()) {
         uint64_t now = cf_get_ticks();
         if (renderer->frame_start) {
             double ms = (double)(now - renderer->frame_start) * 1000 /
@@ -1738,7 +1816,7 @@ bool app_scene_renderer_draw(
     if (!scene_lighting(renderer, world, &flat)) {
         return false;
     }
-    if (!renderer->raster || (!renderer->radiance && !renderer->unlit)) {
+    if (!renderer->raster || (!renderer->radiance && renderer->lit)) {
         /* This is a supported rendering path, not a scene error. Its status is
          * available in the renderer diagnostics without covering the game. */
         renderer->error[0] = '\0';
@@ -1793,7 +1871,7 @@ bool app_scene_renderer_draw(
         .output_width = width,
         .output_height = height,
     };
-    if (!renderer->unlit) {
+    if (renderer->lit) {
         render_radiance_settings radiance = render_radiance_get_settings(
             renderer->radiance
         );
@@ -1811,7 +1889,7 @@ bool app_scene_renderer_draw(
     int raster_width = frame.raster_width;
     int raster_height = frame.raster_height;
     /* Unlit frames can resize the materials without resizing HRC. */
-    if (!renderer->unlit &&
+    if (renderer->lit &&
         !render_radiance_resize(renderer->radiance, raster_width, raster_height)) {
         return false;
     }
@@ -1856,7 +1934,7 @@ bool app_scene_renderer_draw(
         return false;
     }
     CHIBI_TRACE_ZONE_BEGIN(raster_zone, "Material raster submission");
-    if (!renderer->unlit) {
+    if (renderer->lit) {
         render_gpu_span_begin(&renderer->span);
     }
     render_gpu_timing_start();
@@ -1882,7 +1960,7 @@ bool app_scene_renderer_draw(
     }
     render_gpu_timing_mark("Material raster");
     render_material_textures textures = render_material_raster_textures(renderer->raster);
-    bool emitter_proxies = !renderer->unlit &&
+    bool emitter_proxies = renderer->lit &&
                            renderer->lighting.surface_mode == GAME_HRC_SURFACE_DEPTH &&
                            renderer->lighting.surface_depth_gain > 0 &&
                            renderer->lighting.surface_depth_emitters ==
@@ -1928,7 +2006,7 @@ bool app_scene_renderer_draw(
     };
     inputs.background = scene_background(renderer, world, &camera);
     render_gpu_timing_mark("Background");
-    bool hdr = !renderer->unlit && renderer->lighting.tone_mapping > 0;
+    bool hdr = renderer->lit && renderer->lighting.tone_mapping > 0;
     CF_Canvas composite = renderer->output;
     if (hdr) {
         if (!renderer->hdr) {
@@ -1940,9 +2018,9 @@ bool app_scene_renderer_draw(
         }
         composite = render_post_2d_target(renderer->hdr);
     }
-    bool composed = renderer->unlit
-                      ? draw_unlit(renderer, inputs, flat)
-                      : render_radiance_draw(renderer->radiance, inputs, view, composite);
+    bool composed = renderer->lit
+                      ? render_radiance_draw(renderer->radiance, inputs, view, composite)
+                      : draw_unlit(renderer, inputs, flat);
     if (!composed) {
         return false;
     }
@@ -1979,7 +2057,7 @@ bool app_scene_renderer_draw(
         }
         render_gpu_timing_mark("Reflections");
     }
-    if (!renderer->unlit) {
+    if (renderer->lit) {
         render_gpu_span_end(&renderer->span);
     }
     cf_draw_canvas(
@@ -2080,14 +2158,14 @@ void app_scene_renderer_set_horizon_reuse(app_scene_renderer *renderer, unsigned
 
 render_surface_work app_scene_renderer_surface_work(const app_scene_renderer *renderer)
 {
-    return renderer->radiance && !renderer->unlit
+    return renderer->radiance && renderer->lit
              ? render_radiance_surface_work(renderer->radiance)
              : (render_surface_work){ 0 };
 }
 
 render_horizon_work app_scene_renderer_horizon_work(const app_scene_renderer *renderer)
 {
-    return renderer->radiance && !renderer->unlit
+    return renderer->radiance && renderer->lit
              ? render_radiance_horizon_work(renderer->radiance)
              : (render_horizon_work){ 0 };
 }

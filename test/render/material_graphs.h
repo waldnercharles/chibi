@@ -37,6 +37,29 @@ bool test_register_view_mask(const char *name);
 /* An unlit masked material whose Opacity is NaN over its surface, as the
  * fraction of U scaled past the float limit is, with an Alpha Cutoff of 0.5. */
 bool test_register_unknown_opacity(const char *name);
+/* A lit .6 gray material for 2D relief. Its Normal leans by `tilt` sideways
+ * (x) and up (z), its roughness is constant, and its Height is `height` world
+ * units plus `slope` times world x. */
+typedef struct
+{
+    float tilt[2], roughness, height, slope;
+} test_relief;
+bool test_register_relief(const char *name, test_relief relief);
+/* An unlit material that is red where world x is at least .5 and black
+ * elsewhere. */
+bool test_register_world_step(const char *name);
+/* An unlit material whose color is its "Tint" parameter, `tint` unless an
+ * entity overrides it. */
+bool test_register_tint(const char *name, const float tint[3]);
+/* A shape graph of a circle of `radius` at the origin, with half extents of
+ * twice its radius. */
+bool test_register_circle_shape(const char *name, float radius);
+/* A lit material whose base color, emission, roughness and height are its
+ * "Tint" and "Glow" vector and "Roughness" and "Height" scalar parameters. */
+bool test_register_parameters(const char *name);
+/* A shape graph of a circle at the origin whose radius is its "Radius"
+ * parameter, with half extents of `bounds`. */
+bool test_register_radius_shape(const char *name, float bounds);
 /* A model graph of one sphere of `radius` at the origin. */
 bool test_register_model_sphere(const char *name, float radius);
 

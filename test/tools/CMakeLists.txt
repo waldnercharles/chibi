@@ -139,7 +139,10 @@ if(TARGET chibi_box3d)
 endif()
 
 if(TARGET Chibi::render)
-    add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/scene3d.c
+    add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/hidden_app.c
+        ../render/memory_images.c
+        ../render/radiance.c ../render/radiance_depth.c ../render/material_borders.c
+        ../render/material_sampling.c ../render/scene2d.c ../render/scene3d.c
         device_controls.c ../render/interior_border.c ../render/viewport_resize.c ../draw_backend.cpp)
     target_include_directories(chibi_render_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
@@ -154,7 +157,7 @@ if(TARGET Chibi::render)
         target_link_libraries(chibi_render_consumer PRIVATE Chibi::shader_preparation
             Chibi::graph_compilation Chibi::graph_authoring)
         target_sources(chibi_render_consumer PRIVATE ../render/material_graphs.c ../render/material_ramps.c
-            ../sdf_visibility.c)
+            ../render/material_pixels.c ../sdf_visibility.c)
         target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
         target_link_libraries(test_tools PRIVATE Chibi::shader_preparation
             Chibi::graph_compilation Chibi::graph_authoring)

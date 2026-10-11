@@ -1,0 +1,4 @@
+version 21
+name "Courtyard"
+content "content"
+start_scene "scenes/Start.kdl"

@@ -66,6 +66,20 @@ rectangle with `tilemap_occupied_in_box(entity, minimum, maximum)`. Decorative
 layers need no behavior or collision setup. See the rotated `TileMosaic`
 prototype in `test/fixtures/sprites`.
 
+## Light 2D scenes
+
+A 2D scene draws its sprites, shapes and tilemaps unlit, in the colors they are
+drawn with, until an entity holds `GAME.GameHRC2D`. Holographic radiance
+cascades then light it: emissive materials light their surroundings, absorbing
+materials cast shadows, and light bounces off lit surfaces. Only the first such
+entity counts. `ambient` is the share of the unlit colors that stays: 1 keeps
+them as drawn and adds light to them, and lower values darken what no light
+reaches. `intensity` scales how bright emissive surfaces look, and `resolution`
+sets the detail of the light grid. Studio adds the component with `ambient` and
+`intensity` at 1 and `resolution` at 0.5, but KDL loads an omitted field as
+zero, so write every setting a scene needs. See the `Lighting` prototype in
+`test/fixtures/sprites`.
+
 ## Declare components
 
 A game declares its own component types under `content/components`, one `.chibi`

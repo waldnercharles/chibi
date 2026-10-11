@@ -76,6 +76,7 @@ void main()
 
     vec3 lo = current.rgb, hi = current.rgb;
     vec3 spec_lo = material.rgb, spec_hi = material.rgb;
+    float shading = out_q3.w, shading_lo = shading, shading_hi = shading;
     for (int y = -1; y <= 1; y++) {
         for (int x = -1; x <= 1; x++) {
             ivec2 q = p + ivec2(x, y);
@@ -85,6 +86,9 @@ void main()
             if (n.a < 0.5 || dot(n.xyz, geometry.xyz) < 0.95 || abs(d.a - current.a) > u_sigma * 0.5) continue;
             lo = min(lo, d.rgb);
             hi = max(hi, d.rgb);
+            float shade = texelFetch(u_q3, q, 0).w;
+            shading_lo = min(shading_lo, shade);
+            shading_hi = max(shading_hi, shade);
             vec4 s = texelFetch(u_q1, q, 0);
             if (abs(material.a - s.a) > 0.08) continue;
             spec_lo = min(spec_lo, s.rgb);
@@ -95,4 +99,8 @@ void main()
     float specular_weight = history_weight(material.rgb, old_material.rgb);
     out_q0.rgb = mix(current.rgb, clamp(previous.rgb, lo, hi), diffuse_weight);
     out_q1.rgb = mix(material.rgb, clamp(old_material.rgb, spec_lo, spec_hi), specular_weight);
+    // How Depth shades HRC's light on a solid that absorbs nothing.
+    float old_shading = texelFetch(u_prev3, old_p, 0).w;
+    float shading_weight = history_weight(vec3(shading), vec3(old_shading));
+    out_q3.w = mix(shading, clamp(old_shading, shading_lo, shading_hi), shading_weight);
 }

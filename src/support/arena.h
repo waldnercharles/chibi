@@ -15,6 +15,8 @@ typedef struct arena
     arena_block *current;
     arena_allocation *allocations; /* Live collectable values. */
     arena_allocation *unused;      /* Swept values kept for reuse. */
+    size_t allocated;              /* Collectable bytes since the last sweep. */
+    size_t kept;                   /* Collectable bytes the last sweep kept. */
     bool collectable;
 } arena;
 
@@ -30,13 +32,26 @@ bool arena_contains(const arena *a, const void *address);
 /* Thread-local backing-block allocation count; excludes allocations within blocks. */
 uint64_t arena_block_allocations();
 /* Opt-in nonmoving value storage. Ordinary arenas retain their bump allocator.
- * Unmarked allocations become reusable after sweep; live addresses stay stable. */
+ * Values no collection marks become reusable; live addresses stay stable. */
 void arena_init_collectable(arena *a);
 void arena_set_trace(arena *a, const void *value, arena_tracer trace, const void *shape);
-void arena_collect_begin(arena *a);
-bool arena_mark(arena *a, const void *address);
-bool arena_trace_marked(arena *a, arena_marker mark, void *user);
-void arena_sweep(arena *a);
+/* One mark and sweep over collectable arenas whose values may point into one
+ * another. A mark finds its value by address in logarithmic time, and each
+ * marked value is traced once. The arenas must outlive the collection. */
+typedef struct arena_collection
+{
+    arena **arenas;
+    int count;
+    arena_allocation **live;    /* Every live value, by address. */
+    arena_allocation **pending; /* Marked values not traced yet. */
+} arena_collection;
+void arena_collect_begin(arena_collection *, arena **arenas, int count);
+/* An arena_marker whose user is the collection. */
+void arena_collect_mark(void *collection, const void *address);
+/* Thread-local count of collection marks, a measure of collection work. */
+uint64_t arena_collect_marks();
+/* Traces what the marks reach and sweeps the rest. */
+void arena_collect_end(arena_collection *);
 void arena_usage(const arena *a, size_t *bytes, size_t *capacity);
 /* Backing allocations, including block and tracked-allocation headers. */
 size_t arena_storage_bytes(const arena *);

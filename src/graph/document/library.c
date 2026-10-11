@@ -385,6 +385,20 @@ static int import_library(library_link *link, const char *name, uint64_t *offset
     return 0;
 }
 
+/* A source library's functions have no stable graph ids, so a call into one
+ * names its function. */
+static graph *imported_function(const behavior_asset *result, const char *library, const char *name)
+{
+    for (int i = 1; name && i < acount(result->graphs); i++) {
+        graph *g = result->graphs[i];
+        if (g->source_asset && !strcmp(g->source_asset, library) &&
+            !strcmp(g->name, name)) {
+            return g;
+        }
+    }
+    return NULL;
+}
+
 static int link_graph(library_link *link, graph *g)
 {
     for (int i = 0; i < acount(g->nodes); i++) {
@@ -423,11 +437,13 @@ static int link_graph(library_link *link, graph *g)
         if (import_library(link, n->reference_asset, &offset)) {
             return -1;
         }
-        graph *target = behavior_asset_find_graph(link->result, n->reference_id + offset);
+        graph *target = n->reference_id
+                          ? behavior_asset_find_graph(link->result, n->reference_id + offset)
+                          : imported_function(link->result, n->reference_asset, n->reference_name);
         if (!target || target->kind != GRAPH_FUNCTION) {
             return fail(link, "missing library function", n->reference_asset);
         }
-        n->reference_id += offset;
+        n->reference_id = target->graph_id;
         n->reference_name = graph_own_str(g, target->name, strlen(target->name));
         n->reference_asset = NULL;
     }

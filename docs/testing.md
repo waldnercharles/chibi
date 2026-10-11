@@ -438,14 +438,16 @@ a placed node is an unsaved edit, and component access nodes keep their file
 entries wherever arrangement puts them. 26 assertions in 0.25 seconds with
 ASan/UBSan.
 
-`--fields` runs fourteen cases on field graphs compiled to field programs:
+`--fields` runs seventeen cases on field graphs compiled to field programs:
 deterministic cos/sin, atan2 and exponentials against golden bits, primitives
 that bake as they sample, parameters and compile errors, noise and
 composition, row evaluation matching scalar samples, repeated inputs,
 functions, multiple results, terrain chunks and connectivity, and streaming
 tiles that restore and retry failed slices, plus linked-library publication
-and rollback. The original thirteen cases passed 3,308 assertions in 0.36 seconds
-with ASan/UBSan; the added publication case requires validation on this candidate.
+and rollback, source-library linking and constant parameter defaults, and library
+updates that preserve valid and invalid field drafts. The original thirteen
+cases passed 3,308 assertions in 0.36 seconds with ASan/UBSan; these historical
+measurements do not cover the four added cases.
 
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against
@@ -1000,17 +1002,18 @@ to black, bloom clamps at the image edge, its radius follows the viewport height
 and crosses blur levels smoothly, outputs take sizes down to one pixel,
 processing keeps the caller's transform, projection, scissor and viewport, and
 invalid settings keep the last output. It passes 59 assertions in 1.5 seconds.
-`scene3d-shapes` selects thirteen hidden-app 128x128 cases of the 3D path's
+`scene3d-shapes` selects fourteen hidden-app 128x128 cases of the 3D path's
 primitive solids lit by the Environment's ambient light. Overhead cameras
 center and map the ground, picks find the nearest solid of every primitive,
 turned bounds fit, frame and clip at the near plane, and flat triangles turn
-about their area center. Every solid primitive draws, nearer solids win in any
-order, parallel geometry draws exactly what serial geometry does for 1,537
+about their area center. Every solid primitive draws, 256 small boxes, prisms
+or octahedra each become 256 instances in at most four draws, nearer solids win
+in any order, parallel geometry draws exactly what serial geometry does for 1,537
 actors, fitted bounds frame what draws, prisms and octahedra draw and pick
 their outline at eight headings and from below, eight tetrahedron parts
 compose an octahedron, polygons' notches and holes stay empty in both the mesh
 and picks, and a box frame's twelve part entities match the frame. It passes
-1,067 assertions in 2 seconds. Run both like `interior-border`; they also run
+1,076 assertions in 2 seconds. Run both like `interior-border`; they also run
 with `detect_leaks=0` for llvmpipe's 112 bytes.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops
@@ -1040,7 +1043,10 @@ A valid library edit publishes a new field revision and value; an unsupported
 operation refuses the replacement and preserves the previous revision and value.
 This replaces the obsolete test that registered an executable library graph in
 the preview and edited a `.chibi` presentation as executable state. Preview
-executable libraries now require canonical source publication. The existing
-`FieldShapes.chibi` to `MaterialIslands.kdl` linkage gap remains: the native graph
-loader reads KDL documents and does not lower authored `.chibi` libraries into
-field artifacts. This check does not claim that linkage or source hot-apply works.
+executable libraries now require canonical source publication. Three more cases
+lower `FieldShapes.chibi` into a graph library and link `MaterialIslands.kdl`
+against it, retain a radius parameter default of 40 in a call that samples -40
+at its center, and publish library edits to a live preview. The field relinks
+while its valid or invalid unsaved draft stays intact. A library that drops the
+called function is refused while the field keeps its revision, value and draft. `--validate-project` checks that
+`validate_project` and `preview_field` link a field against a `.chibi` library.

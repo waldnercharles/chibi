@@ -61,9 +61,12 @@ parameters convert to that scalar representation. Negative values are solid.
 Translation, scale and domain warp compose coordinate arithmetic with noise;
 rotation has dedicated coordinate nodes. Connectivity remains a terrain pass.
 
-Pure scalar functions use the existing library format. `FieldShapes.Islands`
-composes a circle, box, capsule and smooth unions, and `MaterialIslands` calls it.
-Function calls inline into scalar IR. Recursive calls, cycles, mutable bindings,
+Fields call pure scalar functions of `.chibi` libraries. `FieldShapes.Islands`
+composes a circle, box, capsule and smooth unions, and `MaterialIslands` calls it
+by its library and function name. A callable function's body is one `return`
+built from its parameters, constants and pure native calls such as
+`field_circle`; each call becomes the field node it names. Function calls inline
+into scalar IR. Recursive calls, cycles, mutable bindings,
 execution pins, unsupported nodes, invalid parameters and nonfinite output fail
 validation. Compilation is bounded to 4096 instructions; grids are bounded to
 4096 cells per axis. No behavior instance or general behavior VM runs per cell.

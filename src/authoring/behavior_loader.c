@@ -53,12 +53,13 @@ fail:
 
 int app_behavior_fixtures_load(game_preview_world *world, game_prototype_preview *preview, const char *root)
 {
-    /* Each world takes each definition once. */
+    /* Each world takes each definition once. Sources load first because
+     * graphs such as fields call source libraries. */
     assert(!preview || game_prototype_preview_live(preview) != world);
-    int graphs = authoring_graphs_prepare(world, preview, root);
-    if (graphs < 0) {
+    int sources = load_sources(world, preview ? game_prototype_preview_live(preview) : NULL, root);
+    if (sources < 0) {
         return -1;
     }
-    int sources = load_sources(world, preview ? game_prototype_preview_live(preview) : NULL, root);
-    return sources < 0 ? -1 : graphs + sources;
+    int graphs = authoring_graphs_prepare(world, preview, root);
+    return graphs < 0 ? -1 : graphs + sources;
 }

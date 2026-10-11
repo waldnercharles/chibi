@@ -21,6 +21,8 @@ typedef struct game_preview_definition
     char *path;
     behavior_asset *working;
     behavior_asset *applied;
+    /* Owned last published field document, before library linking. */
+    behavior_asset *field_source;
     authoring_source_presentation *working_presentation, *applied_presentation;
     game_preview_world *world;
     int registered;

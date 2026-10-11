@@ -1,10 +1,14 @@
 #include "assets/field_parameters.h"
+#include "authoring/behavior_loader.h"
+#include "authoring/preview_source.h"
+#include "authoring/source_graph_library.h"
 #include "graph/authoring/asset_edit.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/compiler/field_program.h"
 #include "graph/compiler/material_field.h"
 #include "graph/document/library.h"
 #include "graph/document/serialize.h"
+#include "runtime/component_catalog.h"
 #include "runtime/material_field.h"
 #include "runtime/material_stream.h"
 #include "runtime/material_terrain.h"
@@ -12,6 +16,8 @@
 #include "runtime/tasks.h"
 #include "support/cos_sin.h"
 #include "support/exponential.h"
+#include "support/text_file.h"
+#include "test/support/code_fixture.h"
 #include "test/support/game_graph_packs.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -22,10 +28,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 /* Field graphs compiled to field programs: primitives, parameters, noise,
- * composition, row and scalar parity, library functions, terrain chunks,
- * streaming tiles and the deterministic trigonometry they use. */
+ * composition, row and scalar parity, library functions, source libraries
+ * and their hot apply, terrain chunks, streaming tiles and the deterministic
+ * trigonometry they use. */
 
 static node *add(behavior_asset *asset, const char *name)
 {
@@ -927,6 +936,222 @@ TEST_CASE(deterministic_exponentials_stay_accurate)
     return true;
 }
 
+#define CONTRACTS "test/fixtures/material-contracts/content"
+
+/* A field calls a pure function of a `.chibi` library, lowered to the field
+ * nodes its native calls name. */
+TEST_CASE(field_links_source_library)
+{
+    char *text = text_file_read(CONTRACTS "/libraries/FieldShapes.chibi");
+    REQUIRE(text);
+    test_source_fixture fixture = test_source_prepare(CONTRACTS "/libraries/FieldShapes.chibi", text);
+    free(text);
+    behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
+    const behavior_asset *shapes = NULL;
+    for (int i = 0; i < acount(libraries); i++) {
+        shapes = strcmp(libraries[i]->name, "FieldShapes") ? shapes : libraries[i];
+    }
+    REQUIRE(shapes && behavior_asset_find_graph_by_name(shapes, "Islands"));
+    text = text_file_read(CONTRACTS "/fields/MaterialIslands.kdl");
+    behavior_asset *islands = behavior_asset_load(text);
+    free(text);
+    REQUIRE(islands);
+    char error[256];
+    behavior_asset *linked = behavior_asset_link_libraries(islands, &shapes, 1, error, sizeof error);
+    REQUIRE(linked);
+    field_program *p = compile(linked);
+    REQUIRE(
+        sample(p, -90, 0) < -60 && sample(p, 60, 0) < -50 &&
+        sample(p, 0, 0) < -15 && sample(p, 0, 150) > 50
+    );
+    field_program_free(p);
+    behavior_asset_free(linked);
+
+    /* A library without the function the field names refuses the link. */
+    behavior_asset *empty = behavior_asset_new("FieldShapes");
+    empty->domain = BEHAVIOR_DOMAIN_LIBRARY;
+    const behavior_asset *missing = empty;
+    REQUIRE(!behavior_asset_link_libraries(islands, &missing, 1, error, sizeof error));
+    REQUIRE(strstr(error, "missing library function"));
+    behavior_asset_free(empty);
+    behavior_asset_free(islands);
+    authoring_source_graph_libraries_free(libraries);
+    test_source_free(&fixture);
+    return true;
+}
+
+/* A call added for a lowered function takes its parameters' defaults. */
+TEST_CASE(field_source_library_keeps_parameter_defaults)
+{
+    const char
+        *text = "library \"Discs\" {\n"
+                "    pure function \"Disc\"(X: float = 0.0, Y: float = 0.0, "
+                "Radius: float = 40.0) -> (Value: float = 0.0) {\n"
+                "        return field_circle(entry.X, entry.Y, entry.Radius)\n"
+                "    }\n"
+                "}\n";
+    test_source_fixture fixture = test_source_prepare("content/libraries/Discs.chibi", text);
+    behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
+    REQUIRE(acount(libraries) == 1);
+    graph *disc = behavior_asset_find_graph_by_name(libraries[0], "Disc");
+    REQUIRE(disc);
+    behavior_asset *field = behavior_asset_new("DiscField");
+    field->domain = BEHAVIOR_DOMAIN_FIELD;
+    node *call = behavior_asset_add_function_call_node(field, disc);
+    node *output = add(field, "Field Output");
+    REQUIRE(call && output && !graph_connect_data(field->graph, call, 0, output, 0));
+    char error[256];
+    const behavior_asset *catalog = libraries[0];
+    behavior_asset *linked = behavior_asset_link_libraries(field, &catalog, 1, error, sizeof error);
+    REQUIRE(linked);
+    field_program *p = compile(linked);
+    REQUIRE(p && sample(p, 0, 0) == -40);
+    field_program_free(p);
+    behavior_asset_free(linked);
+    behavior_asset_free(field);
+    authoring_source_graph_libraries_free(libraries);
+    test_source_free(&fixture);
+    return true;
+}
+
+static char root[] = "/tmp/chibi-fields-XXXXXX";
+
+static void copy_fixture(const char *folder, const char *file)
+{
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s", root, folder);
+    mkdir(path, 0700);
+    snprintf(path, sizeof path, CONTRACTS "/%s/%s", folder, file);
+    char *text = text_file_read(path);
+    assert(text);
+    snprintf(path, sizeof path, "%s/%s/%s", root, folder, file);
+    FILE *out = fopen(path, "wb");
+    assert(out && fputs(text, out) >= 0 && !fclose(out));
+    free(text);
+}
+
+static void remove_fixture(const char *folder, const char *file)
+{
+    char path[512];
+    snprintf(path, sizeof path, "%s/%s/%s", root, folder, file);
+    unlink(path);
+    snprintf(path, sizeof path, "%s/%s", root, folder);
+    rmdir(path);
+}
+
+static float islands_at(material_fields *fields, float x)
+{
+    char error[256];
+    field_context context;
+    float out;
+    bool ready = material_field_context(fields, "MaterialIslands", NULL, 1, &context, error, sizeof error) &&
+                 material_field_bake(
+                     fields,
+                     "MaterialIslands",
+                     context,
+                     (field_grid){ 1, 1, 1, x, 0 },
+                     &out,
+                     NULL,
+                     error,
+                     sizeof error
+                 );
+    assert(ready);
+    (void)ready;
+    return out;
+}
+
+/* Publishing a changed source library relinks and recompiles the fields that
+ * call it; a library the field can no longer call keeps the applied field. */
+TEST_CASE(field_source_library_hot_apply)
+{
+    strcpy(root, "/tmp/chibi-fields-XXXXXX");
+    REQUIRE(mkdtemp(root));
+    copy_fixture("libraries", "FieldShapes.chibi");
+    copy_fixture("fields", "MaterialIslands.kdl");
+    ecs_world *ecs = ecs_world_new();
+    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(!ecs_world_register_component(ecs, GAME_REGISTRY_COMPONENTS[i], NULL));
+    }
+    game_preview_world *live = game_preview_world_new(ecs);
+    REQUIRE(app_behavior_fixtures_load(live, NULL, root) == 2);
+    material_fields *fields = game_materials_fields(live->runtime->materials);
+    REQUIRE(material_field_revision(fields, "MaterialIslands") == 1);
+    float before = islands_at(fields, -90);
+
+    /* A valid field draft changes the result, but is not applied with its library. */
+    game_preview_definition *definition = game_preview_find_definition(live, "MaterialIslands");
+    REQUIRE(definition);
+    graph *draft = definition->working->graph;
+    node *sum = graph_add_node(draft, registry_node_by_name("Field Add"));
+    REQUIRE(sum);
+    REQUIRE(
+        !graph_set_pin_default(draft, sum, false, 1, &(pin_value){ .type = PIN_F32, .f = 1000 })
+    );
+    REQUIRE(!graph_connect_data(draft, graph_node_by_id(draft, 49), 0, sum, 0));
+    REQUIRE(!graph_connect_data(draft, sum, 0, graph_node_by_id(draft, 53), 0));
+    REQUIRE(!game_preview_mark_dirty(definition));
+    behavior_asset *saved_draft = behavior_asset_clone(definition->working);
+    REQUIRE(saved_draft);
+    behavior_asset *linked_draft = game_preview_link(live, definition->working);
+    REQUIRE(linked_draft);
+    field_program *draft_program = compile(linked_draft);
+    REQUIRE(fabsf(sample(draft_program, -90, 0) - before - 1000) < .001f);
+    field_program_free(draft_program);
+    behavior_asset_free(linked_draft);
+
+    char path[512], error[256];
+    snprintf(path, sizeof path, "%s/libraries/FieldShapes.chibi", root);
+    char *text = text_file_read(path);
+    char *grown = strstr(text, "65.0");
+    REQUIRE(grown);
+    memcpy(grown, "99.0", 4);
+    REQUIRE(!game_preview_source_edit(live, path, text, error, sizeof error));
+    REQUIRE(!game_preview_sources_publish(live, NULL, error, sizeof error));
+    REQUIRE(material_field_revision(fields, "MaterialIslands") == 2);
+    float after = islands_at(fields, -90);
+    REQUIRE(after < before - 30);
+    REQUIRE(definition->dirty && definition->unsaved);
+    REQUIRE(behavior_asset_equal(definition->working, saved_draft));
+    behavior_asset_free(saved_draft);
+
+    /* An invalid field draft must neither block publication nor become applied. */
+    REQUIRE(graph_add_node(draft, registry_node_by_name("Print String")));
+    saved_draft = behavior_asset_clone(definition->working);
+    REQUIRE(saved_draft);
+    linked_draft = game_preview_link(live, definition->working);
+    REQUIRE(linked_draft);
+    REQUIRE(!field_program_compile(linked_draft, error, sizeof error));
+    behavior_asset_free(linked_draft);
+    memcpy(grown, "88.0", 4);
+    REQUIRE(!game_preview_source_edit(live, path, text, error, sizeof error));
+    REQUIRE(!game_preview_sources_publish(live, NULL, error, sizeof error));
+    REQUIRE(material_field_revision(fields, "MaterialIslands") == 3);
+    REQUIRE(fabsf(islands_at(fields, -90) - after - 11) < .001f);
+    after = islands_at(fields, -90);
+    REQUIRE(definition->dirty && definition->unsaved);
+    REQUIRE(behavior_asset_equal(definition->working, saved_draft));
+
+    char *renamed = strstr(text, "\"Islands\"");
+    REQUIRE(renamed);
+    memcpy(renamed, "\"Isles\"  ", 9);
+    REQUIRE(!game_preview_source_edit(live, path, text, error, sizeof error));
+    REQUIRE(game_preview_sources_publish(live, NULL, error, sizeof error));
+    REQUIRE(strstr(error, "missing library function"));
+    REQUIRE(material_field_revision(fields, "MaterialIslands") == 3);
+    REQUIRE(islands_at(fields, -90) == after);
+    REQUIRE(definition->dirty && definition->unsaved);
+    REQUIRE(behavior_asset_equal(definition->working, saved_draft));
+    behavior_asset_free(saved_draft);
+    free(text);
+
+    game_preview_world_free(live);
+    ecs_world_free(ecs);
+    remove_fixture("libraries", "FieldShapes.chibi");
+    remove_fixture("fields", "MaterialIslands.kdl");
+    rmdir(root);
+    return true;
+}
+
 void test_fields()
 {
     /* Every case reads field nodes from the same packs. */
@@ -944,6 +1169,9 @@ void test_fields()
     RUN_TEST_CASE(field_repeated_inputs);
     RUN_TEST_CASE(field_functions);
     RUN_TEST_CASE(field_multiple_results);
+    RUN_TEST_CASE(field_links_source_library);
+    RUN_TEST_CASE(field_source_library_keeps_parameter_defaults);
+    RUN_TEST_CASE(field_source_library_hot_apply);
     RUN_TEST_CASE(field_terrain_chunks_and_connectivity);
     test_game_graph_packs_clear();
 }

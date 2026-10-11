@@ -92,6 +92,7 @@ struct game_preview_source_staging
     game_source_staging *runtime;
     projection_stage *projections;
     game_preview_definition **definitions, **removed;
+    game_preview_field_relink *fields;
 };
 static game_preview_definition *source_projection(game_preview_world *world, const authoring_source *source)
 {
@@ -119,8 +120,44 @@ static void stage_free(game_preview_source_staging *stage)
     afree(stage->projections);
     afree(stage->definitions);
     afree(stage->removed);
+    game_preview_fields_relink_free(stage->fields);
     authoring_sources_free(stage->sources);
     free(stage);
+}
+/* Field graphs call source libraries, so a changed or removed library
+ * relinks the fields that call it. */
+static bool relink_fields(game_preview_source_staging *stage, const bool *changed, char *error, size_t size)
+{
+    const authoring_sources *applied = stage->world->source_state->applied;
+    const char **names = NULL;
+    for (int i = 0; i < authoring_sources_count(stage->sources); i++) {
+        const script_analysis *a = authoring_sources_at(stage->sources, i)->analysis;
+        const authoring_source *old = source_at_identity(applied, a->identity);
+        if (changed[i] && a->kind == SCRIPT_PROGRAM_LIBRARY) {
+            apush(names, a->name);
+        }
+        if (changed[i] && old && old->analysis->kind == SCRIPT_PROGRAM_LIBRARY) {
+            apush(names, old->analysis->name);
+        }
+    }
+    for (int i = 0; applied && i < authoring_sources_count(applied); i++) {
+        const script_analysis *a = authoring_sources_at(applied, i)->analysis;
+        if (a->kind == SCRIPT_PROGRAM_LIBRARY &&
+            !source_at_identity(stage->sources, a->identity)) {
+            apush(names, a->name);
+        }
+    }
+    bool relinked = !acount(names) || game_preview_fields_relink(
+                                          stage->world,
+                                          stage->sources,
+                                          names,
+                                          acount(names),
+                                          &stage->fields,
+                                          error,
+                                          size
+                                      );
+    afree(names);
+    return relinked;
 }
 game_preview_source_staging *game_preview_sources_stage(
     game_preview_world *world,
@@ -194,6 +231,11 @@ game_preview_source_staging *game_preview_sources_stage(
         }
     }
     bool *changed = changed_sources(state);
+    if (!relink_fields(stage, changed, error, size)) {
+        free(changed);
+        stage_free(stage);
+        return NULL;
+    }
     game_source_publication *entries = NULL;
     for (int i = 0; i < authoring_sources_count(stage->sources); i++) {
         const authoring_source *source = authoring_sources_at(stage->sources, i);
@@ -284,6 +326,8 @@ void game_preview_sources_commit(game_preview_source_staging *stage)
     afree(world->definitions);
     world->definitions = stage->definitions;
     stage->definitions = NULL;
+    game_preview_fields_relink_commit(world, stage->fields);
+    stage->fields = NULL;
     if (state->applied != state->working) {
         authoring_sources_free(state->applied);
     }

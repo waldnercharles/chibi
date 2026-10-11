@@ -5,6 +5,19 @@ CHIBI_CPU_SELECTOR("--source-edit")
 CHIBI_CPU_SELECTOR("--source-systems")
 CHIBI_CPU_SELECTOR("--system-schedule")
 CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
+CHIBI_CPU_SELECTOR("--graph-document")
+CHIBI_CPU_SELECTOR("--graph-presentation")
+CHIBI_CPU_SELECTOR("--graph-functions")
+CHIBI_CPU_SELECTOR("--vector-nodes")
+CHIBI_CPU_SELECTOR("--material-destruction")
+CHIBI_CPU_SELECTOR("--material-fluids")
+CHIBI_CPU_SELECTOR("--material-mpm")
+CHIBI_CPU_SELECTOR("--material-thermal")
+CHIBI_CPU_SELECTOR("--material-simulation")
+CHIBI_CPU_SELECTOR("--material-ecs")
+CHIBI_CPU_SELECTOR("--material-benchmark")
+CHIBI_CPU_SELECTOR("--contact-benchmark")
+CHIBI_CPU_SELECTOR("--material-render")
 
 /* Explicit opt-in checks against installed products; each runs under the
  * shared 60-second supervisor. */
@@ -17,6 +30,7 @@ CHIBI_GPU_SELECTOR("--studio-outliner-move")
 CHIBI_GPU_SELECTOR("--studio-graph-pointer")
 CHIBI_GPU_SELECTOR("--studio-asset-pointer")
 CHIBI_GPU_SELECTOR("--studio-debugger-source-history")
+CHIBI_GPU_SELECTOR("--studio-scene-camera")
 /* Cute's interior border on two shapes in a hidden 64x64 app, through the
  * instanced and tiled draw paths, with readback. */
 CHIBI_GPU_SELECTOR("--interior-border")

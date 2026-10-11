@@ -2,6 +2,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/materials.h"
 #include "runtime/particle_emitters.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -73,31 +74,31 @@ static void identity(fluid_particle p)
     }
 }
 
-static void propagated_models()
+TEST_CASE(propagated_models)
 {
     ecs_world *world;
     game_preview_world *live = authored_world(&world, MATERIAL_SOLVER_MPM);
     MaterialConstitutive volume_model = { 2, 80, 12 };
     add_source(world, false, FLUID_LIQUID, &volume_model);
-    assert(!game_materials_prepare(live->runtime->materials));
+    REQUIRE(!game_materials_prepare(live->runtime->materials));
     const material_fluid *fluid = game_materials_fluid(live->runtime->materials);
-    assert(material_fluid_solver(fluid) == FLUID_SOLVER_MPM);
+    REQUIRE(material_fluid_solver(fluid) == FLUID_SOLVER_MPM);
     MaterialConstitutive emitter_model = { 4, 160, 24 };
     ecs_entity source = add_source(world, true, FLUID_LIQUID, &emitter_model);
     game_particle_emitters *emitters = game_particle_emitters_new(NULL);
     game_particle_emitters_bind_materials(emitters, live->runtime->materials);
     char error[256] = { 0 };
-    assert(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
+    REQUIRE(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
     int count;
     const fluid_particle *p = material_fluid_particles(fluid, &count);
-    assert(count == 2);
+    REQUIRE(count == 2);
     identity(p[0]);
     identity(p[1]);
-    assert(
+    REQUIRE(
         p[0].constitutive.density == 2 && p[0].constitutive.bulk_modulus == 80 &&
         p[0].constitutive.shear_modulus == 12
     );
-    assert(
+    REQUIRE(
         p[1].constitutive.density == 4 && p[1].constitutive.bulk_modulus == 160 &&
         p[1].constitutive.shear_modulus == 24
     );
@@ -108,75 +109,90 @@ static void propagated_models()
         GAME_COMPONENT_MaterialConstitutive.id
     );
     model->bulk_modulus = NAN;
-    assert(!game_particle_emitters_collect(emitters, world, NULL, .1, error, sizeof(error)));
-    assert(error[0] && game_materials_inspect(live->runtime->materials).hash == before);
+    REQUIRE(!game_particle_emitters_collect(emitters, world, NULL, .1, error, sizeof(error)));
+    REQUIRE(error[0] && game_materials_inspect(live->runtime->materials).hash == before);
     game_particle_emitters_free(emitters);
     game_preview_world_free(live);
     ecs_world_free(world);
+    return true;
 }
 
-static void rejected_model(bool emitter, const MaterialConstitutive *model)
+static bool rejected_model(bool emitter, const MaterialConstitutive *model)
 {
     ecs_world *world;
     game_preview_world *live = authored_world(&world, MATERIAL_SOLVER_MPM);
     if (emitter) {
-        assert(!game_materials_prepare(live->runtime->materials));
+        REQUIRE(!game_materials_prepare(live->runtime->materials));
     }
     add_source(world, emitter, FLUID_LIQUID, model);
     if (emitter) {
         game_particle_emitters *emitters = game_particle_emitters_new(NULL);
         game_particle_emitters_bind_materials(emitters, live->runtime->materials);
         char error[256] = { 0 };
-        assert(!game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
-        assert(error[0]);
+        REQUIRE(!game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
+        REQUIRE(error[0]);
         game_particle_emitters_free(emitters);
     } else {
-        assert(game_materials_prepare(live->runtime->materials));
+        REQUIRE(game_materials_prepare(live->runtime->materials));
     }
     int count;
     material_fluid_particles(game_materials_fluid(live->runtime->materials), &count);
-    assert(count == 0);
+    REQUIRE(count == 0);
     game_preview_world_free(live);
     ecs_world_free(world);
+    return true;
 }
 
-static void optional_model(int solver, int kind)
+static bool optional_model(int solver, int kind)
 {
     ecs_world *world;
     game_preview_world *live = authored_world(&world, solver);
     add_source(world, false, kind, NULL);
-    assert(!game_materials_prepare(live->runtime->materials));
+    REQUIRE(!game_materials_prepare(live->runtime->materials));
     add_source(world, true, kind, NULL);
     game_particle_emitters *emitters = game_particle_emitters_new(NULL);
     game_particle_emitters_bind_materials(emitters, live->runtime->materials);
     char error[256] = { 0 };
-    assert(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
+    REQUIRE(game_particle_emitters_collect(emitters, world, NULL, 0, error, sizeof(error)));
     int count;
     const fluid_particle *p = material_fluid_particles(
         game_materials_fluid(live->runtime->materials),
         &count
     );
-    assert(count == 2 && p[0].kind == kind && p[1].kind == kind);
+    REQUIRE(count == 2 && p[0].kind == kind && p[1].kind == kind);
     identity(p[0]);
     identity(p[1]);
-    assert(p[0].constitutive.density == 0 && p[1].constitutive.density == 0);
+    REQUIRE(p[0].constitutive.density == 0 && p[1].constitutive.density == 0);
     game_particle_emitters_free(emitters);
     game_preview_world_free(live);
     ecs_world_free(world);
+    return true;
 }
 
-void test_material_constitutive()
+TEST_CASE(rejected_models)
 {
-    propagated_models();
     MaterialConstitutive invalid[] = { { 0, 80, 0 },  { NAN, 80, 0 },
                                        { 1, 0, 0 },   { 1, INFINITY, 0 },
                                        { 1, 80, -1 }, { 1, 80, NAN } };
     for (int emitter = 0; emitter < 2; emitter++) {
-        rejected_model(emitter, NULL);
+        REQUIRE(rejected_model(emitter, NULL));
         for (int i = 0; i < (int)(sizeof(invalid) / sizeof(invalid[0])); i++) {
-            rejected_model(emitter, &invalid[i]);
+            REQUIRE(rejected_model(emitter, &invalid[i]));
         }
     }
-    optional_model(MATERIAL_SOLVER_MPM, FLUID_GAS);
-    optional_model(MATERIAL_SOLVER_DDR, FLUID_LIQUID);
+    return true;
+}
+
+TEST_CASE(optional_models)
+{
+    REQUIRE(optional_model(MATERIAL_SOLVER_MPM, FLUID_GAS));
+    REQUIRE(optional_model(MATERIAL_SOLVER_DDR, FLUID_LIQUID));
+    return true;
+}
+
+void test_material_constitutive()
+{
+    RUN_TEST_CASE(propagated_models);
+    RUN_TEST_CASE(rejected_models);
+    RUN_TEST_CASE(optional_models);
 }

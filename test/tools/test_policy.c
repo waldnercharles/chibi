@@ -56,6 +56,16 @@ static const char driver_setup
          "if mode == 'no-reader':\n"
          "    policy.enable_subreaper = lambda: True\n"
          "    policy.process_children = unavailable\n";
+static const char driver_routes
+    [] = "if sys.argv[2] == 'cpu-route':\n"
+         "    import agent\n"
+         "    selector = sys.argv[5]\n"
+         "    if selector not in agent.runnable_selectors(agent.CPU, "
+         "agent.CPU_SELECTORS):\n"
+         "        sys.exit(2)\n"
+         "    command = agent.selector_command(selector, agent.CPU_SELECTORS)\n"
+         "    print(Path(command[0]).name, command[-1])\n"
+         "    sys.exit(0)\n";
 static const char driver_source[] =
     "try:\n"
     "    if sys.argv[2] == '_supervise':\n"
@@ -189,6 +199,27 @@ static void reset_markers()
     }
 }
 
+TEST_CASE(material_cpu_routes_reach_exact_dispatcher)
+{
+    const char *selectors[] = {
+        "--material-destruction", "--material-fluids",     "--material-mpm",
+        "--material-thermal",     "--material-simulation", "--material-ecs",
+        "--material-render",      "--material-benchmark",  "--contact-benchmark"
+    };
+    for (int i = 0; i < (int)(sizeof selectors / sizeof *selectors); i++) {
+        REQUIRE(run("cpu-route", selectors[i]) == 0);
+        char expected[128];
+        snprintf(expected, sizeof expected, "test_tools %s\n", selectors[i]);
+        char *output = tool_read(logpath);
+        bool exact = output && !strcmp(output, expected);
+        free(output);
+        REQUIRE(exact);
+    }
+    REQUIRE(run("cpu-route", "--material-unknown") == 2);
+    REQUIRE(run("cpu-route", "--material-pixels") == 2);
+    return true;
+}
+
 TEST_CASE(studio_acceptance_requires_exact_completion)
 {
     char filename[PATH_MAX];
@@ -242,6 +273,38 @@ TEST_CASE(studio_acceptance_requires_exact_completion)
         tool_write(filename, success[i]);
         REQUIRE(run("studio-result", selectors[i]) == 0);
         REQUIRE(run("studio-result", selectors[(i + 1) % 3]) == 2);
+    }
+    return true;
+}
+
+TEST_CASE(studio_camera_requires_thirty_clean_frames)
+{
+    char filename[PATH_MAX];
+    path(filename, "studio-output");
+    const char *success = "Studio 3D camera accepted: frames=30\n";
+    tool_write(filename, success);
+    REQUIRE(run("studio-result", "--studio-scene-camera") == 0);
+    char *output = tool_read(logpath);
+    bool thirty_frames = output && strstr(output, "\"frames\": 30");
+    free(output);
+    REQUIRE(thirty_frames);
+    REQUIRE(run("studio-result", "--studio-graph-pointer") == 2);
+
+    const char *rejected[] = {
+        "",
+        "Studio 3D camera accepted: frames=26\n",
+        "Studio 3D camera accepted: frames=29\n",
+        "prefix Studio 3D camera accepted: frames=30\n",
+        ("Studio 3D camera accepted: frames=30\nStudio 3D camera accepted: "
+         "frames=30\n"),
+        "Studio 3D camera accepted: frames=30\nStudio UI: failed\n",
+        "Studio 3D camera accepted: frames=30\nruntime frame failed\n",
+        "Studio 3D camera accepted: frames=30\nCould not initialize\n",
+        "Studio graph pointer accepted: frames=19\n",
+    };
+    for (int i = 0; i < (int)(sizeof rejected / sizeof *rejected); i++) {
+        tool_write(filename, rejected[i]);
+        REQUIRE(run("studio-result", "--studio-scene-camera") == 2);
     }
     return true;
 }
@@ -517,9 +580,12 @@ void test_tool_test_policy()
     assert(script);
     assert(fputs(driver_imports, script) >= 0);
     assert(fputs(driver_setup, script) >= 0);
+    assert(fputs(driver_routes, script) >= 0);
     assert(fputs(driver_source, script) >= 0);
     assert(fclose(script) == 0);
+    RUN_TEST_CASE(material_cpu_routes_reach_exact_dispatcher);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
+    RUN_TEST_CASE(studio_camera_requires_thirty_clean_frames);
     RUN_TEST_CASE(studio_resources_require_recorded_generation);
     RUN_TEST_CASE(studio_acceptance_source_records_match_files);
     RUN_TEST_CASE(exit_and_aggregate_deadlines);

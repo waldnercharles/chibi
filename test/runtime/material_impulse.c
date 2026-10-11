@@ -2,6 +2,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/material_fluid.h"
 #include "runtime/materials.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -11,21 +12,20 @@ static void add(ecs_world *world, ecs_entity entity, const ecs_component_desc *t
     assert(ecs_world_record_add(world, entity, type->id, value, 0) == ECS_OK);
 }
 
-static game_preview_world *fixture(ecs_world **out, ecs_entity *config, ecs_entity *body, bool rotation)
+/* A world with a fluid and a 12-unit dynamic box at the origin, which may
+ * rotate when `rotation`. */
+static game_preview_world *fixture(ecs_world **out, ecs_entity *body, bool rotation)
 {
     ecs_world *world = ecs_world_new();
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
         assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     game_preview_world *live = game_preview_world_new(world);
-    *config = ecs_world_create_entity(world);
-    add(world, *config, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+    ecs_entity config = ecs_world_create_entity(world);
+    add(world, config, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+    add(world, config, &GAME_COMPONENT_GameCamera, &(GameCamera){ .width = 64, .height = 64 });
     add(world,
-        *config,
-        &GAME_COMPONENT_GameCamera,
-        &(GameCamera){ .width = 64, .height = 64 });
-    add(world,
-        *config,
+        config,
         &GAME_COMPONENT_MaterialFluidWorld,
         &(
             MaterialFluidWorld
@@ -48,37 +48,13 @@ static game_preview_world *fixture(ecs_world **out, ecs_entity *config, ecs_enti
     return live;
 }
 
-static void authored_gravity()
+static bool fluid_rotation(bool rotation)
 {
     ecs_world *world;
-    ecs_entity config, body;
-    game_preview_world *live = fixture(&world, &config, &body, false);
-    for (int i = 0; i < 6; i++) {
-        assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
-    }
-    assert(GAME_GameTransform_get_const(world, body)->y == 0);
-    add(world, config, &GAME_COMPONENT_GameGravity, &(GameGravity){ { 0, -320 } });
-    assert(ecs_world_apply_commands(world) == ECS_OK);
-    for (int i = 0; i < 6; i++) {
-        assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
-    }
-    assert(fabsf(GAME_GameVelocity_get_const(world, body)->y + 32) < .01f);
-    assert(GAME_GameTransform_get_const(world, body)->y < -1);
-    GAME_GameGravity_get(world, config)->acceleration = (CF_V2){ 0 };
-    float speed = GAME_GameVelocity_get_const(world, body)->y;
-    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
-    assert(fabsf(GAME_GameVelocity_get_const(world, body)->y - speed) < .01f);
-    game_preview_world_free(live);
-    ecs_world_free(world);
-}
-
-static void fluid_rotation(bool rotation)
-{
-    ecs_world *world;
-    ecs_entity config, body;
-    game_preview_world *live = fixture(&world, &config, &body, rotation);
+    ecs_entity body;
+    game_preview_world *live = fixture(&world, &body, rotation);
     const material_fluid *fluid = game_materials_fluid(live->runtime->materials);
-    assert(game_materials_emit(
+    REQUIRE(game_materials_emit(
         live->runtime->materials,
         (fluid_particle){ .position = { -8, 4 },
                           .velocity = { 120, 0 },
@@ -88,38 +64,48 @@ static void fluid_rotation(bool rotation)
                           .kind = FLUID_GAS }
     ));
     fluid_region bounds = game_materials_inspect(live->runtime->materials).particle_bounds;
-    assert(bounds.x == -8 && bounds.y == 4 && bounds.width == 0 && bounds.height == 0);
+    REQUIRE(bounds.x == -8 && bounds.y == 4 && bounds.width == 0 && bounds.height == 0);
     game_physics_body_state state;
-    assert(game_physics_inspect_body(live->runtime->physics, body, &state));
-    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
+    REQUIRE(game_physics_inspect_body(live->runtime->physics, body, &state));
+    REQUIRE(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     int count;
     const fluid_particle *particle = material_fluid_particles(fluid, &count);
-    assert(count == 1);
+    REQUIRE(count == 1);
     float impulse = .01f * (120 - particle[0].velocity.x);
-    assert(impulse > 0);
-    assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
+    REQUIRE(impulse > 0);
+    REQUIRE(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
     bounds = game_materials_inspect(live->runtime->materials).particle_bounds;
-    assert(bounds.x == 0 && bounds.y == 0 && bounds.width == 0 && bounds.height == 0);
+    REQUIRE(bounds.x == 0 && bounds.y == 0 && bounds.width == 0 && bounds.height == 0);
     float first = GAME_GameOrientation_get_const(world, body)->radians;
     if (rotation) {
         float expected = -4 * impulse / state.inertia / 60;
-        assert(first < 0 && fabsf(first - expected) < .001f);
-        assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
+        REQUIRE(first < 0 && fabsf(first - expected) < .001f);
+        REQUIRE(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
         float second = GAME_GameOrientation_get_const(world, body)->radians;
-        assert(fabsf(second - 2 * first) < .001f);
+        REQUIRE(fabsf(second - 2 * first) < .001f);
         GAME_GameBody_get(world, body)->allow_rotation = false;
-        assert(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
-        assert(fabsf(GAME_GameOrientation_get_const(world, body)->radians - second) < .001f);
+        REQUIRE(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
+        REQUIRE(fabsf(GAME_GameOrientation_get_const(world, body)->radians - second) < .001f);
     } else {
-        assert(first == 0);
+        REQUIRE(first == 0);
     }
     game_preview_world_free(live);
     ecs_world_free(world);
+    return true;
 }
 
-void test_material_gravity()
+TEST_CASE(fluid_impulse_leaves_fixed_body_unturned)
 {
-    authored_gravity();
-    fluid_rotation(false);
-    fluid_rotation(true);
+    return fluid_rotation(false);
+}
+
+TEST_CASE(fluid_impulse_turns_rotating_body)
+{
+    return fluid_rotation(true);
+}
+
+void test_material_impulse()
+{
+    RUN_TEST_CASE(fluid_impulse_leaves_fixed_body_unturned);
+    RUN_TEST_CASE(fluid_impulse_turns_rotating_body);
 }

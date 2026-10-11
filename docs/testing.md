@@ -332,6 +332,35 @@ properties, components, fields and values (in prototype and scene drafts),
 navigation into event payloads, reconciliation that keeps authored text, and
 parsing incomplete drafts. 505 assertions in 0.32 seconds with ASan/UBSan.
 
+`--behavior-loader` runs two cases: the application loader prepares a content
+root's sources into the authoring world and a prototype preview's live world,
+and one broken source refuses the whole collection, names its root and stage
+and leaves both worlds on the generation they had; a preview scene launch that
+fails destroys its entities before releasing their component override strings.
+11 assertions in 0.23 seconds with ASan/UBSan; a temporary folder.
+
+`--engine-clock` runs six cases on the engine's 60 Hz fixed clock over a
+preview engine and one kinematic body: 30, 60, 120 and 144 Hz displays all run
+sixty steps a second with systems at each step's time, hitches and overload are
+capped at eight steps and reported, pause, Step, resume and reset hold wall
+time, time scale changes how often steps run, display frames interpolate poses
+without moving bodies, and an engine without optional modules still steps.
+436 assertions in 0.18 seconds with ASan/UBSan.
+
+`--preview-layout` runs two cases on preview graph definitions: moving
+automatically arranged nodes leaves a definition saved and applied while moving
+a placed node is an unsaved edit, and component access nodes keep their file
+entries wherever arrangement puts them. 26 assertions in 0.25 seconds with
+ASan/UBSan.
+
+`--fields` runs thirteen cases on field graphs compiled to field programs:
+deterministic cos/sin, atan2 and exponentials against golden bits, primitives
+that bake as they sample, parameters and compile errors, noise and
+composition, row evaluation matching scalar samples, repeated inputs,
+functions, multiple results, terrain chunks and connectivity, and streaming
+tiles that restore and retry failed slices. 3,308 assertions in 0.36 seconds
+with ASan/UBSan.
+
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against
 `build-release/bin/chibi_ctl`. Each scaffolds a temporary

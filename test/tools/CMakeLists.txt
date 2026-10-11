@@ -361,6 +361,20 @@ if(TARGET chibi_source_runtime_consumer AND TARGET Chibi::graph_catalog)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_AUTHORING_DOCUMENTS=1)
 endif()
 
+# Project preparation: the application's source loader, prototype preview
+# scene launches and the preview engine's fixed clock.
+if(TARGET Chibi::project_preparation)
+    target_sources(test_tools PRIVATE ../authoring/behavior_loader.c ../runtime/engine_clock.c)
+    target_link_libraries(test_tools PRIVATE Chibi::project_preparation)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PROJECT_PREPARATION=1)
+    # Preview graph layout and field programs use the game graph packs the
+    # authoring documents build.
+    if(TARGET chibi_source_runtime_consumer AND TARGET Chibi::graph_catalog)
+        target_sources(test_tools PRIVATE ../authoring/preview_layout.c ../runtime/fields.c)
+        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PREVIEW_GRAPHS=1)
+    endif()
+endif()
+
 add_executable(benchmark_trials "${CHIBI_TOOL_ROOT}/tools/benchmark.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c")
 target_include_directories(benchmark_trials PRIVATE "${CHIBI_TOOL_ROOT}/src")

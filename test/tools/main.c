@@ -204,6 +204,14 @@ void test_reference_index();
 void test_ui_pages();
 void test_asset_source();
 #endif
+#ifdef CHIBI_TEST_PROJECT_PREPARATION
+void test_behavior_loader();
+void test_engine_clock();
+#endif
+#ifdef CHIBI_TEST_PREVIEW_GRAPHS
+void test_preview_layout();
+void test_fields();
+#endif
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
 static const char *const document_selectors[] = {
@@ -212,6 +220,8 @@ static const char *const document_selectors[] = {
     "--particles",        "--png-encoding",
     "--project-document", "--prototype-documents",
     "--reference-index",  "--asset-source",
+    "--behavior-loader",  "--engine-clock",
+    "--preview-layout",   "--fields",
 };
 
 static bool selected(int argc, char **argv, const char *name)
@@ -289,6 +299,26 @@ static bool run_document_suites(int argc, char **argv)
     }
     if (selected(argc, argv, "--asset-source")) {
         test_asset_source();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_PROJECT_PREPARATION
+    if (selected(argc, argv, "--behavior-loader")) {
+        test_behavior_loader();
+        return true;
+    }
+    if (selected(argc, argv, "--engine-clock")) {
+        test_engine_clock();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_PREVIEW_GRAPHS
+    if (selected(argc, argv, "--preview-layout")) {
+        test_preview_layout();
+        return true;
+    }
+    if (selected(argc, argv, "--fields")) {
+        test_fields();
         return true;
     }
 #endif
@@ -523,7 +553,8 @@ int main(int argc, char **argv)
             "manifest | --feature-coverage project | --asset-values | "
             "--ui-document | --text-files | --fmt | --particles | "
             "--png-encoding | --project-document | --prototype-documents | "
-            "--reference-index | --asset-source]\n",
+            "--reference-index | --asset-source | --behavior-loader | "
+            "--engine-clock | --preview-layout | --fields]\n",
             argv[0]
         );
         return 2;

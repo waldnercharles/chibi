@@ -350,11 +350,21 @@ Put `ParticleField3D`, `Geometry3D` and `Shader` on one transformed entity in a
 (`primitive=5`) with positive dimensions. `Shader.material` names a pure
 shader-library function as `Library.Function`. Its first arguments are
 `Index:float`, `Count:float`, `Seed:float`, followed by named float or
-`ShaderVec2/3/4` uniforms, with at most 32 arguments total. Its results are
-exactly `Position:ShaderVec3`, `Size:float`, `Color:ShaderVec4`, in that order.
+`ShaderVec2/3/4` uniforms, with at most 32 arguments total. Its required results are
+`Position:ShaderVec3`, `Size:float`, `Color:ShaderVec4`, in that order.
 Position is local to the entity, Size scales the geometry, and Color is HDR RGBA.
 Uniform defaults and `Shader.parameters` use the existing material parameter
 path, including `set_material_parameter()`.
+
+Particle functions may append `Scale:ShaderVec3`, `Rotation:ShaderVec3`, and
+`Lighting:float`, in that order. Omitted outputs use identity scale, zero XYZ
+rotation (radians), and unlit color. Scale multiplies the field's geometry
+size per instance. Lighting mixes from emissive color at zero to vertex-lit
+Lambert shading at one, using the scene's hemisphere, directional, point and
+spot lights. It does not sample shadows or screen-space occlusion. Normals
+follow both per-particle nonuniform scale and the entity transform. All motion
+remains an authored GPU evaluation; this component holds no persistent physics
+state or collision solver.
 
 Set `ParticleField3D.count`, `seed`, and `time` explicitly. Shader Time reads
 this component clock; it advances only when an authored behavior changes it.
@@ -371,7 +381,8 @@ Per-frame CPU updates scale with the number of fields. Each instance retains
 four bytes, uploaded when its count changes, rather than a position/color upload
 every frame. `test/fixtures/feature-coverage` contains the `NativeRainField`
 scene: 128 falling lattice drops at a fixed one-second clock, with an opaque
-box for inspecting depth occlusion.
+box for inspecting depth occlusion. `LitRainField` omits all opaque geometry and
+checks the same lit particles in a particle-only scene.
 
 ## Simulate 3D bodies
 

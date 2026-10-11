@@ -759,7 +759,16 @@ static bool publish_material(int width)
     size_t length = 0;
     shader_prepared_asset_init(&shader_record);
     shader_record.name = xstrdup("Typed host material");
-    shader_record.graph.output_count = 4;
+    shader_record.graph.output_count = SHADER_OUTPUT_MAX;
+    for (int i = 0; i < SHADER_OUTPUT_MAX; i++) {
+        int channels = i == SHADER_SURFACE_BASE_COLOR ||
+                               i == SHADER_SURFACE_EMISSION || i == SHADER_SURFACE_NORMAL
+                         ? 3
+                         : 1;
+        int constant = shader_graph_add(&shader_record.graph, SHADER_CONSTANT, channels);
+        shader_record.graph.nodes[constant].value[i == SHADER_SURFACE_NORMAL ? 2 : 0] = 1;
+        shader_record.graph.output[i] = constant;
+    }
     for (int i = 0; i < 2; i++) {
         shader_record.names[i] = xstrdup(i ? "Second" : "Value");
         shader_record.widths[i] = width;

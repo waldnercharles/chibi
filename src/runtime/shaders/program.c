@@ -348,9 +348,14 @@ bool shader_graph_particle_validate(const shader_graph *g, shader_error *error)
     if (!shader_graph_validate(g, error)) {
         return false;
     }
-    if (g->output_count != 3 || g->nodes[g->output[0]].width != 3 ||
-        g->nodes[g->output[1]].width != 1 || g->nodes[g->output[2]].width != 4) {
-        return fail(error, 0, "Particle function must return Position:ShaderVec3, Size:float, Color:ShaderVec4");
+    const int widths[] = { 3, 1, 4, 3, 3, 1 };
+    if (g->output_count < 3 || g->output_count > 6) {
+        return fail(error, 0, "Particle function needs 3..6 outputs");
+    }
+    for (int i = 0; i < g->output_count; i++) {
+        if (g->nodes[g->output[i]].width != widths[i]) {
+            return fail(error, 0, "Particle output widths must be Position:3, Size:1, Color:4, Scale:3, Rotation:3, Lighting:1");
+        }
     }
     if (acount(g->images)) {
         return fail(error, 0, "Particle functions cannot sample images or volumes");

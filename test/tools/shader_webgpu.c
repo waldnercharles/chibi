@@ -27,7 +27,7 @@ static void cleanup()
     glsl = fragment = vertex = NULL;
 }
 
-static bool particle_vertex_program(bool indexed)
+static bool particle_vertex_program(bool indexed, bool lit)
 {
     int index = shader_graph_add(&graph, indexed ? SHADER_PARAMETER : SHADER_CONSTANT, 1);
     graph.nodes[index].parameter = 0;
@@ -47,7 +47,16 @@ static bool particle_vertex_program(bool indexed)
     graph.output[1] = size;
     graph.output[2] = color;
     graph.output_count = 3;
+    if (lit) {
+        for (int i = 3; i < 6; i++) {
+            int output = shader_graph_add(&graph, SHADER_PARAMETER, i == 5 ? 1 : 3);
+            graph.nodes[output].parameter = i;
+            graph.output[i] = output;
+        }
+        graph.output_count = 6;
+    }
     shader_error error = { 0 };
+    REQUIRE(shader_graph_particle_validate(&graph, &error));
     glsl = shader_graph_glsl_named(&graph, "sg_particle", &error);
     REQUIRE(glsl);
 
@@ -67,9 +76,17 @@ static bool particle_vertex_program(bool indexed)
     char *at = strstr(source, marker);
     REQUIRE(at);
     *at = 0;
-    size_t bytes = (size_t)length + strlen(glsl) + 32;
+    size_t bytes = (size_t)length + strlen(glsl) + 80;
     vertex = xmalloc(bytes);
-    snprintf(vertex, bytes, "#version 450\n%s%s%s", source, glsl, at + strlen(marker));
+    snprintf(
+        vertex,
+        bytes,
+        "#version 450\n#define SG_PARTICLE_OUTPUT_COUNT %d\n%s%s%s",
+        graph.output_count,
+        source,
+        glsl,
+        at + strlen(marker)
+    );
     CF_ShaderCompilerConfig config = { .skip_glsl300 = true, .skip_hlsl = true };
     compiled = cute_shader_compile(vertex, CUTE_SHADER_STAGE_VERTEX, config);
     if (!compiled.success) {
@@ -84,17 +101,27 @@ static bool particle_vertex_program(bool indexed)
     REQUIRE(strstr(compiled.bytecode.wgsl_src, "particle_frame"));
     REQUIRE(strstr(compiled.bytecode.wgsl_src, "in_instance_offset"));
     REQUIRE(strstr(compiled.bytecode.msl_src, "in_instance_offset"));
+    if (lit) {
+        REQUIRE(strstr(compiled.bytecode.wgsl_src, "in_normal"));
+        REQUIRE(strstr(compiled.bytecode.wgsl_src, "scene_light_positions"));
+        REQUIRE(strstr(compiled.bytecode.msl_src, "scene_light_positions"));
+    }
     return true;
 }
 
 TEST_CASE(particle_vertex_program_transpiles_instanced_geometry_to_wgsl)
 {
-    return particle_vertex_program(true);
+    return particle_vertex_program(true, false);
 }
 
 TEST_CASE(particle_vertex_keeps_instance_buffer_when_program_ignores_index)
 {
-    return particle_vertex_program(false);
+    return particle_vertex_program(false, false);
+}
+
+TEST_CASE(lit_particles_compile_nonuniform_shape_rotation_and_scene_lights)
+{
+    return particle_vertex_program(true, true);
 }
 
 TEST_CASE(noise_shader_transpiles_without_ambiguous_wgsl_comparison)
@@ -145,4 +172,5 @@ void test_tool_shader_webgpu()
     RUN_TEST_CASE(noise_shader_transpiles_without_ambiguous_wgsl_comparison);
     RUN_TEST_CASE(particle_vertex_program_transpiles_instanced_geometry_to_wgsl);
     RUN_TEST_CASE(particle_vertex_keeps_instance_buffer_when_program_ignores_index);
+    RUN_TEST_CASE(lit_particles_compile_nonuniform_shape_rotation_and_scene_lights);
 }

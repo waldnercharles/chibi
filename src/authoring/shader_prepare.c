@@ -118,12 +118,13 @@ static bool particle_asset_prepare(const graph *g, shader_asset *fresh, shader_e
 {
     const node *entry = graph_node_by_id(g, g->entry_id);
     const node *ret = graph_node_by_id(g, g->return_id);
-    static const char *const outputs[] = { "Position", "Size", "Color" };
-    static const int widths[] = { 3, 1, 4 };
-    bool signature = entry && ret && ret->input_count == 3 &&
-                     entry->output_count >= 3 &&
+    static const char *const outputs[] = { "Position", "Size",     "Color",
+                                           "Scale",    "Rotation", "Lighting" };
+    static const int widths[] = { 3, 1, 4, 3, 3, 1 };
+    bool signature = entry && ret && ret->input_count >= 3 &&
+                     ret->input_count <= 6 && entry->output_count >= 3 &&
                      entry->output_count <= SHADER_PARAMETER_MAX;
-    for (int i = 0; signature && i < 3; i++) {
+    for (int i = 0; signature && i < ret->input_count; i++) {
         const pin_spec *pin = &ret->input_pins[i];
         signature = pin->name && !strcmp(pin->name, outputs[i]) &&
                     particle_pin_width(pin) == widths[i];
@@ -134,7 +135,7 @@ static bool particle_asset_prepare(const graph *g, shader_asset *fresh, shader_e
     if (!signature) {
         if (error) {
             error->node = ret ? ret->id : g->return_id;
-            snprintf(error->message, sizeof error->message, "Particle function needs 3..32 float/vector arguments and Position:ShaderVec3, Size:float, Color:ShaderVec4 results");
+            snprintf(error->message, sizeof error->message, "Particle: 3..32 float/vector args; Position:ShaderVec3 Size:float Color:ShaderVec4; optional Scale/Rotation:vec3 Lighting:float");
         }
         return false;
     }

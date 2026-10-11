@@ -289,6 +289,56 @@ TEST_CASE(particle_function_parameters_survive_preparation)
     return true;
 }
 
+TEST_CASE(particle_shape_and_lighting_outputs_survive_preparation)
+{
+    REQUIRE(particle_fixture());
+    graph *g = asset->graphs[1];
+    node *entry = graph_node_by_id(g, g->entry_id);
+    node *ret = graph_node_by_id(g, g->return_id);
+    const pin_spec extra[] = {
+        { .name = "Scale", .type = PIN_STRUCT, .type_name = "ShaderVec3", .kind = PIN_DATA },
+        { .name = "Rotation", .type = PIN_STRUCT, .type_name = "ShaderVec3", .kind = PIN_DATA },
+        { .name = "Lighting", .type = PIN_F32, .type_name = "float", .kind = PIN_DATA },
+    };
+    shader_error error = { 0 };
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(graph_add_pin(g, ret, false, &extra[i]) == i + 3);
+        REQUIRE(!graph_connect_data(g, entry, i < 2 ? 4 : 3, ret, i + 3));
+        REQUIRE(render_shader_library_upsert(asset, &error));
+    }
+    int id = render_shader_find("Particles.Cloud");
+    REQUIRE(id && render_shader_is_particle(id));
+    REQUIRE(render_shader_may_be_transparent(id));
+    render_shader_set set = { 0 };
+    REQUIRE(!render_shader_set_add(&set, id, &error));
+    REQUIRE(strstr(error.message, "ParticleField3D"));
+    generated = render_shader_particle_glsl(id, &error);
+    REQUIRE(generated && strstr(generated, "#define SG_PARTICLE_OUTPUT_COUNT 6"));
+    const shader_asset *record = &shader_catalog_assets[id - 1];
+    shader_prepared_asset prepared = { .name = record->name, .graph = record->graph };
+    memcpy(prepared.names, record->names, sizeof prepared.names);
+    memcpy(prepared.widths, record->widths, sizeof prepared.widths);
+    memcpy(prepared.defaults, record->defaults, sizeof prepared.defaults);
+    size_t length = 0, budget = 64 * 1024 * 1024;
+    REQUIRE(shader_asset_prepared_write(&prepared, &payload, &length, &error));
+    REQUIRE(shader_asset_prepared_read_budget(payload, length, &budget, &decoded, &error));
+    float values[SHADER_OUTPUT_MAX][4];
+    REQUIRE(shader_graph_eval_outputs(
+        &decoded.graph,
+        &(shader_sample_context){ 0 },
+        decoded.defaults,
+        values,
+        &error
+    ));
+    REQUIRE(values[3][0] == 4 && values[3][2] == 6);
+    REQUIRE(values[4][0] == 4 && values[4][2] == 6);
+    REQUIRE(values[5][0] == .75f);
+    REQUIRE(!graph_set_pin_type(g, ret, false, 5, PIN_STRUCT, "ShaderVec3"));
+    REQUIRE(!render_shader_library_upsert(asset, &error));
+    REQUIRE(strstr(error.message, "Lighting:float"));
+    return true;
+}
+
 TEST_CASE(particle_function_signature_and_context_are_checked)
 {
     REQUIRE(particle_fixture());
@@ -433,6 +483,7 @@ void test_shader_parameters_prepared()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(shader_parameters_persist_and_reject_stale_generations);
     RUN_TEST_CASE(particle_function_parameters_survive_preparation);
+    RUN_TEST_CASE(particle_shape_and_lighting_outputs_survive_preparation);
     RUN_TEST_CASE(particle_function_signature_and_context_are_checked);
     RUN_TEST_CASE(particle_function_links_library_helpers);
 }

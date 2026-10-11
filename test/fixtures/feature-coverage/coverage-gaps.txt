@@ -29,7 +29,6 @@ component SurfaceInfluence
 component MeshAsset
 component MeshParts
 component MeshSurface2D
-component PointLight
 component DirectionalLight
 component SpotLight
 component Fog

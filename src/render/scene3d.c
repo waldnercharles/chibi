@@ -1327,8 +1327,22 @@ static bool prepare_draws(render_scene3d *scene3d)
     return true;
 }
 
+static void bind_lights(render_scene3d *scene3d)
+{
+    cf_draw3d_set_uniform("scene_sun_direction", &scene3d->sun_direction, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_sun_color", &scene3d->sun_color, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_ambient_sky", &scene3d->ambient_sky, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_ambient_ground", &scene3d->ambient_ground, CF_UNIFORM_TYPE_FLOAT4, 1);
+    CF_V4 light_count = { .x = (float)scene3d->light_count };
+    cf_draw3d_set_uniform("scene_light_count", &light_count, CF_UNIFORM_TYPE_FLOAT4, 1);
+    cf_draw3d_set_uniform("scene_light_positions", scene3d->light_positions, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
+    cf_draw3d_set_uniform("scene_light_colors", scene3d->light_colors, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
+    cf_draw3d_set_uniform("scene_light_cones", scene3d->light_cones, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
+}
+
 static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera, float time)
 {
+    bind_lights(scene3d);
     if (!acount(scene3d->buffer.draws)) {
         draw_behind_translucents(scene3d, camera);
         return true;
@@ -1375,15 +1389,6 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     CF_V4 clock = { time, 0, 0, 0 };
     cf_draw3d_set_uniform("scene_time", &clock, CF_UNIFORM_TYPE_FLOAT4, 1);
     cf_draw3d_set_uniform("scene_rhythm", &scene3d->rhythm, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw3d_set_uniform("scene_sun_direction", &scene3d->sun_direction, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw3d_set_uniform("scene_sun_color", &scene3d->sun_color, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw3d_set_uniform("scene_ambient_sky", &scene3d->ambient_sky, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw3d_set_uniform("scene_ambient_ground", &scene3d->ambient_ground, CF_UNIFORM_TYPE_FLOAT4, 1);
-    CF_V4 light_count = { .x = (float)scene3d->light_count };
-    cf_draw3d_set_uniform("scene_light_count", &light_count, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw3d_set_uniform("scene_light_positions", scene3d->light_positions, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
-    cf_draw3d_set_uniform("scene_light_colors", scene3d->light_colors, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
-    cf_draw3d_set_uniform("scene_light_cones", scene3d->light_cones, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
     render_influences_bind(scene3d->influences);
     cf_draw3d_set_texture("scene_parameters", scene3d->parameters);
     int receivers = casts_shadows(scene3d) ? collect_shadow_boxes(scene3d) : 0;

@@ -311,7 +311,16 @@ char *render_shader_particle_glsl(int index, shader_error *error)
         }
         return NULL;
     }
-    return shader_graph_glsl_named(&shader_catalog_assets[index - 1].graph, "sg_particle", error);
+    const shader_graph *graph = &shader_catalog_assets[index - 1].graph;
+    char *function = shader_graph_glsl_named(graph, "sg_particle", error);
+    if (!function) {
+        return NULL;
+    }
+    size_t size = strlen(function) + 64;
+    char *source = xmalloc(size);
+    snprintf(source, size, "#define SG_PARTICLE_OUTPUT_COUNT %d\n%s", graph->output_count, function);
+    free(function);
+    return source;
 }
 bool render_shader_model_bounds(
     int index,
@@ -342,7 +351,7 @@ bool render_shader_may_be_transparent(int index)
         return false;
     }
     const shader_asset *asset = &shader_catalog_assets[index - 1];
-    if (asset->graph.output_count == 3) {
+    if ((asset->graph.output_count >= 3 && asset->graph.output_count <= 6)) {
         return true;
     }
     if (asset->alpha_mode != SHADER_ALPHA_BLEND) {
@@ -423,7 +432,8 @@ static bool render_shader_set_contains(const render_shader_set *set, int id)
         return false;
     }
     const shader_asset *asset = &shader_catalog_assets[id - 1];
-    if (!asset->name[0] || asset->graph.output_count == 3) {
+    if (!asset->name[0] ||
+        (asset->graph.output_count >= 3 && asset->graph.output_count <= 6)) {
         return false;
     }
     for (int i = 0; i < acount(asset->images); i++) {
@@ -484,7 +494,7 @@ bool render_shader_set_add(render_shader_set *set, int id, shader_error *error)
         return true;
     }
     const shader_asset *asset = &shader_catalog_assets[id - 1];
-    if (asset->graph.output_count == 3) {
+    if ((asset->graph.output_count >= 3 && asset->graph.output_count <= 6)) {
         if (error) {
             snprintf(error->message, sizeof error->message, "Particle function requires a ParticleField3D renderer");
         }

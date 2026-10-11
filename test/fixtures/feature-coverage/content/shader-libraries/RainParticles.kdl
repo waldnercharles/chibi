@@ -2,7 +2,7 @@ version 3
 name "RainParticles"
 domain "shader-library"
 id_counter 60000
-description "A 16-column falling lattice. Index selects the column and row; each drop wraps vertically using the explicit field clock. This scene uses no game rules or simulation particles."
+description "A 16-column falling lattice. Index selects the column and row; each drop wraps vertically using the explicit field clock. Drops stretch and tilt with a per-instance shape, and receive scene lighting. This scene uses no game rules or retained particle simulation."
 (array)graphs {
     - kind="event" name="Functions"
     - {
@@ -41,6 +41,23 @@ description "A 16-column falling lattice. Index selects the column and row; each
                     - id=101 name="Position" type="struct" type_name="ShaderVec3" kind="data"
                     - id=102 name="Size" type="float" kind="data"
                     - id=103 name="Color" type="struct" type_name="ShaderVec4" kind="data"
+                    - {
+                        id 104
+                        name "Scale"
+                        type "struct"
+                        type_name "ShaderVec3"
+                        kind "data"
+                        default x=0.8 y=1.5 z=1.0
+                    }
+                    - {
+                        id 105
+                        name "Rotation"
+                        type "struct"
+                        type_name "ShaderVec3"
+                        kind "data"
+                        default x=0.2 y=0.0 z=-0.35
+                    }
+                    - id=106 name="Lighting" type="float" kind="data" default=1.0
                 }
             }
             - {

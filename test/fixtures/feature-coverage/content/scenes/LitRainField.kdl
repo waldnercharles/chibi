@@ -1,0 +1,9 @@
+version 1
+name "LitRainField"
+presentation "3d"
+(array)entities {
+    - name="Rain" prototype="NativeRain"
+    - name="Camera" prototype="RainCamera"
+    - name="Environment" prototype="RainEnvironment"
+    - name="Rain lamp" prototype="RainLamp"
+}

@@ -27,7 +27,7 @@ typedef struct
     ecs_entity entity;
     CF_Mesh mesh;
     int primitive, capacity, count, program;
-    CF_M4x4 frame;
+    CF_M4x4 frame, normal_frame;
     CF_V4 dimensions, clock, rhythm;
     float parameters[32][4];
     bool additive, active;
@@ -251,6 +251,13 @@ static bool prepare_field(
     field->active = true;
     field->program = program;
     field->frame = frame;
+    CF_M4x4 inverse = cf_m4_invert(frame);
+    field->normal_frame = (CF_M4x4){ 0 };
+    for (int column = 0; column < 3; column++) {
+        for (int row = 0; row < 3; row++) {
+            field->normal_frame.elements[column * 4 + row] = inverse.elements[row * 4 + column];
+        }
+    }
     field->dimensions = (CF_V4){ shape->width, shape->height, shape->depth, 0 };
     field->clock = (CF_V4){ style->time,
                             (float)style->count,
@@ -340,6 +347,7 @@ void render_scene3d_particles_draw(const scene3d_particles *particles, const ren
         cf_draw3d_push_render_state(state);
         cf_draw3d_push_shader(particles->programs[field->program].shader);
         cf_draw3d_set_uniform("particle_frame", (void *)&field->frame, CF_UNIFORM_TYPE_MAT4, 1);
+        cf_draw3d_set_uniform("particle_normal_frame", (void *)&field->normal_frame, CF_UNIFORM_TYPE_MAT4, 1);
         cf_draw3d_set_uniform("particle_dimensions", (void *)&field->dimensions, CF_UNIFORM_TYPE_FLOAT4, 1);
         cf_draw3d_set_uniform("particle_clock", (void *)&field->clock, CF_UNIFORM_TYPE_FLOAT4, 1);
         cf_draw3d_set_uniform("particle_parameters", (void *)field->parameters, CF_UNIFORM_TYPE_FLOAT4, 32);

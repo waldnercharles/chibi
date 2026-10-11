@@ -222,7 +222,8 @@ int shader_graph_add_image(shader_graph *g, const shader_image_source *source);
 const char *shader_op_name(shader_op op);
 int shader_op_inputs(shader_op op);
 bool shader_graph_validate(const shader_graph *g, shader_error *error);
-/* Particle functions return Position:vec3, Size:float, Color:vec4 and use only
+/* Particle functions return Position:vec3, Size:float, Color:vec4, optionally
+ * Scale:vec3, Rotation:vec3 (XYZ radians), Lighting:float in order, and use only
  * numeric operations plus time/beat. Slots 0..2 are Index, Count and Seed. */
 bool shader_graph_particle_validate(const shader_graph *, shader_error *);
 bool shader_particle_parameters_validate(

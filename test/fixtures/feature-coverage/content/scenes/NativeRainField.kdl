@@ -6,4 +6,5 @@ presentation "3d"
     - name="Opaque block" prototype="RainOccluder"
     - name="Camera" prototype="RainCamera"
     - name="Environment" prototype="RainEnvironment"
+    - name="Rain lamp" prototype="RainLamp"
 }

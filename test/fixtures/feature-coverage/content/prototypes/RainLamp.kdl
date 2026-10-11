@@ -1,0 +1,5 @@
+name "RainLamp"
+components {
+    PointLight color=0xff9060ff elevation=20.0 intensity=2.0 radius=65.0
+    Transform x=12.0 y=12.0
+}

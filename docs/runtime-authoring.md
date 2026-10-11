@@ -77,7 +77,9 @@ materials cast shadows, and light bounces off lit surfaces. Only the first such
 entity counts. `ambient` is the share of the unlit colors that stays: 1 keeps
 them as drawn and adds light to them, and lower values darken what no light
 reaches. `intensity` scales how bright emissive surfaces look, and `resolution`
-sets the detail of the light grid. Studio adds the component with `ambient` and
+sets the detail of the light grid. `sky` lights a side view from above: open
+ground receives its color, and absorbing materials block it like other light,
+so the ground under an overhang and the inside of a cave stay dark. Studio adds the component with `ambient` and
 `intensity` at 1 and `resolution` at 0.5, but KDL loads an omitted field as
 zero, so write every setting a scene needs. See the `Lighting` prototype in
 `test/fixtures/sprites`.

@@ -438,16 +438,17 @@ a placed node is an unsaved edit, and component access nodes keep their file
 entries wherever arrangement puts them. 26 assertions in 0.25 seconds with
 ASan/UBSan.
 
-`--fields` runs seventeen cases on field graphs compiled to field programs:
+`--fields` runs eighteen cases on field graphs compiled to field programs:
 deterministic cos/sin, atan2 and exponentials against golden bits, primitives
 that bake as they sample, parameters and compile errors, noise and
 composition, row evaluation matching scalar samples, repeated inputs,
 functions, multiple results, terrain chunks and connectivity, and streaming
 tiles that restore and retry failed slices, plus linked-library publication
 and rollback, source-library linking and constant parameter defaults, and library
-updates that preserve valid and invalid field drafts. The original thirteen
-cases passed 3,308 assertions in 0.36 seconds with ASan/UBSan; these historical
-measurements do not cover the four added cases.
+updates that preserve valid and invalid field drafts, and source calls that retain
+the named function and authored inputs after functions and parameters reorder.
+The original thirteen cases passed 3,308 assertions in 0.36 seconds with
+ASan/UBSan; these historical measurements do not cover the five added cases.
 
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against
@@ -802,13 +803,14 @@ shadow only the light they cross, by height whether or not they absorb, unless
 they glow, small, moving, edge and mixed-color sources, falloff to the depth
 radius, perspective views, the depth gain on receivers that absorb, as much at
 a Material's full absorption as opaque, receivers that absorb nothing taking
-HRC's light by facing and height, smoothly, gloss,
+HRC's light by facing and height, smoothly, walls hiding ambient light by
+their height in both visibility modes, gloss,
 every depth quality, depth history of light and of that shading, segments and
 steep planes. The surface
 gather pass alone must take each quadrant's light, find crests past gaps and
 stay dark without light in reach, and surface gather light must restart when
 the view turns. Its cases share one HRC, since a new one compiles all of HRC's
-shaders. It passes 2070 assertions in 11.5 seconds, 20.9 with an empty shader
+shaders. It passes 2174 assertions in 12.4 seconds, 22.5 with an empty shader
 cache.
 `material-sampling` draws shapes into the material raster alone in a hidden
 65 x 49 app: small circles must emit their area wherever they land on the pixel
@@ -820,8 +822,11 @@ assertions in 2.4 seconds, 3.2 with an empty shader cache.
 128 x 128 app and from the pinned lighting of `radiance`:
 edge light only on a silhouette's lit side, relief facing the light and below
 a ceiling, a surface radius in world units, surface colors that keep the
-direction they came from in every shadow mode, and surface light history. It
-passes 86 assertions in 26.0 seconds, 30.8 with an empty shader cache.
+direction they came from in every shadow mode, surface light history, and sky
+light that reaches open ground whole whatever the falloff, never glows in open
+air, reaches the ground under an overhang only from beside it and leaves a
+closed room dark, on the full grid, a coarser one and with split color. It
+passes 177 assertions in 29.1 seconds, 39.3 with an empty shader cache.
 `radiance-horizons4` and `radiance-horizons8` check relief shadows with four
 and eight horizon directions: horizons that follow moving relief without a
 reset, the horizon hierarchy against the fine scan, and the horizon cache

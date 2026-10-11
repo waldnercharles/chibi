@@ -606,6 +606,29 @@ TEST_CASE(fields_call_source_libraries)
     );
     /* Every sample of the 32-unit square lies inside the 40-unit disc. */
     REQUIRE(yyjson_get_real(result("maximum")) < 0);
+    /* Native preparation rejects a graph/source library name collision,
+     * even when the graph's filename differs from its declared name. */
+    char folder[256], collision[256];
+    path(folder, sizeof folder, "game/content/shader-libraries");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file(
+        "game/content/shader-libraries/Different.kdl",
+        "version 3\nname \"Shapes\"\ndomain \"shader-library\"\nid_counter 1\n"
+        "(array)graphs { - kind=\"event\" name=\"Functions\"; }\n"
+    );
+    static const char
+        refusal[] = "Native graph declaration shares a source library's name";
+    REQUIRE(validate() != 0 && errors() > 0);
+    const char *collision_message = first_message(result("project"));
+    REQUIRE(collision_message && strstr(collision_message, refusal));
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") !=
+        0
+    );
+    REQUIRE(failure_code() && !strcmp(failure_code(), "validation_failed"));
+    path(collision, sizeof collision, "game/content/shader-libraries/Different.kdl");
+    REQUIRE(unlink(collision) == 0);
+    REQUIRE(validate() == 0 && errors() == 0);
     /* Without the function, the field's call has nothing to resolve. */
     write_file("game/content/libraries/Shapes.chibi", "library \"Shapes\" {\n}\n");
     REQUIRE(validate() != 0 && errors() == 1);

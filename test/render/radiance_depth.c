@@ -302,7 +302,7 @@ static bool ring(GameHRC2D lighting, float distance, float width, red_range *lig
 
 /* Blur doesn't light the closed receiver; Depth thickness does, within its
  * budget of 49 candidate tiles and 96 visibility taps for each of the 64
- * cells of 4 x 4 pixels. */
+ * cells of 4 x 4 pixels. Bounded segments walk each candidate as well. */
 TEST_CASE(depth_light_reaches_closed_receivers_within_its_budget)
 {
     GameHRC2D lighting = depth_lighting();
@@ -319,6 +319,10 @@ TEST_CASE(depth_light_reaches_closed_receivers_within_its_budget)
     REQUIRE(work.candidates == (size_t)work.cells * 49);
     REQUIRE(work.visibility_taps == (size_t)work.cells * 96);
     REQUIRE(!work.blur_quadrant_fetches);
+    lighting.surface_depth_visibility = GAME_HRC_DEPTH_VISIBILITY_SEGMENTS;
+    REQUIRE(lit(lighting, test_centered(SIDE), depth));
+    work = render_radiance_surface_work(radiance);
+    REQUIRE(work.visibility_taps == (size_t)work.cells * 96 + work.candidates * 48);
     return true;
 }
 
@@ -638,6 +642,101 @@ TEST_CASE(depth_gain_keeps_shadows_and_unlit_scenes_dark)
     REQUIRE(lit_fresh(lighting, test_centered(SIDE), unlit));
     REQUIRE(open[0] > .00001f && crossing[0] < open[0] * .35f);
     REQUIRE(dark(unlit));
+    return true;
+}
+
+/* A half-gray floor that absorbs nothing beside a wall 12 units tall at
+ * x >= 20. The wall absorbs light, or with `glow` absorbs nothing and gives a
+ * little light. Nothing else emits. */
+static void wall_scene(bool glow)
+{
+    memset(data, 0, sizeof data);
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < SIDE; x++) {
+            int p = y * SIDE + x;
+            for (int c = 0; c < 3; c++) {
+                data[SCENE][p][c] = data[ALBEDO][p][c] = .5f;
+            }
+            data[SCENE][p][3] = 1;
+            data[NORMAL][p][2] = 1;
+            data[COVER][p][0] = data[COVER][p][1] = data[COVER][p][2] = 1;
+            if (x >= 20) {
+                data[ALBEDO][p][3] = 12;
+                data[SOURCE][p][3] = glow ? 0 : 20;
+                data[SOURCE][p][0] = glow ? .01f : 0;
+            }
+        }
+    }
+}
+
+/* Channel `c` of the middle row's pixels at the columns `xs`. */
+static void middle_row(const int *xs, int count, int c, float *values)
+{
+    for (int i = 0; i < count; i++) {
+        values[i] = test_half(halves[4 * (SIDE / 2 * SIDE + xs[i]) + c]);
+    }
+}
+
+/* The ambient light Depth thickness lets through, shown in blue by the light
+ * direction view, at the columns `xs` of wall_scene(`glow`). */
+static bool occlusion_at(GameHRC2D lighting, bool glow, const int *xs, int count, float *values)
+{
+    float center[3];
+    render_radiance_debug_view view = lab.debug_view;
+    lab.debug_view = RENDER_RADIANCE_DEBUG_LIGHT_DIRECTION;
+    wall_scene(glow);
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), center));
+    middle_row(xs, count, 2, values);
+    lab.debug_view = view;
+    return true;
+}
+
+/* In both visibility modes, Depth thickness lets ambient light reach a floor
+ * past the heights around it: a wall hides much of it at its base, less
+ * farther away and none beyond the depth radius, evenly along the wall.
+ * The frame's ambient and shadow floor follow it, Blur keeps them flat, and a
+ * glow that absorbs nothing hides none. */
+TEST_CASE(walls_occlude_ambient_light_by_their_height)
+{
+    static const int xs[] = { 19, 14, 8, 2 };
+    for (int mode = GAME_HRC_DEPTH_VISIBILITY_MASK;
+         mode <= GAME_HRC_DEPTH_VISIBILITY_SEGMENTS;
+         mode++) {
+        GameHRC2D lighting = fill_lighting();
+        lighting.surface_depth_visibility = (GameHRCDepthVisibility)mode;
+        lighting.ambient = 1;
+        float occlusion[4], glow[4], ambient[4], shadow_floor[4], flat[4], center[3];
+        REQUIRE(occlusion_at(lighting, true, xs, 4, glow));
+        REQUIRE(occlusion_at(lighting, false, xs, 4, occlusion));
+        float lowest = 1, highest = 0;
+        for (int y = 8; y < 24; y++) {
+            float visible = test_half(halves[4 * (y * SIDE + 19) + 2]);
+            lowest = fminf(lowest, visible);
+            highest = fmaxf(highest, visible);
+        }
+        REQUIRE(highest - lowest < .03f);
+        REQUIRE(occlusion[0] > .45f && occlusion[0] < .72f && occlusion[3] > .95f);
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(glow[i] > .97f);
+            REQUIRE(i == 0 || occlusion[i] > occlusion[i - 1]);
+        }
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), center));
+        middle_row(xs, 4, 0, ambient);
+        lighting.ambient = 0;
+        lighting.shadow_floor = 1;
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), center));
+        middle_row(xs, 4, 0, shadow_floor);
+        lighting.ambient = 1;
+        lighting.shadow_floor = 0;
+        lighting.surface_mode = GAME_HRC_SURFACE_BLUR;
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), center));
+        middle_row(xs, 4, 0, flat);
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(fabsf(ambient[i] - .5f * occlusion[i]) < .005f);
+            REQUIRE(fabsf(shadow_floor[i] - .5f * occlusion[i]) < .005f);
+            REQUIRE(fabsf(flat[i] - .5f) < .005f);
+        }
+    }
     return true;
 }
 
@@ -1272,6 +1371,7 @@ void test_render_radiance_depth()
     RUN_TEST_CASE(depth_gain_adds_only_to_closed_receivers);
     RUN_TEST_CASE(open_receivers_shade_hrc_light_by_facing_and_height);
     RUN_TEST_CASE(depth_gain_keeps_shadows_and_unlit_scenes_dark);
+    RUN_TEST_CASE(walls_occlude_ambient_light_by_their_height);
     RUN_TEST_CASE(glossy_receivers_take_highlights_by_the_depth_gain);
     RUN_TEST_CASE(matte_patches_take_no_gloss_from_around_them);
     RUN_TEST_CASE(every_depth_quality_lights_and_shadows);

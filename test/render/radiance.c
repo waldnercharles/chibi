@@ -1415,6 +1415,126 @@ TEST_CASE(surface_light_history_follows_its_hysteresis)
     return true;
 }
 
+/* A sky of (.4, .6, .8), which the cases read in blue. */
+static const unsigned TEST_SKY = 0x6699ccffu;
+
+/* An opaque rectangle between world (x0, y0) and (x1, y1) that reflects half
+ * its light. */
+static render_material_entity block(float x0, float y0, float x1, float y1)
+{
+    render_material_entity entity = wall_with(1, .5f);
+    entity.pos[0] = (x0 + x1) * .5f;
+    entity.pos[1] = (y0 + y1) * .5f;
+    entity.points[0] = (x1 - x0) * .5f;
+    entity.points[1] = (y1 - y0) * .5f;
+    entity.extent[0] = entity.points[0] + 2;
+    entity.extent[1] = entity.points[1] + 2;
+    return entity;
+}
+
+/* A backdrop filling the view that reflects half its light and blocks none. */
+static render_material_entity backdrop()
+{
+    render_material_entity entity = block(-SIDE / 2, -SIDE / 2, SIDE / 2, SIDE / 2);
+    memset(entity.absorption, 0, sizeof entity.absorption);
+    return entity;
+}
+
+/* Channel `c` of the HDR output at world (x, y). */
+static float hdr_at(float x, float y, int c)
+{
+    int px = (int)floorf(x) + SIDE / 2, py = SIDE / 2 - 1 - (int)floorf(y);
+    return test_half(hdr[4 * (py * SIDE + px) + c]);
+}
+
+/* The share of the sky a surface of albedo .5 reflects at world (x, y). */
+static float sky_seen(float x, float y)
+{
+    return hdr_at(x, y, 2) / (.5f * .8f);
+}
+
+/* Sky light reaches open ground whole, out to the view's edges, whatever the
+ * falloff, and keeps its color; it never glows in open air. Solids that absorb
+ * block it from above and not from below: the ground under an overhang keeps
+ * only the sky beside it, a closed room stays dark, its roof is lit, and the
+ * roof's own surface light comes from the sky above it. Each holds on the full
+ * grid, a coarser one and with split color. */
+TEST_CASE(sky_lights_what_solids_leave_open_above)
+{
+    REQUIRE(resize_targets(SIDE, HDR));
+    struct
+    {
+        float resolution;
+        render_radiance_color color;
+    } grids[] = { { 1, RENDER_RADIANCE_COLOR_FULL },
+                  { .5f, RENDER_RADIANCE_COLOR_FULL },
+                  { 1, RENDER_RADIANCE_COLOR_HALF } };
+    for (int g = 0; g < 3; g++) {
+        GameHRC2D lighting = clear_lighting();
+        render_radiance_lab lab = render_radiance_lab_defaults();
+        lighting.feedback = false;
+        lighting.surface_radius = 0;
+        lighting.tone_mapping = GAME_HRC_TONE_AGX;
+        lighting.sky = TEST_SKY;
+        lighting.resolution = grids[g].resolution;
+        lab.color_resolution = grids[g].color;
+        REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
+        render_material_entity scene[4] = { backdrop() };
+        REQUIRE(solve_hdr(scene, 1, 4));
+        const float edge = SIDE / 2 - 1.5f;
+        float open[] = { sky_seen(0, 0),
+                         sky_seen(-edge, 0),
+                         sky_seen(edge, 0),
+                         sky_seen(0, -edge),
+                         sky_seen(0, edge) };
+        for (int i = 0; i < 5; i++) {
+            REQUIRE(open[i] > .97f && open[i] < 1.03f);
+        }
+        REQUIRE(fabsf(hdr_at(0, 0, 0) / hdr_at(0, 0, 2) - .5f) < .01f);
+        lighting.falloff = 10;
+        REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
+        REQUIRE(solve_hdr(scene, 1, 4));
+        REQUIRE(fabsf(sky_seen(0, 0) - open[0]) < .01f);
+        lighting.falloff = 1;
+        REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
+
+        scene[1] = block(-SIDE / 2, 17, 0, 23);
+        REQUIRE(solve_hdr(scene, 2, 4));
+        float under = sky_seen(-32, 0), beside = sky_seen(32, 0);
+        REQUIRE(under > .2f && under < .4f);
+        REQUIRE(beside > .75f && beside < .95f);
+        REQUIRE(sky_seen(-32, 40) > .97f);
+
+        scene[1] = block(-40, 17, 40, 23);
+        scene[2] = block(-40, -SIDE / 2, -34, 23);
+        scene[3] = block(34, -SIDE / 2, 40, 23);
+        REQUIRE(solve_hdr(scene, 4, 4));
+        REQUIRE(sky_seen(0, 0) < .03f);
+        REQUIRE(sky_seen(0, 30) > .97f);
+        /* The roof's top row absorbs part of the sky like other light, and its
+         * underside sees none. */
+        REQUIRE(sky_seen(0, 22.5f) > .05f && sky_seen(0, 22.5f) < .3f);
+        REQUIRE(sky_seen(0, 17.5f) < .02f);
+        lighting.fog = 1;
+        REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
+        REQUIRE(solve_hdr(scene + 1, 3, 4));
+        REQUIRE(hdr_at(0, 40, 2) < .001f && hdr_at(0, 0, 2) < .001f);
+
+        lighting.fog = 0;
+        lighting.surface_radius = 12;
+        REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
+        scene[1].reserved[2] = 4;
+        REQUIRE(solve_hdr(scene + 1, 1, 4));
+        float top = sky_seen(0, 22.5f), bottom = sky_seen(0, 17.5f);
+        REQUIRE(bottom > .5f && top > bottom * 2);
+        lighting.sky = 0;
+        REQUIRE(render_radiance_set_lighting(radiance, lighting, lab));
+        REQUIRE(solve_hdr(scene + 1, 1, 4));
+        REQUIRE(sky_seen(0, 22.5f) < .001f);
+    }
+    return true;
+}
+
 /* ---------- Relief shadows by horizons ---------- */
 
 /* The mode the horizon selector checks. Each mode runs in its own process:
@@ -1835,6 +1955,7 @@ void test_render_radiance_surface()
     RUN_TEST_CASE(relief_below_a_ceiling_faces_down_to_the_light);
     RUN_TEST_CASE(surface_colors_keep_their_directions);
     RUN_TEST_CASE(surface_light_history_follows_its_hysteresis);
+    RUN_TEST_CASE(sky_lights_what_solids_leave_open_above);
     pu_clear_setup();
     cf_destroy_app();
 }

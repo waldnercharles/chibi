@@ -1014,6 +1014,83 @@ TEST_CASE(field_source_library_keeps_parameter_defaults)
     return true;
 }
 
+/* Source functions and their parameters keep their names when generated IDs
+ * move. Calls authored through the public API must survive that regeneration. */
+TEST_CASE(field_source_library_calls_follow_names)
+{
+    static const char *sources[] = {
+        "library \"Values\" {"
+        "pure function \"Other\"() -> (Value: float) { return 111.0 }"
+        "pure function \"Difference\"(X: float = 10.0, Y: float = 3.0) "
+        "-> (Value: float) { return field_subtract(entry.X, entry.Y) } }",
+        "library \"Values\" {"
+        "pure function \"Inserted\"() -> (Value: float) { return 999.0 }"
+        "pure function \"Other\"() -> (Value: float) { return 111.0 }"
+        "pure function \"Difference\"(Y: float = 30.0, X: float = 100.0) "
+        "-> (Value: float) { return field_subtract(entry.X, entry.Y) } }",
+        "library \"Values\" {"
+        "pure function \"Inserted\"() -> (Value: float) { return 999.0 }"
+        "pure function \"Other\"() -> (Value: float) { return 111.0 } }",
+    };
+    test_source_fixture fixture = test_source_prepare("content/libraries/Values.chibi", sources[0]);
+    behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
+    REQUIRE(acount(libraries) == 1);
+    /* Calls also retain name identity when their generated library is cloned. */
+    behavior_asset *library = behavior_asset_clone(libraries[0]);
+    REQUIRE(library);
+    graph *function = behavior_asset_find_graph_by_name(library, "Difference");
+    REQUIRE(function);
+    uint64_t generated_id = function->graph_id;
+    behavior_asset *field = behavior_asset_new("DifferenceField");
+    field->domain = BEHAVIOR_DOMAIN_FIELD;
+    node *call = behavior_asset_add_function_call_node(field, function);
+    node *x = add(field, "Field X"), *output = add(field, "Field Output");
+    REQUIRE(call && x && output);
+    REQUIRE(!graph_connect_data(field->graph, x, 0, call, 0));
+    REQUIRE(!graph_connect_data(field->graph, call, 0, output, 0));
+    uint64_t call_id = call->id;
+    char *saved = behavior_asset_save(field);
+    REQUIRE(saved);
+    behavior_asset_free(field);
+    field = behavior_asset_load(saved);
+    free(saved);
+    REQUIRE(field);
+    call = graph_node_by_id(field->graph, call_id);
+    REQUIRE(call);
+    bool named_call = call->reference_id == 0 &&
+                      call->input_pins[0].declaration_id == 0;
+    behavior_asset_free(library);
+    authoring_source_graph_libraries_free(libraries);
+    test_source_free(&fixture);
+
+    for (int i = 0; i < 3; i++) {
+        fixture = test_source_prepare("content/libraries/Values.chibi", sources[i]);
+        libraries = authoring_source_graph_libraries(fixture.sources);
+        REQUIRE(acount(libraries) == 1);
+        const behavior_asset *catalog = libraries[0];
+        char error[256];
+        behavior_asset *linked = behavior_asset_link_libraries(field, &catalog, 1, error, sizeof error);
+        if (i == 2) {
+            REQUIRE(!linked && strstr(error, "missing library function"));
+        } else {
+            REQUIRE(linked);
+            field_program *program = compile(linked);
+            REQUIRE(program && sample(program, 10, 0) == 7);
+            field_program_free(program);
+            behavior_asset_free(linked);
+        }
+        if (i == 0) {
+            /* Existing authored calls may retain an earlier generated ID. */
+            call->reference_id = generated_id;
+        }
+        authoring_source_graph_libraries_free(libraries);
+        test_source_free(&fixture);
+    }
+    REQUIRE(named_call);
+    behavior_asset_free(field);
+    return true;
+}
+
 static char root[] = "/tmp/chibi-fields-XXXXXX";
 
 static void copy_fixture(const char *folder, const char *file)
@@ -1171,6 +1248,7 @@ void test_fields()
     RUN_TEST_CASE(field_multiple_results);
     RUN_TEST_CASE(field_links_source_library);
     RUN_TEST_CASE(field_source_library_keeps_parameter_defaults);
+    RUN_TEST_CASE(field_source_library_calls_follow_names);
     RUN_TEST_CASE(field_source_library_hot_apply);
     RUN_TEST_CASE(field_terrain_chunks_and_connectivity);
     test_game_graph_packs_clear();

@@ -187,6 +187,7 @@ behavior_asset **authoring_source_graph_libraries(const authoring_sources *sourc
         }
         behavior_asset *asset = behavior_asset_new(a->name);
         asset->domain = BEHAVIOR_DOMAIN_LIBRARY;
+        asset->transient_function_ids = true;
         for (int f = 0; f < a->function_count; f++) {
             lower_function(asset, authoring_sources_catalog(sources), a, &a->functions[f]);
         }

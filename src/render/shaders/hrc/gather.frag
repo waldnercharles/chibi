@@ -11,7 +11,9 @@
 // its color's proportions at the luminance's brightness.
 //
 // A fragment pass stores total light, far light for bounce, and the four RGB
-// quadrant contributions. When the work grid is coarser than the canvas,
+// quadrant contributions. Each quadrant's fluence carries in alpha its share
+// that sees the sky (see merge.frag): quadrants add the sky's light, and total
+// light keeps it apart in alpha. When the work grid is coarser than the canvas,
 // near-field steps come from u_near, which holds each canvas pixel's step once;
 // see near.frag.
 
@@ -31,6 +33,7 @@ layout(set = 2, binding = 6) uniform sampler2D u_f3;
 layout(set = 2, binding = 7) uniform sampler2D u_luminance;
 layout(set = 2, binding = 8) uniform sampler2D u_near;
 
+// A holds the share of the sky the pixel sees: one on open ground.
 layout(location = 0) out vec4 out_light;
 layout(location = 1) out vec4 out_far;
 // RGB contributions from +x, +y (down the texture), -x and -y. Each already
@@ -55,6 +58,7 @@ layout(set = 3, binding = 0) uniform uniform_block
 	vec2 u_history_offset;
 	int u_history_valid;
 	vec4 u_crop_uv;
+	vec3 u_sky;
 };
 
 #include "hrc_common.shd"
@@ -63,9 +67,11 @@ layout(set = 3, binding = 0) uniform uniform_block
 // Absorption difference that reconstruction treats as an edge.
 const float UPSCALE_THRESHOLD = 0.1;
 
-void output_quadrant(int rot, vec3 light)
+// The sky lights half the circle around open ground, so twice each
+// quadrant's share gives it the whole sky color.
+void output_quadrant(int rot, vec3 light, float sky)
 {
-	vec4 value = vec4(light * 0.25, 1.0);
+	vec4 value = vec4((light + u_sky * (2.0 * sky)) * 0.25, 1.0);
 	if (rot == 0) out_q0 = value;
 	else if (rot == 1) out_q1 = value;
 	else if (rot == 2) out_q2 = value;
@@ -73,25 +79,25 @@ void output_quadrant(int rot, vec3 light)
 }
 
 // Quadrant fluence at a color pixel; nothing arrives from outside the domain.
-vec3 F_load(int rot, ivec2 p)
+vec4 F_load(int rot, ivec2 p)
 {
-	if (any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, ivec2(u_color_w, u_color_h)))) return vec3(0.0);
-	if (rot == 0) return texelFetch(u_f0, p, 0).rgb;
-	if (rot == 1) return texelFetch(u_f1, p, 0).rgb;
-	if (rot == 2) return texelFetch(u_f2, p, 0).rgb;
-	return texelFetch(u_f3, p, 0).rgb;
+	if (any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, ivec2(u_color_w, u_color_h)))) return vec4(0.0);
+	if (rot == 0) return texelFetch(u_f0, p, 0);
+	if (rot == 1) return texelFetch(u_f1, p, 0);
+	if (rot == 2) return texelFetch(u_f2, p, 0);
+	return texelFetch(u_f3, p, 0);
 }
 
 // Hardware-filtered quadrant fluence at a continuous color-pixel position.
 // Textures may keep a larger capacity; filtering stays inside the domain.
-vec3 F_filtered(int rot, vec2 grid)
+vec4 F_filtered(int rot, vec2 grid)
 {
 	grid = clamp(grid, vec2(0.0), vec2(u_color_w - 1, u_color_h - 1));
 	vec2 uv = (grid + 0.5) / vec2(textureSize(u_f0, 0));
-	if (rot == 0) return textureLod(u_f0, uv, 0.0).rgb;
-	if (rot == 1) return textureLod(u_f1, uv, 0.0).rgb;
-	if (rot == 2) return textureLod(u_f2, uv, 0.0).rgb;
-	return textureLod(u_f3, uv, 0.0).rgb;
+	if (rot == 0) return textureLod(u_f0, uv, 0.0);
+	if (rot == 1) return textureLod(u_f1, uv, 0.0);
+	if (rot == 2) return textureLod(u_f2, uv, 0.0);
+	return textureLod(u_f3, uv, 0.0);
 }
 
 // Split lighting: color with this luminance, or grey where color has none.
@@ -196,21 +202,24 @@ void main()
 		float trn = near.a;
 		vec3 near_rad = near.rgb + (1.0 - trn) * bounce;
 		vec3 total = vec3(0.0), raw = vec3(0.0);
+		float sky = 0.0;
 		vec4 luminance = u_split != 0 ? texelFetch(u_luminance, canvas_pos, 0) : vec4(0.0);
 		for (int rot = 0; rot < 4; rot++) {
-			vec3 far_rad = u_split != 0
-			                 ? F_filtered(rot, color_grid(canvas_pos))
-			                 : F_load(rot, canvas_pos);
+			vec4 far = u_split != 0
+			             ? F_filtered(rot, color_grid(canvas_pos))
+			             : F_load(rot, canvas_pos);
+			vec3 far_rad = far.rgb;
 			vec3 quadrant = near_rad + trn * far_rad;
 			if (u_split != 0) {
 				quadrant = with_luminance(quadrant, dot(near_rad, HRC_LUMA) + trn * luminance[rot]);
 				far_rad = with_luminance(far_rad, luminance[rot]);
 			}
 			total += quadrant;
-			output_quadrant(rot, quadrant);
+			sky += trn * far.a;
+			output_quadrant(rot, quadrant, trn * far.a);
 			raw += far_rad;
 		}
-		out_light = vec4(total * 0.25, 1.0);
+		out_light = vec4(total * 0.25, sky * 0.5);
 		out_far = vec4(raw * 0.25, 1.0);
 		return;
 	}
@@ -255,32 +264,35 @@ void main()
 
 	vec3 total = vec3(0.0);
 	vec3 total_raw = vec3(0.0);
+	float sky = 0.0;
 	for (int rot = 0; rot < 4; rot++) {
 		ivec2 s0 = g0;
-		vec3 r0;
+		vec4 far;
 		if (u_split != 0) {
 			// Color supplies only proportions; bilinear on its coarser grid.
-			r0 = F_filtered(rot, grid_c);
+			far = F_filtered(rot, grid_c);
 		} else {
 			// Edge: blend bilinear -> nearest at absorption edges.
-			r0 = F_filtered(rot, grid_f);
+			far = F_filtered(rot, grid_f);
 			if (edge > 0.0) {
-				r0 = mix(r0, F_load(rot, s0 + ivec2(step(vec2(0.5), frac))), edge);
+				far = mix(far, F_load(rot, s0 + ivec2(step(vec2(0.5), frac))), edge);
 			}
 		}
 
 		Interval cminus1 = trace_cminus1(canvas_pos, rot, center_rad, center_tau, center_T);
 		float trn = exp(-cminus1.tau);
+		vec3 r0 = far.rgb;
 		vec3 quadrant = cminus1.rad + trn * r0;
 		if (u_split != 0) {
 			quadrant = with_luminance(quadrant, dot(cminus1.rad, HRC_LUMA) + trn * luminance[rot]);
 			r0 = with_luminance(r0, luminance[rot]);
 		}
 		total += quadrant;
-		output_quadrant(rot, quadrant);
+		sky += trn * far.a;
+		output_quadrant(rot, quadrant, trn * far.a);
 		total_raw += r0;
 	}
 
-	out_light = vec4(total * 0.25, 1.0);
+	out_light = vec4(total * 0.25, sky * 0.5);
 	out_far = vec4(total_raw * 0.25, 1.0);
 }

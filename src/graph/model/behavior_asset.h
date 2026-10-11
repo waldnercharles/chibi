@@ -68,6 +68,8 @@ typedef struct behavior_asset
     void (*artifact_free)(void *);
     uint64_t identity; /* Process-local identity for ownership and prepared execution guards. */
     behavior_domain domain;
+    /* In-memory source lowering: function and parameter IDs are not durable. */
+    bool transient_function_ids;
     model_reference reference;
     float bounds[2];       /* Shape half extents in local units. */
     graph *graph;          /* the one non-deletable default event graph */

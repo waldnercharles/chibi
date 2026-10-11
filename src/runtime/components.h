@@ -1202,15 +1202,23 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     /* Frame rate adaptive keeps the scene's GPU work within. */
     float target_fps NODE_UNIT("fps");
     /* Gain of the unlit scene color added to the frame. 1 shows materials as
-     * drawn, and lower values darken what light does not reach. */
+     * drawn, and lower values darken what light does not reach. In Depth
+     * thickness, taller surfaces nearby hide part of it, as they would hide
+     * the sky. */
     float ambient;
+    /* Light from the sky above a side view: open ground receives this color.
+     * Solids that absorb light block it like any light, so overhangs shade
+     * the ground beneath them and caves stay dark; falloff never dims it.
+     * In Depth thickness, heights nearby hide part of it, as for ambient.
+     * Black, the default, has no sky. */
+    unsigned sky NODE_COLOR;
     /* Brightness of emissive surfaces as drawn; the light they cast is
      * unchanged. */
     float intensity;
     /* Brightness of light seen in open air: the glow around lights. */
     float fog;
     /* Fraction of a solid's albedo that stays visible where no light reaches
-     * it. */
+     * it. Depth thickness hides part of it like ambient. */
     float shadow_floor;
     /* How quickly light dims with distance; zero keeps it at full strength
      * across the view. */
@@ -1237,7 +1245,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * Depth thickness is the 2.5D mode: it gathers visible emission past
      * anything with height, and on solids that absorb nothing shades the HRC
      * light by their facing and those heights. Light passes over a prop that
-     * absorbs nothing where the prop is lower than the light. */
+     * absorbs nothing where the prop is lower than the light. Heights within
+     * the depth radius also hide ambient light, darkening the foot of a wall
+     * and the floor around a prop. */
     GameHRCSurfaceMode surface_mode;
     /* Screen-plane reach in project units for Depth thickness mode. A solid
      * that absorbs nothing shades all its HRC light by the lights within
@@ -1256,8 +1266,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     bool surface_depth_temporal;
     /* Maximum previous-frame weight; zero selects the default of 0.65. */
     float surface_depth_history;
-    /* How far below its visible top a surface blocks Depth light, in
-     * project units. A light that absorbs nothing never blocks. */
+    /* How far below its visible top a surface blocks Depth light and ambient
+     * light, in project units. A light that absorbs nothing never blocks. */
     float surface_thickness;
     /* Sideways reach of nearby light relative to its height above the plane;
      * larger values deepen normal-mapped relief. */

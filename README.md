@@ -4,6 +4,8 @@ A C23 scripting/compiler/runtime SDK with a separate Studio authoring applicatio
 
 The [architecture reference](docs/architecture.md) describes package boundaries,
 source authority, runtime lifetimes and deployment contracts.
+For implemented capabilities, remaining work, task ownership and the limits of
+the available validation, start at [current status](docs/status.md).
 
 [Native product packages](docs/native-package.md) provide an installed compiler
 SDK, a separate Studio application, and a deployed player. Game repositories own
@@ -181,13 +183,19 @@ exports its worker ABI; Studio consumes it rather than overriding it.
 Studio owns its empty starter and authored UI. No engine repository games are
 implicitly shipped.
 
-The serial web SDK package and external Studio build/link passed. Browser
-execution remains unverified; those checks do not establish interactive acceptance.
 `make web-serve` and `make web-threads-serve` use the external static server with
 isolation headers. It serves the installed browser bundle without mounting game
-source from disk. Publication integration remains pending and rejects explicitly.
-Historical publishing scripts and measurements do not certify this new product.
-No publishing is part of the extraction work.
+source from disk. Browser publication is implemented: the engine's
+[release workflow](.github/workflows/publish.yml) supplies versioned packages,
+[Studio](https://github.com/waldnercharles/chibi-studio#automatic-browser-distribution)
+publishes the serial editor archive, and
+[Celeste](https://github.com/waldnercharles/chibi-celeste) hosts its player and
+revision-specific `/dev/` workspace. Successful publication does not establish
+edit/save/reload, input or export acceptance in a browser. See
+[current execution evidence and remaining work](docs/status.md#execution-evidence)
+for that distinction; threaded browser acceptance remains separate.
+The old local `make publish-web` wrapper remains unavailable; use the owning
+repository's publication workflow.
 
 ## Checks and authoring
 

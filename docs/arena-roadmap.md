@@ -2,7 +2,15 @@
 
 Tracked in [the game and editor milestone](https://github.com/waldnercharles/c-blueprints/issues/28), with child issues [M1](https://github.com/waldnercharles/c-blueprints/issues/29), [M2](https://github.com/waldnercharles/c-blueprints/issues/30), [M3](https://github.com/waldnercharles/c-blueprints/issues/31), [M4](https://github.com/waldnercharles/c-blueprints/issues/32), [M5](https://github.com/waldnercharles/c-blueprints/issues/33), [M6](https://github.com/waldnercharles/c-blueprints/issues/34), and [M7](https://github.com/waldnercharles/c-blueprints/issues/35).
 
-## Active goal, September 9, 2026
+> This is the historical Arena3D game plan. Its checkboxes record the acceptance
+> claims and unfinished game work of that iteration, not today's engine feature
+> inventory. Arena3D content now belongs to
+> [chibi-arena3d](https://github.com/waldnercharles/chibi-arena3d).
+> Start at [current status](status.md) for engine gaps and active owners.
+> Test commands and measurements below are historical; use the current
+> [admission policy](testing.md#temporary-60-second-policy).
+
+## Scoped goal, September 9, 2026
 
 Deliver one playable, visually deliberate arena through this editor. Keep the
 existing movement, independent aim, single weapon, pursuit, damage, death and
@@ -69,8 +77,10 @@ tracks visual acceptance.
 - Add familiar surface and effect graphs with textures, procedural patterns,
   ramps, mapping, math, reusable groups, and useful previews. Share the graph
   model, history, search and parameter system already in the editor.
-- Use Box2D for planar contacts, shape casts and controlled movement. Evaluate
-  Box3D for elevation and moving 3D bodies when a game feature needs them.
+- Use Box2D for planar contacts, shape casts and controlled movement. The
+  original Box3D evaluation is superseded by the implemented
+  [3D body, character, joint and query contracts](runtime-authoring.md#simulate-3d-bodies).
+  The remaining moving-platform character work has an owner in [current status](status.md).
   Do not make a new SDF rigid-body solver a prerequisite for the game.
 - Use meshes for repeated opaque geometry and bounded SDF rendering for
   authored blends/deformations. Compare a whole-scene SDF experiment against
@@ -120,7 +130,9 @@ acceptance gate passed, not that a subset of code exists.
   ring from these nodes without editing C or generated shader code.
 - [ ] Preserve valid rendering during invalid graph edits; Undo and save/reload
   restore graphs and per-instance parameters. Migrate supplied materials directly
-  as contracts change. File-format import is deferred.
+  as contracts change. The original file-import deferral is superseded by
+  [glTF import](rendering-3d.md#importing-gltf-models); its documented format
+  limits remain. This does not complete the material-editing acceptance gate.
 
 ### 3. Robust combat and simulation
 
@@ -136,7 +148,7 @@ the implementation, ownership boundaries and remaining acceptance gates.
   player damage feedback, defeat, restart and encounter completion. Preserve
   behavior inspection and editing during play.
 - [ ] Validate at 30/60/120 display FPS, controller disconnect, pause and reload.
-  Document the Box3D trial boundary instead of building an unused physics wrapper.
+  Box3D is now integrated; this game acceptance gate remains unverified here.
 
 ### 4. Visual showcase and effects authoring
 
@@ -147,7 +159,9 @@ the implementation, ownership boundaries and remaining acceptance gates.
 - [x] Add HDR targets, exposure/tone mapping and controllable bloom through
   a reflected Environment component, with scene/preview parity and native/Web
   verification.
-- [ ] Add shadows, distortion and graded color. Keep the player and dangerous
+- [ ] Finish the game's shadows, distortion and graded-color acceptance.
+  [Directional, point and spot shadows](rendering-3d.md#shadows) are implemented
+  engine capabilities. Keep the player and dangerous
   projectiles legible with the showcase effects enabled. Reduced-motion/effect
   settings remain useful.
 - [ ] Expose effect spawning and parameters through reusable ECS components and

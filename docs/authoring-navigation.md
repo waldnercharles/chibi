@@ -1,5 +1,8 @@
 # Authoring navigation
 
+Reconciled against engine `f3ff608c` and Studio `d10222d` on 2026-10-10.
+See [current status](status.md) for execution evidence and assigned follow-ups.
+
 Navigation and refactoring live in shared C modules outside `src/editor/`.
 Studio, the SDK and file inspection consume the same resolved identities and
 source ranges. Agents edit asset files directly; there is no agent mutation
@@ -59,9 +62,12 @@ Completion uses visible lexical declarations and catalog signatures. Entity
 receivers expose reflected components and component receivers expose their
 fields. Assignment and call argument contexts constrain suggested types.
 Catalog types supply system component aliases and qualified event payloads.
-Prototype presence ranking, unfinished qualified library receivers and named
-argument recovery still need complete owning metadata/context support; they must
-not infer meaning from matching text.
+Completion recovers unfinished qualified library members and prototype arguments
+from resolved declarations and parameter identities, including named and quoted
+parameter labels. The [navigation cases](../test/language/navigation.c) cover
+replacement ranges and lexical shadowing as well as partial calls. Prototype
+component-presence ranking still needs owning metadata; it must not infer meaning
+from matching text.
 
 ## Presentation and source editing
 
@@ -96,7 +102,10 @@ applied runtime remains active. Paused source locations belong to a retained
 execution generation; a changed draft must not display a location against
 unrelated text. Model tests establish ownership and exact range behavior, but do
 not establish rendered graph gestures, interactive stepping or debugger parity.
-Those UI suites remain quarantined under the current test policy.
+Studio's [bounded acceptance inventory](https://github.com/waldnercharles/chibi-studio/blob/main/tests/acceptance/README.md)
+covers selected history, keyboard, selection and dirty-prompt interactions. Full
+graph gesture and debugger acceptance remains unverified; the
+[test policy](test-quarantine.md) still governs admission.
 
 ## Controller integration status
 
@@ -117,14 +126,21 @@ and applies optional layout filtering to the retained presentation snapshot.
 Scenario setup now delegates to the canonical project loader and checks retained
 source module registrations. `execution_status` reports the published module
 backend; runtime service requirements are checked when the host registers it.
-Executable `validate_asset` also uses canonical preparation. These controller
-changes still require rebuilt, reviewed command evidence. Profiling reports actual
+Executable `validate_asset` also uses canonical preparation. Profiling reports actual
 registered source modules, backends and instance counts. Optional source samples
 report actual function activation entries and resumes, excluding wait polls,
 with retained generation IDs and source ranges. CPU time is inclusive process
 time; nested samples overlap and synchronous outlined calls stay within their
 parent sample. Sampling excludes warmup and caps retained rows at 256, reporting
-dropped samples. This integration still needs its bounded runtime proof.
-The remaining prototype dependency validation paths are integration gaps. Full graph gesture
-and debugger coverage and broader CLI compatibility are not established by the
-pure navigation tests.
+dropped samples.
+
+The [publication cases](../test/language/publication.c) cover retained origins,
+activation/resume accounting and registered backends at the registry boundary.
+The [project-validation cases](../test/tools/validate_project.c) cover prototype
+includes, declared names and child expansion. These do not establish the actual
+controller response contract. The assigned controller workstream must record
+bounded command-level evidence for ranges, generations, diagnostics, rename
+preview non-mutation and profiling warmup/accounting. This audit established no
+specific missing prototype-dependency implementation; a defect needs a reproducer.
+Full graph gesture/debugger coverage and broader CLI compatibility are not
+established by the pure navigation tests.

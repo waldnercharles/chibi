@@ -10,6 +10,27 @@
 > are historical records, not current workflows. Measurements and source hashes
 > describe the recorded revisions; see [testing](testing.md) for current C tooling.
 
+## Current scope, 2026-10-10
+
+[Current status](status.md) owns the active backlog and parallel task boundaries.
+Studio code and acceptance cases now live in
+[chibi-studio](https://github.com/waldnercharles/chibi-studio).
+Nested scenes, parent-relative transforms, picking and hierarchy undo are
+implemented. Interactive Outliner reparenting/reordering is an approved, assigned
+follow-up; it no longer waits for scene hierarchy to exist. Authored parent/path
+preservation through Play/Stop has a separate pending dependency recorded there.
+
+The hold on converting the other panels to behaviors remains in force. Approval
+of Outliner hierarchy editing or visible-panel performance work does not release
+that hold. The October 5 checklist below is a historical audit, including its
+retired MCP operations and former source paths. Use
+[Studio's acceptance inventory](https://github.com/waldnercharles/chibi-studio/blob/main/tests/acceptance/README.md)
+for current undo, dirty-prompt, selection, keyboard and viewport cases; their
+existence is not a fresh execution result. Other old bug reports need reproduction
+before they become current work.
+
+## Migration record
+
 Studio's whole editor moves to authored RML and RCSS, as the user decided on
 2026-10-03. Anything that can't be authored, or that would cost substantial
 performance, is postponed and listed in Postponed below. Status: S0, F0,
@@ -18,7 +39,7 @@ Outliner runs on KDL behaviors over editor nodes (Behavior-driven panels, a spik
 loaded machine, so its times are provisional until re-measured on an idle
 one (S0 results).
 
-## Remaining work
+## Historical remaining work, 2026-10-05
 
 Reconciled against merged `main` at `de73cb85652f43694957377dfc3607d2e15da386`
 on 2026-10-05 under [CUT-58](https://linear.app/cute-engine/issue/CUT-58).
@@ -79,9 +100,10 @@ Wave 2; re-measure with `uptime` below 4 first)
   shows, even closed.
 - [ ] Stencil clip edges aren't anti-aliased (GPU backend).
 
-**Postponed** (Postponed): graph node bodies and their literals, Zep's
-surface, per-frame geometry, toasts, tooltips' controller, Outliner
-reorder/reparent (needs scene hierarchy first).
+**Postponed at this audit** (Postponed): graph node bodies and their literals,
+Zep's surface, per-frame geometry, toasts, tooltips' controller, Outliner
+reorder/reparent. The former scene-hierarchy prerequisite is implemented;
+the current Outliner task is recorded above.
 
 **Open questions** (Open questions): 1, 2, 4, 6 and 7.
 
@@ -113,7 +135,8 @@ implementation; they do not establish current browser acceptance.
 
 ### Audit and implementation slices (CUT-58)
 
-The unchecked items above remain open; listing a held item does not release it.
+The unchecked items above record the October 5 audit; current status and later
+evidence determine which remain open. Listing a held item does not release it.
 These are bounded follow-ups, not permission for a UI redesign. No work here
 changes CUT-50's native test selectors or production performance paths.
 
@@ -132,7 +155,7 @@ changes CUT-50's native test selectors or production performance paths.
 | Output stationary-pointer hover | Open Output slice; historical P4 observation, not freshly reproduced here. Keep follow-scroll and pointer-hit behavior covered together. |
 | Closed debug-target-list updates | Open header-source slice. `studio_sources.c` registers `graph_targets` against BehaviorHeader; `studio_graph_targets_sync` builds choices when the graph/target shows, without checking menu-open state. Coordinate any profiling with CUT-50. |
 | Stencil edge antialiasing | Open renderer slice in `rml_backend.c`; needs bounded render evidence, not a CPU-only pass or a new clipping design. |
-| Graph bodies/literals, Zep surface, geometry, toasts, tooltip controller, Outliner reorder/reparent | Explicitly postponed; retain the Postponed table's reasons and dependencies. |
+| Graph bodies/literals, Zep surface, geometry, toasts, tooltip controller | Postponed at this audit; retain the Postponed table's reasons. Outliner reorder/reparent is now separately approved and assigned in [current status](status.md). |
 | Open questions 1, 2, 4, 6, 7; graph zoom/pan; terrain LOD | User decisions remain unresolved. No parity tolerance, native-surface permanence, widget ownership, layout policy or terrain threshold chosen here. |
 | Physical macOS trackpad | Owned separately by CUT-57; not completed by this work. |
 | Historical active-checkout web Studio assets | Implemented by the retired engine development server. Regression fixture reproduces the old stale read, then checks checkout override with/without a workspace Studio copy, repeated save/reload, external edits/additions/removals, manifest writes, ignored stale edits, path containment and the reserved Studio project name. `test/web_serve_test.py` also checks the actual launch mount; `test/web_workspace_test.mjs` covers browser mirroring, launch arguments and preloaded Studio read/save/delete/rename/reload reconciliation. |
@@ -2653,7 +2676,7 @@ needs; shrink `kit.h`; update DESIGN decision 5, `studio-ui-authoring.md` and
 | Chart, wire and grid geometry; color plane; drag ghost; Inspector and Designer highlights | Per-frame geometry with no document structure |
 | Toasts | Springs and swipe need native motion; revisit after W3 |
 | Tooltips | Already attribute-driven; the controller stays native, as a browser's `title` does |
-| Reordering and reparenting objects by dragging Outliner rows | Scenes have no hierarchy, and object order has no Undo step, collaboration action or checkpoint record; it is a scene-authoring feature to add first. TreeRow's drop zones and the insertion line (F4) are ready for it |
+| Reordering and reparenting objects by dragging Outliner rows | Originally postponed for missing hierarchy. Nested scenes, transforms, picking and undo now exist; interactive move/reparent with ordering, grouped history, collaboration and checkpoint parity is assigned in [current status](status.md). TreeRow's drop zones and insertion line do not establish that interaction's acceptance. |
 
 ## Risks
 

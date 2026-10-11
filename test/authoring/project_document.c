@@ -1,6 +1,6 @@
 #include "assets/project.h"
-#include "suite_internal.h"
 #include "support/text_file.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <stdbool.h>
@@ -30,7 +30,7 @@ static const char *version_error(const char *version, char *error, size_t error_
     return error;
 }
 
-static void check_project_versions()
+TEST_CASE(project_manifests_open_only_supported_versions)
 {
     char older[32], newer[32], error[256];
     snprintf(older, sizeof older, "version %d", CHIBI_PROJECT_OLDEST_VERSION - 1);
@@ -38,10 +38,12 @@ static void check_project_versions()
     bool valid = strstr(version_error(older, error, sizeof error), "needs an older build") &&
                  strstr(version_error(newer, error, sizeof error), "needs a newer build") &&
                  strstr(version_error("", error, sizeof error), "needs an integer version");
-    test_check(valid, "project manifests open only from the oldest version this build upgrades");
+    /* Project manifests open only from the oldest version this build upgrades. */
+    REQUIRE(valid);
+    return true;
 }
 
-static void check_project_creation()
+TEST_CASE(project_creation_writes_an_empty_start_scene)
 {
     char parent[] = "/tmp/chibi-project-create-XXXXXX", root[256], error[256];
     assert(mkdtemp(parent));
@@ -55,9 +57,8 @@ static void check_project_creation()
     bool valid = opened && !strcmp(project.name, "Sample: Project") &&
                  !strcmp(project.start_scene, "scenes/Start.kdl") && text &&
                  strstr(text, "(array)entities");
-    test_check(valid, "new projects serialize their name and open with an empty start scene");
+    /* Project creation never overwrites an existing folder. */
     bool duplicate = chibi_project_create(root, "Other", error, sizeof error) != 0;
-    test_check(duplicate, "project creation never overwrites an existing folder");
     free(text);
     free(scene);
     chibi_project_free(&project);
@@ -72,14 +73,17 @@ static void check_project_creation()
     rmdir(path);
     rmdir(root);
     rmdir(parent);
+    /* New projects serialize their name and open with an empty start scene. */
+    REQUIRE(valid);
+    REQUIRE(duplicate);
+    return true;
 }
 
-void run_content_catalog_checks()
+TEST_CASE(contract_projects_resolve_their_own_content)
 {
-    check_project_versions();
-    check_project_creation();
-    const char *roots[] = { "test/fixtures/language",
-                            "test/fixtures/material-contracts" };
+    const char *roots[] = { CHIBI_SOURCE_ROOT "/test/fixtures/language",
+                            CHIBI_SOURCE_ROOT
+                            "/test/fixtures/material-contracts" };
     const char *names[] = { "Language contracts", "Material contracts" };
     chibi_project projects[2] = { 0 };
     char error[256];
@@ -102,8 +106,17 @@ void run_content_catalog_checks()
         valid &= strcmp(projects[0].root, projects[1].root) &&
                  strcmp(projects[0].content, projects[1].content);
     }
-    test_check(valid, "Independent contract projects resolve their own manifests, content and start scenes");
     for (int i = 0; i < 2; i++) {
         chibi_project_free(&projects[i]);
     }
+    /* Independent contract projects resolve their own manifests, content and start scenes. */
+    REQUIRE(valid);
+    return true;
+}
+
+void test_project_document()
+{
+    RUN_TEST_CASE(project_manifests_open_only_supported_versions);
+    RUN_TEST_CASE(project_creation_writes_an_empty_start_scene);
+    RUN_TEST_CASE(contract_projects_resolve_their_own_content);
 }

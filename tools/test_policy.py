@@ -247,6 +247,20 @@ TOOLS = {
     'language-publication': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--publication'],
     # Two reviewed scene lifecycle cases, isolated public SDK consumer, no GPU.
     'runtime-scene': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene'],
+    # KDL asset text and native value trees: typed scalars, exact reals, ownership, errors.
+    'asset-values': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-values'],
+    # UI documents and RCSS: composition, widgets, source lines, scoping, events and imports.
+    'ui-document': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ui-document'],
+    # File watches, text overlays and text edits in a temporary folder.
+    'text-files': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--text-files'],
+    # The vendored fmt library and the two local fixes Format Text relies on.
+    'fmt': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--fmt'],
+    # Particle bursts: curves, fixed-step parity, bounds, rejection and expiry.
+    'particles': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--particles'],
+    # Cute's PNG encoder: zlib window header and a round trip, no window or GPU.
+    'png-encoding': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--png-encoding'],
+    # Project manifests: version gates, creation and the two contract fixture projects.
+    'project-document': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--project-document'],
     # Reviewed whitespace-only CST formatter, finite cases and bounded production source manifest.
     'language-format': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                         '--format', '--corpus',

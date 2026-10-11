@@ -124,6 +124,72 @@ if(TARGET Chibi::tilemap_runtime AND TARGET Chibi::asset_text AND TARGET Chibi::
 endif()
 add_custom_target(check-tools COMMAND test_tools DEPENDS test_tools VERBATIM)
 
+# KDL asset text and the native value tree it reads into.
+if(TARGET Chibi::asset_text AND TARGET Chibi::asset_json)
+    add_library(chibi_asset_values_consumer OBJECT ../support/asset_text.c ../support/asset_value.c)
+    target_include_directories(chibi_asset_values_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_link_libraries(chibi_asset_values_consumer PRIVATE Chibi::asset_text Chibi::asset_json)
+    target_compile_options(chibi_asset_values_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_asset_values_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::asset_text Chibi::asset_json)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_ASSET_VALUES=1)
+endif()
+
+# UI documents and RCSS, and the watched, overlaid text files they read.
+if(TARGET Chibi::ui_document)
+    add_library(chibi_ui_document_consumer OBJECT ../runtime/ui_document.c ../support/rcss.c
+        ../support/file_watch.c ../support/text_overlay.c)
+    target_include_directories(chibi_ui_document_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_compile_definitions(chibi_ui_document_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE)
+    target_link_libraries(chibi_ui_document_consumer PRIVATE Chibi::ui_document)
+    target_compile_options(chibi_ui_document_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_ui_document_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::ui_document)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_UI_DOCUMENT=1)
+endif()
+
+# The SDK installs no fmt header, so only an in-tree build can call it directly.
+if(TARGET chibi_fmt)
+    target_sources(test_tools PRIVATE ../support/fmt.c)
+    target_link_libraries(test_tools PRIVATE chibi_fmt)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FMT=1)
+endif()
+
+# Particle bursts run without a renderer.
+if(TARGET Chibi::particle_runtime)
+    add_library(chibi_particle_consumer OBJECT ../runtime/particles.c)
+    target_include_directories(chibi_particle_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_link_libraries(chibi_particle_consumer PRIVATE Chibi::particle_runtime)
+    target_compile_options(chibi_particle_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_particle_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::particle_runtime)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PARTICLES=1)
+endif()
+
+# Screenshots save through Cute's PNG encoder; no window or GPU.
+if(TARGET Chibi::platform)
+    add_library(chibi_png_consumer OBJECT ../render/png_encoding.c)
+    target_include_directories(chibi_png_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_link_libraries(chibi_png_consumer PRIVATE Chibi::platform)
+    target_compile_options(chibi_png_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_png_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::platform)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PNG_ENCODING=1)
+endif()
+
+# Project manifests: version gates, creation and independent fixture projects.
+if(TARGET Chibi::project_document AND TARGET Chibi::text_source)
+    add_library(chibi_project_document_consumer OBJECT ../authoring/project_document.c)
+    target_include_directories(chibi_project_document_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_compile_definitions(chibi_project_document_consumer PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_SOURCE _DARWIN_C_SOURCE
+        CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
+    target_link_libraries(chibi_project_document_consumer PRIVATE Chibi::project_document Chibi::text_source)
+    target_compile_options(chibi_project_document_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_project_document_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::project_document Chibi::text_source)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PROJECT_DOCUMENT=1)
+endif()
+
 # Reflection cases drive the native generator that SDK packages are built with.
 if(CHIBI_REFLECT_EXECUTABLE)
     target_sources(test_tools PRIVATE reflect.c)

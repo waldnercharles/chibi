@@ -272,6 +272,47 @@ and steady 2D physics steps of 1,000 and 4,000 circle colliders, apart and
 overlapping, and passes 96 assertions in 1.4 seconds. Compare builds through
 `benchmark_trials`.
 
+`--asset-values` runs nine cases on KDL asset text and the native value tree:
+typed scalars at the 64-bit limits, slashdash, annotated arrays and source
+ranges; reals and floats that read back bit for bit and write plainly;
+escaped separators; thirteen malformed documents reported with a line and
+column; owned snapshots and subtrees; ordered objects; exact numeric
+equality; and JSON that owns its strings. 172 assertions in 0.05 seconds with
+ASan/UBSan; in memory, CPU only.
+
+`--ui-document` runs fifteen cases on UI documents and RCSS: composition,
+rejected markup, page bodies with imported stylesheets, widgets expanded with
+slots, attributes and cycles refused, source lines traced through widgets,
+scoping, named events and self bindings, then RCSS nesting, errors by line,
+custom properties, line maps through joins and imports read once. 79
+assertions in 0.06 seconds with ASan/UBSan; a few files in a temporary folder.
+
+`--text-files` runs three cases: a file watch sees same-size edits, atomic
+replacements and removals at most once a second; a text overlay reads in
+place of its file however its path is spelled; text edits apply against the
+original text. 16 assertions in 0.06 seconds with ASan/UBSan.
+
+`--fmt` runs two cases on the vendored fmt library: positional, typed and
+aligned arguments with escaped braces, and the runtime specifier path Format
+Text takes, where an out-of-range placeholder renders empty. 12 assertions in
+0.05 seconds with ASan/UBSan.
+
+`--particles` runs three cases on particle bursts without a renderer: curves
+and one long step matching many short ones, deterministic emission that
+rejected input does not disturb, and bursts capped at the particle limit with
+finite values that expire each at its own lifetime. 6,259 assertions in 0.07
+seconds with ASan/UBSan.
+
+`--png-encoding` runs one case: Cute's PNG encoder, which screenshots use,
+declares the 32K zlib window it references and round-trips the pixels. No
+window or GPU; 3 assertions in 0.07 seconds with ASan/UBSan.
+
+`--project-document` runs three cases: manifests older than the oldest
+upgradable version or newer than this build are refused, a new project opens
+with an empty start scene and is never written over, and the language and
+material contract fixture projects resolve their own content. 4 assertions in
+0.08 seconds with ASan/UBSan; temporary projects only.
+
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against
 `build-release/bin/chibi_ctl`. Each scaffolds a temporary

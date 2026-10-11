@@ -19,7 +19,7 @@ selected instances and compacts survivors in attachment order, then rebuilds the
 index once. This also invalidates prepared Tick bindings through the existing
 attachment revision. Individual entity and asset detach operations share this code.
 
-`game_behavior_destroy_entities` is a structural boundary outside graph dispatch
+`behavior_destroy_entities` is a structural boundary outside graph dispatch
 and ECS queries. Selected activations and delegate bindings are released before
 entity destruction; survivors retain their instances, variables and order. Stale
 handles cannot select a replacement generation. Duplicate destruction requests and
@@ -35,7 +35,7 @@ alive, as documented by the bulk API.
 ## Measurements
 
 The [isolated measurements](bulk-destruction-results.json) time
-`game_entities_flush` with five idle behavior attachments per entity. Creation and
+`entities_flush` with five idle behavior attachments per entity. Creation and
 final pool teardown are outside the interval. There are no components, physics or
 rendering in this fixture, so it isolates attachment maintenance and entity
 destruction rather than representing a playable scene.

@@ -31,9 +31,9 @@ static bool extension(const char *name, const char *suffix)
     size_t n = strlen(name);
     return n > 4 && !strcasecmp(name + n - 4, suffix);
 }
-static game_sound_format format(const char *name)
+static sound_format format(const char *name)
 {
-    return extension(name, ".ogg") ? GAME_SOUND_OGG : GAME_SOUND_WAV;
+    return extension(name, ".ogg") ? SOUND_OGG : SOUND_WAV;
 }
 static unsigned char *read_file(const char *path, size_t limit, size_t *length)
 {
@@ -71,7 +71,7 @@ static bool vorbis_plays(const unsigned char *bytes, size_t length)
     chibi_sound_vorbis_close(vorbis);
     return sound;
 }
-static bool named(const game_player_asset *assets, int from, const char *name)
+static bool named(const player_asset *assets, int from, const char *name)
 {
     for (int i = from; i < acount(assets); i++) {
         if (!strcmp(assets[i].name, name)) {
@@ -83,7 +83,7 @@ static bool named(const game_player_asset *assets, int from, const char *name)
 static bool add_sound(
     const char *directory,
     const char *file,
-    game_player_asset **assets,
+    player_asset **assets,
     int before,
     size_t *total,
     char *error,
@@ -99,18 +99,18 @@ static bool add_sound(
     if (named(*assets, before, name)) {
         reason = "another sound has this name";
     } else if (
-        acount(*assets) == GAME_PLAYER_MAX_ASSETS ||
+        acount(*assets) == PLAYER_MAX_ASSETS ||
         snprintf(path, sizeof path, "%s/%s", directory, file) >= (int)sizeof path ||
-        !(bytes = read_file(path, GAME_PLAYER_MAX_ASSET_BYTES - *total, &length))
+        !(bytes = read_file(path, PLAYER_MAX_ASSET_BYTES - *total, &length))
     ) {
         reason = "cannot be read within the resource limit";
-    } else if (game_sound_format_of(bytes, length) != format(file)) {
+    } else if (sound_format_of(bytes, length) != format(file)) {
         /* A file must hold what its extension says, in a form players decode. */
-        reason = format(file) == GAME_SOUND_OGG
+        reason = format(file) == SOUND_OGG
                    ? "is not a complete mono or stereo 44.1 kHz Ogg Vorbis file"
                    : "is not a plain mono or stereo 44.1 kHz PCM or float WAV "
                      "file";
-    } else if (format(file) == GAME_SOUND_OGG && !vorbis_plays(bytes, length)) {
+    } else if (format(file) == SOUND_OGG && !vorbis_plays(bytes, length)) {
         reason = "holds no Vorbis audio that players can decode";
     }
     if (reason) {
@@ -121,16 +121,16 @@ static bool add_sound(
     }
     apush(
         *assets,
-        ((game_player_asset){ .name = name,
-                              .kind = GAME_PLAYER_ASSET_SOUND,
-                              .data = bytes,
-                              .length = length,
-                              .content_hash = game_player_asset_fingerprint(bytes, length) })
+        ((player_asset){ .name = name,
+                         .kind = PLAYER_ASSET_SOUND,
+                         .data = bytes,
+                         .length = length,
+                         .content_hash = player_asset_fingerprint(bytes, length) })
     );
     *total += length;
     return true;
 }
-bool authoring_sounds_prepare(const char *content, game_player_asset **assets, char *error, size_t size)
+bool authoring_sounds_prepare(const char *content, player_asset **assets, char *error, size_t size)
 {
     char directory[4096];
     if (snprintf(directory, sizeof directory, "%s/sounds", content) >=
@@ -168,12 +168,12 @@ bool authoring_sounds_prepare(const char *content, game_player_asset **assets, c
     afree(files);
     return valid;
 }
-bool authoring_sounds_load(const char *content, game_audio *audio, char *error, size_t size)
+bool authoring_sounds_load(const char *content, audio *audio, char *error, size_t size)
 {
-    game_player_asset *sounds = NULL;
+    player_asset *sounds = NULL;
     bool valid = authoring_sounds_prepare(content, &sounds, error, size);
     for (int i = 0; valid && i < acount(sounds); i++) {
-        game_audio_add_sound(audio, sounds[i].name, sounds[i].data, sounds[i].length);
+        audio_add_sound(audio, sounds[i].name, sounds[i].data, sounds[i].length);
     }
     authoring_visual_prepared_free(sounds);
     return valid;

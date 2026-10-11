@@ -29,13 +29,13 @@ typedef struct resource_generation
     render_image_table *images;
     render_mesh_table *meshes;
     render_sky_table *skies;
-    game_ui_documents *documents;
+    ui_documents *documents;
     render_parts_table *empty_parts;
     render_image_table *empty_images;
     render_mesh_table *empty_meshes;
     render_sky_table *empty_skies;
-    game_ui_documents *empty_documents;
-    game_ui_font *fonts;
+    ui_documents *empty_documents;
+    ui_font *fonts;
     size_t font_storage;
     bool installed;
 } resource_generation;
@@ -79,14 +79,14 @@ static void discard(void *, void *generation)
     render_image_table_free(g->images);
     render_mesh_table_free(g->meshes);
     render_sky_table_free(g->skies);
-    game_ui_documents_free(g->documents);
+    ui_documents_free(g->documents);
     render_parts_free(g->empty_parts);
     render_image_table_free(g->empty_images);
     render_mesh_table_free(g->empty_meshes);
     render_sky_table_free(g->empty_skies);
-    game_ui_documents_free(g->empty_documents);
+    ui_documents_free(g->empty_documents);
     for (int i = 0; i < acount(g->fonts); i++) {
-        game_ui_font_free(&g->fonts[i]);
+        ui_font_free(&g->fonts[i]);
     }
     afree(g->fonts);
     free(g);
@@ -102,12 +102,7 @@ static bool graph_equal(const shader_graph *a, const shader_graph *b, shader_err
     free(right);
     return ok;
 }
-static bool prepare_shader(
-    resource_generation *g,
-    const game_player_asset *record,
-    size_t *budget,
-    shader_error *error
-)
+static bool prepare_shader(resource_generation *g, const player_asset *record, size_t *budget, shader_error *error)
 {
     shader_prepared_asset value;
     shader_prepared_asset_init(&value);
@@ -130,12 +125,7 @@ static bool prepare_shader(
     apush(g->assets, asset);
     return true;
 }
-static bool prepare_model(
-    resource_generation *g,
-    const game_player_asset *record,
-    size_t *budget,
-    shader_error *error
-)
+static bool prepare_model(resource_generation *g, const player_asset *record, size_t *budget, shader_error *error)
 {
     int index = asset_index(g, record->name);
     if (index < 0 || !g->assets[index].shape) {
@@ -320,25 +310,18 @@ static bool prepare_graphs(resource_generation *g, size_t *budget, shader_error 
     }
     return materials_valid(g, error);
 }
-static void *stage_decoded(
-    const game_player_asset *records,
-    int count,
-    size_t *remaining,
-    char *error,
-    size_t size
-)
+static void *stage_decoded(const player_asset *records, int count, size_t *remaining, char *error, size_t size)
 {
-    if (count < 0 || count > GAME_PLAYER_MAX_ASSETS || (count && !records)) {
+    if (count < 0 || count > PLAYER_MAX_ASSETS || (count && !records)) {
         fail(error, size, "Invalid prepared renderer collection");
         return NULL;
     }
     size_t total = 0;
     for (int i = 0; i < count; i++) {
-        const game_player_asset *r = &records[i];
+        const player_asset *r = &records[i];
         if (!r->name || !r->name[0] || strnlen(r->name, 1025) > 1024 ||
-            r->kind < GAME_PLAYER_ASSET_SHADER ||
-            r->kind >= GAME_PLAYER_ASSET_COUNT || !r->data || !r->length ||
-            r->length > GAME_PLAYER_MAX_ASSET_BYTES - total) {
+            r->kind < PLAYER_ASSET_SHADER || r->kind >= PLAYER_ASSET_COUNT ||
+            !r->data || !r->length || r->length > PLAYER_MAX_ASSET_BYTES - total) {
             fail(error, size, "Invalid prepared renderer resource record");
             return NULL;
         }
@@ -346,17 +329,16 @@ static void *stage_decoded(
     }
     int shaders = 0, fonts = 0;
     for (int i = 0; i < count; i++) {
-        shaders += records[i].kind == GAME_PLAYER_ASSET_SHADER;
-        fonts += records[i].kind == GAME_PLAYER_ASSET_FONT;
+        shaders += records[i].kind == PLAYER_ASSET_SHADER;
+        fonts += records[i].kind == PLAYER_ASSET_FONT;
     }
     if (fonts > 128) {
         fail(error, size, "Prepared font face count exceeds host limit");
         return NULL;
     }
-    size_t font_rows = fonts
-                         ? (size_t)(fonts < 16 ? 16 : fonts) * sizeof(game_ui_font) +
-                               sizeof(dyna_hdr)
-                         : 0;
+    size_t font_rows = fonts ? (size_t)(fonts < 16 ? 16 : fonts) * sizeof(ui_font) +
+                                   sizeof(dyna_hdr)
+                             : 0;
     size_t headers = font_rows + sizeof(resource_generation) +
                      2 * (render_image_table_header_bytes() +
                           render_parts_header_bytes() +
@@ -387,50 +369,50 @@ static void *stage_decoded(
     g->empty_meshes = render_mesh_table_new_budget(&budget);
     g->skies = render_sky_table_new();
     g->empty_skies = render_sky_table_new();
-    g->documents = game_ui_documents_new_budget(&budget, true);
-    g->empty_documents = game_ui_documents_new_budget(&budget, false);
+    g->documents = ui_documents_new_budget(&budget, true);
+    g->empty_documents = ui_documents_new_budget(&budget, false);
     if (!g->meshes || !g->empty_meshes || !g->documents || !g->empty_documents) {
         snprintf(diagnostic.message, sizeof diagnostic.message, "Prepared resource table budget exceeded");
         goto reject;
     }
     for (int i = 0; i < count; i++) {
-        const game_player_asset *r = &records[i];
-        if (r->kind == GAME_PLAYER_ASSET_FONT) {
-            game_ui_font font = { 0 };
+        const player_asset *r = &records[i];
+        if (r->kind == PLAYER_ASSET_FONT) {
+            ui_font font = { 0 };
             size_t before = budget;
-            if (!game_ui_font_prepared_read_budget(r->data, r->length, &budget, &font, error, size)) {
+            if (!ui_font_prepared_read_budget(r->data, r->length, &budget, &font, error, size)) {
                 goto reject;
             }
             if (strcmp(r->name, font.key)) {
-                game_ui_font_free(&font);
+                ui_font_free(&font);
                 snprintf(diagnostic.message, sizeof diagnostic.message, "Prepared font identity differs");
                 goto reject;
             }
             g->font_storage += before - budget;
             apush(g->fonts, font);
         }
-        if (r->kind == GAME_PLAYER_ASSET_UI) {
-            game_ui_document document = { 0 };
-            if (!game_ui_document_prepared_read_budget(r->data, r->length, &budget, &document, error, size)) {
+        if (r->kind == PLAYER_ASSET_UI) {
+            prepared_ui_document document = { 0 };
+            if (!ui_document_prepared_read_budget(r->data, r->length, &budget, &document, error, size)) {
                 goto reject;
             }
             bool ok = !strcmp(r->name, document.name) &&
-                      game_ui_documents_add_owned_budget(g->documents, &document, &budget);
-            game_ui_document_free(&document);
+                      ui_documents_add_owned_budget(g->documents, &document, &budget);
+            prepared_ui_document_free(&document);
             if (!ok) {
                 snprintf(diagnostic.message, sizeof diagnostic.message, "Prepared UI identity is invalid");
                 goto reject;
             }
         }
-        if (r->kind == GAME_PLAYER_ASSET_SHADER &&
+        if (r->kind == PLAYER_ASSET_SHADER &&
             !prepare_shader(g, r, &budget, &diagnostic)) {
             goto reject;
         }
-        if (r->kind == GAME_PLAYER_ASSET_IMAGE &&
+        if (r->kind == PLAYER_ASSET_IMAGE &&
             !render_image_table_decode(g->images, r->name, r->data, r->length, &budget, &diagnostic)) {
             goto reject;
         }
-        if (r->kind == GAME_PLAYER_ASSET_MESH) {
+        if (r->kind == PLAYER_ASSET_MESH) {
             render_mesh_asset mesh = { 0 };
             if (!render_mesh_asset_prepared_read_budget(r->data, r->length, &budget, &mesh, error, size)) {
                 goto reject;
@@ -442,11 +424,11 @@ static void *stage_decoded(
                 goto reject;
             }
         }
-        if (r->kind == GAME_PLAYER_ASSET_SKY &&
+        if (r->kind == PLAYER_ASSET_SKY &&
             !render_sky_table_decode(g->skies, r->name, r->data, r->length, &budget, error, size)) {
             goto reject;
         }
-        if (r->kind == GAME_PLAYER_ASSET_PARTS) {
+        if (r->kind == PLAYER_ASSET_PARTS) {
             render_parts_table *parts = render_parts_prepare(r->data, r->length, &budget, error, size);
             if (!parts) {
                 goto reject;
@@ -456,7 +438,7 @@ static void *stage_decoded(
         }
     }
     for (int i = 0; i < count; i++) {
-        if (records[i].kind == GAME_PLAYER_ASSET_MODEL &&
+        if (records[i].kind == PLAYER_ASSET_MODEL &&
             !prepare_model(g, &records[i], &budget, &diagnostic)) {
             goto reject;
         }
@@ -465,8 +447,8 @@ static void *stage_decoded(
         goto reject;
     }
     for (int i = 0; i < count; i++) {
-        const game_player_asset *r = &records[i];
-        if (r->kind == GAME_PLAYER_ASSET_SHADER_VALUES) {
+        const player_asset *r = &records[i];
+        if (r->kind == PLAYER_ASSET_SHADER_VALUES) {
             if (!shader_values_prepare(
                     r->data,
                     r->length,
@@ -480,16 +462,16 @@ static void *stage_decoded(
             }
         }
     }
-    for (int i = 0; i < game_ui_documents_count(g->documents); i++) {
-        const game_ui_document *document = game_ui_documents_at(g->documents, i);
+    for (int i = 0; i < ui_documents_count(g->documents); i++) {
+        const prepared_ui_document *document = ui_documents_at(g->documents, i);
         for (int j = 0; j < acount(document->resources); j++) {
-            const game_ui_resource *resource = &document->resources[j];
+            const ui_resource *resource = &document->resources[j];
             bool found = false;
             for (int k = 0; k < count; k++) {
                 if (!strcmp(resource->key, records[k].name) &&
-                    records[k].kind == (resource->kind == GAME_UI_RESOURCE_IMAGE
-                                            ? GAME_PLAYER_ASSET_IMAGE
-                                            : GAME_PLAYER_ASSET_FONT)) {
+                    records[k].kind == (resource->kind == UI_RESOURCE_IMAGE
+                                            ? PLAYER_ASSET_IMAGE
+                                            : PLAYER_ASSET_FONT)) {
                     found = true;
                 }
             }
@@ -511,7 +493,7 @@ static void *stage_decoded(
         }
     }
     for (int i = 0; i < acount(g->fonts); i++) {
-        game_ui_font_free(&g->fonts[i]);
+        ui_font_free(&g->fonts[i]);
     }
     afree(g->fonts);
     budget += g->font_storage;
@@ -532,8 +514,8 @@ reject:
 }
 static int resource_order(const void *left, const void *right)
 {
-    const game_player_asset *a = *(const game_player_asset *const *)left;
-    const game_player_asset *b = *(const game_player_asset *const *)right;
+    const player_asset *a = *(const player_asset *const *)left;
+    const player_asset *b = *(const player_asset *const *)right;
     if (a->kind != b->kind) {
         return a->kind < b->kind ? -1 : 1;
     }
@@ -542,7 +524,7 @@ static int resource_order(const void *left, const void *right)
 /* External records contain typed artifacts, never authored source files. */
 static void *stage(
     void *context,
-    const game_player_asset *records,
+    const player_asset *records,
     int count,
     size_t *remaining,
     char *error,
@@ -552,20 +534,19 @@ static void *stage(
     if (size) {
         error[0] = 0;
     }
-    if (!remaining || count < 0 || count > GAME_PLAYER_MAX_ASSETS ||
-        (count && !records)) {
+    if (!remaining || count < 0 || count > PLAYER_MAX_ASSETS || (count && !records)) {
         fail(error, size, "Invalid prepared renderer collection");
         return NULL;
     }
-    game_player_asset *inputs = xcalloc(count ? count : 1, sizeof *inputs);
+    player_asset *inputs = xcalloc(count ? count : 1, sizeof *inputs);
     void **owned = xcalloc(count ? count : 1, sizeof *owned);
     size_t total = 0;
     bool ok = true;
     for (int i = 0; i < count && ok; i++) {
         inputs[i] = records[i];
-        const game_player_asset *record = &records[i];
-        if (!game_player_asset_valid(record) ||
-            record->length > GAME_PLAYER_MAX_ASSET_BYTES - total) {
+        const player_asset *record = &records[i];
+        if (!player_asset_valid(record) ||
+            record->length > PLAYER_MAX_ASSET_BYTES - total) {
             ok = fail(error, size, "Invalid prepared renderer resource record");
             break;
         }
@@ -601,21 +582,21 @@ static void *stage(
             inputs[i].data = bytes;
         }
         if (record->content_hash &&
-            game_player_asset_fingerprint(inputs[i].data, record->length) !=
+            player_asset_fingerprint(inputs[i].data, record->length) !=
                 record->content_hash) {
             ok = fail(error, size, "Renderer artifact fingerprint differs");
         }
     }
     if (ok && count) {
-        const game_player_asset **ordered = xmalloc((size_t)count * sizeof *ordered);
+        const player_asset **ordered = xmalloc((size_t)count * sizeof *ordered);
         for (int i = 0; i < count; i++) {
             ordered[i] = &inputs[i];
         }
         qsort(ordered, (size_t)count, sizeof *ordered, resource_order);
         for (int i = 1; i < count; i++) {
-            const game_player_asset *a = ordered[i - 1], *b = ordered[i];
-            if (a->kind == b->kind && (a->kind == GAME_PLAYER_ASSET_PARTS ||
-                                       a->kind == GAME_PLAYER_ASSET_SHADER_VALUES ||
+            const player_asset *a = ordered[i - 1], *b = ordered[i];
+            if (a->kind == b->kind && (a->kind == PLAYER_ASSET_PARTS ||
+                                       a->kind == PLAYER_ASSET_SHADER_VALUES ||
                                        !strcmp(a->name, b->name))) {
                 ok = fail(error, size, "Prepared renderer resource identities are duplicated");
                 break;
@@ -650,9 +631,9 @@ static bool named(const char *name)
 {
     return name && *name;
 }
-static bool scene_ui(const resource_generation *g, const char *name)
+static bool prepared_scene_ui(const resource_generation *g, const char *name)
 {
-    return !named(name) || game_ui_documents_find(g->documents, name);
+    return !named(name) || ui_documents_find(g->documents, name);
 }
 static bool component_schema(const ecs_component_desc *actual, const ecs_component_desc *expected)
 {
@@ -660,32 +641,32 @@ static bool component_schema(const ecs_component_desc *actual, const ecs_compone
            actual->type->name && !strcmp(actual->type->name, expected->type->name) &&
            ecs_layout_hash(actual->type) == ecs_layout_hash(expected->type);
 }
-static bool scene(void *, void *generation, const game_scene *value, char *error, size_t size)
+static bool validate_scene(void *, void *generation, const scene *value, char *error, size_t size)
 {
     const resource_generation *g = generation;
     assert(g && !g->installed && value);
-    if (!scene_ui(g, game_scene_ui(value))) {
+    if (!prepared_scene_ui(g, scene_ui(value))) {
         return fail(error, size, "Scene UI document is absent from prepared resources");
     }
-    for (int object = 0; object < game_scene_object_count(value); object++) {
-        for (int index = 0; index < game_scene_object_component_count(value, object);
+    for (int object = 0; object < scene_object_count(value); object++) {
+        for (int index = 0; index < scene_object_component_count(value, object);
              index++) {
-            game_scene_component c = game_scene_object_component_at(value, object, index);
+            scene_component c = scene_object_component_at(value, object, index);
             const ecs_component_desc *expected = NULL;
-            if (c.desc->id == GAME_COMPONENT_GameShader.id) {
-                expected = &GAME_COMPONENT_GameShader;
+            if (c.desc->id == COMPONENT_Shader.id) {
+                expected = &COMPONENT_Shader;
             }
-            if (c.desc->id == GAME_COMPONENT_GameMeshAsset.id) {
-                expected = &GAME_COMPONENT_GameMeshAsset;
+            if (c.desc->id == COMPONENT_MeshAsset.id) {
+                expected = &COMPONENT_MeshAsset;
             }
-            if (c.desc->id == GAME_COMPONENT_GameMeshParts.id) {
-                expected = &GAME_COMPONENT_GameMeshParts;
+            if (c.desc->id == COMPONENT_MeshParts.id) {
+                expected = &COMPONENT_MeshParts;
             }
-            if (c.desc->id == GAME_COMPONENT_GameUi.id) {
-                expected = &GAME_COMPONENT_GameUi;
+            if (c.desc->id == COMPONENT_Ui.id) {
+                expected = &COMPONENT_Ui;
             }
-            if (c.desc->id == GAME_COMPONENT_GameEnvironment.id) {
-                expected = &GAME_COMPONENT_GameEnvironment;
+            if (c.desc->id == COMPONENT_Environment.id) {
+                expected = &COMPONENT_Environment;
             }
             if (!expected) {
                 continue;
@@ -693,13 +674,13 @@ static bool scene(void *, void *generation, const game_scene *value, char *error
             if (!component_schema(c.desc, expected)) {
                 return fail(error, size, "Prepared resource component schema differs");
             }
-            if (expected == &GAME_COMPONENT_GameUi) {
-                if (!scene_ui(g, ((const GameUi *)c.data)->document)) {
+            if (expected == &COMPONENT_Ui) {
+                if (!prepared_scene_ui(g, ((const Ui *)c.data)->document)) {
                     return fail(error, size, "Component UI document is absent from prepared resources");
                 }
             }
-            if (expected == &GAME_COMPONENT_GameShader) {
-                const GameShader *binding = c.data;
+            if (expected == &COMPONENT_Shader) {
+                const Shader *binding = c.data;
                 int shape = named(binding->shape) ? asset_index(g, binding->shape)
                                                   : -1;
                 int material = named(binding->material)
@@ -725,8 +706,8 @@ static bool scene(void *, void *generation, const game_scene *value, char *error
                     }
                 }
             }
-            if (expected == &GAME_COMPONENT_GameMeshAsset) {
-                const char *key = ((const GameMeshAsset *)c.data)->source;
+            if (expected == &COMPONENT_MeshAsset) {
+                const char *key = ((const MeshAsset *)c.data)->source;
                 bool found = !named(key);
                 for (int i = 0; i < render_mesh_table_source_count(g->meshes); i++) {
                     if (named(key) &&
@@ -738,14 +719,14 @@ static bool scene(void *, void *generation, const game_scene *value, char *error
                     return fail(error, size, "Component mesh is absent from prepared resources");
                 }
             }
-            if (expected == &GAME_COMPONENT_GameEnvironment) {
-                const char *key = ((const GameEnvironment *)c.data)->sky;
+            if (expected == &COMPONENT_Environment) {
+                const char *key = ((const Environment *)c.data)->sky;
                 if (named(key) && !render_sky_table_contains(g->skies, key)) {
                     return fail(error, size, "Environment sky is absent from prepared resources");
                 }
             }
-            if (expected == &GAME_COMPONENT_GameMeshParts) {
-                const char *key = ((const GameMeshParts *)c.data)->parts;
+            if (expected == &COMPONENT_MeshParts) {
+                const char *key = ((const MeshParts *)c.data)->parts;
                 bool found = !named(key);
                 for (int i = 0; i < render_parts_count(g->parts); i++) {
                     if (named(key) && !strcmp(key, render_parts_key(g->parts, i))) {
@@ -770,9 +751,9 @@ static void exchange(resource_generation *g)
     render_image_table_exchange(g->images);
     render_mesh_table_exchange(g->meshes);
     render_sky_table_exchange(g->skies);
-    game_ui_documents_exchange(g->documents);
+    ui_documents_exchange(g->documents);
 }
-static void commit(void *, void *generation, game_world *)
+static void commit(void *, void *generation, world *)
 {
     resource_generation *g = generation;
     assert(g && !g->installed);
@@ -795,7 +776,7 @@ static void commit(void *, void *generation, game_world *)
         render_sky_table *skies = current->skies;
         current->skies = g->skies;
         g->skies = skies;
-        game_ui_documents *documents = current->documents;
+        ui_documents *documents = current->documents;
         current->documents = g->documents;
         g->documents = documents;
         current->installed = false;
@@ -816,7 +797,7 @@ static void commit(void *, void *generation, game_world *)
         render_sky_table_free(g->skies);
         g->skies = g->empty_skies;
         g->empty_skies = NULL;
-        game_ui_documents_free(g->documents);
+        ui_documents_free(g->documents);
         g->documents = g->empty_documents;
         g->empty_documents = NULL;
     }
@@ -839,12 +820,12 @@ static void retire(void *context, void *generation)
     }
     discard(context, g);
 }
-game_player_resource_host render_prepared_resources(const char *root)
+player_resource_host render_prepared_resources(const char *root)
 {
-    return (game_player_resource_host){ .context = (void *)root,
-                                        .stage = stage,
-                                        .scene = scene,
-                                        .commit = commit,
-                                        .discard = discard,
-                                        .retire = retire };
+    return (player_resource_host){ .context = (void *)root,
+                                   .stage = stage,
+                                   .scene = validate_scene,
+                                   .commit = commit,
+                                   .discard = discard,
+                                   .retire = retire };
 }

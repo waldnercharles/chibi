@@ -1,11 +1,11 @@
 # 3D rendering
 
 A scene with `presentation "3d"` draws through `render/scene3d.c`. Entities with
-`GameTransform` and `GameGeometry3D` become lit solids; gameplay x/y maps to world
+`Transform` and `Geometry3D` become lit solids; gameplay x/y maps to world
 x/z and `elevation` is the center height. The renderer writes scene-linear RGBA16F
 into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
 
-An entity with `GameTransform3D` and `GameGeometry3D` becomes a solid too. Its
+An entity with `Transform3D` and `Geometry3D` becomes a solid too. Its
 global transform, through any ChildOf parents, places the solid's center, turns
 it and scales it, and its `elevation` is ignored. An entity with both
 transforms draws at its Transform3D. Its Visual Transform turns and scales the
@@ -20,16 +20,16 @@ tiny, thin or sheared frame that keeps some volume stays. Picks
 and bounds follow the same placement, a model surface's included, and a Render
 State's fog culling reads the ground under its drawn pose. Point and spot
 lights, particles, trails and Surface Influences still place from
-`GameTransform`, and SDF and Mesh Surface 2D surfaces belong to the 2D
+`Transform`, and SDF and Mesh Surface 2D surfaces belong to the 2D
 renderer, which ignores Transform3D.
 
 ## Camera
 
-A `GameCamera` with a `GameTransform3D` looks along its global -Z with +Y up, so
+A `Camera` with a `Transform3D` looks along its global -Z with +Y up, so
 its local +X points right in the image. It looks from its drawn pose, so a
 camera riding a body moves between physics steps as the body does. Its `offset` moves the eye across the
 ground (gameplay y is world z), as it moves an overhead camera's target. One
-with only a `GameTransform` frames its span from 10 degrees off overhead. `fov`
+with only a `Transform` frames its span from 10 degrees off overhead. `fov`
 is the vertical field of view in radians, from 0.00001 degrees (Unity's
 narrowest) to below 180, and zero picks 35 degrees. `near_clip` and `far_clip`
 are set together, with far at most a million times near, or both left at zero,
@@ -45,16 +45,16 @@ eye is from the origin.
 
 ## Lighting
 
-- **Directional Light** (`GameDirectionalLight`): color, intensity and the world
+- **Directional Light** (`DirectionalLight`): color, intensity and the world
   direction the light travels. A scene shows at most one; a second visible one is
   an error, and hidden ones are left out. Fog never culls it. With none, only
   ambient, point and spot lights shade the scene. `shadows` lets opaque solids
   block it, and `angular_diameter`, the sun's apparent size from 0 to 20
   degrees, softens their shadows (see Shadows).
-- **Point Light** (`GamePointLight`): up to 32 per view, ranked by estimated
+- **Point Light** (`PointLight`): up to 32 per view, ranked by estimated
   influence on the camera. `shadows` lets opaque solids within its radius
   block it (see Point and spot light shadows).
-- **Spot Light** (`GameSpotLight`): a point light that shines along
+- **Spot Light** (`SpotLight`): a point light that shines along
   `direction` in a cone. It has full strength out to `inner_angle` across and
   fades to nothing at `outer_angle`, falling off with the square of how far a
   point lies into that edge. The outer angle can be 2 to 160 degrees, and the
@@ -62,12 +62,12 @@ eye is from the origin.
   hidden light. Spot and point lights share the 32-light ranking, and a spot
   light without a direction lights nothing. `shadows` works as it does for a
   point light.
-- **Environment** (`GameEnvironment`): exposure, bloom, a sky (see Sky), a
+- **Environment** (`Environment`): exposure, bloom, a sky (see Sky), a
   hemisphere ambient that blends `ambient_ground` below to `ambient_sky` above,
   scaled by `ambient_intensity`, ambient occlusion (see Ambient occlusion) and
   global illumination (see Global illumination). A sky's light replaces the
   hemisphere ambient. Without an Environment the scene uses
-  `game_environment_defaults()`.
+  `environment_defaults()`.
 
 Omitted KDL fields are zero, so author every lighting field you need. Studio adds
 both components with their defaults filled in.
@@ -374,7 +374,7 @@ drawn on the far plane, so it fills every pixel no surface covers, and an empty
 
 ## Meshes
 
-A `GameMeshAsset` source names a binary `.mesh` file in the content folder,
+A `MeshAsset` source names a binary `.mesh` file in the content folder,
 such as `content/meshes/Camera.mesh`. The file holds indexed triangles. Each
 vertex has a position, normal, texture coordinate and tangent. The tangent's w
 is 1 or -1, and the bitangent is cross(normal, tangent) times w; normal maps
@@ -401,8 +401,8 @@ vertices. Runtime C code reads a loaded mesh's vertices and indices through
 `render_mesh_asset_load`. The JSON mesh format (`.mesh.json`) is retired:
 export the model again to get a `.mesh` file.
 
-An entity with a `GameMeshAsset` draws its mesh in the lit 3D pass and, with
-`GameMeshSurface2D`, in the planar material renderer. Its `GameGeometry3D`
+An entity with a `MeshAsset` draws its mesh in the lit 3D pass and, with
+`MeshSurface2D`, in the planar material renderer. Its `Geometry3D`
 dimensions scale the mesh's own coordinates, so dimensions of 1 keep them as
 authored, and its transforms place it as they place a shape. It cannot also
 have Mesh Parts. Each material group draws its run of the index list with the

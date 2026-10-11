@@ -20,7 +20,7 @@ name "Lantern Yard"
         name "Lantern"
         prototype "Lantern"
         components {
-            GameTransform x=0.0 y=-10.0
+            Transform x=0.0 y=-10.0
         }
         (array)behaviors
     }
@@ -28,8 +28,8 @@ name "Lantern Yard"
         name "Crate"
         prototype "Prop"
         components {
-            GameTransform x=-70.0 y=20.0
-            GameSprite image="content/images/props.png" frame=1 frame_width=16 frame_height=16 layer=1
+            Transform x=-70.0 y=20.0
+            Sprite image="content/images/props.png" frame=1 frame_width=16 frame_height=16 layer=1
         }
         (array)behaviors
     }
@@ -37,9 +37,9 @@ name "Lantern Yard"
         name "Mossy Crate"
         prototype "Prop"
         components {
-            GameTransform x=-50.0 y=20.0
-            GameSprite image="content/images/props.png" frame=1 frame_width=16 frame_height=16 layer=1
-            GameMaterial scene=0x9fe0a0ff albedo=0x9fe0a0ff
+            Transform x=-50.0 y=20.0
+            Sprite image="content/images/props.png" frame=1 frame_width=16 frame_height=16 layer=1
+            Material scene=0x9fe0a0ff albedo=0x9fe0a0ff
         }
         (array)behaviors
     }
@@ -47,8 +47,8 @@ name "Lantern Yard"
         name "Arrow"
         prototype "Prop"
         components {
-            GameTransform x=50.0 y=-30.0
-            GameSprite image="content/images/props.png" frame=2 frame_width=16 frame_height=16 layer=1
+            Transform x=50.0 y=-30.0
+            Sprite image="content/images/props.png" frame=2 frame_width=16 frame_height=16 layer=1
         }
         (array)behaviors
     }
@@ -56,8 +56,8 @@ name "Lantern Yard"
         name "Flipped Arrow"
         prototype "Prop"
         components {
-            GameTransform x=50.0 y=-10.0
-            GameSprite image="content/images/props.png" frame=2 frame_width=16 frame_height=16 flip_x=#true layer=1
+            Transform x=50.0 y=-10.0
+            Sprite image="content/images/props.png" frame=2 frame_width=16 frame_height=16 flip_x=#true layer=1
         }
         (array)behaviors
     }
@@ -65,9 +65,9 @@ name "Lantern Yard"
         name "Turned Arrow"
         prototype "Prop"
         components {
-            GameTransform x=80.0 y=-20.0
-            GameSprite image="content/images/props.png" frame=2 frame_width=16 frame_height=16 layer=1
-            GameOrientation radians=0.7854
+            Transform x=80.0 y=-20.0
+            Sprite image="content/images/props.png" frame=2 frame_width=16 frame_height=16 layer=1
+            Orientation radians=0.7854
         }
         (array)behaviors
     }
@@ -75,9 +75,9 @@ name "Lantern Yard"
         name "Gem"
         prototype "Prop"
         components {
-            GameTransform x=-80.0 y=-40.0
-            GameSprite image="content/images/props.png" frame=3 frame_width=16 frame_height=16 layer=1
-            GameMaterial scene=0xffffffff albedo=0xffffffff emission_color=0x40e0d0ff emission_intensity=0.25 emission_multiplier=1.0
+            Transform x=-80.0 y=-40.0
+            Sprite image="content/images/props.png" frame=3 frame_width=16 frame_height=16 layer=1
+            Material scene=0xffffffff albedo=0xffffffff emission_color=0x40e0d0ff emission_intensity=0.25 emission_multiplier=1.0
         }
         (array)behaviors
     }
@@ -85,7 +85,7 @@ name "Lantern Yard"
         name "Sheet"
         prototype "Sheet"
         components {
-            GameTransform x=0.0 y=55.0
+            Transform x=0.0 y=55.0
         }
         (array)behaviors
     }

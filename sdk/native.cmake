@@ -19,8 +19,8 @@ if(NOT CHIBI_NATIVE_TYPES_SOURCE)
     if(NOT EXISTS "${CHIBI_REFLECT_EXECUTABLE}")
         message(FATAL_ERROR "Native SDK packages require CHIBI_REFLECT_EXECUTABLE")
     endif()
-    set(CHIBI_NATIVE_TYPES_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/game_types.c")
-    set(CHIBI_NATIVE_BINDINGS_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/game_capabilities.c")
+    set(CHIBI_NATIVE_TYPES_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/native_types.c")
+    set(CHIBI_NATIVE_BINDINGS_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/native_capabilities.c")
     set(native_manifest "${CHIBI_SDK_ROOT}/src/runtime/component_ids.tsv")
     set(native_args --include "${CHIBI_SDK_ROOT}/src"
         --include "${CHIBI_CUTE_MATH_INCLUDE_DIR}" --manifest "${native_manifest}")
@@ -40,12 +40,12 @@ if(NOT CHIBI_NATIVE_TYPES_SOURCE)
     file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
     add_custom_command(OUTPUT "${CHIBI_NATIVE_TYPES_SOURCE}.stamp"
         BYPRODUCTS "${CHIBI_NATIVE_TYPES_SOURCE}" "${CHIBI_NATIVE_BINDINGS_SOURCE}"
-        COMMAND "${CHIBI_REFLECT_EXECUTABLE}" "${CHIBI_SDK_ROOT}/src/runtime/game_nodes.c"
-            --prefix GAME --types-output "${CHIBI_NATIVE_TYPES_SOURCE}"
+        COMMAND "${CHIBI_REFLECT_EXECUTABLE}" "${CHIBI_SDK_ROOT}/src/runtime/native_nodes.c"
+            --prefix "" --types-output "${CHIBI_NATIVE_TYPES_SOURCE}"
             --runtime-output "${CHIBI_NATIVE_BINDINGS_SOURCE}" ${native_args}
         COMMAND ${CMAKE_COMMAND} -E touch "${CHIBI_NATIVE_TYPES_SOURCE}.stamp"
         DEPENDS "${CHIBI_REFLECT_EXECUTABLE}" "${native_manifest}"
-            "${CHIBI_SDK_ROOT}/src/runtime/game_nodes.c"
+            "${CHIBI_SDK_ROOT}/src/runtime/native_nodes.c"
             "${CHIBI_SDK_ROOT}/src/runtime/components.h"
             "${CHIBI_SDK_ROOT}/src/runtime/interface.h"
             "${CHIBI_SDK_ROOT}/src/types/annotate.h"

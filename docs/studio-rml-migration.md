@@ -275,11 +275,11 @@ properties: { mode, live, locked, lockTip, query,
   tabs: [{ id, icon, tip, on, sep }],
   identity: { name, prototype, chips: [{ label, count }] },
   panels: [{ key, title, icon, badge, open, menu,
-    rows: [{ id: "e12/GameTransform.position", label, about,
+    rows: [{ id: "e12/Transform.position", label, about,
              overridden, mixed, readonly, invalid,
              number: [], vector: [{ axes: [{ key, label, value, step, precision, min, max, unit }] }],
              bool: [], choice: [], color: [], text: [], asset: [], entity: [] }] }] }
-choices: { fields: { GameBody: { type: TABLE } }, assets: { prototype: TABLE },
+choices: { fields: { Body: { type: TABLE } }, assets: { prototype: TABLE },
   editors: TABLE, panels: { label, icon, tools: [], others: [] } }
 TABLE: { label, icon, groups: [{ label, options: [{ value, label, icon }] }] }
 Outliner's self (its behaviors' Set UI Data): { root: { key, label, icon, parent, open, depth },
@@ -447,7 +447,7 @@ pack, registered only in the editor targets' registry (`EDITOR_REGISTRY`:
 chibi, chibi_ctl, the UI bench, test_suite), so games' runtimes never list
 it. Its nodes run on the `studio` service, Studio and one call
 (`studio_node_run`, a switch in `studio_node_calls.c`), which only Studio's
-own world binds (`game_behavior_bind_service`); elsewhere they fail with
+own world binds (`behavior_bind_service`); elsewhere they fail with
 "Editor nodes require Studio". Only the Studio project offers them
 (category Studio): searchNodes, and the graph editor's node search (the Add
 menu, the palette's add-node search and a dragged wire's, all
@@ -482,7 +482,7 @@ Add list.
 
 **Events.** Studio runs a panel's UI events on its entity's behaviors in the
 frame that sent them (`dispatch` in `studio_ui.c`, over
-`game_behavior_dispatch`), then `Refresh` when it is due (next paragraph),
+`behavior_dispatch`), then `Refresh` when it is due (next paragraph),
 as a source syncs, then the events behaviors sent each other (Send Event),
 shows what they set and applies their UI effects before RmlUi lays the
 frame out; an effect that sends events of its own (a focus move blurs a
@@ -501,7 +501,7 @@ activations to its entity's behaviors with `ui_activation_send`, the call
 Studio's `dispatch` makes, before it shows what behaviors set, so a click's
 result is on screen in the frame after the pointer reached the document (the
 player, the editor's Scene and Play, and the web build alike); before, the
-activation queued for the next simulation step (`game_entities_request_event`)
+activation queued for the next simulation step (`entities_request_event`)
 and showed a step later still. The payload is the same: the event asset of
 its name in the world's definitions (`ui_world.live`), the pointer's
 modifier keys (the viewport hosts pass them, traded on a Mac as for keys, so
@@ -581,7 +581,7 @@ effect rounds (studio_ui.c, render/ui.c's `ui_activation_send` and
 `ui_mount_pending`), which games' documents share; native list windows with `window` events and one-shot
 reveal (render/ui.c); Show UI Popover and Reveal UI List Row (game.ui); area
 keys (`ui_mount_area_key`); events reaching the innermost mount
-(studio_ui.c); host services for behavior worlds (`game_behavior_bind_service`);
+(studio_ui.c); host services for behavior worlds (`behavior_bind_service`);
 Text Equal (expressions cannot compare text); flow nodes' outputs in the
 run's arena (`flow_context_scratch`).
 
@@ -589,9 +589,9 @@ run's arena (`flow_context_scratch`).
 when a batch adds a second Behavior Expression with the same source; a
 `connect` from a bool to a number input is dropped without a diagnostic;
 `add_variable_node` ignores `inputs` (use `set_input`); a `connect` from an
-event's `CF_V2` payload to a `CF_V2` input chose a GameTransform-to-CF_V2
-conversion (`game_transform_to_cf`), which ran right only because a
-GameTransform starts with its position (removed by hand); a bool cannot feed
+event's `CF_V2` payload to a `CF_V2` input chose a Transform-to-CF_V2
+conversion (`transform_to_cf`), which ran right only because a
+Transform starts with its position (removed by hand); a bool cannot feed
 arithmetic or Select (no bool to number conversion), so folds are Branches.
 buildGraph does not refuse a studio node in another project's behavior; its
 validateAsset says so.
@@ -611,7 +611,7 @@ frames, medians:
 | Rename in place: Enter until the row shows it | 4.716 / 4.569 / 4.533 | 4.941 / 4.852 / 5.053 | 1.07× | 1 / 1 | 1,189 / 1,190 | 2 / 2 | 0.40 |
 | A filter keystroke, "Marker 5" to "Marker 51" | 4.699 / 4.918 / 4.650 | 5.198 / 5.183 / 5.343 | 1.10× | 1 / 1 | 607 / 653 | 2 / 2 | 0.89 |
 
-Behavior time is `game_behavior_profile`'s inclusive time over the step's
+Behavior time is `behavior_profile`'s inclusive time over the step's
 frames. The C source shows a click's selection a frame late (it syncs
 before the click's intent runs), so its click takes two UI frames; the
 behaviors show it in the frame of the click. Every refresh re-runs Scene

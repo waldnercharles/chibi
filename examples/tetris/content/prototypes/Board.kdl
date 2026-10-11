@@ -1,7 +1,7 @@
 name "Board"
 components {
-    (object)GAME.GameInput
-    (object)GAME.GameTransform
-    GAME.GameUi document="Hud"
+    (object)Input
+    (object)Transform
+    Ui document="Hud"
 }
 (array)behaviors "Tetris"

@@ -16,11 +16,11 @@ typedef struct
     execution_prepared_type type;
 } event_type;
 
-struct game_event_catalog
+struct event_catalog
 {
     int refs;
     arena storage;
-    game_event_declaration *events;
+    event_declaration *events;
     int count;
     event_type *types;
     int type_count;
@@ -64,16 +64,16 @@ static void field(execution_wire *wire, execution_module_event_field_info *f)
                       "invalid";
     }
 }
-static void declarations(execution_wire *wire, game_event_catalog *catalog, const execution_prepared_linker *linker)
+static void declarations(execution_wire *wire, event_catalog *catalog, const execution_prepared_linker *linker)
 {
-    uint64_t identity = magic, version = GAME_EVENT_CATALOG_VERSION;
+    uint64_t identity = magic, version = EVENT_CATALOG_VERSION;
     execution_wire_u64(wire, &identity);
     execution_wire_u64(wire, &version);
-    if (!wire->error && (identity != magic || version != GAME_EVENT_CATALOG_VERSION)) {
+    if (!wire->error && (identity != magic || version != EVENT_CATALOG_VERSION)) {
         wire->error = "Event catalog magic or version is unsupported";
     }
     execution_wire_count(wire, &catalog->type_count, 5);
-    if (!wire->error && catalog->type_count > GAME_MODULE_SET_MAX_EVENT_FIELDS) {
+    if (!wire->error && catalog->type_count > MODULE_SET_MAX_EVENT_FIELDS) {
         wire->error = "Event catalog type count exceeds limit";
     }
     if (wire->reading) {
@@ -112,7 +112,7 @@ static void declarations(execution_wire *wire, game_event_catalog *catalog, cons
         }
     }
     execution_wire_count(wire, &catalog->count, 4);
-    if (!wire->error && catalog->count > GAME_MODULE_SET_MAX_EVENT_DECLARATIONS) {
+    if (!wire->error && catalog->count > MODULE_SET_MAX_EVENT_DECLARATIONS) {
         wire->error = "Event catalog declaration limit exceeded";
     }
     if (wire->reading) {
@@ -121,14 +121,14 @@ static void declarations(execution_wire *wire, game_event_catalog *catalog, cons
     }
     int field_count = 0;
     for (int i = 0; i < catalog->count && !wire->error; i++) {
-        game_event_declaration *d = &catalog->events[i];
+        event_declaration *d = &catalog->events[i];
         execution_wire_u64(wire, &d->event.id);
         execution_wire_u64(wire, &d->event.abi);
         name(wire, &d->event.name);
         execution_wire_count(wire, &d->event.field_count, 5);
         if (!wire->error &&
             (!d->event.id || !d->event.abi ||
-             d->event.field_count > GAME_MODULE_SET_MAX_EVENT_FIELDS - field_count)) {
+             d->event.field_count > MODULE_SET_MAX_EVENT_FIELDS - field_count)) {
             wire->error = "Event catalog identity or field count is invalid";
         }
         field_count += d->event.field_count;
@@ -173,8 +173,8 @@ static void declarations(execution_wire *wire, game_event_catalog *catalog, cons
         }
     }
 }
-bool game_event_catalog_write(
-    const game_event_catalog *catalog,
+bool event_catalog_write(
+    const event_catalog *catalog,
     unsigned char **data,
     size_t *length,
     char *error,
@@ -185,7 +185,7 @@ bool game_event_catalog_write(
     *data = NULL;
     *length = 0;
     execution_wire wire = { 0 };
-    game_event_catalog view = *catalog;
+    event_catalog view = *catalog;
     declarations(&wire, &view, NULL);
     if (wire.error) {
         afree(wire.data);
@@ -197,7 +197,7 @@ bool game_event_catalog_write(
     afree(wire.data);
     return true;
 }
-game_event_catalog *game_event_catalog_read_budget(
+event_catalog *event_catalog_read_budget(
     const void *data,
     size_t length,
     const execution_prepared_linker *types,
@@ -209,12 +209,12 @@ game_event_catalog *game_event_catalog_read_budget(
     assert(remaining && (!size || error));
     size_t budget = *remaining < EXECUTION_WIRE_MAX_BYTES ? *remaining
                                                           : EXECUTION_WIRE_MAX_BYTES;
-    if (budget < sizeof(game_event_catalog)) {
+    if (budget < sizeof(event_catalog)) {
         fail(error, size, "Event catalog retained storage budget exceeded");
         return NULL;
     }
-    size_t allocation_budget = budget - sizeof(game_event_catalog);
-    game_event_catalog *catalog = xcalloc(1, sizeof *catalog);
+    size_t allocation_budget = budget - sizeof(event_catalog);
+    event_catalog *catalog = xcalloc(1, sizeof *catalog);
     catalog->refs = 1;
     execution_wire wire = { .data = (unsigned char *)data,
                             .size = length,
@@ -228,19 +228,19 @@ game_event_catalog *game_event_catalog_read_budget(
     }
     if (wire.error) {
         fail(error, size, wire.error);
-        game_event_catalog_free(catalog);
+        event_catalog_free(catalog);
         return NULL;
     }
     size_t capacity = arena_storage_bytes(&catalog->storage);
     if (capacity > budget || sizeof *catalog > budget - capacity) {
         fail(error, size, "Event catalog retained storage budget exceeded");
-        game_event_catalog_free(catalog);
+        event_catalog_free(catalog);
         return NULL;
     }
     *remaining -= capacity + sizeof *catalog;
     return catalog;
 }
-game_event_catalog *game_event_catalog_read(
+event_catalog *event_catalog_read(
     const void *data,
     size_t length,
     const execution_prepared_linker *types,
@@ -249,10 +249,10 @@ game_event_catalog *game_event_catalog_read(
 )
 {
     size_t remaining = EXECUTION_WIRE_MAX_BYTES;
-    return game_event_catalog_read_budget(data, length, types, &remaining, error, size);
+    return event_catalog_read_budget(data, length, types, &remaining, error, size);
 }
-game_event_catalog *game_event_catalog_new(
-    const game_event_declaration *events,
+event_catalog *event_catalog_new(
+    const event_declaration *events,
     int count,
     const execution_prepared_linker *types,
     char *error,
@@ -260,17 +260,15 @@ game_event_catalog *game_event_catalog_new(
 )
 {
     assert(!size || error);
-    if (count < 0 || count > GAME_MODULE_SET_MAX_EVENT_DECLARATIONS ||
-        (count && !events)) {
+    if (count < 0 || count > MODULE_SET_MAX_EVENT_DECLARATIONS || (count && !events)) {
         fail(error, size, "Event catalog declaration count is invalid");
         return NULL;
     }
-    game_event_catalog view = { .events = (game_event_declaration *)events,
-                                .count = count };
+    event_catalog view = { .events = (event_declaration *)events, .count = count };
     int field_total = 0;
     for (int i = 0; i < count; i++) {
         if (events[i].event.field_count < 0 ||
-            events[i].event.field_count > GAME_MODULE_SET_MAX_EVENT_FIELDS - field_total ||
+            events[i].event.field_count > MODULE_SET_MAX_EVENT_FIELDS - field_total ||
             (events[i].event.field_count && !events[i].fields)) {
             fail(error, size, "Event catalog fields are invalid");
             afree(view.types);
@@ -299,21 +297,21 @@ game_event_catalog *game_event_catalog_new(
     view.type_count = acount(view.types);
     unsigned char *data;
     size_t length;
-    if (!game_event_catalog_write(&view, &data, &length, error, size)) {
+    if (!event_catalog_write(&view, &data, &length, error, size)) {
         afree(view.types);
         return NULL;
     }
-    game_event_catalog *catalog = game_event_catalog_read(data, length, types, error, size);
+    event_catalog *catalog = event_catalog_read(data, length, types, error, size);
     afree(view.types);
     free(data);
     return catalog;
 }
-void game_event_catalog_retain(game_event_catalog *catalog)
+void event_catalog_retain(event_catalog *catalog)
 {
     assert(catalog && catalog->refs > 0);
     catalog->refs++;
 }
-void game_event_catalog_free(game_event_catalog *catalog)
+void event_catalog_free(event_catalog *catalog)
 {
     if (!catalog || --catalog->refs) {
         return;
@@ -321,25 +319,21 @@ void game_event_catalog_free(game_event_catalog *catalog)
     arena_free(&catalog->storage);
     free(catalog);
 }
-size_t game_event_catalog_storage_bytes(const game_event_catalog *catalog)
+size_t event_catalog_storage_bytes(const event_catalog *catalog)
 {
     size_t capacity = arena_storage_bytes(&catalog->storage);
     return capacity + sizeof *catalog;
 }
-int game_event_catalog_count(const game_event_catalog *catalog)
+int event_catalog_count(const event_catalog *catalog)
 {
     return catalog->count;
 }
-execution_module_event_info game_event_catalog_at(const game_event_catalog *catalog, int index)
+execution_module_event_info event_catalog_at(const event_catalog *catalog, int index)
 {
     assert(index >= 0 && index < catalog->count);
     return catalog->events[index].event;
 }
-execution_module_event_field_info game_event_catalog_field_at(
-    const game_event_catalog *catalog,
-    int event,
-    int index
-)
+execution_module_event_field_info event_catalog_field_at(const event_catalog *catalog, int event, int index)
 {
     assert(
         event >= 0 && event < catalog->count && index >= 0 &&
@@ -347,7 +341,7 @@ execution_module_event_field_info game_event_catalog_field_at(
     );
     return catalog->events[event].fields[index];
 }
-int game_event_catalog_find(const game_event_catalog *catalog, const char *name)
+int event_catalog_find(const event_catalog *catalog, const char *name)
 {
     for (int i = 0; i < catalog->count; i++) {
         if (!strcmp(catalog->events[i].event.name, name)) {
@@ -368,7 +362,7 @@ static bool field_equal(execution_module_event_field_info a, execution_module_ev
     return same;
 }
 static bool module_events(
-    const game_event_catalog *catalog,
+    const event_catalog *catalog,
     const execution_module *module,
     char *error,
     size_t size
@@ -377,7 +371,7 @@ static bool module_events(
     for (int i = 0; i < execution_module_event_count(module); i++) {
         execution_module_event_info event = execution_module_event_at(module, i);
         for (int j = 0; j < catalog->count; j++) {
-            const game_event_declaration *d = &catalog->events[j];
+            const event_declaration *d = &catalog->events[j];
             if (d->event.id != event.id && strcmp(d->event.name, event.name)) {
                 continue;
             }
@@ -396,7 +390,7 @@ static bool module_events(
     return true;
 }
 static bool visit(
-    const game_event_catalog *catalog,
+    const event_catalog *catalog,
     const execution_module *module,
     const execution_module ***seen,
     int depth,
@@ -404,7 +398,7 @@ static bool visit(
     size_t size
 )
 {
-    if (depth > GAME_MODULE_SET_MAX_IMPORT_DEPTH) {
+    if (depth > MODULE_SET_MAX_IMPORT_DEPTH) {
         return fail(error, size, "Event catalog import depth exceeds limit");
     }
     for (int i = 0; i < acount(*seen); i++) {
@@ -412,7 +406,7 @@ static bool visit(
             return true;
         }
     }
-    if (acount(*seen) == GAME_MODULE_SET_MAX_MODULES) {
+    if (acount(*seen) == MODULE_SET_MAX_MODULES) {
         return fail(error, size, "Event catalog module closure exceeds limit");
     }
     apush(*seen, module);
@@ -426,8 +420,8 @@ static bool visit(
     }
     return true;
 }
-bool game_event_catalog_validate(
-    const game_event_catalog *catalog,
+bool event_catalog_validate(
+    const event_catalog *catalog,
     const execution_module *const *modules,
     int count,
     char *error,
@@ -435,7 +429,7 @@ bool game_event_catalog_validate(
 )
 {
     assert(catalog && (!size || error));
-    if (!game_module_set_validate(modules, count, 0, error, size)) {
+    if (!module_set_validate(modules, count, 0, error, size)) {
         return false;
     }
     const execution_module **seen = NULL;

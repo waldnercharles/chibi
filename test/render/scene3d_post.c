@@ -57,15 +57,15 @@ static void teardown()
     cf_destroy_shader(emitter);
 }
 
-static GameEnvironment environment()
+static Environment environment()
 {
-    GameEnvironment settings = game_environment_defaults();
+    Environment settings = environment_defaults();
     settings.bloom_strength = 0;
     return settings;
 }
 
 /* Prepares for `settings` and queues `pattern` into the HDR target. */
-static void scene(int width, int height, GameEnvironment settings, int pattern)
+static void scene(int width, int height, Environment settings, int pattern)
 {
     cf_app_update(NULL);
     if (!render_scene3d_post_prepare(post, width, height, &settings)) {
@@ -100,7 +100,7 @@ static CF_Pixel *finish(int width, int height)
     return read_output(width, height);
 }
 
-static CF_Pixel *render(int width, int height, GameEnvironment settings, int pattern)
+static CF_Pixel *render(int width, int height, Environment settings, int pattern)
 {
     scene(width, height, settings, pattern);
     return finish(width, height);
@@ -128,8 +128,8 @@ static void neutral_display(const float in[3], int out[3])
 
 TEST_CASE(hdr_targets_keep_scene_light_for_the_tone_map)
 {
-    GameEnvironment settings = environment();
-    settings.tone_mapping = GAME_TONE_MAPPING_NEUTRAL;
+    Environment settings = environment();
+    settings.tone_mapping = TONE_MAPPING_NEUTRAL;
     scene(32, 32, settings, PATTERN_FLAT);
     REQUIRE(render_scene3d_post_process(post, 0));
     cf_app_draw_onto_screen(false);
@@ -159,7 +159,7 @@ TEST_CASE(bloom_spreads_light_past_its_threshold_and_exposure_scales_it)
         SIDE = 128,
         COUNT = SIDE * SIDE
     };
-    GameEnvironment settings = environment();
+    Environment settings = environment();
     settings.bloom_radius = .06f;
     CF_Pixel *disabled = render(SIDE, SIDE, settings, PATTERN_CENTER);
     int center = 64 * SIDE + 64, outside = 64 * SIDE + 76;
@@ -199,7 +199,7 @@ TEST_CASE(bloom_spreads_light_past_its_threshold_and_exposure_scales_it)
  * bloom. */
 TEST_CASE(non_finite_sources_stay_bounded_with_and_without_bloom)
 {
-    GameEnvironment settings = environment();
+    Environment settings = environment();
     for (int bloom = 0; bloom <= 1; bloom++) {
         settings.bloom_strength = (float)bloom;
         color = (CF_Color){ INFINITY, 0, -INFINITY, 1 };
@@ -222,7 +222,7 @@ TEST_CASE(non_finite_sources_stay_bounded_with_and_without_bloom)
 
 TEST_CASE(bloom_clamps_at_the_image_edge)
 {
-    GameEnvironment settings = environment();
+    Environment settings = environment();
     settings.bloom_strength = 1;
     settings.bloom_radius = .06f;
     CF_Pixel *edge = render(128, 128, settings, PATTERN_EDGE);
@@ -263,7 +263,7 @@ static CF_V2 glow_spread(const CF_Pixel *pixels, int width, int height)
 
 TEST_CASE(bloom_radius_follows_the_viewport_height)
 {
-    GameEnvironment settings = environment();
+    Environment settings = environment();
     settings.bloom_strength = 1;
     settings.bloom_radius = .06f;
     CF_Pixel *small = render(256, 128, settings, PATTERN_CENTER);
@@ -281,7 +281,7 @@ TEST_CASE(bloom_radius_follows_the_viewport_height)
 /* Radii either side of a bloom level boundary blend instead of jumping. */
 TEST_CASE(bloom_radius_crosses_levels_smoothly)
 {
-    GameEnvironment settings = environment();
+    Environment settings = environment();
     settings.bloom_strength = 1;
     settings.bloom_radius = .0624f;
     CF_Pixel *below = render(256, 128, settings, PATTERN_CENTER);
@@ -300,7 +300,7 @@ TEST_CASE(bloom_radius_crosses_levels_smoothly)
 
 TEST_CASE(outputs_take_any_size_down_to_one_pixel)
 {
-    GameEnvironment settings = environment();
+    Environment settings = environment();
     settings.bloom_strength = 1;
     settings.bloom_radius = .0626f;
     const int sizes[][2] = { { 127, 65 }, { 3, 1 }, { 1, 1 }, { 1, 7 } };
@@ -356,7 +356,7 @@ TEST_CASE(invalid_settings_keep_the_last_output)
                                  { 0, 0, INFINITY, 0 },
                                  { 0, 1, 1, .26f } };
     for (int i = 0; i < 5; i++) {
-        GameEnvironment bad = environment();
+        Environment bad = environment();
         bad.exposure = invalid[i][0];
         bad.bloom_strength = invalid[i][1];
         bad.bloom_threshold = invalid[i][2];

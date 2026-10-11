@@ -41,7 +41,7 @@ sequence, the prepared loop finishes the remaining prefix before entering the
 next aligned iteration. A failed body retains its partial effects and source
 error exactly once. A span may end partway through a sequence.
 
-`game_behavior_last_update().system_loop` counts actual entries attempted in
+`behavior_last_update().system_loop` counts actual entries attempted in
 both homogeneous and mixed system kernels. `tick_system_compiled` continues to
 report per-function availability. Portable bytecode uses the existing ordered
 prepared VM loop; native execution never falls back to the interpreter.

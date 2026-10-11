@@ -75,52 +75,49 @@ static void add_component(
 TEST_CASE(authored_detail)
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        REQUIRE(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_preview_world *live = game_preview_world_new(world);
+    preview_world *live = preview_world_new(world);
     ecs_entity config = ecs_world_create_entity(world);
     MaterialFluidWorld settings = { .chunk_size = 64,
                                     .buffer = 32,
                                     .kernel = 10,
                                     .particle_limit = 16 };
-    add_component(world, config, &GAME_COMPONENT_MaterialFluidWorld, &settings);
+    add_component(world, config, &COMPONENT_MaterialFluidWorld, &settings);
     ecs_entity fine = { 0 };
     for (int i = 0; i < 2; i++) {
         ecs_entity entity = ecs_world_create_entity(world);
-        GameFluidVolume volume = { .kind = FLUID_LIQUID,
-                                   .width = 1,
-                                   .height = 1,
-                                   .spacing = 4,
-                                   .mass = 1,
-                                   .grain_radius = i ? .25f : 0 };
-        add_component(world, entity, &GAME_COMPONENT_GameTransform, &(GameTransform){ i * 8, 0 });
-        add_component(world, entity, &GAME_COMPONENT_GameFluidVolume, &volume);
+        FluidVolume volume = { .kind = FLUID_LIQUID,
+                               .width = 1,
+                               .height = 1,
+                               .spacing = 4,
+                               .mass = 1,
+                               .grain_radius = i ? .25f : 0 };
+        add_component(world, entity, &COMPONENT_Transform, &(Transform){ i * 8, 0 });
+        add_component(world, entity, &COMPONENT_FluidVolume, &volume);
         if (i) {
             fine = entity;
         }
     }
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
+    REQUIRE(!materials_prepare(live->runtime->materials));
     int count;
-    const fluid_particle *p = material_fluid_particles(
-        game_materials_fluid(live->runtime->materials),
-        &count
-    );
+    const fluid_particle
+        *p = material_fluid_particles(materials_fluid(live->runtime->materials), &count);
     REQUIRE(count == 2 && p[0].grain_radius == 0 && p[1].grain_radius == .25f);
     REQUIRE(p[0].radius == p[1].radius && p[0].mass == p[1].mass);
-    uint64_t before = game_materials_inspect(live->runtime->materials).hash;
-    GameFluidVolume
-        *volume = ecs_component_data(world, fine, GAME_COMPONENT_GameFluidVolume.id);
+    uint64_t before = materials_inspect(live->runtime->materials).hash;
+    FluidVolume *volume = ecs_component_data(world, fine, COMPONENT_FluidVolume.id);
     float invalid[] = { -1, NAN, INFINITY, 11 };
     for (int i = 0; i < 4; i++) {
         volume->grain_radius = invalid[i];
-        REQUIRE(game_materials_prepare(live->runtime->materials));
-        REQUIRE(game_materials_inspect(live->runtime->materials).hash == before);
+        REQUIRE(materials_prepare(live->runtime->materials));
+        REQUIRE(materials_inspect(live->runtime->materials).hash == before);
     }
     volume->grain_radius = .25f;
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    game_preview_world_free(live);
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    preview_world_free(live);
     ecs_world_free(world);
     return true;
 }

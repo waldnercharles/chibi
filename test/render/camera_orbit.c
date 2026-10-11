@@ -203,29 +203,26 @@ static behavior_asset *sphere()
 static ecs_entity actor(ecs_world *world, const char *shape, uint32_t color)
 {
     ecs_entity e = ecs_world_create_entity(world);
-    GameGeometry3D geometry = { .primitive = GAME_PRIMITIVE_BOX,
-                                .width = shape ? 10 : 8,
-                                .depth = shape ? 10 : 8,
-                                .height = shape ? 10 : 8,
-                                .elevation = 3 };
-    GameVisualTransform pose = { .scale = 1 };
-    GameOrientation orientation = { 0 };
-    GameMaterial material = { .scene = color,
-                              .albedo = color,
-                              .absorption = 1,
-                              .edge_light = 1 };
-    GameShader shader = { .shape = shape };
-    GameSdfSurface3D sdf = { .enabled = shape != NULL };
-    GameMeshSurface2D mesh = { .enabled = shape == NULL };
+    Geometry3D geometry = { .primitive = PRIMITIVE_BOX,
+                            .width = shape ? 10 : 8,
+                            .depth = shape ? 10 : 8,
+                            .height = shape ? 10 : 8,
+                            .elevation = 3 };
+    VisualTransform pose = { .scale = 1 };
+    Orientation orientation = { 0 };
+    Material material = { .scene = color, .albedo = color, .absorption = 1, .edge_light = 1 };
+    Shader shader = { .shape = shape };
+    SdfSurface3D sdf = { .enabled = shape != NULL };
+    MeshSurface2D mesh = { .enabled = shape == NULL };
 #define ADD(type, value)                                                       \
-    assert(ecs_world_record_add(world, e, GAME_COMPONENT_##type.id, &(value), 0) == ECS_OK)
-    ADD(GameGeometry3D, geometry);
-    ADD(GameVisualTransform, pose);
-    ADD(GameOrientation, orientation);
-    ADD(GameMaterial, material);
-    ADD(GameShader, shader);
-    ADD(GameSdfSurface3D, sdf);
-    ADD(GameMeshSurface2D, mesh);
+    assert(ecs_world_record_add(world, e, COMPONENT_##type.id, &(value), 0) == ECS_OK)
+    ADD(Geometry3D, geometry);
+    ADD(VisualTransform, pose);
+    ADD(Orientation, orientation);
+    ADD(Material, material);
+    ADD(Shader, shader);
+    ADD(SdfSurface3D, sdf);
+    ADD(MeshSurface2D, mesh);
 #undef ADD
     assert(ecs_world_apply_commands(world) == ECS_OK);
     return e;
@@ -300,11 +297,11 @@ TEST_CASE(orbits_draw_the_frontmost_surface)
     behavior_asset *shape = sphere();
     ecs_world *world = ecs_world_new();
     const ecs_component_desc *components[] = {
-        &GAME_COMPONENT_GameGeometry3D,    &GAME_COMPONENT_GameVisualTransform,
-        &GAME_COMPONENT_GameOrientation,   &GAME_COMPONENT_GameMaterial,
-        &GAME_COMPONENT_GameShader,        &GAME_COMPONENT_GameSdfSurface3D,
-        &GAME_COMPONENT_GameMeshSurface2D, &GAME_COMPONENT_GameMeshParts,
-        &GAME_COMPONENT_GameMeshAsset
+        &COMPONENT_Geometry3D,    &COMPONENT_VisualTransform,
+        &COMPONENT_Orientation,   &COMPONENT_Material,
+        &COMPONENT_Shader,        &COMPONENT_SdfSurface3D,
+        &COMPONENT_MeshSurface2D, &COMPONENT_MeshParts,
+        &COMPONENT_MeshAsset
     };
     for (int i = 0; i < (int)(sizeof components / sizeof *components); i++) {
         REQUIRE(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
@@ -313,7 +310,7 @@ TEST_CASE(orbits_draw_the_frontmost_surface)
                sdf = actor(world, shape->name, 0xff0000ff);
     render_material_raster *r = render_material_raster_new();
     REQUIRE(render_material_raster_resize(r, WIDTH, HEIGHT));
-    render_material_raster_set_quality(r, (GameSurfaceQuality){ .resolution = GAME_SURFACE_FULL });
+    render_material_raster_set_quality(r, (SurfaceQuality){ .resolution = SURFACE_FULL });
     for (int perspective = 0; perspective < 2; perspective++) {
         for (int angle = 0; angle < 2; angle++) {
             for (int order = 0; order < 2; order++) {

@@ -375,7 +375,7 @@ The behavior world also indexes attachments with nonempty activation queues.
 Pumping and paused-state inspection skip idle attachments. Empty/nonempty queue
 notifications maintain membership, including waits, debug holds, cancellation
 and pooled reuse. Serial callbacks preserve the existing attachment delivery
-order. `game_behavior_last_pump_count` exposes visited queues for inspection and
+order. `behavior_last_pump_count` exposes visited queues for inspection and
 performance assertions. Attached instances borrow their world's simulation clock,
 so advancing time and delta time performs constant work regardless of attachment
 count. Standalone instances retain independent clocks. Activations snapshot their
@@ -386,7 +386,7 @@ where their contracts require it. Pool release detaches the borrowed clock. See
 
 ## Prepared Tick updates
 
-Scene and prototype steps call `game_behavior_update`. The world caches Tick
+Scene and prototype steps call `behavior_update`. The world caches Tick
 entries in attachment order and shared service/VM bindings for synchronous whole
 functions that preserve entity-query dependencies. `update_jit.c` emits a native
 outer loop over these rows. Each body retains its own instance variables and
@@ -419,10 +419,10 @@ before any behavior effects; a blocked row returns the whole span to the normal
 scheduler. Small spans validate on the calling thread to avoid extra task
 overhead. See [parallel validation and the independent-C comparison](research/parallel-validation.md).
 
-`game_behavior_last_update` distinguishes prepared executions, native outer-loop
+`behavior_last_update` distinguishes prepared executions, native outer-loop
 executions and rows handled by normal dispatch. Profiling deliberately uses the
 prepared C loop with compiled bodies; unprofiled native spans contain no timing
-callbacks. `game_behavior_set_native_update` selects the C outer loop for compiler
+callbacks. `behavior_set_native_update` selects the C outer loop for compiler
 comparisons. The named-event and debugger APIs remain unchanged.
 
 See [Tick update measurements and remaining storage work](research/tick-updates.md).

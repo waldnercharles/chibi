@@ -170,7 +170,7 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
 | | Workstream | Owns |
 |---|---|---|
 | Q | Designer and editor polish: the Hierarchy's keyboard sensor, Canvas drop lines, a rule's declarations and Extract to Class, typing that composes with designer edits, diagnostic ranges, stylesheet checks, UI problems in Output, Back after Go to Definition, native inspection completion | `studio_designer*.c`, `ui_design.[ch]`, `studio_code.c`, `kit_code.c`'s markers, `ui_code.[ch]`, the UI parts of `studio_output.c` and `studio_find.c`, `inspect_ui`'s completion |
-| X | arena2d end to end: the Sandbox HUD and its behavior, game UI keys and typed text in the standalone player and the Scene, game UI state in runtime snapshots | `projects/arena2d`'s `HUD`, `Meter` and `HudDisplay`, `game_presentation.c`'s input routing, `render_ui_wants_text`, `engine_viewport_ui_keys` and `engine_viewport_ui_typing`, `test/editor/arena_hud.c` |
+| X | arena2d end to end: the Sandbox HUD and its behavior, game UI keys and typed text in the standalone player and the Scene, game UI state in runtime snapshots | `projects/arena2d`'s `HUD`, `Meter` and `HudDisplay`, `presentation.c`'s input routing, `render_ui_wants_text`, `engine_viewport_ui_keys` and `engine_viewport_ui_typing`, `test/editor/arena_hud.c` |
 
 ## Rules for every workstream
 

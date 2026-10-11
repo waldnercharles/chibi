@@ -13,7 +13,7 @@
 #include "runtime/component_catalog.h"
 #include "support/array.h"
 #include "test/asset_fixture.h"
-#include "test/support/game_graph_packs.h"
+#include "test/support/graph_packs.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
@@ -77,18 +77,18 @@ static reference_symbol asset_symbol(int asset)
 
 static reference_index *refs;
 static behavior_asset *healer_asset, *damaged;
-static game_prototype *ship;
+static prototype *ship;
 
 static void cleanup()
 {
     reference_index_free(refs);
     behavior_asset_free(healer_asset);
     behavior_asset_free(damaged);
-    game_prototype_free(ship);
+    prototype_free(ship);
     refs = NULL;
     healer_asset = damaged = NULL;
     ship = NULL;
-    test_game_graph_packs_clear();
+    test_graph_packs_clear();
 }
 
 /* Paths and keys keep an asset one asset; names resolve what was named. */
@@ -160,31 +160,31 @@ static healer healer_new()
     set_default(g, h.spawn, "Prototype", (pin_value){ .type = PIN_NAME, .str = "Pulse" });
 
     h.getter = graph_add_node(g, &NODE_GetComponent);
-    set_default(g, h.getter, "Component", (pin_value){ .type = PIN_NAME, .str = "GameHealth" });
+    set_default(g, h.getter, "Component", (pin_value){ .type = PIN_NAME, .str = "Health" });
     assert(graph_expose_output_fields(g, h.getter, 0) == 0);
-    h.setter = add_named_node(g, "Set_GameHealth_current");
+    h.setter = add_named_node(g, "Set_Health_current");
     pin_binding maximum = { .kind = PIN_BINDING_COMPONENT_FIELD,
-                            .component_key = "GAME.GameHealth",
+                            .component_key = "Health",
                             .field_name = "maximum" };
     assert(graph_set_pin_binding(g, h.setter, 0, pin_named(h.setter, 0, "Value"), &maximum) == 0);
     h.split = graph_add_node(g, &NODE_SetComponent);
-    set_default(g, h.split, "Component", (pin_value){ .type = PIN_NAME, .str = "GameUi" });
+    set_default(g, h.split, "Component", (pin_value){ .type = PIN_NAME, .str = "Ui" });
     assert(component_node_show_field(g, h.split, "document", true) == 0);
     set_default(g, h.split, "document", (pin_value){ .type = PIN_STR, .str = "Hud" });
-    h.shader = add_named_node(g, "SetEntity_GameShader");
-    GameShader glow = { .material = "Glow", .shape = "", .parameters = "" };
+    h.shader = add_named_node(g, "SetEntity_Shader");
+    Shader glow = { .material = "Glow", .shape = "", .parameters = "" };
     set_default(
         g,
         h.shader,
         "Value",
-        (pin_value){ .type = PIN_STRUCT, .type_name = "GameShader", .ptr = &glow }
+        (pin_value){ .type = PIN_STRUCT, .type_name = "Shader", .ptr = &glow }
     );
     return h;
 }
 
 TEST_CASE(reference_graphs_index_every_kind_of_symbol)
 {
-    REQUIRE(test_game_graph_packs_set());
+    REQUIRE(test_graph_packs_set());
     healer h = healer_new();
     healer_asset = h.asset;
     refs = reference_index_new();
@@ -256,21 +256,21 @@ TEST_CASE(reference_graphs_index_every_kind_of_symbol)
     REQUIRE(uses(refs, asset_symbol(glow), REFERENCE_BIND, h.shader) == 1);
 
     /* Components and fields through nodes and bindings. */
-    reference_symbol game_health = named(REFERENCE_SYMBOL_COMPONENT, "GameHealth", NULL);
-    REQUIRE(uses(refs, game_health, REFERENCE_READ, h.getter) == 3); /* the node and its two fields */
-    reference_symbol current = named(REFERENCE_SYMBOL_FIELD, "GameHealth", "current");
+    reference_symbol component_health = named(REFERENCE_SYMBOL_COMPONENT, "Health", NULL);
+    REQUIRE(uses(refs, component_health, REFERENCE_READ, h.getter) == 3); /* the node and its two fields */
+    reference_symbol current = named(REFERENCE_SYMBOL_FIELD, "Health", "current");
     REQUIRE(uses(refs, current, REFERENCE_READ, h.getter) == 1);
     REQUIRE(uses(refs, current, REFERENCE_WRITE, h.setter) == 1);
     REQUIRE(
-        uses(refs, named(REFERENCE_SYMBOL_FIELD, "GameHealth", "maximum"), REFERENCE_READ, h.setter) == 1
+        uses(refs, named(REFERENCE_SYMBOL_FIELD, "Health", "maximum"), REFERENCE_READ, h.setter) == 1
     );
     REQUIRE(
-        uses(refs, named(REFERENCE_SYMBOL_FIELD, "GameUi", "document"), REFERENCE_WRITE, h.split) == 1
+        uses(refs, named(REFERENCE_SYMBOL_FIELD, "Ui", "document"), REFERENCE_WRITE, h.split) == 1
     );
     REQUIRE(
-        uses(refs, named(REFERENCE_SYMBOL_COMPONENT, "GameShader", NULL), REFERENCE_WRITE, h.shader) == 1
+        uses(refs, named(REFERENCE_SYMBOL_COMPONENT, "Shader", NULL), REFERENCE_WRITE, h.shader) == 1
     );
-    REQUIRE(!reference_index_definition(refs, game_health));
+    REQUIRE(!reference_index_definition(refs, component_health));
 
     /* Counts by role; the asset's own symbols are not uses of the asset. */
     REQUIRE(reference_index_count_uses(refs, health, REFERENCE_USES) == 3);
@@ -285,17 +285,17 @@ TEST_CASE(reference_graphs_index_every_kind_of_symbol)
  * and send events. */
 TEST_CASE(reference_documents_index_prototypes_objects_and_ui)
 {
-    game_prototype_registry registry = {
-        .components = GAME_REGISTRY_COMPONENTS,
-        .component_count = GAME_REGISTRY_COMPONENT_COUNT,
+    prototype_registry registry = {
+        .components = REGISTRY_COMPONENTS,
+        .component_count = REGISTRY_COMPONENT_COUNT,
     };
     char error[256];
-    ship = game_prototype_load(
+    ship = prototype_load(
         "name \"Ship\"\n"
         "(array)behaviors \"Flight\"\n"
         "components {\n"
-        "    GameShader material=\"Hull\"\n"
-        "    GameUi document=\"Hud\"\n"
+        "    Shader material=\"Hull\"\n"
+        "    Ui document=\"Hud\"\n"
         "}\n",
         &registry,
         error,
@@ -317,7 +317,7 @@ TEST_CASE(reference_documents_index_prototypes_objects_and_ui)
     );
 
     const char *behaviors[] = { "Flight" };
-    av_value *overrides = test_read_asset_value("GAME.GameShader material=\"Chrome\"\n");
+    av_value *overrides = test_read_asset_value("Shader material=\"Chrome\"\n");
     reference_object object = {
         .name = "player",
         .prototype = "Ship",
@@ -339,7 +339,7 @@ TEST_CASE(reference_documents_index_prototypes_objects_and_ui)
     reference_index_find_uses(refs, asset_symbol(chrome), &found);
     REQUIRE(
         acount(found) == 1 && found[0]->source == scene &&
-        !strcmp(found[0]->component, "GameShader.material")
+        !strcmp(found[0]->component, "Shader.material")
     );
     asetlen(found, 0);
     /* The override replaces the prototype's material; its ui stays. */
@@ -399,7 +399,7 @@ static int child(const call_item *items, int at, call_kind kind, const char *nam
  * function calling itself is a cycle. */
 TEST_CASE(reference_calls_climb_handlers_and_detect_cycles)
 {
-    REQUIRE(test_game_graph_packs_set());
+    REQUIRE(test_graph_packs_set());
     healer h = healer_new();
     healer_asset = h.asset;
     graph *g = h.asset->graph;

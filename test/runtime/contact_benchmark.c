@@ -21,30 +21,30 @@ static double seconds()
 static void add_collider(ecs_world *ecs, int i, float spacing)
 {
     ecs_entity entity = ecs_world_create_entity(ecs);
-    assert(GAME_GameTransform_add(ecs, entity, 0) == ECS_OK);
-    assert(GAME_GameCollider_add(ecs, entity, 0) == ECS_OK);
+    assert(Transform_add(ecs, entity, 0) == ECS_OK);
+    assert(Collider_add(ecs, entity, 0) == ECS_OK);
     assert(ecs_world_apply_commands(ecs) == ECS_OK);
-    *GAME_GameTransform_get(ecs, entity) = (GameTransform){ (float)(i % 64) * spacing,
-                                                            (float)(i / 64) * spacing };
-    *GAME_GameCollider_get(ecs, entity) = (GameCollider){ 8.0f, 1, 1 };
+    *Transform_get(ecs, entity) = (Transform){ (float)(i % 64) * spacing,
+                                               (float)(i / 64) * spacing };
+    *Collider_get(ecs, entity) = (Collider){ 8.0f, 1, 1 };
 }
 
 static bool measure(int count, float spacing)
 {
     ecs_world *ecs = ecs_world_new();
-    REQUIRE(ecs_world_register_component(ecs, &GAME_COMPONENT_GameTransform, NULL) == ECS_OK);
-    REQUIRE(ecs_world_register_component(ecs, &GAME_COMPONENT_GameCollider, NULL) == ECS_OK);
-    game_preview_world *live = game_preview_world_new(ecs);
+    REQUIRE(ecs_world_register_component(ecs, &COMPONENT_Transform, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(ecs, &COMPONENT_Collider, NULL) == ECS_OK);
+    preview_world *live = preview_world_new(ecs);
     for (int i = 0; i < count; i++) {
         add_collider(ecs, i, spacing);
     }
     double start = seconds();
-    REQUIRE(game_physics_tick(live->runtime->physics, 0) == 0);
+    REQUIRE(physics_tick(live->runtime->physics, 0) == 0);
     double first = seconds() - start;
-    game_entities_reset(live->runtime->entities);
+    entities_reset(live->runtime->entities);
     start = seconds();
     for (int i = 0; i < PASSES; i++) {
-        REQUIRE(game_physics_tick(live->runtime->physics, 0) == 0);
+        REQUIRE(physics_tick(live->runtime->physics, 0) == 0);
     }
     double average = (seconds() - start) / PASSES;
     printf(
@@ -56,7 +56,7 @@ static bool measure(int count, float spacing)
         average * 1000.0,
         PASSES
     );
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(ecs);
     return true;
 }

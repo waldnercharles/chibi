@@ -9,9 +9,9 @@
 
 /* The finest grid, no unlit color and bright emitters: the authoring defaults
  * the cases were calibrated with, whatever defaults authors start from. */
-static inline GameHRC2D test_reference_lighting()
+static inline HRC2D test_reference_lighting()
 {
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.resolution = 1;
     lighting.ambient = 0;
     lighting.intensity = 7.5f;

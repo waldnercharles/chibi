@@ -91,7 +91,7 @@ EVENT_WHOLE ProjectileBehavior.Tick
 FUNCTION_EXCLUDED ProjectileHitBehavior.Impact Particles graph=51 node=58 type=Emit Directed Particles pin=-1 output=0 reason=control operation
 EVENT_EXCLUDED ProjectileHitBehavior.Contact Begin graph=51 node=58 type=Emit Directed Particles pin=-1 output=0 reason=control operation
 FUNCTION_EXCLUDED SpawnTelegraphBehavior.Arrive At Marker graph=18 node=29 type=Spawn Prototype pin=-1 output=0 reason=control operation
-EVENT_EXCLUDED SpawnTelegraphBehavior.Begin graph=0 node=6 type=Get_GameSpawnRequest pin=0 output=1 reason=data operation
+EVENT_EXCLUDED SpawnTelegraphBehavior.Begin graph=0 node=6 type=Get_SpawnRequest pin=0 output=1 reason=data operation
 EVENT_EXCLUDED SpawnTelegraphBehavior.Tick graph=0 node=78 type=Call Function pin=1 output=0 reason=input type or container
 EVENT_WHOLE SurfacePulseBehavior.Begin
 EVENT_WHOLE SurfacePulseBehavior.Tick

@@ -30,7 +30,7 @@ general compiled backend.
 
 Numeric edge conversions also lower through the same native casts used by
 explicit conversion nodes. Tests include real-width coercion, NaN/infinity,
-saturation and signed integer widening. Authored `game_transform_to_cf` remains
+saturation and signed integer widening. Authored `transform_to_cf` remains
 excluded: it needs an explicit struct-conversion compilation contract.
 
 ## Measurements

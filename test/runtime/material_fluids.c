@@ -258,7 +258,7 @@ TEST_CASE(gas_buoyancy)
     };
     fluid_particle parcels[COUNT];
     int active[COUNT];
-    game_task_system tasks = { .workers = 1 };
+    task_system tasks = { .workers = 1 };
     for (int mode = 0; mode < 5; mode++) {
         material_flow *flow = material_flow_new();
         fluid_flow_settings settings = { .cell_size = 8,
@@ -371,13 +371,13 @@ static bool parallel_parity(bool burning)
             material_fluid_add(parallel, p);
         }
     }
-    game_task_pool *pool = game_task_pool_acquire_workers(4);
-    material_fluid_set_tasks(parallel, game_task_pool_tasks(pool));
+    task_pool *pool = task_pool_acquire_workers(4);
+    material_fluid_set_tasks(parallel, task_pool_tasks(pool));
     for (int i = 0; i < 10; i++) {
         material_test_tick(serial);
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         material_test_tick(parallel);
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         int na, nb;
         const fluid_blast *ba = material_fluid_blasts(serial, &na);
         const fluid_blast *bb = material_fluid_blasts(parallel, &nb);
@@ -391,17 +391,17 @@ static bool parallel_parity(bool burning)
     REQUIRE(!burning || (a[0].burning && a[1].burning && !a[49].burning));
     material_fluid_free(serial);
     material_fluid_free(parallel);
-    game_task_pool_release(pool);
+    task_pool_release(pool);
     return true;
 }
 
 typedef struct
 {
-    game_task_system tasks;
+    task_system tasks;
     int submissions;
 } flow_executor;
 
-static void *flow_submit(game_task_range *run, int count, int minimum, void *context, void *user)
+static void *flow_submit(task_range *run, int count, int minimum, void *context, void *user)
 {
     flow_executor *executor = user;
     executor->submissions++;
@@ -425,7 +425,7 @@ TEST_CASE(gas_deposit_equivalence)
     /* Cell size eight makes these offsets exactly representable just below,
      * on and above integer/half-cell boundaries. */
     const float offsets[] = { -.5f, 0, .5f, 3.5f, 4, 4.5f, 2, 6 };
-    game_task_system tasks = { .workers = 1 };
+    task_system tasks = { .workers = 1 };
     fluid_flow_settings settings = { .cell_size = 8 };
     material_flow *retained = material_flow_new(), *reference = material_flow_new();
     for (int round = 0; round < 2; round++) {
@@ -509,13 +509,13 @@ TEST_CASE(parallel_flow)
     }
     memcpy(parallel, serial, COUNT * sizeof *serial);
     material_flow *a = material_flow_new(), *b = material_flow_new();
-    game_task_pool *pool = game_task_pool_acquire_workers(4);
-    flow_executor executor = { .tasks = *game_task_pool_tasks(pool) };
-    game_task_system tasks = { .workers = executor.tasks.workers,
-                               .user = &executor,
-                               .enqueue = flow_submit,
-                               .finish = flow_finish };
-    game_task_system inline_tasks = { .workers = 1 };
+    task_pool *pool = task_pool_acquire_workers(4);
+    flow_executor executor = { .tasks = *task_pool_tasks(pool) };
+    task_system tasks = { .workers = executor.tasks.workers,
+                          .user = &executor,
+                          .enqueue = flow_submit,
+                          .finish = flow_finish };
+    task_system inline_tasks = { .workers = 1 };
     fluid_flow_settings settings = { .cell_size = 10,
                                      .vorticity = 2,
                                      .drag = .1f,
@@ -530,9 +530,9 @@ TEST_CASE(parallel_flow)
         bodies[0].position.x += 5;
         int count = COUNT - step * SIDE;
         material_flow_step(a, settings, 1.f / 60, serial, active, count, bodies, obstacles, 2, &inline_tasks);
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         material_flow_step(b, settings, 1.f / 60, parallel, active, count, bodies, obstacles, 2, &tasks);
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         REQUIRE(!memcmp(serial, parallel, COUNT * sizeof *serial));
         REQUIRE(material_flow_hash(a) == material_flow_hash(b));
     }
@@ -543,9 +543,9 @@ TEST_CASE(parallel_flow)
     material_flow_clear(b);
     int submissions = executor.submissions;
     material_flow_step(a, settings, 1.f / 60, serial, active, 0, NULL, NULL, 0, &inline_tasks);
-    game_task_pool_begin(pool, true);
+    task_pool_begin(pool, true);
     material_flow_step(b, settings, 1.f / 60, parallel, active, 0, NULL, NULL, 0, &tasks);
-    game_task_pool_end(pool);
+    task_pool_end(pool);
     REQUIRE(executor.submissions == submissions);
     REQUIRE(material_flow_hash(a) == material_flow_hash(b));
     material_flow_free(a);
@@ -553,7 +553,7 @@ TEST_CASE(parallel_flow)
     free(serial);
     free(parallel);
     free(active);
-    game_task_pool_release(pool);
+    task_pool_release(pool);
     return true;
 }
 

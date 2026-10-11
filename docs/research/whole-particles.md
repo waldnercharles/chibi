@@ -16,8 +16,8 @@ continuations. SLJIT, bytecode and generated C share that lowered program.
 Generated execution calls the particle engine directly through its typed host
 binding. It never enters the flow callback, eval_node or flow_run interpreter.
 
-The C helper packs a burst/spray and calls game_particles_emit or
-game_particles_emit_directed. The existing native particle engine owns capacity,
+The C helper packs a burst/spray and calls particles_emit or
+particles_emit_directed. The existing native particle engine owns capacity,
 validation, its local RNG, and particle initialization. Keeping that engine call
 avoids duplicating its implementation in the behavior compiler. It is not a
 claim that every small marshalling helper is faster than emitted instructions.

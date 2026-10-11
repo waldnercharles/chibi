@@ -73,12 +73,10 @@ TEST_CASE(find_matches_expression_pins_source_and_bindings)
     REQUIRE(finds(expression, "Expression", "* 2", GRAPH_FIND_EXPRESSION, "speed * 2"));
     REQUIRE(finds(expression, "Expression", "SPEED", GRAPH_FIND_PIN, "speed"));
     pin_binding health = { .kind = PIN_BINDING_COMPONENT_FIELD,
-                           .component_key = "GAME.GameHealth",
+                           .component_key = "Health",
                            .field_name = "current" };
     REQUIRE(graph_set_pin_binding(asset->graph, expression, 0, 0, &health) == 0);
-    REQUIRE(
-        finds(expression, "Expression", "gamehealth.cur", GRAPH_FIND_BINDING, "speed: GAME.GameHealth.current")
-    );
+    REQUIRE(finds(expression, "Expression", "health.cur", GRAPH_FIND_BINDING, "speed: Health.current"));
     return true;
 }
 

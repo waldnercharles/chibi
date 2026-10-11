@@ -18,7 +18,7 @@
 #include "support/exponential.h"
 #include "support/text_file.h"
 #include "test/support/code_fixture.h"
-#include "test/support/game_graph_packs.h"
+#include "test/support/graph_packs.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
@@ -88,7 +88,7 @@ typedef struct
 {
     int enqueues, finishes;
 } inline_executor;
-static void *inline_enqueue(game_task_range *run, int count, int minimum, void *context, void *user)
+static void *inline_enqueue(task_range *run, int count, int minimum, void *context, void *user)
 {
     inline_executor *executor = user;
     assert(count > 0 && minimum > 0);
@@ -294,7 +294,7 @@ TEST_CASE(field_noise_and_composition)
     field_grid wider = { 16, 32, .125f };
     float serial[16 * 32], submitted[16 * 32];
     inline_executor executor = { 0 };
-    game_task_system tasks = { 2, &executor, inline_enqueue, inline_finish };
+    task_system tasks = { 2, &executor, inline_enqueue, inline_finish };
     REQUIRE(
         field_program_bake_rows(p, ctx, wider, 0, wider.height, serial, NULL, error, sizeof error)
     );
@@ -307,28 +307,28 @@ TEST_CASE(field_noise_and_composition)
         field_grid tiled = { 16, 41, .125f, -2, 3 };
         float expected[16 * 41], repeated[16 * 41];
         REQUIRE(field_program_bake(p, ctx, tiled, expected, NULL, error, sizeof error));
-        game_task_pool *pool = game_task_pool_acquire_workers(4);
-        const game_task_system *pool_tasks = game_task_pool_tasks(pool);
+        task_pool *pool = task_pool_acquire_workers(4);
+        const task_system *pool_tasks = task_pool_tasks(pool);
         field_program_baker *baker;
         baker = field_program_baker_new(p, ctx, pool_tasks->workers, error, sizeof error);
         REQUIRE(baker);
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         REQUIRE(
             field_program_baker_bake_rows(baker, tiled, 0, tiled.height, repeated, pool_tasks, error, sizeof error)
         );
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         REQUIRE(!memcmp(expected, repeated, sizeof expected));
-        game_task_pool_begin(pool, true);
+        task_pool_begin(pool, true);
         for (int first = 0; first < tiled.height; first += 16) {
             int count = tiled.height - first < 16 ? tiled.height - first : 16;
             REQUIRE(
                 field_program_baker_bake_rows(baker, tiled, first, count, repeated, pool_tasks, error, sizeof error)
             );
         }
-        game_task_pool_end(pool);
+        task_pool_end(pool);
         REQUIRE(!memcmp(expected, repeated, sizeof expected));
         field_program_baker_free(baker);
-        game_task_pool_release(pool);
+        task_pool_release(pool);
     }
     for (int y = 0; y < 16; y++) {
         for (int x = 0; x < 16; x++) {
@@ -1146,17 +1146,17 @@ TEST_CASE(field_source_library_hot_apply)
     copy_fixture("libraries", "FieldShapes.chibi");
     copy_fixture("fields", "MaterialIslands.kdl");
     ecs_world *ecs = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        REQUIRE(!ecs_world_register_component(ecs, GAME_REGISTRY_COMPONENTS[i], NULL));
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(!ecs_world_register_component(ecs, REGISTRY_COMPONENTS[i], NULL));
     }
-    game_preview_world *live = game_preview_world_new(ecs);
+    preview_world *live = preview_world_new(ecs);
     REQUIRE(app_behavior_fixtures_load(live, NULL, root) == 2);
-    material_fields *fields = game_materials_fields(live->runtime->materials);
+    material_fields *fields = materials_fields(live->runtime->materials);
     REQUIRE(material_field_revision(fields, "MaterialIslands") == 1);
     float before = islands_at(fields, -90);
 
     /* A valid field draft changes the result, but is not applied with its library. */
-    game_preview_definition *definition = game_preview_find_definition(live, "MaterialIslands");
+    preview_definition *definition = preview_find_definition(live, "MaterialIslands");
     REQUIRE(definition);
     graph *draft = definition->working->graph;
     node *sum = graph_add_node(draft, registry_node_by_name("Field Add"));
@@ -1166,10 +1166,10 @@ TEST_CASE(field_source_library_hot_apply)
     );
     REQUIRE(!graph_connect_data(draft, graph_node_by_id(draft, 49), 0, sum, 0));
     REQUIRE(!graph_connect_data(draft, sum, 0, graph_node_by_id(draft, 53), 0));
-    REQUIRE(!game_preview_mark_dirty(definition));
+    REQUIRE(!preview_mark_dirty(definition));
     behavior_asset *saved_draft = behavior_asset_clone(definition->working);
     REQUIRE(saved_draft);
-    behavior_asset *linked_draft = game_preview_link(live, definition->working);
+    behavior_asset *linked_draft = preview_link(live, definition->working);
     REQUIRE(linked_draft);
     field_program *draft_program = compile(linked_draft);
     REQUIRE(fabsf(sample(draft_program, -90, 0) - before - 1000) < .001f);
@@ -1182,8 +1182,8 @@ TEST_CASE(field_source_library_hot_apply)
     char *grown = strstr(text, "65.0");
     REQUIRE(grown);
     memcpy(grown, "99.0", 4);
-    REQUIRE(!game_preview_source_edit(live, path, text, error, sizeof error));
-    REQUIRE(!game_preview_sources_publish(live, NULL, error, sizeof error));
+    REQUIRE(!preview_source_edit(live, path, text, error, sizeof error));
+    REQUIRE(!preview_sources_publish(live, NULL, error, sizeof error));
     REQUIRE(material_field_revision(fields, "MaterialIslands") == 2);
     float after = islands_at(fields, -90);
     REQUIRE(after < before - 30);
@@ -1195,13 +1195,13 @@ TEST_CASE(field_source_library_hot_apply)
     REQUIRE(graph_add_node(draft, registry_node_by_name("Print String")));
     saved_draft = behavior_asset_clone(definition->working);
     REQUIRE(saved_draft);
-    linked_draft = game_preview_link(live, definition->working);
+    linked_draft = preview_link(live, definition->working);
     REQUIRE(linked_draft);
     REQUIRE(!field_program_compile(linked_draft, error, sizeof error));
     behavior_asset_free(linked_draft);
     memcpy(grown, "88.0", 4);
-    REQUIRE(!game_preview_source_edit(live, path, text, error, sizeof error));
-    REQUIRE(!game_preview_sources_publish(live, NULL, error, sizeof error));
+    REQUIRE(!preview_source_edit(live, path, text, error, sizeof error));
+    REQUIRE(!preview_sources_publish(live, NULL, error, sizeof error));
     REQUIRE(material_field_revision(fields, "MaterialIslands") == 3);
     REQUIRE(fabsf(islands_at(fields, -90) - after - 11) < .001f);
     after = islands_at(fields, -90);
@@ -1211,8 +1211,8 @@ TEST_CASE(field_source_library_hot_apply)
     char *renamed = strstr(text, "\"Islands\"");
     REQUIRE(renamed);
     memcpy(renamed, "\"Isles\"  ", 9);
-    REQUIRE(!game_preview_source_edit(live, path, text, error, sizeof error));
-    REQUIRE(game_preview_sources_publish(live, NULL, error, sizeof error));
+    REQUIRE(!preview_source_edit(live, path, text, error, sizeof error));
+    REQUIRE(preview_sources_publish(live, NULL, error, sizeof error));
     REQUIRE(strstr(error, "missing library function"));
     REQUIRE(material_field_revision(fields, "MaterialIslands") == 3);
     REQUIRE(islands_at(fields, -90) == after);
@@ -1221,7 +1221,7 @@ TEST_CASE(field_source_library_hot_apply)
     behavior_asset_free(saved_draft);
     free(text);
 
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(ecs);
     remove_fixture("libraries", "FieldShapes.chibi");
     remove_fixture("fields", "MaterialIslands.kdl");
@@ -1232,7 +1232,7 @@ TEST_CASE(field_source_library_hot_apply)
 void test_fields()
 {
     /* Every case reads field nodes from the same packs. */
-    bool installed = test_game_graph_packs_set();
+    bool installed = test_graph_packs_set();
     assert(installed);
     RUN_TEST_CASE(deterministic_cos_sin_stay_accurate);
     RUN_TEST_CASE(deterministic_atan2_stays_accurate);
@@ -1251,5 +1251,5 @@ void test_fields()
     RUN_TEST_CASE(field_source_library_calls_follow_names);
     RUN_TEST_CASE(field_source_library_hot_apply);
     RUN_TEST_CASE(field_terrain_chunks_and_connectivity);
-    test_game_graph_packs_clear();
+    test_graph_packs_clear();
 }

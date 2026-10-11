@@ -19,7 +19,7 @@ void render_scene3d_sky_free(render_scene3d_sky *sky);
  * nothing. */
 bool render_scene3d_sky_prepare(
     render_scene3d_sky *sky,
-    const GameEnvironment *environment,
+    const Environment *environment,
     char *error,
     size_t size
 );

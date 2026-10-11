@@ -18,10 +18,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct game_prototype_preview
+struct prototype_preview
 {
     ecs_world *world;
-    game_preview_world *live;
+    preview_world *live;
     ecs_entity entity;
     ecs_entity *entities;
     engine *runtime;
@@ -29,24 +29,24 @@ struct game_prototype_preview
     bool started; /* launched; a scene it loads may have no entities */
 };
 
-game_entities *game_prototype_preview_entities(game_prototype_preview *preview)
+entities *prototype_preview_entities(prototype_preview *preview)
 {
     return preview->live->runtime->entities;
 }
 
-game_preview_world *game_prototype_preview_live(game_prototype_preview *preview)
+preview_world *prototype_preview_live(prototype_preview *preview)
 {
     return preview->live;
 }
 
 static int attach_behavior(ecs_world *world, ecs_entity entity, const char *asset_name, void *user)
 {
-    game_prototype_preview *preview = user;
+    prototype_preview *preview = user;
     if (world != preview->world ||
-        !game_source_registered(preview->live->runtime->sources, asset_name)) {
+        !source_registered(preview->live->runtime->sources, asset_name)) {
         return -1;
     }
-    return game_source_attach(
+    return source_attach(
         preview->live->runtime->sources,
         entity,
         asset_name,
@@ -56,37 +56,37 @@ static int attach_behavior(ecs_world *world, ecs_entity entity, const char *asse
     );
 }
 
-static void destroy_entities(game_prototype_preview *preview)
+static void destroy_entities(prototype_preview *preview)
 {
-    game_particles_clear(preview->live->runtime->particles);
-    game_entities_reset(preview->live->runtime->entities);
+    particles_clear(preview->live->runtime->particles);
+    entities_reset(preview->live->runtime->entities);
     /* Children go before their parents, whose destruction would take them. */
     for (int i = acount(preview->entities) - 1; i >= 0; i--) {
         if (preview->entities[i].slot) {
-            game_source_detach_entity(preview->live->runtime->sources, preview->entities[i]);
+            source_detach_entity(preview->live->runtime->sources, preview->entities[i]);
             ecs_world_destroy_entity(preview->world, preview->entities[i]);
         }
     }
     afree(preview->entities);
-    game_prototype_owned_strings_free(preview->component_strings);
+    prototype_owned_strings_free(preview->component_strings);
     preview->component_strings = NULL;
     preview->entity = (ecs_entity){ 0 };
 }
 
-static void clear_entity(game_prototype_preview *preview)
+static void clear_entity(prototype_preview *preview)
 {
     engine_reset(preview->runtime);
     destroy_entities(preview);
     preview->started = false;
 }
 
-game_prototype_preview *game_prototype_preview_new(const game_prototype_registry *registry)
+prototype_preview *prototype_preview_new(const prototype_registry *registry)
 {
     if (!registry || registry->component_count < 0 ||
         (registry->component_count && !registry->components)) {
         return NULL;
     }
-    game_prototype_preview *preview = xcalloc(1, sizeof *preview);
+    prototype_preview *preview = xcalloc(1, sizeof *preview);
     preview->world = ecs_world_new();
     for (int i = 0; i < registry->component_count; i++) {
         if (registry->components[i] &&
@@ -97,7 +97,7 @@ game_prototype_preview *game_prototype_preview_new(const game_prototype_registry
             return NULL;
         }
     }
-    preview->live = game_preview_world_new(preview->world);
+    preview->live = preview_world_new(preview->world);
     if (!preview->live) {
         ecs_world_free(preview->world);
         free(preview);
@@ -108,20 +108,20 @@ game_prototype_preview *game_prototype_preview_new(const game_prototype_registry
     return preview;
 }
 
-void game_prototype_preview_free(game_prototype_preview *preview)
+void prototype_preview_free(prototype_preview *preview)
 {
     if (!preview) {
         return;
     }
     clear_entity(preview);
     engine_free(preview->runtime);
-    game_preview_world_free(preview->live);
+    preview_world_free(preview->live);
     ecs_world_free(preview->world);
     free(preview);
 }
 
-int game_prototype_preview_register_behavior(
-    game_prototype_preview *preview,
+int prototype_preview_register_behavior(
+    prototype_preview *preview,
     const char *asset_name,
     const behavior_asset *source
 )
@@ -134,13 +134,13 @@ int game_prototype_preview_register_behavior(
         fprintf(stderr, "Could not register preview behavior %s: %s\n", asset_name, graph_last_error());
         return -1;
     }
-    game_preview_definition *definition = game_preview_definition_new(asset_name, copy);
+    preview_definition *definition = preview_definition_new(asset_name, copy);
     if (!definition) {
         fprintf(stderr, "Could not register preview behavior %s: %s\n", asset_name, graph_last_error());
         behavior_asset_free(copy);
         return -1;
     }
-    if (game_preview_add_definition(preview->live, definition) != 0) {
+    if (preview_add_definition(preview->live, definition) != 0) {
         const compile_diagnostic *error = compile_report_first_error(&definition->diagnostics);
         fprintf(
             stderr,
@@ -148,35 +148,35 @@ int game_prototype_preview_register_behavior(
             asset_name,
             error->message
         );
-        game_preview_definition_free(definition);
+        preview_definition_free(definition);
         return -1;
     }
     return 0;
 }
 
-int game_prototype_preview_prepare_library(
-    game_prototype_preview *preview,
+int prototype_preview_prepare_library(
+    prototype_preview *preview,
     const char *name,
     const behavior_asset *source,
     char *message,
     size_t size
 )
 {
-    game_preview_definition *definition = game_preview_find_definition(preview->live, name);
+    preview_definition *definition = preview_find_definition(preview->live, name);
     if (!definition) {
-        if (game_prototype_preview_register_behavior(preview, name, source) != 0) {
+        if (prototype_preview_register_behavior(preview, name, source) != 0) {
             return -1;
         }
-        definition = game_preview_find_definition(preview->live, name);
+        definition = preview_find_definition(preview->live, name);
     }
-    if (game_preview_sync_working(definition, source) != 0) {
+    if (preview_sync_working(definition, source) != 0) {
         return -1;
     }
-    return game_preview_can_update_library(preview->live, definition, message, size);
+    return preview_can_update_library(preview->live, definition, message, size);
 }
 
-int game_prototype_preview_update_behavior(
-    game_prototype_preview *preview,
+int prototype_preview_update_behavior(
+    prototype_preview *preview,
     const char *asset_name,
     const behavior_asset *source,
     bool restart,
@@ -184,29 +184,24 @@ int game_prototype_preview_update_behavior(
     size_t message_size
 )
 {
-    game_preview_definition *definition = game_preview_find_definition(preview->live, asset_name);
+    preview_definition *definition = preview_find_definition(preview->live, asset_name);
     if (!definition) {
-        int result = game_prototype_preview_register_behavior(preview, asset_name, source);
+        int result = prototype_preview_register_behavior(preview, asset_name, source);
         if (result != 0) {
             return result;
         }
-        definition = game_preview_find_definition(preview->live, asset_name);
-        game_preview_mark_dirty(definition);
+        definition = preview_find_definition(preview->live, asset_name);
+        preview_mark_dirty(definition);
     }
-    if (game_preview_sync_working(definition, source) != 0) {
+    if (preview_sync_working(definition, source) != 0) {
         return -1;
     }
     return restart
-             ? game_preview_apply(preview->live, definition, message, message_size)
-             : game_preview_update(preview->live, definition, message, message_size);
+             ? preview_apply(preview->live, definition, message, message_size)
+             : preview_update(preview->live, definition, message, message_size);
 }
 
-int game_prototype_preview_launch(
-    game_prototype_preview *preview,
-    const game_prototype *prototype,
-    char *error,
-    size_t error_size
-)
+int prototype_preview_launch(prototype_preview *preview, const prototype *prototype, char *error, size_t error_size)
 {
     if (!preview || !prototype) {
         return ECS_ERR_ARGUMENT;
@@ -217,10 +212,10 @@ int game_prototype_preview_launch(
     clear_entity(preview);
     engine_set_playing(preview->runtime, false);
     preview->live->runtime->deferred = true;
-    int result = game_prototype_spawn(
+    int result = prototype_spawn(
         prototype,
         preview->world,
-        &(game_prototype_spawn_hooks){ attach_behavior, preview },
+        &(prototype_spawn_hooks){ attach_behavior, preview },
         &preview->entity,
         error,
         error_size
@@ -230,14 +225,14 @@ int game_prototype_preview_launch(
         engine_set_playing(preview->runtime, false);
     } else {
         apush(preview->entities, preview->entity);
-        if (game_entities_rebuild_global_bindings(preview->live->runtime->entities) != 0) {
+        if (entities_rebuild_global_bindings(preview->live->runtime->entities) != 0) {
             snprintf(error, error_size, "global binding names must be unique");
             preview->live->runtime->deferred = false;
             clear_entity(preview);
             return ECS_ERR_COMPONENT;
         }
         preview->live->runtime->deferred = false;
-        if (game_source_begin(
+        if (source_begin(
                 preview->live->runtime->sources,
                 preview->live->runtime->now,
                 preview->live->runtime->delta
@@ -246,7 +241,7 @@ int game_prototype_preview_launch(
                 error,
                 error_size,
                 "prototype behavior Begin failed: %s",
-                game_source_error(preview->live->runtime->sources)
+                source_error(preview->live->runtime->sources)
             );
             clear_entity(preview);
             return ECS_ERR_COMMAND;
@@ -257,9 +252,9 @@ int game_prototype_preview_launch(
     return result;
 }
 
-int game_prototype_preview_launch_scene(
-    game_prototype_preview *preview,
-    const game_prototype_preview_scene_entity *entities,
+int prototype_preview_launch_scene(
+    prototype_preview *preview,
+    const prototype_preview_scene_entity *entities,
     int entity_count,
     char *error,
     size_t error_size
@@ -270,21 +265,21 @@ int game_prototype_preview_launch_scene(
     }
     clear_entity(preview);
     engine_set_playing(preview->runtime, false);
-    int result = game_prototype_preview_start_scene(preview, entities, entity_count, error, error_size);
+    int result = prototype_preview_start_scene(preview, entities, entity_count, error, error_size);
     if (result == ECS_OK) {
         engine_set_playing(preview->runtime, true);
     }
     return result;
 }
 
-void game_prototype_preview_end_scene(game_prototype_preview *preview)
+void prototype_preview_end_scene(prototype_preview *preview)
 {
     engine_reset_scene(preview->runtime);
     destroy_entities(preview);
 }
 
 /* The entity a '.'-separated path names from the scene's roots, or -1. */
-static int entity_at_path(const game_prototype_preview_scene_entity *entities, int count, const char *path)
+static int entity_at_path(const prototype_preview_scene_entity *entities, int count, const char *path)
 {
     int found = -1;
     for (const char *segment = path;; segment = strchr(segment, '.') + 1) {
@@ -309,7 +304,7 @@ static int entity_at_path(const game_prototype_preview_scene_entity *entities, i
  * path; `spawned` holds the scene's entities in order. */
 static int link_scene(
     ecs_world *world,
-    const game_prototype_preview_scene_entity *entities,
+    const prototype_preview_scene_entity *entities,
     int count,
     const ecs_entity *spawned,
     char *error,
@@ -318,14 +313,14 @@ static int link_scene(
 {
     int result = ECS_OK;
     for (int i = 0; !result && i < count; i++) {
-        game_prototype_link *links = entities[i].components
-                                       ? game_prototype_components_links(
-                                             entities[i].prototype->registry,
-                                             entities[i].components
-                                         )
-                                       : NULL;
+        prototype_link *links = entities[i].components
+                                  ? prototype_components_links(
+                                        entities[i].prototype->registry,
+                                        entities[i].components
+                                    )
+                                  : NULL;
         for (int j = 0; !result && j < acount(links); j++) {
-            const game_prototype_link *link = &links[j];
+            const prototype_link *link = &links[j];
             const type_field *field = &link->component->type->fields[link->field];
             int target = entity_at_path(entities, count, link->path);
             if (target < 0) {
@@ -363,14 +358,14 @@ static int link_scene(
                 );
             }
         }
-        game_prototype_links_free(links);
+        prototype_links_free(links);
     }
     return result;
 }
 
-int game_prototype_preview_start_scene(
-    game_prototype_preview *preview,
-    const game_prototype_preview_scene_entity *entities,
+int prototype_preview_start_scene(
+    prototype_preview *preview,
+    const prototype_preview_scene_entity *entities,
     int entity_count,
     char *error,
     size_t error_size
@@ -399,10 +394,10 @@ int game_prototype_preview_start_scene(
             return ECS_ERR_ARGUMENT;
         }
         ecs_entity entity = { 0 };
-        int result = game_prototype_spawn(
+        int result = prototype_spawn(
             entities[i].prototype,
             preview->world,
-            &(game_prototype_spawn_hooks){ attach_behavior, preview },
+            &(prototype_spawn_hooks){ attach_behavior, preview },
             &entity,
             error,
             error_size
@@ -432,7 +427,7 @@ int game_prototype_preview_start_scene(
             clear_entity(preview);
             return ECS_ERR_COMMAND;
         }
-        if (entities[i].components && game_prototype_apply_components_value(
+        if (entities[i].components && prototype_apply_components_value(
                                           preview->world,
                                           entity,
                                           entities[i].components,
@@ -448,9 +443,9 @@ int game_prototype_preview_start_scene(
         if (!entities[i].own_behaviors) {
             continue;
         }
-        game_source_detach_entity(preview->live->runtime->sources, entity);
+        source_detach_entity(preview->live->runtime->sources, entity);
         for (int behavior = 0; behavior < entities[i].behavior_count; behavior++) {
-            if (game_source_attach(
+            if (source_attach(
                     preview->live->runtime->sources,
                     entity,
                     entities[i].behaviors[behavior],
@@ -476,14 +471,14 @@ int game_prototype_preview_start_scene(
         clear_entity(preview);
         return linked;
     }
-    if (game_entities_rebuild_global_bindings(preview->live->runtime->entities) != 0) {
+    if (entities_rebuild_global_bindings(preview->live->runtime->entities) != 0) {
         snprintf(error, error_size, "global binding names must be unique");
         preview->live->runtime->deferred = false;
         clear_entity(preview);
         return ECS_ERR_COMPONENT;
     }
     preview->live->runtime->deferred = false;
-    if (game_source_begin(
+    if (source_begin(
             preview->live->runtime->sources,
             preview->live->runtime->now,
             preview->live->runtime->delta
@@ -492,7 +487,7 @@ int game_prototype_preview_start_scene(
             error,
             error_size,
             "scene behavior Begin failed: %s",
-            game_source_error(preview->live->runtime->sources)
+            source_error(preview->live->runtime->sources)
         );
         clear_entity(preview);
         return ECS_ERR_COMMAND;
@@ -501,12 +496,12 @@ int game_prototype_preview_start_scene(
     return ECS_OK;
 }
 
-int game_prototype_preview_register_prototype(game_prototype_preview *preview, const game_prototype *prototype)
+int prototype_preview_register_prototype(prototype_preview *preview, const prototype *prototype)
 {
-    return game_entities_register(preview->live->runtime->entities, prototype);
+    return entities_register(preview->live->runtime->entities, prototype);
 }
 
-void game_prototype_preview_stop(game_prototype_preview *preview)
+void prototype_preview_stop(prototype_preview *preview)
 {
     if (preview) {
         clear_entity(preview);
@@ -514,24 +509,23 @@ void game_prototype_preview_stop(game_prototype_preview *preview)
     }
 }
 
-engine *game_prototype_preview_runtime(game_prototype_preview *preview)
+engine *prototype_preview_runtime(prototype_preview *preview)
 {
     return preview->runtime;
 }
 
-int game_prototype_preview_configure_physics(game_prototype_preview *preview, game_physics_settings settings)
+int prototype_preview_configure_physics(prototype_preview *preview, physics_settings settings)
 {
     if (preview->entity.slot) {
         return FLOW_ERR_ARGUMENT;
     }
-    game_preview_runtime *runtime = preview->live->runtime;
-    int result = game_physics_configure(runtime->physics, settings);
-    return result < 0 ? result
-                      : game_physics3d_configure(runtime->physics3d, settings);
+    preview_runtime *runtime = preview->live->runtime;
+    int result = physics_configure(runtime->physics, settings);
+    return result < 0 ? result : physics3d_configure(runtime->physics3d, settings);
 }
 
-int game_prototype_preview_input(
-    game_prototype_preview *preview,
+int prototype_preview_input(
+    prototype_preview *preview,
     const char *action,
     double value,
     int pressed,
@@ -544,7 +538,7 @@ int game_prototype_preview_input(
     return engine_dispatch_input(preview->runtime, action, value, pressed, error);
 }
 
-int game_prototype_preview_sample_movement(game_prototype_preview *preview, float x, float y)
+int prototype_preview_sample_movement(prototype_preview *preview, float x, float y)
 {
     if (!preview || !preview->started) {
         return FLOW_ERR_ARGUMENT;
@@ -552,7 +546,7 @@ int game_prototype_preview_sample_movement(game_prototype_preview *preview, floa
     return engine_sample_movement(preview->runtime, x, y);
 }
 
-int game_prototype_preview_tick(game_prototype_preview *preview, double monotonic_time)
+int prototype_preview_tick(prototype_preview *preview, double monotonic_time)
 {
     if (!preview || !preview->started) {
         return FLOW_ERR_ARGUMENT;
@@ -560,44 +554,44 @@ int game_prototype_preview_tick(game_prototype_preview *preview, double monotoni
     return engine_frame(preview->runtime, monotonic_time);
 }
 
-ecs_world *game_prototype_preview_world(game_prototype_preview *preview)
+ecs_world *prototype_preview_world(prototype_preview *preview)
 {
     return preview ? preview->world : NULL;
 }
 
-game_particles *game_prototype_preview_particles(game_prototype_preview *preview)
+particles *prototype_preview_particles(prototype_preview *preview)
 {
     return preview ? preview->live->runtime->particles : NULL;
 }
 
-game_source_registry *game_prototype_preview_sources(game_prototype_preview *preview)
+source_registry *prototype_preview_sources(prototype_preview *preview)
 {
     return preview ? preview->live->runtime->sources : NULL;
 }
 
-ecs_entity game_prototype_preview_entity(const game_prototype_preview *preview)
+ecs_entity prototype_preview_entity(const prototype_preview *preview)
 {
     return preview ? preview->entity : (ecs_entity){ 0 };
 }
 
-int game_prototype_preview_entity_count(const game_prototype_preview *preview)
+int prototype_preview_entity_count(const prototype_preview *preview)
 {
     return preview ? acount(preview->entities) : 0;
 }
 
-ecs_entity game_prototype_preview_entity_at(const game_prototype_preview *preview, int index)
+ecs_entity prototype_preview_entity_at(const prototype_preview *preview, int index)
 {
     return preview && index >= 0 && index < acount(preview->entities)
              ? preview->entities[index]
              : (ecs_entity){ 0 };
 }
 
-execution_instance *game_prototype_preview_instance(game_prototype_preview *preview, const char *asset_name)
+execution_instance *prototype_preview_instance(prototype_preview *preview, const char *asset_name)
 {
     if (!preview || !preview->entity.slot || !asset_name) {
         return NULL;
     }
-    execution_program *program = game_source_program(preview->live->runtime->sources, asset_name);
+    execution_program *program = source_program(preview->live->runtime->sources, asset_name);
     return program
              ? execution_program_instance(program, ecs_entity_to_u64(preview->entity))
              : NULL;

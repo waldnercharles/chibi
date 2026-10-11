@@ -33,7 +33,7 @@ name "Main"
         name "Ship"
         prototype "Ship"
         components {
-            "GAME.GameProjectile" age=0.0 lifetime=2.0
+            "Projectile" age=0.0 lifetime=2.0
         }
     }
 }
@@ -166,9 +166,9 @@ entity. Reads can traverse nested reflected structs; assigning a nested struct
 subfield is currently rejected. Component and field names that cannot be resolved
 produce source diagnostics. Prototype membership improves completion ranking;
 it does not guarantee that a component is present on a live entity.
-A component path used as a condition tests presence instead: `if self.GameDash`,
-`!self.GameDash`, `self.GameDash == nil` and `&&`/`||` operands ask whether the
-entity has the component, so `if self.GameDash && self.GameDash.remaining > 0`
+A component path used as a condition tests presence instead: `if self.Dash`,
+`!self.Dash`, `self.Dash == nil` and `&&`/`||` operands ask whether the
+entity has the component, so `if self.Dash && self.Dash.remaining > 0`
 reads the field only when it exists.
 `chibi_ctl --format` spells reflected accessor calls as paths: `get_dash().Value`
 becomes `self.Dash`, `has_dash()` in a condition becomes `self.Dash`, and a
@@ -365,7 +365,7 @@ component's value. A component cannot appear in both the parameter list and
 `without`, including an optional parameter.
 
 An explicit query declaration also supports `all`, `any`, `not` and `has`, such as
-`query all(has("GAME.GameTransform"), not(has("GAME.GameCollider")));`.
+`query all(has("Transform"), not(has("Collider")));`.
 When both a header and an explicit query are present, the query intersects the
 header's required and excluded components. A parameterless system may omit
 `()`; its body still has an implicit Tick, including an empty body. Systems
@@ -395,7 +395,7 @@ state across this system registration replacement.
 
 ### Input actions
 
-A project's input map, `content/input.kdl`, names each action, the GameControl
+A project's input map, `content/input.kdl`, names each action, the Control
 labels that hold it, and whether it also holds the Aim of input owners:
 
 ```kdl
@@ -419,7 +419,7 @@ for a tap released before that step. Action names are typed members, so
 map's actions. A pause or focus change keeps held actions, so resuming with the
 same controls held presses nothing again.
 
-Migrating a version 15 project moves its GameActionBinding components into the
+Migrating a version 15 project moves its ActionBinding components into the
 map, leaving out disabled and retained ones. Which action a script's
 `ActionBinding` or `PressedChanged` meant depended on its entity, so a script
 that still uses one stops the migration until it is rewritten with
@@ -497,7 +497,7 @@ Vim editing preserve indentation on new lines and indent inside brace blocks.
 A connected input can retain a binding or literal for later disconnection:
 
 ```text
-reroute_data(In: fallback(driver, binding: component("GameMovement"), default: {speed: 0}));
+reroute_data(In: fallback(driver, binding: component("Movement"), default: {speed: 0}));
 ```
 
 `fallback` preserves the input's authored precedence: the connected driver wins, then the binding, then the literal default. Removing the wire restores the binding; removing the binding restores the default. It does not test truthiness or catch runtime errors. The `binding` and `default` clauses are optional, but at least one must be present. A binding with a retained default can use `fallback(binding: speed, default: 0)`; a binding must be writable. Defaults must be compatible literals.

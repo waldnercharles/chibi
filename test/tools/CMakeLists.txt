@@ -403,7 +403,7 @@ endif()
 # prototype and scene documents, the reference index and asset source edits.
 if(TARGET chibi_source_runtime_consumer AND TARGET Chibi::graph_catalog)
     target_sources(test_tools PRIVATE ../authoring/prototype_documents.c ../authoring/reference_index.c
-        ../authoring/ui_pages.c ../authoring/asset_source.c ../support/game_graph_packs.c)
+        ../authoring/ui_pages.c ../authoring/asset_source.c ../support/graph_packs.c)
     target_link_libraries(test_tools PRIVATE Chibi::graph_catalog Chibi::graph_authoring Chibi::reference_index
         Chibi::prototype_document Chibi::scene_document Chibi::native_types)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_AUTHORING_DOCUMENTS=1)

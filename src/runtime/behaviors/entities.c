@@ -27,7 +27,7 @@ enum
 
 typedef struct
 {
-    game_scene *prototype;
+    scene *prototype;
     flow_host_request *wait;
     ecs_entity entity;
     ecs_entity *tree; /* the entity of each prototype object, the first being entity */
@@ -69,12 +69,12 @@ typedef struct
     arena storage;
 } global_value;
 
-struct game_entities
+struct entities
 {
     ecs_world *world;
-    game_entity_host host;
-    game_materials *materials;
-    game_prototypes *prototypes;
+    entity_host host;
+    materials *materials;
+    prototypes *prototypes;
     ecs_entity *owned;
     spawn_request *spawns;
     ecs_entity *destroy;
@@ -86,7 +86,7 @@ struct game_entities
     global_value *global_values;
     bool parallel_queries;
     bool query_scope, profile_queries;
-    game_entity_query_profile query_profile;
+    entity_query_profile query_profile;
     struct tilemap_entry *tilemaps;
 };
 
@@ -96,21 +96,21 @@ typedef struct tilemap_entry
     tilemap_grid grid;
 } tilemap_entry;
 
-const tilemap_grid *game_entities_tilemap(game_entities *entities, ecs_entity entity, const char **error)
+const tilemap_grid *entities_tilemap(entities *entities, ecs_entity entity, const char **error)
 {
     *error = NULL;
-    const GameTilemap *map = ecs_entity_is_alive(entities->world, entity) &&
-                                     !game_entities_is_retiring(entities, entity)
-                               ? GAME_GameTilemap_get_const(entities->world, entity)
-                               : NULL;
+    const Tilemap *map = ecs_entity_is_alive(entities->world, entity) &&
+                                 !entities_is_retiring(entities, entity)
+                           ? Tilemap_get_const(entities->world, entity)
+                           : NULL;
     if (!map) {
-        *error = "Tilemap query requires a live GameTilemap entity";
+        *error = "Tilemap query requires a live Tilemap entity";
         return NULL;
     }
     for (int i = acount(entities->tilemaps) - 1; i >= 0; i--) {
         ecs_entity cached = entities->tilemaps[i].entity;
         if (!ecs_entity_is_alive(entities->world, cached) ||
-            !GAME_GameTilemap_get_const(entities->world, cached)) {
+            !Tilemap_get_const(entities->world, cached)) {
             tilemap_grid_free(&entities->tilemaps[i].grid);
             entities->tilemaps[i] = alast(entities->tilemaps);
             apop(entities->tilemaps);
@@ -135,54 +135,54 @@ const tilemap_grid *game_entities_tilemap(game_entities *entities, ecs_entity en
     return &entry->grid;
 }
 
-ecs_world *game_entities_world(const game_entities *entities)
+ecs_world *entities_world(const entities *entities)
 {
     return entities->world;
 }
 
-game_entities *game_entities_new(ecs_world *world, const game_entity_host *host)
+entities *entities_new(ecs_world *world, const entity_host *host)
 {
-    game_entities *entities = xcalloc(1, sizeof *entities);
+    entities *entities = xcalloc(1, sizeof *entities);
     entities->world = world;
     if (host) {
         assert(host->destroy && host->attach && host->dispatch);
         entities->host = *host;
     }
-    entities->prototypes = game_prototypes_new();
+    entities->prototypes = prototypes_new();
     return entities;
 }
 
-void game_entities_bind_materials(game_entities *entities, game_materials *materials)
+void entities_bind_materials(entities *entities, materials *materials)
 {
     entities->materials = materials;
 }
 
-game_materials *game_entities_materials(const game_entities *entities)
+materials *entities_materials(const entities *entities)
 {
     return entities ? entities->materials : NULL;
 }
 
-bool game_entities_queries_preserved(const behavior_function *function)
+bool entities_queries_preserved(const behavior_function *function)
 {
     /* Positions are world placements, which parents' Orientation turns. */
-    const uint64_t dependencies[] = { GAME_COMPONENT_GameTransform.id,
-                                      GAME_COMPONENT_GameOrientation.id,
-                                      GAME_COMPONENT_GameCollider.id };
+    const uint64_t dependencies[] = { COMPONENT_Transform.id,
+                                      COMPONENT_Orientation.id,
+                                      COMPONENT_Collider.id };
     return behavior_function_preserves_components(function, dependencies, 3);
 }
 
-void game_entities_query_scope(game_entities *entities, const behavior_function *function)
+void entities_query_scope(entities *entities, const behavior_function *function)
 {
     if (!entities) {
         return;
     }
-    bool stable = game_entities_queries_preserved(function);
+    bool stable = entities_queries_preserved(function);
     if (!stable) {
         entities->nearest_count = 0;
     }
     entities->query_scope = stable;
 }
-bool game_entities_parallel_begin(game_entities *entities, unsigned categories)
+bool entities_parallel_begin(entities *entities, unsigned categories)
 {
     if (!entities || !categories) {
         return true;
@@ -194,19 +194,17 @@ bool game_entities_parallel_begin(game_entities *entities, unsigned categories)
     for (int i = 0; i < 32; i++) {
         aclear(entities->parallel_candidates[i]);
     }
-    ecs_component_id components[] = { GAME_COMPONENT_GameTransform.id,
-                                      GAME_COMPONENT_GameCollider.id };
+    ecs_component_id components[] = { COMPONENT_Transform.id, COMPONENT_Collider.id };
     ecs_query query;
     if (ecs_query_begin(entities->world, &query, components, 2) == ECS_OK) {
         ecs_entity entity;
         while (ecs_query_next(&query, &entity)) {
-            unsigned matching = GAME_GameCollider_get_const(entities->world, entity)
-                                    ->category &
+            unsigned matching = Collider_get_const(entities->world, entity)->category &
                                 categories;
-            if (!matching || game_entities_is_retiring(entities, entity)) {
+            if (!matching || entities_is_retiring(entities, entity)) {
                 continue;
             }
-            CF_V2 position = game_transform_world_2d(entities->world, entity).position;
+            CF_V2 position = transform_world_2d(entities->world, entity).position;
             if (!isfinite(position.x) || !isfinite(position.y)) {
                 continue;
             }
@@ -222,18 +220,18 @@ bool game_entities_parallel_begin(game_entities *entities, unsigned categories)
     entities->parallel_queries = true;
     return true;
 }
-void game_entities_parallel_end(game_entities *entities)
+void entities_parallel_end(entities *entities)
 {
     if (entities) {
         entities->parallel_queries = false;
     }
 }
-void game_entities_profile_queries(game_entities *entities, bool enabled)
+void entities_profile_queries(entities *entities, bool enabled)
 {
     entities->profile_queries = enabled;
-    entities->query_profile = (game_entity_query_profile){ 0 };
+    entities->query_profile = (entity_query_profile){ 0 };
 }
-game_entity_query_profile game_entities_query_profile(const game_entities *entities)
+entity_query_profile entities_query_profile(const entities *entities)
 {
     return entities->query_profile;
 }
@@ -241,11 +239,11 @@ game_entity_query_profile game_entities_query_profile(const game_entities *entit
 static void release_request(spawn_request *request)
 {
     flow_host_release(request->wait);
-    game_scene_free(request->prototype);
+    scene_free(request->prototype);
     afree(request->tree);
 }
 
-void game_entities_copy_live(const game_entities *entities, ecs_entity **out)
+void entities_copy_live(const entities *entities, ecs_entity **out)
 {
     aclear(*out);
     for (int i = 0; i < acount(entities->owned); i++) {
@@ -256,7 +254,7 @@ void game_entities_copy_live(const game_entities *entities, ecs_entity **out)
     }
 }
 
-bool game_entities_owns(const game_entities *entities, ecs_entity entity)
+bool entities_owns(const entities *entities, ecs_entity entity)
 {
     if (!ecs_entity_is_alive(entities->world, entity)) {
         return false;
@@ -269,7 +267,7 @@ bool game_entities_owns(const game_entities *entities, ecs_entity entity)
     return false;
 }
 
-static void clear_global_bindings(game_entities *entities)
+static void clear_global_bindings(entities *entities)
 {
     for (int i = 0; i < acount(entities->global_bindings); i++) {
         free(entities->global_bindings[i].name);
@@ -277,7 +275,7 @@ static void clear_global_bindings(game_entities *entities)
     afree(entities->global_bindings);
 }
 
-static void clear_global_values(game_entities *entities)
+static void clear_global_values(entities *entities)
 {
     for (int i = 0; i < acount(entities->global_values); i++) {
         global_value *value = &entities->global_values[i];
@@ -287,7 +285,7 @@ static void clear_global_values(game_entities *entities)
     aclear(entities->global_values);
 }
 
-static global_binding *find_global_binding(game_entities *entities, const char *name)
+static global_binding *find_global_binding(entities *entities, const char *name)
 {
     for (int i = 0; i < acount(entities->global_bindings); i++) {
         global_binding *binding = &entities->global_bindings[i];
@@ -299,7 +297,7 @@ static global_binding *find_global_binding(game_entities *entities, const char *
     return NULL;
 }
 
-static const global_binding *find_global_binding_const(const game_entities *entities, const char *name)
+static const global_binding *find_global_binding_const(const entities *entities, const char *name)
 {
     for (int i = 0; i < acount(entities->global_bindings); i++) {
         const global_binding *binding = &entities->global_bindings[i];
@@ -310,7 +308,7 @@ static const global_binding *find_global_binding_const(const game_entities *enti
     return NULL;
 }
 
-static global_value *find_global_value(game_entities *entities, const char *name)
+static global_value *find_global_value(entities *entities, const char *name)
 {
     for (int i = 0; i < acount(entities->global_values); i++) {
         global_value *value = &entities->global_values[i];
@@ -321,7 +319,7 @@ static global_value *find_global_value(game_entities *entities, const char *name
     return NULL;
 }
 
-static const global_value *find_global_value_const(const game_entities *entities, const char *name)
+static const global_value *find_global_value_const(const entities *entities, const char *name)
 {
     for (int i = 0; i < acount(entities->global_values); i++) {
         const global_value *value = &entities->global_values[i];
@@ -332,7 +330,7 @@ static const global_value *find_global_value_const(const game_entities *entities
     return NULL;
 }
 
-int game_entities_global_name_count(const game_entities *entities)
+int entities_global_name_count(const entities *entities)
 {
     if (!entities) {
         return 0;
@@ -346,7 +344,7 @@ int game_entities_global_name_count(const game_entities *entities)
     return count;
 }
 
-const char *game_entities_global_name_at(const game_entities *entities, int index)
+const char *entities_global_name_at(const entities *entities, int index)
 {
     if (!entities || index < 0) {
         return NULL;
@@ -384,7 +382,7 @@ static bool is_entity_value(const pin_value *value)
            value->type_name && !strcmp(value->type_name, "ecs.entity");
 }
 
-static int set_global_binding(game_entities *entities, const char *name, ecs_entity entity, bool reject_duplicate)
+static int set_global_binding(entities *entities, const char *name, ecs_entity entity, bool reject_duplicate)
 {
     if (!name || !name[0]) {
         return -1;
@@ -403,14 +401,14 @@ static int set_global_binding(game_entities *entities, const char *name, ecs_ent
     return 0;
 }
 
-int game_entities_rebuild_global_bindings(game_entities *entities)
+int entities_rebuild_global_bindings(entities *entities)
 {
     if (!entities) {
         return -1;
     }
     global_binding *previous = entities->global_bindings;
     entities->global_bindings = NULL;
-    if (!ecs_world_component(entities->world, GAME_COMPONENT_GameGlobalBinding.id)) {
+    if (!ecs_world_component(entities->world, COMPONENT_GlobalBinding.id)) {
         entities->global_bindings = previous;
         clear_global_bindings(entities);
         return 0;
@@ -419,7 +417,7 @@ int game_entities_rebuild_global_bindings(game_entities *entities)
     if (ecs_query_begin(
             entities->world,
             &query,
-            &(ecs_component_id){ GAME_COMPONENT_GameGlobalBinding.id },
+            &(ecs_component_id){ COMPONENT_GlobalBinding.id },
             1
         ) != ECS_OK) {
         clear_global_bindings(entities);
@@ -428,8 +426,7 @@ int game_entities_rebuild_global_bindings(game_entities *entities)
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        const GameGlobalBinding
-            *binding = GAME_GameGlobalBinding_get_const(entities->world, entity);
+        const GlobalBinding *binding = GlobalBinding_get_const(entities->world, entity);
         if (binding->name && binding->name[0] &&
             set_global_binding(entities, binding->name, entity, true) != 0) {
             ecs_query_end(&query);
@@ -446,12 +443,7 @@ int game_entities_rebuild_global_bindings(game_entities *entities)
     return 0;
 }
 
-int game_entities_get_global_value(
-    const game_entities *entities,
-    const char *name,
-    arena *storage,
-    pin_value *out
-)
+int entities_get_global_value(const entities *entities, const char *name, arena *storage, pin_value *out)
 {
     if (!entities || !name || !name[0] || !storage || !out) {
         return -1;
@@ -464,7 +456,7 @@ int game_entities_get_global_value(
         if (is_entity_value(out)) {
             ecs_entity entity = ecs_entity_from_u64(out->u64);
             if (!entity.slot || !ecs_entity_is_alive(entities->world, entity) ||
-                game_entities_is_retiring(entities, entity)) {
+                entities_is_retiring(entities, entity)) {
                 out->u64 = 0;
             }
         }
@@ -476,7 +468,7 @@ int game_entities_get_global_value(
     }
     ecs_entity entity = binding->entity;
     if (!entity.slot || !ecs_entity_is_alive(entities->world, entity) ||
-        game_entities_is_retiring(entities, entity)) {
+        entities_is_retiring(entities, entity)) {
         entity = (ecs_entity){ 0 };
     }
     *out = (pin_value){ .type = PIN_HANDLE,
@@ -485,7 +477,7 @@ int game_entities_get_global_value(
     return 0;
 }
 
-int game_entities_set_global_value(game_entities *entities, const char *name, const pin_value *value)
+int entities_set_global_value(entities *entities, const char *name, const pin_value *value)
 {
     if (!entities || !name || !name[0] || !value || value->type == PIN_FLOW ||
         (value->type == PIN_STRUCT && value->container == PIN_CONTAINER_SINGLE &&
@@ -533,13 +525,13 @@ static void release_event(event_request *event)
     free(event->name);
 }
 
-void game_entities_reset(game_entities *entities)
+void entities_reset(entities *entities)
 {
     for (int i = 0; i < acount(entities->tilemaps); i++) {
         tilemap_grid_free(&entities->tilemaps[i].grid);
     }
     aclear(entities->tilemaps);
-    game_entities_query_scope(entities, NULL);
+    entities_query_scope(entities, NULL);
     clear_global_bindings(entities);
     clear_global_values(entities);
     for (int i = 0; i < acount(entities->events); i++) {
@@ -566,10 +558,10 @@ void game_entities_reset(game_entities *entities)
     aclear(entities->destroy);
 }
 
-void game_entities_free(game_entities *entities)
+void entities_free(entities *entities)
 {
-    game_entities_reset(entities);
-    game_prototypes_free(entities->prototypes);
+    entities_reset(entities);
+    prototypes_free(entities->prototypes);
     afree(entities->spawns);
     afree(entities->owned);
     afree(entities->destroy);
@@ -586,18 +578,18 @@ void game_entities_free(game_entities *entities)
     free(entities);
 }
 
-int game_entities_register_prepared(game_entities *entities, const char *identity, game_scene *prototype)
+int entities_register_prepared(entities *entities, const char *identity, scene *prototype)
 {
     char error[256];
-    return game_prototypes_register(entities->prototypes, identity, prototype, error, sizeof error);
+    return prototypes_register(entities->prototypes, identity, prototype, error, sizeof error);
 }
-game_scene *game_entities_prepare_spawn(game_entities *entities, const char *identity, const char **message)
+scene *entities_prepare_spawn(entities *entities, const char *identity, const char **message)
 {
-    for (int i = 0; identity && i < game_prototypes_count(entities->prototypes); i++) {
-        const char *name = game_prototypes_name(entities->prototypes, i);
-        game_scene *prototype = (game_scene *)game_prototypes_find(entities->prototypes, name);
-        if (!strcmp(name, identity) || !strcmp(game_scene_name(prototype), identity)) {
-            game_scene_retain(prototype);
+    for (int i = 0; identity && i < prototypes_count(entities->prototypes); i++) {
+        const char *name = prototypes_name(entities->prototypes, i);
+        scene *prototype = (scene *)prototypes_find(entities->prototypes, name);
+        if (!strcmp(name, identity) || !strcmp(scene_name(prototype), identity)) {
+            scene_retain(prototype);
             return prototype;
         }
     }
@@ -605,12 +597,12 @@ game_scene *game_entities_prepare_spawn(game_entities *entities, const char *ide
     return NULL;
 }
 
-void game_entities_request_destroy(game_entities *entities, ecs_entity entity)
+void entities_request_destroy(entities *entities, ecs_entity entity)
 {
     apush(entities->destroy, entity);
 }
 
-static bool destroy_requested(const game_entities *entities, ecs_entity entity)
+static bool destroy_requested(const entities *entities, ecs_entity entity)
 {
     for (int i = 0; i < acount(entities->destroy); i++) {
         if (ecs_entity_to_u64(entities->destroy[i]) == ecs_entity_to_u64(entity)) {
@@ -620,18 +612,18 @@ static bool destroy_requested(const game_entities *entities, ecs_entity entity)
     return false;
 }
 
-bool game_entities_is_retiring(const game_entities *entities, ecs_entity entity)
+bool entities_is_retiring(const entities *entities, ecs_entity entity)
 {
     return destroy_requested(entities, entity) ||
            ecs_entity_is_retiring(entities->world, entity);
 }
 
-int game_entities_pending_events(const game_entities *entities)
+int entities_pending_events(const entities *entities)
 {
     return acount(entities->events);
 }
 
-int game_entities_request_event(game_entities *entities, ecs_entity target, const char *name, execution_arguments inputs)
+int entities_request_event(entities *entities, ecs_entity target, const char *name, execution_arguments inputs)
 {
     if (!name || !name[0] || inputs.count < 0 || (inputs.count && !inputs.values)) {
         return FLOW_ERR_ARGUMENT;
@@ -654,9 +646,9 @@ int game_entities_request_event(game_entities *entities, ecs_entity target, cons
     return FLOW_OK;
 }
 
-int game_entities_dispatch_events(game_entities *entities)
+int entities_dispatch_events(entities *entities)
 {
-    if (game_entities_initializing(entities)) {
+    if (entities_initializing(entities)) {
         return FLOW_OK;
     }
     event_request *batch = entities->events;
@@ -670,7 +662,7 @@ int game_entities_dispatch_events(game_entities *entities)
             continue;
         }
         if (ecs_entity_is_alive(entities->world, event->target) &&
-            !game_entities_is_retiring(entities, event->target)) {
+            !entities_is_retiring(entities, event->target)) {
             assert(entities->host.dispatch);
             int result = entities->host.dispatch(
                 entities->host.context,
@@ -694,7 +686,7 @@ int game_entities_dispatch_events(game_entities *entities)
     return error;
 }
 
-bool game_entities_initializing(const game_entities *entities)
+bool entities_initializing(const entities *entities)
 {
     for (int i = 0; i < acount(entities->spawns); i++) {
         if (entities->spawns[i].entity.slot) {
@@ -704,7 +696,7 @@ bool game_entities_initializing(const game_entities *entities)
     return false;
 }
 
-static int tick_initializers(game_entities *entities, double monotonic_time)
+static int tick_initializers(entities *entities, double monotonic_time)
 {
     flow_host_request **roots = NULL;
     for (int i = 0; i < acount(entities->spawns); i++) {
@@ -741,7 +733,7 @@ static int tick_initializers(game_entities *entities, double monotonic_time)
     return result;
 }
 
-static int finish_spawn(game_entities *entities, spawn_request *request)
+static int finish_spawn(entities *entities, spawn_request *request)
 {
     if (!execution_request_owner(request->wait)) {
         return -1;
@@ -754,11 +746,11 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
     if (!request->entity.slot) {
         char error[256];
         if (ecs_world_apply_commands(entities->world) ||
-            game_scene_register_components(request->prototype, entities->world, error, sizeof error)) {
+            scene_register_components(request->prototype, entities->world, error, sizeof error)) {
             flow_host_cancel(request->wait);
             return -1;
         }
-        game_scene_instance *instance = game_scene_instantiate_components(
+        scene_instance *instance = scene_instantiate_components(
             request->prototype,
             entities->world,
             error,
@@ -768,10 +760,10 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
             flow_host_cancel(request->wait);
             return -1;
         }
-        request->tree = game_scene_instance_take_entities(instance);
+        request->tree = scene_instance_take_entities(instance);
         request->entity = request->tree[0];
         apush(entities->owned, request->entity);
-        if (game_entities_rebuild_global_bindings(entities) != 0) {
+        if (entities_rebuild_global_bindings(entities) != 0) {
             flow_host_cancel(request->wait);
             return -1;
         }
@@ -798,15 +790,13 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
         return 1;
     }
     assert(entities->host.attach);
-    for (int object = 0; object < game_scene_object_count(request->prototype);
-         object++) {
-        for (int i = 0;
-             i < game_scene_object_behavior_count(request->prototype, object);
+    for (int object = 0; object < scene_object_count(request->prototype); object++) {
+        for (int i = 0; i < scene_object_behavior_count(request->prototype, object);
              i++) {
             if (entities->host.attach(
                     entities->host.context,
                     request->tree[object],
-                    game_scene_object_behavior(request->prototype, object, i)
+                    scene_object_behavior(request->prototype, object, i)
                 ) != 0) {
                 return -1;
             }
@@ -815,7 +805,7 @@ static int finish_spawn(game_entities *entities, spawn_request *request)
     return 0;
 }
 
-int game_entities_flush(game_entities *entities)
+int entities_flush(entities *entities)
 {
     spawn_request *batch = entities->spawns;
     entities->spawns = NULL;
@@ -892,7 +882,7 @@ int game_entities_flush(game_entities *entities)
     return blocked;
 }
 
-static bool initializer_ready(const game_entities *entities, double now)
+static bool initializer_ready(const entities *entities, double now)
 {
     for (int i = 0; i < acount(entities->spawns); i++) {
         const spawn_request *request = &entities->spawns[i];
@@ -911,10 +901,10 @@ static bool initializer_ready(const game_entities *entities, double now)
     return false;
 }
 
-int game_entities_flush_initializers(game_entities *entities, double now)
+int entities_flush_initializers(entities *entities, double now)
 {
     for (int batch = 0; batch < SPAWN_INITIALIZER_BATCHES_MAX; batch++) {
-        int result = game_entities_flush(entities);
+        int result = entities_flush(entities);
         if (result < 0) {
             return result;
         }
@@ -923,7 +913,7 @@ int game_entities_flush_initializers(game_entities *entities, double now)
             return result;
         }
         if (!initializer_ready(entities, now)) {
-            return game_entities_initializing(entities);
+            return entities_initializing(entities);
         }
     }
     return FLOW_ERR_STEP_BUDGET;
@@ -933,7 +923,7 @@ static int destroy_command(void *service, const char *, const pin_value *argumen
 {
     assert(count == 1);
     (void)count;
-    game_entities_request_destroy(service, ecs_entity_from_u64(arguments[0].u64));
+    entities_request_destroy(service, ecs_entity_from_u64(arguments[0].u64));
     return FLOW_OK;
 }
 
@@ -948,16 +938,16 @@ static int spawn_command(
 {
     assert(count == 1);
     (void)count;
-    game_entities *entities = service;
-    game_scene *prototype = game_entities_prepare_spawn(entities, arguments[0].str, message);
+    entities *entities = service;
+    scene *prototype = entities_prepare_spawn(entities, arguments[0].str, message);
     if (!prototype) {
         return FLOW_ERR_NODE;
     }
-    game_entities_submit_spawn(entities, prototype, request);
+    entities_submit_spawn(entities, prototype, request);
     return FLOW_OK;
 }
 
-const node_command GAME_ENTITY_SPAWN_COMMAND = {
+const node_command ENTITY_SPAWN_COMMAND = {
     .service = "game.entities",
     .missing_service = "Spawn Prototype requires a game world",
     .begin = spawn_command
@@ -965,19 +955,19 @@ const node_command GAME_ENTITY_SPAWN_COMMAND = {
 static int send_command(void *service, const char *reference, const pin_value *arguments, int count)
 {
     assert(count >= 1);
-    return game_entities_request_event(
+    return entities_request_event(
         service,
         ecs_entity_from_u64(arguments[0].u64),
         reference,
         (execution_arguments){ .values = arguments + 1, .count = count - 1 }
     );
 }
-const node_command GAME_ENTITY_DESTROY_COMMAND = {
+const node_command ENTITY_DESTROY_COMMAND = {
     .service = "game.entities",
     .missing_service = "Destroy Entity requires a game world",
     .invoke = destroy_command
 };
-const node_command GAME_ENTITY_SEND_COMMAND = {
+const node_command ENTITY_SEND_COMMAND = {
     .service = "game.entities",
     .missing_service = "Send Event requires a game world",
     .missing_reference = "Choose an event definition",
@@ -1006,7 +996,7 @@ static void nearest_position(nearest_target target, const pin_value *inputs, pin
 }
 
 static void nearest_candidate(
-    game_entities *entities,
+    entities *entities,
     ecs_entity entity,
     const pin_value *inputs,
     pin_value *out,
@@ -1016,7 +1006,7 @@ static void nearest_candidate(
     if (destroy_requested(entities, entity)) {
         return;
     }
-    CF_V2 position = game_transform_world_2d(entities->world, entity).position;
+    CF_V2 position = transform_world_2d(entities->world, entity).position;
     if (!isfinite(position.x) || !isfinite(position.y)) {
         return;
     }
@@ -1025,7 +1015,7 @@ static void nearest_candidate(
 
 static const char *nearest_entity_data(void *service, const pin_value *inputs, pin_value *out)
 {
-    game_entities *entities = service;
+    entities *entities = service;
     if (!entities) {
         return "Find Nearest Entity requires a game world";
     }
@@ -1040,8 +1030,7 @@ static const char *nearest_entity_data(void *service, const pin_value *inputs, p
         radius < 0 || !inputs[2].u) {
         return NULL;
     }
-    ecs_component_id required[] = { GAME_COMPONENT_GameTransform.id,
-                                    GAME_COMPONENT_GameCollider.id };
+    ecs_component_id required[] = { COMPONENT_Transform.id, COMPONENT_Collider.id };
     if (!ecs_world_component(entities->world, required[0]) ||
         !ecs_world_component(entities->world, required[1])) {
         return NULL;
@@ -1092,7 +1081,7 @@ static const char *nearest_entity_data(void *service, const pin_value *inputs, p
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
         candidates++;
-        const GameCollider *collider = GAME_GameCollider_get_const(entities->world, entity);
+        const Collider *collider = Collider_get_const(entities->world, entity);
         if (!(collider->category & inputs[2].u)) {
             continue;
         }
@@ -1110,23 +1099,23 @@ static const char *nearest_entity_data(void *service, const pin_value *inputs, p
     return NULL;
 }
 
-const node_host_call GAME_ENTITY_NEAREST_CALL = { .service = "game.entities",
-                                                  .invoke = nearest_entity_data,
-                                                  .reusable = true };
+const node_host_call ENTITY_NEAREST_CALL = { .service = "game.entities",
+                                             .invoke = nearest_entity_data,
+                                             .reusable = true };
 
-unsigned game_entities_query_categories(const behavior_function *function)
+unsigned entities_query_categories(const behavior_function *function)
 {
-    return behavior_function_host_mask(function, &GAME_ENTITY_NEAREST_CALL, 2);
+    return behavior_function_host_mask(function, &ENTITY_NEAREST_CALL, 2);
 }
 
-const node_access GAME_ENTITY_QUERY_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
-static const uint64_t *const nearest_reads[] = { &GAME_COMPONENT_GameTransform.id,
-                                                 &GAME_COMPONENT_GameOrientation.id,
-                                                 &GAME_COMPONENT_GameCollider.id,
+const node_access ENTITY_QUERY_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+static const uint64_t *const nearest_reads[] = { &COMPONENT_Transform.id,
+                                                 &COMPONENT_Orientation.id,
+                                                 &COMPONENT_Collider.id,
                                                  NULL };
-const node_access GAME_ENTITY_NEAREST_ACCESS = { .read_refs = nearest_reads,
-                                                 .flags = NODE_EFFECT_WORLD_READ |
-                                                          NODE_EFFECT_PARALLEL };
+const node_access ENTITY_NEAREST_ACCESS = { .read_refs = nearest_reads,
+                                            .flags = NODE_EFFECT_WORLD_READ |
+                                                     NODE_EFFECT_PARALLEL };
 
 /* Result headers and struct backing belong to the invocation. Global payloads
  * are snapshotted so another host write cannot invalidate a suspended reader. */
@@ -1168,32 +1157,32 @@ static const char *get_global_host(
 {
     assert(context->value_storage);
     pin_value value;
-    if (game_entities_get_global_value(service, arguments[0].str, context->value_storage, &value)) {
+    if (entities_get_global_value(service, arguments[0].str, context->value_storage, &value)) {
         return "Get Global Variable references an unknown value";
     }
     return global_result(out, value);
 }
 static const char *set_global_host(void *service, const pin_value *arguments, pin_value *out)
 {
-    if (game_entities_set_global_value(service, arguments[0].str, &arguments[1])) {
+    if (entities_set_global_value(service, arguments[0].str, &arguments[1])) {
         return "Set Global Variable received an invalid value";
     }
     return global_result(out, arguments[1]);
 }
-const node_host_call GAME_ENTITY_GET_GLOBAL_CALL = {
+const node_host_call ENTITY_GET_GLOBAL_CALL = {
     .service = "game.entities",
     .context = get_global_host,
     .missing_service = "Get Global Variable requires a game world",
 };
-const node_host_call GAME_ENTITY_SET_GLOBAL_CALL = {
+const node_host_call ENTITY_SET_GLOBAL_CALL = {
     .service = "game.entities",
     .invoke = set_global_host,
     .missing_service = "Set Global Variable requires a game world",
 };
 
-const node_access GAME_ENTITY_GLOBAL_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
-const node_access GAME_ENTITY_GLOBAL_WRITE_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
-static const ecs_component_desc *query_component(game_entities *entities, const char *key)
+const node_access ENTITY_GLOBAL_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+const node_access ENTITY_GLOBAL_WRITE_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+static const ecs_component_desc *query_component(entities *entities, const char *key)
 {
     for (int i = 0; key && i < ecs_world_component_count(entities->world); i++) {
         const ecs_component_desc *component = ecs_world_component_at(entities->world, i);
@@ -1206,7 +1195,7 @@ static const ecs_component_desc *query_component(game_entities *entities, const 
 
 static const char *has_component_host(void *service, const pin_value *inputs, pin_value *out)
 {
-    game_entities *entities = service;
+    entities *entities = service;
     if (!entities) {
         return "Has Entities With Component requires a game world";
     }
@@ -1227,14 +1216,12 @@ static const char *has_component_host(void *service, const pin_value *inputs, pi
     return NULL;
 }
 
-const node_host_call GAME_ENTITY_HAS_COMPONENT_CALL = {
-    .service = "game.entities",
-    .invoke = has_component_host
-};
+const node_host_call ENTITY_HAS_COMPONENT_CALL = { .service = "game.entities",
+                                                   .invoke = has_component_host };
 
-const char *game_entities_find_snapshot(void *service, const char *key, pin_array *out)
+const char *entities_find_snapshot(void *service, const char *key, pin_array *out)
 {
-    game_entities *entities = service;
+    entities *entities = service;
     out->count = 0;
     if (!entities) {
         return "Find Entities With Component requires a game world";
@@ -1249,7 +1236,7 @@ const char *game_entities_find_snapshot(void *service, const char *key, pin_arra
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        if (game_entities_is_retiring(entities, entity)) {
+        if (entities_is_retiring(entities, entity)) {
             continue;
         }
         if (out->count == out->capacity) {
@@ -1266,9 +1253,9 @@ const char *game_entities_find_snapshot(void *service, const char *key, pin_arra
     return NULL;
 }
 
-const node_access GAME_ENTITY_STRUCTURAL_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL };
+const node_access ENTITY_STRUCTURAL_ACCESS = { .flags = NODE_EFFECT_STRUCTURAL };
 
-void game_entities_submit_spawn(game_entities *entities, game_scene *prototype, flow_host_request *request)
+void entities_submit_spawn(entities *entities, scene *prototype, flow_host_request *request)
 {
     assert(prototype && request && entities->host.attach && entities->host.destroy);
     apush(entities->spawns, ((spawn_request){ .prototype = prototype, .wait = request }));

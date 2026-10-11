@@ -113,7 +113,7 @@ The original attribution below predates that follow-up; removing checks through
 proofs remains open.
 
 1. **Remove repeated serial validation where revisions prove it safe.**
-   `game_behavior_parallel_run` validates every row and refreshes bindings before
+   `behavior_parallel_run` validates every row and refreshes bindings before
    workers run kernels with their own row guards. This is the largest measured
    behavior scope. Move stable facts into schedule/span preparation; keep checks
    required for entity destruction, service changes, hot apply, breakpoints and
@@ -124,7 +124,7 @@ proofs remains open.
    rows and spans rebuilt per spawn/destroy event before changing the repair
    representation; retain unchanged spans and bindings whenever possible.
 3. **Prepare only queries the scheduled functions need.**
-   `game_entities_parallel_begin` currently clears category lists and scans
+   `entities_parallel_begin` currently clears category lists and scans
    transform/collider entities for every eligible parallel run. Compiler read
    summaries can identify when no query snapshot is needed. Reusing a snapshot
    across runs needs explicit invalidation for transform, collider, membership

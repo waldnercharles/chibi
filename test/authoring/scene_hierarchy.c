@@ -119,18 +119,18 @@ TEST_CASE(move_rejects_invalid_destinations_without_mutation)
 TEST_CASE(snapshot_validation_bounds_depth_names_and_identity)
 {
     authoring_scene_node *nodes = NULL;
-    for (int i = 0; i < GAME_SCENE_DEPTH_MAX; i++) {
+    for (int i = 0; i < SCENE_DEPTH_MAX; i++) {
         apush(nodes, object(i + 1, "Nested", i - 1));
     }
-    apush(nodes, object(GAME_SCENE_DEPTH_MAX + 1, "Extra", -1));
+    apush(nodes, object(SCENE_DEPTH_MAX + 1, "Extra", -1));
     char error[256];
     REQUIRE(authoring_scene_validate(nodes, acount(nodes), error, sizeof error) == 0);
     REQUIRE(
-        move(nodes, acount(nodes), (int[]){ GAME_SCENE_DEPTH_MAX + 1 }, 1, GAME_SCENE_DEPTH_MAX, 0, false, error) ==
+        move(nodes, acount(nodes), (int[]){ SCENE_DEPTH_MAX + 1 }, 1, SCENE_DEPTH_MAX, 0, false, error) ==
         -1
     );
     REQUIRE(strstr(error, "depth"));
-    REQUIRE(nodes[GAME_SCENE_DEPTH_MAX].parent == -1);
+    REQUIRE(nodes[SCENE_DEPTH_MAX].parent == -1);
     nodes[1].entity = nodes[0].entity;
     REQUIRE(authoring_scene_validate(nodes, acount(nodes), error, sizeof error) == -1);
     nodes[1].entity = entity(2);
@@ -180,11 +180,9 @@ TEST_CASE(keep_world_compensates_transformless_2d_groups)
     return true;
 }
 
-static GameTransform3D pose(CF_V3 position, CF_V3 scale)
+static Transform3D pose(CF_V3 position, CF_V3 scale)
 {
-    return (GameTransform3D){ .position = position,
-                              .scale = scale,
-                              .rotation = { .w = 1 } };
+    return (Transform3D){ .position = position, .scale = scale, .rotation = { .w = 1 } };
 }
 
 static bool matrix_near(CF_M4x4 a, CF_M4x4 b)
@@ -197,7 +195,7 @@ static bool matrix_near(CF_M4x4 a, CF_M4x4 b)
     return true;
 }
 
-static CF_M4x4 matrix(GameTransform3D t)
+static CF_M4x4 matrix(Transform3D t)
 {
     return cf_m4_from_trs(t.position, t.rotation, t.scale);
 }
@@ -250,8 +248,8 @@ TEST_CASE(keep_world_rejects_singular_and_sheared_3d_atomically)
         REQUIRE(strstr(error, singular ? "singular" : "shear"));
         REQUIRE(!memcmp(nodes, original, sizeof nodes));
         REQUIRE(move(nodes, 3, (int[]){ 1, 2 }, 2, 3, 0, false, error) == 0);
-        REQUIRE(!memcmp(&nodes[1].transform_3d, &original[0].transform_3d, sizeof(GameTransform3D)));
-        REQUIRE(!memcmp(&nodes[2].transform_3d, &original[1].transform_3d, sizeof(GameTransform3D)));
+        REQUIRE(!memcmp(&nodes[1].transform_3d, &original[0].transform_3d, sizeof(Transform3D)));
+        REQUIRE(!memcmp(&nodes[2].transform_3d, &original[1].transform_3d, sizeof(Transform3D)));
         REQUIRE(nodes[1].position.x == original[0].position.x);
     }
     original[0].transform_3d.scale.x = 0;
@@ -298,7 +296,7 @@ TEST_CASE(reorder_keeps_local_components_exactly_even_when_singular)
         nodes[i].has_transform_3d = true;
         nodes[i].transform_3d = pose((CF_V3){ (float)i, 2, 3 }, (CF_V3){ 0, 0, 0 });
     }
-    GameTransform3D a = nodes[1].transform_3d, b = nodes[2].transform_3d;
+    Transform3D a = nodes[1].transform_3d, b = nodes[2].transform_3d;
     char error[256];
     REQUIRE(move(nodes, 3, (int[]){ 3 }, 1, 1, 2, true, error) == 0);
     REQUIRE(nodes[1].entity.slot == 3 && nodes[2].entity.slot == 2);
@@ -316,24 +314,24 @@ TEST_CASE(moved_order_and_paths_round_trip_through_scene_document)
                                      object(5, "First", 3) };
     char error[256];
     REQUIRE(move(nodes, 5, (int[]){ 2 }, 1, 4, 5, false, error) == 0);
-    game_scene_document *document = game_scene_document_new("Hierarchy");
+    scene_document *document = scene_document_new("Hierarchy");
     for (int i = 0; i < 5; i++) {
         REQUIRE(
-            game_scene_document_add_entity(document, nodes[i].parent, nodes[i].name, "Object") == 0
+            scene_document_add_entity(document, nodes[i].parent, nodes[i].name, "Object") == 0
         );
     }
-    char *text = game_scene_document_save(document, (ecs_component_catalog){ 0 });
-    game_scene_document *loaded = game_scene_document_load(text, error, sizeof error);
+    char *text = scene_document_save(document, (ecs_component_catalog){ 0 });
+    scene_document *loaded = scene_document_load(text, error, sizeof error);
     REQUIRE(loaded && acount(loaded->entities) == 5);
-    REQUIRE(game_scene_document_entity_index(loaded, "Old.Group") == -1);
-    REQUIRE(game_scene_document_entity_index(loaded, "New.Group.Leaf") == 3);
+    REQUIRE(scene_document_entity_index(loaded, "Old.Group") == -1);
+    REQUIRE(scene_document_entity_index(loaded, "New.Group.Leaf") == 3);
     REQUIRE(!strcmp(loaded->entities[4].name, "First"));
-    char *path = game_scene_document_entity_path(loaded, 3);
+    char *path = scene_document_entity_path(loaded, 3);
     REQUIRE(!strcmp(path, "New.Group.Leaf"));
     free(path);
     free(text);
-    game_scene_document_free(loaded);
-    game_scene_document_free(document);
+    scene_document_free(loaded);
+    scene_document_free(document);
     return true;
 }
 

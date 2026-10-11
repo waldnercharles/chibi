@@ -83,7 +83,7 @@ prototype run the prototype's list. A prototype's children spawn with each of
 its instances, so they are reached and run as instances too. Components count on these placed and
 spawned instances, after the scene's overrides, and where running source reads,
 writes or adds them, directly or through a generic call such as
-`add_component("GAME.Heat")`; a system query alone matches nothing without
+`add_component("Heat")`; a system query alone matches nothing without
 them, so it does not count.
 A system runs only while an entity's `EngineSystem` names it. Components the
 project declares in `content/components` load as they do in preparation and
@@ -774,8 +774,8 @@ was unavailable on this host and does not describe the Metal execution. Use `mak
 AGENT_SELECTOR=--viewport-resize` after building that directory's `test_tools`.
 
 `scene2d` draws 2D scenes through the scene renderer and an engine viewport in a
-hidden 64 x 64 app and reads back the app canvas. A scene without `GameHRC2D`
-must show its materials unlit, `game_hrc2d_defaults()` lighting must keep them
+hidden 64 x 64 app and reads back the app canvas. A scene without `HRC2D`
+must show its materials unlit, `hrc2d_defaults()` lighting must keep them
 visible, and the unlit view or removing the settings must stop lighting. A
 sprite whose normal map faces a light must be lit more than flat normals, and
 mirrored, less, unless a Material turns its edge light off; a map must be loaded

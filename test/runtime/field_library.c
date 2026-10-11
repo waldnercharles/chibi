@@ -4,7 +4,7 @@
 #include "graph/compiler/material_field.h"
 #include "graph/document/library.h"
 #include "runtime/material_field.h"
-#include "test/support/game_graph_packs.h"
+#include "test/support/graph_packs.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 /* Native field artifacts link pure scalar library graphs before publication.
@@ -20,7 +20,7 @@ static void cleanup()
     field = NULL;
     behavior_asset_free(library);
     library = NULL;
-    test_game_graph_packs_clear();
+    test_graph_packs_clear();
 }
 
 static bool publish(char *error, size_t size)
@@ -53,7 +53,7 @@ static bool sample(float *value, char *error, size_t size)
 TEST_CASE(field_library_republication_retains_the_last_valid_generation)
 {
     fields = material_fields_new();
-    REQUIRE(test_game_graph_packs_set());
+    REQUIRE(test_graph_packs_set());
     library = behavior_asset_new("ScalarLibrary");
     library->domain = BEHAVIOR_DOMAIN_LIBRARY;
     graph *function = behavior_asset_add_function(library, "Sum", true);

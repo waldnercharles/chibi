@@ -184,8 +184,8 @@ option(CHIBI_BUILD_TESTS "Build the admitted package-consumer C test drivers" ON
 set(CHIBI_REFLECT_EXECUTABLE "" CACHE FILEPATH "Native reflection generator for cross builds")
 file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
 if(CHIBI_SDK_BUILD_NATIVE)
-    set(CHIBI_NATIVE_TYPES_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/game_types.c")
-    set(CHIBI_NATIVE_BINDINGS_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/game_capabilities.c")
+    set(CHIBI_NATIVE_TYPES_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/native_types.c")
+    set(CHIBI_NATIVE_BINDINGS_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/generated/native_capabilities.c")
 endif()
 add_subdirectory(sdk)
 
@@ -218,11 +218,11 @@ if(CHIBI_SDK_BUILD_NATIVE)
     endif()
     add_custom_command(OUTPUT "${CHIBI_NATIVE_TYPES_SOURCE}.stamp"
         BYPRODUCTS "${CHIBI_NATIVE_TYPES_SOURCE}" "${CHIBI_NATIVE_BINDINGS_SOURCE}"
-        COMMAND ${reflect_command} "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/game_nodes.c"
-            --prefix GAME --types-output "${CHIBI_NATIVE_TYPES_SOURCE}"
+        COMMAND ${reflect_command} "${CMAKE_CURRENT_SOURCE_DIR}/src/runtime/native_nodes.c"
+            --prefix "" --types-output "${CHIBI_NATIVE_TYPES_SOURCE}"
             --runtime-output "${CHIBI_NATIVE_BINDINGS_SOURCE}" ${reflect_args}
         COMMAND ${CMAKE_COMMAND} -E touch "${CHIBI_NATIVE_TYPES_SOURCE}.stamp"
-        DEPENDS ${reflect_dependency} "${manifest}" src/runtime/game_nodes.c
+        DEPENDS ${reflect_dependency} "${manifest}" src/runtime/native_nodes.c
             src/runtime/interface.h src/runtime/components.h src/types/annotate.h
         VERBATIM)
     add_custom_target(generate_runtime_registry DEPENDS "${CHIBI_NATIVE_TYPES_SOURCE}.stamp")

@@ -15,7 +15,7 @@ handle means scene roots. A zero insertion sibling means append; otherwise the
 insertion sibling must be an unselected child of the destination.
 
 Validation rejects stale or duplicate handles, invalid names, duplicate sibling
-names, cycles and hierarchies deeper than `GAME_SCENE_DEPTH_MAX`. Rejection leaves
+names, cycles and hierarchies deeper than `SCENE_DEPTH_MAX`. Rejection leaves
 the input snapshot unchanged. Names and entity handles stay unchanged, while
 name paths follow the new hierarchy. For example, moving `A.Group` below `B`
 changes its child's path from `A.Group.Child` to `B.Group.Child`. Existing entity

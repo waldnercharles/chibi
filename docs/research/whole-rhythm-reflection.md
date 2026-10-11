@@ -29,7 +29,7 @@ contexts retain the instance clock address, and prepared Tick rows bind their
 own address even when they share the compiled program and service binding.
 Wait resumption reacquires current component storage. Reflected layout guards
 retain source diagnostics after incompatible component changes. The node declares
-its specific GameRhythm read for effect analysis.
+its specific Rhythm read for effect analysis.
 
 [Five rotated trials](whole-rhythm-results.json), 500,000 warmed calls each:
 

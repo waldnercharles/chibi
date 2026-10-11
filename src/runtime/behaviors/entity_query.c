@@ -106,7 +106,7 @@ static const ecs_component_desc *component_named(ecs_world *world, const char *k
     }
     return NULL;
 }
-const char *game_entity_count_matches(ecs_world *world, const pin_value *inputs, pin_value *out)
+const char *entity_count_matches(ecs_world *world, const pin_value *inputs, pin_value *out)
 {
     if (!world) {
         return "Count Matching Entities requires ecs.world";
@@ -149,8 +149,8 @@ done:
 }
 static const char *count_matches(void *world, const pin_value *inputs, pin_value *out)
 {
-    return game_entity_count_matches(world, inputs, out);
+    return entity_count_matches(world, inputs, out);
 }
-const node_access GAME_ENTITY_COUNT_MATCHING_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
-const node_host_call GAME_ENTITY_COUNT_MATCHING_CALL = { .service = "ecs.world",
-                                                         .invoke = count_matches };
+const node_access ENTITY_COUNT_MATCHING_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+const node_host_call ENTITY_COUNT_MATCHING_CALL = { .service = "ecs.world",
+                                                    .invoke = count_matches };

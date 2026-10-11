@@ -30,7 +30,7 @@ reaction age. The new argument-failure classification preserves FLOW_ERR_ARGUMEN
 alongside the existing node/state errors, source node, pin and call stack.
 Component access retains the compiler's generation, presence and layout checks.
 
-The descriptor now declares its GameVisualMotion read and write. Target can name
+The descriptor now declares its VisualMotion read and write. Target can name
 another instance's entity, so the old entity-scoped flag was not a sufficient
 promise of independent writes. Scheduling remains serial unless analysis proves
 disjoint targets. The lowered program also records the component write so query

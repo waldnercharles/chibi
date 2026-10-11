@@ -32,7 +32,7 @@ static const ecs_component_desc counter_component = {
     .type = &counter_type,
 };
 static ecs_world *ecs;
-static game_source_registry *behaviors;
+static source_registry *behaviors;
 static execution_module *pending;
 
 static bool prepared_type(void *, uint64_t id, execution_prepared_type *out)
@@ -83,7 +83,7 @@ const ecs_component_desc *headless_consumer_component()
 void headless_consumer_cleanup()
 {
     if (behaviors) {
-        game_source_registry_free(behaviors);
+        source_registry_free(behaviors);
     }
     execution_module_free(pending);
     ecs_world_free(ecs);
@@ -110,35 +110,35 @@ bool headless_consumer_run(execution_module *module)
     REQUIRE(!field.has_default && !field.default_owner && !field.nominal);
     ecs = ecs_world_new();
     REQUIRE(ecs_world_register_component(ecs, &counter_component, NULL) == ECS_OK);
-    behaviors = game_source_registry_new(ecs);
-    REQUIRE(game_source_register(behaviors, "Headless", pending, NULL) == FLOW_OK);
-    REQUIRE(game_source_register(behaviors, "Headless", pending, NULL) < 0);
+    behaviors = source_registry_new(ecs);
+    REQUIRE(source_register(behaviors, "Headless", pending, NULL) == FLOW_OK);
+    REQUIRE(source_register(behaviors, "Headless", pending, NULL) < 0);
     execution_module_free(pending);
     pending = NULL;
     ecs_entity entity = ecs_world_create_entity(ecs);
     REQUIRE(ecs_world_record_add(ecs, entity, counter_component.id, NULL, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
-    REQUIRE(game_source_attach(behaviors, entity, "Headless", false, 0, 0) == FLOW_OK);
-    REQUIRE(game_source_step(behaviors, 0, 0) == FLOW_OK);
+    REQUIRE(source_attach(behaviors, entity, "Headless", false, 0, 0) == FLOW_OK);
+    REQUIRE(source_step(behaviors, 0, 0) == FLOW_OK);
     headless_counter
         *counter = ecs_component_data(ecs, entity, counter_component.id);
     REQUIRE(counter && counter->value == 1);
-    REQUIRE(game_source_dispatch(behaviors, entity, "Tick", NULL, 0, 1, 0.25) >= 0);
-    REQUIRE(game_source_step(behaviors, 1, 0.25) == FLOW_OK);
+    REQUIRE(source_dispatch(behaviors, entity, "Tick", NULL, 0, 1, 0.25) >= 0);
+    REQUIRE(source_step(behaviors, 1, 0.25) == FLOW_OK);
     REQUIRE(counter->value == 3);
     pin_value amount = { .type = PIN_I32, .i = 5 };
-    REQUIRE(game_source_dispatch(behaviors, entity, "Bump", &amount, 1, 2, 0) >= 0);
-    REQUIRE(game_source_step(behaviors, 2, 0) == FLOW_OK);
+    REQUIRE(source_dispatch(behaviors, entity, "Bump", &amount, 1, 2, 0) >= 0);
+    REQUIRE(source_step(behaviors, 2, 0) == FLOW_OK);
     REQUIRE(counter->value == 8);
-    REQUIRE(game_source_begin(behaviors, 2, 0) == FLOW_OK);
-    REQUIRE(game_source_step(behaviors, 2, 0) == FLOW_OK);
+    REQUIRE(source_begin(behaviors, 2, 0) == FLOW_OK);
+    REQUIRE(source_step(behaviors, 2, 0) == FLOW_OK);
     REQUIRE(counter->value == 8);
-    execution_program *program = game_source_program(behaviors, "Headless");
+    execution_program *program = source_program(behaviors, "Headless");
     REQUIRE(execution_program_instance(program, ecs_entity_to_u64(entity)) != NULL);
     REQUIRE(ecs_world_destroy_entity(ecs, entity) == ECS_OK);
-    REQUIRE(game_source_step(behaviors, 3, 0) == FLOW_OK);
+    REQUIRE(source_step(behaviors, 3, 0) == FLOW_OK);
     REQUIRE(execution_program_instance(program, ecs_entity_to_u64(entity)) == NULL);
-    REQUIRE(game_source_remove(behaviors, "Headless") == FLOW_OK);
-    REQUIRE(!game_source_registered(behaviors, "Headless"));
+    REQUIRE(source_remove(behaviors, "Headless") == FLOW_OK);
+    REQUIRE(!source_registered(behaviors, "Headless"));
     return true;
 }

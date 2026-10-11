@@ -142,18 +142,18 @@ char *new_asset_text(new_asset_kind kind, const char *name)
 {
     switch (kind) {
         case NEW_ASSET_SCENE: {
-            game_scene_document *scene = game_scene_document_new(name);
-            char *text = game_scene_document_save(
+            scene_document *scene = scene_document_new(name);
+            char *text = scene_document_save(
                 scene,
-                (ecs_component_catalog){ GAME_REGISTRY_COMPONENTS, GAME_REGISTRY_COMPONENT_COUNT }
+                (ecs_component_catalog){ REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT }
             );
-            game_scene_document_free(scene);
+            scene_document_free(scene);
             return text;
         }
         case NEW_ASSET_PROTOTYPE: {
-            game_prototype *prototype = game_prototype_new(name);
-            char *text = game_prototype_save(prototype);
-            game_prototype_free(prototype);
+            prototype *prototype = prototype_new(name);
+            char *text = prototype_save(prototype);
+            prototype_free(prototype);
             return text;
         }
         case NEW_ASSET_SYSTEM: return source_text("system", name);

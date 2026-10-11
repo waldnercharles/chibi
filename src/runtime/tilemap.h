@@ -30,7 +30,7 @@ void tilemap_grid_free(tilemap_grid *grid);
 int tilemap_grid_frame(const tilemap_grid *grid, int column, int row);
 int tilemap_grid_point(const tilemap_grid *grid, CF_V2 translation, float radians, CF_V2 world_point);
 /* Counts occupied cells with positive-area intersection with a world AABB.
- * Rotation follows GameOrientation in gameplay coordinates (+Y down). */
+ * Rotation follows Orientation in gameplay coordinates (+Y down). */
 int tilemap_grid_overlap_count(const tilemap_grid *grid, CF_V2 translation, float radians, CF_Aabb world_box);
 
 /* Bounds the complete transformed grid, including empty cells. */

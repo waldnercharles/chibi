@@ -27,9 +27,9 @@ void app_scene_renderer_set_sdf_batch_limit(app_scene_renderer *renderer, int li
 /* Capture overrides. Without these, the scene's authored settings apply. */
 void app_scene_renderer_set_hidden_rejection(app_scene_renderer *renderer, bool enabled);
 void app_scene_renderer_set_spatial_scratch(app_scene_renderer *renderer, bool enabled);
-void app_scene_renderer_set_surface_quality(app_scene_renderer *renderer, GameSurfaceQuality quality);
+void app_scene_renderer_set_surface_quality(app_scene_renderer *renderer, SurfaceQuality quality);
 void app_scene_renderer_set_sdf_trace_debug(app_scene_renderer *renderer, bool enabled);
-void app_scene_renderer_set_shadow_mode(app_scene_renderer *renderer, GameHRCShadowMode mode);
+void app_scene_renderer_set_shadow_mode(app_scene_renderer *renderer, HRCShadowMode mode);
 /* HRC's lab settings, render_radiance_lab_defaults() until set. */
 void app_scene_renderer_set_lab(app_scene_renderer *renderer, render_radiance_lab lab);
 render_surface_work app_scene_renderer_surface_work(const app_scene_renderer *renderer);
@@ -43,7 +43,7 @@ int app_scene_renderer_particle_count(const app_scene_renderer *renderer);
 /* The shapes and mask pieces the last 2D draw rasterized. */
 int app_scene_renderer_material_pieces(const app_scene_renderer *renderer);
 /* Lighting in use: its grids, adaptive's step and its GPU time. False when the
- * view is unlit, the scene has no GameHRC2D or the backend has no HRC. */
+ * view is unlit, the scene has no HRC2D or the backend has no HRC. */
 bool app_scene_renderer_lighting_status(const app_scene_renderer *renderer, render_radiance_status *status);
 /* What an editor's view leaves out of the game's presentation. Unlit keeps
  * the material raster and skips HRC lighting in the 2D viewport. Without fog,
@@ -60,7 +60,7 @@ void app_scene_renderer_set_grid(app_scene_renderer *renderer, float increment);
 bool app_scene_renderer_draw(
     app_scene_renderer *renderer,
     ecs_world *world,
-    const game_particles *particles,
+    const particles *particles,
     engine_viewport *viewport,
     const engine *runtime,
     render_skip skip
@@ -68,7 +68,7 @@ bool app_scene_renderer_draw(
 bool app_scene_renderer_draw3d(
     app_scene_renderer *renderer,
     ecs_world *world,
-    const game_particles *particles,
+    const particles *particles,
     const render_scene3d_camera *camera,
     engine_viewport *viewport,
     const engine *runtime,

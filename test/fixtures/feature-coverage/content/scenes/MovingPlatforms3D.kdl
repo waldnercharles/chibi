@@ -8,10 +8,10 @@ presentation "3d"
         name "TranslatingPlatform"
         prototype "MovingPlatform3D"
         components {
-            GAME.GameTransform3D {
+            Transform3D {
                 position x=-120.0
             }
-            GAME.GameBody3D {
+            Body3D {
                 linear_velocity x=24.0
             }
         }
@@ -20,7 +20,7 @@ presentation "3d"
         name "TranslatingRider"
         prototype "PlatformRider3D"
         components {
-            GAME.GameTransform3D {
+            Transform3D {
                 position x=-120.0 y=28.0
             }
         }
@@ -29,20 +29,20 @@ presentation "3d"
         name "RotatingPlatform"
         prototype "MovingPlatform3D"
         components {
-            GAME.GameTransform3D {
+            Transform3D {
                 position x=120.0
             }
-            GAME.GameBody3D {
+            Body3D {
                 angular_velocity y=0.5
             }
-            GAME.GameMaterial scene=0x60a078ff
+            Material scene=0x60a078ff
         }
     }
     - {
         name "RotatingRider"
         prototype "PlatformRider3D"
         components {
-            GAME.GameTransform3D {
+            Transform3D {
                 position x=168.0 y=28.0
             }
         }

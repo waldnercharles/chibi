@@ -13,35 +13,35 @@ component MaterialBreakProfile
 component MaterialThermal
 component MaterialConstitutive
 component MaterialTerrain
-component GameCombustion
-component GameFuel
-component GameIgniter
-component GameSubstance
-component GameMaterialCavity
-component GameFragmentGlow
-component GameMaterialFrame
-component GameFluidVolume
+component Combustion
+component Fuel
+component Igniter
+component Substance
+component MaterialCavity
+component FragmentGlow
+component MaterialFrame
+component FluidVolume
 
 # 2D lighting and sky.
-component GameHRC2D
-component GameStarfield2D
+component HRC2D
+component Starfield2D
 
 # Visibility queries: the rendering scene authors fog and a vision source but
 # does not query sight from a behavior.
 function Visibility At
 
 # Combat, encounters and pickups: gameplay modules a combat scene would cover.
-component GameWeapon
-component GameProjectile
-component GameSpawnRequest
-component GameEncounter
-component GameEncounterMember
-component GameExperience
-component GamePickup
+component Weapon
+component Projectile
+component SpawnRequest
+component Encounter
+component EncounterMember
+component Experience
+component Pickup
 function Count Matching Entities
 
 # Engine internals that scenes don't author directly.
-component GameDrive
+component Drive
 
 # Move Objects is a Studio-host service rather than a runtime catalog entry.
 # Studio's OutlinerInput uses it; --outliner-move exercises its authored drop

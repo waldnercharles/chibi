@@ -7,20 +7,20 @@
 
 typedef union
 {
-    GameAppearance appearance;
-    GameCamera camera;
-    GameVisualTransform transform;
-    GameVisualMotion motion;
-    GameRhythm rhythm;
-    GameMeshParts parts;
-    GameHRC2D hrc;
-    GameParticleEmitter emitter;
-    GameEnvironment environment;
-    GameDirectionalLight light;
-    GameSpotLight spot;
+    Appearance appearance;
+    Camera camera;
+    VisualTransform transform;
+    VisualMotion motion;
+    Rhythm rhythm;
+    MeshParts parts;
+    HRC2D hrc;
+    ParticleEmitter emitter;
+    Environment environment;
+    DirectionalLight light;
+    SpotLight spot;
 } native_initial;
 
-static bool contains(game_prototype_component *components, const char *name)
+static bool contains(prototype_component *components, const char *name)
 {
     for (int i = 0; i < acount(components); i++) {
         if (!strcmp(components[i].desc->name, name)) {
@@ -30,26 +30,24 @@ static bool contains(game_prototype_component *components, const char *name)
     return false;
 }
 
-static int motion_initial(const game_prototype *prototype, GameVisualMotion *motion)
+static int motion_initial(const prototype *prototype, VisualMotion *motion)
 {
-    *motion = (GameVisualMotion){ .speed = 1,
-                                  .reaction_duration = .32f,
-                                  .reaction_age = .32f };
+    *motion = (VisualMotion){ .speed = 1, .reaction_duration = .32f, .reaction_age = .32f };
     pin_value value;
     const char *angles[] = { "pitch", "yaw", "roll" };
     float *rotation[] = { &motion->rotation.x,
                           &motion->rotation.y,
                           &motion->rotation.z };
-    if (contains(prototype->components, "GameVisualTransform")) {
+    if (contains(prototype->components, "VisualTransform")) {
         for (int i = 0; i < 3; i++) {
-            if (game_prototype_read_field(prototype, "GameVisualTransform", angles[i], &value)) {
+            if (prototype_read_field(prototype, "VisualTransform", angles[i], &value)) {
                 return -1;
             }
             *rotation[i] = value.f;
         }
     }
-    if (contains(prototype->components, "GameGeometry3D")) {
-        if (game_prototype_read_field(prototype, "GameGeometry3D", "elevation", &value)) {
+    if (contains(prototype->components, "Geometry3D")) {
+        if (prototype_read_field(prototype, "Geometry3D", "elevation", &value)) {
             return -1;
         }
         motion->rest_elevation = value.f;
@@ -58,104 +56,99 @@ static int motion_initial(const game_prototype *prototype, GameVisualMotion *mot
 }
 
 static int initial_row(
-    const game_prototype *prototype,
+    const prototype *prototype,
     const ecs_component_desc *desc,
     native_initial *storage,
-    game_prototype_default *out
+    prototype_default *out
 )
 {
-    *out = (game_prototype_default){ .component = desc->id };
-    if (!strcmp(desc->name, "GameAppearance")) {
-        storage->appearance = (GameAppearance){ .width = 32,
-                                                .height = 32,
-                                                .color = 0xffffffffu,
-                                                .shape = GAME_SHAPE_BOX,
-                                                .antialias = 1 };
+    *out = (prototype_default){ .component = desc->id };
+    if (!strcmp(desc->name, "Appearance")) {
+        storage->appearance = (Appearance){ .width = 32,
+                                            .height = 32,
+                                            .color = 0xffffffffu,
+                                            .shape = SHAPE_BOX,
+                                            .antialias = 1 };
         out->data = &storage->appearance;
         out->size = sizeof storage->appearance;
-    } else if (!strcmp(desc->name, "GameCamera")) {
-        storage->camera = (GameCamera){ .width = 960, .height = 540 };
+    } else if (!strcmp(desc->name, "Camera")) {
+        storage->camera = (Camera){ .width = 960, .height = 540 };
         out->data = &storage->camera;
         out->size = sizeof storage->camera;
-    } else if (!strcmp(desc->name, "GameVisualTransform")) {
-        storage->transform = (GameVisualTransform){ .scale = 1 };
+    } else if (!strcmp(desc->name, "VisualTransform")) {
+        storage->transform = (VisualTransform){ .scale = 1 };
         out->data = &storage->transform;
         out->size = sizeof storage->transform;
-    } else if (!strcmp(desc->name, "GameVisualMotion")) {
+    } else if (!strcmp(desc->name, "VisualMotion")) {
         if (motion_initial(prototype, &storage->motion)) {
             return -1;
         }
         out->data = &storage->motion;
         out->size = sizeof storage->motion;
-    } else if (!strcmp(desc->name, "GameRhythm")) {
-        storage->rhythm = (GameRhythm){ .bpm = 120, .pulse_width = .18f };
+    } else if (!strcmp(desc->name, "Rhythm")) {
+        storage->rhythm = (Rhythm){ .bpm = 120, .pulse_width = .18f };
         out->data = &storage->rhythm;
         out->size = sizeof storage->rhythm;
-    } else if (!strcmp(desc->name, "GameMeshParts")) {
-        storage->parts = (GameMeshParts){ .parts = "(array)-\n" };
+    } else if (!strcmp(desc->name, "MeshParts")) {
+        storage->parts = (MeshParts){ .parts = "(array)-\n" };
         out->data = &storage->parts;
         out->size = sizeof storage->parts;
-    } else if (!strcmp(desc->name, "GameHRC2D")) {
-        storage->hrc = game_hrc2d_defaults();
+    } else if (!strcmp(desc->name, "HRC2D")) {
+        storage->hrc = hrc2d_defaults();
         out->data = &storage->hrc;
         out->size = sizeof storage->hrc;
-    } else if (!strcmp(desc->name, "GameParticleEmitter")) {
-        storage->emitter = game_particle_emitter_defaults();
+    } else if (!strcmp(desc->name, "ParticleEmitter")) {
+        storage->emitter = particle_emitter_defaults();
         out->data = &storage->emitter;
         out->size = sizeof storage->emitter;
-    } else if (!strcmp(desc->name, "GameEnvironment")) {
-        storage->environment = game_environment_defaults();
+    } else if (!strcmp(desc->name, "Environment")) {
+        storage->environment = environment_defaults();
         out->data = &storage->environment;
         out->size = sizeof storage->environment;
-    } else if (!strcmp(desc->name, "GameDirectionalLight")) {
-        storage->light = game_directional_light_defaults();
+    } else if (!strcmp(desc->name, "DirectionalLight")) {
+        storage->light = directional_light_defaults();
         out->data = &storage->light;
         out->size = sizeof storage->light;
-    } else if (!strcmp(desc->name, "GameSpotLight")) {
-        storage->spot = game_spot_light_defaults();
+    } else if (!strcmp(desc->name, "SpotLight")) {
+        storage->spot = spot_light_defaults();
         out->data = &storage->spot;
         out->size = sizeof storage->spot;
     }
     return 0;
 }
 
-int game_prototype_add_native_component(game_prototype *prototype, const ecs_component_desc *desc)
+int prototype_add_native_component(prototype *prototype, const ecs_component_desc *desc)
 {
     if (!prototype || !desc || !desc->name) {
         return -1;
     }
     if (contains(prototype->detached_components, desc->name)) {
-        return game_prototype_add_component(prototype, desc);
+        return prototype_add_component(prototype, desc);
     }
     native_initial storage;
-    game_prototype_default initial;
+    prototype_default initial;
     if (initial_row(prototype, desc, &storage, &initial)) {
         return -1;
     }
     if (!initial.data) {
-        return game_prototype_add_component(prototype, desc);
+        return prototype_add_component(prototype, desc);
     }
-    const game_prototype_registry *original = prototype->registry;
-    game_prototype_registry registry = *original;
+    const prototype_registry *original = prototype->registry;
+    prototype_registry registry = *original;
     registry.defaults = &initial;
     registry.default_count = 1;
     prototype->registry = &registry;
-    int result = game_prototype_add_component(prototype, desc);
+    int result = prototype_add_component(prototype, desc);
     prototype->registry = original;
     return result;
 }
 
-av_value *game_prototype_native_defaults_value(
-    const game_prototype_registry *registry,
-    const ecs_component_desc *desc
-)
+av_value *prototype_native_defaults_value(const prototype_registry *registry, const ecs_component_desc *desc)
 {
-    game_prototype *prototype = game_prototype_new("ComponentDefaults");
+    prototype *prototype = prototype_new("ComponentDefaults");
     prototype->registry_storage = *registry;
-    int result = game_prototype_add_native_component(prototype, desc);
-    av_value *value = result
-                        ? NULL
-                        : game_prototype_component_value(prototype, desc->name);
-    game_prototype_free(prototype);
+    int result = prototype_add_native_component(prototype, desc);
+    av_value *value = result ? NULL : prototype_component_value(prototype, desc->name);
+    prototype_free(prototype);
     return value;
 }

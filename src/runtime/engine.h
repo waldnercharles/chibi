@@ -61,16 +61,16 @@ typedef void (*engine_render_fn)(void *user);
  * Inspection callbacks may observe but must not mutate during engine work. */
 typedef struct
 {
-    game_source_registry *sources;
-    game_entities *entities;
-    game_physics *physics;
-    game_physics3d *physics3d;
-    game_materials *materials;
-    game_particles *particles;
-    game_visibility *visibility;
-    game_audio *audio;
-    game_save *save;
-    game_ui *ui;
+    source_registry *sources;
+    entities *entities;
+    physics *physics;
+    physics3d *physics3d;
+    materials *materials;
+    particles *particles;
+    visibility *visibility;
+    audio *audio;
+    save *save;
+    ui *ui;
     bool input, rendering;
     void *context;
     void (*boundary)(void *, double now, double delta);
@@ -88,8 +88,8 @@ void engine_reset(engine *engine);
 /* Reset per-scene state for a scene change; time, input, recordings and
  * audio go on. */
 void engine_reset_scene(engine *engine);
-int engine_register_system(engine *engine, const game_schedule_desc *desc);
-const game_schedule *engine_system_schedule(const engine *engine);
+int engine_register_system(engine *engine, const schedule_desc *desc);
+const schedule *engine_system_schedule(const engine *engine);
 void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user);
 int engine_set_focus(engine *engine, engine_focus focus);
 engine_focus engine_get_focus(const engine *engine);
@@ -137,10 +137,10 @@ bool engine_replaying_input(const engine *engine);
 int engine_frame(engine *engine, double monotonic_time);
 /* Borrowed diagnostic from the last frame failure, or NULL after success. */
 const char *engine_error(const engine *engine);
-const game_visibility *engine_visibility(const engine *engine);
-game_audio *engine_audio(const engine *engine);
-game_ui *engine_ui(const engine *engine);
-const game_materials *engine_materials(const engine *engine);
+const visibility *engine_visibility(const engine *engine);
+audio *engine_audio(const engine *engine);
+ui *engine_ui(const engine *engine);
+const materials *engine_materials(const engine *engine);
 /* Whether an entity shows: it isn't hidden and, when its render state culls
  * it, the fog sees its 2D position. */
 bool engine_entity_visible(const engine *engine, ecs_world *world, ecs_entity entity);
@@ -153,9 +153,9 @@ void engine_set_behavior_profiling(engine *engine, bool enabled);
 /* Where presentation draws the entity: its global transform, moved by the
  * physics interpolation of the nearest body at or above it. engine may be NULL,
  * which draws the exact world transform, propagated or not. */
-GameGlobalTransform2D engine_render_transform(const engine *, const ecs_world *, ecs_entity);
+GlobalTransform2D engine_render_transform(const engine *, const ecs_world *, ecs_entity);
 /* The same for a GlobalTransform3D, moved with the nearest 3D body at or above
  * the entity. */
-GameGlobalTransform3D engine_render_transform_3d(const engine *, const ecs_world *, ecs_entity);
+GlobalTransform3D engine_render_transform_3d(const engine *, const ecs_world *, ecs_entity);
 
 #endif

@@ -38,12 +38,12 @@ static material_chunk debris_chunk(fluid_vec position, fluid_vec velocity, float
 TEST_CASE(debris_preparation_scratch)
 {
     ecs_world *world = ecs_world_new();
-    game_materials *owners[2] = { game_materials_new(world, NULL, NULL),
-                                  game_materials_new(world, NULL, NULL) };
+    materials *owners[2] = { materials_new(world, NULL, NULL),
+                             materials_new(world, NULL, NULL) };
     material_debris *reference = material_debris_new(4);
     material_chunk initial = debris_chunk((fluid_vec){ 0, 8 }, (fluid_vec){ 0 }, 0);
     for (int owner = 0; owner < 2; owner++) {
-        game_materials *materials = owners[owner];
+        materials *materials = owners[owner];
         materials->debris = material_debris_new(4);
         materials->fluid = material_fluid_new(10, 2);
         material_fluid_set_reaction(materials->fluid, (fluid_reaction){ .ignition = 1, .burn_rate = 2 });
@@ -91,7 +91,7 @@ TEST_CASE(debris_preparation_scratch)
         expected = material_debris_chunks(reference, &count);
         REQUIRE(actual[0].velocity.y == expected[0].velocity.y);
         REQUIRE(actual[0].position.y == expected[0].position.y);
-        game_materials_reset(materials);
+        materials_reset(materials);
         REQUIRE(materials->debris_blasts == storage && acap(storage) == capacity);
         REQUIRE(!acount(materials->debris_blasts) && !acount(materials->debris_tiles));
         material_debris_add(materials->debris, initial);
@@ -100,9 +100,9 @@ TEST_CASE(debris_preparation_scratch)
         REQUIRE(count == 1 && actual[0].velocity.y == 0);
     }
     REQUIRE(owners[0]->debris_blasts != owners[1]->debris_blasts);
-    game_materials_free(owners[0]);
+    materials_free(owners[0]);
     material_ecs_tick_debris(owners[1], 1.f / 60, NULL, 0, NULL, 0);
-    game_materials_free(owners[1]);
+    materials_free(owners[1]);
     material_debris_free(reference);
     ecs_world_free(world);
     return true;

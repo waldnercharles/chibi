@@ -200,7 +200,7 @@ TEST_CASE(scene3d_previews_update_ramps_without_recompiling)
     int material = publish(asset);
     render_scene3d *scene = render_scene3d_new();
     render_scene3d_post *post = render_scene3d_post_new();
-    GameEnvironment environment = game_environment_defaults();
+    Environment environment = environment_defaults();
     environment.bloom_strength = 0;
     REQUIRE(scene && post && render_scene3d_post_prepare(post, SIDE, SIDE, &environment));
     render_scene3d_camera camera = render_scene3d_camera_make(0, 0, 140, 140);

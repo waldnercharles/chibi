@@ -37,7 +37,7 @@ static void put(text *t, const char *s)
     t->buf[t->used] = '\0';
 }
 
-/* Lower snake case, so "Random Range" and "HasGameDash" read as calls. */
+/* Lower snake case, so "Random Range" and "HasDash" read as calls. */
 static void put_identifier(text *t, const char *name)
 {
     char out[128];
@@ -60,7 +60,7 @@ static void put_identifier(text *t, const char *name)
     put(t, out);
 }
 
-/* Component keys are namespaced, as in `GAME.GameMovement`. */
+/* Component keys are namespaced, as in `Movement`. */
 static const char *component_name(const char *key)
 {
     const char *dot = key ? strrchr(key, '.') : NULL;
@@ -275,7 +275,7 @@ static bool reads_self(const graph *g, const node *n, int pin)
 }
 
 /* Component reads, generated or configured, read like their bindings:
- * `Self.GameHealth.current`, and `has(Self.GameDash)` for presence. A read
+ * `Self.Health.current`, and `has(Self.Dash)` for presence. A read
  * of Self is a read callers may name; another entity's is spelled out. */
 static bool put_component(text *t, const graph *g, const node *n, int output)
 {

@@ -530,8 +530,8 @@ TEST_CASE(rotated_material_damage_rounding)
 TEST_CASE(fragment_glow_rounding)
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        REQUIRE(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     ecs_entity fragment = { 0 };
     for (int slot = 1; slot <= 179; slot++) {
@@ -541,18 +541,13 @@ TEST_CASE(fragment_glow_rounding)
     material_test_component(
         world,
         fragment,
-        &GAME_COMPONENT_GameFragmentGlow,
-        &(GameFragmentGlow){ .duration = 3.5f, .flicker = .35f }
+        &COMPONENT_FragmentGlow,
+        &(FragmentGlow){ .duration = 3.5f, .flicker = .35f }
     );
-    material_test_component(
-        world,
-        fragment,
-        &GAME_COMPONENT_GameMaterial,
-        &(GameMaterial){ .emission_multiplier = .5f }
-    );
+    material_test_component(world, fragment, &COMPONENT_Material, &(Material){ .emission_multiplier = .5f });
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
 
-    game_materials materials = { .world = world };
+    materials materials = { .world = world };
     asetlen(materials.records, (int)fragment.slot + 1);
     memset(materials.records, 0, acount(materials.records) * sizeof *materials.records);
     materials.records[fragment.slot] = (material_record){ .entity = fragment,
@@ -562,7 +557,7 @@ TEST_CASE(fragment_glow_rounding)
         material_ecs_fade_fragments(&materials, 1.f / 60);
     }
     REQUIRE(
-        material_float_bits(GAME_GameMaterial_get_const(world, fragment)->emission_multiplier) == 0x3e953602
+        material_float_bits(Material_get_const(world, fragment)->emission_multiplier) == 0x3e953602
     );
     afree(materials.records);
     ecs_world_free(world);
@@ -572,74 +567,64 @@ TEST_CASE(fragment_glow_rounding)
 TEST_CASE(small_hull_release)
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        REQUIRE(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_preview_world *live = game_preview_world_new(world);
+    preview_world *live = preview_world_new(world);
     ecs_entity config = ecs_world_create_entity(world),
                slab = ecs_world_create_entity(world);
     material_test_component(
         world,
         config,
-        &GAME_COMPONENT_MaterialDestructionWorld,
+        &COMPONENT_MaterialDestructionWorld,
         &(MaterialDestructionWorld){ 8 }
     );
     material_test_component(
         world,
         config,
-        &GAME_COMPONENT_MaterialFluidWorld,
+        &COMPONENT_MaterialFluidWorld,
         &(MaterialFluidWorld){ 64, 32, 10, 100 }
     );
-    material_test_component(world, slab, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+    material_test_component(world, slab, &COMPONENT_Transform, &(Transform){ 0 });
     material_test_component(
         world,
         slab,
-        &GAME_COMPONENT_GameCollider,
-        &(
-            GameCollider
-        ){ .shape = GAME_COLLIDER_BOX, .width = 20, .height = 20, .category = 8, .mask = 15 }
+        &COMPONENT_Collider,
+        &(Collider){ .shape = COLLIDER_BOX, .width = 20, .height = 20, .category = 8, .mask = 15 }
     );
     material_test_component(
         world,
         slab,
-        &GAME_COMPONENT_GameDestructible,
-        &(GameDestructible){ .cell_size = 1, .min_fragment_cells = 3, .release_fraction = .3f }
+        &COMPONENT_Destructible,
+        &(Destructible){ .cell_size = 1, .min_fragment_cells = 3, .release_fraction = .3f }
     );
-    material_test_component(world, slab, &GAME_COMPONENT_GameHealth, &(GameHealth){ 3, 3 });
-    material_test_component(world, slab, &GAME_COMPONENT_GameProjectile, &(GameProjectile){ 0 });
+    material_test_component(world, slab, &COMPONENT_Health, &(Health){ 3, 3 });
+    material_test_component(world, slab, &COMPONENT_Projectile, &(Projectile){ 0 });
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    REQUIRE(game_physics_tick(live->runtime->physics, 0) == 0);
-    REQUIRE(game_materials_mask(live->runtime->materials, slab)->count == 400);
-    game_materials_damage(live->runtime->materials, slab, (fluid_vec){ 10, 0 }, 9, 1, 0, (material_impact){ 0 });
-    REQUIRE(game_physics_tick(live->runtime->physics, 0) == 0);
-    REQUIRE(game_materials_mask(live->runtime->materials, slab)->count > 240);
-    REQUIRE(GAME_GameHealth_get_const(world, slab)->current == 3);
-    game_materials_damage(
-        live->runtime->materials,
-        slab,
-        (fluid_vec){ -10, 0 },
-        12,
-        1,
-        0,
-        (material_impact){ 0 }
-    );
-    REQUIRE(game_physics_tick(live->runtime->physics, 0) == 0);
-    REQUIRE(!game_materials_mask(live->runtime->materials, slab));
+    REQUIRE(physics_tick(live->runtime->physics, 0) == 0);
+    REQUIRE(materials_mask(live->runtime->materials, slab)->count == 400);
+    materials_damage(live->runtime->materials, slab, (fluid_vec){ 10, 0 }, 9, 1, 0, (material_impact){ 0 });
+    REQUIRE(physics_tick(live->runtime->physics, 0) == 0);
+    REQUIRE(materials_mask(live->runtime->materials, slab)->count > 240);
+    REQUIRE(Health_get_const(world, slab)->current == 3);
+    materials_damage(live->runtime->materials, slab, (fluid_vec){ -10, 0 }, 12, 1, 0, (material_impact){ 0 });
+    REQUIRE(physics_tick(live->runtime->physics, 0) == 0);
+    REQUIRE(!materials_mask(live->runtime->materials, slab));
     ecs_query query;
     ecs_entity entity;
-    ecs_component_id body = GAME_COMPONENT_GameBody.id;
+    ecs_component_id body = COMPONENT_Body.id;
     int fragments = 0;
     REQUIRE(ecs_query_begin(world, &query, &body, 1) == ECS_OK);
     while (ecs_query_next(&query, &entity)) {
-        REQUIRE(game_materials_is_fragment(live->runtime->materials, entity));
-        REQUIRE(!GAME_GameHealth_get_const(world, entity));
-        REQUIRE(!GAME_GameProjectile_get_const(world, entity));
-        REQUIRE(GAME_GameDestructible_get_const(world, entity)->release_fraction == 0);
+        REQUIRE(materials_is_fragment(live->runtime->materials, entity));
+        REQUIRE(!Health_get_const(world, entity));
+        REQUIRE(!Projectile_get_const(world, entity));
+        REQUIRE(Destructible_get_const(world, entity)->release_fraction == 0);
         fragments++;
     }
     ecs_query_end(&query);
     REQUIRE(fragments > 0);
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(world);
     return true;
 }

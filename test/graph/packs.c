@@ -33,7 +33,7 @@ void test_graph_packs_restore()
 type_catalog_pack test_graph_types(int index)
 {
     if (index) {
-        return GAME_TYPE_PACK;
+        return TYPE_PACK;
     }
     return (type_catalog_pack){ .types = SHADER_PACK.types,
                                 .type_count = SHADER_PACK.type_count,

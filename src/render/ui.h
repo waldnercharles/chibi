@@ -32,7 +32,7 @@ typedef struct
 /* What shown documents read and act on. Only `ecs` is required: without
  * `page` documents show on a bare page, without `model` as authored, without
  * `live` activations reach no one, and without `save` documents bind an
- * empty `save`. A preview shows documents their GameUi keeps hidden, as an
+ * empty `save`. A preview shows documents their Ui keeps hidden, as an
  * editor previews a dialog before anything opens it; `revealed` shows one
  * entity's the same way, as the editor shows the object selected in a scene
  * it edits, and `hidden` none of the entities an editor hides. */
@@ -40,9 +40,9 @@ typedef struct ui_world
 {
     ecs_world *ecs;
     const char *page; /* the scene's root ui document (ui_page) */
-    game_ui *model;
+    ui *model;
     render_ui_host host; /* typed event delivery; an empty record disables it */
-    game_save *save;
+    save *save;
     bool preview;
     uint64_t revealed; /* an entity (ecs_entity_to_u64), or 0 for none */
     render_skip hidden;
@@ -64,9 +64,9 @@ typedef struct ui_data
 {
     yyjson_mut_doc *doc;
     rml_data_model *model;
-    game_save *save; /* the one `save` shows */
+    save *save; /* the one `save` shows */
     uint64_t save_seen;
-    uint64_t data_seen; /* the game_ui revision the entities' variables show */
+    uint64_t data_seen; /* the ui revision the entities' variables show */
 } ui_data;
 
 /* Creates the model in `context` over `doc`, which it takes, adding `save`
@@ -76,7 +76,7 @@ void ui_data_init(ui_data *data, rml_context *context, yyjson_mut_doc *doc, rml_
 /* Saves in `save` the keys bindings changed since the last sync, and no
  * others, so a key the save changed meanwhile keeps its value; then shows its
  * keys when they changed, and the system's theme. */
-void ui_data_sync(ui_data *data, game_save *save);
+void ui_data_sync(ui_data *data, save *save);
 /* Sets `value` to a copy of `text` unless it holds it already; the JSON keeps
  * what it copies until it is freed, so views update values in place. */
 void ui_data_set_text(yyjson_mut_doc *doc, yyjson_mut_val *value, const char *text);
@@ -94,7 +94,7 @@ bool ui_data_put_number(yyjson_mut_val *object, const char *name, double number)
 void ui_data_bind_self(ui_data *data, rml_element *root, uint64_t entity);
 /* Shows what behaviors set with Set UI Data since the last call, changing
  * values in place so views keep their bindings. */
-void ui_data_show_entities(ui_data *data, const game_ui *model);
+void ui_data_show_entities(ui_data *data, const ui *model);
 /* Drops an entity's data, as when its document closes. */
 void ui_data_forget_entity(ui_data *data, uint64_t entity);
 void ui_data_free(ui_data *data);
@@ -196,7 +196,7 @@ bool ui_mount_pending(const ui_mount *mount);
  * false when there is none. */
 bool ui_mount_take(ui_mount *mount, ui_activation *out);
 /* Applies what behaviors set for `entity` in `model` since the last call. */
-void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);
+void ui_mount_apply(ui_mount *mount, ui *model, uint64_t entity);
 /* Records under #id, in dp, where each element with an id and a
  * data-event-scroll binding is scrolled, for Get UI Scroll. First it windows
  * the lists marked data-list-rows="<rows>" (ui/list.h, the List widget's
@@ -205,7 +205,7 @@ void ui_mount_apply(ui_mount *mount, game_ui *model, uint64_t entity);
  * ev.first and ev.count when the rows to show change, so a document's
  * data-event-window="emit('ShowRows', ev.first, ev.count)" reaches its
  * behaviors before they refresh. */
-void ui_mount_measure(ui_mount *mount, game_ui *model, uint64_t entity);
+void ui_mount_measure(ui_mount *mount, ui *model, uint64_t entity);
 
 /* ---------- Pages ---------- */
 
@@ -237,9 +237,9 @@ void ui_page_set_loader(ui_page *, const render_ui_loader *);
 
 /* ---------- Game host ---------- */
 
-/* Presents a world's GameUi documents over a canvas: one mount per entity in
- * the world's page, stacked by GameUi.order. It applies what behaviors set
- * in the game_ui model and sends activations to their entities. Its style
+/* Presents a world's Ui documents over a canvas: one mount per entity in
+ * the world's page, stacked by Ui.order. It applies what behaviors set
+ * in the ui model and sends activations to their entities. Its style
  * sheet is named "game-ui-<n>" (support/ui_style.h), and the page's elements
  * carry data-src as a mount's do. Game UI passes the pointer through except
  * over data-event-click elements and inputs, or where RCSS sets
@@ -258,7 +258,7 @@ void render_ui_free(render_ui *ui);
 /* The documents' data model, in which the host shows the variables it gave
  * render_ui_new. */
 ui_data *render_ui_data(render_ui *ui);
-/* Shows `world`'s GameUi documents. First it sends the documents' activations
+/* Shows `world`'s Ui documents. First it sends the documents' activations
  * to their entities' behaviors (ui_activation_send), an input's change
  * storing its value in the model under `#id` for Get UI Value, so what they
  * set shows in this update; they wait for the next while a spawn

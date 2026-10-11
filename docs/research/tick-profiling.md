@@ -17,7 +17,7 @@ The remaining world scans, scheduling, reaping, and callback overhead appear as
 unassigned time. These are monotonic elapsed intervals, not hardware CPU counters;
 preemption can increase them, and parallel intervals can overlap.
 
-`game_behavior_set_profiling(world, false)` disables the callbacks and clock reads.
+`behavior_set_profiling(world, false)` disables the callbacks and clock reads.
 Profiling retains its existing enabled-by-default behavior. The Arena benchmark
 accepts `CBLUEPRINT_BENCH_NO_PROFILE=1` for an uninstrumented comparison. Counters
 include successful dispatches, first execution intervals, and resumes.

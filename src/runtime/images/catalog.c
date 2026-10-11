@@ -44,6 +44,10 @@ void render_images_set_loader(render_image_loader value)
 {
     loader = value;
 }
+render_image_loader render_images_loader()
+{
+    return loader;
+}
 void render_images_set_backend(render_image_backend value)
 {
     backend = value;

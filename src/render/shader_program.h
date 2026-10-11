@@ -10,6 +10,9 @@ typedef enum
 {
     RENDER_PROGRAM_SCENE3D,
     RENDER_PROGRAM_SCENE3D_MESH, /* The lit pass for imported meshes. */
+    /* The lit passes while global illumination is on, reading its probes. */
+    RENDER_PROGRAM_SCENE3D_GI,
+    RENDER_PROGRAM_SCENE3D_MESH_GI,
     /* Masked materials in shadow passes, writing depth where they keep pixels. */
     RENDER_PROGRAM_SCENE3D_SHADOW,
     RENDER_PROGRAM_SCENE3D_MESH_SHADOW,
@@ -47,5 +50,8 @@ void render_programs_unbind2d(render_programs *programs, int program);
  * shader and hrc/pass.vert's pass mesh. */
 CF_Shader render_programs_bind_raster(render_programs *programs, int program, CF_Material material);
 char *render_shader_source(const char *name);
+/* A fragment pass over hrc/pass.vert's triangle, or no shader with an error
+ * naming the fragment source. */
+CF_Shader render_pass_shader(const char *fragment_name, char *error, size_t size);
 
 #endif

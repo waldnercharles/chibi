@@ -23,13 +23,25 @@ layout(set = 2, binding = SG_SKY_SPECULAR_BINDING) uniform samplerCube scene_sky
 layout(set = 2, binding = SG_SKY_BRDF_BINDING) uniform sampler2D scene_sky_brdf;
 // The screen's ambient occlusion, one texel per pixel, or one open texel.
 layout(set = 2, binding = SG_OCCLUSION_BINDING) uniform sampler2D scene_occlusion;
+#ifdef SG_GI_BINDING
+// The global illumination probes' light, where the material's images leave a
+// sampler for it (scene3d_gi.h).
+layout(set = 2, binding = SG_GI_BINDING) uniform sampler2D scene_gi;
+#endif
 // SDL's Vulkan backend binds only the first 4 KB of each uniform block, which
-// the scene's lights fill, so the sky's light has a block of its own. It takes
-// the name draw3d fills besides uniform_block: GLES matches blocks by name.
+// the scene's lights fill, so the sky's light and the probes' grid have a
+// block of their own. It takes the name draw3d fills besides uniform_block:
+// GLES matches blocks by name.
 layout(set = 3, binding = 1) uniform shd_uniforms {
     vec4 scene_sky_light;
     vec4 scene_sky_irradiance[9];
+#ifdef SG_GI_BINDING
+    vec4 scene_gi_grid[3];
+#endif
 };
+#ifdef SG_GI_BINDING
+#include "scene3d_gi.shd"
+#endif
 #endif
 const float PI = 3.141592653589793;
 // Taps per blocker search and per soft filter, and the widest radius of each,
@@ -315,28 +327,45 @@ vec3 sky_irradiance(vec3 n)
     return max(result, vec3(0));
 }
 
-// Light from the sky: its irradiance for diffuse, and its prefiltered cube at
-// the surface's roughness for specular, scaled by the split-sum terms.
+// The light arriving from every side, over pi, that a white surface facing
+// normal gives back: the probes' bounced light where global illumination
+// holds it, else the sky's irradiance, else the ambient colors, which blend
+// from ground below to sky above.
+vec3 diffuse_light(vec3 normal, vec3 view)
+{
+#ifdef SG_GI_BINDING
+    // Where no probe around the surface holds light, as when they all lie
+    // inside solids, it takes the light it would without them.
+    if (scene_gi_grid[1].w > 0.0) {
+        vec4 probes = gi_irradiance(v_world, normal, view);
+        if (probes.a > 0.0) return probes.rgb;
+    }
+#endif
+    if (scene_sky_light.x > 0.0) return sky_irradiance(sky_direction(normal)) / PI * scene_sky_light.x;
+    float sky = 0.5 + 0.5 * normal.y;
+    return mix(scene_ambient_ground.rgb, scene_ambient_sky.rgb, sky);
+}
+
+// A sky's light: the diffuse light, less what the surface reflects, and the
+// sky's prefiltered cube at the surface's roughness for specular, scaled by
+// the split-sum terms.
 // Reference: https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf
 vec3 sky_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 view)
 {
     float nv = max(dot(normal, view), 0.0001);
     vec2 split = textureLod(scene_sky_brdf, vec2(nv, roughness), 0.0).rg;
     vec3 reflectance = mix(vec3(0.04), base, metallic) * split.x + split.y;
-    vec3 diffuse = base * (1.0 - metallic) * (1.0 - reflectance) *
-                   sky_irradiance(sky_direction(normal)) / PI;
+    vec3 diffuse = base * (1.0 - metallic) * (1.0 - reflectance) * diffuse_light(normal, view);
     vec3 reflected = textureLod(scene_sky_specular, sky_direction(reflect(-view, normal)),
                                 roughness * scene_sky_light.y).rgb;
-    return (diffuse + reflected * reflectance) * scene_sky_light.x;
+    return diffuse + reflected * reflectance * scene_sky_light.x;
 }
 
-// A sky lights the scene in place of the ambient colors, which blend from
-// ground below to sky above.
+// A sky lights the scene in place of the ambient colors.
 vec3 ambient_light(vec3 base, float roughness, float metallic, vec3 normal, vec3 view)
 {
     if (scene_sky_light.x > 0.0) return sky_light(base, roughness, metallic, normal, view);
-    float sky = 0.5 + 0.5 * normal.y;
-    return base * (1.0 - metallic) * mix(scene_ambient_ground.rgb, scene_ambient_sky.rgb, sky);
+    return base * (1.0 - metallic) * diffuse_light(normal, view);
 }
 
 // The screen's ambient occlusion at this pixel.

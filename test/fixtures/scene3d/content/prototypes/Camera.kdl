@@ -1,0 +1,7 @@
+name "Camera"
+components {
+    GAME.GameCamera height=360.0 width=640.0
+    GAME.GameTransform3D {
+        scale x=1.0 y=1.0 z=1.0
+    }
+}

@@ -14,6 +14,8 @@
 float render_shader_distance_lipschitz(int index);
 
 int render_shader_find(const char *name);
+/* The name of the shader render_shader_find returned an id for. */
+const char *render_shader_name(int id);
 const char *render_shader_parameter_name(int index, int slot);
 int render_shader_parameter_width(int index, int slot);
 /* Copies applied public metadata. Strings are borrowed until the next model

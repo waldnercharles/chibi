@@ -47,6 +47,7 @@ void test_render_resources();
 void test_render_interior_border();
 void test_render_viewport_resize();
 void test_render_scene3d(bool gles);
+void test_render_scene3d_gi(bool gles);
 void test_device_controls();
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
@@ -204,8 +205,12 @@ int main(int argc, char **argv)
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
     interior_border = argc == 2 && !strcmp(argv[1], "--interior-border");
     viewport_resize = argc == 2 && !strcmp(argv[1], "--viewport-resize");
-    bool scene3d_gles = argc == 2 && !strcmp(argv[1], "--scene3d-gles");
-    scene3d = scene3d_gles || (argc == 2 && !strcmp(argv[1], "--scene3d"));
+    bool scene3d_gi = argc == 2 && (!strcmp(argv[1], "--scene3d-gi") ||
+                                    !strcmp(argv[1], "--scene3d-gi-gles"));
+    bool scene3d_gles = argc == 2 && (!strcmp(argv[1], "--scene3d-gles") ||
+                                      !strcmp(argv[1], "--scene3d-gi-gles"));
+    scene3d = scene3d_gi || scene3d_gles ||
+              (argc == 2 && !strcmp(argv[1], "--scene3d"));
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
     material_ramps = argc == 2 && !strcmp(argv[1], "--material-ramps");
     sdf_visibility = argc == 2 && !strcmp(argv[1], "--sdf-visibility");
@@ -259,7 +264,8 @@ int main(int argc, char **argv)
             "| --physics | --physics3d | --transforms "
             "| --render-resources | --interior-border | --viewport-resize | "
             "--sdf-visibility | "
-            "--scene3d | --scene3d-gles | --material-ramps | "
+            "--scene3d | --scene3d-gles | --scene3d-gi | --scene3d-gi-gles | "
+            "--material-ramps | "
             "--box3d | "
             "--sky-files | --mesh-files | --model-import | "
             "--persistent-store | "
@@ -350,6 +356,8 @@ int main(int argc, char **argv)
             test_render_interior_border();
         } else if (viewport_resize) {
             test_render_viewport_resize();
+        } else if (scene3d_gi) {
+            test_render_scene3d_gi(scene3d_gles);
         } else if (scene3d) {
             test_render_scene3d(scene3d_gles);
         } else {

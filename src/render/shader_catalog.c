@@ -68,6 +68,13 @@ int render_shader_find(const char *name)
     }
     return 0;
 }
+
+const char *render_shader_name(int id)
+{
+    assert(id > 0 && id <= acount(shader_catalog_assets));
+    return shader_catalog_assets[id - 1].name;
+}
+
 const char *render_shader_parameter_name(int index, int slot)
 {
     return index > 0 && index <= acount(shader_catalog_assets) && slot >= 0 && slot < 32

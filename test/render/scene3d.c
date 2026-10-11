@@ -2,6 +2,7 @@
 
 #include "execution/status.h"
 #include "render/fog.h"
+#include "render/gpu_timing.h"
 #include "render/mesh_surface.h"
 #include "render/scene3d_mesh_cache.h"
 #include "render/scene3d_parts.h"
@@ -3150,6 +3151,351 @@ TEST_CASE(ambient_occlusion_settings_must_be_valid)
     return true;
 }
 
+/* No light but what a test adds, bounced at the given quality. */
+static GameEnvironment bounced_environment(GameGlobalIllumination quality)
+{
+    GameEnvironment environment = unlit_environment();
+    environment.global_illumination = quality;
+    return environment;
+}
+
+/* The floor add_box_on_floor's box stands on. */
+static ecs_entity add_ground(unsigned color)
+{
+    return add_solid((CF_V3){ 0, -.1f, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 16, 16, .2f }, color);
+}
+
+static bool render_bounced(GameEnvironment environment, int quality)
+{
+    environment.global_illumination = quality;
+    return render(&environment) && !render_scene3d_error(scene3d)[0];
+}
+
+/* The middle of add_box_on_floor's box's face toward the eye, which the sun
+ * along x never reaches. */
+static const CF_V3 box_front = { 0, 1, 1 };
+
+/* The sunlit red floor lights the white box's face that the sun misses, in
+ * the floor's color. */
+TEST_CASE(global_illumination_bounces_light_between_solids)
+{
+    add_ground(0xff0000ffu);
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->intensity = 1;
+    sun->shadows = true;
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(box_front).colors.r == 0);
+    REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+    CF_Pixel face = pixel_at(box_front);
+    REQUIRE(face.colors.r > 20 && face.colors.r > face.colors.g + 15);
+    return true;
+}
+
+/* An emissive solid below the view lights the floor near it, where no light
+ * reaches. */
+TEST_CASE(global_illumination_carries_emitted_light)
+{
+    add_ground(0xffffffffu);
+    ecs_entity glow = add_solid(
+        (CF_V3){ 0, .5f, 4 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 4, 1, 1 },
+        0xffffffffu
+    );
+    GameMaterial *material = GAME_GameMaterial_get(world, glow);
+    material->emission_color = 0xff8000ffu;
+    material->emission_intensity = 4;
+    material->emission_multiplier = 1;
+    const CF_V3 near = { 0, 0, 1.5f };
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(near).colors.r == 0);
+    REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+    CF_Pixel floor = pixel_at(near);
+    REQUIRE(floor.colors.r > 10 && floor.colors.r > floor.colors.b + 5);
+    return true;
+}
+
+/* On open ground the probes give back the light the ambient colors give
+ * without them, the sky's above the horizon and the ground's below, at every
+ * quality. */
+TEST_CASE(global_illumination_keeps_open_ground_lit_as_the_ambient_colors)
+{
+    add_ground(0xffffffffu);
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    environment.ambient_sky = 0x80c0ffffu;
+    environment.ambient_ground = 0x402000ffu;
+    environment.ambient_intensity = .5f;
+    const CF_V3 spots[] = { { 0, 0, 0 }, { -2.2f, 0, -1.5f }, { 1.5f, 0, 1.2f } };
+    REQUIRE(render(&environment));
+    CF_Pixel ambient[3];
+    for (int i = 0; i < 3; i++) {
+        ambient[i] = pixel_at(spots[i]);
+    }
+    REQUIRE(ambient[0].colors.b > 60);
+    for (int quality = GAME_GLOBAL_ILLUMINATION_LOW;
+         quality <= GAME_GLOBAL_ILLUMINATION_HIGH;
+         quality++) {
+        REQUIRE(render_bounced(environment, quality));
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(distance(pixel_at(spots[i]), ambient[i]) <= 4);
+        }
+    }
+    return true;
+}
+
+/* Global illumination needs a known quality, and traces a bounded number of
+ * solids: here 342 Box Frames' 12 beams each. */
+TEST_CASE(global_illumination_settings_must_be_valid)
+{
+    add_box_on_floor();
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_HIGH + 1);
+    REQUIRE(!render(&environment));
+    REQUIRE(
+        strstr(render_scene3d_error(scene3d), "global illumination must be Off, Low, Medium or High")
+    );
+    for (int i = 0; i < 342; i++) {
+        add_solid_at(
+            (float)(i % 18),
+            (GameGeometry3D){ GAME_PRIMITIVE_BOX_FRAME, .5f, .5f, .5f, (float)(i / 18) },
+            0xffffffffu
+        );
+    }
+    environment.global_illumination = GAME_GLOBAL_ILLUMINATION_LOW;
+    REQUIRE(!render(&environment));
+    REQUIRE(strstr(render_scene3d_error(scene3d), "at most 4096 solids; the scene has 4106"));
+    return true;
+}
+
+/* Starts the renders over, as a new renderer. */
+static void renew()
+{
+    render_scene3d_free(scene3d);
+    scene3d = render_scene3d_new();
+    render_scene3d_set_size(scene3d, SIDE, SIDE);
+}
+
+/* A shadowed light inside its bulb still lights the red floor, which
+ * bounces it onto the white box's face that the light misses. */
+TEST_CASE(global_illumination_lights_pass_their_bulbs)
+{
+    add_ground(0xff0000ffu);
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    const CF_V3 bulb = { 0, 3, .5f };
+    add_solid(bulb, (GameGeometry3D){ GAME_PRIMITIVE_SPHERE, .4f, .4f, .4f }, 0xffffffffu);
+    ecs_entity lamp = add_lamp(bulb, 4, 8);
+    GAME_GamePointLight_get(world, lamp)->shadows = true;
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    REQUIRE(render(&environment));
+    REQUIRE(pixel_at(box_front).colors.r == 0);
+    REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+    CF_Pixel face = pixel_at(box_front);
+    REQUIRE(face.colors.r > 20 && face.colors.r > face.colors.g + 15);
+    return true;
+}
+
+/* The light on the white box's face after eight frames. */
+static int box_front_after_frames(GameEnvironment *environment)
+{
+    for (int i = 0; i < 8; i++) {
+        bool drawn = render(environment);
+        assert(drawn);
+    }
+    return pixel_at(box_front).colors.r;
+}
+
+/* A shadowed light inside a Box Frame lights the red floor through it, as in
+ * the lit pass: the frame's box holds the light, so its beams cast no shadow
+ * from it, and the floor bounces about as much light onto the white box's
+ * face as without the frame. Shadowing beams would take nearly half. */
+TEST_CASE(global_illumination_lights_pass_frames_around_them)
+{
+    add_ground(0xff0000ffu);
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    const CF_V3 bulb = { 0, 3, .5f };
+    ecs_entity lamp = add_lamp(bulb, 4, 8);
+    GAME_GamePointLight_get(world, lamp)->shadows = true;
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_LOW);
+    int open = box_front_after_frames(&environment);
+    REQUIRE(open > 20);
+    add_solid(bulb, (GameGeometry3D){ GAME_PRIMITIVE_BOX_FRAME, 1.2f, 1.2f, 1.2f }, 0xffffffffu);
+    renew();
+    int framed = box_front_after_frames(&environment);
+    REQUIRE(framed * 10 > open * 9);
+    return true;
+}
+
+/* Two small triangles at opposite corners of the unit box, whose bounds are
+ * the whole box. */
+static render_mesh_asset corner_triangles()
+{
+    const CF_V3 corners[] = { { -.5f, -.5f, -.5f }, { -.5f, -.5f, -.4f },
+                              { -.4f, -.5f, -.5f }, { .5f, .5f, .5f },
+                              { .4f, .5f, .5f },    { .5f, .5f, .4f } };
+    render_mesh_asset mesh = { .min = { -.5f, -.5f, -.5f }, .max = { .5f, .5f, .5f } };
+    for (int i = 0; i < 6; i++) {
+        render_mesh_surface_vertex vertex = { .position = corners[i],
+                                              .normal = { 0, 1, 0 } };
+        apush(mesh.vertices, vertex);
+        apush(mesh.indices, i);
+    }
+    return mesh;
+}
+
+/* Inside a hollow mesh's box, the sunlit red floor still lights the white
+ * box's face that the sun misses: rays leave the mesh's box they start in,
+ * as the mesh within it may be open. */
+TEST_CASE(global_illumination_sees_out_of_mesh_boxes)
+{
+    render_mesh_asset mesh = corner_triangles();
+    publish_mesh(&mesh);
+    add_ground(0xff0000ffu);
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    import_mesh(
+        add_solid((CF_V3){ 0, 2, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 12, 12, 4 }, 0xffffffffu)
+    );
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->intensity = 1;
+    sun->shadows = true;
+    REQUIRE(
+        render_bounced(bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF), GAME_GLOBAL_ILLUMINATION_LOW)
+    );
+    CF_Pixel face = pixel_at(box_front);
+    REQUIRE(face.colors.r > 20 && face.colors.r > face.colors.g + 15);
+    return true;
+}
+
+/* Where no probe holds light, as when they all lie inside a solid around
+ * the view, surfaces take the ambient light they have without them, from
+ * the frame a solid moves around the probes as from the first. The pebble
+ * keeps the probes' grid around both places the solid stands. */
+TEST_CASE(global_illumination_falls_back_where_no_probe_holds_light)
+{
+    add_ground(0xffffffffu);
+    ecs_entity around = add_solid(
+        (CF_V3){ 0 },
+        (GameGeometry3D){ GAME_PRIMITIVE_BOX, 40, 40, 40 },
+        0xffffffffu
+    );
+    add_solid((CF_V3){ -25, 0, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, .2f, .2f }, 0xffffffffu);
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    environment.ambient_sky = 0x80c0ffffu;
+    environment.ambient_ground = 0x402000ffu;
+    environment.ambient_intensity = .5f;
+    REQUIRE(render(&environment));
+    CF_Pixel ambient = pixel_at((CF_V3){ 0 });
+    REQUIRE(ambient.colors.b > 60);
+    REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+    REQUIRE(distance(pixel_at((CF_V3){ 0 }), ambient) <= 1);
+    GAME_GameTransform_get(world, around)->x = 30;
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+    }
+    REQUIRE(distance(pixel_at((CF_V3){ 0 }), ambient) > 1);
+    GAME_GameTransform_get(world, around)->x = 0;
+    REQUIRE(render_bounced(environment, GAME_GLOBAL_ILLUMINATION_LOW));
+    REQUIRE(distance(pixel_at((CF_V3){ 0 }), ambient) <= 1);
+    return true;
+}
+
+/* A floor of 144 tiles bounces the light one floor box does: rays find each
+ * tile through the BVH, whose nodes take more than a row of their texture. */
+TEST_CASE(global_illumination_finds_every_solid_through_its_bvh)
+{
+    ecs_entity ground = add_ground(0xff0000ffu);
+    add_solid_at(0, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 2, 2, 2, 1 }, 0xffffffffu);
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->intensity = 1;
+    sun->shadows = true;
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_LOW);
+    REQUIRE(render(&environment));
+    CF_Pixel whole = pixel_at(box_front);
+    REQUIRE(whole.colors.r > 20);
+    assert(ecs_world_destroy_entity(world, ground) == ECS_OK);
+    const float tile = 16.0f / 12;
+    for (int i = 0; i < 144; i++) {
+        CF_V3 center = { ((float)(i % 12) + .5f) * tile - 8,
+                         -.1f,
+                         ((float)(i / 12) + .5f) * tile - 8 };
+        add_solid(center, (GameGeometry3D){ GAME_PRIMITIVE_BOX, tile, tile, .2f }, 0xff0000ffu);
+    }
+    renew();
+    REQUIRE(render(&environment));
+    REQUIRE(distance(pixel_at(box_front), whole) <= 2);
+    return true;
+}
+
+/* A white roof over white ground, with the sun along x: the ground under
+ * the roof takes light mostly from the roof's underside, which takes it from
+ * the sunlit ground, so it needs two bounces. Looks under the roof. */
+static void add_roof()
+{
+    add_ground(0xffffffffu);
+    add_solid((CF_V3){ 0, 1.6f, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, 4, 4, .2f }, 0xffffffffu);
+    GameDirectionalLight *sun = add_sun(0xffffffffu, (CF_V3){ 1, -1, 0 });
+    sun->intensity = 1;
+    sun->shadows = true;
+    look((CF_V3){ 0, .5f, 6 }, (CF_V3){ 0, .3f, 0 }, (CF_V3){ 0, 1, 0 });
+}
+
+/* The ground's light under the roof after `frames` more frames. */
+static int under_roof(GameEnvironment *environment, int frames)
+{
+    for (int i = 0; i < frames; i++) {
+        bool drawn = render(environment);
+        assert(drawn);
+    }
+    return pixel_at((CF_V3){ 0 }).colors.r;
+}
+
+/* Light gathers over frames, a bounce further each frame, and stays when a
+ * new solid refits the probes. Turning it off forgets it. */
+TEST_CASE(global_illumination_gathers_light_over_frames)
+{
+    add_roof();
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_LOW);
+    REQUIRE(under_roof(&environment, 1) < 5);
+    int gathered = under_roof(&environment, 7);
+    REQUIRE(gathered > 30);
+    add_solid((CF_V3){ 12, 0, 0 }, (GameGeometry3D){ GAME_PRIMITIVE_BOX, .2f, .2f, .2f }, 0xffffffffu);
+    REQUIRE(under_roof(&environment, 1) > gathered / 2);
+    environment.global_illumination = GAME_GLOBAL_ILLUMINATION_OFF;
+    under_roof(&environment, 1);
+    environment.global_illumination = GAME_GLOBAL_ILLUMINATION_LOW;
+    REQUIRE(under_roof(&environment, 1) < 5);
+    return true;
+}
+
+static bool timed(const char *name)
+{
+    int count;
+    const render_gpu_pass *passes = render_gpu_timing_passes(&count);
+    for (int i = 0; i < count; i++) {
+        if (!strcmp(passes[i].name, name)) {
+            return passes[i].count == 1;
+        }
+    }
+    return false;
+}
+
+/* Pass timing charges the scene's uploads, the shadow maps, ambient
+ * occlusion and global illumination each frame to passes of their own. */
+TEST_CASE(gpu_timing_names_the_3d_passes)
+{
+    add_shadow_scene()->shadows = true;
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_LOW);
+    environment.occlusion = GAME_OCCLUSION_LOW;
+    render_gpu_timing_enable(RENDER_GPU_TIMING_SYNC, false);
+    render_gpu_timing_start();
+    bool drawn = render(&environment);
+    bool named = timed("3D setup") && timed("3D shadow maps") &&
+                 timed("3D ambient occlusion") && timed("3D global illumination");
+    render_gpu_timing_enable(RENDER_GPU_TIMING_OFF, false);
+    REQUIRE(drawn && named);
+    return true;
+}
+
 #if CHIBI_TEST_MATERIAL_GRAPHS
 /* The two-unit box at the origin, drawn with surface material `name`. */
 static ecs_entity add_surface_box(const char *name)
@@ -3584,6 +3930,29 @@ TEST_CASE(occlusion_dims_only_ambient_light)
     GAME_GameShader_get(world, box)->material = names[2];
     REQUIRE(render(&environment));
     REQUIRE(open.colors.r > 150 && distance(top(), open) <= 1);
+    return true;
+}
+
+/* The probes' atlas takes the place of a 3D surface's eighth image, so with
+ * global illumination on a material reading eight is an error. One reading
+ * seven and a ramp table fills all 16 samplers and draws. */
+TEST_CASE(global_illumination_leaves_surfaces_seven_images)
+{
+    REQUIRE(test_register_images("Seven images", 7, true));
+    REQUIRE(test_register_images("Eight images", 8, false));
+    ecs_entity box = add_surface_box("Eight images");
+    add_sun(0xffffffffu, (CF_V3){ 0, -2, 0 });
+    GameEnvironment environment = bounced_environment(GAME_GLOBAL_ILLUMINATION_OFF);
+    REQUIRE(render(&environment));
+    environment.global_illumination = GAME_GLOBAL_ILLUMINATION_LOW;
+    REQUIRE(!render(&environment));
+    REQUIRE(
+        strstr(render_scene3d_error(scene3d), "Eight images reads 8 images; with global illumination on, a 3D surface reads at most 7.")
+    );
+    GAME_GameShader_get(world, box)->material = "Seven images";
+    REQUIRE(render(&environment));
+    REQUIRE(!render_scene3d_error(scene3d)[0]);
+    REQUIRE(top().colors.r > 150);
     return true;
 }
 
@@ -4096,7 +4465,9 @@ TEST_CASE(imported_normal_maps_tilt_toward_the_top_of_their_image)
 #endif
 #endif
 
-void test_render_scene3d(bool gles)
+/* Opens the hidden app the cases render in, on GLES or the default
+ * backend. */
+static void open_app(bool gles)
 {
     /* GLES needs a display, such as Xvfb's; SDL's offscreen driver has none. */
     if (!gles) {
@@ -4110,6 +4481,17 @@ void test_render_scene3d(bool gles)
     assert(!cf_is_error(made));
     app_scene_renderer_initialize();
     pu_setup(setup, teardown);
+}
+
+static void close_app()
+{
+    pu_clear_setup();
+    cf_destroy_app();
+}
+
+void test_render_scene3d(bool gles)
+{
+    open_app(gles);
     RUN_TEST_CASE(scene_draws_without_a_valid_rhythm_clock);
     RUN_TEST_CASE(cameras_look_along_their_transform3d);
     RUN_TEST_CASE(camera_field_of_view_and_clips_shape_the_projection);
@@ -4213,6 +4595,27 @@ void test_render_scene3d(bool gles)
     RUN_TEST_CASE(imported_normal_maps_tilt_toward_the_top_of_their_image);
 #endif
 #endif
-    pu_clear_setup();
-    cf_destroy_app();
+    close_app();
+}
+
+/* Global illumination's cases, apart from the rest so that each selector
+ * compiles and runs within the time limit with a cold shader cache. */
+void test_render_scene3d_gi(bool gles)
+{
+    open_app(gles);
+    RUN_TEST_CASE(global_illumination_bounces_light_between_solids);
+    RUN_TEST_CASE(global_illumination_carries_emitted_light);
+    RUN_TEST_CASE(global_illumination_keeps_open_ground_lit_as_the_ambient_colors);
+    RUN_TEST_CASE(global_illumination_settings_must_be_valid);
+    RUN_TEST_CASE(global_illumination_lights_pass_their_bulbs);
+    RUN_TEST_CASE(global_illumination_lights_pass_frames_around_them);
+    RUN_TEST_CASE(global_illumination_sees_out_of_mesh_boxes);
+    RUN_TEST_CASE(global_illumination_falls_back_where_no_probe_holds_light);
+    RUN_TEST_CASE(global_illumination_finds_every_solid_through_its_bvh);
+    RUN_TEST_CASE(global_illumination_gathers_light_over_frames);
+    RUN_TEST_CASE(gpu_timing_names_the_3d_passes);
+#if CHIBI_TEST_MATERIAL_GRAPHS
+    RUN_TEST_CASE(global_illumination_leaves_surfaces_seven_images);
+#endif
+    close_app();
 }

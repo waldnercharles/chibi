@@ -1,8 +1,10 @@
 #include "render/scene3d.h"
 
 #include "platform/cute.h"
+#include "render/gpu_timing.h"
 #include "render/material.h"
 #include "render/scene3d_geometry.h"
+#include "render/scene3d_gi.h"
 #include "render/scene3d_influence.h"
 #include "render/scene3d_light_shadow.h"
 #include "render/scene3d_mesh_cache.h"
@@ -19,6 +21,7 @@
 #include "runtime/rhythm.h"
 #include "runtime/task_pool.h"
 #include "runtime/transform_propagation.h"
+#include "runtime/visual_parts.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -78,15 +81,19 @@ typedef struct
      * with a material row only when masked. Kept only while a light casts
      * shadows. */
     scene3d_draw *casters;
+    /* Opaque solids in and out of the view, for global illumination's rays.
+     * Kept only while it is on. */
+    render_scene3d_gi_solid *solids;
     render_shader_parameter_cache *cache;
     char binding_error[256];
     unsigned worker;
-    bool shadows;
+    bool shadows, traced;
 } draw_buffer;
 
 struct render_scene3d
 {
     render_programs *programs, *mesh_programs;
+    render_programs *gi_programs, *mesh_gi_programs;
     render_programs *shadow_programs, *mesh_shadow_programs;
     render_scene3d_mesh_cache *meshes;
     render_influences *influences;
@@ -104,6 +111,7 @@ struct render_scene3d
     render_scene3d_shadow *shadow;
     render_scene3d_light_shadow *light_shadow;
     render_scene3d_occlusion *occlusion;
+    render_scene3d_gi *gi;
     int width, height; /* The canvas later draws fill, in pixels. */
     CF_M4x4 *shadow_boxes;
     int *near_boxes; /* Boxes that can cast into the current light. */
@@ -154,6 +162,8 @@ render_scene3d *render_scene3d_new()
     scene3d->pool = game_task_pool_acquire();
     scene3d->programs = render_programs_new(RENDER_PROGRAM_SCENE3D);
     scene3d->mesh_programs = render_programs_new(RENDER_PROGRAM_SCENE3D_MESH);
+    scene3d->gi_programs = render_programs_new(RENDER_PROGRAM_SCENE3D_GI);
+    scene3d->mesh_gi_programs = render_programs_new(RENDER_PROGRAM_SCENE3D_MESH_GI);
     scene3d->shadow_programs = render_programs_new(RENDER_PROGRAM_SCENE3D_SHADOW);
     scene3d->mesh_shadow_programs = render_programs_new(RENDER_PROGRAM_SCENE3D_MESH_SHADOW);
     scene3d->meshes = render_scene3d_mesh_cache_new();
@@ -161,6 +171,7 @@ render_scene3d *render_scene3d_new()
     scene3d->shadow = render_scene3d_shadow_new();
     scene3d->light_shadow = render_scene3d_light_shadow_new();
     scene3d->occlusion = render_scene3d_occlusion_new();
+    scene3d->gi = render_scene3d_gi_new();
     scene3d->trails = render_scene3d_trails_new();
     scene3d->sky = render_scene3d_sky_new();
     scene3d->emitters = game_particle_emitters_new(NULL);
@@ -202,6 +213,7 @@ void render_scene3d_reset(render_scene3d *scene3d)
     render_influences_reset(scene3d->influences);
     render_scene3d_trails_reset(scene3d->trails);
     game_particle_emitters_reset(scene3d->emitters);
+    render_scene3d_gi_reset(scene3d->gi);
 }
 
 void render_scene3d_free(render_scene3d *scene3d)
@@ -211,6 +223,8 @@ void render_scene3d_free(render_scene3d *scene3d)
     }
     render_programs_free(scene3d->programs);
     render_programs_free(scene3d->mesh_programs);
+    render_programs_free(scene3d->gi_programs);
+    render_programs_free(scene3d->mesh_gi_programs);
     render_programs_free(scene3d->shadow_programs);
     render_programs_free(scene3d->mesh_shadow_programs);
     render_scene3d_mesh_cache_free(scene3d->meshes);
@@ -218,6 +232,7 @@ void render_scene3d_free(render_scene3d *scene3d)
     render_scene3d_shadow_free(scene3d->shadow);
     render_scene3d_light_shadow_free(scene3d->light_shadow);
     render_scene3d_occlusion_free(scene3d->occlusion);
+    render_scene3d_gi_free(scene3d->gi);
     afree(scene3d->shadow_boxes);
     afree(scene3d->near_boxes);
     render_scene3d_trails_free(scene3d->trails);
@@ -238,6 +253,7 @@ void render_scene3d_free(render_scene3d *scene3d)
         afree(scene3d->chunks[i].pixels);
         afree(scene3d->chunks[i].draws);
         afree(scene3d->chunks[i].casters);
+        afree(scene3d->chunks[i].solids);
         render_shader_parameter_cache_free(scene3d->chunks[i].cache);
     }
     afree(scene3d->chunks);
@@ -246,6 +262,7 @@ void render_scene3d_free(render_scene3d *scene3d)
     afree(scene3d->buffer.pixels);
     afree(scene3d->buffer.draws);
     afree(scene3d->buffer.casters);
+    afree(scene3d->buffer.solids);
     free(scene3d);
 }
 
@@ -375,6 +392,54 @@ static void append_draw(
     apush(buffer->draws, draw);
 }
 
+/* Keeps an opaque solid, in the view or out of it, for global illumination's
+ * rays: a mesh as the box around it, a Box Frame as its beams. Light passes
+ * translucent and masked solids and a Triangle Outline's thin strip. Returns
+ * whether it kept the solid. */
+static bool trace_solid(
+    draw_buffer *buffer,
+    const scene3d_solid *solid,
+    int material,
+    const game_material_coefficients *color
+)
+{
+    if (!buffer->traced || transparent_surface(material, color) ||
+        masked_material(material) ||
+        solid->shape.primitive == GAME_PRIMITIVE_TRIANGLE_OUTLINE) {
+        return false;
+    }
+    render_scene3d_gi_solid traced = {
+        .primitive = solid->shape.primitive,
+        .albedo = { color->scene[0], color->scene[1], color->scene[2] },
+        .emission = { color->emission[0], color->emission[1], color->emission[2] },
+        .box = solid_box(solid),
+    };
+    if (solid->mesh) {
+        traced.frame = render_scene3d_mesh_box(solid->mesh, solid->frame);
+        traced.primitive = GAME_PRIMITIVE_BOX;
+        traced.bounds = true;
+        apush(buffer->solids, traced);
+        return true;
+    }
+    const GameGeometry3D *shape = &solid->shape;
+    if (shape->primitive != GAME_PRIMITIVE_BOX_FRAME) {
+        traced.frame = cf_mul_m4(
+            solid->frame,
+            cf_m4_scale((CF_V3){ shape->width, shape->height, shape->depth })
+        );
+        apush(buffer->solids, traced);
+        return true;
+    }
+    traced.primitive = GAME_PRIMITIVE_BOX;
+    for (int i = 0; i < game_visual_part_count(shape->primitive); i++) {
+        game_visual_part part = game_visual_part_at(*shape, i);
+        CF_M4x4 beam = cf_mul_m4(cf_m4_translate(part.center), cf_m4_scale(part.dimensions));
+        traced.frame = cf_mul_m4(solid->frame, beam);
+        apush(buffer->solids, traced);
+    }
+    return true;
+}
+
 /* Keeps a masked solid outside the view that may cast a shadow into it, with
  * the material row its shadow passes read. */
 static void append_masked_caster(
@@ -422,6 +487,7 @@ static void collect_mesh(
         view_projection
     );
     int groups = acount(mesh->groups);
+    bool traced = false;
     for (int i = 0; i < (groups ? groups : 1); i++) {
         const render_mesh_group *group = groups ? &mesh->groups[i] : NULL;
         scene3d_solid solid = *whole;
@@ -435,6 +501,7 @@ static void collect_mesh(
         if (!surface_material(buffer, name, &id)) {
             return;
         }
+        traced = traced || trace_solid(buffer, whole, id, color);
         scene3d_draw draw = { .solid = solid, .material = id };
         if (!visible && !casts(buffer, id, color)) {
             continue;
@@ -545,6 +612,7 @@ static void collect_entity(
                                            .width = visual->part.dimensions.x,
                                            .height = visual->part.dimensions.y,
                                            .depth = visual->part.dimensions.z } };
+        trace_solid(buffer, &solid, id, &color);
         scene3d_draw draw = { .solid = solid, .material = id };
         bool visible = render_scene3d_visual_visible(visual, view_projection);
         if (!visible && !casts(buffer, id, &color)) {
@@ -1248,6 +1316,39 @@ static bool draw_occlusion(render_scene3d *scene3d, const render_scene3d_camera 
     return true;
 }
 
+static_assert(LIGHT_LIMIT == RENDER_SCENE3D_GI_LIGHTS, "The probes read the lit pass's lights");
+
+/* Traces global illumination's rays through the opaque solids, lit as the
+ * lit pass lights surfaces. */
+static bool update_gi(render_scene3d *scene3d)
+{
+    if (!render_scene3d_gi_active(scene3d->gi)) {
+        return true;
+    }
+    render_scene3d_gi_lighting lighting = {
+        .sun_direction = scene3d->sun_direction,
+        .sun_color = scene3d->sun_color,
+        .ambient_sky = scene3d->ambient_sky,
+        .ambient_ground = scene3d->ambient_ground,
+        .sky_light = render_scene3d_sky_light(scene3d->sky),
+        .sky_irradiance = render_scene3d_sky_irradiance(scene3d->sky),
+        .light_positions = scene3d->light_positions,
+        .light_colors = scene3d->light_colors,
+        .light_cones = scene3d->light_cones,
+        .light_count = scene3d->light_count,
+        .shadowed_lights = scene3d->shadowed_lights,
+        .sun_shadows = scene3d->sun_shadows,
+    };
+    return render_scene3d_gi_update(
+        scene3d->gi,
+        scene3d->buffer.solids,
+        acount(scene3d->buffer.solids),
+        &lighting,
+        scene3d->binding_error,
+        sizeof scene3d->binding_error
+    );
+}
+
 /* The sky and trails go between opaque and translucent surfaces: the sky
  * fills what opaque ones left open, and translucent ones blend over both. */
 static void draw_behind_translucents(render_scene3d *scene3d, const render_scene3d_camera *camera)
@@ -1256,9 +1357,14 @@ static void draw_behind_translucents(render_scene3d *scene3d, const render_scene
     render_scene3d_trails_draw(scene3d->trails, camera);
 }
 
-/* The programs that draw a solid: the mesh pass's for an imported mesh. */
+/* The programs that draw a solid: the mesh pass's for an imported mesh, and
+ * those reading the probes while global illumination is on, so scenes without
+ * it compile none of its code. */
 static render_programs *solid_programs(const render_scene3d *scene3d, const scene3d_solid *solid)
 {
+    if (render_scene3d_gi_active(scene3d->gi)) {
+        return solid->mesh ? scene3d->mesh_gi_programs : scene3d->gi_programs;
+    }
     return solid->mesh ? scene3d->mesh_programs : scene3d->programs;
 }
 
@@ -1314,12 +1420,38 @@ static bool prepare_solid(render_scene3d *scene3d, scene3d_draw *draw)
     return upload(scene3d, &draw->solid);
 }
 
+/* Whether a material leaves the lit pass room for global illumination's
+ * probes, which take the place of its last image (shader_program.c). Sets a
+ * binding error when it does not. */
+static bool leaves_room_for_probes(render_scene3d *scene3d, int material)
+{
+    render_shader_set set = { 0 };
+    if (!render_scene3d_gi_active(scene3d->gi) ||
+        !render_shader_set_add(&set, material, NULL) ||
+        set.count < RENDER_SHADER_IMAGE_MAX) {
+        return true;
+    }
+    snprintf(
+        scene3d->binding_error,
+        sizeof scene3d->binding_error,
+        "%s reads %d images; with global illumination on, a 3D surface reads "
+        "at most %d.",
+        render_shader_name(material),
+        set.count,
+        RENDER_SHADER_IMAGE_MAX - 1
+    );
+    return false;
+}
+
 /* Compiles the programs each draw and caster needs and uploads their meshes.
  * Returns false with a binding error. */
 static bool prepare_draws(render_scene3d *scene3d)
 {
     for (int i = 0; i < acount(scene3d->buffer.draws); i++) {
         scene3d_draw *draw = &scene3d->buffer.draws[i];
+        if (!leaves_room_for_probes(scene3d, draw->material)) {
+            return false;
+        }
         draw->program = prepare_program(scene3d, solid_programs(scene3d, &draw->solid), draw->material);
         if (!draw->program || !prepare_solid(scene3d, draw)) {
             return false;
@@ -1392,6 +1524,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     cf_draw3d_set_uniform("scene_light_cones", scene3d->light_cones, CF_UNIFORM_TYPE_FLOAT4, LIGHT_LIMIT);
     render_influences_bind(scene3d->influences);
     cf_draw3d_set_texture("scene_parameters", scene3d->parameters);
+    render_gpu_timing_mark("3D setup");
     int receivers = casts_shadows(scene3d) ? collect_shadow_boxes(scene3d) : 0;
     int cascades = fit_shadow(scene3d, camera, receivers);
     scene3d->work.cascades = cascades;
@@ -1401,12 +1534,17 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
         cf_draw3d_set_texture("scene_parameters", (CF_Texture){ 0 });
         return false;
     }
+    render_gpu_timing_mark("3D shadow maps");
     see_from((CF_V4){ camera->eye.x, camera->eye.y, camera->eye.z, 1 });
-    if (!draw_occlusion(scene3d, camera)) {
+    bool occluded = draw_occlusion(scene3d, camera);
+    render_gpu_timing_mark("3D ambient occlusion");
+    if (!occluded || !update_gi(scene3d)) {
         cf_draw3d_set_texture("scene_parameters", (CF_Texture){ 0 });
         return false;
     }
+    render_gpu_timing_mark("3D global illumination");
     render_scene3d_occlusion_bind(scene3d->occlusion, true);
+    render_scene3d_gi_bind(scene3d->gi);
     render_scene3d_shadow_bind(scene3d->shadow, cascades);
     render_scene3d_light_shadow_bind(scene3d->light_shadow);
     render_scene3d_sky_bind(scene3d->sky);
@@ -1449,6 +1587,7 @@ static bool submit(render_scene3d *scene3d, const render_scene3d_camera *camera,
     render_scene3d_light_shadow_unbind();
     render_scene3d_sky_unbind();
     render_scene3d_occlusion_unbind();
+    render_scene3d_gi_unbind();
     cf_draw3d_pop_view();
     cf_draw3d_pop_projection();
     if (!transparent) {
@@ -1477,9 +1616,11 @@ static void collect_range(int start, int end, uint32_t worker, void *user)
         aclear(buffer->pixels);
         aclear(buffer->draws);
         aclear(buffer->casters);
+        aclear(buffer->solids);
         buffer->binding_error[0] = 0;
         buffer->worker = worker;
         buffer->shadows = casts_shadows(scene3d);
+        buffer->traced = render_scene3d_gi_active(scene3d->gi);
         int limit = (c + 1) * DRAW_CHUNK;
         if (limit > acount(scene3d->entities)) {
             limit = acount(scene3d->entities);
@@ -1505,6 +1646,7 @@ static void collect_geometry(
     if (scene3d->parallel_disabled || count < DRAW_CHUNK * 2 || tasks->workers == 1) {
         scene3d->buffer.binding_error[0] = 0;
         scene3d->buffer.shadows = casts_shadows(scene3d);
+        scene3d->buffer.traced = render_scene3d_gi_active(scene3d->gi);
         for (int i = 0; i < count; i++) {
             collect_entity(&scene3d->buffer, world, scene3d->entities[i], camera, runtime);
         }
@@ -1547,6 +1689,9 @@ static void collect_geometry(
             scene3d_draw caster = buffer->casters[i];
             caster.row += caster.masked ? rows : 0;
             apush(scene3d->buffer.casters, caster);
+        }
+        for (int i = 0; i < acount(buffer->solids); i++) {
+            apush(scene3d->buffer.solids, buffer->solids[i]);
         }
         int size = acount(buffer->pixels);
         if (size) {
@@ -1593,6 +1738,7 @@ bool render_scene3d_draw(
     aclear(scene3d->buffer.pixels);
     aclear(scene3d->buffer.draws);
     aclear(scene3d->buffer.casters);
+    aclear(scene3d->buffer.solids);
     render_scene3d_mesh_cache_prune(scene3d->meshes);
     /* Rhythm is an optional material input; without a valid clock it rests at zero. */
     game_beat beat = { 0 };
@@ -1613,6 +1759,12 @@ bool render_scene3d_draw(
             environment,
             scene3d->width,
             scene3d->height,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        ) ||
+        !render_scene3d_gi_prepare(
+            scene3d->gi,
+            environment,
             scene3d->binding_error,
             sizeof scene3d->binding_error
         )) {
@@ -1702,6 +1854,12 @@ bool render_scene3d_preview_material(
             &environment,
             0,
             0,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        ) ||
+        !render_scene3d_gi_prepare(
+            scene3d->gi,
+            &environment,
             scene3d->binding_error,
             sizeof scene3d->binding_error
         )) {

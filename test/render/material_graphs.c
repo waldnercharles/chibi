@@ -4,9 +4,12 @@
 #include "graph/authoring/graph_edit.h"
 #include "graph/modeling/model_compile.h"
 #include "graph/shader/shader_graph.h"
+#include "runtime/images/catalog.h"
+#include "support/xalloc.h"
 #include "types/catalog.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
 type_catalog_pack test_material_graph_types()
@@ -135,6 +138,62 @@ shader_normal_convention test_normal_convention(const char *label)
     }
     assert(false);
     return SHADER_NORMAL_DIRECTX;
+}
+
+/* Reads every image as one white pixel. */
+static bool white_pixel(void *, const char *, shader_image_view *view, char *, size_t)
+{
+    unsigned char *pixel = xmalloc(4);
+    memset(pixel, 255, 4);
+    *view = (shader_image_view){ .pixels = pixel, .width = 1, .height = 1 };
+    return true;
+}
+
+static node *image_node(graph *g, int index)
+{
+    node *image = graph_add_node(g, pack_node("Shader Image Texture"));
+    char key[64];
+    snprintf(key, sizeof key, "content/images/test-%d.png", index);
+    pin_value value = { .type = PIN_STR, .str = key };
+    assert(image && !graph_set_pin_default(g, image, 0, SHADER_IMAGE_INPUT_IMAGE, &value));
+    return image;
+}
+
+/* A Color Ramp of white, read a quarter of the way along. */
+static node *white_ramp(graph *g)
+{
+    node *ramp = graph_add_node(g, pack_node("Shader Color Ramp"));
+    shader_ramp_stop stops[] = { { .position = 0, .color = { 1, 1, 1, 1 } },
+                                 { .position = 1, .color = { 1, 1, 1, 1 } } };
+    pin_value factor = { .type = PIN_F32, .f = .25f };
+    bool built = ramp && shader_node_ramp_set(g, ramp, stops, 2) &&
+                 !graph_set_pin_default(g, ramp, 0, 0, &factor);
+    return built ? ramp : NULL;
+}
+
+bool test_register_images(const char *name, int count, bool ramp)
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    node *sum = image_node(g, 0);
+    bool built = true;
+    for (int i = 1; i < count + ramp; i++) {
+        node *term = i < count ? image_node(g, i) : white_ramp(g);
+        node *add = graph_add_node(g, pack_node("Shader Add"));
+        built = built && term && add &&
+                !graph_set_pin_type(g, add, 0, 0, PIN_STRUCT, "ShaderVec3") &&
+                !graph_set_pin_type(g, add, 0, 1, PIN_STRUCT, "ShaderVec3") &&
+                !graph_set_pin_type(g, add, 1, 0, PIN_STRUCT, "ShaderVec3") &&
+                !graph_connect_data(g, sum, 0, add, 0) &&
+                !graph_connect_data(g, term, 0, add, 1);
+        sum = add;
+    }
+    render_image_loader loader = render_images_loader();
+    render_images_set_loader((render_image_loader){ .read = white_pixel });
+    built = publish(material, built && !graph_connect_data(g, sum, 0, output, 0));
+    render_images_set_loader(loader);
+    return built;
 }
 
 bool test_register_occlusion(const char *name, float occlusion)

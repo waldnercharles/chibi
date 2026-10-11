@@ -607,6 +607,16 @@ typedef enum
     GAME_OCCLUSION_HIGH NODE_NAME("High"),
 } GameOcclusion;
 
+/* How many probes and rays global illumination spends on the 3D scene's
+ * bounced light. Off lights it with the ambient colors or sky alone. */
+typedef enum
+{
+    GAME_GLOBAL_ILLUMINATION_OFF NODE_NAME("Off"),
+    GAME_GLOBAL_ILLUMINATION_LOW NODE_NAME("Low"),
+    GAME_GLOBAL_ILLUMINATION_MEDIUM NODE_NAME("Medium"),
+    GAME_GLOBAL_ILLUMINATION_HIGH NODE_NAME("High"),
+} GameGlobalIllumination;
+
 /* Scene-wide display settings. Exposure is in stops; bloom radius is a fraction
  * of viewport height. Zero strength disables bloom. The 3D ambient light blends
  * from the ground color below to the sky color above; colors are 0xRRGGBBAA in
@@ -621,7 +631,10 @@ typedef enum
  * -20 to 20. Occlusion darkens the ambient and sky light where nearby 3D
  * surfaces hide the sky from each other, such as creases and the ground
  * beneath objects, searching up to occlusion radius world units, which must
- * be positive while it is on; direct light is left alone. */
+ * be positive while it is on; direct light is left alone. Global
+ * illumination replaces the ambient and sky light on 3D surfaces with the
+ * light that reaches them from the scene's opaque solids, lights, emissive
+ * surfaces and sky, bounced between surfaces. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
 {
     float exposure NODE_UNIT("EV");
@@ -639,6 +652,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameEnvironment)
     float sky_exposure NODE_UNIT("EV");
     GameOcclusion occlusion;
     float occlusion_radius NODE_UNIT("u");
+    GameGlobalIllumination global_illumination;
 }
 GameEnvironment;
 

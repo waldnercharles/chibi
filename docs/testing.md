@@ -971,17 +971,18 @@ to black, bloom clamps at the image edge, its radius follows the viewport height
 and crosses blur levels smoothly, outputs take sizes down to one pixel,
 processing keeps the caller's transform, projection, scissor and viewport, and
 invalid settings keep the last output. It passes 59 assertions in 1.5 seconds.
-`scene3d-shapes` selects thirteen hidden-app 128x128 cases of the 3D path's
+`scene3d-shapes` selects fourteen hidden-app 128x128 cases of the 3D path's
 primitive solids lit by the Environment's ambient light. Overhead cameras
 center and map the ground, picks find the nearest solid of every primitive,
 turned bounds fit, frame and clip at the near plane, and flat triangles turn
-about their area center. Every solid primitive draws, nearer solids win in any
-order, parallel geometry draws exactly what serial geometry does for 1,537
+about their area center. Every solid primitive draws, 256 small boxes, prisms
+or octahedra each become 256 instances in at most four draws, nearer solids win
+in any order, parallel geometry draws exactly what serial geometry does for 1,537
 actors, fitted bounds frame what draws, prisms and octahedra draw and pick
 their outline at eight headings and from below, eight tetrahedron parts
 compose an octahedron, polygons' notches and holes stay empty in both the mesh
 and picks, and a box frame's twelve part entities match the frame. It passes
-1,067 assertions in 2 seconds. Run both like `interior-border`; they also run
+1,076 assertions in 2 seconds. Run both like `interior-border`; they also run
 with `detect_leaks=0` for llvmpipe's 112 bytes.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops

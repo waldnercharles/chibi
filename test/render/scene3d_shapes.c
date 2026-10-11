@@ -676,6 +676,35 @@ TEST_CASE(box_frame_parts_match_their_frame)
     return true;
 }
 
+TEST_CASE(repeated_primitives_share_instanced_draws)
+{
+    render_scene3d_camera camera = front_camera();
+    const int repeated[] = { GAME_PRIMITIVE_BOX,
+                             GAME_PRIMITIVE_TRIANGLE_PRISM,
+                             GAME_PRIMITIVE_OCTAHEDRON };
+    for (int p = 0; p < (int)(sizeof repeated / sizeof *repeated); p++) {
+        fresh_world();
+        for (int i = 0; i < 256; i++) {
+            ecs_entity entity = ecs_world_create_entity(world);
+            add(entity,
+                &GAME_COMPONENT_GameTransform,
+                &(GameTransform){ (i % 16 - 7.5f) * .3f, 0 });
+            add(entity,
+                &GAME_COMPONENT_GameGeometry3D,
+                &(GameGeometry3D){ repeated[p], .2f, .2f, .2f, (i / 16 - 7.5f) * .3f });
+            add(entity,
+                &GAME_COMPONENT_GameMaterial,
+                &(GameMaterial){ .scene = 0x4080ffffu });
+        }
+        cf_draw3d_stats(); /* Reading resets the counts, so earlier draws drop out. */
+        REQUIRE(render(&camera, first));
+        CF_DrawStats3d stats = cf_draw3d_stats();
+        REQUIRE(stats.instances == 256);
+        REQUIRE(stats.commands <= 4);
+    }
+    return true;
+}
+
 void test_scene3d_shapes()
 {
     test_open_hidden_app("scene3d shapes", SIDE, SIDE);
@@ -685,6 +714,7 @@ void test_scene3d_shapes()
     RUN_TEST_CASE(turned_bounds_fit_frame_and_clip);
     RUN_TEST_CASE(flat_triangles_turn_about_their_area_center);
     RUN_TEST_CASE(every_solid_primitive_draws);
+    RUN_TEST_CASE(repeated_primitives_share_instanced_draws);
     RUN_TEST_CASE(nearer_solids_win_in_any_order);
     RUN_TEST_CASE(parallel_geometry_draws_what_serial_geometry_does);
     RUN_TEST_CASE(fitted_bounds_frame_what_draws);

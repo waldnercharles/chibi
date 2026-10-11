@@ -733,6 +733,10 @@ static void kdl_complete(
             }
         }
         for (int i = 0; i < registry_node_count(); i++) {
+            const ecs_component_desc *component = registry_node(i)->component;
+            if (component && component->key && strcmp(component->key, component->name)) {
+                offer_name(out, prefix, component->key, "component type", CODE_COMPLETE_TYPE);
+            }
             offer_name(out, prefix, registry_node(i)->name, "graph node", CODE_COMPLETE_FUNCTION);
         }
     }

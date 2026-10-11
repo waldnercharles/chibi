@@ -545,6 +545,14 @@ TEST_CASE(asset_source_resolves_canonical_component_identities)
         free(hover);
         asset_source_free(source);
     }
+    /* Typing a component offers the key scene files name it by. */
+    const char *draft = "components {\n GAME.GameT\n}\n";
+    asset_source *source = asset_source_parse(draft);
+    asset_source_completions choices;
+    asset_source_complete(source, (int)(strstr(draft, "GameT") - draft) + 5, "Scene.kdl", NULL, 0, &choices);
+    REQUIRE(has_completion(&choices, "GAME.GameTransform"));
+    asset_source_completions_free(&choices);
+    asset_source_free(source);
     return true;
 }
 

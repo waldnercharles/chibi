@@ -1269,10 +1269,12 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * light by their facing and those heights. Light passes over a prop that
      * absorbs nothing where the prop is lower than the light. */
     GameHRCSurfaceMode surface_mode;
-    /* Screen-plane reach in project units for Depth thickness mode. */
+    /* Screen-plane reach in project units for Depth thickness mode. A solid
+     * that absorbs nothing shades all its HRC light by the lights within
+     * reach, so it should reach the lights that matter. */
     float surface_depth_radius;
-    /* Gain of Depth light added to solids that absorb light. Zero disables
-     * Depth thickness. */
+    /* Gain of Depth light added to solids that absorb light, and of Depth
+     * highlights. Zero disables Depth thickness. */
     float surface_depth_gain;
     /* Source sampling budget; all levels preserve integrated emission. */
     GameHRCDepthQuality surface_depth_quality;

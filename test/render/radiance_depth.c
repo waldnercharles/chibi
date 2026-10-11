@@ -510,7 +510,7 @@ TEST_CASE(perspective_views_take_depth_light)
     return true;
 }
 
-/* Depth light added on top of HRC's own light, tone mapped by AgX at half
+/* Depth thickness over HRC's own light, tone mapped by AgX at half
  * intensity. */
 static GameHRC2D fill_lighting()
 {
@@ -548,15 +548,18 @@ static bool open_light(int scene, float tilt, float edge, GameHRC2D lighting, fl
 }
 
 /* At gain zero Depth thickness runs no passes. Each step of gain adds the
- * same light to a receiver that absorbs light, while a flat one that absorbs
- * nothing keeps HRC's light as it is at any gain. */
+ * same light to a receiver with half edge light that absorbs light, as much
+ * at a Material's full absorption of 1 as when opaque, while a flat one that
+ * absorbs nothing keeps HRC's light as it is at any gain. */
 TEST_CASE(depth_gain_adds_only_to_closed_receivers)
 {
+    static const float absorption[] = { 0, 1, 20 };
     GameHRC2D lighting = fill_lighting();
-    for (int closed = 0; closed < 2; closed++) {
-        open_scene(OPEN, 0, 1);
-        for (int p = 0; closed && p < PIXELS; p++) {
-            data[SOURCE][p][3] = data[SOURCE][p][0] > 0 ? 0 : 20;
+    float steps[3][3];
+    for (int a = 0; a < 3; a++) {
+        open_scene(OPEN, 0, .5f);
+        for (int p = 0; p < PIXELS; p++) {
+            data[SOURCE][p][3] = data[SOURCE][p][0] > 0 ? 0 : absorption[a];
         }
         float base[3], gains[3][3];
         lighting.surface_radius = 0;
@@ -568,14 +571,18 @@ TEST_CASE(depth_gain_adds_only_to_closed_receivers)
             render_surface_work work = render_radiance_surface_work(radiance);
             REQUIRE(gain || (!work.cells && !work.candidates && !work.visibility_taps));
         }
+        bool closed = absorption[a] > 0;
         REQUIRE(closed ? gains[1][0] > gains[0][0] + .00001f : base[0] > .00001f);
         for (int c = 0; c < 3; c++) {
             REQUIRE(fabsf(gains[0][c] - base[c]) < .001f);
-            float step = closed ? gains[1][c] - gains[0][c] : 0;
-            float tolerance = fmaxf(.001f, closed ? fabsf(step) * .03f : base[c] * .01f);
-            REQUIRE(fabsf(gains[1][c] - gains[0][c] - step) < tolerance);
-            REQUIRE(fabsf(gains[2][c] - gains[0][c] - 2 * step) < tolerance);
+            steps[a][c] = closed ? gains[1][c] - gains[0][c] : 0;
+            float tolerance = fmaxf(.001f, closed ? fabsf(steps[a][c]) * .03f : base[c] * .01f);
+            REQUIRE(fabsf(gains[1][c] - gains[0][c] - steps[a][c]) < tolerance);
+            REQUIRE(fabsf(gains[2][c] - gains[0][c] - 2 * steps[a][c]) < tolerance);
         }
+    }
+    for (int c = 0; c < 3; c++) {
+        REQUIRE(fabsf(steps[1][c] - steps[2][c]) < fmaxf(.001f, steps[2][c] * .03f));
     }
     return true;
 }
@@ -593,16 +600,20 @@ TEST_CASE(open_receivers_shade_hrc_light_by_facing_and_height)
     REQUIRE(open_light(OPEN, .6f, 1, lighting, &toward));
     REQUIRE(open_light(OPEN, -.6f, 1, lighting, &away));
     REQUIRE(open_light(CLEAR, 0, 1, lighting, &shadowed));
-    /* Filtered like Depth light, the shadow doesn't show its sampling. */
-    float wobble = 0, mean = 0;
+    /* Filtered like Depth light, the shadow doesn't show its sampling: its
+     * light bends smoothly across the span the slab shadows. */
+    float bend = 0, mean = 0;
     for (int y = 10; y < 22; y++) {
-        for (int x = 4; x < 18; x++) {
-            float red = test_half(halves[4 * (y * SIDE + x)]);
+        const uint16_t *row = halves + 4 * y * SIDE;
+        for (int x = 12; x < 18; x++) {
+            float red = test_half(row[4 * x]);
             mean += red;
-            wobble += fabsf(test_half(halves[4 * (y * SIDE + x + 1)]) - red);
+            float left = test_half(row[4 * (x - 1)]);
+            float right = test_half(row[4 * (x + 1)]);
+            bend += fabsf(left - 2 * red + right);
         }
     }
-    REQUIRE(wobble < mean * .08f);
+    REQUIRE(bend < mean * .035f);
     REQUIRE(open_light(OPEN, 0, 0, lighting, &plain));
     REQUIRE(open_light(CLEAR, 0, 0, lighting, &plain_shadowed));
     REQUIRE(flat > .001f && fabsf(flat - plain) < flat * .01f);

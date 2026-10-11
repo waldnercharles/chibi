@@ -28,6 +28,10 @@ CHIBI_GPU_SELECTOR("--radiance")
  * inputs written by hand, in a hidden 32x32 app drawing 32x32 and 128x128
  * targets, with readback. */
 CHIBI_GPU_SELECTOR("--radiance-depth")
+/* How the material raster samples shapes in a hidden 65x49 app: emission
+ * energy on the pixel grid, tile order, tile groups and merged borders, with
+ * readback. */
+CHIBI_GPU_SELECTOR("--material-sampling")
 /* The 2D scene renderer's lighting cases in a hidden 64x64 app, with
  * readback. */
 CHIBI_GPU_SELECTOR("--scene2d")

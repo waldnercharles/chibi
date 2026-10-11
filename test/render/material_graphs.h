@@ -54,6 +54,12 @@ bool test_register_tint(const char *name, const float tint[3]);
 /* A shape graph of a circle of `radius` at the origin, with half extents of
  * twice its radius. */
 bool test_register_circle_shape(const char *name, float radius);
+/* A lit material whose base color, emission, roughness and height are its
+ * "Tint" and "Glow" vector and "Roughness" and "Height" scalar parameters. */
+bool test_register_parameters(const char *name);
+/* A shape graph of a circle at the origin whose radius is its "Radius"
+ * parameter, with half extents of `bounds`. */
+bool test_register_radius_shape(const char *name, float bounds);
 /* A model graph of one sphere of `radius` at the origin. */
 bool test_register_model_sphere(const char *name, float radius);
 

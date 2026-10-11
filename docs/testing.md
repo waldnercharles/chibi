@@ -46,11 +46,10 @@ build.
 that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 `radiance`, `radiance-depth`, `radiance-surface`, `radiance-horizons4`,
-`radiance-horizons8`, `material-pixels`, `scene2d`, `scene3d`, `scene3d-gles`
-and `material-ramps` render through a hidden window, which needs a display and
-a GPU driver the CI job does not set up, so they stay out of the group; run
-them with
-`python3 tools/test_policy.py tool <name>`.
+`radiance-horizons8`, `material-pixels`, `material-sampling`, `scene2d`,
+`scene3d`, `scene3d-gles` and `material-ramps` render through a hidden window,
+which needs a display and a GPU driver the CI job does not set up, so they stay
+out of the group; run them with `python3 tools/test_policy.py tool <name>`.
 
 CI runs the build, both groups and `make test-tools` on Linux and macOS. On
 Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
@@ -540,7 +539,10 @@ extend and filter passes alone against CPU references. The cases pin the
 lighting they were calibrated with (finest grid, no ambient, intensity 7.5)
 rather than the authoring defaults. On lavapipe it passes 645 assertions in
 24.3 seconds, 30.5 seconds with an empty shader cache. HRC's view layout and
-lighting normalization run without a GPU in `render-resources`.
+lighting normalization run without a GPU in `render-resources`, and so do
+material borders: rectangles that cover exactly the cells near empty space,
+their build scratch, and their cache's hits, replacement, eviction, limits and
+a crowd of 20,000 masks.
 `radiance-depth` lights Depth thickness from material inputs written by hand,
 in a hidden 32 x 32 app with 128 x 128 targets for light that travels farther,
 from the same pinned lighting but with color at half resolution: slabs that
@@ -551,6 +553,12 @@ pass alone must take each quadrant's light, find crests past gaps and stay dark
 without light in reach, and surface gather light must restart when the view
 turns. Its cases share one HRC, since a new one compiles all of HRC's shaders.
 It passes 1811 assertions in 9.3 seconds, 18.4 with an empty shader cache.
+`material-sampling` draws shapes into the material raster alone in a hidden
+65 x 49 app: small circles must emit their area wherever they land on the pixel
+grid and at twice the resolution, overlapping tiles must keep their draw order,
+a moving ring of boxes in one tile group must keep its emission, and every
+merged border must write the five targets its cells do. It passes 1330
+assertions in 2.4 seconds, 3.2 with an empty shader cache.
 `radiance-surface` lights solids through relief materials in its own hidden
 128 x 128 app and from the pinned lighting of `radiance`:
 edge light only on a silhouette's lit side, relief facing the light and below
@@ -570,12 +578,13 @@ per process.
 128 x 128 app: Set Material Parameter overriding one entity until its world is
 cleared, a world-space material following its layout frame, a graph material's
 parameter through the raster and its own fragment program inside a shape
-graph's circle, and fluids landing where game Y points down, gas joining and
+graph's circle, mixed batches of graph boxes, plain boxes and meshes uploading
+only what they draw, and fluids landing where game Y points down, gas joining and
 parting, crisp unlit liquid edges, burning cores, plumes without holes, fading
 parcels and wisps along their velocity. Gas and liquid must take HRC's light
 and the wall's shadow with one and three traced cascades, a refracting liquid
 must bend only the background behind it, and a crystal must mirror the scene
-beside it. It passes 382 assertions in 9.8 seconds, 16.9 with an empty shader
+beside it. It passes 537 assertions in 10.9 seconds, 20.6 with an empty shader
 cache.
 These selectors need the material graphs of the main build.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other

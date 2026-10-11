@@ -10,10 +10,12 @@
 #include "render/shader_fragment.h"
 #include "render/shader_parameters.h"
 #include "render/shader_program.h"
+#include "runtime/component_catalog.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,8 +30,8 @@ enum
     SMALL = 16
 };
 
-static const char *const TINT = "Tinted material",
-                         *const CIRCLE = "Circle shape";
+static const char *const TINT = "Tinted material", *const CIRCLE = "Circle shape",
+                         *const PARAMETERS = "Parameter material", *const RADIUS = "Radius shape";
 
 /* ---------- Material parameters, without drawing ---------- */
 
@@ -117,10 +119,10 @@ static bool read_raster(CF_Texture texture, int side)
     return test_read_texture(texture, halves, side * side);
 }
 
-/* A channel of pixel (x, y) of the side x side texture read last. */
-static float texel(int side, int x, int y, int channel)
+/* A channel of pixel (x, y) of the texture read last, `width` pixels wide. */
+static float texel(int width, int x, int y, int channel)
 {
-    return test_half(halves[4 * (y * side + x) + channel]);
+    return test_half(halves[4 * (y * width + x) + channel]);
 }
 
 /* A world-space material samples each pixel's world x: unframed, where the
@@ -222,6 +224,214 @@ TEST_CASE(graph_materials_draw_their_parameters_in_their_shapes)
     bool read = program && draw_fragment(fragment, program, &entity, drawn);
     render_programs_free(fragment);
     REQUIRE(read && drawn[8 * SMALL + 8].colors.b > 200 && drawn[0].colors.a < 5);
+    return true;
+}
+
+/* The components of a mesh actor. */
+enum
+{
+    MESH_PARTS = 5
+};
+static const ecs_component_desc *const MESH_COMPONENTS[MESH_PARTS] = {
+    &GAME_COMPONENT_GameGeometry3D,
+    &GAME_COMPONENT_GameVisualTransform,
+    &GAME_COMPONENT_GameOrientation,
+    &GAME_COMPONENT_GameMeshSurface2D,
+    &GAME_COMPONENT_GameMaterial
+};
+
+/* A mesh actor: a blue box 12 units square and 2 tall, drawn as a 2D surface. */
+static ecs_entity mesh_actor(ecs_world *world)
+{
+    ecs_entity e = ecs_world_create_entity(world);
+    GameGeometry3D geometry = { .primitive = GAME_PRIMITIVE_BOX,
+                                .width = 12,
+                                .depth = 12,
+                                .height = 2 };
+    GameVisualTransform visual = { .scale = 1 };
+    GameOrientation orientation = { 0 };
+    GameMeshSurface2D surface = { true };
+    GameMaterial material = { .scene = 0x0000ffff,
+                              .albedo = 0x0000ffff,
+                              .absorption = 1,
+                              .edge_light = 1 };
+    const void *values[MESH_PARTS] = { &geometry, &visual, &orientation, &surface, &material };
+    for (int i = 0; i < MESH_PARTS; i++) {
+        assert(ecs_world_record_add(world, e, MESH_COMPONENTS[i]->id, values[i], 0) == ECS_OK);
+    }
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    return e;
+}
+
+/* An opaque box of `color` at x, 20 units square. */
+static render_material_entity plain_box(float x, const float color[3])
+{
+    return (render_material_entity){ .inv_rot = { 1, 0, 0, 1 },
+                                     .pos = { x, 0 },
+                                     .extent = { 13, 13 },
+                                     .shape_type = RENDER_SHAPE_BOX,
+                                     .aa = 1,
+                                     .points = { 10, 10 },
+                                     .scene = { color[0], color[1], color[2], 1 },
+                                     .albedo = { color[0], color[1], color[2], 1 },
+                                     .absorption = { 1, 1, 1, 1 } };
+}
+
+/* A box at x drawn by the parameter material with `material` and cut to the
+ * radius shape with `shape`, both prepared. */
+static render_material_entity graph_box(float x, const char *material, const char *shape)
+{
+    render_material_entity e = plain_box(x, (float[3]){ 1, 1, 1 });
+    int ids[2] = { render_shader_find(PARAMETERS), render_shader_find(RADIUS) };
+    e.reserved[0] = (float)ids[0];
+    e.reserved[1] = (float)ids[1];
+    render_shader_parameters(ids[0], NULL, (ecs_entity){ 0 }, material, e.material_parameters);
+    render_shader_parameters(ids[1], NULL, (ecs_entity){ 0 }, shape, e.shape_parameters);
+    return e;
+}
+
+/* A marker that draws mesh actor `actor` at its place in the layers. */
+static render_material_entity mesh_marker(int actor)
+{
+    return (render_material_entity){ .shape_type = RENDER_SHAPE_MESH,
+                                     .points = { (float)actor } };
+}
+
+enum
+{
+    UPLOAD_WIDTH = 96,
+    UPLOAD_HEIGHT = 64
+};
+
+/* Draws `count` layers and both mesh actors of `world` into the raster, one
+ * world unit per pixel with world x 0 at pixel 48 and y 0 at row 32. */
+static bool draw_mixed(
+    const render_material_entity *layers,
+    int count,
+    ecs_world *world,
+    const render_mesh_material_actor *actors
+)
+{
+    render_view_2d view = { .min_x = -48,
+                            .max_y = 32,
+                            .width = UPLOAD_WIDTH,
+                            .height = UPLOAD_HEIGHT };
+    cf_app_update(NULL);
+    bool drawn = render_material_raster_draw_mixed(raster, layers, count, view, world, actors, 2, 0);
+    cf_app_draw_onto_screen(false);
+    return drawn;
+}
+
+/* Whether the last draw uploaded `entities` records and `parameters` blocks
+ * of graph parameters, and nothing more. */
+static bool uploaded(int entities, int parameters)
+{
+    render_material_upload_work work = render_material_raster_upload_work(raster);
+    size_t record = offsetof(render_material_entity, material_parameters),
+           block = offsetof(render_material_entity, layer) - record;
+    return work.entity_records == entities && work.parameter_blocks == parameters &&
+           work.entity_bytes == (size_t)entities * record &&
+           work.parameter_bytes == (size_t)parameters * block &&
+           work.parameter_buffer_bytes >= work.parameter_bytes;
+}
+
+/* Whether pixel (x, y) of `texture` holds `expected`, to within .03. */
+static bool holds(CF_Texture texture, int x, int y, const float expected[4])
+{
+    REQUIRE(test_read_texture(texture, halves, UPLOAD_WIDTH * UPLOAD_HEIGHT));
+    for (int c = 0; c < 4; c++) {
+        float value = texel(UPLOAD_WIDTH, x, y, c);
+        REQUIRE(isfinite(value) && fabsf(value - expected[c]) <= .03f);
+    }
+    return true;
+}
+
+/* Mesh markers split the raster's batches in draw order but upload nothing.
+ * Graph materials between them keep their own parameters in all five
+ * targets, and draws of markers, plain boxes or nothing upload only what they
+ * hold. */
+TEST_CASE(mixed_batches_upload_only_what_they_draw)
+{
+    REQUIRE(test_register_parameters(PARAMETERS) && test_register_radius_shape(RADIUS, 12));
+    const char *materials[] = { "(array)Tint 0 1 0\n"
+                                "(array)Glow 0.1 0.2 0.3\n"
+                                "Roughness 0.2\n"
+                                "Height 2\n",
+                                "(array)Tint 0.7 0 0.6\n"
+                                "(array)Glow 0.4 0.5 0.6\n"
+                                "Roughness 0.4\n"
+                                "Height 4\n",
+                                "(array)Tint 0 0.5 1\n"
+                                "(array)Glow 0.7 0.8 0.9\n"
+                                "Roughness 0.6\n"
+                                "Height 6\n" };
+    const char *shapes[] = { "Radius 10\n", "Radius 10\n", "Radius 6\n" };
+    shader_error error = { 0 };
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(
+            render_shader_parameters_validate(render_shader_find(PARAMETERS), materials[i], &error)
+        );
+        REQUIRE(
+            render_shader_parameters_validate(render_shader_find(RADIUS), shapes[i], &error)
+        );
+    }
+    ecs_world *world = ecs_world_new();
+    for (int i = 0; i < MESH_PARTS; i++) {
+        REQUIRE(ecs_world_register_component(world, MESH_COMPONENTS[i], NULL) == ECS_OK);
+    }
+    render_mesh_material_actor actors[] = {
+        { .entity = mesh_actor(world), .position = { -12, 0 } },
+        { .entity = mesh_actor(world), .position = { 16, 0 } }
+    };
+    render_material_entity layers[] = { plain_box(-32, (float[3]){ 1, 0, 0 }),
+                                        graph_box(-12, materials[0], shapes[0]),
+                                        mesh_marker(0),
+                                        graph_box(0, materials[1], shapes[1]),
+                                        plain_box(16, (float[3]){ 1, 1, 0 }),
+                                        mesh_marker(1),
+                                        graph_box(24, materials[2], shapes[2]) };
+    const float red[4] = { 1, 0, 0, 1 }, blue[4] = { 0, 0, 1, 1 },
+                yellow[4] = { 1, 1, 0, 1 };
+    REQUIRE(render_material_raster_resize(raster, UPLOAD_WIDTH, UPLOAD_HEIGHT));
+    REQUIRE(draw_mixed(layers, 7, world, actors) && uploaded(5, 3));
+    render_material_textures t = render_material_raster_textures(raster);
+    /* The plain box before the first marker, the first mesh over the graph
+     * box before it, the plain box after the marker and the second mesh. */
+    REQUIRE(holds(t.scene, 16, 32, red) && holds(t.scene, 32, 32, blue));
+    REQUIRE(holds(t.scene, 64, 24, yellow) && holds(t.scene, 64, 32, blue));
+    /* Each graph box where it is on top. */
+    const int xs[] = { 28, 40, 68 };
+    const float colors[3][4] = { { 0, 1, 0, 1 }, { .7f, 0, .6f, 1 }, { 0, .5f, 1, 1 } },
+                glows[3][4] = { { .1f, .2f, .3f, 1 },
+                                { .4f, .5f, .6f, 1 },
+                                { .7f, .8f, .9f, 1 } };
+    for (int i = 0; i < 3; i++) {
+        float albedo[4] = { colors[i][0], colors[i][1], colors[i][2], 2 + 2 * i },
+              normal[4] = { 0, 0, 0, .8f - .2f * i };
+        REQUIRE(holds(t.scene, xs[i], 32, colors[i]) && holds(t.source, xs[i], 32, glows[i]));
+        REQUIRE(holds(t.albedo, xs[i], 32, albedo) && holds(t.normal, xs[i], 32, normal));
+        REQUIRE(holds(t.cover, xs[i], 32, (float[4]){ 1, 1, 0, 0 }));
+    }
+    /* The first graph box after its mesh now covers it. */
+    render_material_entity swapped = layers[1];
+    layers[1] = layers[2];
+    layers[2] = swapped;
+    REQUIRE(draw_mixed(layers, 7, world, actors) && uploaded(5, 3));
+    REQUIRE(holds(render_material_raster_textures(raster).scene, 36, 32, colors[0]));
+    /* A leading marker uploads nothing, and the graph box after it, shrunk to
+     * radius 3, covers the mesh only inside its circle. */
+    render_material_entity leading[] = { layers[1], layers[2] };
+    leading[1].shape_parameters[0][0] = 3;
+    REQUIRE(draw_mixed(leading, 2, world, actors) && uploaded(1, 1));
+    REQUIRE(holds(render_material_raster_textures(raster).scene, 31, 32, blue));
+    REQUIRE(holds(render_material_raster_textures(raster).scene, 36, 32, colors[0]));
+    render_material_entity markers[] = { layers[1], layers[5] };
+    REQUIRE(draw_mixed(markers, 2, world, actors) && uploaded(0, 0));
+    REQUIRE(holds(render_material_raster_textures(raster).scene, 36, 32, blue));
+    REQUIRE(draw_mixed(layers, 1, world, actors) && uploaded(1, 0));
+    REQUIRE(holds(render_material_raster_textures(raster).scene, 16, 32, red));
+    REQUIRE(draw_mixed(NULL, 0, world, actors) && uploaded(0, 0));
+    ecs_world_free(world);
     return true;
 }
 
@@ -654,6 +864,7 @@ void test_render_material_pixels()
     pu_setup(setup, teardown);
     RUN_TEST_CASE(world_space_materials_follow_their_layout_frame);
     RUN_TEST_CASE(graph_materials_draw_their_parameters_in_their_shapes);
+    RUN_TEST_CASE(mixed_batches_upload_only_what_they_draw);
     pu_setup(fluid_setup, fluid_teardown);
     RUN_TEST_CASE(fluids_land_where_game_y_points_down);
     RUN_TEST_CASE(gas_particles_join_until_they_shrink);

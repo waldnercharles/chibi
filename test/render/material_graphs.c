@@ -42,6 +42,18 @@ static bool publish(behavior_asset *material, bool built)
     return built;
 }
 
+/* Adds a Shader Parameter named `name` with reference id `slot`, distinct
+ * for each parameter of a graph, and a vector if `vector`. */
+static node *add_parameter(graph *g, int slot, const char *name, bool vector)
+{
+    node *parameter = graph_add_node(g, pack_node("Shader Parameter"));
+    bool typed = parameter &&
+                 !graph_set_node_reference(g, parameter, (uint64_t)slot, name) &&
+                 (!vector ||
+                  !graph_set_pin_type(g, parameter, 1, 0, PIN_STRUCT, "ShaderVec3"));
+    return typed ? parameter : NULL;
+}
+
 bool test_register_surface(const char *name, float roughness, float metallic)
 {
     behavior_asset *material = new_material(name);
@@ -298,15 +310,13 @@ bool test_register_tint(const char *name, const float tint[3])
     behavior_asset *material = new_material(name);
     graph *g = material->graph;
     node *output = shader_graph_add_output(g, false);
-    node *parameter = graph_add_node(g, pack_node("Shader Parameter"));
+    node *parameter = add_parameter(g, 0, "Tint", true);
     float color[3] = { tint[0], tint[1], tint[2] };
     pin_value values[] = { { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = color },
                            { .type = PIN_BOOL, .b = true } };
     return publish(
         material,
-        parameter && !graph_set_node_reference(g, parameter, 0, "Tint") &&
-            !graph_set_pin_type(g, parameter, 1, 0, PIN_STRUCT, "ShaderVec3") &&
-            !graph_set_pin_default(g, parameter, 1, 0, &values[0]) &&
+        parameter && !graph_set_pin_default(g, parameter, 1, 0, &values[0]) &&
             !graph_connect_data(g, parameter, 0, output, SHADER_SURFACE_BASE_COLOR) &&
             !graph_set_pin_default(g, output, 0, SHADER_SURFACE_UNLIT, &values[1])
     );
@@ -326,6 +336,44 @@ bool test_register_circle_shape(const char *name, float radius)
         shape,
         position && circle && !graph_set_pin_default(g, circle, 0, 1, &value) &&
             !graph_connect_data(g, position, 0, circle, 0) &&
+            !graph_connect_data(g, circle, 0, output, 0)
+    );
+}
+
+bool test_register_parameters(const char *name)
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    static const char *const names[] = { "Tint", "Glow", "Roughness", "Height" };
+    static const int pins[] = { SHADER_SURFACE_BASE_COLOR,
+                                SHADER_SURFACE_EMISSION,
+                                SHADER_SURFACE_ROUGHNESS,
+                                SHADER_SURFACE_HEIGHT };
+    bool built = true;
+    for (int i = 0; i < 4; i++) {
+        node *parameter = add_parameter(g, i, names[i], i < 2);
+        built = built && parameter &&
+                !graph_connect_data(g, parameter, 0, output, pins[i]);
+    }
+    return publish(material, built);
+}
+
+bool test_register_radius_shape(const char *name, float bounds)
+{
+    behavior_asset *shape = behavior_asset_new(name);
+    shape->domain = BEHAVIOR_DOMAIN_SHAPE;
+    shape->bounds[0] = shape->bounds[1] = bounds;
+    graph *g = shape->graph;
+    node *output = shader_graph_add_output(g, true);
+    node *position = graph_add_node(g, pack_node("Shader Position"));
+    node *circle = graph_add_node(g, pack_node("Shader Circle"));
+    node *radius = add_parameter(g, 0, "Radius", false);
+    return publish(
+        shape,
+        position && circle && radius &&
+            !graph_connect_data(g, position, 0, circle, 0) &&
+            !graph_connect_data(g, radius, 0, circle, 1) &&
             !graph_connect_data(g, circle, 0, output, 0)
     );
 }

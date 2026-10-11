@@ -33,6 +33,7 @@ NATIVE = {
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
     ('--radiance',): 'Reviewed hidden 128x128 app: HRC emitter, wall, absorption, bounce and transparent-feedback transport, reset, resize and reused capacity, split color, fractional cells, reduced reconstruction, fitted lighting, every resolution combination, the adaptive ladder, GPU pass timing, and the extend and filter passes alone, with readback; GPU; docs/testing.md',
     ('--radiance-depth',): 'Reviewed hidden 32x32 app with 32x32 and 128x128 targets: HRC Depth thickness light through slabs, from small, moving, edge and mixed-color sources, its falloff, perspective, depth gain, gloss, every quality, history, segments and steep planes, and the surface gather by quadrant, crest, reach and turning view, with readback; GPU; docs/testing.md',
+    ('--material-sampling',): 'Reviewed hidden 65x49 app: material raster emission energy over sub-pixel phases and two resolutions, overlapping tile order, tile groups for moving masks, and merged borders against their cells in five targets, with readback; GPU; docs/testing.md',
     ('--scene2d',): 'Reviewed hidden 64x64 app: 2D scene renderer drawing a scene without lighting settings unlit, default lighting keeping materials visible, and the unlit view or removed settings stopping lighting, with readback; GPU; docs/testing.md',
     ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky, ramps, imported meshes and their normal maps, imported glTF Standard materials and tangent frames, Transform3D placement and mirroring, occlusion, ambient occlusion, alpha modes and masked shadows with readback; GPU; docs/rendering-3d.md',
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
@@ -40,7 +41,7 @@ NATIVE = {
     ('--radiance-surface',): 'Reviewed hidden 128x128 app: HRC silhouettes, relief facing and below the light, world-space surface depth, directional surface colors in every shadow mode, and surface light history, with readback; GPU; docs/testing.md',
     ('--radiance-horizons4',): 'Reviewed hidden 128x128 app: four-direction horizons following moving relief, their hierarchy against the fine scan, and their cache against fresh horizons over 15 stages for 8 option sets, with readback; GPU; docs/testing.md',
     ('--radiance-horizons8',): 'Reviewed hidden 128x128 app: the same horizon cases with eight directions; GPU; docs/testing.md',
-    ('--material-pixels',): 'Reviewed hidden 128x128 app: material parameter overrides, world-space and graph materials, shape graphs and fragment programs, fluid placement, gas, liquid, fuel, plume, parcel and wisp pixels, fluid light and shadow, liquid refraction and crystal reflections, with readback; GPU; docs/testing.md',
+    ('--material-pixels',): 'Reviewed hidden 128x128 app: material parameter overrides, world-space and graph materials, shape graphs and fragment programs, fluid placement, gas, liquid, fuel, plume, parcel and wisp pixels, fluid light and shadow, liquid refraction, crystal reflections and compact uploads of mixed graph, plain and mesh batches, with readback; GPU; docs/testing.md',
     ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
     ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and six refusals, CPU only; docs/testing.md',
@@ -131,6 +132,9 @@ TOOLS = {
     # material inputs: slabs, small and moving sources, falloff, gain, gloss, quality, history
     # and surface gather.
     'radiance-depth': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-depth'],
+    # Hidden-app 65x49 material raster sampling: emission energy on the pixel grid, tile order,
+    # tile groups, and merged borders against their cells.
+    'material-sampling': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-sampling'],
     # Hidden-app 64x64 2D renders: a scene without lighting settings draws unlit, and default
     # lighting keeps it visible.
     'scene2d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene2d'],
@@ -151,8 +155,8 @@ TOOLS = {
     # hierarchy against the fine scan, and the horizon cache against fresh horizons.
     'radiance-horizons4': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-horizons4'],
     'radiance-horizons8': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-horizons8'],
-    # Hidden-app 128x128 material raster pixels: graph materials and shapes, fluids and their
-    # HRC light, liquid refraction and crystal reflections.
+    # Hidden-app 128x128 material raster pixels: graph materials and shapes, compact uploads of
+    # mixed batches, fluids and their HRC light, liquid refraction and crystal reflections.
     'material-pixels': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-pixels'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-prepared'],
@@ -515,7 +519,8 @@ def main():
             parser.error('unadmitted tooling command')
         if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
                             'studio-graph-visibility', 'interior-border', 'viewport-resize', 'sdf-visibility',
-                            'radiance', 'radiance-depth', 'scene2d', 'scene3d', 'scene3d-gles',
+                            'radiance', 'radiance-depth', 'material-sampling', 'scene2d', 'scene3d',
+                            'scene3d-gles',
                             'material-ramps', 'radiance-surface', 'radiance-horizons4',
                             'radiance-horizons8', 'material-pixels'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),

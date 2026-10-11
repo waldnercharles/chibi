@@ -182,6 +182,8 @@ enum
     TILTED,
     /* A crossing slab that absorbs no light. */
     CLEAR,
+    /* A crossing slab that absorbs no light and glows faintly. */
+    GLOWING,
 };
 
 static void slab_scene(int scene)
@@ -205,11 +207,13 @@ static void slab_scene(int scene)
                 data[SOURCE][p][0] = scene == UNLIT ? 0 : 4;
             }
             if (x >= 20 && x <= 23) {
-                data[ALBEDO][p][3] = scene == CROSSING || scene == CLEAR ? 12
-                                   : scene == BELOW                      ? -4
-                                   : scene == ABOVE                      ? 24
-                                                                         : 0;
-                data[SOURCE][p][3] = scene == CLEAR ? 0 : data[SOURCE][p][3];
+                bool clear = scene == CLEAR || scene == GLOWING;
+                data[ALBEDO][p][3] = scene == CROSSING || clear ? 12
+                                   : scene == BELOW             ? -4
+                                   : scene == ABOVE             ? 24
+                                                                : 0;
+                data[SOURCE][p][3] = clear ? 0 : data[SOURCE][p][3];
+                data[SOURCE][p][0] = scene == GLOWING ? .01f : 0;
             }
             /* The whole receiver tilts, so filtering can't mix a tilted and
              * a flat edge. */
@@ -357,12 +361,16 @@ TEST_CASE(receivers_tilted_toward_the_light_take_more)
     return true;
 }
 
-TEST_CASE(slabs_that_absorb_nothing_let_light_through)
+/* Height blocks light whether or not it absorbs, so a prop that lets HRC's
+ * light pass still shadows by its height; a light never shadows another. */
+TEST_CASE(slabs_shadow_by_height_unless_they_glow)
 {
     GameHRC2D lighting = depth_lighting();
-    float open, clear;
+    float open, clear, glowing;
     REQUIRE(slab_light(OPEN, lighting, &open) && slab_light(CLEAR, lighting, &clear));
-    REQUIRE(clear > open * .8f && clear < open * 1.2f);
+    REQUIRE(slab_light(GLOWING, lighting, &glowing));
+    REQUIRE(open > .001f && clear < open * .35f);
+    REQUIRE(glowing > open * .8f);
     return true;
 }
 
@@ -502,7 +510,7 @@ TEST_CASE(perspective_views_take_depth_light)
     return true;
 }
 
-/* Depth light added on top of HRC's own light, tone mapped by AgX at half
+/* Depth thickness over HRC's own light, tone mapped by AgX at half
  * intensity. */
 static GameHRC2D fill_lighting()
 {
@@ -513,33 +521,104 @@ static GameHRC2D fill_lighting()
     return lighting;
 }
 
-/* At gain zero Depth thickness leaves HRC's light as it was and runs no
- * passes; each step of gain adds the same light. Open transport keeps HRC's
- * own light measurable under it. */
-TEST_CASE(depth_gain_adds_to_hrc_light_in_equal_steps)
+/* `scene` with a matte receiver that absorbs nothing, tilted `tilt` toward
+ * the strip and with `edge` light, so HRC's own light reaches it. */
+static void open_scene(int scene, float tilt, float edge)
 {
-    GameHRC2D lighting = fill_lighting();
-    slab_scene(OPEN);
+    slab_scene(scene);
     for (int p = 0; p < PIXELS; p++) {
+        if (data[SOURCE][p][0] > 0) {
+            continue;
+        }
         data[SOURCE][p][3] = 0;
+        data[NORMAL][p][0] = tilt;
+        data[NORMAL][p][2] = edge;
         data[NORMAL][p][3] = 0;
     }
-    float base[3], gains[3][3];
-    lighting.surface_radius = 0;
-    REQUIRE(lit_fresh(lighting, test_centered(SIDE), base));
-    lighting.surface_radius = 16;
-    for (int gain = 0; gain < 3; gain++) {
-        lighting.surface_depth_gain = (float)gain;
-        REQUIRE(lit_fresh(lighting, test_centered(SIDE), gains[gain]));
-        render_surface_work work = render_radiance_surface_work(radiance);
-        REQUIRE(gain || (!work.cells && !work.candidates && !work.visibility_taps));
+}
+
+/* The red light at the center of open_scene() from a reset. */
+static bool open_light(int scene, float tilt, float edge, GameHRC2D lighting, float *red)
+{
+    float color[3];
+    open_scene(scene, tilt, edge);
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), color));
+    *red = color[0];
+    return true;
+}
+
+/* At gain zero Depth thickness runs no passes. Each step of gain adds the
+ * same light to a receiver with half edge light that absorbs light, as much
+ * at a Material's full absorption of 1 as when opaque, while a flat one that
+ * absorbs nothing keeps HRC's light as it is at any gain. */
+TEST_CASE(depth_gain_adds_only_to_closed_receivers)
+{
+    static const float absorption[] = { 0, 1, 20 };
+    GameHRC2D lighting = fill_lighting();
+    float steps[3][3];
+    for (int a = 0; a < 3; a++) {
+        open_scene(OPEN, 0, .5f);
+        for (int p = 0; p < PIXELS; p++) {
+            data[SOURCE][p][3] = data[SOURCE][p][0] > 0 ? 0 : absorption[a];
+        }
+        float base[3], gains[3][3];
+        lighting.surface_radius = 0;
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), base));
+        lighting.surface_radius = 16;
+        for (int gain = 0; gain < 3; gain++) {
+            lighting.surface_depth_gain = (float)gain;
+            REQUIRE(lit_fresh(lighting, test_centered(SIDE), gains[gain]));
+            render_surface_work work = render_radiance_surface_work(radiance);
+            REQUIRE(gain || (!work.cells && !work.candidates && !work.visibility_taps));
+        }
+        bool closed = absorption[a] > 0;
+        REQUIRE(closed ? gains[1][0] > gains[0][0] + .00001f : base[0] > .00001f);
+        for (int c = 0; c < 3; c++) {
+            REQUIRE(fabsf(gains[0][c] - base[c]) < .001f);
+            steps[a][c] = closed ? gains[1][c] - gains[0][c] : 0;
+            float tolerance = fmaxf(.001f, closed ? fabsf(steps[a][c]) * .03f : base[c] * .01f);
+            REQUIRE(fabsf(gains[1][c] - gains[0][c] - steps[a][c]) < tolerance);
+            REQUIRE(fabsf(gains[2][c] - gains[0][c] - 2 * steps[a][c]) < tolerance);
+        }
     }
-    REQUIRE(base[0] > .00001f && gains[1][0] > gains[0][0] + .00001f);
     for (int c = 0; c < 3; c++) {
-        float fill = gains[1][c] - gains[0][c];
-        REQUIRE(fabsf(gains[0][c] - base[c]) < .001f);
-        REQUIRE(fabsf(gains[2][c] - gains[0][c] - 2 * fill) < fmaxf(.001f, fabsf(fill) * .03f));
+        REQUIRE(fabsf(steps[1][c] - steps[2][c]) < fmaxf(.001f, steps[2][c] * .03f));
     }
+    return true;
+}
+
+/* Depth thickness shades HRC's light on a receiver that absorbs nothing:
+ * facing the strip takes more of it, facing away less, and a prop that
+ * absorbs nothing, so HRC's light passes it, shadows it by its height.
+ * Without edge light it keeps HRC's light flat. The wobble sums the change
+ * between neighboring pixels across the shadow. */
+TEST_CASE(open_receivers_shade_hrc_light_by_facing_and_height)
+{
+    GameHRC2D lighting = fill_lighting();
+    float flat, toward, away, shadowed, plain, plain_shadowed;
+    REQUIRE(open_light(OPEN, 0, 1, lighting, &flat));
+    REQUIRE(open_light(OPEN, .6f, 1, lighting, &toward));
+    REQUIRE(open_light(OPEN, -.6f, 1, lighting, &away));
+    REQUIRE(open_light(CLEAR, 0, 1, lighting, &shadowed));
+    /* Filtered like Depth light, the shadow doesn't show its sampling: its
+     * light bends smoothly across the span the slab shadows. */
+    float bend = 0, mean = 0;
+    for (int y = 10; y < 22; y++) {
+        const uint16_t *row = halves + 4 * y * SIDE;
+        for (int x = 12; x < 18; x++) {
+            float red = test_half(row[4 * x]);
+            mean += red;
+            float left = test_half(row[4 * (x - 1)]);
+            float right = test_half(row[4 * (x + 1)]);
+            bend += fabsf(left - 2 * red + right);
+        }
+    }
+    REQUIRE(bend < mean * .035f);
+    REQUIRE(open_light(OPEN, 0, 0, lighting, &plain));
+    REQUIRE(open_light(CLEAR, 0, 0, lighting, &plain_shadowed));
+    REQUIRE(flat > .001f && fabsf(flat - plain) < flat * .01f);
+    REQUIRE(toward > flat * 1.05f && away < flat * .95f);
+    REQUIRE(shadowed < flat * .5f && plain_shadowed > flat * .9f);
     return true;
 }
 
@@ -736,6 +815,30 @@ TEST_CASE(depth_history_settles_on_brighter_light)
     REQUIRE(step > initial[0] * .02f);
     REQUIRE(first[0] > initial[0] && first[0] < instant[0] - step * .2f);
     REQUIRE(fabsf(settled[0] - instant[0]) < step * .25f);
+    return true;
+}
+
+/* Depth history also holds how Depth shades HRC's light on a receiver that
+ * absorbs nothing: tilted a little toward the strip, the receiver takes part
+ * of its new light in one frame and settles near it. */
+TEST_CASE(depth_history_settles_on_open_shading)
+{
+    GameHRC2D lighting = fill_lighting();
+    lighting.surface_depth_history = 0;
+    float instant, initial, color[3];
+    REQUIRE(open_light(OPEN, .2f, 1, lighting, &instant));
+    lighting.surface_depth_temporal = true;
+    REQUIRE(open_light(OPEN, 0, 1, lighting, &initial));
+    open_scene(OPEN, .2f, 1);
+    REQUIRE(lit(lighting, test_centered(SIDE), color));
+    float first = color[0];
+    for (int frame = 0; frame < 24; frame++) {
+        REQUIRE(lit(lighting, test_centered(SIDE), color));
+    }
+    float step = instant - initial;
+    REQUIRE(step > initial * .02f);
+    REQUIRE(first > initial && first < instant - step * .2f);
+    REQUIRE(fabsf(color[0] - instant) < step * .25f);
     return true;
 }
 
@@ -1155,7 +1258,7 @@ void test_render_radiance_depth()
     RUN_TEST_CASE(depth_light_switches_back_to_blur);
     RUN_TEST_CASE(slabs_shadow_only_the_light_they_cross);
     RUN_TEST_CASE(receivers_tilted_toward_the_light_take_more);
-    RUN_TEST_CASE(slabs_that_absorb_nothing_let_light_through);
+    RUN_TEST_CASE(slabs_shadow_by_height_unless_they_glow);
     RUN_TEST_CASE(small_sources_light_every_direction_by_their_power);
     RUN_TEST_CASE(depth_light_falls_off_with_distance);
     RUN_TEST_CASE(sources_between_pixels_keep_their_light);
@@ -1163,13 +1266,15 @@ void test_render_radiance_depth()
     RUN_TEST_CASE(light_fades_out_at_the_depth_radius);
     RUN_TEST_CASE(sources_at_the_view_edge_keep_the_light_left_in_view);
     RUN_TEST_CASE(perspective_views_take_depth_light);
-    RUN_TEST_CASE(depth_gain_adds_to_hrc_light_in_equal_steps);
+    RUN_TEST_CASE(depth_gain_adds_only_to_closed_receivers);
+    RUN_TEST_CASE(open_receivers_shade_hrc_light_by_facing_and_height);
     RUN_TEST_CASE(depth_gain_keeps_shadows_and_unlit_scenes_dark);
     RUN_TEST_CASE(glossy_receivers_take_highlights_by_the_depth_gain);
     RUN_TEST_CASE(matte_patches_take_no_gloss_from_around_them);
     RUN_TEST_CASE(every_depth_quality_lights_and_shadows);
     RUN_TEST_CASE(depth_history_keeps_still_light_and_drops_changes);
     RUN_TEST_CASE(depth_history_settles_on_brighter_light);
+    RUN_TEST_CASE(depth_history_settles_on_open_shading);
     RUN_TEST_CASE(depth_history_follows_the_camera);
     RUN_TEST_CASE(surface_gather_light_restarts_when_the_view_turns);
     pu_setup(wide_setup, teardown);

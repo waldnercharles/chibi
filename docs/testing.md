@@ -551,13 +551,18 @@ a crowd of 20,000 masks.
 `radiance-depth` lights Depth thickness from material inputs written by hand,
 in a hidden 32 x 32 app with 128 x 128 targets for light that travels farther,
 from the same pinned lighting but with color at half resolution: slabs that
-shadow only the light they cross, small, moving, edge and mixed-color sources,
-falloff to the depth radius, perspective views, the depth gain, gloss, every
-depth quality, depth history, segments and steep planes. The surface gather
-pass alone must take each quadrant's light, find crests past gaps and stay dark
-without light in reach, and surface gather light must restart when the view
-turns. Its cases share one HRC, since a new one compiles all of HRC's shaders.
-It passes 1811 assertions in 9.3 seconds, 18.4 with an empty shader cache.
+shadow only the light they cross, by height whether or not they absorb, unless
+they glow, small, moving, edge and mixed-color sources, falloff to the depth
+radius, perspective views, the depth gain on receivers that absorb, as much at
+a Material's full absorption as opaque, receivers that absorb nothing taking
+HRC's light by facing and height, smoothly, gloss,
+every depth quality, depth history of light and of that shading, segments and
+steep planes. The surface
+gather pass alone must take each quadrant's light, find crests past gaps and
+stay dark without light in reach, and surface gather light must restart when
+the view turns. Its cases share one HRC, since a new one compiles all of HRC's
+shaders. It passes 2070 assertions in 11.5 seconds, 20.9 with an empty shader
+cache.
 `material-sampling` draws shapes into the material raster alone in a hidden
 65 x 49 app: small circles must emit their area wherever they land on the pixel
 grid and at twice the resolution, overlapping tiles must keep their draw order,

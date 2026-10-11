@@ -34,6 +34,7 @@ layout(set = 3, binding = 0) uniform uniform_block
     float u_shadow_softness;
     int u_visibility_mode;
     int u_independent_emitters;
+    float u_relief;
 };
 #include "hrc/brdf.shd"
 
@@ -67,6 +68,13 @@ vec2 geometry_at(vec2 uv)
     float cover = texelFetch(u_cover, p, 0).g;
     float height = cover > 1e-6 ? texelFetch(u_albedo, p, 0).a / cover : 0.0;
     return vec2(height, cover);
+}
+// A covered pixel blocks light unless it is a light that absorbs nothing, so
+// props that let HRC's light pass still shadow by their height.
+bool occludes(vec2 uv)
+{
+    vec4 source = texelFetch(u_source, pixel_at(uv), 0);
+    return source.a > 0.01 || dot(source.rgb, LUMA) <= 0.0;
 }
 uint slab_mask(float lower, float upper)
 {
@@ -107,6 +115,10 @@ vec3 diffuse = vec3(0);
 vec3 specular = vec3(0);
 vec2 dominant = vec2(0);
 float energy = 0.0;
+// HRC's light on an open receiver, weighted by each light's share.
+float shading = 0.0;
+float shading_total = 0.0;
+float flat_elevation;
 vec2 receiver_uv;
 float radial_step;
 uint slab_prefix[96];
@@ -186,7 +198,7 @@ float segment_visibility(vec4 emitter, float source_radius)
         vec2 uv = mix(receiver_uv, emitter.xy, t);
         if (!inside(uv)) continue;
         vec2 obstacle = geometry_at(uv);
-        if (obstacle.y <= 0.5 || texelFetch(u_source, pixel_at(uv), 0).a <= 0.01) continue;
+        if (obstacle.y <= 0.5 || !occludes(uv)) continue;
         float height = mix(receiver_origin.z, emitter.z, t);
         if (u_projection.z > 0.0) {
             float q0 = 1.0 / max(u_projection.z - receiver_origin.z, 0.001);
@@ -221,6 +233,15 @@ void receive(vec3 emission, vec4 emitter, float area)
     float falloff = 1.0 - smoothstep(u_radius - taper, u_radius, projected_distance);
     float visibility = (u_visibility_mode == 1 ? tile_visibility
         : source_visibility(delta, projected_distance, azimuth)) * falloff;
+    // A flat receiver keeps HRC's light from any light it sees. Facing a light
+    // takes more of it, up to the steepest relief flat_elevation allows, and
+    // facing away or a blocked view takes less. Lights fading out at the
+    // radius leave their share as it was.
+    float facing = max(1.0 + (dot(receiver_normal, direction) - direction.z) /
+                                 max(direction.z, flat_elevation), 0.0);
+    float share = dot(emission, LUMA) * weight;
+    shading += share * (visibility * facing + 1.0 - falloff);
+    shading_total += share;
     if (visibility <= 0.0) return;
     vec3 received = emission * weight * visibility;
     diffuse += received * max(dot(receiver_normal, direction), 0.0);
@@ -398,6 +419,7 @@ void main()
     receiver_gloss = u_specular > 0.0
         ? clamp(texelFetch(u_normal, receiver_pixel, 0).w / receiver.y, 0.0, 1.0) : 0.0;
     receiver_scale = projection_scale(receiver.x);
+    flat_elevation = inversesqrt(1.0 + u_relief * u_relief);
     radial_step = u_radius / 12.0;
     receiver_uv = uv;
     pixel_world = max(u_world_per_px.x, u_world_per_px.y) * receiver_scale;
@@ -419,8 +441,7 @@ void main()
             vec2 center = uv + screen_axis * radius / (u_world_per_px * vec2(size) * receiver_scale);
             if (inside(center)) {
                 vec2 obstacle = geometry_at(center);
-                if (obstacle.y > 0.5 && u_thickness > 0.0 &&
-                    texelFetch(u_source, pixel_at(center), 0).a > 0.01) {
+                if (obstacle.y > 0.5 && u_thickness > 0.0 && occludes(center)) {
                     vec3 top = position_at(center, obstacle.x) - receiver_origin;
                     vec3 bottom = position_at(center, obstacle.x - u_thickness) - receiver_origin;
                     float upper = atan(top.z, max(length(top.xy), 1e-6));
@@ -439,5 +460,6 @@ void main()
     out_q0 = vec4(min(diffuse, vec3(65504)), receiver.x);
     out_q1 = vec4(min(specular, vec3(65504)), receiver_gloss);
     out_q2 = vec4(normal, valid);
-    out_q3 = vec4(dominant / max(energy, 1e-8), 1.0 - blocked / 128.0, 1);
+    out_q3 = vec4(dominant / max(energy, 1e-8), 1.0 - blocked / 128.0,
+                  shading_total > 0.0 ? shading / shading_total : 1.0);
 }

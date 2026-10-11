@@ -146,14 +146,16 @@ behavior Tetris {
         return pieceCells[((kind - 1) * 4 + r) * 8 + i * 2 + 1]
     }
 
+    // Whether a piece fits on the board. The top of the hidden rows is a
+    // ceiling, so an upward kick can't lift a cell off the board.
     function Fits(kind: number, r: number, x: number, y: number) {
         for (i in 0..3) {
             cx := x + CellX(kind, r, i)
             cy := y + CellY(kind, r, i)
-            if cx < 0 || cx >= columns || cy >= rows {
+            if cx < 0 || cx >= columns || cy < 0 || cy >= rows {
                 return false
             }
-            if cy >= 0 && board[cy * columns + cx] != 0 {
+            if board[cy * columns + cx] != 0 {
                 return false
             }
         }

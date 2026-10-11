@@ -1513,45 +1513,55 @@ static const char *snapshot_ui_text(const char *selector)
     return NULL;
 }
 
-/* Snapshots examples/tetris after `frames` steps that hard-drop a piece
- * every third step from step 20 until step `restart_step`, then press Enter
- * there when `restart` is set. */
-static int play_tetris(int frames, bool restart)
+/* Appends a press of `control` at `step` and its release a step later. */
+static int press(char *timeline, size_t size, int n, int step, int control)
 {
-    static const int restart_step = 100;
-    assert(frames >= restart_step);
-    /* 4 is GAME_CONTROL_SPACE and 9 GAME_CONTROL_ENTER. */
-    char timeline[4096] = "";
+    return n + snprintf(
+                   timeline + n,
+                   size - n,
+                   "%s{\"frame\":%d,\"input\":{\"controls\":[%d]}},"
+                   "{\"frame\":%d,\"input\":{\"controls\":[]}}",
+                   n ? "," : "",
+                   step,
+                   control,
+                   step + 1
+               );
+}
+
+/* Snapshots examples/tetris after it hard-drops a piece every few steps from
+ * step 20, turning each one clockwise `turns` times first. When `restart`
+ * is set, Enter is pressed after the last drop. */
+static int play_tetris(int turns, bool restart)
+{
+    /* GameControl codes: Space, Enter and Arrow Up. */
+    enum
+    {
+        SPACE = 4,
+        ENTER = 9,
+        UP = 11,
+        LAST_STEP = 160,
+        FRAMES = 170
+    };
+    char timeline[16384] = "";
     int n = 0;
-    for (int i = 0; 21 + i * 3 < restart_step; i++) {
-        n += snprintf(
-            timeline + n,
-            sizeof timeline - n,
-            "%s{\"frame\":%d,\"input\":{\"controls\":[4]}},"
-            "{\"frame\":%d,\"input\":{\"controls\":[]}}",
-            i ? "," : "",
-            20 + i * 3,
-            21 + i * 3
-        );
+    for (int step = 20; step + 2 * turns + 1 < LAST_STEP; step += 2) {
+        for (int t = 0; t < turns; t++, step += 2) {
+            n = press(timeline, sizeof timeline, n, step, UP);
+        }
+        n = press(timeline, sizeof timeline, n, step, SPACE);
     }
     if (restart) {
-        n += snprintf(
-            timeline + n,
-            sizeof timeline - n,
-            ",{\"frame\":%d,\"input\":{\"controls\":[9]}},"
-            "{\"frame\":%d,\"input\":{\"controls\":[]}}",
-            restart_step,
-            restart_step + 1
-        );
+        n = press(timeline, sizeof timeline, n, LAST_STEP, ENTER);
     }
-    char request[4608];
+    assert(n < (int)sizeof timeline);
+    char request[sizeof timeline + 256];
     snprintf(
         request,
         sizeof request,
         "{\"contract\":1,\"operation\":\"runtime_snapshot\","
         "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":%d,"
         "\"entity_limit\":1,\"input_timeline\":[%s]}",
-        frames,
+        FRAMES,
         timeline
     );
     write_file("request.json", request);
@@ -1560,9 +1570,7 @@ static int play_tetris(int frames, bool restart)
 
 TEST_CASE(tetris_example_plays)
 {
-    /* The acceptance game: written as files, checked by chibi_ctl. Pieces
-     * spawn in columns 3 to 6, so 23 hard drops (92 cells) overflow those 88
-     * cells whatever order the bag deals them in. */
+    /* The acceptance game: written as files, checked by chibi_ctl. */
     char validate[512];
     snprintf(
         validate,
@@ -1573,10 +1581,14 @@ TEST_CASE(tetris_example_plays)
     );
     write_file("request.json", "{\"contract\":1,\"operation\":\"validate_project\"}");
     REQUIRE(run(validate) == 0 && errors() == 0);
-    REQUIRE(play_tetris(100, false) == 0);
+    /* Turning near the ceiling tries upward kicks, which once lifted cells
+     * off the board and failed the script. */
+    REQUIRE(play_tetris(2, false) == 0);
     REQUIRE(reads(snapshot_ui_text("#over"), "GAME OVER"));
     REQUIRE(!reads(snapshot_ui_text("#score"), "0"));
-    REQUIRE(play_tetris(110, true) == 0);
+    /* Pieces spawn in columns 3 to 6, so 23 hard drops (92 cells) overflow
+     * those 88 cells whatever order the bag deals them in; Enter restarts. */
+    REQUIRE(play_tetris(0, true) == 0);
     REQUIRE(reads(snapshot_ui_text("#score"), "0") && !snapshot_ui_text("#over"));
     return true;
 }

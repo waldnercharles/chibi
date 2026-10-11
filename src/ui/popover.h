@@ -12,7 +12,8 @@
  *   popovertarget on a menu item opens its submenu beside the row.
  * - Shown, it is fixed and unclipped, below its anchor or flipped above it
  *   (beside a submenu's row, or at a point), 4 dp inside the window, with
- *   --available-height the window's height less those margins; its
+ *   --available-height the window's height less those margins, optionally
+ *   capped by --popover-max-height in dp; its
  *   document stacks above the other areas, below the overlay layer, whichever
  *   has focus. It closes on a press outside it and its trigger, on Escape
  *   (focus inside returns to its trigger) and when one of its items

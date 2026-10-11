@@ -617,6 +617,15 @@ static void s_dispatch_prefilter(HRC *hrc, HRC *target)
     );
 }
 
+/* The sky's light as linear RGB; black until lighting is authored. */
+static CF_V3 s_sky(const HRC *hrc)
+{
+    unsigned color = hrc->authored_lighting ? hrc->lighting.sky : 0;
+    return (CF_V3){ (float)(color >> 24) / 255.0f,
+                    (float)((color >> 16) & 255u) / 255.0f,
+                    (float)((color >> 8) & 255u) / 255.0f };
+}
+
 static CF_Texture s_radiance(const HRC *hrc)
 {
     return cf_canvas_get_target(hrc->radiance_canvas[hrc->radiance_ping]);
@@ -662,6 +671,8 @@ static void s_dispatch_gather(HRC *hrc)
                              "u_out_w",    "u_out_h",    "u_split" };
     s_set_ints(mat, names, params, 9);
     cf_material_set_uniform_fs(mat, "u_bounce_intensity", &hrc->bounce_intensity, CF_UNIFORM_TYPE_FLOAT, 1);
+    CF_V3 sky = s_sky(hrc);
+    cf_material_set_uniform_fs(mat, "u_sky", &sky, CF_UNIFORM_TYPE_FLOAT3, 1);
     bool near = hrc->canvas_w != detail->work_w || hrc->canvas_h != detail->work_h;
     if (near) {
         if (hrc->horizon_w && hrc->lab.horizon_fuse_relief) {
@@ -2349,6 +2360,8 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     cf_draw_set_uniform("intensity", &intensity, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("shadow_floor", &shadow_floor, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("fog", &fog, CF_UNIFORM_TYPE_FLOAT, 1);
+    CF_V3 sky = s_sky(hrc);
+    cf_draw_set_uniform("sky", &sky, CF_UNIFORM_TYPE_FLOAT3, 1);
     cf_draw_set_uniform("debug_view", &debug, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("dither_phase", &phase, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("crop_uv", crop, CF_UNIFORM_TYPE_FLOAT4, 1);

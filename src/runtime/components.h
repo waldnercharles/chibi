@@ -1206,6 +1206,12 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * thickness, taller surfaces nearby hide part of it, as they would hide
      * the sky. */
     float ambient;
+    /* Light from the sky above a side view: open ground receives this color.
+     * Solids that absorb light block it like any light, so overhangs shade
+     * the ground beneath them and caves stay dark; falloff never dims it.
+     * In Depth thickness, heights nearby hide part of it, as for ambient.
+     * Black, the default, has no sky. */
+    unsigned sky NODE_COLOR;
     /* Brightness of emissive surfaces as drawn; the light they cast is
      * unchanged. */
     float intensity;

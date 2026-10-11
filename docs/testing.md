@@ -604,8 +604,11 @@ assertions in 2.4 seconds, 3.2 with an empty shader cache.
 128 x 128 app and from the pinned lighting of `radiance`:
 edge light only on a silhouette's lit side, relief facing the light and below
 a ceiling, a surface radius in world units, surface colors that keep the
-direction they came from in every shadow mode, and surface light history. It
-passes 86 assertions in 26.0 seconds, 30.8 with an empty shader cache.
+direction they came from in every shadow mode, surface light history, and sky
+light that reaches open ground whole whatever the falloff, never glows in open
+air, reaches the ground under an overhang only from beside it and leaves a
+closed room dark, on the full grid, a coarser one and with split color. It
+passes 177 assertions in 29.1 seconds, 39.3 with an empty shader cache.
 `radiance-horizons4` and `radiance-horizons8` check relief shadows with four
 and eight horizon directions: horizons that follow moving relief without a
 reset, the horizon hierarchy against the fine scan, and the horizon cache

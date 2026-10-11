@@ -38,6 +38,8 @@ layout(set = 3, binding = 1) uniform shd_uniforms
     float surface_depth_shadow_softness;
     vec4 surface_projection;
     vec2 surface_world_per_px;
+    // The light open ground receives from the sky; see gather.frag.
+    vec3 sky;
 };
 
 #include "color.shd"
@@ -150,21 +152,22 @@ float surface_shadow(vec2 uv, vec2 toward, vec2 relief)
     return shadow;
 }
 
-vec3 sample_fluence(vec2 uv)
+// Received light, and in alpha the share of the sky seen.
+vec4 sample_fluence(vec2 uv)
 {
     ivec2 sample_size = textureSize(fluence_tex, 0);
     ivec2 full_size = textureSize(source_tex, 0);
-    if (all(equal(sample_size, full_size))) return texture(fluence_tex, uv).rgb;
+    if (all(equal(sample_size, full_size))) return texture(fluence_tex, uv);
 
     ivec2 p00, p10, p01, p11;
     vec4 weights = reconstruction_weights(uv, sample_size, full_size, p00, p10, p01, p11);
     float total = dot(weights, vec4(1));
-    if (total <= 1e-6) return vec3(0);
-    vec3 sum = texelFetch(fluence_tex, p00, 0).rgb * weights.x +
-               texelFetch(fluence_tex, p10, 0).rgb * weights.y +
-               texelFetch(fluence_tex, p01, 0).rgb * weights.z +
-               texelFetch(fluence_tex, p11, 0).rgb * weights.w;
-    return max(sum / total, vec3(0));
+    if (total <= 1e-6) return vec4(0);
+    vec4 sum = texelFetch(fluence_tex, p00, 0) * weights.x +
+               texelFetch(fluence_tex, p10, 0) * weights.y +
+               texelFetch(fluence_tex, p01, 0) * weights.z +
+               texelFetch(fluence_tex, p11, 0) * weights.w;
+    return max(sum / total, vec4(0));
 }
 
 // Geometry remains an exact sample and rejects faces across depth or normal
@@ -275,7 +278,7 @@ vec4 shader(vec4 color, ShaderParams params)
     vec4 source = texture(source_tex, source_uv);
     vec3 emission = display_emission(source_uv);
     vec3 albedo = texture(albedo_tex, source_uv).rgb;
-    vec3 fluence = sample_fluence(source_uv);
+    vec4 fluence = sample_fluence(source_uv);
     vec4 normal = texture(normal_tex, source_uv);
 
     int mode = int(debug_view + 0.5);
@@ -283,7 +286,7 @@ vec4 shader(vec4 color, ShaderParams params)
     if (mode == 2) return vec4(emission, 1.0);
     if (mode == 3) return vec4(vec3(exp(-source.a)), 1.0);
     if (mode == 4) return vec4(albedo, 1.0);
-    if (mode == 5) return vec4(fluence * 5.0, 1.0);
+    if (mode == 5) return vec4((fluence.rgb + sky * fluence.a) * 5.0, 1.0);
     if (mode == 6) return vec4(normal.xyz * 0.5 + 0.5, normal.a);
 
     // Screen-space liquid distortion samples the background and incident light.
@@ -296,14 +299,14 @@ vec4 shader(vec4 color, ShaderParams params)
     // The same exposure as visible emitters reveals light received by fluid.
     // Coverage blends this artistic gain; it never feeds the transport solver.
     float volume_exposure = mix(1.0, intensity, visibility.a);
-    vec3 incident = fluence * volume_exposure;
+    vec3 incident = fluence.rgb * volume_exposure;
     if (normal.z < 0.0) {
         // Liquid edges brighten from light received just outside them.
         vec2 reach = 8.0 * pixel_uv;
-        vec3 outside = .25 * (sample_fluence(source_uv + vec2(reach.x, 0)) +
-                              sample_fluence(source_uv - vec2(reach.x, 0)) +
-                              sample_fluence(source_uv + vec2(0, reach.y)) +
-                              sample_fluence(source_uv - vec2(0, reach.y)));
+        vec3 outside = .25 * (sample_fluence(source_uv + vec2(reach.x, 0)).rgb +
+                              sample_fluence(source_uv - vec2(reach.x, 0)).rgb +
+                              sample_fluence(source_uv + vec2(0, reach.y)).rgb +
+                              sample_fluence(source_uv - vec2(0, reach.y)).rgb);
         incident += outside * normal.a * 2.0 * intensity;
     }
 
@@ -388,10 +391,12 @@ vec4 shader(vec4 color, ShaderParams params)
     if (mode == 9) return vec4(n * 0.5 + 0.5, 1.0);
 
     // Surface light is an artistic addition to HRC, or Depth thickness's
-    // shading of it. Neither feeds temporal bounce.
-    vec3 lit = incident * albedo * depth_shading + surface_shaded;
+    // shading of it. Neither feeds temporal bounce. Heights hide part of the
+    // sky light HRC lets through, as they hide ambient light, and sky light
+    // never glows in open air.
+    vec3 lit = (incident * depth_shading + sky * fluence.a * occlusion) * albedo + surface_shaded;
     lit += max(albedo * shadow_floor * occlusion, visibility.rgb);
-    vec3 out_linear = fluence * fog + emission * intensity + scene.rgb * ambient * occlusion + lit;
+    vec3 out_linear = fluence.rgb * fog + emission * intensity + scene.rgb * ambient * occlusion + lit;
     vec2 background_uv = clamp(screen_uv + distortion / (crop_uv.zw - crop_uv.xy), vec2(0), vec2(1));
     out_linear += texture(background_tex, background_uv).rgb * (1.0 - scene.a);
     if (linear_output != 0) return vec4(max(out_linear, vec3(0.0)), 1.0);

@@ -1,0 +1,24 @@
+Left {
+    (array)sources "Arrow Left" "A"
+}
+Right {
+    (array)sources "Arrow Right" "D"
+}
+SoftDrop {
+    (array)sources "Arrow Down" "S"
+}
+HardDrop {
+    (array)sources "Space" "W"
+}
+Rotate {
+    (array)sources "Arrow Up" "X" "Pad A"
+}
+RotateBack {
+    (array)sources "Z" "Pad B"
+}
+Hold {
+    (array)sources "Shift" "C" "Pad Left Shoulder"
+}
+Restart {
+    (array)sources "Enter" "R" "Pad Y"
+}

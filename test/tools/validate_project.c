@@ -1500,6 +1500,8 @@ TEST_CASE(scenarios_hold_controller_slots)
     return true;
 }
 
+void test_tool_tetris(const char *binary);
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -1534,6 +1536,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     RUN_TEST_CASE(unit_mismatches_are_warnings);
     pu_clear_setup();
+    test_tool_tetris(binary);
 }
 
 /* The cases that read a project-wide budget's worth of prototypes, kept apart

@@ -27,15 +27,19 @@ more than documentation, and `make build` links `chibi`, `chibi-compile` and
 make test-build          # chibi_ctl and both drivers in build/ (ASan and UBSan by default)
 make test-native         # every other CPU test_tools selector with checked-in inputs, one 60-second deadline
 make test-materials      # the material simulation selectors, one 60-second deadline
+make test-projects       # project, asset import and chibi_ctl selectors, one 60-second deadline
 make test-language-all   # every test_language selector, one 60-second deadline
 make test-tools          # tooling and process integrations, separate build-tools/
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
-`make test-native` also builds an unsanitized Release `chibi_ctl` in
-`build-release/` for `validate-project`, which starts `chibi_ctl` dozens of
-times; each start builds the authoring catalog, and under ASan those starts
-alone take longer than the deadline.
+`make test-projects` also builds an unsanitized Release `chibi_ctl` in
+`build-release/` for `validate-project`, `prototype-expansion`, `controller` and
+`render-fixture`. `validate-project` starts `chibi_ctl` dozens of times; each
+start builds the authoring catalog, and under ASan those starts alone take
+longer than the deadline. The project selectors left the native group when it
+reached 58 of its 60 seconds on a 4-core Linux container (2026-10-11): feature
+coverage, mesh files, project validation and model import alone took 33 s.
 
 `python3 tools/test_policy.py tool <name>` runs one entry of that table against
 the drivers `make test-build` produced and that Release `chibi_ctl`; set
@@ -55,7 +59,7 @@ window, which needs a display and a GPU driver the CI job does not set up, so
 they stay out of the group; run them with
 `python3 tools/test_policy.py tool <name>`.
 
-CI runs the build, the three groups and `make test-tools` on Linux and macOS. On
+CI runs the build, the four groups and `make test-tools` on Linux and macOS. On
 Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
 one-minute step timeout (the test supervisor needs POSIX signals) and builds
 Studio against the installed SDK, without running tests. The Windows jobs are
@@ -93,7 +97,7 @@ gap. The check fails when a catalog entry is in neither the scenes nor that
 list, when a listed entry has no reason comment above it, and when a listed
 entry becomes used. A PR that adds a component, native function or event uses it
 in a feature-coverage scene; it lists the entry as a gap only with a reason. The
-`native` group, and so CI, runs it on the fixture.
+`projects` group, and so CI, runs it on the fixture.
 
 ## Temporary 60-second policy
 
@@ -170,7 +174,7 @@ ASan/UBSan on VM and SLJIT. Its new fixed case checks exact signed/unsigned 64-b
 limits, values above 2^53, contextual nominal enums and five out-of-range rejects.
 
 `python3 tools/test_policy.py tool controller` runs five C command-response cases
-against `build-release/bin/chibi_ctl`, also included in `make test-native`.
+against `build-release/bin/chibi_ctl`, also included in `make test-projects`.
 Set `CHIBI_CTL` and `CHIBI_TOOLS_BUILD_DIR` to select isolated builds. Independent
 review admitted seven tiny generated files per case, two scene entities, thirteen
 owned child processes capped at ten seconds each, and twenty total fixed
@@ -603,6 +607,7 @@ make test-list
 | `test-tools` | Complete C tooling and process integration group under one shared deadline. |
 | `test-native` | Every other CPU `test_tools` selector with checked-in inputs under one shared deadline. |
 | `test-materials` | The CPU material simulation selectors under one shared deadline. |
+| `test-projects` | The project, asset import and Release `chibi_ctl` selectors under one shared deadline. |
 | `test-language-all` | Every `test_language` selector under one shared deadline. |
 | `agent-test` | One admitted selector routed by `tools/agent.py`. |
 | `test-list`, `agent-list` | Admission inventory without test execution. |

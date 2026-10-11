@@ -29,7 +29,7 @@ reusable capability:
    still work.
 4. Use it in a `test/fixtures/feature-coverage` scene or prototype (KDL key
    `GAME.<Name>`) and cover its behavior with a pico_unit case.
-   `make test-native` fails until the component is used there or listed in
+   `make test-projects` fails until the component is used there or listed in
    that fixture's `coverage-gaps.txt` with a reason.
 5. If saved projects change meaning, also follow "Change saved projects".
 
@@ -60,7 +60,7 @@ The smallest complete example is Play Sound:
    and a `content/` tree. Don't add game rules to engine fixtures; keep
    content minimal and independent of any one game. A scene that exercises
    an engine feature area belongs in `test/fixtures/feature-coverage`, where
-   `make test-native` runs every scene for four frames.
+   `make test-projects` runs every scene for four frames.
 2. Add `content/scenes/<Name>.kdl` (`version 1`, `name`, `(array)entities`
    of `- name=... prototype=...`) and the prototypes it uses. A scenario in
    `content/scenarios/<Name>.kdl` names the scene, a frame count and input keys.

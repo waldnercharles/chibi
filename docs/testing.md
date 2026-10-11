@@ -833,8 +833,10 @@ a Material's full absorption as opaque, receivers that absorb taking the light
 HRC brings open ones at falloff 0, 1 and 2 within a 15% tone-mapped brightness
 tolerance, independently of intensity, less from lights near their plane and
 none from below it, receivers that absorb nothing taking
-HRC's light by facing and height, smoothly, and by the lights HRC brings them
-alone, so a light behind a wall that absorbs leaves them as lit, walls hiding
+HRC's light by facing and height, smoothly, and by each light as much as HRC
+brings it, so a light behind a wall that absorbs leaves them as lit, also when
+it is the only light in reach, and one behind a faint absorber fades smoothly
+with its absorption, walls hiding
 ambient light by their height in both visibility modes, soft visibility that
 keeps a light on an open floor's plane and past a slab's top or bottom as lit
 as hard visibility does, gloss, every depth quality, depth history of light
@@ -843,7 +845,7 @@ must take each quadrant's light, find crests past gaps and stay dark without
 light in reach, and surface gather light must restart when the view turns.
 Its cases share one HRC, since a new one compiles all of HRC's shaders. The
 reviewed 33-case workload also checks that changing falloff drops stale Depth
-history; it passes 2383 assertions in 10.2 seconds on lavapipe, 19.7 with an
+history; it passes 2427 assertions in 10.7 seconds on lavapipe, 20.0 with an
 empty shader cache. Its 31 earlier cases passed in 5.6 seconds on the native
 macOS backend.
 `material-sampling` draws shapes into the material raster alone in a hidden

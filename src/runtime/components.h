@@ -1249,8 +1249,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(HRC2D)
     /* Blur spreads open-space light; Gather uses bounded visibility probes.
      * Depth thickness is the 2.5D mode: it gathers visible emission past
      * anything with height, and on solids that absorb nothing shades the HRC
-     * light by their facing and those heights, counting only the lights HRC
-     * brings them. Solids that absorb light, where HRC's light stops, take
+     * light by their facing and those heights, counting each light as much
+     * as HRC brings it. Solids that absorb light, where HRC's light stops, take
      * the light HRC brings open ground from the lights they see above them,
      * so a side view's tiles catch the light of lanterns in front of them.
      * Light passes over a prop that absorbs nothing where the prop is lower
@@ -1259,8 +1259,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(HRC2D)
     HRCSurfaceMode surface_mode;
     /* Screen-plane reach in project units for Depth thickness mode. Solids
      * that absorb light take light only from the lights within reach, and a
-     * solid that absorbs nothing shades all its HRC light by those of them
-     * HRC brings it, so it should reach the lights that matter. */
+     * solid that absorbs nothing shades the light HRC brings it from them,
+     * and all its HRC light where they bring at least half of it, so it
+     * should reach the lights that matter. */
     float surface_depth_radius;
     /* Gain of the Depth light solids that absorb light take, which at 1
      * matches HRC's light on open ground, and of Depth highlights. Zero

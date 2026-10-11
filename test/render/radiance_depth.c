@@ -819,10 +819,9 @@ TEST_CASE(soft_visibility_keeps_lights_on_the_floor)
 }
 
 /* open_scene(OPEN) with a `green` light at x 0 to 3, as tall as the strip,
- * behind a wall at x 6 to 9 that absorbs light and is as tall, so its slab
- * hides the green light from the receiver. HRC brings the receiver none of
- * the green light. */
-static void walled_scene(float green)
+ * behind a wall at x 6 to 9 as tall, so its slab hides the green light from
+ * the receiver. The wall's optical depth per pixel is `absorption`. */
+static void walled_scene(float green, float absorption)
 {
     open_scene(OPEN, 0, 1);
     for (int y = 0; y < SIDE; y++) {
@@ -832,28 +831,69 @@ static void walled_scene(float green)
             bool light = x <= 3 && y >= 8 && y <= 24;
             data[ALBEDO][p][3] = wall || light ? 12 : 0;
             data[SOURCE][p][1] = light ? green : 0;
-            data[SOURCE][p][3] = wall ? 20 : 0;
+            data[SOURCE][p][3] = wall ? absorption : 0;
         }
     }
 }
 
-/* Depth shades the light HRC brings by the lights HRC brings. A bright light
- * behind a wall that absorbs, which HRC stops and Depth sees as hidden,
- * leaves the strip's light on the receiver as it was, in both visibility
- * modes. */
+/* An open receiver patch at x and y 14 to 19, lit by the strip from x 28 out
+ * of reach of a depth radius of 9, and a green light at x 9 to 10 and y 14 to
+ * 19 behind a wall at x 11 to 13, as tall, of optical depth `absorption` per
+ * pixel. The rest of the floor is no receiver, so filtering borrows no light
+ * from receivers that reach the strip. */
+static void near_walled_scene(float green, float absorption)
+{
+    open_scene(OPEN, 0, 1);
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < SIDE; x++) {
+            int p = y * SIDE + x;
+            bool strip = x >= 28 && y >= 8 && y <= 24;
+            bool wall = x >= 11 && x <= 13;
+            bool light = x >= 9 && x <= 10 && y >= 14 && y < 20;
+            bool receiver = x >= 14 && x < 20 && y >= 14 && y < 20;
+            data[ALBEDO][p][3] = strip || wall || light ? 12 : 0;
+            data[SOURCE][p][0] = strip ? 4 : 0;
+            data[SOURCE][p][1] = light ? green : 0;
+            data[SOURCE][p][3] = wall ? absorption : 0;
+            if (!strip && !wall && !light && !receiver) {
+                data[COVER][p][1] = data[COVER][p][2] = 0;
+            }
+        }
+    }
+}
+
+/* Depth shades the light HRC brings by each light as much as HRC brings it.
+ * A bright light behind an opaque wall, which HRC stops and Depth sees as
+ * hidden, leaves the strip's light on the receiver as it was, in both
+ * visibility modes, also when the strip is out of Depth's reach and the
+ * walled light the only one in it. Behind a faint absorber, which HRC brings
+ * nearly all of, the hidden light shades the strip's light, and as much at
+ * slightly more absorption: a light HRC dims fades from the shading as
+ * smoothly. */
 TEST_CASE(lights_behind_absorbing_walls_leave_hrc_light_unshaded)
 {
     for (int mode = HRC_DEPTH_VISIBILITY_MASK; mode <= HRC_DEPTH_VISIBILITY_SEGMENTS;
          mode++) {
         HRC2D lighting = fill_lighting();
         lighting.surface_depth_visibility = (HRCDepthVisibility)mode;
-        float unlit[3], walled[3];
-        walled_scene(0);
+        float unlit[3], walled[3], faint[3], fainter[3];
+        walled_scene(0, 20);
         REQUIRE(lit_fresh(lighting, test_centered(SIDE), unlit));
-        walled_scene(16);
+        walled_scene(16, 20);
         REQUIRE(lit_fresh(lighting, test_centered(SIDE), walled));
         REQUIRE(unlit[0] > .1f && fabsf(walled[0] - unlit[0]) < unlit[0] * .01f);
         REQUIRE(fabsf(walled[1] - unlit[1]) < .001f);
+        walled_scene(16, .005f);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), fainter));
+        walled_scene(16, .02f);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), faint));
+        REQUIRE(fainter[0] < unlit[0] * .8f && fabsf(faint[0] - fainter[0]) < fainter[0] * .02f);
+        lighting.surface_depth_radius = 9;
+        near_walled_scene(0, 3);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), unlit));
+        near_walled_scene(16, 3);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), walled));
+        REQUIRE(unlit[0] > .01f && fabsf(walled[0] - unlit[0]) < unlit[0] * .01f);
     }
     return true;
 }

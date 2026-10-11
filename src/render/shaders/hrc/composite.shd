@@ -49,6 +49,10 @@ layout(set = 3, binding = 1) uniform shd_uniforms
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
 // Transmittance difference over which reconstruction weights fall off.
 const float RECONSTRUCTION_SIGMA = 0.1;
+// Where the lights Depth sees bring all of HRC's light, its estimate of that
+// light can fall to half of HRC's own. Lights estimated to bring this share
+// are taken to bring all of it.
+const float DEPTH_KNOWN_SHARE = 0.5;
 
 float reconstruction_transmittance(ivec2 p, ivec2 sample_size, ivec2 full_size)
 {
@@ -186,15 +190,21 @@ void depth_surface_sample(ivec2 p, float spatial, vec3 n,
     if (agreement < 0.5) return;
     vec4 sample_light = texelFetch(surface_q0, p, 0);
     vec2 canvas_size = vec2(textureSize(cover_tex, 0));
-    vec3 position = surface_position(surface_receiver_pixel(p, canvas_size, surface_projection.w),
-                                     sample_light.a, surface_projection, surface_world_per_px);
+    vec2 receiver = surface_receiver_pixel(p, canvas_size, surface_projection.w);
+    vec3 position = surface_position(receiver, sample_light.a, surface_projection, surface_world_per_px);
     float dz = surface_plane_distance(position - origin, n, geometry.xyz) / sigma;
     if (abs(dz) > 1.0) return;
     float weight = spatial * pow(agreement, 8.0) * exp(-dz * dz);
     float boundary = smoothstep(0.5, 0.7, agreement) * (1.0 - smoothstep(0.6, 1.0, abs(dz)));
     weight *= mix(1.0, boundary, surface_depth_shadow_softness);
     light += max(sample_light.rgb, vec3(0)) * weight;
-    shading += texelFetch(surface_q3, p, 0).wz * weight;
+    // Depth changes the light HRC brings from the lights it sees. When they
+    // bring much less than all of HRC's light, the rest, from lights out of
+    // its reach or that HRC barely brings, stays as it is.
+    vec4 shade = texelFetch(surface_q3, p, 0);
+    float hrc = dot(sample_fluence(receiver / canvas_size).rgb, LUMA);
+    float known = max(max(shade.x, DEPTH_KNOWN_SHARE * hrc), 1e-6);
+    shading += vec2(max(1.0 + shade.w / known, 0.0), shade.z) * weight;
     if (gloss > 0.0 && surface_params.w > 0.0) {
         vec4 sample_specular = texelFetch(surface_q1, p, 0);
         float specular_weight = weight * max(1.0 - abs(gloss - sample_specular.a) * 10.0, 0.0);
@@ -348,7 +358,6 @@ vec4 shader(vec4 color, ShaderParams params)
         occlusion = shading.y;
         surface_shaded = (absorbs ? surface_light * albedo * normal.z : vec3(0)) +
                          specular * intensity * surface_depth_gain * surface_params.w * geometry.g * normal.z;
-        dominant = texture(surface_q3, suv).xy;
         energy = 1.0;
         shadow_sum = occlusion;
     }

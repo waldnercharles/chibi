@@ -21,7 +21,8 @@ enum
     RENDER_SHAPE_DIAMOND,
     RENDER_SHAPE_POLY_FILL,
     /* A box showing an image: points 0-1 half extents, 8-11 the frame's uv
-     * rect (u0, v0, u1, v1; flipped frames swap u) and 12 the image variant. */
+     * rect (u0, v0, u1, v1; flipped frames swap u), 12 the image variant, 13
+     * and 14 its normal and height map variants or zero, and 15 its relief. */
     RENDER_SHAPE_SPRITE,
     /* Ordered mesh actor; points[0] indexes the draw call's mesh actors. */
     RENDER_SHAPE_MESH

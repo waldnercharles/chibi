@@ -140,6 +140,7 @@ endif()
 
 if(TARGET Chibi::render)
     add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/hidden_app.c
+        ../render/memory_images.c
         ../render/radiance.c ../render/radiance_depth.c ../render/material_borders.c
         ../render/material_sampling.c ../render/scene2d.c ../render/scene3d.c
         device_controls.c ../render/interior_border.c ../render/viewport_resize.c ../draw_backend.cpp)

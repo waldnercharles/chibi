@@ -2,6 +2,7 @@
 #include "hidden_app.h"
 #include "hrc_cases.h"
 #include "material_graphs.h"
+#include "memory_images.h"
 #include "render/fluid_raster.h"
 #include "render/material_raster.h"
 #include "render/radiance.h"
@@ -435,6 +436,85 @@ TEST_CASE(mixed_batches_upload_only_what_they_draw)
     return true;
 }
 
+/* A 2x2 white image with maps whose texels differ: normals tilted right, up,
+ * flat and left, and heights from 0 to 1 in thirds. */
+static const unsigned char SPRITE_WHITE[16] = { 255, 255, 255, 255, 255, 255,
+                                                255, 255, 255, 255, 255, 255,
+                                                255, 255, 255, 255 },
+                           SPRITE_NORMALS[16] = { 204, 128, 230, 255, 128, 204,
+                                                  230, 255, 128, 128, 255, 255,
+                                                  51,  128, 230, 255 },
+                           SPRITE_HEIGHTS[16] = { 0,   0,   0,   255, 85, 0,
+                                                  0,   255, 170, 0,   0,  255,
+                                                  255, 0,   0,   255 };
+
+/* An opaque sprite of the whole 2x2 image filling the small view. */
+static render_material_entity map_sprite()
+{
+    return (render_material_entity){ .inv_rot = { 1, 0, 0, 1 },
+                                     .extent = { 9, 9 },
+                                     .shape_type = RENDER_SHAPE_SPRITE,
+                                     .aa = 1,
+                                     .points = { 8, 8, [10] = 1, [11] = 1 },
+                                     .scene = { 1, 1, 1, 1 },
+                                     .albedo = { 1, 1, 1, 1 },
+                                     .absorption = { 1, 1, 1, 1 } };
+}
+
+/* Whether the texel the sprite draws at small pixel (x, y) tilts by (tx, ty)
+ * and stands `height` above the plane, to within .02. */
+static bool shaded(int x, int y, float tx, float ty, float height)
+{
+    render_material_textures t = render_material_raster_textures(raster);
+    REQUIRE(read_raster(t.normal, SMALL));
+    REQUIRE(
+        fabsf(texel(SMALL, x, y, 0) - tx) < .02f && fabsf(texel(SMALL, x, y, 1) - ty) < .02f
+    );
+    REQUIRE(read_raster(t.albedo, SMALL));
+    REQUIRE(fabsf(texel(SMALL, x, y, 3) - height) < .02f);
+    return true;
+}
+
+/* A sprite's normal map tilts each texel in world axes, mirrored with the
+ * frame and turned with the sprite, and its height map raises each texel by
+ * the sprite's relief, which raises a sprite without one evenly. */
+TEST_CASE(sprite_maps_tilt_and_raise_their_texels)
+{
+    static const test_image images[] = { { "white.png", 2, 2, SPRITE_WHITE },
+                                         { "normals.png", 2, 2, SPRITE_NORMALS },
+                                         { "heights.png", 2, 2, SPRITE_HEIGHTS } };
+    test_mount_images(images, 3);
+    render_material_entity sprite = map_sprite();
+    sprite.points[12] = (float)test_sprite_variant("white.png", false);
+    sprite.points[13] = (float)test_sprite_variant("normals.png", true);
+    sprite.points[14] = (float)test_sprite_variant("heights.png", true);
+    sprite.points[15] = 3;
+    REQUIRE(render_material_raster_resize(raster, SMALL, SMALL));
+    REQUIRE(raster_only(&sprite, 1, test_centered(SMALL)));
+    REQUIRE(shaded(4, 4, .6f, 0, 0) && shaded(12, 4, 0, .6f, 1));
+    REQUIRE(shaded(4, 12, 0, 0, 2) && shaded(12, 12, -.6f, 0, 3));
+    /* Mirrored, the right column shows the left one tilted the other way. */
+    render_material_entity mirrored = sprite;
+    mirrored.points[8] = 1;
+    mirrored.points[10] = 0;
+    REQUIRE(raster_only(&mirrored, 1, test_centered(SMALL)));
+    REQUIRE(shaded(4, 4, 0, .6f, 1) && shaded(12, 4, -.6f, 0, 0));
+    /* A quarter turn counterclockwise takes the top left texel, tilted right,
+     * to the bottom left, tilted up, and the top right one, tilted up, to the
+     * top left, tilted left. */
+    render_material_entity turned = sprite;
+    turned.inv_rot[1] = 1;
+    turned.inv_rot[2] = -1;
+    turned.inv_rot[0] = turned.inv_rot[3] = 0;
+    REQUIRE(raster_only(&turned, 1, test_centered(SMALL)));
+    REQUIRE(shaded(4, 12, 0, .6f, 0) && shaded(4, 4, -.6f, 0, 1));
+    render_material_entity even = sprite;
+    even.points[13] = even.points[14] = 0;
+    REQUIRE(raster_only(&even, 1, test_centered(SMALL)));
+    REQUIRE(shaded(4, 4, 0, 0, 3) && shaded(12, 12, 0, 0, 3));
+    return true;
+}
+
 /* Every fluid case makes its fluid first, for teardown to free. */
 static material_fluid *fluid;
 static render_fluid_raster *fluid_raster;
@@ -865,6 +945,7 @@ void test_render_material_pixels()
     RUN_TEST_CASE(world_space_materials_follow_their_layout_frame);
     RUN_TEST_CASE(graph_materials_draw_their_parameters_in_their_shapes);
     RUN_TEST_CASE(mixed_batches_upload_only_what_they_draw);
+    RUN_TEST_CASE(sprite_maps_tilt_and_raise_their_texels);
     pu_setup(fluid_setup, fluid_teardown);
     RUN_TEST_CASE(fluids_land_where_game_y_points_down);
     RUN_TEST_CASE(gas_particles_join_until_they_shrink);

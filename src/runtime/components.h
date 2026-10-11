@@ -442,7 +442,11 @@ GameAppearance;
 /* Draws one frame of an image instead of an Appearance, one world unit per
  * texel, centred on the Transform. Frames are frame_width by frame_height
  * cells numbered left to right, then top to bottom; zero sizes use the whole
- * image. */
+ * image. normal_map holds tangent-space normals laid out like the image, red
+ * right and green up, and each texel stands relief world units above the
+ * plane, times the red of height_map when there is one. 2D lighting shades
+ * them through surface light, which a Material's edge_light scales; without a
+ * Material, a sprite with a map takes it in full. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameSprite)
 {
     const char *image;
@@ -451,12 +455,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSprite)
     int frame_height;
     bool flip_x;
     int layer;
+    const char *normal_map;
+    const char *height_map;
+    float relief NODE_UNIT("u");
 }
 GameSprite;
 
 /* One atlas-backed grid, anchored at Transform's local top-left corner.
  * Cells are row-major whitespace-separated frame indices; -1 is empty.
- * Frame dimensions are both atlas texels and world units. */
+ * Frame dimensions are both atlas texels and world units. normal_map,
+ * height_map and relief shade and raise the tiles as they do a Sprite. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameTilemap)
 {
     const char *image;
@@ -466,6 +474,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameTilemap)
     int frame_width;
     int frame_height;
     int layer;
+    const char *normal_map;
+    const char *height_map;
+    float relief NODE_UNIT("u");
 }
 GameTilemap;
 

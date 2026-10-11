@@ -572,29 +572,86 @@ static bool append_entity(
 
 typedef struct
 {
-    int image, width, height, cell_width, cell_height, columns, frames;
+    int image, normal_map, height_map;
+    int width, height, cell_width, cell_height, columns, frames;
 } sprite_atlas;
 
-static bool load_sprite_atlas(
-    app_scene_renderer *renderer,
-    const char *image_key,
-    int frame_width,
-    int frame_height,
-    sprite_atlas *atlas
-)
+/* The resident variant of image `key` in `color_space`, sampled texel by
+ * texel. */
+static int sprite_image(const char *key, shader_image_color_space color_space, shader_error *error)
 {
-    shader_image_source source = { .key = (char *)image_key,
-                                   .color_space = SHADER_IMAGE_SRGB,
+    shader_image_source source = { .key = (char *)key,
+                                   .color_space = color_space,
                                    .filter = SHADER_IMAGE_NEAREST,
                                    .wrap = SHADER_IMAGE_CLAMP };
+    return render_image_variant_resident(&source, error);
+}
+
+/* Resolves a sprite's linear map `key` into `map`, zero when it has none. The
+ * map must be laid out like the atlas's image. */
+static bool load_sprite_map(
+    app_scene_renderer *renderer,
+    const char *key,
+    const sprite_atlas *atlas,
+    int *map
+)
+{
+    *map = 0;
+    if (!key || !*key) {
+        return true;
+    }
     shader_error error = { 0 };
-    atlas->image = render_image_variant_resident(&source, &error);
-    if (!atlas->image || !render_image_info(image_key, &atlas->width, &atlas->height)) {
+    int width, height;
+    *map = sprite_image(key, SHADER_IMAGE_LINEAR, &error);
+    if (!*map || !render_image_info(key, &width, &height)) {
+        snprintf(
+            renderer->error,
+            sizeof renderer->error,
+            "Sprite map: %s",
+            error.message
+        );
+        return false;
+    }
+    if (width != atlas->width || height != atlas->height) {
+        snprintf(
+            renderer->error,
+            sizeof renderer->error,
+            "Sprite map %s is %dx%d, not the %dx%d of its image",
+            key,
+            width,
+            height,
+            atlas->width,
+            atlas->height
+        );
+        return false;
+    }
+    return true;
+}
+
+static bool load_sprite_atlas(app_scene_renderer *renderer, const GameSprite *sprite, sprite_atlas *atlas)
+{
+    if (!isfinite(sprite->relief)) {
+        snprintf(
+            renderer->error,
+            sizeof renderer->error,
+            "Sprite %s has no finite relief",
+            sprite->image
+        );
+        return false;
+    }
+    shader_error error = { 0 };
+    atlas->image = sprite_image(sprite->image, SHADER_IMAGE_SRGB, &error);
+    if (!atlas->image ||
+        !render_image_info(sprite->image, &atlas->width, &atlas->height)) {
         snprintf(renderer->error, sizeof renderer->error, "Sprite: %s", error.message);
         return false;
     }
-    atlas->cell_width = frame_width > 0 ? frame_width : atlas->width;
-    atlas->cell_height = frame_height > 0 ? frame_height : atlas->height;
+    if (!load_sprite_map(renderer, sprite->normal_map, atlas, &atlas->normal_map) ||
+        !load_sprite_map(renderer, sprite->height_map, atlas, &atlas->height_map)) {
+        return false;
+    }
+    atlas->cell_width = sprite->frame_width > 0 ? sprite->frame_width : atlas->width;
+    atlas->cell_height = sprite->frame_height > 0 ? sprite->frame_height : atlas->height;
     atlas->columns = atlas->width / atlas->cell_width;
     atlas->frames = atlas->columns * (atlas->height / atlas->cell_height);
     return true;
@@ -641,6 +698,14 @@ static bool append_sprite_frame(
     draw->points[10] = sprite->flip_x ? u0 : u1;
     draw->points[11] = v0 + (float)atlas->cell_height / (float)atlas->height;
     draw->points[12] = (float)atlas->image;
+    draw->points[13] = (float)atlas->normal_map;
+    draw->points[14] = (float)atlas->height_map;
+    draw->points[15] = sprite->relief;
+    /* Maps shade a sprite through the surface light a Material's edge_light
+     * scales, so without a Material it takes that light in full. */
+    if (!material && (atlas->normal_map || atlas->height_map)) {
+        draw->reserved[2] = 1;
+    }
     return true;
 }
 
@@ -653,13 +718,7 @@ static bool append_sprite(
 )
 {
     sprite_atlas atlas;
-    return load_sprite_atlas(
-               renderer,
-               sprite->image,
-               sprite->frame_width,
-               sprite->frame_height,
-               &atlas
-           ) &&
+    return load_sprite_atlas(renderer, sprite, &atlas) &&
            append_sprite_frame(renderer, position, sprite, angle, material, &atlas);
 }
 
@@ -873,12 +932,18 @@ static bool append_tilemap(
         );
         return false;
     }
+    GameSprite sprite = { .image = map->image,
+                          .frame_width = map->frame_width,
+                          .frame_height = map->frame_height,
+                          .layer = map->layer,
+                          .normal_map = map->normal_map,
+                          .height_map = map->height_map,
+                          .relief = map->relief };
     sprite_atlas atlas;
-    if (!load_sprite_atlas(renderer, map->image, map->frame_width, map->frame_height, &atlas)) {
+    if (!load_sprite_atlas(renderer, &sprite, &atlas)) {
         return false;
     }
     float c = cosf(shown.radians), s = sinf(shown.radians);
-    GameSprite sprite = { .image = map->image, .layer = map->layer };
     material_rect bounds = { .width = (float)map->frame_width,
                              .height = (float)map->frame_height };
     for (int row = 0; row < map->rows; row++) {

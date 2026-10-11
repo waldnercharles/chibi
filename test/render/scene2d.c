@@ -1,3 +1,4 @@
+#include "memory_images.h"
 #include "render/scene_renderer.h"
 #include "render/viewport.h"
 #include "runtime/component_catalog.h"
@@ -6,14 +7,19 @@
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdlib.h>
+#include <string.h>
 
 /* One hidden app draws 2D scenes through the scene renderer and the viewport,
  * then reads back the app canvas. */
 enum
 {
     SIDE = 64,
-    PIXELS = SIDE * SIDE
+    PIXELS = SIDE * SIDE,
+    /* The side of the sprite images, in texels and world units. */
+    SPRITE = 16,
+    SPRITE_TEXELS = SPRITE * SPRITE
 };
 
 static const unsigned red = 0xff0000ffu;
@@ -146,6 +152,137 @@ TEST_CASE(default_lighting_keeps_materials_visible)
     return true;
 }
 
+/* White texels, normals tilted toward -x, flat normals, and a map too small
+ * for them. */
+static unsigned char white[SPRITE_TEXELS * 4], facing_left[SPRITE_TEXELS * 4],
+    flat[SPRITE_TEXELS * 4], small[4 * 4];
+
+static void fill(unsigned char *pixels, int count, const unsigned char rgba[4])
+{
+    for (int i = 0; i < count; i++) {
+        memcpy(pixels + 4 * i, rgba, 4);
+    }
+}
+
+static const test_image SPRITE_IMAGES[] = {
+    { "white.png", SPRITE, SPRITE, white },
+    { "facing_left.png", SPRITE, SPRITE, facing_left },
+    { "flat.png", SPRITE, SPRITE, flat },
+    { "small.png", 2, 2, small },
+};
+
+/* Loads the sprite images as preparing a scene does. */
+static void prepare_sprite_images()
+{
+    fill(white, SPRITE_TEXELS, (unsigned char[4]){ 255, 255, 255, 255 });
+    fill(facing_left, SPRITE_TEXELS, (unsigned char[4]){ 26, 128, 204, 255 });
+    fill(flat, SPRITE_TEXELS, (unsigned char[4]){ 128, 128, 255, 255 });
+    fill(small, 4, (unsigned char[4]){ 128, 128, 255, 255 });
+    test_mount_images(SPRITE_IMAGES, 4);
+    test_sprite_variant("white.png", false);
+    for (int i = 1; i < 4; i++) {
+        test_sprite_variant(SPRITE_IMAGES[i].key, true);
+    }
+}
+
+/* A white sprite at x 12 shaded by `normal_map`, with no Material. */
+static ecs_entity add_sprite(const char *normal_map, bool flip_x)
+{
+    ecs_entity sprite = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 12, 0 });
+    GameSprite look = { .image = "white.png", .flip_x = flip_x, .normal_map = normal_map };
+    assert(ecs_world_record_add(world, sprite, GAME_COMPONENT_GameSprite.id, &look, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(world) == ECS_OK);
+    return sprite;
+}
+
+/* A white light at x -20, lighting without unlit color or history. */
+static void add_light()
+{
+    ecs_entity light = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ -20, 0 });
+    GameAppearance disc = { .width = 8, .height = 8, .shape = GAME_SHAPE_CIRCLE };
+    GameMaterial glow = { .emission_color = 0xffffffffu,
+                          .emission_intensity = .1f,
+                          .emission_multiplier = 1 };
+    assert(
+        ecs_world_record_add(world, light, GAME_COMPONENT_GameAppearance.id, &disc, 0) == ECS_OK
+    );
+    assert(ecs_world_record_add(world, light, GAME_COMPONENT_GameMaterial.id, &glow, 0) == ECS_OK);
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.ambient = 0;
+    lighting.adaptive = false;
+    lighting.radiance_hysteresis = lighting.bounce_hysteresis = 1;
+    add(GAME_COMPONENT_GameHRC2D.id, &lighting);
+}
+
+/* The mean green across the sprite's middle row. */
+static int sprite_green()
+{
+    int sum = 0, first = SIDE / 2 + 12 - SPRITE / 2;
+    for (int x = first; x < first + SPRITE; x++) {
+        sum += pixels[SIDE / 2 * SIDE + x].colors.g;
+    }
+    return sum / SPRITE;
+}
+
+/* Without a Material, a normal-mapped sprite takes surface light: the side
+ * its normals face is lit more than flat normals, and mirrored they face
+ * away and are lit less. */
+TEST_CASE(normal_maps_turn_sprites_toward_the_light)
+{
+    prepare_sprite_images();
+    add_light();
+    const char *maps[] = { "facing_left.png", "flat.png", "facing_left.png" };
+    int green[3];
+    for (int i = 0; i < 3; i++) {
+        ecs_entity sprite = add_sprite(maps[i], i == 2);
+        REQUIRE(draw());
+        green[i] = sprite_green();
+        REQUIRE(ecs_world_destroy_entity(world, sprite) == ECS_OK);
+    }
+    REQUIRE(green[0] > green[1] + 4 && green[1] > green[2] + 4);
+    /* A Material's edge_light decides instead, and at zero the map shades
+     * nothing. */
+    GameMaterial matte = { .scene = 0xffffffffu, .albedo = 0xffffffffu };
+    for (int i = 0; i < 2; i++) {
+        ecs_entity sprite = add_sprite("facing_left.png", i == 1);
+        REQUIRE(
+            ecs_world_record_add(world, sprite, GAME_COMPONENT_GameMaterial.id, &matte, 0) == ECS_OK
+        );
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(draw());
+        green[i] = sprite_green();
+        REQUIRE(ecs_world_destroy_entity(world, sprite) == ECS_OK);
+    }
+    REQUIRE(abs(green[0] - green[1]) <= 1);
+    return true;
+}
+
+/* A sprite map must be loaded and laid out like its image, and its relief
+ * must be finite. */
+TEST_CASE(sprites_reject_bad_maps_and_relief)
+{
+    prepare_sprite_images();
+    ecs_entity sprite = add_sprite("small.png", false);
+    REQUIRE(!draw());
+    REQUIRE(strstr(app_scene_renderer_error(renderer), "small.png is 2x2, not the 16x16 of its image"));
+    REQUIRE(ecs_world_destroy_entity(world, sprite) == ECS_OK);
+    sprite = add_sprite("unloaded.png", false);
+    REQUIRE(!draw());
+    REQUIRE(
+        strstr(app_scene_renderer_error(renderer), "Sprite map: Image resource or sampler is not resident: unloaded.png")
+    );
+    REQUIRE(ecs_world_destroy_entity(world, sprite) == ECS_OK);
+    sprite = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 0 });
+    GameSprite raised = { .image = "white.png", .relief = NAN };
+    REQUIRE(
+        ecs_world_record_add(world, sprite, GAME_COMPONENT_GameSprite.id, &raised, 0) == ECS_OK
+    );
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(!draw());
+    REQUIRE(strstr(app_scene_renderer_error(renderer), "Sprite white.png has no finite relief"));
+    return true;
+}
+
 void test_render_scene2d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -157,6 +294,8 @@ void test_render_scene2d()
     pu_setup(setup, teardown);
     RUN_TEST_CASE(scenes_without_lighting_draw_their_materials_unlit);
     RUN_TEST_CASE(default_lighting_keeps_materials_visible);
+    RUN_TEST_CASE(normal_maps_turn_sprites_toward_the_light);
+    RUN_TEST_CASE(sprites_reject_bad_maps_and_relief);
     pu_clear_setup();
     cf_destroy_app();
 }

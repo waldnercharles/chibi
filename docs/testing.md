@@ -281,11 +281,13 @@ use no renderer, sleeps or child processes. Its exact dispatcher runs only regis
 validation and these cases. The migrated selector is independently reviewed and
 admitted for its first supervised capture.
 
-`python3 tools/test_policy.py tool tilemap` selects seven reviewed C cases for
+`python3 tools/test_policy.py tool tilemap` selects eight reviewed C cases for
 owned grid decoding and cache invalidation, half-open point lookup, exact rotated
 rectangle overlap, transformed bounds and native ECS binding lifetimes. Each
 grid has at most four cells and no rendering or engine frames run. A decorative
-prototype also checks atlas preparation and owned prepared data without gameplay.
+prototype also checks, without gameplay, that its atlas and its normal and height
+maps are prepared and that it owns its prepared data, and a map of another size
+must fail preparation.
 
 `python3 tools/test_policy.py tool tilemap-project` admits two project acceptance
 cases when the tooling build includes asset authoring. It reads only the sibling
@@ -526,8 +528,11 @@ it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`.
 `scene2d` draws 2D scenes through the scene renderer and an engine viewport in a
 hidden 64 x 64 app and reads back the app canvas. A scene without `GameHRC2D`
 must show its materials unlit, `game_hrc2d_defaults()` lighting must keep them
-visible, and the unlit view or removing the settings must stop lighting. Build
-and run it like `interior-border` with `AGENT_SELECTOR=--scene2d`.
+visible, and the unlit view or removing the settings must stop lighting. A
+sprite whose normal map faces a light must be lit more than flat normals, and
+mirrored, less, unless a Material turns its edge light off; a map must be loaded
+and the size of its image, and relief finite. Build and run it like
+`interior-border` with `AGENT_SELECTOR=--scene2d`.
 `radiance` runs HRC in a hidden 128 x 128 app and reads it back: an emitter
 lighting open space through its material, opaque, finite, bouncing and nearly
 transparent walls, reset, empty and resized grids, reused capacity against a
@@ -577,15 +582,16 @@ per process.
 `material-pixels` checks what the material raster draws for HRC in a hidden
 128 x 128 app: Set Material Parameter overriding one entity until its world is
 cleared, a world-space material following its layout frame, a graph material's
-parameter through the raster and its own fragment program inside a shape
-graph's circle, mixed batches of graph boxes, plain boxes and meshes uploading
-only what they draw, and fluids landing where game Y points down, gas joining and
-parting, crisp unlit liquid edges, burning cores, plumes without holes, fading
-parcels and wisps along their velocity. Gas and liquid must take HRC's light
-and the wall's shadow with one and three traced cascades, a refracting liquid
-must bend only the background behind it, and a crystal must mirror the scene
-beside it. It passes 537 assertions in 10.9 seconds, 20.6 with an empty shader
-cache.
+parameter through the raster and its own fragment program inside a shape graph's
+circle, mixed batches of graph boxes, plain boxes and meshes uploading only what
+they draw, a sprite's normal and height maps tilting and raising each texel,
+mirrored and turned with it, and fluids landing where game Y points down, gas
+joining and parting, crisp unlit liquid edges, burning cores, plumes without
+holes, fading parcels and wisps along their velocity. Gas and liquid must take
+HRC's light and the wall's shadow with one and three traced cascades, a
+refracting liquid must bend only the background behind it, and a crystal must
+mirror the scene beside it. It passes 587 assertions in 11.5 seconds, 22.3 with
+an empty shader cache.
 These selectors need the material graphs of the main build.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,

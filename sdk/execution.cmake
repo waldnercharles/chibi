@@ -1,11 +1,11 @@
 set(CHIBI_EXECUTION_SOURCES
     artifact.c backend.c c.c call.c component.c ecs_reader.c function.c function_builder.c fusion.c host.c inputs.c intrinsics.c
     jit.c jit_component.c jit_host_call.c jit_integer.c jit_memory.c jit_registers.c
-    jit_suspend.c jit_system.c jit_watch.c log.c module.c module_effects.c opt.c parallel.c
+    jit_suspend.c jit_system.c jit_watch.c log.c machine.c module.c module_effects.c opt.c parallel.c
     preparation_budget.c prepared.c prepared_function.c program.c program_inspection.c program_activation.c
     program_observers.c program_bindings.c program_commands.c program_locals.c program_storage.c program_preflight.c
     program_tasks.c reads.c request.c source_debug.c state.c storage.c suspend.c time.c vm.c
-    update_jit.c wasm.c)
+    update_jit.c wasm_emit.c wasm_jit.c)
 list(TRANSFORM CHIBI_EXECUTION_SOURCES PREPEND "${CHIBI_SDK_ROOT}/src/execution/")
 
 # Private implementation headers are available only to this package. A graph
@@ -36,6 +36,7 @@ target_link_libraries(chibi_execution PUBLIC chibi_types chibi_execution_contrac
 option(CHIBI_ENABLE_SJLIT "Build the native execution backend" ON)
 if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(CHIBI_ENABLE_SJLIT OFF)
+    target_link_options(chibi_execution INTERFACE -sALLOW_TABLE_GROWTH=1)
 endif()
 target_compile_definitions(chibi_execution PRIVATE CHIBI_HAVE_SJLIT=$<BOOL:${CHIBI_ENABLE_SJLIT}>)
 if(CHIBI_ENABLE_SJLIT)

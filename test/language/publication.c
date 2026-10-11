@@ -1,3 +1,4 @@
+#include "backend.h"
 #include "execution/delay.h"
 #include "execution/status.h"
 #include "language/lower.h"
@@ -221,7 +222,7 @@ static bool setup(behavior_backend backend)
 }
 TEST_CASE(publication_late_failure_preserves_running_generations)
 {
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         cleanup();
         REQUIRE(setup(backends[b]));
@@ -264,7 +265,7 @@ TEST_CASE(publication_late_failure_preserves_running_generations)
 }
 TEST_CASE(publication_name_swap_preserves_state_and_removal_cancels)
 {
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         cleanup();
         REQUIRE(setup(backends[b]));
@@ -315,7 +316,7 @@ TEST_CASE(publication_name_swap_preserves_state_and_removal_cancels)
 }
 TEST_CASE(publication_preserves_detached_root_and_imported_shared_state)
 {
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         cleanup();
         catalog = (script_catalog){ .capabilities = capabilities,
@@ -388,7 +389,7 @@ TEST_CASE(publication_preserves_detached_root_and_imported_shared_state)
 }
 TEST_CASE(publication_profile_counts_actual_execution_and_retains_origins)
 {
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int b = 0; b < 2; b++) {
         cleanup();
         catalog = (script_catalog){ .capabilities = capabilities,

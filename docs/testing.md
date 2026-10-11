@@ -149,7 +149,8 @@ seconds on 2026-10-07 (`.chibi/architecture/language-program-fields.log`).
 
 `python3 tools/test_policy.py tool script-benchmark` measures default compiler
 execution of equivalent inline arithmetic and authored scalar helper calls on
-VM and SLJIT. Four in-memory modules each run one correctness warmup and five
+VM and the platform's compiled backend (SLJIT natively, Wasm on the web).
+Four in-memory modules each run one correctness warmup and five
 trials of 200 dispatches with 100 loop iterations: 400,400 total iterations.
 pico_unit checks the exact result before timing and after each trial. Output
 reports monotonic elapsed time, allocation-wrapper calls/requested bytes and
@@ -170,6 +171,55 @@ retains at most one completed frame with at most 64 KiB of backing storage, then
 frees it at teardown. These are CPU microbenchmarks, not rendered frame rates.
 The Tetris `8cac6a7` project uses an input contract newer than this baseline, so
 no whole-game speedup is claimed from these measurements.
+
+Browser JIT checks use `make test-wasm` and `make test-wasm-browser`. Add
+`WEB_THREADS=1` to build and test the worker configuration. Both compile the
+same C language dispatcher with Emscripten Release, embed its small language
+examples, and run under the production 60-second deadline. Configuration and
+build time are separate. Node runs the Wasm, execution, program, headless,
+publication and scalar benchmark selectors. Chrome runs the same selectors
+except headless through `test_tools --wasm-browser`, with GPU use disabled and
+a 55-second internal process deadline. The fixture owns and removes its browser
+profile. `CHIBI_WASM_BENCHMARK_ONLY=1` selects only the fixed C benchmark for
+baseline comparison.
+
+Wasm cases assert actual generated-entry calls, exact integer widths, arrays,
+helper continuations, budgets, prepared generation ownership and canonical
+scratch capacity after a smaller VM body. The cache case keeps 257 functions
+live and checks that repeated passes add no compilations. Separate checks cover
+retirement without recompiling unrelated functions and pthread table cleanup.
+The default-backend and scratch-capacity checks failed with their prior behavior
+restored. Linking the previous loader made both cache regressions fail on their
+compilation-count assertions. Full GPU/Studio coverage remains quarantined.
+
+On 2026-10-11, Chrome passed 91 cases/5,007 assertions in 0.907 seconds; its
+pthread configuration passed 92 cases/5,041 assertions in 0.943 seconds. Node
+also passed both configurations, including the headless selector. The native
+language group passed under ASan/UBSan in 57.116 seconds. These are CPU checks;
+they do not validate browser rendering or establish a 60 FPS Tetris result.
+
+The Release benchmark compared the original VM at `06e7b1a2b` with this Wasm
+backend using the same C workload, Emscripten settings and exact output checks.
+Five trials produced these median microseconds per dispatch in Chrome:
+
+| Workload | Original VM | Current diagnostic VM | Wasm JIT | Speedup over original VM |
+| --- | ---: | ---: | ---: | ---: |
+| Inline arithmetic | 25.900 | 28.475 | 11.850 | 2.19x |
+| Authored helper calls | 48.525 | 56.925 | 36.700 | 1.32x |
+
+Extracting shared runtime effects makes the diagnostic VM 9.9% and 17.3% slower
+in these workloads; the speedups above use the original VM as their baseline.
+Node measured Wasm speedups of 2.23x and 1.40x over that same original VM. The
+pthread Chrome build measured 11.450 and 35.475 microseconds per Wasm dispatch;
+the original baseline was serial, so this is not a matching pthread comparison.
+
+Chrome Wasm publication took 1.065 ms for the inline module and 0.190 ms for the
+helper module. These are individual cold observations for small modules, not
+compile-time percentiles or bounds for a whole game. Publication is synchronous;
+workers also pay compilation on first use. Steady execution reuses live entries.
+Samples, build provenance, artifact hashes and logs remain under
+`.chibi/wasm-jit/benchmark-final.json` and `.chibi/wasm-jit/baseline/`. Temporary
+baseline and sanitizer builds have been removed.
 
 `python3 tools/test_policy.py tool language-navigation` selects eleven reviewed
 in-memory cases for shadowing, capture rejection, cross-file renames, escaped

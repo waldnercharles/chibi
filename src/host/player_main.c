@@ -505,7 +505,7 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         const char *option = argv[i];
         if (!strcmp(option, "--help")) {
-            puts("chibi-player [ARTIFACT] [--resource-root DIR] [--shader-dir DIR] [--save PATH] [--backend vm|sljit] [--hidden] [--frames N] [--fixed-dt SECONDS] [--size WIDTHxHEIGHT] [--capture PNG]");
+            puts("chibi-player [ARTIFACT] [--resource-root DIR] [--shader-dir DIR] [--save PATH] [--backend vm|sljit|wasm] [--hidden] [--frames N] [--fixed-dt SECONDS] [--size WIDTHxHEIGHT] [--capture PNG]");
             puts("--size allows dimensions up to 640 and 230400 pixels; --capture requires --frames and --size.");
             return 0;
         }
@@ -543,6 +543,8 @@ int main(int argc, char **argv)
             backend = BEHAVIOR_BYTECODE;
         } else if (!strcmp(option, "--backend") && !strcmp(value, "sljit")) {
             backend = BEHAVIOR_SLJIT;
+        } else if (!strcmp(option, "--backend") && !strcmp(value, "wasm")) {
+            backend = BEHAVIOR_WASM;
         } else if (!strcmp(option, "--fixed-dt") && number(value, &fixed_dt) && fixed_dt <= ENGINE_FRAME_SECONDS_MAX) {
         } else if (!strcmp(option, "--frames")) {
             double count;

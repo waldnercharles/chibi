@@ -7,6 +7,7 @@
 void test_language_syntax();
 void test_language_corpus(const char *manifest);
 void test_language_execution();
+void test_language_wasm();
 void test_language_semantic();
 void test_language_program();
 void test_language_benchmark();
@@ -32,6 +33,7 @@ int main(int argc, char **argv)
     bool semantic = argc == 2 && !strcmp(argv[1], "--semantic");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
     bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
+    bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool headless = argc == 2 && !strcmp(argv[1], "--headless");
     bool navigation = argc == 2 && !strcmp(argv[1], "--navigation");
@@ -44,14 +46,16 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !execution && !semantic && !benchmark && !program &&
-         !headless && !navigation && !publication && !field_runtime && !prototype &&
-         !ui_authoring && !text_format && !graph_model && !graph_authoring &&
-         !model_runtime && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+        (!format && !prepared && !execution && !semantic && !benchmark &&
+         !wasm && !program && !headless && !navigation && !publication &&
+         !field_runtime && !prototype && !ui_authoring && !text_format &&
+         !graph_model && !graph_authoring && !model_runtime &&
+         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
-            "| --program | --script-benchmark | --headless | --navigation | "
+            "| --program | --script-benchmark | --wasm | --headless | "
+            "--navigation | "
             "--publication | "
             "--field-runtime | --prototype-document | --ui-authoring | "
             "--text-format | --graph-model | --graph-authoring | "
@@ -63,7 +67,9 @@ int main(int argc, char **argv)
         return 2;
     }
     pu_display_time(true);
-    if (benchmark) {
+    if (wasm) {
+        test_language_wasm();
+    } else if (benchmark) {
         test_language_benchmark();
     } else if (model_runtime) {
         test_model_runtime();

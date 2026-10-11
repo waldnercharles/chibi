@@ -5256,6 +5256,18 @@ static int handle_inspect_system(const char *root, yyjson_val *request, response
     return inspected;
 }
 
+static const char *execution_backend_label(behavior_backend backend)
+{
+    switch (backend) {
+        case BEHAVIOR_SLJIT: return "sljit";
+        case BEHAVIOR_WASM: return "wasm";
+        case BEHAVIOR_BYTECODE: return "bytecode";
+        case BEHAVIOR_ORACLE: return "interpreter";
+        case BEHAVIOR_UNAVAILABLE: return "unavailable";
+    }
+    return "unavailable";
+}
+
 static void add_execution_status(
     yyjson_mut_doc *doc,
     yyjson_mut_val *object,
@@ -5279,7 +5291,7 @@ static void add_execution_status(
 typedef struct
 {
     unsigned backends;
-    int instances, events, native_events;
+    int instances, events, native_events, wasm_events;
     bool ready;
 } behavior_execution_status;
 
@@ -5291,10 +5303,13 @@ static void add_behavior_execution_status(
 )
 {
     bool native = (status->backends & (1u << BEHAVIOR_SLJIT)) != 0;
+    bool wasm = (status->backends & (1u << BEHAVIOR_WASM)) != 0;
     bool full = status->ready && status->events > 0 &&
-                status->native_events == status->events && !custom_systems;
+                status->native_events + status->wasm_events == status->events &&
+                !custom_systems;
     const char *backend = !status->instances                         ? "none"
                         : status->backends == (1u << BEHAVIOR_SLJIT) ? "sljit"
+                        : status->backends == (1u << BEHAVIOR_WASM)  ? "wasm"
                         : status->backends == (1u << BEHAVIOR_BYTECODE)
                             ? "bytecode"
                         : status->backends == (1u << BEHAVIOR_ORACLE)
@@ -5307,8 +5322,12 @@ static void add_behavior_execution_status(
                : custom_systems ? "live behavior backends are reported; custom "
                                   "System execution coverage is unverified"
                : !status->instances ? "no live behavior attachments"
-               : full
+               : full && !wasm
                    ? "all behavior event entries have published native bodies"
+               : full
+                   ? "all behavior event entries have published compiled bodies"
+               : wasm   ? "generated WebAssembly bodies are published; "
+                          "whole-event coverage is incomplete"
                : native ? "native behavior blocks are published; whole-event "
                           "coverage is incomplete"
                : status->backends == (1u << BEHAVIOR_BYTECODE)
@@ -5321,8 +5340,9 @@ static void add_behavior_execution_status(
         object,
         backend,
         status->ready,
-        behavior_backend_available(BEHAVIOR_SLJIT),
-        native,
+        behavior_backend_available(BEHAVIOR_SLJIT) ||
+            behavior_backend_available(BEHAVIOR_WASM),
+        native || wasm,
         full,
         reason
     );
@@ -5331,6 +5351,7 @@ static void add_behavior_execution_status(
     yyjson_mut_obj_add_int(doc, execution, "instances", status->instances);
     yyjson_mut_obj_add_int(doc, execution, "event_entries", status->events);
     yyjson_mut_obj_add_int(doc, execution, "native_event_entries", status->native_events);
+    yyjson_mut_obj_add_int(doc, execution, "wasm_event_entries", status->wasm_events);
     yyjson_mut_obj_add_bool(doc, execution, "custom_systems_unverified", custom_systems);
 }
 
@@ -5368,7 +5389,7 @@ static int collect_source_execution(
         yyjson_mut_val *entry = yyjson_mut_arr_add_obj(doc, modules);
         yyjson_mut_obj_add_strcpy(doc, entry, "name", source->analysis->name);
         yyjson_mut_obj_add_uint(doc, entry, "id", execution_module_id(source->module));
-        yyjson_mut_obj_add_str(doc, entry, "backend", backend == BEHAVIOR_SLJIT ? "sljit" : "bytecode");
+        yyjson_mut_obj_add_str(doc, entry, "backend", execution_backend_label(backend));
         yyjson_mut_obj_add_int(doc, entry, "instances", instances);
         if (!instances) {
             continue;
@@ -5385,6 +5406,9 @@ static int collect_source_execution(
             status->events += instances;
             if (backend == BEHAVIOR_SLJIT && behavior_function_entry(function.body)) {
                 status->native_events += instances;
+            }
+            if (backend == BEHAVIOR_WASM) {
+                status->wasm_events += instances;
             }
         }
     }
@@ -5468,15 +5492,16 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
                  selected->valid && selected->module;
     behavior_backend backend = ready ? execution_module_backend(selected->module)
                                      : BEHAVIOR_UNAVAILABLE;
-    bool jit = backend == BEHAVIOR_SLJIT;
+    bool native_jit = backend == BEHAVIOR_SLJIT;
+    bool wasm_jit = backend == BEHAVIOR_WASM;
+    bool jit = native_jit || wasm_jit;
     add_execution_status(
         result->doc,
         value,
-        jit                            ? "sljit"
-        : backend == BEHAVIOR_BYTECODE ? "bytecode"
-                                       : "unavailable",
+        execution_backend_label(backend),
         ready,
-        behavior_backend_available(BEHAVIOR_SLJIT),
+        behavior_backend_available(BEHAVIOR_SLJIT) ||
+            behavior_backend_available(BEHAVIOR_WASM),
         jit,
         jit,
         ready ? "canonical source module published; runtime services are "
@@ -5487,7 +5512,7 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
     yyjson_mut_obj_add_bool(result->doc, value, "valid", ready);
     yyjson_mut_obj_add_bool(result->doc, execution, "bytecode", backend == BEHAVIOR_BYTECODE);
     yyjson_mut_obj_add_bool(result->doc, execution, "typed_bytecode", ready);
-    int events = 0, native_events = 0;
+    int events = 0, native_events = 0, wasm_events = 0;
     for (int i = 0; ready && i < execution_module_function_count(selected->module);
          i++) {
         execution_module_function_info
@@ -5495,11 +5520,15 @@ static int handle_execution_status(const char *root, yyjson_val *request, respon
         if (function.kind == EXECUTION_FUNCTION_HANDLER ||
             function.kind == EXECUTION_FUNCTION_SYSTEM) {
             events++;
-            native_events += jit && behavior_function_entry(function.body) != NULL;
+            native_events += native_jit &&
+                             behavior_function_entry(function.body) != NULL;
+            wasm_events += wasm_jit;
         }
     }
     yyjson_mut_obj_add_int(result->doc, execution, "events", events);
     yyjson_mut_obj_add_int(result->doc, execution, "native_events", native_events);
+    yyjson_mut_obj_add_int(result->doc, execution, "wasm_events", wasm_events);
+    yyjson_mut_obj_add_bool(result->doc, execution, "wasm", wasm_jit);
     authoring_sources_free(sources);
     authoring_language_catalog_free(native);
     if (!ready) {

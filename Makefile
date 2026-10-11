@@ -87,7 +87,9 @@ help:
 		'make test-native    Other CPU test_tools selectors, one shared 60s deadline' \
 		'make test-materials Material simulation selectors, one shared 60s deadline' \
 		'make test-projects  Project, asset import and chibi_ctl selectors, one shared 60s deadline' \
-		'make test-language-all  Every test_language selector, one shared 60s deadline' \
+		'make test-language-all  Every native language selector, one shared 60s deadline' \
+		'make test-wasm         C language checks on WebAssembly in Node' \
+		'make test-wasm-browser C language checks in Chrome (WEB_THREADS=1 for workers)' \
 		'make language-build Build the public language C consumer' \
 		'make test-language-{semantic,execution,program,headless,prepared,format}' \
 		'make test-list      Report admitted checks and quarantined coverage' \
@@ -360,4 +362,16 @@ clean:
 		rm -rf "$(BUILD_DIR)"; \
 	fi
 	rm -rf "$(DEBUG_BUILD_DIR)" "$(RELEASE_BUILD_DIR)" "$(TOOLS_BUILD_DIR)" "$(WEB_BUILD_DIR)"
+# Full-function browser JIT checks use the existing C language dispatcher.
+WASM_BUILD_DIR ?= build-wasm-language$(WEB_SUFFIX)
+.PHONY: wasm-language-build test-wasm
+wasm-language-build:
+	@$(QUIET) configure-wasm-language -- sh tools/web_env.sh emcmake cmake -S test/language -B "$(WASM_BUILD_DIR)" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCHIBI_WEB_THREADS=$(if $(filter 1,$(WEB_THREADS)),ON,OFF)
+	@$(QUIET) build-wasm-language -- cmake --build "$(WASM_BUILD_DIR)" --target test_language --parallel $(JOBS)
 
+test-wasm: wasm-language-build
+	@CHIBI_WASM_BUILD_DIR="$(WASM_BUILD_DIR)" python3 tools/test_policy.py group wasm
+
+.PHONY: test-wasm-browser
+test-wasm-browser: wasm-language-build tools-build
+	@CHIBI_TOOLS_BUILD_DIR="$(TOOLS_BUILD_DIR)" CHIBI_WASM_TEST_ROOT="$(abspath $(WASM_BUILD_DIR))" python3 tools/test_policy.py tool wasm-browser

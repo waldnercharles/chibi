@@ -30,6 +30,7 @@ void test_tool_validation_plan();
 void test_tool_publish();
 void test_tool_web_storage();
 void test_tool_webgpu_staging();
+void test_tool_wasm_browser();
 void test_tool_types();
 void test_tool_ecs();
 void test_tool_ecs_relationships();
@@ -414,6 +415,7 @@ int main(int argc, char **argv)
     bool package = argc == 2 && !strcmp(argv[1], "--package");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
     bool webgpu_staging = argc == 2 && !strcmp(argv[1], "--webgpu-staging");
+    bool wasm_browser = argc == 2 && !strcmp(argv[1], "--wasm-browser");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool arena = argc == 2 && !strcmp(argv[1], "--arena");
@@ -579,10 +581,10 @@ int main(int argc, char **argv)
     if (argc != 1 && !example && !corpus && !coverage && !preview_components &&
         !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
         !tilemap && !tilemap_project && !package && !unit && !web_storage &&
-        !webgpu_staging && !query_benchmark && !prepared && !read && !scene &&
-        !scene_prepared && !scene_hierarchy && !native && !native_values &&
-        !native_catalog && !physics && !physics3d && !transforms &&
-        !render_resources && !interior_border && !viewport_resize &&
+        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared &&
+        !read && !scene && !scene_prepared && !scene_hierarchy && !native &&
+        !native_values && !native_catalog && !physics && !physics3d &&
+        !transforms && !render_resources && !interior_border && !viewport_resize &&
         !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
         !scene2d && !scene3d && !material_ramps && !texture_transform &&
         !arena && !render_geometry && !radiance_surface && !radiance_horizons &&
@@ -600,7 +602,7 @@ int main(int argc, char **argv)
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
             "--web-storage | "
-            "--webgpu-staging | "
+            "--webgpu-staging | --wasm-browser | "
             "--ecs-query-benchmark | --arena | "
             "--validate-project chibi_ctl | --controller chibi_ctl | "
             "--render-fixture chibi_ctl | --preview-components | "
@@ -917,6 +919,8 @@ int main(int argc, char **argv)
 #endif
     if (webgpu_staging) {
         test_tool_webgpu_staging();
+    } else if (wasm_browser) {
+        test_tool_wasm_browser();
     } else if (package) {
         test_tool_package();
     } else if (scene_prepared) {

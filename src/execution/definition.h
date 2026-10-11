@@ -5,7 +5,6 @@
 #include "execution/instruction.h"
 #include "execution/scalar.h"
 #include "execution/value_kind.h"
-#include "execution/wasm.h"
 #include "support/arena.h"
 
 typedef struct
@@ -224,7 +223,6 @@ void behavior_function_rebind_host(
     const struct service_binding *
 );
 void behavior_function_borrow_arrays(behavior_function *function);
-void behavior_function_compile_wasm_regions(behavior_function *function);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);
 void behavior_function_optimize(behavior_function *function);

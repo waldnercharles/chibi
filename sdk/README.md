@@ -171,13 +171,17 @@ without an engine checkout. Supply `--package` and an explicit `--config` contai
 absolute game paths. Installed tools leave the SDK file inventory unchanged.
 
 For browser Studio, `make package-web-sdk` configures the same packages with
-Emscripten and SLJIT disabled. This SDK is library-only even when compiler,
+Emscripten and SLJIT disabled. Browser behavior execution defaults to the Wasm
+JIT, which emits and compiles script functions during program publication. A
+compile error rejects the new program. BYTECODE remains an explicit diagnostic
+backend. This SDK is library-only even when compiler,
 native capabilities and desktop renderer are enabled. Its manifest records the
 Emscripten platform and exact web worker configuration. Serial/threaded profiles
 have separate default install prefixes. External Studio consumes the installed
 `Chibi_WEB_THREADS`/`Chibi_WEB_WORKERS` ABI and produces the browser application;
 there is no root combined application or native CLI in the web SDK. Browser
-build/execution acceptance is still pending.
+application acceptance is separate from the CPU Wasm checks described in
+`docs/testing.md`.
 
 Packaging installs into a fresh staging directory and verifies the exported
 CMake target closure before replacing a previous managed package. Runtime

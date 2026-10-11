@@ -10,6 +10,7 @@
 #include "execution/state.h"
 #include "execution/status.h"
 #include "execution/storage.h"
+#include "execution/wasm_jit.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
@@ -529,7 +530,7 @@ static bool state_function_valid(const execution_module_plan *m, const behavior_
 }
 static int publish(execution_module_plan *m, behavior_backend backend, char *error, size_t size, bool decoded)
 {
-    if (!m->valid || (backend != BEHAVIOR_BYTECODE && backend != BEHAVIOR_SLJIT)) {
+    if (!m->valid || !behavior_backend_available(backend)) {
         snprintf(error, size, "module is invalid or backend is unavailable");
         return FLOW_ERR_COMPILE;
     }
@@ -688,10 +689,16 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
             snprintf(error, size, "function %d has an invalid capture schema", i);
             return FLOW_ERR_COMPILE;
         }
-        if (backend == BEHAVIOR_SLJIT &&
+        if (backend != BEHAVIOR_BYTECODE &&
             (!behavior_function_compile(f->body) ||
              (f->subscription && !behavior_function_compile(f->subscription)))) {
-            snprintf(error, size, "native function emission failed");
+            snprintf(
+                error,
+                size,
+                "%s function emission failed: %s",
+                behavior_backend_name(backend),
+                backend == BEHAVIOR_WASM ? execution_wasm_jit_error() : "SLJIT emission failed"
+            );
             return FLOW_ERR_COMPILE;
         }
     }
@@ -732,10 +739,16 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
                 return FLOW_ERR_COMPILE;
             }
         }
-        if (backend == BEHAVIOR_SLJIT &&
+        if (backend != BEHAVIOR_BYTECODE &&
             (!behavior_function_compile(b->body) ||
              (b->dependencies && !behavior_function_compile(b->dependencies)))) {
-            snprintf(error, size, "native binding emission failed");
+            snprintf(
+                error,
+                size,
+                "%s binding emission failed: %s",
+                behavior_backend_name(backend),
+                backend == BEHAVIOR_WASM ? execution_wasm_jit_error() : "SLJIT emission failed"
+            );
             return FLOW_ERR_COMPILE;
         }
     }

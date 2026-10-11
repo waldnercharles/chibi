@@ -289,7 +289,7 @@ int program_activation_run(execution_activation *a, double now, double delta, un
     a->status = behavior_function_run(
         a->function,
         &a->context,
-        a->instance->program->module->backend == BEHAVIOR_SLJIT
+        a->instance->program->module->backend != BEHAVIOR_BYTECODE
     );
     if (observed->observer) {
         clock_t end = clock();

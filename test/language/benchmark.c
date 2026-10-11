@@ -1,3 +1,4 @@
+#include "backend.h"
 #include "ecs/ecs.h"
 #include "execution/module.h"
 #include "execution/status.h"
@@ -10,6 +11,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+
+#ifdef __EMSCRIPTEN__
+#include "../../src/execution/wasm_jit.h"
+#endif
 
 #define LOOP_COUNT 100
 #define DISPATCH_COUNT 200
@@ -32,6 +37,11 @@ static script_analysis *analysis;
 static execution_module *module;
 static execution_program *program;
 static ecs_world *world;
+static double publish_seconds;
+#ifdef __EMSCRIPTEN__
+static execution_wasm_jit_stats publish_stats;
+#endif
+static double monotonic_seconds();
 
 static void cleanup()
 {
@@ -67,7 +77,21 @@ static bool compile(const char *source, behavior_backend backend)
         return false;
     }
     char error[256];
+#ifdef __EMSCRIPTEN__
+    execution_wasm_jit_stats before, after;
+    execution_wasm_jit_get_stats(&before);
+#endif
+    double start = monotonic_seconds();
     module = execution_module_finish(&plan, backend, error, sizeof error);
+    publish_seconds = monotonic_seconds() - start;
+#ifdef __EMSCRIPTEN__
+    execution_wasm_jit_get_stats(&after);
+    publish_stats = (execution_wasm_jit_stats){
+        .compilations = after.compilations - before.compilations,
+        .executions = after.executions - before.executions,
+        .compile_failures = after.compile_failures - before.compile_failures,
+    };
+#endif
     execution_module_plan_free(plan);
     if (!module) {
         fprintf(stderr, "benchmark publish: %s\n", error);
@@ -99,7 +123,7 @@ static double monotonic_seconds()
 
 TEST_CASE(scalar_authored_call_benchmark)
 {
-    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     const char *expressions[] = { "i * 3 + 1", "Step(i)" };
     for (int b = 0; b < 2; b++) {
         for (int helper = 0; helper < 2; helper++) {
@@ -129,14 +153,24 @@ TEST_CASE(scalar_authored_call_benchmark)
             REQUIRE(total && total->type == PIN_F64 && total->d == EXPECTED_TOTAL);
             printf(
                 "BENCH backend=%s helper=%d loop=%d dispatches=%d trials=%d "
-                "module_bytes=%zu\n",
-                b ? "SLJIT" : "VM",
+                "module_bytes=%zu publish_ms=%.6f\n",
+                behavior_backend_name(backends[b]),
                 helper,
                 LOOP_COUNT,
                 DISPATCH_COUNT,
                 TRIAL_COUNT,
-                execution_module_storage_bytes(module)
+                execution_module_storage_bytes(module),
+                publish_seconds * 1e3
             );
+#ifdef __EMSCRIPTEN__
+            printf(
+                "PUBLISH installations=%llu executions=%llu "
+                "compile_failures=%llu\n",
+                (unsigned long long)publish_stats.compilations,
+                (unsigned long long)publish_stats.executions,
+                (unsigned long long)publish_stats.compile_failures
+            );
+#endif
             for (int trial = 0; trial < TRIAL_COUNT; trial++) {
                 int status = FLOW_OK;
                 xalloc_stats before, after;

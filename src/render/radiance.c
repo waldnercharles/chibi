@@ -1323,6 +1323,12 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
         cf_material_set_uniform_fs(mat, "u_thickness", &hrc->lighting.surface_thickness, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_specular", &hrc->lighting.specular, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_relief", &hrc->lighting.surface_relief, CF_UNIFORM_TYPE_FLOAT, 1);
+        /* The merge's falloff per canvas pixel. It dims light over the
+         * cascade intervals before the one that reaches it, which start at
+         * powers of two: on average over 1 / (2 ln 2) of its distance. */
+        float diagonal = hypotf((float)hrc->canvas_w, (float)hrc->canvas_h);
+        float falloff = hrc->falloff * 2.0f / diagonal / (2.0f * logf(2.0f));
+        cf_material_set_uniform_fs(mat, "u_falloff", &falloff, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_block", block, CF_UNIFORM_TYPE_INT, 1);
         s_draw_region(hrc, hrc->surface_depth_shd, hrc->surface_canvas[0], width, height);
         hrc->surface_work.candidates = (size_t)width * height * (axis + 1) *
@@ -2004,7 +2010,7 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting,
         radiance->surface_has_history = false;
     }
     GameHRC2D prior = radiance->lighting;
-    if (prior.surface_mode != lighting.surface_mode ||
+    if (prior.falloff != lighting.falloff || prior.surface_mode != lighting.surface_mode ||
         prior.surface_radius != lighting.surface_radius ||
         prior.surface_depth_radius != lighting.surface_depth_radius ||
         prior.surface_thickness != lighting.surface_thickness ||

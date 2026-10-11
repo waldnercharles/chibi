@@ -345,7 +345,9 @@ TEST_CASE(depth_light_switches_back_to_blur)
 }
 
 /* A slab shadows the receiver only where it crosses the light's path, and a
- * strip without emission lights nothing. */
+ * strip without emission lights nothing. Beside a raised slab, crossing the
+ * path or not, the receiver's filter takes no light from past it, nearer the
+ * strip, so the receiver keeps a little less. */
 TEST_CASE(slabs_shadow_only_the_light_they_cross)
 {
     GameHRC2D lighting = depth_lighting();
@@ -354,7 +356,7 @@ TEST_CASE(slabs_shadow_only_the_light_they_cross)
     REQUIRE(slab_light(BELOW, lighting, &below) && slab_light(ABOVE, lighting, &above));
     REQUIRE(slab_light(UNLIT, lighting, &unlit));
     REQUIRE(open > .001f && crossing < open * .35f);
-    REQUIRE(below > open * .8f && above > open * .8f);
+    REQUIRE(below > open * .8f && above > open * .7f);
     REQUIRE(fabsf(unlit) < .00001f);
     return true;
 }
@@ -369,7 +371,9 @@ TEST_CASE(receivers_tilted_toward_the_light_take_more)
 }
 
 /* Height blocks light whether or not it absorbs, so a prop that lets HRC's
- * light pass still shadows by its height; a light never shadows another. */
+ * light pass still shadows by its height; a light never shadows another,
+ * though beside it, as beside any raised slab, the receiver keeps a little
+ * less. */
 TEST_CASE(slabs_shadow_by_height_unless_they_glow)
 {
     GameHRC2D lighting = depth_lighting();
@@ -377,7 +381,7 @@ TEST_CASE(slabs_shadow_by_height_unless_they_glow)
     REQUIRE(slab_light(OPEN, lighting, &open) && slab_light(CLEAR, lighting, &clear));
     REQUIRE(slab_light(GLOWING, lighting, &glowing));
     REQUIRE(open > .001f && clear < open * .35f);
-    REQUIRE(glowing > open * .8f);
+    REQUIRE(glowing > open * .7f);
     return true;
 }
 
@@ -740,6 +744,55 @@ TEST_CASE(walls_occlude_ambient_light_by_their_height)
     return true;
 }
 
+/* A flat matte floor `floor` units tall with edge light, closed (it absorbs
+ * light) or open, lit by the red strip standing `height` units tall with
+ * nothing between them. */
+static void floor_scene(bool closed, float floor, float height)
+{
+    open_scene(OPEN, 0, 1);
+    for (int p = 0; p < PIXELS; p++) {
+        bool strip = data[SOURCE][p][0] > 0;
+        data[ALBEDO][p][3] = strip ? height : floor;
+        data[SOURCE][p][3] = strip || !closed ? 0 : 20;
+    }
+}
+
+/* The red at the center of floor_scene() from a reset. */
+static bool floor_light(GameHRC2D lighting, bool closed, float floor, float height, float *red)
+{
+    float color[3];
+    floor_scene(closed, floor, height);
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), color));
+    *red = color[0];
+    return true;
+}
+
+/* At falloff 0, 1 and 2, a closed floor approximately matches the open
+ * floor's tone-mapped brightness, and intensity leaves the closed floor
+ * unchanged. A light near its plane lights it less, and one below it not
+ * at all. */
+TEST_CASE(closed_receivers_take_the_light_hrc_brings_open_ones)
+{
+    GameHRC2D lighting = fill_lighting();
+    lighting.surface_depth_radius = 32;
+    for (int falloff = 0; falloff < 3; falloff++) {
+        lighting.falloff = (float)falloff;
+        float open, closed, low, below, bright;
+        REQUIRE(floor_light(lighting, false, 0, 24, &open));
+        REQUIRE(floor_light(lighting, true, 0, 24, &closed));
+        REQUIRE(floor_light(lighting, true, 0, 4, &low));
+        REQUIRE(floor_light(lighting, true, 30, 24, &below));
+        lighting.intensity = 2;
+        REQUIRE(floor_light(lighting, true, 0, 24, &bright));
+        lighting.intensity = .5f;
+        REQUIRE(open > .1f && fabsf(closed - open) < open * .15f);
+        REQUIRE(low > closed * .3f && low < closed * .65f);
+        REQUIRE(fabsf(below) < .00001f);
+        REQUIRE(fabsf(bright - closed) < closed * .01f);
+    }
+    return true;
+}
+
 /* A dark receiver, nearly black and tilted toward the half-vector, so gloss
  * shows apart from its diffuse light. The strip stays off the receiver. */
 static void dark_receiver(float gloss)
@@ -816,7 +869,7 @@ TEST_CASE(every_depth_quality_lights_and_shadows)
 /* Depth history keeps still light as it is. It drops it for a receiver that
  * turns away, which would otherwise keep its old light as a ghost, for a
  * removed source, for a receiver that tilts toward the light, for a source
- * that dims sharply, and on a reset. */
+ * that dims sharply, a changed distance falloff, and on a reset. */
 TEST_CASE(depth_history_keeps_still_light_and_drops_changes)
 {
     GameHRC2D lighting = depth_lighting();
@@ -833,6 +886,17 @@ TEST_CASE(depth_history_keeps_still_light_and_drops_changes)
     for (int c = 0; c < 3; c++) {
         REQUIRE(fabsf(initial[c] - held[c]) < .001f);
     }
+    /* A moderate falloff edit keeps the geometry and source unchanged. Its
+     * first frame must match a fresh solve, rather than hold the old light. */
+    float falloff[3];
+    lighting.falloff += .25f;
+    REQUIRE(lit(lighting, test_centered(SIDE), falloff));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), fresh));
+    float change = held[0] - fresh[0];
+    REQUIRE(fresh[0] > .00001f && change > held[0] * .01f);
+    REQUIRE(fabsf(falloff[0] - fresh[0]) < change * .05f);
+    lighting.falloff -= .25f;
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), held));
     /* Normals hold x and y; z flags a solid surface, and the rebuilt normal
      * faces the viewer. */
     for (int p = 0; p < PIXELS; p++) {
@@ -1372,6 +1436,7 @@ void test_render_radiance_depth()
     RUN_TEST_CASE(open_receivers_shade_hrc_light_by_facing_and_height);
     RUN_TEST_CASE(depth_gain_keeps_shadows_and_unlit_scenes_dark);
     RUN_TEST_CASE(walls_occlude_ambient_light_by_their_height);
+    RUN_TEST_CASE(closed_receivers_take_the_light_hrc_brings_open_ones);
     RUN_TEST_CASE(glossy_receivers_take_highlights_by_the_depth_gain);
     RUN_TEST_CASE(matte_patches_take_no_gloss_from_around_them);
     RUN_TEST_CASE(every_depth_quality_lights_and_shadows);

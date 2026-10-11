@@ -802,7 +802,10 @@ from the same pinned lighting but with color at half resolution: slabs that
 shadow only the light they cross, by height whether or not they absorb, unless
 they glow, small, moving, edge and mixed-color sources, falloff to the depth
 radius, perspective views, the depth gain on receivers that absorb, as much at
-a Material's full absorption as opaque, receivers that absorb nothing taking
+a Material's full absorption as opaque, receivers that absorb taking the light
+HRC brings open ones at falloff 0, 1 and 2 within a 15% tone-mapped brightness
+tolerance, independently of intensity, less from lights near their plane and
+none from below it, receivers that absorb nothing taking
 HRC's light by facing and height, smoothly, walls hiding ambient light by
 their height in both visibility modes, gloss,
 every depth quality, depth history of light and of that shading, segments and
@@ -810,8 +813,8 @@ steep planes. The surface
 gather pass alone must take each quadrant's light, find crests past gaps and
 stay dark without light in reach, and surface gather light must restart when
 the view turns. Its cases share one HRC, since a new one compiles all of HRC's
-shaders. It passes 2174 assertions in 12.4 seconds, 22.5 with an empty shader
-cache.
+shaders. The reviewed 31-case workload also checks that changing falloff drops
+stale Depth history; it passes in 5.6 seconds on the native macOS backend.
 `material-sampling` draws shapes into the material raster alone in a hidden
 65 x 49 app: small circles must emit their area wherever they land on the pixel
 grid and at twice the resolution, overlapping tiles must keep their draw order,

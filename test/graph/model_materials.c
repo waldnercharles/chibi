@@ -977,6 +977,25 @@ TEST_CASE(live_rename_updates_applied_sources)
     return true;
 }
 
+TEST_CASE(live_model_registration_names_its_node)
+{
+    ecs_world *ecs = ecs_world_new();
+    game_preview_world *world = game_preview_world_new(ecs);
+    behavior_asset *asset = model("LiveMissingPaint");
+    node *body = part(asset->graph, "Body", 2);
+    node *paint = slot(asset->graph, "Paint", "LiveAbsentPaint");
+    connect(asset->graph, paint, body, 1);
+    publish(asset->graph, body);
+    game_preview_definition *definition = game_preview_definition_new(asset->name, asset);
+    REQUIRE(game_preview_add_definition(world, definition));
+    REQUIRE(acount(definition->diagnostics.items) == 1);
+    REQUIRE(definition->diagnostics.items[0].node_id == paint->id);
+    game_preview_definition_free(definition);
+    game_preview_world_free(world);
+    ecs_world_free(ecs);
+    return true;
+}
+
 static void teardown()
 {
     authoring_shader_catalog_clear();
@@ -999,6 +1018,7 @@ void test_model_materials()
     RUN_TEST_CASE(combined_ramp_limit);
     RUN_TEST_CASE(scoped_namespace_collision);
     RUN_TEST_CASE(live_rename_updates_applied_sources);
+    RUN_TEST_CASE(live_model_registration_names_its_node);
     pu_clear_setup();
     test_graph_packs_restore();
 }

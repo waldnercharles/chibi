@@ -386,7 +386,9 @@ int game_preview_add_definition(game_preview_world *world, game_preview_definiti
         shader_error error = { 0 };
         if (!render_shader_upsert(linked, &error)) {
             behavior_asset_free(linked);
-            return registration_error(definition, error.message);
+            registration_error(definition, error.message);
+            alast(definition->diagnostics.items).node_id = error.node;
+            return -1;
         }
     }
     behavior_asset_free(definition->applied);

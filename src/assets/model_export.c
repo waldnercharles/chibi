@@ -336,6 +336,7 @@ bool model_export_bundle(
             NULL,
             sources.catalog,
             acount(sources.catalog),
+            NULL,
             &diagnostic
         );
     }

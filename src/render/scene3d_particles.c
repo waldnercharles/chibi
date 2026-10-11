@@ -4,6 +4,7 @@
 #include "render/scene3d_visual.h"
 #include "render/shader_catalog.h"
 #include "render/shader_program.h"
+#include "render/shader_text_create.h"
 #include "runtime/component_catalog.h"
 #include "runtime/engine.h"
 #include "runtime/rhythm.h"
@@ -99,7 +100,9 @@ static int program_for(scene3d_particles *particles, int asset, char *error, siz
         char *source = xmalloc(bytes);
         memcpy(source, vertex, prefix);
         snprintf(source + prefix, bytes - prefix, "%s%s", graph, at + strlen(marker));
-        shader = cf_make_shader_from_source(source, fragment);
+        const shader_text *text = render_shader_particle_text(asset);
+        shader = text ? render_shader_text_create(text, source, fragment, &diagnostic)
+                      : cf_make_shader_from_source(source, fragment);
         free(source);
     }
     if (!shader.id) {

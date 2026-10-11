@@ -1,0 +1,9 @@
+version 1
+name "GlslRainField"
+presentation "3d"
+(array)entities {
+    - name="Rain" prototype="GlslRain"
+    - name="Camera" prototype="RainCamera"
+    - name="Environment" prototype="RainEnvironment"
+    - name="Rain lamp" prototype="RainLamp"
+}

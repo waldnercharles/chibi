@@ -3,6 +3,7 @@
 #include "render/catalog_publication.h"
 #include "render/scene3d_parts_table.h"
 #include "render/shader_catalog_records.h"
+#include "render/shader_text.h"
 #include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_prepared.h"
 #include "runtime/images/sky.h"
@@ -115,6 +116,8 @@ static bool prepare_shader(resource_generation *g, const player_asset *record, s
         return false;
     }
     shader_asset asset = { .name = value.name,
+                           .kind = value.kind,
+                           .text = value.text,
                            .graph = value.graph,
                            .shape = value.shape,
                            .alpha_mode = value.alpha_mode };
@@ -217,7 +220,8 @@ static bool materials_valid(const resource_generation *g, shader_error *error)
         for (int j = 0; j < parts->count; j++) {
             const char *name = parts->parts[j].material;
             int index = *name ? asset_index(g, name) : 0;
-            if (*name && (index < 0 || g->assets[index].shape)) {
+            if (*name && (index < 0 || g->assets[index].shape ||
+                          g->assets[index].kind != SHADER_ASSET_GRAPH)) {
                 ok = false;
                 break;
             }
@@ -246,6 +250,12 @@ static bool prepare_graphs(resource_generation *g, size_t *budget, shader_error 
 {
     for (int i = 0; i < acount(g->assets); i++) {
         shader_asset *a = &g->assets[i];
+        if (a->kind == SHADER_ASSET_PARTICLE_TEXT) {
+            if (!render_shader_text_validate(&a->text, a->names, a->widths, error)) {
+                return false;
+            }
+            continue;
+        }
         a->material_inspection = shader_graph_inspect(&a->graph);
         if (acount(a->graph.images) > RENDER_SHADER_IMAGE_MAX) {
             return false;

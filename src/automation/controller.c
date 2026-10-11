@@ -26,6 +26,7 @@
 #include "authoring/prototype_preview.h"
 #include "authoring/reference_index.h"
 #include "authoring/shader_prepare.h"
+#include "authoring/shader_source.h"
 #include "authoring/sound_prepare.h"
 #include "authoring/source_catalog.h"
 #include "authoring/source_collection.h"
@@ -125,6 +126,7 @@ typedef enum
 {
     ASSET_GRAPH,
     ASSET_SYSTEM,
+    ASSET_SHADER_SOURCE,
     ASSET_PROTOTYPE,
     ASSET_SCENE,
     ASSET_EDITOR,
@@ -150,6 +152,7 @@ static const asset_family ASSET_FAMILIES[] = {
     { "model", "models", DECLARATIVE_ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_SHAPE },
     { "field", "fields", DECLARATIVE_ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_FIELD },
     { "shader-library", "shader-libraries", DECLARATIVE_ASSET_EXTENSION, ASSET_GRAPH, REFERENCE_ASSET_LIBRARY },
+    { "shader-source", "shaders", DECLARATIVE_ASSET_EXTENSION, ASSET_SHADER_SOURCE, REFERENCE_ASSET_SHADER_SOURCE },
     { "system", "systems", CODE_ASSET_EXTENSION, ASSET_SYSTEM, REFERENCE_ASSET_SYSTEM },
     { "prototype", "prototypes", DECLARATIVE_ASSET_EXTENSION, ASSET_PROTOTYPE, REFERENCE_ASSET_PROTOTYPE },
     { "scene", "scenes", DECLARATIVE_ASSET_EXTENSION, ASSET_SCENE, REFERENCE_ASSET_SCENE },
@@ -174,6 +177,7 @@ typedef struct
     char *name; /* see asset_name */
     size_t bytes;
     uint64_t hash;
+    uint64_t dependencies; /* Referenced GLSL content, separate from descriptor writes. */
 } asset_entry;
 
 typedef struct
@@ -302,7 +306,7 @@ static const contract_field CONTRACT_NEW_PROJECT[] = {
 };
 static const contract_field CONTRACT_NEW_ASSET[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
-    { "kind", "string", true, "scene, prototype, behavior, event, system, library, material, shape, field, shader-library or model." },
+    { "kind", "string", true, "scene, prototype, behavior, event, system, library, material, shape, field, shader-library, shader-source or model." },
     { "name", "string", true, "Asset name: a letter, then letters, digits, - and _." },
 };
 static const contract_field CONTRACT_BAKE_MODEL[] = {
@@ -1323,12 +1327,11 @@ static char *asset_name_from_filename(const char *filename)
     return name;
 }
 
-/* An asset's name: the one a prototype declares, which is how the player
- * finds it, and otherwise its file name before the extension. A prototype
- * that declares none is named by its file, where its error is reported. */
+/* Prototypes and shader sources declare their runtime name independently of
+ * their filename. Invalid declarations fall back to the file for diagnostics. */
 static char *asset_name(const asset_family *family, const char *filename, const char *text)
 {
-    if (family->loader == ASSET_PROTOTYPE) {
+    if (family->loader == ASSET_PROTOTYPE || family->loader == ASSET_SHADER_SOURCE) {
         char error[160];
         av_doc *document = av_doc_read(text, error, sizeof error);
         const char *declared = av_get_str(av_obj_get(av_doc_root(document), "name"));
@@ -1441,6 +1444,17 @@ static void catalog_scan_entities(catalog_asset *asset, yyjson_val *entities, co
 
 static void catalog_scan_members(catalog_asset *asset, yyjson_val *root)
 {
+    if (asset->asset.family->loader == ASSET_SHADER_SOURCE) {
+        catalog_member_add(asset, "entry", request_string(root, "entry"));
+        yyjson_val *parameters = yyjson_obj_get(root, "parameters");
+        size_t index, count;
+        yyjson_val *key, *parameter;
+        yyjson_obj_foreach(parameters, index, count, key, parameter)
+        {
+            catalog_member_add(asset, "parameter", yyjson_get_str(key));
+        }
+        return;
+    }
     yyjson_val *graphs = yyjson_obj_get(root, "graphs");
     size_t index, count;
     yyjson_val *graph_value;
@@ -1774,6 +1788,16 @@ static void prototype_includes_free(prototype_includes *includes)
     afree(includes->texts);
 }
 
+static bool validate_shader_source(const char *root, const char *path, const char *text, char *error, size_t size)
+{
+    shader_prepared_asset asset;
+    shader_prepared_asset_init(&asset);
+    bool valid = authoring_shader_source_load(chibi_automation_content(root), path, text, &asset, error, size) &&
+                 authoring_shader_source_validate(&asset, error, size);
+    shader_prepared_asset_free(&asset);
+    return valid;
+}
+
 static void catalog_validate_asset(
     const char *root,
     const catalog_links *links,
@@ -1818,7 +1842,13 @@ static void catalog_validate_asset(
         }
         return;
     }
-    if (family->loader == ASSET_GRAPH) {
+    if (family->loader == ASSET_SHADER_SOURCE) {
+        char error[1024] = { 0 };
+        if (!validate_shader_source(root, path, json, error, sizeof error)) {
+            asset->errors = 1;
+            catalog_add_diagnostic(asset, "error", 0, "SOURCE", error);
+        }
+    } else if (family->loader == ASSET_GRAPH) {
         behavior_asset *behavior = behavior_asset_load(json);
         if (!behavior || links->error[0]) {
             asset->errors = 1;
@@ -2007,6 +2037,7 @@ static void catalog_add_content(
             reference_index_add_ui(index, asset->reference, text);
             return;
         case ASSET_EDITOR:
+        case ASSET_SHADER_SOURCE:
         case ASSET_SCENARIO: return;
     }
 }
@@ -2661,6 +2692,7 @@ static int load_catalog_asset(
             .name = xstrdup(entry->name),
             .bytes = entry->bytes,
             .hash = entry->hash,
+            .dependencies = entry->dependencies,
         },
         .name = xstrdup(entry->name),
         .valid = true,
@@ -2736,7 +2768,8 @@ static int cached_catalog_asset_index(const catalog_asset *assets, const asset_e
         if (assets[i].asset.family == entry->family &&
             !strcmp(assets[i].asset.relative, entry->relative) &&
             assets[i].asset.bytes == entry->bytes &&
-            assets[i].asset.hash == entry->hash) {
+            assets[i].asset.hash == entry->hash &&
+            assets[i].asset.dependencies == entry->dependencies) {
             return i;
         }
     }
@@ -2838,6 +2871,27 @@ static int build_catalog_from_entries(
     return CHIBI_AUTOMATION_OK;
 }
 
+/* The descriptor hash remains its optimistic-write identity. Source and include
+ * contents independently invalidate cached validation. */
+static uint64_t shader_source_hash(const char *content, const char *path, const char *text)
+{
+    shader_prepared_asset asset;
+    shader_prepared_asset_init(&asset);
+    char error[1024] = { 0 };
+    unsigned char *bytes = NULL;
+    size_t count = 0;
+    shader_error diagnostic = { 0 };
+    bool loaded = authoring_shader_source_load(content, path, text, &asset, error, sizeof error);
+    bool written = loaded &&
+                   shader_asset_prepared_write(&asset, &bytes, &count, &diagnostic);
+    const char *failure = loaded ? diagnostic.message : error;
+    uint64_t hash = written ? automation_content_hash((const char *)bytes, count)
+                            : automation_content_hash(failure, strlen(failure));
+    free(bytes);
+    shader_prepared_asset_free(&asset);
+    return hash;
+}
+
 static int enumerate_assets(const char *root, asset_entry **out, char *error, size_t error_size)
 {
     const char *content = chibi_automation_content(root);
@@ -2903,6 +2957,9 @@ static int enumerate_assets(const char *root, asset_entry **out, char *error, si
                 .name = asset_name(family, entry->d_name, contents),
                 .bytes = bytes,
                 .hash = hash,
+                .dependencies = family->loader == ASSET_SHADER_SOURCE
+                                  ? shader_source_hash(content, full_path, contents)
+                                  : 0,
             };
             free(contents);
             snprintf(
@@ -2933,7 +2990,8 @@ static bool asset_entries_equal(const asset_entry *left, const asset_entry *righ
     for (int i = 0; i < acount(left); i++) {
         if (left[i].family != right[i].family ||
             strcmp(left[i].relative, right[i].relative) ||
-            left[i].bytes != right[i].bytes || left[i].hash != right[i].hash) {
+            left[i].bytes != right[i].bytes || left[i].hash != right[i].hash ||
+            left[i].dependencies != right[i].dependencies) {
             return false;
         }
     }
@@ -3444,6 +3502,15 @@ static uint64_t catalog_content_hash(const catalog_asset *assets)
             (unsigned long long)assets[i].asset.hash
         );
         catalog_hash_text(&hash, value);
+        if (assets[i].asset.dependencies) {
+            snprintf(
+                value,
+                sizeof value,
+                ":%016llx;",
+                (unsigned long long)assets[i].asset.dependencies
+            );
+            catalog_hash_text(&hash, value);
+        }
     }
     return hash;
 }
@@ -5638,9 +5705,10 @@ static int load_asset(
     size_t error_size
 )
 {
-    /* A prototype's name need not be one a file could take. */
+    /* Runtime names may differ from their descriptor filenames. */
     const asset_family *family = family_by_kind(request_string(request, "kind"));
-    if (!request_string(request, "path") && family && family->loader == ASSET_PROTOTYPE) {
+    if (!request_string(request, "path") && family &&
+        (family->loader == ASSET_PROTOTYPE || family->loader == ASSET_SHADER_SOURCE)) {
         const char *name = request_string(request, "name");
         return load_named_asset(root, family, name, ref, json, bytes, hash, error, error_size);
     }
@@ -5652,9 +5720,8 @@ static int load_asset(
     return read_asset_file(root, ref, json, bytes, hash, error, error_size);
 }
 
-/* The prototype that declares `name` when the file named after it doesn't.
- * Two that declare it are refused, as the player refuses them. */
-static int find_prototype(
+/* Find a declaration by runtime name, rejecting ambiguous declarations. */
+static int find_named_asset(
     const char *root,
     const char *name,
     asset_ref *ref,
@@ -5669,7 +5736,7 @@ static int find_prototype(
     int found = verify_asset_directory(root, family, error, error_size);
     if (found <= 0) {
         if (!found) {
-            set_errorf(error, error_size, "no prototype is named '%s'", name);
+            snprintf(error, error_size, "no %s is named '%s'", family->kind, name);
         }
         return found < 0 ? CHIBI_AUTOMATION_IO_ERROR : CHIBI_AUTOMATION_NOT_FOUND;
     }
@@ -5730,9 +5797,10 @@ static int find_prototype(
             snprintf(
                 error,
                 error_size,
-                "%s and %s both declare the prototype '%s'",
+                "%s and %s both declare the %s '%s'",
                 ref->relative,
                 candidate.relative,
+                family->kind,
                 name
             );
             free(text);
@@ -5753,7 +5821,7 @@ static int find_prototype(
     }
     closedir(directory);
     if (status == CHIBI_AUTOMATION_NOT_FOUND) {
-        set_errorf(error, error_size, "no prototype is named '%s'", name);
+        snprintf(error, error_size, "no %s is named '%s'", family->kind, name);
     }
     return status;
 }
@@ -5779,25 +5847,28 @@ static int load_named_asset(
     memset(ref, 0, sizeof *ref);
     ref->family = family;
     *json = NULL;
-    bool prototype = family->loader == ASSET_PROTOTYPE;
+    if (family->loader == ASSET_SHADER_SOURCE) {
+        return find_named_asset(root, name, ref, json, bytes, hash, error, error_size);
+    }
+    bool declared = family->loader == ASSET_PROTOTYPE;
     const char *refused = strchr(name, '/') || strchr(name, '\\') || strstr(name, "..")
                             ? "asset name is invalid"
                             : name_asset_file(ref, name);
-    if (refused && !prototype) {
+    if (refused && !declared) {
         return set_error(error, error_size, refused), CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     if (!refused) {
         snprintf(ref->relative, sizeof ref->relative, "content/%s/%s", family->folder, ref->filename);
         int status = read_asset_file(root, ref, json, bytes, hash, error, error_size);
         bool found = status == CHIBI_AUTOMATION_OK && !strcmp(ref->name, name);
-        if (!prototype || found ||
+        if (!declared || found ||
             (status != CHIBI_AUTOMATION_OK && status != CHIBI_AUTOMATION_NOT_FOUND)) {
             return status;
         }
         free(*json);
         *json = NULL;
     }
-    return find_prototype(root, name, ref, json, bytes, hash, error, error_size);
+    return find_named_asset(root, name, ref, json, bytes, hash, error, error_size);
 }
 
 static bool save_code_metadata(const char *path, const char *text, const char *metadata)
@@ -5916,6 +5987,21 @@ static char *canonical_asset(
         }
         case ASSET_SYSTEM:
             return canonical_source(sources, json, path, metadata, error, error_size);
+        case ASSET_SHADER_SOURCE: {
+            shader_prepared_asset asset;
+            shader_prepared_asset_init(&asset);
+            bool valid = authoring_shader_source_load(
+                chibi_automation_content(root),
+                path,
+                json,
+                &asset,
+                error,
+                error_size
+            );
+            shader_prepared_asset_free(&asset);
+            /* The KDL writer canonicalizes descriptor syntax; GLSL stays exact. */
+            return valid ? xstrdup(json) : NULL;
+        }
         case ASSET_PROTOTYPE: {
             prototype_includes includes = { root };
             prototype_registry registry = registry_with_includes(&includes);
@@ -6507,7 +6593,15 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     int errors = 0;
     int warnings = 0;
     int notes = 0;
-    if (ref.family->loader == ASSET_GRAPH) {
+    if (ref.family->loader == ASSET_SHADER_SOURCE) {
+        char *path = content_path(root, ref.relative);
+        char diagnostic[1024] = { 0 };
+        if (!validate_shader_source(root, path, json, diagnostic, sizeof diagnostic)) {
+            errors = 1;
+            add_load_diagnostic(result->doc, diagnostics, diagnostic);
+        }
+        free(path);
+    } else if (ref.family->loader == ASSET_GRAPH) {
         behavior_asset *asset = load_project_behavior(root, json);
         if (!asset) {
             errors = 1;
@@ -7022,15 +7116,21 @@ static int handle_new_asset(const char *root, yyjson_val *request, response *res
         return -1;
     }
     char error[512] = { 0 };
-    /* A prototype's name is the one it declares, which a file named
-     * otherwise may already hold. */
-    if (family->loader == ASSET_PROTOTYPE) {
+    /* A declaration with a different filename may already own this name. */
+    if (family->loader == ASSET_PROTOTYPE || family->loader == ASSET_SHADER_SOURCE) {
         asset_ref ref;
         char *text = NULL;
         int found = load_named_asset(root, family, name, &ref, &text, NULL, NULL, error, sizeof error);
         free(text);
         if (found == CHIBI_AUTOMATION_OK) {
-            snprintf(error, sizeof error, "%s already declares the prototype '%s'", ref.relative, name);
+            snprintf(
+                error,
+                sizeof error,
+                "%s already declares the %s '%s'",
+                ref.relative,
+                family->kind,
+                name
+            );
         }
         /* A lookup that failed to read could have missed one. */
         if (found != CHIBI_AUTOMATION_NOT_FOUND) {
@@ -12136,10 +12236,46 @@ static int validate_shader_binding(const char *root, const Shader *binding, char
         }
         afree(libraries);
     }
+    shader_prepared_asset material_source;
+    shader_prepared_asset_init(&material_source);
+    bool source_found = false;
+    if (status == CHIBI_AUTOMATION_OK && binding->material && *binding->material) {
+        asset_ref ref = { 0 };
+        char *text = NULL;
+        int found = load_named_asset(
+            root,
+            family_by_kind("shader-source"),
+            binding->material,
+            &ref,
+            &text,
+            NULL,
+            NULL,
+            error,
+            error_size
+        );
+        if (found == CHIBI_AUTOMATION_OK) {
+            char *path = content_path(root, ref.relative);
+            source_found = authoring_shader_source_load(
+                               chibi_automation_content(root),
+                               path,
+                               text,
+                               &material_source,
+                               error,
+                               error_size
+                           ) &&
+                           authoring_shader_source_validate(&material_source, error, error_size);
+            status = source_found ? CHIBI_AUTOMATION_OK
+                                  : CHIBI_AUTOMATION_VALIDATION_ERROR;
+            free(path);
+        } else if (found != CHIBI_AUTOMATION_NOT_FOUND) {
+            status = found;
+        }
+        free(text);
+    }
     const char *names[] = { binding->material, binding->shape };
     const char *kinds[] = { "material", "shape" };
     for (int i = 0; i < 2 && status == CHIBI_AUTOMATION_OK; i++) {
-        if (!names[i] || !*names[i]) {
+        if (!names[i] || !*names[i] || (i == 0 && source_found)) {
             continue;
         }
         bool model = false;
@@ -12186,6 +12322,7 @@ static int validate_shader_binding(const char *root, const Shader *binding, char
                 binding->parameters,
                 (const behavior_asset *const *)sources,
                 acount(sources),
+                source_found ? &material_source : NULL,
                 &diagnostic
             )) {
             snprintf(error, error_size, "Shader.parameters: %s", diagnostic.message);
@@ -12193,6 +12330,7 @@ static int validate_shader_binding(const char *root, const Shader *binding, char
         }
     }
     free_behavior_assets(sources);
+    shader_prepared_asset_free(&material_source);
     return status;
 }
 

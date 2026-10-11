@@ -376,6 +376,28 @@ candidate passed in 0.701 seconds on 2026-10-07: producer one case/31 assertions
 runtime four cases/184 assertions, and parent one case/five assertions. The producer
 used ASan/UBSan; the consumer was a normal Debug runtime-only SDK build.
 
+Direct GLSL particle coverage uses `tool shader-webgpu` for actual backend
+translation and the source codec, `tool shader-parameters-prepared` for descriptor
+loading and transactional publication, and `tool shader-source-controller` for
+discovery, typed bindings, scaffolding and source/include cache invalidation.
+These are finite C/pico cases and use no graphics device. The latter two verify
+that rejected edits retain the previous shader or existing files. The source
+compiler preserves the authored include filename and line in its diagnostic.
+`GlslRainField` exercises the same runtime with 128 lit grains, an included helper,
+a bounded loop and scalar/vector parameters, without game-specific mechanics.
+
+The October 11, 2026 Release candidate passed admitted native coverage with
+294 cases and 178,865 assertions in 10.748 seconds, language coverage with 178
+cases and 10,510 assertions in 0.964 seconds, and standalone tooling with 92
+cases and 22,540 assertions in 22.765 seconds. Each used a separate production
+60-second deadline. The prepared-module regression reproduces a sparse function
+rejected by the old dense suspension estimate; both backends now load and execute
+it under 4 MiB, report exact retained bytes, and restore the budget on rejection.
+No storage limit was raised. A compiler-only SDK also built `chibi-compile` with
+desktop support disabled. A separate hidden Metal preview rendered GlslRainField
+at 640 by 360 with four simulation steps, two warmup frames and one saved frame.
+These checks do not constitute the quarantined full native/render/Studio gate.
+
 `--semantic-corpora`, `--prepare-corpora` and `--prepare-corpora-sljit` take
 a manifest with one row per project: its content folder, a tab, and a file that
 lists every `.chibi` source in it (at most 16 projects, 256 sources and 8 MiB in

@@ -19,7 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
-    ('--shader-webgpu',): 'Independently reviewed eight finite CPU cases: one noise graph, three particle vertex shaders and four authored curve widths with metadata roundtrip and CPU evaluation; actual GLSL-to-WGSL compilation, bounded checked-in vertex source reads, no app/window/GPU/process/network; graph compilation required for curves; passed 0.580s/shared60s',
+    ('--shader-webgpu',): 'Independently reviewed thirteen finite CPU cases: noise, particle graphs, curve widths and direct GLSL with includes, diagnostics and prepared codec; actual backend translation, bounded checked-in vertex source reads, no app/window/GPU/network; passed 0.889s/shared60s',
     ('--audio-analysis',): 'Independently reviewed twelve C audio cases: finite PCM tones, silence, channel/format/source snapshots, plus one dummy-SDL no-graphics callback/lifetime case with a shared two-second wait; no GPU, network or real recording device; shared60s',
     ('--tilemap-project',): 'Reviewed first CPU measurement: fixed sibling Celeste project, pinned local git baseline56ca9d48<=64KiB, Room<=16KiB, Level<=4KiB,1472cells230oldtiles/fiveactors, three owned controller children<=10s each including two headless simulation frames<=15entities, no GPU/network; shared60s',
     ('--tilemap',): 'Independently reviewed seven fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, one <=4KiB KDL and 64x16 PNG preparation, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',
@@ -69,6 +69,10 @@ TOOLS = {
     # unsanitized chibi_ctl, since sanitizers make its starts too slow for one deadline.
     'validate-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--validate-project',
                          str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
+    # Two reviewed tiny descriptor/source fixtures: binding validation, paired
+    # scaffolding and same-process source/include cache refresh; CPU only.
+    'shader-source-controller': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-source-controller',
+                                 str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
     # Two validate_project cases whose projects read past the shared prototype expansion
     # budget, against the same unsanitized chibi_ctl.
     'prototype-expansion': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--prototype-expansion',
@@ -215,7 +219,7 @@ GROUPS = {
                'owned-tick', 'parallel-tick', 'source-native-features',
                'source-native-numeric-queries', 'source-native-material', 'source-presentation',
                'system-schedule', 'source-systems', 'source-edit', 'new-asset', 'asset-refactor',
-               'validate-project', 'prototype-expansion', 'shader-parameters-prepared',
+               'validate-project', 'shader-source-controller', 'prototype-expansion', 'shader-parameters-prepared',
                'language-prepared', 'ecs-query-benchmark', 'feature-coverage'],
     'language': ['language', 'language-semantic', 'language-execution', 'language-program',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',

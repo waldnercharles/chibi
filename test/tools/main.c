@@ -46,6 +46,7 @@ void test_tool_ecs_world();
 void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
 void test_tool_validate_project(const char *binary);
+void test_tool_shader_source_controller(const char *binary);
 void test_tool_prototype_expansion(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
 void test_tool_prepared_runtime(const char *directory);
@@ -94,6 +95,7 @@ void test_system_schedule();
 void test_code_system_runtime();
 void test_source_edit();
 void test_shader_parameters_prepared();
+void test_shader_sources();
 int run_language_semantic_corpora(const char *);
 int run_language_prepare_corpora(const char *);
 int run_language_prepare_corpora_sljit(const char *);
@@ -169,6 +171,8 @@ int main(int argc, char **argv)
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
+    bool shader_source_controller = argc == 3 &&
+                                    !strcmp(argv[1], "--shader-source-controller");
     bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
@@ -265,12 +269,12 @@ int main(int argc, char **argv)
         !scene_prepared && !native && !native_values && !native_catalog &&
         !physics && !physics3d && !transforms && !render_resources &&
         !interior_border && !viewport_resize && !sdf_visibility && !scene3d &&
-        !particle_depth && !material_ramps && !box3d && !sky_files &&
-        !mesh_files && !model_import && !persistent_store && !whole_alias &&
-        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
-        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
-        !source_material && !source_presentation && !system_schedule &&
-        !source_systems && !validate_project && !expansion) {
+        !particle_depth && !material_ramps && !box3d && !sky_files && !mesh_files &&
+        !model_import && !persistent_store && !whole_alias && !whole_math &&
+        !whole_integer && !whole_conversion && !whole_select && !owned_tick &&
+        !parallel_tick && !source_features && !source_numeric && !source_material &&
+        !source_presentation && !system_schedule && !source_systems &&
+        !validate_project && !shader_source_controller && !expansion) {
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
@@ -280,6 +284,7 @@ int main(int argc, char **argv)
             "--shader-webgpu | "
             "--ecs-query-benchmark | "
             "--validate-project chibi_ctl | "
+            "--shader-source-controller chibi_ctl | "
             "--prototype-expansion chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
@@ -351,6 +356,7 @@ int main(int argc, char **argv)
         }
         if (shader_parameters) {
             test_shader_parameters_prepared();
+            test_shader_sources();
 #ifdef CHIBI_TEST_PREVIEW
             test_preview_shader_libraries();
 #endif
@@ -505,6 +511,8 @@ int main(int argc, char **argv)
         test_tool_prepared(argv[2], argv[0]);
     } else if (read) {
         test_tool_prepared_runtime(argv[2]);
+    } else if (shader_source_controller) {
+        test_tool_shader_source_controller(argv[2]);
     } else if (validate_project) {
         test_tool_validate_project(argv[2]);
     } else if (expansion) {

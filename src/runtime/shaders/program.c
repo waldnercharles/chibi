@@ -14,6 +14,15 @@
 #include <stdio.h>
 #include <string.h>
 
+const char *shader_sample_glsl()
+{
+    return "#ifndef SG_SAMPLE_DEFINED\n#define SG_SAMPLE_DEFINED\nstruct "
+           "SGSample { vec2 position; vec2 uv; vec3 object_position; vec3 "
+           "part_position; vec3 object_from_world[3]; vec3 part_from_world[3]; "
+           "vec3 uv_from_world[2]; vec3 world_position; vec3 normal; vec3 "
+           "view_direction; float time; };\n#endif\n";
+}
+
 static const char *const names[] = { "Constant",
                                      "Parameter",
                                      "Position",
@@ -1265,7 +1274,7 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
         }
     }
     append(&s, "#ifndef SG_INFLUENCE_DEFINED\n#define SG_INFLUENCE_DEFINED\n#ifndef SG_SCENE_INFLUENCE\nvec3 sg_scene_influence(vec3 position) { return vec3(0); }\nfloat sg_scene_beat_phase() { return 0.0; }\nfloat sg_scene_beat_pulse() { return 0.0; }\n#endif\n#endif\n");
-    append(&s, "#ifndef SG_SAMPLE_DEFINED\n#define SG_SAMPLE_DEFINED\nstruct SGSample { vec2 position; vec2 uv; vec3 object_position; vec3 part_position; vec3 object_from_world[3]; vec3 part_from_world[3]; vec3 uv_from_world[2]; vec3 world_position; vec3 normal; vec3 view_direction; float time; };\n#endif\n");
+    append(&s, "%s", shader_sample_glsl());
     bool details = false;
     for (int i = 0; i < acount(g->nodes); i++) {
         details = details || shader_detail_op(g->nodes[i].op);

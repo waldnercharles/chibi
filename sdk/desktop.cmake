@@ -52,6 +52,7 @@ if(EMSCRIPTEN)
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/shaders.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/shader_compiler.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/images.cmake")
 
 
@@ -83,7 +84,7 @@ elseif(UNIX AND NOT EMSCRIPTEN)
 endif()
 
 
-set(render_sources appearance_geometry.c scene_renderer.c shader_fragment.c shader_preview.c
+set(render_sources appearance_geometry.c scene_renderer.c shader_fragment.c shader_preview.c shader_text_create.c
     shader_publish.c screenshot.c material.c material_lod.c shader_images.c
     shader_program.c fog.c material_raster.c fluid_raster.c
     reflections.c radiance.c post_2d.c gpu_timing.c viewport.c audio.c audio_input.c audio_web.c geometry_2d.c grid_2d.c
@@ -96,12 +97,13 @@ add_library(chibi_renderer STATIC ${render_sources}
 add_library(Chibi::render ALIAS chibi_renderer)
 set_target_properties(chibi_renderer PROPERTIES EXPORT_NAME render)
 file(GLOB render_headers RELATIVE "${CHIBI_SDK_ROOT}/src" "${CHIBI_SDK_ROOT}/src/render/*.h")
-list(REMOVE_ITEM render_headers render/shader_catalog_internal.h render/scene3d_parts.h render/scene3d_parts_table.h render/catalog_publication.h render/shader_catalog.h render/shader_catalog_records.h render/shader_values.h render/shader_parameters.h)
+list(REMOVE_ITEM render_headers render/shader_catalog_internal.h render/scene3d_parts.h render/scene3d_parts_table.h render/catalog_publication.h render/shader_catalog.h render/shader_catalog_records.h render/shader_values.h render/shader_parameters.h
+    render/shader_text.h render/shader_text_backend.h render/shader_text_create.h)
 chibi_sdk_headers(chibi_renderer PUBLIC ${render_headers} support/file_watch.h runtime/camera.h)
 set(render_private "${CMAKE_CURRENT_BINARY_DIR}/private/render")
 file(REMOVE "${render_private}/render/shader_catalog_internal.h"
     "${render_private}/render/scene3d_parts_internal.h" "${render_private}/render/shader_publish_internal.h")
-foreach(header diagnostics/tracy.h support/math.h third_party/yyjson/yyjson.h)
+foreach(header diagnostics/tracy.h support/math.h third_party/yyjson/yyjson.h render/shader_text_backend.h render/shader_text_create.h)
     if(header STREQUAL "third_party/yyjson/yyjson.h")
         configure_file("${CHIBI_SDK_ROOT}/${header}" "${render_private}/${header}" COPYONLY)
     else()
@@ -109,10 +111,11 @@ foreach(header diagnostics/tracy.h support/math.h third_party/yyjson/yyjson.h)
     endif()
 endforeach()
 target_include_directories(chibi_renderer PRIVATE "${render_private}")
+target_include_directories(chibi_renderer SYSTEM PRIVATE "${CHIBI_CUTE_MATH_INCLUDE_DIR}/../tools")
 target_link_libraries(chibi_renderer PUBLIC chibi_platform chibi_ui_host chibi_engine chibi_player
     chibi_shader_runtime chibi_model_runtime chibi_mesh_runtime chibi_native_types chibi_spatial_runtime chibi_native_capabilities chibi_particle_runtime chibi_material_runtime
     chibi_ui_runtime chibi_save_runtime chibi_ui_document_values chibi_ui_documents chibi_visual_catalog
-    PRIVATE chibi_support chibi_json chibi_asset_values chibi_task_pool_runtime chibi_rhythm_runtime chibi_tilemap_runtime)
+    PRIVATE chibi_support chibi_json chibi_asset_values chibi_task_pool_runtime chibi_rhythm_runtime chibi_tilemap_runtime chibi_shader_compiler)
 if(APPLE)
     target_sources(chibi_renderer PRIVATE "${CHIBI_SDK_ROOT}/src/render/gpu_clock.m")
     target_link_libraries(chibi_renderer PRIVATE "-framework Metal" "-framework Foundation")

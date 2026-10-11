@@ -64,7 +64,7 @@ bool model_content_validate(const char *root, char *error, size_t size)
         if (valid) {
             Shader binding = { .shape = saved[i].asset->name };
             shader_error material_error = { 0 };
-            if (!render_shader_binding_sources_validate(&binding, NULL, catalog, acount(catalog), &material_error)) {
+            if (!render_shader_binding_sources_validate(&binding, NULL, catalog, acount(catalog), NULL, &material_error)) {
                 snprintf(
                     error,
                     size,

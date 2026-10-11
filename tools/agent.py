@@ -26,6 +26,7 @@ HEALTH = None
 NEXT = 'make test-policy-inventory'
 CPU_SELECTORS = {
     '--shader-webgpu': 'shader-webgpu',
+    '--shader-source-controller': 'shader-source-controller',
     '--audio-analysis': 'audio-analysis',
     '--compile-installed-space-cadet': 'compile-installed-space-cadet',
     '--source-edit': 'source-edit',

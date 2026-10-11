@@ -1586,6 +1586,188 @@ TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls)
     return true;
 }
 
+static yyjson_val *shader_catalog_item(yyjson_doc *document)
+{
+    yyjson_val *value = yyjson_obj_get(yyjson_doc_get_root(document), "result");
+    return yyjson_arr_get(yyjson_obj_get(value, "assets"), 0);
+}
+
+static yyjson_doc *saved_reply(const char *relative)
+{
+    char file[256];
+    path(file, sizeof file, relative);
+    char *text = tool_read(file);
+    yyjson_doc *document = text ? yyjson_read(text, strlen(text), 0) : NULL;
+    free(text);
+    return document;
+}
+
+TEST_CASE(shader_sources_are_distinct_named_assets)
+{
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"shader-source\",\"name\":\"Flow\"}") ==
+        0
+    );
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/shaders/Flow.kdl"));
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"shader-source\",\"name\":\"Flow\"}") ==
+        0
+    );
+    write_file(
+        "game/content/shaders/Flow.kdl",
+        "version 1; name \"Weather.Fall\"; kind \"particle\"; source "
+        "\"Flow.glsl\"; entry \"particle\";\n"
+        "parameters { Tempo { type \"float\"; default 2.0; } }\n"
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"read_asset\",\"kind\":\"shader-source\",\"name\":\"Weather.Fall\"}") ==
+        0
+    );
+    REQUIRE(reads(yyjson_get_str(result("path")), "content/shaders/Flow.kdl"));
+    yyjson_val *document = result("document");
+    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(document, "source")), "Flow.glsl"));
+    REQUIRE(!yyjson_obj_get(document, "graphs"));
+    REQUIRE(catalog_lists("Weather.Fall", "Tempo"));
+    REQUIRE(ctl(true, "{\"contract\":1,\"operation\":\"list_assets\"}") == 0);
+    int found = 0;
+    yyjson_val *assets = result("assets");
+    for (size_t i = 0; i < yyjson_arr_size(assets); i++) {
+        yyjson_val *asset = yyjson_arr_get(assets, i);
+        const char *file = yyjson_get_str(yyjson_obj_get(asset, "path"));
+        REQUIRE(file && !strstr(file, ".glsl"));
+        if (reads(yyjson_get_str(yyjson_obj_get(asset, "kind")), "shader-source")) {
+            REQUIRE(reads(yyjson_get_str(yyjson_obj_get(asset, "name")), "Weather.Fall"));
+            found++;
+        }
+    }
+    REQUIRE(found == 1);
+    char source_path[256];
+    path(source_path, sizeof source_path, "game/content/shaders/Flow.glsl");
+    char *before = tool_read(source_path);
+    REQUIRE(before && format(NULL) == 0 && format("--check") == 0);
+    char *after = tool_read(source_path);
+    bool unchanged = reads(after, before);
+    free(before);
+    free(after);
+    REQUIRE(unchanged);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Cloud\"}") == 0
+    );
+    write_file("game/content/prototypes/Cloud.kdl", "name \"Cloud\"\ncomponents {\n Shader material=\"Weather.Fall\" parameters=\"Tempo 4\\n\"\n ParticleField3D count=4\n}\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"search_assets\",\"query\":\"Cloud\",\"kinds\":[\"prototype\"]}") ==
+        0
+    );
+    yyjson_val *cloud = yyjson_arr_get(result("assets"), 0);
+    yyjson_val *dependencies = yyjson_obj_get(cloud, "dependencies");
+    REQUIRE(yyjson_arr_size(dependencies) == 1);
+    yyjson_val *dependency = yyjson_arr_get(dependencies, 0);
+    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(dependency, "kind")), "shader-source"));
+    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(dependency, "path")), "content/shaders/Flow.kdl"));
+    REQUIRE(yyjson_get_bool(yyjson_obj_get(dependency, "resolved")));
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    write_file("game/content/prototypes/Cloud.kdl", "name \"Cloud\"\ncomponents {\n Shader material=\"Weather.Fall\" parameters=\"(array)Tempo 1 2\\n\"\n ParticleField3D count=4\n}\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"prototype\",\"name\":\"Cloud\"}") !=
+        0
+    );
+    REQUIRE(strstr(first_message(result("diagnostics")), "Tempo"));
+    return true;
+}
+
+TEST_CASE(shader_catalog_refreshes_external_source_and_include_changes)
+{
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"shader-source\",\"name\":\"Flow\"}") ==
+        0
+    );
+    write_file(
+        "game/content/shaders/Flow.kdl",
+        "version 1\nname \"Weather.Fall\"\nkind \"particle\"\nsource "
+        "\"Flow.glsl\"\nentry \"particle\"\n"
+        "(array)includes \"helper.glsl\"\n(object)parameters\n"
+    );
+    const char *source = "#include \"helper.glsl\"\n"
+                         "ChibiParticle particle(ChibiParticleInput p, "
+                         "ChibiParameters u)\n"
+                         "{\n    ChibiParticle value = chibi_particle();\n"
+                         "    value.position = location(p.index);\n    return "
+                         "value;\n}\n";
+    write_file("game/content/shaders/Flow.glsl", source);
+    write_file("good.glsl", source);
+    write_file("bad.glsl", "ChibiParticle particle(ChibiParticleInput p, ChibiParameters u)\n{\n    return missing_value;\n}\n");
+    write_file("game/content/shaders/helper.glsl", "vec3 location(float i) { return vec3(i, 0.0, 0.0); }\n");
+    write_file("good-helper.glsl", "vec3 location(float i) { return vec3(i, 0.0, 0.0); }\n");
+    write_file("bad-helper.glsl", "vec3 location(float i) { return missing_value; }\n");
+    /* One controller process must invalidate its cached catalog even though
+     * no descriptor bytes change. Both root source and bundled include matter. */
+    write_file("query.json", "{\"contract\":1,\"operation\":\"search_assets\",\"kinds\":[\"shader-source\"]}\n");
+    REQUIRE(
+        run("mkfifo requests responses; \"$0\" --project-root game < requests "
+            "> responses & child=$!; "
+            "exec 3>requests; exec 4<responses; "
+            "cat query.json >&3; IFS= read -r line <&4; printf '%s\\n' "
+            "\"$line\" > initial.json; "
+            "cp bad.glsl game/content/shaders/Flow.glsl; "
+            "cat query.json >&3; IFS= read -r line <&4; printf '%s\\n' "
+            "\"$line\" > source-error.json; "
+            "cp good.glsl game/content/shaders/Flow.glsl; cp bad-helper.glsl "
+            "game/content/shaders/helper.glsl; "
+            "cat query.json >&3; IFS= read -r line <&4; printf '%s\\n' "
+            "\"$line\" > include-error.json; "
+            "cp good-helper.glsl game/content/shaders/helper.glsl; "
+            "cat query.json >&3; IFS= read -r line <&4; printf '%s\\n' "
+            "\"$line\"; "
+            "exec 3>&-; exec 4<&-; wait \"$child\"") == 0
+    );
+    yyjson_doc *initial = saved_reply("initial.json");
+    yyjson_doc *source_error = saved_reply("source-error.json");
+    yyjson_doc *include_error = saved_reply("include-error.json");
+    REQUIRE(initial && source_error && include_error);
+    yyjson_val *first = shader_catalog_item(initial),
+               *second = shader_catalog_item(source_error),
+               *third = shader_catalog_item(include_error),
+               *last = shader_catalog_item(reply);
+    if (!yyjson_get_bool(yyjson_obj_get(first, "valid"))) {
+        const char *diagnostic = first_message(yyjson_obj_get(first, "diagnostics"));
+        fprintf(stderr, "Initial shader catalog: %s\n", diagnostic ? diagnostic : "missing asset");
+    }
+    REQUIRE(yyjson_get_bool(yyjson_obj_get(first, "valid")));
+    REQUIRE(!yyjson_get_bool(yyjson_obj_get(second, "valid")));
+    REQUIRE(!yyjson_get_bool(yyjson_obj_get(third, "valid")));
+    REQUIRE(yyjson_get_bool(yyjson_obj_get(last, "valid")));
+    const char *descriptor_hash = yyjson_get_str(yyjson_obj_get(first, "hash"));
+    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(second, "hash")), descriptor_hash));
+    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(third, "hash")), descriptor_hash));
+    yyjson_val *first_result = yyjson_obj_get(yyjson_doc_get_root(initial), "result");
+    REQUIRE(
+        yyjson_get_uint(result("catalog_revision")) >
+        yyjson_get_uint(yyjson_obj_get(first_result, "catalog_revision"))
+    );
+    yyjson_doc_free(initial);
+    yyjson_doc_free(source_error);
+    yyjson_doc_free(include_error);
+    write_file("game/content/shaders/Flow.glsl", "ChibiParticle particle(ChibiParticleInput p, ChibiParameters u)\n{\n    return missing_value;\n}\n");
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"validate_asset\",\"kind\":\"shader-source\",\"name\":\"Weather.Fall\"}") !=
+        0
+    );
+    const char *diagnostic = first_message(result("diagnostics"));
+    REQUIRE(diagnostic && strstr(diagnostic, "Flow.glsl:3:"));
+    return true;
+}
+
+void test_tool_shader_source_controller(const char *binary)
+{
+    bool found = realpath(binary, program);
+    assert(found);
+    (void)found;
+    pu_setup(setup, teardown);
+    RUN_TEST_CASE(shader_sources_are_distinct_named_assets);
+    RUN_TEST_CASE(shader_catalog_refreshes_external_source_and_include_changes);
+    pu_clear_setup();
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */

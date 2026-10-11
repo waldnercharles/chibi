@@ -104,9 +104,35 @@ TEST_CASE(new_asset_create_writes_the_template_once_into_its_folder)
     return true;
 }
 
+TEST_CASE(shader_source_creation_preserves_existing_glsl)
+{
+    snprintf(content, sizeof content, "/tmp/chibi-new-asset-XXXXXX");
+    REQUIRE(mkdtemp(content));
+    char error[256] = { 0 };
+    char *path = new_asset_create(content, NEW_ASSET_SHADER_SOURCE, "Rain", error, sizeof error);
+    REQUIRE(path && strstr(path, "/shaders/Rain.kdl"));
+    REQUIRE(strstr(read_text(path), "kind \"particle\""));
+    char glsl[128];
+    snprintf(glsl, sizeof glsl, "%s/shaders/Rain.glsl", content);
+    REQUIRE(strstr(read_text(glsl), "ChibiParticle particle("));
+    REQUIRE(unlink(path) == 0);
+    free(path);
+    FILE *file = fopen(glsl, "wb");
+    REQUIRE(file && fputs("existing GLSL\n", file) >= 0 && fclose(file) == 0);
+    errno = 0;
+    REQUIRE(!new_asset_create(content, NEW_ASSET_SHADER_SOURCE, "Rain", error, sizeof error));
+    REQUIRE(errno == EEXIST && strstr(error, "Rain.glsl already exists"));
+    REQUIRE(!strcmp(read_text(glsl), "existing GLSL\n"));
+    char descriptor[128];
+    snprintf(descriptor, sizeof descriptor, "%s/shaders/Rain.kdl", content);
+    REQUIRE(access(descriptor, F_OK) != 0 && errno == ENOENT);
+    return true;
+}
+
 void test_new_asset()
 {
     pu_setup(NULL, remove_tree);
     RUN_TEST_CASE(new_asset_create_writes_the_template_once_into_its_folder);
+    RUN_TEST_CASE(shader_source_creation_preserves_existing_glsl);
     pu_clear_setup();
 }

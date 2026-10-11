@@ -4,7 +4,8 @@
 /* Additional retained allocation bound for decoded verification/finalization.
  * Decoded payloads stay owned; no optimizer or payload snapshot is run.
  * Transient verification/finalization storage is reported separately in scratch.
- * Installed descriptor copies use a separate bounded arena allocation path.
+ * Live suspension values and installed descriptor copies are charged from
+ * their actual bounded allocations during finalization.
  * SIZE_MAX reports an unsupported count or overflow. */
 size_t behavior_function_preparation_bytes(const behavior_function *, size_t *scratch);
 bool behavior_function_own_decoded(behavior_function *, size_t arena_budget);

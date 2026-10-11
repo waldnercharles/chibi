@@ -3,8 +3,10 @@
 The game's `project.kdl` selects its `content` directory and starting scene.
 `chibi-compile` and `chibi_ctl` both read assets from that directory.
 Project format 10 uses `.chibi` executable source for behaviors, callable
-libraries, and systems. Scenes, prototypes, shaders, models, and other declarative
-assets use KDL. Studio, text editors, and AI agents edit these same asset files.
+libraries, and systems. Scenes, prototypes, shader metadata, models, and other
+declarative assets use KDL. Particle shaders may use GLSL source; graph-based
+materials and shader libraries remain available. Studio, text editors, and AI
+agents edit these same asset files.
 The copied player deployment lives in the game's ignored `.chibi/runtime` directory.
 The compiler, Studio, and controller are separate authoring tools; they do not
 ship inside the game runtime.
@@ -30,7 +32,9 @@ printf '%s\n' '{"contract":1,"operation":"new_asset","kind":"behavior","name":"B
 ```
 
 Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
-`material`, `shape`, `field`, `shader-library` and `model`. Before running content,
+`material`, `shape`, `field`, `shader-library`, `shader-source` and `model`.
+`shader-source` creates a KDL descriptor and a matching `.glsl` entry file in
+`content/shaders`. Before running content,
 `validate_project` checks the manifest, its start scene, its application title
 and icon, and every asset. Markup in `content/ui` must be a regular file:
 `chibi_ctl` never follows a link, so a linked document is refused. The reply's
@@ -347,8 +351,81 @@ holds the previous ray; setting it to JSON `null` clears it.
 
 Put `ParticleField3D`, `Geometry3D` and `Shader` on one transformed entity in a
 3D scene. Geometry must be a tetrahedron (`primitive=6`) or octahedron
-(`primitive=5`) with positive dimensions. `Shader.material` names a pure
-shader-library function as `Library.Function`. Its first arguments are
+(`primitive=5`) with positive dimensions. `Shader.material` names either a GLSL
+particle descriptor or a pure shader-library function. Both use the same
+`Shader.parameters` bindings, including `set_material_parameter()`.
+
+### GLSL particle source
+
+Put the descriptor directly in `content/shaders`, alongside its source:
+
+```kdl
+version 1
+name "Rain.Fall"
+kind "particle"
+source "Rain.glsl"
+entry "rain"
+(array)includes "RainCommon.glsl"
+parameters {
+    Spacing {
+        type "float"
+        default 7.0
+    }
+    Wind {
+        type "vec3"
+        (array)default 2.0 0.0 0.5
+    }
+}
+```
+
+Set `Shader.material="Rain.Fall"`. The name is the descriptor's public binding;
+it does not have to match the file or entry function. Parameter names are GLSL
+identifiers and preserve case. There are at most 29 user parameters, each with
+type `float`, `vec2`, `vec3` or `vec4` and a finite matching default. Vector
+defaults use an explicit `(array)default` with one value per component. The engine
+generates the `ChibiParameters` struct from this metadata:
+
+```glsl
+#include "RainCommon.glsl"
+
+ChibiParticle rain(ChibiParticleInput p, ChibiParameters u)
+{
+    ChibiParticle drop = chibi_particle();
+    drop.position = vec3(p.index * u.Spacing, 0.0, 0.0) + u.Wind * p.time;
+    return drop;
+}
+```
+
+`ChibiParticleInput` contains float `index`, `count`, `seed` and `time` fields.
+The clock is `ParticleField3D.time`. `ChibiParticle` contains `position:vec3`,
+`size:float`, `color:vec4`, `scale:vec3`, `rotation:vec3` and `lighting:float`.
+`chibi_particle()` initializes them to zero position, size one, white RGBA,
+unit scale, zero rotation and unlit lighting. Assign every field when constructing
+the struct without that helper. Output units and lighting match the graph path
+below.
+
+Write ordinary GLSL scalar/vector math, helper functions, conditionals and
+bounded loops. Define helpers before their callers. The current compiler accepts
+the GLSL 450 subset supported by Cute's shader compiler; this is a particle vertex
+function, not a complete vertex/fragment program. The engine supplies `#version`,
+the entry adapter and resource bindings, so do not add `main`, another version
+directive or resource declarations. Textures and fragment operations are not
+part of this particle interface. Text authoring currently accepts GLSL for
+particles only; materials continue to use their graph assets. HLSL and WGSL are
+not accepted source formats.
+
+List each helper file in the descriptor's optional `includes` array and use that
+exact relative name in `#include`. Source and include paths resolve relative to
+the descriptor and must stay inside project content. Includes are bundled during
+preparation; the player does not search the filesystem. Up to 32 includes are
+allowed, with a 512 KiB limit per source file. The GLSL compiler consumes this
+source directly, bypassing shader graph IR and its node budget. `validate_asset`
+and project preparation compile the actual particle adapter and report source
+diagnostics; `--format` formats the KDL descriptor and leaves GLSL text intact.
+
+### Shader-library particle graphs
+
+A graph binding uses `Library.Function`. Its first arguments are
 `Index:float`, `Count:float`, `Seed:float`, followed by named float or
 `ShaderVec2/3/4` uniforms, with at most 32 arguments total. Its required results are
 `Position:ShaderVec3`, `Size:float`, `Color:ShaderVec4`, in that order.
@@ -366,11 +443,15 @@ follow both per-particle nonuniform scale and the entity transform. All motion
 remains an authored GPU evaluation; this component holds no persistent physics
 state or collision solver.
 
-Set `ParticleField3D.count`, `seed`, and `time` explicitly. Shader Time reads
-this component clock; it advances only when an authored behavior changes it.
-Time must be finite and nonnegative. Numeric math, vectors, noise, mapping and
-time/beat reads are available. Textures, ramps, scene influences, surface
-coordinates and fragment derivatives are rejected. There are at most 128 field
+Graph functions support numeric math, vectors, noise, mapping and time/beat reads.
+Textures, ramps, scene influences, surface coordinates and fragment derivatives
+are rejected.
+
+### Field lifetime and rendering
+
+Set `ParticleField3D.count`, `seed`, and `time` explicitly. Shader Time and GLSL
+`p.time` read this component clock; it advances only when an authored behavior
+changes it. Time must be finite and nonnegative. There are at most 128 field
 sources and 1,048,576 particles in one scene. A zero count hides a field.
 
 With `additive=#true`, particles blend additively and test opaque scene depth
@@ -382,7 +463,10 @@ four bytes, uploaded when its count changes, rather than a position/color upload
 every frame. `test/fixtures/feature-coverage` contains the `NativeRainField`
 scene: 128 falling lattice drops at a fixed one-second clock, with an opaque
 box for inspecting depth occlusion. `LitRainField` omits all opaque geometry and
-checks the same lit particles in a particle-only scene.
+checks the same lit particles in a particle-only scene. `GlslRainField` uses a
+GLSL descriptor with typed spacing, size and wind parameters, an included helper,
+a three-iteration loop and all six particle outputs. Its 128 lit grains reuse
+the rain camera, environment and lamp without game rules or particle CPU state.
 
 ## Simulate 3D bodies
 

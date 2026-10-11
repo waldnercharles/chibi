@@ -16,7 +16,7 @@ struct behavior_function_builder
 {
     behavior_function *function;
     bool decoded;
-    size_t arena_budget;
+    size_t *storage_budget;
 };
 behavior_function_builder *behavior_function_builder_new()
 {
@@ -2003,13 +2003,23 @@ behavior_function *behavior_function_builder_finish(behavior_function_builder *b
     if (!b->decoded) {
         behavior_function_optimize(f);
     }
-    behavior_function_finalize(f);
+    if (!behavior_function_finalize(f, b->storage_budget)) {
+        snprintf(error, size, "prepared suspension storage exceeds budget");
+        return NULL;
+    }
     behavior_function_parallel_proof(f);
     if (b->decoded) {
-        if (!behavior_function_own_decoded(f, b->arena_budget)) {
+        size_t before = arena_storage_bytes(&f->owned);
+        size_t budget = *b->storage_budget > SIZE_MAX - before
+                          ? SIZE_MAX
+                          : before + *b->storage_budget;
+        if (!behavior_function_own_decoded(f, budget)) {
             snprintf(error, size, "prepared descriptor ownership exceeds budget");
             return NULL;
         }
+        size_t growth = arena_storage_bytes(&f->owned) - before;
+        assert(growth <= *b->storage_budget);
+        *b->storage_budget -= growth;
     } else {
         behavior_function_own(f);
     }
@@ -2019,13 +2029,18 @@ behavior_function *behavior_function_builder_finish(behavior_function_builder *b
     }
     return f;
 }
-bool behavior_function_prepare_definition(behavior_function *f, size_t arena_budget, char *error, size_t size)
+bool behavior_function_prepare_definition(behavior_function *f, size_t *remaining, char *error, size_t size)
 {
-    assert(f && !f->frozen);
+    assert(f && !f->frozen && remaining);
+    size_t budget = *remaining;
     behavior_function_builder b = { .function = f,
                                     .decoded = true,
-                                    .arena_budget = arena_budget };
-    return behavior_function_builder_finish(&b, error, size) == f;
+                                    .storage_budget = &budget };
+    if (behavior_function_builder_finish(&b, error, size) != f) {
+        return false;
+    }
+    *remaining = budget;
+    return true;
 }
 
 const pin_value *behavior_function_arguments(const behavior_function *f, int *count)

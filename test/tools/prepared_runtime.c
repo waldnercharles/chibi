@@ -418,6 +418,59 @@ TEST_CASE(prepared_runtime_verifier_scratch_does_not_consume_shared_storage)
     }
     return true;
 }
+TEST_CASE(prepared_runtime_charges_sparse_pause_values_before_allocation)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        REQUIRE(read_file("statements.prepared", &bytes, &length));
+        unsigned char *metadata;
+        size_t metadata_size;
+        REQUIRE(read_file("statements-state.txt", &metadata, &metadata_size));
+        metadata[metadata_size] = 0;
+        unsigned long long identity;
+        int fields = sscanf((char *)metadata, "%llu", &identity);
+        free(metadata);
+        REQUIRE(fields == 1 && identity);
+        execution_prepared_linker link = linker();
+        char error[192] = { 0 };
+        module = execution_prepared_read(bytes, length, &link, backends[b], error, sizeof error);
+        REQUIRE(module);
+        size_t retained = execution_module_storage_bytes(module);
+        const size_t budget = 4 * 1024 * 1024;
+        REQUIRE(retained > 0 && retained < budget / 2);
+        execution_module_free(module);
+        module = NULL;
+        size_t remaining = budget;
+        module = execution_prepared_read_budget(bytes, length, &link, backends[b], &remaining, error, sizeof error);
+        if (!module) {
+            fprintf(stderr, "prepared statements retain %zu bytes within %zu-byte budget: %s\n", retained, budget, error);
+        }
+        REQUIRE(module);
+        REQUIRE(remaining == budget - retained);
+        program = execution_program_new(module, NULL, NULL);
+        REQUIRE(program);
+        execution_instance *instance = execution_program_attach(program, 0);
+        REQUIRE(instance);
+        REQUIRE(
+            execution_instance_dispatch(instance, execution_module_event(module, "Tick"), NULL, 0, 0, 0, 20000) ==
+            FLOW_OK
+        );
+        const pin_value *value = execution_instance_state(instance, identity);
+        REQUIRE(value && value->type == PIN_I32);
+        int steps = PREPARED_TEST_STATEMENTS;
+        REQUIRE(value->i == steps * (steps + 1) / 2 + 7);
+        execution_program_free(program);
+        program = NULL;
+        execution_module_free(module);
+        module = NULL;
+        remaining = retained - 1;
+        size_t before = remaining;
+        module = execution_prepared_read_budget(bytes, length, &link, backends[b], &remaining, error, sizeof error);
+        REQUIRE(!module && error[0] && remaining == before);
+        cleanup();
+    }
+    return true;
+}
 TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
@@ -959,6 +1012,7 @@ void test_tool_prepared_runtime(const char *path)
     RUN_TEST_CASE(prepared_runtime_rejects_malformed_wire);
     RUN_TEST_CASE(prepared_runtime_shared_storage_budget_charges_only_success);
     RUN_TEST_CASE(prepared_runtime_verifier_scratch_does_not_consume_shared_storage);
+    RUN_TEST_CASE(prepared_runtime_charges_sparse_pause_values_before_allocation);
     RUN_TEST_CASE(prepared_runtime_package_resolves_reversed_records_atomically);
     RUN_TEST_CASE(prepared_declared_event_linker_policy);
     RUN_TEST_CASE(prepared_package_validates_complete_external_closure);

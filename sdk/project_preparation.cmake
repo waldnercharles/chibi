@@ -1,17 +1,19 @@
 # Offline asset preparation has no display host dependencies.
+include("${CMAKE_CURRENT_LIST_DIR}/shader_compiler.cmake")
 add_library(chibi_shader_preparation STATIC
     "${CHIBI_SDK_ROOT}/src/authoring/shader_prepare.c"
+    "${CHIBI_SDK_ROOT}/src/authoring/shader_source.c"
     "${CHIBI_SDK_ROOT}/src/authoring/parts_prepare.c"
     "${CHIBI_SDK_ROOT}/src/authoring/mesh_prepare.c"
     "${CHIBI_SDK_ROOT}/src/authoring/visual_prepare.c")
 add_library(Chibi::shader_preparation ALIAS chibi_shader_preparation)
 set_target_properties(chibi_shader_preparation PROPERTIES EXPORT_NAME shader_preparation)
-chibi_sdk_headers(chibi_shader_preparation PUBLIC authoring/shader_prepare.h
+chibi_sdk_headers(chibi_shader_preparation PUBLIC authoring/shader_prepare.h authoring/shader_source.h
     authoring/parts_prepare.h authoring/mesh_prepare.h authoring/visual_prepare.h)
 target_include_directories(chibi_shader_preparation PRIVATE
     "${CHIBI_SDK_ROOT}/third_party/yyjson")
 target_link_libraries(chibi_shader_preparation PUBLIC chibi_visual_catalog chibi_graph_model chibi_player
-    PRIVATE chibi_graph_compilation chibi_graph_authoring chibi_asset_text chibi_json chibi_image_catalog)
+    PRIVATE chibi_graph_compilation chibi_graph_authoring chibi_asset_text chibi_json chibi_image_catalog chibi_shader_compiler)
 
 # Players' pinned Vorbis decoder, compiled with private symbols, so preparation
 # refuses an Ogg sound that players cannot decode.

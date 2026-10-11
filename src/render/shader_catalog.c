@@ -115,7 +115,8 @@ bool render_shader_model_part_bounds(
 bool render_shader_material_inspection(int index, shader_inspection *out)
 {
     if (index <= 0 || index > acount(shader_catalog_assets) ||
-        shader_catalog_assets[index - 1].shape) {
+        shader_catalog_assets[index - 1].shape ||
+        shader_catalog_assets[index - 1].kind != SHADER_ASSET_GRAPH) {
         return false;
     }
     *out = shader_catalog_assets[index - 1].material_inspection;
@@ -300,7 +301,15 @@ bool render_shader_is_particle(int index)
     const shader_asset *asset = &shader_catalog_assets[index - 1];
     return !asset->shape && !asset->is_model &&
            shader_particle_parameters_validate(asset->names, asset->widths, NULL) &&
-           shader_graph_particle_validate(&asset->graph, NULL);
+           (asset->kind == SHADER_ASSET_PARTICLE_TEXT ||
+            shader_graph_particle_validate(&asset->graph, NULL));
+}
+const shader_text *render_shader_particle_text(int index)
+{
+    return render_shader_is_particle(index) &&
+                   shader_catalog_assets[index - 1].kind == SHADER_ASSET_PARTICLE_TEXT
+             ? &shader_catalog_assets[index - 1].text
+             : NULL;
 }
 char *render_shader_particle_glsl(int index, shader_error *error)
 {
@@ -311,7 +320,11 @@ char *render_shader_particle_glsl(int index, shader_error *error)
         }
         return NULL;
     }
-    const shader_graph *graph = &shader_catalog_assets[index - 1].graph;
+    const shader_asset *asset = &shader_catalog_assets[index - 1];
+    if (asset->kind == SHADER_ASSET_PARTICLE_TEXT) {
+        return shader_text_particle_glsl(&asset->text, asset->names, asset->widths, error);
+    }
+    const shader_graph *graph = &asset->graph;
     char *function = shader_graph_glsl_named(graph, "sg_particle", error);
     if (!function) {
         return NULL;
@@ -351,7 +364,8 @@ bool render_shader_may_be_transparent(int index)
         return false;
     }
     const shader_asset *asset = &shader_catalog_assets[index - 1];
-    if ((asset->graph.output_count >= 3 && asset->graph.output_count <= 6)) {
+    if (asset->kind == SHADER_ASSET_PARTICLE_TEXT ||
+        (asset->graph.output_count >= 3 && asset->graph.output_count <= 6)) {
         return true;
     }
     if (asset->alpha_mode != SHADER_ALPHA_BLEND) {
@@ -373,6 +387,13 @@ bool render_shader_sample(
     shader_error *error
 )
 {
+    if (render_shader_particle_text(index)) {
+        if (error) {
+            error->node = 0;
+            snprintf(error->message, sizeof error->message, "GLSL particles execute on the GPU and cannot be sampled on the CPU");
+        }
+        return false;
+    }
     float prepared[32][4];
     model_bounds bounds;
     if (render_shader_is_model(index)) {
@@ -401,6 +422,7 @@ void shader_catalog_free_asset(shader_asset *asset)
     free(asset->glsl);
     afree(asset->images);
     shader_graph_free(&asset->graph);
+    shader_text_free(&asset->text);
     model_program_free(&asset->model);
     model_inspection_free(&asset->inspection);
     if (asset->runtime) {
@@ -432,7 +454,7 @@ static bool render_shader_set_contains(const render_shader_set *set, int id)
         return false;
     }
     const shader_asset *asset = &shader_catalog_assets[id - 1];
-    if (!asset->name[0] ||
+    if (!asset->name[0] || asset->kind == SHADER_ASSET_PARTICLE_TEXT ||
         (asset->graph.output_count >= 3 && asset->graph.output_count <= 6)) {
         return false;
     }
@@ -494,7 +516,8 @@ bool render_shader_set_add(render_shader_set *set, int id, shader_error *error)
         return true;
     }
     const shader_asset *asset = &shader_catalog_assets[id - 1];
-    if ((asset->graph.output_count >= 3 && asset->graph.output_count <= 6)) {
+    if (asset->kind == SHADER_ASSET_PARTICLE_TEXT ||
+        (asset->graph.output_count >= 3 && asset->graph.output_count <= 6)) {
         if (error) {
             snprintf(error->message, sizeof error->message, "Particle function requires a ParticleField3D renderer");
         }

@@ -1,4 +1,7 @@
+#include "render/shader_text.h"
+#include "runtime/shaders/prepared.h"
 #include "runtime/shaders/program.h"
+#include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -10,6 +13,25 @@
 static shader_graph graph;
 static char *glsl, *fragment, *vertex;
 static CF_ShaderCompilerResult compiled;
+static shader_prepared_asset source_asset, decoded;
+static unsigned char *encoded;
+
+static void source_particle(const char *code)
+{
+    source_asset.kind = SHADER_ASSET_PARTICLE_TEXT;
+    source_asset.name = xstrdup("Direct.Particles");
+    source_asset.text.path = xstrdup("shaders/Direct.glsl");
+    source_asset.text.entry = xstrdup("particles");
+    source_asset.text.code = xstrdup(code);
+    const char *names[] = { "Index",  "Count", "Seed", "Gain",
+                            "Offset", "Axis",  "Tint" };
+    const int widths[] = { 1, 1, 1, 1, 2, 3, 4 };
+    for (int i = 0; i < 7; i++) {
+        source_asset.names[i] = xstrdup(names[i]);
+        source_asset.widths[i] = widths[i];
+        source_asset.defaults[i][0] = .25f * i;
+    }
+}
 
 static void setup()
 {
@@ -25,6 +47,60 @@ static void cleanup()
     free(fragment);
     free(vertex);
     glsl = fragment = vertex = NULL;
+    shader_prepared_asset_free(&source_asset);
+    shader_prepared_asset_free(&decoded);
+    free(encoded);
+    encoded = NULL;
+}
+
+static bool compile_particle_vertex(const shader_text *text, int outputs)
+{
+    FILE *file = fopen(CHIBI_SOURCE_ROOT "/src/render/shaders/scene3d_particles.vert", "rb");
+    REQUIRE(file);
+    REQUIRE(fseek(file, 0, SEEK_END) == 0);
+    long length = ftell(file);
+    REQUIRE(length > 0 && length < 65536);
+    rewind(file);
+    char source[65536];
+    size_t read = fread(source, 1, (size_t)length, file);
+    REQUIRE(fclose(file) == 0);
+    REQUIRE(read == (size_t)length);
+    source[length] = 0;
+    const char *marker = "// SG_PARTICLE_PROGRAM is replaced by the prepared "
+                         "shader function.";
+    char *at = strstr(source, marker);
+    REQUIRE(at);
+    *at = 0;
+    size_t bytes = (size_t)length + strlen(glsl) + 80;
+    vertex = xmalloc(bytes);
+    snprintf(
+        vertex,
+        bytes,
+        "#version 450\n#define SG_PARTICLE_OUTPUT_COUNT %d\n%s%s%s",
+        outputs,
+        source,
+        glsl,
+        at + strlen(marker)
+    );
+    CF_ShaderCompilerFile files[SHADER_TEXT_INCLUDE_MAX + 1];
+    int count = 0;
+    if (text) {
+        files[count++] = (CF_ShaderCompilerFile){ text->path, text->code };
+        for (int i = 0; i < acount(text->includes); i++) {
+            files[count++] = (CF_ShaderCompilerFile){ text->includes[i].path,
+                                                      text->includes[i].code };
+        }
+    }
+    CF_ShaderCompilerConfig config = { .builtin_includes = files,
+                                       .num_builtin_includes = count };
+    compiled = cute_shader_compile(vertex, CUTE_SHADER_STAGE_VERTEX, config);
+    if (!compiled.success) {
+        fprintf(stderr, "particle vertex shader: %s\n", compiled.error_message);
+    }
+    REQUIRE(compiled.success);
+    REQUIRE(compiled.bytecode.wgsl_src);
+    REQUIRE(compiled.bytecode.msl_src);
+    return true;
 }
 
 static bool particle_vertex_program(bool indexed, bool lit)
@@ -60,41 +136,7 @@ static bool particle_vertex_program(bool indexed, bool lit)
     glsl = shader_graph_glsl_named(&graph, "sg_particle", &error);
     REQUIRE(glsl);
 
-    FILE *file = fopen(CHIBI_SOURCE_ROOT "/src/render/shaders/scene3d_particles.vert", "rb");
-    REQUIRE(file);
-    REQUIRE(fseek(file, 0, SEEK_END) == 0);
-    long length = ftell(file);
-    REQUIRE(length > 0 && length < 65536);
-    rewind(file);
-    char source[65536];
-    size_t read = fread(source, 1, (size_t)length, file);
-    REQUIRE(fclose(file) == 0);
-    REQUIRE(read == (size_t)length);
-    source[length] = 0;
-    const char *marker = "// SG_PARTICLE_PROGRAM is replaced by the prepared "
-                         "shader function.";
-    char *at = strstr(source, marker);
-    REQUIRE(at);
-    *at = 0;
-    size_t bytes = (size_t)length + strlen(glsl) + 80;
-    vertex = xmalloc(bytes);
-    snprintf(
-        vertex,
-        bytes,
-        "#version 450\n#define SG_PARTICLE_OUTPUT_COUNT %d\n%s%s%s",
-        graph.output_count,
-        source,
-        glsl,
-        at + strlen(marker)
-    );
-    CF_ShaderCompilerConfig config = { .skip_glsl300 = true, .skip_hlsl = true };
-    compiled = cute_shader_compile(vertex, CUTE_SHADER_STAGE_VERTEX, config);
-    if (!compiled.success) {
-        fprintf(stderr, "particle vertex shader: %s\n", compiled.error_message);
-    }
-    REQUIRE(compiled.success);
-    REQUIRE(compiled.bytecode.wgsl_src);
-    REQUIRE(compiled.bytecode.msl_src);
+    REQUIRE(compile_particle_vertex(NULL, graph.output_count));
     if (indexed) {
         REQUIRE(strstr(compiled.bytecode.wgsl_src, "instance_index"));
     }
@@ -166,9 +208,137 @@ TEST_CASE(noise_shader_transpiles_without_ambiguous_wgsl_comparison)
     return true;
 }
 
+static const char
+    *direct_code = "#include \"Trajectory.glsl\"\n"
+                   "ChibiParticle particles(ChibiParticleInput p, "
+                   "ChibiParameters u) {\n"
+                   " ChibiParticle result=chibi_particle();\n"
+                   " float total=0.0; for(int i=0;i<3;i++){ "
+                   "total+=trajectory(float(i)+p.time); }\n"
+                   " vec3 shift; locate(p.index,p.count,shift);\n"
+                   " result.position=shift+u.Axis+vec3(u.Offset,0.0);\n"
+                   " result.size=total*u.Gain; result.color=u.Tint;\n"
+                   " result.rotation=vec3(p.seed); "
+                   "result.scale=vec3(1.0,2.0,1.0); result.lighting=1.0;\n"
+                   " return result;\n"
+                   "}\n";
+static const char
+    *trajectory_code = "float trajectory(float t) { return "
+                       "exp(-abs(t))*cos(t); }\n"
+                       "void locate(float index,float count,out vec3 position) "
+                       "{ position=vec3(index/max(count,1.0),0.0,0.0); }\n";
+
+static void included_particle()
+{
+    source_particle(direct_code);
+    apush(
+        source_asset.text.includes,
+        ((shader_text_include){ xstrdup("Trajectory.glsl"), xstrdup(trajectory_code) })
+    );
+}
+
+TEST_CASE(direct_particle_compiles_standard_functions_and_typed_parameters)
+{
+    included_particle();
+    shader_error error = { 0 };
+    glsl = shader_text_particle_glsl(
+        &source_asset.text,
+        source_asset.names,
+        source_asset.widths,
+        &error
+    );
+    REQUIRE(glsl);
+    REQUIRE(compile_particle_vertex(&source_asset.text, 6));
+    REQUIRE(compiled.bytecode.wgsl_src);
+    REQUIRE(compiled.bytecode.msl_src);
+    REQUIRE(strstr(compiled.bytecode.wgsl_src, "instance_index"));
+    REQUIRE(strstr(compiled.bytecode.msl_src, "in_instance_offset"));
+    REQUIRE(render_shader_text_validate(
+        &source_asset.text,
+        source_asset.names,
+        source_asset.widths,
+        &error
+    ));
+    return true;
+}
+
+TEST_CASE(direct_particle_reports_original_include_path_and_line)
+{
+    included_particle();
+    free(source_asset.text.includes[0].code);
+    source_asset.text.includes[0].code = xstrdup("// authored helper\nfloat trajectory(float t) {\n return missing_value;\n}\n");
+    shader_error error = { 0 };
+    REQUIRE(!render_shader_text_validate(
+        &source_asset.text,
+        source_asset.names,
+        source_asset.widths,
+        &error
+    ));
+    REQUIRE(strstr(error.message, "Trajectory.glsl:3:"));
+    REQUIRE(strstr(error.message, "missing_value"));
+    return true;
+}
+
+TEST_CASE(direct_particle_refuses_unbundled_include)
+{
+    source_particle("#include \"not-bundled.glsl\"\nChibiParticle particles(ChibiParticleInput p,ChibiParameters u){return chibi_particle();}\n");
+    shader_error error = { 0 };
+    REQUIRE(!render_shader_text_validate(
+        &source_asset.text,
+        source_asset.names,
+        source_asset.widths,
+        &error
+    ));
+    REQUIRE(strstr(error.message, "not-bundled.glsl"));
+    return true;
+}
+
+TEST_CASE(direct_particle_prepared_roundtrip_owns_sources_and_defaults)
+{
+    included_particle();
+    shader_error error = { 0 };
+    size_t length = 0;
+    REQUIRE(shader_asset_prepared_write(&source_asset, &encoded, &length, &error));
+    size_t budget = 8u * 1024u * 1024u;
+    REQUIRE(shader_asset_prepared_read_budget(encoded, length, &budget, &decoded, &error));
+    REQUIRE(decoded.kind == SHADER_ASSET_PARTICLE_TEXT);
+    REQUIRE(acount(decoded.graph.nodes) == 0);
+    REQUIRE(!strcmp(decoded.text.code, direct_code));
+    REQUIRE(acount(decoded.text.includes) == 1);
+    REQUIRE(!strcmp(decoded.text.includes[0].code, trajectory_code));
+    REQUIRE(decoded.widths[4] == 2 && decoded.widths[5] == 3 && decoded.widths[6] == 4);
+    REQUIRE(decoded.defaults[5][0] == 1.25f);
+    shader_prepared_asset_free(&source_asset);
+    REQUIRE(render_shader_text_validate(&decoded.text, decoded.names, decoded.widths, &error));
+    return true;
+}
+
+TEST_CASE(direct_particle_prepared_failures_preserve_destination_and_budget)
+{
+    included_particle();
+    shader_error error = { 0 };
+    size_t length = 0;
+    REQUIRE(shader_asset_prepared_write(&source_asset, &encoded, &length, &error));
+    decoded.name = xstrdup("retained");
+    char *retained = decoded.name;
+    size_t budget = 8u * 1024u * 1024u;
+    REQUIRE(!shader_asset_prepared_read_budget(encoded, length - 1, &budget, &decoded, &error));
+    REQUIRE(decoded.name == retained && !strcmp(decoded.name, "retained"));
+    REQUIRE(budget == 8u * 1024u * 1024u);
+    budget = 1;
+    REQUIRE(!shader_asset_prepared_read_budget(encoded, length, &budget, &decoded, &error));
+    REQUIRE(decoded.name == retained && budget == 1);
+    return true;
+}
+
 void test_tool_shader_webgpu()
 {
     pu_setup(setup, cleanup);
+    RUN_TEST_CASE(direct_particle_compiles_standard_functions_and_typed_parameters);
+    RUN_TEST_CASE(direct_particle_reports_original_include_path_and_line);
+    RUN_TEST_CASE(direct_particle_refuses_unbundled_include);
+    RUN_TEST_CASE(direct_particle_prepared_roundtrip_owns_sources_and_defaults);
+    RUN_TEST_CASE(direct_particle_prepared_failures_preserve_destination_and_budget);
     RUN_TEST_CASE(noise_shader_transpiles_without_ambiguous_wgsl_comparison);
     RUN_TEST_CASE(particle_vertex_program_transpiles_instanced_geometry_to_wgsl);
     RUN_TEST_CASE(particle_vertex_keeps_instance_buffer_when_program_ignores_index);

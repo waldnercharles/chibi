@@ -107,6 +107,8 @@ bool authoring_visual_prepare(
         /* Encoding borrows the immutable graph; the temporary envelope owns
          * nothing and is never passed to the decoded-value destructor. */
         shader_prepared_asset value = { .name = asset->name,
+                                        .kind = asset->kind,
+                                        .text = asset->text,
                                         .graph = asset->graph,
                                         .shape = asset->shape,
                                         .alpha_mode = asset->alpha_mode };

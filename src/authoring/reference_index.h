@@ -28,6 +28,7 @@ typedef enum
     REFERENCE_ASSET_LIBRARY, /* libraries and shader libraries */
     REFERENCE_ASSET_SYSTEM,
     REFERENCE_ASSET_UI,
+    REFERENCE_ASSET_SHADER_SOURCE,
     REFERENCE_ASSET_KIND_COUNT,
 } reference_asset_kind;
 

@@ -466,6 +466,33 @@ TEST_CASE(prepared_arithmetic_generation_keeps_transient_verifier_storage_separa
     return true;
 }
 
+TEST_CASE(prepared_statement_generation_keeps_sparse_pause_liveness)
+{
+    catalog = (script_catalog){ .capabilities = capabilities, .capability_count = 2 };
+    char text[8192] = "behavior Statements { count:int=0; on Tick {carry := "
+                      "count+7;";
+    size_t used = strlen(text);
+    for (int i = 1; i <= PREPARED_TEST_STATEMENTS; i++) {
+        int written = snprintf(text + used, sizeof text - used, "count=count+%d;", i);
+        REQUIRE(written > 0 && (size_t)written < sizeof text - used);
+        used += (size_t)written;
+    }
+    const char end[] = "count=count+carry;}}";
+    REQUIRE(used + sizeof end <= sizeof text);
+    memcpy(text + used, end, sizeof end);
+    REQUIRE(compile_source(text));
+    REQUIRE(save("statements.prepared"));
+    char path[PREPARED_TEST_MAX_PATH];
+    int n = snprintf(path, sizeof path, "%s/statements-state.txt", directory);
+    REQUIRE(n > 0 && n < (int)sizeof path);
+    FILE *file = fopen(path, "w");
+    REQUIRE(file);
+    int written = fprintf(file, "%llu\n", (unsigned long long)state_id);
+    bool closed = fclose(file) == 0;
+    REQUIRE(written > 0 && closed);
+    return true;
+}
+
 void test_language_prepared_write(const char *path)
 {
     directory = path;
@@ -476,5 +503,6 @@ void test_language_prepared_write(const char *path)
     RUN_TEST_CASE(prepared_field_observer_generation_preserves_authoritative_schema);
     RUN_TEST_CASE(prepared_debug_source_points_write_after_analysis_retirement);
     RUN_TEST_CASE(prepared_arithmetic_generation_keeps_transient_verifier_storage_separate);
+    RUN_TEST_CASE(prepared_statement_generation_keeps_sparse_pause_liveness);
     pu_clear_setup();
 }

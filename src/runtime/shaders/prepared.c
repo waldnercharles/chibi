@@ -207,6 +207,7 @@ void shader_prepared_asset_free(shader_prepared_asset *a)
 {
     free(a->name);
     shader_graph_free(&a->graph);
+    shader_text_free(&a->text);
     for (int i = 0; i < SHADER_PARAMETER_MAX; i++) {
         free(a->names[i]);
     }
@@ -214,8 +215,25 @@ void shader_prepared_asset_free(shader_prepared_asset *a)
 }
 static bool asset_valid(const shader_prepared_asset *a, shader_error *error)
 {
-    if (!a->name || !*a->name || !shader_graph_validate(&a->graph, error)) {
+    if (!a->name || !*a->name) {
         return false;
+    }
+    switch (a->kind) {
+        case SHADER_ASSET_GRAPH:
+            if (a->text.path || a->text.entry || a->text.code ||
+                acount(a->text.includes) || !shader_graph_validate(&a->graph, error)) {
+                return false;
+            }
+            break;
+        case SHADER_ASSET_PARTICLE_TEXT:
+            if (a->shape || a->alpha_mode != SHADER_ALPHA_BLEND ||
+                acount(a->graph.nodes) || acount(a->graph.images) ||
+                a->graph.output_count ||
+                !shader_text_validate(&a->text, a->names, a->widths, error)) {
+                return false;
+            }
+            break;
+        default: return false;
     }
     for (int i = 0; i < 2; i++) {
         if (!isfinite(a->bounds[i]) || a->bounds[i] < 0) {
@@ -256,6 +274,28 @@ static bool asset_valid(const shader_prepared_asset *a, shader_error *error)
     }
     return true;
 }
+static void text_wire(execution_wire *w, shader_text *text)
+{
+    execution_wire_owned_string(w, &text->path);
+    execution_wire_owned_string(w, &text->entry);
+    execution_wire_owned_string(w, &text->code);
+    int count = w->reading ? 0 : acount(text->includes);
+    bounded_count(w, &count, SHADER_TEXT_INCLUDE_MAX);
+    for (int i = 0; i < count && !w->error; i++) {
+        shader_text_include decoded = { 0 };
+        shader_text_include *include = w->reading ? &decoded : &text->includes[i];
+        execution_wire_owned_string(w, &include->path);
+        execution_wire_owned_string(w, &include->code);
+        if (w->reading) {
+            if (!w->error && execution_wire_reserve(w, sizeof decoded)) {
+                apush(text->includes, decoded);
+            } else {
+                free(decoded.path);
+                free(decoded.code);
+            }
+        }
+    }
+}
 static void asset_wire(execution_wire *w, shader_prepared_asset *a)
 {
     uint64_t magic = UINT64_C(0x3154455353484343), version = SHADER_PREPARED_VERSION;
@@ -264,6 +304,14 @@ static void asset_wire(execution_wire *w, shader_prepared_asset *a)
     if (!w->error && (magic != UINT64_C(0x3154455353484343) ||
                       version != SHADER_PREPARED_VERSION)) {
         w->error = "Unknown prepared shader asset format";
+    }
+    int kind = a->kind;
+    execution_wire_int(w, &kind);
+    if (kind < SHADER_ASSET_GRAPH || kind > SHADER_ASSET_PARTICLE_TEXT) {
+        w->error = "Unknown prepared shader asset kind";
+    }
+    if (w->reading) {
+        a->kind = kind;
     }
     execution_wire_owned_string(w, &a->name);
     execution_wire_bool(w, &a->shape);
@@ -282,7 +330,11 @@ static void asset_wire(execution_wire *w, shader_prepared_asset *a)
             execution_wire_float(w, &a->defaults[i][j]);
         }
     }
-    shader_graph_wire(w, &a->graph);
+    if (a->kind == SHADER_ASSET_PARTICLE_TEXT) {
+        text_wire(w, &a->text);
+    } else {
+        shader_graph_wire(w, &a->graph);
+    }
 }
 bool shader_asset_prepared_write(
     const shader_prepared_asset *a,

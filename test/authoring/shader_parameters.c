@@ -256,7 +256,7 @@ TEST_CASE(particle_function_parameters_survive_preparation)
                        .parameters = "Radius 2\n(array)Tint 1 0 0 0.5\n" };
     const behavior_asset *sources[] = { asset };
     REQUIRE(
-        render_shader_binding_sources_validate(&binding, binding.parameters, sources, 1, &error)
+        render_shader_binding_sources_validate(&binding, binding.parameters, sources, 1, NULL, &error)
     );
     REQUIRE(authoring_shader_binding_prepare(&binding, &error));
     REQUIRE(render_shader_material_parameters_scoped_cached(
@@ -271,11 +271,11 @@ TEST_CASE(particle_function_parameters_survive_preparation)
     ));
     REQUIRE(parameters[3][0] == 2 && parameters[5][0] == 1);
     REQUIRE(
-        !render_shader_binding_sources_validate(&binding, "(array)Tint 1 2 3\n", sources, 1, &error)
+        !render_shader_binding_sources_validate(&binding, "(array)Tint 1 2 3\n", sources, 1, NULL, &error)
     );
     REQUIRE(strstr(error.message, "4 finite"));
     REQUIRE(
-        !render_shader_binding_sources_validate(&binding, "Missing 2\n", sources, 1, &error)
+        !render_shader_binding_sources_validate(&binding, "Missing 2\n", sources, 1, NULL, &error)
     );
     REQUIRE(strstr(error.message, "Unknown"));
     char *index_name = decoded.names[0];
@@ -439,9 +439,11 @@ TEST_CASE(particle_function_links_library_helpers)
     const behavior_asset *catalog[] = { asset, helper };
     shader_error error = { 0 };
     Shader binding = { .material = "Particles.Cloud" };
-    REQUIRE(render_shader_binding_sources_validate(&binding, "Radius 2\n", catalog, 2, &error));
     REQUIRE(
-        !render_shader_binding_sources_validate(&binding, "Radius 2\n", catalog, 1, &error)
+        render_shader_binding_sources_validate(&binding, "Radius 2\n", catalog, 2, NULL, &error)
+    );
+    REQUIRE(
+        !render_shader_binding_sources_validate(&binding, "Radius 2\n", catalog, 1, NULL, &error)
     );
     REQUIRE(strstr(error.message, "missing function library"));
     linked_asset = behavior_asset_link_libraries(

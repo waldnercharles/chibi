@@ -127,6 +127,9 @@ static bool read_asset(
             l->scene = scene_document_load(text, why, size);
             return l->scene != NULL;
         case REFERENCE_ASSET_UI: return read_markup(text, l, why, size);
+        case REFERENCE_ASSET_SHADER_SOURCE:
+            snprintf(why, size, "Shader source declarations do not support asset refactoring");
+            return false;
         case REFERENCE_ASSET_KIND_COUNT: break;
         default:
             l->graphs = behavior_asset_load(text);
@@ -187,7 +190,8 @@ static char *saved_source(const refactor_project *, reference_asset_kind kind, l
 {
     switch (kind) {
         case REFERENCE_ASSET_SYSTEM:
-        case REFERENCE_ASSET_BEHAVIOR: return NULL;
+        case REFERENCE_ASSET_BEHAVIOR:
+        case REFERENCE_ASSET_SHADER_SOURCE: return NULL;
         case REFERENCE_ASSET_PROTOTYPE: return prototype_save(l->prototype);
         case REFERENCE_ASSET_SCENE:
             return scene_document_save(l->scene, project_components());
@@ -710,8 +714,8 @@ static bool name_taken(const work *w, reference_asset_kind kind, int asset, cons
 }
 
 static const char *const KIND_NAMES[REFERENCE_ASSET_KIND_COUNT] = {
-    "scene", "prototype", "behavior", "event",  "material",
-    "shape", "field",     "library",  "system", "ui document",
+    "scene", "prototype", "behavior", "event",       "material",      "shape",
+    "field", "library",   "system",   "ui document", "shader source",
 };
 
 static const reference **uses_of(const work *w, reference_symbol symbol)

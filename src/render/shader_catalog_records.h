@@ -2,6 +2,7 @@
 #define CHIBI_SHADER_CATALOG_RECORDS_H
 #include "render/shader_catalog.h"
 #include "render/shader_values.h"
+#include "runtime/shaders/source.h"
 
 /* Compiled CPU records contain owning canonical IR, typed parameter metadata
  * and inspections. Names, arrays and IR retire together through free_asset.
@@ -9,11 +10,14 @@
  * Record/table mutation and publication require a quiescent catalog. Borrowed
  * record pointers survive until the next record replacement or table exchange;
  * resource generations must exchange the complete table before publishing their
- * matching token through catalog_publication.h. No source document is retained. */
+ * matching token through catalog_publication.h. Text particles retain their
+ * bundled source snapshot; graph assets retain canonical IR. */
 typedef struct
 {
     char *name;
+    shader_asset_kind kind;
     shader_graph graph;
+    shader_text text;
     char *glsl; /* Structural GLSL used to detect topology changes. */
     int *images;
     char *names[SHADER_PARAMETER_MAX];

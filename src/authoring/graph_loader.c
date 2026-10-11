@@ -2,6 +2,7 @@
 #include "authoring/graph_loader_internal.h"
 #include "authoring/graph_sources.h"
 #include "authoring/shader_prepare.h"
+#include "authoring/shader_source.h"
 #include "graph/document/serialize.h"
 #include "render/shader_catalog.h"
 #include "support/array.h"
@@ -109,6 +110,11 @@ int authoring_graphs_prepare(preview_world *world, prototype_preview *preview, c
     }
     afree(pending);
     if (failed) {
+        return -1;
+    }
+    char error[2048];
+    if (!authoring_shader_sources_prepare(content_root, true, error, sizeof error)) {
+        load_error(content_root, "shader source preparation", error);
         return -1;
     }
     return loaded;

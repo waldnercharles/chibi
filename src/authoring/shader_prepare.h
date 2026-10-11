@@ -3,12 +3,22 @@
 #include "graph/model/behavior_asset.h"
 #include "graph/modeling/model_compile.h"
 #include "render/shader_catalog.h"
+#include "runtime/shaders/prepared.h"
 bool render_shader_upsert(const behavior_asset *asset, shader_error *error);
 /* The source is library-linked. Publishes only its own particle signatures;
  * ordinary helper functions and imported functions remain private. */
 bool render_shader_library_upsert(const behavior_asset *, shader_error *);
 bool render_shader_library_validate(const behavior_asset *, shader_error *);
 void render_shader_library_remove(const char *name);
+/* Compile the complete collection and validate catalog identities before
+ * replacing any source-owned records. */
+bool authoring_shader_sources_publish(
+    const shader_prepared_asset *,
+    int count,
+    bool publish,
+    char *error,
+    size_t size
+);
 bool render_shader_models_upsert(const behavior_asset *const *sources, int count, shader_error *error);
 bool render_shader_model_remove(const char *name, shader_error *error);
 bool render_shader_model_rename(const char *from, const char *to, shader_error *error);
@@ -19,6 +29,7 @@ bool render_shader_binding_sources_validate(
     const char *text,
     const behavior_asset *const *sources,
     int count,
+    const shader_prepared_asset *material_source,
     shader_error *error
 );
 bool render_shader_parameters_validate(int index, const char *, shader_error *);

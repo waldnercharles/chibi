@@ -1,11 +1,12 @@
 #ifndef CHIBI_SHADER_PREPARED_H
 #define CHIBI_SHADER_PREPARED_H
 #include "runtime/shaders/program.h"
+#include "runtime/shaders/source.h"
 
 #include <stddef.h>
-#define SHADER_PREPARED_VERSION UINT64_C(3)
-/* Field-wise immutable IR, resource keys and sampler settings. No host callback,
- * process address, GPU object or authored source is persisted. Bytes use free(). */
+#define SHADER_PREPARED_VERSION UINT64_C(4)
+/* Field-wise immutable IR, resource keys and sampler settings. No host
+ * callback, process address, GPU object is persisted. Bytes use free(). */
 bool shader_graph_prepared_write(const shader_graph *, unsigned char **, size_t *, shader_error *);
 /* Initialized destination and remaining budget stay unchanged on failure.
  * Input and aggregate decoded storage are bounded to 64 MiB. */
@@ -16,7 +17,9 @@ bool shader_graph_prepared_read(const void *, size_t, shader_graph *, shader_err
 typedef struct
 {
     char *name;
+    shader_asset_kind kind;
     shader_graph graph;
+    shader_text text;
     char *names[SHADER_PARAMETER_MAX];
     int widths[SHADER_PARAMETER_MAX];
     float defaults[SHADER_PARAMETER_MAX][4], bounds[2];

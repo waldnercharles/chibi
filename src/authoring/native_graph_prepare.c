@@ -2,6 +2,7 @@
 
 #include "authoring/graph_sources.h"
 #include "authoring/shader_prepare.h"
+#include "authoring/shader_source.h"
 #include "graph/compiler/material_field.h"
 #include "graph/compiler/validation.h"
 #include "graph/document/library.h"
@@ -94,7 +95,7 @@ bool authoring_native_graphs_prepare(const char *content, material_fields *field
             goto done;
         }
     }
-    valid = true;
+    valid = authoring_shader_sources_prepare(content, true, error, size);
 done:
     for (int i = 0; i < acount(linked); i++) {
         behavior_asset_free(linked[i]);

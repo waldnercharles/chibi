@@ -136,7 +136,7 @@ if(TARGET Chibi::platform AND TARGET Chibi::shader_runtime AND NOT CHIBI_INSTALL
     get_directory_property(cute_source DIRECTORY "${platform_source}" DEFINITION cute_framework_SOURCE_DIR)
     target_sources(test_tools PRIVATE shader_webgpu.c)
     target_include_directories(test_tools PRIVATE "${cute_source}/tools")
-    target_link_libraries(test_tools PRIVATE Chibi::shader_runtime Chibi::platform)
+    target_link_libraries(test_tools PRIVATE Chibi::shader_runtime Chibi::platform Chibi::shader_compiler)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SHADER_WEBGPU=1)
     if(TARGET Chibi::graph_compilation)
         target_sources(test_tools PRIVATE shader_curves.c)
@@ -252,6 +252,7 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_RUNTIME=1)
     target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::native_types)
     if(TARGET Chibi::render AND TARGET Chibi::project_preparation)
+        target_sources(test_tools PRIVATE shader_source.c)
         add_library(chibi_source_features_consumer OBJECT ../runtime/source_features.c ../authoring/source_presentation.c
             ../runtime/system_schedule.c ../code_system_runtime.c ../authoring/source_edit.c
             ../authoring/shader_parameters.c ../authoring/component_presentation.c ../language/corpus_semantic.c)

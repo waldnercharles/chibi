@@ -35,7 +35,17 @@ uint64_t shader_values_generation(const shader_asset *assets, int count, int ind
     }
     uint64_t h = UINT64_C(14695981039346656037);
     h = bytes(h, a->name, strlen(a->name) + 1);
-    if (a->glsl) {
+    h = bytes(h, &a->kind, sizeof a->kind);
+    if (a->kind == SHADER_ASSET_PARTICLE_TEXT) {
+        h = bytes(h, a->text.path, strlen(a->text.path) + 1);
+        h = bytes(h, a->text.entry, strlen(a->text.entry) + 1);
+        h = bytes(h, a->text.code, strlen(a->text.code) + 1);
+        for (int i = 0; i < acount(a->text.includes); i++) {
+            h = bytes(h, a->text.includes[i].path, strlen(a->text.includes[i].path) + 1);
+            h = bytes(h, a->text.includes[i].code, strlen(a->text.includes[i].code) + 1);
+        }
+    }
+    if (a->kind == SHADER_ASSET_GRAPH && a->glsl) {
         const char *text = a->glsl;
         while (*text) {
             if (!strncmp(text, "sg_asset_", 9) && text[9] >= '0' && text[9] <= '9') {

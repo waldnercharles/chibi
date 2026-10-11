@@ -66,7 +66,8 @@ size_t behavior_function_preparation_bytes(const behavior_function *f, size_t *s
         return SIZE_MAX;
     }
     size_t retained = bank(pauses, sizeof(behavior_function_suspension));
-    retained = sum(retained, product(pauses, bank(values, sizeof(int))));
+    /* Suspension value vectors are charged from actual liveness before their
+     * allocation. Multiplying every pause by every slot rejects sparse bodies. */
     /* Runtime read reuse owns a canonical-PC body, a compact body and map. */
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));

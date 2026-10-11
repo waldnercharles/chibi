@@ -22,6 +22,7 @@ typedef enum
     NEW_ASSET_FIELD,
     NEW_ASSET_SHADER_LIBRARY,
     NEW_ASSET_MODEL,
+    NEW_ASSET_SHADER_SOURCE,
     NEW_ASSET_KIND_COUNT,
 } new_asset_kind;
 
@@ -46,6 +47,8 @@ char *new_asset_text(new_asset_kind kind, const char *name);
 bool new_asset_real_folder(const char *path, char *error, size_t size);
 /* Writes the empty `kind` named `name` into its folder under `content`,
  * creating the folder when it is missing, and returns the owned file path.
+ * Shader sources also create a sibling .glsl file; either existing file is
+ * refused without changing it.
  * NULL with why in `error`: errno is then EINVAL for an invalid name, EEXIST
  * for its file or for a model or shape of that name, since the two kinds
  * share names, and otherwise the storage error. */

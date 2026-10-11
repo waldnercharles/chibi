@@ -1,0 +1,14 @@
+version 1
+name "GlslRain.Fall"
+kind "particle"
+source "GlslRain.glsl"
+entry "rain"
+(array)includes "GlslRainCommon.glsl"
+parameters {
+    Spacing type="float" default=6.0
+    DropSize type="float" default=1.0
+    Wind {
+        type "vec3"
+        (array)default 2.0 0.0 0.5
+    }
+}

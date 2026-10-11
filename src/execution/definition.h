@@ -205,9 +205,12 @@ static inline bool behavior_function_right_slot(behavior_function_op op)
 }
 /* Finalize operand metadata, continuation maps and runtime code after lowering. */
 /* Prepared readers reconstruct this canonical definition, then use the same
- * producer verifier and finalizer. Ownership remains with the caller on failure. */
-bool behavior_function_prepare_definition(behavior_function *, size_t arena_budget, char *error, size_t size);
-void behavior_function_finalize(behavior_function *function);
+ * producer verifier and finalizer. Charge live-value vectors and copied host
+ * descriptors against remaining. Failure preserves the budget; ownership of
+ * the partially prepared definition remains with the caller. */
+bool behavior_function_prepare_definition(behavior_function *, size_t *remaining, char *error, size_t size);
+/* Source builders pass NULL; decoded builders bound saved-value allocations. */
+bool behavior_function_finalize(behavior_function *function, size_t *remaining);
 void behavior_function_own(behavior_function *function);
 void behavior_function_parallel_proof(behavior_function *function);
 void *behavior_function_jit_system(const behavior_function *function);

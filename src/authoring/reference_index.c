@@ -283,6 +283,10 @@ static reference_symbol shader_material_symbol(reference_index *index, const cha
     if (material >= 0) {
         return reference_asset_symbol(material);
     }
+    int source = reference_index_find_name(index, REFERENCE_ASSET_SHADER_SOURCE, value);
+    if (source >= 0) {
+        return reference_asset_symbol(source);
+    }
     int library = -1;
     size_t prefix = 0;
     for (int i = 0; i < acount(index->assets); i++) {

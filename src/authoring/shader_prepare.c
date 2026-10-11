@@ -5,6 +5,7 @@
 #include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
 #include "render/shader_catalog_records.h"
+#include "render/shader_text.h"
 #include "render/shader_values.h"
 #include "runtime/component_catalog.h"
 #include "runtime/images/catalog.h"
@@ -35,6 +36,7 @@ typedef struct
     av_value *value;
     behavior_asset *model;
     char *library;
+    bool textual;
 } shader_source;
 static shader_source *source_records;
 static void source_free(shader_source *source)
@@ -178,7 +180,8 @@ static bool library_prepare(const behavior_asset *source, bool publish, shader_e
         }
         fresh.material_inspection = shader_graph_inspect(&fresh.graph);
         int id = render_shader_find(fresh.name);
-        if (id && !render_shader_is_particle(id)) {
+        if (id && (!render_shader_is_particle(id) ||
+                   shader_catalog_assets[id - 1].kind != SHADER_ASSET_GRAPH)) {
             if (error) {
                 snprintf(
                     error->message,
@@ -269,6 +272,131 @@ void render_shader_library_remove(const char *name)
         shader_catalog_revision++;
         shader_catalog_parameter_revision++;
     }
+}
+static bool text_asset_equal(const shader_asset *a, const shader_asset *b)
+{
+    if (a->kind != b->kind || strcmp(a->text.path, b->text.path) ||
+        strcmp(a->text.entry, b->text.entry) || strcmp(a->text.code, b->text.code) ||
+        acount(a->text.includes) != acount(b->text.includes) ||
+        memcmp(a->widths, b->widths, sizeof a->widths) ||
+        memcmp(a->defaults, b->defaults, sizeof a->defaults)) {
+        return false;
+    }
+    for (int i = 0; i < acount(a->text.includes); i++) {
+        if (strcmp(a->text.includes[i].path, b->text.includes[i].path) ||
+            strcmp(a->text.includes[i].code, b->text.includes[i].code)) {
+            return false;
+        }
+    }
+    for (int i = 0; i < SHADER_PARAMETER_MAX; i++) {
+        if ((a->names[i] != NULL) != (b->names[i] != NULL) ||
+            (a->names[i] && strcmp(a->names[i], b->names[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+bool authoring_shader_sources_publish(
+    const shader_prepared_asset *sources,
+    int count,
+    bool publish,
+    char *error,
+    size_t size
+)
+{
+    shader_asset *pending = NULL;
+    int *ids = NULL;
+    bool valid = false, changed = false;
+    int next = acount(shader_catalog_assets) + 1;
+    for (int i = 0; i < count; i++) {
+        const shader_prepared_asset *source = &sources[i];
+        int id = render_shader_find(source->name);
+        if (id && shader_catalog_assets[id - 1].kind != SHADER_ASSET_PARTICLE_TEXT) {
+            snprintf(
+                error,
+                size,
+                "Shader source and graph names must be unique: %s",
+                source->name
+            );
+            goto done;
+        }
+        for (int j = 0; j < i; j++) {
+            if (!strcmp(source->name, sources[j].name)) {
+                snprintf(error, size, "Duplicate shader-source name: %s", source->name);
+                goto done;
+            }
+        }
+        id = id ? id : next++;
+        shader_asset asset = { .name = xstrdup(source->name),
+                               .kind = source->kind,
+                               .text = shader_text_clone(&source->text) };
+        memcpy(asset.widths, source->widths, sizeof asset.widths);
+        memcpy(asset.defaults, source->defaults, sizeof asset.defaults);
+        for (int j = 0; j < SHADER_PARAMETER_MAX; j++) {
+            asset.names[j] = source->names[j] ? xstrdup(source->names[j]) : NULL;
+        }
+        shader_error diagnostic = { 0 };
+        if (asset.kind != SHADER_ASSET_PARTICLE_TEXT ||
+            !render_shader_text_validate(&asset.text, asset.names, asset.widths, &diagnostic)) {
+            snprintf(error, size, "%s: %s", source->name, diagnostic.message);
+            shader_catalog_free_asset(&asset);
+            goto done;
+        }
+        asset.glsl = shader_text_particle_glsl(&asset.text, asset.names, asset.widths, &diagnostic);
+        apush(pending, asset);
+        apush(ids, id);
+        if (!asset.glsl) {
+            snprintf(error, size, "%s: %s", source->name, diagnostic.message);
+            goto done;
+        }
+    }
+    if (!publish) {
+        valid = true;
+        goto done;
+    }
+    for (int i = 0; i < acount(pending); i++) {
+        int index = ids[i] - 1;
+        if (index < acount(shader_catalog_assets)) {
+            if (!text_asset_equal(&shader_catalog_assets[index], &pending[i])) {
+                shader_catalog_free_asset(&shader_catalog_assets[index]);
+                shader_catalog_assets[index] = pending[i];
+                pending[i] = (shader_asset){ 0 };
+                changed = true;
+            }
+        } else {
+            apush(shader_catalog_assets, pending[i]);
+            pending[i] = (shader_asset){ 0 };
+            changed = true;
+        }
+        source_set(index, (shader_source){ .textual = true });
+    }
+    for (int i = 0; i < acount(source_records); i++) {
+        if (!source_records[i].textual) {
+            continue;
+        }
+        bool retained = false;
+        for (int j = 0; j < acount(ids); j++) {
+            retained |= ids[j] == i + 1;
+        }
+        if (!retained) {
+            shader_catalog_free_asset(&shader_catalog_assets[i]);
+            shader_catalog_assets[i] = (shader_asset){ .name = xstrdup("") };
+            source_free(&source_records[i]);
+            changed = true;
+        }
+    }
+    if (changed) {
+        shader_catalog_revision++;
+        shader_catalog_parameter_revision++;
+    }
+    valid = true;
+done:
+    for (int i = 0; i < acount(pending); i++) {
+        shader_catalog_free_asset(&pending[i]);
+    }
+    afree(pending);
+    afree(ids);
+    return valid;
 }
 bool render_shader_upsert(const behavior_asset *source, shader_error *error)
 {
@@ -1030,6 +1158,7 @@ bool render_shader_binding_sources_validate(
     const char *text,
     const behavior_asset *const *sources,
     int count,
+    const shader_prepared_asset *material_source,
     shader_error *error
 )
 {
@@ -1057,8 +1186,18 @@ bool render_shader_binding_sources_validate(
             }
         }
     }
+    if (material_source &&
+        (material_source->kind != SHADER_ASSET_PARTICLE_TEXT || !binding ||
+         !binding->material ||
+         strcmp(binding->material, material_source->name) || material)) {
+        if (error) {
+            snprintf(error->message, sizeof error->message, "Shader source binding needs a unique matching particle declaration.");
+        }
+        return false;
+    }
     if (binding && ((binding->shape && *binding->shape && !shape) ||
-                    (binding->material && *binding->material && !material))) {
+                    (binding->material && *binding->material && !material &&
+                     !material_source))) {
         if (error) {
             snprintf(error->message, sizeof error->message, "Shader parameter binding references a missing asset.");
         }
@@ -1071,6 +1210,27 @@ bool render_shader_binding_sources_validate(
             snprintf(error->message, sizeof error->message, "Shader parameter binding uses the wrong asset family.");
         }
         return false;
+    }
+    /* A borrowed parameter view: source bytes stay owned by the descriptor. */
+    shader_asset source_parameters = { 0 };
+    if (material_source) {
+        source_parameters.kind = material_source->kind;
+        source_parameters.name = material_source->name;
+        memcpy(
+            source_parameters.names,
+            material_source->names,
+            sizeof source_parameters.names
+        );
+        memcpy(
+            source_parameters.widths,
+            material_source->widths,
+            sizeof source_parameters.widths
+        );
+        memcpy(
+            source_parameters.defaults,
+            material_source->defaults,
+            sizeof source_parameters.defaults
+        );
     }
     shader_asset s = { 0 };
     shader_asset *material_assets = NULL;
@@ -1119,7 +1279,8 @@ bool render_shader_binding_sources_validate(
                );
     float sv[32][4], mv[32][4];
     if (ok) {
-        const shader_asset *fallback = particle ? &particle_asset
+        const shader_asset *fallback = material_source ? &source_parameters
+                                     : particle        ? &particle_asset
                                      : material ? shader_catalog_material_asset_find(
                                                       material->name,
                                                       material_catalog,

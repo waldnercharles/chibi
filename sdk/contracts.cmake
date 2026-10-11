@@ -205,8 +205,13 @@ if(CHIBI_SDK_BUILD_DESKTOP)
     chibi_sdk_contract(chibi_renderer "${CHIBI_SDK_ROOT}/src" chibi_platform chibi_ui_host chibi_engine chibi_player
         chibi_shader_runtime chibi_model_runtime chibi_mesh_runtime chibi_native_types chibi_native_capabilities
         chibi_particle_runtime chibi_material_runtime chibi_ui_runtime chibi_save_runtime chibi_ui_document_values chibi_ui_documents chibi_visual_catalog
-        chibi_image_catalog chibi_spatial_runtime chibi_support chibi_json chibi_asset_values chibi_task_pool_runtime chibi_rhythm_runtime chibi_tilemap_runtime
+        chibi_image_catalog chibi_spatial_runtime chibi_support chibi_json chibi_asset_values chibi_task_pool_runtime chibi_rhythm_runtime chibi_tilemap_runtime chibi_shader_compiler
         "-framework Metal" "-framework Foundation")
+endif()
+if(TARGET chibi_shader_compiler)
+    chibi_sdk_contract(chibi_shader_compiler "${CHIBI_SDK_ROOT}/src/render"
+        chibi_shader_runtime chibi_support chibi_shader_vendor
+        "$<BUILD_INTERFACE:cute>" "$<INSTALL_INTERFACE:${CHIBI_DESKTOP_CUTE}>")
 endif()
 if(CHIBI_SDK_BUILD_NATIVE)
     chibi_sdk_contract(chibi_visual_catalog "${CHIBI_SDK_ROOT}/src/render"
@@ -230,7 +235,7 @@ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
     chibi_sdk_contract(chibi_scenario_document "${CHIBI_SDK_ROOT}/src/assets"
         chibi_asset_values chibi_input_runtime chibi_native_types chibi_asset_text)
     chibi_sdk_contract(chibi_shader_preparation "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_visual_catalog chibi_graph_model chibi_player chibi_graph_compilation chibi_graph_authoring chibi_asset_text chibi_json chibi_image_catalog)
+        chibi_visual_catalog chibi_graph_model chibi_player chibi_graph_compilation chibi_graph_authoring chibi_asset_text chibi_json chibi_image_catalog chibi_shader_compiler)
     chibi_sdk_contract(chibi_project_compilation "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_source_catalog chibi_prototype_document chibi_scene_document chibi_player chibi_native_prepared
         chibi_shader_preparation chibi_graph_catalog chibi_host_native_default chibi_graph_compilation chibi_asset_authoring

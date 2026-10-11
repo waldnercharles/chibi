@@ -49,7 +49,7 @@ static void transfer(const behavior_function *f, const behavior_function_instruc
         mark(bits, slots + i->left, true);
     }
 }
-static void suspensions(behavior_function *f)
+static bool suspensions(behavior_function *f, size_t *remaining)
 {
     assert(!f->suspensions);
     int count = acount(f->instructions), values = acount(f->slots) + acount(f->locals);
@@ -64,7 +64,7 @@ static void suspensions(behavior_function *f)
         }
     }
     if (!acount(f->suspensions)) {
-        return;
+        return true;
     }
     /* Backward fixed point includes both branch successors and loop back edges.
      * Local definitions/entries kill old values just like SSA definitions. */
@@ -97,14 +97,34 @@ static void suspensions(behavior_function *f)
     for (int j = 0; j < acount(f->suspensions); j++) {
         behavior_function_suspension *s = &f->suspensions[j];
         const uint64_t *bits = live + (size_t)(s->pc + 1) * words;
+        int count = 0;
+        for (int v = 0; v < values; v++) {
+            count += (bits[v / 64] & (UINT64_C(1) << (v % 64))) != 0;
+        }
+        if (!count) {
+            continue;
+        }
+        size_t capacity = count < 16 ? 16 : (size_t)count;
+        size_t bytes = sizeof(dyna_hdr) + capacity * sizeof *s->values;
+        if (remaining && bytes > *remaining) {
+            free(next);
+            free(live);
+            return false;
+        }
+        if (remaining) {
+            *remaining -= bytes;
+        }
+        asetlen(s->values, count);
+        int at = 0;
         for (int v = 0; v < values; v++) {
             if (bits[v / 64] & (UINT64_C(1) << (v % 64))) {
-                apush(s->values, v);
+                s->values[at++] = v;
             }
         }
     }
     free(next);
     free(live);
+    return true;
 }
 static void operands(behavior_function *f)
 {
@@ -114,7 +134,7 @@ static void operands(behavior_function *f)
         i->right_slot = behavior_function_right_slot(i->op);
     }
 }
-void behavior_function_finalize(behavior_function *f)
+bool behavior_function_finalize(behavior_function *f, size_t *remaining)
 {
     for (int pc = 0; pc < acount(f->instructions); pc++) {
         const behavior_function_instruction *i = &f->instructions[pc];
@@ -127,9 +147,12 @@ void behavior_function_finalize(behavior_function *f)
     if (f->fast) {
         operands(f->fast);
     }
-    suspensions(f);
+    if (!suspensions(f, remaining)) {
+        return false;
+    }
     behavior_function_runtime_code(f);
     behavior_function_borrow_arrays(f);
+    return true;
 }
 void behavior_function_activation_init(const behavior_function *f, behavior_function_activation *a)
 {

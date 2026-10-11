@@ -928,17 +928,18 @@ execution_module *execution_prepared_read_budget(
     }
     if (!w->error) {
         for (int i = count - 1; i >= 0; i--) {
-            size_t before = arena_storage_bytes(&c.functions[i]->owned);
-            size_t limit = *remaining > SIZE_MAX - before ? SIZE_MAX
-                                                          : before + *remaining;
-            if (!behavior_function_prepare_definition(c.functions[i], limit, error, size)) {
+            size_t available = EXECUTION_WIRE_MAX_BYTES - w->owned_bytes;
+            if (available > *remaining) {
+                available = *remaining;
+            }
+            size_t budget = available;
+            if (!behavior_function_prepare_definition(c.functions[i], &budget, error, size)) {
                 w->error = "prepared definition verification failed";
                 break;
             }
-            size_t growth = arena_storage_bytes(&c.functions[i]->owned) - before;
-            assert(growth <= *remaining);
-            *remaining -= growth;
-            w->storage_charged += growth;
+            if (!execution_wire_reserve(w, available - budget)) {
+                break;
+            }
         }
     }
     execution_module *m = NULL;

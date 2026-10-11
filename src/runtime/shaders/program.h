@@ -191,7 +191,7 @@ typedef struct
 typedef struct
 {
     uint64_t node;
-    char message[128];
+    char message[2048];
 } shader_error;
 typedef struct
 {
@@ -270,6 +270,7 @@ bool shader_graph_eval_outputs(
 /* malloc-owned portable GLSL; caller supplies all 32 parameter values including defaults.
  * void PREFIX(SGSample sg_sample,vec4 sg_params[32],out vec4 sg_out[SHADER_OUTPUT_MAX])
  * Caller defines vec4 PREFIX_image_N(vec2 uv) for every entry in g->images. */
+const char *shader_sample_glsl();
 char *shader_graph_glsl_named(const shader_graph *g, const char *prefix, shader_error *error);
 /* malloc-owned portable GLSL for output[0]'s object-space gradient. The emitted
  * function accepts a nonnegative object-space singularity tolerance as its

@@ -39,6 +39,7 @@ static const char *const FOLDERS[NEW_ASSET_KIND_COUNT] = {
     [NEW_ASSET_FIELD] = "fields",
     [NEW_ASSET_SHADER_LIBRARY] = "shader-libraries",
     [NEW_ASSET_MODEL] = "models",
+    [NEW_ASSET_SHADER_SOURCE] = "shaders",
 };
 
 const char *new_asset_folder(new_asset_kind kind)
@@ -168,6 +169,22 @@ char *new_asset_text(new_asset_kind kind, const char *name)
         case NEW_ASSET_SHADER_LIBRARY:
             return graph_text(BEHAVIOR_DOMAIN_SHADER_LIBRARY, name);
         case NEW_ASSET_MODEL: return graph_text(BEHAVIOR_DOMAIN_MODEL, name);
+        case NEW_ASSET_SHADER_SOURCE: {
+            av_doc *doc = av_doc_new();
+            av_value *root = av_obj(doc);
+            av_doc_set_root(doc, root);
+            av_obj_add_int(doc, root, "version", 1);
+            av_obj_add_strcpy(doc, root, "name", name);
+            av_obj_add_str(doc, root, "kind", "particle");
+            char source[NEW_ASSET_NAME_MAX + sizeof ".glsl"];
+            snprintf(source, sizeof source, "%s.glsl", name);
+            av_obj_add_strcpy(doc, root, "source", source);
+            av_obj_add_str(doc, root, "entry", "particle");
+            av_obj_add_obj(doc, root, "parameters");
+            char *text = av_doc_write(doc);
+            av_doc_free(doc);
+            return text;
+        }
         case NEW_ASSET_KIND_COUNT: break;
     }
     assert(!"a new asset kind");
@@ -188,6 +205,36 @@ bool new_asset_real_folder(const char *path, char *error, size_t size)
     snprintf(error, size, "%s is not a folder", path);
     errno = ENOTDIR;
     return false;
+}
+
+static bool create_shader_source(const char *content, const char *name, char *error, size_t size)
+{
+    size_t bytes = strlen(content) + strlen(name) + sizeof "/shaders/.glsl";
+    char *path = xmalloc(bytes);
+    snprintf(path, bytes, "%s/shaders/%s.glsl", content, name);
+    FILE *file = fopen(path, "wbx");
+    if (!file) {
+        snprintf(error, size, errno == EEXIST ? "%s.glsl already exists" : "Cannot create %s.glsl", name);
+        free(path);
+        return false;
+    }
+    const char *source = "ChibiParticle particle(ChibiParticleInput p, "
+                         "ChibiParameters parameters)\n"
+                         "{\n"
+                         "    ChibiParticle value = chibi_particle();\n"
+                         "    value.position = vec3(p.index, 0.0, 0.0);\n"
+                         "    return value;\n"
+                         "}\n";
+    bool written = fputs(source, file) >= 0;
+    written = fclose(file) == 0 && written;
+    if (!written) {
+        snprintf(error, size, "Cannot finish writing %s", path);
+        int failure = errno;
+        unlink(path);
+        errno = failure;
+    }
+    free(path);
+    return written;
 }
 
 char *new_asset_create(const char *content, new_asset_kind kind, const char *name, char *error, size_t size)
@@ -259,6 +306,14 @@ char *new_asset_create(const char *content, new_asset_kind kind, const char *nam
         snprintf(error, size, "Cannot finish writing %s", path);
         unlink(path);
         free(path);
+        return NULL;
+    }
+    if (kind == NEW_ASSET_SHADER_SOURCE &&
+        !create_shader_source(content, name, error, size)) {
+        int failure = errno;
+        unlink(path);
+        free(path);
+        errno = failure;
         return NULL;
     }
     return path;

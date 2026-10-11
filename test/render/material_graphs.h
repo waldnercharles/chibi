@@ -37,6 +37,14 @@ bool test_register_view_mask(const char *name);
 /* An unlit masked material whose Opacity is NaN over its surface, as the
  * fraction of U scaled past the float limit is, with an Alpha Cutoff of 0.5. */
 bool test_register_unknown_opacity(const char *name);
+/* A lit .6 gray material for 2D relief. Its Normal leans by `tilt` sideways
+ * (x) and up (z), its roughness is constant, and its Height is `height` world
+ * units plus `slope` times world x. */
+typedef struct
+{
+    float tilt[2], roughness, height, slope;
+} test_relief;
+bool test_register_relief(const char *name, test_relief relief);
 /* A model graph of one sphere of `radius` at the origin. */
 bool test_register_model_sphere(const char *name, float radius);
 

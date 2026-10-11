@@ -234,6 +234,45 @@ bool test_register_unknown_opacity(const char *name)
     );
 }
 
+bool test_register_relief(const char *name, test_relief relief)
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    float base[3] = { .6f, .6f, .6f },
+          normal[3] = { relief.tilt[0], 1, relief.tilt[1] };
+    pin_value values[] = {
+        { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = base },
+        { .type = PIN_F32, .f = relief.roughness },
+        { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = normal },
+        { .type = PIN_F32, .f = relief.height },
+        { .type = PIN_F32, .f = relief.slope }
+    };
+    bool built = !graph_set_pin_default(g, output, 0, SHADER_SURFACE_BASE_COLOR, &values[0]) &&
+                 !graph_set_pin_default(g, output, 0, SHADER_SURFACE_ROUGHNESS, &values[1]) &&
+                 !graph_set_pin_default(g, output, 0, SHADER_SURFACE_NORMAL, &values[2]);
+    if (!relief.slope) {
+        return publish(
+            material,
+            built && !graph_set_pin_default(g, output, 0, SHADER_SURFACE_HEIGHT, &values[3])
+        );
+    }
+    node *position = graph_add_node(g, pack_node("Shader WorldPosition"));
+    node *x = graph_add_node(g, pack_node("Shader X"));
+    node *scale = graph_add_node(g, pack_node("Shader Multiply"));
+    node *offset = graph_add_node(g, pack_node("Shader Add"));
+    return publish(
+        material,
+        built && position && x && scale && offset &&
+            !graph_connect_data(g, position, 0, x, 0) &&
+            !graph_connect_data(g, x, 0, scale, 0) &&
+            !graph_set_pin_default(g, scale, 0, 1, &values[4]) &&
+            !graph_connect_data(g, scale, 0, offset, 0) &&
+            !graph_set_pin_default(g, offset, 0, 1, &values[3]) &&
+            !graph_connect_data(g, offset, 0, output, SHADER_SURFACE_HEIGHT)
+    );
+}
+
 bool test_register_model_sphere(const char *name, float radius)
 {
     behavior_asset *model = behavior_asset_new(name);

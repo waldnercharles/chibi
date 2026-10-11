@@ -34,3 +34,10 @@ CHIBI_GPU_SELECTOR("--scene3d-gles")
 /* Color ramp table cases through 2D and material raster shaders in a hidden
  * 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--material-ramps")
+/* HRC's surface light through relief materials in a hidden 128x128 app, with
+ * readback. */
+CHIBI_GPU_SELECTOR("--radiance-surface")
+/* HRC's relief shadows by four and eight horizons, their hierarchy and their
+ * cache in a hidden 128x128 app, with readback. */
+CHIBI_GPU_SELECTOR("--radiance-horizons4")
+CHIBI_GPU_SELECTOR("--radiance-horizons8")

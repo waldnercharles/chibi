@@ -45,9 +45,9 @@ build.
 `build-language/` for the `test-language*` targets. Add a case to the selector
 that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
-`scene2d`, `scene3d`, `scene3d-gles` and `material-ramps` render through a
-hidden window, which needs a display and a GPU driver the CI job does not set
-up, so they stay out of the group; run them with
+`radiance`, `scene2d`, `scene3d`, `scene3d-gles` and `material-ramps` render
+through a hidden window, which needs a display and a GPU driver the CI job does
+not set up, so they stay out of the group; run them with
 `python3 tools/test_policy.py tool <name>`.
 
 CI runs the build, both groups and `make test-tools` on Linux and macOS. On
@@ -527,6 +527,16 @@ hidden 64 x 64 app and reads back the app canvas. A scene without `GameHRC2D`
 must show its materials unlit, `game_hrc2d_defaults()` lighting must keep them
 visible, and the unlit view or removing the settings must stop lighting. Build
 and run it like `interior-border` with `AGENT_SELECTOR=--scene2d`.
+`radiance` runs HRC in a hidden 128 x 128 app and reads it back: an emitter
+lighting open space through its material, opaque, finite, bouncing and nearly
+transparent walls, reset, empty and resized grids, reused capacity against a
+fresh grid, lighting that normalization fitted, every resolution, color and
+gather combination, the adaptive ladder, GPU pass timing, and the extend and
+filter passes alone against CPU references. On lavapipe it passes 4697
+assertions in 14.5 seconds, 19.9 seconds with an empty shader cache. HRC's view
+layout and lighting normalization run without a GPU in `render-resources`.
+`test/radiance.c` still holds the unbuilt cases to port: surface lighting,
+horizon shadows, fluids, reflections and reconstruction.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
 near clipping, a mixed 2D layer, and a later frame without the occluder) with

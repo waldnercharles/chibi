@@ -574,7 +574,7 @@ such as UI and presentation, accumulates as `Unmarked`. Other backends keep the
 waiting fallback. A preview request selects this with `"pass_timing": true`;
 `"pass_timing_detail": true` also times every cascade level. The response's
 `pass_timing_source` names the method. The attribution rule has a regression
-test in `test/radiance.c`.
+test in `test/render/radiance.c`.
 
 The splits add one command-buffer boundary per mark. With detail enabled, that
 is roughly a hundred command buffers per frame. The totals stay close to the

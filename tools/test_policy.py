@@ -31,6 +31,7 @@ NATIVE = {
     ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
     ('--viewport-resize',): 'Reviewed hidden 64x64 app: an engine viewport takes its first requested size at once and later sizes after two draws; GPU; docs/testing.md',
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
+    ('--radiance',): 'Reviewed hidden 128x128 app: HRC emitter, wall, absorption, bounce and transparent-feedback transport, reset, resize and reused capacity, fitted lighting, every resolution combination, the adaptive ladder, GPU pass timing, and the extend and filter passes alone, with readback; GPU; docs/testing.md',
     ('--scene2d',): 'Reviewed hidden 64x64 app: 2D scene renderer drawing a scene without lighting settings unlit, default lighting keeping materials visible, and the unlit view or removed settings stopping lighting, with readback; GPU; docs/testing.md',
     ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky, ramps, imported meshes and their normal maps, imported glTF Standard materials and tangent frames, Transform3D placement and mirroring, occlusion, ambient occlusion, alpha modes and masked shadows with readback; GPU; docs/rendering-3d.md',
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
@@ -105,8 +106,8 @@ TOOLS = {
     # One reviewed source material case; four payload types, two backends, CPU shader stage only.
     'source-native-material': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-native-material'],
     # Reviewed CPU-only renderer cases: typed transaction/lifetime, sprite image sets, sky face layout
-    # and halves, sky irradiance, the split-sum table, sky publication, and pure desktop key/stick
-    # mapping; no window, GPU, fonts or files.
+    # and halves, sky irradiance, the split-sum table, sky publication, HRC view layout and lighting
+    # normalization, and pure desktop key/stick mapping; no window, GPU, fonts or files.
     'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--render-resources'],
     # Two reviewed hidden-app 64x64 cases: Cute's interior border on a circle and a diamond,
     # opaque and translucent, through the instanced and tiled draw paths. The agent runs the
@@ -118,6 +119,9 @@ TOOLS = {
     # Fourteen reviewed hidden-app scenes of meshes and SDFs hiding each other, compared with
     # hidden-surface rejection on and off, plus Cute's whole-canvas depth copy on its own.
     'sdf-visibility': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--sdf-visibility'],
+    # Hidden-app 128x128 HRC cases: transport through emitters and walls, reset and resize,
+    # lighting settings and the adaptive ladder, pass timing, and the extend and filter passes.
+    'radiance': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance'],
     # Hidden-app 64x64 2D renders: a scene without lighting settings draws unlit, and default
     # lighting keeps it visible.
     'scene2d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene2d'],
@@ -492,7 +496,7 @@ def main():
             parser.error('unadmitted tooling command')
         if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
                             'studio-graph-visibility', 'interior-border', 'viewport-resize', 'sdf-visibility',
-                            'scene2d', 'scene3d', 'scene3d-gles',
+                            'radiance', 'scene2d', 'scene3d', 'scene3d-gles',
                             'material-ramps'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])

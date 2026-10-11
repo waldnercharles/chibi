@@ -21,6 +21,9 @@ CHIBI_GPU_SELECTOR("--viewport-resize")
 /* Meshes and SDFs hiding each other in a hidden 96x80 app, with and without
  * hidden-surface rejection and its depth snapshot copies, with readback. */
 CHIBI_GPU_SELECTOR("--sdf-visibility")
+/* HRC's transport, adaptive steps, timing and single passes in a hidden
+ * 128x128 app, with readback. */
+CHIBI_GPU_SELECTOR("--radiance")
 /* The 2D scene renderer's lighting cases in a hidden 64x64 app, with
  * readback. */
 CHIBI_GPU_SELECTOR("--scene2d")

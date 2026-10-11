@@ -78,6 +78,11 @@ bool occludes(vec2 uv)
     vec4 source = texelFetch(u_source, pixel_at(uv), 0);
     return source.a > 0.01 || dot(source.rgb, LUMA) <= 0.0;
 }
+// HRC stops at a solid that absorbs light, so it brings no light from past it.
+bool absorbs(vec2 uv)
+{
+    return texelFetch(u_source, pixel_at(uv), 0).a > 0.01;
+}
 uint slab_mask(float lower, float upper)
 {
     // Mark a sector only when its centre is inside the slab. Expanding every
@@ -127,6 +132,9 @@ float radial_step;
 uint slab_prefix[96];
 float sampling_rotation;
 float tile_visibility;
+bool tile_brought;
+// The first radial step on each ray that holds a solid that absorbs light.
+int absorber_step[8];
 
 // Softness fades a shadow's edge within the bin that blocks, from where the
 // hard shadow ends to the blocked bin's centre, so it never shadows what the
@@ -146,11 +154,17 @@ float mask_visibility(uint mask, float elevation)
     return mix(hard, soft, u_shadow_softness);
 }
 
+// The last radial step of the masks before a light `radial` steps away.
+int step_before(float radial)
+{
+    return min(int(ceil(radial)) - 1, 11);
+}
+
 float ray_visibility(int ray, float radial, float elevation)
 {
     ray = int(mod(float(ray), 8.0));
-    int previous = int(ceil(radial)) - 1;
-    uint mask = previous >= 0 ? slab_prefix[ray * 12 + min(previous, 11)] : 0u;
+    int previous = step_before(radial);
+    uint mask = previous >= 0 ? slab_prefix[ray * 12 + previous] : 0u;
     float hard = mask_visibility(mask, elevation);
     if (u_shadow_softness <= 0.0) return hard;
     int a = int(floor(radial - 0.5));
@@ -161,9 +175,8 @@ float ray_visibility(int ray, float radial, float elevation)
     return mix(hard, filtered, u_shadow_softness);
 }
 
-float source_visibility(vec3 delta, float distance, float azimuth)
+float source_visibility(vec3 delta, float radial, float azimuth)
 {
-    float radial = max(distance - pixel_world, 0.0) / radial_step - 0.5;
     float elevation = (atan(delta.z, max(length(delta.xy), 1e-6)) + 0.5 * PI) * (32.0 / PI) - 0.5;
     float hard = ray_visibility(int(floor(azimuth + 0.5)), radial, elevation);
     if (u_shadow_softness <= 0.0) return hard;
@@ -173,10 +186,20 @@ float source_visibility(vec3 delta, float distance, float azimuth)
     return mix(hard, filtered, u_shadow_softness);
 }
 
-// A single source-tile query is shared by all its refined energy estimates.
-// The walk covers the complete segment with a fixed quality budget. When the
-// footprint exceeds that budget this is explicit undersampling, never an
-// unfinished walk declared clear. Screen-space slabs cannot see hidden layers.
+// Whether HRC brings a light along the ray it would take through the masks:
+// no solid that absorbs light lies in the steps before it.
+bool hrc_brings(float radial, float azimuth)
+{
+    int ray = int(mod(floor(azimuth + 0.5), 8.0));
+    return step_before(radial) < absorber_step[ray];
+}
+
+// A single source-tile query is shared by all its refined energy estimates,
+// and so is whether HRC brings the tile's light: whether a solid that absorbs
+// lies on the way. The walk covers the complete segment with a fixed quality
+// budget. When the footprint exceeds that budget this is explicit
+// undersampling, never an unfinished walk declared clear. Screen-space slabs
+// cannot see hidden layers.
 float segment_visibility(vec4 emitter)
 {
     vec2 size = vec2(textureSize(u_cover, 0));
@@ -185,6 +208,7 @@ float segment_visibility(vec4 emitter)
     int budget = u_source_axis <= 4 ? 32 : (u_source_axis <= 6 ? 48 : 64);
     int steps = min(max(int(ceil(extent)), 1), budget);
     float visible = 1.0;
+    tile_brought = true;
     for (int i = 0; i < 64; i++) {
         if (i >= steps) break;
         float t = (float(i) + 0.5) / float(steps);
@@ -194,6 +218,7 @@ float segment_visibility(vec4 emitter)
         if (!inside(uv)) continue;
         vec2 obstacle = geometry_at(uv);
         if (obstacle.y <= 0.5 || !occludes(uv)) continue;
+        if (absorbs(uv)) tile_brought = false;
         float height = mix(receiver_origin.z, emitter.z, t);
         if (u_projection.z > 0.0) {
             float q0 = 1.0 / max(u_projection.z - receiver_origin.z, 0.001);
@@ -205,7 +230,7 @@ float segment_visibility(vec4 emitter)
         float hard = interior > bias ? 0.0 : 1.0;
         float soft = 1.0 - smoothstep(bias, bias + pixel_world, interior);
         visible = min(visible, mix(hard, soft, u_shadow_softness));
-        if (visible <= 0.0) break;
+        if (visible <= 0.0 && !tile_brought) break;
     }
     return visible;
 }
@@ -226,17 +251,22 @@ void receive(vec3 emission, vec4 emitter, float area)
     // Keep the cutoff wider than source-position quantization at small radii.
     float taper = min(u_radius, max(u_radius * 0.15, pixel_world * 2.0));
     float falloff = 1.0 - smoothstep(u_radius - taper, u_radius, projected_distance);
+    float radial = max(projected_distance - pixel_world, 0.0) / radial_step - 0.5;
     float visibility = (u_visibility_mode == 1 ? tile_visibility
-        : source_visibility(delta, projected_distance, azimuth)) * falloff;
+        : source_visibility(delta, radial, azimuth)) * falloff;
     // A flat receiver keeps HRC's light from any light it sees. Facing a light
     // takes more of it, up to the steepest relief flat_elevation allows, and
     // facing away or a blocked view takes less. Lights fading out at the
-    // radius leave their share as it was.
+    // radius leave their share as it was. Only lights HRC brings shade its
+    // light: one behind a solid that absorbs, which HRC stops, would darken
+    // the light HRC brings from the others.
     float facing = max(1.0 + (dot(receiver_normal, direction) - direction.z) /
                                  max(direction.z, flat_elevation), 0.0);
-    float share = dot(emission, LUMA) * weight;
-    shading += share * (visibility * facing + 1.0 - falloff);
-    shading_total += share;
+    if (u_visibility_mode == 1 ? tile_brought : hrc_brings(radial, azimuth)) {
+        float share = dot(emission, LUMA) * weight;
+        shading += share * (visibility * facing + 1.0 - falloff);
+        shading_total += share;
+    }
     if (visibility <= 0.0) return;
     // HRC spreads light in the plane: emission E over A canvas pixels lights
     // open space s pixels away by E A / (2 pi s), dimmed by its falloff. A
@@ -438,6 +468,7 @@ void main()
         vec2 axis = vec2(cos(angle), sin(angle));
         vec2 screen_axis = vec2(axis.x, -axis.y);
         uint mask = 0u;
+        absorber_step[azimuth] = 12;
         // Build radial prefix visibility first. A filtered footprint may find a
         // source nearer or farther than its centre, so use its actual distance.
         for (int radial = 0; radial < 12; radial++) {
@@ -445,6 +476,9 @@ void main()
             vec2 center = uv + screen_axis * radius / (u_world_per_px * vec2(size) * receiver_scale);
             if (inside(center)) {
                 vec2 obstacle = geometry_at(center);
+                if (obstacle.y > 0.5 && absorbs(center)) {
+                    absorber_step[azimuth] = min(absorber_step[azimuth], radial);
+                }
                 if (obstacle.y > 0.5 && u_thickness > 0.0 && occludes(center)) {
                     vec3 top = position_at(center, obstacle.x) - receiver_origin;
                     vec3 bottom = position_at(center, obstacle.x - u_thickness) - receiver_origin;

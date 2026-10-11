@@ -818,6 +818,46 @@ TEST_CASE(soft_visibility_keeps_lights_on_the_floor)
     return true;
 }
 
+/* open_scene(OPEN) with a `green` light at x 0 to 3, as tall as the strip,
+ * behind a wall at x 6 to 9 that absorbs light and is as tall, so its slab
+ * hides the green light from the receiver. HRC brings the receiver none of
+ * the green light. */
+static void walled_scene(float green)
+{
+    open_scene(OPEN, 0, 1);
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < 10; x++) {
+            int p = y * SIDE + x;
+            bool wall = x >= 6;
+            bool light = x <= 3 && y >= 8 && y <= 24;
+            data[ALBEDO][p][3] = wall || light ? 12 : 0;
+            data[SOURCE][p][1] = light ? green : 0;
+            data[SOURCE][p][3] = wall ? 20 : 0;
+        }
+    }
+}
+
+/* Depth shades the light HRC brings by the lights HRC brings. A bright light
+ * behind a wall that absorbs, which HRC stops and Depth sees as hidden,
+ * leaves the strip's light on the receiver as it was, in both visibility
+ * modes. */
+TEST_CASE(lights_behind_absorbing_walls_leave_hrc_light_unshaded)
+{
+    for (int mode = HRC_DEPTH_VISIBILITY_MASK; mode <= HRC_DEPTH_VISIBILITY_SEGMENTS;
+         mode++) {
+        HRC2D lighting = fill_lighting();
+        lighting.surface_depth_visibility = (HRCDepthVisibility)mode;
+        float unlit[3], walled[3];
+        walled_scene(0);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), unlit));
+        walled_scene(16);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), walled));
+        REQUIRE(unlit[0] > .1f && fabsf(walled[0] - unlit[0]) < unlit[0] * .01f);
+        REQUIRE(fabsf(walled[1] - unlit[1]) < .001f);
+    }
+    return true;
+}
+
 /* A dark receiver, nearly black and tilted toward the half-vector, so gloss
  * shows apart from its diffuse light. The strip stays off the receiver. */
 static void dark_receiver(float gloss)
@@ -1463,6 +1503,7 @@ void test_render_radiance_depth()
     RUN_TEST_CASE(walls_occlude_ambient_light_by_their_height);
     RUN_TEST_CASE(closed_receivers_take_the_light_hrc_brings_open_ones);
     RUN_TEST_CASE(soft_visibility_keeps_lights_on_the_floor);
+    RUN_TEST_CASE(lights_behind_absorbing_walls_leave_hrc_light_unshaded);
     RUN_TEST_CASE(glossy_receivers_take_highlights_by_the_depth_gain);
     RUN_TEST_CASE(matte_patches_take_no_gloss_from_around_them);
     RUN_TEST_CASE(every_depth_quality_lights_and_shadows);

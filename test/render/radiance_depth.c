@@ -792,6 +792,32 @@ TEST_CASE(closed_receivers_take_the_light_hrc_brings_open_ones)
     return true;
 }
 
+/* Softness fades a shadow's top and bottom edges only within the elevation
+ * bins that block, so it never shadows what hard visibility lights there. An
+ * open floor's own slab ends at the horizon: a strip on the floor's plane
+ * lights it as fully as without softness. Slabs below, above or across the
+ * strip's path shadow no more than without softness, and a crossing slab
+ * still shadows. */
+TEST_CASE(soft_visibility_keeps_lights_on_the_floor)
+{
+    static const int scenes[] = { OPEN, CROSSING, BELOW, ABOVE };
+    HRC2D lighting = fill_lighting();
+    float plane[2], light[2][4];
+    for (int soft = 0; soft < 2; soft++) {
+        lighting.surface_depth_shadow_softness = (float)soft;
+        REQUIRE(floor_light(lighting, false, 0, 0, &plane[soft]));
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(open_light(scenes[i], 0, 1, lighting, &light[soft][i]));
+        }
+    }
+    REQUIRE(plane[0] > .1f && fabsf(plane[1] - plane[0]) < plane[0] * .01f);
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(light[1][i] >= light[0][i] * .999f);
+    }
+    REQUIRE(light[1][1] < light[1][0] * .6f);
+    return true;
+}
+
 /* A dark receiver, nearly black and tilted toward the half-vector, so gloss
  * shows apart from its diffuse light. The strip stays off the receiver. */
 static void dark_receiver(float gloss)
@@ -1436,6 +1462,7 @@ void test_render_radiance_depth()
     RUN_TEST_CASE(depth_gain_keeps_shadows_and_unlit_scenes_dark);
     RUN_TEST_CASE(walls_occlude_ambient_light_by_their_height);
     RUN_TEST_CASE(closed_receivers_take_the_light_hrc_brings_open_ones);
+    RUN_TEST_CASE(soft_visibility_keeps_lights_on_the_floor);
     RUN_TEST_CASE(glossy_receivers_take_highlights_by_the_depth_gain);
     RUN_TEST_CASE(matte_patches_take_no_gloss_from_around_them);
     RUN_TEST_CASE(every_depth_quality_lights_and_shadows);

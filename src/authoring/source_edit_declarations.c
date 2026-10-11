@@ -3,6 +3,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <assert.h>
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,6 +66,128 @@ static bool identifier(const char *name)
     }
     return true;
 }
+
+static bool variable_type(const script_catalog *catalog, const char *text, script_type *type)
+{
+    if (!text || !text[0] || strlen(text) > 4096) {
+        return false;
+    }
+    const char *prefix = "behavior __VariableType { function __probe(__value: ";
+    const char *suffix = ") {} }";
+    size_t bytes = strlen(prefix) + strlen(text) + strlen(suffix) + 1;
+    char *probe = xmalloc(bytes);
+    snprintf(probe, bytes, "%s%s%s", prefix, text, suffix);
+    script_syntax *syntax = script_parse(probe);
+    script_analysis *analysis = script_analyze(syntax, catalog);
+    bool valid = false;
+    if (!syntax->diagnostic_count && analysis->valid) {
+        for (int i = 0; i < analysis->symbol_count; i++) {
+            const script_symbol *symbol = &analysis->symbols[i];
+            if (symbol->kind != SCRIPT_PARAMETER || strcmp(symbol->name, "__value")) {
+                continue;
+            }
+            TSNode node = ts_node_named_descendant_for_byte_range(
+                ts_tree_root_node(syntax->tree),
+                (uint32_t)symbol->declaration.start,
+                (uint32_t)symbol->declaration.end
+            );
+            while (!ts_node_is_null(node) && strcmp(ts_node_type(node), "parameter")) {
+                node = ts_node_parent(node);
+            }
+            TSNode declared = ts_node_child_by_field_name(node, "type", 4);
+            valid = !ts_node_is_null(declared) &&
+                    ts_node_start_byte(declared) == strlen(prefix) &&
+                    ts_node_end_byte(declared) == strlen(prefix) + strlen(text);
+            *type = symbol->type;
+            break;
+        }
+    }
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    free(probe);
+    return valid;
+}
+
+static bool retype_variable(
+    const script_analysis *a,
+    const script_catalog *catalog,
+    const script_symbol *selected,
+    const authoring_edit_request *r,
+    source_edit_changes *changes,
+    char *error,
+    size_t size
+)
+{
+    script_type type;
+    if ((selected->kind != SCRIPT_STATE && selected->kind != SCRIPT_SHARED_STATE) ||
+        !variable_type(catalog, r->signature, &type)) {
+        return fail(error, size, "Choose one valid variable type");
+    }
+    script_syntax *syntax = script_parse(a->text);
+    TSNode declaration = ts_node_named_descendant_for_byte_range(
+        ts_tree_root_node(syntax->tree),
+        (uint32_t)selected->declaration.start,
+        (uint32_t)selected->declaration.end
+    );
+    while (!ts_node_is_null(declaration) &&
+           strcmp(ts_node_type(declaration), "state_declaration")) {
+        declaration = ts_node_parent(declaration);
+    }
+    assert(!ts_node_is_null(declaration));
+    TSNode old_type = ts_node_child_by_field_name(declaration, "type", 4);
+    TSNode value = ts_node_child_by_field_name(declaration, "value", 5);
+    bool keep = selected->initializer >= 0 &&
+                script_type_assignable(
+                    type,
+                    a->expressions[selected->initializer].type
+                );
+    const script_catalog_type *named = script_catalog_type_by_id(catalog, type.nominal);
+    pin_value zero = { .type = type.storage,
+                       .container = type.container,
+                       .type_name = named ? named->name : NULL };
+    if (type.storage == PIN_STR || type.storage == PIN_NAME) {
+        zero.str = "";
+    }
+    char *literal = keep ? NULL
+                         : authoring_source_literal(catalog, type, &zero, NULL, 0);
+    TSNode assign = { 0 };
+    for (uint32_t i = 0; i < ts_node_child_count(declaration); i++) {
+        TSNode child = ts_node_child(declaration, i);
+        if (!strcmp(ts_node_type(child), "=") || !strcmp(ts_node_type(child), ":=")) {
+            assign = child;
+            break;
+        }
+    }
+    if (!ts_node_is_null(old_type)) {
+        patch(changes, script_node_range(old_type), r->signature);
+        if (ts_node_is_null(value) && literal) {
+            size_t bytes = strlen(literal) + 4;
+            char *initial = xmalloc(bytes);
+            snprintf(initial, bytes, " = %s", literal);
+            int end = (int)ts_node_end_byte(old_type);
+            patch(changes, (script_range){ .start = end, .end = end }, initial);
+            free(initial);
+        }
+        if (!ts_node_is_null(value) && !keep && !literal) {
+            assert(!ts_node_is_null(assign));
+            patch(changes, script_node_range(assign), "");
+        }
+    } else {
+        assert(!ts_node_is_null(assign));
+        size_t bytes = strlen(r->signature) + 6;
+        char *annotation = xmalloc(bytes);
+        snprintf(annotation, bytes, ": %s%s", r->signature, keep || literal ? " =" : "");
+        patch(changes, script_node_range(assign), annotation);
+        free(annotation);
+    }
+    if (!ts_node_is_null(value) && !keep) {
+        patch(changes, script_node_range(value), literal ? literal : "");
+    }
+    free(literal);
+    script_syntax_free(syntax);
+    changes->text = text_edits_apply(a->text, changes->patches, acount(changes->patches));
+    return changes->text != NULL || fail(error, size, "Variable type edits overlap");
+}
 static int mapped(int offset, const text_edit *patches)
 {
     int result = offset;
@@ -87,17 +210,26 @@ static bool rename_preserves_uses(
     script_analysis *next = script_analyze_document(syntax, c, a->identity);
     /* A rename changes tokens, not declaration ordering. Compare every use,
      * including untouched ones that the new name could capture. */
-    bool valid = next->valid && next->symbol_count == a->symbol_count;
+    bool valid = next->valid && next->symbol_count == a->symbol_count &&
+                 next->use_count == a->use_count;
     for (int i = 0; valid && i < a->symbol_count; i++) {
         valid = a->symbols[i].kind == next->symbols[i].kind &&
                 (i == selected || !strcmp(a->symbols[i].name, next->symbols[i].name));
     }
     for (int i = 0; valid && i < a->use_count; i++) {
         const script_use *old = &a->uses[i];
-        const script_use
-            *use = script_use_at(next, mapped(old->range.start, changes->patches));
-        valid = use && use->kind == old->kind && use->symbol == old->symbol &&
-                (old->symbol == selected || use->member == old->member);
+        script_range range = { .start = mapped(old->range.start, changes->patches),
+                               .end = mapped(old->range.end, changes->patches) };
+        valid = false;
+        for (int j = 0; j < next->use_count; j++) {
+            const script_use *use = &next->uses[j];
+            if (use->range.start == range.start && use->range.end == range.end &&
+                use->kind == old->kind && use->symbol == old->symbol &&
+                (old->symbol == selected || use->member == old->member)) {
+                valid = true;
+                break;
+            }
+        }
     }
     script_analysis_free(next);
     script_syntax_free(syntax);
@@ -246,6 +378,9 @@ bool source_edit_declarations(
         return fail(error, size, "Select an owned declaration for this operation");
     }
     const script_symbol *selected = &a->symbols[index];
+    if (r->kind == AUTHORING_EDIT_RETYPE_VARIABLE) {
+        return retype_variable(a, c, selected, r, changes, error, size);
+    }
     if (selected->kind == SCRIPT_GLOBAL || selected->kind == SCRIPT_COMPONENT) {
         return fail(error, size, "Native declarations are edited in their authoritative catalog");
     }
@@ -258,12 +393,28 @@ bool source_edit_declarations(
             return fail(error, size, "Retained value references require an identifier name");
         }
         patch(changes, selected->declaration, r->name);
+        script_syntax *syntax = script_parse(a->text);
         for (int i = 0; i < a->use_count; i++) {
-            if (a->uses[i].symbol == index &&
-                (!a->uses[i].member || a->uses[i].kind == SCRIPT_CALL)) {
-                patch(changes, a->uses[i].range, r->name);
+            const script_use *use = &a->uses[i];
+            if (use->symbol != index || (use->member && use->kind != SCRIPT_CALL)) {
+                continue;
             }
+            script_range range = use->range;
+            if ((selected->kind == SCRIPT_STATE || selected->kind == SCRIPT_SHARED_STATE) &&
+                use->kind == SCRIPT_WRITE) {
+                TSNode node = ts_node_named_descendant_for_byte_range(
+                    ts_tree_root_node(syntax->tree),
+                    (uint32_t)range.start,
+                    (uint32_t)range.end
+                );
+                if (!strcmp(ts_node_type(node), "member_expression")) {
+                    TSNode member = ts_node_child_by_field_name(node, "member", 6);
+                    range = script_node_range(member);
+                }
+            }
+            patch(changes, range, r->name);
         }
+        script_syntax_free(syntax);
     } else if (r->kind == AUTHORING_EDIT_SET_DISABLED) {
         script_syntax *syntax = script_parse(a->text);
         TSNode node = ts_node_named_descendant_for_byte_range(

@@ -39,6 +39,17 @@ static bool is(TSNode node, const char *name)
 {
     return !ts_node_is_null(node) && !strcmp(ts_node_type(node), name);
 }
+static TSNode program_body(const script_syntax *syntax)
+{
+    TSNode root = ts_tree_root_node(syntax->tree);
+    for (uint32_t i = 0; i < ts_node_named_child_count(root); i++) {
+        TSNode node = ts_node_named_child(root, i);
+        if (is(node, "behavior") || is(node, "library") || is(node, "system")) {
+            return ts_node_child_by_field_name(node, "body", 4);
+        }
+    }
+    return (TSNode){ 0 };
+}
 static TSNode at(const script_syntax *syntax, script_range range)
 {
     return ts_node_named_descendant_for_byte_range(
@@ -67,7 +78,8 @@ static bool selection(
         return fail(error, size, "Select at most 256 complete source records");
     }
     for (int i = 0; i < count; i++) {
-        const source_presentation_origin *o = origin(p, ids[i]);
+        const source_presentation_origin
+            *o = source_edit_statement_origin(p, origin(p, ids[i]));
         if (!o || o->range.start < 0 || o->range.end <= o->range.start) {
             return fail(error, size, "Selection has no editable lexical record");
         }
@@ -247,8 +259,7 @@ static bool fragment_syntax(const char *fragment, const char *region)
         free(text);
         return false;
     }
-    TSNode program = ts_node_named_child(ts_tree_root_node(syntax->tree), 0);
-    TSNode block = ts_node_child_by_field_name(program, "body", 4);
+    TSNode block = program_body(syntax);
     if (strcmp(region, "system_body") && strcmp(region, "declaration_body")) {
         TSNode declaration = ts_node_named_child(block, 0);
         block = ts_node_child_by_field_name(declaration, "body", 4);
@@ -375,8 +386,7 @@ bool source_edit_structural(
         r->kind == AUTHORING_EDIT_REPLACE_DECLARATION) {
         TSNode region = { 0 };
         if (r->kind == AUTHORING_EDIT_APPEND_DECLARATIONS) {
-            TSNode program = ts_node_named_child(ts_tree_root_node(syntax->tree), 0);
-            region = ts_node_child_by_field_name(program, "body", 4);
+            region = program_body(syntax);
         } else if (o) {
             if (r->kind == AUTHORING_EDIT_APPEND_BODY ||
                 r->kind == AUTHORING_EDIT_REPLACE_BODY) {
@@ -531,8 +541,7 @@ bool source_edit_structural(
             break;
         }
         case AUTHORING_EDIT_APPEND_DECLARATIONS: {
-            TSNode program = ts_node_named_child(ts_tree_root_node(syntax->tree), 0);
-            TSNode block = ts_node_child_by_field_name(program, "body", 4);
+            TSNode block = program_body(syntax);
             if (ts_node_is_null(block)) {
                 fail(error, size, "This document has no declaration body");
                 break;

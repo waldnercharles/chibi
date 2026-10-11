@@ -363,18 +363,23 @@ for lab in EXAMPLE_LABS:
                                         f'--installed-example-{lab}']
 
 GROUPS = {
-    'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'physics3d', 'transforms',
-               'box3d', 'sky-files', 'mesh-files', 'model-import', 'tilemap',
-               'runtime-scene', 'scene-prepared', 'scene-hierarchy', 'render-resources', 'persistent-store',
-               'whole-alias', 'whole-integer', 'whole-conversion', 'whole-select', 'whole-math',
-               'owned-tick', 'parallel-tick', 'source-native-features',
-               'source-native-numeric-queries', 'source-native-material', 'source-presentation',
-               'system-schedule', 'source-systems', 'source-edit', 'new-asset', 'asset-refactor',
-               'validate-project', 'prototype-expansion', 'controller', 'shader-parameters-prepared',
-               'language-prepared', 'ecs-query-benchmark', 'feature-coverage', 'render-fixture', 'preview-components', 'graph-document', 'graph-presentation', 'graph-functions', 'vector-nodes',
-               'asset-values', 'ui-document', 'text-files', 'fmt', 'particles', 'png-encoding',
-               'project-document', 'prototype-documents', 'reference-index', 'asset-source',
-               'behavior-loader', 'engine-clock', 'preview-layout', 'fields'],
+    'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'physics3d',
+               'transforms', 'box3d', 'sky-files', 'tilemap', 'runtime-scene', 'scene-prepared',
+               'scene-hierarchy', 'render-resources', 'persistent-store', 'whole-alias',
+               'whole-integer', 'whole-conversion', 'whole-select', 'whole-math', 'owned-tick',
+               'parallel-tick', 'source-native-features', 'source-native-numeric-queries',
+               'source-native-material', 'source-presentation', 'system-schedule',
+               'source-systems', 'source-edit', 'new-asset', 'asset-refactor',
+               'shader-parameters-prepared', 'language-prepared', 'ecs-query-benchmark',
+               'preview-components', 'graph-document', 'graph-presentation', 'graph-functions',
+               'vector-nodes', 'asset-values', 'ui-document', 'text-files', 'fmt', 'particles',
+               'png-encoding', 'project-document', 'prototype-documents', 'reference-index',
+               'asset-source', 'behavior-loader', 'engine-clock', 'preview-layout', 'fields'],
+    # Whole projects, imported assets and the Release chibi_ctl: feature coverage,
+    # project validation and prototype expansion, mesh and model import, and the
+    # controller and render fixture command-response cases.
+    'projects': ['mesh-files', 'model-import', 'validate-project', 'prototype-expansion',
+                 'controller', 'feature-coverage', 'render-fixture'],
     # Independently reviewed fixed CPU workloads: cave<=2048x768, flow<=192x192,
     # two192-particle3000-stepMPM pools, four workers, no windows/children/network.
     # First measurement of the combined candidate remains under one shared60s.

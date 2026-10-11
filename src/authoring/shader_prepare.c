@@ -1,6 +1,7 @@
 #include "authoring/shader_prepare.h"
 
 #include "graph/authoring/graph_edit.h"
+#include "graph/document/library.h"
 #include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
 #include "render/shader_catalog_records.h"
@@ -33,12 +34,14 @@ typedef struct
 {
     av_value *value;
     behavior_asset *model;
+    char *library;
 } shader_source;
 static shader_source *source_records;
 static void source_free(shader_source *source)
 {
     av_value_free(source->value);
     behavior_asset_free(source->model);
+    free(source->library);
     *source = (shader_source){ 0 };
 }
 static shader_source *source_at(int index)
@@ -76,8 +79,201 @@ static void append(char **text, const char *format, ...)
     vsnprintf(*text + old, (size_t)count + 1, format, args);
     va_end(args);
 }
+static bool particle_function(const graph *g)
+{
+    if (g->kind != GRAPH_FUNCTION || g->source_asset) {
+        return false;
+    }
+    const node *ret = graph_node_by_id(g, g->return_id);
+    unsigned names = 0;
+    for (int i = 0; ret && i < ret->input_count; i++) {
+        const pin_spec *pin = &ret->input_pins[i];
+        if (pin->kind != PIN_DATA || !pin->name) {
+            continue;
+        }
+        names |= !strcmp(pin->name, "Position") ? 1u
+               : !strcmp(pin->name, "Size")     ? 2u
+               : !strcmp(pin->name, "Color")    ? 4u
+                                                : 0;
+    }
+    return names == 7;
+}
+static int particle_pin_width(const pin_spec *pin)
+{
+    if (pin->kind != PIN_DATA || pin->container != PIN_CONTAINER_SINGLE) {
+        return 0;
+    }
+    if (pin->type == PIN_F32) {
+        return 1;
+    }
+    if (pin->type != PIN_STRUCT || !pin->type_name) {
+        return 0;
+    }
+    return !strcmp(pin->type_name, "ShaderVec2") ? 2
+         : !strcmp(pin->type_name, "ShaderVec3") ? 3
+         : !strcmp(pin->type_name, "ShaderVec4") ? 4
+                                                 : 0;
+}
+static bool particle_asset_prepare(const graph *g, shader_asset *fresh, shader_error *error)
+{
+    const node *entry = graph_node_by_id(g, g->entry_id);
+    const node *ret = graph_node_by_id(g, g->return_id);
+    static const char *const outputs[] = { "Position", "Size", "Color" };
+    static const int widths[] = { 3, 1, 4 };
+    bool signature = entry && ret && ret->input_count == 3 &&
+                     entry->output_count >= 3 &&
+                     entry->output_count <= SHADER_PARAMETER_MAX;
+    for (int i = 0; signature && i < 3; i++) {
+        const pin_spec *pin = &ret->input_pins[i];
+        signature = pin->name && !strcmp(pin->name, outputs[i]) &&
+                    particle_pin_width(pin) == widths[i];
+    }
+    for (int i = 0; signature && i < entry->output_count; i++) {
+        signature = particle_pin_width(&entry->output_pins[i]) > 0;
+    }
+    if (!signature) {
+        if (error) {
+            error->node = ret ? ret->id : g->return_id;
+            snprintf(error->message, sizeof error->message, "Particle function needs 3..32 float/vector arguments and Position:ShaderVec3, Size:float, Color:ShaderVec4 results");
+        }
+        return false;
+    }
+    if (!shader_graph_from_function(g, &fresh->graph, error) ||
+        !shader_graph_particle_validate(&fresh->graph, error)) {
+        return false;
+    }
+    append(&fresh->name, "%s.%s", g->owner->name, g->name);
+    for (int i = 0; i < entry->output_count; i++) {
+        const pin_spec *pin = &entry->output_pins[i];
+        fresh->names[i] = pin->name ? xstrdup(pin->name) : NULL;
+        fresh->widths[i] = particle_pin_width(pin);
+    }
+    for (int i = 0; i < acount(fresh->graph.nodes); i++) {
+        const shader_node *n = &fresh->graph.nodes[i];
+        if (n->op == SHADER_PARAMETER) {
+            memcpy(fresh->defaults[n->parameter], n->value, sizeof n->value);
+        }
+    }
+    return shader_particle_parameters_validate(fresh->names, fresh->widths, error);
+}
+static bool library_prepare(const behavior_asset *source, bool publish, shader_error *error)
+{
+    if (!source || source->domain != BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+        return false;
+    }
+    shader_asset *pending = NULL;
+    int *ids = NULL;
+    int next = acount(shader_catalog_assets) + 1;
+    bool valid = false;
+    for (int i = 1; i < acount(source->graphs); i++) {
+        const graph *g = source->graphs[i];
+        if (!particle_function(g)) {
+            continue;
+        }
+        shader_asset fresh = { 0 };
+        if (!particle_asset_prepare(g, &fresh, error)) {
+            shader_catalog_free_asset(&fresh);
+            goto done;
+        }
+        fresh.material_inspection = shader_graph_inspect(&fresh.graph);
+        int id = render_shader_find(fresh.name);
+        if (id && !render_shader_is_particle(id)) {
+            if (error) {
+                snprintf(
+                    error->message,
+                    sizeof error->message,
+                    "Particle and shader asset names must be unique: %s",
+                    fresh.name
+                );
+            }
+            shader_catalog_free_asset(&fresh);
+            goto done;
+        }
+        id = id ? id : next++;
+        char name[64];
+        snprintf(name, sizeof name, "sg_asset_%d", id);
+        fresh.glsl = shader_graph_glsl_named(&fresh.graph, name, error);
+        if (!fresh.glsl) {
+            shader_catalog_free_asset(&fresh);
+            goto done;
+        }
+        apush(pending, fresh);
+        apush(ids, id);
+    }
+    if (!publish) {
+        valid = true;
+        goto done;
+    }
+    for (int i = 0; i < acount(pending); i++) {
+        if (ids[i] <= acount(shader_catalog_assets)) {
+            shader_catalog_free_asset(&shader_catalog_assets[ids[i] - 1]);
+            shader_catalog_assets[ids[i] - 1] = pending[i];
+        } else {
+            apush(shader_catalog_assets, pending[i]);
+        }
+        pending[i] = (shader_asset){ 0 };
+        source_set(ids[i] - 1, (shader_source){ .library = xstrdup(source->name) });
+    }
+    bool removed = false;
+    for (int i = 0; i < acount(source_records); i++) {
+        if (!source_records[i].library ||
+            strcmp(source_records[i].library, source->name)) {
+            continue;
+        }
+        bool retained = false;
+        for (int j = 0; j < acount(ids); j++) {
+            retained |= ids[j] == i + 1;
+        }
+        if (!retained) {
+            shader_catalog_free_asset(&shader_catalog_assets[i]);
+            shader_catalog_assets[i] = (shader_asset){ .name = xstrdup("") };
+            source_free(&source_records[i]);
+            removed = true;
+        }
+    }
+    if (acount(ids) || removed) {
+        shader_catalog_revision++;
+        shader_catalog_parameter_revision++;
+    }
+    valid = true;
+done:
+    for (int i = 0; i < acount(pending); i++) {
+        shader_catalog_free_asset(&pending[i]);
+    }
+    afree(pending);
+    afree(ids);
+    return valid;
+}
+bool render_shader_library_validate(const behavior_asset *source, shader_error *error)
+{
+    return library_prepare(source, false, error);
+}
+bool render_shader_library_upsert(const behavior_asset *source, shader_error *error)
+{
+    return library_prepare(source, true, error);
+}
+void render_shader_library_remove(const char *name)
+{
+    bool removed = false;
+    for (int i = 0; i < acount(source_records); i++) {
+        if (!source_records[i].library || strcmp(source_records[i].library, name)) {
+            continue;
+        }
+        shader_catalog_free_asset(&shader_catalog_assets[i]);
+        shader_catalog_assets[i] = (shader_asset){ .name = xstrdup("") };
+        source_free(&source_records[i]);
+        removed = true;
+    }
+    if (removed) {
+        shader_catalog_revision++;
+        shader_catalog_parameter_revision++;
+    }
+}
 bool render_shader_upsert(const behavior_asset *source, shader_error *error)
 {
+    if (source && source->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+        return render_shader_library_upsert(source, error);
+    }
     if (source && source->domain == BEHAVIOR_DOMAIN_MODEL) {
         return render_shader_models_upsert(&source, 1, error);
     }
@@ -98,8 +294,8 @@ bool render_shader_upsert(const behavior_asset *source, shader_error *error)
     av_value *value = behavior_asset_to_value(document, source);
     av_doc_set_root(document, value);
     int existing = render_shader_find(source->name);
-    if (existing && shader_catalog_assets[existing - 1].is_model !=
-                        (source->domain == BEHAVIOR_DOMAIN_MODEL)) {
+    if (existing && (shader_catalog_assets[existing - 1].is_model ||
+                     render_shader_is_particle(existing))) {
         if (error) {
             snprintf(
                 error->message,
@@ -313,7 +509,8 @@ static void model_catalog_materials(const behavior_asset ***catalog, behavior_as
 {
     for (int i = 0; i < acount(shader_catalog_assets); i++) {
         const shader_asset *asset = &shader_catalog_assets[i];
-        if (asset->name[0] && !asset->shape) {
+        if (asset->name[0] && !asset->shape &&
+            asset->graph.output_count == SHADER_OUTPUT_MAX) {
             apush(*stubs, ((behavior_asset){ .name = asset->name, .domain = BEHAVIOR_DOMAIN_MATERIAL }));
         }
     }
@@ -836,12 +1033,27 @@ bool render_shader_binding_sources_validate(
 )
 {
     const behavior_asset *shape = NULL, *material = NULL;
+    const graph *particle = NULL;
     for (int i = 0; binding && i < count; i++) {
         if (binding->shape && !strcmp(binding->shape, sources[i]->name)) {
             shape = sources[i];
         }
         if (binding->material && !strcmp(binding->material, sources[i]->name)) {
             material = sources[i];
+        }
+        if (binding->material && sources[i]->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+            size_t length = strlen(sources[i]->name);
+            if (!strncmp(binding->material, sources[i]->name, length) &&
+                binding->material[length] == '.') {
+                const graph *g = behavior_asset_find_graph_by_name(
+                    sources[i],
+                    binding->material + length + 1
+                );
+                if (g && particle_function(g)) {
+                    material = sources[i];
+                    particle = g;
+                }
+            }
         }
     }
     if (binding && ((binding->shape && *binding->shape && !shape) ||
@@ -853,7 +1065,7 @@ bool render_shader_binding_sources_validate(
     }
     if ((shape && shape->domain != BEHAVIOR_DOMAIN_SHAPE &&
          shape->domain != BEHAVIOR_DOMAIN_MODEL) ||
-        (material && material->domain != BEHAVIOR_DOMAIN_MATERIAL)) {
+        (material && material->domain != BEHAVIOR_DOMAIN_MATERIAL && !particle)) {
         if (error) {
             snprintf(error->message, sizeof error->message, "Shader parameter binding uses the wrong asset family.");
         }
@@ -863,6 +1075,24 @@ bool render_shader_binding_sources_validate(
     shader_asset *material_assets = NULL;
     const shader_asset **material_catalog = NULL;
     bool ok = !shape || source_parameter_asset(shape, sources, count, &s, error);
+    shader_asset particle_asset = { 0 };
+    if (ok && particle) {
+        char message[128] = { 0 };
+        behavior_asset *linked = behavior_asset_link_libraries(material, sources, count, message, sizeof message);
+        if (!linked) {
+            if (error) {
+                snprintf(error->message, sizeof error->message, "%s", message);
+            }
+            ok = false;
+        } else {
+            ok = particle_asset_prepare(
+                behavior_asset_find_graph(linked, particle->graph_id),
+                &particle_asset,
+                error
+            );
+            behavior_asset_free(linked);
+        }
+    }
     for (int i = 0; ok && i < count; i++) {
         if (sources[i]->domain != BEHAVIOR_DOMAIN_MATERIAL) {
             continue;
@@ -888,7 +1118,8 @@ bool render_shader_binding_sources_validate(
                );
     float sv[32][4], mv[32][4];
     if (ok) {
-        const shader_asset *fallback = material ? shader_catalog_material_asset_find(
+        const shader_asset *fallback = particle ? &particle_asset
+                                     : material ? shader_catalog_material_asset_find(
                                                       material->name,
                                                       material_catalog,
                                                       acount(material_catalog)
@@ -908,6 +1139,7 @@ bool render_shader_binding_sources_validate(
              shader_catalog_validate_model_values(shape ? &s : NULL, sv, error);
     }
     shader_catalog_free_asset(&s);
+    shader_catalog_free_asset(&particle_asset);
     for (int i = 0; i < acount(material_assets); i++) {
         shader_catalog_free_asset(&material_assets[i]);
     }

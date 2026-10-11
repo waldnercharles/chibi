@@ -1,27 +1,48 @@
 #include "authoring/shader_prepare.h"
+#include "graph/authoring/asset_edit.h"
 #include "graph/authoring/graph_edit.h"
+#include "graph/document/library.h"
 #include "graph/model/behavior_asset.h"
 #include "graph/model/registry.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "render/shader_catalog.h"
+#include "render/shader_catalog_records.h"
 #include "render/shader_values.h"
+#include "runtime/shaders/prepared.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 static behavior_asset *asset;
+static behavior_asset *helper, *linked_asset;
 static unsigned char *payload;
 static const registry_pack **previous_packs;
 static bool registry_changed;
+static shader_prepared_asset decoded;
+static shader_graph lowered;
+static char *generated;
+static render_shader_parameter_cache *parameter_cache;
 static void cleanup()
 {
     free(payload);
     payload = NULL;
+    free(generated);
+    generated = NULL;
+    shader_prepared_asset_free(&decoded);
+    shader_graph_free(&lowered);
+    render_shader_parameter_cache_free(parameter_cache);
+    parameter_cache = NULL;
     behavior_asset_free(asset);
     asset = NULL;
+    behavior_asset_free(helper);
+    helper = NULL;
+    behavior_asset_free(linked_asset);
+    linked_asset = NULL;
     authoring_shader_catalog_clear();
     if (registry_changed) {
         registry_set_packs(previous_packs, acount(previous_packs));
@@ -29,15 +50,19 @@ static void cleanup()
     }
     afree(previous_packs);
 }
-
-TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
+static void shader_registry()
 {
     for (int i = 0; i < registry_pack_count(); i++) {
         apush(previous_packs, registry_pack_at(i));
     }
-    const registry_pack *packs[] = { &SHADER_PACK };
-    registry_set_packs(packs, 1);
+    const registry_pack *packs[] = { &CORE_FLOW_PACK, &SHADER_PACK };
+    registry_set_packs(packs, 2);
     registry_changed = true;
+}
+
+TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
+{
+    shader_registry();
     asset = behavior_asset_new("Preview parameters");
     asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
     graph *g = asset->graph;
@@ -110,6 +135,291 @@ TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
     return true;
 }
 
+static bool particle_fixture()
+{
+    shader_registry();
+    asset = behavior_asset_new("Particles");
+    asset->domain = BEHAVIOR_DOMAIN_SHADER_LIBRARY;
+    graph *g = behavior_asset_add_function(asset, "Cloud", true);
+    REQUIRE(g);
+    node *entry = graph_node_by_id(g, g->entry_id);
+    node *ret = graph_node_by_id(g, g->return_id);
+    const char *names[] = { "Index", "Count", "Seed", "Radius", "Offset", "Tint" };
+    for (int i = 0; i < 6; i++) {
+        pin_spec pin = { .name = names[i],
+                         .kind = PIN_DATA,
+                         .type = i < 4 ? PIN_F32 : PIN_STRUCT,
+                         .type_name = i < 4  ? "float"
+                                    : i == 4 ? "ShaderVec3"
+                                             : "ShaderVec4" };
+        REQUIRE(graph_add_pin(g, entry, true, &pin) == i);
+    }
+    float offset[3] = { 4, 5, 6 }, tint[4] = { 0.2f, 0.4f, 0.8f, 0.5f };
+    REQUIRE(
+        !graph_set_pin_default(g, entry, true, 3, &(pin_value){ .type = PIN_F32, .f = 0.75f })
+    );
+    REQUIRE(!graph_set_pin_default(
+        g,
+        entry,
+        true,
+        4,
+        &(pin_value){ .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = offset }
+    ));
+    REQUIRE(!graph_set_pin_default(
+        g,
+        entry,
+        true,
+        5,
+        &(pin_value){ .type = PIN_STRUCT, .type_name = "ShaderVec4", .ptr = tint }
+    ));
+    pin_spec results[] = {
+        { .name = "Position", .type = PIN_STRUCT, .type_name = "ShaderVec3", .kind = PIN_DATA },
+        { .name = "Size", .type = PIN_F32, .type_name = "float", .kind = PIN_DATA },
+        { .name = "Color", .type = PIN_STRUCT, .type_name = "ShaderVec4", .kind = PIN_DATA },
+    };
+    for (int i = 0; i < 3; i++) {
+        REQUIRE(graph_add_pin(g, ret, false, &results[i]) == i);
+    }
+    node *position = graph_add_node(g, registry_node_by_name("Shader Vector3"));
+    node *time = graph_add_node(g, registry_node_by_name("Shader Time"));
+    node *size = graph_add_node(g, registry_node_by_name("Shader Multiply"));
+    REQUIRE(position && time && size);
+    REQUIRE(!graph_connect_data(g, entry, 0, position, 0));
+    REQUIRE(!graph_connect_data(g, time, 0, position, 1));
+    REQUIRE(!graph_connect_data(g, entry, 2, position, 2));
+    REQUIRE(!graph_connect_data(g, position, 0, ret, 0));
+    REQUIRE(!graph_connect_data(g, entry, 3, size, 0));
+    REQUIRE(!graph_connect_data(g, entry, 1, size, 1));
+    REQUIRE(!graph_connect_data(g, size, 0, ret, 1));
+    REQUIRE(!graph_connect_data(g, entry, 5, ret, 2));
+    return true;
+}
+
+TEST_CASE(particle_function_parameters_survive_preparation)
+{
+    REQUIRE(particle_fixture());
+    graph *g = asset->graphs[1];
+    shader_error error = { 0 };
+    REQUIRE(shader_graph_from_function(g, &lowered, &error));
+    REQUIRE(lowered.output_count == 3);
+    REQUIRE(lowered.nodes[3].source_id == g->entry_id);
+    REQUIRE(lowered.nodes[3].value[0] == 0.75f);
+    REQUIRE(lowered.nodes[4].value[2] == 6);
+    REQUIRE(render_shader_library_upsert(asset, &error));
+    int id = render_shader_find("Particles.Cloud");
+    REQUIRE(id && render_shader_is_particle(id));
+    REQUIRE(!render_shader_is_shape(id));
+    REQUIRE(render_shader_may_be_transparent(id));
+    REQUIRE(!strcmp(render_shader_parameter_name(id, 3), "Radius"));
+    REQUIRE(render_shader_parameter_width(id, 4) == 3);
+    REQUIRE(render_shader_parameter_width(id, 5) == 4);
+    generated = render_shader_particle_glsl(id, &error);
+    REQUIRE(generated && strstr(generated, "void sg_particle("));
+    free(generated);
+    render_shader_set set = { 0 };
+    generated = render_shader_glsl(&set, 1, 0);
+    REQUIRE(generated && !strstr(generated, "void sg_asset_"));
+    REQUIRE(!render_shader_set_add(&set, id, &error));
+    const shader_asset *record = &shader_catalog_assets[id - 1];
+    shader_prepared_asset prepared = { .name = record->name, .graph = record->graph };
+    memcpy(prepared.names, record->names, sizeof prepared.names);
+    memcpy(prepared.widths, record->widths, sizeof prepared.widths);
+    memcpy(prepared.defaults, record->defaults, sizeof prepared.defaults);
+    size_t length = 0;
+    REQUIRE(shader_asset_prepared_write(&prepared, &payload, &length, &error));
+    size_t budget = 64 * 1024 * 1024;
+    REQUIRE(shader_asset_prepared_read_budget(payload, length, &budget, &decoded, &error));
+    REQUIRE(!strcmp(decoded.name, "Particles.Cloud"));
+    REQUIRE(!strcmp(decoded.names[4], "Offset"));
+    REQUIRE(decoded.widths[4] == 3 && decoded.widths[5] == 4);
+    REQUIRE(decoded.defaults[3][0] == 0.75f && decoded.defaults[4][2] == 6);
+    REQUIRE(decoded.graph.nodes[3].source_id == g->entry_id);
+    REQUIRE(
+        decoded.graph.nodes[decoded.graph.output[0]].source_id ==
+        lowered.nodes[lowered.output[0]].source_id
+    );
+    float parameters[32][4], result[SHADER_OUTPUT_MAX][4];
+    memcpy(parameters, decoded.defaults, sizeof parameters);
+    parameters[0][0] = 2;
+    parameters[1][0] = 8;
+    parameters[2][0] = 7;
+    REQUIRE(shader_graph_eval_outputs(
+        &decoded.graph,
+        &(shader_sample_context){ .time = 3 },
+        parameters,
+        result,
+        &error
+    ));
+    REQUIRE(result[0][0] == 2 && result[0][1] == 3 && result[0][2] == 7);
+    REQUIRE(result[1][0] == 6 && fabsf(result[2][2] - 0.8f) < 0.0001f);
+    Shader binding = { .material = "Particles.Cloud",
+                       .parameters = "Radius 2\n(array)Tint 1 0 0 0.5\n" };
+    const behavior_asset *sources[] = { asset };
+    REQUIRE(
+        render_shader_binding_sources_validate(&binding, binding.parameters, sources, 1, &error)
+    );
+    REQUIRE(authoring_shader_binding_prepare(&binding, &error));
+    REQUIRE(render_shader_material_parameters_scoped_cached(
+        id,
+        NULL,
+        (ecs_entity){ 0 },
+        binding.parameters,
+        "",
+        parameters,
+        &parameter_cache,
+        &error
+    ));
+    REQUIRE(parameters[3][0] == 2 && parameters[5][0] == 1);
+    REQUIRE(
+        !render_shader_binding_sources_validate(&binding, "(array)Tint 1 2 3\n", sources, 1, &error)
+    );
+    REQUIRE(strstr(error.message, "4 finite"));
+    REQUIRE(
+        !render_shader_binding_sources_validate(&binding, "Missing 2\n", sources, 1, &error)
+    );
+    REQUIRE(strstr(error.message, "Unknown"));
+    char *index_name = decoded.names[0];
+    decoded.names[0] = "Wrong";
+    unsigned char *invalid = NULL;
+    size_t invalid_length = 0;
+    bool accepted = shader_asset_prepared_write(&decoded, &invalid, &invalid_length, &error);
+    decoded.names[0] = index_name;
+    free(invalid);
+    REQUIRE(!accepted);
+    return true;
+}
+
+TEST_CASE(particle_function_signature_and_context_are_checked)
+{
+    REQUIRE(particle_fixture());
+    graph *g = asset->graphs[1];
+    node *entry = graph_node_by_id(g, g->entry_id);
+    node *ret = graph_node_by_id(g, g->return_id);
+    shader_error error = { 0 };
+    REQUIRE(render_shader_library_upsert(asset, &error));
+    int id = render_shader_find("Particles.Cloud");
+    unsigned revision = render_shader_revision();
+    REQUIRE(!graph_set_pin_type(g, entry, true, 0, PIN_I32, "int"));
+    REQUIRE(!render_shader_library_upsert(asset, &error));
+    REQUIRE(strstr(error.message, "float/vector"));
+    REQUIRE(render_shader_revision() == revision && render_shader_is_particle(id));
+    REQUIRE(!graph_set_pin_type(g, entry, true, 0, PIN_F32, "float"));
+    const shader_graph *applied = &shader_catalog_assets[id - 1].graph;
+    node *position = graph_node_by_id(g, applied->nodes[applied->output[0]].source_id);
+    REQUIRE(!graph_connect_data(g, entry, 0, position, 0));
+    const char *name = entry->output_pins[0].name;
+    entry->output_pins[0].name = "Wrong";
+    REQUIRE(!render_shader_library_upsert(asset, &error));
+    REQUIRE(strstr(error.message, "Index:float"));
+    entry->output_pins[0].name = name;
+    for (int i = entry->output_count; i <= SHADER_PARAMETER_MAX; i++) {
+        char extra[32];
+        snprintf(extra, sizeof extra, "Extra%d", i);
+        REQUIRE(
+            graph_add_pin(g, entry, true, &(pin_spec){ .name = extra, .type = PIN_F32, .kind = PIN_DATA }) == i
+        );
+    }
+    REQUIRE(!render_shader_library_upsert(asset, &error));
+    REQUIRE(strstr(error.message, "3..32"));
+    while (entry->output_count > 6) {
+        REQUIRE(!graph_remove_pin(g, entry, true, entry->output_count - 1));
+    }
+    REQUIRE(!graph_set_pin_type(g, ret, false, 2, PIN_STRUCT, "ShaderVec3"));
+    REQUIRE(!render_shader_library_upsert(asset, &error));
+    REQUIRE(strstr(error.message, "Color:ShaderVec4"));
+    REQUIRE(!graph_set_pin_type(g, ret, false, 2, PIN_STRUCT, "ShaderVec4"));
+    REQUIRE(!graph_connect_data(g, entry, 5, ret, 2));
+    node *world = graph_add_node(g, registry_node_by_name("Shader WorldPosition"));
+    REQUIRE(world);
+    REQUIRE(!graph_connect_data(g, world, 0, ret, 0));
+    REQUIRE(!render_shader_library_upsert(asset, &error));
+    REQUIRE(error.node == world->id && strstr(error.message, "WorldPosition"));
+    REQUIRE(render_shader_revision() == revision && render_shader_is_particle(id));
+    /* Removing the complete particle signature makes it an ordinary helper and
+     * retires its old catalog record rather than keeping a stale program. */
+    ret->input_pins[2].name = "Other";
+    REQUIRE(render_shader_library_upsert(asset, &error));
+    REQUIRE(!render_shader_find("Particles.Cloud"));
+    int vector = shader_graph_add(&lowered, SHADER_CONSTANT, 3);
+    int scalar = shader_graph_add(&lowered, SHADER_CONSTANT, 1);
+    int color = shader_graph_add(&lowered, SHADER_CONSTANT, 4);
+    int bump = shader_graph_add(&lowered, SHADER_BUMP, 3);
+    lowered.nodes[scalar].value[0] = 1;
+    for (int i = 0; i < 3; i++) {
+        lowered.nodes[bump].input[i] = scalar;
+    }
+    lowered.nodes[bump].input[3] = vector;
+    lowered.nodes[bump].source_id = 99;
+    lowered.output_count = 3;
+    lowered.output[0] = bump;
+    lowered.output[1] = scalar;
+    lowered.output[2] = color;
+    REQUIRE(shader_graph_validate(&lowered, &error));
+    REQUIRE(!shader_graph_particle_validate(&lowered, &error));
+    REQUIRE(error.node == 99 && strstr(error.message, "Bump"));
+    return true;
+}
+
+TEST_CASE(particle_function_links_library_helpers)
+{
+    REQUIRE(particle_fixture());
+    helper = behavior_asset_new("ParticleMath");
+    helper->domain = BEHAVIOR_DOMAIN_SHADER_LIBRARY;
+    graph *function = behavior_asset_add_function(helper, "Identity", true);
+    node *entry = graph_node_by_id(function, function->entry_id);
+    node *ret = graph_node_by_id(function, function->return_id);
+    pin_spec value = { .name = "Value", .type = PIN_F32, .kind = PIN_DATA };
+    REQUIRE(graph_add_pin(function, entry, true, &value) == 0);
+    REQUIRE(graph_add_pin(function, ret, false, &value) == 0);
+    REQUIRE(!graph_connect_data(function, entry, 0, ret, 0));
+    graph *particle = asset->graphs[1];
+    node *call = graph_add_node(particle, &NODE_CallPureFunction);
+    REQUIRE(!graph_library_refresh_call(particle, call, function));
+    REQUIRE(!graph_set_node_reference_asset(particle, call, helper->name));
+    REQUIRE(
+        !graph_connect_data(particle, graph_node_by_id(particle, particle->entry_id), 3, call, 0)
+    );
+    REQUIRE(!graph_connect_data(
+        particle,
+        call,
+        0,
+        graph_node_by_id(particle, particle->return_id),
+        1
+    ));
+    const behavior_asset *catalog[] = { asset, helper };
+    shader_error error = { 0 };
+    Shader binding = { .material = "Particles.Cloud" };
+    REQUIRE(render_shader_binding_sources_validate(&binding, "Radius 2\n", catalog, 2, &error));
+    REQUIRE(
+        !render_shader_binding_sources_validate(&binding, "Radius 2\n", catalog, 1, &error)
+    );
+    REQUIRE(strstr(error.message, "missing function library"));
+    linked_asset = behavior_asset_link_libraries(
+        asset,
+        catalog,
+        2,
+        error.message,
+        sizeof error.message
+    );
+    REQUIRE(linked_asset);
+    REQUIRE(render_shader_library_upsert(linked_asset, &error));
+    REQUIRE(render_shader_library_upsert(helper, &error));
+    REQUIRE(render_shader_find("Particles.Cloud"));
+    REQUIRE(!render_shader_find("Particles.Identity"));
+    REQUIRE(!render_shader_find("ParticleMath.Identity"));
+    float parameters[32][4] = { 0 }, result[SHADER_OUTPUT_MAX][4];
+    parameters[3][0] = 2;
+    REQUIRE(render_shader_sample(
+        render_shader_find("Particles.Cloud"),
+        &(shader_sample_context){ 0 },
+        parameters,
+        result,
+        &error
+    ));
+    REQUIRE(result[1][0] == 2);
+    return true;
+}
+
 type_catalog_pack test_shader_parameters_types()
 {
     return (type_catalog_pack){ .types = SHADER_PACK.types,
@@ -122,4 +432,7 @@ void test_shader_parameters_prepared()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(shader_parameters_persist_and_reject_stale_generations);
+    RUN_TEST_CASE(particle_function_parameters_survive_preparation);
+    RUN_TEST_CASE(particle_function_signature_and_context_are_checked);
+    RUN_TEST_CASE(particle_function_links_library_helpers);
 }

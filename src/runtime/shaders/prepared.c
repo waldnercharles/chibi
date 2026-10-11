@@ -230,6 +230,11 @@ static bool asset_valid(const shader_prepared_asset *a, shader_error *error)
         (a->shape && a->alpha_mode != SHADER_ALPHA_BLEND)) {
         return false;
     }
+    if (a->graph.output_count == 3 &&
+        (a->shape || !shader_graph_particle_validate(&a->graph, error) ||
+         !shader_particle_parameters_validate(a->names, a->widths, error))) {
+        return false;
+    }
     for (int i = 0; i < SHADER_PARAMETER_MAX; i++) {
         if (a->widths[i] < 0 || a->widths[i] > 4) {
             return false;
@@ -242,7 +247,8 @@ static bool asset_valid(const shader_prepared_asset *a, shader_error *error)
     }
     for (int i = 0; i < acount(a->graph.nodes); i++) {
         const shader_node *n = &a->graph.nodes[i];
-        if (n->op == SHADER_PARAMETER && a->widths[n->parameter] &&
+        if (n->op == SHADER_PARAMETER &&
+            (a->widths[n->parameter] || a->graph.output_count == 3) &&
             a->widths[n->parameter] != n->width) {
             return false;
         }

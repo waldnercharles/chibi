@@ -240,6 +240,23 @@ static void reference_append(reference_index *index, reference r)
     r.pin = copy(r.pin);
     r.object = copy(r.object);
     r.component = copy(r.component);
+    if (r.symbol.kind == REFERENCE_SYMBOL_GRAPH && r.symbol.name) {
+        for (int i = 0; i < acount(index->references); i++) {
+            reference *other = &index->references[i];
+            if (other->symbol.kind != REFERENCE_SYMBOL_GRAPH ||
+                other->symbol.asset != r.symbol.asset || !other->symbol.name ||
+                strcmp(other->symbol.name, r.symbol.name)) {
+                continue;
+            }
+            /* Named component bindings may precede their graph definitions. */
+            if (r.role == REFERENCE_DEFINE && other->role == REFERENCE_BIND) {
+                other->symbol.id = r.symbol.id;
+            }
+            if (r.role == REFERENCE_BIND && other->role == REFERENCE_DEFINE) {
+                r.symbol.id = other->symbol.id;
+            }
+        }
+    }
     apush(index->references, r);
 }
 
@@ -260,6 +277,34 @@ static reference_symbol reference_event_symbol(const reference_index *index, con
                                .name = name };
 }
 
+static reference_symbol shader_material_symbol(reference_index *index, const char *value)
+{
+    int material = reference_index_find_name(index, REFERENCE_ASSET_MATERIAL, value);
+    if (material >= 0) {
+        return reference_asset_symbol(material);
+    }
+    int library = -1;
+    size_t prefix = 0;
+    for (int i = 0; i < acount(index->assets); i++) {
+        const reference_asset *asset = &index->assets[i];
+        size_t length = strlen(asset->name);
+        if (asset->kind == REFERENCE_ASSET_LIBRARY && length > prefix &&
+            !strncmp(value, asset->name, length) && value[length] == '.' &&
+            value[length + 1]) {
+            library = i;
+            prefix = length;
+        }
+    }
+    if (library >= 0) {
+        return (reference_symbol){ .kind = REFERENCE_SYMBOL_GRAPH,
+                                   .asset = library,
+                                   .name = value + prefix + 1 };
+    }
+    return reference_asset_symbol(
+        reference_index_named_asset(index, REFERENCE_ASSET_MATERIAL, value)
+    );
+}
+
 /* What REFERENCE_NAMED_FIELDS[field] holds, value, names: an asset, or a sent
  * event. `at` gives the reference's source and place. */
 static void reference_add_named(reference_index *index, reference at, int field, const char *value)
@@ -274,9 +319,15 @@ static void reference_add_named(reference_index *index, reference at, int field,
     );
     reference_asset_kind kind = REFERENCE_NAMED_FIELDS[field].kind;
     at.role = REFERENCE_NAMED_FIELDS[field].role;
-    at.symbol = kind == REFERENCE_ASSET_EVENT
-                  ? reference_event_symbol(index, value)
-                  : reference_asset_symbol(reference_index_named_asset(index, kind, value));
+    if (!strcmp(component, "Shader.material")) {
+        at.symbol = shader_material_symbol(index, value);
+    } else {
+        at.symbol = kind == REFERENCE_ASSET_EVENT
+                      ? reference_event_symbol(index, value)
+                      : reference_asset_symbol(
+                            reference_index_named_asset(index, kind, value)
+                        );
+    }
     at.component = component;
     reference_append(index, at);
 }
@@ -345,6 +396,9 @@ static bool names(const reference *r, reference_symbol symbol)
         case REFERENCE_SYMBOL_ASSET:
             return symbol.asset >= 0 && reference_dependency(r) == symbol.asset;
         case REFERENCE_SYMBOL_GRAPH:
+            return own->kind == symbol.kind && own->asset == symbol.asset &&
+                   own->graph_id == symbol.graph_id && own->id == symbol.id &&
+                   (symbol.id || same_text(own->name, symbol.name));
         case REFERENCE_SYMBOL_VARIABLE:
         case REFERENCE_SYMBOL_PARAMETER:
         case REFERENCE_SYMBOL_LOCAL:

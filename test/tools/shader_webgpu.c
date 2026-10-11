@@ -8,7 +8,7 @@
 #include <string.h>
 
 static shader_graph graph;
-static char *glsl, *fragment;
+static char *glsl, *fragment, *vertex;
 static CF_ShaderCompilerResult compiled;
 
 static void setup()
@@ -23,7 +23,78 @@ static void cleanup()
     shader_graph_free(&graph);
     free(glsl);
     free(fragment);
-    glsl = fragment = NULL;
+    free(vertex);
+    glsl = fragment = vertex = NULL;
+}
+
+static bool particle_vertex_program(bool indexed)
+{
+    int index = shader_graph_add(&graph, indexed ? SHADER_PARAMETER : SHADER_CONSTANT, 1);
+    graph.nodes[index].parameter = 0;
+    int time = shader_graph_add(&graph, SHADER_TIME, 1);
+    int position = shader_graph_add(&graph, SHADER_VECTOR3, 3);
+    graph.nodes[position].input[0] = index;
+    graph.nodes[position].input[1] = time;
+    graph.nodes[position].input[2] = index;
+    int size = shader_graph_add(&graph, SHADER_CONSTANT, 1);
+    graph.nodes[size].value[0] = .25f;
+    int color = shader_graph_add(&graph, SHADER_CONSTANT, 4);
+    graph.nodes[color].value[0] = 2;
+    graph.nodes[color].value[1] = .5f;
+    graph.nodes[color].value[2] = .25f;
+    graph.nodes[color].value[3] = 1;
+    graph.output[0] = position;
+    graph.output[1] = size;
+    graph.output[2] = color;
+    graph.output_count = 3;
+    shader_error error = { 0 };
+    glsl = shader_graph_glsl_named(&graph, "sg_particle", &error);
+    REQUIRE(glsl);
+
+    FILE *file = fopen(CHIBI_SOURCE_ROOT "/src/render/shaders/scene3d_particles.vert", "rb");
+    REQUIRE(file);
+    REQUIRE(fseek(file, 0, SEEK_END) == 0);
+    long length = ftell(file);
+    REQUIRE(length > 0 && length < 65536);
+    rewind(file);
+    char source[65536];
+    size_t read = fread(source, 1, (size_t)length, file);
+    REQUIRE(fclose(file) == 0);
+    REQUIRE(read == (size_t)length);
+    source[length] = 0;
+    const char *marker = "// SG_PARTICLE_PROGRAM is replaced by the prepared "
+                         "shader function.";
+    char *at = strstr(source, marker);
+    REQUIRE(at);
+    *at = 0;
+    size_t bytes = (size_t)length + strlen(glsl) + 32;
+    vertex = xmalloc(bytes);
+    snprintf(vertex, bytes, "#version 450\n%s%s%s", source, glsl, at + strlen(marker));
+    CF_ShaderCompilerConfig config = { .skip_glsl300 = true, .skip_hlsl = true };
+    compiled = cute_shader_compile(vertex, CUTE_SHADER_STAGE_VERTEX, config);
+    if (!compiled.success) {
+        fprintf(stderr, "particle vertex shader: %s\n", compiled.error_message);
+    }
+    REQUIRE(compiled.success);
+    REQUIRE(compiled.bytecode.wgsl_src);
+    REQUIRE(compiled.bytecode.msl_src);
+    if (indexed) {
+        REQUIRE(strstr(compiled.bytecode.wgsl_src, "instance_index"));
+    }
+    REQUIRE(strstr(compiled.bytecode.wgsl_src, "particle_frame"));
+    REQUIRE(strstr(compiled.bytecode.wgsl_src, "in_instance_offset"));
+    REQUIRE(strstr(compiled.bytecode.msl_src, "in_instance_offset"));
+    return true;
+}
+
+TEST_CASE(particle_vertex_program_transpiles_instanced_geometry_to_wgsl)
+{
+    return particle_vertex_program(true);
+}
+
+TEST_CASE(particle_vertex_keeps_instance_buffer_when_program_ignores_index)
+{
+    return particle_vertex_program(false);
 }
 
 TEST_CASE(noise_shader_transpiles_without_ambiguous_wgsl_comparison)
@@ -72,4 +143,6 @@ void test_tool_shader_webgpu()
 {
     pu_setup(setup, cleanup);
     RUN_TEST_CASE(noise_shader_transpiles_without_ambiguous_wgsl_comparison);
+    RUN_TEST_CASE(particle_vertex_program_transpiles_instanced_geometry_to_wgsl);
+    RUN_TEST_CASE(particle_vertex_keeps_instance_buffer_when_program_ignores_index);
 }

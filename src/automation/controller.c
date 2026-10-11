@@ -12050,6 +12050,14 @@ static int validate_shader_binding(const char *root, const Shader *binding, char
     }
     behavior_asset **sources = NULL;
     int status = load_model_catalog(root, &sources, error, error_size);
+    if (status == CHIBI_AUTOMATION_OK) {
+        behavior_asset **libraries = NULL;
+        status = load_behavior_family_assets(root, family_by_kind("shader-library"), &libraries, error, error_size);
+        for (int i = 0; i < acount(libraries); i++) {
+            apush(sources, libraries[i]);
+        }
+        afree(libraries);
+    }
     const char *names[] = { binding->material, binding->shape };
     const char *kinds[] = { "material", "shape" };
     for (int i = 0; i < 2 && status == CHIBI_AUTOMATION_OK; i++) {
@@ -12062,6 +12070,12 @@ static int validate_shader_binding(const char *root, const Shader *binding, char
                 model |= sources[m]->domain == (i == 0 ? BEHAVIOR_DOMAIN_MATERIAL
                                                        : BEHAVIOR_DOMAIN_MODEL) &&
                          !strcmp(sources[m]->name, names[i]);
+                if (i == 0 && sources[m]->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+                    size_t length = strlen(sources[m]->name);
+                    model |= !strncmp(names[i], sources[m]->name, length) &&
+                             names[i][length] == '.' &&
+                             behavior_asset_find_graph_by_name(sources[m], names[i] + length + 1);
+                }
             }
         }
         if (model) {

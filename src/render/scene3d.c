@@ -7,6 +7,7 @@
 #include "render/scene3d_light_shadow.h"
 #include "render/scene3d_mesh_cache.h"
 #include "render/scene3d_occlusion.h"
+#include "render/scene3d_particles.h"
 #include "render/scene3d_shadow.h"
 #include "render/scene3d_sky.h"
 #include "render/scene3d_trail.h"
@@ -91,6 +92,7 @@ struct render_scene3d
     render_scene3d_mesh_cache *meshes;
     render_influences *influences;
     scene3d_trails *trails;
+    scene3d_particles *particle_fields;
     render_scene3d_sky *sky;
     particle_emitters *emitters;
     CF_Mesh prism, octahedron, tetrahedron;
@@ -162,6 +164,7 @@ render_scene3d *render_scene3d_new()
     scene3d->light_shadow = render_scene3d_light_shadow_new();
     scene3d->occlusion = render_scene3d_occlusion_new();
     scene3d->trails = render_scene3d_trails_new();
+    scene3d->particle_fields = render_scene3d_particles_new();
     scene3d->sky = render_scene3d_sky_new();
     scene3d->emitters = particle_emitters_new(NULL);
     scene3d->prism = render_scene3d_prism_mesh();
@@ -185,6 +188,7 @@ int render_scene3d_particle_count(const render_scene3d *scene3d)
     int heads;
     particle_emitters_heads(scene3d->emitters, &heads);
     return scene3d->simulation_particles + heads +
+           render_scene3d_particles_count(scene3d->particle_fields) +
            particles_count(particle_emitters_particles(scene3d->emitters));
 }
 
@@ -199,6 +203,7 @@ void render_scene3d_reset(render_scene3d *scene3d)
     scene3d->simulation_particles = 0;
     render_influences_reset(scene3d->influences);
     render_scene3d_trails_reset(scene3d->trails);
+    render_scene3d_particles_reset(scene3d->particle_fields);
     particle_emitters_reset(scene3d->emitters);
 }
 
@@ -219,6 +224,7 @@ void render_scene3d_free(render_scene3d *scene3d)
     afree(scene3d->shadow_boxes);
     afree(scene3d->near_boxes);
     render_scene3d_trails_free(scene3d->trails);
+    render_scene3d_particles_free(scene3d->particle_fields);
     render_scene3d_sky_free(scene3d->sky);
     particle_emitters_free(scene3d->emitters);
     cf_destroy_mesh(scene3d->prism);
@@ -473,6 +479,9 @@ static void collect_entity(
     const engine *runtime
 )
 {
+    if (ParticleField3D_has(world, entity)) {
+        return;
+    }
     bool spatial = Transform3D_has(world, entity);
     Transform position = { 0 };
     GlobalTransform3D transform = { 0 };
@@ -1237,6 +1246,7 @@ static bool draw_occlusion(render_scene3d *scene3d, const render_scene3d_camera 
 static void draw_behind_translucents(render_scene3d *scene3d, const render_scene3d_camera *camera)
 {
     render_scene3d_sky_draw(scene3d->sky, camera);
+    render_scene3d_particles_draw(scene3d->particle_fields, camera);
     render_scene3d_trails_draw(scene3d->trails, camera);
 }
 
@@ -1621,6 +1631,19 @@ bool render_scene3d_draw(
         return false;
     }
     collect_geometry(scene3d, world, camera, runtime, skip);
+    if (!render_scene3d_particles_prepare(
+            scene3d->particle_fields,
+            world,
+            scene3d->entities,
+            acount(scene3d->entities),
+            runtime,
+            scene3d->binding_error,
+            sizeof scene3d->binding_error
+        )) {
+        return false;
+    }
+    scene3d->work.particle_fields = render_scene3d_particles_draws(scene3d->particle_fields);
+    scene3d->work.mesh_particles = render_scene3d_particles_count(scene3d->particle_fields);
     collect_particles(scene3d, particles_data(particle_system), particles_count(particle_system), camera);
     if (!runtime) {
         const particles *emitted = particle_emitters_particles(scene3d->emitters);

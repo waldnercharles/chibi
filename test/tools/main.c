@@ -49,6 +49,7 @@ void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
+void test_particle_fields();
 void test_render_resources();
 void test_render_interior_border();
 void test_render_viewport_resize();
@@ -81,6 +82,7 @@ bool test_source_runtime_active()
 void test_source_native_features();
 #ifdef CHIBI_TEST_PREVIEW
 void test_preview_preparation();
+void test_preview_shader_libraries();
 #endif
 void test_source_presentation();
 void test_component_presentation();
@@ -339,6 +341,12 @@ int main(int argc, char **argv)
         }
         if (shader_parameters) {
             test_shader_parameters_prepared();
+#ifdef CHIBI_TEST_PREVIEW
+            test_preview_shader_libraries();
+#endif
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+            test_particle_fields();
+#endif
         } else if (source_edit) {
             test_source_edit();
         } else if (system_schedule) {

@@ -310,6 +310,36 @@ silent. Pausing, changing the source or resetting the session clears the
 measurements. Headless scenarios have no playback samples and return zeros.
 Keep capture state and visual responses separate from deterministic game rules.
 
+## GPU particle fields
+
+Put `ParticleField3D`, `Geometry3D` and `Shader` on one transformed entity in a
+3D scene. Geometry must be a tetrahedron (`primitive=6`) or octahedron
+(`primitive=5`) with positive dimensions. `Shader.material` names a pure
+shader-library function as `Library.Function`. Its first arguments are
+`Index:float`, `Count:float`, `Seed:float`, followed by named float or
+`ShaderVec2/3/4` uniforms, with at most 32 arguments total. Its results are
+exactly `Position:ShaderVec3`, `Size:float`, `Color:ShaderVec4`, in that order.
+Position is local to the entity, Size scales the geometry, and Color is HDR RGBA.
+Uniform defaults and `Shader.parameters` use the existing material parameter
+path, including `set_material_parameter()`.
+
+Set `ParticleField3D.count`, `seed`, and `time` explicitly. Shader Time reads
+this component clock; it advances only when an authored behavior changes it.
+Time must be finite and nonnegative. Numeric math, vectors, noise, mapping and
+time/beat reads are available. Textures, ramps, scene influences, surface
+coordinates and fragment derivatives are rejected. There are at most 128 field
+sources and 1,048,576 particles in one scene. A zero count hides a field.
+
+With `additive=#true`, particles blend additively and test opaque scene depth
+without writing depth or sorting individual drops. Fields emit their authored
+color and do not cast shadows or contribute to HRC. The vertex shader computes
+positions and colors; each particle has no CPU simulation state or entity.
+Per-frame CPU updates scale with the number of fields. Each instance retains
+four bytes, uploaded when its count changes, rather than a position/color upload
+every frame. `test/fixtures/feature-coverage` contains the `NativeRainField`
+scene: 128 falling lattice drops at a fixed one-second clock, with an opaque
+box for inspecting depth occlusion.
+
 ## Simulate 3D bodies
 
 An entity with `Transform3D` and `Collider3D` collides in the

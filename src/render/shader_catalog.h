@@ -98,6 +98,10 @@ bool render_shader_is_shape(int index);
 /* Exact centered sphere with a constant or scalar parameter radius. */
 bool render_shader_sphere_radius(int index, const float parameters[32][4], float *radius);
 bool render_shader_is_model(int index);
+bool render_shader_is_particle(int index);
+/* malloc-owned portable function named sg_particle; rejected unless the catalog
+ * record satisfies the complete particle signature and operation contract. */
+char *render_shader_particle_glsl(int index, shader_error *);
 /* Model bounds use the same validated parameter snapshot as distance evaluation. */
 bool render_shader_model_bounds(
     int index,

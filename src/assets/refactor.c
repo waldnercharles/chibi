@@ -615,6 +615,30 @@ static bool rename_place(work *w, loaded *l, const reference *r, const char *fro
              : fail(w, "cannot rename a reference in %s", asset_name(w, l->asset));
 }
 
+static char *qualified_name(const char *library, const char *function)
+{
+    size_t size = strlen(library) + strlen(function) + 2;
+    char *name = xmalloc(size);
+    snprintf(name, size, "%s.%s", library, function);
+    return name;
+}
+
+static bool rename_binding(work *w, loaded *l, const reference *r, const char *from, const char *to, int expected)
+{
+    if (r->role != REFERENCE_BIND || r->symbol.kind != REFERENCE_SYMBOL_GRAPH ||
+        !r->component || strcmp(r->component, "Shader.material")) {
+        return rename_place(w, l, r, from, to, expected);
+    }
+    bool library = w->symbol.kind == REFERENCE_SYMBOL_ASSET;
+    const char *owner = asset_name(w, r->symbol.asset);
+    char *before = qualified_name(library ? from : owner, library ? r->symbol.name : from);
+    char *after = qualified_name(library ? to : owner, library ? r->symbol.name : to);
+    bool ok = rename_place(w, l, r, before, after, expected);
+    free(before);
+    free(after);
+    return ok;
+}
+
 /* Renames each place that names `from` once: the references at one place
    rename together. */
 static bool rename_uses(work *w, const reference **uses, const char *from, const char *to)
@@ -631,7 +655,7 @@ static bool rename_uses(work *w, const reference **uses, const char *from, const
             first &= j >= i || !same_place(uses[j], uses[i]);
             expected += same_place(uses[j], uses[i]);
         }
-        if (first && !rename_place(w, l, uses[i], from, to, expected)) {
+        if (first && !rename_binding(w, l, uses[i], from, to, expected)) {
             return false;
         }
     }

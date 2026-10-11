@@ -292,11 +292,20 @@ static behavior_asset *linked_snapshot(
 static bool shader_domain(behavior_domain domain)
 {
     return domain == BEHAVIOR_DOMAIN_MATERIAL ||
-           domain == BEHAVIOR_DOMAIN_SHAPE || domain == BEHAVIOR_DOMAIN_MODEL;
+           domain == BEHAVIOR_DOMAIN_SHAPE || domain == BEHAVIOR_DOMAIN_MODEL ||
+           domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY;
 }
 
 static bool validate_shader(const behavior_asset *asset, char *message, size_t size)
 {
+    if (asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+        shader_error error = { 0 };
+        bool valid = render_shader_library_validate(asset, &error);
+        if (!valid) {
+            set_message(message, size, "%s", error.message);
+        }
+        return valid;
+    }
     if (asset->domain == BEHAVIOR_DOMAIN_SHAPE &&
         (!(asset->bounds[0] > 0) || !(asset->bounds[1] > 0) ||
          !isfinite(asset->bounds[0]) || !isfinite(asset->bounds[1]))) {
@@ -458,6 +467,17 @@ int preview_rename_definition(preview_world *world, const char *from, const char
     if (definition->working_presentation) {
         return registration_error(definition, "Source projections are renamed through canonical source preparation.");
     }
+    if (definition->working->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+        behavior_asset *snapshot = behavior_asset_clone(definition->applied);
+        shader_error error = { 0 };
+        if (!snapshot || behavior_asset_set_name(snapshot, to) ||
+            !render_shader_library_upsert(snapshot, &error)) {
+            behavior_asset_free(snapshot);
+            return registration_error(definition, error.message[0] ? error.message : "Shader library could not be renamed.");
+        }
+        render_shader_library_remove(from);
+        replace_applied(world, definition, snapshot);
+    }
     if (definition->working->domain == BEHAVIOR_DOMAIN_MODEL) {
         shader_error error = { 0 };
         if (!render_shader_model_rename(from, to, &error)) {
@@ -562,6 +582,9 @@ int preview_remove_definition(preview_world *world, const char *asset_name)
          !render_shader_material_remove(asset_name, &error))) {
         return registration_error(definition, error.message);
     }
+    if (definition->working->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+        render_shader_library_remove(asset_name);
+    }
     if (definition->working_presentation) {
         if (source_remove(world->runtime->sources, asset_name)) {
             return -1;
@@ -613,8 +636,11 @@ static int update_library(
         set_message(message, size, "%s", compile_report_first_error(&report)->message);
     }
     compile_report_free(&report);
-    behavior_asset_free(library);
+    if (!blocked) {
+        blocked = !validate_shader(library, message, size);
+    }
     if (blocked) {
+        behavior_asset_free(library);
         return -1;
     }
     preview_definition **dependents = NULL;
@@ -659,6 +685,11 @@ static int update_library(
         status = 0;
         goto cleanup;
     }
+    shader_error diagnostic = { 0 };
+    if (!render_shader_library_upsert(library, &diagnostic)) {
+        set_message(message, size, "%s", diagnostic.message);
+        goto cleanup;
+    }
     for (int i = 0; i < acount(dependents); i++) {
         behavior_asset *old = NULL;
         if (snapshots[i]->domain == BEHAVIOR_DOMAIN_FIELD) {
@@ -683,14 +714,14 @@ static int update_library(
         dependents[i]->dirty = 0;
         behavior_asset_free(old);
     }
-    library = behavior_asset_clone(definition->working);
-    assert(library);
     behavior_asset *previous = publish_snapshot(definition, library);
+    library = NULL;
     behavior_asset_free(previous);
     definition->dirty = 0;
     status = 0;
     set_message(message, size, "Updated shader library and %d dependent assets.", acount(dependents));
 cleanup:
+    behavior_asset_free(library);
     for (int i = 0; i < acount(snapshots); i++) {
         behavior_asset_free(snapshots[i]);
     }

@@ -147,7 +147,9 @@ typedef struct
 int reference_named_field_count();
 /* Borrowed constant metadata; position must be in [0, count). */
 reference_named_field_entry reference_named_field_at(int position);
-/* Appends the asset/event relationship declared by this named field. */
+/* Appends the relationship declared by this named field. Shader.material may
+ * name Library.Function: it binds the library's graph, resolved when its
+ * definition is added, regardless of reference/definition insertion order. */
 void reference_index_add_named_field(
     reference_index *,
     reference at,

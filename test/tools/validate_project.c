@@ -544,6 +544,42 @@ TEST_CASE(scenarios_load_graph_assets)
     return true;
 }
 
+TEST_CASE(particle_shader_bindings_resolve_library_functions)
+{
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"shader-library\",\"name\":\"RainParticles\"}") ==
+        0
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Rain\"}") == 0
+    );
+    char fixture[4096];
+    snprintf(fixture, sizeof fixture, "%s/test/fixtures/feature-coverage/content/shader-libraries/RainParticles.kdl", tool_root());
+    char *source = tool_read(fixture);
+    REQUIRE(source);
+    write_file("game/content/shader-libraries/RainParticles.kdl", source);
+    free(source);
+    write_file(
+        "game/content/prototypes/Rain.kdl",
+        "name \"Rain\"\ncomponents {\n"
+        " ParticleField3D count=128 seed=7 time=1.0 additive=#true\n"
+        " Geometry3D primitive=5 width=0.6 height=4.0 depth=0.6\n"
+        " Shader material=\"RainParticles.Fall\"\n"
+        " Transform3D { scale x=1.0 y=1.0 z=1.0; }\n}\n"
+    );
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\npresentation \"3d\"\n(array)entities {\n - name=\"Rain\" prototype=\"Rain\"\n}\n");
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    write_file(
+        "game/content/prototypes/Rain.kdl",
+        "name \"Rain\"\ncomponents {\n"
+        " ParticleField3D count=128\n"
+        " Geometry3D primitive=5 width=1.0 height=1.0 depth=1.0\n"
+        " Shader material=\"RainParticles.Missing\"\n}\n"
+    );
+    REQUIRE(validate() != 0 && errors() > 0);
+    return true;
+}
+
 static void write_bytes(const char *relative, const unsigned char *bytes, size_t length)
 {
     char file[256];
@@ -1522,6 +1558,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(models_import_into_the_project);
 #endif
     RUN_TEST_CASE(scenarios_load_graph_assets);
+    RUN_TEST_CASE(particle_shader_bindings_resolve_library_functions);
     RUN_TEST_CASE(sounds_must_decode);
     RUN_TEST_CASE(resources_are_limited_together);
     RUN_TEST_CASE(manifest_content_folder_is_used);

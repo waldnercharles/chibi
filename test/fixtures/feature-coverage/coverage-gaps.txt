@@ -23,18 +23,15 @@ component MaterialFrame
 component FluidVolume
 
 # 3D rendering and surfaces: owned by the 3D renderer roadmap (R items).
-component Geometry3D
 component SdfSurface3D
 component SurfaceQuality
 component SurfaceInfluence
 component MeshAsset
 component MeshParts
 component MeshSurface2D
-component Shader
 component PointLight
 component DirectionalLight
 component SpotLight
-component Environment
 component Fog
 component Reflection
 component VisualTransform
@@ -47,7 +44,6 @@ function Trigger Visual Reaction
 # 2D lighting, sky and camera.
 component HRC2D
 component Starfield2D
-component Camera
 
 # Visibility and fog of war.
 component Vision

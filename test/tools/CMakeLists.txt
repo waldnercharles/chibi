@@ -161,7 +161,7 @@ if(TARGET Chibi::render)
     target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
     target_link_libraries(chibi_render_consumer PRIVATE Chibi::render)
     target_compile_options(chibi_render_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_render_consumer>)
+    target_sources(test_tools PRIVATE particle_fields.c $<TARGET_OBJECTS:chibi_render_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::render)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_RUNTIME=1)
     # Surface materials with roughness and metallic come from material graphs, and
@@ -238,7 +238,8 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         ../support/reflected_types.c)
     target_include_directories(chibi_source_runtime_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_link_libraries(chibi_source_runtime_consumer PRIVATE Chibi::authoring Chibi::asset_authoring
-        Chibi::behavior_runtime Chibi::arithmetic_capabilities Chibi::host_native_default)
+        Chibi::behavior_runtime Chibi::arithmetic_capabilities Chibi::host_native_default
+        Chibi::graph_authoring Chibi::native_types)
     target_compile_options(chibi_source_runtime_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_source_runtime_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::asset_authoring Chibi::arithmetic_capabilities)

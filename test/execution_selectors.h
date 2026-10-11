@@ -5,6 +5,10 @@ CHIBI_CPU_SELECTOR("--source-edit")
 CHIBI_CPU_SELECTOR("--source-systems")
 CHIBI_CPU_SELECTOR("--system-schedule")
 CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
+CHIBI_CPU_SELECTOR("--graph-document")
+CHIBI_CPU_SELECTOR("--graph-presentation")
+CHIBI_CPU_SELECTOR("--graph-functions")
+CHIBI_CPU_SELECTOR("--vector-nodes")
 
 /* Explicit opt-in checks against installed products; each runs under the
  * shared 60-second supervisor. */

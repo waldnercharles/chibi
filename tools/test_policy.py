@@ -89,6 +89,14 @@ TOOLS = {
     'persistent-store': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--persistent-store'],
     # Reviewed three source presentation/default/layout and actual native palette composition cases, CPU only.
     'source-presentation': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-presentation'],
+    # Graph documents over the composed palette: comments, frames, edge indexes, IDs and literals, CPU only.
+    'graph-document': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--graph-document'],
+    # Inline folding, arrangement, expression text, find and hover sentences over the palette, CPU only.
+    'graph-presentation': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--graph-presentation'],
+    # Function and macro signatures, collapse/expand and shader library problems, CPU only.
+    'graph-functions': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--graph-functions'],
+    # Vector kernels and the palette's Direction To and Make_CF_V2 defaults, CPU only.
+    'vector-nodes': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--vector-nodes'],
     # Reviewed fixed SDK/player install, managed migration and packaging fixtures; one shared deadline.
     'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
     # Reviewed nominal alias ownership and nested error-source case, both backends, bounded 16 preparations.

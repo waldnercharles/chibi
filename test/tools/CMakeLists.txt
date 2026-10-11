@@ -246,6 +246,21 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)
         target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::studio_capabilities)
         target_link_libraries(test_tools PRIVATE Chibi::studio_capabilities)
+        # Graph document authoring over the application's composed node palette.
+        configure_file("${CHIBI_TOOL_ROOT}/test/graph/fixture.h"
+            "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/graph/fixture.h" COPYONLY)
+        add_library(chibi_graph_consumer OBJECT ../graph/fixture.c ../graph/comments.c ../graph/model.c
+            ../graph/inline.c ../graph/find.c ../graph/describe.c ../graph/functions.c ../graph/signature.c
+            ../graph/collapse.c ../graph/problems.c ../graph/vectors.c)
+        target_include_directories(chibi_graph_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+        target_link_libraries(chibi_graph_consumer PRIVATE Chibi::project_preparation Chibi::graph_catalog
+            Chibi::graph_authoring Chibi::graph_compilation Chibi::asset_text Chibi::arithmetic_capabilities
+            Chibi::vector_capabilities)
+        target_compile_options(chibi_graph_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_graph_consumer>)
+        target_link_libraries(test_tools PRIVATE Chibi::graph_authoring Chibi::graph_compilation
+            Chibi::asset_text Chibi::vector_capabilities)
+        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_GRAPH_AUTHORING=1)
         # Feature coverage runs each fixture scene through chibi_ctl's run_scenario.
         if(TARGET chibi_ctl)
             target_sources(test_tools PRIVATE feature_coverage.c)

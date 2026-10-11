@@ -26,10 +26,14 @@ HEALTH = None
 NEXT = 'make test-policy-inventory'
 CPU_SELECTORS = {
     '--compile-installed-space-cadet': 'compile-installed-space-cadet',
+    '--graph-document': 'graph-document',
+    '--graph-functions': 'graph-functions',
+    '--graph-presentation': 'graph-presentation',
     '--source-edit': 'source-edit',
     '--source-presentation': 'source-presentation',
     '--source-systems': 'source-systems',
     '--system-schedule': 'system-schedule',
+    '--vector-nodes': 'vector-nodes',
 }
 INSTALLED_PLAYERS = {'--player-installed-space-cadet-vm', '--player-installed-space-cadet-sljit'}
 PLAYER_SELECTORS = {

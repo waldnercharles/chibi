@@ -1,12 +1,13 @@
+#include "runtime/vectors.h"
+
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
-#include "graph/model/registry.h"
 #include "graph/nodes/core_nodes.h"
-#include "graph/nodes/vector_nodes.h"
 #include "runtime/arithmetic.h"
 #include "runtime/components.h"
-#include "runtime/vectors.h"
 #include "support/arena.h"
+#include "support/array.h"
+#include "test/graph/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
@@ -17,8 +18,8 @@
 
 static bool direction_to()
 {
-    const node_desc *direction = registry_node_by_name("Direction To");
-    REQUIRE(direction == &NODE_Direction_To);
+    const node_desc *direction = graph_palette_node("Direction To");
+    REQUIRE(direction->execution_call == &NATIVE_direction_to_CALL);
     const CF_V2 origins[] = { { 1, 2 }, { 3, 4 }, { -2, 5 }, { -FLT_MAX, 0 }, { 0, 0 } };
     const CF_V2 targets[] = { { 4, 6 },
                               { 3, 4 },
@@ -82,7 +83,7 @@ static bool test_zero_scale()
     CF_V2 *vector = result.ptr;
     REQUIRE(vector->x == 0 && vector->y == 0);
     graph graph = { 0 };
-    node *make = graph_add_node(&graph, registry_node_by_name("Make_CF_V2"));
+    node *make = graph_add_node(&graph, graph_palette_node("Make_CF_V2"));
     pin_value x = { .type = PIN_F32, .f = 3 }, y = { .type = PIN_F32, .f = -4 };
     REQUIRE(graph_set_pin_default(&graph, make, 0, 0, &x) == 0);
     REQUIRE(graph_set_pin_default(&graph, make, 0, 1, &y) == 0);
@@ -145,7 +146,9 @@ TEST_CASE(vector_extremes_defaults_and_zero_scale)
     REQUIRE(direction_to());
     return true;
 }
-void test_vector()
+void test_vector_nodes()
 {
+    graph_palette_open();
     RUN_TEST_CASE(vector_extremes_defaults_and_zero_scale);
+    graph_palette_close();
 }

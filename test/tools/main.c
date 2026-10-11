@@ -97,6 +97,18 @@ void test_source_native_material_features();
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
 int run_feature_coverage(const char *project);
 #endif
+#ifdef CHIBI_TEST_GRAPH_AUTHORING
+void test_graph_comments();
+void test_graph_indexes();
+void test_graph_inline();
+void test_graph_find();
+void test_graph_describe();
+void test_graph_functions();
+void test_graph_signature();
+void test_graph_collapse();
+void test_graph_problems();
+void test_vector_nodes();
+#endif
 #ifdef CHIBI_TEST_BOX3D
 void test_box3d();
 #endif
@@ -183,6 +195,14 @@ int main(int argc, char **argv)
          new_asset = false, asset_refactor = false;
     int corpus = 0;
     bool coverage = false;
+    bool graph_document = false, graph_presentation = false,
+         graph_functions = false, vector_nodes = false;
+#ifdef CHIBI_TEST_GRAPH_AUTHORING
+    graph_document = argc == 2 && !strcmp(argv[1], "--graph-document");
+    graph_presentation = argc == 2 && !strcmp(argv[1], "--graph-presentation");
+    graph_functions = argc == 2 && !strcmp(argv[1], "--graph-functions");
+    vector_nodes = argc == 2 && !strcmp(argv[1], "--vector-nodes");
+#endif
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
     coverage = argc == 3 && !strcmp(argv[1], "--feature-coverage");
 #endif
@@ -268,16 +288,17 @@ int main(int argc, char **argv)
         !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
         !package && !unit && !web_storage && !webgpu_staging &&
         !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics &&
-        !physics3d && !transforms && !render_resources && !interior_border &&
-        !viewport_resize && !sdf_visibility && !radiance && !radiance_depth &&
-        !material_sampling && !scene2d && !scene3d && !material_ramps &&
-        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
-        !sky_files && !mesh_files && !model_import && !persistent_store &&
-        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
-        !whole_select && !owned_tick && !parallel_tick && !source_features &&
-        !source_numeric && !source_material && !source_presentation &&
-        !system_schedule && !source_systems && !validate_project && !expansion) {
+        !native && !native_values && !native_catalog && !physics && !physics3d &&
+        !transforms && !render_resources && !interior_border && !viewport_resize &&
+        !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
+        !scene2d && !scene3d && !material_ramps && !radiance_surface &&
+        !radiance_horizons && !material_pixels && !box3d && !sky_files &&
+        !mesh_files && !model_import && !persistent_store && !whole_alias &&
+        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
+        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
+        !source_material && !source_presentation && !system_schedule &&
+        !source_systems && !validate_project && !expansion && !graph_document &&
+        !graph_presentation && !graph_functions && !vector_nodes) {
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
@@ -307,6 +328,8 @@ int main(int argc, char **argv)
             "--source-presentation | --system-schedule | --source-systems | "
             "--source-edit | --new-asset | --asset-refactor | "
             "--shader-parameters-prepared | "
+            "--graph-document | --graph-presentation | --graph-functions | "
+            "--vector-nodes | "
             "--semantic-corpora "
             "manifest | --prepare-corpora manifest | --prepare-corpora-sljit "
             "manifest | --feature-coverage project]\n",
@@ -323,11 +346,34 @@ int main(int argc, char **argv)
                             source_presentation || whole_alias || whole_math ||
                             whole_integer || whole_conversion || whole_select ||
                             owned_tick || parallel_tick || source_features ||
-                            source_numeric || source_material;
+                            source_numeric || source_material || graph_document ||
+                            graph_presentation || graph_functions || vector_nodes;
     if (source_runtime_active) {
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
         if (coverage) {
             return run_feature_coverage(argv[2]);
+        }
+#endif
+#ifdef CHIBI_TEST_GRAPH_AUTHORING
+        /* The graph palette composes over the game and Studio type packs. */
+        if (graph_document || graph_presentation || graph_functions || vector_nodes) {
+            if (graph_document) {
+                test_graph_comments();
+                test_graph_indexes();
+            } else if (graph_presentation) {
+                test_graph_inline();
+                test_graph_find();
+                test_graph_describe();
+            } else if (graph_functions) {
+                test_graph_functions();
+                test_graph_signature();
+                test_graph_collapse();
+                test_graph_problems();
+            } else {
+                test_vector_nodes();
+            }
+            pu_print_stats();
+            return pu_test_failed() ? 1 : 0;
         }
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES

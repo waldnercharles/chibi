@@ -198,6 +198,27 @@ Later document/Studio integrations are unverified.
 It also runs two component presentation cases on two fixed in-memory documents:
 the engine's tabs, icons and reflected units and ranges, and a document
 overriding them key by key.
+
+The four graph selectors compose the application's graph palette (core, shader,
+field and native nodes over the game's components) into the registry and edit
+in-memory graphs; no files, worlds, processes or GPU work run.
+`--graph-document` runs fourteen cases: node comments and comment frames through
+graph documents, input and EXEC edge lookups across edits, pastes, remapped IDs,
+malformed fan-out and four concurrent first readers, stable node and pin IDs,
+reflected Make/Break descriptors, literal defaults and edge replacement. It passes
+256 assertions in 0.36 seconds with ASan/UBSan.
+`--graph-presentation` runs fourteen cases: which nodes fold inline, arrangement
+skipping inline nodes, presentations through asset value documents, expression
+text for behavior, component, shader and field nodes, Find in graph and node
+hover sentences. It passes 128 assertions in 0.51 seconds with ASan/UBSan.
+`--graph-functions` runs eighteen cases: function and macro signature edits,
+purity, defaults, moves and variable promotion reaching every call, Collapse to
+Macro and Expand Node, and catalog problems of two linked shader libraries. It
+passes 170 assertions in 0.50 seconds with ASan/UBSan.
+`--vector-nodes` runs one case on the vector kernels: normalize at extremes,
+zero scale and the palette's Direction To through a saved graph. It passes 42
+assertions in 0.20 seconds with ASan/UBSan.
+
 `--system-schedule` admits only `test_system_schedule`: fixed access/order cases,
 62 small CPU engine frames and a serial/parallel 128-entity, 20-frame comparison.
 The scheduler benchmark and broad material aggregates remain quarantined. This

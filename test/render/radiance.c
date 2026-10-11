@@ -1078,6 +1078,8 @@ TEST_CASE(filter_keeps_light_true_to_the_current_frame)
     CF_Shader shader = cf_make_shader("/chibi-render/hrc/pass.vert", "/chibi-render/hrc/filter.frag");
     REQUIRE(shader.id && filtered.id);
     float worst = 0;
+    /* fmaxf drops NaN, so a NaN error alone would leave `worst` at zero. */
+    bool finite = true;
     for (int scenario = 0; scenario < 3; scenario++) {
         for (int i = 0; i < W * H; i++) {
             for (int c = 0; c < 4; c++) {
@@ -1111,7 +1113,9 @@ TEST_CASE(filter_keeps_light_true_to_the_current_frame)
         for (int y = 1; y < H - 1; y++) {
             for (int x = 1; x < W - 1; x++) {
                 int i = y * W + x;
-                worst = fmaxf(worst, fabsf(half_value(halves[i][0]) - current[i][0]));
+                float value = half_value(halves[i][0]);
+                finite &= isfinite(value);
+                worst = fmaxf(worst, fabsf(value - current[i][0]));
             }
         }
     }
@@ -1122,7 +1126,7 @@ TEST_CASE(filter_keeps_light_true_to_the_current_frame)
     cf_destroy_material(material);
     cf_destroy_shader(shader);
     cf_destroy_mesh(mesh);
-    REQUIRE(worst < .0005f);
+    REQUIRE(finite && worst < .0005f);
     return true;
 }
 

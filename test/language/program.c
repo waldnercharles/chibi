@@ -86,13 +86,18 @@ static const enum_value_desc control_values[] = {
     { 32, "GAME_CONTROL_Z", "Z" },
 };
 static const enum_desc control_type = { "GameControl", control_values, 3 };
-static const enum_desc *const program_enums[] = { &control_type };
+static const enum_value_desc pad_values[] = {
+    { 1, "GAME_PAD_A", "A" },
+    { 12, "GAME_PAD_DPAD_LEFT", "Dpad Left" },
+};
+static const enum_desc pad_type = { "GamePadControl", pad_values, 2 };
+static const enum_desc *const program_enums[] = { &control_type, &pad_type };
 type_catalog_pack test_program_types()
 {
     return (type_catalog_pack){ .types = reflected_types,
                                 .type_count = 2,
                                 .enums = program_enums,
-                                .enum_count = 1 };
+                                .enum_count = 2 };
 }
 static const ecs_component_desc position_component = {
     .id = 501,
@@ -2990,6 +2995,35 @@ TEST_CASE(program_input_map_validates_actions)
             strstr(error, INPUT_MAP_FILE ": ") == error &&
             strstr(error, invalid[i].message)
         );
+    }
+    const char *cooperative = "P1Left {\n"
+                              "    (array)sources \"Z\"\n"
+                              "    controller 0\n"
+                              "    (array)buttons \"Dpad Left\"\n"
+                              "}\n"
+                              "P2Confirm {\n"
+                              "    controller 1\n"
+                              "    (array)buttons \"A\"\n"
+                              "}\n";
+    REQUIRE(input_map_read(cooperative, &map, error, sizeof error));
+    REQUIRE(acount(map) == 2 && map[0].controls && map[0].buttons);
+    REQUIRE(map[1].controller == 1 && !map[1].controls && map[1].buttons);
+    text = input_map_write(map);
+    REQUIRE(!strcmp(text, cooperative));
+    input_map_free(map);
+    REQUIRE(input_map_read(text, &map, error, sizeof error));
+    REQUIRE(map[1].controller == 1 && map[1].buttons);
+    input_map_free(map);
+    free(text);
+    const char *bad_controllers[] = {
+        "P {\n controller 4\n (array)buttons \"A\"\n}\n",
+        "P {\n controller -1\n (array)buttons \"A\"\n}\n",
+        "P {\n controller 0\n}\n",
+        "P {\n (array)buttons \"A\"\n}\n",
+        "P {\n controller 0\n (array)buttons \"Unknown\"\n}\n",
+    };
+    for (size_t i = 0; i < sizeof bad_controllers / sizeof *bad_controllers; i++) {
+        REQUIRE(!input_map_read(bad_controllers[i], &map, error, sizeof error) && !map);
     }
     /* A map holds at most INPUT_ACTION_MAX actions. */
     size_t size = (INPUT_ACTION_MAX + 1) *

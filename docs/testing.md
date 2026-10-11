@@ -521,6 +521,15 @@ backend has one, so there a failure means Cute's tile shaders did not load.
 hidden app. The first requested size must replace the canvas on that draw, and
 a later size only once it has been requested for two more draws. Build and run
 it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`.
+Its fourth case draws one 64 x 64 UI frame containing a translucent red rectangle
+and a red glyph over opaque blue. One readback compares direct presentation with
+the public straight-alpha texture copied into the other half of the target.
+It requires correct source-over color, partial glyph coverage, and straight RGB
+in the exported texture. The four-case selector passed in 1.219 seconds under the shared 60-second
+deadline on macOS with the native Metal renderer. The old presentation path
+failed the new case with red 255 where source-over required 128. Vulkan discovery
+was unavailable on this host and does not describe the Metal execution. Use `make agent-gpu-test BUILD_DIR=<render-build>
+AGENT_SELECTOR=--viewport-resize` after building that directory's `test_tools`.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
 near clipping, a mixed 2D layer, and a later frame without the occluder) with

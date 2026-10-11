@@ -111,6 +111,15 @@ void engine_set_input_actions(engine *engine, const input_action *actions, int c
 /* Held physical controls interpreted through the input map. Ignored while
  * replaying, and while stopped unless a step is requested. */
 int engine_sample_controls(engine *engine, uint64_t controls, bool *firing);
+/* Atomically samples keyboard and all controller slots. Disconnected slots
+ * hold no buttons. Slots are zero-based and retain the host's device assignment. */
+int engine_sample_devices(
+    engine *engine,
+    uint64_t controls,
+    const input_controller_state controllers[INPUT_CONTROLLER_MAX],
+    bool *firing
+);
+int engine_sample_controller(engine *engine, int controller, input_controller_state state, bool *firing);
 /* Gameplay input recording and replay count fixed steps from the last reset,
  * so both follow a scene from its start. Recording keeps a key wherever held
  * input changes, plus one per control change between two steps, in order and

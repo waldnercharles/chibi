@@ -5,7 +5,7 @@
 
 #include <assert.h>
 
-static const char missing_read[] = "Read Saved Text requires a game world";
+static const char missing_read[] = "Reading save data requires a game world";
 static const char missing_write[] = "Saving requires a game world";
 static const char *read_text(
     const behavior_function_context *ctx,
@@ -36,6 +36,24 @@ static const char *set_text(void *service, const pin_value *in, pin_value *)
     return game_save_set(save, in[0].str, in[1].str ? in[1].str : "")
              ? NULL
              : game_save_error(save);
+}
+static const char *read_number(void *service, const pin_value *in, pin_value *out)
+{
+    if (!service) {
+        return missing_read;
+    }
+    out[1].d = in[1].d;
+    out[0].b = game_save_get_number(service, in[0].str, &out[1].d);
+    return NULL;
+}
+static const char *set_number(void *service, const pin_value *in, pin_value *)
+{
+    if (!service) {
+        return missing_write;
+    }
+    return game_save_set_number(service, in[0].str, in[1].d)
+             ? NULL
+             : game_save_error(service);
 }
 static const char *remove_text(void *service, const pin_value *in, pin_value *)
 {
@@ -84,6 +102,16 @@ const node_host_call GAME_SAVE_READ_CALL = {
 const node_host_call GAME_SAVE_SET_CALL = {
     .service = "game.save",
     .invoke = set_text,
+    .missing_service = missing_write,
+};
+const node_host_call GAME_SAVE_READ_NUMBER_CALL = {
+    .service = "game.save",
+    .invoke = read_number,
+    .missing_service = missing_read,
+};
+const node_host_call GAME_SAVE_SET_NUMBER_CALL = {
+    .service = "game.save",
+    .invoke = set_number,
     .missing_service = missing_write,
 };
 const node_host_call GAME_SAVE_REMOVE_CALL = {

@@ -1025,6 +1025,31 @@ typedef enum
     GAME_CONTROL_COUNT,
 } GameControl;
 
+/* Per-controller action sources. Independent of the shared keyboard bitset. */
+typedef enum
+{
+    GAME_PAD_NONE,
+    GAME_PAD_A,
+    GAME_PAD_B,
+    GAME_PAD_X,
+    GAME_PAD_Y,
+    GAME_PAD_BACK,
+    GAME_PAD_START,
+    GAME_PAD_LEFT_SHOULDER,
+    GAME_PAD_RIGHT_SHOULDER,
+    GAME_PAD_DPAD_UP,
+    GAME_PAD_DPAD_DOWN,
+    GAME_PAD_DPAD_LEFT,
+    GAME_PAD_DPAD_RIGHT,
+    GAME_PAD_LEFT_STICK_UP,
+    GAME_PAD_LEFT_STICK_DOWN,
+    GAME_PAD_LEFT_STICK_LEFT,
+    GAME_PAD_LEFT_STICK_RIGHT,
+    GAME_PAD_LEFT_TRIGGER,
+    GAME_PAD_RIGHT_TRIGGER,
+    GAME_PAD_COUNT,
+} GamePadControl;
+
 /* Shows the ui asset content/ui/<document>.rml over the game view, above
  * documents with a lower order. An element's emit('Event') binding, as in
  * data-event-click="emit('Resume')", sends that event to this entity; an

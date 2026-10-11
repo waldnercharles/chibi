@@ -2,6 +2,7 @@
 
 #include "platform/cute.h"
 
+#include <assert.h>
 #include <math.h>
 
 /* A stick reads as centered until it leaves this part of its range. */
@@ -142,4 +143,61 @@ CF_V2 game_controls_aim()
     CF_V2 aim = stick(CF_JOYPAD_AXIS_RIGHTX, CF_JOYPAD_AXIS_RIGHTY);
     float length = sqrtf(aim.x * aim.x + aim.y * aim.y);
     return length ? (CF_V2){ aim.x / length, aim.y / length } : aim;
+}
+
+input_controller_state game_controller_state(int controller)
+{
+    _Static_assert(INPUT_CONTROLLER_MAX <= CF_MAX_JOYPADS, "controller slots");
+    assert(controller >= 0 && controller < INPUT_CONTROLLER_MAX);
+    input_controller_state state = { .connected = cf_joypad_is_connected(controller) };
+    if (!state.connected) {
+        return state;
+    }
+    static const struct
+    {
+        GamePadControl control;
+        CF_JoypadButton button;
+    } buttons[] = {
+        { GAME_PAD_A, CF_JOYPAD_BUTTON_A },
+        { GAME_PAD_B, CF_JOYPAD_BUTTON_B },
+        { GAME_PAD_X, CF_JOYPAD_BUTTON_X },
+        { GAME_PAD_Y, CF_JOYPAD_BUTTON_Y },
+        { GAME_PAD_BACK, CF_JOYPAD_BUTTON_BACK },
+        { GAME_PAD_START, CF_JOYPAD_BUTTON_START },
+        { GAME_PAD_LEFT_SHOULDER, CF_JOYPAD_BUTTON_LEFTSHOULDER },
+        { GAME_PAD_RIGHT_SHOULDER, CF_JOYPAD_BUTTON_RIGHTSHOULDER },
+        { GAME_PAD_DPAD_UP, CF_JOYPAD_BUTTON_DPAD_UP },
+        { GAME_PAD_DPAD_DOWN, CF_JOYPAD_BUTTON_DPAD_DOWN },
+        { GAME_PAD_DPAD_LEFT, CF_JOYPAD_BUTTON_DPAD_LEFT },
+        { GAME_PAD_DPAD_RIGHT, CF_JOYPAD_BUTTON_DPAD_RIGHT },
+    };
+    for (int i = 0; i < (int)(sizeof buttons / sizeof *buttons); i++) {
+        if (cf_joypad_button_down(controller, buttons[i].button)) {
+            state.buttons |= UINT32_C(1) << buttons[i].control;
+        }
+    }
+    CF_V2 movement = game_controls_dead_zone((CF_V2){
+        cf_joypad_axis(controller, CF_JOYPAD_AXIS_LEFTX) / 32768.0f,
+        cf_joypad_axis(controller, CF_JOYPAD_AXIS_LEFTY) / 32768.0f,
+    });
+    static const float direction_threshold = 0.5f;
+    if (movement.x < -direction_threshold) {
+        state.buttons |= UINT32_C(1) << GAME_PAD_LEFT_STICK_LEFT;
+    }
+    if (movement.x > direction_threshold) {
+        state.buttons |= UINT32_C(1) << GAME_PAD_LEFT_STICK_RIGHT;
+    }
+    if (movement.y < -direction_threshold) {
+        state.buttons |= UINT32_C(1) << GAME_PAD_LEFT_STICK_UP;
+    }
+    if (movement.y > direction_threshold) {
+        state.buttons |= UINT32_C(1) << GAME_PAD_LEFT_STICK_DOWN;
+    }
+    if (cf_joypad_axis(controller, CF_JOYPAD_AXIS_TRIGGERLEFT) > TRIGGER_THRESHOLD) {
+        state.buttons |= UINT32_C(1) << GAME_PAD_LEFT_TRIGGER;
+    }
+    if (cf_joypad_axis(controller, CF_JOYPAD_AXIS_TRIGGERRIGHT) > TRIGGER_THRESHOLD) {
+        state.buttons |= UINT32_C(1) << GAME_PAD_RIGHT_TRIGGER;
+    }
+    return state;
 }

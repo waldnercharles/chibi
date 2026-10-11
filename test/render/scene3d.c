@@ -45,6 +45,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* One hidden app renders a unit box through the 3D path and post-processing,
  * then reads back the tone-mapped output. */

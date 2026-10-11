@@ -13,6 +13,7 @@
 #define INPUT_ACTION_TYPE "InputAction"
 /* The most actions an input map holds. */
 #define INPUT_ACTION_MAX 256
+#define INPUT_CONTROLLER_MAX 4
 
 /* One action of a project's input map. Any of its controls holds it, and a
  * firing action also holds the Aim of GameInput owners. */
@@ -21,4 +22,6 @@ typedef struct
     const char *name;
     uint64_t controls; /* one bit per GameControl */
     bool firing;
+    int controller;   /* zero-based controller slot for buttons */
+    uint32_t buttons; /* one bit per GamePadControl, ORed with controls */
 } input_action;

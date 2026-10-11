@@ -196,7 +196,14 @@ static int sample_input(player_host *host)
                   !engine_viewport_ui_typing(host->viewport);
     uint64_t controls = active ? pressed_controls | game_controls_down() : 0;
     bool firing = false;
-    if (engine_sample_controls(runtime, controls, &firing) < 0) {
+    input_controller_state controllers[INPUT_CONTROLLER_MAX];
+    for (int i = 0; i < INPUT_CONTROLLER_MAX; i++) {
+        controllers[i] = game_controller_state(i);
+        if (!active) {
+            controllers[i].buttons = 0;
+        }
+    }
+    if (engine_sample_devices(runtime, controls, controllers, &firing) < 0) {
         return -1;
     }
     CF_V2 movement = active ? game_controls_movement() : (CF_V2){ 0 };
@@ -605,9 +612,18 @@ int main(int argc, char **argv)
         fprintf(stderr, "Save service is unavailable\n");
         goto finish;
     }
-    if (save_path && !game_save_open(host.ui.save, save_path)) {
-        fprintf(stderr, "%s\n", game_save_error(host.ui.save));
-        goto finish;
+    if (host.ui.save && (save_path || application.project_name)) {
+        const char *directory = NULL;
+#ifndef __EMSCRIPTEN__
+        if (!save_path) {
+            directory = cf_fs_get_user_directory("Chibi", "Saves");
+        }
+#endif
+        /* Initial Begin handlers are queued until the first engine frame. */
+        if (!game_save_open_project(host.ui.save, application.project_name, directory, save_path)) {
+            fprintf(stderr, "%s\n", game_save_error(host.ui.save));
+            goto finish;
+        }
     }
     signal(SIGINT, stop);
     signal(SIGTERM, stop);

@@ -392,6 +392,24 @@ components {
 }
 ```
 
+## Saved progress
+
+`read_saved_number(Key, Default)` returns `.Found` and `.Number`. Missing keys
+and text that is not a finite JSON decimal return `Found=false` and the default.
+`await set_saved_number(Key, Number)` stages a finite double using decimal text
+that preserves its exact value. It shares the store with `read_saved_text` and
+`set_saved_text`. Reads include staged changes. `await commit_save()` writes
+them to storage; its `Failed` outcome keeps the previous committed save intact.
+`await discard_save_changes()` restores that commit.
+
+Exported players open their save before the first `Begin`. The manifest's
+project `name` identifies the store independently of the window title and
+export directory. Native players use the OS user-data directory under
+`Chibi/Saves`; browser players use localStorage on the page's origin. Renaming
+the project selects a different save. `chibi-player --save PATH` overrides the
+default file or browser storage key. Preview and scenario worlds retain their
+isolated in-memory stores unless their host explicitly opens storage.
+
 ## Runtime identity and capability requests
 
 `.chibi-engine.json` records the player package build ID, source SDK build ID,

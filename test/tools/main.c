@@ -72,6 +72,9 @@ bool test_source_runtime_active()
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
 void test_source_native_features();
+#ifdef CHIBI_TEST_PREVIEW
+void test_preview_preparation();
+#endif
 void test_source_presentation();
 void test_component_presentation();
 void test_system_schedule();
@@ -313,6 +316,9 @@ int main(int argc, char **argv)
             test_component_presentation();
         } else if (source_features) {
             test_source_native_features();
+#ifdef CHIBI_TEST_PREVIEW
+            test_preview_preparation();
+#endif
         } else if (source_numeric) {
             test_source_native_numeric_queries();
         } else if (source_material) {

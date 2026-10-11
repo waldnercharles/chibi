@@ -18,6 +18,10 @@
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
 
+#ifdef CHIBI_TEST_PREPARATION
+#include "assets/scenario_document.h"
+#endif
+
 #include <assert.h>
 #include <math.h>
 #include <stdio.h>
@@ -632,25 +636,29 @@ static bool jump_world(engine **out)
     jump = (typeof(jump)){ 0 };
     char error[192];
     const input_action actions[] = {
-        { "Jump", (UINT64_C(1) << GAME_CONTROL_Z) | (UINT64_C(1) << GAME_CONTROL_X), false },
+        { .name = "Jump",
+          .controls = (UINT64_C(1) << GAME_CONTROL_Z) | (UINT64_C(1) << GAME_CONTROL_X) },
     };
     /* A count without actions, an unnamed or empty-named action, one action
      * listed twice, an action without controls or with one outside
      * GameControl, or more than the most actions a map holds is rejected. */
-    const input_action unnamed = { NULL, UINT64_C(1) << GAME_CONTROL_Z, false };
-    const input_action empty = { "", UINT64_C(1) << GAME_CONTROL_Z, false };
+    const input_action unnamed = { .controls = UINT64_C(1) << GAME_CONTROL_Z };
+    const input_action empty = { .name = "", .controls = UINT64_C(1) << GAME_CONTROL_Z };
     const input_action twice[] = {
-        { "Jump", UINT64_C(1) << GAME_CONTROL_Z, false },
-        { "Jump", UINT64_C(1) << GAME_CONTROL_X, false },
+        { .name = "Jump", .controls = UINT64_C(1) << GAME_CONTROL_Z },
+        { .name = "Jump", .controls = UINT64_C(1) << GAME_CONTROL_X },
     };
-    const input_action uncontrolled = { "Jump", 0, false };
-    const input_action none = { "Jump", UINT64_C(1) << GAME_CONTROL_NONE, false };
-    const input_action beyond = { "Jump", UINT64_C(1) << GAME_CONTROL_COUNT, false };
+    const input_action uncontrolled = { .name = "Jump" };
+    const input_action none = { .name = "Jump",
+                                .controls = UINT64_C(1) << GAME_CONTROL_NONE };
+    const input_action beyond = { .name = "Jump",
+                                  .controls = UINT64_C(1) << GAME_CONTROL_COUNT };
     static char names[INPUT_ACTION_MAX + 1][8];
     static input_action many[INPUT_ACTION_MAX + 1];
     for (int i = 0; i <= INPUT_ACTION_MAX; i++) {
         snprintf(names[i], sizeof names[i], "A%d", i);
-        many[i] = (input_action){ names[i], UINT64_C(1) << GAME_CONTROL_Z, false };
+        many[i] = (input_action){ .name = names[i],
+                                  .controls = UINT64_C(1) << GAME_CONTROL_Z };
     }
     game_world_options invalid[] = {
         { .modules = GAME_WORLD_INPUT, .action_count = 1 },
@@ -818,6 +826,284 @@ TEST_CASE(native_recorded_taps_replay_per_step)
     cleanup();
     return true;
 }
+static struct
+{
+    int steps;
+    unsigned held, pressed, connected;
+} controllers;
+static const char *observe_controllers(void *service, const pin_value *, pin_value *)
+{
+    static const char *names[] = { "Left", "Confirm" };
+    controllers.steps++;
+    controllers.held = controllers.pressed = controllers.connected = 0;
+    for (int i = 0; i < 2; i++) {
+        pin_value action = { .type = PIN_STR, .str = names[i] };
+        pin_value slot = { .type = PIN_I32, .i = i };
+        pin_value held = { .type = PIN_BOOL }, pressed = { .type = PIN_BOOL },
+                  connected = { .type = PIN_BOOL };
+        const char *error = GAME_INPUT_HELD_CALL.invoke(service, &action, &held);
+        if (!error) {
+            error = GAME_INPUT_PRESSED_CALL.invoke(service, &action, &pressed);
+        }
+        if (!error) {
+            error = GAME_INPUT_CONTROLLER_CONNECTED_CALL.invoke(service, &slot, &connected);
+        }
+        if (error) {
+            return error;
+        }
+        controllers.held |= (unsigned)held.b << i;
+        controllers.pressed |= (unsigned)pressed.b << i;
+        controllers.connected |= (unsigned)connected.b << i;
+    }
+    return NULL;
+}
+/* Read the saved map before attaching an observer, so the same sequence tests
+ * runtime sampling and the prepared player's controller binding format. */
+static bool controller_world(engine **out, behavior_backend backend)
+{
+    cleanup();
+    controllers = (typeof(controllers)){ 0 };
+    char error[192];
+    const input_action actions[] = {
+        { .name = "Left",
+          .controls = Z_DOWN,
+          .firing = true,
+          .controller = 0,
+          .buttons = (UINT32_C(1) << GAME_PAD_DPAD_LEFT) |
+                     (UINT32_C(1) << GAME_PAD_LEFT_STICK_LEFT) },
+        { .name = "Confirm", .controller = 1, .buttons = UINT32_C(1) << GAME_PAD_A },
+    };
+    game_scene_spec scene_spec = { .name = "Controllers",
+                                   .physics = game_physics_defaults() };
+    scene = game_scene_prepare(&scene_spec, error, sizeof error);
+    REQUIRE(scene);
+    game_player_spec spec = { .world = { .modules = GAME_WORLD_INPUT,
+                                         .actions = actions,
+                                         .action_count = 2 },
+                              .scene = scene };
+    game_player_application application = { 0 };
+    size_t length;
+    REQUIRE(
+        game_player_prepared_write(&spec, &application, &player_bytes, &length, error, sizeof error)
+    );
+    const game_player_host player_host_context = {
+        .components = { .components = GAME_REGISTRY_COMPONENTS,
+                        .component_count = GAME_REGISTRY_COMPONENT_COUNT }
+    };
+    player = game_player_prepared_read(player_bytes, length, &player_host_context, backend, error, sizeof error);
+    REQUIRE(player);
+    free(player_bytes);
+    player_bytes = NULL;
+    game_scene_free(scene);
+    scene = NULL;
+    game_world *runtime_world = game_player_world(player);
+    static const node_host_call tick = { .service = GAME_INPUT_SERVICE,
+                                         .invoke = observe_controllers,
+                                         .optional_service = true };
+    const pin_value dt = { .type = PIN_F32 };
+    behavior_function *body = host_body(&tick, &GAME_INPUT_READ_ACCESS, &dt, 1, 990);
+    REQUIRE(body);
+    execution_module_plan *plan = execution_module_plan_new();
+    plan->id = 992;
+    plan->valid = true;
+    handler(plan, "Tick", 993, &dt, 1, body);
+    module = execution_module_finish(&plan, backend, error, sizeof error);
+    execution_module_plan_free(plan);
+    REQUIRE(module);
+    game_source_registry *sources = game_world_sources(runtime_world);
+    REQUIRE(game_source_register(sources, "Controllers", module, NULL) == 0);
+    execution_module_free(module);
+    module = NULL;
+    ecs_world *ecs = game_world_ecs(runtime_world);
+    ecs_entity owner = ecs_world_create_entity(ecs);
+    REQUIRE(GAME_GameInput_add(ecs, owner, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(ecs) == ECS_OK);
+    REQUIRE(game_source_attach(sources, owner, "Controllers", false, 0, 0) == 0);
+    *out = game_world_engine(runtime_world);
+    REQUIRE(engine_frame(*out, 0) == 0);
+    return true;
+}
+#define PAD_LEFT (UINT32_C(1) << GAME_PAD_DPAD_LEFT)
+#define STICK_LEFT (UINT32_C(1) << GAME_PAD_LEFT_STICK_LEFT)
+#define PAD_A (UINT32_C(1) << GAME_PAD_A)
+static const struct
+{
+    int count;
+    struct
+    {
+        int slot; /* -1 samples keyboard controls. */
+        uint64_t buttons;
+        bool connected;
+    } samples[2];
+    unsigned held, pressed, connected;
+} controller_steps[] = {
+    { 1, { { 0, PAD_LEFT, true } }, 1, 1, 1 },
+    /* The same control on slot one cannot hold slot zero's action. */
+    { 2, { { 0, 0, true }, { 1, PAD_LEFT, true } }, 0, 0, 3 },
+    { 2, { { 0, PAD_LEFT, true }, { 1, PAD_A, true } }, 3, 3, 3 },
+    /* Moving between a dpad and stick keeps the action held. */
+    { 1, { { 0, STICK_LEFT, true } }, 3, 0, 3 },
+    /* A keyboard source holds the action after its controller disconnects. */
+    { 2, { { -1, Z_DOWN, false }, { 0, STICK_LEFT, false } }, 3, 0, 2 },
+    { 1, { { -1, 0, false } }, 2, 0, 2 },
+    { 1, { { 1, PAD_A, false } }, 0, 0, 0 },
+    { 1, { { 1, PAD_A, true } }, 2, 2, 2 },
+    /* A tap between fixed steps is pressed without being held. */
+    { 2, { { 0, PAD_LEFT, true }, { 0, 0, true } }, 2, 1, 3 },
+    { 0, { { 0 } }, 2, 0, 3 },
+    { 2, { { 1, 0, true }, { 1, PAD_A, true } }, 2, 2, 3 },
+    { 1, { { -1, Z_DOWN, false } }, 3, 1, 3 },
+    { 2, { { -1, 0, false }, { 1, PAD_A, false } }, 0, 0, 1 },
+    { 1, { { 0, PAD_A, true } }, 0, 0, 1 },
+};
+static bool run_controller_steps(engine *runtime, bool replay)
+{
+    for (int step = 0;
+         step < (int)(sizeof controller_steps / sizeof *controller_steps);
+         step++) {
+        bool firing = false;
+        if (replay) {
+            /* Live input disagrees with the recording and must be ignored. */
+            REQUIRE(engine_sample_controls(runtime, X_DOWN, &firing) == FLOW_OK);
+            REQUIRE(
+                engine_sample_controller(runtime, 0, (input_controller_state){ 0 }, &firing) == FLOW_OK
+            );
+            REQUIRE(
+                engine_sample_controller(runtime, 1, (input_controller_state){ 0 }, &firing) == FLOW_OK
+            );
+        } else {
+            for (int i = 0; i < controller_steps[step].count; i++) {
+                int slot = controller_steps[step].samples[i].slot;
+                uint64_t buttons = controller_steps[step].samples[i].buttons;
+                if (slot == -1) {
+                    REQUIRE(engine_sample_controls(runtime, buttons, &firing) == FLOW_OK);
+                    continue;
+                }
+                input_controller_state state = {
+                    .buttons = (uint32_t)buttons,
+                    .connected = controller_steps[step].samples[i].connected
+                };
+                REQUIRE(engine_sample_controller(runtime, slot, state, &firing) == FLOW_OK);
+            }
+            if (controller_steps[step].count) {
+                REQUIRE(firing == !!(controller_steps[step].held & 1));
+            }
+        }
+        REQUIRE(engine_frame(runtime, (step + 1.5) * ENGINE_FIXED_SECONDS) == 0);
+        REQUIRE(controllers.steps == step + 1);
+        REQUIRE(controllers.held == controller_steps[step].held);
+        REQUIRE(controllers.pressed == controller_steps[step].pressed);
+        REQUIRE(controllers.connected == controller_steps[step].connected);
+    }
+    return true;
+}
+TEST_CASE(native_controller_bindings_replay_per_step)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        engine *runtime;
+        REQUIRE(controller_world(&runtime, backends[b]));
+        engine_record_input(runtime, 3);
+        REQUIRE(run_controller_steps(runtime, false));
+        int count;
+        const input_keyframe *recorded = engine_recorded_input(runtime, &count);
+        input_keyframe *keys = NULL;
+        for (int i = 0; i < count; i++) {
+            apush(keys, recorded[i]);
+        }
+        REQUIRE(controller_world(&runtime, backends[b]));
+        engine_replay_input(runtime, keys, count, 3);
+        afree(keys);
+        REQUIRE(run_controller_steps(runtime, true));
+    }
+    cleanup();
+    return true;
+}
+TEST_CASE(native_controller_bindings_reject_invalid_values)
+{
+    input_action action = { .name = "Confirm", .buttons = PAD_A };
+    REQUIRE(game_world_actions_valid(&action, 1));
+    action.controller = -1;
+    REQUIRE(!game_world_actions_valid(&action, 1));
+    action.controller = INPUT_CONTROLLER_MAX;
+    REQUIRE(!game_world_actions_valid(&action, 1));
+    action.controller = INPUT_CONTROLLER_MAX - 1;
+    REQUIRE(game_world_actions_valid(&action, 1));
+    action.buttons = UINT32_C(1) << GAME_PAD_NONE;
+    REQUIRE(!game_world_actions_valid(&action, 1));
+    action.buttons = UINT32_C(1) << GAME_PAD_COUNT;
+    REQUIRE(!game_world_actions_valid(&action, 1));
+    return true;
+}
+TEST_CASE(native_controller_device_handoff_keeps_action_held)
+{
+    engine *runtime;
+    REQUIRE(controller_world(&runtime, BEHAVIOR_BYTECODE));
+    input_controller_state devices[INPUT_CONTROLLER_MAX] = { 0 };
+    bool firing;
+    REQUIRE(engine_sample_devices(runtime, Z_DOWN, devices, &firing) == FLOW_OK && firing);
+    REQUIRE(engine_frame(runtime, 1.5 * ENGINE_FIXED_SECONDS) == 0);
+    REQUIRE(controllers.held == 1 && controllers.pressed == 1);
+    devices[0] = (input_controller_state){ .buttons = PAD_LEFT, .connected = true };
+    REQUIRE(engine_sample_devices(runtime, 0, devices, &firing) == FLOW_OK && firing);
+    REQUIRE(engine_frame(runtime, 2.5 * ENGINE_FIXED_SECONDS) == 0);
+    REQUIRE(controllers.held == 1 && controllers.pressed == 0 && controllers.connected == 1);
+    devices[0] = (input_controller_state){ 0 };
+    REQUIRE(engine_sample_devices(runtime, Z_DOWN, devices, &firing) == FLOW_OK && firing);
+    REQUIRE(engine_frame(runtime, 3.5 * ENGINE_FIXED_SECONDS) == 0);
+    REQUIRE(controllers.held == 1 && controllers.pressed == 0 && controllers.connected == 0);
+    cleanup();
+    return true;
+}
+#ifdef CHIBI_TEST_PREPARATION
+TEST_CASE(native_controller_scenario_roundtrip)
+{
+    const char
+        *text = "scene \"Controllers\"\nframes 3\nseed 7\n(array)keys {\n"
+                "- frame=0 { (array)controls \"Z\"; (array)controllers {\n"
+                "- connected=#true { (array)buttons \"Dpad Left\" \"Left Stick "
+                "Left\"; }\n"
+                "- connected=#true { (array)buttons \"A\"; }\n"
+                "- connected=#false\n- connected=#false\n}\n}\n"
+                "- frame=1\n}\n";
+    char error[256];
+    scenario_document *document = scenario_document_load(text, error, sizeof error);
+    REQUIRE(document && acount(document->keys) == 2);
+    input_keyframe expected = {
+        .controls = Z_DOWN,
+        .controllers = { { .buttons = PAD_LEFT | STICK_LEFT, .connected = true },
+                         { .buttons = PAD_A, .connected = true } }
+    };
+    REQUIRE(input_keyframe_same(&document->keys[0], &expected));
+    REQUIRE(input_keyframe_same(&document->keys[1], &(input_keyframe){ 0 }));
+    char *saved = scenario_document_save(document);
+    REQUIRE(saved && !strstr(saved, "#false"));
+    scenario_document *read = scenario_document_load(saved, error, sizeof error);
+    free(saved);
+    REQUIRE(read && acount(read->keys) == 2);
+    REQUIRE(read->frames == 3 && read->seed == 7 && !strcmp(read->scene, "Controllers"));
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(read->keys[i].step == document->keys[i].step);
+        REQUIRE(input_keyframe_same(&read->keys[i], &document->keys[i]));
+    }
+    scenario_document_free(read);
+    scenario_document_free(document);
+    const char *invalid[] = {
+        "scene \"Controllers\"\nframes 1\n(array)keys { - frame=0 { "
+        "(array)controllers {\n"
+        "- connected=#false\n- connected=#false\n- connected=#false\n"
+        "- connected=#false\n- connected=#false\n}\n}\n}\n",
+        "scene \"Controllers\"\nframes 1\n(array)keys { - frame=0 { "
+        "(array)controllers {\n"
+        "- connected=#false { (array)buttons \"A\"; }\n}\n}\n}\n",
+    };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(!scenario_document_load(invalid[i], error, sizeof error));
+        REQUIRE(strstr(error, "controllers"));
+    }
+    return true;
+}
+#endif
 static ecs_entity crate;
 /* Pushes the crate through the 2D physics the world bound, as Apply Impulse
  * does. */
@@ -1009,11 +1295,14 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         REQUIRE(ticks == 0 && game_scene_object_count(scene) == 1);
         record.name = "Initial";
         size_t player_length;
-        game_player_application application = { .title = "Native",
-                                                .width = 640,
-                                                .height = 360,
-                                                .fullscreen = true,
-                                                .icon = "art/icon.png" };
+        game_player_application application = {
+            .project_name = "native-project",
+            .title = "Native",
+            .width = 640,
+            .height = 360,
+            .fullscreen = true,
+            .icon = "art/icon.png"
+        };
         REQUIRE(
             game_player_prepared_write(&spec, &application, &player_bytes, &player_length, error, sizeof error)
         );
@@ -1029,6 +1318,7 @@ TEST_CASE(native_player_loads_package_and_retires_producers)
         unlink(artifact_path);
         REQUIRE(read_back);
         REQUIRE(!strcmp(read.title, "Native") && !strcmp(read.icon, "art/icon.png"));
+        REQUIRE(!strcmp(read.project_name, "native-project"));
         REQUIRE(read.width == 640 && read.height == 360 && read.fullscreen);
         game_player_application_free(&read);
         /* An icon outside the resource root is refused, as on reading. */
@@ -1590,7 +1880,8 @@ TEST_CASE(native_player_reads_declared_components)
     scene = game_scene_prepare(&scene_spec, error, sizeof error);
     REQUIRE(scene);
     /* The input map travels with the package. */
-    const input_action jump_map = { "Jump", UINT64_C(1) << GAME_CONTROL_Z, false };
+    const input_action jump_map = { .name = "Jump",
+                                    .controls = UINT64_C(1) << GAME_CONTROL_Z };
     game_player_spec spec = { .world = { .components = components,
                                          .actions = &jump_map,
                                          .action_count = 1 },
@@ -1611,7 +1902,7 @@ TEST_CASE(native_player_reads_declared_components)
     size_t length;
     /* A map the world would reject, such as a count without actions or an
      * action without controls, is rejected before it is written. */
-    const input_action loose = { "Jump", 0, false };
+    const input_action loose = { .name = "Jump" };
     const input_action *rejected[] = { NULL, &loose };
     for (int i = 0; i < 2; i++) {
         spec.world.actions = rejected[i];
@@ -1688,6 +1979,12 @@ void test_tool_native()
     RUN_TEST_CASE(native_player_reads_declared_components);
     RUN_TEST_CASE(native_action_state_combines_sources_per_step);
     RUN_TEST_CASE(native_recorded_taps_replay_per_step);
+    RUN_TEST_CASE(native_controller_bindings_replay_per_step);
+    RUN_TEST_CASE(native_controller_bindings_reject_invalid_values);
+    RUN_TEST_CASE(native_controller_device_handoff_keeps_action_held);
+#ifdef CHIBI_TEST_PREPARATION
+    RUN_TEST_CASE(native_controller_scenario_roundtrip);
+#endif
     RUN_TEST_CASE(native_pause_keeps_held_actions);
     RUN_TEST_CASE(native_world_binds_physics_for_pushes);
     pu_clear_setup();

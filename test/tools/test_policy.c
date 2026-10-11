@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -61,6 +62,12 @@ static const char driver_source[] =
     "        output = open(root + '/studio-output').read()\n"
     "        print(json.dumps(agent.studio_acceptance_output(sys.argv[5], "
     "output)))\n"
+    "        sys.exit(0)\n"
+    "    if action == 'studio-resources':\n"
+    "        import agent\n"
+    "        from pathlib import Path\n"
+    "        agent.studio_resource_preflight(Path(root), "
+    "json.loads(sys.argv[5]))\n"
     "        sys.exit(0)\n"
     "    if action == 'exit':\n"
     "        result = policy.run_commands([[worker, 'exit', sys.argv[5]]], 6)\n"
@@ -193,6 +200,16 @@ TEST_CASE(studio_acceptance_requires_exact_completion)
     REQUIRE(run("studio-result", "--studio-graph-visibility") == 2);
     tool_write(filename, "prefix Studio graph visibility accepted: frames=10\n");
     REQUIRE(run("studio-result", "--studio-graph-visibility") == 2);
+    const char *moves[] = { "--studio-scene-move", "--studio-outliner-move" };
+    const char *completed[] = { "Studio scene move accepted: frames=2\n",
+                                "Studio outliner move accepted: frames=21\n" };
+    for (int i = 0; i < 2; i++) {
+        tool_write(filename, completed[i]);
+        REQUIRE(run("studio-result", moves[i]) == 0);
+        REQUIRE(run("studio-result", moves[1 - i]) == 2);
+        tool_write(filename, "Studio outliner move accepted: frames=19\n");
+        REQUIRE(run("studio-result", moves[i]) == 2);
+    }
     char repeated[256];
     snprintf(repeated, sizeof repeated, "%s%s", graph, graph);
     tool_write(filename, repeated);
@@ -203,6 +220,36 @@ TEST_CASE(studio_acceptance_requires_exact_completion)
         tool_write(filename, repeated);
         REQUIRE(run("studio-result", "--studio-graph-visibility") == 2);
     }
+    return true;
+}
+
+TEST_CASE(studio_move_resources_require_recorded_generation)
+{
+    char filename[PATH_MAX];
+    const char *folders[] = { "share", "share/chibi", "share/chibi/studio", "share/chibi/ui" };
+    for (int i = 0; i < 4; i++) {
+        path(filename, folders[i]);
+        REQUIRE(mkdir(filename, 0700) == 0);
+    }
+    path(filename, "share/chibi/studio/fixture.rml");
+    tool_write(filename, "a");
+    path(filename, "share/chibi/ui/fixture.rml");
+    tool_write(filename, "b");
+    const char *resources = "{\"studio\":[1,1,"
+                            "\"9c4942f88cf0d2006c36fd44be63f5bcba29023280cef8ef"
+                            "601bdf7f75b473e8\"],"
+                            "\"ui\":[1,1,"
+                            "\"d83b434175658e53e4c47cb4c1d8f837746c4b525113c2be"
+                            "c7399ec2bbbdba5c\"]}";
+    REQUIRE(run("studio-resources", resources) == 0);
+    tool_write(filename, "c");
+    REQUIRE(run("studio-resources", resources) != 0);
+    tool_write(filename, "bb");
+    REQUIRE(run("studio-resources", resources) != 0);
+    tool_write(filename, "b");
+    path(filename, "share/chibi/ui/unreviewed.rml");
+    tool_write(filename, "b");
+    REQUIRE(run("studio-resources", resources) != 0);
     return true;
 }
 
@@ -311,6 +358,7 @@ void test_tool_test_policy()
     path(logpath, "output.log");
     tool_write(driver, driver_source);
     RUN_TEST_CASE(studio_acceptance_requires_exact_completion);
+    RUN_TEST_CASE(studio_move_resources_require_recorded_generation);
     RUN_TEST_CASE(exit_and_aggregate_deadlines);
     RUN_TEST_CASE(descendant_cleanup);
     RUN_TEST_CASE(portable_nested_cleanup_preserves_sibling);

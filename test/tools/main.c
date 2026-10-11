@@ -41,6 +41,9 @@ void test_tool_prototype_expansion(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
 void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
+#ifdef CHIBI_TEST_SCENE_AUTHORING
+void test_scene_hierarchy();
+#endif
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
@@ -152,6 +155,10 @@ int main(int argc, char **argv)
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
+    bool scene_hierarchy = false;
+#ifdef CHIBI_TEST_SCENE_AUTHORING
+    scene_hierarchy = argc == 2 && !strcmp(argv[1], "--scene-hierarchy");
+#endif
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
     bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
     bool native = false, native_values = false, native_catalog = false,
@@ -235,8 +242,8 @@ int main(int argc, char **argv)
 #endif
     if (argc != 1 && !corpus && !coverage && !shader_parameters && !source_edit &&
         !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
-        !package && !unit && !web_storage && !webgpu_staging &&
-        !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
+        !package && !unit && !web_storage && !webgpu_staging && !query_benchmark &&
+        !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
         !native && !native_values && !native_catalog && !physics && !physics3d &&
         !transforms && !render_resources && !interior_border && !viewport_resize &&
         !sdf_visibility && !scene3d && !material_ramps && !box3d &&
@@ -255,7 +262,8 @@ int main(int argc, char **argv)
             "--prototype-expansion chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
-            "--scene-prepared | --native | --native-values | --native-catalog "
+            "--scene-prepared | --scene-hierarchy | --native | --native-values "
+            "| --native-catalog "
             "| --physics | --physics3d | --transforms "
             "| --render-resources | --interior-border | --viewport-resize | "
             "--sdf-visibility | "
@@ -428,6 +436,13 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_TILEMAP_PROJECT
     if (tilemap_project) {
         test_tool_tilemap_project();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
+#ifdef CHIBI_TEST_SCENE_AUTHORING
+    if (scene_hierarchy) {
+        test_scene_hierarchy();
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

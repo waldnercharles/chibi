@@ -196,6 +196,14 @@ static rml_element *target_at(rml_element *el)
 /* Where in the target the pointer drops, by its data-drop-zones. */
 static const char *zone_in(rml_element *target)
 {
+    if (rml_element_has_attribute(target, "data-drop-zones-type")) {
+        char *type = attribute(target, "data-drop-zones-type");
+        bool matches = !strcmp(type, session.type);
+        free(type);
+        if (!matches) {
+            return "";
+        }
+    }
     char zones[8] = "";
     if (rml_element_has_attribute(target, "data-drop-zones")) {
         rml_element_attribute(target, "data-drop-zones", zones, sizeof zones);

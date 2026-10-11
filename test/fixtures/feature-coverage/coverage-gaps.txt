@@ -65,3 +65,7 @@ function Count Matching Entities
 
 # Engine internals that scenes don't author directly.
 component GameDrive
+
+# Move Objects is a Studio-host service rather than a runtime catalog entry.
+# Studio's OutlinerInput uses it; --outliner-move exercises its authored drop
+# event and scene-move covers the scene contract. It cannot run in this fixture.

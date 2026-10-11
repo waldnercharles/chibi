@@ -538,16 +538,6 @@ TEST_CASE(field_functions)
     behavior_asset *linked = behavior_asset_link_libraries(a, catalog, 1, error, sizeof error);
     if (!linked) {
         fprintf(stderr, "field library: %s\n", error);
-        behavior_asset *probe = behavior_asset_clone(library);
-        fprintf(stderr, "PROBE clone=%p err=%s\n", (void *)probe, graph_last_error());
-        av_doc *d = av_doc_new();
-        fprintf(
-            stderr,
-            "PROBE value=%p err=%s\n",
-            (void *)behavior_asset_to_value(d, library),
-            graph_last_error()
-        );
-        av_doc_free(d);
     }
     REQUIRE(linked);
     p = compile(linked);

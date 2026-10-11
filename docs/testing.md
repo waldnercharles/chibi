@@ -376,10 +376,13 @@ the game's reflected packs, prototypes, objects and UI documents are indexed,
 calls climb through handlers and detect cycles, and a scene's UI pages bind to
 and rename with their scene. 72 assertions in 0.36 seconds with ASan/UBSan.
 
-`--asset-source` runs five cases on asset source text: completion of unset
+`--asset-source` runs six cases on asset source text: completion of unset
 properties, components, fields and values (in prototype and scene drafts),
 navigation into event payloads, reconciliation that keeps authored text, and
-parsing incomplete drafts. 505 assertions in 0.32 seconds with ASan/UBSan.
+parsing incomplete drafts. Canonical component identities resolve completion and
+hover, while an unknown qualifier does not resolve the component. The original
+five cases passed 505 assertions in 0.32 seconds with ASan/UBSan; the added
+identity case requires validation on this candidate.
 
 `--behavior-loader` runs two cases: the application loader prepares a content
 root's sources into the authoring world and a prototype preview's live world,
@@ -402,13 +405,14 @@ a placed node is an unsaved edit, and component access nodes keep their file
 entries wherever arrangement puts them. 26 assertions in 0.25 seconds with
 ASan/UBSan.
 
-`--fields` runs thirteen cases on field graphs compiled to field programs:
+`--fields` runs fourteen cases on field graphs compiled to field programs:
 deterministic cos/sin, atan2 and exponentials against golden bits, primitives
 that bake as they sample, parameters and compile errors, noise and
 composition, row evaluation matching scalar samples, repeated inputs,
 functions, multiple results, terrain chunks and connectivity, and streaming
-tiles that restore and retry failed slices. 3,308 assertions in 0.36 seconds
-with ASan/UBSan.
+tiles that restore and retry failed slices, plus linked-library publication
+and rollback. The original thirteen cases passed 3,308 assertions in 0.36 seconds
+with ASan/UBSan; the added publication case requires validation on this candidate.
 
 After `make test-build` and `make build-release BUILD_TARGET=chibi_ctl`,
 `python3 tools/test_policy.py tool validate-project` runs its cases against
@@ -995,3 +999,14 @@ The prepared-format-v5 state capture passes three compiler writer cases and 161
 assertions, seven separate runtime consumer cases and 396 assertions, and one
 process supervisor case with five assertions in 0.791 seconds. Its new state case
 checks retained banks across publication and restart, plus retrigger deadlines.
+
+The `--fields` selector also checks native field artifact publication with one
+pure scalar library, one dependent field and three single-cell evaluations.
+A valid library edit publishes a new field revision and value; an unsupported
+operation refuses the replacement and preserves the previous revision and value.
+This replaces the obsolete test that registered an executable library graph in
+the preview and edited a `.chibi` presentation as executable state. Preview
+executable libraries now require canonical source publication. The existing
+`FieldShapes.chibi` to `MaterialIslands.kdl` linkage gap remains: the native graph
+loader reads KDL documents and does not lower authored `.chibi` libraries into
+field artifacts. This check does not claim that linkage or source hot-apply works.

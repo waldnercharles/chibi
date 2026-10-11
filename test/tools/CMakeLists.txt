@@ -418,7 +418,8 @@ if(TARGET Chibi::project_preparation)
     # Preview graph layout and field programs use the game graph packs the
     # authoring documents build.
     if(TARGET chibi_source_runtime_consumer AND TARGET Chibi::graph_catalog)
-        target_sources(test_tools PRIVATE ../authoring/preview_layout.c ../runtime/fields.c)
+        target_sources(test_tools PRIVATE ../authoring/preview_layout.c ../runtime/fields.c
+            ../runtime/field_library.c)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PREVIEW_GRAPHS=1)
     endif()
 endif()

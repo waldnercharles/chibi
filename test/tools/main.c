@@ -256,6 +256,7 @@ void test_engine_clock();
 #ifdef CHIBI_TEST_PREVIEW_GRAPHS
 void test_preview_layout();
 void test_fields();
+void test_field_library();
 #endif
 
 /* Selectors of documents, files and runtime pieces with one suite each. */
@@ -364,6 +365,7 @@ static bool run_document_suites(int argc, char **argv)
     }
     if (selected(argc, argv, "--fields")) {
         test_fields();
+        test_field_library();
         return true;
     }
 #endif
@@ -403,16 +405,6 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
-    if (document_selector(argc, argv)) {
-        tool_init();
-        pu_display_time(true);
-        if (!run_document_suites(argc, argv)) {
-            fprintf(stderr, "%s is not built in this configuration\n", argv[1]);
-            return 2;
-        }
-        pu_print_stats();
-        return pu_test_failed() ? 1 : 0;
-    }
     const char *example = NULL;
 #ifdef CHIBI_TEST_RENDER_RUNTIME
     static const char *const examples[] = { "local_mesh_sampled",
@@ -428,6 +420,16 @@ int main(int argc, char **argv)
         }
     }
 #endif
+    if (document_selector(argc, argv)) {
+        tool_init();
+        pu_display_time(true);
+        if (!run_document_suites(argc, argv)) {
+            fprintf(stderr, "%s is not built in this configuration\n", argv[1]);
+            return 2;
+        }
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     bool tilemap = false, tilemap_project = false;
 #ifdef CHIBI_TEST_TILEMAP
     tilemap = argc == 2 && !strcmp(argv[1], "--tilemap");

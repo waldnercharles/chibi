@@ -387,7 +387,7 @@ TEST_CASE(asset_source_completes_components_fields_and_values)
             *draft = "version 1\nname \"Sandbox\"\n(array)entities {\n    - {\n"
                      "        name \"Player\"\n        prototype \"Player\"\n  "
                      "      components {\n"
-                     "            GameTransform x=-320.0 y\n        }\n   "
+                     "            GAME.GameTransform x=-320.0 y\n        }\n   "
                      " }\n}\n";
         int at = (int)(strstr(draft, "-320.0 y") - draft) + 8;
         source = asset_source_parse(draft);
@@ -519,10 +519,40 @@ TEST_CASE(asset_source_completes_components_fields_and_values)
     return true;
 }
 
+/* Scene files use the component descriptor's identity, independently of the
+ * synthetic pack that presents the native types in the graph palette. */
+TEST_CASE(asset_source_resolves_canonical_component_identities)
+{
+    REQUIRE(test_game_graph_packs_set());
+    const char *names[] = { "GAME.GameTransform", "Wrong.GameTransform" };
+    for (int i = 0; i < 2; i++) {
+        char draft[256];
+        snprintf(draft, sizeof draft, "components {\n %s x=1 y\n}\n", names[i]);
+        asset_source *source = asset_source_parse(draft);
+        int at = (int)(strstr(draft, "x=1 y") - draft) + 5;
+        asset_source_completions choices;
+        asset_source_complete(source, at, "Scene.kdl", NULL, 0, &choices);
+        REQUIRE(has_completion(&choices, "y") == (i == 0));
+        asset_source_completions_free(&choices);
+        asset_source_free(source);
+
+        snprintf(draft, sizeof draft, "components {\n %s x=1 y=2\n}\n", names[i]);
+        source = asset_source_parse(draft);
+        at = (int)(strstr(draft, "x=1") - draft) + 2;
+        char *hover = asset_source_hover(source, at);
+        REQUIRE(hover);
+        REQUIRE((strstr(hover, "x: float") != NULL) == (i == 0));
+        free(hover);
+        asset_source_free(source);
+    }
+    return true;
+}
+
 void test_asset_source()
 {
     pu_setup(NULL, test_game_graph_packs_clear);
     RUN_TEST_CASE(asset_source_completes_unset_properties);
+    RUN_TEST_CASE(asset_source_resolves_canonical_component_identities);
     RUN_TEST_CASE(asset_source_navigates_event_payloads);
     RUN_TEST_CASE(asset_source_reconcile_keeps_authored_text);
     RUN_TEST_CASE(asset_source_parses_incomplete_drafts);

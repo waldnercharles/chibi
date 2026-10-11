@@ -408,6 +408,23 @@ bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, floa
     return true;
 }
 
+bool engine_viewport_mouse_ray(const engine_viewport *viewport, CF_Ray3 *ray)
+{
+    CF_V2 mouse = { viewport->host_input.x, viewport->host_input.y };
+    CF_V2 size = viewport->image_size;
+    if (!viewport->perspective || size.x <= 0 || size.y <= 0 || mouse.x < 0 ||
+        mouse.y < 0 || mouse.x >= size.x || mouse.y >= size.y) {
+        return false;
+    }
+    render_scene3d_camera camera;
+    engine_viewport_get_camera3d(viewport, &camera);
+    *ray = render_scene3d_ray(
+        &camera,
+        (CF_V2){ 2 * mouse.x / size.x - 1, 1 - 2 * mouse.y / size.y }
+    );
+    return true;
+}
+
 static void draw_viewport_canvas(engine_viewport *viewport)
 {
     cf_draw_push();

@@ -310,6 +310,39 @@ silent. Pausing, changing the source or resetting the session clears the
 measurements. Headless scenarios have no playback samples and return zeros.
 Keep capture state and visual responses separate from deterministic game rules.
 
+## External URLs and pointer picking
+
+`open_url("https://example.org/help")` requests an external browser page.
+`request := await open_url(Url: "https://example.org/help")` also returns
+`request.Accepted`. This means the enabled host queued its own copy of the URL,
+not that a browser opened or loaded it. URLs must start with lowercase
+`http://` or `https://`, have a nonempty host, and contain no credentials,
+whitespace, control characters or backslashes. Other protocols are rejected.
+Each request replaces the preceding request, including an invalid request.
+
+The interactive player opts in. Headless tooling, hidden players and players
+with `--frames` reject requests. Native players ask the OS to open the URL and
+print an error if it rejects the handoff. Browser players consume the recent
+trusted input's transient activation, even when a quick click or keyup finished
+before the authored frame. If the request precedes activation, it waits only
+for that same input's release.
+Popups use `noopener,noreferrer`. Browser blocking is not reported as success.
+The request expires after five seconds and cancels on a new keydown or
+pointerdown, pause, scene change, page hide or shutdown. An expired request
+never borrows a later gesture. Call `cancel_open_url()` when changing modes or
+abandoning a provider choice.
+Opening a provider neither captures nor authorizes access to its audio.
+
+`get_pointer_ray()` returns `Active`, `Origin` and `Direction` in world space.
+The player samples the ray through the displayed 3D image before the fixed
+step. It is inactive outside that image, when input is unfocused or captured by
+UI, and in hosts without a 3D pointer. Authored hit testing can intersect the
+ray with a plane or pass it to `raycast_3d`. Input recordings retain the ray;
+scenario keys can store `pointer { origin x=0 y=0 z=10; direction x=0 y=0 z=-1; }`.
+Controller `input_timeline` entries accept the same `pointer` object with
+`origin` and `direction` objects containing `x`, `y`, `z`. Omitting `pointer`
+holds the previous ray; setting it to JSON `null` clears it.
+
 ## GPU particle fields
 
 Put `ParticleField3D`, `Geometry3D` and `Shader` on one transformed entity in a

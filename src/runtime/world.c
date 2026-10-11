@@ -21,6 +21,7 @@ struct world
     execution_log_service log;
     engine_modules modules;
     scene_flow *scenes;
+    url_requests *urls;
     engine *runtime;
 };
 static void boundary(void *context, double now, double delta)
@@ -132,6 +133,7 @@ world *world_new(const world_options *options, char *error, size_t size)
     w->modules.rendering = (options->modules & WORLD_VISUAL_MOTION) != 0;
     w->modules.save = save_new();
     w->scenes = scene_flow_new();
+    w->urls = url_requests_new();
     if (options->modules & WORLD_AUDIO) {
         w->modules.audio = audio_new();
     }
@@ -165,6 +167,7 @@ world *world_new(const world_options *options, char *error, size_t size)
     bind(w, "game.entities", w->modules.entities);
     bind(w, "game.save", w->modules.save);
     bind(w, "game.scenes", w->scenes);
+    bind(w, URL_SERVICE, w->urls);
     bind(w, "game.audio", w->modules.audio);
     bind(w, "game.ui", w->modules.ui);
     bind(w, "game.particles", w->modules.particles);
@@ -220,6 +223,7 @@ void world_free(world *w)
     }
     save_free(w->modules.save);
     scene_flow_free(w->scenes);
+    url_requests_free(w->urls);
     if (w->owns_ecs) {
         ecs_world_free(w->ecs);
     }
@@ -253,6 +257,11 @@ material_fields *world_fields(const world *w)
 scene_flow *world_scenes(const world *w)
 {
     return w->scenes;
+}
+
+url_requests *world_urls(const world *w)
+{
+    return w->urls;
 }
 
 const engine_modules *world_modules(const world *w)

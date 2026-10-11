@@ -283,6 +283,54 @@ static void frame(engine_viewport *viewport, int width, int height, int *drawn_w
     engine_viewport_pixel_size(viewport, drawn_width, drawn_height);
 }
 
+TEST_CASE(pointer_ray_matches_the_displayed_3d_image)
+{
+    camera_viewport = engine_viewport_new(UI_SIDE, UI_SIDE);
+    REQUIRE(camera_viewport);
+    engine_viewport_set_perspective(camera_viewport, true);
+    engine_viewport_set_view(
+        camera_viewport,
+        &(engine_viewport_view){
+            .width = 16,
+            .height = 9,
+            .lens = { .eye = { 7, 4, 20 }, .forward = { 0, 0, -1 }, .up = { 0, 1, 0 } },
+        }
+    );
+    int width, height;
+    frame(camera_viewport, UI_SIDE, UI_SIDE, &width, &height);
+    engine_viewport_host_input input = { .width = UI_SIDE,
+                                         .height = UI_SIDE,
+                                         .x = 40,
+                                         .y = 24 };
+    engine_viewport_set_host_input(camera_viewport, &input);
+    CF_Ray3 ray;
+    REQUIRE(engine_viewport_mouse_ray(camera_viewport, &ray));
+    REQUIRE(ray.d.z < 0);
+    float t = (5 - ray.p.z) / ray.d.z;
+    REQUIRE(t > 0);
+    CF_V3 hit = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, t));
+    render_scene3d_camera camera;
+    engine_viewport_get_camera3d(camera_viewport, &camera);
+    CF_V3 projected = render_scene3d_project(&camera, hit);
+    REQUIRE(fabsf(projected.x - 0.25f) < 0.0001f);
+    REQUIRE(fabsf(projected.y - 0.25f) < 0.0001f);
+    input.x = -1;
+    engine_viewport_set_host_input(camera_viewport, &input);
+    REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
+    input.x = UI_SIDE;
+    engine_viewport_set_host_input(camera_viewport, &input);
+    REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
+    input.x = 32;
+    input.y = UI_SIDE;
+    engine_viewport_set_host_input(camera_viewport, &input);
+    REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
+    input.y = 32;
+    engine_viewport_set_host_input(camera_viewport, &input);
+    engine_viewport_set_perspective(camera_viewport, false);
+    REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
+    return true;
+}
+
 TEST_CASE(first_request_replaces_the_placeholder_at_once)
 {
     engine_viewport *viewport = engine_viewport_new(640, 360);
@@ -338,6 +386,7 @@ void test_render_viewport_resize()
     pu_setup(NULL, cleanup_camera);
     RUN_TEST_CASE(explicit_camera_preserves_authored_edges_across_aspects);
     RUN_TEST_CASE(fitted_camera_keeps_a_valid_wide_angle);
+    RUN_TEST_CASE(pointer_ray_matches_the_displayed_3d_image);
     pu_setup(NULL, cleanup_ui);
     RUN_TEST_CASE(transparent_ui_presents_source_over_and_exports_straight_alpha);
     pu_clear_setup();

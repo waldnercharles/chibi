@@ -24,6 +24,7 @@
 #include "runtime/state_definition.h"
 #include "runtime/text_definition.h"
 #include "runtime/ui_definition.h"
+#include "runtime/url_definition.h"
 #include "runtime/vectors_definition.h"
 #include "runtime/visibility_definition.h"
 #include "runtime/visual_motion_definition.h"
@@ -69,6 +70,7 @@ native_capabilities *host_native_default_catalog_new(
     apush(selected, SCENE_DEFINITION_PACK);
     apush(selected, PARTICLES_DEFINITION_PACK);
     apush(selected, UI_DEFINITION_PACK);
+    apush(selected, URL_DEFINITION_PACK);
     apush(selected, PHYSICS_DEFINITION_PACK);
     apush(selected, PHYSICS3D_DEFINITION_PACK);
     apush(selected, MATERIAL_DEFINITION_PACK);

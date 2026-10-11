@@ -129,7 +129,11 @@ list(APPEND CHIBI_SDK_TARGETS chibi_platform chibi_ui_host chibi_renderer)
 # The deployed player links only prepared runtime packages. The web SDK
 # builds its browser player only on request, outside the SDK package.
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
-    add_executable(chibi-player "${CHIBI_SDK_ROOT}/src/host/player_main.c")
+    add_executable(chibi-player "${CHIBI_SDK_ROOT}/src/host/player_main.c"
+        "${CHIBI_SDK_ROOT}/src/host/player_url.c")
+    set(player_private "${CMAKE_CURRENT_BINARY_DIR}/private/player")
+    configure_file("${CHIBI_SDK_ROOT}/src/host/player_url.h" "${player_private}/host/player_url.h" COPYONLY)
+    target_include_directories(chibi-player PRIVATE "${player_private}")
     target_link_libraries(chibi-player PRIVATE Chibi::render Chibi::player
         Chibi::native_prepared Chibi::host_native_default)
     set_target_properties(chibi-player PROPERTIES LINKER_LANGUAGE CXX)

@@ -15,6 +15,7 @@
 #include "runtime/save.h"
 #include "runtime/scenes/physics3d.h"
 #include "runtime/shaders/prepared.h"
+#include "runtime/url.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -39,6 +40,7 @@ static particles *test_particles, *expected_particles;
 static entities *test_entities;
 static physics3d *test_physics3d;
 static save *test_save;
+static url_requests *test_urls;
 static char save_directory[128];
 static engine_input *input_service;
 static declared_components *declared;
@@ -57,6 +59,10 @@ static void cleanup()
     prepared = NULL;
     authoring_language_catalog_free(catalog);
     catalog = NULL;
+    if (test_urls) {
+        url_requests_free(test_urls);
+    }
+    test_urls = NULL;
     if (test_save) {
         save_free(test_save);
     }
@@ -166,6 +172,9 @@ static bool prepare(const char *text, behavior_backend backend)
     service_binding *services = NULL;
     if (test_save) {
         apush(services, ((service_binding){ "game.save", test_save }));
+    }
+    if (test_urls) {
+        apush(services, ((service_binding){ URL_SERVICE, test_urls }));
     }
     if (test_particles) {
         apush(services, ((service_binding){ "game.particles", test_particles }));
@@ -1074,6 +1083,148 @@ TEST_CASE(project_saves_reopen_isolate_names_and_respect_override)
     return true;
 }
 
+TEST_CASE(url_requests_validate_copy_replace_and_cancel)
+{
+    test_urls = url_requests_new();
+    REQUIRE(!url_requests_open(test_urls, "https://example.org"));
+    url_requests_enable(test_urls, true);
+    const char *invalid[] = {
+        NULL,
+        "",
+        "javascript:alert(1)",
+        "file:///tmp/page.html",
+        "//example.org",
+        "https://",
+        "https:///path",
+        "http://?page",
+        "https://:443/",
+        "https://example.org:",
+        "https://user@example.org/",
+        "https://example.org/\n",
+        "https://example.org/a b",
+        "https://example.org\\path",
+    };
+    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
+        REQUIRE(!url_requests_open(test_urls, invalid[i]));
+        char *url;
+        REQUIRE(url_requests_take(test_urls, &url) && !url);
+    }
+    const char *accepted[] = { "https://example.org/path?q=a%20b#part",
+                               "http://localhost:8080/",
+                               "https://[::1]/" };
+    for (int i = 0; i < (int)(sizeof accepted / sizeof *accepted); i++) {
+        char buffer[128];
+        snprintf(buffer, sizeof buffer, "%s", accepted[i]);
+        REQUIRE(url_requests_open(test_urls, buffer));
+        memset(buffer, 0, sizeof buffer);
+        char *url;
+        REQUIRE(url_requests_take(test_urls, &url) && url);
+        REQUIRE(!strcmp(url, accepted[i]));
+        free(url);
+        REQUIRE(!url_requests_take(test_urls, &url) && !url);
+    }
+    REQUIRE(url_requests_open(test_urls, "https://example.org/first"));
+    REQUIRE(url_requests_open(test_urls, "https://example.org/second"));
+    char *url;
+    REQUIRE(url_requests_take(test_urls, &url) && url);
+    /* Ownership transfers, so retiring the runtime cannot invalidate the host. */
+    url_requests_free(test_urls);
+    test_urls = url_requests_new();
+    REQUIRE(!strcmp(url, "https://example.org/second"));
+    free(url);
+    url_requests_enable(test_urls, true);
+    REQUIRE(url_requests_open(test_urls, "https://example.org/"));
+    url_requests_cancel(test_urls);
+    REQUIRE(url_requests_take(test_urls, &url) && !url);
+    REQUIRE(url_requests_open(test_urls, "https://example.org/"));
+    url_requests_enable(test_urls, false);
+    REQUIRE(url_requests_take(test_urls, &url) && !url);
+    REQUIRE(!url_requests_open(test_urls, "https://example.org/"));
+    return true;
+}
+
+TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation)
+{
+    const char
+        *text = "behavior Links { state done:bool=true; state mode:int=0; "
+                "on Tick { if mode==0 { result := await "
+                "open_url(Url:\"https://example.org/help\"); "
+                "done=result.Accepted; } "
+                "if mode==1 { open_url(\"http://localhost/help\"); } "
+                "if mode==2 { cancel_open_url(); } } }";
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t tick = execution_module_event(prepared->module, "Tick"),
+                 mode = state_id("mode");
+        REQUIRE(tick && mode && done_id);
+        instance = execution_program_attach(program, 0);
+        REQUIRE(instance);
+        retire_producer();
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(!execution_instance_state(instance, done_id)->b);
+        test_urls = url_requests_new();
+        REQUIRE(execution_program_bind_service(program, URL_SERVICE, test_urls) == 0);
+        url_requests_enable(test_urls, true);
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(execution_instance_state(instance, done_id)->b);
+        char *url;
+        REQUIRE(url_requests_take(test_urls, &url) && url);
+        REQUIRE(!strcmp(url, "https://example.org/help"));
+        free(url);
+        REQUIRE(
+            execution_instance_set_state(instance, mode, (pin_value){ .type = PIN_I32, .i = 1 }) == 0
+        );
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(
+            execution_instance_set_state(instance, mode, (pin_value){ .type = PIN_I32, .i = 2 }) == 0
+        );
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(url_requests_take(test_urls, &url) && !url);
+        cleanup();
+    }
+    return true;
+}
+
+TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default)
+{
+    const char *text = "behavior Pointer { state active:bool=true; "
+                       "state origin:struct<\"CF_V3\">={}; state "
+                       "direction:struct<\"CF_V3\">={}; "
+                       "on Tick { ray:=get_pointer_ray(); active=ray.Active; "
+                       "origin=ray.Origin; direction=ray.Direction; } }";
+    for (int backend = 0; backend < 2; backend++) {
+        test_world = ecs_world_new();
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t tick = execution_module_event(prepared->module, "Tick"),
+                 active = state_id("active"), origin = state_id("origin"),
+                 direction = state_id("direction");
+        instance = execution_program_attach(program, 0);
+        REQUIRE(instance && tick && active && origin && direction);
+        retire_producer();
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(!execution_instance_state(instance, active)->b);
+        input_service = engine_input_new(test_world, NULL);
+        REQUIRE(execution_program_bind_service(program, INPUT_SERVICE, input_service) == 0);
+        input_pointer_ray ray = { .origin = { 2, 3, 4 },
+                                  .direction = { 0, 0, -1 },
+                                  .active = true };
+        engine_input_pointer(input_service, ray);
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(execution_instance_state(instance, active)->b);
+        engine_input_clear(input_service);
+        REQUIRE(
+            !memcmp(execution_instance_state(instance, origin)->ptr, &ray.origin, sizeof(CF_V3))
+        );
+        REQUIRE(
+            !memcmp(execution_instance_state(instance, direction)->ptr, &ray.direction, sizeof(CF_V3))
+        );
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        REQUIRE(!execution_instance_state(instance, active)->b);
+        cleanup();
+    }
+    return true;
+}
+
 void test_source_native_features()
 {
     pu_setup(NULL, cleanup);
@@ -1083,6 +1234,8 @@ void test_source_native_features()
     RUN_TEST_CASE(source_native_saved_numbers_preserve_values_and_defaults);
     RUN_TEST_CASE(saved_numbers_reject_malformed_text_without_mutation);
     RUN_TEST_CASE(project_saves_reopen_isolate_names_and_respect_override);
+    RUN_TEST_CASE(url_requests_validate_copy_replace_and_cancel);
+    RUN_TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation);
     pu_clear_setup();
 }
 
@@ -1095,6 +1248,7 @@ void test_source_native_numeric_queries()
     RUN_TEST_CASE(source_native_physics3d_queries_read_colliders);
     RUN_TEST_CASE(source_tilemap_queries_use_live_authored_cells);
     RUN_TEST_CASE(source_controller_connected_reads_live_slots);
+    RUN_TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default);
     pu_clear_setup();
 }
 

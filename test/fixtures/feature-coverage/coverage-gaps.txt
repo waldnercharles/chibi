@@ -61,3 +61,8 @@ function Count Matching Entities
 
 # Engine internals that scenes don't author directly.
 component Drive
+
+# External browsing requires an opted-in interactive host and real user input.
+# Source-native-features tests the authored requests without launching websites.
+function Open URL
+function Cancel Open URL

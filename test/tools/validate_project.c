@@ -1536,6 +1536,56 @@ TEST_CASE(scenarios_hold_controller_slots)
     return true;
 }
 
+TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls)
+{
+    const char *folders[] = { "game/content/prototypes", "game/content/behaviors" };
+    for (int i = 0; i < 2; i++) {
+        char directory[256];
+        path(directory, sizeof directory, folders[i]);
+        REQUIRE(mkdir(directory, 0755) == 0 || errno == EEXIST);
+    }
+    write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n (object)Transform\n}\n");
+    write_file(
+        "game/content/behaviors/Pointer.chibi",
+        "behavior Pointer { on Tick {\n"
+        " ray := get_pointer_ray()\n x := -1.0\n"
+        " if ray.Active { x = ray.Origin.x + ray.Direction.x }\n"
+        " request := await open_url(\"https://example.org/\")\n"
+        " if request.Accepted { x = 10000.0 }\n"
+        " self.Transform = vec2(x, 0)\n } }\n"
+    );
+    write_file(
+        "game/content/scenes/Start.kdl",
+        "version 1\nname \"Start\"\n(array)entities {\n"
+        " - name=\"Dot\" prototype=\"Dot\" {\n"
+        " (array)behaviors \"Pointer\"\n }\n}\n"
+    );
+    const char *base = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
+                       "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":3,"
+                       "\"input_timeline\":[{\"frame\":0,\"input\":{"
+                       "\"pointer\":%s}}%s]}";
+    const char *ray = "{\"origin\":{\"x\":6,\"y\":2,\"z\":10},"
+                      "\"direction\":{\"x\":1,\"y\":0,\"z\":-1}}";
+    char request[768];
+    snprintf(request, sizeof request, base, ray, "");
+    REQUIRE(ctl(true, request) == 0 && snapshot_x() == 7);
+    snprintf(request, sizeof request, base, ray, ",{\"frame\":2,\"input\":{\"pointer\":null}}");
+    REQUIRE(ctl(true, request) == 0 && snapshot_x() == -1);
+    const char *invalid[] = {
+        "{\"origin\":{\"x\":0,\"y\":0,\"z\":0},\"direction\":{\"x\":0,\"y\":0,"
+        "\"z\":0}}",
+        "{\"origin\":{\"x\":0,\"y\":0},\"direction\":{\"x\":0,\"y\":0,\"z\":-1}"
+        "}",
+        "{\"origin\":{\"x\":0,\"y\":0,\"z\":0},\"direction\":{\"x\":0,\"y\":0,"
+        "\"z\":1e100}}",
+    };
+    for (int i = 0; i < 3; i++) {
+        snprintf(request, sizeof request, base, invalid[i], "");
+        REQUIRE(ctl(true, request) != 0 && strstr(failure(), "pointer"));
+    }
+    return true;
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -1567,6 +1617,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(prototype_children_come_with_their_instance);
     RUN_TEST_CASE(scene_joints_name_their_other_by_path);
     RUN_TEST_CASE(scenarios_hold_input_actions);
+    RUN_TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls);
     RUN_TEST_CASE(scenarios_hold_controller_slots);
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     RUN_TEST_CASE(unit_mismatches_are_warnings);

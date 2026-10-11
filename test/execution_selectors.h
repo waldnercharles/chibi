@@ -45,3 +45,6 @@ CHIBI_GPU_SELECTOR("--radiance-surface")
  * cache in a hidden 128x128 app, with readback. */
 CHIBI_GPU_SELECTOR("--radiance-horizons4")
 CHIBI_GPU_SELECTOR("--radiance-horizons8")
+/* The material raster's graph materials and fluids, the light HRC gives
+ * fluids, and crystal reflections in a hidden 128x128 app, with readback. */
+CHIBI_GPU_SELECTOR("--material-pixels")

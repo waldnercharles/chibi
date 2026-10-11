@@ -1,6 +1,7 @@
 #include "render/radiance.h"
 
 #include "hidden_app.h"
+#include "hrc_cases.h"
 #include "render/fullscreen.h"
 #include "render/gpu_timing.h"
 #include "render/material_raster.h"
@@ -253,17 +254,6 @@ static render_radiance *radiance;
 static CF_Canvas canvas;
 static CF_Pixel pixels[PIXELS];
 
-/* The lighting the transport cases were calibrated with, whatever defaults
- * authors start from: the finest grid, no unlit color and bright emitters. */
-static GameHRC2D reference_lighting()
-{
-    GameHRC2D lighting = game_hrc2d_defaults();
-    lighting.resolution = 1;
-    lighting.ambient = 0;
-    lighting.intensity = 7.5f;
-    return lighting;
-}
-
 static void setup()
 {
     raster = render_material_raster_new();
@@ -272,7 +262,7 @@ static void setup()
     assert(raster && radiance && canvas.id);
     assert(render_material_raster_resize(raster, SIDE, SIDE));
     assert(render_radiance_resize(radiance, SIDE, SIDE));
-    assert(render_radiance_set_lighting(radiance, reference_lighting()));
+    assert(render_radiance_set_lighting(radiance, test_reference_lighting()));
 }
 
 static void teardown()
@@ -282,41 +272,9 @@ static void teardown()
     render_material_raster_free(raster);
 }
 
-/* A green disc with a red border, emitting both, at world (-28, 0). */
-static render_material_entity emitter()
-{
-    return (render_material_entity){
-        .inv_rot = { 1, 0, 0, 1 },
-        .pos = { -28, 0 },
-        .extent = { 10, 10 },
-        .shape_type = RENDER_SHAPE_CIRCLE,
-        .radius = 8,
-        .aa = 1,
-        .border_thickness = 2,
-        .scene = { 0, 1, 0, 1 },
-        .emission = { 0, .08f, 0, 1 },
-        .border_scene = { 1, 0, 0, 1 },
-        .border_emission = { .2f, 0, 0, 1 },
-    };
-}
-
-/* An opaque black wall through the origin, across the whole view's height. */
-static render_material_entity wall()
-{
-    return (render_material_entity){
-        .inv_rot = { 1, 0, 0, 1 },
-        .extent = { 5, 66 },
-        .shape_type = RENDER_SHAPE_BOX,
-        .aa = 1,
-        .points = { 4, 64 },
-        .scene = { 0, 0, 0, 1 },
-        .absorption = { 1, 1, 1, 1 },
-    };
-}
-
 static render_material_entity wall_with(float absorption, float albedo)
 {
-    render_material_entity entity = wall();
+    render_material_entity entity = test_wall();
     for (int i = 0; i < 3; i++) {
         entity.absorption[i] = absorption;
         entity.albedo[i] = albedo;
@@ -339,17 +297,6 @@ static bool resize_targets(int size, CF_PixelFormat format)
     canvas = cf_make_canvas(params);
     return canvas.id && render_material_raster_resize(raster, size, size) &&
            render_radiance_resize(radiance, size, size);
-}
-
-/* `world` units square around the origin. */
-static render_view_2d centered(float world)
-{
-    return (render_view_2d){ .min_x = -world * .5f,
-                             .max_y = world * .5f,
-                             .width = world,
-                             .height = world,
-                             .crop_max_u = 1,
-                             .crop_max_v = 1 };
 }
 
 /* Lights `view` into size x size pixels of the canvas for `frames` frames,
@@ -388,7 +335,7 @@ static bool read_pixels(int size)
 static bool solve(const render_material_entity *entities, int count, int size, int frames)
 {
     render_radiance_reset(radiance);
-    return draw(entities, count, size, centered((float)size), frames) &&
+    return draw(entities, count, size, test_centered((float)size), frames) &&
            read_pixels(size);
 }
 
@@ -427,13 +374,13 @@ static float texel(const uint16_t *halves, int x, int channel)
  * and its material reaches HRC as emission, absorption and a flat surface. */
 TEST_CASE(emitters_light_open_space_through_their_materials)
 {
-    render_material_entity light = emitter();
+    render_material_entity light = test_emitter();
     REQUIRE(solve(&light, 1, SIDE, 4));
     CF_Pixel center = pixels[SIDE / 2 * SIDE + 36],
              border = pixels[SIDE / 2 * SIDE + 43];
     REQUIRE(center.colors.g > center.colors.r && center.colors.g > 100);
     REQUIRE(border.colors.r > border.colors.g);
-    render_material_entity scene[] = { emitter(), wall() };
+    render_material_entity scene[] = { test_emitter(), test_wall() };
     REQUIRE(solve(scene, 2, SIDE, 4));
     static uint16_t halves[PIXELS * 4];
     render_material_textures textures = render_material_raster_textures(raster);
@@ -452,13 +399,13 @@ TEST_CASE(emitters_light_open_space_through_their_materials)
 
 TEST_CASE(walls_block_light_by_their_absorption)
 {
-    render_material_entity light = emitter();
+    render_material_entity light = test_emitter();
     REQUIRE(solve(&light, 1, SIDE, 4));
     double open = receiver_light();
-    render_material_entity opaque[] = { emitter(), wall() };
+    render_material_entity opaque[] = { test_emitter(), test_wall() };
     REQUIRE(solve(opaque, 2, SIDE, 4));
     double blocked = receiver_light();
-    render_material_entity finite[] = { emitter(), wall_with(.2f, 0) };
+    render_material_entity finite[] = { test_emitter(), wall_with(.2f, 0) };
     REQUIRE(solve(finite, 2, SIDE, 4));
     double dimmed = receiver_light();
     REQUIRE(open > 3 && blocked < open * .8);
@@ -468,7 +415,7 @@ TEST_CASE(walls_block_light_by_their_absorption)
 
 TEST_CASE(bounced_light_gathers_over_frames)
 {
-    render_material_entity scene[] = { emitter(), wall_with(.2f, .8f) };
+    render_material_entity scene[] = { test_emitter(), wall_with(.2f, .8f) };
     REQUIRE(solve(scene, 2, SIDE, 1));
     double first = receiver_light();
     REQUIRE(solve(scene, 2, SIDE, 8));
@@ -480,7 +427,7 @@ TEST_CASE(bounced_light_gathers_over_frames)
  * unattenuated light source on every feedback pass. */
 TEST_CASE(transparent_reflective_edges_do_not_feed_back)
 {
-    render_material_entity glass[] = { emitter(), wall_with(.0005f, .9f) };
+    render_material_entity glass[] = { test_emitter(), wall_with(.0005f, .9f) };
     REQUIRE(solve(glass, 2, SIDE, 1));
     double first = receiver_light();
     REQUIRE(solve(glass, 2, SIDE, 120));
@@ -492,10 +439,10 @@ TEST_CASE(transparent_reflective_edges_do_not_feed_back)
 TEST_CASE(reset_drops_occluder_history)
 {
     static CF_Pixel open[PIXELS];
-    render_material_entity light = emitter();
+    render_material_entity light = test_emitter();
     REQUIRE(solve(&light, 1, SIDE, 4));
     memcpy(open, pixels, sizeof open);
-    render_material_entity scene[] = { emitter(), wall() };
+    render_material_entity scene[] = { test_emitter(), test_wall() };
     REQUIRE(solve(scene, 2, SIDE, 4));
     REQUIRE(solve(&light, 1, SIDE, 4));
     REQUIRE(pixels_match(open, pixels, PIXELS));
@@ -534,7 +481,7 @@ TEST_CASE(reused_capacity_matches_a_fresh_grid)
 {
     static CF_Pixel reused[64 * 64];
     REQUIRE(resize_targets(64, LDR));
-    render_material_entity light = emitter();
+    render_material_entity light = test_emitter();
     light.pos[0] = 0;
     const float scales[] = { .5f, .25f, .5f, .976883f };
     for (int i = 0; i < 4; i++) {
@@ -546,7 +493,7 @@ TEST_CASE(reused_capacity_matches_a_fresh_grid)
         render_radiance *shared = radiance;
         radiance = render_radiance_new();
         bool fresh = radiance &&
-                     render_radiance_set_lighting(radiance, reference_lighting()) &&
+                     render_radiance_set_lighting(radiance, test_reference_lighting()) &&
                      render_radiance_set_settings(radiance, settings) &&
                      render_radiance_resize(radiance, 64, 64) &&
                      solve(&light, 1, 64, 4);
@@ -583,7 +530,7 @@ static double mean_difference(const CF_Pixel *a, const CF_Pixel *b)
 /* Lighting without fog, so the receiver measures transport alone. */
 static GameHRC2D clear_lighting()
 {
-    GameHRC2D lighting = reference_lighting();
+    GameHRC2D lighting = test_reference_lighting();
     lighting.adaptive = false;
     lighting.fog = 0;
     return lighting;
@@ -594,8 +541,8 @@ static GameHRC2D clear_lighting()
 TEST_CASE(split_luminance_stays_close_to_full_color)
 {
     static CF_Pixel full[PIXELS];
-    render_material_entity open[] = { emitter(), receiver(.2f) };
-    render_material_entity blocked[] = { emitter(), wall(), receiver(.2f) };
+    render_material_entity open[] = { test_emitter(), receiver(.2f) };
+    render_material_entity blocked[] = { test_emitter(), test_wall(), receiver(.2f) };
     GameHRC2D lighting = clear_lighting();
     REQUIRE(render_radiance_set_lighting(radiance, lighting));
     REQUIRE(solve(open, 2, SIDE, 8));
@@ -623,7 +570,7 @@ TEST_CASE(fractional_cells_absorb_as_whole_ones)
     render_material_entity haze = wall_with(.4f, 0);
     haze.points[0] = 1;
     haze.extent[0] = 2;
-    render_material_entity scene[] = { emitter(), haze, receiver(0) };
+    render_material_entity scene[] = { test_emitter(), haze, receiver(0) };
     GameHRC2D lighting = clear_lighting();
     lighting.feedback = false;
     lighting.resolution = .5f;
@@ -640,7 +587,7 @@ TEST_CASE(fractional_cells_absorb_as_whole_ones)
 /* An emitter smaller than a pixel. */
 static render_material_entity spark()
 {
-    render_material_entity entity = emitter();
+    render_material_entity entity = test_emitter();
     entity.radius = .8f;
     entity.extent[0] = entity.extent[1] = 2;
     entity.border_thickness = .5f;
@@ -1129,7 +1076,7 @@ static bool read_hdr(int size)
 static bool solve_hdr(const render_material_entity *entities, int count, int frames)
 {
     render_radiance_reset(radiance);
-    return draw(entities, count, SIDE, centered(SIDE), frames) && read_hdr(SIDE);
+    return draw(entities, count, SIDE, test_centered(SIDE), frames) && read_hdr(SIDE);
 }
 
 /* Registers a relief material and returns its id for an entity's
@@ -1195,7 +1142,7 @@ TEST_CASE(silhouettes_light_from_their_lit_side)
         pieces[i].points[1] = 20;
         pieces[i].reserved[2] = 2;
     }
-    pieces[2] = emitter();
+    pieces[2] = test_emitter();
     pieces[2].pos[0] = -38;
     for (int levels = 1; levels <= 3; levels += 2) {
         GameHRC2D lighting = clear_lighting();
@@ -1222,7 +1169,7 @@ TEST_CASE(relief_facing_the_light_shines_brighter)
     const float tilts[] = { -.75f, 0, .75f };
     int face[3];
     for (int i = 0; i < 3; i++) {
-        render_material_entity scene[] = { emitter(), lit_wall(6, 1.5f) };
+        render_material_entity scene[] = { test_emitter(), lit_wall(6, 1.5f) };
         scene[1].reserved[0] = relief_material(
             names[i],
             (test_relief){ .tilt = { tilts[i] }, .roughness = .25f }
@@ -1251,7 +1198,7 @@ TEST_CASE(surface_light_reaches_a_world_space_depth)
     int depth[2] = { 0 };
     for (int zoom = 0; zoom < 2; zoom++) {
         float k = zoom ? 2.f : 1.f;
-        render_material_entity scene[] = { emitter(), lit_wall(40 * k, .4f) };
+        render_material_entity scene[] = { test_emitter(), lit_wall(40 * k, .4f) };
         scene[0].pos[0] = -55 * k;
         scene[0].radius *= k;
         scene[0].border_thickness *= k;
@@ -1260,7 +1207,7 @@ TEST_CASE(surface_light_reaches_a_world_space_depth)
         scene[1].points[1] *= k;
         scene[1].extent[1] *= k;
         render_radiance_reset(radiance);
-        REQUIRE(draw(scene, 2, SIDE, centered(SIDE * k), 12) && read_pixels(SIDE));
+        REQUIRE(draw(scene, 2, SIDE, test_centered(SIDE * k), 12) && read_pixels(SIDE));
         int face = green_at(face_x + 1);
         REQUIRE(face > 20);
         for (int x = face_x + 1; x < SIDE && !depth[zoom]; x++) {
@@ -1282,7 +1229,7 @@ TEST_CASE(relief_below_a_ceiling_faces_down_to_the_light)
     const char *names[] = { "Relief facing down", "Relief facing up" };
     int below[2];
     for (int i = 0; i < 2; i++) {
-        render_material_entity scene[] = { emitter(), lit_wall(64, 1.5f) };
+        render_material_entity scene[] = { test_emitter(), lit_wall(64, 1.5f) };
         scene[0].pos[0] = 0;
         scene[0].pos[1] = -30;
         scene[1].pos[1] = 20;
@@ -1321,8 +1268,8 @@ static bool center_red_blue(float result[2])
  * between the red one and the lit wall. */
 static void opposing_lights(render_material_entity scene[4])
 {
-    scene[0] = emitter();
-    scene[1] = emitter();
+    scene[0] = test_emitter();
+    scene[1] = test_emitter();
     for (int i = 0; i < 2; i++) {
         scene[i].pos[0] = i ? 28 : -28;
         scene[i].radius = 4;
@@ -1337,7 +1284,7 @@ static void opposing_lights(render_material_entity scene[4])
     scene[2] = lit_wall(6, 1.5f);
     scene[2].points[1] = 18;
     scene[2].extent[1] = 20;
-    scene[3] = wall();
+    scene[3] = test_wall();
     scene[3].pos[0] = -16;
     scene[3].points[0] = 2;
     scene[3].extent[0] = 4;
@@ -1429,7 +1376,7 @@ TEST_CASE(surface_light_history_follows_its_hysteresis)
     lighting.tone_mapping = GAME_HRC_TONE_AGX;
     lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
     lighting.radiance_hysteresis = 1;
-    render_material_entity scene[] = { emitter(), lit_wall(6, 1.5f) };
+    render_material_entity scene[] = { test_emitter(), lit_wall(6, 1.5f) };
     scene[0].pos[0] = -26;
     REQUIRE(render_radiance_set_lighting(radiance, lighting));
     REQUIRE(solve_hdr(scene, 2, 12));
@@ -1439,9 +1386,9 @@ TEST_CASE(surface_light_history_follows_its_hysteresis)
     scene[0].pos[0] = -28;
     REQUIRE(solve_hdr(scene, 2, 20));
     scene[0].pos[0] = -26;
-    REQUIRE(draw(scene, 2, SIDE, centered(SIDE), 1) && read_hdr(SIDE));
+    REQUIRE(draw(scene, 2, SIDE, test_centered(SIDE), 1) && read_hdr(SIDE));
     memcpy(changed, hdr, sizeof changed);
-    REQUIRE(draw(scene, 2, SIDE, centered(SIDE), 20) && read_hdr(SIDE));
+    REQUIRE(draw(scene, 2, SIDE, test_centered(SIDE), 20) && read_hdr(SIDE));
     memcpy(settled, hdr, sizeof settled);
     REQUIRE(solve_hdr(scene, 2, 1));
     float first = face_difference(changed, instant);
@@ -1513,7 +1460,7 @@ static bool built_horizons_once(int size, GameHRCShadowMode mode)
 /* A lit receiver with a raised ridge across it, lit from the left. */
 static void ridge_scene(render_material_entity scene[3], float ridge)
 {
-    scene[0] = emitter();
+    scene[0] = test_emitter();
     scene[0].border_thickness = 0;
     scene[1] = lit_wall(6, 1.5f);
     scene[2] = lit_wall(1, 1.5f);
@@ -1545,10 +1492,10 @@ TEST_CASE(horizons_follow_moving_relief)
         if (!stage || size != sizes[stage - 1]) {
             REQUIRE(resize_targets(size, HDR));
         }
-        REQUIRE(draw(scene, count, size, centered(SIDE), 1) && read_hdr(size));
+        REQUIRE(draw(scene, count, size, test_centered(SIDE), 1) && read_hdr(size));
         REQUIRE(built_horizons_once(size, horizon_mode));
         memcpy(moved, hdr, (size_t)size * size * 4 * sizeof *hdr);
-        REQUIRE(solve_with(radiance, scene, count, size, centered(SIDE)));
+        REQUIRE(solve_with(radiance, scene, count, size, test_centered(SIDE)));
         REQUIRE(built_horizons_once(size, horizon_mode));
         REQUIRE(light_matches(moved, hdr, size * size, .002f));
         if (stage < 3) {
@@ -1615,7 +1562,7 @@ TEST_CASE(horizon_hierarchy_matches_the_fine_scan)
         (test_relief){ .tilt = { -.1f }, .roughness = 1, .slope = .1f }
     );
     float ridge = relief_material("Low ridge", (test_relief){ .roughness = 1, .height = 6 });
-    render_view_2d view = centered(32);
+    render_view_2d view = test_centered(32);
     GameHRC2D lighting = horizon_lighting(horizon_mode);
     REQUIRE(render_radiance_set_lighting(other, lighting));
     lighting.horizon_hierarchy = true;
@@ -1728,7 +1675,7 @@ static bool cache_holds(GameHRCShadowMode mode, unsigned options, float ridge)
     cached.horizon_reproject = options & REUSE_REPROJECT;
     render_material_entity scene[6];
     cached_scene(scene, ridge);
-    render_view_2d view = centered(SIDE);
+    render_view_2d view = test_centered(SIDE);
     int size = SIDE;
     REQUIRE(resize_targets(SIDE, HDR) && render_radiance_resize(other, SIDE, SIDE));
     /* A reset rather than new renderers per set: on lavapipe, new ones

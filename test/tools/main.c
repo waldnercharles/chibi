@@ -57,6 +57,7 @@ void test_device_controls();
 void test_render_material_ramps();
 void test_render_sdf_visibility();
 void test_render_radiance_surface();
+void test_render_material_pixels();
 void test_render_radiance_horizons(int directions);
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
@@ -162,10 +163,10 @@ int main(int argc, char **argv)
     bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
-         render_resources = false, interior_border = false,
-         viewport_resize = false, sdf_visibility = false, radiance = false,
-         radiance_depth = false, scene2d = false, scene3d = false,
-         material_ramps = false, radiance_surface = false, box3d = false,
+         render_resources = false, interior_border = false, viewport_resize = false,
+         sdf_visibility = false, radiance = false, radiance_depth = false,
+         scene2d = false, scene3d = false, material_ramps = false,
+         radiance_surface = false, material_pixels = false, box3d = false,
          sky_files = false, mesh_files = false, model_import = false;
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
@@ -222,13 +223,15 @@ int main(int argc, char **argv)
     material_ramps = argc == 2 && !strcmp(argv[1], "--material-ramps");
     sdf_visibility = argc == 2 && !strcmp(argv[1], "--sdf-visibility");
     radiance_surface = argc == 2 && !strcmp(argv[1], "--radiance-surface");
+    material_pixels = argc == 2 && !strcmp(argv[1], "--material-pixels");
     if (argc == 2 && !strcmp(argv[1], "--radiance-horizons4")) {
         radiance_horizons = 4;
     }
     if (argc == 2 && !strcmp(argv[1], "--radiance-horizons8")) {
         radiance_horizons = 8;
     }
-    material_graphs = scene3d || material_ramps || radiance_surface || radiance_horizons;
+    material_graphs = scene3d || material_ramps || radiance_surface ||
+                      radiance_horizons || material_pixels;
 #endif
 #endif
 #ifdef CHIBI_TEST_BOX3D
@@ -252,14 +255,15 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !coverage && !shader_parameters && !source_edit &&
-        !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
-        !package && !unit && !web_storage && !webgpu_staging &&
-        !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics && !physics3d &&
-        !transforms && !render_resources && !interior_border && !viewport_resize &&
-        !sdf_visibility && !radiance && !radiance_depth && !scene2d && !scene3d &&
-        !material_ramps && !radiance_surface && !radiance_horizons && !box3d &&
+    if (argc != 1 && !corpus && !coverage && !shader_parameters &&
+        !source_edit && !new_asset && !asset_refactor && !tilemap &&
+        !tilemap_project && !package && !unit && !web_storage &&
+        !webgpu_staging && !query_benchmark && !prepared && !read && !scene &&
+        !scene_prepared && !native && !native_values && !native_catalog &&
+        !physics && !physics3d && !transforms && !render_resources &&
+        !interior_border && !viewport_resize && !sdf_visibility && !radiance &&
+        !radiance_depth && !scene2d && !scene3d && !material_ramps &&
+        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
         !sky_files && !mesh_files && !model_import && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
@@ -282,7 +286,7 @@ int main(int argc, char **argv)
             "--radiance | --radiance-depth | --scene2d | --scene3d | "
             "--scene3d-gles | "
             "--material-ramps | --radiance-surface | --radiance-horizons4 | "
-            "--radiance-horizons8 | "
+            "--radiance-horizons8 | --material-pixels | "
             "--box3d | "
             "--sky-files | --mesh-files | --model-import | "
             "--persistent-store | "
@@ -392,9 +396,12 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
-    if (material_ramps || sdf_visibility || radiance_surface || radiance_horizons) {
+    if (material_ramps || sdf_visibility || radiance_surface ||
+        radiance_horizons || material_pixels) {
         if (sdf_visibility) {
             test_render_sdf_visibility();
+        } else if (material_pixels) {
+            test_render_material_pixels();
         } else if (radiance_surface) {
             test_render_radiance_surface();
         } else if (radiance_horizons) {

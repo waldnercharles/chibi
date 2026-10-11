@@ -273,6 +273,63 @@ bool test_register_relief(const char *name, test_relief relief)
     );
 }
 
+bool test_register_world_step(const char *name)
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    node *world = graph_add_node(g, pack_node("Shader WorldPosition"));
+    node *x = graph_add_node(g, pack_node("Shader X"));
+    node *step = graph_add_node(g, pack_node("Shader Step"));
+    node *color = graph_add_node(g, pack_node("Shader Vector3"));
+    pin_value unlit = { .type = PIN_BOOL, .b = true };
+    return publish(
+        material,
+        world && x && step && color && !graph_connect_data(g, world, 0, x, 0) &&
+            !graph_connect_data(g, x, 0, step, 0) &&
+            !graph_connect_data(g, step, 0, color, 0) &&
+            !graph_connect_data(g, color, 0, output, SHADER_SURFACE_BASE_COLOR) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_UNLIT, &unlit)
+    );
+}
+
+bool test_register_tint(const char *name, const float tint[3])
+{
+    behavior_asset *material = new_material(name);
+    graph *g = material->graph;
+    node *output = shader_graph_add_output(g, false);
+    node *parameter = graph_add_node(g, pack_node("Shader Parameter"));
+    float color[3] = { tint[0], tint[1], tint[2] };
+    pin_value values[] = { { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = color },
+                           { .type = PIN_BOOL, .b = true } };
+    return publish(
+        material,
+        parameter && !graph_set_node_reference(g, parameter, 0, "Tint") &&
+            !graph_set_pin_type(g, parameter, 1, 0, PIN_STRUCT, "ShaderVec3") &&
+            !graph_set_pin_default(g, parameter, 1, 0, &values[0]) &&
+            !graph_connect_data(g, parameter, 0, output, SHADER_SURFACE_BASE_COLOR) &&
+            !graph_set_pin_default(g, output, 0, SHADER_SURFACE_UNLIT, &values[1])
+    );
+}
+
+bool test_register_circle_shape(const char *name, float radius)
+{
+    behavior_asset *shape = behavior_asset_new(name);
+    shape->domain = BEHAVIOR_DOMAIN_SHAPE;
+    shape->bounds[0] = shape->bounds[1] = radius * 2;
+    graph *g = shape->graph;
+    node *output = shader_graph_add_output(g, true);
+    node *position = graph_add_node(g, pack_node("Shader Position"));
+    node *circle = graph_add_node(g, pack_node("Shader Circle"));
+    pin_value value = { .type = PIN_F32, .f = radius };
+    return publish(
+        shape,
+        position && circle && !graph_set_pin_default(g, circle, 0, 1, &value) &&
+            !graph_connect_data(g, position, 0, circle, 0) &&
+            !graph_connect_data(g, circle, 0, output, 0)
+    );
+}
+
 bool test_register_model_sphere(const char *name, float radius)
 {
     behavior_asset *model = behavior_asset_new(name);

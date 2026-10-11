@@ -46,9 +46,10 @@ build.
 that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 `radiance`, `radiance-depth`, `radiance-surface`, `radiance-horizons4`,
-`radiance-horizons8`, `scene2d`, `scene3d`, `scene3d-gles` and `material-ramps`
-render through a hidden window, which needs a display and a GPU driver the CI
-job does not set up, so they stay out of the group; run them with
+`radiance-horizons8`, `material-pixels`, `scene2d`, `scene3d`, `scene3d-gles`
+and `material-ramps` render through a hidden window, which needs a display and
+a GPU driver the CI job does not set up, so they stay out of the group; run
+them with
 `python3 tools/test_policy.py tool <name>`.
 
 CI runs the build, both groups and `make test-tools` on Linux and macOS. On
@@ -565,9 +566,18 @@ hierarchy. Each passes 2866 assertions in 23.3 seconds, 30.7 with an empty
 shader cache. They run apart because lavapipe maps GPU memory a page at a
 time: the cache case peaks between 46000 and 56000 of Linux's 65530 mappings
 per process.
-These selectors need the material graphs of the main build. `test/radiance.c`
-still holds the unbuilt cases to port: fluids, reflections and material
-pixels.
+`material-pixels` checks what the material raster draws for HRC in a hidden
+128 x 128 app: Set Material Parameter overriding one entity until its world is
+cleared, a world-space material following its layout frame, a graph material's
+parameter through the raster and its own fragment program inside a shape
+graph's circle, and fluids landing where game Y points down, gas joining and
+parting, crisp unlit liquid edges, burning cores, plumes without holes, fading
+parcels and wisps along their velocity. Gas and liquid must take HRC's light
+and the wall's shadow with one and three traced cascades, a refracting liquid
+must bend only the background behind it, and a crystal must mirror the scene
+beside it. It passes 382 assertions in 9.8 seconds, 16.9 with an empty shader
+cache.
+These selectors need the material graphs of the main build.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,
 near clipping, a mixed 2D layer, and a later frame without the occluder) with

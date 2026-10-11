@@ -45,6 +45,15 @@ typedef struct
     float tilt[2], roughness, height, slope;
 } test_relief;
 bool test_register_relief(const char *name, test_relief relief);
+/* An unlit material that is red where world x is at least .5 and black
+ * elsewhere. */
+bool test_register_world_step(const char *name);
+/* An unlit material whose color is its "Tint" parameter, `tint` unless an
+ * entity overrides it. */
+bool test_register_tint(const char *name, const float tint[3]);
+/* A shape graph of a circle of `radius` at the origin, with half extents of
+ * twice its radius. */
+bool test_register_circle_shape(const char *name, float radius);
 /* A model graph of one sphere of `radius` at the origin. */
 bool test_register_model_sphere(const char *name, float radius);
 

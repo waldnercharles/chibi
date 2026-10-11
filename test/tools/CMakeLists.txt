@@ -155,7 +155,7 @@ if(TARGET Chibi::render)
         target_link_libraries(chibi_render_consumer PRIVATE Chibi::shader_preparation
             Chibi::graph_compilation Chibi::graph_authoring)
         target_sources(chibi_render_consumer PRIVATE ../render/material_graphs.c ../render/material_ramps.c
-            ../sdf_visibility.c)
+            ../render/material_pixels.c ../sdf_visibility.c)
         target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
         target_link_libraries(test_tools PRIVATE Chibi::shader_preparation
             Chibi::graph_compilation Chibi::graph_authoring)

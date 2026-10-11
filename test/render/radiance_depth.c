@@ -1,4 +1,5 @@
 #include "hidden_app.h"
+#include "hrc_cases.h"
 #include "render/fullscreen.h"
 #include "render/radiance.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -89,28 +90,15 @@ static void wide_setup()
     open_targets(WIDE);
 }
 
-/* `world` units square around the origin. */
-static render_view_2d centered(float world)
-{
-    return (render_view_2d){ .min_x = -world * .5f,
-                             .max_y = world * .5f,
-                             .width = world,
-                             .height = world,
-                             .crop_max_u = 1,
-                             .crop_max_v = 1 };
-}
-
-/* The lighting these cases were calibrated with: the finest grid with color at
- * half resolution, no unlit color, bright emitters, no fog, feedback or
- * specular, and Depth thickness's surface light shown alone. */
+/* The lighting these cases were calibrated with: the reference lighting with
+ * color at half resolution, no fog, feedback or specular, and Depth
+ * thickness's surface light shown alone. */
 static GameHRC2D calibrated()
 {
-    GameHRC2D lighting = game_hrc2d_defaults();
-    lighting.resolution = 1;
+    GameHRC2D lighting = test_reference_lighting();
     lighting.color_resolution = GAME_HRC_COLOR_HALF;
-    lighting.intensity = 7.5f;
     lighting.adaptive = lighting.feedback = false;
-    lighting.ambient = lighting.fog = lighting.shadow_floor = 0;
+    lighting.fog = lighting.shadow_floor = 0;
     lighting.specular = 0;
     lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
     lighting.debug_view = GAME_HRC_DEBUG_SURFACE_LIGHT;
@@ -237,7 +225,7 @@ static bool slab_light(int scene, GameHRC2D lighting, float *red)
 {
     float color[3];
     slab_scene(scene);
-    REQUIRE(lit_fresh(lighting, centered(SIDE), color));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), color));
     *red = color[0];
     return true;
 }
@@ -273,7 +261,7 @@ static bool source_light(GameHRC2D lighting, float x, float y, float width, floa
 {
     float color[3];
     small_source(x, y, width);
-    REQUIRE(lit_fresh(lighting, centered(SIDE), color));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), color));
     *red = color[0];
     return true;
 }
@@ -314,10 +302,10 @@ TEST_CASE(depth_light_reaches_closed_receivers_within_its_budget)
     lighting.surface_mode = GAME_HRC_SURFACE_BLUR;
     float blur[3], depth[3];
     slab_scene(OPEN);
-    REQUIRE(lit(lighting, centered(SIDE), blur));
+    REQUIRE(lit(lighting, test_centered(SIDE), blur));
     REQUIRE(fabsf(blur[0]) < .001f);
     lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
-    REQUIRE(lit(lighting, centered(SIDE), depth));
+    REQUIRE(lit(lighting, test_centered(SIDE), depth));
     REQUIRE(depth[0] > .001f);
     render_surface_work work = render_radiance_surface_work(radiance);
     REQUIRE(work.mode == GAME_HRC_SURFACE_DEPTH && work.block == 4 && work.cells == 64);
@@ -334,11 +322,11 @@ TEST_CASE(depth_light_switches_back_to_blur)
     lighting.surface_mode = GAME_HRC_SURFACE_BLUR;
     float blur[3], depth[3], restored[3];
     slab_scene(OPEN);
-    REQUIRE(lit(lighting, centered(SIDE), blur));
+    REQUIRE(lit(lighting, test_centered(SIDE), blur));
     lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
-    REQUIRE(lit(lighting, centered(SIDE), depth));
+    REQUIRE(lit(lighting, test_centered(SIDE), depth));
     lighting.surface_mode = GAME_HRC_SURFACE_BLUR;
-    REQUIRE(lit(lighting, centered(SIDE), restored));
+    REQUIRE(lit(lighting, test_centered(SIDE), restored));
     for (int c = 0; c < 3; c++) {
         REQUIRE(fabsf(restored[c] - blur[c]) < .001f);
     }
@@ -467,7 +455,7 @@ TEST_CASE(light_fades_out_at_the_depth_radius)
             }
         }
         float color[3];
-        REQUIRE(lit_fresh(lighting, centered(SIDE), color));
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), color));
         if (frame) {
             jump = fmaxf(jump, fabsf(color[0] - last));
         } else {
@@ -505,7 +493,7 @@ TEST_CASE(sources_at_the_view_edge_keep_the_light_left_in_view)
 
 TEST_CASE(perspective_views_take_depth_light)
 {
-    render_view_2d view = centered(SIDE);
+    render_view_2d view = test_centered(SIDE);
     view.focal_distance = 64;
     float color[3];
     slab_scene(OPEN);
@@ -538,11 +526,11 @@ TEST_CASE(depth_gain_adds_to_hrc_light_in_equal_steps)
     }
     float base[3], gains[3][3];
     lighting.surface_radius = 0;
-    REQUIRE(lit_fresh(lighting, centered(SIDE), base));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), base));
     lighting.surface_radius = 16;
     for (int gain = 0; gain < 3; gain++) {
         lighting.surface_depth_gain = (float)gain;
-        REQUIRE(lit_fresh(lighting, centered(SIDE), gains[gain]));
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), gains[gain]));
         render_surface_work work = render_radiance_surface_work(radiance);
         REQUIRE(gain || (!work.cells && !work.candidates && !work.visibility_taps));
     }
@@ -561,11 +549,11 @@ TEST_CASE(depth_gain_keeps_shadows_and_unlit_scenes_dark)
     lighting.surface_depth_gain = 4;
     float open[3], crossing[3], unlit[3];
     slab_scene(OPEN);
-    REQUIRE(lit_fresh(lighting, centered(SIDE), open));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), open));
     slab_scene(CROSSING);
-    REQUIRE(lit_fresh(lighting, centered(SIDE), crossing));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), crossing));
     slab_scene(UNLIT);
-    REQUIRE(lit_fresh(lighting, centered(SIDE), unlit));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), unlit));
     REQUIRE(open[0] > .00001f && crossing[0] < open[0] * .35f);
     REQUIRE(dark(unlit));
     return true;
@@ -589,14 +577,14 @@ TEST_CASE(glossy_receivers_take_highlights_by_the_depth_gain)
     lighting.specular = 1;
     float matte[3], glossy[3], none[3], doubled[3];
     dark_receiver(0);
-    REQUIRE(lit_fresh(lighting, centered(SIDE), matte));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), matte));
     dark_receiver(.6f);
-    REQUIRE(lit_fresh(lighting, centered(SIDE), glossy));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), glossy));
     REQUIRE(glossy[0] > matte[0] * 1.1f + .00001f);
     lighting.surface_depth_gain = 0;
-    REQUIRE(lit_fresh(lighting, centered(SIDE), none));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), none));
     lighting.surface_depth_gain = 2;
-    REQUIRE(lit_fresh(lighting, centered(SIDE), doubled));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), doubled));
     float fill = glossy[0] - none[0];
     REQUIRE(fabsf(doubled[0] - none[0] - 2 * fill) < fmaxf(.001f, fabsf(fill) * .03f));
     return true;
@@ -614,9 +602,9 @@ TEST_CASE(matte_patches_take_no_gloss_from_around_them)
         }
     }
     float off[3], on[3];
-    REQUIRE(lit_fresh(lighting, centered(SIDE), off));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), off));
     lighting.specular = 1;
-    REQUIRE(lit_fresh(lighting, centered(SIDE), on));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), on));
     for (int c = 0; c < 3; c++) {
         REQUIRE(fabsf(on[c] - off[c]) < .00001f);
     }
@@ -655,10 +643,10 @@ TEST_CASE(depth_history_keeps_still_light_and_drops_changes)
     float initial[3], held[3], tilted[3], dimmed[3], fresh[3], turned[3],
         unlit[3], restored[3];
     slab_scene(OPEN);
-    REQUIRE(lit_fresh(lighting, centered(SIDE), initial));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), initial));
     lighting.surface_depth_temporal = true;
     for (int frame = 0; frame < 4; frame++) {
-        REQUIRE(lit(lighting, centered(SIDE), held));
+        REQUIRE(lit(lighting, test_centered(SIDE), held));
     }
     REQUIRE(initial[0] > .00001f);
     for (int c = 0; c < 3; c++) {
@@ -672,33 +660,33 @@ TEST_CASE(depth_history_keeps_still_light_and_drops_changes)
             data[NORMAL][p][1] = 0;
         }
     }
-    REQUIRE(lit(lighting, centered(SIDE), turned));
+    REQUIRE(lit(lighting, test_centered(SIDE), turned));
     REQUIRE(dark(turned));
     slab_scene(OPEN);
-    REQUIRE(lit(lighting, centered(SIDE), held));
+    REQUIRE(lit(lighting, test_centered(SIDE), held));
     slab_scene(UNLIT);
-    REQUIRE(lit(lighting, centered(SIDE), unlit));
+    REQUIRE(lit(lighting, test_centered(SIDE), unlit));
     REQUIRE(dark(unlit));
     slab_scene(OPEN);
     lighting.surface_depth_temporal = false;
-    REQUIRE(lit(lighting, centered(SIDE), restored));
+    REQUIRE(lit(lighting, test_centered(SIDE), restored));
     for (int c = 0; c < 3; c++) {
         REQUIRE(fabsf(initial[c] - restored[c]) < .001f);
     }
     lighting.surface_depth_temporal = true;
     for (int frame = 0; frame < 4; frame++) {
-        REQUIRE(lit(lighting, centered(SIDE), held));
+        REQUIRE(lit(lighting, test_centered(SIDE), held));
     }
     /* A receiver tilted toward the strip takes its new light at once. Its
      * light changes too little for that alone to drop the history; the
      * changed normal must. */
     slab_scene(TILTED);
-    REQUIRE(lit(lighting, centered(SIDE), tilted));
-    REQUIRE(lit_fresh(lighting, centered(SIDE), fresh));
+    REQUIRE(lit(lighting, test_centered(SIDE), tilted));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), fresh));
     REQUIRE(fresh[0] > held[0] && fabsf(tilted[0] - fresh[0]) < fresh[0] * .05f);
     slab_scene(OPEN);
     for (int frame = 0; frame < 4; frame++) {
-        REQUIRE(lit(lighting, centered(SIDE), held));
+        REQUIRE(lit(lighting, test_centered(SIDE), held));
     }
     /* A strip four times dimmer replaces the held light at once. Light falls
      * off steeply across the center's neighbors, so clamping the old light to
@@ -706,11 +694,11 @@ TEST_CASE(depth_history_keeps_still_light_and_drops_changes)
     for (int p = 0; p < PIXELS; p++) {
         data[SOURCE][p][0] *= .25f;
     }
-    REQUIRE(lit(lighting, centered(SIDE), dimmed));
-    REQUIRE(lit_fresh(lighting, centered(SIDE), fresh));
+    REQUIRE(lit(lighting, test_centered(SIDE), dimmed));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), fresh));
     REQUIRE(fresh[0] > .00001f && fabsf(dimmed[0] - fresh[0]) < fresh[0] * .05f);
     slab_scene(UNLIT);
-    REQUIRE(lit_fresh(lighting, centered(SIDE), unlit));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), unlit));
     REQUIRE(dark(unlit));
     return true;
 }
@@ -733,16 +721,16 @@ TEST_CASE(depth_history_settles_on_brighter_light)
     for (int p = 0; p < PIXELS; p++) {
         data[SOURCE][p][0] *= 1.05f;
     }
-    REQUIRE(lit_fresh(lighting, centered(SIDE), instant));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), instant));
     lighting.surface_depth_temporal = true;
     slab_scene(OPEN);
-    REQUIRE(lit_fresh(lighting, centered(SIDE), initial));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), initial));
     for (int p = 0; p < PIXELS; p++) {
         data[SOURCE][p][0] *= 1.05f;
     }
-    REQUIRE(lit(lighting, centered(SIDE), first));
+    REQUIRE(lit(lighting, test_centered(SIDE), first));
     for (int frame = 0; frame < 24; frame++) {
-        REQUIRE(lit(lighting, centered(SIDE), settled));
+        REQUIRE(lit(lighting, test_centered(SIDE), settled));
     }
     float step = instant[0] - initial[0];
     REQUIRE(step > initial[0] * .02f);
@@ -767,7 +755,7 @@ TEST_CASE(depth_history_follows_the_camera)
             data[ALBEDO][p][3] = 0;
         }
     }
-    render_view_2d view = centered(SIDE);
+    render_view_2d view = test_centered(SIDE);
     float before[3], moved[3], fresh[3];
     REQUIRE(lit_fresh(lighting, view, before));
     for (int i = 0; i < INPUTS; i++) {
@@ -823,7 +811,7 @@ TEST_CASE(mixed_color_sources_light_smoothly)
             }
         }
         float color[3];
-        REQUIRE(lit_fresh(lighting, centered(WIDE), color));
+        REQUIRE(lit_fresh(lighting, test_centered(WIDE), color));
         least = fminf(least, fminf(color[0], color[2]));
         for (int c = 0; frame && c < 3; c += 2) {
             step = fmaxf(
@@ -1130,7 +1118,7 @@ TEST_CASE(surface_gather_light_restarts_when_the_view_turns)
     lighting.surface_relief = 1;
     lighting.radiance_hysteresis = .05f;
     for (int axis = 0; axis < 2; axis++) {
-        render_view_2d view = centered(SIDE);
+        render_view_2d view = test_centered(SIDE);
         float bright[3], turned[3];
         gather_scene(FLAT);
         for (int y = 0; y < SIDE; y++) {

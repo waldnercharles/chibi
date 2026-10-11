@@ -40,6 +40,7 @@ NATIVE = {
     ('--radiance-surface',): 'Reviewed hidden 128x128 app: HRC silhouettes, relief facing and below the light, world-space surface depth, directional surface colors in every shadow mode, and surface light history, with readback; GPU; docs/testing.md',
     ('--radiance-horizons4',): 'Reviewed hidden 128x128 app: four-direction horizons following moving relief, their hierarchy against the fine scan, and their cache against fresh horizons over 15 stages for 8 option sets, with readback; GPU; docs/testing.md',
     ('--radiance-horizons8',): 'Reviewed hidden 128x128 app: the same horizon cases with eight directions; GPU; docs/testing.md',
+    ('--material-pixels',): 'Reviewed hidden 128x128 app: material parameter overrides, world-space and graph materials, shape graphs and fragment programs, fluid placement, gas, liquid, fuel, plume, parcel and wisp pixels, fluid light and shadow, liquid refraction and crystal reflections, with readback; GPU; docs/testing.md',
     ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
     ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and six refusals, CPU only; docs/testing.md',
@@ -150,6 +151,9 @@ TOOLS = {
     # hierarchy against the fine scan, and the horizon cache against fresh horizons.
     'radiance-horizons4': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-horizons4'],
     'radiance-horizons8': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-horizons8'],
+    # Hidden-app 128x128 material raster pixels: graph materials and shapes, fluids and their
+    # HRC light, liquid refraction and crystal reflections.
+    'material-pixels': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-pixels'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-prepared'],
     # Five independently reviewed model/shader/mesh preparation, persistence and lifetime cases; no files, world or GPU.
@@ -513,7 +517,7 @@ def main():
                             'studio-graph-visibility', 'interior-border', 'viewport-resize', 'sdf-visibility',
                             'radiance', 'radiance-depth', 'scene2d', 'scene3d', 'scene3d-gles',
                             'material-ramps', 'radiance-surface', 'radiance-horizons4',
-                            'radiance-horizons8'):
+                            'radiance-horizons8', 'material-pixels'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])
         return run_commands([TOOLS[arguments[0]]])

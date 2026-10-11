@@ -1,5 +1,6 @@
 // Finite depth slabs with area-filtered emission. Aligned source tiles
 // partition energy; bounded child estimates keep distinct sources separate.
+// q0 holds the light a closed receiver takes at HRC's scale; see receive.
 layout(set = 2, binding = 0) uniform sampler2D u_albedo;
 layout(set = 2, binding = 1) uniform sampler2D u_cover;
 layout(set = 2, binding = 2) uniform sampler2D u_normal;
@@ -34,6 +35,8 @@ layout(set = 3, binding = 0) uniform uniform_block
     float u_shadow_softness;
     int u_visibility_mode;
     float u_relief;
+    // HRC's distance falloff per canvas pixel.
+    float u_falloff;
 };
 #include "hrc/brdf.shd"
 
@@ -110,7 +113,8 @@ float receiver_gloss;
 float pixel_world;
 float soft_distance;
 float receiver_scale;
-vec3 diffuse = vec3(0);
+// The light HRC would bring a closed receiver from the lights it sees.
+vec3 closed = vec3(0);
 vec3 specular = vec3(0);
 vec2 dominant = vec2(0);
 float energy = 0.0;
@@ -228,8 +232,17 @@ void receive(vec3 emission, vec4 emitter, float area)
     shading += share * (visibility * facing + 1.0 - falloff);
     shading_total += share;
     if (visibility <= 0.0) return;
+    // HRC spreads light in the plane: emission E over A canvas pixels lights
+    // open space s pixels away by E A / (2 pi s), dimmed by its falloff. A
+    // closed receiver takes that by Lambert's law relative to a flat one, so
+    // a light at flat_elevation or above lights a flat receiver as HRC lights
+    // open space, and one below its plane lights nothing.
+    float pixels = area / (u_world_per_px.x * u_world_per_px.y * receiver_scale * receiver_scale);
+    float planar = max(length(toward / u_world_per_px), 0.5 * sqrt(pixels));
+    float spread = pixels / (2.0 * PI * planar) * exp(-u_falloff * planar);
+    closed += emission * spread * visibility *
+              max(dot(receiver_normal, direction), 0.0) / max(direction.z, flat_elevation);
     vec3 received = emission * weight * visibility;
-    diffuse += received * max(dot(receiver_normal, direction), 0.0);
     if (receiver_gloss > 0.0) {
         specular += received * PI * highlight(receiver_normal, direction, 1.0 - receiver_gloss);
     }
@@ -446,7 +459,7 @@ void main()
     }
     gather_sources(uv);
     // Area weights integrate emission; do not renormalize by accepted samples.
-    out_q0 = vec4(min(diffuse, vec3(65504)), receiver.x);
+    out_q0 = vec4(min(closed, vec3(65504)), receiver.x);
     out_q1 = vec4(min(specular, vec3(65504)), receiver_gloss);
     out_q2 = vec4(normal, valid);
     out_q3 = vec4(dominant / max(energy, 1e-8), sky / sky_total,

@@ -1244,17 +1244,22 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     /* Blur spreads open-space light; Gather uses bounded visibility probes.
      * Depth thickness is the 2.5D mode: it gathers visible emission past
      * anything with height, and on solids that absorb nothing shades the HRC
-     * light by their facing and those heights. Light passes over a prop that
-     * absorbs nothing where the prop is lower than the light. Heights within
-     * the depth radius also hide ambient light, darkening the foot of a wall
-     * and the floor around a prop. */
+     * light by their facing and those heights. Solids that absorb light,
+     * where HRC's light stops, take the light HRC brings open ground from the
+     * lights they see above them, so a side view's tiles catch the light of
+     * lanterns in front of them. Light passes over a prop that absorbs
+     * nothing where the prop is lower than the light. Heights within the
+     * depth radius also hide ambient light, darkening the foot of a wall and
+     * the floor around a prop. */
     GameHRCSurfaceMode surface_mode;
-    /* Screen-plane reach in project units for Depth thickness mode. A solid
-     * that absorbs nothing shades all its HRC light by the lights within
-     * reach, so it should reach the lights that matter. */
+    /* Screen-plane reach in project units for Depth thickness mode. Solids
+     * that absorb light take light only from the lights within reach, and a
+     * solid that absorbs nothing shades all its HRC light by them, so it
+     * should reach the lights that matter. */
     float surface_depth_radius;
-    /* Gain of Depth light added to solids that absorb light, and of Depth
-     * highlights. Zero disables Depth thickness. */
+    /* Gain of the Depth light solids that absorb light take, which at 1
+     * matches HRC's light on open ground, and of Depth highlights. Zero
+     * disables Depth thickness. */
     float surface_depth_gain;
     /* Source sampling budget; all levels preserve integrated emission. */
     GameHRCDepthQuality surface_depth_quality;

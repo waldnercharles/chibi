@@ -877,6 +877,8 @@ TEST_CASE(source_tilemap_queries_use_live_authored_cells)
     return true;
 }
 
+void test_source_input_save();
+
 void test_source_native_features()
 {
     pu_setup(NULL, cleanup);
@@ -884,6 +886,7 @@ void test_source_native_features()
     RUN_TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait);
     RUN_TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission);
     pu_clear_setup();
+    test_source_input_save();
 }
 
 void test_source_native_numeric_queries()

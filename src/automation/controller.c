@@ -391,7 +391,7 @@ static const contract_field CONTRACT_RUN_SCENARIO[] = {
     { "name", "string", true, "Prototype or scene asset name." },
     { "frames", "uint64", false, "Number of deterministic fixed steps; maximum 108000." },
     { "fixed_dt", "number", false, "Fixed timestep in seconds; currently limited to 1/60." },
-    { "inputs", "array", false, "Per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events." },
+    { "inputs", "array", false, "Per-frame movement, aim, controls, controllers, actions, UI interactions and typed entity-targeted events. Controllers is an array of up to four {connected,buttons} slots; buttons are GamePadControl labels or integers." },
     { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing zero-based frame order; each frame is below frames; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
@@ -405,7 +405,7 @@ static const contract_field CONTRACT_RUNTIME_SNAPSHOT[] = {
     { "field_limit", "uint64", false, "Maximum number of reflected fields per component; maximum 128." },
     { "behavior_limit", "uint64", false, "Maximum number of behavior attachments per entity; maximum 64." },
     { "fields", "string[]", false, "Optional reflected field selectors such as GameTransform.x." },
-    { "inputs", "array", false, "Per-frame movement, aim, controls, actions, UI interactions and typed entity-targeted events." },
+    { "inputs", "array", false, "Per-frame movement, aim, controls, controllers, actions, UI interactions and typed entity-targeted events. Controllers is an array of up to four {connected,buttons} slots; buttons are GamePadControl labels or integers." },
     { "input_timeline", "array", false, "At most 1800 sparse {frame,input} samples in increasing frame order; alternative to inputs." },
     { "saved_state", "object", false, "Isolated initial committed text values; never accesses player save files." },
 };
@@ -6027,8 +6027,9 @@ static int format_component(const char *root, const char *name, bool check)
 /* A regular file, not a link: formatting rewrites it in place. */
 static bool regular_file(const char *folder, const char *name)
 {
-    char *path = xmalloc(strlen(folder) + strlen(name) + 2);
-    sprintf(path, "%s/%s", folder, name);
+    size_t size = strlen(folder) + strlen(name) + 2;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s", folder, name);
     struct stat info;
     bool regular = !lstat(path, &info) && S_ISREG(info.st_mode);
     free(path);
@@ -7308,8 +7309,9 @@ typedef struct
     char *initial_saved_state;
     const av_value *scenario_saved_state; /* a replayed scenario's, borrowed */
     CF_V2 aim;
-    bool aim_firing, aim_point, controls_sampled;
+    bool aim_firing, aim_point, devices_sampled;
     uint64_t controls;
+    input_controller_state controllers[INPUT_CONTROLLER_MAX];
 } scenario_context;
 
 static game_scene_flow *scenario_scenes(const scenario_context *context)
@@ -8637,8 +8639,9 @@ typedef struct
     yyjson_val *events;
     scenario_action actions[SCENARIO_MAX_ACTIONS];
     int action_count;
-    bool has_controls;
+    bool has_controls, has_controllers;
     uint64_t controls;
+    input_controller_state controllers[INPUT_CONTROLLER_MAX];
     yyjson_val *ui;
 } scenario_input;
 
@@ -8792,8 +8795,6 @@ static int profile_scenario(
         status = launch_scenario(&context, error, sizeof error);
     }
     if (status == CHIBI_AUTOMATION_OK) {
-        engine_set_behavior_profiling(game_prototype_preview_runtime(context.preview), behavior_details);
-        game_source_profile_enable(game_prototype_preview_sources(context.preview), behavior_details);
         game_physics_set_profiling(
             game_prototype_preview_live(context.preview)->runtime->physics,
             true
@@ -8818,7 +8819,10 @@ static int profile_scenario(
         xalloc_stats_get(&previous_allocations);
         for (uint64_t frame = 0; frame < total_frames; frame++) {
             if (behavior_details && frame == warmup) {
-                game_source_profile_reset(game_prototype_preview_sources(context.preview));
+                game_source_profile_enable(
+                    game_prototype_preview_sources(context.preview),
+                    true
+                );
             }
             int step_status = CHIBI_AUTOMATION_OK;
             if (sampled_inputs) {
@@ -9104,6 +9108,47 @@ static bool scenario_event_value(const scenario_context *context, yyjson_val *it
     return false;
 }
 
+static bool parse_scenario_controllers(yyjson_val *value, scenario_input *out, char *error, size_t size)
+{
+    if (!yyjson_is_arr(value) || yyjson_arr_size(value) > INPUT_CONTROLLER_MAX) {
+        snprintf(error, size, "controllers must contain at most four slot states");
+        return false;
+    }
+    out->has_controllers = true;
+    for (size_t i = 0; i < yyjson_arr_size(value); i++) {
+        yyjson_val *state = yyjson_arr_get(value, i);
+        yyjson_val *connected = yyjson_obj_get(state, "connected");
+        yyjson_val *buttons = yyjson_obj_get(state, "buttons");
+        if (!yyjson_is_obj(state) || !yyjson_is_bool(connected) ||
+            yyjson_obj_size(state) != 1 + (buttons != NULL) ||
+            (buttons && (!yyjson_is_arr(buttons) ||
+                         yyjson_arr_size(buttons) >= GAME_PAD_COUNT))) {
+            snprintf(error, size, "controller slots need connected and optional buttons");
+            return false;
+        }
+        out->controllers[i].connected = yyjson_get_bool(connected);
+        for (size_t j = 0; j < yyjson_arr_size(buttons); j++) {
+            yyjson_val *button = yyjson_arr_get(buttons, j);
+            int code = 0;
+            if (yyjson_is_str(button)) {
+                type_catalog_enum_value("GamePadControl", yyjson_get_str(button), &code);
+            } else if (yyjson_is_int(button)) {
+                int64_t number = yyjson_get_sint(button);
+                if (number > GAME_PAD_NONE && number < GAME_PAD_COUNT) {
+                    code = (int)number;
+                }
+            }
+            if (!out->controllers[i].connected || code <= GAME_PAD_NONE ||
+                code >= GAME_PAD_COUNT) {
+                snprintf(error, size, "controller buttons need a connected slot and GamePadControl labels or values");
+                return false;
+            }
+            out->controllers[i].buttons |= UINT32_C(1) << code;
+        }
+    }
+    return true;
+}
+
 static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *error, size_t error_size)
 {
     if (!value || !yyjson_is_obj(value)) {
@@ -9203,6 +9248,11 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
             out->controls |= UINT64_C(1) << code;
         }
     }
+    yyjson_val *controllers = yyjson_obj_get(value, "controllers");
+    if (controllers &&
+        !parse_scenario_controllers(controllers, out, error, error_size)) {
+        return false;
+    }
     yyjson_val *ui = yyjson_obj_get(value, "ui");
     if (ui) {
         if (!yyjson_is_arr(ui) || yyjson_arr_size(ui) > 32) {
@@ -9239,6 +9289,24 @@ static yyjson_mut_val *add_scenario_input(yyjson_mut_doc *doc, yyjson_mut_val *a
         for (int i = 1; i < GAME_CONTROL_COUNT; i++) {
             if (input->controls & (UINT64_C(1) << i)) {
                 yyjson_mut_arr_add_int(doc, controls, i);
+            }
+        }
+    }
+    if (input->has_controllers) {
+        yyjson_mut_val *controllers = yyjson_mut_obj_add_arr(doc, object, "controllers");
+        for (int i = 0; i < INPUT_CONTROLLER_MAX; i++) {
+            yyjson_mut_val *state = yyjson_mut_arr_add_obj(doc, controllers);
+            yyjson_mut_obj_add_bool(
+                doc,
+                state,
+                "connected",
+                input->controllers[i].connected
+            );
+            yyjson_mut_val *buttons = yyjson_mut_obj_add_arr(doc, state, "buttons");
+            for (int button = GAME_PAD_NONE + 1; button < GAME_PAD_COUNT; button++) {
+                if (input->controllers[i].buttons & (UINT32_C(1) << button)) {
+                    yyjson_mut_arr_add_int(doc, buttons, button);
+                }
             }
         }
     }
@@ -9295,15 +9363,25 @@ static int apply_scenario_input(
     }
     if (input->has_controls) {
         context->controls = input->controls;
-        context->controls_sampled = true;
+        context->devices_sampled = true;
     }
-    bool firing = context->aim_firing;
-    if (context->controls_sampled &&
-        engine_sample_controls(runtime, context->controls, &firing) < 0) {
+    if (input->has_controllers) {
+        memcpy(context->controllers, input->controllers, sizeof context->controllers);
+        context->devices_sampled = true;
+    }
+    bool firing = false;
+    if (context->devices_sampled &&
+        engine_sample_devices(runtime, context->controls, context->controllers, &firing) <
+            0) {
         snprintf(error, error_size, "invalid authored action binding");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    if (engine_sample_aim(runtime, context->aim, firing, context->aim_point) < 0) {
+    if (engine_sample_aim(
+            runtime,
+            context->aim,
+            context->aim_firing || firing,
+            context->aim_point
+        ) < 0) {
         snprintf(error, error_size, "scenario aim input failed");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
@@ -9523,6 +9601,7 @@ struct chibi_preview_run
 {
     scenario_context context;
     scenario_sequence sequence;
+    declared_components *declared;
     yyjson_doc *request;
     char *page;       /* the project's default root ui document, or NULL */
     bool perspective; /* at launch */
@@ -9574,6 +9653,7 @@ void chibi_preview_free(chibi_preview_run *run)
     }
     free_sequence(&run->sequence);
     scenario_context_free(&run->context);
+    declared_components_free(run->declared);
     yyjson_doc_free(run->request);
     free(run->page);
     free(run);
@@ -9608,6 +9688,10 @@ int chibi_automation_preview(
     }
     chibi_preview_run *run = xcalloc(1, sizeof *run);
     run->request = doc;
+    if (!load_declared(root, &run->declared, error, error_size)) {
+        chibi_preview_free(run);
+        return CHIBI_AUTOMATION_VALIDATION_ERROR;
+    }
     scenario_context *context = &run->context;
     /* Preparing registers the shader libraries, materials and shapes the
        renderer draws with, as every scenario shares them. */

@@ -136,6 +136,25 @@ TEST_CASE(branches_collapse_to_macros_and_expand_back)
         exec_linked(collapsed->graph, graph_node_by_id(collapsed->graph, p.event), 0, call_id)
     );
     REQUIRE(round_trips(collapsed));
+    node *collapsed_branch = NULL;
+    for (int i = 0; i < acount(macro->nodes); i++) {
+        if (macro->nodes[i]->desc == &NODE_Branch) {
+            collapsed_branch = macro->nodes[i];
+        }
+    }
+    REQUIRE(collapsed_branch && collapsed_branch->input_pins[1].default_value.type == PIN_BOOL);
+    REQUIRE(!collapsed_branch->input_pins[1].default_value.b);
+    node *true_store = graph_node_by_id(collapsed->graph, p.on_true);
+    node *false_store = graph_node_by_id(collapsed->graph, p.on_false);
+    REQUIRE(true_store && false_store);
+    REQUIRE(
+        true_store->input_pins[1].default_value.type == PIN_I32 &&
+        true_store->input_pins[1].default_value.i == 1
+    );
+    REQUIRE(
+        false_store->input_pins[1].default_value.type == PIN_I32 &&
+        false_store->input_pins[1].default_value.i == 2
+    );
 
     REQUIRE(behavior_asset_can_expand_call(collapsed, collapsed->graph, call) == NULL);
     REQUIRE(!behavior_asset_expand_call(collapsed, collapsed->graph, call, &expanded, &ids));
@@ -147,6 +166,21 @@ TEST_CASE(branches_collapse_to_macros_and_expand_back)
     REQUIRE(exec_linked(eg, copy, 0, p.on_true) && exec_linked(eg, copy, 1, p.on_false));
     REQUIRE(exec_linked(eg, graph_node_by_id(eg, p.event), 0, copy->id));
     REQUIRE(round_trips(expanded));
+    REQUIRE(
+        copy->input_pins[1].default_value.type == PIN_BOOL &&
+        !copy->input_pins[1].default_value.b
+    );
+    true_store = graph_node_by_id(eg, p.on_true);
+    false_store = graph_node_by_id(eg, p.on_false);
+    REQUIRE(true_store && false_store);
+    REQUIRE(
+        true_store->input_pins[1].default_value.type == PIN_I32 &&
+        true_store->input_pins[1].default_value.i == 1
+    );
+    REQUIRE(
+        false_store->input_pins[1].default_value.type == PIN_I32 &&
+        false_store->input_pins[1].default_value.i == 2
+    );
     return true;
 }
 
@@ -205,7 +239,15 @@ TEST_CASE(pure_calls_expand_into_their_calculations)
     node *ea = graph_node_by_id(eg, a->id), *eb = graph_node_by_id(eg, b->id);
     node *etotal = graph_node_by_id(eg, total->id);
     node *esum = copied(eg, &NODE_Add), *eproduct = copied(eg, &NODE_Multiply);
-    REQUIRE(esum && eproduct);
+    REQUIRE(esum && eproduct && ea && eb);
+    REQUIRE(
+        ea->input_pins[0].default_value.type == PIN_F64 &&
+        ea->input_pins[0].default_value.d == 2.5
+    );
+    REQUIRE(
+        eb->input_pins[0].default_value.type == PIN_F64 &&
+        eb->input_pins[0].default_value.d == 4
+    );
     REQUIRE(driver(eg, esum, 0) == ea && driver(eg, esum, 1) == eb);
     REQUIRE(driver(eg, eproduct, 0) == esum && driver(eg, eproduct, 1) == eb);
     REQUIRE(driver(eg, etotal, 0) == eproduct && driver(eg, etotal, 1) == ea);
@@ -234,6 +276,10 @@ TEST_CASE(executable_calls_expand_into_their_body)
     graph *eg = expanded->graph;
     node *body = graph_node_by_id(eg, ids[0]);
     REQUIRE(body->desc == &NODE_SetVariable && body->reference_id == p.result);
+    REQUIRE(
+        body->input_pins[1].default_value.type == PIN_I32 &&
+        body->input_pins[1].default_value.i == 5
+    );
     REQUIRE(exec_linked(eg, graph_node_by_id(eg, p.event), 0, ids[0]));
     REQUIRE(exec_linked(eg, body, 0, print->id));
     return true;

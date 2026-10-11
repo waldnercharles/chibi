@@ -2,6 +2,7 @@
 #define CHIBI_RENDER_DEVICE_CONTROLS_H
 
 #include "runtime/components.h"
+#include "runtime/input_timeline.h"
 
 #include <cute_input.h>
 
@@ -14,6 +15,9 @@ GameControl game_control_for_key(CF_KeyButton key);
 bool game_control_down(GameControl control);
 /* Every held control as GameControl bits. */
 uint64_t game_controls_down();
+/* A controller slot's connection and action buttons, independent of keyboard.
+ * Slots follow the device host: new pads occupy the first vacant slot. */
+input_controller_state game_controller_state(int controller);
 /* The left stick, else WASD or the arrow keys; at most length 1. */
 CF_V2 game_controls_movement();
 /* The right stick's unit direction, or zero inside its dead zone. */

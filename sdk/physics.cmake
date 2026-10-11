@@ -64,6 +64,23 @@ if(NOT box3d_SOURCE_DIR)
     set(box3d_SOURCE_DIR "${chibi_box3d_source_SOURCE_DIR}")
 endif()
 file(GLOB box3d_sources CONFIGURE_DEPENDS "${box3d_SOURCE_DIR}/src/*.c")
+# Keep dependency caches read-only: only the allocator needs this local fix.
+set(box3d_patch "${CHIBI_SDK_ROOT}/cmake/patches/box3d-block-alignment.patch")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${box3d_patch}")
+set(box3d_patched_root "${CMAKE_CURRENT_BINARY_DIR}/private/box3d")
+configure_file("${box3d_SOURCE_DIR}/src/block_allocator.c"
+    "${box3d_patched_root}/src/block_allocator.c" COPYONLY)
+find_package(Git REQUIRED)
+execute_process(
+    COMMAND "${GIT_EXECUTABLE}" apply --unsafe-paths
+        "--directory=${box3d_patched_root}" "${box3d_patch}"
+    RESULT_VARIABLE box3d_patch_result
+    ERROR_VARIABLE box3d_patch_error)
+if(NOT box3d_patch_result EQUAL 0)
+    message(FATAL_ERROR "Could not patch Box3D allocator: ${box3d_patch_error}")
+endif()
+list(REMOVE_ITEM box3d_sources "${box3d_SOURCE_DIR}/src/block_allocator.c")
+list(APPEND box3d_sources "${box3d_patched_root}/src/block_allocator.c")
 add_library(chibi_box3d STATIC ${box3d_sources})
 add_library(Chibi::box3d ALIAS chibi_box3d)
 set_target_properties(chibi_box3d PROPERTIES EXPORT_NAME box3d C_STANDARD 17

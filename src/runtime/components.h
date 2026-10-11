@@ -1052,6 +1052,31 @@ typedef enum
     GAME_CONTROL_COUNT,
 } GameControl;
 
+/* Per-controller action sources. Independent of the shared keyboard bitset. */
+typedef enum
+{
+    GAME_PAD_NONE,
+    GAME_PAD_A,
+    GAME_PAD_B,
+    GAME_PAD_X,
+    GAME_PAD_Y,
+    GAME_PAD_BACK,
+    GAME_PAD_START,
+    GAME_PAD_LEFT_SHOULDER,
+    GAME_PAD_RIGHT_SHOULDER,
+    GAME_PAD_DPAD_UP,
+    GAME_PAD_DPAD_DOWN,
+    GAME_PAD_DPAD_LEFT,
+    GAME_PAD_DPAD_RIGHT,
+    GAME_PAD_LEFT_STICK_UP,
+    GAME_PAD_LEFT_STICK_DOWN,
+    GAME_PAD_LEFT_STICK_LEFT,
+    GAME_PAD_LEFT_STICK_RIGHT,
+    GAME_PAD_LEFT_TRIGGER,
+    GAME_PAD_RIGHT_TRIGGER,
+    GAME_PAD_COUNT,
+} GamePadControl;
+
 /* Shows the ui asset content/ui/<document>.rml over the game view, above
  * documents with a lower order. An element's emit('Event') binding, as in
  * data-event-click="emit('Resume')", sends that event to this entity; an
@@ -1479,9 +1504,12 @@ GameGravity3D;
  * into it, so gravity a script adds does not build up while it stands. on_floor
  * says whether it ended the step on a surface within 45 degrees of up, against
  * gravity, and floor_normal is that surface's normal. Physics writes both. It
- * stops at dynamic bodies and other characters as at walls, does not ride
- * moving platforms, and carries only sensor colliders under it. It turns by
- * its Transform3D; physics keeps its Body3D angular velocity at zero. */
+ * rides the translation and rotation of its supporting collider's body, with
+ * carry swept against other solids. Carry does not add to linear_velocity;
+ * moving away from the floor releases it without inherited momentum. It stops
+ * at dynamic bodies and other characters as at walls, and carries only sensor
+ * colliders under it. It turns by its Transform3D; platform rotation moves its
+ * position without turning it, and physics keeps angular velocity at zero. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameCharacter3D)
 {
     bool on_floor;

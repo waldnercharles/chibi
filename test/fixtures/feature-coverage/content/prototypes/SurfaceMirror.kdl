@@ -1,0 +1,10 @@
+name "SurfaceMirror"
+components {
+    GAME.GameAppearance color=0x10151fff height=28.0 width=84.0
+    (object)GAME.GameBody
+    GAME.GameCollider category=1 height=28.0 mask=1 shape="Box" width=84.0
+    GAME.GameDestructible cell_size=4.0 min_fragment_cells=1
+    GAME.GameMaterial absorption=1.0 albedo=0xc0c0d0ff scene=0x10151fff
+    GAME.GameReflection offset=22.0 roughness=0.05 strength=0.9
+    GAME.GameTransform y=22.0
+}

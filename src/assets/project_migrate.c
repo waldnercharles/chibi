@@ -2570,9 +2570,9 @@ static char **migrate_motions(char **sources, char **paths, int count, char *err
             use = use ? use : quoted_use(sources[i], words, 3);
         } else {
             migrated[i] = drop_motions(sources[i]);
-            use = strstr(migrated[i] ? migrated[i] : sources[i], "SdfMotion")
-                    ? words[1]
-                    : NULL;
+            const char *text = migrated[i] ? migrated[i] : sources[i];
+            use = word_use(text, words + 1, 1);
+            use = use ? use : quoted_use(text, words + 1, 2);
         }
         if (use) {
             snprintf(error, error_size, "%s uses %s, which version 18 removes; remove that use, then migrate", paths[i], use);

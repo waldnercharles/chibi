@@ -35,6 +35,15 @@
                    "Action went down, even if it was released again before "   \
                    "the step."
 
+#define GAME_INPUT_CONTROLLER_CONNECTED_NAME "Controller Connected"
+#define GAME_INPUT_CONTROLLER_CONNECTED_INPUTS(X)                              \
+    GAME_INPUT_PORT(X, "Controller", PIN_I32, "int")
+#define GAME_INPUT_CONTROLLER_CONNECTED_OUTPUTS(X)                             \
+    GAME_INPUT_PORT(X, "Connected", PIN_BOOL, "bool")
+#define GAME_INPUT_CONTROLLER_CONNECTED_PRESENTATION                           \
+    .category = "Input",                                                       \
+    .keywords = "controller gamepad disconnect rejoin", .description = "True while the zero-based controller slot is connected, from 0 to 3."
+
 extern const native_definition_pack GAME_INPUT_DEFINITION_PACK;
 
 #endif

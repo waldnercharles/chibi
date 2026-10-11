@@ -5,6 +5,7 @@
 #include "graph/shader/shader_graph.h"
 #include "runtime/component_catalog.h"
 #include "runtime/geometry/mesh_prepared.h"
+#include "runtime/shaders/prepared.h"
 #include "support/array.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
@@ -302,9 +303,10 @@ TEST_CASE(model_imports_write_each_part_once)
     wood.metallic = 0;
     wood.roughness = .5f;
     wood.textures[STANDARD_TEXTURE_BASE_COLOR] = (standard_texture){
-        "content/textures/Crate/albedo.png",
-        SHADER_IMAGE_NEAREST,
-        SHADER_IMAGE_CLAMP
+        .image = "content/textures/Crate/albedo.png",
+        .filter = SHADER_IMAGE_NEAREST,
+        .wrap = SHADER_IMAGE_CLAMP,
+        .scale = { 1, 1 }
     };
     REQUIRE(
         holds_material("content/materials/Crate_Painted_Wood.kdl", "Crate_Painted_Wood", &wood)
@@ -692,6 +694,227 @@ static const char *textured(const char *before, const char *material)
     return members;
 }
 
+/* One texture slot, with the extension object supplied verbatim. */
+static const char *transformed_material(int slot, const char *transform)
+{
+    static const char *const keys[] = { "baseColorTexture",
+                                        "metallicRoughnessTexture",
+                                        "normalTexture",
+                                        "occlusionTexture",
+                                        "emissiveTexture" };
+    static char material[1024];
+    bool pbr = slot <= STANDARD_TEXTURE_METALLIC_ROUGHNESS;
+    snprintf(
+        material,
+        sizeof material,
+        "{\"name\":\"M\",%s\"%s\":{\"index\":0%s%s%s}%s}",
+        pbr ? "\"pbrMetallicRoughness\":{" : "",
+        keys[slot],
+        transform ? ",\"extensions\":{\"KHR_texture_transform\":" : "",
+        transform ? transform : "",
+        transform ? "}" : "",
+        pbr ? "}" : ""
+    );
+    return material;
+}
+
+/* Inspect the saved graph independently of the Standard material builder:
+ * exactly one mapping feeds this image's UV, while Normal Map keeps the
+ * mesh frame through its own unconnected UV input. */
+static bool holds_mapping(const char *key, const standard_texture *expected)
+{
+    size_t length = 0;
+    char *text = read_file(key, &length);
+    const registry_pack **previous = NULL;
+    for (int i = 0; i < registry_pack_count(); i++) {
+        apush(previous, registry_pack_at(i));
+    }
+    const registry_pack *packs[] = { &SHADER_PACK };
+    registry_set_packs(packs, 1);
+    behavior_asset *asset = text ? behavior_asset_load(text) : NULL;
+    if (text && !asset) {
+        fprintf(stderr, "Cannot reload imported material %s: %s\n", key, graph_last_error());
+    }
+    shader_graph lowered;
+    shader_graph_init(&lowered);
+    shader_error diagnostic = { 0 };
+    bool compiled = asset &&
+                    shader_graph_from_graph(asset->graph, &lowered, &diagnostic);
+    if (asset && !compiled) {
+        fprintf(
+            stderr,
+            "Cannot lower imported material %s: %s\n",
+            key,
+            diagnostic.message
+        );
+    }
+    registry_set_packs(previous, acount(previous));
+    afree(previous);
+    free(text);
+    if (!asset) {
+        shader_graph_free(&lowered);
+        return false;
+    }
+    graph *g = asset->graph;
+    node *mapping = NULL, *image = NULL, *normal = NULL;
+    int mappings = 0, images = 0;
+    for (int i = 0; i < acount(g->nodes); i++) {
+        node *n = g->nodes[i];
+        if (!strcmp(n->desc->name, "Shader Mapping")) {
+            mapping = n;
+            mappings++;
+        }
+        if (!strcmp(n->desc->name, "Shader Image Texture")) {
+            image = n;
+            images++;
+        }
+        if (!strcmp(n->desc->name, "Shader Normal Map")) {
+            normal = n;
+        }
+    }
+    bool valid = compiled && mappings == 1 && images == 1;
+    if (valid) {
+        const float *offset = mapping->input_pins[1].default_value.ptr;
+        const float *scale = mapping->input_pins[3].default_value.ptr;
+        valid = offset && scale && fabsf(offset[0] - expected->offset[0]) < 1e-6f &&
+                fabsf(offset[1] - expected->offset[1]) < 1e-6f &&
+                fabsf(scale[0] - expected->scale[0]) < 1e-6f &&
+                fabsf(scale[1] - expected->scale[1]) < 1e-6f &&
+                fabsf(
+                    mapping->input_pins[2].default_value.f - expected->rotation * 57.29577951308232f
+                ) < 1e-5f;
+        int routes = 0;
+        for (int i = 0; i < acount(g->edges); i++) {
+            const edge *e = &g->edges[i];
+            routes += e->from_id == mapping->id && e->to_id == image->id &&
+                      e->to_pin_id == image->input_pins[SHADER_IMAGE_INPUT_UV].id;
+            if (normal && e->to_id == normal->id &&
+                e->to_pin_id == normal->input_pins[1].id) {
+                valid = false;
+            }
+        }
+        valid = valid && routes == 1 &&
+                (!normal || normal->input_pins[4].default_value.i ==
+                                SHADER_NORMAL_OPENGL_TANGENT);
+    }
+    if (normal) {
+        int normal_maps = 0;
+        for (int i = 0; i < acount(lowered.nodes); i++) {
+            const shader_node *n = &lowered.nodes[i];
+            if (n->op == SHADER_NORMAL_MAP) {
+                normal_maps++;
+                valid = valid && n->value[0] == SHADER_NORMAL_OPENGL_TANGENT;
+            }
+        }
+        valid = valid && normal_maps == 1;
+    }
+    shader_graph_free(&lowered);
+    behavior_asset_free(asset);
+    return valid;
+}
+
+/* Each of the five PBR slots owns its transform. Binary and JSON containers
+ * produce identical files, including the serialized mapping graph. */
+TEST_CASE(model_imports_keep_each_texture_transform)
+{
+    gltf_fixture f = { 0 };
+    square(&f);
+    gltf_fixture_png(&f, "albedo.png", 1, 1, (const uint8_t[]){ 180, 90, 30, 255 });
+    for (int slot = 0; slot < STANDARD_TEXTURE_COUNT; slot++) {
+        char name[32], file[40], transform[128], material_key[96],
+            material_name[40], image_key[96];
+        snprintf(name, sizeof name, "Transform%d", slot);
+        snprintf(file, sizeof file, "%s.gltf", name);
+        float offset = .125f * (slot + 1), scale = .5f * (slot + 1);
+        snprintf(
+            transform,
+            sizeof transform,
+            "{\"offset\":[%g,-0.25],\"scale\":[%g,0.75],\"rotation\":0.5}",
+            offset,
+            scale
+        );
+        const char *members = textured(
+            "\"extensionsRequired\":[\"KHR_texture_transform\"],",
+            transformed_material(slot, transform)
+        );
+        REQUIRE(import(&f, file, members, name));
+        REQUIRE(!acount(report.warnings));
+        snprintf(material_key, sizeof material_key, "content/materials/%s_M.kdl", name);
+        snprintf(material_name, sizeof material_name, "%s_M", name);
+        snprintf(image_key, sizeof image_key, "content/textures/%s/albedo.png", name);
+        standard_material expected = factors();
+        expected.textures[slot] = (standard_texture){ .image = image_key,
+                                                      .filter = SHADER_IMAGE_BILINEAR,
+                                                      .wrap = SHADER_IMAGE_REPEAT,
+                                                      .offset = { offset, -.25f },
+                                                      .scale = { scale, .75f },
+                                                      .rotation = .5f };
+        REQUIRE(holds_material(material_key, material_name, &expected));
+        REQUIRE(holds_mapping(material_key, &expected.textures[slot]));
+        char *keys[4] = { 0 };
+        REQUIRE(acount(report.written) == 4);
+        for (int i = 0; i < 4; i++) {
+            keys[i] = xstrdup(report.written[i]);
+        }
+        snprintf(file, sizeof file, "%s.glb", name);
+        REQUIRE(import_into("other", &f, file, members, name));
+        for (int i = 0; i < 4; i++) {
+            char other[128];
+            snprintf(other, sizeof other, "other/%s", keys[i] + strlen("content/"));
+            size_t n = 0, m = 0;
+            char *a = read_file(keys[i], &n), *b = read_file(other, &m);
+            REQUIRE(a && b && n == m && !memcmp(a, b, n));
+            free(a);
+            free(b);
+            free(keys[i]);
+        }
+    }
+    gltf_fixture_free(&f);
+    return true;
+}
+
+/* Missing fields use identity; explicit zero and negative scales are data,
+ * rather than absent/default sentinels. */
+TEST_CASE(model_imports_keep_default_and_signed_texture_scales)
+{
+    static const struct
+    {
+        const char *name, *transform;
+        float x, y;
+    } cases[] = {
+        { "Missing", NULL, 1, 1 },
+        { "Empty", "{}", 1, 1 },
+        { "Identity", "{\"offset\":[0,0],\"scale\":[1,1],\"rotation\":0}", 1, 1 },
+        { "Negative", "{\"scale\":[-2,0.5]}", -2, .5f },
+        { "Zero", "{\"scale\":[0,0]}", 0, 0 },
+    };
+    gltf_fixture f = { 0 };
+    square(&f);
+    gltf_fixture_png(&f, "albedo.png", 1, 1, (const uint8_t[]){ 255, 255, 255, 255 });
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        char file[40], key[96], name[40], image[96];
+        snprintf(file, sizeof file, "%s.gltf", cases[i].name);
+        REQUIRE(import(
+            &f,
+            file,
+            textured("", transformed_material(0, cases[i].transform)),
+            cases[i].name
+        ));
+        snprintf(key, sizeof key, "content/materials/%s_M.kdl", cases[i].name);
+        snprintf(name, sizeof name, "%s_M", cases[i].name);
+        snprintf(image, sizeof image, "content/textures/%s/albedo.png", cases[i].name);
+        standard_material expected = factors();
+        expected.textures[0] = (standard_texture){ .image = image,
+                                                   .filter = SHADER_IMAGE_BILINEAR,
+                                                   .wrap = SHADER_IMAGE_REPEAT,
+                                                   .scale = { cases[i].x,
+                                                              cases[i].y } };
+        REQUIRE(holds_material(key, name, &expected));
+    }
+    gltf_fixture_free(&f);
+    return true;
+}
+
 /* The square with `indices` and `positions`, or the square's own. */
 static gltf_fixture shape(const uint16_t *indices, int count, const float *positions)
 {
@@ -744,13 +967,6 @@ TEST_CASE(model_imports_refuse_what_they_cannot_draw_as_authored)
     REQUIRE(
         !strcmp(refusal(&f, textured("\"extensionsRequired\":[\"KHR_draco_mesh_compression\"],", "{}")), "The model requires KHR_draco_mesh_compression, which import does not support")
     );
-    const char *moved = "{\"name\":\"M\",\"pbrMetallicRoughness\":{"
-                        "\"baseColorTexture\":{\"index\":0,"
-                        "\"extensions\":{\"KHR_texture_transform\":{\"offset\":"
-                        "[0.5,0]}}}}}";
-    REQUIRE(
-        !strcmp(refusal(&f, textured("\"extensionsRequired\":[\"KHR_texture_transform\"],", moved)), "Material Bad_M's baseColorTexture transforms its UVs, which import does not support")
-    );
     const char *second = "{\"name\":\"M\",\"normalTexture\":{\"index\":0,"
                          "\"texCoord\":1}}";
     REQUIRE(
@@ -793,6 +1009,193 @@ TEST_CASE(model_imports_refuse_what_they_cannot_draw_as_authored)
         "only triangle primitives"
     ));
     gltf_fixture_free(&point);
+    return true;
+}
+
+/* Invalid transform numbers and shapes fail before publishing any part,
+ * even when a preceding material and image are valid. */
+TEST_CASE(model_imports_refuse_malformed_texture_transforms_transactionally)
+{
+    static const char *const invalid[] = {
+        "null",
+        "[]",
+        "1",
+        "{\"offset\":null}",
+        "{\"offset\":[0]}",
+        "{\"offset\":[0,1,2]}",
+        "{\"offset\":[\"0\",1]}",
+        "{\"offset\":[false,1]}",
+        "{\"offset\":[1e39,0]}",
+        "{\"offset\":[0,-1e999]}",
+        "{\"scale\":{}}",
+        "{\"scale\":[1]}",
+        "{\"scale\":[1,1,1]}",
+        "{\"scale\":[1,null]}",
+        "{\"scale\":[1,\"2\"]}",
+        "{\"scale\":[1,1e39]}",
+        "{\"rotation\":[]}",
+        "{\"rotation\":null}",
+        "{\"rotation\":true}",
+        "{\"rotation\":\"0\"}",
+        "{\"rotation\":1e39}",
+        "{\"rotation\":-1e999}",
+    };
+    gltf_fixture f = shape(NULL, 0, NULL);
+    gltf_fixture_png(&f, "albedo.png", 1, 1, WHITE);
+    for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
+        char members[2048];
+        snprintf(
+            members,
+            sizeof members,
+            "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[{" SQUARE
+            ",\"material\":0},{" SQUARE ",\"material\":1}]}],"
+            "\"textures\":[{\"source\":0}],\"materials\":[{\"name\":\"Good\","
+            "\"pbrMetallicRoughness\":{\"baseColorTexture\":{\"index\":0}}},%"
+            "s]",
+            transformed_material(STANDARD_TEXTURE_BASE_COLOR, invalid[i])
+        );
+        const char *reason = refusal(&f, members);
+        REQUIRE(strcmp(reason, "imported") && strcmp(reason, "left files") && *reason);
+        REQUIRE(!acount(report.written) && !entries("content"));
+    }
+    REQUIRE(
+        !strcmp(refusal(&f, textured("", transformed_material(STANDARD_TEXTURE_NORMAL, "{\"texCoord\":1}"))), "Material Bad_M's normalTexture reads TEXCOORD_1; import reads only TEXCOORD_0")
+    );
+    REQUIRE(!strcmp(
+        refusal(&f, textured("", transformed_material(STANDARD_TEXTURE_NORMAL, "{\"offset\":[3e38,0],\"scale\":[3e38,1]}"))),
+        "Material Bad_M's normalTexture transforms UVs beyond float range"
+    ));
+    /* The extension's texCoord overrides the textureInfo texCoord. */
+    REQUIRE(import(
+        &f,
+        "override.gltf",
+        textured(
+            "",
+            "{\"name\":\"M\",\"normalTexture\":{\"index\":0,\"texCoord\":1,"
+            "\"extensions\":{\"KHR_texture_transform\":{\"texCoord\":0}}}}"
+        ),
+        "Override"
+    ));
+    gltf_fixture_free(&f);
+    return true;
+}
+
+/* Missing tangents use the normal image's transformed coordinates. Authored
+ * glTF tangents keep their frame, and both paths preserve source mesh UVs
+ * for the other material slots. */
+TEST_CASE(model_imports_generate_transformed_normal_tangents)
+{
+    static const struct
+    {
+        const char *name, *transform;
+        CF_V3 tangent, green;
+    } cases[] = {
+        { "Rotated",
+          "{\"offset\":[0.25,-0.5],\"scale\":[2,0.5],\"rotation\":1."
+          "5707963267948966}",
+          { 0, 0, 1 },
+          { -1, 0, 0 } },
+        { "Reflected", "{\"scale\":[-2,0.5]}", { -1, 0, 0 }, { 0, 0, 1 } },
+    };
+    gltf_fixture f = shape(NULL, 0, NULL);
+    gltf_fixture_png(&f, "albedo.png", 1, 1, WHITE);
+    for (int i = 0; i < 2; i++) {
+        char file[40], key[96];
+        snprintf(file, sizeof file, "%s.gltf", cases[i].name);
+        snprintf(key, sizeof key, "content/meshes/%s.mesh", cases[i].name);
+        REQUIRE(import(
+            &f,
+            file,
+            textured("", transformed_material(STANDARD_TEXTURE_NORMAL, cases[i].transform)),
+            cases[i].name
+        ));
+        REQUIRE(reads_mesh(key) && frames_are(cases[i].tangent, cases[i].green));
+        for (int v = 0; v < acount(mesh.vertices); v++) {
+            REQUIRE(
+                fabsf(mesh.vertices[v].uv.x - (mesh.vertices[v].position.x + 1) * .5f) < 1e-6f
+            );
+            REQUIRE(
+                fabsf(mesh.vertices[v].uv.y - (1 - mesh.vertices[v].position.z) * .5f) < 1e-6f
+            );
+        }
+    }
+    int tangents = gltf_fixture_floats(
+        &f,
+        (const float[16]){ 0, 0, -2, 1, 0, 0, -2, 1, 0, 0, -2, 1, 0, 0, -2, 1 },
+        4,
+        4
+    );
+    char members[2048];
+    snprintf(
+        members,
+        sizeof members,
+        "\"nodes\":[{\"mesh\":0}],\"meshes\":[{\"primitives\":[{"
+        "\"attributes\":{\"POSITION\":0,\"NORMAL\":1,\"TEXCOORD_0\":2,"
+        "\"TANGENT\":%d},\"indices\":3,\"material\":0}]}],"
+        "\"textures\":[{\"source\":0}],\"materials\":[%s]",
+        tangents,
+        transformed_material(STANDARD_TEXTURE_NORMAL, cases[0].transform)
+    );
+    REQUIRE(import(&f, "authored.gltf", members, "Authored"));
+    REQUIRE(reads_mesh("content/meshes/Authored.mesh"));
+    REQUIRE(frames_are((CF_V3){ 0, 0, -1 }, (CF_V3){ -1, 0, 0 }));
+    for (int v = 0; v < acount(mesh.vertices); v++) {
+        REQUIRE(fabsf(mesh.vertices[v].uv.x - (mesh.vertices[v].position.x + 1) * .5f) < 1e-6f);
+        REQUIRE(fabsf(mesh.vertices[v].uv.y - (1 - mesh.vertices[v].position.z) * .5f) < 1e-6f);
+    }
+    gltf_fixture_free(&f);
+    return true;
+}
+
+/* glTF normals decode in a unit orthogonal frame, independently of UV
+ * density and shear. OpenGL green points against the positive-v direction. */
+TEST_CASE(model_import_normal_convention_uses_unit_tangent_frames)
+{
+    shader_graph g;
+    shader_graph_init(&g);
+    int color = shader_graph_add(&g, SHADER_CONSTANT, 3);
+    memcpy(g.nodes[color].value, (const float[]){ .75f, .75f, 1 }, 3 * sizeof(float));
+    int uv = shader_graph_add(&g, SHADER_UV, 2);
+    int strength = shader_graph_add(&g, SHADER_CONSTANT, 1);
+    g.nodes[strength].value[0] = 1;
+    int spacing = shader_graph_add(&g, SHADER_CONSTANT, 1);
+    g.nodes[spacing].value[0] = .01f;
+    int map = shader_graph_add(&g, SHADER_NORMAL_MAP, 3);
+    memcpy(g.nodes[map].input, (const int[]){ color, uv, strength, spacing }, 4 * sizeof(int));
+    g.nodes[map].value[0] = SHADER_NORMAL_OPENGL_TANGENT;
+    g.output_count = 1;
+    g.output[0] = map;
+    unsigned char *bytes = NULL;
+    size_t length = 0;
+    shader_error diagnostic = { 0 };
+    shader_graph restored;
+    shader_graph_init(&restored);
+    REQUIRE(shader_graph_prepared_write(&g, &bytes, &length, &diagnostic));
+    REQUIRE(shader_graph_prepared_read(bytes, length, &restored, &diagnostic));
+    free(bytes);
+    REQUIRE(acount(restored.nodes) == acount(g.nodes));
+    REQUIRE(restored.nodes[map].op == SHADER_NORMAL_MAP);
+    REQUIRE(restored.nodes[map].value[0] == SHADER_NORMAL_OPENGL_TANGENT);
+    static const float gradients[][2][3] = {
+        { { 3, 0, 0 }, { 2, 0, -.25f } },
+        { { 1e20f, 0, 0 }, { 1e19f, 0, -1e18f } },
+        { { 3, 0, 0 }, { 2, 0, .25f } },
+    };
+    for (int i = 0; i < 3; i++) {
+        shader_sample_context context = { .normal = { 0, 1, 0 } };
+        memcpy(context.uv_from_world, gradients[i], sizeof context.uv_from_world);
+        const shader_graph *graphs[] = { &g, &restored };
+        for (int j = 0; j < 2; j++) {
+            float output[SHADER_OUTPUT_MAX][4];
+            REQUIRE(shader_graph_eval_outputs(graphs[j], &context, NULL, output, &diagnostic));
+            float magnitude = sqrtf(1.5f);
+            REQUIRE(fabsf(output[0][0] - .5f / magnitude) < 1e-4f);
+            REQUIRE(fabsf(output[0][1] - 1 / magnitude) < 1e-4f);
+            REQUIRE(fabsf(output[0][2] - (i == 2 ? -.5f : .5f) / magnitude) < 1e-4f);
+        }
+    }
+    shader_graph_free(&restored);
+    shader_graph_free(&g);
     return true;
 }
 
@@ -870,9 +1273,10 @@ TEST_CASE(model_imports_keep_only_the_base_color_of_unlit_materials)
     standard_material unlit = factors();
     unlit.unlit = true;
     unlit.textures[STANDARD_TEXTURE_BASE_COLOR] = (standard_texture){
-        "content/textures/Lamp/albedo.png",
-        SHADER_IMAGE_BILINEAR,
-        SHADER_IMAGE_REPEAT
+        .image = "content/textures/Lamp/albedo.png",
+        .filter = SHADER_IMAGE_BILINEAR,
+        .wrap = SHADER_IMAGE_REPEAT,
+        .scale = { 1, 1 }
     };
     REQUIRE(holds_material("content/materials/Lamp_Glow.kdl", "Lamp_Glow", &unlit));
     gltf_fixture_free(&f);
@@ -1245,6 +1649,11 @@ void test_model_import()
     pu_setup(setup, teardown);
     RUN_TEST_CASE(model_imports_write_each_part_once);
     RUN_TEST_CASE(model_imports_read_binary_files_alike);
+    RUN_TEST_CASE(model_imports_keep_each_texture_transform);
+    RUN_TEST_CASE(model_imports_keep_default_and_signed_texture_scales);
+    RUN_TEST_CASE(model_imports_refuse_malformed_texture_transforms_transactionally);
+    RUN_TEST_CASE(model_imports_generate_transformed_normal_tangents);
+    RUN_TEST_CASE(model_import_normal_convention_uses_unit_tangent_frames);
     RUN_TEST_CASE(model_imports_name_parts_apart);
     RUN_TEST_CASE(model_imports_name_materials_of_the_longest_models);
     RUN_TEST_CASE(model_imports_replace_nothing_and_undo_failures);

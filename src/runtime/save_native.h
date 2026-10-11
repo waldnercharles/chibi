@@ -3,6 +3,8 @@
 #include "execution/host.h"
 extern const node_host_call GAME_SAVE_READ_CALL;
 extern const node_host_call GAME_SAVE_SET_CALL;
+extern const node_host_call GAME_SAVE_READ_NUMBER_CALL;
+extern const node_host_call GAME_SAVE_SET_NUMBER_CALL;
 extern const node_host_call GAME_SAVE_REMOVE_CALL;
 extern const node_host_call GAME_SAVE_COMMIT_CALL;
 extern const node_host_call GAME_SAVE_DISCARD_CALL;

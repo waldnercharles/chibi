@@ -110,7 +110,7 @@ static void report_phases(double *samples, int frames)
 
 /* Steps a patch for a fixed interval and returns its state hash, printing
  * per-phase timings when measured. */
-static uint64_t run_patch(int solver, int side, int frames, int workers, bool collision, bool measured)
+static bool run_patch(int solver, int side, int frames, int workers, bool collision, bool measured, uint64_t *hash)
 {
     material_fluid *fluid = make_patch(solver, side, collision);
     game_task_pool *pool = game_task_pool_acquire_workers(workers);
@@ -160,11 +160,24 @@ static uint64_t run_patch(int solver, int side, int frames, int workers, bool co
         );
         report_phases(samples, frames);
     }
-    uint64_t hash = state_hash(fluid);
+    int count;
+    const fluid_particle *particles = material_fluid_particles(fluid, &count);
+    REQUIRE(count == side * side);
+    for (int i = 0; i < count; i++) {
+        REQUIRE(
+            isfinite(particles[i].position.x) && isfinite(particles[i].position.y)
+        );
+        REQUIRE(
+            isfinite(particles[i].velocity.x) && isfinite(particles[i].velocity.y)
+        );
+        REQUIRE(isfinite(particles[i].deformation.volume));
+        REQUIRE(particles[i].mass == .001f);
+    }
+    *hash = state_hash(fluid);
     free(samples);
     material_fluid_free(fluid);
     game_task_pool_release(pool);
-    return hash;
+    return true;
 }
 
 /* Worker results must equal the serial result, or the timings compare
@@ -176,8 +189,9 @@ static bool patch_parity(int solver, bool collision)
         SIDE = 32,
         FRAMES = 30
     };
-    uint64_t parallel = run_patch(solver, SIDE, FRAMES, BENCHMARK_WORKERS, collision, true);
-    uint64_t serial = run_patch(solver, SIDE, FRAMES, 1, collision, false);
+    uint64_t parallel, serial;
+    REQUIRE(run_patch(solver, SIDE, FRAMES, BENCHMARK_WORKERS, collision, true, &parallel));
+    REQUIRE(run_patch(solver, SIDE, FRAMES, 1, collision, false, &serial));
     printf("  state_hash=%016" PRIx64 " serial_hash=%016" PRIx64 "\n", parallel, serial);
     REQUIRE(parallel == serial);
     return true;

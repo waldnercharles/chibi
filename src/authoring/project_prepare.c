@@ -593,7 +593,9 @@ bool authoring_project_prepare(
     /* The encoded package is linked independently of source/compiler storage. */
     const input_action *map = authoring_sources_input(sources);
     for (int i = 0; i < acount(map); i++) {
-        input_map_add(&actions, map[i].name, map[i].controls, map[i].firing);
+        input_action action = map[i];
+        action.name = xstrdup(action.name);
+        apush(actions, action);
     }
     afree(definitions);
     authoring_sources_free(sources);
@@ -667,7 +669,8 @@ bool authoring_project_prepare(
     };
     char *title = project.application.title ? project.application.title
                                             : project.name;
-    game_player_application application = { .title = title,
+    game_player_application application = { .project_name = project.name,
+                                            .title = title,
                                             .width = project.application.width,
                                             .height = project.application.height,
                                             .fullscreen = project.application.fullscreen,

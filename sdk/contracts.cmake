@@ -213,6 +213,8 @@ if(CHIBI_SDK_BUILD_NATIVE)
         chibi_native_capabilities chibi_image_catalog chibi_types chibi_support)
 endif()
 if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
+    chibi_sdk_contract(chibi_scene_authoring "${CHIBI_SDK_ROOT}/src/authoring"
+        chibi_native_types chibi_scene_document)
     chibi_sdk_contract(chibi_asset_authoring "${CHIBI_SDK_ROOT}/src"
         chibi_prototype_document chibi_graph_model chibi_reference_index chibi_field_catalog chibi_authoring
         chibi_asset_text chibi_scene_document chibi_ui_document chibi_graph_authoring chibi_graph_compilation

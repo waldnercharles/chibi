@@ -37,13 +37,19 @@ void test_tool_ecs_world();
 void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
 void test_tool_validate_project(const char *binary);
+void test_tool_controller(const char *binary);
+void test_tool_render_fixture(const char *binary);
 void test_tool_prototype_expansion(const char *binary);
 void test_tool_prepared(const char *producer, const char *consumer);
 void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
+#ifdef CHIBI_TEST_SCENE_AUTHORING
+void test_scene_hierarchy();
+#endif
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
 void test_render_resources();
+void test_installed_examples(const char *name);
 void test_render_interior_border();
 void test_render_viewport_resize();
 void test_render_radiance_layout();
@@ -64,6 +70,9 @@ void test_render_sdf_visibility();
 void test_render_radiance_surface();
 void test_render_material_pixels();
 void test_render_radiance_horizons(int directions);
+#ifdef CHIBI_TEST_MODEL_IMPORT
+void test_render_texture_transform();
+#endif
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
 void test_compiled_math();
@@ -84,6 +93,9 @@ bool test_source_runtime_active()
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
 void test_source_native_features();
+#ifdef CHIBI_TEST_PREVIEW
+void test_preview_preparation();
+#endif
 void test_source_presentation();
 void test_component_presentation();
 void test_system_schedule();
@@ -98,6 +110,9 @@ void test_source_native_material_features();
 #endif
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
 int run_feature_coverage(const char *project);
+#endif
+#ifdef CHIBI_TEST_PREVIEW_COMPONENTS
+void test_preview_components();
 #endif
 #ifdef CHIBI_TEST_GRAPH_AUTHORING
 void test_graph_comments();
@@ -360,6 +375,21 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
+    const char *example = NULL;
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+    static const char *const examples[] = { "local_mesh_sampled",
+                                            "hrc_lab",
+                                            "modeling_lab",
+                                            "sdf_lab",
+                                            "suzanne_sampled" };
+    for (int i = 0; i < 5; i++) {
+        char selector[128];
+        snprintf(selector, sizeof selector, "--installed-example-%s", examples[i]);
+        if (argc == 2 && !strcmp(argv[1], selector)) {
+            example = examples[i];
+        }
+    }
+#endif
     bool tilemap = false, tilemap_project = false;
 #ifdef CHIBI_TEST_TILEMAP
     tilemap = argc == 2 && !strcmp(argv[1], "--tilemap");
@@ -376,7 +406,13 @@ int main(int argc, char **argv)
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
+    bool controller = argc == 3 && !strcmp(argv[1], "--controller");
+    bool scene_hierarchy = false;
+#ifdef CHIBI_TEST_SCENE_AUTHORING
+    scene_hierarchy = argc == 2 && !strcmp(argv[1], "--scene-hierarchy");
+#endif
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
+    bool render_fixture = argc == 3 && !strcmp(argv[1], "--render-fixture");
     bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
@@ -385,7 +421,8 @@ int main(int argc, char **argv)
          radiance_depth = false, material_sampling = false, scene2d = false,
          scene3d = false, material_ramps = false, radiance_surface = false,
          material_pixels = false, box3d = false, sky_files = false,
-         mesh_files = false, model_import = false, material_render = false;
+         mesh_files = false, model_import = false, texture_transform = false,
+         material_render = false;
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
@@ -405,7 +442,10 @@ int main(int argc, char **argv)
         }
     }
 #endif
-    bool coverage = false;
+    bool coverage = false, preview_components = false;
+#ifdef CHIBI_TEST_PREVIEW_COMPONENTS
+    preview_components = argc == 2 && !strcmp(argv[1], "--preview-components");
+#endif
     bool graph_document = false, graph_presentation = false,
          graph_functions = false, vector_nodes = false;
 #ifdef CHIBI_TEST_GRAPH_AUTHORING
@@ -486,7 +526,11 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     model_import = argc == 2 && !strcmp(argv[1], "--model-import");
-    model_import_types = model_import || scene3d;
+#ifdef CHIBI_TEST_MATERIAL_GRAPHS
+    texture_transform = argc == 2 && !strcmp(argv[1], "--texture-transform");
+    material_graphs |= texture_transform;
+#endif
+    model_import_types = model_import || scene3d || texture_transform;
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     native_catalog = argc == 2 && !strcmp(argv[1], "--native-catalog");
@@ -496,21 +540,22 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !coverage && !shader_parameters && !source_edit &&
-        !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
-        !package && !unit && !web_storage && !webgpu_staging &&
-        !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
-        !native && !native_values && !native_catalog && !physics &&
-        !physics3d && !transforms && !render_resources && !interior_border &&
-        !viewport_resize && !sdf_visibility && !radiance && !radiance_depth &&
-        !material_sampling && !scene2d && !scene3d && !material_ramps &&
+    if (argc != 1 && !example && !corpus && !coverage && !preview_components &&
+        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
+        !tilemap && !tilemap_project && !package && !unit && !web_storage &&
+        !webgpu_staging && !query_benchmark && !prepared && !read && !scene &&
+        !scene_prepared && !scene_hierarchy && !native && !native_values &&
+        !native_catalog && !physics && !physics3d && !transforms &&
+        !render_resources && !interior_border && !viewport_resize &&
+        !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
+        !scene2d && !scene3d && !material_ramps && !texture_transform &&
         !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
         !sky_files && !mesh_files && !model_import && !persistent_store &&
         !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
         !whole_select && !owned_tick && !parallel_tick && !source_features &&
         !source_numeric && !source_material && !source_presentation &&
-        !system_schedule && !source_systems && !validate_project &&
-        !expansion && !graph_document && !graph_presentation &&
+        !system_schedule && !source_systems && !validate_project && !expansion &&
+        !controller && !render_fixture && !graph_document && !graph_presentation &&
         !graph_functions && !vector_nodes && !material_render && !material) {
         fprintf(
             stderr,
@@ -518,11 +563,13 @@ int main(int argc, char **argv)
             "--web-storage | "
             "--webgpu-staging | "
             "--ecs-query-benchmark | "
-            "--validate-project chibi_ctl | "
+            "--validate-project chibi_ctl | --controller chibi_ctl | "
+            "--render-fixture chibi_ctl | --preview-components | "
             "--prototype-expansion chibi_ctl | "
             "--prepared "
             "test_language | --prepared-read directory | --scene | "
-            "--scene-prepared | --native | --native-values | --native-catalog "
+            "--scene-prepared | --scene-hierarchy | --native | --native-values "
+            "| --native-catalog "
             "| --physics | --physics3d | --transforms "
             "| --render-resources | --material-render | --interior-border | "
             "--viewport-resize | "
@@ -531,6 +578,7 @@ int main(int argc, char **argv)
             "--scene3d | --scene3d-gles | --scene3d-gi | --scene3d-gi-gles | "
             "--material-ramps | --radiance-surface | --radiance-horizons4 | "
             "--radiance-horizons8 | --material-pixels | "
+            "--texture-transform | "
             "--box3d | "
             "--sky-files | --mesh-files | --model-import | "
             "--material-destruction | --material-fluids | --material-mpm | "
@@ -561,16 +609,31 @@ int main(int argc, char **argv)
     }
     tool_init();
     pu_display_time(true);
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+    if (example) {
+        test_installed_examples(example);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = corpus || coverage || shader_parameters ||
-                            source_edit || new_asset || asset_refactor ||
-                            system_schedule || source_systems || persistent_store ||
+    source_runtime_active = corpus || coverage || preview_components ||
+                            shader_parameters || source_edit || new_asset ||
+                            asset_refactor || system_schedule ||
+                            source_systems || persistent_store ||
                             source_presentation || whole_alias || whole_math ||
                             whole_integer || whole_conversion || whole_select ||
                             owned_tick || parallel_tick || source_features ||
                             source_numeric || source_material || graph_document ||
                             graph_presentation || graph_functions || vector_nodes;
     if (source_runtime_active) {
+#ifdef CHIBI_TEST_PREVIEW_COMPONENTS
+        if (preview_components) {
+            test_preview_components();
+            pu_print_stats();
+            return pu_test_failed() ? 1 : 0;
+        }
+#endif
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
         if (coverage) {
             return run_feature_coverage(argv[2]);
@@ -617,6 +680,9 @@ int main(int argc, char **argv)
             test_component_presentation();
         } else if (source_features) {
             test_source_native_features();
+#ifdef CHIBI_TEST_PREVIEW
+            test_preview_preparation();
+#endif
         } else if (source_numeric) {
             test_source_native_numeric_queries();
         } else if (source_material) {
@@ -709,6 +775,13 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
+#ifdef CHIBI_TEST_MODEL_IMPORT
+    if (texture_transform) {
+        test_render_texture_transform();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
     if (material_ramps || sdf_visibility || radiance_surface ||
         radiance_horizons || material_pixels) {
         if (sdf_visibility) {
@@ -787,6 +860,13 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
 #endif
+#ifdef CHIBI_TEST_SCENE_AUTHORING
+    if (scene_hierarchy) {
+        test_scene_hierarchy();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
     if (webgpu_staging) {
         test_tool_webgpu_staging();
     } else if (package) {
@@ -799,8 +879,12 @@ int main(int argc, char **argv)
         test_tool_prepared(argv[2], argv[0]);
     } else if (read) {
         test_tool_prepared_runtime(argv[2]);
+    } else if (controller) {
+        test_tool_controller(argv[2]);
     } else if (validate_project) {
         test_tool_validate_project(argv[2]);
+    } else if (render_fixture) {
+        test_tool_render_fixture(argv[2]);
     } else if (expansion) {
         test_tool_prototype_expansion(argv[2]);
     } else if (unit) {

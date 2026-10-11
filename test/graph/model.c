@@ -245,17 +245,23 @@ TEST_CASE(concurrent_first_readers_share_the_index)
                               .inputs = INPUTS };
     atomic_init(&readers.start, false);
     pthread_t threads[READERS];
-    for (int i = 0; i < READERS; i++) {
-        REQUIRE(pthread_create(&threads[i], NULL, read_shared_inputs, &readers) == 0);
+    int started = 0;
+    for (; started < READERS; started++) {
+        if (pthread_create(&threads[started], NULL, read_shared_inputs, &readers)) {
+            break;
+        }
     }
+    /* Even a failed creation must release and join every started reader
+       before its stack-owned inputs and graph can be released. */
     atomic_store_explicit(&readers.start, true, memory_order_release);
     int failed = 0;
-    for (int i = 0; i < READERS; i++) {
+    for (int i = 0; i < started; i++) {
         void *result = NULL;
-        pthread_join(threads[i], &result);
+        int joined = pthread_join(threads[i], &result);
+        assert(!joined);
         failed += result != NULL;
     }
-    REQUIRE(failed == 0);
+    REQUIRE(started == READERS && failed == 0);
     return true;
 }
 

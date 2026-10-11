@@ -262,7 +262,23 @@ TEST_CASE(macro_signature_edits_reach_every_call)
     REQUIRE(find_pin(entry, 1, "Alternate") < 0 && find_pin(call, 0, "Alternate") < 0);
     char *document = graph_asset_text(asset);
     behavior_asset *loaded = document ? graph_asset_read(document) : NULL;
-    bool reloaded = loaded && behavior_asset_find_graph(loaded, macro->graph_id);
+    graph *loaded_macro = loaded ? behavior_asset_find_graph(loaded, macro->graph_id)
+                                 : NULL;
+    node *loaded_call = loaded ? graph_node_by_id(loaded->graph, call->id) : NULL;
+    node *loaded_entry = loaded_macro
+                           ? graph_node_by_id(loaded_macro, loaded_macro->entry_id)
+                           : NULL;
+    bool reloaded = loaded_entry && loaded_call &&
+                    loaded_entry->output_count == loaded_call->input_count;
+    for (int i = 0; reloaded && i < loaded_call->input_count; i++) {
+        const pin_spec *tunnel = &loaded_entry->output_pins[i];
+        const pin_spec *input = &loaded_call->input_pins[i];
+        reloaded = tunnel->name && input->name &&
+                   !strcmp(tunnel->name, input->name) &&
+                   tunnel->kind == input->kind && tunnel->type == input->type &&
+                   tunnel->container == input->container &&
+                   tunnel->id == input->declaration_id;
+    }
     behavior_asset_free(loaded);
     free(document);
     REQUIRE(reloaded);

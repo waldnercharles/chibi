@@ -7,6 +7,7 @@
 #include "types/value_wire.h"
 
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -137,6 +138,148 @@ TEST_CASE(prepared_scene_survives_input_retirement_and_instantiation)
     REQUIRE(value->frame.position.y == 3);
     return true;
 }
+/* Repeated authored objects can exceed 4096 total rows without exceeding any
+ * table, encoded-record or owned-storage budget. */
+TEST_CASE(prepared_scene_roundtrips_repeated_component_rows)
+{
+    enum
+    {
+        OBJECTS = 512,
+        COMPONENTS = 8,
+        STORAGE_BYTES = 4 * 1024 * 1024
+    };
+    const type_desc *type = type_catalog_find("test.record");
+    REQUIRE(type && type->size == sizeof(record));
+    ecs_component_desc descriptions[COMPONENTS];
+    const ecs_component_desc *catalog[COMPONENTS];
+    game_scene_component rows[COMPONENTS];
+    char component_names[COMPONENTS][32];
+    record value = { .frame = { .enabled = true, .position = { 7, 9 } },
+                     .label = "repeated component" };
+    for (int i = 0; i < COMPONENTS; i++) {
+        snprintf(component_names[i], sizeof component_names[i], "RepeatedRecord%d", i);
+        descriptions[i] = (ecs_component_desc){ .id = (ecs_component_id)(970 + i),
+                                                .name = component_names[i],
+                                                .key = component_names[i],
+                                                .type = type,
+                                                .element_size = sizeof value };
+        catalog[i] = &descriptions[i];
+        rows[i] = (game_scene_component){ &descriptions[i], &value };
+    }
+    game_scene_object objects[OBJECTS];
+    char names[OBJECTS][32];
+    for (int i = 0; i < OBJECTS; i++) {
+        snprintf(names[i], sizeof names[i], "Object%d", i);
+        objects[i] = (game_scene_object){ .name = names[i],
+                                          .components = rows,
+                                          .component_count = COMPONENTS };
+    }
+    game_scene_spec spec = { .name = "RepeatedScene",
+                             .physics = game_physics_defaults(),
+                             .objects = objects,
+                             .object_count = OBJECTS };
+    char error[256];
+    scene = game_scene_prepare(&spec, error, sizeof error);
+    REQUIRE(scene);
+    REQUIRE(game_scene_prepared_write(scene, &bytes, &length, error, sizeof error));
+    REQUIRE(length < 1024 * 1024);
+    size_t budget = STORAGE_BYTES;
+    decoded = game_scene_prepared_read_budget(
+        bytes,
+        length,
+        (ecs_component_catalog){ catalog, COMPONENTS },
+        &budget,
+        error,
+        sizeof error
+    );
+    REQUIRE(decoded && game_scene_object_count(decoded) == OBJECTS);
+    REQUIRE(budget == STORAGE_BYTES - game_scene_storage_bytes(decoded));
+    for (int i = 0; i < OBJECTS; i++) {
+        REQUIRE(!strcmp(game_scene_object_name(decoded, i), names[i]));
+        REQUIRE(game_scene_object_component_count(decoded, i) == COMPONENTS);
+        for (int j = 0; j < COMPONENTS; j++) {
+            game_scene_component row = game_scene_object_component_at(decoded, i, j);
+            const record *restored = row.data;
+            REQUIRE(row.desc->id == descriptions[j].id);
+            REQUIRE(
+                restored->frame.enabled && restored->frame.position.x == 7 &&
+                restored->frame.position.y == 9
+            );
+            REQUIRE(!strcmp(restored->label, value.label));
+        }
+    }
+    game_scene_free(decoded);
+    decoded = NULL;
+    budget = 1;
+    REQUIRE(!game_scene_prepared_read_budget(
+        bytes,
+        length,
+        (ecs_component_catalog){ catalog, COMPONENTS },
+        &budget,
+        error,
+        sizeof error
+    ));
+    REQUIRE(budget == 1 && error[0]);
+    return true;
+}
+TEST_CASE(prepared_scene_rejects_component_identity_conflicts)
+{
+    const type_desc *type = type_catalog_find("test.record");
+    REQUIRE(type && type->size == sizeof(record));
+    ecs_component_desc first = { .id = 970,
+                                 .name = "FirstRecord",
+                                 .key = "first.record",
+                                 .type = type,
+                                 .element_size = sizeof(record) };
+    ecs_component_desc second;
+    record value = { 0 };
+    game_scene_component rows[] = { { &first, &value }, { &second, &value } };
+    game_scene_object objects[] = {
+        { .name = "First", .components = &rows[0], .component_count = 1 },
+        { .name = "Second", .components = &rows[1], .component_count = 1 }
+    };
+    game_scene_spec spec = { .name = "ConflictingScene",
+                             .physics = game_physics_defaults(),
+                             .objects = objects,
+                             .object_count = 2 };
+    char error[256];
+    for (int identity = 0; identity < 4; identity++) {
+        second = (ecs_component_desc){ .id = 971,
+                                       .name = "SecondRecord",
+                                       .key = "second.record",
+                                       .type = type,
+                                       .element_size = sizeof(record) };
+        switch (identity) {
+            case 0: second.id = first.id; break;
+            case 1: second.name = first.name; break;
+            case 2: second.key = first.key; break;
+            case 3:
+                second = first;
+                second.index = ECS_INDEX_DENSE;
+                break;
+        }
+        scene = game_scene_prepare(&spec, error, sizeof error);
+        REQUIRE(!scene);
+        REQUIRE(strstr(error, "identity has conflicting layouts"));
+    }
+    /* Missing optional keys do not make unrelated components identical. */
+    first.key = NULL;
+    second = first;
+    second.id++;
+    second.name = "SecondRecord";
+    scene = game_scene_prepare(&spec, error, sizeof error);
+    REQUIRE(scene);
+    game_scene_free(scene);
+    scene = NULL;
+    second = first;
+    objects[0].component_count = 2;
+    spec.object_count = 1;
+    scene = game_scene_prepare(&spec, error, sizeof error);
+    REQUIRE(!scene);
+    REQUIRE(strstr(error, "object component is duplicated"));
+    return true;
+}
+
 TEST_CASE(prepared_scene_rejects_incompatible_and_malformed_records)
 {
     REQUIRE(prepare());
@@ -501,6 +644,8 @@ void test_scene_prepared()
     RUN_TEST_CASE(prepared_integers_roundtrip_in_shortest_form);
     RUN_TEST_CASE(prepared_wire_bounds_use_encoded_width);
     RUN_TEST_CASE(prepared_scene_survives_input_retirement_and_instantiation);
+    RUN_TEST_CASE(prepared_scene_roundtrips_repeated_component_rows);
+    RUN_TEST_CASE(prepared_scene_rejects_component_identity_conflicts);
     RUN_TEST_CASE(prepared_scene_rejects_incompatible_and_malformed_records);
     RUN_TEST_CASE(prepared_scene_rejects_misplaced_parents_and_sibling_names);
     RUN_TEST_CASE(prepared_scene_rejects_links_to_no_handle);

@@ -109,7 +109,10 @@ typedef enum
 typedef enum
 {
     SHADER_NORMAL_DIRECTX,
-    SHADER_NORMAL_OPENGL
+    SHADER_NORMAL_OPENGL,
+    /* OpenGL image channels in a unit, orthogonal tangent frame, as glTF
+     * requires. UV density does not change the normal's direction. */
+    SHADER_NORMAL_OPENGL_TANGENT
 } shader_normal_convention;
 enum
 {

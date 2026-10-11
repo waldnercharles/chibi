@@ -951,18 +951,25 @@ a Material's full absorption as opaque, receivers that absorb taking the light
 HRC brings open ones at falloff 0, 1 and 2 within a 15% tone-mapped brightness
 tolerance, independently of intensity, less from lights near their plane and
 none from below it, receivers that absorb nothing taking
-HRC's light by facing and height, smoothly, walls hiding ambient light by
-their height in both visibility modes, soft visibility that keeps a light on
-an open floor's plane and past a slab's top or bottom as lit as hard
-visibility does, gloss, every depth quality, depth history of light and of that
-shading, segments and steep planes. The surface gather pass alone must take
-each quadrant's light, find crests past gaps and stay dark without light in
-reach, and surface gather light must restart when
-the view turns. Its cases share one HRC, since a new one compiles all of HRC's
-shaders. The reviewed 32-case workload also checks that changing falloff drops
-stale Depth history; it passes 2359 assertions in 11.3 seconds on lavapipe,
-20.5 with an empty shader cache. Its 31 earlier cases passed in 5.6 seconds on
-the native macOS backend.
+HRC's light by facing and height, smoothly, and by each light as much as HRC
+brings it, so a light behind a wall that absorbs leaves them as lit, also when
+it is the only light in reach, and one behind a faint absorber fades smoothly
+with its absorption, walls hiding
+ambient light by their height in both visibility modes, soft visibility that
+keeps a light on an open floor's plane and past a slab's top or bottom as lit
+as hard visibility does, gloss, every depth quality, depth history of light
+and of that shading, segments and steep planes. A bright grazing source with
+strong relief keeps the same displayed light when its power increases a hundred
+times and the receiver albedo decreases by the same factor, in both visibility
+modes and through fresh and retained Depth history. The surface gather pass alone
+must take each quadrant's light, find crests past gaps and stay dark without
+light in reach, and surface gather light must restart when the view turns.
+Its cases share one HRC, since a new one compiles all of HRC's shaders. The
+reviewed 34-case workload also checks that changing falloff drops stale Depth
+history. The bright-source case fails without the shared-exponent storage for
+the brought light and signed shading sums. All 34 cases pass in 6.4 seconds
+on the native macOS backend. The earlier 33 cases passed 2427 assertions in
+10.7 seconds on lavapipe, 20.0 with an empty shader cache.
 `material-sampling` draws shapes into the material raster alone in a hidden
 65 x 49 app: small circles must emit their area wherever they land on the pixel
 grid and at twice the resolution, overlapping tiles must keep their draw order,

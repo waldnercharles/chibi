@@ -818,6 +818,123 @@ TEST_CASE(soft_visibility_keeps_lights_on_the_floor)
     return true;
 }
 
+/* open_scene(OPEN) with a `green` light at x 0 to 3, as tall as the strip,
+ * behind a wall at x 6 to 9 as tall, so its slab hides the green light from
+ * the receiver. The wall's optical depth per pixel is `absorption`. */
+static void walled_scene(float green, float absorption)
+{
+    open_scene(OPEN, 0, 1);
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < 10; x++) {
+            int p = y * SIDE + x;
+            bool wall = x >= 6;
+            bool light = x <= 3 && y >= 8 && y <= 24;
+            data[ALBEDO][p][3] = wall || light ? 12 : 0;
+            data[SOURCE][p][1] = light ? green : 0;
+            data[SOURCE][p][3] = wall ? absorption : 0;
+        }
+    }
+}
+
+/* An open receiver patch at x and y 14 to 19, lit by the strip from x 28 out
+ * of reach of a depth radius of 9, and a green light at x 9 to 10 and y 14 to
+ * 19 behind a wall at x 11 to 13, as tall, of optical depth `absorption` per
+ * pixel. The rest of the floor is no receiver, so filtering borrows no light
+ * from receivers that reach the strip. */
+static void near_walled_scene(float green, float absorption)
+{
+    open_scene(OPEN, 0, 1);
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < SIDE; x++) {
+            int p = y * SIDE + x;
+            bool strip = x >= 28 && y >= 8 && y <= 24;
+            bool wall = x >= 11 && x <= 13;
+            bool light = x >= 9 && x <= 10 && y >= 14 && y < 20;
+            bool receiver = x >= 14 && x < 20 && y >= 14 && y < 20;
+            data[ALBEDO][p][3] = strip || wall || light ? 12 : 0;
+            data[SOURCE][p][0] = strip ? 4 : 0;
+            data[SOURCE][p][1] = light ? green : 0;
+            data[SOURCE][p][3] = wall ? absorption : 0;
+            if (!strip && !wall && !light && !receiver) {
+                data[COVER][p][1] = data[COVER][p][2] = 0;
+            }
+        }
+    }
+}
+
+/* Depth shades the light HRC brings by each light as much as HRC brings it.
+ * A bright light behind an opaque wall, which HRC stops and Depth sees as
+ * hidden, leaves the strip's light on the receiver as it was, in both
+ * visibility modes, also when the strip is out of Depth's reach and the
+ * walled light the only one in it. Behind a faint absorber, which HRC brings
+ * nearly all of, the hidden light shades the strip's light, and as much at
+ * slightly more absorption: a light HRC dims fades from the shading as
+ * smoothly. */
+TEST_CASE(lights_behind_absorbing_walls_leave_hrc_light_unshaded)
+{
+    for (int mode = HRC_DEPTH_VISIBILITY_MASK; mode <= HRC_DEPTH_VISIBILITY_SEGMENTS;
+         mode++) {
+        HRC2D lighting = fill_lighting();
+        lighting.surface_depth_visibility = (HRCDepthVisibility)mode;
+        float unlit[3], walled[3], faint[3], fainter[3];
+        walled_scene(0, 20);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), unlit));
+        walled_scene(16, 20);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), walled));
+        REQUIRE(unlit[0] > .1f && fabsf(walled[0] - unlit[0]) < unlit[0] * .01f);
+        REQUIRE(fabsf(walled[1] - unlit[1]) < .001f);
+        walled_scene(16, .005f);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), fainter));
+        walled_scene(16, .02f);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), faint));
+        REQUIRE(fainter[0] < unlit[0] * .8f && fabsf(faint[0] - fainter[0]) < fainter[0] * .02f);
+        lighting.surface_depth_radius = 9;
+        near_walled_scene(0, 3);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), unlit));
+        near_walled_scene(16, 3);
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), walled));
+        REQUIRE(unlit[0] > .01f && fabsf(walled[0] - unlit[0]) < unlit[0] * .01f);
+    }
+    return true;
+}
+
+/* Scaling a finite HDR source and inversely scaling the receiver albedo
+ * leaves its displayed light unchanged. A grazing source and strong relief
+ * require large signed shading sums, even though the final light is modest.
+ * History must retain those finite weighted sums too. */
+TEST_CASE(bright_sources_keep_weighted_depth_shading_finite)
+{
+    for (int mode = HRC_DEPTH_VISIBILITY_MASK; mode <= HRC_DEPTH_VISIBILITY_SEGMENTS;
+         mode++) {
+        HRC2D lighting = fill_lighting();
+        lighting.surface_depth_visibility = (HRCDepthVisibility)mode;
+        lighting.surface_relief = 100;
+        lighting.falloff = 0;
+        float reference[3], bright[3], held[3];
+        for (int exposure = 0; exposure < 2; exposure++) {
+            float power = exposure ? 5000 : 50;
+            open_scene(OPEN, .99f, 1);
+            for (int p = 0; p < PIXELS; p++) {
+                data[ALBEDO][p][3] = 0;
+                for (int c = 0; c < 3; c++) {
+                    data[ALBEDO][p][c] = .005f / power;
+                }
+                if (data[SOURCE][p][0] > 0) {
+                    data[SOURCE][p][0] = power;
+                }
+            }
+            REQUIRE(lit_fresh(lighting, test_centered(SIDE), exposure ? bright : reference));
+        }
+        REQUIRE(reference[0] > .01f && reference[0] < .95f);
+        REQUIRE(fabsf(bright[0] - reference[0]) < reference[0] * .05f);
+        lighting.surface_depth_temporal = true;
+        REQUIRE(lit_fresh(lighting, test_centered(SIDE), bright));
+        REQUIRE(lit(lighting, test_centered(SIDE), held));
+        REQUIRE(fabsf(held[0] - reference[0]) < reference[0] * .05f);
+    }
+    return true;
+}
+
 /* A dark receiver, nearly black and tilted toward the half-vector, so gloss
  * shows apart from its diffuse light. The strip stays off the receiver. */
 static void dark_receiver(float gloss)
@@ -1463,6 +1580,8 @@ void test_render_radiance_depth()
     RUN_TEST_CASE(walls_occlude_ambient_light_by_their_height);
     RUN_TEST_CASE(closed_receivers_take_the_light_hrc_brings_open_ones);
     RUN_TEST_CASE(soft_visibility_keeps_lights_on_the_floor);
+    RUN_TEST_CASE(lights_behind_absorbing_walls_leave_hrc_light_unshaded);
+    RUN_TEST_CASE(bright_sources_keep_weighted_depth_shading_finite);
     RUN_TEST_CASE(glossy_receivers_take_highlights_by_the_depth_gain);
     RUN_TEST_CASE(matte_patches_take_no_gloss_from_around_them);
     RUN_TEST_CASE(every_depth_quality_lights_and_shadows);

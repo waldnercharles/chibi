@@ -247,6 +247,17 @@ static render_radiance *radiance;
 static CF_Canvas canvas;
 static CF_Pixel pixels[PIXELS];
 
+/* The lighting the transport cases were calibrated with, whatever defaults
+ * authors start from: the finest grid, no unlit color and bright emitters. */
+static GameHRC2D reference_lighting()
+{
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.resolution = 1;
+    lighting.ambient = 0;
+    lighting.intensity = 7.5f;
+    return lighting;
+}
+
 static void setup()
 {
     raster = render_material_raster_new();
@@ -255,6 +266,7 @@ static void setup()
     assert(raster && radiance && canvas.id);
     assert(render_material_raster_resize(raster, SIDE, SIDE));
     assert(render_radiance_resize(radiance, SIDE, SIDE));
+    assert(render_radiance_set_lighting(radiance, reference_lighting()));
 }
 
 static void teardown()
@@ -533,7 +545,9 @@ TEST_CASE(reused_capacity_matches_a_fresh_grid)
         memcpy(reused, pixels, sizeof reused);
         render_radiance *shared = radiance;
         radiance = render_radiance_new();
-        bool fresh = radiance && render_radiance_set_settings(radiance, settings) &&
+        bool fresh = radiance &&
+                     render_radiance_set_lighting(radiance, reference_lighting()) &&
+                     render_radiance_set_settings(radiance, settings) &&
                      render_radiance_resize(radiance, 64, 64) &&
                      solve(&light, 1, 64, 4);
         render_radiance_free(radiance);

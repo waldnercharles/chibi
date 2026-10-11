@@ -532,8 +532,10 @@ lighting open space through its material, opaque, finite, bouncing and nearly
 transparent walls, reset, empty and resized grids, reused capacity against a
 fresh grid, lighting that normalization fitted, every resolution, color and
 gather combination, the adaptive ladder, GPU pass timing, and the extend and
-filter passes alone against CPU references. On lavapipe it passes 4697
-assertions in 14.5 seconds, 19.9 seconds with an empty shader cache. HRC's view
+filter passes alone against CPU references. The cases pin the lighting they
+were calibrated with (finest grid, no ambient, intensity 7.5) rather than the
+authoring defaults. On lavapipe it passes 4697 assertions in 16.7 seconds,
+22.6 seconds with an empty shader cache. HRC's view
 layout and lighting normalization run without a GPU in `render-resources`.
 `test/radiance.c` still holds the unbuilt cases to port: surface lighting,
 horizon shadows, fluids, reflections and reconstruction.

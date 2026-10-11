@@ -128,6 +128,10 @@ uint slab_prefix[96];
 float sampling_rotation;
 float tile_visibility;
 
+// Softness fades a shadow's edge within the bin that blocks, from where the
+// hard shadow ends to the blocked bin's centre, so it never shadows what the
+// hard shadow leaves lit. A flat floor's own slab ends at the horizon, which
+// a softened edge would otherwise let half-shadow a light on the floor.
 float mask_visibility(uint mask, float elevation)
 {
     int bin = clamp(int(floor(elevation + 0.5)), 0, 31);
@@ -137,7 +141,9 @@ float mask_visibility(uint mask, float elevation)
     int upper = clamp(int(floor(elevation)) + 1, 0, 31);
     float a = (mask & (1u << uint(lower))) == 0u ? 1.0 : 0.0;
     float b = (mask & (1u << uint(upper))) == 0u ? 1.0 : 0.0;
-    return mix(hard, mix(a, b, fract(elevation)), u_shadow_softness);
+    float f = fract(elevation);
+    float soft = a == b ? a : min(2.0 * (a < b ? f : 1.0 - f), 1.0);
+    return mix(hard, soft, u_shadow_softness);
 }
 
 float ray_visibility(int ray, float radial, float elevation)

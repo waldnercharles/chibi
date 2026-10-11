@@ -561,7 +561,10 @@ must show its materials unlit, `game_hrc2d_defaults()` lighting must keep them
 visible, and the unlit view or removing the settings must stop lighting. A
 sprite whose normal map faces a light must be lit more than flat normals, and
 mirrored, less, unless a Material turns its edge light off; a map must be loaded
-and the size of its image, and relief finite. Build and run it like
+and the size of its image, and relief finite. A lamp drawn as an Appearance must
+light a closed floor beside it in Depth thickness by its relief, scaled with its
+visual, and none of it from the plane, and a relief that isn't finite
+must draw nothing. Build and run it like
 `interior-border` with `AGENT_SELECTOR=--scene2d`.
 `radiance` runs HRC in a hidden 128 x 128 app and reads it back: an emitter
 lighting open space through its material, opaque, finite, bouncing and nearly
@@ -626,12 +629,13 @@ cleared, a world-space material following its layout frame, a graph material's
 parameter through the raster and its own fragment program inside a shape graph's
 circle, mixed batches of graph boxes, plain boxes and meshes uploading only what
 they draw, a sprite's normal and height maps tilting and raising each texel,
-mirrored and turned with it, and fluids landing where game Y points down, gas
+mirrored and turned with it, shapes standing at their relief, raised further by
+a material's Height, and fluids landing where game Y points down, gas
 joining and parting, crisp unlit liquid edges, burning cores, plumes without
 holes, fading parcels and wisps along their velocity. Gas and liquid must take
 HRC's light and the wall's shadow with one and three traced cascades, a
 refracting liquid must bend only the background behind it, and a crystal must
-mirror the scene beside it. It passes 587 assertions in 11.5 seconds, 22.3 with
+mirror the scene beside it. It passes 600 assertions in 13.2 seconds, 26.2 with
 an empty shader cache.
 These selectors need the material graphs of the main build.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other

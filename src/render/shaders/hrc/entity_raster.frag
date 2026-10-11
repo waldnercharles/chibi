@@ -77,7 +77,7 @@ Entity entity_at(uint index)
     e.shape_type = u.x;
     e.radius = uintBitsToFloat(u.y);
     e.thickness = uintBitsToFloat(u.z);
-    e.chubbiness = uintBitsToFloat(u.w);
+    e.relief = uintBitsToFloat(u.w);
     u = entity_data[b + 3u];
     e.aa = uintBitsToFloat(u.x);
     e.point_count = u.y;
@@ -217,7 +217,7 @@ vec2 shader_half_size(Entity e)
     if (e.shape_type == SHAPE_CIRCLE)
         return vec2(e.radius + e.thickness * 0.5);
     if (e.shape_type == SHAPE_DIAMOND)
-        return vec2(e.radius + e.chubbiness + e.thickness * 0.5);
+        return vec2(e.radius + e.thickness * 0.5);
     if (e.shape_type == SHAPE_BOX || e.shape_type == SHAPE_SPRITE)
         return abs(e.points_01.xy) + e.thickness * 0.5;
     vec2 bounds = max(abs(e.points_01.xy), abs(e.points_01.zw));
@@ -227,7 +227,7 @@ vec2 shader_half_size(Entity e)
                             e.points_45.zw,e.points_67.xy,e.points_67.zw);
     int count = e.shape_type == SHAPE_TRI ? 3 : clamp(int(e.point_count),3,8);
     for (int i = 2; i < count; i++) bounds = max(bounds, abs(points[i-2]));
-    return bounds + e.chubbiness + e.thickness * 0.5;
+    return bounds + e.thickness * 0.5;
 }
 
 float evaluate_sdf(vec2 local_p, Entity e)
@@ -247,16 +247,16 @@ float evaluate_sdf(vec2 local_p, Entity e)
     if (shape == SHAPE_CIRCLE) {
         d = sdf_circle(local_p, e.radius);
     } else if (shape == SHAPE_BOX || shape == SHAPE_SPRITE) {
-        d = sdf_box(local_p, abs(e.points_01.xy), e.chubbiness);
+        d = sdf_box(local_p, abs(e.points_01.xy));
         if (e.points_23.w > 0.0) d = max(d, dot(e.points_23.xy, local_p) - e.points_23.z);
     } else if (shape == SHAPE_CAPSULE) {
         d = sdf_capsule(local_p, e.points_01.xy, e.points_01.zw, e.radius);
     } else if (shape == SHAPE_TRI) {
-        d = sdf_triangle(local_p, e.points_01.xy, e.points_01.zw, e.points_23.xy, e.chubbiness);
+        d = sdf_triangle(local_p, e.points_01.xy, e.points_01.zw, e.points_23.xy);
     } else if (shape == SHAPE_DIAMOND) {
-        d = sdf_diamond(local_p, e.radius) - e.chubbiness;
+        d = sdf_diamond(local_p, e.radius);
     } else if (shape == SHAPE_POLY_FILL) {
-        d = sdf_polygon_filled(local_p, e) - e.chubbiness;
+        d = sdf_polygon_filled(local_p, e);
     } else {
         d = sdf_circle(local_p, e.radius);
     }
@@ -286,12 +286,12 @@ vec4 sprite_texel(vec2 local_p, Entity e)
 
 #include "color.shd"
 
-// The sprite's tilt and height. points_67.y is its normal map variant, whose
-// red is image right and green image up, points_67.z its height map variant
-// and points_67.w its relief. A mirrored frame mirrors its normals, which the
-// sprite's rotation turns into world axes. A normal facing away keeps a
-// maximal tilt, as a material's does.
-void sprite_relief(vec2 local_p, Entity e, inout vec4 surface, out float height)
+// The sprite's tilt, and its height map's scale of its relief. points_67.y is
+// its normal map variant, whose red is image right and green image up, and
+// points_67.z its height map variant. A mirrored frame mirrors its normals,
+// which the sprite's rotation turns into world axes. A normal facing away
+// keeps a maximal tilt, as a material's does.
+void sprite_relief(vec2 local_p, Entity e, inout vec4 surface, inout float height)
 {
     vec2 uv = sprite_uv(local_p, e);
     if (e.points_67.y > 0.0) {
@@ -305,7 +305,6 @@ void sprite_relief(vec2 local_p, Entity e, inout vec4 surface, out float height)
         if (n.z <= 0.0 && t2 > 1e-8) tilt *= 0.999 * inversesqrt(t2);
         surface.xy = tilt;
     }
-    height = e.points_67.w;
     if (e.points_67.z > 0.0) height *= sg_image_sample(int(e.points_67.z), uv).r;
 }
 
@@ -728,7 +727,7 @@ void main()
             e.absorption *= texel.a;
         }
         vec4 surface = vec4(0.0, 0.0, e.reserved2, 0.0);
-        float height = 0.0;
+        float height = e.relief;
         if (e.shape_type == SHAPE_SPRITE) sprite_relief(local_p, e, surface, height);
         if (e.reserved0 > 0.0) {
             for(int p=0;p<32;p++) parameters[p]=shader_parameters[floatBitsToUint(e.simulation_time.y)+uint(p)];
@@ -738,7 +737,8 @@ void main()
             e.border_scene=graph_output[0]; e.border_emission=graph_output[1];
             e.border_albedo=graph_output[2]; e.border_absorption=graph_output[3];
             surface.xyw = graph_output[4].xyz;
-            height = graph_output[4].w;
+            // A material's Height adds relief above the shape's surface.
+            height += graph_output[4].w;
         }
 
         plane_surface(surface, height);

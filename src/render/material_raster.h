@@ -37,7 +37,9 @@ typedef struct
 {
     float inv_rot[4], pos[2], extent[2];
     uint32_t shape_type;
-    float radius, thickness, chubbiness;
+    /* relief: world units the shape stands above the plane, which a
+     * sprite's height map scales. */
+    float radius, thickness, relief;
     float aa;
     uint32_t point_count, metaball_group;
     float metaball_blend;

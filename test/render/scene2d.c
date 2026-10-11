@@ -195,6 +195,16 @@ static ecs_entity add_sprite(const char *normal_map, bool flip_x)
     return sprite;
 }
 
+/* Lighting without unlit color or history. */
+static GameHRC2D plain_lighting()
+{
+    GameHRC2D lighting = game_hrc2d_defaults();
+    lighting.ambient = 0;
+    lighting.adaptive = false;
+    lighting.radiance_hysteresis = lighting.bounce_hysteresis = 1;
+    return lighting;
+}
+
 /* A white light at x -20, lighting without unlit color or history. */
 static void add_light()
 {
@@ -207,10 +217,7 @@ static void add_light()
         ecs_world_record_add(world, light, GAME_COMPONENT_GameAppearance.id, &disc, 0) == ECS_OK
     );
     assert(ecs_world_record_add(world, light, GAME_COMPONENT_GameMaterial.id, &glow, 0) == ECS_OK);
-    GameHRC2D lighting = game_hrc2d_defaults();
-    lighting.ambient = 0;
-    lighting.adaptive = false;
-    lighting.radiance_hysteresis = lighting.bounce_hysteresis = 1;
+    GameHRC2D lighting = plain_lighting();
     add(GAME_COMPONENT_GameHRC2D.id, &lighting);
 }
 
@@ -283,6 +290,83 @@ TEST_CASE(sprites_reject_bad_maps_and_relief)
     return true;
 }
 
+/* A white floor over the view's right half that absorbs light, lit by Depth
+ * thickness from as far as the view reaches. */
+static void add_floor()
+{
+    ecs_entity floor = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ SIDE / 4, 0 });
+    GameAppearance look = { .width = SIDE / 2,
+                            .height = SIDE,
+                            .color = 0xffffffffu,
+                            .shape = GAME_SHAPE_BOX };
+    GameMaterial closed = { .scene = 0xffffffffu,
+                            .albedo = 0xffffffffu,
+                            .absorption = 1,
+                            .edge_light = 1 };
+    assert(
+        ecs_world_record_add(world, floor, GAME_COMPONENT_GameAppearance.id, &look, 0) == ECS_OK
+    );
+    assert(
+        ecs_world_record_add(world, floor, GAME_COMPONENT_GameMaterial.id, &closed, 0) == ECS_OK
+    );
+    GameHRC2D lighting = plain_lighting();
+    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    lighting.surface_depth_radius = SIDE;
+    lighting.feedback = false;
+    lighting.fog = 0;
+    add(GAME_COMPONENT_GameHRC2D.id, &lighting);
+}
+
+/* The green of the floor's middle, 36 units from a white lamp at x -20
+ * drawn as the disc `look` at `scale`. */
+static bool floor_green(GameAppearance look, float scale, int *green)
+{
+    ecs_entity lamp = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ -20, 0 });
+    look.shape = GAME_SHAPE_CIRCLE;
+    GameMaterial glow = { .scene = 0xffffffffu,
+                          .emission_color = 0xffffffffu,
+                          .emission_intensity = 2,
+                          .emission_multiplier = 1 };
+    GameVisualTransform visual = { .scale = scale };
+    REQUIRE(
+        ecs_world_record_add(world, lamp, GAME_COMPONENT_GameAppearance.id, &look, 0) == ECS_OK
+    );
+    REQUIRE(
+        ecs_world_record_add(world, lamp, GAME_COMPONENT_GameMaterial.id, &glow, 0) == ECS_OK
+    );
+    REQUIRE(
+        ecs_world_record_add(world, lamp, GAME_COMPONENT_GameVisualTransform.id, &visual, 0) == ECS_OK
+    );
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(draw());
+    *green = pixels[SIDE / 2 * SIDE + SIDE / 2 + 16].colors.g;
+    REQUIRE(ecs_world_destroy_entity(world, lamp) == ECS_OK);
+    return true;
+}
+
+/* A light drawn as a shape stands its relief above the plane, scaled with
+ * its visual, so it lights the closed floor beside it from above. On the
+ * plane it lights none of the floor past its rim, and a relief that isn't
+ * finite draws nothing. */
+TEST_CASE(appearance_relief_raises_lights_over_closed_floors)
+{
+    add_floor();
+    int on_plane, raised, scaled, lower, unfinite;
+    CF_Pixel *lamp = &pixels[SIDE / 2 * SIDE + SIDE / 2 - 20];
+    REQUIRE(floor_green((GameAppearance){ .width = 8, .height = 8 }, 1, &on_plane));
+    REQUIRE(floor_green((GameAppearance){ .width = 8, .height = 8, .relief = 24 }, 1, &raised));
+    REQUIRE(lamp->colors.g > 200);
+    REQUIRE(floor_green((GameAppearance){ .width = 4, .height = 4, .relief = 12 }, 2, &scaled));
+    REQUIRE(floor_green((GameAppearance){ .width = 8, .height = 8, .relief = 12 }, 1, &lower));
+    REQUIRE(
+        floor_green((GameAppearance){ .width = 8, .height = 8, .relief = NAN }, 1, &unfinite)
+    );
+    REQUIRE(lamp->colors.g < 3 && unfinite < 3);
+    REQUIRE(on_plane < 3 && raised > 60);
+    REQUIRE(abs(scaled - raised) <= 3 && lower < raised - 15);
+    return true;
+}
+
 void test_render_scene2d()
 {
     setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
@@ -296,6 +380,7 @@ void test_render_scene2d()
     RUN_TEST_CASE(default_lighting_keeps_materials_visible);
     RUN_TEST_CASE(normal_maps_turn_sprites_toward_the_light);
     RUN_TEST_CASE(sprites_reject_bad_maps_and_relief);
+    RUN_TEST_CASE(appearance_relief_raises_lights_over_closed_floors);
     pu_clear_setup();
     cf_destroy_app();
 }

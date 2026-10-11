@@ -1,3 +1,4 @@
+#include "render/gpu_timing.h"
 #include "render/shader_catalog.h"
 #include "render/shader_images.h"
 #include "render/shader_publish.h"
@@ -610,6 +611,22 @@ TEST_CASE(prepared_skies_publish_with_their_generation)
     REQUIRE(!render_sky_find(sky_key));
     return true;
 }
+
+/* Discarding drops every span not yet taken, wherever the ring starts, so
+ * none is taken later and the span starts over empty. */
+TEST_CASE(discarded_gpu_spans_leave_nothing_to_take)
+{
+    render_gpu_span span = { .pending = { [0] = { 3, 4 }, [7] = { 1, 2 } },
+                             .head = 7,
+                             .count = 2,
+                             .first = 3 };
+    render_gpu_span_discard(&span);
+    REQUIRE(!span.count && !span.head && !span.first);
+    double ms;
+    REQUIRE(!render_gpu_span_take(&span, &ms));
+    return true;
+}
+
 void test_render_resources()
 {
     pu_setup(NULL, cleanup);
@@ -621,5 +638,6 @@ void test_render_resources()
     RUN_TEST_CASE(sky_irradiance_saturates_with_the_faces);
     RUN_TEST_CASE(split_sum_table_integrates_the_specular_lobe);
     RUN_TEST_CASE(prepared_skies_publish_with_their_generation);
+    RUN_TEST_CASE(discarded_gpu_spans_leave_nothing_to_take);
     pu_clear_setup();
 }

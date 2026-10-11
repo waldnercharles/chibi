@@ -318,6 +318,14 @@ bool render_gpu_span_take(render_gpu_span *span, double *ms)
     return true;
 }
 
+void render_gpu_span_discard(render_gpu_span *span)
+{
+    while (span->count) {
+        s_span_drop(span);
+    }
+    *span = (render_gpu_span){ 0 };
+}
+
 unsigned render_gpu_timing_committed(void)
 {
     if (g_timing.mode != RENDER_GPU_TIMING_TIMESTAMPS && !g_track_commits) {

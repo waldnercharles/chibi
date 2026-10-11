@@ -26,6 +26,7 @@ HEALTH = None
 NEXT = 'make test-policy-inventory'
 CPU_SELECTORS = {
     '--player-url': 'player-url',
+    '--player-clock': 'player-clock',
     '--audio-analysis': 'audio-analysis',
     '--shader-webgpu': 'shader-webgpu',
     '--arena': 'arena',

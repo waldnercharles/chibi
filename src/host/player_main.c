@@ -1,5 +1,6 @@
 #include "execution/backend.h"
 #include "host/native_default.h"
+#include "host/player_clock.h"
 #include "host/player_url.h"
 #include "platform/cute.h"
 #include "render/device_controls.h"
@@ -712,7 +713,7 @@ int main(int argc, char **argv)
     signal(SIGINT, stop);
     signal(SIGTERM, stop);
     cf_register_key_callback(key_changed);
-    cf_set_target_framerate(60);
+    player_clock_start();
     engine_set_playing(runtime, true);
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop_arg(web_frame, &host, 0, true);

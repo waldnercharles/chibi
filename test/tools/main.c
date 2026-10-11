@@ -74,6 +74,7 @@ void test_render_resources();
 void test_particle_fields();
 void test_tool_audio_output();
 void test_tool_audio_browser();
+void test_tool_player_clock();
 void test_installed_examples(const char *name);
 void test_render_interior_border();
 void test_render_viewport_resize();
@@ -266,6 +267,7 @@ static const char *const document_selectors[] = {
     "--reference-index",  "--asset-source",
     "--behavior-loader",  "--engine-clock",
     "--preview-layout",   "--fields",
+    "--player-clock",
 };
 
 static bool selected(int argc, char **argv, const char *name)
@@ -291,6 +293,10 @@ static bool run_document_suites(int argc, char **argv)
         return true;
     }
 #ifdef CHIBI_TEST_RENDER_RUNTIME
+    if (selected(argc, argv, "--player-clock")) {
+        test_tool_player_clock();
+        return true;
+    }
     if (selected(argc, argv, "--audio-browser")) {
         test_tool_audio_browser();
         return true;
@@ -696,7 +702,8 @@ int main(int argc, char **argv)
             "manifest | --prepare-corpora manifest | --prepare-corpora-sljit "
             "manifest | --feature-coverage project | --asset-values | "
             "--ui-document | --text-files | --fmt | --particles | "
-            "--audio-analysis | --audio-browser | --shader-webgpu | "
+            "--player-clock | --audio-analysis | --audio-browser | "
+            "--shader-webgpu | "
             "--player-url | "
             "--png-encoding | --project-document | --prototype-documents | "
             "--reference-index | --asset-source | --behavior-loader | "

@@ -123,6 +123,23 @@ events and records URL-open requests without a browser, network or GPU. Its
 first combined supervised run passed nine cases and 67 assertions in 2.278
 seconds.
 
+`player-clock` compiles the player's actual clock initialization for both native
+and browser hosts and records the Cute limiter setter. Two C cases verify that
+native enables 60 FPS pacing while the browser leaves pacing to
+requestAnimationFrame. Both cases and four assertions passed within the native
+group's 3.534-second run; restoring the unconditional setter fails the browser
+case. The cases use no clocks, sleeps, windows or GPU.
+
+The browser player previously enabled Cute's native 60 FPS sleep/spin limiter
+inside requestAnimationFrame. Removing that second limiter changed bounded
+Stillwater samples from 58.8 FPS to 120.0 FPS in both Solo and Duet on the same
+browser at a 2560×1440 canvas (1280×720 CSS, DPR 2). Each sample discarded 120
+warmup frames and measured 2.5 seconds. Mean synchronous frame-callback time
+fell from 16.7 ms to 3.08 ms for Solo and 3.46 ms for Duet; the respective 95th
+percentiles were 4.5 and 5.0 ms. Callback time excludes asynchronous GPU
+completion. These are short local measurements, not a sustained or cross-device
+frame-rate guarantee.
+
 `audio-analysis` runs eleven fixed PCM, frequency-band, amplitude, silence,
 source-selection and snapshot cases, plus one dummy-SDL mixer lifetime case.
 The mixer case shares a two-second callback deadline. It opens no graphics or

@@ -133,6 +133,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_PLAYER)
         "${CHIBI_SDK_ROOT}/src/host/player_url.c")
     set(player_private "${CMAKE_CURRENT_BINARY_DIR}/private/player")
     configure_file("${CHIBI_SDK_ROOT}/src/host/player_url.h" "${player_private}/host/player_url.h" COPYONLY)
+    configure_file("${CHIBI_SDK_ROOT}/src/host/player_clock.h" "${player_private}/host/player_clock.h" COPYONLY)
     target_include_directories(chibi-player PRIVATE "${player_private}")
     target_link_libraries(chibi-player PRIVATE Chibi::render Chibi::player
         Chibi::native_prepared Chibi::host_native_default)

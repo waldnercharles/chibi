@@ -22,7 +22,8 @@ enum
 {
     TAG_MUSIC,
     TAG_VOLUME,
-    TAG_VOICE
+    TAG_VOICE,
+    TAG_SOURCE
 };
 typedef struct
 {
@@ -38,6 +39,9 @@ struct game_audio
     int music;
     float fade, volumes[GAME_AUDIO_BUSES];
     uint64_t music_serial, generation, emitted, hash;
+    int source;
+    uint64_t source_serial;
+    game_audio_analysis analysis;
     char message[192];
 };
 /* Unique across queues, so a host never mistakes a new queue for an old one. */
@@ -48,6 +52,9 @@ static void restore(game_audio *audio)
     audio->music = -1;
     audio->fade = 0;
     audio->music_serial++;
+    audio->source = 0;
+    audio->source_serial++;
+    audio->analysis = (game_audio_analysis){ 0 };
     for (int i = 0; i < GAME_AUDIO_BUSES; i++) {
         audio->volumes[i] = 1;
     }
@@ -447,6 +454,54 @@ static const char *sound_volume(void *service, const pin_value *in, pin_value *)
 {
     return set_volume(service, GAME_AUDIO_SOUNDS, in[0].f);
 }
+int game_audio_source(const game_audio *audio, uint64_t *serial)
+{
+    *serial = audio->source_serial;
+    return audio->source;
+}
+game_audio_analysis game_audio_get_analysis(const game_audio *audio)
+{
+    return audio->analysis;
+}
+void game_audio_set_analysis(game_audio *audio, game_audio_analysis analysis)
+{
+    assert(analysis.source == audio->source);
+    audio->analysis = analysis;
+}
+static const char *set_source(void *service, const pin_value *in, pin_value *)
+{
+    game_audio *audio = service;
+    int source = in[0].i;
+    if (source < 0 || source > 1) {
+        return "Audio source must be 0 for game output or 1 for external audio";
+    }
+    if (source == audio->source) {
+        return NULL;
+    }
+    audio->source = source;
+    audio->source_serial++;
+    audio->analysis = (game_audio_analysis){ .source = source,
+                                             .status = GAME_AUDIO_WAITING };
+    float value = (float)source;
+    mix(audio, TAG_SOURCE, &value, 1);
+    return NULL;
+}
+static const char *get_analysis(void *service, const pin_value *, pin_value *out)
+{
+    game_audio_analysis analysis = game_audio_get_analysis(service);
+    const float values[] = { analysis.level,
+                             analysis.bass,
+                             analysis.mid,
+                             analysis.treble,
+                             analysis.onset };
+    for (int i = 0; i < 5; i++) {
+        out[i] = (pin_value){ .type = PIN_F32, .f = values[i] };
+    }
+    out[5] = (pin_value){ .type = PIN_BOOL, .b = analysis.active };
+    out[6] = (pin_value){ .type = PIN_I32, .i = analysis.source };
+    out[7] = (pin_value){ .type = PIN_I32, .i = analysis.status };
+    return NULL;
+}
 #define CALL(NAME, INVOKE)                                                     \
     const node_host_call NAME = {                                              \
         .service = "game.audio",                                               \
@@ -460,4 +515,7 @@ CALL(GAME_AUDIO_STOP_MUSIC_CALL, stop_music);
 CALL(GAME_AUDIO_MASTER_VOLUME_CALL, master_volume);
 CALL(GAME_AUDIO_MUSIC_VOLUME_CALL, music_volume);
 CALL(GAME_AUDIO_SOUND_VOLUME_CALL, sound_volume);
+CALL(GAME_AUDIO_SOURCE_CALL, set_source);
+CALL(GAME_AUDIO_ANALYSIS_CALL, get_analysis);
 const node_access GAME_AUDIO_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
+const node_access GAME_AUDIO_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };

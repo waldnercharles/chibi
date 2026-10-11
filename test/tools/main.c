@@ -28,6 +28,9 @@ void test_tool_test_policy();
 void test_tool_validation_plan();
 void test_tool_publish();
 void test_tool_web_storage();
+#ifdef CHIBI_TEST_AUDIO_ANALYSIS
+void test_tool_audio_analysis();
+#endif
 void test_tool_webgpu_staging();
 void test_tool_types();
 void test_tool_ecs();
@@ -48,6 +51,7 @@ void test_render_interior_border();
 void test_render_viewport_resize();
 void test_render_scene3d(bool gles);
 void test_device_controls();
+void test_tool_audio_output();
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
 void test_render_material_ramps();
@@ -172,6 +176,10 @@ int main(int argc, char **argv)
          new_asset = false, asset_refactor = false;
     int corpus = 0;
     bool coverage = false;
+    bool audio_analysis = false;
+#ifdef CHIBI_TEST_AUDIO_ANALYSIS
+    audio_analysis = argc == 2 && !strcmp(argv[1], "--audio-analysis");
+#endif
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
     coverage = argc == 3 && !strcmp(argv[1], "--feature-coverage");
 #endif
@@ -238,7 +246,7 @@ int main(int argc, char **argv)
 #endif
     if (argc != 1 && !corpus && !coverage && !shader_parameters && !source_edit &&
         !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
-        !package && !unit && !web_storage && !webgpu_staging &&
+        !package && !unit && !web_storage && !webgpu_staging && !audio_analysis &&
         !query_benchmark && !prepared && !read && !scene && !scene_prepared &&
         !native && !native_values && !native_catalog && !physics && !physics3d &&
         !transforms && !render_resources && !interior_border && !viewport_resize &&
@@ -252,6 +260,7 @@ int main(int argc, char **argv)
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
             "--web-storage | "
+            "--audio-analysis | "
             "--webgpu-staging | "
             "--ecs-query-benchmark | "
             "--validate-project chibi_ctl | "
@@ -283,6 +292,16 @@ int main(int argc, char **argv)
     }
     tool_init();
     pu_display_time(true);
+#ifdef CHIBI_TEST_AUDIO_ANALYSIS
+    if (audio_analysis) {
+        test_tool_audio_analysis();
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+        test_tool_audio_output();
+#endif
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
     source_runtime_active = corpus || coverage || shader_parameters ||
                             source_edit || new_asset || asset_refactor ||
@@ -473,6 +492,12 @@ int main(int argc, char **argv)
         test_tool_test_policy();
         test_tool_validation_plan();
         test_tool_publish();
+#ifdef CHIBI_TEST_AUDIO_ANALYSIS
+        test_tool_audio_analysis();
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+        test_tool_audio_output();
+#endif
+#endif
 #ifdef CHIBI_TEST_REFLECT
         test_tool_reflect();
 #endif

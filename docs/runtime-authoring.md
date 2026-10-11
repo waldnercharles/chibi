@@ -285,6 +285,31 @@ Scenarios hash every audio request, and `runtime_snapshot` counts the sounds and
 tones played in `sound_cues`. Studio play mode cannot play sound files yet, so
 `play_sound` and `play_music` fail there with "No sound named".
 
+`get_audio_analysis()` reads the playback host's measured PCM. `Level`, `Bass`,
+`Mid`, `Treble` and `Onset` are numbers from 0 to 1. Level is absolute RMS;
+the approximate bands split at 250 Hz and 2500 Hz. Onset measures a rise in
+energy, with no tempo or beat prediction. Levels have a 20 ms attack and 120 ms
+release. Apply visual sensitivity in authored code. Stereo channels retain
+their own energy, including when their waveforms have opposite polarity.
+
+`set_audio_source(0)` analyzes the game output after its music, effects and
+volume controls. `set_audio_source(1)` requests external audio. The browser
+asks for a tab, window or screen on the current or next user gesture; select
+one with audio sharing enabled. Support depends on the browser and selected
+source. Native players select an installed loopback input such as Background
+Music or BlackHole. Route the music player's output to that virtual device.
+`CHIBI_AUDIO_INPUT` selects an exact recording-device name instead. The player
+never selects the default microphone implicitly. PulseAudio monitors require
+`SDL_AUDIO_INCLUDE_MONITORS=1` before launch. Captured audio stays in memory
+for analysis and is neither saved nor played back.
+
+`Source` reports 0 or 1. `Status` reports idle (0), waiting (1), ready (2),
+unavailable (3), denied or cancelled (4), or ended (5). `Active` means recent
+PCM arrived while the playback host was running; an active source can be
+silent. Pausing, changing the source or resetting the session clears the
+measurements. Headless scenarios have no playback samples and return zeros.
+Keep capture state and visual responses separate from deterministic game rules.
+
 ## Simulate 3D bodies
 
 An entity with `GAME.GameTransform3D` and `GAME.GameCollider3D` collides in the

@@ -25,6 +25,7 @@ START = time.monotonic()
 HEALTH = None
 NEXT = 'make test-policy-inventory'
 CPU_SELECTORS = {
+    '--audio-analysis': 'audio-analysis',
     '--compile-installed-space-cadet': 'compile-installed-space-cadet',
     '--source-edit': 'source-edit',
     '--source-presentation': 'source-presentation',

@@ -1,6 +1,7 @@
 #include "render/audio.h"
 
 #include "platform/cute.h"
+#include "render/audio_input.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
@@ -17,6 +18,7 @@ typedef struct
 } voice;
 struct render_audio
 {
+    audio_input *input;
     voice voices[VOICES];
     int next;
     const game_audio *source;
@@ -28,6 +30,7 @@ struct render_audio
 render_audio *render_audio_new()
 {
     render_audio *audio = xcalloc(1, sizeof(render_audio));
+    audio->input = audio_input_new();
     for (int i = 0; i < GAME_AUDIO_BUSES; i++) {
         audio->volumes[i] = 1;
     }
@@ -69,6 +72,7 @@ static void set_paused(render_audio *audio, bool paused)
 /* Silences everything this host started and restores the mixer. */
 static void forget(render_audio *audio)
 {
+    audio_input_reset(audio->input);
     for (int i = 0; i < VOICES; i++) {
         release(&audio->voices[i]);
     }
@@ -92,6 +96,7 @@ static void forget(render_audio *audio)
 void render_audio_free(render_audio *audio)
 {
     forget(audio);
+    audio_input_free(audio->input);
     free(audio);
 }
 static CF_Audio decoded(render_audio *audio, const game_audio *queue, int index)
@@ -183,6 +188,14 @@ void render_audio_update(render_audio *audio, game_audio *queue, bool playing)
 {
     /* Cute has no mixer when SDL audio fails to start. */
     if (!SDL_WasInit(SDL_INIT_AUDIO)) {
+        if (queue) {
+            uint64_t serial;
+            int source = game_audio_source(queue, &serial);
+            game_audio_set_analysis(
+                queue,
+                (game_audio_analysis){ .source = source, .status = GAME_AUDIO_UNAVAILABLE }
+            );
+        }
         return;
     }
     follow_source(audio, queue);
@@ -196,6 +209,7 @@ void render_audio_update(render_audio *audio, game_audio *queue, bool playing)
         }
     }
     set_paused(audio, !playing);
+    audio_input_update(audio->input, queue, playing);
     if (!playing) {
         return;
     }

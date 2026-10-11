@@ -5,6 +5,8 @@ CHIBI_CPU_SELECTOR("--source-edit")
 CHIBI_CPU_SELECTOR("--source-systems")
 CHIBI_CPU_SELECTOR("--system-schedule")
 CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
+/* PCM analysis and a dummy SDL audio device; graphics and real input disabled. */
+CHIBI_CPU_SELECTOR("--audio-analysis")
 
 /* Explicit opt-in checks against installed products; each runs under the
  * shared 60-second supervisor. */

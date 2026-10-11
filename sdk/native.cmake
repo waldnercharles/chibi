@@ -106,10 +106,11 @@ chibi_sdk_headers(chibi_entity_runtime PUBLIC runtime/behaviors/entities.h
 target_link_libraries(chibi_entity_runtime PUBLIC chibi_native_types chibi_execution
     chibi_scene_runtime chibi_behavior_runtime chibi_native_capabilities PRIVATE chibi_spatial_runtime chibi_tilemap_runtime)
 add_library(chibi_audio_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/audio.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/audio_analysis.c"
     "${CHIBI_SDK_ROOT}/src/runtime/audio_definition.c")
 add_library(Chibi::audio_runtime ALIAS chibi_audio_runtime)
 set_target_properties(chibi_audio_runtime PROPERTIES EXPORT_NAME audio_runtime)
-chibi_sdk_headers(chibi_audio_runtime PUBLIC runtime/audio.h runtime/audio_definition.h)
+chibi_sdk_headers(chibi_audio_runtime PUBLIC runtime/audio.h runtime/audio_definition.h runtime/audio_analysis.h)
 target_link_libraries(chibi_audio_runtime PUBLIC chibi_native_capabilities)
 add_library(chibi_rhythm_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/rhythm.c"
     "${CHIBI_SDK_ROOT}/src/runtime/rhythm_definition.c")

@@ -91,6 +91,14 @@ in a feature-coverage scene; it lists the entry as a gap only with a reason. The
 
 ## Temporary 60-second policy
 
+`python3 tools/test_policy.py tool audio-analysis` selects twelve C cases for
+PCM bands, RMS, onset, silence, stereo phase, source and snapshot state, and
+the real mixer-to-analysis path through SDL's dummy audio driver. The transport
+case disables graphics and selects a fake recording device; it opens no real
+input. Its two-second shared wait bounds callback delivery, owner replacement,
+pause/reset, and a simulated device-removal event. The same cases run in the
+tooling aggregate when its build includes audio and rendering packages.
+
 The retired frontend experiment's five source inputs are preserved as historical
 syntax fixtures in `test/fixtures/language/prototype`. Its earlier parser tests
 do not establish production semantic or execution coverage.

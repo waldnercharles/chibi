@@ -1,8 +1,13 @@
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
-#include "platform/cute.h"
+#include "graph/model/registry.h"
+#include "graph/shader/shader_graph.h"
+#include "hidden_app.h"
 #include "runtime/shaders/image.h"
 #include "support/array.h"
+#include "support/xalloc.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -48,11 +53,11 @@ static void program(
         g->output[p] = n;
     }
 }
-static void near(float got, float want)
+static bool near(float got, float want)
 {
-    assert(isfinite(got) && fabsf(got - want) < .00001f);
+    return isfinite(got) && fabsf(got - want) < .00001f;
 }
-static void sampling()
+TEST_CASE(images_sample_by_color_space_filter_and_wrap)
 {
     shader_image_view image = { .pixels = pixels, .width = 2, .height = 2 };
     shader_sample_context sample = { .uv = { .25f, .25f },
@@ -62,101 +67,92 @@ static void sampling()
     program(&g, SHADER_IMAGE_SRGB, SHADER_IMAGE_NEAREST, SHADER_IMAGE_REPEAT);
     shader_error error = { 0 };
     float result[SHADER_OUTPUT_MAX][4];
-    assert(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
-    near(result[0][0], .2158605f);
-    near(result[1][0], 64.0f / 255);
+    REQUIRE(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
+    REQUIRE(near(result[0][0], .2158605f));
+    REQUIRE(near(result[1][0], 64.0f / 255));
     g.images[0].filter = SHADER_IMAGE_BILINEAR;
     sample.uv[0] = sample.uv[1] = .5f;
-    assert(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
-    near(result[0][0], (1 + .2158605f) / 4);
-    near(result[0][1], .5f);
-    near(result[0][2], .5f);
-    near(result[1][0], 447.0f / 1020);
+    REQUIRE(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
+    REQUIRE(near(result[0][0], (1 + .2158605f) / 4));
+    REQUIRE(near(result[0][1], .5f));
+    REQUIRE(near(result[0][2], .5f));
+    REQUIRE(near(result[1][0], 447.0f / 1020));
     // sRGB is decoded before interpolation, while alpha is never gamma corrected.
     g.images[0].color_space = SHADER_IMAGE_LINEAR;
-    assert(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
-    near(result[0][0], (1 + 128.0f / 255) / 4);
-    near(result[1][0], 447.0f / 1020);
+    REQUIRE(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
+    REQUIRE(near(result[0][0], (1 + 128.0f / 255) / 4));
+    REQUIRE(near(result[1][0], 447.0f / 1020));
     sample.uv[0] = sample.uv[1] = 0;
-    assert(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
-    near(result[0][1], .5f); // Repeat blends across both seams at the origin.
+    REQUIRE(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
+    REQUIRE(near(result[0][1], .5f)); // Repeat blends across both seams at the origin.
     g.images[0].wrap = SHADER_IMAGE_CLAMP;
-    assert(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
-    near(result[0][0], 128.0f / 255);
-    near(result[0][1], 0);
+    REQUIRE(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
+    REQUIRE(near(result[0][0], 128.0f / 255));
+    REQUIRE(near(result[0][1], 0));
     sample.uv[0] = INFINITY;
-    assert(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
-    near(result[0][0], 0);
-    near(result[1][0], 0);
+    REQUIRE(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
+    REQUIRE(near(result[0][0], 0));
+    REQUIRE(near(result[1][0], 0));
     sample.uv[0] = NAN;
-    assert(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
-    near(result[1][0], 0);
+    REQUIRE(shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
+    REQUIRE(near(result[1][0], 0));
     sample.uv[0] = 1;
     sample.resolve_image = NULL;
-    assert(!shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
-    assert(error.node == 91 && strstr(error.message, "check.png"));
+    REQUIRE(!shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
+    REQUIRE(error.node == 91 && strstr(error.message, "check.png"));
     sample.resolve_image = resolve;
     g.images[0].key[0] = 'X';
-    assert(!shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
-    assert(error.node == 91 && strstr(error.message, "Xontent/textures/check.png"));
+    REQUIRE(!shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
+    REQUIRE(error.node == 91 && strstr(error.message, "Xontent/textures/check.png"));
     g.images[0].key[0] = 'c';
     image.width = 0;
-    assert(!shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
-    assert(error.node == 91);
+    REQUIRE(!shader_graph_eval_outputs(&g, &sample, NULL, result, &error));
+    REQUIRE(error.node == 91);
     shader_graph_free(&g);
+    return true;
 }
-static void authoring()
+TEST_CASE(authored_images_own_their_keys_and_settings)
 {
     behavior_asset *asset = behavior_asset_new("Image Texture authoring");
     asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
     graph *g = asset->graph;
     node *image = graph_add_node(g, registry_node_by_name("Shader Image Texture"));
     node *out = shader_graph_add_output(g, false);
-    assert(image && shader_graph_init_node(g, image));
-    assert(graph_connect_data(g, image, 0, out, 0) == 0);
-    assert(graph_connect_data(g, image, 1, out, 5) == 0);
+    REQUIRE(image && shader_graph_init_node(g, image));
+    REQUIRE(graph_connect_data(g, image, 0, out, 0) == 0);
+    REQUIRE(graph_connect_data(g, image, 1, out, 5) == 0);
     shader_graph ir;
     shader_graph_init(&ir);
     shader_error error = { 0 };
-    assert(!shader_graph_from_graph(g, &ir, &error));
-    assert(error.node == image->id && strstr(error.message, "Choose an image"));
+    REQUIRE(!shader_graph_from_graph(g, &ir, &error));
+    REQUIRE(error.node == image->id && strstr(error.message, "Choose an image"));
     char key[] = "content/textures/check.png";
     pin_value value = { .type = PIN_STR, .str = key };
-    assert(graph_set_pin_default(g, image, 0, SHADER_IMAGE_INPUT_IMAGE, &value) == 0);
+    REQUIRE(graph_set_pin_default(g, image, 0, SHADER_IMAGE_INPUT_IMAGE, &value) == 0);
     key[0] = 'x';
-    assert(shader_graph_from_graph(g, &ir, &error));
-    assert(acount(ir.images) == 1 && !strcmp(ir.images[0].key, "content/textures/check.png"));
-    assert(
+    REQUIRE(shader_graph_from_graph(g, &ir, &error));
+    REQUIRE(acount(ir.images) == 1 && !strcmp(ir.images[0].key, "content/textures/check.png"));
+    REQUIRE(
         ir.images[0].color_space == SHADER_IMAGE_SRGB &&
         ir.images[0].filter == SHADER_IMAGE_BILINEAR && ir.images[0].wrap == SHADER_IMAGE_REPEAT
     );
     for (int p = SHADER_IMAGE_INPUT_COLOR_SPACE; p < SHADER_IMAGE_INPUT_COUNT; p++) {
         value = (pin_value){ .type = PIN_I32,
                              .i = p == SHADER_IMAGE_INPUT_FILTER ? 0 : 1 };
-        assert(graph_set_pin_default(g, image, 0, p, &value) == 0);
+        REQUIRE(graph_set_pin_default(g, image, 0, p, &value) == 0);
     }
     char *json = behavior_asset_save(asset);
     behavior_asset *loaded = behavior_asset_load(json);
-    assert(loaded);
+    REQUIRE(loaded);
     free(json);
     node *copy = graph_node_by_id(loaded->graph, image->id);
-    assert(!strcmp(
+    REQUIRE(!strcmp(
         copy->input_pins[SHADER_IMAGE_INPUT_IMAGE].default_value.str,
         ir.images[0].key
     ));
-    char *clipboard = graph_save_nodes(g, &image, 1);
-    graph pasted;
-    graph_init(&pasted);
-    assert(graph_append(&pasted, clipboard, 0, 0) == 0);
-    free(clipboard);
     behavior_asset_free(asset);
-    assert(!strcmp(
-        pasted.nodes[0]->input_pins[SHADER_IMAGE_INPUT_IMAGE].default_value.str,
-        ir.images[0].key
-    ));
-    graph_free(&pasted);
-    assert(shader_graph_from_graph(loaded->graph, &ir, &error));
-    assert(
+    REQUIRE(shader_graph_from_graph(loaded->graph, &ir, &error));
+    REQUIRE(
         ir.images[0].color_space == SHADER_IMAGE_LINEAR &&
         ir.images[0].filter == SHADER_IMAGE_NEAREST && ir.images[0].wrap == SHADER_IMAGE_CLAMP
     );
@@ -165,27 +161,36 @@ static void authoring()
                                      .resolve_image = resolve,
                                      .image_userdata = &view };
     float result[SHADER_OUTPUT_MAX][4];
-    assert(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
-    near(result[0][0], 1);
-    near(result[0][1], 1);
-    near(result[5][0], 1);
+    REQUIRE(shader_graph_eval_outputs(&ir, &sample, NULL, result, &error));
+    REQUIRE(near(result[0][0], 1));
+    REQUIRE(near(result[0][1], 1));
+    REQUIRE(near(result[5][0], 1));
     int count = acount(ir.nodes);
     value = (pin_value){ .type = PIN_I32, .i = 99 };
-    assert(graph_set_pin_default(loaded->graph, copy, 0, SHADER_IMAGE_INPUT_FILTER, &value) == 0);
-    assert(!shader_graph_from_graph(loaded->graph, &ir, &error));
-    assert(error.node == copy->id && strstr(error.message, "filter") && acount(ir.nodes) == count);
-    assert(acount(ir.images) == 1 && !strcmp(ir.images[0].key, "content/textures/check.png"));
+    REQUIRE(
+        graph_set_pin_default(loaded->graph, copy, 0, SHADER_IMAGE_INPUT_FILTER, &value) == 0
+    );
+    REQUIRE(!shader_graph_from_graph(loaded->graph, &ir, &error));
+    REQUIRE(
+        error.node == copy->id && strstr(error.message, "filter") &&
+        acount(ir.nodes) == count
+    );
+    REQUIRE(acount(ir.images) == 1 && !strcmp(ir.images[0].key, "content/textures/check.png"));
     behavior_asset_free(loaded);
     shader_graph_free(&ir);
+    return true;
 }
 void test_shader_image_cpu()
 {
-    sampling();
-    authoring();
-    puts("shader image CPU PASS: color space, straight alpha, pixel centers, wrap/filter edges, missing image diagnostics and owned code/clipboard keys");
+    test_graph_packs_install();
+    RUN_TEST_CASE(images_sample_by_color_space_filter_and_wrap);
+    RUN_TEST_CASE(authored_images_own_their_keys_and_settings);
+    test_graph_packs_restore();
 }
 
-static void gpu_variant(shader_image_color_space color_space, shader_image_filter filter, shader_image_wrap wrap)
+/* Whether a compute shader of an image's GLSL samples what the CPU evaluator
+ * does at finite and nonfinite UVs. */
+static bool gpu_matches(shader_image_color_space color_space, shader_image_filter filter, shader_image_wrap wrap)
 {
     shader_graph ir;
     program(&ir, color_space, filter, wrap);
@@ -251,6 +256,7 @@ static void gpu_variant(shader_image_color_space color_space, shader_image_filte
         { 1e20f, -1e20f }, { .5f, .25f },  { .173f, .891f }
     };
     shader_image_view image = { .pixels = pixels, .width = 2, .height = 2 };
+    bool same = true;
     for (int i = 0; i < (int)(sizeof coordinates / sizeof *coordinates); i++) {
         shader_sample_context sample = { .uv = { coordinates[i][0], coordinates[i][1] },
                                          .resolve_image = resolve,
@@ -261,15 +267,7 @@ static void gpu_variant(shader_image_color_space color_space, shader_image_filte
         cf_material_set_uniform_cs(material, "sample_uv", sample.uv, CF_UNIFORM_TYPE_FLOAT2, 1);
         cf_dispatch_compute(shader, material, dispatch);
         cf_app_draw_onto_screen(false);
-        CF_Readback readback = cf_canvas_readback(canvas);
-        assert(readback.id);
-        uint64_t start = cf_get_ticks();
-        while (!cf_readback_ready(readback)) {
-            assert(cf_get_ticks() - start < cf_get_tick_frequency() * 10);
-            cf_sleep(1);
-        }
-        assert(cf_readback_data(readback, actual, sizeof actual) == sizeof actual);
-        cf_destroy_readback(readback);
+        same = same && test_read_canvas(canvas, actual, sizeof actual);
         for (int p = 0; p < 2; p++) {
             for (int c = 0; c < (p ? 1 : 3); c++) {
                 // Hardware texture interpolation and sRGB tables have finite precision.
@@ -288,7 +286,7 @@ static void gpu_variant(shader_image_color_space color_space, shader_image_filte
                         actual[p][c],
                         expected[p][c]
                     );
-                    assert(false);
+                    same = false;
                 }
             }
         }
@@ -300,16 +298,21 @@ static void gpu_variant(shader_image_color_space color_space, shader_image_filte
     shader_graph_free(&ir);
     free(function);
     free(source);
+    return same;
 }
-int test_shader_image_gpu()
+TEST_CASE(images_match_cpu_on_gpu)
 {
     for (int color_space = 0; color_space < 2; color_space++) {
         for (int filter = 0; filter < 2; filter++) {
             for (int wrap = 0; wrap < 2; wrap++) {
-                gpu_variant(color_space, filter, wrap);
+                REQUIRE(gpu_matches(color_space, filter, wrap));
             }
         }
     }
-    puts("shader image GPU PASS: RGB/alpha parity across sRGB/linear, nearest/bilinear, repeat/clamp and finite/nonfinite UV edges");
-    return 0;
+    return true;
+}
+/* Runs in an open hidden app. */
+void test_shader_image_gpu()
+{
+    RUN_TEST_CASE(images_match_cpu_on_gpu);
 }

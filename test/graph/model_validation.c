@@ -3,9 +3,12 @@
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
+#include "graph/shader/shader_graph.h"
 #include "render/shader_catalog.h"
 #include "support/array.h"
 #include "support/file_io.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -95,16 +98,16 @@ static behavior_asset *material_pair()
     return a;
 }
 
-static void saved_material_failures()
+TEST_CASE(saved_material_failures)
 {
     char directory[] = "/tmp/chibi-model-material-export-XXXXXX";
-    assert(mkdtemp(directory));
+    REQUIRE(mkdtemp(directory));
     char models[256], materials[256], model_path[256], left_path[256],
         right_path[256], error[1024];
     snprintf(models, sizeof models, "%s/models", directory);
     snprintf(materials, sizeof materials, "%s/materials", directory);
-    assert(!mkdir(models, 0700));
-    assert(!mkdir(materials, 0700));
+    REQUIRE(!mkdir(models, 0700));
+    REQUIRE(!mkdir(materials, 0700));
     snprintf(model_path, sizeof model_path, "%s/models/Pair.kdl", directory);
     snprintf(left_path, sizeof left_path, "%s/materials/Left.kdl", directory);
     snprintf(right_path, sizeof right_path, "%s/materials/Right.kdl", directory);
@@ -115,48 +118,53 @@ static void saved_material_failures()
     save(left_path, left);
     save(right_path, right);
     unsigned revision = render_shader_revision();
-    assert(model_content_validate(directory, error, sizeof error));
-    assert(render_shader_revision() == revision);
+    REQUIRE(model_content_validate(directory, error, sizeof error));
+    REQUIRE(render_shader_revision() == revision);
     behavior_asset *too_many = parameter_material("Right", 16);
     save(right_path, too_many);
     char *before = file_read_text(right_path);
-    assert(!model_content_validate(directory, error, sizeof error));
-    assert(strstr(error, "32") && strstr(error, "Pair.kdl"));
+    REQUIRE(!model_content_validate(directory, error, sizeof error));
+    REQUIRE(strstr(error, "32") && strstr(error, "Pair.kdl"));
     char *after = file_read_text(right_path);
-    assert(!strcmp(before, after));
-    assert(render_shader_revision() == revision);
+    REQUIRE(!strcmp(before, after));
+    REQUIRE(render_shader_revision() == revision);
     free(before);
     free(after);
     behavior_asset *invalid = behavior_asset_new("Right");
     invalid->domain = BEHAVIOR_DOMAIN_MATERIAL;
     save(right_path, invalid);
     before = file_read_text(right_path);
-    assert(!model_content_validate(directory, error, sizeof error));
-    assert(strstr(error, "Pair.kdl"));
+    REQUIRE(!model_content_validate(directory, error, sizeof error));
+    REQUIRE(strstr(error, "Pair.kdl"));
     after = file_read_text(right_path);
-    assert(!strcmp(before, after));
-    assert(render_shader_revision() == revision);
+    REQUIRE(!strcmp(before, after));
+    REQUIRE(render_shader_revision() == revision);
     free(before);
     free(after);
     save(right_path, right);
-    assert(model_content_validate(directory, error, sizeof error));
+    REQUIRE(model_content_validate(directory, error, sizeof error));
     char libraries[256], library_path[256];
     snprintf(libraries, sizeof libraries, "%s/shader-libraries", directory);
-    assert(!mkdir(libraries, 0700));
+    REQUIRE(!mkdir(libraries, 0700));
     snprintf(library_path, sizeof library_path, "%s/ShaderMath.kdl", libraries);
-    char *library_text = file_read_text("test/fixtures/content/shader-libraries/ShaderMath.kdl");
-    char *material_text = file_read_text("test/fixtures/content/materials/PulseRing.kdl");
-    assert(library_text && material_text);
+    char *library_text = file_read_text(
+        CHIBI_SOURCE_ROOT
+        "/test/fixtures/content/shader-libraries/ShaderMath.kdl"
+    );
+    char *material_text = file_read_text(
+        CHIBI_SOURCE_ROOT "/test/fixtures/content/materials/PulseRing.kdl"
+    );
+    REQUIRE(library_text && material_text);
     behavior_asset *library_material = behavior_asset_load(material_text);
-    assert(library_material && !behavior_asset_set_name(library_material, "Right"));
+    REQUIRE(library_material && !behavior_asset_set_name(library_material, "Right"));
     write_text(library_path, library_text);
     save(right_path, library_material);
-    assert(model_content_validate(directory, error, sizeof error));
-    assert(render_shader_revision() == revision);
-    assert(!unlink(library_path));
-    assert(!model_content_validate(directory, error, sizeof error));
+    REQUIRE(model_content_validate(directory, error, sizeof error));
+    REQUIRE(render_shader_revision() == revision);
+    REQUIRE(!unlink(library_path));
+    REQUIRE(!model_content_validate(directory, error, sizeof error));
     save(right_path, right);
-    assert(model_content_validate(directory, error, sizeof error));
+    REQUIRE(model_content_validate(directory, error, sizeof error));
     behavior_asset_free(library_material);
     free(library_text);
     free(material_text);
@@ -165,65 +173,73 @@ static void saved_material_failures()
     behavior_asset_free(right);
     behavior_asset_free(too_many);
     behavior_asset_free(invalid);
-    assert(!unlink(model_path));
-    assert(!unlink(left_path));
-    assert(!unlink(right_path));
-    assert(!rmdir(models));
-    assert(!rmdir(materials));
-    assert(!rmdir(libraries));
-    assert(!rmdir(directory));
+    REQUIRE(!unlink(model_path));
+    REQUIRE(!unlink(left_path));
+    REQUIRE(!unlink(right_path));
+    REQUIRE(!rmdir(models));
+    REQUIRE(!rmdir(materials));
+    REQUIRE(!rmdir(libraries));
+    REQUIRE(!rmdir(directory));
+    return true;
 }
 
-void test_model_validation()
+TEST_CASE(saved_model_sources)
 {
-    saved_material_failures();
     char directory[] = "/tmp/chibi-model-export-XXXXXX";
-    assert(mkdtemp(directory));
+    REQUIRE(mkdtemp(directory));
     char folder[256], leaf_path[256], parent_path[256], error[1024];
     snprintf(folder, sizeof folder, "%s/models", directory);
-    assert(!mkdir(folder, 0700));
+    REQUIRE(!mkdir(folder, 0700));
     snprintf(leaf_path, sizeof leaf_path, "%s/models/ZLeaf.kdl", directory);
     snprintf(parent_path, sizeof parent_path, "%s/models/AParent.kdl", directory);
-    assert(model_content_validate(directory, error, sizeof error));
+    REQUIRE(model_content_validate(directory, error, sizeof error));
     behavior_asset *leaf = model("ZLeaf", &NODE_ModelSphere);
     behavior_asset *parent = model("AParent", &NODE_ModelInstance);
     node *reference = parent->graph->nodes[0];
     reference->reference_asset = graph_own_str(parent->graph, "ZLeaf", 5);
     save(leaf_path, leaf);
     save(parent_path, parent);
-    assert(model_content_validate(directory, error, sizeof error));
+    REQUIRE(model_content_validate(directory, error, sizeof error));
 
     /* The validator reads saved source, even if a runtime could retain an old
        successful generation. It never repairs or drops the invalid edit. */
     node *sphere = leaf->graph->nodes[0];
     pin_value radius = { .type = PIN_F32, .f = -1 };
-    assert(!graph_set_pin_default(leaf->graph, sphere, false, 0, &radius));
+    REQUIRE(!graph_set_pin_default(leaf->graph, sphere, false, 0, &radius));
     save(leaf_path, leaf);
     char *before = file_read_text(leaf_path);
-    assert(!model_content_validate(directory, error, sizeof error));
-    assert(strstr(error, ".kdl") && strstr(error, "node"));
+    REQUIRE(!model_content_validate(directory, error, sizeof error));
+    REQUIRE(strstr(error, ".kdl") && strstr(error, "node"));
     char *after = file_read_text(leaf_path);
-    assert(!strcmp(before, after));
+    REQUIRE(!strcmp(before, after));
     free(before);
     free(after);
 
     radius.f = 1;
-    assert(!graph_set_pin_default(leaf->graph, sphere, false, 0, &radius));
+    REQUIRE(!graph_set_pin_default(leaf->graph, sphere, false, 0, &radius));
     save(leaf_path, leaf);
-    assert(!unlink(leaf_path));
-    assert(!model_content_validate(directory, error, sizeof error));
-    assert(strstr(error, "AParent.kdl") && strstr(error, "ZLeaf"));
+    REQUIRE(!unlink(leaf_path));
+    REQUIRE(!model_content_validate(directory, error, sizeof error));
+    REQUIRE(strstr(error, "AParent.kdl") && strstr(error, "ZLeaf"));
     write_text(leaf_path, "domain \"model\" {\n");
-    assert(!model_content_validate(directory, error, sizeof error));
-    assert(strstr(error, "ZLeaf.kdl"));
+    REQUIRE(!model_content_validate(directory, error, sizeof error));
+    REQUIRE(strstr(error, "ZLeaf.kdl"));
     save(leaf_path, leaf);
-    assert(model_content_validate(directory, error, sizeof error));
+    REQUIRE(model_content_validate(directory, error, sizeof error));
 
     behavior_asset_free(leaf);
     behavior_asset_free(parent);
-    assert(!unlink(leaf_path));
-    assert(!unlink(parent_path));
-    assert(!rmdir(folder));
-    assert(!rmdir(directory));
-    puts("model saved-source export validation passed");
+    REQUIRE(!unlink(leaf_path));
+    REQUIRE(!unlink(parent_path));
+    REQUIRE(!rmdir(folder));
+    REQUIRE(!rmdir(directory));
+    return true;
+}
+
+void test_model_validation()
+{
+    test_graph_packs_install();
+    RUN_TEST_CASE(saved_material_failures);
+    RUN_TEST_CASE(saved_model_sources);
+    test_graph_packs_restore();
 }

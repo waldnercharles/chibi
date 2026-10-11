@@ -36,6 +36,7 @@ void test_tool_ecs_hierarchy();
 void test_tool_ecs_world();
 void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
+void test_arena();
 void test_tool_validate_project(const char *binary);
 void test_tool_controller(const char *binary);
 void test_tool_render_fixture(const char *binary);
@@ -63,6 +64,12 @@ void test_render_scene2d();
 void test_render_scene3d(bool gles);
 void test_render_scene3d_gi(bool gles);
 void test_device_controls();
+#endif
+#ifdef CHIBI_TEST_RENDER_GEOMETRY
+void test_appearance_geometry();
+void test_mesh_surface();
+void test_scene3d_post();
+void test_scene3d_shapes();
 #endif
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
 void test_render_material_ramps();
@@ -181,6 +188,29 @@ void test_model_import();
 #endif
 #ifdef CHIBI_TEST_REFLECT
 void test_tool_reflect();
+#endif
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+void test_modeling();
+void test_model_constructive();
+void test_model_profiles();
+void test_model_reuse();
+void test_model_inspection();
+void test_model_sampled();
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+void test_model_parameters();
+void test_model_material_scope();
+void test_model_validation();
+void test_model_materials();
+void test_model_surface();
+void test_shader_detail();
+void test_shader_effects_cpu();
+void test_shader_image_cpu();
+void test_shader_parity();
+void test_shader_programs();
+void test_material_cameras();
+void test_mesh_materials();
+void test_sdf_quality();
+#endif
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
 void test_tool_native();
@@ -354,6 +384,14 @@ bool test_material_graphs_active()
 }
 #endif
 
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+static bool graph_types;
+bool test_graph_types_active()
+{
+    return graph_types;
+}
+#endif
+
 #ifdef CHIBI_TEST_MODEL_IMPORT
 /* The import cases, and the render cases that draw what imports write. */
 static bool model_import_types;
@@ -404,6 +442,7 @@ int main(int argc, char **argv)
     bool webgpu_staging = argc == 2 && !strcmp(argv[1], "--webgpu-staging");
     bool web_storage = argc == 2 && !strcmp(argv[1], "--web-storage");
     bool query_benchmark = argc == 2 && !strcmp(argv[1], "--ecs-query-benchmark");
+    bool arena = argc == 2 && !strcmp(argv[1], "--arena");
     bool scene_prepared = argc == 2 && !strcmp(argv[1], "--scene-prepared");
     bool scene = argc == 2 && !strcmp(argv[1], "--scene");
     bool controller = argc == 3 && !strcmp(argv[1], "--controller");
@@ -421,8 +460,11 @@ int main(int argc, char **argv)
          radiance_depth = false, material_sampling = false, scene2d = false,
          scene3d = false, material_ramps = false, radiance_surface = false,
          material_pixels = false, box3d = false, sky_files = false,
-         mesh_files = false, model_import = false, texture_transform = false,
-         material_render = false;
+         mesh_files = false, model_import = false, model_graphs = false,
+         model_catalog = false, render_geometry = false, shader_graphs = false,
+         shader_parity = false, shader_programs = false, material_cameras = false,
+         mesh_materials = false, sdf_quality = false, scene3d_post = false,
+         scene3d_shapes = false, texture_transform = false, material_render = false;
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
@@ -524,6 +566,26 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_MESH_PREPARATION
     mesh_files = argc == 2 && !strcmp(argv[1], "--mesh-files");
 #endif
+#ifdef CHIBI_TEST_RENDER_GEOMETRY
+    render_geometry = argc == 2 && !strcmp(argv[1], "--render-geometry");
+    scene3d_post = argc == 2 && !strcmp(argv[1], "--scene3d-post");
+    scene3d_shapes = argc == 2 && !strcmp(argv[1], "--scene3d-shapes");
+#endif
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+    model_graphs = argc == 2 && !strcmp(argv[1], "--model-graphs");
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+    model_catalog = argc == 2 && !strcmp(argv[1], "--model-catalog");
+    shader_graphs = argc == 2 && !strcmp(argv[1], "--shader-graphs");
+    shader_parity = argc == 2 && !strcmp(argv[1], "--shader-parity");
+    shader_programs = argc == 2 && !strcmp(argv[1], "--shader-programs");
+    material_cameras = argc == 2 && !strcmp(argv[1], "--material-cameras");
+    mesh_materials = argc == 2 && !strcmp(argv[1], "--mesh-materials");
+    sdf_quality = argc == 2 && !strcmp(argv[1], "--sdf-quality");
+#endif
+    graph_types = model_graphs || model_catalog || shader_graphs ||
+                  shader_parity || shader_programs || material_cameras ||
+                  mesh_materials || sdf_quality;
+#endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     model_import = argc == 2 && !strcmp(argv[1], "--model-import");
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
@@ -549,20 +611,23 @@ int main(int argc, char **argv)
         !render_resources && !interior_border && !viewport_resize &&
         !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
         !scene2d && !scene3d && !material_ramps && !texture_transform &&
-        !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
-        !sky_files && !mesh_files && !model_import && !persistent_store &&
-        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
-        !whole_select && !owned_tick && !parallel_tick && !source_features &&
-        !source_numeric && !source_material && !source_presentation &&
-        !system_schedule && !source_systems && !validate_project && !expansion &&
-        !controller && !render_fixture && !graph_document && !graph_presentation &&
+        !arena && !render_geometry && !radiance_surface && !radiance_horizons &&
+        !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
+        !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
+        !shader_programs && !material_cameras && !mesh_materials && !sdf_quality &&
+        !scene3d_post && !scene3d_shapes && !persistent_store && !whole_alias &&
+        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
+        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
+        !source_material && !source_presentation && !system_schedule &&
+        !source_systems && !validate_project && !expansion && !controller &&
+        !render_fixture && !graph_document && !graph_presentation &&
         !graph_functions && !vector_nodes && !material_render && !material) {
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
             "--web-storage | "
             "--webgpu-staging | "
-            "--ecs-query-benchmark | "
+            "--ecs-query-benchmark | --arena | "
             "--validate-project chibi_ctl | --controller chibi_ctl | "
             "--render-fixture chibi_ctl | --preview-components | "
             "--prototype-expansion chibi_ctl | "
@@ -571,7 +636,8 @@ int main(int argc, char **argv)
             "--scene-prepared | --scene-hierarchy | --native | --native-values "
             "| --native-catalog "
             "| --physics | --physics3d | --transforms "
-            "| --render-resources | --material-render | --interior-border | "
+            "| --render-resources | --render-geometry | --material-render | "
+            "--interior-border | "
             "--viewport-resize | "
             "--sdf-visibility | "
             "--radiance | --radiance-depth | --material-sampling | --scene2d | "
@@ -585,6 +651,10 @@ int main(int argc, char **argv)
             "--material-thermal | "
             "--material-simulation | --material-ecs | --material-benchmark | "
             "--contact-benchmark | "
+            "--model-graphs | --model-catalog | --shader-graphs | "
+            "--shader-parity | "
+            "--shader-programs | --material-cameras | --mesh-materials | "
+            "--sdf-quality | --scene3d-post | --scene3d-shapes | "
             "--persistent-store | "
             "--whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
@@ -827,6 +897,63 @@ int main(int argc, char **argv)
         return pu_test_failed() ? 1 : 0;
     }
 #endif
+#ifdef CHIBI_TEST_RENDER_GEOMETRY
+    if (render_geometry || scene3d_post || scene3d_shapes) {
+        if (scene3d_post) {
+            test_scene3d_post();
+        } else if (scene3d_shapes) {
+            test_scene3d_shapes();
+        } else {
+            test_appearance_geometry();
+            test_mesh_surface();
+        }
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+    if (model_graphs) {
+        test_modeling();
+        test_model_constructive();
+        test_model_profiles();
+        test_model_reuse();
+        test_model_inspection();
+        test_model_sampled();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+    if (model_catalog) {
+        test_model_parameters();
+        test_model_material_scope();
+        test_model_validation();
+        test_model_materials();
+        test_model_surface();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (shader_graphs || shader_parity || shader_programs || material_cameras ||
+        mesh_materials || sdf_quality) {
+        if (material_cameras) {
+            test_material_cameras();
+        } else if (mesh_materials) {
+            test_mesh_materials();
+        } else if (sdf_quality) {
+            test_sdf_quality();
+        } else if (shader_parity) {
+            test_shader_parity();
+        } else if (shader_programs) {
+            test_shader_programs();
+        } else {
+            test_shader_detail();
+            test_shader_effects_cpu();
+            test_shader_image_cpu();
+        }
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
+#endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
     if (native || native_values || native_catalog || physics || physics3d || transforms) {
         if (physics) {
@@ -893,6 +1020,8 @@ int main(int argc, char **argv)
         test_tool_web_storage();
     } else if (query_benchmark) {
         test_tool_ecs_query_benchmark();
+    } else if (arena) {
+        test_arena();
     } else {
         test_tool_execution_policy();
         test_tool_types();

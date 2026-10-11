@@ -1,6 +1,8 @@
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 
 #include <assert.h>
@@ -39,9 +41,9 @@ static void publish(graph *g, node *from)
 {
     connect(g, from, model_graph_add_output(g), 0);
 }
-static void near(float actual, float expected)
+static bool near(float actual, float expected)
 {
-    assert(fabsf(actual - expected) < .0001f);
+    return fabsf(actual - expected) < .0001f;
 }
 static float sample(const model_program *p, const float values[32][4], float x, float y, float z)
 {
@@ -72,7 +74,7 @@ static void polygon(graph *g, node *profile, const float (*vertices)[2], int cou
     assert(!graph_set_pin_default(g, profile, false, 0, &value));
     pin_array_free(array);
 }
-static void extrusion_sections()
+TEST_CASE(extrusion_sections)
 {
     behavior_asset *a = model("ProfileCircleExtrusion");
     graph *g = a->graph;
@@ -85,12 +87,12 @@ static void extrusion_sections()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 1, -1, 0), -1);
-    near(sample(&p, NULL, 3, -1, 0), 0);
-    near(sample(&p, NULL, 4, -1, 2), sqrtf(2));
-    near(p.bounds.min[0], -1);
-    near(p.bounds.min[1], -3);
-    near(p.bounds.max[2], 1);
+    REQUIRE(near(sample(&p, NULL, 1, -1, 0), -1));
+    REQUIRE(near(sample(&p, NULL, 3, -1, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 4, -1, 2), sqrtf(2)));
+    REQUIRE(near(p.bounds.min[0], -1));
+    REQUIRE(near(p.bounds.min[1], -3));
+    REQUIRE(near(p.bounds.max[2], 1));
     model_program_free(&p);
     behavior_asset_free(a);
 
@@ -104,13 +106,14 @@ static void extrusion_sections()
     publish(g, extrude);
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 0, 0, 0), -.5f);
-    near(sample(&p, NULL, 3, 2, 1.5f), sqrtf(3));
-    near(sample(&p, NULL, 2, 1, .5f), 0);
+    REQUIRE(near(sample(&p, NULL, 0, 0, 0), -.5f));
+    REQUIRE(near(sample(&p, NULL, 3, 2, 1.5f), sqrtf(3)));
+    REQUIRE(near(sample(&p, NULL, 2, 1, .5f), 0));
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
-static void revolution_sections()
+TEST_CASE(revolution_sections)
 {
     behavior_asset *a = model("ProfileCircleRevolution");
     graph *g = a->graph;
@@ -121,19 +124,19 @@ static void revolution_sections()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 3, 2, 0), -1);
-    near(sample(&p, NULL, 0, 2, 0), 2);
-    near(sample(&p, NULL, 4, 2, 0), 0);
-    near(sample(&p, NULL, 3, 4, 0), 1);
-    near(sample(&p, NULL, 0, 2, -4), 0);
-    near(p.bounds.min[0], -4);
-    near(p.bounds.min[1], 1);
-    near(p.bounds.max[2], 4);
+    REQUIRE(near(sample(&p, NULL, 3, 2, 0), -1));
+    REQUIRE(near(sample(&p, NULL, 0, 2, 0), 2));
+    REQUIRE(near(sample(&p, NULL, 4, 2, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 3, 4, 0), 1));
+    REQUIRE(near(sample(&p, NULL, 0, 2, -4), 0));
+    REQUIRE(near(p.bounds.min[0], -4));
+    REQUIRE(near(p.bounds.min[1], 1));
+    REQUIRE(near(p.bounds.max[2], 4));
     vector(g, profile, 1, "ShaderVec2", (float[2]){ .5f, 2 });
     shader_error error = { 0 };
-    assert(!model_compile(a, &p, &error));
-    assert(error.node == profile->id || error.node == revolve->id);
-    near(sample(&p, NULL, 3, 2, 0), -1);
+    REQUIRE(!model_compile(a, &p, &error));
+    REQUIRE(error.node == profile->id || error.node == revolve->id);
+    REQUIRE(near(sample(&p, NULL, 3, 2, 0), -1));
     model_program_free(&p);
     behavior_asset_free(a);
 
@@ -147,22 +150,23 @@ static void revolution_sections()
     publish(g, revolve);
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 2, 1, 0), -1);
-    near(sample(&p, NULL, 0, 1, 0), 1);
-    near(sample(&p, NULL, 3.5f, 3.5f, 0), sqrtf(.5f));
-    near(p.bounds.min[1], -1);
-    near(p.bounds.max[1], 3);
+    REQUIRE(near(sample(&p, NULL, 2, 1, 0), -1));
+    REQUIRE(near(sample(&p, NULL, 0, 1, 0), 1));
+    REQUIRE(near(sample(&p, NULL, 3.5f, 3.5f, 0), sqrtf(.5f)));
+    REQUIRE(near(p.bounds.min[1], -1));
+    REQUIRE(near(p.bounds.max[1], 3));
     vector(g, profile, 1, "ShaderVec2", (float[2]){ 1, 0 });
     compile(a, &p);
     /* The profile's radial-zero edge disappears inside the revolved solid. */
-    near(sample(&p, NULL, 0, 0, 0), -2);
-    near(sample(&p, NULL, 0, 1, 0), -1);
-    near(sample(&p, NULL, 0, 2, 0), 0);
-    near(sample(&p, NULL, 3, 0, 0), 1);
+    REQUIRE(near(sample(&p, NULL, 0, 0, 0), -2));
+    REQUIRE(near(sample(&p, NULL, 0, 1, 0), -1));
+    REQUIRE(near(sample(&p, NULL, 0, 2, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 3, 0, 0), 1));
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
-static void polygon_revolution_axis()
+TEST_CASE(polygon_revolution_axis)
 {
     behavior_asset *a = model("ProfileFilledVesselRevolution");
     graph *g = a->graph;
@@ -175,17 +179,18 @@ static void polygon_revolution_axis()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 0, 0, 0), -2);
-    near(sample(&p, NULL, 0, 1, 0), -1);
-    near(sample(&p, NULL, 0, -1, 0), -1);
-    near(sample(&p, NULL, 0, 2, 0), 0);
-    near(sample(&p, NULL, 2.5f, 0, 0), 0);
-    near(p.bounds.min[0], -3);
-    near(p.bounds.max[1], 2);
+    REQUIRE(near(sample(&p, NULL, 0, 0, 0), -2));
+    REQUIRE(near(sample(&p, NULL, 0, 1, 0), -1));
+    REQUIRE(near(sample(&p, NULL, 0, -1, 0), -1));
+    REQUIRE(near(sample(&p, NULL, 0, 2, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 2.5f, 0, 0), 0));
+    REQUIRE(near(p.bounds.min[0], -3));
+    REQUIRE(near(p.bounds.max[1], 2));
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
-static void polygon_sections()
+TEST_CASE(polygon_sections)
 {
     behavior_asset *a = model("ProfileTrianglePrism");
     graph *g = a->graph;
@@ -199,17 +204,17 @@ static void polygon_sections()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 1, 1, 0), -1);
-    near(sample(&p, NULL, 4, 3, 0), 2.4f);
-    near(sample(&p, NULL, 1, 1, 2), 1);
-    near(sample(&p, NULL, 2, 1.5f, 0), 0);
+    REQUIRE(near(sample(&p, NULL, 1, 1, 0), -1));
+    REQUIRE(near(sample(&p, NULL, 4, 3, 0), 2.4f));
+    REQUIRE(near(sample(&p, NULL, 1, 1, 2), 1));
+    REQUIRE(near(sample(&p, NULL, 2, 1.5f, 0), 0));
     char *saved = behavior_asset_save(a);
     behavior_asset *reloaded = behavior_asset_load(saved);
-    assert(reloaded);
+    REQUIRE(reloaded);
     model_program copy;
     model_program_init(&copy);
     compile(reloaded, &copy);
-    near(sample(&copy, NULL, 4, 3, 0), 2.4f);
+    REQUIRE(near(sample(&copy, NULL, 4, 3, 0), 2.4f));
     model_program_free(&copy);
     behavior_asset_free(reloaded);
     free(saved);
@@ -221,14 +226,15 @@ static void polygon_sections()
     shader_error error = { 0 };
     for (int i = 0; i < 4; i++) {
         polygon(g, profile, invalid[i], counts[i]);
-        assert(!model_compile(a, &p, &error));
-        assert(error.node == profile->id);
-        near(sample(&p, NULL, 1, 1, 0), -1);
+        REQUIRE(!model_compile(a, &p, &error));
+        REQUIRE(error.node == profile->id);
+        REQUIRE(near(sample(&p, NULL, 1, 1, 0), -1));
     }
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
-static void smooth_profile_bounds()
+TEST_CASE(smooth_profile_bounds)
 {
     behavior_asset *a = model("ProfileSmoothEnvelope");
     graph *g = a->graph;
@@ -250,18 +256,19 @@ static void smooth_profile_bounds()
      * field uses min scale=.5, so its zero expands to the child's d=1. */
     float boundary[][3] = { { 4, 0, 0 }, { 0, 2, 0 }, { 0, 0, .75f } };
     for (int i = 0; i < 3; i++) {
-        near(sample(&p, NULL, boundary[i][0], boundary[i][1], boundary[i][2]), 0);
+        REQUIRE(near(sample(&p, NULL, boundary[i][0], boundary[i][1], boundary[i][2]), 0));
         for (int axis = 0; axis < 3; axis++) {
-            assert(boundary[i][axis] >= p.bounds.min[axis]);
-            assert(boundary[i][axis] <= p.bounds.max[axis]);
+            REQUIRE(boundary[i][axis] >= p.bounds.min[axis]);
+            REQUIRE(boundary[i][axis] <= p.bounds.max[axis]);
         }
     }
     /* From this exterior point, distance cannot exceed the distance to the
      * known nearest X-axis surface; otherwise marching could skip it. */
     float distance = sample(&p, NULL, 5, 0, 0);
-    assert(distance > 0 && distance <= 1);
+    REQUIRE(distance > 0 && distance <= 1);
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
 static node *parameter(graph *g, const char *name, float value, float minimum, float maximum)
 {
@@ -282,15 +289,15 @@ static int slot(const model_program *p, const node *n)
     assert(false);
     return -1;
 }
-static void runtime_profile_dimensions()
+TEST_CASE(runtime_profile_dimensions)
 {
     behavior_asset *a = model("DynamicProfileExtrusion");
     graph *g = a->graph;
     node *radius = parameter(g, "Radius", 1, .5f, 3);
     node *depth = parameter(g, "Half Depth", 1, .25f, 3);
     node *center = graph_add_node(g, &NODE_ModelParameter);
-    assert(!graph_set_node_reference(g, center, 0, "Center"));
-    assert(!graph_set_pin_type(g, center, false, 0, PIN_STRUCT, "ShaderVec2"));
+    REQUIRE(!graph_set_node_reference(g, center, 0, "Center"));
+    REQUIRE(!graph_set_pin_type(g, center, false, 0, PIN_STRUCT, "ShaderVec2"));
     vector(g, center, 0, "ShaderVec2", (float[2]){ 0, 0 });
     vector(g, center, 1, "ShaderVec2", (float[2]){ -10, -10 });
     vector(g, center, 2, "ShaderVec2", (float[2]){ 10, 10 });
@@ -307,44 +314,45 @@ static void runtime_profile_dimensions()
     float incoming[32][4], payload[32][4];
     model_bounds bounds;
     shader_error error = { 0 };
-    assert(model_program_parameters(&p, incoming, &error));
+    REQUIRE(model_program_parameters(&p, incoming, &error));
     incoming[slot(&p, radius)][0] = 2;
     incoming[slot(&p, depth)][0] = .5f;
     incoming[slot(&p, center)][0] = 3;
     incoming[slot(&p, center)][1] = -2;
-    assert(model_program_prepare(&p, incoming, payload, &bounds, &error));
-    near(sample(&p, payload, 3, -2, 0), -.5f);
-    near(sample(&p, payload, 5, -2, 0), 0);
-    near(bounds.min[0], 1);
-    near(bounds.max[0], 5);
-    near(bounds.min[1], -4);
-    near(bounds.max[2], .5f);
-    assert(p.shader.nodes == generation);
+    REQUIRE(model_program_prepare(&p, incoming, payload, &bounds, &error));
+    REQUIRE(near(sample(&p, payload, 3, -2, 0), -.5f));
+    REQUIRE(near(sample(&p, payload, 5, -2, 0), 0));
+    REQUIRE(near(bounds.min[0], 1));
+    REQUIRE(near(bounds.max[0], 5));
+    REQUIRE(near(bounds.min[1], -4));
+    REQUIRE(near(bounds.max[2], .5f));
+    REQUIRE(p.shader.nodes == generation);
     char *saved = behavior_asset_save(a);
     behavior_asset *reloaded = behavior_asset_load(saved);
-    assert(reloaded);
+    REQUIRE(reloaded);
     model_program copy;
     model_program_init(&copy);
     compile(reloaded, &copy);
-    assert(model_program_prepare(&copy, incoming, payload, &bounds, &error));
-    near(sample(&copy, payload, 5, -2, .5f), 0);
-    assert(model_program_prepare(&copy, NULL, payload, &bounds, &error));
-    near(sample(&copy, payload, 0, 0, 0), -1);
-    near(bounds.min[0], -1);
-    near(bounds.max[2], 1);
+    REQUIRE(model_program_prepare(&copy, incoming, payload, &bounds, &error));
+    REQUIRE(near(sample(&copy, payload, 5, -2, .5f), 0));
+    REQUIRE(model_program_prepare(&copy, NULL, payload, &bounds, &error));
+    REQUIRE(near(sample(&copy, payload, 0, 0, 0), -1));
+    REQUIRE(near(bounds.min[0], -1));
+    REQUIRE(near(bounds.max[2], 1));
     model_program_free(&copy);
     behavior_asset_free(reloaded);
     free(saved);
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
-static void dynamic_revolution_axis()
+TEST_CASE(dynamic_revolution_axis)
 {
     behavior_asset *a = model("DynamicFilledAnnularRevolution");
     graph *g = a->graph;
     node *center = graph_add_node(g, &NODE_ModelParameter);
-    assert(!graph_set_node_reference(g, center, 0, "Center"));
-    assert(!graph_set_pin_type(g, center, false, 0, PIN_STRUCT, "ShaderVec2"));
+    REQUIRE(!graph_set_node_reference(g, center, 0, "Center"));
+    REQUIRE(!graph_set_pin_type(g, center, false, 0, PIN_STRUCT, "ShaderVec2"));
     vector(g, center, 0, "ShaderVec2", (float[2]){ 1, 0 });
     vector(g, center, 1, "ShaderVec2", (float[2]){ 1, -3 });
     vector(g, center, 2, "ShaderVec2", (float[2]){ 3, 3 });
@@ -361,29 +369,31 @@ static void dynamic_revolution_axis()
     float incoming[32][4], payload[32][4];
     model_bounds bounds;
     shader_error error = { 0 };
-    assert(model_program_parameters(&p, incoming, &error));
-    assert(model_program_prepare(&p, incoming, payload, &bounds, &error));
-    near(sample(&p, payload, 0, 0, 0), -2);
+    REQUIRE(model_program_parameters(&p, incoming, &error));
+    REQUIRE(model_program_prepare(&p, incoming, payload, &bounds, &error));
+    REQUIRE(near(sample(&p, payload, 0, 0, 0), -2));
     incoming[slot(&p, center)][0] = 2;
-    assert(model_program_prepare(&p, incoming, payload, &bounds, &error));
-    near(sample(&p, payload, 0, 0, 0), 1);
-    near(sample(&p, payload, 2, 0, 0), -1);
-    near(bounds.max[0], 3);
-    assert(model_program_prepare(&p, NULL, payload, &bounds, &error));
-    near(sample(&p, payload, 0, 0, 0), -2);
-    near(bounds.max[0], 2);
-    assert(p.shader.nodes == generation);
+    REQUIRE(model_program_prepare(&p, incoming, payload, &bounds, &error));
+    REQUIRE(near(sample(&p, payload, 0, 0, 0), 1));
+    REQUIRE(near(sample(&p, payload, 2, 0, 0), -1));
+    REQUIRE(near(bounds.max[0], 3));
+    REQUIRE(model_program_prepare(&p, NULL, payload, &bounds, &error));
+    REQUIRE(near(sample(&p, payload, 0, 0, 0), -2));
+    REQUIRE(near(bounds.max[0], 2));
+    REQUIRE(p.shader.nodes == generation);
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
 void test_model_profiles()
 {
-    extrusion_sections();
-    revolution_sections();
-    polygon_revolution_axis();
-    polygon_sections();
-    smooth_profile_bounds();
-    runtime_profile_dimensions();
-    dynamic_revolution_axis();
-    puts("Model profile analytical sections, bounds, conservative stepping, invalid polygons and roundtrip: PASS");
+    test_graph_packs_install();
+    RUN_TEST_CASE(extrusion_sections);
+    RUN_TEST_CASE(revolution_sections);
+    RUN_TEST_CASE(polygon_revolution_axis);
+    RUN_TEST_CASE(polygon_sections);
+    RUN_TEST_CASE(smooth_profile_bounds);
+    RUN_TEST_CASE(runtime_profile_dimensions);
+    RUN_TEST_CASE(dynamic_revolution_axis);
+    test_graph_packs_restore();
 }

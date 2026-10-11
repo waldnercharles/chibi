@@ -1,29 +1,19 @@
-#include "assets/model_source.h"
-#include "authoring/image_prepare.h"
-#include "authoring/shader_prepare.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
-#include "platform/cute.h"
-#include "render/shader_catalog.h"
-#include "render/shader_images.h"
+#include "graph/modeling/model_compile.h"
 #include "runtime/models/model_bake.h"
 #include "runtime/shaders/volume.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
-/* GLSL wrappers size their output arrays by the C contract. */
-#define QUOTE(x) #x
-#define QUOTED(x) QUOTE(x)
-#define OUTPUT_ROWS QUOTED(SHADER_OUTPUT_MAX)
-
-static bool resolve(void *data, const shader_image_source *source, shader_image_view *view)
+static bool resolve(void *data, const shader_image_source *, shader_image_view *view)
 {
     *view = *(shader_image_view *)data;
     return true;
@@ -91,65 +81,68 @@ static float eval(const shader_graph *g, shader_image_view *image, const float p
     assert(shader_graph_eval_outputs(g, &context, NULL, values, &error));
     return values[0][0];
 }
-void test_model_sampled()
+/* A sampled SDF validates its atlas, interpolates between samples and extends
+ * past its border, reloads, owns its hits, keeps the last good compilation and
+ * bakes a mesh. */
+TEST_CASE(sampled_sdf_models)
 {
     shader_image_view image;
     shader_node spec = fixture(&image);
     shader_error error = { 0 };
-    assert(shader_volume_validate(&spec, &image, &error));
+    REQUIRE(shader_volume_validate(&spec, &image, &error));
     shader_image_view bad = image;
     bad.width--;
-    assert(!shader_volume_validate(&spec, &bad, &error));
+    REQUIRE(!shader_volume_validate(&spec, &bad, &error));
     shader_node invalid = spec;
     invalid.volume_lipschitz = 1;
-    assert(!shader_volume_validate(&invalid, &image, &error));
+    REQUIRE(!shader_volume_validate(&invalid, &image, &error));
     unsigned char *pixels = (unsigned char *)image.pixels;
     unsigned char saved[4];
     memcpy(saved, pixels, 4);
     pixels[0] = pixels[1] = 0;
-    assert(!shader_volume_validate(&spec, &image, &error));
+    REQUIRE(!shader_volume_validate(&spec, &image, &error));
     memcpy(pixels, saved, 4);
     behavior_asset *a = asset(&spec);
     model_program p;
     model_program_init(&p);
-    assert(model_compile(a, &p, &error));
+    REQUIRE(model_compile(a, &p, &error));
     p.resolve_image = resolve;
     p.image_userdata = &image;
-    assert(acount(p.shader.images) == 1 && acount(p.shader.nodes) < 10);
-    assert(fabsf(eval(&p.shader, &image, (float[]){ 0, 0, 0 }) + .55f) < .00004f);
+    REQUIRE(acount(p.shader.images) == 1 && acount(p.shader.nodes) < 10);
+    REQUIRE(fabsf(eval(&p.shader, &image, (float[]){ 0, 0, 0 }) + .55f) < .00004f);
     float lo = eval(&p.shader, &image, (float[]){ 0, .325f, 0 }),
           hi = eval(&p.shader, &image, (float[]){ .25f, .325f, 0 });
-    assert(
+    REQUIRE(
         fabsf(eval(&p.shader, &image, (float[]){ .125f, .325f, 0 }) - (lo + hi) * .5f) < .00001f
     );
     float edge = eval(&p.shader, &image, (float[]){ 1, 0, 0 }),
           outside = eval(&p.shader, &image, (float[]){ 2, 0, 0 });
-    assert(fabsf(outside - edge - 1) < .00001f);
+    REQUIRE(fabsf(outside - edge - 1) < .00001f);
     model_hit hit;
-    assert(model_program_hit(&p, NULL, (float[]){ .5f, 0, 0 }, &hit, &error));
-    assert(hit.part == 0);
+    REQUIRE(model_program_hit(&p, NULL, (float[]){ .5f, 0, 0 }, &hit, &error));
+    REQUIRE(hit.part == 0);
     char *source = behavior_asset_save(a);
     behavior_asset *copy = behavior_asset_load(source);
-    assert(copy);
+    REQUIRE(copy);
     model_program q;
     model_program_init(&q);
-    assert(model_compile(copy, &q, &error));
-    assert(
+    REQUIRE(model_compile(copy, &q, &error));
+    REQUIRE(
         eval(&q.shader, &image, (float[]){ .125f, .325f, 0 }) ==
         eval(&p.shader, &image, (float[]){ .125f, .325f, 0 })
     );
     node *volume = a->graph->nodes[0];
     pin_value wrong = { .type = PIN_I32, .i = 1 };
-    assert(!graph_set_pin_default(a->graph, volume, 0, 2, &wrong));
-    assert(!model_compile(a, &p, &error));
-    assert(fabsf(eval(&p.shader, &image, (float[]){ 0, 0, 0 }) + .55f) < .00004f);
+    REQUIRE(!graph_set_pin_default(a->graph, volume, 0, 2, &wrong));
+    REQUIRE(!model_compile(a, &p, &error));
+    REQUIRE(fabsf(eval(&p.shader, &image, (float[]){ 0, 0, 0 }) + .55f) < .00004f);
     wrong.i = 9;
-    assert(!graph_set_pin_default(a->graph, volume, 0, 2, &wrong));
+    REQUIRE(!graph_set_pin_default(a->graph, volume, 0, 2, &wrong));
     model_bake_options options = model_bake_defaults();
     options.cell_size = .2f;
     model_bake_result baked = { 0 };
-    assert(model_bake(&p, NULL, &options, &baked, &error));
-    assert(acount(baked.mesh.vertices) > 0);
+    REQUIRE(model_bake(&p, NULL, &options, &baked, &error));
+    REQUIRE(acount(baked.mesh.vertices) > 0);
     model_bake_result_free(&baked);
     node *scale = graph_add_node(a->graph, &NODE_ModelScale),
          *sphere = graph_add_node(a->graph, &NODE_ModelSphere),
@@ -158,34 +151,34 @@ void test_model_sampled()
     pin_value factors_value = { .type = PIN_STRUCT,
                                 .type_name = "ShaderVec3",
                                 .ptr = factors };
-    assert(!graph_set_pin_default(a->graph, scale, 0, 1, &factors_value));
+    REQUIRE(!graph_set_pin_default(a->graph, scale, 0, 1, &factors_value));
     pin_value radius = { .type = PIN_F32, .f = .1f };
-    assert(!graph_set_pin_default(a->graph, sphere, 0, 0, &radius));
-    assert(!graph_connect_data(a->graph, a->graph->nodes[1], 0, scale, 0));
-    assert(!graph_connect_data(a->graph, scale, 0, join, 0));
-    assert(!graph_connect_data(a->graph, sphere, 0, join, 1));
-    assert(!graph_connect_data(a->graph, join, 0, a->graph->nodes[2], 0));
-    assert(model_compile(a, &p, &error));
+    REQUIRE(!graph_set_pin_default(a->graph, sphere, 0, 0, &radius));
+    REQUIRE(!graph_connect_data(a->graph, a->graph->nodes[1], 0, scale, 0));
+    REQUIRE(!graph_connect_data(a->graph, scale, 0, join, 0));
+    REQUIRE(!graph_connect_data(a->graph, sphere, 0, join, 1));
+    REQUIRE(!graph_connect_data(a->graph, join, 0, a->graph->nodes[2], 0));
+    REQUIRE(model_compile(a, &p, &error));
     float point[] = { .7f, .1f, .05f }, local[] = { .35f, .1f, .1f };
     float expected = fminf(
         eval(&q.shader, &image, local) * .5f,
         sqrtf(.7f * .7f + .1f * .1f + .05f * .05f) - .1f
     );
-    assert(fabsf(eval(&p.shader, &image, point) - expected) < .00001f);
-    assert(p.bounds.max[0] >= 2 && p.bounds.max[1] >= 1.3f && p.bounds.max[2] >= .4f);
+    REQUIRE(fabsf(eval(&p.shader, &image, point) - expected) < .00001f);
+    REQUIRE(p.bounds.max[0] >= 2 && p.bounds.max[1] >= 1.3f && p.bounds.max[2] >= .4f);
     invalid = spec;
     invalid.parameter = -20;
-    assert(!shader_volume_validate(&invalid, &image, &error));
+    REQUIRE(!shader_volume_validate(&invalid, &image, &error));
     float rejected;
-    assert(!shader_volume_eval(&invalid, &image, point, &rejected));
+    REQUIRE(!shader_volume_eval(&invalid, &image, point, &rejected));
     shader_graph part_distance, part_hit;
     shader_graph_init(&part_distance);
     shader_graph_init(&part_hit);
-    assert(model_program_part_shaders(&q, 0, &part_distance, &part_hit, &error));
-    assert(acount(part_distance.images) == 1 && acount(part_hit.images) == 1);
-    assert(part_distance.images[0].key != q.shader.images[0].key);
+    REQUIRE(model_program_part_shaders(&q, 0, &part_distance, &part_hit, &error));
+    REQUIRE(acount(part_distance.images) == 1 && acount(part_hit.images) == 1);
+    REQUIRE(part_distance.images[0].key != q.shader.images[0].key);
     model_program_free(&q);
-    assert(fabsf(eval(&part_distance, &image, (float[]){ 0, 0, 0 }) + .55f) < .00004f);
+    REQUIRE(fabsf(eval(&part_distance, &image, (float[]){ 0, 0, 0 }) + .55f) < .00004f);
     shader_graph_free(&part_distance);
     shader_graph_free(&part_hit);
     model_program_free(&p);
@@ -193,9 +186,36 @@ void test_model_sampled()
     behavior_asset_free(a);
     free(source);
     free(pixels);
-    puts("Sampled SDF CPU: atlas validation, interpolation, border extension, roundtrip, hit ownership, last-good compilation and mesh bake PASS");
+    return true;
 }
-static void compare_gpu(shader_graph *g, shader_image_view *image, const float half[3], const char *label)
+
+void test_model_sampled()
+{
+    test_graph_packs_install();
+    RUN_TEST_CASE(sampled_sdf_models);
+    test_graph_packs_restore();
+}
+
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+#include "authoring/image_prepare.h"
+#include "authoring/shader_prepare.h"
+#include "render/shader_catalog.h"
+#include "render/shader_images.h"
+#include "runtime/images/catalog.h"
+#include "test/render/hidden_app.h"
+
+#include <stdint.h>
+#include <stdio.h>
+#include <unistd.h>
+
+/* GLSL wrappers size their output arrays by the C contract. */
+#define QUOTE(x) #x
+#define QUOTED(x) QUOTE(x)
+#define OUTPUT_ROWS QUOTED(SHADER_OUTPUT_MAX)
+
+/* Whether a compute shader of g's GLSL computes the distances and normals the
+ * CPU evaluator does at points across and past `half` extents. */
+static bool gpu_matches(shader_graph *g, shader_image_view *image, const float half[3])
 {
     enum
     {
@@ -279,43 +299,22 @@ static void compare_gpu(shader_graph *g, shader_image_view *image, const float h
     cf_material_set_uniform_cs(material, "points", points, CF_UNIFORM_TYPE_FLOAT4, COUNT);
     cf_dispatch_compute(shader, material, dispatch);
     cf_app_draw_onto_screen(false);
-    CF_Readback readback = cf_canvas_readback(canvas);
-    assert(readback.id);
-    uint64_t start = cf_get_ticks();
-    while (!cf_readback_ready(readback)) {
-        assert(cf_get_ticks() - start < cf_get_tick_frequency() * 20);
-        cf_sleep(1);
-    }
-    assert(cf_readback_data(readback, actual, sizeof actual) == sizeof actual);
-    double sum = 0;
+    bool read = test_read_canvas(canvas, actual, sizeof actual);
     float maximum = 0, normal = 0;
-    for (int i = 0; i < COUNT; i++) {
-        assert(isfinite(actual[i][0]));
+    for (int i = 0; read && i < COUNT; i++) {
         float delta = fabsf(actual[i][0] - expected[i][0]);
-        maximum = fmaxf(maximum, delta);
-        sum += delta * delta;
+        maximum = isfinite(delta) ? fmaxf(maximum, delta) : INFINITY;
         for (int j = 1; j < 4; j++) {
             normal = fmaxf(normal, fabsf(actual[i][j] - expected[i][j]));
         }
     }
-    printf(
-        "Sampled SDF GPU %s: %d points, max %.9g RMS %.9g, max normal "
-        "component %.9g\n",
-        label,
-        COUNT,
-        maximum,
-        sqrt(sum / COUNT),
-        normal
-    );
-    fflush(stdout);
-    assert(maximum < .0002f && normal < .01f);
-    cf_destroy_readback(readback);
     cf_destroy_canvas(canvas);
     cf_destroy_material(material);
     cf_destroy_texture(texture);
     cf_destroy_compute_shader(shader);
     free(text);
     free(function);
+    return read && maximum < .0002f && normal < .01f;
 }
 static void save_fixture(const char *path, const shader_image_view *view)
 {
@@ -328,118 +327,92 @@ static void save_fixture(const char *path, const shader_image_view *view)
     assert(!fclose(file));
     cf_free(bytes);
 }
-static void reload_fixture(const shader_node *spec, shader_image_view *image)
+/* A sampled SDF's image keeps its pixels, texture and the last good shader
+ * when a reload or an edit is rejected. */
+TEST_CASE(sampled_images_keep_the_last_good_on_reload)
 {
+    shader_image_view image;
+    shader_node spec = fixture(&image);
     char directory[] = "/tmp/chibi-sampled-XXXXXX";
-    assert(mkdtemp(directory));
+    REQUIRE(mkdtemp(directory));
     char message[256], path[512], key[128];
     uint64_t hash = UINT64_C(14695981039346656037);
-    for (int i = 0; i < image->width * image->height * 4; i++) {
-        hash = (hash ^ image->pixels[i]) * UINT64_C(1099511628211);
+    for (int i = 0; i < image.width * image.height * 4; i++) {
+        hash = (hash ^ image.pixels[i]) * UINT64_C(1099511628211);
     }
     snprintf(key, sizeof key, "content/%016llx.sdf.png", (unsigned long long)hash);
     snprintf(path, sizeof path, "%s/%016llx.sdf.png", directory, (unsigned long long)hash);
-    save_fixture(path, image);
-    assert(render_image_mount_content(directory, message, sizeof message));
+    save_fixture(path, &image);
+    REQUIRE(render_image_mount_content(directory, message, sizeof message));
     shader_image_source source = { .key = key,
                                    .color_space = SHADER_IMAGE_LINEAR,
                                    .filter = SHADER_IMAGE_NEAREST,
                                    .wrap = SHADER_IMAGE_CLAMP };
     shader_error error = { 0 };
     int variant = render_image_variant(&source, &error);
-    assert(variant);
+    REQUIRE(variant);
     CF_Texture texture = render_image_texture(variant, &error);
-    assert(texture.id);
+    REQUIRE(texture.id);
     shader_image_view retained;
-    assert(render_image_resolve(NULL, &source, &retained));
+    REQUIRE(render_image_resolve(NULL, &source, &retained));
     const unsigned char *old = retained.pixels;
-    unsigned char *pixels = (unsigned char *)image->pixels;
+    unsigned char *pixels = (unsigned char *)image.pixels;
     pixels[0] ^= 1;
-    save_fixture(path, image);
-    assert(!render_image_reload(key, message, sizeof message));
-    assert(strstr(message, "digest"));
-    assert(render_image_resolve(NULL, &source, &retained));
-    assert(retained.pixels == old);
-    assert(render_image_texture(variant, &error).id == texture.id);
+    save_fixture(path, &image);
+    REQUIRE(!render_image_reload(key, message, sizeof message));
+    REQUIRE(strstr(message, "digest"));
+    REQUIRE(render_image_resolve(NULL, &source, &retained));
+    REQUIRE(retained.pixels == old);
+    REQUIRE(render_image_texture(variant, &error).id == texture.id);
     pixels[0] ^= 1;
-    save_fixture(path, image);
-    assert(render_image_reload(key, message, sizeof message));
-    behavior_asset *model = asset(spec);
+    save_fixture(path, &image);
+    REQUIRE(render_image_reload(key, message, sizeof message));
+    behavior_asset *model = asset(&spec);
     pin_value image_key = { .type = PIN_STR, .str = key };
-    assert(!graph_set_pin_default(model->graph, model->graph->nodes[0], 0, 0, &image_key));
-    assert(render_shader_upsert(model, &error));
+    REQUIRE(!graph_set_pin_default(model->graph, model->graph->nodes[0], 0, 0, &image_key));
+    REQUIRE(render_shader_upsert(model, &error));
     int id = render_shader_find(model->name);
     unsigned revision = render_shader_revision();
     shader_sample_context context = { 0 };
     float before[SHADER_OUTPUT_MAX][4], after[SHADER_OUTPUT_MAX][4];
-    assert(render_shader_sample(id, &context, NULL, before, &error));
+    REQUIRE(render_shader_sample(id, &context, NULL, before, &error));
     pin_value invalid_range = { .type = PIN_F32, .f = 200 };
-    assert(!graph_set_pin_default(model->graph, model->graph->nodes[0], 0, 3, &invalid_range));
-    assert(!render_shader_upsert(model, &error));
-    assert(render_shader_revision() == revision);
-    assert(render_shader_sample(id, &context, NULL, after, &error));
-    assert(before[0][0] == after[0][0]);
+    REQUIRE(!graph_set_pin_default(model->graph, model->graph->nodes[0], 0, 3, &invalid_range));
+    REQUIRE(!render_shader_upsert(model, &error));
+    REQUIRE(render_shader_revision() == revision);
+    REQUIRE(render_shader_sample(id, &context, NULL, after, &error));
+    REQUIRE(before[0][0] == after[0][0]);
     behavior_asset_free(model);
     authoring_shader_catalog_clear();
     render_images_clear();
-    assert(!unlink(path));
-    assert(!rmdir(directory));
-    puts("Sampled SDF immutable identity and last-good CPU/GPU resource reload PASS");
+    REQUIRE(!unlink(path));
+    REQUIRE(!rmdir(directory));
+    free(pixels);
+    return true;
 }
-int test_model_sampled_gpu(const char *program, const char *content)
+TEST_CASE(sampled_sdfs_match_cpu_on_gpu)
 {
-    CF_Result app = cf_make_app(
-        "Sampled SDF regression",
-        0,
-        0,
-        0,
-        32,
-        32,
-        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
-        program
-    );
-    assert(!cf_is_error(app));
     shader_image_view image;
     shader_node spec = fixture(&image);
     behavior_asset *a = asset(&spec);
     model_program p;
     model_program_init(&p);
     shader_error error = { 0 };
-    assert(model_compile(a, &p, &error));
-    compare_gpu(&p.shader, &image, spec.value, "sphere fixture");
-    reload_fixture(&spec, &image);
+    REQUIRE(model_compile(a, &p, &error));
+    REQUIRE(gpu_matches(&p.shader, &image, spec.value));
     model_program_free(&p);
     behavior_asset_free(a);
     free((void *)image.pixels);
-    if (content) {
-        char message[256];
-        assert(render_image_mount_content(content, message, sizeof message));
-        model_source_catalog catalog;
-        assert(model_source_load(content, &catalog, message, sizeof message));
-        for (int i = 0; i < catalog.model_count; i++) {
-            if (!strcmp(catalog.catalog[i]->name, "BlenderSuzanne144")) {
-                model_program_init(&p);
-                assert(model_compile_with_catalog(
-                    catalog.catalog[i],
-                    catalog.catalog,
-                    acount(catalog.catalog),
-                    &p,
-                    &error
-                ));
-                assert(render_image_validate_volumes(&p.shader, &error));
-                assert(acount(p.shader.images) == 1);
-                assert(render_image_resolve(NULL, &p.shader.images[0], &image));
-                float half[3];
-                for (int j = 0; j < 3; j++) {
-                    half[j] = p.bounds.max[j];
-                }
-                compare_gpu(&p.shader, &image, half, "Blender Suzanne144");
-                model_program_free(&p);
-            }
-        }
-        model_source_free(&catalog);
-    }
-    render_images_clear();
-    cf_destroy_app();
-    return 0;
+    return true;
 }
+
+/* Runs in an open hidden app. */
+void test_model_sampled_gpu()
+{
+    test_graph_packs_install();
+    RUN_TEST_CASE(sampled_sdfs_match_cpu_on_gpu);
+    RUN_TEST_CASE(sampled_images_keep_the_last_good_on_reload);
+    render_images_clear();
+    test_graph_packs_restore();
+}
+#endif

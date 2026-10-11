@@ -3,14 +3,17 @@
 #include "authoring/render_preview.h"
 #include "authoring/shader_prepare.h"
 #include "graph/authoring/graph_edit.h"
+#include "graph/model/registry.h"
 #include "graph/shader/shader_graph.h"
-#include "platform/cute.h"
+#include "hidden_app.h"
 #include "render/material_raster.h"
 #include "render/scene3d.h"
 #include "render/scene3d_post.h"
 #include "render/shader_catalog.h"
 #include "render/shader_fragment.h"
 #include "support/array.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -86,24 +89,6 @@ static behavior_asset *make_ramp(const char *name, int count, const float colors
     return asset;
 }
 
-static void readback(CF_Canvas canvas, void *data, int bytes)
-{
-    CF_Readback read = cf_canvas_readback(canvas);
-    assert(read.id);
-    uint64_t start = cf_get_ticks();
-    while (!cf_readback_ready(read)) {
-        assert(cf_get_ticks() - start < cf_get_tick_frequency() * 10);
-        cf_sleep(1);
-    }
-    assert(cf_readback_data(read, data, bytes) == bytes);
-    cf_destroy_readback(read);
-}
-
-static void read_canvas_pixels(CF_Canvas canvas, CF_Pixel pixels[PIXELS])
-{
-    readback(canvas, pixels, PIXELS * (int)sizeof *pixels);
-}
-
 static render_material_entity raster_entity(int material, float x)
 {
     return (render_material_entity){ .inv_rot = { 1, 0, 0, 1 },
@@ -117,20 +102,7 @@ static render_material_entity raster_entity(int material, float x)
 
 static void read_scene(render_material_raster *raster, uint16_t pixels[PIXELS * 4])
 {
-    CF_CanvasParams params = cf_canvas_defaults(0, 0);
-    params.attach_target = render_material_raster_textures(raster).scene;
-    CF_Canvas canvas = cf_make_canvas(params);
-    assert(canvas.id);
-    readback(canvas, pixels, PIXELS * 4 * (int)sizeof *pixels);
-    cf_destroy_canvas(canvas);
-}
-
-static float half(uint16_t value)
-{
-    int exponent = (value >> 10) & 31, mantissa = value & 1023;
-    float result = exponent ? ldexpf(1 + mantissa / 1024.0f, exponent - 15)
-                            : ldexpf((float)mantissa, -24);
-    return value & 0x8000 ? -result : result;
+    assert(test_read_texture(render_material_raster_textures(raster).scene, pixels, PIXELS));
 }
 
 static void draw_fragment(render_programs *programs, int material, CF_Canvas canvas, CF_Pixel pixels[PIXELS])
@@ -154,52 +126,54 @@ static void draw_fragment(render_programs *programs, int material, CF_Canvas can
     cf_render_to(canvas, true);
     cf_draw_pop();
     cf_app_draw_onto_screen(false);
-    read_canvas_pixels(canvas, pixels);
+    assert(test_read_canvas(canvas, pixels, PIXELS * (int)sizeof *pixels));
 }
 
-static void fragment_checks(behavior_asset *asset)
+TEST_CASE(fragment_ramps_recompile_only_for_structure)
 {
     static const float initial[][4] = { { 1, 0, 0, 1 }, { 0, 0, 1, 1 } };
     static const float numeric[][4] = { { 0, 1, 0, 1 }, { 1, 1, 0, 1 } };
     static const float structural[][4] = { { 0, 1, 0, 1 },
                                            { 1, 0, 1, 1 },
                                            { 1, 1, 0, 1 } };
-    edit_ramp(asset, 2, initial, 0);
+    behavior_asset *asset = make_ramp("Shader program transport", 2, initial, 0);
     int material = publish(asset);
     render_programs *programs = render_programs_new(RENDER_PROGRAM_FRAGMENT);
     CF_Canvas canvas = cf_make_canvas(cf_canvas_defaults(SIDE, SIDE));
-    assert(programs && canvas.id);
+    REQUIRE(programs && canvas.id);
     CF_Pixel before[PIXELS], after[PIXELS];
     unsigned compile_before = render_shader_compile_count();
     draw_fragment(programs, material, canvas, before);
     unsigned compile_warm = render_shader_compile_count();
-    assert(compile_warm > compile_before);
+    REQUIRE(compile_warm > compile_before);
 
     edit_ramp(asset, 2, numeric, 0);
-    assert(publish(asset) == material);
+    REQUIRE(publish(asset) == material);
     draw_fragment(programs, material, canvas, after);
-    assert(render_shader_compile_count() == compile_warm);
+    REQUIRE(render_shader_compile_count() == compile_warm);
     int changed = 0;
     for (int i = 0; i < PIXELS; i++) {
         changed |= memcmp(&before[i], &after[i], sizeof before[i]) != 0;
     }
-    assert(changed);
+    REQUIRE(changed);
 
     edit_ramp(asset, 2, numeric, 1);
-    assert(publish(asset) == material);
+    REQUIRE(publish(asset) == material);
     draw_fragment(programs, material, canvas, after);
-    assert(render_shader_compile_count() == compile_warm + 1);
+    REQUIRE(render_shader_compile_count() == compile_warm + 1);
 
     edit_ramp(asset, 3, structural, 1);
-    assert(publish(asset) == material);
+    REQUIRE(publish(asset) == material);
     draw_fragment(programs, material, canvas, after);
-    assert(render_shader_compile_count() == compile_warm + 2);
+    REQUIRE(render_shader_compile_count() == compile_warm + 2);
     cf_destroy_canvas(canvas);
     render_programs_free(programs);
+    behavior_asset_free(asset);
+    return true;
 }
 
-static void arena_frame(
-    render_scene3d *arena,
+static void scene_frame(
+    render_scene3d *scene,
     render_scene3d_post *post,
     const behavior_asset *asset,
     const render_scene3d_camera *camera,
@@ -208,41 +182,44 @@ static void arena_frame(
 {
     cf_app_update(NULL);
     assert(
-        authoring_render_scene3d_preview(arena, asset, camera, NULL, 0, &(render_scene3d_activity){ 0 })
+        authoring_render_scene3d_preview(scene, asset, camera, NULL, 0, &(render_scene3d_activity){ 0 })
     );
     cf_render_to(render_scene3d_post_target(post), true);
-    assert(render_scene3d_post_process(post));
+    assert(render_scene3d_post_process(post, 0));
     cf_app_draw_onto_screen(false);
-    read_canvas_pixels(render_scene3d_post_output(post), pixels);
+    assert(
+        test_read_canvas(render_scene3d_post_output(post), pixels, PIXELS * (int)sizeof *pixels)
+    );
 }
 
-static void arena_checks(behavior_asset *asset)
+TEST_CASE(scene3d_previews_update_ramps_without_recompiling)
 {
     static const float initial[][4] = { { 0, 1, 1, 1 }, { 0, .1f, 1, 1 }, { 0, 1, 0, 1 } };
     static const float numeric[][4] = { { 1, .1f, 0, 1 }, { 1, 0, 1, 1 }, { 1, 1, 0, 1 } };
-    edit_ramp(asset, 3, initial, 1);
+    behavior_asset *asset = make_ramp("Shader program transport", 3, initial, 1);
     int material = publish(asset);
-    (void)material;
-    render_scene3d *arena = render_scene3d_new();
+    render_scene3d *scene = render_scene3d_new();
     render_scene3d_post *post = render_scene3d_post_new();
-    GameEnvironment environment = render_scene3d_post_defaults();
+    GameEnvironment environment = game_environment_defaults();
     environment.bloom_strength = 0;
-    assert(arena && post && render_scene3d_post_prepare(post, SIDE, SIDE, &environment));
+    REQUIRE(scene && post && render_scene3d_post_prepare(post, SIDE, SIDE, &environment));
     render_scene3d_camera camera = render_scene3d_camera_make(0, 0, 140, 140);
     CF_Pixel before[PIXELS], after[PIXELS];
     unsigned compile_before = render_shader_compile_count();
-    arena_frame(arena, post, asset, &camera, before);
+    scene_frame(scene, post, asset, &camera, before);
     unsigned compile_warm = render_shader_compile_count();
-    assert(compile_warm > compile_before);
+    REQUIRE(compile_warm > compile_before);
 
     edit_ramp(asset, 3, numeric, 1);
-    assert(publish(asset) == material);
-    arena_frame(arena, post, asset, &camera, after);
-    assert(render_shader_compile_count() == compile_warm);
+    REQUIRE(publish(asset) == material);
+    scene_frame(scene, post, asset, &camera, after);
+    REQUIRE(render_shader_compile_count() == compile_warm);
     int center = SIDE * (SIDE / 2) + SIDE / 2;
-    assert(memcmp(&before[center], &after[center], sizeof before[center]) != 0);
-    render_scene3d_free(arena);
+    REQUIRE(memcmp(&before[center], &after[center], sizeof before[center]) != 0);
+    render_scene3d_free(scene);
     render_scene3d_post_free(post);
+    behavior_asset_free(asset);
+    return true;
 }
 
 static void compute_frame(
@@ -259,7 +236,7 @@ static void compute_frame(
     read_scene(raster, pixels);
 }
 
-static void compute_checks(behavior_asset *asset)
+TEST_CASE(raster_ramps_keep_the_last_good_frame)
 {
     static const float initial[][4] = { { .1f, .2f, 1, 1 },
                                         { .8f, .1f, .4f, 1 },
@@ -268,52 +245,54 @@ static void compute_checks(behavior_asset *asset)
                                         { 1, .8f, .1f, 1 },
                                         { .1f, .1f, 1, 1 } };
     static const float invalid[][4] = { { 0, 1, 0, 1 }, { 1, 0, 0, 1 }, { 0, 0, 1, 1 } };
-    edit_ramp(asset, 3, initial, 1);
+    behavior_asset *asset = make_ramp("Shader program transport", 3, initial, 1);
     int material = publish(asset);
     render_material_raster *raster = render_material_raster_new();
-    assert(raster && render_material_raster_resize(raster, SIDE, SIDE));
+    REQUIRE(raster && render_material_raster_resize(raster, SIDE, SIDE));
     render_material_entity entity = raster_entity(material, 0);
     uint16_t before[PIXELS * 4], after[PIXELS * 4];
     unsigned compile_before = render_shader_compile_count();
     compute_frame(raster, &entity, before);
     unsigned compile_warm = render_shader_compile_count();
-    assert(compile_warm > compile_before);
+    REQUIRE(compile_warm > compile_before);
 
     edit_ramp(asset, 3, numeric, 1);
-    assert(publish(asset) == material);
+    REQUIRE(publish(asset) == material);
     compute_frame(raster, &entity, after);
-    assert(render_shader_compile_count() == compile_warm);
+    REQUIRE(render_shader_compile_count() == compile_warm);
     int center = ((SIDE / 2) * SIDE + SIDE / 2) * 4;
-    assert(
-        fabsf(half(before[center]) - half(after[center])) > .05f ||
-        fabsf(half(before[center + 1]) - half(after[center + 1])) > .05f ||
-        fabsf(half(before[center + 2]) - half(after[center + 2])) > .05f
+    REQUIRE(
+        fabsf(test_half(before[center]) - test_half(after[center])) > .05f ||
+        fabsf(test_half(before[center + 1]) - test_half(after[center + 1])) > .05f ||
+        fabsf(test_half(before[center + 2]) - test_half(after[center + 2])) > .05f
     );
     memcpy(before, after, sizeof before);
 
     edit_ramp(asset, 3, invalid, 2);
-    assert(publish(asset) == material);
+    REQUIRE(publish(asset) == material);
     char mount[] = "/tmp/chibi-shader-program-XXXXXX";
-    assert(mkdtemp(mount));
+    REQUIRE(mkdtemp(mount));
     char noise[sizeof mount + 16];
     snprintf(noise, sizeof noise, "%s/noise.shd", mount);
     FILE *file = fopen(noise, "wb");
-    assert(file);
-    assert(fputs("this is invalid shader source", file) >= 0);
-    assert(!fclose(file));
-    assert(!cf_is_error(cf_fs_mount(mount, "/chibi-render", false)));
+    REQUIRE(file);
+    REQUIRE(fputs("this is invalid shader source", file) >= 0);
+    REQUIRE(!fclose(file));
+    REQUIRE(!cf_is_error(cf_fs_mount(mount, "/chibi-render", false)));
     unsigned compile_before_invalid = render_shader_compile_count();
     compute_frame(raster, &entity, after);
-    assert(render_shader_compile_count() == compile_before_invalid + 1);
-    assert(render_material_raster_error(raster)[0]);
-    assert(!memcmp(before, after, sizeof before));
-    assert(!cf_is_error(cf_fs_dismount(mount)));
-    assert(!unlink(noise));
-    assert(!rmdir(mount));
+    REQUIRE(render_shader_compile_count() == compile_before_invalid + 1);
+    REQUIRE(render_material_raster_error(raster)[0]);
+    REQUIRE(!memcmp(before, after, sizeof before));
+    REQUIRE(!cf_is_error(cf_fs_dismount(mount)));
+    REQUIRE(!unlink(noise));
+    REQUIRE(!rmdir(mount));
     render_material_raster_free(raster);
+    behavior_asset_free(asset);
+    return true;
 }
 
-static void offsets_checks()
+TEST_CASE(programs_read_each_material_at_its_offset)
 {
     static const float red[][4] = { { 1, 0, 0, 1 }, { 1, 0, 0, 1 } };
     static const float green[][4] = { { 0, 1, 0, 1 }, { 0, 1, 0, 1 } };
@@ -321,26 +300,27 @@ static void offsets_checks()
     behavior_asset *right = make_ramp("Shader program offset right", 2, green, 0);
     int left_id = publish(left), right_id = publish(right);
     render_material_raster *raster = render_material_raster_new();
-    assert(raster && render_material_raster_resize(raster, SIDE, SIDE));
+    REQUIRE(raster && render_material_raster_resize(raster, SIDE, SIDE));
     render_material_entity entities[] = { raster_entity(left_id, -16),
                                           raster_entity(right_id, 16) };
     uint16_t pixels[PIXELS * 4];
     cf_app_update(NULL);
-    assert(
+    REQUIRE(
         render_material_raster_draw(raster, entities, 2, (render_material_view){ -32, 32, 64, 64 })
     );
     cf_app_draw_onto_screen(false);
     read_scene(raster, pixels);
     int left_pixel = ((SIDE / 2) * SIDE + SIDE / 4) * 4;
     int right_pixel = ((SIDE / 2) * SIDE + SIDE * 3 / 4) * 4;
-    assert(half(pixels[left_pixel]) > .8f && half(pixels[left_pixel + 1]) < .1f);
-    assert(half(pixels[right_pixel]) < .1f && half(pixels[right_pixel + 1]) > .8f);
+    REQUIRE(test_half(pixels[left_pixel]) > .8f && test_half(pixels[left_pixel + 1]) < .1f);
+    REQUIRE(test_half(pixels[right_pixel]) < .1f && test_half(pixels[right_pixel + 1]) > .8f);
     render_material_raster_free(raster);
     behavior_asset_free(left);
     behavior_asset_free(right);
+    return true;
 }
 
-static void capacity_checks()
+TEST_CASE(ramp_capacity_keeps_the_last_good_frame)
 {
     static const float valid_colors[][4] = { { .8f, .2f, .1f, 1 },
                                              { .8f, .2f, .1f, 1 } };
@@ -352,11 +332,10 @@ static void capacity_checks()
         { .8f, .2f, .1f, 1 }, { .8f, .2f, .1f, 1 }, { .8f, .2f, .1f, 1 },
         { .8f, .2f, .1f, 1 }
     };
-    authoring_shader_catalog_clear();
     behavior_asset *valid = make_ramp("Shader program capacity valid", 2, valid_colors, 0);
     int valid_id = publish(valid);
     render_material_raster *raster = render_material_raster_new();
-    assert(raster && render_material_raster_resize(raster, SIDE, SIDE));
+    REQUIRE(raster && render_material_raster_resize(raster, SIDE, SIDE));
     render_material_entity entity = raster_entity(valid_id, 0);
     uint16_t before[PIXELS * 4], after[PIXELS * 4];
     compute_frame(raster, &entity, before);
@@ -370,25 +349,26 @@ static void capacity_checks()
     }
     unsigned compile_before_reject = render_shader_compile_count();
     render_material_raster *rejected = render_material_raster_new();
-    assert(rejected && render_material_raster_resize(rejected, SIDE, SIDE));
-    assert(
+    REQUIRE(rejected && render_material_raster_resize(rejected, SIDE, SIDE));
+    REQUIRE(
         !render_material_raster_draw(rejected, &entity, 1, (render_material_view){ -32, 32, 64, 64 })
     );
-    assert(render_shader_compile_count() == compile_before_reject);
-    assert(strstr(render_material_raster_error(rejected), "limit"));
+    REQUIRE(render_shader_compile_count() == compile_before_reject);
+    REQUIRE(strstr(render_material_raster_error(rejected), "limit"));
     render_material_raster_free(rejected);
     compute_frame(raster, &entity, after);
-    assert(render_shader_compile_count() == compile_warm);
-    assert(strstr(render_material_raster_error(raster), "limit"));
-    assert(!memcmp(before, after, sizeof before));
+    REQUIRE(render_shader_compile_count() == compile_warm);
+    REQUIRE(strstr(render_material_raster_error(raster), "limit"));
+    REQUIRE(!memcmp(before, after, sizeof before));
     render_material_raster_free(raster);
     behavior_asset_free(valid);
     for (int i = 0; i < 17; i++) {
         behavior_asset_free(large[i]);
     }
+    return true;
 }
 
-static void indexed_sets_checks()
+TEST_CASE(program_sets_keep_their_ids_as_tables_grow)
 {
     enum
     {
@@ -407,58 +387,63 @@ static void indexed_sets_checks()
         node *position = shader_test_node(g, "Shader ObjectPosition");
         node *length = shader_test_node(g, "Shader Length");
         node *distance = shader_test_node(g, "Shader Subtract");
-        assert(!graph_connect_data(g, position, 0, length, 0));
-        assert(!graph_connect_data(g, length, 0, distance, 0));
-        assert(!graph_connect_data(g, distance, 0, shader_graph_add_output(g, true), 0));
+        REQUIRE(!graph_connect_data(g, position, 0, length, 0));
+        REQUIRE(!graph_connect_data(g, length, 0, distance, 0));
+        REQUIRE(!graph_connect_data(g, distance, 0, shader_graph_add_output(g, true), 0));
         pin_value radius = { .type = PIN_F32, .f = (float)i + 1 };
-        assert(!graph_set_pin_default(g, distance, 0, 1, &radius));
+        REQUIRE(!graph_set_pin_default(g, distance, 0, 1, &radius));
         sets[i] = (render_shader_set){ .shape = publish(shapes[i]) };
     }
     render_programs *programs = render_programs_new(RENDER_PROGRAM_SDF_MATERIAL);
     for (int i = 0; i < COUNT; i++) {
         ids[i] = render_programs_prepare(programs, &sets[i]);
-        assert(ids[i]);
+        REQUIRE(ids[i]);
         for (int j = 0; j < i; j++) {
-            assert(ids[i] != ids[j]);
+            REQUIRE(ids[i] != ids[j]);
         }
     }
     unsigned warm = render_shader_compile_count();
     // Reverse/repeated lookup must survive table growth without recompiling.
     for (int pass = 0; pass < 3; pass++) {
         for (int i = COUNT - 1; i >= 0; i--) {
-            assert(render_programs_prepare(programs, &sets[i]) == ids[i]);
+            REQUIRE(render_programs_prepare(programs, &sets[i]) == ids[i]);
         }
     }
-    assert(render_shader_compile_count() == warm);
+    REQUIRE(render_shader_compile_count() == warm);
     graph *g = shapes[0]->graph;
     node *distance = g->nodes[2];
     pin_value radius = { .type = PIN_F32, .f = 2.5f };
-    assert(!graph_set_pin_default(g, distance, 0, 1, &radius));
-    assert(publish(shapes[0]) == sets[0].shape);
-    assert(render_programs_prepare(programs, &sets[0]) == ids[0]);
-    assert(render_shader_compile_count() == warm + 1);
+    REQUIRE(!graph_set_pin_default(g, distance, 0, 1, &radius));
+    REQUIRE(publish(shapes[0]) == sets[0].shape);
+    REQUIRE(render_programs_prepare(programs, &sets[0]) == ids[0]);
+    REQUIRE(render_shader_compile_count() == warm + 1);
     render_programs_free(programs);
     for (int i = 0; i < COUNT; i++) {
         behavior_asset_free(shapes[i]);
     }
+    return true;
+}
+
+static void teardown()
+{
     authoring_shader_catalog_clear();
 }
 
-int test_shader_program_gpu()
+void test_shader_image_routes();
+
+void test_shader_programs()
 {
-    authoring_shader_catalog_clear();
-    static const float colors[][4] = { { 1, 0, 0, 1 }, { 0, 0, 1, 1 } };
-    behavior_asset *asset = make_ramp("Shader program transport", 2, colors, 0);
-    publish(asset);
-    fragment_checks(asset);
-    arena_checks(asset);
-    compute_checks(asset);
-    behavior_asset_free(asset);
-    offsets_checks();
-    capacity_checks();
-    authoring_shader_catalog_clear();
-    indexed_sets_checks();
-    authoring_shader_catalog_clear();
-    puts("shader program GPU PASS: Arena, fragment and compute ramp payloads, structural recompiles, program offsets, compile failure retention and ramp capacity");
-    return 0;
+    test_open_hidden_app("shader-programs", SIDE, SIDE);
+    test_graph_packs_install();
+    pu_setup(NULL, teardown);
+    RUN_TEST_CASE(fragment_ramps_recompile_only_for_structure);
+    RUN_TEST_CASE(scene3d_previews_update_ramps_without_recompiling);
+    RUN_TEST_CASE(raster_ramps_keep_the_last_good_frame);
+    RUN_TEST_CASE(programs_read_each_material_at_its_offset);
+    RUN_TEST_CASE(ramp_capacity_keeps_the_last_good_frame);
+    RUN_TEST_CASE(program_sets_keep_their_ids_as_tables_grow);
+    test_shader_image_routes();
+    pu_clear_setup();
+    test_graph_packs_restore();
+    cf_destroy_app();
 }

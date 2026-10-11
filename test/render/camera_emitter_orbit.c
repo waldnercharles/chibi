@@ -1,12 +1,12 @@
 #include "authoring/shader_prepare.h"
 #include "graph/authoring/graph_edit.h"
+#include "graph/model/registry.h"
 #include "graph/shader/shader_graph.h"
-#include "platform/cute.h"
 #include "render/material_raster.h"
-#include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
 #include "support/xalloc.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -158,9 +158,11 @@ static moments emission_moments(const float *pixels, int channel)
     }
     return m;
 }
-/* Closed-form horizontal orbit projection, independent of renderer helpers.
- * Source scene transforms map gameplay Y directly to world Z. */
-static bool inspect(const float *source, CF_V3 world, float angle, int channel, const char *label)
+/* Whether `channel`'s emission has the centroid and area of a radius-six
+ * sphere at `world` seen from `angle` around the view's center, by a
+ * closed-form projection independent of the renderer's helpers. Scene
+ * transforms map gameplay Y directly to world Z. */
+static bool inspect(const float *source, CF_V3 world, float angle, int channel)
 {
     double x = cos(angle) * world.x - sin(angle) * world.y;
     double depth = sin(angle) * world.x + cos(angle) * world.y;
@@ -170,23 +172,13 @@ static bool inspect(const float *source, CF_V3 world, float angle, int channel, 
     double area = PI * radius * radius *
                   sqrt(1 + (x * x + world.z * world.z) / (distance * distance));
     moments m = emission_moments(source, channel);
-    bool ok = m.sum > 0 && fabs(m.x - px) < .8 && fabs(m.y - py) < .8 &&
-              fabs(m.area - area) < 3 + area * .25;
-    printf(
-        "SDF emitter %s: %s; centroid %.3f,%.3f expected %.3f,%.3f area %.3f "
-        "expected %.3f\n",
-        label,
-        ok ? "PASS" : "FAIL",
-        m.x,
-        m.y,
-        px,
-        py,
-        m.area,
-        area
-    );
-    return ok;
+    return m.sum > 0 && fabs(m.x - px) < .8 && fabs(m.y - py) < .8 &&
+           fabs(m.area - area) < 3 + area * .25;
 }
-bool test_camera_emitter_orbit()
+/* Emissive SDF spheres project their emission where an orbiting eye sees
+ * them, raised or lowered, and an opaque mesh in front hides one emitter's
+ * light completely without changing it once it moves aside. */
+TEST_CASE(emitters_follow_an_orbiting_camera)
 {
     behavior_asset *shape = sphere();
     ecs_world *world = ecs_world_new();
@@ -198,7 +190,7 @@ bool test_camera_emitter_orbit()
         &GAME_COMPONENT_GameMeshAsset
     };
     for (int i = 0; i < (int)(sizeof components / sizeof *components); i++) {
-        assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
+        REQUIRE(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
     }
     ecs_entity cyan = actor(world, shape->name, 0x00ffffff),
                amber = actor(world, shape->name, 0xff6600ff),
@@ -207,7 +199,7 @@ bool test_camera_emitter_orbit()
                                             { amber, { 215, 45 } },
                                             { blocker, { 245, 45 * 455.0f / 485 } } };
     render_material_raster *r = render_material_raster_new();
-    bool ok = render_material_raster_resize(r, WIDTH, HEIGHT);
+    REQUIRE(render_material_raster_resize(r, WIDTH, HEIGHT));
     render_material_raster_set_quality(r, (GameSurfaceQuality){ .resolution = GAME_SURFACE_FULL });
     const float angles[] = { 0, PI * .25f, PI * .5f, PI, PI * 1.5f };
     for (int elevated = 0; elevated < 2; elevated++) {
@@ -215,53 +207,27 @@ bool test_camera_emitter_orbit()
         GAME_GameGeometry3D_get(world, amber)->elevation = elevated ? -15 : 0;
         for (int i = 0; i < 5; i++) {
             float *source = NULL;
-            bool captured = capture(r, world, actors, 2, angles[i], &source);
-            if (captured) {
-                char label[80];
-                snprintf(label, sizeof label, "cyan angle%d elevation%d", i, elevated);
-                ok &= inspect(source, (CF_V3){ -215, elevated ? 25 : 0, -45 }, angles[i], 2, label);
-                snprintf(label, sizeof label, "amber angle%d elevation%d", i, elevated);
-                ok &= inspect(source, (CF_V3){ 215, elevated ? -15 : 0, 45 }, angles[i], 0, label);
-            }
-            ok &= captured;
+            REQUIRE(capture(r, world, actors, 2, angles[i], &source));
+            bool seen = inspect(source, (CF_V3){ -215, elevated ? 25 : 0, -45 }, angles[i], 2) &&
+                        inspect(source, (CF_V3){ 215, elevated ? -15 : 0, 45 }, angles[i], 0);
             free(source);
+            REQUIRE(seen);
         }
     }
     GAME_GameGeometry3D_get(world, cyan)
         ->elevation = GAME_GameGeometry3D_get(world, amber)->elevation = 0;
     float *reference = NULL, *hidden = NULL, *front = NULL, *restored = NULL;
-    bool captured = capture(r, world, actors, 2, PI * .5f, &reference) &&
-                    capture(r, world, actors, 3, PI * .5f, &hidden);
-    moments baseline = { 0 }, occluded = { 0 }, visible = { 0 }, stale = { 0 };
-    if (captured) {
-        baseline = emission_moments(reference, 0);
-        occluded = emission_moments(hidden, 0);
-        ok &= baseline.sum > 0 && occluded.sum == 0;
-        ok &= inspect(hidden, (CF_V3){ -215, 0, -45 }, PI * .5f, 2, "cyan survives opaque blocker");
-    }
+    REQUIRE(capture(r, world, actors, 2, PI * .5f, &reference));
+    REQUIRE(capture(r, world, actors, 3, PI * .5f, &hidden));
+    moments baseline = emission_moments(reference, 0),
+            occluded = emission_moments(hidden, 0);
+    REQUIRE(baseline.sum > 0 && occluded.sum == 0);
+    REQUIRE(inspect(hidden, (CF_V3){ -215, 0, -45 }, PI * .5f, 2));
     actors[2].position = (GameTransform){ 185, 45 * 515.0f / 485 };
-    captured = captured && capture(r, world, actors, 3, PI * .5f, &front) &&
-               capture(r, world, actors, 2, PI * .5f, &restored);
-    if (captured) {
-        visible = emission_moments(front, 0);
-        stale = emission_moments(restored, 0);
-        ok &= fabs(visible.sum - baseline.sum) < .01 &&
-              fabs(stale.sum - baseline.sum) < .01;
-    }
-    ok &= captured;
-    printf(
-        "SDF emitter opaque depth: %s; amber emission baseline %.3f hidden "
-        "%.3f front %.3f restored %.3f\n",
-        captured && baseline.sum > 0 && occluded.sum == 0 &&
-                fabs(visible.sum - baseline.sum) < .01 &&
-                fabs(stale.sum - baseline.sum) < .01
-            ? "PASS"
-            : "FAIL",
-        baseline.sum,
-        occluded.sum,
-        visible.sum,
-        stale.sum
-    );
+    REQUIRE(capture(r, world, actors, 3, PI * .5f, &front));
+    REQUIRE(capture(r, world, actors, 2, PI * .5f, &restored));
+    REQUIRE(fabs(emission_moments(front, 0).sum - baseline.sum) < .01);
+    REQUIRE(fabs(emission_moments(restored, 0).sum - baseline.sum) < .01);
     free(reference);
     free(hidden);
     free(front);
@@ -269,5 +235,11 @@ bool test_camera_emitter_orbit()
     render_material_raster_free(r);
     ecs_world_free(world);
     behavior_asset_free(shape);
-    return ok;
+    return true;
+}
+
+/* Runs in an open hidden app with the graph packs installed. */
+void test_camera_emitter_orbit()
+{
+    RUN_TEST_CASE(emitters_follow_an_orbiting_camera);
 }

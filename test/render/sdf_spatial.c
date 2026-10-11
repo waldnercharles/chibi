@@ -1,14 +1,14 @@
 #include "authoring/shader_prepare.h"
 #include "graph/authoring/graph_edit.h"
+#include "graph/model/registry.h"
 #include "graph/shader/shader_graph.h"
-#include "platform/cute.h"
 #include "render/material_raster.h"
 #include "render/mesh_projection.h"
-#include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "render/spatial_groups.h"
 #include "runtime/component_catalog.h"
 #include "support/xalloc.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -118,7 +118,9 @@ static behavior_asset *sphere()
     return asset;
 }
 
-static bool partition_contract()
+/* Overlapping actors share a scratch group, distant ones split, a crowd
+ * stays within the group limit, and a near-plane crop stays on the target. */
+TEST_CASE(spatial_partitions_group_nearby_actors)
 {
     render_spatial_actor actors[] = { { { 0, 0, 12, 12 }, 0, 0 },
                                       { { 8, 8, 20, 20 }, 1, 0 },
@@ -137,27 +139,22 @@ static bool partition_contract()
     }
     int crowd_groups = render_spatial_partition(crowd, 1000, 0);
     free(crowd);
-    if (crowd_groups < 2 || crowd_groups > RENDER_SCRATCH_GROUP_MAX) {
-        return false;
-    }
+    REQUIRE(groups == 3 && membership[0] == membership[1]);
+    REQUIRE(membership[2] != membership[0] && membership[3] != membership[0]);
+    REQUIRE(crowd_groups >= 2 && crowd_groups <= RENDER_SCRATCH_GROUP_MAX);
     render_view_2d view = { -48, 40, WIDTH, HEIGHT, .focal_distance = 32 };
     CF_V2 lo, hi;
-    bool near = render_mesh_project_bounds(
+    REQUIRE(render_mesh_project_bounds(
         view,
         (CF_V3){ -.01f, 30.98f, -.01f },
         (CF_V3){ .01f, 31.02f, .01f },
         &lo,
         &hi
-    );
-    if (!near) {
-        return false;
-    }
+    ));
     render_pixel_rect clipped = render_mesh_pixel_bounds(view, lo, hi, WIDTH, HEIGHT);
-    return groups == 3 && membership[0] == membership[1] &&
-           membership[2] != membership[0] && membership[3] != membership[0] &&
-           near && clipped.x >= 0 && clipped.y >= 0 && clipped.right <= WIDTH &&
-           clipped.bottom <= HEIGHT && clipped.right > clipped.x &&
-           clipped.bottom > clipped.y;
+    REQUIRE(clipped.x >= 0 && clipped.y >= 0 && clipped.right <= WIDTH && clipped.bottom <= HEIGHT);
+    REQUIRE(clipped.right > clipped.x && clipped.bottom > clipped.y);
+    return true;
 }
 
 static bool snapshot(
@@ -185,9 +182,12 @@ static bool snapshot(
     return ok;
 }
 
-bool test_sdf_spatial()
+/* Three SDF actors, two of them far from the third, draw the same pixels
+ * through two scratch groups as through one, with less surface and
+ * composition work, orthographic and in perspective, with and without a
+ * prior 2D layer. */
+TEST_CASE(spatial_scratch_matches_one_scratch)
 {
-    bool ok = partition_contract();
     behavior_asset *shape = sphere();
     ecs_world *world = ecs_world_new();
     const ecs_component_desc *components[] = {
@@ -197,7 +197,7 @@ bool test_sdf_spatial()
         &GAME_COMPONENT_GameMeshSurface2D
     };
     for (int i = 0; i < 7; i++) {
-        assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
+        REQUIRE(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
     }
     render_mesh_material_actor actors[3];
     for (int i = 0; i < 3; i++) {
@@ -230,9 +230,9 @@ bool test_sdf_spatial()
           .absorption = { 1, 1, 1, 1 } }
     };
     render_material_raster *r = render_material_raster_new();
-    ok &= r && render_material_raster_resize(r, WIDTH, HEIGHT);
-    for (int perspective = 0; ok && perspective < 2; perspective++) {
-        for (int prior = 0; ok && prior < 2; prior++) {
+    REQUIRE(render_material_raster_resize(r, WIDTH, HEIGHT));
+    for (int perspective = 0; perspective < 2; perspective++) {
+        for (int prior = 0; prior < 2; prior++) {
             render_material_view view = { -48,
                                           40,
                                           WIDTH,
@@ -240,78 +240,48 @@ bool test_sdf_spatial()
                                           .focal_distance = perspective ? 40 : 0 };
             float *reference[5] = { 0 }, *split[5] = { 0 };
             render_material_raster_set_spatial_scratch(r, false);
-            ok = snapshot(r, world, actors, layers + !prior, 4 + prior, view, reference);
+            REQUIRE(snapshot(r, world, actors, layers + !prior, 4 + prior, view, reference));
             render_mesh_material_work before = render_material_raster_mesh_work(r);
             render_material_raster_set_spatial_scratch(r, true);
-            ok = ok &&
-                 snapshot(r, world, actors, layers + !prior, 4 + prior, view, split);
+            REQUIRE(snapshot(r, world, actors, layers + !prior, 4 + prior, view, split));
             render_mesh_material_work after = render_material_raster_mesh_work(r);
+            /* The lone actor's island shows its own color. */
+            int island = (40 * WIDTH + 83) * 4;
+            REQUIRE(reference[0][island + 3] > .5f);
+            REQUIRE(reference[0][island] > .5f || reference[0][island + 2] > .5f);
             float maximum = 0;
-            if (ok) {
-                int island = (40 * WIDTH + 83) * 4;
-                ok = reference[0][island + 3] > .5f &&
-                     (reference[0][island] > .5f || reference[0][island + 2] > .5f);
-            }
-            for (int target = 0; ok && target < 5; target++) {
+            for (int target = 0; target < 5; target++) {
                 for (int i = 0; i < VALUES; i++) {
-                    float delta = fabsf(reference[target][i] - split[target][i]);
-                    maximum = fmaxf(maximum, delta);
-                    if (delta > .015f) {
-                        ok = false;
-                        break;
-                    }
+                    maximum = fmaxf(maximum, fabsf(reference[target][i] - split[target][i]));
                 }
             }
-            ok = ok && after.scratch_groups == 2 && before.scratch_groups == 1 &&
-                 after.surface_pixels < before.surface_pixels / 2 &&
-                 after.composition_pixels < (size_t)(prior + 1) * WIDTH * HEIGHT;
-            if (!prior) {
-                ok &= after.composition_pixels < before.composition_pixels / 2;
-            }
-            printf(
-                "SDF spatial %s perspective%d prior%d: scratch%d->%d "
-                "groups%d->%d composition%zu->%zu maxdelta%g\n",
-                ok ? "PASS" : "FAIL",
-                perspective,
-                prior,
-                before.surface_pixels,
-                after.surface_pixels,
-                before.scratch_groups,
-                after.scratch_groups,
-                before.composition_pixels,
-                after.composition_pixels,
-                maximum
-            );
             for (int i = 0; i < 5; i++) {
                 free(reference[i]);
                 free(split[i]);
             }
+            REQUIRE(maximum <= .015f);
+            REQUIRE(after.scratch_groups == 2 && before.scratch_groups == 1);
+            REQUIRE(after.surface_pixels < before.surface_pixels / 2);
+            REQUIRE(after.composition_pixels < (size_t)(prior + 1) * WIDTH * HEIGHT);
+            REQUIRE(prior || after.composition_pixels < before.composition_pixels / 2);
         }
     }
     render_material_raster_free(r);
     ecs_world_free(world);
     behavior_asset_free(shape);
-    return ok;
+    return true;
 }
 
-int sdf_spatial_run(const char *program)
+static void teardown()
 {
-    CF_Result result = cf_make_app(
-        "SDF spatial regression",
-        0,
-        0,
-        0,
-        WIDTH,
-        HEIGHT,
-        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT,
-        program
-    );
-    if (cf_is_error(result)) {
-        fprintf(stderr, "%s\n", result.details);
-        return 1;
-    }
-    app_scene_renderer_initialize();
-    bool ok = test_sdf_spatial();
-    cf_destroy_app();
-    return !ok;
+    authoring_shader_catalog_clear();
+}
+
+/* Runs in an open hidden app with the graph packs installed. */
+void test_sdf_spatial()
+{
+    pu_setup(NULL, teardown);
+    RUN_TEST_CASE(spatial_partitions_group_nearby_actors);
+    RUN_TEST_CASE(spatial_scratch_matches_one_scratch);
+    pu_clear_setup();
 }

@@ -1,6 +1,8 @@
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 
 #include <assert.h>
@@ -93,17 +95,18 @@ static float sample(const model_program *p, const float values[32][4], float x, 
     assert(shader_graph_eval_outputs(&p->shader, &context, values, result, &error));
     return result[0][0];
 }
-static void near(float actual, float expected)
+static bool near(float actual, float expected)
 {
-    assert(fabsf(actual - expected) < .0002f);
+    return fabsf(actual - expected) < .0002f;
 }
-static void contains(const model_bounds *b, float x, float y, float z)
+static bool contains(const model_bounds *b, float x, float y, float z)
 {
     float p[3] = { x, y, z };
-    assert(!b->empty);
+    bool inside = !b->empty;
     for (int i = 0; i < 3; i++) {
-        assert(p[i] >= b->min[i] - .0002f && p[i] <= b->max[i] + .0002f);
+        inside = inside && p[i] >= b->min[i] - .0002f && p[i] <= b->max[i] + .0002f;
     }
+    return inside;
 }
 static node *circle(graph *g, float radius, float x, float y)
 {
@@ -119,7 +122,7 @@ static node *extrude(graph *g, node *profile)
     connect(g, profile, n, "Profile");
     return n;
 }
-static void profile_offset()
+TEST_CASE(profile_offset)
 {
     behavior_asset *a = model("OffsetCircleSections");
     graph *g = a->graph;
@@ -130,18 +133,19 @@ static void profile_offset()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 3.5f, -1, 0), 0);
-    near(sample(&p, NULL, 1, 1.5f, 0), 0);
-    contains(&p.bounds, 3.5f, -1, 0);
+    REQUIRE(near(sample(&p, NULL, 3.5f, -1, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 1, 1.5f, 0), 0));
+    REQUIRE(contains(&p.bounds, 3.5f, -1, 0));
     scalar(g, offset, "Distance", -.5f);
     compile(a, &p);
-    near(sample(&p, NULL, 2.5f, -1, 0), 0);
-    assert(sample(&p, NULL, 3, -1, 0) > 0);
-    assert(sample(&p, NULL, 1, -1, 0) < 0);
+    REQUIRE(near(sample(&p, NULL, 2.5f, -1, 0), 0));
+    REQUIRE(sample(&p, NULL, 3, -1, 0) > 0);
+    REQUIRE(sample(&p, NULL, 1, -1, 0) < 0);
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
-static void profile_booleans()
+TEST_CASE(profile_booleans)
 {
     const char *operations[] = { "Model Profile Union",
                                  "Model Profile Intersection",
@@ -157,19 +161,19 @@ static void profile_booleans()
         model_program_init(&p);
         compile(a, &p);
         if (i == 0) {
-            assert(sample(&p, NULL, -2, 0, 0) < 0);
-            assert(sample(&p, NULL, 2, 0, 0) < 0);
-            near(sample(&p, NULL, 2.5f, 0, 0), 0);
+            REQUIRE(sample(&p, NULL, -2, 0, 0) < 0);
+            REQUIRE(sample(&p, NULL, 2, 0, 0) < 0);
+            REQUIRE(near(sample(&p, NULL, 2.5f, 0, 0), 0));
         }
         if (i == 1) {
-            assert(sample(&p, NULL, -2, 0, 0) > 0);
-            assert(sample(&p, NULL, 0, 0, 0) < 0);
-            near(sample(&p, NULL, .5f, 0, 0), 0);
+            REQUIRE(sample(&p, NULL, -2, 0, 0) > 0);
+            REQUIRE(sample(&p, NULL, 0, 0, 0) < 0);
+            REQUIRE(near(sample(&p, NULL, .5f, 0, 0), 0));
         }
         if (i == 2) {
-            assert(sample(&p, NULL, -2, 0, 0) < 0);
-            assert(sample(&p, NULL, 0, 0, 0) > 0);
-            near(sample(&p, NULL, -.5f, 0, 0), 0);
+            REQUIRE(sample(&p, NULL, -2, 0, 0) < 0);
+            REQUIRE(sample(&p, NULL, 0, 0, 0) > 0);
+            REQUIRE(near(sample(&p, NULL, -.5f, 0, 0), 0));
         }
         model_program_free(&p);
         behavior_asset_free(a);
@@ -185,14 +189,15 @@ static void profile_booleans()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 0, 0, 0), 1);
-    near(sample(&p, NULL, 1, 0, 0), 0);
-    assert(sample(&p, NULL, 1.5f, 0, 0) < 0);
-    near(sample(&p, NULL, 3, 1, 0), 0);
+    REQUIRE(near(sample(&p, NULL, 0, 0, 0), 1));
+    REQUIRE(near(sample(&p, NULL, 1, 0, 0), 0));
+    REQUIRE(sample(&p, NULL, 1.5f, 0, 0) < 0);
+    REQUIRE(near(sample(&p, NULL, 3, 1, 0), 0));
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
-static void rim_sections()
+TEST_CASE(rim_sections)
 {
     const char *operations[] = { "Model Rounded Extrude", "Model Beveled Extrude" };
     for (int i = 0; i < 2; i++) {
@@ -209,26 +214,27 @@ static void rim_sections()
         // Independent cross-section: a quarter circle or a 45-degree chamfer
         // joins the side at (r=2,z=.75) to the cap at (r=1.75,z=1).
         float rim_point = i == 0 ? .75f + .25f / sqrtf(2) : .875f;
-        near(sample(&p, NULL, rim_point + 1, 0, rim_point), 0);
-        near(sample(&p, NULL, 2, 0, 0), 0);
-        near(sample(&p, NULL, 0, 0, 1), 0);
-        assert(sample(&p, NULL, 2, 0, 1) > 0);
-        assert(sample(&p, NULL, 1.7f, 0, .7f) < 0);
-        contains(&p.bounds, 2, 0, 0);
-        contains(&p.bounds, 0, 0, 1);
+        REQUIRE(near(sample(&p, NULL, rim_point + 1, 0, rim_point), 0));
+        REQUIRE(near(sample(&p, NULL, 2, 0, 0), 0));
+        REQUIRE(near(sample(&p, NULL, 0, 0, 1), 0));
+        REQUIRE(sample(&p, NULL, 2, 0, 1) > 0);
+        REQUIRE(sample(&p, NULL, 1.7f, 0, .7f) < 0);
+        REQUIRE(contains(&p.bounds, 2, 0, 0));
+        REQUIRE(contains(&p.bounds, 0, 0, 1));
         char *saved = behavior_asset_save(a);
         behavior_asset *loaded = behavior_asset_load(saved);
-        assert(loaded);
+        REQUIRE(loaded);
         model_program copy;
         model_program_init(&copy);
         compile(loaded, &copy);
-        near(sample(&copy, NULL, rim_point + 1, 0, rim_point), 0);
+        REQUIRE(near(sample(&copy, NULL, rim_point + 1, 0, rim_point), 0));
         model_program_free(&copy);
         behavior_asset_free(loaded);
         free(saved);
         model_program_free(&p);
         behavior_asset_free(a);
     }
+    return true;
 }
 static node *sphere(graph *g, float radius)
 {
@@ -249,7 +255,7 @@ static node *empty_lens(graph *g)
     connect(g, right, intersection, "B");
     return intersection;
 }
-static void level_sets()
+TEST_CASE(level_sets)
 {
     behavior_asset *a = model("SphereLevelOffset");
     graph *g = a->graph;
@@ -260,11 +266,11 @@ static void level_sets()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 2.5f, 0, 0), 0);
-    contains(&p.bounds, 2.5f, 0, 0);
+    REQUIRE(near(sample(&p, NULL, 2.5f, 0, 0), 0));
+    REQUIRE(contains(&p.bounds, 2.5f, 0, 0));
     scalar(g, offset, "Distance", -.5f);
     compile(a, &p);
-    near(sample(&p, NULL, 1.5f, 0, 0), 0);
+    REQUIRE(near(sample(&p, NULL, 1.5f, 0, 0), 0));
     model_program_free(&p);
     behavior_asset_free(a);
     for (int side = 0; side < 3; side++) {
@@ -278,11 +284,11 @@ static void level_sets()
         model_program_init(&p);
         compile(a, &p);
         float inner[] = { 1.8f, 2, 1.6f }, outer[] = { 2.2f, 2.4f, 2 };
-        near(sample(&p, NULL, inner[side], 0, 0), 0);
-        near(sample(&p, NULL, outer[side], 0, 0), 0);
-        assert(sample(&p, NULL, (inner[side] + outer[side]) / 2, 0, 0) < 0);
-        assert(sample(&p, NULL, 0, 0, 0) > 0);
-        contains(&p.bounds, outer[side], 0, 0);
+        REQUIRE(near(sample(&p, NULL, inner[side], 0, 0), 0));
+        REQUIRE(near(sample(&p, NULL, outer[side], 0, 0), 0));
+        REQUIRE(sample(&p, NULL, (inner[side] + outer[side]) / 2, 0, 0) < 0);
+        REQUIRE(sample(&p, NULL, 0, 0, 0) > 0);
+        REQUIRE(contains(&p.bounds, outer[side], 0, 0));
         model_program_free(&p);
         behavior_asset_free(a);
     }
@@ -298,17 +304,18 @@ static void level_sets()
         publish(g, level);
         model_program_init(&p);
         compile(a, &p);
-        assert(sample(&p, NULL, 0, 0, 0) < 0);
+        REQUIRE(sample(&p, NULL, 0, 0, 0) < 0);
         // Intersection of two independently inflated unit spheres reaches this
         // section even though their original zero-level AABBs do not overlap.
         float height = sqrtf(1.75f * 1.75f - 1.5f * 1.5f);
-        near(sample(&p, NULL, 0, height, 0), 0);
-        contains(&p.bounds, 0, height, 0);
+        REQUIRE(near(sample(&p, NULL, 0, height, 0), 0));
+        REQUIRE(contains(&p.bounds, 0, height, 0));
         model_program_free(&p);
         behavior_asset_free(a);
     }
+    return true;
 }
-static void swept_segments()
+TEST_CASE(swept_segments)
 {
     behavior_asset *a = model("OpenBentTube");
     graph *g = a->graph;
@@ -320,24 +327,25 @@ static void swept_segments()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, -1, .5f, 0), 0);
-    near(sample(&p, NULL, -2.5f, 0, 0), 0);
-    near(sample(&p, NULL, 0, 0, .5f), 0);
-    near(sample(&p, NULL, -1, 1, 0), .5f);
+    REQUIRE(near(sample(&p, NULL, -1, .5f, 0), 0));
+    REQUIRE(near(sample(&p, NULL, -2.5f, 0, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 0, 0, .5f), 0));
+    REQUIRE(near(sample(&p, NULL, -1, 1, 0), .5f));
     boolean(g, tube, "Closed", true);
     compile(a, &p);
-    near(sample(&p, NULL, -1, 1, 0), -.5f);
-    contains(&p.bounds, -2.5f, 0, 0);
-    contains(&p.bounds, 0, 2.5f, 0);
+    REQUIRE(near(sample(&p, NULL, -1, 1, 0), -.5f));
+    REQUIRE(contains(&p.bounds, -2.5f, 0, 0));
+    REQUIRE(contains(&p.bounds, 0, 2.5f, 0));
     float duplicated[][3] = { { 0, 0, 0 }, { 0, 0, 0 } };
     points(g, tube, "Points", "ShaderVec3", &duplicated[0][0], 2, 3);
     shader_error error = { 0 };
-    assert(!model_compile(a, &p, &error));
-    near(sample(&p, NULL, -1, 1, 0), -.5f);
+    REQUIRE(!model_compile(a, &p, &error));
+    REQUIRE(near(sample(&p, NULL, -1, 1, 0), -.5f));
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
-static void concave_sections()
+TEST_CASE(concave_sections)
 {
     behavior_asset *a = model("ConcaveLPlate");
     graph *g = a->graph;
@@ -349,28 +357,29 @@ static void concave_sections()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, .5f, .5f, 0), -.5f);
-    near(sample(&p, NULL, 2, 2, 0), 1);
-    near(sample(&p, NULL, 1.2f, 1.2f, 0), .2f);
-    assert(sample(&p, NULL, .999f, 2, 0) < 0);
-    assert(sample(&p, NULL, 1.001f, 2, 0) > 0);
+    REQUIRE(near(sample(&p, NULL, .5f, .5f, 0), -.5f));
+    REQUIRE(near(sample(&p, NULL, 2, 2, 0), 1));
+    REQUIRE(near(sample(&p, NULL, 1.2f, 1.2f, 0), .2f));
+    REQUIRE(sample(&p, NULL, .999f, 2, 0) < 0);
+    REQUIRE(sample(&p, NULL, 1.001f, 2, 0) > 0);
     char *saved = behavior_asset_save(a);
     behavior_asset *loaded = behavior_asset_load(saved);
-    assert(loaded);
+    REQUIRE(loaded);
     model_program copy;
     model_program_init(&copy);
     compile(loaded, &copy);
-    near(sample(&copy, NULL, 2, 2, 0), 1);
+    REQUIRE(near(sample(&copy, NULL, 2, 2, 0), 1));
     model_program_free(&copy);
     behavior_asset_free(loaded);
     free(saved);
     float crossed[][2] = { { 0, 0 }, { 3, 3 }, { 0, 3 }, { 3, 0 } };
     points(g, profile, "Vertices", "ShaderVec2", &crossed[0][0], 4, 2);
     shader_error error = { 0 };
-    assert(!model_compile(a, &p, &error));
-    near(sample(&p, NULL, 2, 2, 0), 1);
+    REQUIRE(!model_compile(a, &p, &error));
+    REQUIRE(near(sample(&p, NULL, 2, 2, 0), 1));
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
 static node *parameter(graph *g, const char *name, float value, float low, float high)
 {
@@ -391,7 +400,7 @@ static int parameter_slot(const model_program *p, const node *n)
     assert(false);
     return -1;
 }
-static void runtime_transaction()
+TEST_CASE(runtime_transaction)
 {
     behavior_asset *a = model("RuntimeFilletDepthContract");
     graph *g = a->graph;
@@ -407,25 +416,26 @@ static void runtime_transaction()
     compile(a, &p);
     float incoming[32][4], prepared[32][4];
     shader_error error = { 0 };
-    assert(model_program_parameters(&p, incoming, &error));
+    REQUIRE(model_program_parameters(&p, incoming, &error));
     model_bounds bounds = { 0 };
-    assert(model_program_prepare(&p, incoming, prepared, &bounds, &error));
+    REQUIRE(model_program_prepare(&p, incoming, prepared, &bounds, &error));
     float old_prepared[32][4];
     memcpy(old_prepared, prepared, sizeof prepared);
     model_bounds old_bounds = bounds;
     incoming[parameter_slot(&p, depth)][0] = .1f;
-    assert(!model_program_prepare(&p, incoming, prepared, &bounds, &error));
-    assert(!memcmp(prepared, old_prepared, sizeof prepared));
-    assert(!memcmp(&bounds, &old_bounds, sizeof bounds));
-    near(sample(&p, prepared, 0, 0, 1), 0);
+    REQUIRE(!model_program_prepare(&p, incoming, prepared, &bounds, &error));
+    REQUIRE(!memcmp(prepared, old_prepared, sizeof prepared));
+    REQUIRE(!memcmp(&bounds, &old_bounds, sizeof bounds));
+    REQUIRE(near(sample(&p, prepared, 0, 0, 1), 0));
     incoming[parameter_slot(&p, radius)][0] = .05f;
-    assert(model_program_prepare(&p, incoming, prepared, &bounds, &error));
-    near(sample(&p, prepared, 0, 0, .1f), 0);
-    contains(&bounds, 0, 0, .1f);
+    REQUIRE(model_program_prepare(&p, incoming, prepared, &bounds, &error));
+    REQUIRE(near(sample(&p, prepared, 0, 0, .1f), 0));
+    REQUIRE(contains(&bounds, 0, 0, .1f));
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
-static void bezier_sections()
+TEST_CASE(bezier_sections)
 {
     behavior_asset *a = model("StraightCubicRectangle");
     graph *g = a->graph;
@@ -441,17 +451,17 @@ static void bezier_sections()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 3, 1, 0), 0);
-    near(sample(&p, NULL, 0, 2, 0), 0);
-    near(sample(&p, NULL, 4, 3, 0), sqrtf(2));
-    assert(sample(&p, NULL, 0, 0, 0) < 0);
+    REQUIRE(near(sample(&p, NULL, 3, 1, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 0, 2, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 4, 3, 0), sqrtf(2)));
+    REQUIRE(sample(&p, NULL, 0, 0, 0) < 0);
     shader_error error = { 0 };
     integer(g, profile, "Steps", 0);
-    assert(!model_compile(a, &p, &error));
-    near(sample(&p, NULL, 3, 1, 0), 0);
+    REQUIRE(!model_compile(a, &p, &error));
+    REQUIRE(near(sample(&p, NULL, 3, 1, 0), 0));
     integer(g, profile, "Steps", 9);
-    assert(!model_compile(a, &p, &error));
-    near(sample(&p, NULL, 4, 3, 0), sqrtf(2));
+    REQUIRE(!model_compile(a, &p, &error));
+    REQUIRE(near(sample(&p, NULL, 4, 3, 0), sqrtf(2)));
     model_program_free(&p);
     behavior_asset_free(a);
 
@@ -466,16 +476,17 @@ static void bezier_sections()
     publish(g, tube);
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, .5f, 2, 0), 0);
-    near(sample(&p, NULL, 0, 3.5f, 0), 0);
-    near(sample(&p, NULL, 0, -4, 0), .5f);
-    contains(&p.bounds, 0, -3.5f, 0);
-    contains(&p.bounds, .5f, 3, 0);
+    REQUIRE(near(sample(&p, NULL, .5f, 2, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 0, 3.5f, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 0, -4, 0), .5f));
+    REQUIRE(contains(&p.bounds, 0, -3.5f, 0));
+    REQUIRE(contains(&p.bounds, .5f, 3, 0));
     integer(g, tube, "Steps", 33);
-    assert(!model_compile(a, &p, &error));
-    near(sample(&p, NULL, 0, -4, 0), .5f);
+    REQUIRE(!model_compile(a, &p, &error));
+    REQUIRE(near(sample(&p, NULL, 0, -4, 0), .5f));
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
 static node *vector_parameter(graph *g, const char *name, const float value[3])
 {
@@ -494,7 +505,7 @@ static node *move(graph *g, node *geometry, float x, float y, float z)
     vector(g, n, "Offset", "ShaderVec3", (float[3]){ x, y, z });
     return n;
 }
-static void pivot_sections()
+TEST_CASE(pivot_sections)
 {
     const float half_pi = 1.57079632679f;
     behavior_asset *a = model("AsymmetricPivotPose");
@@ -511,18 +522,18 @@ static void pivot_sections()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 1, 2.5f, 0), 0);
-    near(sample(&p, NULL, 1.25f, 2, 0), 0);
-    contains(&p.bounds, 1, 2.5f, 0);
+    REQUIRE(near(sample(&p, NULL, 1, 2.5f, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 1.25f, 2, 0), 0));
+    REQUIRE(contains(&p.bounds, 1, 2.5f, 0));
     float incoming[32][4], prepared[32][4];
     model_bounds bounds;
     shader_error error = { 0 };
-    assert(model_program_parameters(&p, incoming, &error));
+    REQUIRE(model_program_parameters(&p, incoming, &error));
     incoming[parameter_slot(&p, pivot)][0] = 2;
     incoming[parameter_slot(&p, angles)][2] = -half_pi;
-    assert(model_program_prepare(&p, incoming, prepared, &bounds, &error));
-    near(sample(&p, prepared, 2, -1.5f, 0), 0);
-    contains(&bounds, 2, -1.5f, 0);
+    REQUIRE(model_program_prepare(&p, incoming, prepared, &bounds, &error));
+    REQUIRE(near(sample(&p, prepared, 2, -1.5f, 0), 0));
+    REQUIRE(contains(&bounds, 2, -1.5f, 0));
     model_program_free(&p);
     behavior_asset_free(a);
 
@@ -537,13 +548,14 @@ static void pivot_sections()
     publish(g, scale);
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 6, 0, 0), 0);
-    near(sample(&p, NULL, 5, .75f, 0), 0);
-    near(sample(&p, NULL, 5, 0, .5f), 0);
-    contains(&p.bounds, 6, .75f, .5f);
-    assert(sample(&p, NULL, 5, 0, 0) < 0);
+    REQUIRE(near(sample(&p, NULL, 6, 0, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 5, .75f, 0), 0));
+    REQUIRE(near(sample(&p, NULL, 5, 0, .5f), 0));
+    REQUIRE(contains(&p.bounds, 6, .75f, .5f));
+    REQUIRE(sample(&p, NULL, 5, 0, 0) < 0);
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
 static node *anchor(graph *g, const char *name, const float position[3], const float angles[3])
 {
@@ -553,7 +565,7 @@ static node *anchor(graph *g, const char *name, const float position[3], const f
     vector(g, n, "Angles", "ShaderVec3", angles);
     return n;
 }
-static void anchor_sections()
+TEST_CASE(anchor_sections)
 {
     const float half_pi = 1.57079632679f;
     behavior_asset *a = model("RotatedAnchorAttachment");
@@ -575,39 +587,40 @@ static void anchor_sections()
     model_program p;
     model_program_init(&p);
     compile(a, &p);
-    near(sample(&p, NULL, 10, 0, -2.5f), 0);
-    near(sample(&p, NULL, 10.125f, 0, -2), 0);
-    contains(&p.bounds, 10, 0, -2.5f);
+    REQUIRE(near(sample(&p, NULL, 10, 0, -2.5f), 0));
+    REQUIRE(near(sample(&p, NULL, 10.125f, 0, -2), 0));
+    REQUIRE(contains(&p.bounds, 10, 0, -2.5f));
     float incoming[32][4], prepared[32][4], position[3], angles[3];
     model_bounds bounds;
     shader_error error = { 0 };
-    assert(model_program_parameters(&p, incoming, &error));
+    REQUIRE(model_program_parameters(&p, incoming, &error));
     incoming[parameter_slot(&p, target_position)][0] = -4;
-    assert(model_program_prepare(&p, incoming, prepared, &bounds, &error));
-    near(sample(&p, prepared, -4, 0, -2.5f), 0);
-    contains(&bounds, -4, 0, -2.5f);
-    assert(acount(p.anchors) == 2);
+    REQUIRE(model_program_prepare(&p, incoming, prepared, &bounds, &error));
+    REQUIRE(near(sample(&p, prepared, -4, 0, -2.5f), 0));
+    REQUIRE(contains(&bounds, -4, 0, -2.5f));
+    REQUIRE(acount(p.anchors) == 2);
     int target_index = !strcmp(p.anchors[0].name, "Target") ? 0 : 1;
-    assert(model_program_anchor(&p, target_index, prepared, position, angles, &error));
-    near(position[0], -4);
-    near(angles[1], half_pi);
-    assert(!graph_set_node_reference(g, source, 0, "Socket"));
+    REQUIRE(model_program_anchor(&p, target_index, prepared, position, angles, &error));
+    REQUIRE(near(position[0], -4));
+    REQUIRE(near(angles[1], half_pi));
+    REQUIRE(!graph_set_node_reference(g, source, 0, "Socket"));
     char *saved = behavior_asset_save(a);
     behavior_asset *loaded = behavior_asset_load(saved);
-    assert(loaded);
+    REQUIRE(loaded);
     compile(loaded, &p);
     bool renamed = false;
     for (int i = 0; i < acount(p.anchors); i++) {
         renamed |= !strcmp(p.anchors[i].name, "Socket");
     }
-    assert(renamed);
-    near(sample(&p, NULL, 10, 0, -2.5f), 0);
+    REQUIRE(renamed);
+    REQUIRE(near(sample(&p, NULL, 10, 0, -2.5f), 0));
     free(saved);
     behavior_asset_free(loaded);
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
-static void reused_anchor()
+TEST_CASE(reused_anchor)
 {
     behavior_asset *base = model("ReusableSocket"),
                    *parent = model("ReusedSocketAttachment");
@@ -631,7 +644,7 @@ static void reused_anchor()
                           .default_value = { .type = PIN_STRUCT,
                                              .type_name = "ShaderVec3",
                                              .ptr = override_position } };
-    assert(graph_add_pin(g, instance, false, &override) == 0);
+    REQUIRE(graph_add_pin(g, instance, false, &override) == 0);
     pin_spec exported = { .name = "Socket",
                           .type = PIN_HANDLE,
                           .type_name = "Anchor3D",
@@ -639,36 +652,36 @@ static void reused_anchor()
                           .default_value = { .type = PIN_HANDLE,
                                              .type_name = "Anchor3D" } };
     int output = graph_add_pin(g, instance, true, &exported);
-    assert(output == 1);
+    REQUIRE(output == 1);
     node *target = anchor(g, "Destination", (float[3]){ 10, 0, 0 }, (float[3]){ 0, 0, 0 });
     node *attach = add(g, "Model Attach");
     connect(g, instance, attach, "Geometry");
-    assert(!graph_connect_data(g, instance, output, attach, input(attach, "Source Anchor")));
+    REQUIRE(!graph_connect_data(g, instance, output, attach, input(attach, "Source Anchor")));
     connect(g, target, attach, "Target Anchor");
     publish(g, attach);
     const behavior_asset *catalog[] = { base, parent };
     model_program p;
     model_program_init(&p);
     shader_error error = { 0 };
-    assert(model_compile_with_catalog(parent, catalog, 2, &p, &error));
-    near(sample(&p, NULL, 10.5f, 0, 0), 0);
+    REQUIRE(model_compile_with_catalog(parent, catalog, 2, &p, &error));
+    REQUIRE(near(sample(&p, NULL, 10.5f, 0, 0), 0));
     float point[3], angles[3];
     bool found = false;
     for (int i = 0; i < acount(p.anchors); i++) {
         if (strcmp(p.anchors[i].asset, base->name)) {
             continue;
         }
-        assert(p.anchors[i].node == socket->id && *p.anchors[i].scope);
-        assert(model_program_anchor(&p, i, NULL, point, angles, &error));
-        near(point[0], 4);
-        near(point[1], 2);
+        REQUIRE(p.anchors[i].node == socket->id && *p.anchors[i].scope);
+        REQUIRE(model_program_anchor(&p, i, NULL, point, angles, &error));
+        REQUIRE(near(point[0], 4));
+        REQUIRE(near(point[1], 2));
         found = true;
     }
-    assert(found);
+    REQUIRE(found);
     // Removing the sparse override exposes one authoritative public declaration.
     // Reading the anchor and its attached geometry must not fork that instance.
-    assert(!graph_remove_pin(g, instance, false, 0));
-    assert(model_compile_with_catalog(parent, catalog, 2, &p, &error));
+    REQUIRE(!graph_remove_pin(g, instance, false, 0));
+    REQUIRE(model_compile_with_catalog(parent, catalog, 2, &p, &error));
     int public_count = 0, slot = -1;
     for (int i = 0; i < acount(p.parameters); i++) {
         if (!p.parameters[i].hidden) {
@@ -676,35 +689,37 @@ static void reused_anchor()
             slot = p.parameters[i].slot;
         }
     }
-    assert(public_count == 1);
+    REQUIRE(public_count == 1);
     float incoming[32][4], prepared[32][4];
     model_bounds bounds;
-    assert(model_program_parameters(&p, incoming, &error));
+    REQUIRE(model_program_parameters(&p, incoming, &error));
     incoming[slot][0] = -3;
-    assert(model_program_prepare(&p, incoming, prepared, &bounds, &error));
-    near(sample(&p, prepared, 10.5f, 0, 0), 0);
+    REQUIRE(model_program_prepare(&p, incoming, prepared, &bounds, &error));
+    REQUIRE(near(sample(&p, prepared, 10.5f, 0, 0), 0));
     for (int i = 0; i < acount(p.anchors); i++) {
         if (!strcmp(p.anchors[i].asset, base->name)) {
-            assert(model_program_anchor(&p, i, prepared, point, angles, &error));
-            near(point[0], -3);
+            REQUIRE(model_program_anchor(&p, i, prepared, point, angles, &error));
+            REQUIRE(near(point[0], -3));
         }
     }
     model_program_free(&p);
     behavior_asset_free(parent);
     behavior_asset_free(base);
+    return true;
 }
 void test_model_constructive()
 {
-    profile_offset();
-    profile_booleans();
-    rim_sections();
-    level_sets();
-    swept_segments();
-    concave_sections();
-    runtime_transaction();
-    bezier_sections();
-    pivot_sections();
-    anchor_sections();
-    reused_anchor();
-    puts("Constructive model profiles, rims, shells, positive levels, sweeps and transactional bounds: PASS");
+    test_graph_packs_install();
+    RUN_TEST_CASE(profile_offset);
+    RUN_TEST_CASE(profile_booleans);
+    RUN_TEST_CASE(rim_sections);
+    RUN_TEST_CASE(level_sets);
+    RUN_TEST_CASE(swept_segments);
+    RUN_TEST_CASE(concave_sections);
+    RUN_TEST_CASE(runtime_transaction);
+    RUN_TEST_CASE(bezier_sections);
+    RUN_TEST_CASE(pivot_sections);
+    RUN_TEST_CASE(anchor_sections);
+    RUN_TEST_CASE(reused_anchor);
+    test_graph_packs_restore();
 }

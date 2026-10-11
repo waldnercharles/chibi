@@ -2,7 +2,10 @@
 #include "graph/authoring/graph_edit.h"
 #include "graph/modeling/model_compile.h"
 #include "render/shader_catalog.h"
+#include "render/shader_parameters.h"
 #include "runtime/component_catalog.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -58,9 +61,9 @@ static void publish(graph *g, node *source)
 {
     connect(g, source, model_graph_add_output(g), 0);
 }
-static void near(float actual, float expected)
+static bool near(float actual, float expected)
 {
-    assert(fabsf(actual - expected) < .0001f);
+    return fabsf(actual - expected) < .0001f;
 }
 static int slot(const model_program *program, const node *parameter)
 {
@@ -82,15 +85,16 @@ static float sample(const model_program *program, const float payload[32][4], co
     assert(shader_graph_eval_outputs(&program->shader, &context, payload, values, &error));
     return values[0][0];
 }
-static void contains(const model_bounds *bounds, const float point[3])
+static bool contains(const model_bounds *bounds, const float point[3])
 {
-    assert(!bounds->empty);
+    bool inside = !bounds->empty;
     for (int i = 0; i < 3; i++) {
-        assert(point[i] >= bounds->min[i] - .00001f);
-        assert(point[i] <= bounds->max[i] + .00001f);
+        inside = inside && point[i] >= bounds->min[i] - .00001f &&
+                 point[i] <= bounds->max[i] + .00001f;
     }
+    return inside;
 }
-static void transformed_sphere()
+TEST_CASE(transformed_sphere)
 {
     behavior_asset *asset = model("DynamicEllipsoid");
     graph *g = asset->graph;
@@ -131,31 +135,31 @@ static void transformed_sphere()
     model_program program;
     model_program_init(&program);
     shader_error error = { 0 };
-    assert(model_compile(asset, &program, &error));
+    REQUIRE(model_compile(asset, &program, &error));
     const shader_node *identity = program.shader.nodes;
     int nodes = acount(program.shader.nodes);
     float incoming[32][4], payload[32][4];
     model_bounds bounds;
-    assert(model_program_parameters(&program, incoming, &error));
-    assert(model_program_prepare(&program, incoming, payload, &bounds, &error));
-    near(sample(&program, payload, (float[3]){ 0, 0, 0 }), -1);
+    REQUIRE(model_program_parameters(&program, incoming, &error));
+    REQUIRE(model_program_prepare(&program, incoming, payload, &bounds, &error));
+    REQUIRE(near(sample(&program, payload, (float[3]){ 0, 0, 0 }), -1));
     int r = slot(&program, radius), o = slot(&program, offset),
         s = slot(&program, factors), a = slot(&program, angles);
     incoming[r][0] = 2;
     memcpy(incoming[o], (float[3]){ 3, -2, 1 }, 3 * sizeof(float));
     memcpy(incoming[s], (float[3]){ 2, 1, .5f }, 3 * sizeof(float));
     memcpy(incoming[a], (float[3]){ 0, 0, 1.57079632679f }, 3 * sizeof(float));
-    assert(model_program_prepare(&program, incoming, payload, &bounds, &error));
+    REQUIRE(model_program_prepare(&program, incoming, payload, &bounds, &error));
     float supports[][3] = { { 3, 2, 1 },  { 3, -6, 1 }, { 1, -2, 1 },
                             { 5, -2, 1 }, { 3, -2, 0 }, { 3, -2, 2 } };
     for (int i = 0; i < 6; i++) {
-        near(sample(&program, payload, supports[i]), 0);
-        contains(&bounds, supports[i]);
+        REQUIRE(near(sample(&program, payload, supports[i]), 0));
+        REQUIRE(contains(&bounds, supports[i]));
     }
-    near(sample(&program, payload, (float[3]){ 3, 4, 1 }), .5f);
-    near(bounds.min[0], 1);
-    near(bounds.max[1], 2);
-    near(bounds.max[2], 2);
+    REQUIRE(near(sample(&program, payload, (float[3]){ 3, 4, 1 }), .5f));
+    REQUIRE(near(bounds.min[0], 1));
+    REQUIRE(near(bounds.max[1], 2));
+    REQUIRE(near(bounds.max[2], 2));
     /* Independent forward construction: sequential plane rotations of points
      * on an ellipsoid, compared with the compiled inverse distance mapping. */
     float general[3] = { .4f, -.6f, .8f };
@@ -163,7 +167,7 @@ static void transformed_sphere()
     for (int change = 0; change < 3; change++) {
         float radius_value = change == 0 ? .5f : change == 1 ? 1 : 3;
         incoming[r][0] = radius_value;
-        assert(model_program_prepare(&program, incoming, payload, &bounds, &error));
+        REQUIRE(model_program_prepare(&program, incoming, payload, &bounds, &error));
         for (int direction = 0; direction < 12; direction++) {
             double theta = direction * 3.141592653589793 / 6;
             double x = radius_value * 2 * cos(theta),
@@ -179,30 +183,31 @@ static void transformed_sphere()
             px = cos(general[2]) * x - sin(general[2]) * y;
             py = sin(general[2]) * x + cos(general[2]) * y;
             float point[3] = { (float)px + 3, (float)py - 2, (float)z + 1 };
-            near(sample(&program, payload, point), 0);
-            contains(&bounds, point);
+            REQUIRE(near(sample(&program, payload, point), 0));
+            REQUIRE(contains(&bounds, point));
         }
     }
     /* Returning to defaults must replace every derived transform slot. */
-    assert(model_program_prepare(&program, NULL, payload, &bounds, &error));
-    near(sample(&program, payload, (float[3]){ 0, 0, 0 }), -1);
-    near(sample(&program, payload, (float[3]){ 4, 0, 0 }), 3);
-    near(bounds.min[0], -1);
-    near(bounds.max[1], 1);
-    assert(program.shader.nodes == identity && acount(program.shader.nodes) == nodes);
+    REQUIRE(model_program_prepare(&program, NULL, payload, &bounds, &error));
+    REQUIRE(near(sample(&program, payload, (float[3]){ 0, 0, 0 }), -1));
+    REQUIRE(near(sample(&program, payload, (float[3]){ 4, 0, 0 }), 3));
+    REQUIRE(near(bounds.min[0], -1));
+    REQUIRE(near(bounds.max[1], 1));
+    REQUIRE(program.shader.nodes == identity && acount(program.shader.nodes) == nodes);
     float previous[32][4];
     memcpy(previous, payload, sizeof previous);
     model_bounds previous_bounds = bounds;
     incoming[r][0] = 4;
-    assert(!model_program_prepare(&program, incoming, payload, &bounds, &error));
-    assert(error.node == radius->id);
-    assert(!memcmp(previous, payload, sizeof previous));
-    assert(!memcmp(&previous_bounds, &bounds, sizeof bounds));
-    assert(program.shader.nodes == identity);
+    REQUIRE(!model_program_prepare(&program, incoming, payload, &bounds, &error));
+    REQUIRE(error.node == radius->id);
+    REQUIRE(!memcmp(previous, payload, sizeof previous));
+    REQUIRE(!memcmp(&previous_bounds, &bounds, sizeof bounds));
+    REQUIRE(program.shader.nodes == identity);
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
-static void changing_intersection()
+TEST_CASE(changing_intersection)
 {
     behavior_asset *asset = model("DynamicIntersection");
     graph *g = asset->graph;
@@ -221,23 +226,24 @@ static void changing_intersection()
     model_program program;
     model_program_init(&program);
     shader_error error = { 0 };
-    assert(model_compile(asset, &program, &error));
+    REQUIRE(model_compile(asset, &program, &error));
     float incoming[32][4], payload[32][4];
     model_bounds bounds;
-    assert(model_program_parameters(&program, incoming, &error));
-    assert(model_program_prepare(&program, incoming, payload, &bounds, &error));
-    assert(bounds.empty);
-    near(sample(&program, payload, (float[3]){ 1.5f, 0, 0 }), .5f);
+    REQUIRE(model_program_parameters(&program, incoming, &error));
+    REQUIRE(model_program_prepare(&program, incoming, payload, &bounds, &error));
+    REQUIRE(bounds.empty);
+    REQUIRE(near(sample(&program, payload, (float[3]){ 1.5f, 0, 0 }), .5f));
     incoming[slot(&program, radius)][0] = 2;
-    assert(model_program_prepare(&program, incoming, payload, &bounds, &error));
-    contains(&bounds, (float[3]){ 1.5f, 0, 0 });
-    near(sample(&program, payload, (float[3]){ 1.5f, 0, 0 }), -.5f);
-    assert(model_program_prepare(&program, NULL, payload, &bounds, &error));
-    assert(bounds.empty);
+    REQUIRE(model_program_prepare(&program, incoming, payload, &bounds, &error));
+    REQUIRE(contains(&bounds, (float[3]){ 1.5f, 0, 0 }));
+    REQUIRE(near(sample(&program, payload, (float[3]){ 1.5f, 0, 0 }), -.5f));
+    REQUIRE(model_program_prepare(&program, NULL, payload, &bounds, &error));
+    REQUIRE(bounds.empty);
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
-static void invalid_derived_dimensions()
+TEST_CASE(invalid_derived_dimensions)
 {
     behavior_asset *asset = model("DynamicRoundedBox");
     graph *g = asset->graph;
@@ -256,23 +262,24 @@ static void invalid_derived_dimensions()
     model_program program;
     model_program_init(&program);
     shader_error error = { 0 };
-    assert(model_compile(asset, &program, &error));
+    REQUIRE(model_compile(asset, &program, &error));
     float incoming[32][4], payload[32][4], previous[32][4];
     model_bounds bounds;
-    assert(model_program_parameters(&program, incoming, &error));
-    assert(model_program_prepare(&program, incoming, payload, &bounds, &error));
+    REQUIRE(model_program_parameters(&program, incoming, &error));
+    REQUIRE(model_program_prepare(&program, incoming, payload, &bounds, &error));
     memcpy(previous, payload, sizeof previous);
     model_bounds previous_bounds = bounds;
     memcpy(incoming[slot(&program, half)], (float[3]){ .1f, .1f, .1f }, 3 * sizeof(float));
-    assert(!model_program_prepare(&program, incoming, payload, &bounds, &error));
-    assert(error.node == box->id);
-    assert(!memcmp(previous, payload, sizeof previous));
-    assert(!memcmp(&previous_bounds, &bounds, sizeof bounds));
-    near(sample(&program, payload, (float[3]){ 1, 0, 0 }), 0);
+    REQUIRE(!model_program_prepare(&program, incoming, payload, &bounds, &error));
+    REQUIRE(error.node == box->id);
+    REQUIRE(!memcmp(previous, payload, sizeof previous));
+    REQUIRE(!memcmp(&previous_bounds, &bounds, sizeof bounds));
+    REQUIRE(near(sample(&program, payload, (float[3]){ 1, 0, 0 }), 0));
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
-static void runtime_snapshots()
+TEST_CASE(runtime_snapshots)
 {
     behavior_asset *asset = model("RuntimeParameterCacheStudy");
     graph *g = asset->graph;
@@ -281,12 +288,12 @@ static void runtime_snapshots()
     connect(g, radius, sphere, 0);
     publish(g, sphere);
     shader_error error = { 0 };
-    assert(render_shader_upsert(asset, &error));
+    REQUIRE(render_shader_upsert(asset, &error));
     int id = render_shader_find(asset->name);
     unsigned revision = render_shader_revision();
     ecs_world *world = ecs_world_new();
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+        REQUIRE(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     enum
     {
@@ -301,110 +308,113 @@ static void runtime_snapshots()
         entities[i] = ecs_world_create_entity(world);
         snprintf(text[i], sizeof text[i], "Radius %.8g\n", 1 + i / 16.0);
         GameShader binding = { .shape = asset->name, .parameters = text[i] };
-        assert(
+        REQUIRE(
             ecs_world_record_add(world, entities[i], GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
         );
-        assert(ecs_world_apply_commands(world) == ECS_OK);
-        assert(
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(render_shader_parameters_validate(id, text[i], &error));
+        REQUIRE(
             render_shader_model_snapshot(id, world, entities[i], text[i], payload, min, max, &empty, &error)
         );
-        near(max[0], 1 + i / 16.0f);
+        REQUIRE(near(max[0], 1 + i / 16.0f));
     }
     render_model_stats first = render_shader_model_stats();
-    assert(first.compilations == 0 && first.bounds_updates == COUNT);
+    REQUIRE(first.compilations == 0 && first.bounds_updates == COUNT);
     for (int i = 0; i < COUNT; i++) {
-        assert(
+        REQUIRE(
             render_shader_model_snapshot(id, world, entities[i], text[i], payload, min, max, &empty, &error)
         );
-        near(max[2], 1 + i / 16.0f);
+        REQUIRE(near(max[2], 1 + i / 16.0f));
     }
     render_model_stats second = render_shader_model_stats();
-    assert(second.bounds_updates == first.bounds_updates);
-    assert(second.cache_hits >= first.cache_hits + COUNT);
+    REQUIRE(second.bounds_updates == first.bounds_updates);
+    REQUIRE(second.cache_hits >= first.cache_hits + COUNT);
     GameTransform pose = { 100, -50 };
-    assert(
+    REQUIRE(
         ecs_world_record_add(world, entities[0], GAME_COMPONENT_GameTransform.id, &pose, 0) == ECS_OK
     );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(
         render_shader_model_snapshot(id, world, entities[0], text[0], payload, min, max, &empty, &error)
     );
-    near(max[0], 1);
-    assert(render_shader_model_stats().bounds_updates == second.bounds_updates);
+    REQUIRE(near(max[0], 1));
+    REQUIRE(render_shader_model_stats().bounds_updates == second.bounds_updates);
 
     float previous_snapshot[32][4], previous_min[3], previous_max[3];
     memcpy(previous_snapshot, payload, sizeof previous_snapshot);
     memcpy(previous_min, min, sizeof previous_min);
     memcpy(previous_max, max, sizeof previous_max);
-    assert(
+    /* Preparation refuses a radius past its range, so no snapshot reads it. */
+    REQUIRE(!render_shader_parameters_validate(id, "Radius 100\n", &error));
+    REQUIRE(error.node == radius->id);
+    REQUIRE(
         !render_shader_model_snapshot(id, world, entities[1], "Radius 100\n", payload, min, max, &empty, &error)
     );
-    assert(error.node == radius->id);
-    assert(!memcmp(previous_snapshot, payload, sizeof previous_snapshot));
-    assert(!memcmp(previous_min, min, sizeof previous_min));
-    assert(!memcmp(previous_max, max, sizeof previous_max));
-    assert(
+    REQUIRE(!memcmp(previous_snapshot, payload, sizeof previous_snapshot));
+    REQUIRE(!memcmp(previous_min, min, sizeof previous_min));
+    REQUIRE(!memcmp(previous_max, max, sizeof previous_max));
+    REQUIRE(
         render_shader_model_snapshot(id, world, entities[1], text[1], payload, min, max, &empty, &error)
     );
-    near(max[0], 1.0625f);
-    assert(render_shader_model_stats().bounds_updates == second.bounds_updates);
+    REQUIRE(near(max[0], 1.0625f));
+    REQUIRE(render_shader_model_stats().bounds_updates == second.bounds_updates);
 
-    const node_desc *setter = registry_node_by_name("Set Shape Parameter");
-    assert(setter && setter->host_call);
     pin_value inputs[3] = { { .type = PIN_HANDLE,
                               .type_name = "ecs.entity",
                               .u64 = ecs_entity_to_u64(entities[0]) },
                             { .type = PIN_STR, .str = "Radius" },
                             { .type = PIN_F32, .f = 2.5f } };
-    assert(!setter->host_call->invoke(world, inputs, NULL));
-    assert(
+    REQUIRE(!RENDER_SHAPE_PARAMETER_CALL.invoke(world, inputs, NULL));
+    REQUIRE(
         render_shader_model_snapshot(id, world, entities[0], text[0], payload, min, max, &empty, &error)
     );
-    near(max[0], 2.5f);
+    REQUIRE(near(max[0], 2.5f));
     float previous[32][4];
     memcpy(previous, payload, sizeof previous);
     uint64_t hash = render_shader_overrides_hash(world);
     render_model_stats before_invalid = render_shader_model_stats();
     inputs[2].f = 100;
-    assert(setter->host_call->invoke(world, inputs, NULL));
-    assert(render_shader_overrides_hash(world) == hash);
-    assert(
+    REQUIRE(RENDER_SHAPE_PARAMETER_CALL.invoke(world, inputs, NULL));
+    REQUIRE(render_shader_overrides_hash(world) == hash);
+    REQUIRE(
         render_shader_model_snapshot(id, world, entities[0], text[0], payload, min, max, &empty, &error)
     );
-    assert(!memcmp(previous, payload, sizeof previous));
-    near(max[0], 2.5f);
-    assert(render_shader_model_stats().bounds_updates == before_invalid.bounds_updates);
-    assert(render_shader_model_stats().compilations == 0);
-    assert(render_shader_revision() == revision);
+    REQUIRE(!memcmp(previous, payload, sizeof previous));
+    REQUIRE(near(max[0], 2.5f));
+    REQUIRE(render_shader_model_stats().bounds_updates == before_invalid.bounds_updates);
+    REQUIRE(render_shader_model_stats().compilations == 0);
+    REQUIRE(render_shader_revision() == revision);
 
     ecs_entity old = entities[0];
-    assert(ecs_world_destroy_entity(world, old) == ECS_OK);
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_world_destroy_entity(world, old) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     ecs_entity reused = ecs_world_create_entity(world);
-    assert(reused.slot == old.slot && ecs_entity_to_u64(reused) != ecs_entity_to_u64(old));
+    REQUIRE(reused.slot == old.slot && ecs_entity_to_u64(reused) != ecs_entity_to_u64(old));
     GameShader binding = { .shape = asset->name, .parameters = "Radius 6\n" };
-    assert(
+    REQUIRE(render_shader_parameters_validate(id, binding.parameters, &error));
+    REQUIRE(
         ecs_world_record_add(world, reused, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
     );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(
         render_shader_model_snapshot(id, world, reused, binding.parameters, payload, min, max, &empty, &error)
     );
-    near(max[0], 6);
+    REQUIRE(near(max[0], 6));
     render_shader_clear_world(world);
     /* This oldest variant is absent from the bounded shared cache. A cleared
      * caller must prepare it again rather than reuse the old entity entry. */
     render_model_stats before_clear_probe = render_shader_model_stats();
-    assert(
+    REQUIRE(
         render_shader_model_snapshot(id, world, entities[1], text[1], payload, min, max, &empty, &error)
     );
-    near(max[0], 1.0625f);
-    assert(render_shader_model_stats().bounds_updates == before_clear_probe.bounds_updates + 1);
+    REQUIRE(near(max[0], 1.0625f));
+    REQUIRE(render_shader_model_stats().bounds_updates == before_clear_probe.bounds_updates + 1);
     render_shader_clear_world(world);
     ecs_world_free(world);
     behavior_asset_free(asset);
+    return true;
 }
-static void scoped_runtime_identity()
+TEST_CASE(scoped_runtime_identity)
 {
     behavior_asset *base = model("ScopedParameterDefinition"),
                    *parent = model("ScopedParameterPair");
@@ -423,7 +433,7 @@ static void scoped_runtime_identity()
                               .type = PIN_F32,
                               .declaration_id = radius->id,
                               .default_value = { .type = PIN_F32, .f = 2 + i } };
-        assert(graph_add_pin(g, instance, false, &override) == 0);
+        REQUIRE(graph_add_pin(g, instance, false, &override) == 0);
         node *translated = graph_add_node(g, &NODE_ModelTranslate);
         vector(g, translated, 1, (float[3]){ i ? 10 : -10, 0, 0 });
         connect(g, instance, translated, 0);
@@ -434,18 +444,17 @@ static void scoped_runtime_identity()
     shader_error error = { 0 };
     model_program metadata;
     model_program_init(&metadata);
-    assert(model_compile_with_catalog(parent, catalog, 2, &metadata, &error));
-    assert(render_shader_models_upsert(catalog, 2, &error));
+    REQUIRE(model_compile_with_catalog(parent, catalog, 2, &metadata, &error));
+    REQUIRE(render_shader_models_upsert(catalog, 2, &error));
     int id = render_shader_find(parent->name);
     ecs_world *world = ecs_world_new();
-    assert(ecs_world_register_component(world, &GAME_COMPONENT_GameShader, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameShader, NULL) == ECS_OK);
     ecs_entity entity = ecs_world_create_entity(world);
     GameShader binding = { .shape = parent->name };
-    assert(
+    REQUIRE(
         ecs_world_record_add(world, entity, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
     );
-    assert(ecs_world_apply_commands(world) == ECS_OK);
-    const node_desc *setter = registry_node_by_name("Set Shape Parameter");
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     for (int i = 0; i < 2; i++) {
         char suffix[32];
         snprintf(
@@ -460,41 +469,42 @@ static void scoped_runtime_identity()
             size_t length = strlen(p->scope), tail = strlen(suffix);
             if (!p->hidden && p->node == radius->id && !strcmp(p->asset, base->name) &&
                 length >= tail && !strcmp(p->scope + length - tail, suffix)) {
-                assert(!name);
+                REQUIRE(!name);
                 name = p->name;
             }
         }
-        assert(name);
+        REQUIRE(name);
         pin_value inputs[3] = { { .type = PIN_HANDLE,
                                   .type_name = "ecs.entity",
                                   .u64 = ecs_entity_to_u64(entity) },
                                 { .type = PIN_STR, .str = name },
                                 { .type = PIN_F32, .f = 4 + i } };
-        const char *failure = setter->host_call->invoke(world, inputs, NULL);
+        const char *failure = RENDER_SHAPE_PARAMETER_CALL.invoke(world, inputs, NULL);
         if (failure) {
             fprintf(stderr, "Set Shape Parameter '%s': %s\n", name, failure);
         }
-        assert(!failure);
+        REQUIRE(!failure);
     }
     model_program_free(&metadata);
-    assert(!graph_set_node_reference(base->graph, radius, 0, "Size"));
-    assert(render_shader_models_upsert(catalog, 2, &error));
+    REQUIRE(!graph_set_node_reference(base->graph, radius, 0, "Size"));
+    REQUIRE(render_shader_models_upsert(catalog, 2, &error));
     float payload[32][4], min[3], max[3], values[SHADER_OUTPUT_MAX][4];
     bool empty;
-    assert(
+    REQUIRE(
         render_shader_model_snapshot(id, world, entity, NULL, payload, min, max, &empty, &error)
     );
     for (int i = 0; i < 2; i++) {
         shader_sample_context context = { .object_position = { i ? 10 : -10, 0, 0 } };
-        assert(render_shader_sample(id, &context, payload, values, &error));
-        near(values[0][0], -4 - i);
+        REQUIRE(render_shader_sample(id, &context, payload, values, &error));
+        REQUIRE(near(values[0][0], -4 - i));
     }
     render_shader_clear_world(world);
     ecs_world_free(world);
     behavior_asset_free(base);
     behavior_asset_free(parent);
+    return true;
 }
-static void nested_instance_parameters()
+TEST_CASE(nested_instance_parameters)
 {
     behavior_asset *leaf = model("NestedParameterLeaf"),
                    *wrapper = model("NestedParameterWrapper"),
@@ -509,7 +519,7 @@ static void nested_instance_parameters()
                           .type = PIN_F32,
                           .declaration_id = radius->id,
                           .default_value = { .type = PIN_F32, .f = 2 } };
-    assert(graph_add_pin(wrapper->graph, inner, false, &override) == 0);
+    REQUIRE(graph_add_pin(wrapper->graph, inner, false, &override) == 0);
     publish(wrapper->graph, inner);
     graph *g = parent->graph;
     node *pair = graph_add_node(g, &NODE_ModelUnion);
@@ -526,46 +536,55 @@ static void nested_instance_parameters()
     model_program program;
     model_program_init(&program);
     shader_error error = { 0 };
-    assert(model_compile_with_catalog(parent, catalog, 3, &program, &error));
-    assert(acount(program.parameters) == 2);
+    REQUIRE(model_compile_with_catalog(parent, catalog, 3, &program, &error));
+    REQUIRE(acount(program.parameters) == 2);
     const model_parameter *a = &program.parameters[0], *b = &program.parameters[1];
-    assert(a->node == radius->id && b->node == radius->id);
-    assert(!strcmp(a->asset, leaf->name) && !strcmp(b->asset, leaf->name));
-    assert(strcmp(a->scope, b->scope) && strcmp(a->name, b->name));
+    REQUIRE(a->node == radius->id && b->node == radius->id);
+    REQUIRE(!strcmp(a->asset, leaf->name) && !strcmp(b->asset, leaf->name));
+    REQUIRE(strcmp(a->scope, b->scope) && strcmp(a->name, b->name));
     char identities[2][128];
     for (int i = 0; i < 2; i++) {
-        assert(strlen(program.parameters[i].scope) < sizeof identities[i]);
+        REQUIRE(strlen(program.parameters[i].scope) < sizeof identities[i]);
         strcpy(identities[i], program.parameters[i].scope);
     }
     float incoming[32][4], payload[32][4];
     model_bounds bounds;
-    assert(model_program_parameters(&program, incoming, &error));
+    REQUIRE(model_program_parameters(&program, incoming, &error));
     incoming[a->slot][0] = 3;
     incoming[b->slot][0] = 4;
-    assert(model_program_prepare(&program, incoming, payload, &bounds, &error));
-    near(sample(&program, payload, (float[3]){ -10, 0, 0 }), -3);
-    near(sample(&program, payload, (float[3]){ 10, 0, 0 }), -4);
-    assert(!graph_set_node_reference(leaf->graph, radius, 0, "Size"));
-    assert(model_compile_with_catalog(parent, catalog, 3, &program, &error));
-    assert(acount(program.parameters) == 2);
+    REQUIRE(model_program_prepare(&program, incoming, payload, &bounds, &error));
+    REQUIRE(near(sample(&program, payload, (float[3]){ -10, 0, 0 }), -3));
+    REQUIRE(near(sample(&program, payload, (float[3]){ 10, 0, 0 }), -4));
+    REQUIRE(!graph_set_node_reference(leaf->graph, radius, 0, "Size"));
+    REQUIRE(model_compile_with_catalog(parent, catalog, 3, &program, &error));
+    REQUIRE(acount(program.parameters) == 2);
     for (int i = 0; i < 2; i++) {
-        assert(!strcmp(identities[i], program.parameters[i].scope));
+        REQUIRE(!strcmp(identities[i], program.parameters[i].scope));
     }
-    assert(model_program_prepare(&program, incoming, payload, &bounds, &error));
-    near(sample(&program, payload, (float[3]){ -10, 0, 0 }), -3);
-    near(sample(&program, payload, (float[3]){ 10, 0, 0 }), -4);
+    REQUIRE(model_program_prepare(&program, incoming, payload, &bounds, &error));
+    REQUIRE(near(sample(&program, payload, (float[3]){ -10, 0, 0 }), -3));
+    REQUIRE(near(sample(&program, payload, (float[3]){ 10, 0, 0 }), -4));
     model_program_free(&program);
     behavior_asset_free(leaf);
     behavior_asset_free(wrapper);
     behavior_asset_free(parent);
+    return true;
 }
+static void teardown()
+{
+    authoring_shader_catalog_clear();
+}
+
 void test_model_parameters()
 {
-    transformed_sphere();
-    changing_intersection();
-    invalid_derived_dimensions();
-    runtime_snapshots();
-    scoped_runtime_identity();
-    nested_instance_parameters();
-    puts("Model uniform transforms, dynamic empty bounds and atomic invalid parameter rejection: PASS");
+    test_graph_packs_install();
+    pu_setup(NULL, teardown);
+    RUN_TEST_CASE(transformed_sphere);
+    RUN_TEST_CASE(changing_intersection);
+    RUN_TEST_CASE(invalid_derived_dimensions);
+    RUN_TEST_CASE(runtime_snapshots);
+    RUN_TEST_CASE(scoped_runtime_identity);
+    RUN_TEST_CASE(nested_instance_parameters);
+    pu_clear_setup();
+    test_graph_packs_restore();
 }

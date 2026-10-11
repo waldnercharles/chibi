@@ -1,6 +1,6 @@
-#include "platform/cute.h"
 #include "render/material_raster.h"
 #include "support/xalloc.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -107,10 +107,14 @@ static bool center_matches(const uint16_t *pixels, render_material_view view, re
     return ok;
 }
 
-bool test_camera_plane()
+/* A plane of 2D material layers draws as before under a perspective mesh
+ * camera without yaw or pitch; turned and pitched, orthographic and in
+ * perspective, its marker lands where a scalar projection puts it, facing
+ * the camera; seen edge-on, every target stays finite and empty. */
+TEST_CASE(material_planes_follow_the_camera)
 {
     render_material_raster *r = render_material_raster_new();
-    bool ok = r && render_material_raster_resize(r, WIDTH, HEIGHT);
+    REQUIRE(render_material_raster_resize(r, WIDTH, HEIGHT));
     uint16_t *pixels = xmalloc(VALUES * sizeof(uint16_t));
     uint16_t *reference = xmalloc(VALUES * sizeof(uint16_t));
     render_material_entity marker = { .inv_rot = { 1, 0, 0, 1 },
@@ -128,67 +132,53 @@ bool test_camera_plane()
                                   .height = HEIGHT,
                                   .crop_max_u = 1,
                                   .crop_max_v = 1 };
-    /* Legacy native 2D remains unchanged even when the mesh camera is perspective. */
-    if (ok) {
-        ok = draw(r, marker, view) &&
-             read_target(render_material_raster_textures(r).scene, reference);
-    }
+    REQUIRE(draw(r, marker, view));
+    REQUIRE(read_target(render_material_raster_textures(r).scene, reference));
     view.focal_distance = 80;
     view.center_x = 3;
     view.center_y = -2;
-    if (ok) {
-        ok = draw(r, marker, view) &&
-             read_target(render_material_raster_textures(r).scene, pixels) &&
-             !memcmp(pixels, reference, VALUES * sizeof(uint16_t));
-    }
+    REQUIRE(draw(r, marker, view));
+    REQUIRE(read_target(render_material_raster_textures(r).scene, pixels));
+    REQUIRE(!memcmp(pixels, reference, VALUES * sizeof(uint16_t)));
     const float yaws[] = { -.65f, .9f };
-    for (int perspective = 0; perspective < 2 && ok; perspective++) {
+    for (int perspective = 0; perspective < 2; perspective++) {
         view.focal_distance = perspective ? 80 : 0;
         view.pitch = .55f;
         view.target_elevation = 4;
-        for (int i = 0; i < 2 && ok; i++) {
+        for (int i = 0; i < 2; i++) {
             view.yaw = yaws[i];
-            ok = draw(r, marker, view) &&
-                 read_target(render_material_raster_textures(r).scene, pixels) &&
-                 center_matches(pixels, view, marker);
-            if (ok) {
-                ok = read_target(render_material_raster_textures(r).normal, pixels);
-                double px, py;
-                projected_center(view, marker.pos[0], marker.pos[1], &px, &py);
-                int at = 4 * ((int)floor(py) * WIDTH + (int)floor(px));
-                ok = ok && fabsf(half_value(pixels[at])) < .02f &&
-                     fabsf(half_value(pixels[at + 1]) - sinf(view.pitch)) < .025f;
-            }
+            REQUIRE(draw(r, marker, view));
+            REQUIRE(read_target(render_material_raster_textures(r).scene, pixels));
+            REQUIRE(center_matches(pixels, view, marker));
+            REQUIRE(read_target(render_material_raster_textures(r).normal, pixels));
+            double px, py;
+            projected_center(view, marker.pos[0], marker.pos[1], &px, &py);
+            int at = 4 * ((int)floor(py) * WIDTH + (int)floor(px));
+            REQUIRE(fabsf(half_value(pixels[at])) < .02f);
+            REQUIRE(fabsf(half_value(pixels[at + 1]) - sinf(view.pitch)) < .025f);
         }
     }
     view.focal_distance = 0;
     view.pitch = 1.57079632679f;
-    if (ok) {
-        ok = draw(r, marker, view);
+    REQUIRE(draw(r, marker, view));
+    render_material_textures t = render_material_raster_textures(r);
+    CF_Texture targets[] = { t.scene,  t.source,     t.albedo,
+                             t.normal, t.visibility, t.cover };
+    for (int i = 0; i < 6; i++) {
+        REQUIRE(read_target(targets[i], pixels));
     }
-    if (ok) {
-        render_material_textures t = render_material_raster_textures(r);
-        CF_Texture targets[] = { t.scene,  t.source,     t.albedo,
-                                 t.normal, t.visibility, t.cover };
-        for (int i = 0; i < 6 && ok; i++) {
-            ok = read_target(targets[i], pixels);
-        }
-        if (ok) {
-            ok = read_target(t.scene, pixels);
-        }
-        for (int i = 3; i < VALUES && ok; i += 4) {
-            ok = half_value(pixels[i]) == 0;
-        }
+    REQUIRE(read_target(t.scene, pixels));
+    for (int i = 3; i < VALUES; i += 4) {
+        REQUIRE(half_value(pixels[i]) == 0);
     }
-    printf(
-        "camera plane %s: legacy parity, two yaw angles in "
-        "orthographic/perspective, normals, finite edge-on targets\n",
-        ok ? "PASS" : "FAIL"
-    );
     free(reference);
     free(pixels);
-    if (r) {
-        render_material_raster_free(r);
-    }
-    return ok;
+    render_material_raster_free(r);
+    return true;
+}
+
+/* Runs in an open hidden app. */
+void test_camera_plane()
+{
+    RUN_TEST_CASE(material_planes_follow_the_camera);
 }

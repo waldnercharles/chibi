@@ -1,13 +1,15 @@
 #include "authoring/shader_prepare.h"
 #include "graph/authoring/graph_edit.h"
+#include "graph/model/registry.h"
 #include "graph/shader/shader_graph.h"
-#include "platform/cute.h"
+#include "hidden_app.h"
 #include "render/material_raster.h"
 #include "render/mesh_projection.h"
-#include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
 #include "support/xalloc.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -85,13 +87,13 @@ static bool expected_bounds(render_material_view v, CF_V3 min, CF_V3 max, CF_V2 
     }
     return any;
 }
-/* A circle around the source image's vertical world-Z axis. This scalar
- * oracle is independent of the camera basis implementation. */
-static bool centered_circle_tests()
+/* An eye circling the source image's vertical world-Z axis keeps its basis,
+ * radius and centered target, by a scalar oracle independent of the camera
+ * basis implementation. */
+TEST_CASE(centered_circles_keep_their_basis_and_radius)
 {
     const CF_V3 target = { 13, 7, -9 };
     const float radius = 700;
-    bool ok = true;
     for (int step = 0; step <= 8; step++) {
         float theta = step * PI * .25f;
         render_material_view v = { .center_x = target.x,
@@ -107,33 +109,34 @@ static bool centered_circle_tests()
                              { sinf(theta), cosf(theta), 0 },
                              { 0, 0, 1 } };
         for (int axis = 0; axis < 3; axis++) {
-            ok &= fabsf(basis[axis].x - expected[axis].x) < 1e-6f &&
-                  fabsf(basis[axis].y - expected[axis].y) < 1e-6f &&
-                  fabsf(basis[axis].z - expected[axis].z) < 1e-6f;
+            REQUIRE(fabsf(basis[axis].x - expected[axis].x) < 1e-6f);
+            REQUIRE(fabsf(basis[axis].y - expected[axis].y) < 1e-6f);
+            REQUIRE(fabsf(basis[axis].z - expected[axis].z) < 1e-6f);
         }
-        ok &= fabsf(eye.x - target.x - radius * sinf(theta)) < .001f &&
-              fabsf(eye.y - target.y - radius * cosf(theta)) < .001f &&
-              fabsf(eye.z - target.z) < .001f;
-        CF_V3 delta = cf_sub_v3(eye, target);
-        ok &= fabsf(cf_len_v3(delta) - radius) < .001f;
+        REQUIRE(fabsf(eye.x - target.x - radius * sinf(theta)) < .001f);
+        REQUIRE(fabsf(eye.y - target.y - radius * cosf(theta)) < .001f);
+        REQUIRE(fabsf(eye.z - target.z) < .001f);
+        REQUIRE(fabsf(cf_len_v3(cf_sub_v3(eye, target)) - radius) < .001f);
         CF_V3 centered = render_mesh_world_to_camera(v, target);
-        ok &= fabsf(centered.x - v.center_x) < 1e-6f && centered.y == 0 &&
-              fabsf(centered.z + v.center_y) < 1e-6f;
+        REQUIRE(fabsf(centered.x - v.center_x) < 1e-6f && centered.y == 0);
+        REQUIRE(fabsf(centered.z + v.center_y) < 1e-6f);
         /* The initial basis matches the source top-down image exactly within
          * trigonometric float precision, without rotating the authored scene. */
         if (!step) {
             CF_V3 p = { 100, 20, -70 };
             CF_V3 aligned = render_mesh_world_to_camera(v, p);
-            ok &= fabsf(aligned.x - p.x) < .0001f &&
-                  fabsf(aligned.y - (p.y - target.y)) < .0001f &&
-                  fabsf(aligned.z - p.z) < .0001f;
+            REQUIRE(fabsf(aligned.x - p.x) < .0001f);
+            REQUIRE(fabsf(aligned.y - (p.y - target.y)) < .0001f);
+            REQUIRE(fabsf(aligned.z - p.z) < .0001f);
         }
     }
-    printf("Camera centered circle basis/radius: %s\n", ok ? "PASS" : "FAIL");
-    return ok;
+    return true;
 }
 
-static bool bounds_tests()
+/* Projected bounds of a box under oblique, rolled and near-plane cameras
+ * hold every corner an independent clip keeps, and match the box itself
+ * without a camera. */
+TEST_CASE(orbit_bounds_hold_every_clipped_corner)
 {
     const CF_V3 min = { -7, -2, -5 }, max = { 9, 8, 6 };
     const float angles[][3] = { { 0, 0, 0 },
@@ -142,7 +145,6 @@ static bool bounds_tests()
                                 { PI * .5f, PI * .5f, 0 },
                                 { PI * .5f, .9f, PI * .5f },
                                 { 0, 0, .4f } };
-    bool ok = true;
     for (int perspective = 0; perspective < 2; perspective++) {
         for (int i = 0; i < 6; i++) {
             render_material_view v = { .center_x = 2,
@@ -154,33 +156,27 @@ static bool bounds_tests()
                                        .roll = angles[i][2] };
             CF_V2 lo, hi, want_lo, want_hi;
             bool visible = render_mesh_project_bounds(v, min, max, &lo, &hi);
-            bool expected = expected_bounds(v, min, max, &want_lo, &want_hi);
-            ok &= visible == expected;
+            REQUIRE(visible == expected_bounds(v, min, max, &want_lo, &want_hi));
             /* A camera-aligned enclosing AABB may conservatively enlarge an oblique
              * world box, but must never omit the independently clipped box corners. */
-            ok &= lo.x <= want_lo.x + .001f && lo.y <= want_lo.y + .001f &&
-                  hi.x >= want_hi.x - .001f && hi.y >= want_hi.y - .001f;
-            if (!ok) {
-                fprintf(stderr, "Orbit projected bounds perspective%d angle%d failed\n", perspective, i);
-            }
+            REQUIRE(lo.x <= want_lo.x + .001f && lo.y <= want_lo.y + .001f);
+            REQUIRE(hi.x >= want_hi.x - .001f && hi.y >= want_hi.y - .001f);
         }
     }
     render_material_view legacy = { 0 };
     CF_V2 lo, hi;
-    ok &= render_mesh_project_bounds(legacy, min, max, &lo, &hi) &&
-          lo.x == min.x && lo.y == min.z && hi.x == max.x && hi.y == max.z;
+    REQUIRE(render_mesh_project_bounds(legacy, min, max, &lo, &hi));
+    REQUIRE(lo.x == min.x && lo.y == min.z && hi.x == max.x && hi.y == max.z);
     render_material_view near = { .focal_distance = 8,
                                   .yaw = .7f,
                                   .pitch = .5f,
                                   .target_elevation = 3 };
     CF_V2 want_lo, want_hi;
     bool visible = render_mesh_project_bounds(near, min, max, &lo, &hi);
-    bool expected = expected_bounds(near, min, max, &want_lo, &want_hi);
-    ok &= visible == expected && lo.x <= want_lo.x + .001f &&
-          lo.y <= want_lo.y + .001f && hi.x >= want_hi.x - .001f &&
-          hi.y >= want_hi.y - .001f;
-    puts(ok ? "Camera orbit CPU PASS: legacy projection and oblique/near-plane conservative bounds" : "Camera orbit CPU FAIL");
-    return ok;
+    REQUIRE(visible == expected_bounds(near, min, max, &want_lo, &want_hi));
+    REQUIRE(lo.x <= want_lo.x + .001f && lo.y <= want_lo.y + .001f);
+    REQUIRE(hi.x >= want_hi.x - .001f && hi.y >= want_hi.y - .001f);
+    return true;
 }
 static node *op(graph *g, const char *name)
 {
@@ -269,7 +265,9 @@ static bool read(CF_Texture texture, float **out)
     cf_destroy_canvas(canvas);
     return ok;
 }
-static bool winners(render_material_raster *r, bool blue, const char *label)
+/* Whether the four center pixels show the blue mesh's or the red SDF's
+ * scene and albedo, fully covered. */
+static bool winners(render_material_raster *r, bool blue)
 {
     render_material_textures t = render_material_raster_textures(r);
     CF_Texture targets[] = { t.scene, t.source, t.albedo, t.normal, t.cover };
@@ -289,22 +287,16 @@ static bool winners(render_material_raster *r, bool blue, const char *label)
             ok &= pixels[4][p + 1] == 1 && pixels[4][p + 2] == 1;
         }
     }
-    if (!ok) {
-        fprintf(
-            stderr,
-            "Orbit %s: actual frontmost %s surface was not selected\n",
-            label,
-            blue ? "blue mesh" : "red SDF"
-        );
-    }
     for (int i = 0; i < 5; i++) {
         free(pixels[i]);
     }
     return ok;
 }
-bool test_camera_orbit()
+/* A mesh and an SDF swap which one is in front as the camera turns half way
+ * around, orthographic and in perspective, whatever their order or hidden
+ * surface rejection. */
+TEST_CASE(orbits_draw_the_frontmost_surface)
 {
-    bool ok = bounds_tests() && centered_circle_tests();
     behavior_asset *shape = sphere();
     ecs_world *world = ecs_world_new();
     const ecs_component_desc *components[] = {
@@ -315,12 +307,12 @@ bool test_camera_orbit()
         &GAME_COMPONENT_GameMeshAsset
     };
     for (int i = 0; i < (int)(sizeof components / sizeof *components); i++) {
-        assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
+        REQUIRE(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
     }
     ecs_entity mesh = actor(world, NULL, 0x0000ffff),
                sdf = actor(world, shape->name, 0xff0000ff);
     render_material_raster *r = render_material_raster_new();
-    ok &= render_material_raster_resize(r, WIDTH, HEIGHT);
+    REQUIRE(render_material_raster_resize(r, WIDTH, HEIGHT));
     render_material_raster_set_quality(r, (GameSurfaceQuality){ .resolution = GAME_SURFACE_FULL });
     for (int perspective = 0; perspective < 2; perspective++) {
         for (int angle = 0; angle < 2; angle++) {
@@ -351,29 +343,13 @@ bool test_camera_orbit()
                     float sdf_depth = camera_coordinates(view, (CF_V3){ -6, 3, 0 })
                                           .y;
                     bool blue = mesh_depth > sdf_depth;
-                    ok &= blue == !angle;
+                    REQUIRE(blue == !angle);
                     render_material_raster_set_hidden_rejection(r, hidden);
                     cf_app_update(NULL);
                     bool drawn = render_material_raster_draw_mixed(r, layers, 2, view, world, actors, 2, 0);
                     cf_app_draw_onto_screen(false);
-                    char label[80];
-                    snprintf(
-                        label,
-                        sizeof label,
-                        "perspective%d yaw%d order%d hidden%d",
-                        perspective,
-                        angle,
-                        order,
-                        hidden
-                    );
-                    bool passed = drawn && winners(r, blue, label);
-                    printf(
-                        "Camera orbit %s: %s; winner %s\n",
-                        label,
-                        passed ? "PASS" : "FAIL",
-                        blue ? "blue mesh" : "red SDF"
-                    );
-                    ok &= passed;
+                    REQUIRE(drawn);
+                    REQUIRE(winners(r, blue));
                 }
             }
         }
@@ -381,32 +357,29 @@ bool test_camera_orbit()
     render_material_raster_free(r);
     ecs_world_free(world);
     behavior_asset_free(shape);
-    return ok;
+    return true;
 }
-int camera_orbit_run(const char *program, bool gles)
+static void teardown()
 {
-    CF_Result result = cf_make_app(
-        "Camera orbit regression",
-        0,
-        0,
-        0,
-        WIDTH,
-        HEIGHT,
-        CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT |
-            (gles ? CF_APP_OPTIONS_GFX_OPENGL_BIT : 0),
-        program
-    );
-    if (cf_is_error(result)) {
-        return 1;
-    }
-    app_scene_renderer_initialize();
-    extern bool test_camera_plane();
-    extern bool test_camera_emitter_orbit();
-    extern bool test_camera_centered_orbit();
-    bool ok = test_camera_orbit();
-    ok &= test_camera_plane();
-    ok &= test_camera_emitter_orbit();
-    ok &= test_camera_centered_orbit();
+    authoring_shader_catalog_clear();
+}
+
+void test_camera_plane();
+void test_camera_centered_orbit();
+void test_camera_emitter_orbit();
+
+void test_material_cameras()
+{
+    test_open_hidden_app("material-cameras", WIDTH, HEIGHT);
+    test_graph_packs_install();
+    pu_setup(NULL, teardown);
+    RUN_TEST_CASE(orbit_bounds_hold_every_clipped_corner);
+    RUN_TEST_CASE(centered_circles_keep_their_basis_and_radius);
+    RUN_TEST_CASE(orbits_draw_the_frontmost_surface);
+    test_camera_plane();
+    test_camera_centered_orbit();
+    test_camera_emitter_orbit();
+    pu_clear_setup();
+    test_graph_packs_restore();
     cf_destroy_app();
-    return !ok;
 }

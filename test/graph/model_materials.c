@@ -1,10 +1,12 @@
-#include "authoring/preview.h"
 #include "authoring/shader_prepare.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
 #include "graph/modeling/model_compile.h"
+#include "graph/shader/shader_graph.h"
 #include "render/shader_catalog.h"
 #include "support/array.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -53,14 +55,14 @@ static node *translated(graph *g, node *source, float x, float y, float z)
     connect(g, source, n, 0);
     return n;
 }
-static void near(float actual, float expected)
+static bool near(float actual, float expected)
 {
-    assert(fabsf(actual - expected) < .0001f);
+    return fabsf(actual - expected) < .0001f;
 }
 static behavior_asset *material(const char *name, float red, float green, float blue);
 static node *slot(graph *g, const char *name, const char *material);
 
-static void material_coordinate_inputs()
+TEST_CASE(material_coordinate_inputs)
 {
     const char *names[] = { "Shader ObjectPosition", "Shader PartPosition" };
     shader_sample_context context = { .object_position = { 11, -7, 5 },
@@ -70,21 +72,22 @@ static void material_coordinate_inputs()
         behavior_asset *a = behavior_asset_new(names[i]);
         a->domain = BEHAVIOR_DOMAIN_MATERIAL;
         const node_desc *descriptor = registry_node_by_name(names[i]);
-        assert(descriptor);
+        REQUIRE(descriptor);
         node *position = graph_add_node(a->graph, descriptor);
         connect(a->graph, position, shader_graph_add_output(a->graph, false), 0);
         shader_graph ir;
         shader_graph_init(&ir);
         shader_error error = { 0 };
-        assert(shader_graph_from_graph(a->graph, &ir, &error));
+        REQUIRE(shader_graph_from_graph(a->graph, &ir, &error));
         float result[SHADER_OUTPUT_MAX][4];
-        assert(shader_graph_eval_outputs(&ir, &context, NULL, result, &error));
+        REQUIRE(shader_graph_eval_outputs(&ir, &context, NULL, result, &error));
         for (int axis = 0; axis < 3; axis++) {
-            near(result[0][axis], expected[i][axis]);
+            REQUIRE(near(result[0][axis], expected[i][axis]));
         }
         shader_graph_free(&ir);
         behavior_asset_free(a);
     }
+    return true;
 }
 
 static model_hit hit(const model_program *p, float x, float y, float z)
@@ -98,17 +101,18 @@ static model_hit hit(const model_program *p, float x, float y, float z)
     return result;
 }
 
-static void owner(const model_program *p, float x, const char *name)
+/* Whether the part `name` and its paint own the surface at x. */
+static bool owner(const model_program *p, float x, const char *name)
 {
     model_hit result = hit(p, x, 0, 0);
-    assert(result.part >= 0 && result.part < acount(p->parts));
-    assert(!strcmp(p->parts[result.part].name, name));
-    assert(result.material >= 0 && result.material < acount(p->material_slots));
     const char *paint = !strcmp(name, "Left") ? "LeftPaint" : "RightPaint";
-    assert(!strcmp(p->material_slots[result.material].material, paint));
+    return result.part >= 0 && result.part < acount(p->parts) &&
+           !strcmp(p->parts[result.part].name, name) && result.material >= 0 &&
+           result.material < acount(p->material_slots) &&
+           !strcmp(p->material_slots[result.material].material, paint);
 }
 
-static void csg_ownership()
+TEST_CASE(csg_ownership)
 {
     const node_desc *operations[] = { &NODE_ModelUnion,
                                       &NODE_ModelIntersection,
@@ -135,33 +139,34 @@ static void csg_ownership()
         model_program_init(&p);
         shader_error error = { 0 };
         const behavior_asset *catalog[] = { a, left_paint, right_paint };
-        assert(model_compile_with_catalog(a, catalog, 3, &p, &error));
+        REQUIRE(model_compile_with_catalog(a, catalog, 3, &p, &error));
         if (i == 0) {
-            owner(&p, -3, "Left");
-            owner(&p, 3, "Right");
+            REQUIRE(owner(&p, -3, "Left"));
+            REQUIRE(owner(&p, 3, "Right"));
         }
         if (i == 1) {
-            owner(&p, -1, "Right");
-            owner(&p, 1, "Left");
+            REQUIRE(owner(&p, -1, "Right"));
+            REQUIRE(owner(&p, 1, "Left"));
         }
         if (i == 2) {
             /* The cutter supplies the active zero, but its material never owns the cut. */
-            owner(&p, 0, "Left");
-            owner(&p, -2, "Left");
+            REQUIRE(owner(&p, 0, "Left"));
+            REQUIRE(owner(&p, -2, "Left"));
         }
         if (i == 3) {
-            owner(&p, -1, "Left");
-            owner(&p, 1, "Right");
+            REQUIRE(owner(&p, -1, "Left"));
+            REQUIRE(owner(&p, 1, "Right"));
         }
-        owner(&p, 0, "Left");
+        REQUIRE(owner(&p, 0, "Left"));
         model_program_free(&p);
         behavior_asset_free(a);
         behavior_asset_free(left_paint);
         behavior_asset_free(right_paint);
     }
+    return true;
 }
 
-static void transformed_part_coordinates()
+TEST_CASE(transformed_part_coordinates)
 {
     behavior_asset *a = model("OffCenterPart");
     graph *g = a->graph;
@@ -176,20 +181,23 @@ static void transformed_part_coordinates()
     model_program p;
     model_program_init(&p);
     shader_error error = { 0 };
-    assert(model_compile(a, &p, &error));
+    REQUIRE(model_compile(a, &p, &error));
     model_hit result = hit(&p, 11, -3, 5);
-    assert(result.part >= 0 && !strcmp(p.parts[result.part].name, "Local"));
-    near(result.position[0], 2);
-    near(result.position[1], 0);
-    near(result.position[2], 0);
+    REQUIRE(result.part >= 0 && !strcmp(p.parts[result.part].name, "Local"));
+    REQUIRE(near(result.position[0], 2));
+    REQUIRE(near(result.position[1], 0));
+    REQUIRE(near(result.position[2], 0));
     for (int axis = 0; axis < 3; axis++) {
-        near((p.bounds.min[axis] + p.bounds.max[axis]) * .5f, (float[3]){ 11, -7, 5 }[axis]);
+        REQUIRE(
+            near((p.bounds.min[axis] + p.bounds.max[axis]) * .5f, (float[3]){ 11, -7, 5 }[axis])
+        );
     }
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
 
-static void transformed_part_frame()
+TEST_CASE(transformed_part_frame)
 {
     behavior_asset *a = model("FramePlane");
     graph *g = a->graph;
@@ -199,7 +207,7 @@ static void transformed_part_frame()
     connect(g, source, scale, 0);
     node *reflect = graph_add_node(g, &NODE_ModelReflect);
     pin_value axis = { .type = PIN_ENUM, .type_name = "ModelAxis", .e = 0 };
-    assert(!graph_set_pin_default(g, reflect, false, 1, &axis));
+    REQUIRE(!graph_set_pin_default(g, reflect, false, 1, &axis));
     connect(g, scale, reflect, 0);
     node *rotate = graph_add_node(g, &NODE_ModelRotate);
     vector(g, rotate, 1, 0, 0, 1.5707963267948966f);
@@ -208,12 +216,12 @@ static void transformed_part_frame()
     model_program p;
     model_program_init(&p);
     shader_error error = { 0 };
-    assert(model_compile(a, &p, &error));
+    REQUIRE(model_compile(a, &p, &error));
     model_hit result = hit(&p, 1000000, -700000, 500000);
     const float expected[3][3] = { { 0, -.5f, 0 }, { -1, 0, 0 }, { 0, 0, 2 } };
     for (int row = 0; row < 3; row++) {
         for (int j = 0; j < 3; j++) {
-            near(result.part_from_object[row][j], expected[row][j]);
+            REQUIRE(near(result.part_from_object[row][j], expected[row][j]));
         }
     }
     // Independent forward-transformed tangent plane: reflection reverses winding.
@@ -226,18 +234,22 @@ static void transformed_part_frame()
         }
     }
     for (int i = 0; i < 2; i++) {
-        near(normal[0] * tangent[i][0] + normal[1] * tangent[i][1] + normal[2] * tangent[i][2], 0);
+        REQUIRE(near(
+            normal[0] * tangent[i][0] + normal[1] * tangent[i][1] +
+                normal[2] * tangent[i][2],
+            0
+        ));
     }
-    near(normal[0], -2);
-    near(normal[1], -.5f);
-    near(normal[2], 6);
+    REQUIRE(near(normal[0], -2));
+    REQUIRE(near(normal[1], -.5f));
+    REQUIRE(near(normal[2], 6));
     float point[3] = { 1000001, -700004, 500000 }, local[3], rows[3][3];
-    assert(model_program_part_point(&p, NULL, result.part, point, local, rows, &error));
-    near(local[0], 2);
-    near(local[1], -1);
-    near(local[2], 0);
+    REQUIRE(model_program_part_point(&p, NULL, result.part, point, local, rows, &error));
+    REQUIRE(near(local[0], 2));
+    REQUIRE(near(local[1], -1));
+    REQUIRE(near(local[2], 0));
     char *glsl = model_program_frame_glsl(&p, "test_frame", &error);
-    assert(glsl && strstr(glsl, "test_frame_part_0") && strstr(glsl, "sg_out[4]"));
+    REQUIRE(glsl && strstr(glsl, "test_frame_part_0") && strstr(glsl, "sg_out[4]"));
     free(glsl);
     model_program_free(&p);
     behavior_asset_free(a);
@@ -251,23 +263,24 @@ static void transformed_part_frame()
     connect(g, right, unite, 1);
     publish(g, unite);
     model_program_init(&p);
-    assert(model_compile(a, &p, &error));
+    REQUIRE(model_compile(a, &p, &error));
     int left_owner = hit(&p, -10, 0, 0).part;
-    assert(hit(&p, 10, 0, 0).part != left_owner);
-    assert(
+    REQUIRE(hit(&p, 10, 0, 0).part != left_owner);
+    REQUIRE(
         model_program_part_point(&p, NULL, left_owner, (float[3]){ 10, 0, 0 }, local, rows, &error)
     );
-    near(local[0], 20);
+    REQUIRE(near(local[0], 20));
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
-            near(rows[i][j], i == j ? 1 : 0);
+            REQUIRE(near(rows[i][j], i == j ? 1 : 0));
         }
     }
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
 
-static void extreme_part_frames()
+TEST_CASE(extreme_part_frames)
 {
     const float factors[] = { 1e20f, 1e-30f };
     for (int i = 0; i < 2; i++) {
@@ -281,17 +294,18 @@ static void extreme_part_frames()
         model_program p;
         model_program_init(&p);
         shader_error error = { 0 };
-        assert(model_compile(a, &p, &error));
+        REQUIRE(model_compile(a, &p, &error));
         float rows[3][3];
-        assert(model_program_frame(&p, 0, NULL, rows, &error));
-        assert(isfinite(rows[0][0]) && rows[0][0] > 0);
-        assert(fabsf(rows[0][0] * factors[i] - 1) < 1e-5f);
+        REQUIRE(model_program_frame(&p, 0, NULL, rows, &error));
+        REQUIRE(isfinite(rows[0][0]) && rows[0][0] > 0);
+        REQUIRE(fabsf(rows[0][0] * factors[i] - 1) < 1e-5f);
         model_program_free(&p);
         behavior_asset_free(a);
     }
+    return true;
 }
 
-static void isolated_part_shaders()
+TEST_CASE(isolated_part_shaders)
 {
     behavior_asset *a = model("HiddenPart");
     graph *g = a->graph;
@@ -300,7 +314,7 @@ static void isolated_part_shaders()
     connect(g, outer, combine, 0);
     connect(g, translated(g, inner, 1, 0, 0), combine, 1);
     node *group = graph_add_node(g, &NODE_ModelPart);
-    assert(!graph_set_node_reference(g, group, 0, "Group"));
+    REQUIRE(!graph_set_node_reference(g, group, 0, "Group"));
     connect(g, combine, group, 0);
     node *scale = graph_add_node(g, &NODE_ModelScale);
     vector(g, scale, 1, 2, 1, .5f);
@@ -309,7 +323,7 @@ static void isolated_part_shaders()
     model_program p;
     model_program_init(&p);
     shader_error error = { 0 };
-    assert(model_compile(a, &p, &error));
+    REQUIRE(model_compile(a, &p, &error));
     int inner_index = -1, group_index = -1;
     for (int i = 0; i < acount(p.parts); i++) {
         if (!strcmp(p.parts[i].name, "Inner")) {
@@ -319,30 +333,31 @@ static void isolated_part_shaders()
             group_index = i;
         }
     }
-    assert(inner_index >= 0 && group_index >= 0);
+    REQUIRE(inner_index >= 0 && group_index >= 0);
     model_hit ordinary = hit(&p, 12, 0, 0);
-    assert(ordinary.part != inner_index);
+    REQUIRE(ordinary.part != inner_index);
     shader_graph distance, resolver;
     shader_graph_init(&distance);
     shader_graph_init(&resolver);
-    assert(model_program_part_shaders(&p, inner_index, &distance, &resolver, &error));
+    REQUIRE(model_program_part_shaders(&p, inner_index, &distance, &resolver, &error));
     float prepared[32][4];
     model_bounds bounds;
-    assert(model_program_prepare(&p, NULL, prepared, &bounds, &error));
+    REQUIRE(model_program_prepare(&p, NULL, prepared, &bounds, &error));
     shader_sample_context sample = { .object_position = { 12, 0, 0 } };
     float result[SHADER_OUTPUT_MAX][4];
-    assert(shader_graph_eval_outputs(&distance, &sample, prepared, result, &error));
-    near(result[0][0], -1);
-    assert(shader_graph_eval_outputs(&resolver, &sample, prepared, result, &error));
-    assert((int)result[0][0] == inner_index);
-    near(result[1][0], 0);
-    assert(model_program_part_shaders(&p, group_index, &distance, &resolver, &error));
-    assert(shader_graph_eval_outputs(&resolver, &sample, prepared, result, &error));
-    assert((int)result[0][0] == ordinary.part);
+    REQUIRE(shader_graph_eval_outputs(&distance, &sample, prepared, result, &error));
+    REQUIRE(near(result[0][0], -1));
+    REQUIRE(shader_graph_eval_outputs(&resolver, &sample, prepared, result, &error));
+    REQUIRE((int)result[0][0] == inner_index);
+    REQUIRE(near(result[1][0], 0));
+    REQUIRE(model_program_part_shaders(&p, group_index, &distance, &resolver, &error));
+    REQUIRE(shader_graph_eval_outputs(&resolver, &sample, prepared, result, &error));
+    REQUIRE((int)result[0][0] == ordinary.part);
     shader_graph_free(&distance);
     shader_graph_free(&resolver);
     model_program_free(&p);
     behavior_asset_free(a);
+    return true;
 }
 
 static behavior_asset *material(const char *name, float red, float green, float blue)
@@ -431,7 +446,7 @@ static behavior_asset *painted_pair(const char *name, const char *left, const ch
     return a;
 }
 
-static void material_assignment_lifecycle()
+TEST_CASE(material_assignment_lifecycle)
 {
     behavior_asset *red = material("PaintRed", 1, 0, 0);
     behavior_asset *blue = material("PaintBlue", 0, 0, 1);
@@ -444,42 +459,42 @@ static void material_assignment_lifecycle()
     model_program p;
     model_program_init(&p);
     shader_error error = { 0 };
-    assert(model_compile_with_catalog(a, catalog, 3, &p, &error));
+    REQUIRE(model_compile_with_catalog(a, catalog, 3, &p, &error));
     model_hit result = hit(&p, 13, -7, 5);
-    assert(result.material >= 0 && result.material < acount(p.material_slots));
-    assert(!strcmp(p.material_slots[result.material].material, red->name));
-    near(result.position[0], 2);
+    REQUIRE(result.material >= 0 && result.material < acount(p.material_slots));
+    REQUIRE(!strcmp(p.material_slots[result.material].material, red->name));
+    REQUIRE(near(result.position[0], 2));
     char *path = strdup(p.parts[result.part].path);
-    assert(path);
+    REQUIRE(path);
     char *text = behavior_asset_save(a);
     behavior_asset *reload = behavior_asset_load(text);
-    assert(reload);
+    REQUIRE(reload);
     const behavior_asset *reloaded[] = { reload, red, blue };
-    assert(model_compile_with_catalog(reload, reloaded, 3, &p, &error));
+    REQUIRE(model_compile_with_catalog(reload, reloaded, 3, &p, &error));
     result = hit(&p, 13, -7, 5);
-    assert(p.parts[result.part].node == surface->id);
-    assert(!strcmp(p.parts[result.part].path, path));
-    assert(p.material_slots[result.material].node == paint->id);
+    REQUIRE(p.parts[result.part].node == surface->id);
+    REQUIRE(!strcmp(p.parts[result.part].path, path));
+    REQUIRE(p.material_slots[result.material].node == paint->id);
     /* Missing material source cannot replace the previous hit generation. */
-    assert(!model_compile_with_catalog(a, catalog, 1, &p, &error));
-    assert(error.node == paint->id);
+    REQUIRE(!model_compile_with_catalog(a, catalog, 1, &p, &error));
+    REQUIRE(error.node == paint->id);
     result = hit(&p, 13, -7, 5);
-    assert(!strcmp(p.material_slots[result.material].material, red->name));
+    REQUIRE(!strcmp(p.material_slots[result.material].material, red->name));
     model_material_bindings bindings;
     model_material_bindings_init(&bindings);
     paint->reference_asset = graph_own_str(a->graph, blue->name, strlen(blue->name));
-    assert(model_program_compile_bindings(&p, a, catalog, 3, &bindings, &error) == MODEL_BINDINGS_READY);
-    assert(acount(bindings.slots) == 1);
-    assert(!strcmp(bindings.slots[0].material, blue->name));
+    REQUIRE(model_program_compile_bindings(&p, a, catalog, 3, &bindings, &error) == MODEL_BINDINGS_READY);
+    REQUIRE(acount(bindings.slots) == 1);
+    REQUIRE(!strcmp(bindings.slots[0].material, blue->name));
     node *alternate = slot(a->graph, "AlternatePaint", red->name);
     connect(a->graph, alternate, surface, 1);
-    assert(model_program_compile_bindings(&p, a, catalog, 3, &bindings, &error) == MODEL_BINDINGS_READY);
-    assert(acount(bindings.slots) == 1);
-    assert(bindings.slots[0].node == alternate->id);
-    assert(!strcmp(bindings.slots[0].material, red->name));
+    REQUIRE(model_program_compile_bindings(&p, a, catalog, 3, &bindings, &error) == MODEL_BINDINGS_READY);
+    REQUIRE(acount(bindings.slots) == 1);
+    REQUIRE(bindings.slots[0].node == alternate->id);
+    REQUIRE(!strcmp(bindings.slots[0].material, red->name));
     /* Binding refresh must leave retained geometry and its old assignment immutable. */
     result = hit(&p, 13, -7, 5);
-    assert(!strcmp(p.material_slots[result.material].material, red->name));
+    REQUIRE(!strcmp(p.material_slots[result.material].material, red->name));
     model_material_bindings_free(&bindings);
     model_program_free(&p);
     behavior_asset_free(reload);
@@ -488,9 +503,10 @@ static void material_assignment_lifecycle()
     behavior_asset_free(blue);
     free(path);
     free(text);
+    return true;
 }
 
-static void reused_nested_materials()
+TEST_CASE(reused_nested_materials)
 {
     behavior_asset *red = material("ReuseRed", 1, 0, 0);
     behavior_asset *blue = material("ReuseBlue", 0, 0, 1);
@@ -499,7 +515,7 @@ static void reused_nested_materials()
     node *paint = slot(base->graph, "Paint", red->name);
     connect(base->graph, paint, inner, 1);
     node *group = graph_add_node(base->graph, &NODE_ModelPart);
-    assert(!graph_set_node_reference(base->graph, group, 0, "Group"));
+    REQUIRE(!graph_set_node_reference(base->graph, group, 0, "Group"));
     connect(base->graph, translated(base->graph, inner, 3, 0, 0), group, 0);
     publish(base->graph, group);
     node *left = graph_add_node(a->graph, &NODE_ModelInstance);
@@ -513,7 +529,7 @@ static void reused_nested_materials()
                           .default_value = { .type = PIN_STR,
                                              .type_name = "MaterialAsset",
                                              .str = blue->name } };
-    assert(graph_add_pin(a->graph, right, false, &override) == 0);
+    REQUIRE(graph_add_pin(a->graph, right, false, &override) == 0);
     node *combine = graph_add_node(a->graph, &NODE_ModelUnion);
     connect(a->graph, translated(a->graph, left, -10, 0, 0), combine, 0);
     connect(a->graph, translated(a->graph, right, 10, 0, 0), combine, 1);
@@ -522,34 +538,34 @@ static void reused_nested_materials()
     model_program p;
     model_program_init(&p);
     shader_error error = { 0 };
-    assert(model_compile_with_catalog(a, catalog, 4, &p, &error));
+    REQUIRE(model_compile_with_catalog(a, catalog, 4, &p, &error));
     model_hit l = hit(&p, -6, 0, 0), r = hit(&p, 14, 0, 0);
-    assert(l.part != r.part);
-    assert(p.parts[l.part].node == inner->id && p.parts[r.part].node == inner->id);
-    assert(!strcmp(p.parts[l.part].name, "Inner") && !strcmp(p.parts[r.part].name, "Inner"));
-    assert(strcmp(p.parts[l.part].path, p.parts[r.part].path));
-    near(l.position[0], 1);
-    near(r.position[0], 1);
+    REQUIRE(l.part != r.part);
+    REQUIRE(p.parts[l.part].node == inner->id && p.parts[r.part].node == inner->id);
+    REQUIRE(!strcmp(p.parts[l.part].name, "Inner") && !strcmp(p.parts[r.part].name, "Inner"));
+    REQUIRE(strcmp(p.parts[l.part].path, p.parts[r.part].path));
+    REQUIRE(near(l.position[0], 1));
+    REQUIRE(near(r.position[0], 1));
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
-            near(l.part_from_object[i][j], i == j ? 1 : 0);
-            near(r.part_from_object[i][j], i == j ? 1 : 0);
+            REQUIRE(near(l.part_from_object[i][j], i == j ? 1 : 0));
+            REQUIRE(near(r.part_from_object[i][j], i == j ? 1 : 0));
         }
     }
-    assert(!strcmp(p.material_slots[l.material].material, red->name));
-    assert(!strcmp(p.material_slots[r.material].material, blue->name));
-    assert(l.material != r.material);
+    REQUIRE(!strcmp(p.material_slots[l.material].material, red->name));
+    REQUIRE(!strcmp(p.material_slots[r.material].material, blue->name));
+    REQUIRE(l.material != r.material);
     char *source = behavior_asset_save(a), *base_source = behavior_asset_save(base);
     behavior_asset *reload = behavior_asset_load(source),
                    *base_reload = behavior_asset_load(base_source);
-    assert(reload && base_reload);
+    REQUIRE(reload && base_reload);
     const behavior_asset *reloaded[] = { reload, base_reload, red, blue };
-    assert(model_compile_with_catalog(reload, reloaded, 4, &p, &error));
+    REQUIRE(model_compile_with_catalog(reload, reloaded, 4, &p, &error));
     l = hit(&p, -6, 0, 0);
     r = hit(&p, 14, 0, 0);
-    assert(!strcmp(p.material_slots[l.material].material, red->name));
-    assert(!strcmp(p.material_slots[r.material].material, blue->name));
-    assert(p.material_slots[r.material].node == paint->id);
+    REQUIRE(!strcmp(p.material_slots[l.material].material, red->name));
+    REQUIRE(!strcmp(p.material_slots[r.material].material, blue->name));
+    REQUIRE(p.material_slots[r.material].node == paint->id);
     model_program_free(&p);
     behavior_asset_free(reload);
     behavior_asset_free(base_reload);
@@ -559,9 +575,10 @@ static void reused_nested_materials()
     behavior_asset_free(blue);
     free(source);
     free(base_source);
+    return true;
 }
 
-static void catalog_material_edits()
+TEST_CASE(catalog_material_edits)
 {
     authoring_shader_catalog_clear();
     behavior_asset *red = material("CatalogRed", 1, 0, 0);
@@ -573,14 +590,14 @@ static void catalog_material_edits()
     slot(a->graph, "UnusedPaint", blue->name);
     publish(a->graph, body);
     shader_error error = { 0 };
-    assert(render_shader_upsert(red, &error));
-    assert(render_shader_upsert(blue, &error));
+    REQUIRE(render_shader_upsert(red, &error));
+    REQUIRE(render_shader_upsert(blue, &error));
     const behavior_asset *models[] = { a };
-    assert(render_shader_models_upsert(models, 1, &error));
+    REQUIRE(render_shader_models_upsert(models, 1, &error));
     int index = render_shader_find(a->name);
     float bindings[MODEL_MATERIAL_SLOT_MAX + 1][4], parameters[32][4];
     render_shader_set resources = { 0 };
-    assert(render_shader_model_material_snapshot(
+    REQUIRE(render_shader_model_material_snapshot(
         index,
         NULL,
         (ecs_entity){ 0 },
@@ -592,46 +609,46 @@ static void catalog_material_edits()
         &error
     ));
     int material_id = (int)bindings[1][0];
-    assert(material_id == render_shader_find(red->name));
+    REQUIRE(material_id == render_shader_find(red->name));
     shader_sample_context context = { .object_position = { 2, 0, 0 },
                                       .part_position = { 2, 0, 0 } };
     float result[SHADER_OUTPUT_MAX][4];
-    assert(render_shader_sample(material_id, &context, parameters, result, &error));
-    near(result[0][0], 1);
-    near(result[0][1], 0);
+    REQUIRE(render_shader_sample(material_id, &context, parameters, result, &error));
+    REQUIRE(near(result[0][0], 1));
+    REQUIRE(near(result[0][1], 0));
     render_shader_model_stats_reset();
     node *output = red->graph->nodes[0];
     vector(red->graph, output, 0, 0, 1, 0);
-    assert(render_shader_upsert(red, &error));
-    assert(render_shader_model_stats().compilations == 0);
-    assert(render_shader_sample(material_id, &context, parameters, result, &error));
-    near(result[0][0], 0);
-    near(result[0][1], 1);
-    assert(!render_shader_material_remove(red->name, &error));
-    assert(render_shader_find(red->name) == material_id);
-    assert(!render_shader_material_remove(blue->name, &error));
-    assert(render_shader_find(blue->name));
+    REQUIRE(render_shader_upsert(red, &error));
+    REQUIRE(render_shader_model_stats().compilations == 0);
+    REQUIRE(render_shader_sample(material_id, &context, parameters, result, &error));
+    REQUIRE(near(result[0][0], 0));
+    REQUIRE(near(result[0][1], 1));
+    REQUIRE(!render_shader_material_remove(red->name, &error));
+    REQUIRE(render_shader_find(red->name) == material_id);
+    REQUIRE(!render_shader_material_remove(blue->name, &error));
+    REQUIRE(render_shader_find(blue->name));
     behavior_asset *invalid = behavior_asset_new(red->name);
     invalid->domain = BEHAVIOR_DOMAIN_MATERIAL;
-    assert(!render_shader_upsert(invalid, &error));
-    assert(render_shader_sample(material_id, &context, parameters, result, &error));
-    near(result[0][1], 1);
-    assert(render_shader_material_rename(red->name, "CatalogGreen", &error));
+    REQUIRE(!render_shader_upsert(invalid, &error));
+    REQUIRE(render_shader_sample(material_id, &context, parameters, result, &error));
+    REQUIRE(near(result[0][1], 1));
+    REQUIRE(render_shader_material_rename(red->name, "CatalogGreen", &error));
     model_material_slot applied;
-    assert(render_shader_model_material_slot(index, 0, &applied));
-    assert(!strcmp(applied.material, "CatalogGreen"));
-    assert(render_shader_find("CatalogGreen") == material_id);
-    assert(render_shader_model_stats().compilations == 0);
-    assert(!strcmp(red->name, "CatalogRed"));
+    REQUIRE(render_shader_model_material_slot(index, 0, &applied));
+    REQUIRE(!strcmp(applied.material, "CatalogGreen"));
+    REQUIRE(render_shader_find("CatalogGreen") == material_id);
+    REQUIRE(render_shader_model_stats().compilations == 0);
+    REQUIRE(!strcmp(red->name, "CatalogRed"));
     behavior_asset *renamed = behavior_asset_clone(red);
-    assert(renamed && !behavior_asset_set_name(renamed, "CatalogGreen"));
+    REQUIRE(renamed && !behavior_asset_set_name(renamed, "CatalogGreen"));
     unsigned ramp_revision = render_shader_ramp_revision();
-    assert(render_shader_upsert(renamed, &error));
-    assert(render_shader_ramp_revision() == ramp_revision);
+    REQUIRE(render_shader_upsert(renamed, &error));
+    REQUIRE(render_shader_ramp_revision() == ramp_revision);
     behavior_asset_free(renamed);
     const char *renamed_model = "CatalogPaintedRenamed";
-    assert(render_shader_model_rename(a->name, renamed_model, &error));
-    assert(render_shader_find(renamed_model) == index);
+    REQUIRE(render_shader_model_rename(a->name, renamed_model, &error));
+    REQUIRE(render_shader_find(renamed_model) == index);
     behavior_asset *parent = model("CatalogOverride");
     node *instance = graph_add_node(parent->graph, &NODE_ModelInstance);
     instance->reference_asset = graph_own_str(parent->graph, renamed_model, strlen(renamed_model));
@@ -642,41 +659,42 @@ static void catalog_material_edits()
                           .default_value = { .type = PIN_STR,
                                              .type_name = "MaterialAsset",
                                              .str = blue->name } };
-    assert(graph_add_pin(parent->graph, instance, false, &override) == 0);
+    REQUIRE(graph_add_pin(parent->graph, instance, false, &override) == 0);
     publish(parent->graph, instance);
-    assert(render_shader_upsert(parent, &error));
+    REQUIRE(render_shader_upsert(parent, &error));
     int parent_id = render_shader_find(parent->name),
         blue_id = render_shader_find(blue->name);
-    assert(render_shader_material_rename(blue->name, "CatalogBlueRenamed", &error));
-    assert(render_shader_find("CatalogBlueRenamed") == blue_id);
-    assert(render_shader_model_rename(parent->name, "CatalogOverrideRenamed", &error));
-    assert(render_shader_find("CatalogOverrideRenamed") == parent_id);
-    assert(render_shader_model_material_slot(parent_id, 0, &applied));
-    assert(!strcmp(applied.material, "CatalogBlueRenamed"));
-    assert(!strcmp(instance->input_pins[0].default_value.str, "CatalogBlue"));
+    REQUIRE(render_shader_material_rename(blue->name, "CatalogBlueRenamed", &error));
+    REQUIRE(render_shader_find("CatalogBlueRenamed") == blue_id);
+    REQUIRE(render_shader_model_rename(parent->name, "CatalogOverrideRenamed", &error));
+    REQUIRE(render_shader_find("CatalogOverrideRenamed") == parent_id);
+    REQUIRE(render_shader_model_material_slot(parent_id, 0, &applied));
+    REQUIRE(!strcmp(applied.material, "CatalogBlueRenamed"));
+    REQUIRE(!strcmp(instance->input_pins[0].default_value.str, "CatalogBlue"));
     behavior_asset_free(parent);
     behavior_asset_free(invalid);
     behavior_asset_free(red);
     behavior_asset_free(blue);
     behavior_asset_free(a);
     authoring_shader_catalog_clear();
+    return true;
 }
 
-static void flattened_parameter_limit()
+TEST_CASE(flattened_parameter_limit)
 {
     authoring_shader_catalog_clear();
     behavior_asset *left = parameter_material("ParametersLeft", 17);
     behavior_asset *right = parameter_material("ParametersRight", 15);
     behavior_asset *a = painted_pair("ParameterPaintPair", left->name, right->name);
     shader_error error = { 0 };
-    assert(render_shader_upsert(left, &error));
-    assert(render_shader_upsert(right, &error));
+    REQUIRE(render_shader_upsert(left, &error));
+    REQUIRE(render_shader_upsert(right, &error));
     const behavior_asset *models[] = { a };
-    assert(render_shader_models_upsert(models, 1, &error));
+    REQUIRE(render_shader_models_upsert(models, 1, &error));
     int index = render_shader_find(a->name);
     float bindings[MODEL_MATERIAL_SLOT_MAX + 1][4], parameters[32][4];
     render_shader_set resources = { 0 };
-    assert(render_shader_model_material_snapshot(
+    REQUIRE(render_shader_model_material_snapshot(
         index,
         NULL,
         (ecs_entity){ 0 },
@@ -687,9 +705,9 @@ static void flattened_parameter_limit()
         &resources,
         &error
     ));
-    assert((int)bindings[1][2] + (int)bindings[2][2] == 32);
+    REQUIRE((int)bindings[1][2] + (int)bindings[2][2] == 32);
     model_material_slot applied;
-    assert(render_shader_model_material_slot(index, 0, &applied));
+    REQUIRE(render_shader_model_material_slot(index, 0, &applied));
     char text[1024];
     snprintf(
         text,
@@ -697,7 +715,8 @@ static void flattened_parameter_limit()
         "(array)\"material.%s.Color0\" 0 0.5 0.25\n",
         applied.name
     );
-    assert(render_shader_model_material_snapshot(
+    REQUIRE(render_shader_parameters_validate(index, text, &error));
+    REQUIRE(render_shader_model_material_snapshot(
         index,
         NULL,
         (ecs_entity){ 0 },
@@ -709,16 +728,17 @@ static void flattened_parameter_limit()
         &error
     ));
     int first_offset = (int)bindings[1][1], second_offset = (int)bindings[2][1];
-    near(parameters[first_offset][0], 0);
-    near(parameters[first_offset][1], .5f);
-    near(parameters[first_offset][2], .25f);
-    near(parameters[second_offset][0], 1);
+    REQUIRE(near(parameters[first_offset][0], 0));
+    REQUIRE(near(parameters[first_offset][1], .5f));
+    REQUIRE(near(parameters[first_offset][2], .25f));
+    REQUIRE(near(parameters[second_offset][0], 1));
     float valid_bindings[MODEL_MATERIAL_SLOT_MAX + 1][4], valid_parameters[32][4];
     render_shader_set valid_resources = resources;
     memcpy(valid_bindings, bindings, sizeof bindings);
     memcpy(valid_parameters, parameters, sizeof parameters);
     /* Color0 appears in both materials and cannot be overridden as a bare name. */
-    assert(!render_shader_model_material_snapshot(
+    REQUIRE(!render_shader_parameters_validate(index, "(array)Color0 0 0 0\n", &error));
+    REQUIRE(!render_shader_model_material_snapshot(
         index,
         NULL,
         (ecs_entity){ 0 },
@@ -729,10 +749,10 @@ static void flattened_parameter_limit()
         &resources,
         &error
     ));
-    assert(!memcmp(valid_bindings, bindings, sizeof bindings));
-    assert(!memcmp(valid_parameters, parameters, sizeof parameters));
-    assert(!memcmp(&valid_resources, &resources, sizeof resources));
-    assert(render_shader_model_material_snapshot(
+    REQUIRE(!memcmp(valid_bindings, bindings, sizeof bindings));
+    REQUIRE(!memcmp(valid_parameters, parameters, sizeof parameters));
+    REQUIRE(!memcmp(&valid_resources, &resources, sizeof resources));
+    REQUIRE(render_shader_model_material_snapshot(
         index,
         NULL,
         (ecs_entity){ 0 },
@@ -748,10 +768,10 @@ static void flattened_parameter_limit()
     memcpy(before_parameters, parameters, sizeof parameters);
     behavior_asset *too_many = parameter_material(right->name, 16);
     render_shader_model_stats_reset();
-    assert(!render_shader_upsert(too_many, &error));
-    assert(strstr(error.message, "32") || strstr(error.message, "parameter"));
-    assert(render_shader_model_stats().compilations == 0);
-    assert(render_shader_model_material_snapshot(
+    REQUIRE(!render_shader_upsert(too_many, &error));
+    REQUIRE(strstr(error.message, "32") || strstr(error.message, "parameter"));
+    REQUIRE(render_shader_model_stats().compilations == 0);
+    REQUIRE(render_shader_model_material_snapshot(
         index,
         NULL,
         (ecs_entity){ 0 },
@@ -762,30 +782,31 @@ static void flattened_parameter_limit()
         &resources,
         &error
     ));
-    assert(!memcmp(before_bindings, bindings, sizeof bindings));
-    assert(!memcmp(before_parameters, parameters, sizeof parameters));
+    REQUIRE(!memcmp(before_bindings, bindings, sizeof bindings));
+    REQUIRE(!memcmp(before_parameters, parameters, sizeof parameters));
     behavior_asset_free(too_many);
     behavior_asset_free(left);
     behavior_asset_free(right);
     behavior_asset_free(a);
     authoring_shader_catalog_clear();
+    return true;
 }
 
-static void combined_ramp_limit()
+TEST_CASE(combined_ramp_limit)
 {
     authoring_shader_catalog_clear();
     behavior_asset *left = ramp_material("RampsLeft", 8),
                    *right = ramp_material("RampsRight", 8);
     behavior_asset *a = painted_pair("RampPaintPair", left->name, right->name);
     shader_error error = { 0 };
-    assert(render_shader_upsert(left, &error));
-    assert(render_shader_upsert(right, &error));
+    REQUIRE(render_shader_upsert(left, &error));
+    REQUIRE(render_shader_upsert(right, &error));
     const behavior_asset *models[] = { a };
-    assert(render_shader_models_upsert(models, 1, &error));
+    REQUIRE(render_shader_models_upsert(models, 1, &error));
     int index = render_shader_find(a->name);
     float bindings[MODEL_MATERIAL_SLOT_MAX + 1][4], parameters[32][4];
     render_shader_set resources = { 0 };
-    assert(render_shader_model_material_snapshot(
+    REQUIRE(render_shader_model_material_snapshot(
         index,
         NULL,
         (ecs_entity){ 0 },
@@ -796,13 +817,13 @@ static void combined_ramp_limit()
         &resources,
         &error
     ));
-    assert(render_shader_ramp_vec4_count(&resources) == 512);
+    REQUIRE(render_shader_ramp_vec4_count(&resources) == 512);
     behavior_asset *too_many = ramp_material(right->name, 9);
     render_shader_model_stats_reset();
-    assert(!render_shader_upsert(too_many, &error));
-    assert(strstr(error.message, "512") || strstr(error.message, "ramp"));
-    assert(render_shader_model_stats().compilations == 0);
-    assert(render_shader_model_material_snapshot(
+    REQUIRE(!render_shader_upsert(too_many, &error));
+    REQUIRE(strstr(error.message, "512") || strstr(error.message, "ramp"));
+    REQUIRE(render_shader_model_stats().compilations == 0);
+    REQUIRE(render_shader_model_material_snapshot(
         index,
         NULL,
         (ecs_entity){ 0 },
@@ -813,44 +834,46 @@ static void combined_ramp_limit()
         &resources,
         &error
     ));
-    assert(render_shader_ramp_vec4_count(&resources) == 512);
+    REQUIRE(render_shader_ramp_vec4_count(&resources) == 512);
     behavior_asset_free(too_many);
     behavior_asset_free(left);
     behavior_asset_free(right);
     behavior_asset_free(a);
     authoring_shader_catalog_clear();
+    return true;
 }
 
-static void scoped_namespace_collision()
+TEST_CASE(scoped_namespace_collision)
 {
     authoring_shader_catalog_clear();
     behavior_asset *paint = parameter_material("NamespacePaint", 1);
     behavior_asset *other = parameter_material("NamespaceOther", 1);
-    assert(!graph_set_node_reference(other->graph, other->graph->nodes[0], 0, "Normal"));
+    REQUIRE(!graph_set_node_reference(other->graph, other->graph->nodes[0], 0, "Normal"));
     behavior_asset *a = painted_pair("NamespaceModel", paint->name, other->name);
     for (int i = 0; i < acount(a->graph->nodes); i++) {
         node *n = a->graph->nodes[i];
         if (n->desc != &NODE_ModelMaterialSlot) {
             continue;
         }
-        assert(
+        REQUIRE(
             !graph_set_node_reference(a->graph, n, 0, !strcmp(n->reference_name, "Left") ? "Paint" : "Other")
         );
     }
     shader_error error = { 0 };
-    assert(render_shader_upsert(paint, &error));
-    assert(render_shader_upsert(other, &error));
+    REQUIRE(render_shader_upsert(paint, &error));
+    REQUIRE(render_shader_upsert(other, &error));
     const behavior_asset *models[] = { a };
-    assert(render_shader_models_upsert(models, 1, &error));
+    REQUIRE(render_shader_models_upsert(models, 1, &error));
     int index = render_shader_find(a->name);
     model_material_slot applied;
-    assert(render_shader_model_material_slot(index, 0, &applied));
+    REQUIRE(render_shader_model_material_slot(index, 0, &applied));
     char lookup[1024], overrides[1200];
     snprintf(lookup, sizeof lookup, "%s.Color0", applied.name);
     snprintf(overrides, sizeof overrides, "(array)\"material.%s\" 0 0.5 0.25\n", lookup);
+    REQUIRE(render_shader_parameters_validate(index, overrides, &error));
     float bindings[MODEL_MATERIAL_SLOT_MAX + 1][4], parameters[32][4];
     render_shader_set resources = { 0 };
-    assert(render_shader_model_material_snapshot(
+    REQUIRE(render_shader_model_material_snapshot(
         index,
         NULL,
         (ecs_entity){ 0 },
@@ -862,22 +885,22 @@ static void scoped_namespace_collision()
         &error
     ));
     int offset = (int)bindings[1][1];
-    near(parameters[offset][0], 0);
-    near(parameters[offset][1], .5f);
-    near(parameters[offset][2], .25f);
+    REQUIRE(near(parameters[offset][0], 0));
+    REQUIRE(near(parameters[offset][1], .5f));
+    REQUIRE(near(parameters[offset][2], .25f));
     float before_bindings[MODEL_MATERIAL_SLOT_MAX + 1][4], before_parameters[32][4];
     memcpy(before_bindings, bindings, sizeof bindings);
     memcpy(before_parameters, parameters, sizeof parameters);
     render_shader_set before_resources = resources;
     unsigned revision = render_shader_revision();
     behavior_asset *collision = parameter_material(other->name, 1);
-    assert(!graph_set_node_reference(collision->graph, collision->graph->nodes[0], 0, lookup));
+    REQUIRE(!graph_set_node_reference(collision->graph, collision->graph->nodes[0], 0, lookup));
     render_shader_model_stats_reset();
-    assert(!render_shader_upsert(collision, &error));
-    assert(strstr(error.message, "namespace collision"));
-    assert(render_shader_revision() == revision);
-    assert(render_shader_model_stats().compilations == 0);
-    assert(render_shader_model_material_snapshot(
+    REQUIRE(!render_shader_upsert(collision, &error));
+    REQUIRE(strstr(error.message, "namespace collision"));
+    REQUIRE(render_shader_revision() == revision);
+    REQUIRE(render_shader_model_stats().compilations == 0);
+    REQUIRE(render_shader_model_material_snapshot(
         index,
         NULL,
         (ecs_entity){ 0 },
@@ -888,78 +911,38 @@ static void scoped_namespace_collision()
         &resources,
         &error
     ));
-    assert(!memcmp(before_bindings, bindings, sizeof bindings));
-    assert(!memcmp(before_parameters, parameters, sizeof parameters));
-    assert(!memcmp(&before_resources, &resources, sizeof resources));
+    REQUIRE(!memcmp(before_bindings, bindings, sizeof bindings));
+    REQUIRE(!memcmp(before_parameters, parameters, sizeof parameters));
+    REQUIRE(!memcmp(&before_resources, &resources, sizeof resources));
     behavior_asset_free(collision);
     behavior_asset_free(paint);
     behavior_asset_free(other);
     behavior_asset_free(a);
     authoring_shader_catalog_clear();
+    return true;
 }
 
-static void live_rename_updates_applied_sources()
+static void teardown()
 {
-    ecs_world *ecs = ecs_world_new();
-    game_preview_world *world = game_preview_world_new(ecs);
-    behavior_asset *paint = material("LiveRenamePaint", 1, 0, 0);
-    game_preview_definition
-        *paint_definition = game_preview_definition_new(paint->name, paint);
-    assert(!game_preview_add_definition(world, paint_definition));
-    behavior_asset *base = model("LiveRenameBase");
-    node *body = part(base->graph, "Body", 2);
-    node *paint_slot = slot(base->graph, "Paint", paint->name);
-    connect(base->graph, paint_slot, body, 1);
-    publish(base->graph, body);
-    game_preview_definition *base_definition = game_preview_definition_new(base->name, base);
-    assert(!game_preview_add_definition(world, base_definition));
-    behavior_asset *parent = model("LiveRenameParent");
-    node *instance = graph_add_node(parent->graph, &NODE_ModelInstance);
-    instance->reference_asset = graph_own_str(parent->graph, base->name, strlen(base->name));
-    pin_spec override = { .name = "Paint",
-                          .type = PIN_STR,
-                          .type_name = "MaterialAsset",
-                          .declaration_id = paint_slot->id,
-                          .default_value = { .type = PIN_STR,
-                                             .type_name = "MaterialAsset",
-                                             .str = paint->name } };
-    assert(graph_add_pin(parent->graph, instance, false, &override) == 0);
-    publish(parent->graph, instance);
-    uint64_t instance_id = instance->id;
-    game_preview_definition
-        *parent_definition = game_preview_definition_new(parent->name, parent);
-    assert(!game_preview_add_definition(world, parent_definition));
-    assert(!game_preview_rename_definition(world, "LiveRenameBase", "LiveRenamedBase"));
-    assert(!strcmp(base_definition->working->name, "LiveRenamedBase"));
-    assert(!strcmp(base_definition->applied->name, "LiveRenamedBase"));
-    assert(!strcmp(instance->reference_asset, "LiveRenamedBase"));
-    node *applied_instance = graph_node_by_id(parent_definition->applied->graph, instance_id);
-    assert(applied_instance && !strcmp(applied_instance->reference_asset, "LiveRenamedBase"));
-    assert(!game_preview_rename_definition(world, "LiveRenamePaint", "LiveRenamedPaint"));
-    assert(!strcmp(paint_definition->working->name, "LiveRenamedPaint"));
-    assert(!strcmp(paint_definition->applied->name, "LiveRenamedPaint"));
-    assert(!strcmp(instance->input_pins[0].default_value.str, "LiveRenamedPaint"));
-    assert(!strcmp(applied_instance->input_pins[0].default_value.str, "LiveRenamedPaint"));
-    assert(!game_preview_remove_definition(world, "LiveRenameParent"));
-    assert(!game_preview_remove_definition(world, "LiveRenamedBase"));
-    assert(!game_preview_remove_definition(world, "LiveRenamedPaint"));
-    game_preview_world_free(world);
-    ecs_world_free(ecs);
+    authoring_shader_catalog_clear();
 }
 
 void test_model_materials()
 {
-    live_rename_updates_applied_sources();
-    material_coordinate_inputs();
-    csg_ownership();
-    transformed_part_coordinates();
-    transformed_part_frame();
-    extreme_part_frames();
-    isolated_part_shaders();
-    material_assignment_lifecycle();
-    reused_nested_materials();
-    catalog_material_edits();
-    flattened_parameter_limit();
-    combined_ramp_limit();
-    scoped_namespace_collision();
+    test_graph_packs_install();
+    pu_setup(NULL, teardown);
+    RUN_TEST_CASE(material_coordinate_inputs);
+    RUN_TEST_CASE(csg_ownership);
+    RUN_TEST_CASE(transformed_part_coordinates);
+    RUN_TEST_CASE(transformed_part_frame);
+    RUN_TEST_CASE(extreme_part_frames);
+    RUN_TEST_CASE(isolated_part_shaders);
+    RUN_TEST_CASE(material_assignment_lifecycle);
+    RUN_TEST_CASE(reused_nested_materials);
+    RUN_TEST_CASE(catalog_material_edits);
+    RUN_TEST_CASE(flattened_parameter_limit);
+    RUN_TEST_CASE(combined_ramp_limit);
+    RUN_TEST_CASE(scoped_namespace_collision);
+    pu_clear_setup();
+    test_graph_packs_restore();
 }

@@ -4,6 +4,8 @@
 #include "graph/modeling/model_compile.h"
 #include "graph/nodes/behavior_expression.h"
 #include "graph/nodes/core_nodes.h"
+#include "test/graph/packs.h"
+#include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
 
 #include <assert.h>
@@ -12,9 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void near(float actual, float expected)
+static bool near(float actual, float expected)
 {
-    assert(fabsf(actual - expected) < .00001f);
+    return fabsf(actual - expected) < .00001f;
 }
 static void radius(graph *g, node *sphere, float value)
 {
@@ -29,23 +31,10 @@ static float sample(const model_program *program, float x, float y, float z)
     assert(shader_graph_eval_outputs(&program->shader, &context, NULL, values, &error));
     return values[0][0];
 }
-static void test_modeling_solids();
-static void function_and_array_solids();
-static void unused_function_diagnostics();
-static void runtime_numeric_arrays();
-static void profile_function_smoke();
-static void material_function_smoke();
-static void hit_resolver_limit();
-static void runtime_model_expression();
-static void shared_model_expressions();
-static void mixed_hit_ownership();
-static void rectangular_polygon_lowering();
-static void static_part_bounds();
-
-void test_modeling()
+TEST_CASE(sphere_distances_bounds_roundtrip_and_diagnostics)
 {
-    assert(registry_node_by_name("Model Sphere") == &NODE_ModelSphere);
-    assert(registry_node_by_name("Model Output") == &NODE_ModelOutput);
+    REQUIRE(registry_node_by_name("Model Sphere") == &NODE_ModelSphere);
+    REQUIRE(registry_node_by_name("Model Output") == &NODE_ModelOutput);
     behavior_asset *asset = behavior_asset_new("SphereModel");
     asset->domain = BEHAVIOR_DOMAIN_MODEL;
     graph *g = asset->graph;
@@ -55,37 +44,37 @@ void test_modeling()
     shader_error error;
     model_program program;
     model_program_init(&program);
-    assert(!model_compile(asset, &program, &error));
-    assert(error.node == output->id && strstr(error.message, "required"));
-    assert(program.bounds.empty && acount(program.shader.nodes) == 0);
-    assert(graph_connect_data(g, sphere, 0, output, 0) == 0);
-    assert(model_compile(asset, &program, &error));
-    assert(model_graph_validate(g, &error));
-    near(sample(&program, 0, 0, 0), -5);
-    near(sample(&program, 5, 0, 0), 0);
-    near(sample(&program, 0, -5, 0), 0);
-    near(sample(&program, 0, 0, 6), 1);
-    near(sample(&program, 3, 4, 12), 8);
-    near(sample(&program, -3, -4, -12), 8);
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(error.node == output->id && strstr(error.message, "required"));
+    REQUIRE(program.bounds.empty && acount(program.shader.nodes) == 0);
+    REQUIRE(graph_connect_data(g, sphere, 0, output, 0) == 0);
+    REQUIRE(model_compile(asset, &program, &error));
+    REQUIRE(model_graph_validate(g, &error));
+    REQUIRE(near(sample(&program, 0, 0, 0), -5));
+    REQUIRE(near(sample(&program, 5, 0, 0), 0));
+    REQUIRE(near(sample(&program, 0, -5, 0), 0));
+    REQUIRE(near(sample(&program, 0, 0, 6), 1));
+    REQUIRE(near(sample(&program, 3, 4, 12), 8));
+    REQUIRE(near(sample(&program, -3, -4, -12), 8));
     model_bounds bounds;
-    assert(model_program_bounds(&program, NULL, &bounds, &error));
-    assert(!bounds.empty);
+    REQUIRE(model_program_bounds(&program, NULL, &bounds, &error));
+    REQUIRE(!bounds.empty);
     for (int axis = 0; axis < 3; axis++) {
-        near(bounds.min[axis], -5);
-        near(bounds.max[axis], 5);
+        REQUIRE(near(bounds.min[axis], -5));
+        REQUIRE(near(bounds.max[axis], 5));
     }
     char *source = behavior_asset_save(asset);
-    assert(source && strstr(source, "model"));
+    REQUIRE(source && strstr(source, "model"));
     behavior_asset *reloaded = behavior_asset_load(source);
-    assert(reloaded && reloaded->domain == BEHAVIOR_DOMAIN_MODEL);
-    assert(reloaded->graph->nodes[0]->id == sphere->id);
-    assert(reloaded->graph->nodes[1]->id == output->id);
+    REQUIRE(reloaded && reloaded->domain == BEHAVIOR_DOMAIN_MODEL);
+    REQUIRE(reloaded->graph->nodes[0]->id == sphere->id);
+    REQUIRE(reloaded->graph->nodes[1]->id == output->id);
     model_program loaded;
     model_program_init(&loaded);
-    assert(model_compile(reloaded, &loaded, &error));
-    near(sample(&loaded, 3, 4, 12), 8);
+    REQUIRE(model_compile(reloaded, &loaded, &error));
+    REQUIRE(near(sample(&loaded, 3, 4, 12), 8));
     for (int i = 0; i < acount(loaded.shader.nodes); i++) {
-        assert(loaded.shader.nodes[i].source_id == sphere->id);
+        REQUIRE(loaded.shader.nodes[i].source_id == sphere->id);
     }
     free(source);
     behavior_asset_free(reloaded);
@@ -93,50 +82,38 @@ void test_modeling()
     float invalid[] = { 0, -1, INFINITY, NAN };
     for (int i = 0; i < 4; i++) {
         radius(g, sphere, invalid[i]);
-        assert(!model_compile(asset, &program, &error));
-        assert(error.node == sphere->id && strstr(error.message, "positive"));
-        near(sample(&program, 3, 4, 12), 8);
-        near(program.bounds.max[0], 5);
+        REQUIRE(!model_compile(asset, &program, &error));
+        REQUIRE(error.node == sphere->id && strstr(error.message, "positive"));
+        REQUIRE(near(sample(&program, 3, 4, 12), 8));
+        REQUIRE(near(program.bounds.max[0], 5));
     }
     float overflow[] = { 1e20f, 3e38f };
     for (int i = 0; i < 2; i++) {
         radius(g, sphere, overflow[i]);
-        assert(!model_compile(asset, &program, &error));
-        assert(error.node == sphere->id && strstr(error.message, "distance range"));
-        near(sample(&program, 3, 4, 12), 8);
-        near(program.bounds.max[0], 5);
+        REQUIRE(!model_compile(asset, &program, &error));
+        REQUIRE(error.node == sphere->id && strstr(error.message, "distance range"));
+        REQUIRE(near(sample(&program, 3, 4, 12), 8));
+        REQUIRE(near(program.bounds.max[0], 5));
     }
     model_program large;
     model_program_init(&large);
     radius(g, sphere, 1e18f);
-    assert(model_compile(asset, &large, &error));
+    REQUIRE(model_compile(asset, &large, &error));
     float corner = sample(&large, 1e18f, -1e18f, 1e18f);
-    assert(isfinite(corner) && corner > 0);
-    assert(fabsf(corner / 1e18f - (sqrtf(3) - 1)) < .00001f);
+    REQUIRE(isfinite(corner) && corner > 0);
+    REQUIRE(fabsf(corner / 1e18f - (sqrtf(3) - 1)) < .00001f);
     model_program_free(&large);
     radius(g, sphere, 2);
-    assert(model_compile(asset, &program, &error));
-    near(sample(&program, 0, 0, 0), -2);
-    near(program.bounds.max[2], 2);
+    REQUIRE(model_compile(asset, &program, &error));
+    REQUIRE(near(sample(&program, 0, 0, 0), -2));
+    REQUIRE(near(program.bounds.max[2], 2));
     node *unconnected = graph_add_node(g, &NODE_ModelSphere);
     radius(g, unconnected, -3);
-    assert(!model_compile(asset, &program, &error));
-    assert(error.node == unconnected->id);
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(error.node == unconnected->id);
     model_program_free(&program);
     behavior_asset_free(asset);
-    puts("Declarative model Sphere distances, bounds, source IDs, roundtrip and diagnostics: PASS");
-    test_modeling_solids();
-    function_and_array_solids();
-    unused_function_diagnostics();
-    runtime_numeric_arrays();
-    profile_function_smoke();
-    material_function_smoke();
-    hit_resolver_limit();
-    runtime_model_expression();
-    shared_model_expressions();
-    mixed_hit_ownership();
-    rectangular_polygon_lowering();
-    static_part_bounds();
+    return true;
 }
 
 static void model_vector(graph *g, node *n, int pin, float x, float y, float z)
@@ -191,7 +168,7 @@ static node *translated_sphere(graph *g, float r, float x)
     connect_model(g, sphere, translate, 0);
     return translate;
 }
-static void primitive_solids()
+TEST_CASE(primitive_solids)
 {
     node_desc *solids[] = { &NODE_ModelBox,
                             &NODE_ModelRoundedBox,
@@ -214,31 +191,31 @@ static void primitive_solids()
         model_program program;
         finish_model(asset, solid, &program);
         if (i == 0) {
-            near(sample(&program, 0, 0, 0), -2);
-            near(sample(&program, 2, 3, 4), 0);
-            near(sample(&program, 3, 4, 5), sqrtf(3));
+            REQUIRE(near(sample(&program, 0, 0, 0), -2));
+            REQUIRE(near(sample(&program, 2, 3, 4), 0));
+            REQUIRE(near(sample(&program, 3, 4, 5), sqrtf(3)));
         }
         if (i == 1) {
-            near(sample(&program, 2, 0, 0), 0);
-            near(sample(&program, 2, 3, 4), (sqrtf(3) - 1) * .5f);
-            near(program.bounds.max[2], 4);
+            REQUIRE(near(sample(&program, 2, 0, 0), 0));
+            REQUIRE(near(sample(&program, 2, 3, 4), (sqrtf(3) - 1) * .5f));
+            REQUIRE(near(program.bounds.max[2], 4));
         }
         if (i == 2) {
-            near(sample(&program, 0, 0, 0), -2);
-            near(sample(&program, 0, 3, 0), 0);
-            near(sample(&program, 3, 4, 0), sqrtf(2));
+            REQUIRE(near(sample(&program, 0, 0, 0), -2));
+            REQUIRE(near(sample(&program, 0, 3, 0), 0));
+            REQUIRE(near(sample(&program, 3, 4, 0), sqrtf(2)));
         }
         if (i == 3) {
-            near(sample(&program, 0, 5, 0), 0);
-            near(sample(&program, 3, 3, 0), 1);
-            near(sample(&program, 3, 7, 0), 3);
-            near(program.bounds.max[1], 5);
+            REQUIRE(near(sample(&program, 0, 5, 0), 0));
+            REQUIRE(near(sample(&program, 3, 3, 0), 1));
+            REQUIRE(near(sample(&program, 3, 7, 0), 3));
+            REQUIRE(near(program.bounds.max[1], 5));
         }
         if (i == 4) {
-            near(sample(&program, 3, 0, 0), -1);
-            near(sample(&program, 3, 1, 0), 0);
-            near(sample(&program, 0, 0, 0), 2);
-            near(sample(&program, 0, 0, 4), 0);
+            REQUIRE(near(sample(&program, 3, 0, 0), -1));
+            REQUIRE(near(sample(&program, 3, 1, 0), 0));
+            REQUIRE(near(sample(&program, 0, 0, 0), 2));
+            REQUIRE(near(sample(&program, 0, 0, 4), 0));
         }
         for (int corner = 0; corner < 8; corner++) {
             float p[3];
@@ -246,13 +223,14 @@ static void primitive_solids()
                 p[axis] = (corner & (1 << axis)) ? program.bounds.max[axis]
                                                  : program.bounds.min[axis];
             }
-            assert(isfinite(sample(&program, p[0], p[1], p[2])));
+            REQUIRE(isfinite(sample(&program, p[0], p[1], p[2])));
         }
         model_program_free(&program);
         behavior_asset_free(asset);
     }
+    return true;
 }
-static void transformed_solids()
+TEST_CASE(transformed_solids)
 {
     behavior_asset *asset = model_asset();
     graph *g = asset->graph;
@@ -266,22 +244,22 @@ static void transformed_solids()
     connect_model(g, translate, rotate, 0);
     model_program program;
     finish_model(asset, rotate, &program);
-    near(sample(&program, -3, 2, 4), -1);
-    near(sample(&program, -3, 3, 4), 0);
-    near(program.bounds.min[0], -5);
-    near(program.bounds.max[0], -1);
-    near(program.bounds.min[1], 1);
-    near(program.bounds.max[1], 3);
+    REQUIRE(near(sample(&program, -3, 2, 4), -1));
+    REQUIRE(near(sample(&program, -3, 3, 4), 0));
+    REQUIRE(near(program.bounds.min[0], -5));
+    REQUIRE(near(program.bounds.max[0], -1));
+    REQUIRE(near(program.bounds.min[1], 1));
+    REQUIRE(near(program.bounds.max[1], 3));
     model_vector(g, translate, 1, 0, 0, 0);
     model_vector(g, rotate, 1, 1.57079632679f, 1.57079632679f, 1.57079632679f);
     shader_error error;
-    assert(model_compile(asset, &program, &error));
+    REQUIRE(model_compile(asset, &program, &error));
     /* Independent successive quarter turns: (1,2,3) -> (1,-3,2)
      * -> (2,-3,-1) -> (3,2,-1). */
-    near(sample(&program, 3, 2, -1), 0);
-    near(program.bounds.max[0], 3);
-    near(program.bounds.max[1], 2);
-    near(program.bounds.max[2], 1);
+    REQUIRE(near(sample(&program, 3, 2, -1), 0));
+    REQUIRE(near(program.bounds.max[0], 3));
+    REQUIRE(near(program.bounds.max[1], 2));
+    REQUIRE(near(program.bounds.max[2], 1));
     model_program_free(&program);
     behavior_asset_free(asset);
 
@@ -292,19 +270,19 @@ static void transformed_solids()
     model_vector(g, scale, 1, 2, 1, .5f);
     connect_model(g, sphere, scale, 0);
     finish_model(asset, scale, &program);
-    near(sample(&program, 2, 0, 0), 0);
-    near(sample(&program, 0, 0, .5f), 0);
-    near(sample(&program, 3, 0, 0), .25f);
-    near(program.bounds.max[0], 2);
-    near(program.bounds.max[2], .5f);
+    REQUIRE(near(sample(&program, 2, 0, 0), 0));
+    REQUIRE(near(sample(&program, 0, 0, .5f), 0));
+    REQUIRE(near(sample(&program, 3, 0, 0), .25f));
+    REQUIRE(near(program.bounds.max[0], 2));
+    REQUIRE(near(program.bounds.max[2], .5f));
     float ray = 4;
     for (int step = 0; step < 100; step++) {
         float distance = sample(&program, ray, 0, 0);
-        assert(distance >= 0 && distance <= ray - 2 + .00001f);
+        REQUIRE(distance >= 0 && distance <= ray - 2 + .00001f);
         ray -= distance;
-        assert(ray >= 2 - .00001f);
+        REQUIRE(ray >= 2 - .00001f);
     }
-    assert(ray < 2.0001f);
+    REQUIRE(ray < 2.0001f);
     for (int x = -4; x <= 4; x++) {
         for (int y = -4; y <= 4; y++) {
             for (int z = -4; z <= 4; z++) {
@@ -312,9 +290,9 @@ static void transformed_solids()
                 double implicit = p[0] * p[0] / 4.0 + p[1] * p[1] +
                                   p[2] * p[2] / .25 - 1;
                 float d = sample(&program, p[0], p[1], p[2]);
-                assert(isfinite(d));
+                REQUIRE(isfinite(d));
                 if (fabs(implicit) > .00001) {
-                    assert((d < 0) == (implicit < 0));
+                    REQUIRE((d < 0) == (implicit < 0));
                 }
                 float gradient[3];
                 for (int axis = 0; axis < 3; axis++) {
@@ -325,7 +303,7 @@ static void transformed_solids()
                                       sample(&program, b[0], b[1], b[2])) /
                                      .002f;
                 }
-                assert(
+                REQUIRE(
                     gradient[0] * gradient[0] + gradient[1] * gradient[1] +
                         gradient[2] * gradient[2] <=
                     1.001f
@@ -342,13 +320,14 @@ static void transformed_solids()
     node *reflect = model_node(g, &NODE_ModelReflect);
     connect_model(g, offset, reflect, 0);
     finish_model(asset, reflect, &program);
-    near(sample(&program, -3, 0, 0), -1);
-    near(program.bounds.min[0], -4);
-    near(program.bounds.max[0], -2);
+    REQUIRE(near(sample(&program, -3, 0, 0), -1));
+    REQUIRE(near(program.bounds.min[0], -4));
+    REQUIRE(near(program.bounds.max[0], -2));
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
-static void boolean_solids()
+TEST_CASE(boolean_solids)
 {
     node_desc *operations[] = { &NODE_ModelUnion,
                                 &NODE_ModelIntersection,
@@ -368,24 +347,24 @@ static void boolean_solids()
         model_program program;
         finish_model(asset, combine, &program);
         if (i == 0) {
-            near(sample(&program, 0, 0, 0), 0);
-            near(sample(&program, 3, 0, 0), 1);
-            near(program.bounds.min[0], -2);
+            REQUIRE(near(sample(&program, 0, 0, 0), 0));
+            REQUIRE(near(sample(&program, 3, 0, 0), 1));
+            REQUIRE(near(program.bounds.min[0], -2));
         }
         if (i == 1) {
-            assert(program.bounds.empty);
-            near(sample(&program, 0, 0, 0), 0);
+            REQUIRE(program.bounds.empty);
+            REQUIRE(near(sample(&program, 0, 0, 0), 0));
         }
         if (i == 2) {
-            near(sample(&program, 0, 0, 0), 1);
-            near(sample(&program, 1, 0, 0), 0);
-            near(sample(&program, 2, 0, 0), -1);
-            near(program.bounds.max[0], 3);
+            REQUIRE(near(sample(&program, 0, 0, 0), 1));
+            REQUIRE(near(sample(&program, 1, 0, 0), 0));
+            REQUIRE(near(sample(&program, 2, 0, 0), -1));
+            REQUIRE(near(program.bounds.max[0], 3));
         }
         if (i == 3) {
-            near(sample(&program, 0, 0, 0), -.25f);
-            near(program.bounds.min[0], -2.25f);
-            near(program.bounds.max[0], 2.25f);
+            REQUIRE(near(sample(&program, 0, 0, 0), -.25f));
+            REQUIRE(near(program.bounds.min[0], -2.25f));
+            REQUIRE(near(program.bounds.max[0], 2.25f));
         }
         model_program_free(&program);
         behavior_asset_free(asset);
@@ -402,9 +381,9 @@ static void boolean_solids()
     connect_model(g, scale, smooth, 1);
     model_program program;
     finish_model(asset, smooth, &program);
-    near(sample(&program, 125, 0, 0), 0);
-    near(program.bounds.max[0], 125);
-    near(program.bounds.min[0], -125);
+    REQUIRE(near(sample(&program, 125, 0, 0), 0));
+    REQUIRE(near(program.bounds.max[0], 125));
+    REQUIRE(near(program.bounds.min[0], -125));
     model_program_free(&program);
     behavior_asset_free(asset);
 
@@ -419,14 +398,15 @@ static void boolean_solids()
     connect_model(g, intersection, smooth, 0);
     connect_model(g, intersection, smooth, 1);
     finish_model(asset, smooth, &program);
-    assert(!program.bounds.empty);
-    near(sample(&program, 0, 0, 0), -1);
-    near(program.bounds.min[0], -1);
-    near(program.bounds.max[0], 1);
+    REQUIRE(!program.bounds.empty);
+    REQUIRE(near(sample(&program, 0, 0, 0), -1));
+    REQUIRE(near(program.bounds.min[0], -1));
+    REQUIRE(near(program.bounds.max[0], 1));
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
-static void solid_diagnostics()
+TEST_CASE(solid_diagnostics)
 {
     behavior_asset *asset = model_asset();
     graph *g = asset->graph;
@@ -442,8 +422,8 @@ static void solid_diagnostics()
     model_program program;
     model_program_init(&program);
     shader_error error;
-    assert(!model_compile(asset, &program, &error));
-    assert(error.node && strstr(error.message, "1024"));
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(error.node && strstr(error.message, "1024"));
     model_program_free(&program);
     behavior_asset_free(asset);
 
@@ -456,8 +436,8 @@ static void solid_diagnostics()
     output = model_graph_add_output(g);
     connect_model(g, a, output, 0);
     model_program_init(&program);
-    assert(!model_compile(asset, &program, &error));
-    assert(error.node && strstr(error.message, "cycle"));
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(error.node && strstr(error.message, "cycle"));
     model_program_free(&program);
     behavior_asset_free(asset);
 
@@ -472,25 +452,17 @@ static void solid_diagnostics()
     float invalid[] = { 0, -1, INFINITY };
     for (int i = 0; i < 3; i++) {
         model_vector(g, scale, 1, invalid[i], 1, 1);
-        assert(!model_compile(asset, &program, &error));
-        assert(error.node == scale->id);
+        REQUIRE(!model_compile(asset, &program, &error));
+        REQUIRE(error.node == scale->id);
     }
     model_vector(g, scale, 1, 1e20f, 1, 1);
-    assert(!model_compile(asset, &program, &error));
-    assert(strstr(error.message, "distance range"));
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(strstr(error.message, "distance range"));
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
-static void test_modeling_solids()
-{
-    primitive_solids();
-    transformed_solids();
-    boolean_solids();
-    solid_diagnostics();
-    puts("Declarative solids, XYZ transforms, conservative scaling/sublevel bounds and diagnostics: PASS");
-}
-
-static void function_and_array_solids()
+TEST_CASE(function_and_array_solids)
 {
     behavior_asset *asset = model_asset();
     graph *g = asset->graph;
@@ -507,43 +479,43 @@ static void function_and_array_solids()
                             .type_name = "ShaderVec3",
                             .default_value = { .type = PIN_STRUCT,
                                                .type_name = "ShaderVec3" } };
-    assert(graph_add_pin(fn, entry, 1, &geometry_pin) >= 0);
-    assert(graph_add_pin(fn, entry, 1, &offset_pin) >= 0);
-    assert(graph_add_pin(fn, ret, 0, &geometry_pin) >= 0);
+    REQUIRE(graph_add_pin(fn, entry, 1, &geometry_pin) >= 0);
+    REQUIRE(graph_add_pin(fn, entry, 1, &offset_pin) >= 0);
+    REQUIRE(graph_add_pin(fn, ret, 0, &geometry_pin) >= 0);
     node *translated = model_node(fn, &NODE_ModelTranslate);
-    assert(graph_connect_data(fn, entry, 0, translated, 0) == 0);
-    assert(graph_connect_data(fn, entry, 1, translated, 1) == 0);
-    assert(graph_connect_data(fn, translated, 0, ret, 0) == 0);
+    REQUIRE(graph_connect_data(fn, entry, 0, translated, 0) == 0);
+    REQUIRE(graph_connect_data(fn, entry, 1, translated, 1) == 0);
+    REQUIRE(graph_connect_data(fn, translated, 0, ret, 0) == 0);
     node *sphere = model_node(g, &NODE_ModelSphere);
     node *call = behavior_asset_add_function_call_node(asset, fn);
-    assert(call);
+    REQUIRE(call);
     connect_model(g, sphere, call, 0);
     model_vector(g, call, 1, 4, 5, 6);
     model_program program;
     finish_model(asset, call, &program);
-    near(sample(&program, 4, 5, 6), -1);
-    near(sample(&program, 5, 5, 6), 0);
-    near(program.bounds.min[0], 3);
-    near(program.bounds.max[2], 7);
+    REQUIRE(near(sample(&program, 4, 5, 6), -1));
+    REQUIRE(near(sample(&program, 5, 5, 6), 0));
+    REQUIRE(near(program.bounds.min[0], 3));
+    REQUIRE(near(program.bounds.max[2], 7));
     char *saved = behavior_asset_save(asset);
     behavior_asset *copy = behavior_asset_load(saved);
-    assert(copy);
+    REQUIRE(copy);
     free(saved);
     model_program reloaded;
     model_program_init(&reloaded);
     shader_error error;
-    assert(model_compile(copy, &reloaded, &error));
-    near(sample(&reloaded, 4, 5, 6), -1);
+    REQUIRE(model_compile(copy, &reloaded, &error));
+    REQUIRE(near(sample(&reloaded, 4, 5, 6), -1));
     model_program_free(&reloaded);
     behavior_asset_free(copy);
     node *recursive = behavior_asset_add_function_call_node_to_graph(asset, fn, fn);
-    assert(recursive);
+    REQUIRE(recursive);
     connect_model(fn, entry, recursive, 0);
-    assert(graph_connect_data(fn, entry, 1, recursive, 1) == 0);
-    assert(graph_connect_data(fn, recursive, 0, ret, 0) == 0);
-    assert(!model_compile(asset, &program, &error));
-    assert(strstr(error.message, "cycle"));
-    near(sample(&program, 4, 5, 6), -1);
+    REQUIRE(graph_connect_data(fn, entry, 1, recursive, 1) == 0);
+    REQUIRE(graph_connect_data(fn, recursive, 0, ret, 0) == 0);
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(strstr(error.message, "cycle"));
+    REQUIRE(near(sample(&program, 4, 5, 6), -1));
     model_program_free(&program);
     behavior_asset_free(asset);
 
@@ -555,19 +527,19 @@ static void function_and_array_solids()
     pin_spec scalar_pin = { .name = "Radius",
                             .type = PIN_F32,
                             .default_value = { .type = PIN_F32 } };
-    assert(graph_add_pin(numeric, entry, 1, &scalar_pin) >= 0);
-    assert(graph_add_pin(numeric, ret, 0, &scalar_pin) >= 0);
+    REQUIRE(graph_add_pin(numeric, entry, 1, &scalar_pin) >= 0);
+    REQUIRE(graph_add_pin(numeric, ret, 0, &scalar_pin) >= 0);
     node *multiply = model_node(numeric, (node_desc *)registry_node_by_name("Shader Multiply"));
     model_number(numeric, multiply, 1, 2);
-    assert(graph_connect_data(numeric, entry, 0, multiply, 0) == 0);
-    assert(graph_connect_data(numeric, multiply, 0, ret, 0) == 0);
+    REQUIRE(graph_connect_data(numeric, entry, 0, multiply, 0) == 0);
+    REQUIRE(graph_connect_data(numeric, multiply, 0, ret, 0) == 0);
     call = behavior_asset_add_function_call_node(asset, numeric);
     model_number(g, call, 0, 3);
     sphere = model_node(g, &NODE_ModelSphere);
-    assert(graph_connect_data(g, call, 0, sphere, 0) == 0);
+    REQUIRE(graph_connect_data(g, call, 0, sphere, 0) == 0);
     finish_model(asset, sphere, &program);
-    near(sample(&program, 0, 0, 0), -6);
-    near(program.bounds.max[0], 6);
+    REQUIRE(near(sample(&program, 0, 0, 0), -6));
+    REQUIRE(near(program.bounds.max[0], 6));
     model_program_free(&program);
     behavior_asset_free(asset);
 
@@ -577,25 +549,26 @@ static void function_and_array_solids()
     node *array = model_node(g, &NODE_ModelRadialArray);
     connect_model(g, sphere, array, 0);
     pin_value count = { .type = PIN_I32, .i = 4 };
-    assert(graph_set_pin_default(g, array, 0, 1, &count) == 0);
+    REQUIRE(graph_set_pin_default(g, array, 0, 1, &count) == 0);
     model_number(g, array, 2, 1.57079632679f);
     finish_model(asset, array, &program);
-    near(sample(&program, 3, 0, 0), -.25f);
-    near(sample(&program, -3, 0, 0), -.25f);
-    near(sample(&program, 0, 0, 3), -.25f);
-    near(sample(&program, 0, 0, -3), -.25f);
-    assert(sample(&program, 0, 0, 0) > 2.74f);
-    assert(program.bounds.max[0] >= 3.25f && program.bounds.max[0] < 3.251f);
+    REQUIRE(near(sample(&program, 3, 0, 0), -.25f));
+    REQUIRE(near(sample(&program, -3, 0, 0), -.25f));
+    REQUIRE(near(sample(&program, 0, 0, 3), -.25f));
+    REQUIRE(near(sample(&program, 0, 0, -3), -.25f));
+    REQUIRE(sample(&program, 0, 0, 0) > 2.74f);
+    REQUIRE(program.bounds.max[0] >= 3.25f && program.bounds.max[0] < 3.251f);
     count.i = 65;
-    assert(graph_set_pin_default(g, array, 0, 1, &count) == 0);
-    assert(!model_compile(asset, &program, &error));
-    assert(error.node == array->id && strstr(error.message, "64"));
-    near(sample(&program, 3, 0, 0), -.25f);
+    REQUIRE(graph_set_pin_default(g, array, 0, 1, &count) == 0);
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(error.node == array->id && strstr(error.message, "64"));
+    REQUIRE(near(sample(&program, 3, 0, 0), -.25f));
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
 
-static void unused_function_diagnostics()
+TEST_CASE(unused_function_diagnostics)
 {
     behavior_asset *asset = model_asset();
     graph *g = asset->graph;
@@ -606,18 +579,19 @@ static void unused_function_diagnostics()
           *b = behavior_asset_add_function(asset, "Unused B", 1);
     node *ab = behavior_asset_add_function_call_node_to_graph(asset, a, b),
          *ba = behavior_asset_add_function_call_node_to_graph(asset, b, a);
-    assert(ab && ba);
+    REQUIRE(ab && ba);
     shader_error error;
-    assert(!model_compile(asset, &program, &error));
-    assert(error.node == ba->id && strstr(error.message, "cycle"));
-    near(sample(&program, 0, 0, 0), -1);
-    assert(graph_remove_node(b, ba) == 0);
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(error.node == ba->id && strstr(error.message, "cycle"));
+    REQUIRE(near(sample(&program, 0, 0, 0), -1));
+    REQUIRE(graph_remove_node(b, ba) == 0);
     ab->reference_id = 999999;
-    assert(!model_compile(asset, &program, &error));
-    assert(error.node == ab->id && strstr(error.message, "Missing"));
-    near(sample(&program, 0, 0, 0), -1);
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(error.node == ab->id && strstr(error.message, "Missing"));
+    REQUIRE(near(sample(&program, 0, 0, 0), -1));
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
 
 static node *runtime_parameter(graph *g, const char *name, float value, float min, float max)
@@ -639,7 +613,7 @@ static int runtime_slot(const model_program *p, const node *n)
     assert(false);
     return -1;
 }
-static void runtime_numeric_arrays()
+TEST_CASE(runtime_numeric_arrays)
 {
     behavior_asset *asset = model_asset();
     graph *g = asset->graph;
@@ -656,32 +630,32 @@ static void runtime_numeric_arrays()
     connect_model(g, sphere, array, 0);
     connect_model(g, vector, array, 2);
     pin_value count = { .type = PIN_I32, .i = 3 };
-    assert(!graph_set_pin_default(g, array, 0, 1, &count));
+    REQUIRE(!graph_set_pin_default(g, array, 0, 1, &count));
     model_program program;
     finish_model(asset, array, &program);
     shader_error error;
     float incoming[32][4], prepared[32][4];
     model_bounds bounds;
-    assert(model_program_parameters(&program, incoming, &error));
+    REQUIRE(model_program_parameters(&program, incoming, &error));
     incoming[runtime_slot(&program, step)][0] = 6;
     int node_count = acount(program.shader.nodes);
     shader_node *before = malloc(node_count * sizeof *before);
     memcpy(before, program.shader.nodes, node_count * sizeof *before);
-    assert(model_program_prepare(&program, incoming, prepared, &bounds, &error));
-    near(bounds.max[0], 6.25f);
-    near(bounds.min[0], -.25f);
+    REQUIRE(model_program_prepare(&program, incoming, prepared, &bounds, &error));
+    REQUIRE(near(bounds.max[0], 6.25f));
+    REQUIRE(near(bounds.min[0], -.25f));
     shader_sample_context context = { .object_position = { 3, 0, 0 } };
     float values[SHADER_OUTPUT_MAX][4];
-    assert(shader_graph_eval_outputs(&program.shader, &context, prepared, values, &error));
-    near(values[0][0], -.25f);
-    assert(!memcmp(before, program.shader.nodes, node_count * sizeof *before));
+    REQUIRE(shader_graph_eval_outputs(&program.shader, &context, prepared, values, &error));
+    REQUIRE(near(values[0][0], -.25f));
+    REQUIRE(!memcmp(before, program.shader.nodes, node_count * sizeof *before));
     incoming[runtime_slot(&program, denominator)][0] = 0;
     float preserved[32][4];
     memcpy(preserved, prepared, sizeof preserved);
     model_bounds previous = bounds;
-    assert(!model_program_prepare(&program, incoming, prepared, &bounds, &error));
-    assert(error.node == divide->id && strstr(error.message, "division"));
-    assert(
+    REQUIRE(!model_program_prepare(&program, incoming, prepared, &bounds, &error));
+    REQUIRE(error.node == divide->id && strstr(error.message, "division"));
+    REQUIRE(
         !memcmp(preserved, prepared, sizeof preserved) &&
         !memcmp(&previous, &bounds, sizeof bounds)
     );
@@ -697,15 +671,15 @@ static void runtime_numeric_arrays()
     connect_model(g, sphere, array, 0);
     connect_model(g, step, array, 2);
     count.i = 4;
-    assert(!graph_set_pin_default(g, array, 0, 1, &count));
+    REQUIRE(!graph_set_pin_default(g, array, 0, 1, &count));
     finish_model(asset, array, &program);
-    assert(model_program_parameters(&program, incoming, &error));
+    REQUIRE(model_program_parameters(&program, incoming, &error));
     incoming[runtime_slot(&program, step)][0] = 3.14159265359f;
-    assert(model_program_prepare(&program, incoming, prepared, &bounds, &error));
+    REQUIRE(model_program_prepare(&program, incoming, prepared, &bounds, &error));
     context = (shader_sample_context){ .object_position = { 0, 0, 3 } };
-    assert(shader_graph_eval_outputs(&program.shader, &context, prepared, values, &error));
-    assert(values[0][0] > 3.9f);
-    assert(bounds.max[2] < .251f && bounds.min[2] > -.251f);
+    REQUIRE(shader_graph_eval_outputs(&program.shader, &context, prepared, values, &error));
+    REQUIRE(values[0][0] > 3.9f);
+    REQUIRE(bounds.max[2] < .251f && bounds.min[2] > -.251f);
     model_program_free(&program);
     behavior_asset_free(asset);
 
@@ -725,13 +699,14 @@ static void runtime_numeric_arrays()
     connect_model(g, vector, rotate, 1);
     connect_model(g, rotate, model_graph_add_output(g), 0);
     model_program_init(&program);
-    assert(!model_compile(asset, &program, &error));
-    assert(error.node == rotate->id && strstr(error.message, "32"));
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(error.node == rotate->id && strstr(error.message, "32"));
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
 
-static void profile_function_smoke()
+TEST_CASE(profile_function_smoke)
 {
     behavior_asset *asset = model_asset();
     graph *g = asset->graph;
@@ -751,12 +726,12 @@ static void profile_function_smoke()
                               .type_name = "Geometry3D",
                               .default_value = { .type = PIN_HANDLE,
                                                  .type_name = "Geometry3D" } };
-    assert(graph_add_pin(fn, entry, 1, &profile) >= 0);
-    assert(graph_add_pin(fn, entry, 1, &depth) >= 0);
-    assert(graph_add_pin(fn, ret, 0, &geometry_pin) >= 0);
+    REQUIRE(graph_add_pin(fn, entry, 1, &profile) >= 0);
+    REQUIRE(graph_add_pin(fn, entry, 1, &depth) >= 0);
+    REQUIRE(graph_add_pin(fn, ret, 0, &geometry_pin) >= 0);
     node *extrude = model_node(fn, &NODE_ModelExtrude);
     connect_model(fn, entry, extrude, 0);
-    assert(!graph_connect_data(fn, entry, 1, extrude, 1));
+    REQUIRE(!graph_connect_data(fn, entry, 1, extrude, 1));
     connect_model(fn, extrude, ret, 0);
     node *circle = model_node(g, &NODE_ModelProfileCircle),
          *call = behavior_asset_add_function_call_node(asset, fn);
@@ -765,34 +740,35 @@ static void profile_function_smoke()
     model_number(g, call, 1, .5f);
     model_program program;
     finish_model(asset, call, &program);
-    near(sample(&program, 0, 0, 0), -.5f);
-    near(sample(&program, 2, 0, 0), 0);
-    near(sample(&program, 3, 0, 1.5f), sqrtf(2));
-    near(program.bounds.max[0], 2);
-    near(program.bounds.max[2], .5f);
+    REQUIRE(near(sample(&program, 0, 0, 0), -.5f));
+    REQUIRE(near(sample(&program, 2, 0, 0), 0));
+    REQUIRE(near(sample(&program, 3, 0, 1.5f), sqrtf(2)));
+    REQUIRE(near(program.bounds.max[0], 2));
+    REQUIRE(near(program.bounds.max[2], .5f));
     char *saved = behavior_asset_save(asset);
     behavior_asset *copy = behavior_asset_load(saved);
     free(saved);
-    assert(copy);
+    REQUIRE(copy);
     model_program reloaded;
     model_program_init(&reloaded);
     shader_error error;
-    assert(model_compile(copy, &reloaded, &error));
-    near(sample(&reloaded, 0, 0, 0), -.5f);
+    REQUIRE(model_compile(copy, &reloaded, &error));
+    REQUIRE(near(sample(&reloaded, 0, 0, 0), -.5f));
     model_program_free(&reloaded);
     behavior_asset_free(copy);
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
 
-static void material_function_smoke()
+TEST_CASE(material_function_smoke)
 {
     behavior_asset *asset = model_asset(),
                    *material = behavior_asset_new("FunctionPaint");
     material->domain = BEHAVIOR_DOMAIN_MATERIAL;
     graph *g = asset->graph;
     node *slot = model_node(g, &NODE_ModelMaterialSlot);
-    assert(!graph_set_node_reference(g, slot, 0, "Paint"));
+    REQUIRE(!graph_set_node_reference(g, slot, 0, "Paint"));
     slot->reference_asset = graph_own_str(g, material->name, strlen(material->name));
     graph *fn = behavior_asset_add_function(asset, "Paint Geometry", 1);
     node *entry = graph_node_by_id(fn, fn->entry_id),
@@ -808,13 +784,13 @@ static void material_function_smoke()
         .type_name = "ModelMaterialSlot",
         .default_value = { .type = PIN_HANDLE, .type_name = "ModelMaterialSlot" }
     };
-    assert(graph_add_pin(fn, entry, 1, &geometry) >= 0);
-    assert(graph_add_pin(fn, entry, 1, &binding) >= 0);
-    assert(graph_add_pin(fn, ret, 0, &geometry) >= 0);
+    REQUIRE(graph_add_pin(fn, entry, 1, &geometry) >= 0);
+    REQUIRE(graph_add_pin(fn, entry, 1, &binding) >= 0);
+    REQUIRE(graph_add_pin(fn, ret, 0, &geometry) >= 0);
     node *part = model_node(fn, &NODE_ModelPart);
-    assert(!graph_set_node_reference(fn, part, 0, "Painted Surface"));
+    REQUIRE(!graph_set_node_reference(fn, part, 0, "Painted Surface"));
     connect_model(fn, entry, part, 0);
-    assert(!graph_connect_data(fn, entry, 1, part, 1));
+    REQUIRE(!graph_connect_data(fn, entry, 1, part, 1));
     connect_model(fn, part, ret, 0);
     node *sphere = model_node(g, &NODE_ModelSphere),
          *call = behavior_asset_add_function_call_node(asset, fn);
@@ -825,20 +801,21 @@ static void material_function_smoke()
     model_program program;
     model_program_init(&program);
     shader_error error;
-    assert(model_compile_with_catalog(asset, catalog, 2, &program, &error));
+    REQUIRE(model_compile_with_catalog(asset, catalog, 2, &program, &error));
     model_hit hit;
     float point[3] = { 1, 0, 0 };
-    assert(model_program_hit(&program, NULL, point, &hit, &error));
-    assert(program.parts[hit.part].node == part->id);
-    assert(hit.material == 0);
-    assert(program.material_slots[0].node == slot->id);
-    near(hit.position[0], 1);
+    REQUIRE(model_program_hit(&program, NULL, point, &hit, &error));
+    REQUIRE(program.parts[hit.part].node == part->id);
+    REQUIRE(hit.material == 0);
+    REQUIRE(program.material_slots[0].node == slot->id);
+    REQUIRE(near(hit.position[0], 1));
     model_program_free(&program);
     behavior_asset_free(material);
     behavior_asset_free(asset);
+    return true;
 }
 
-static void hit_resolver_limit()
+TEST_CASE(hit_resolver_limit)
 {
     behavior_asset *previous = model_asset();
     node *sphere = model_node(previous->graph, &NODE_ModelSphere);
@@ -853,7 +830,7 @@ static void hit_resolver_limit()
              *placed = model_node(g, &NODE_ModelTranslate);
         char name[32];
         snprintf(name, sizeof name, "Part %d", i);
-        assert(!graph_set_node_reference(g, part, 0, name));
+        REQUIRE(!graph_set_node_reference(g, part, 0, name));
         connect_model(g, s, part, 0);
         connect_model(g, part, placed, 0);
         model_vector(g, placed, 1, i * 3.0f, 0, 0);
@@ -868,56 +845,58 @@ static void hit_resolver_limit()
     }
     connect_model(g, combined, model_graph_add_output(g), 0);
     shader_error error;
-    assert(!model_compile(asset, &program, &error));
-    assert(error.node && strstr(error.message, "hit resolver") && strstr(error.message, "1024"));
-    near(sample(&program, 0, 0, 0), -1);
+    REQUIRE(!model_compile(asset, &program, &error));
+    REQUIRE(error.node && strstr(error.message, "hit resolver") && strstr(error.message, "1024"));
+    REQUIRE(near(sample(&program, 0, 0, 0), -1));
     model_hit hit;
     float point[3] = { 1, 0, 0 };
-    assert(model_program_hit(&program, NULL, point, &hit, &error));
-    assert(hit.part == -1 && hit.material == -1);
+    REQUIRE(model_program_hit(&program, NULL, point, &hit, &error));
+    REQUIRE(hit.part == -1 && hit.material == -1);
     model_program_free(&program);
     behavior_asset_free(asset);
     behavior_asset_free(previous);
+    return true;
 }
 
-static void runtime_model_expression()
+TEST_CASE(runtime_model_expression)
 {
     behavior_asset *asset = model_asset();
     graph *g = asset->graph;
     node *r = runtime_parameter(g, "Radius", 1.8f, .18f, 5.4f);
     behavior_expression_error expression_error;
     node *expression = behavior_expression_add(asset, g, "r / 1.8", &expression_error);
-    assert(expression && expression->desc == &NODE_BehaviorExpression);
+    REQUIRE(expression && expression->desc == &NODE_BehaviorExpression);
     connect_model(g, r, expression, 0);
     node *sphere = model_node(g, &NODE_ModelSphere);
     connect_model(g, expression, sphere, 0);
     model_program program;
     finish_model(asset, sphere, &program);
-    near(sample(&program, 0, 0, 0), -1);
+    REQUIRE(near(sample(&program, 0, 0, 0), -1));
     shader_error error;
     float incoming[32][4], prepared[32][4];
     model_bounds bounds;
-    assert(model_program_parameters(&program, incoming, &error));
+    REQUIRE(model_program_parameters(&program, incoming, &error));
     incoming[runtime_slot(&program, r)][0] = 3.6f;
     int count = acount(program.shader.nodes);
-    assert(model_program_prepare(&program, incoming, prepared, &bounds, &error));
-    near(bounds.max[0], 2);
+    REQUIRE(model_program_prepare(&program, incoming, prepared, &bounds, &error));
+    REQUIRE(near(bounds.max[0], 2));
     shader_sample_context context = { .object_position = { 2, 0, 0 } };
     float values[SHADER_OUTPUT_MAX][4];
-    assert(shader_graph_eval_outputs(&program.shader, &context, prepared, values, &error));
-    near(values[0][0], 0);
-    assert(acount(program.shader.nodes) == count);
+    REQUIRE(shader_graph_eval_outputs(&program.shader, &context, prepared, values, &error));
+    REQUIRE(near(values[0][0], 0));
+    REQUIRE(acount(program.shader.nodes) == count);
     char *text = behavior_asset_save(asset);
     behavior_asset *loaded = behavior_asset_load(text);
-    assert(loaded && model_compile(loaded, &program, &error));
-    near(sample(&program, 0, 0, 0), -1);
+    REQUIRE(loaded && model_compile(loaded, &program, &error));
+    REQUIRE(near(sample(&program, 0, 0, 0), -1));
     free(text);
     behavior_asset_free(loaded);
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
 
-static void shared_model_expressions()
+TEST_CASE(shared_model_expressions)
 {
     behavior_asset *asset = model_asset();
     graph *g = asset->graph;
@@ -928,7 +907,7 @@ static void shared_model_expressions()
              *part = model_node(g, &NODE_ModelPart);
         char name[32];
         snprintf(name, sizeof name, "Identical Part %d", i);
-        assert(!graph_set_node_reference(g, part, 0, name));
+        REQUIRE(!graph_set_node_reference(g, part, 0, name));
         connect_model(g, sphere, part, 0);
         if (!combined) {
             combined = part;
@@ -942,21 +921,22 @@ static void shared_model_expressions()
     }
     model_program program;
     finish_model(asset, combined, &program);
-    assert(acount(program.shader.nodes) < 100);
-    assert(acount(program.hit_shader.nodes) < 600);
-    near(sample(&program, 1, 0, 0), 0);
-    near(sample(&program, 0, 0, 0), -1);
+    REQUIRE(acount(program.shader.nodes) < 100);
+    REQUIRE(acount(program.hit_shader.nodes) < 600);
+    REQUIRE(near(sample(&program, 1, 0, 0), 0));
+    REQUIRE(near(sample(&program, 0, 0, 0), -1));
     model_hit hit;
     shader_error error;
     float point[3] = { 1, 0, 0 };
-    assert(model_program_hit(&program, NULL, point, &hit, &error));
-    assert(hit.part >= 0 && program.parts[hit.part].node == first);
-    near(hit.position[0], 1);
+    REQUIRE(model_program_hit(&program, NULL, point, &hit, &error));
+    REQUIRE(hit.part >= 0 && program.parts[hit.part].node == first);
+    REQUIRE(near(hit.position[0], 1));
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
 
-static void mixed_hit_ownership()
+TEST_CASE(mixed_hit_ownership)
 {
     behavior_asset *asset = model_asset();
     graph *g = asset->graph;
@@ -965,8 +945,8 @@ static void mixed_hit_ownership()
          *left = model_node(g, &NODE_ModelTranslate),
          *right = translated_sphere(g, 1, 3), *u = model_node(g, &NODE_ModelUnion),
          *outer = model_node(g, &NODE_ModelPart);
-    assert(!graph_set_node_reference(g, inner, 0, "Inner"));
-    assert(!graph_set_node_reference(g, outer, 0, "Outer"));
+    REQUIRE(!graph_set_node_reference(g, inner, 0, "Inner"));
+    REQUIRE(!graph_set_node_reference(g, outer, 0, "Outer"));
     connect_model(g, sphere, inner, 0);
     connect_model(g, inner, left, 0);
     model_vector(g, left, 1, -3, 0, 0);
@@ -978,18 +958,19 @@ static void mixed_hit_ownership()
     model_hit hit;
     shader_error error;
     float point[3] = { -2, 0, 0 };
-    assert(model_program_hit(&program, NULL, point, &hit, &error));
-    assert(program.parts[hit.part].node == inner->id);
-    near(hit.position[0], 1);
+    REQUIRE(model_program_hit(&program, NULL, point, &hit, &error));
+    REQUIRE(program.parts[hit.part].node == inner->id);
+    REQUIRE(near(hit.position[0], 1));
     point[0] = 4;
-    assert(model_program_hit(&program, NULL, point, &hit, &error));
-    assert(program.parts[hit.part].node == outer->id);
-    near(hit.position[0], 4);
+    REQUIRE(model_program_hit(&program, NULL, point, &hit, &error));
+    REQUIRE(program.parts[hit.part].node == outer->id);
+    REQUIRE(near(hit.position[0], 4));
     model_program_free(&program);
     behavior_asset_free(asset);
+    return true;
 }
 
-static void rectangular_polygon_lowering()
+TEST_CASE(rectangular_polygon_lowering)
 {
     for (int revolved = 0; revolved < 2; revolved++) {
         for (int filled = 0; filled < 2; filled++) {
@@ -1006,13 +987,13 @@ static void rectangular_polygon_lowering()
                 pin_value value = { .type = PIN_STRUCT,
                                     .type_name = "ShaderVec2",
                                     .ptr = corners[(i + 2) % 4] };
-                assert(pin_array_push(points, &value) == i);
+                REQUIRE(pin_array_push(points, &value) == i);
             }
             pin_value value = { .type = PIN_STRUCT,
                                 .type_name = "ShaderVec2",
                                 .container = PIN_CONTAINER_ARRAY,
                                 .ptr = points };
-            assert(!graph_set_pin_default(g, profile, false, 0, &value));
+            REQUIRE(!graph_set_pin_default(g, profile, false, 0, &value));
             pin_array_free(points);
             node *solid = model_node(g, revolved ? &NODE_ModelRevolve : &NODE_ModelExtrude);
             connect_model(g, profile, solid, 0);
@@ -1021,7 +1002,7 @@ static void rectangular_polygon_lowering()
             }
             model_program program;
             finish_model(asset, solid, &program);
-            assert(acount(program.shader.nodes) < 45);
+            REQUIRE(acount(program.shader.nodes) < 45);
             for (int i = 0; i < 7; i++) {
                 float x = i * .4f, z = i % 2 ? .7f : 0;
                 for (int j = -2; j <= 2; j++) {
@@ -1035,23 +1016,24 @@ static void rectangular_polygon_lowering()
                         fmaxf(d, 0) * fmaxf(d, 0)
                     );
                     float expected = outside + fminf(fmaxf(a, fmaxf(b, d)), 0);
-                    near(sample(&program, x, y, z), expected);
+                    REQUIRE(near(sample(&program, x, y, z), expected));
                 }
             }
-            assert(profile->desc == &NODE_ModelProfilePolygon);
-            assert(program.bounds.max[0] >= max);
+            REQUIRE(profile->desc == &NODE_ModelProfilePolygon);
+            REQUIRE(program.bounds.max[0] >= max);
             if (revolved && filled) {
-                near(sample(&program, 0, 0, 0), -.04f);
+                REQUIRE(near(sample(&program, 0, 0, 0), -.04f));
             }
             model_program_free(&program);
             behavior_asset_free(asset);
         }
     }
+    return true;
 }
 
 /* Literal geometry has no numeric program. Its selected subtree must still
  * prepare bounds in authored object space through enclosing transforms. */
-static void static_part_bounds()
+TEST_CASE(static_part_bounds)
 {
     behavior_asset *asset = model_asset();
     graph *g = asset->graph;
@@ -1060,7 +1042,7 @@ static void static_part_bounds()
          *translate = model_node(g, &NODE_ModelTranslate),
          *scale = model_node(g, &NODE_ModelScale);
     radius(g, sphere, 2);
-    assert(!graph_set_node_reference(g, part, 0, "Literal sphere"));
+    REQUIRE(!graph_set_node_reference(g, part, 0, "Literal sphere"));
     model_vector(g, translate, 1, 3, 4, 5);
     model_vector(g, scale, 1, 2, 1, 3);
     connect_model(g, sphere, part, 0);
@@ -1068,17 +1050,39 @@ static void static_part_bounds()
     connect_model(g, translate, scale, 0);
     model_program program;
     finish_model(asset, scale, &program);
-    assert(acount(program.parameters) == 0 && acount(program.parts) == 1);
+    REQUIRE(acount(program.parameters) == 0 && acount(program.parts) == 1);
     shader_error error = { 0 };
     model_bounds bounds;
-    assert(model_program_part_bounds(&program, NULL, 0, &bounds, &error));
-    assert(!bounds.empty);
+    REQUIRE(model_program_part_bounds(&program, NULL, 0, &bounds, &error));
+    REQUIRE(!bounds.empty);
     float lo[3] = { 2, 2, 9 }, hi[3] = { 10, 6, 21 };
     for (int i = 0; i < 3; i++) {
-        near(bounds.min[i], lo[i]);
-        near(bounds.max[i], hi[i]);
+        REQUIRE(near(bounds.min[i], lo[i]));
+        REQUIRE(near(bounds.max[i], hi[i]));
     }
     model_program_free(&program);
     behavior_asset_free(asset);
-    puts("Literal model selected-Part transformed bounds: PASS");
+    return true;
+}
+
+void test_modeling()
+{
+    test_graph_packs_install();
+    RUN_TEST_CASE(sphere_distances_bounds_roundtrip_and_diagnostics);
+    RUN_TEST_CASE(primitive_solids);
+    RUN_TEST_CASE(transformed_solids);
+    RUN_TEST_CASE(boolean_solids);
+    RUN_TEST_CASE(solid_diagnostics);
+    RUN_TEST_CASE(function_and_array_solids);
+    RUN_TEST_CASE(unused_function_diagnostics);
+    RUN_TEST_CASE(runtime_numeric_arrays);
+    RUN_TEST_CASE(profile_function_smoke);
+    RUN_TEST_CASE(material_function_smoke);
+    RUN_TEST_CASE(hit_resolver_limit);
+    RUN_TEST_CASE(runtime_model_expression);
+    RUN_TEST_CASE(shared_model_expressions);
+    RUN_TEST_CASE(mixed_hit_ownership);
+    RUN_TEST_CASE(rectangular_polygon_lowering);
+    RUN_TEST_CASE(static_part_bounds);
+    test_graph_packs_restore();
 }

@@ -7815,6 +7815,7 @@ static int enter_scenario_scene(scenario_context *context, const char *json, cha
         apush(
             context->scene_entities,
             ((game_prototype_preview_scene_entity){
+                .name = entity->name,
                 .prototype = prototype,
                 .parent = entity->parent,
                 .components = entity->components,
@@ -12212,6 +12213,41 @@ static int validate_scene_behavior(const char *root, const char *name, char *err
     return found && valid ? CHIBI_AUTOMATION_OK : CHIBI_AUTOMATION_VALIDATION_ERROR;
 }
 
+/* Every entity path a scene's component values name is one of its entities'. */
+static int validate_scene_paths(
+    const game_scene_document *scene,
+    const game_prototype_registry *registry,
+    char *error,
+    size_t error_size
+)
+{
+    int status = CHIBI_AUTOMATION_OK;
+    for (int i = 0; i < acount(scene->entities) && status == CHIBI_AUTOMATION_OK; i++) {
+        const game_scene_entity *entity = &scene->entities[i];
+        game_prototype_link
+            *links = entity->components
+                       ? game_prototype_components_links(registry, entity->components)
+                       : NULL;
+        for (int j = 0; j < acount(links) && status == CHIBI_AUTOMATION_OK; j++) {
+            if (game_scene_document_entity_index(scene, links[j].path) < 0) {
+                snprintf(
+                    error,
+                    error_size,
+                    "Scene entity '%s': %s %s names '%s', but no entity has "
+                    "that path",
+                    entity->name,
+                    links[j].component->name,
+                    links[j].component->type->fields[links[j].field].name,
+                    links[j].path
+                );
+                status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+            }
+        }
+        game_prototype_links_free(links);
+    }
+    return status;
+}
+
 static int validate_scene_dependencies(const char *root, const char *json, char *error, size_t error_size)
 {
     game_scene_document *scene = game_scene_document_load(json, error, error_size);
@@ -12225,7 +12261,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
     }
     prototype_includes includes = { root };
     game_prototype_registry registry = prototype_registry(&includes);
-    int status = CHIBI_AUTOMATION_OK;
+    int status = validate_scene_paths(scene, &registry, error, error_size);
     bool fallout = false;
     for (int i = 0; i < acount(scene->entities) && status == CHIBI_AUTOMATION_OK; i++) {
         game_scene_entity *entity = &scene->entities[i];

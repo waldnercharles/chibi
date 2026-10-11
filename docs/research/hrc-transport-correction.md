@@ -4,7 +4,7 @@ Serial ray segments add optical depths. Alternative paths must average transmiss
 
 `src/render/shaders/hrc/extend.shd` now evaluates the transmission mixture with a stable exponential/logarithm expression. Equal depths return directly, including two half-float infinities. Storage remains eight bytes per interval; no passes, textures or buffers were added.
 
-`test/radiance_intervals.c` dispatches the production shader and compares GPU readback with an independent CPU calculation in physical transmission space. It covers transparent, uniform, mixed clear/opaque, unequal serial, thin-fog and saturated-depth paths. The old shader returned 0.006737947 instead of 0.5000227 for the mixed clear/opaque case, and zero instead of 0.5 for a clear/saturated pair.
+`extend_joins_serial_intervals` in `test/render/radiance.c` (the `radiance` selector) dispatches the production shader and compares GPU readback with an independent CPU calculation in physical transmission space. It covers transparent, uniform, mixed clear/opaque, unequal serial, thin-fog and saturated-depth paths. The old shader returned 0.006737947 instead of 0.5000227 for the mixed clear/opaque case, and zero instead of 0.5 for a clear/saturated pair.
 
 ## Recorded performance evidence
 

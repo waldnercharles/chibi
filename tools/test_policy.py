@@ -20,7 +20,7 @@ PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
     ('--tilemap-project',): 'Reviewed first CPU measurement: fixed sibling Celeste project, pinned local git baseline56ca9d48<=64KiB, Room<=16KiB, Level<=4KiB,1472cells230oldtiles/fiveactors, three owned controller children<=10s each including two headless simulation frames<=15entities, no GPU/network; shared60s',
-    ('--tilemap',): 'Independently reviewed seven fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, one <=4KiB KDL and 64x16 PNG preparation, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',
+    ('--tilemap',): 'Independently reviewed eight fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, two <=4KiB KDL texts, three 64x16 PNG preparations and one rejected 128x128 map, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',
     ('--web-storage',): 'First supervised measurement; independently reviewed thirteen C-owned browser storage and platform cases, tiny in-memory FS and ZIP fixtures executed under Node, no network or GPU, shared60s',
     ('--webgpu-staging',): 'Reviewed C-owned isolated headless Chrome: one64x64quad for120 frames, peak64MiB staging/reuse, two pending-readback ownership checks, allocator restore before callback drain, one app recreation with stale loss, one validation error and real device loss; callback phases<=1s within startup+execution55s/shared60s; docs/testing.md',
     ('--studio-graph-visibility',): 'Reviewed actual installed Studio graph visibility, scene draft history and tilemap viewport bounds/layer picking; two temporary entities and four CPU picks, disposable three-file fixture and isolated prefs, ten hidden 1920x1080 frames at fixed 1/60, shared60s',
@@ -31,11 +31,19 @@ NATIVE = {
     ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
     ('--viewport-resize',): 'Reviewed hidden 64x64 app: an engine viewport takes its first requested size at once and later sizes after two draws; GPU; docs/testing.md',
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
+    ('--radiance',): 'Reviewed hidden 128x128 app: HRC emitter, wall, absorption, bounce and transparent-feedback transport, reset, resize and reused capacity, split color, fractional cells, reduced reconstruction, fitted lighting, every resolution combination, the adaptive ladder, GPU pass timing, and the extend and filter passes alone, with readback; GPU; docs/testing.md',
+    ('--radiance-depth',): 'Reviewed hidden 32x32 app with 32x32 and 128x128 targets: HRC Depth thickness light through slabs that block by height unless they glow, from small, moving, edge and mixed-color sources, its falloff, perspective, depth gain on closed receivers, open receivers shading HRC light by facing and height, gloss, every quality, history, segments and steep planes, and the surface gather by quadrant, crest, reach and turning view, with readback; GPU; docs/testing.md',
+    ('--material-sampling',): 'Reviewed hidden 65x49 app: material raster emission energy over sub-pixel phases and two resolutions, overlapping tile order, tile groups for moving masks, and merged borders against their cells in five targets, with readback; GPU; docs/testing.md',
+    ('--scene2d',): 'Reviewed hidden 64x64 app: 2D scene renderer drawing a scene without lighting settings unlit, default lighting keeping materials visible, and the unlit view or removed settings stopping lighting, normal-mapped sprites facing toward and away from a light with and without a Material, and sprite maps that are missing or the wrong size and relief that is not finite, with readback; GPU; docs/testing.md',
     ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky, ramps, imported meshes and their normal maps, imported glTF Standard materials and tangent frames, Transform3D placement and mirroring, occlusion, ambient occlusion, alpha modes and masked shadows with readback; GPU; docs/rendering-3d.md',
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
     ('--scene3d-gi',): 'Reviewed hidden 64x64 app: 3D global illumination cases for bounced and emitted light, open ground, bulbs and frames around lights, mesh boxes, the probes\' fallback, the BVH, vast solids, light over frames and refits, limits, pass timing and a 16-sampler material, with readback; GPU; docs/rendering-3d.md',
     ('--scene3d-gi-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D global illumination cases; GPU, Linux; docs/rendering-3d.md',
     ('--material-ramps',): 'Reviewed hidden 64x64 app: four color ramp table cases through 2D and material raster shaders; GPU; docs/testing.md',
+    ('--radiance-surface',): 'Reviewed hidden 128x128 app: HRC silhouettes, relief facing and below the light, world-space surface depth, directional surface colors in every shadow mode, and surface light history, with readback; GPU; docs/testing.md',
+    ('--radiance-horizons4',): 'Reviewed hidden 128x128 app: four-direction horizons following moving relief, their hierarchy against the fine scan, and their cache against fresh horizons over 15 stages for 8 option sets, with readback; GPU; docs/testing.md',
+    ('--radiance-horizons8',): 'Reviewed hidden 128x128 app: the same horizon cases with eight directions; GPU; docs/testing.md',
+    ('--material-pixels',): 'Reviewed hidden 128x128 app: material parameter overrides, world-space and graph materials, shape graphs and fragment programs, fluid placement, gas, liquid, fuel, plume, parcel and wisp pixels, fluid light and shadow, liquid refraction, crystal reflections, compact uploads of mixed graph, plain and mesh batches and sprite normal and height maps, with readback; GPU; docs/testing.md',
     ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
     ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and six refusals, CPU only; docs/testing.md',
@@ -106,8 +114,8 @@ TOOLS = {
     # One reviewed source material case; four payload types, two backends, CPU shader stage only.
     'source-native-material': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-native-material'],
     # Reviewed CPU-only renderer cases: typed transaction/lifetime, sprite image sets, sky face layout
-    # and halves, sky irradiance, the split-sum table, sky publication, and pure desktop key/stick
-    # mapping; no window, GPU, fonts or files.
+    # and halves, sky irradiance, the split-sum table, sky publication, HRC view layout and lighting
+    # normalization, and pure desktop key/stick mapping; no window, GPU, fonts or files.
     'render-resources': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--render-resources'],
     # Two reviewed hidden-app 64x64 cases: Cute's interior border on a circle and a diamond,
     # opaque and translucent, through the instanced and tiled draw paths. The agent runs the
@@ -119,6 +127,19 @@ TOOLS = {
     # Fourteen reviewed hidden-app scenes of meshes and SDFs hiding each other, compared with
     # hidden-surface rejection on and off, plus Cute's whole-canvas depth copy on its own.
     'sdf-visibility': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--sdf-visibility'],
+    # Hidden-app 128x128 HRC cases: transport through emitters and walls, reset and resize,
+    # lighting settings and the adaptive ladder, pass timing, and the extend and filter passes.
+    'radiance': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance'],
+    # Hidden-app HRC Depth thickness light into 32x32 and 128x128 targets from hand-written
+    # material inputs: slabs, small and moving sources, falloff, gain, gloss, quality, history
+    # and surface gather.
+    'radiance-depth': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-depth'],
+    # Hidden-app 65x49 material raster sampling: emission energy on the pixel grid, tile order,
+    # tile groups, and merged borders against their cells.
+    'material-sampling': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-sampling'],
+    # Hidden-app 64x64 2D renders: a scene without lighting settings draws unlit, and default
+    # lighting keeps it visible.
+    'scene2d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene2d'],
     # Hidden-app 64x64 3D renders: rhythm, ambient, lights, shadows, exposure, the Environment
     # sky and its light, and color ramps.
     'scene3d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d'],
@@ -133,6 +154,16 @@ TOOLS = {
     # shader and the material raster, every program kind compiling the table, and the table
     # counted among a raster batch's samplers.
     'material-ramps': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-ramps'],
+    # Hidden-app 128x128 HRC surface light through relief materials: silhouettes, relief facing
+    # the light, world-space depth, directional colors in every shadow mode and history.
+    'radiance-surface': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-surface'],
+    # Hidden-app 128x128 horizon shadows for one direction count each: moving relief, the
+    # hierarchy against the fine scan, and the horizon cache against fresh horizons.
+    'radiance-horizons4': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-horizons4'],
+    'radiance-horizons8': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--radiance-horizons8'],
+    # Hidden-app 128x128 material raster pixels: graph materials and shapes, compact uploads of
+    # mixed batches, fluids and their HRC light, liquid refraction and crystal reflections.
+    'material-pixels': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--material-pixels'],
     # Two independently reviewed bounded reflected scene codec/lifetime cases, no file/process/GPU.
     'scene-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scene-prepared'],
     # Five independently reviewed model/shader/mesh preparation, persistence and lifetime cases; no files, world or GPU.
@@ -494,8 +525,10 @@ def main():
             parser.error('unadmitted tooling command')
         if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
                             'studio-graph-visibility', 'interior-border', 'viewport-resize', 'sdf-visibility',
-                            'scene3d', 'scene3d-gles', 'scene3d-gi', 'scene3d-gi-gles',
-                            'material-ramps'):
+                            'radiance', 'radiance-depth', 'material-sampling', 'scene2d', 'scene3d',
+                            'scene3d-gles', 'scene3d-gi', 'scene3d-gi-gles',
+                            'material-ramps', 'radiance-surface', 'radiance-horizons4',
+                            'radiance-horizons8', 'material-pixels'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])
         return run_commands([TOOLS[arguments[0]]])

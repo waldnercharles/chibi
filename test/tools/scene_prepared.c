@@ -218,6 +218,38 @@ TEST_CASE(prepared_scene_rejects_misplaced_parents_and_sibling_names)
     }
     return true;
 }
+/* A link names a handle field of one of the scene's objects. */
+TEST_CASE(prepared_scene_rejects_links_to_no_handle)
+{
+    record value = { 0 };
+    game_scene_component row = { &component, &value };
+    REQUIRE(type_catalog_find("test.record"));
+    component = (ecs_component_desc){ .id = 970,
+                                      .name = "PreparedRecord",
+                                      .key = "test.record",
+                                      .type = type_catalog_find("test.record"),
+                                      .element_size = sizeof(record) };
+    game_scene_object objects[] = { { .name = "A", .components = &row, .component_count = 1 },
+                                    { .name = "B" } };
+    game_scene_link cases[] = {
+        { 0, 0, 1, 1 }, /* a string field */
+        { 0, 1, 0, 1 }, /* no second component */
+        { 1, 0, 0, 0 }, /* B has no components */
+        { 0, 0, 0, 2 }, /* no third object */
+    };
+    char error[256];
+    for (int i = 0; i < 4; i++) {
+        game_scene_spec spec = { .name = "Linked",
+                                 .physics = game_physics_defaults(),
+                                 .objects = objects,
+                                 .object_count = 2,
+                                 .links = &cases[i],
+                                 .link_count = 1 };
+        REQUIRE(game_scene_prepare(&spec, error, sizeof error) == NULL);
+        REQUIRE(!strcmp(error, "prepared scene link names no handle field or object"));
+    }
+    return true;
+}
 TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_structs)
 {
     static ecs_component_desc marker = { .id = 0,
@@ -471,6 +503,7 @@ void test_scene_prepared()
     RUN_TEST_CASE(prepared_scene_survives_input_retirement_and_instantiation);
     RUN_TEST_CASE(prepared_scene_rejects_incompatible_and_malformed_records);
     RUN_TEST_CASE(prepared_scene_rejects_misplaced_parents_and_sibling_names);
+    RUN_TEST_CASE(prepared_scene_rejects_links_to_no_handle);
     RUN_TEST_CASE(prepared_scene_roundtrips_markers_without_accepting_unknown_empty_structs);
     pu_clear_setup();
 }

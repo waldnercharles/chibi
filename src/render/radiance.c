@@ -1326,6 +1326,7 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
         cf_material_set_uniform_fs(mat, "u_radius", &hrc->lighting.surface_depth_radius, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_thickness", &hrc->lighting.surface_thickness, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_specular", &hrc->lighting.specular, CF_UNIFORM_TYPE_FLOAT, 1);
+        cf_material_set_uniform_fs(mat, "u_relief", &hrc->lighting.surface_relief, CF_UNIFORM_TYPE_FLOAT, 1);
         cf_material_set_uniform_fs(mat, "u_block", block, CF_UNIFORM_TYPE_INT, 1);
         s_draw_region(hrc, hrc->surface_depth_shd, hrc->surface_canvas[0], width, height);
         hrc->surface_work.candidates = (size_t)width * height * (axis + 1) *

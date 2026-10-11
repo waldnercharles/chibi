@@ -19,6 +19,13 @@ typedef struct
     const char *const *behaviors;
     int behavior_count;
 } game_scene_object;
+/* An object's handle field that names another object of the scene: each
+ * instance writes the target's entity there. `component` indexes the object's
+ * components and `field` that component type's top-level fields. */
+typedef struct
+{
+    int object, component, field, target;
+} game_scene_link;
 typedef struct
 {
     const char *name, *ui;
@@ -29,6 +36,8 @@ typedef struct
     /* Each object's parent, an earlier object's index or -1 for a root; NULL
      * when every object is a root. Names are unique among siblings. */
     const int *parents;
+    const game_scene_link *links;
+    int link_count;
 } game_scene_spec;
 
 /* Snapshots all values/names. Reflected type descriptors remain host-owned and
@@ -47,6 +56,8 @@ const char *game_scene_object_name(const game_scene *, int);
 int game_scene_object_parent(const game_scene *, int);
 /* Whether every object descends from the first, as a prototype's do. */
 bool game_scene_is_tree(const game_scene *);
+int game_scene_link_count(const game_scene *);
+game_scene_link game_scene_link_at(const game_scene *, int);
 int game_scene_object_behavior_count(const game_scene *, int);
 const char *game_scene_object_behavior(const game_scene *, int object, int behavior);
 /* Retained arena capacity plus the owning generation, for package budgets. */
@@ -57,10 +68,11 @@ game_scene_component game_scene_object_component_at(const game_scene *, int obje
 /* Explicit schema installation, outside ECS iteration and pending commands. */
 int game_scene_register_components(const game_scene *, ecs_world *, char *error, size_t size);
 /* Components must already be installed. Takes a scene reference and borrows
- * world/registry until free. Each child is ChildOf its parent's entity. All
- * entities/components exist before any behavior is attached; Begin remains
- * deferred until the host's initialization boundary. Failure removes created
- * entities and cancels their attachments. */
+ * world/registry until free. Each child is ChildOf its parent's entity, and
+ * each link holds its target's. All entities/components exist before any
+ * behavior is attached; Begin remains deferred until the host's
+ * initialization boundary. Failure removes created entities and cancels their
+ * attachments. */
 game_scene_instance *game_scene_instantiate(
     game_scene *,
     ecs_world *,

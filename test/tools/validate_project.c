@@ -1075,6 +1075,56 @@ TEST_CASE(scene_children_are_placed_by_their_parent)
     return true;
 }
 
+/* A scene's Joint names its other by path: Swing hangs below Anchor. Hung
+ * from the world's origin instead, it would swing toward it. */
+TEST_CASE(scene_joints_name_their_other_by_path)
+{
+    char folder[256];
+    path(folder, sizeof folder, "game/content/prototypes");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file(
+        "game/content/prototypes/Post.kdl",
+        "name \"Post\"\ncomponents {\n    (object)GAME.GameBody\n"
+        "    GAME.GameCollider category=1 mask=1 radius=4.0\n    "
+        "(object)GAME.GameTransform\n}\n"
+    );
+    write_file(
+        "game/content/prototypes/Weight.kdl",
+        "name \"Weight\"\ncomponents {\n    GAME.GameBody type=\"Dynamic\"\n"
+        "    GAME.GameCollider category=2 mask=2 radius=4.0\n    "
+        "GAME.GameJoint kind=\"Distance\"\n"
+        "    (object)GAME.GameOrientation\n    (object)GAME.GameTransform\n    "
+        "(object)GAME.GameVelocity\n}\n"
+    );
+    write_file("game/content/prototypes/Fall.kdl", "name \"Fall\"\ncomponents {\n    GAME.GameGravity {\n        acceleration y=-320.0\n    }\n}\n");
+    const char *scene = "version 1\nname \"Start\"\n(array)entities {\n"
+                        "    - name=\"Anchor\" prototype=\"Post\" { components "
+                        "{ GameTransform x=-200 y=0; }; }\n"
+                        "    - name=\"Swing\" prototype=\"Weight\" { "
+                        "components { GameJoint other=\"%s\"; "
+                        "GameTransform x=-200 y=-50; }; }\n"
+                        "    - name=\"Fall\" prototype=\"Fall\"\n}\n";
+    char text[1024];
+    snprintf(text, sizeof text, scene, "Anchor");
+    write_file("game/content/scenes/Start.kdl", text);
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"runtime_snapshot\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":60}") ==
+        0
+    );
+    REQUIRE(fabs(global_x("Swing") + 200) < 1);
+    /* A path no entity has is a problem, and the scenario refuses it. */
+    snprintf(text, sizeof text, scene, "Anchors");
+    write_file("game/content/scenes/Start.kdl", text);
+    REQUIRE(validate() != 0 && errors() == 1);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") !=
+        0
+    );
+    REQUIRE(strstr(failure(), "Swing: GameJoint other names Anchors, but no entity has that path"));
+    return true;
+}
+
 /* A prototype's children come with each instance of it, placed by it. */
 TEST_CASE(prototype_children_come_with_their_instance)
 {
@@ -1406,6 +1456,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(scenes_run_under_their_own_name);
     RUN_TEST_CASE(scene_children_are_placed_by_their_parent);
     RUN_TEST_CASE(prototype_children_come_with_their_instance);
+    RUN_TEST_CASE(scene_joints_name_their_other_by_path);
     RUN_TEST_CASE(scenarios_hold_input_actions);
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     RUN_TEST_CASE(unit_mismatches_are_warnings);

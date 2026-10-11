@@ -581,7 +581,8 @@ char *render_shader_glsl(const render_shader_set *set, int sampler_set, int firs
             i
         );
     }
-    /* Sprites name their image variant; graphs reach theirs through assets. */
+    /* Sprites name their image and map variants; graphs reach theirs through
+     * assets. */
     append(&text, "vec4 sg_image_sample(int id,vec2 uv) {\n");
     for (int i = 0; i < set->count; i++) {
         append(&text, " if(id==%d) return textureLod(sg_image_%d,uv,0.0);\n", set->images[i], i);

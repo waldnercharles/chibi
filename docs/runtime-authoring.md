@@ -66,6 +66,20 @@ rectangle with `tilemap_occupied_in_box(entity, minimum, maximum)`. Decorative
 layers need no behavior or collision setup. See the rotated `TileMosaic`
 prototype in `test/fixtures/sprites`.
 
+## Light 2D scenes
+
+A 2D scene draws its sprites, shapes and tilemaps unlit, in the colors they are
+drawn with, until an entity holds `GAME.GameHRC2D`. Holographic radiance
+cascades then light it: emissive materials light their surroundings, absorbing
+materials cast shadows, and light bounces off lit surfaces. Only the first such
+entity counts. `ambient` is the share of the unlit colors that stays: 1 keeps
+them as drawn and adds light to them, and lower values darken what no light
+reaches. `intensity` scales how bright emissive surfaces look, and `resolution`
+sets the detail of the light grid. Studio adds the component with `ambient` and
+`intensity` at 1 and `resolution` at 0.5, but KDL loads an omitted field as
+zero, so write every setting a scene needs. See the `Lighting` prototype in
+`test/fixtures/sprites`.
+
 ## Declare components
 
 A game declares its own component types under `content/components`, one `.chibi`
@@ -342,7 +356,12 @@ limit and motor act only with its spring, so a spring of zero hertz and a limit
 make a slack rope. `collide` lets the two bodies touch. A joint holds the bodies
 as they were when it was made and is made again when its fields change or its
 entity moves on its body; a joint whose `other` is destroyed holds nothing.
-Scenes can't name another entity yet, so a script sets `other`.
+A scene names `other` by its path, such as `GAME.GameJoint3D other="Frame.Anchor"`,
+and a prototype names one of its children the same way, in its own components
+or a child's. A scene's paths reach only its own entities, not its instances'
+children. Any entity handle at the top of a component takes a path; loading
+the scene or spawning the prototype writes the entity there, and a path that
+names no entity fails validation and loading. Scripts may still set `other`.
 
 `GAME.GameJoint` joins 2D bodies the same way at the entity's `Transform`, with
 `Hinge`, `Slider`, `Weld` and `Distance` and no ball: a hinge turns about the

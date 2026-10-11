@@ -51,6 +51,20 @@ static bool same_component(const ecs_component_desc *a, const ecs_component_desc
            a->index == b->index &&
            ecs_layout_hash(a->type) == ecs_layout_hash(b->type);
 }
+static bool link_valid(const game_scene_spec *spec, game_scene_link link)
+{
+    if (link.object < 0 || link.object >= spec->object_count ||
+        link.target < 0 || link.target >= spec->object_count) {
+        return false;
+    }
+    const game_scene_object *object = &spec->objects[link.object];
+    if (link.component < 0 || link.component >= object->component_count) {
+        return false;
+    }
+    const type_desc *type = object->components[link.component].desc->type;
+    return link.field >= 0 && link.field < type->field_count &&
+           type->fields[link.field].type == PIN_HANDLE;
+}
 game_scene *game_scene_prepare(const game_scene_spec *spec, char *error, size_t size)
 {
     assert(spec && (!size || error));
@@ -169,6 +183,19 @@ game_scene *game_scene_prepare(const game_scene_spec *spec, char *error, size_t 
             }
             behaviors[j] = own(&scene->storage, input->behaviors[j]);
         }
+    }
+    if (spec->link_count < 0 || (spec->link_count && !spec->links)) {
+        fail(error, size, "invalid prepared scene links");
+        goto failed;
+    }
+    game_scene_link *links = arena_alloc(&scene->storage, (size_t)spec->link_count * sizeof *links);
+    scene->spec.links = links;
+    for (int i = 0; i < spec->link_count; i++) {
+        if (!link_valid(&scene->spec, spec->links[i])) {
+            fail(error, size, "prepared scene link names no handle field or object");
+            goto failed;
+        }
+        links[i] = spec->links[i];
     }
     return scene;
 failed:
@@ -378,6 +405,18 @@ static game_scene_instance *instantiate(
             }
         }
     }
+    for (int i = 0; i < scene->spec.link_count; i++) {
+        game_scene_link link = scene->spec.links[i];
+        const ecs_component_desc *desc = scene->spec.objects[link.object]
+                                             .components[link.component]
+                                             .desc;
+        pin_value value = { .type = PIN_HANDLE,
+                            .type_name = desc->type->fields[link.field].type_name,
+                            .u64 = ecs_entity_to_u64(instance->entities[link.target]) };
+        if (ecs_component_write_field(world, instance->entities[link.object], desc->id, link.field, value)) {
+            goto failed;
+        }
+    }
     for (int i = 0; i < scene->spec.object_count; i++) {
         const game_scene_object *object = &scene->spec.objects[i];
         for (int j = 0; attach && j < object->behavior_count; j++) {
@@ -404,6 +443,15 @@ ecs_entity game_scene_instance_entity(const game_scene_instance *instance, int i
     return instance->entities[index];
 }
 
+int game_scene_link_count(const game_scene *scene)
+{
+    return scene->spec.link_count;
+}
+game_scene_link game_scene_link_at(const game_scene *scene, int index)
+{
+    assert(index >= 0 && index < scene->spec.link_count);
+    return scene->spec.links[index];
+}
 int game_scene_object_behavior_count(const game_scene *scene, int index)
 {
     assert(index >= 0 && index < scene->spec.object_count);

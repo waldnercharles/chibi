@@ -442,7 +442,11 @@ GameAppearance;
 /* Draws one frame of an image instead of an Appearance, one world unit per
  * texel, centred on the Transform. Frames are frame_width by frame_height
  * cells numbered left to right, then top to bottom; zero sizes use the whole
- * image. */
+ * image. normal_map holds tangent-space normals laid out like the image, red
+ * right and green up, and each texel stands relief world units above the
+ * plane, times the red of height_map when there is one. 2D lighting shades
+ * them through surface light, which a Material's edge_light scales; without a
+ * Material, a sprite with a map takes it in full. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameSprite)
 {
     const char *image;
@@ -451,12 +455,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameSprite)
     int frame_height;
     bool flip_x;
     int layer;
+    const char *normal_map;
+    const char *height_map;
+    float relief NODE_UNIT("u");
 }
 GameSprite;
 
 /* One atlas-backed grid, anchored at Transform's local top-left corner.
  * Cells are row-major whitespace-separated frame indices; -1 is empty.
- * Frame dimensions are both atlas texels and world units. */
+ * Frame dimensions are both atlas texels and world units. normal_map,
+ * height_map and relief shade and raise the tiles as they do a Sprite. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameTilemap)
 {
     const char *image;
@@ -466,6 +474,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameTilemap)
     int frame_width;
     int frame_height;
     int layer;
+    const char *normal_map;
+    const char *height_map;
+    float relief NODE_UNIT("u");
 }
 GameTilemap;
 
@@ -491,7 +502,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameMaterial)
     unsigned border_albedo NODE_COLOR;
     unsigned border_filter NODE_COLOR;
     /* Gain of light received near the surface of a solid, reaching
-     * GameHRC2D.surface_radius into it. Zero disables; no unlit outline. */
+     * GameHRC2D.surface_radius into it. Zero disables; no unlit outline.
+     * With Depth thickness, a solid that absorbs nothing instead takes its
+     * HRC light shaded by its facing and by heights in the way, this much. */
     float edge_light NODE_RANGE(0, 1);
 }
 GameMaterial;
@@ -1188,6 +1201,9 @@ typedef enum
     GAME_HRC_DEPTH_EMITTERS_PROXIES NODE_NAME("Uniform material proxies"),
 } GameHRCDepthEmitters;
 
+/* 2D lighting by holographic radiance cascades: light from emissive
+ * materials, with shadows, bounce and fog. The first entity's settings light
+ * the scene; a scene without one draws its materials unlit. */
 typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
 {
     /* Finest light grid as a fraction of the padded canvas; 0.5 solves one
@@ -1205,14 +1221,16 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     GameHRCGather gather_resolution;
     /* Steps lighting down while the scene's GPU time misses target_fps, first
      * gather when Auto, then resolution by halves down to min_resolution, and
-     * back up when there is room. It measures GPU time, so frames limited by
-     * the CPU or vsync keep their lighting. Needs Metal's GPU timestamps. */
+     * back up when there is room. Where the GPU reports its time (Metal, and
+     * WebGL with timer queries), frames limited by the CPU or vsync keep their
+     * lighting; elsewhere it judges the whole frame's interval. */
     bool adaptive;
     /* Frame rate adaptive keeps the scene's GPU work within. */
     float target_fps NODE_UNIT("fps");
     /* Lowest resolution adaptive may choose. */
     float min_resolution NODE_RANGE(0.1, 1);
-    /* Gain of the unlit scene color added to the frame. */
+    /* Gain of the unlit scene color added to the frame. 1 shows materials as
+     * drawn, and lower values darken what light does not reach. */
     float ambient;
     /* Brightness of emissive surfaces as drawn; the light they cast is
      * unchanged. */
@@ -1260,11 +1278,17 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * scaled by GameMaterial.edge_light. Zero disables surface lighting. */
     float surface_radius NODE_UNIT("u");
     /* Blur spreads open-space light; Gather uses bounded visibility probes.
-     * Depth thickness gathers visible emission with finite-depth occluders. */
+     * Depth thickness is the 2.5D mode: it gathers visible emission past
+     * anything with height, and on solids that absorb nothing shades the HRC
+     * light by their facing and those heights. Light passes over a prop that
+     * absorbs nothing where the prop is lower than the light. */
     GameHRCSurfaceMode surface_mode;
-    /* Screen-plane reach in project units for Depth thickness mode. */
+    /* Screen-plane reach in project units for Depth thickness mode. A solid
+     * that absorbs nothing shades all its HRC light by the lights within
+     * reach, so it should reach the lights that matter. */
     float surface_depth_radius;
-    /* Gain of the visible Depth contribution added to HRC. Zero disables it. */
+    /* Gain of Depth light added to solids that absorb light, and of Depth
+     * highlights. Zero disables Depth thickness. */
     float surface_depth_gain;
     /* Source sampling budget; all levels preserve integrated emission. */
     GameHRCDepthQuality surface_depth_quality;
@@ -1281,7 +1305,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     bool surface_depth_temporal;
     /* Maximum previous-frame weight; zero selects the default of 0.65. */
     float surface_depth_history;
-    /* Assumed camera-depth thickness of visible surfaces in project units. */
+    /* How far below its visible top a surface blocks Depth light, in
+     * project units. A light that absorbs nothing never blocks. */
     float surface_thickness;
     /* Sideways reach of nearby light relative to its height above the plane;
      * larger values deepen normal-mapped relief. */
@@ -1309,11 +1334,12 @@ GameHRC2D;
 
 static inline GameHRC2D game_hrc2d_defaults()
 {
-    return (GameHRC2D){ .resolution = 1,
+    return (GameHRC2D){ .resolution = .5f,
                         .adaptive = true,
                         .target_fps = 60,
                         .min_resolution = .25f,
-                        .intensity = 7.5f,
+                        .ambient = 1,
+                        .intensity = 1,
                         .fog = 1,
                         .falloff = 1,
                         .bounce_intensity = 1,

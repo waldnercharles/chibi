@@ -633,12 +633,20 @@ const char *render_material_raster_error(const render_material_raster *r)
     return r->error[0] ? r->error : render_programs_error(r->programs);
 }
 
+/* A sprite's map variant, zero when it has none. */
+static bool add_sprite_map(render_shader_set *set, float variant, shader_error *error)
+{
+    return variant <= 0 || render_shader_set_add_image(set, (int)variant, error);
+}
+
 static bool add_images(render_shader_set *set, const render_material_entity *entity, shader_error *error)
 {
     return render_shader_set_add(set, (int)entity->reserved[0], error) &&
            render_shader_set_add(set, (int)entity->reserved[1], error) &&
            (entity->shape_type != RENDER_SHAPE_SPRITE ||
-            render_shader_set_add_image(set, (int)entity->points[12], error));
+            (render_shader_set_add_image(set, (int)entity->points[12], error) &&
+             add_sprite_map(set, entity->points[13], error) &&
+             add_sprite_map(set, entity->points[14], error)));
 }
 
 /* Whether the next batch can sample `set`. Later batches also sample the

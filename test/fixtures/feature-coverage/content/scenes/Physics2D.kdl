@@ -7,6 +7,12 @@ name "Physics2D"
         (array)behaviors "PhysicsProbe"
     }
     - name="Wall" prototype="Wall"
-    - name="Spinner" prototype="Spinner"
+    - {
+        name "Spinner"
+        prototype "Spinner"
+        components {
+            GAME.GameJoint other="Wall"
+        }
+    }
     - name="Gravity" prototype="Gravity"
 }

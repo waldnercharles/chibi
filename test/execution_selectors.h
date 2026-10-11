@@ -21,6 +21,20 @@ CHIBI_GPU_SELECTOR("--viewport-resize")
 /* Meshes and SDFs hiding each other in a hidden 96x80 app, with and without
  * hidden-surface rejection and its depth snapshot copies, with readback. */
 CHIBI_GPU_SELECTOR("--sdf-visibility")
+/* HRC's transport, adaptive steps, timing and single passes in a hidden
+ * 128x128 app, with readback. */
+CHIBI_GPU_SELECTOR("--radiance")
+/* HRC's Depth thickness surface light and its surface gather from material
+ * inputs written by hand, in a hidden 32x32 app drawing 32x32 and 128x128
+ * targets, with readback. */
+CHIBI_GPU_SELECTOR("--radiance-depth")
+/* How the material raster samples shapes in a hidden 65x49 app: emission
+ * energy on the pixel grid, tile order, tile groups and merged borders, with
+ * readback. */
+CHIBI_GPU_SELECTOR("--material-sampling")
+/* The 2D scene renderer's lighting cases in a hidden 64x64 app, with
+ * readback. */
+CHIBI_GPU_SELECTOR("--scene2d")
 /* The 3D renderer's cases in a hidden 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--scene3d")
 /* The same cases on GLES, under xvfb-run on Linux. */
@@ -32,3 +46,13 @@ CHIBI_GPU_SELECTOR("--scene3d-gi-gles")
 /* Color ramp table cases through 2D and material raster shaders in a hidden
  * 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--material-ramps")
+/* HRC's surface light through relief materials in a hidden 128x128 app, with
+ * readback. */
+CHIBI_GPU_SELECTOR("--radiance-surface")
+/* HRC's relief shadows by four and eight horizons, their hierarchy and their
+ * cache in a hidden 128x128 app, with readback. */
+CHIBI_GPU_SELECTOR("--radiance-horizons4")
+CHIBI_GPU_SELECTOR("--radiance-horizons8")
+/* The material raster's graph materials and fluids, the light HRC gives
+ * fluids, and crystal reflections in a hidden 128x128 app, with readback. */
+CHIBI_GPU_SELECTOR("--material-pixels")

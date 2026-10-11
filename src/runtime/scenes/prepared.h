@@ -3,14 +3,15 @@
 #include "ecs/component_catalog.h"
 #include "runtime/scenes/scene.h"
 
-#define GAME_SCENE_PREPARED_VERSION UINT64_C(3)
+#define GAME_SCENE_PREPARED_VERSION UINT64_C(4)
 
 /* Versioned field-wise scene/prototype records. Stable component IDs, names,
  * sizes and reflected layout hashes are verified against the explicit catalog.
  * Reflected nominal values use the supplying host's immutable type catalog.
  * No process pointers, padding, graph, source or authored document is stored.
  * Nonzero handles are rejected until their resource identities have an owning
- * portable contract. The scene's UI/behavior names remain package references. */
+ * portable contract; a link names an object for its instance to fill in. The
+ * scene's UI/behavior names remain package references. */
 bool game_scene_prepared_write(
     const game_scene *,
     unsigned char **data,

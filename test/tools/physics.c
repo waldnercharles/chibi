@@ -11,6 +11,10 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
+#ifdef CHIBI_TEST_PREPARATION
+#include "authoring/scene_prepare.h"
+#include "runtime/scenes/prepared.h"
+#endif
 
 #include <assert.h>
 #include <math.h>
@@ -2313,6 +2317,155 @@ TEST_CASE(physics_joints_need_two_bodies_and_sound_values)
     return true;
 }
 
+#ifdef CHIBI_TEST_PREPARATION
+/* Post is a static hook; Weight hangs 50 units below it on a distance Joint.
+ * Rig's Hook ignores its Guard by path, and Guard its own Peg. */
+static const char *const pendulums[][2] = {
+    { "Post",
+      "name \"Post\"\ncomponents {\n    (object)GAME.GameBody\n"
+      "    GAME.GameCollider category=1 mask=1 radius=4.0\n    "
+      "(object)GAME.GameTransform\n}\n" },
+    { "Weight",
+      "name \"Weight\"\ncomponents {\n    GAME.GameBody type=\"Dynamic\"\n"
+      "    GAME.GameCollider category=2 mask=2 radius=4.0\n    GAME.GameJoint "
+      "kind=\"Distance\"\n"
+      "    (object)GAME.GameOrientation\n    (object)GAME.GameTransform\n    "
+      "(object)GAME.GameVelocity\n}\n" },
+    { "Guard",
+      "name \"Guard\"\ncomponents {\n    (object)GAME.GameBody\n"
+      "    GAME.GameCollider category=1 ignore_entity=\"Peg\" mask=1 "
+      "radius=4.0\n"
+      "    GAME.GameTransform y=20.0\n}\n(array)children {\n    - name=\"Peg\" "
+      "prototype=\"Peg\"\n}\n" },
+    { "Peg", "name \"Peg\"\ncomponents {\n    (object)GAME.GameTransform\n}\n" },
+    { "Rig",
+      "name \"Rig\"\ncomponents {\n    GAME.GameTransform x=200.0\n}\n"
+      "(array)children {\n    - name=\"Hook\" prototype=\"Post\" {\n"
+      "        components {\n            GAME.GameCollider "
+      "ignore_entity=\"Guard\"\n        }\n    }\n"
+      "    - name=\"Guard\" prototype=\"Guard\"\n}\n" },
+};
+/* The scene hangs Swing from Anchor by path. */
+static const char
+    swing_scene[] = "version 1\nname \"Swings\"\n(array)entities {\n"
+                    "    - name=\"Anchor\" prototype=\"Post\" {\n"
+                    "        components {\n            GAME.GameTransform "
+                    "x=-200.0\n        }\n"
+                    "    }\n"
+                    "    - name=\"Swing\" prototype=\"Weight\" {\n"
+                    "        components {\n"
+                    "            GAME.GameJoint other=\"Anchor\"\n"
+                    "            GAME.GameTransform x=-200.0 y=-50.0\n"
+                    "        }\n"
+                    "    }\n"
+                    "    - name=\"Rig\" prototype=\"Rig\"\n"
+                    "}\n";
+static const char *find_pendulum(const char *name, void *)
+{
+    for (size_t i = 0; i < sizeof pendulums / sizeof pendulums[0]; i++) {
+        if (!strcmp(pendulums[i][0], name)) {
+            return pendulums[i][1];
+        }
+    }
+    return NULL;
+}
+static const ecs_component_desc *const pendulum_components[] = {
+    &GAME_COMPONENT_GameTransform,   &GAME_COMPONENT_GameCollider,
+    &GAME_COMPONENT_GameBody,        &GAME_COMPONENT_GameVelocity,
+    &GAME_COMPONENT_GameOrientation, &GAME_COMPONENT_GameJoint,
+};
+/* The scene prepared as a project prepares one, through its prepared bytes. */
+static game_scene *prepare_swings(const char *text, char *error, size_t size)
+{
+    const game_prototype_registry registry = { .components = pendulum_components,
+                                               .component_count = 6,
+                                               .include = find_pendulum };
+    game_scene_document *document = game_scene_document_load(text, error, size);
+    assert(document);
+    game_prototype **objects = NULL;
+    for (int i = 0; i < acount(document->entities); i++) {
+        const game_scene_entity *entity = &document->entities[i];
+        game_prototype *object = game_prototype_load(
+            find_pendulum(entity->prototype, NULL),
+            &registry,
+            error,
+            size
+        );
+        assert(object);
+        free(object->name);
+        object->name = xstrdup(entity->name);
+        assert(
+            !entity->components ||
+            !game_prototype_apply_entity_components(object, entity->components, error, size)
+        );
+        apush(objects, object);
+    }
+    game_scene *scene = authoring_scene_prepare(
+        document,
+        (const game_prototype *const *)objects,
+        acount(objects),
+        error,
+        size
+    );
+    for (int i = 0; i < acount(objects); i++) {
+        game_prototype_free(objects[i]);
+    }
+    afree(objects);
+    game_scene_document_free(document);
+    unsigned char *bytes = NULL;
+    size_t length = 0;
+    bool written = scene &&
+                   game_scene_prepared_write(scene, &bytes, &length, error, size);
+    game_scene_free(scene);
+    ecs_component_catalog catalog = { pendulum_components, 6 };
+    scene = written ? game_scene_prepared_read(bytes, length, catalog, error, size)
+                    : NULL;
+    free(bytes);
+    return scene;
+}
+
+/* A scene's Joint names its other by path among the scene's entities and
+ * holds once prepared; a prototype's paths name its children. */
+TEST_CASE(physics_joints_name_their_other_by_path)
+{
+    char error[256];
+    game_scene *scene = prepare_swings(swing_scene, error, sizeof error);
+    if (!scene) {
+        fprintf(stderr, "%s\n", error);
+    }
+    REQUIRE(scene && game_scene_link_count(scene) == 3);
+    fixture f = joined();
+    REQUIRE(game_scene_register_components(scene, f.world, error, sizeof error) == ECS_OK);
+    game_scene_instance *instance = game_scene_instantiate_components(scene, f.world, error, sizeof error);
+    REQUIRE(instance);
+    /* Anchor, Swing, Rig, then Rig's Hook, Guard and Guard's Peg. */
+    ecs_entity anchor = game_scene_instance_entity(instance, 0);
+    ecs_entity swing = game_scene_instance_entity(instance, 1);
+    ecs_entity hook = game_scene_instance_entity(instance, 3);
+    ecs_entity guard = game_scene_instance_entity(instance, 4);
+    ecs_entity peg = game_scene_instance_entity(instance, 5);
+    REQUIRE(GAME_GameJoint_get_const(f.world, swing)->other == ecs_entity_to_u64(anchor));
+    REQUIRE(
+        GAME_GameCollider_get_const(f.world, hook)->ignore_entity ==
+        ecs_entity_to_u64(guard)
+    );
+    REQUIRE(GAME_GameCollider_get_const(f.world, guard)->ignore_entity == ecs_entity_to_u64(peg));
+    /* Hung from the world origin instead, it would swing toward it. */
+    steps(&f, 120);
+    REQUIRE(near(apart(&f, swing, anchor), 50, 1) && near(at(&f, swing).x, -200, 1));
+    game_scene_instance_free(instance);
+    game_scene_free(scene);
+    /* A path no entity has stops preparation. */
+    char *stray = xstrdup(swing_scene);
+    memcpy(strstr(stray, "other=\"Anchor\"") + 7, "Nowher", 6);
+    REQUIRE(!prepare_swings(stray, error, sizeof error));
+    REQUIRE(!strcmp(error, "GameJoint other names Nowher, but no entity has that path"));
+    free(stray);
+    dispose(&f);
+    return true;
+}
+#endif
+
 TEST_CASE(physics_gravity_pulls_bodies_and_fluids)
 {
     gravity_pulls_bodies_and_fluids();
@@ -2388,6 +2541,9 @@ void test_tool_physics()
     RUN_TEST_CASE(physics_joints_follow_their_components);
     RUN_TEST_CASE(physics_joined_bodies_touch_only_with_collide);
     RUN_TEST_CASE(physics_joints_need_two_bodies_and_sound_values);
+#ifdef CHIBI_TEST_PREPARATION
+    RUN_TEST_CASE(physics_joints_name_their_other_by_path);
+#endif
     RUN_TEST_CASE(physics_contacts_and_queries_at_each_substep_count);
     RUN_TEST_CASE(physics_parallel_collection_matches_serial);
 }

@@ -215,6 +215,13 @@ static void component(
         *row = (game_scene_component){ desc, value.ptr };
     }
 }
+static void object_link(execution_wire *wire, game_scene_link *value)
+{
+    execution_wire_int(wire, &value->object);
+    execution_wire_int(wire, &value->component);
+    execution_wire_int(wire, &value->field);
+    execution_wire_int(wire, &value->target);
+}
 static void write_scene(execution_wire *wire, const game_scene *scene, char *diagnostic, size_t diagnostic_size)
 {
     int records = 0;
@@ -244,6 +251,12 @@ static void write_scene(execution_wire *wire, const game_scene *scene, char *dia
             const char *behavior = game_scene_object_behavior(scene, i, j);
             execution_wire_string(wire, &behavior);
         }
+    }
+    int links = game_scene_link_count(scene);
+    count(wire, &links, &records);
+    for (int i = 0; !wire->error && i < links; i++) {
+        game_scene_link one = game_scene_link_at(scene, i);
+        object_link(wire, &one);
     }
 }
 bool game_scene_prepared_write(
@@ -328,6 +341,12 @@ game_scene *game_scene_prepared_read_budget(
         for (int j = 0; !wire.error && j < object->behavior_count; j++) {
             execution_wire_string(&wire, &behaviors[j]);
         }
+    }
+    count(&wire, &spec.link_count, &records);
+    game_scene_link *links = allocate(&wire, spec.link_count, sizeof *links);
+    spec.links = links;
+    for (int i = 0; !wire.error && i < spec.link_count; i++) {
+        object_link(&wire, &links[i]);
     }
     if (!wire.error && wire.offset != wire.size) {
         wire.error = "Prepared scene has trailing input";

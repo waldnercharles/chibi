@@ -100,7 +100,7 @@ if(TARGET Chibi::entity_runtime)
     if(TARGET Chibi::project_compilation AND TARGET Chibi::image_preparation)
         target_link_libraries(chibi_native_consumer PRIVATE Chibi::project_compilation Chibi::image_preparation)
         target_link_libraries(test_tools PRIVATE Chibi::project_compilation Chibi::image_preparation)
-        target_compile_definitions(chibi_native_consumer PRIVATE CHIBI_TEST_TILEMAP_PREPARATION=1
+        target_compile_definitions(chibi_native_consumer PRIVATE CHIBI_TEST_PREPARATION=1
             CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
     endif()
     target_compile_definitions(chibi_native_consumer PRIVATE CHIBI_TEST_NATIVE_RUNTIME=1)

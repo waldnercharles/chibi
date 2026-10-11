@@ -283,6 +283,91 @@ void game_prototype_preview_end_scene(game_prototype_preview *preview)
     destroy_entities(preview);
 }
 
+/* The entity a '.'-separated path names from the scene's roots, or -1. */
+static int entity_at_path(const game_prototype_preview_scene_entity *entities, int count, const char *path)
+{
+    int found = -1;
+    for (const char *segment = path;; segment = strchr(segment, '.') + 1) {
+        const char *dot = strchr(segment, '.');
+        size_t length = dot ? (size_t)(dot - segment) : strlen(segment);
+        int parent = found;
+        found = -1;
+        for (int i = parent + 1; i < count && found < 0; i++) {
+            if (entities[i].parent == parent &&
+                !strncmp(entities[i].name, segment, length) &&
+                !entities[i].name[length]) {
+                found = i;
+            }
+        }
+        if (found < 0 || !dot) {
+            return found;
+        }
+    }
+}
+
+/* Writes into each scene entity the entities its component values name by
+ * path; `spawned` holds the scene's entities in order. */
+static int link_scene(
+    ecs_world *world,
+    const game_prototype_preview_scene_entity *entities,
+    int count,
+    const ecs_entity *spawned,
+    char *error,
+    size_t error_size
+)
+{
+    int result = ECS_OK;
+    for (int i = 0; !result && i < count; i++) {
+        game_prototype_link *links = entities[i].components
+                                       ? game_prototype_components_links(
+                                             entities[i].prototype->registry,
+                                             entities[i].components
+                                         )
+                                       : NULL;
+        for (int j = 0; !result && j < acount(links); j++) {
+            const game_prototype_link *link = &links[j];
+            const type_field *field = &link->component->type->fields[link->field];
+            int target = entity_at_path(entities, count, link->path);
+            if (target < 0) {
+                snprintf(
+                    error,
+                    error_size,
+                    "scene entity %s: %s %s names %s, but no entity has that "
+                    "path",
+                    entities[i].name,
+                    link->component->name,
+                    field->name,
+                    link->path
+                );
+                result = ECS_ERR_COMPONENT;
+                continue;
+            }
+            pin_value value = { .type = PIN_HANDLE,
+                                .type_name = field->type_name,
+                                .u64 = ecs_entity_to_u64(spawned[target]) };
+            result = ecs_component_write_field(
+                world,
+                spawned[i],
+                link->component->id,
+                link->field,
+                value
+            );
+            if (result) {
+                snprintf(
+                    error,
+                    error_size,
+                    "scene entity %s: %s %s could not be written",
+                    entities[i].name,
+                    link->component->name,
+                    field->name
+                );
+            }
+        }
+        game_prototype_links_free(links);
+    }
+    return result;
+}
+
 int game_prototype_preview_start_scene(
     game_prototype_preview *preview,
     const game_prototype_preview_scene_entity *entities,
@@ -384,6 +469,12 @@ int game_prototype_preview_start_scene(
                 return ECS_ERR_COMMAND;
             }
         }
+    }
+    int linked = link_scene(preview->world, entities, entity_count, preview->entities + base, error, error_size);
+    if (linked != ECS_OK) {
+        preview->live->runtime->deferred = false;
+        clear_entity(preview);
+        return linked;
     }
     if (game_entities_rebuild_global_bindings(preview->live->runtime->entities) != 0) {
         snprintf(error, error_size, "global binding names must be unique");

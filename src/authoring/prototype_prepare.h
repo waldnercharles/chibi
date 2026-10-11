@@ -11,12 +11,24 @@ typedef struct
     game_scene_object *objects;
     game_scene_component **components;
     int *parents;
+    game_scene_link *links;
+    const game_prototype_link *missing; /* a link naming no entity, if any */
 } authoring_objects;
 /* Appends the prototype as one object, without its children. */
 void authoring_objects_add(authoring_objects *, const game_prototype *, const char *name, int parent);
 /* Appends the prototype's children under the object at index, each followed
- * by its own. */
+ * by its own, linking the paths it and its document name. */
 void authoring_objects_add_children(authoring_objects *, const game_prototype *, int index);
+/* Links the object's `named` paths of the given kind to the document's
+ * entities, which became the objects at placed[i], or at i when NULL. */
+void authoring_objects_add_links(
+    authoring_objects *,
+    int object,
+    const game_prototype *named,
+    bool outer,
+    const game_scene_document *document,
+    const int *placed
+);
 /* Prepares the gathered objects as the spec's and releases them. */
 game_scene *authoring_objects_prepare(authoring_objects *, game_scene_spec spec, char *error, size_t size);
 /* Snapshot resolved authoring data; the caller owns the prepared generation. */

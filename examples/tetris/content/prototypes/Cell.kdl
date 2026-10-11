@@ -1,0 +1,5 @@
+name "Cell"
+components {
+    GAME.GameAppearance color=0x161824ff height=15.0 layer=1 width=15.0
+    (object)GAME.GameTransform
+}

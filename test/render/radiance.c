@@ -508,23 +508,29 @@ TEST_CASE(reset_drops_occluder_history)
     return true;
 }
 
+static bool dark(int count)
+{
+    for (int i = 0; i < count; i++) {
+        if (pixels[i].colors.r > 2 || pixels[i].colors.g > 2 || pixels[i].colors.b > 2) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* A smaller target lights nothing from an empty scene, at a fractional
  * resolution as at the default one. */
 TEST_CASE(resized_empty_scenes_stay_dark)
 {
     REQUIRE(resize_targets(64));
     REQUIRE(solve(NULL, 0, 64, 4));
-    for (int i = 0; i < 64 * 64; i++) {
-        REQUIRE(
-            pixels[i].colors.r <= 2 && pixels[i].colors.g <= 2 &&
-            pixels[i].colors.b <= 2
-        );
-    }
+    REQUIRE(dark(64 * 64));
     render_radiance_settings settings = render_radiance_get_settings(radiance);
     settings.scale = .976883f;
     REQUIRE(render_radiance_set_settings(radiance, settings));
     REQUIRE(fabsf(render_radiance_get_settings(radiance).scale - .976883f) < .000001f);
     REQUIRE(solve(NULL, 0, 64, 4));
+    REQUIRE(dark(64 * 64));
     return true;
 }
 

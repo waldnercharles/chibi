@@ -29,6 +29,9 @@ CHIBI_GPU_SELECTOR("--viewport-resize")
 CHIBI_GPU_SELECTOR("--sdf-visibility")
 /* The 3D renderer's cases in a hidden 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--scene3d")
+/* Two one-particle fields, four hidden 64x64 frames and pixel readbacks check
+ * opaque/additive depth order independently of persistent field cache order. */
+CHIBI_GPU_SELECTOR("--particle-depth")
 /* The same cases on GLES, under xvfb-run on Linux. */
 CHIBI_GPU_SELECTOR("--scene3d-gles")
 /* Color ramp table cases through 2D and material raster shaders in a hidden

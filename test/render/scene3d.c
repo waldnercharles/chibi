@@ -9,6 +9,7 @@
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "render/shader_program.h"
+#include "render/shader_publish.h"
 #include "render/viewport.h"
 #include "runtime/camera.h"
 #include "runtime/component_catalog.h"
@@ -18,6 +19,7 @@
 #include "runtime/geometry/mesh_prepared.h"
 #include "runtime/images/sky.h"
 #include "runtime/particles.h"
+#include "runtime/shaders/prepared.h"
 #include "runtime/transform_propagation.h"
 #include "runtime/visibility.h"
 #include "runtime/world.h"
@@ -4022,7 +4024,7 @@ TEST_CASE(imported_normal_maps_tilt_toward_the_top_of_their_image)
 #endif
 #endif
 
-void test_render_scene3d(bool gles)
+static void make_scene3d_app(bool gles)
 {
     /* GLES needs a display, such as Xvfb's; SDL's offscreen driver has none. */
     if (!gles) {
@@ -4035,6 +4037,142 @@ void test_render_scene3d(bool gles)
     CF_Result made = cf_make_app("scene3d", 0, 0, 0, SIDE, SIDE, options, NULL);
     assert(!cf_is_error(made));
     app_scene_renderer_initialize();
+}
+
+static player_resource_host particle_host;
+static void *particle_generation;
+
+static void particle_depth_cleanup()
+{
+    if (particle_generation) {
+        particle_host.retire(particle_host.context, particle_generation);
+        particle_generation = NULL;
+    }
+    teardown();
+}
+
+/* Three constant outputs isolate draw ordering from particle animation and
+ * lighting. The prepared catalog path also works without authoring packages. */
+static bool particle_depth_shader(const char *name, CF_V4 color, unsigned char **bytes, size_t *length)
+{
+    shader_prepared_asset asset;
+    shader_prepared_asset_init(&asset);
+    asset.name = xstrdup(name);
+    const char *names[] = { "Index", "Count", "Seed" };
+    const int widths[] = { 3, 1, 4 };
+    for (int i = 0; i < 3; i++) {
+        asset.names[i] = xstrdup(names[i]);
+        asset.widths[i] = 1;
+        asset.graph.output[i] = shader_graph_add(&asset.graph, SHADER_CONSTANT, widths[i]);
+    }
+    asset.graph.output_count = 3;
+    asset.graph.nodes[asset.graph.output[1]].value[0] = 1;
+    memcpy(asset.graph.nodes[asset.graph.output[2]].value, &color, sizeof color);
+    shader_error error = { 0 };
+    bool written = shader_asset_prepared_write(&asset, bytes, length, &error);
+    shader_prepared_asset_free(&asset);
+    return written;
+}
+
+static bool publish_depth_particles()
+{
+    const char *names[] = { "Depth.Glow", "Depth.Solid" };
+    CF_V4 colors[] = { { .5f, 0, 0, .5f }, { 0, 0, .5f, 1 } };
+    unsigned char *bytes[2] = { 0 };
+    player_asset records[2] = { 0 };
+    bool written = true;
+    for (int i = 0; i < 2; i++) {
+        records[i].name = names[i];
+        records[i].kind = PLAYER_ASSET_SHADER;
+        written = particle_depth_shader(
+                      names[i],
+                      colors[i],
+                      &bytes[i],
+                      &records[i].length
+                  ) &&
+                  written;
+        records[i].data = bytes[i];
+    }
+    particle_host = render_prepared_resources(NULL);
+    char error[256] = { 0 };
+    size_t remaining = 1024 * 1024;
+    if (written) {
+        particle_generation = particle_host.stage(particle_host.context, records, 2, &remaining, error, sizeof error);
+    }
+    for (int i = 0; i < 2; i++) {
+        free(bytes[i]);
+    }
+    REQUIRE(particle_generation);
+    particle_host.commit(particle_host.context, particle_generation, NULL);
+    return true;
+}
+
+static ecs_entity add_depth_particle()
+{
+    ecs_entity entity = add_solid(
+        (CF_V3){ 0 },
+        (Geometry3D){ PRIMITIVE_OCTAHEDRON, 2, 2, 2, 0 },
+        0xffffffffu
+    );
+    ParticleField3D field = { .count = 1, .seed = 1 };
+    Shader shader = { .material = "Depth.Solid" };
+    assert(
+        ecs_world_record_add(test_world, entity, COMPONENT_ParticleField3D.id, &field, 0) == ECS_OK
+    );
+    assert(ecs_world_record_add(test_world, entity, COMPONENT_Shader.id, &shader, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
+    return entity;
+}
+
+static void depth_particle(ecs_entity entity, bool additive, float z)
+{
+    ParticleField3D_get(test_world, entity)->additive = additive;
+    Shader_get(test_world, entity)->material = additive ? "Depth.Glow" : "Depth.Solid";
+    Transform_get(test_world, entity)->y = z;
+}
+
+TEST_CASE(solid_particles_occlude_only_additive_particles_behind_them)
+{
+    REQUIRE(publish_depth_particles());
+    look((CF_V3){ 0, 0, 6 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
+    ecs_entity fields[] = { add_depth_particle(), add_depth_particle() };
+    Environment environment = environment_defaults();
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
+    environment.auto_exposure = false;
+    CF_Pixel reference[2];
+    for (int behind = 0; behind < 2; behind++) {
+        for (int swap = 0; swap < 2; swap++) {
+            /* Swap roles on cached entities: both cache orders render the
+             * same overlap, first with glow in front, then behind the solid. */
+            depth_particle(fields[swap], true, behind ? -1.5f : 1.5f);
+            depth_particle(fields[1 - swap], false, behind ? 1.5f : -1.5f);
+            REQUIRE(render(&environment));
+            REQUIRE(!render_scene3d_error(scene3d)[0]);
+            CF_Pixel center = pixels[(SIDE / 2) * SIDE + SIDE / 2];
+            REQUIRE(center.colors.b > 40);
+            REQUIRE(behind ? center.colors.r < 3 : center.colors.r > 40);
+            if (!swap) {
+                reference[behind] = center;
+            } else {
+                REQUIRE(distance(center, reference[behind]) <= 3);
+            }
+        }
+    }
+    return true;
+}
+
+void test_render_particle_depth()
+{
+    make_scene3d_app(false);
+    pu_setup(setup, particle_depth_cleanup);
+    RUN_TEST_CASE(solid_particles_occlude_only_additive_particles_behind_them);
+    pu_clear_setup();
+    cf_destroy_app();
+}
+
+void test_render_scene3d(bool gles)
+{
+    make_scene3d_app(gles);
     pu_setup(setup, teardown);
     RUN_TEST_CASE(scene_draws_without_a_valid_rhythm_clock);
     RUN_TEST_CASE(cameras_look_along_their_transform3d);

@@ -49,6 +49,17 @@ group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 which needs a display and a GPU driver the CI job does not set up, so they stay
 out of the group; run them with `python3 tools/test_policy.py tool <name>`.
 
+`--particle-depth` isolates particle compositing in the existing 3D render
+harness: one C case, two constant three-node shader programs and two particles,
+four hidden 64x64 frames with readback. It checks additive light in front of and
+behind an opaque particle, then swaps their roles on the cached entities to
+exercise both field orders. It uses the shared 60-second GPU supervisor and
+needs no model imports, authored assets or full `--scene3d` run. Independent review approved the bounded check. Its first supervised run
+passed in 2.094 seconds with a hidden Cocoa window. It confirms the existing
+shared draw queue already orders depth writers before additive commands; no
+additional particle render pass was needed. The test harness does not report
+the graphics backend or device.
+
 CI runs the build, both groups and `make test-tools` on Linux and macOS. On
 Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
 one-minute step timeout (the test supervisor needs POSIX signals) and builds

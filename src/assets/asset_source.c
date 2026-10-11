@@ -1,5 +1,6 @@
 #include "assets/asset_source.h"
 
+#include "ecs/component_catalog.h"
 #include "graph/model/registry.h"
 #include "support/array.h"
 #include "support/asset_text.h"
@@ -147,13 +148,19 @@ asset_source_span *asset_source_highlight(const char *text)
     return source.spans;
 }
 
-/* Qualified asset component identities use their registered reflection pack,
- * not an arbitrary prefix stripped from a short type name. */
+/* Asset identities resolve through composed component descriptors or an exact
+ * reflection-pack name, never an arbitrary prefix on a short type name. */
 static const type_desc *reflected_type_named(const char *name)
 {
     const type_desc *type = type_catalog_find(name);
     if (type) {
         return type;
+    }
+    for (int i = 0; i < registry_node_count(); i++) {
+        const ecs_component_desc *component = registry_node(i)->component;
+        if (component && component->key && !strcmp(component->key, name)) {
+            return component->type;
+        }
     }
     for (int i = 0; i < registry_pack_count(); i++) {
         const registry_pack *pack = registry_pack_at(i);

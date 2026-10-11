@@ -191,6 +191,157 @@ void test_tool_physics3d();
 void test_tool_transforms();
 #endif
 
+#ifdef CHIBI_TEST_ASSET_VALUES
+void test_asset_text();
+void test_asset_value();
+#endif
+#ifdef CHIBI_TEST_UI_DOCUMENT
+void test_ui_document();
+void test_rcss();
+void test_file_watch();
+void test_text_overlay();
+#endif
+#ifdef CHIBI_TEST_FMT
+void test_fmt();
+#endif
+#ifdef CHIBI_TEST_PARTICLES
+void test_particles();
+#endif
+#ifdef CHIBI_TEST_PNG_ENCODING
+void test_png_encoding();
+#endif
+#ifdef CHIBI_TEST_PROJECT_DOCUMENT
+void test_project_document();
+#endif
+#ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
+void test_prototype_documents();
+void test_reference_index();
+void test_ui_pages();
+void test_asset_source();
+#endif
+#ifdef CHIBI_TEST_PROJECT_PREPARATION
+void test_behavior_loader();
+void test_engine_clock();
+#endif
+#ifdef CHIBI_TEST_PREVIEW_GRAPHS
+void test_preview_layout();
+void test_fields();
+void test_field_library();
+#endif
+
+/* Selectors of documents, files and runtime pieces with one suite each. */
+static const char *const document_selectors[] = {
+    "--asset-values",     "--ui-document",
+    "--text-files",       "--fmt",
+    "--particles",        "--png-encoding",
+    "--project-document", "--prototype-documents",
+    "--reference-index",  "--asset-source",
+    "--behavior-loader",  "--engine-clock",
+    "--preview-layout",   "--fields",
+};
+
+static bool selected(int argc, char **argv, const char *name)
+{
+    return argc == 2 && !strcmp(argv[1], name);
+}
+
+static bool document_selector(int argc, char **argv)
+{
+    for (size_t i = 0; i < sizeof document_selectors / sizeof *document_selectors; i++) {
+        if (selected(argc, argv, document_selectors[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Runs the suites of a document selector; false when none is built. */
+static bool run_document_suites(int argc, char **argv)
+{
+#ifdef CHIBI_TEST_ASSET_VALUES
+    if (selected(argc, argv, "--asset-values")) {
+        test_asset_text();
+        test_asset_value();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_UI_DOCUMENT
+    if (selected(argc, argv, "--ui-document")) {
+        test_ui_document();
+        test_rcss();
+        return true;
+    }
+    if (selected(argc, argv, "--text-files")) {
+        test_file_watch();
+        test_text_overlay();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_FMT
+    if (selected(argc, argv, "--fmt")) {
+        test_fmt();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_PARTICLES
+    if (selected(argc, argv, "--particles")) {
+        test_particles();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_PNG_ENCODING
+    if (selected(argc, argv, "--png-encoding")) {
+        test_png_encoding();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_PROJECT_DOCUMENT
+    if (selected(argc, argv, "--project-document")) {
+        test_project_document();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_AUTHORING_DOCUMENTS
+    /* These read the game's reflected types through the type catalog. */
+    source_runtime_active = true;
+    if (selected(argc, argv, "--prototype-documents")) {
+        test_prototype_documents();
+        return true;
+    }
+    if (selected(argc, argv, "--reference-index")) {
+        test_reference_index();
+        test_ui_pages();
+        return true;
+    }
+    if (selected(argc, argv, "--asset-source")) {
+        test_asset_source();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_PROJECT_PREPARATION
+    if (selected(argc, argv, "--behavior-loader")) {
+        test_behavior_loader();
+        return true;
+    }
+    if (selected(argc, argv, "--engine-clock")) {
+        test_engine_clock();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_PREVIEW_GRAPHS
+    if (selected(argc, argv, "--preview-layout")) {
+        test_preview_layout();
+        return true;
+    }
+    if (selected(argc, argv, "--fields")) {
+        test_fields();
+        test_field_library();
+        return true;
+    }
+#endif
+    return false;
+}
+
 static bool shader_parameters;
 bool test_shader_parameters_active()
 {
@@ -231,6 +382,16 @@ int main(int argc, char **argv)
         }
     }
 #endif
+    if (document_selector(argc, argv)) {
+        tool_init();
+        pu_display_time(true);
+        if (!run_document_suites(argc, argv)) {
+            fprintf(stderr, "%s is not built in this configuration\n", argv[1]);
+            return 2;
+        }
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     bool tilemap = false, tilemap_project = false;
 #ifdef CHIBI_TEST_TILEMAP
     tilemap = argc == 2 && !strcmp(argv[1], "--tilemap");
@@ -439,7 +600,11 @@ int main(int argc, char **argv)
             "--vector-nodes | "
             "--semantic-corpora "
             "manifest | --prepare-corpora manifest | --prepare-corpora-sljit "
-            "manifest | --feature-coverage project]\n",
+            "manifest | --feature-coverage project | --asset-values | "
+            "--ui-document | --text-files | --fmt | --particles | "
+            "--png-encoding | --project-document | --prototype-documents | "
+            "--reference-index | --asset-source | --behavior-loader | "
+            "--engine-clock | --preview-layout | --fields]\n",
             argv[0]
         );
         return 2;

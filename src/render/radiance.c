@@ -1316,11 +1316,14 @@ static float s_dispatch_surface(HRC *hrc, render_view_2d view, int *block)
         s_draw_region(hrc, hrc->surface_depth_shd, hrc->surface_canvas[0], width, height);
         hrc->surface_work.candidates = (size_t)width * height * (axis + 1) *
                                        (axis + 1);
-        hrc->surface_work.visibility_taps = visibility == GAME_HRC_DEPTH_VISIBILITY_SEGMENTS
-                                              ? hrc->surface_work.candidates *
-                                                    (size_t)(32 +
-                                                             16 * hrc->lighting.surface_depth_quality)
-                                              : (size_t)width * height * 96;
+        /* Every receiver walks 96 radial taps for ambient occlusion, and in
+         * radial mode for visibility too; segments walk each candidate. */
+        size_t segment_taps = (size_t)(32 + 16 * hrc->lighting.surface_depth_quality);
+        hrc->surface_work.visibility_taps = (size_t)width * height * 96;
+        if (visibility == GAME_HRC_DEPTH_VISIBILITY_SEGMENTS) {
+            hrc->surface_work.visibility_taps += hrc->surface_work.candidates *
+                                                 segment_taps;
+        }
         render_gpu_timing_detail("Surface depth thickness");
         s_clear_texture_bindings(hrc);
         s_surface_inputs(hrc, hrc->surface_canvas[0], 0);

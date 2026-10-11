@@ -171,7 +171,7 @@ vec3 sample_fluence(vec2 uv)
 // boundaries. The low-resolution pass has already denoised the radiance.
 void depth_surface_sample(ivec2 p, float spatial, vec3 n,
                           vec3 origin, float sigma, float gloss,
-                          inout vec3 light, inout vec3 specular, inout float shading,
+                          inout vec3 light, inout vec3 specular, inout vec2 shading,
                           inout float total, inout float specular_total)
 {
     ivec2 size = textureSize(surface_q0, 0);
@@ -191,7 +191,7 @@ void depth_surface_sample(ivec2 p, float spatial, vec3 n,
     float boundary = smoothstep(0.5, 0.7, agreement) * (1.0 - smoothstep(0.6, 1.0, abs(dz)));
     weight *= mix(1.0, boundary, surface_depth_shadow_softness);
     light += max(sample_light.rgb, vec3(0)) * weight;
-    shading += texelFetch(surface_q3, p, 0).w * weight;
+    shading += texelFetch(surface_q3, p, 0).wz * weight;
     if (gloss > 0.0 && surface_params.w > 0.0) {
         vec4 sample_specular = texelFetch(surface_q1, p, 0);
         float specular_weight = weight * max(1.0 - abs(gloss - sample_specular.a) * 10.0, 0.0);
@@ -201,10 +201,11 @@ void depth_surface_sample(ivec2 p, float spatial, vec3 n,
     total += weight;
 }
 
-// Depth light reaching into a receiver, its highlights, and how it shades
-// the HRC light it receives where it absorbs nothing.
+// Depth light reaching into a receiver and its highlights. Shading's x is
+// how Depth shades the HRC light it receives where it absorbs nothing, and y
+// the share of ambient light the heights around it let through.
 vec3 depth_surface_light(vec2 uv, vec3 n, float height, float gloss,
-                         out vec3 specular, out float shading)
+                         out vec3 specular, out vec2 shading)
 {
     ivec2 size = textureSize(surface_q0, 0);
     vec2 grid = uv * vec2(size) - 0.5;
@@ -215,7 +216,7 @@ vec3 depth_surface_light(vec2 uv, vec3 n, float height, float gloss,
     vec3 origin = surface_position(pixel, height, surface_projection, surface_world_per_px);
     vec3 light = vec3(0);
     specular = vec3(0);
-    shading = 0.0;
+    shading = vec2(0);
     float total = 0.0, specular_total = 0.0;
     for (int y = 0; y < 2; y++) {
         for (int x = 0; x < 2; x++) {
@@ -245,7 +246,7 @@ vec3 depth_surface_light(vec2 uv, vec3 n, float height, float gloss,
         }
     }
     specular /= max(specular_total, 1e-6);
-    shading = total > 1e-6 ? shading / total : 1.0;
+    shading = total > 1e-6 ? shading / total : vec2(1);
     return total > 1e-6 ? light / total : vec3(0);
 }
 
@@ -330,21 +331,22 @@ vec4 shader(vec4 color, ShaderParams params)
     vec2 relief = relief_at(source_uv);
     // Depth thickness adds its light to HRC's on solids that absorb. On one
     // that absorbs nothing, by the same test as Depth's occluders, it shades
-    // HRC's light instead, as much as the solid's edge light.
-    float depth_shading = 1.0;
+    // HRC's light instead, as much as the solid's edge light. On every solid
+    // the heights around it occlude ambient light.
+    float depth_shading = 1.0, occlusion = 1.0;
     if (solid && surface_params.x > 0.0 && surface_mode == 2) {
         vec3 specular;
-        float shading;
+        vec2 shading;
         float gain = intensity * surface_depth_gain;
         surface_light = depth_surface_light(suv, n, relief.x, normal.w, specular, shading) * gain;
         bool absorbs = source.a > 0.01;
-        depth_shading = absorbs ? 1.0 : mix(1.0, shading, clamp(normal.z, 0.0, 1.0));
+        depth_shading = absorbs ? 1.0 : mix(1.0, shading.x, clamp(normal.z, 0.0, 1.0));
+        occlusion = shading.y;
         surface_shaded = (absorbs ? surface_light * albedo * normal.z : vec3(0)) +
                          specular * gain * surface_params.w * geometry.g * normal.z;
-        vec4 direction = texture(surface_q3, suv);
-        dominant = direction.xy;
+        dominant = texture(surface_q3, suv).xy;
         energy = 1.0;
-        shadow_sum = direction.z;
+        shadow_sum = occlusion;
     }
     if (solid && surface_params.x > 0.0 && surface_mode != 2) {
         float reach = clamp((2.0 * open - 0.05) / 0.95, 0.0, 1.0);
@@ -388,8 +390,8 @@ vec4 shader(vec4 color, ShaderParams params)
     // Surface light is an artistic addition to HRC, or Depth thickness's
     // shading of it. Neither feeds temporal bounce.
     vec3 lit = incident * albedo * depth_shading + surface_shaded;
-    lit += max(albedo * shadow_floor, visibility.rgb);
-    vec3 out_linear = fluence * fog + emission * intensity + scene.rgb * ambient + lit;
+    lit += max(albedo * shadow_floor * occlusion, visibility.rgb);
+    vec3 out_linear = fluence * fog + emission * intensity + scene.rgb * ambient * occlusion + lit;
     vec2 background_uv = clamp(screen_uv + distortion / (crop_uv.zw - crop_uv.xy), vec2(0), vec2(1));
     out_linear += texture(background_tex, background_uv).rgb * (1.0 - scene.a);
     if (linear_output != 0) return vec4(max(out_linear, vec3(0.0)), 1.0);

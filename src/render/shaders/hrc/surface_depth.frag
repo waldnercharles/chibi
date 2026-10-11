@@ -407,12 +407,14 @@ void main()
     receiver_uv = uv;
     pixel_world = max(u_world_per_px.x, u_world_per_px.y) * receiver_scale;
     soft_distance = max(pixel_world, max(u_thickness, 0.0) * 0.25);
-    float blocked = 0.0;
+    // Ambient light from above the plane reaches the receiver past the slabs
+    // around it: the cosine-weighted share of each azimuth's upper elevations
+    // that no slab blocks.
+    float sky = 0.0, sky_total = 0.0;
     // Stable interleaved rotation distributes directions across neighboring
     // receivers; spatial reconstruction combines them without temporal trails.
     sampling_rotation = fract(52.9829189 * fract(dot(floor(gl_FragCoord.xy), vec2(0.06711056, 0.00583715))));
     for (int azimuth = 0; azimuth < 8; azimuth++) {
-        if (u_visibility_mode == 1) break;
         float angle = (float(azimuth) + sampling_rotation) * (2.0 * PI / 8.0);
         vec2 axis = vec2(cos(angle), sin(angle));
         vec2 screen_axis = vec2(axis.x, -axis.y);
@@ -435,7 +437,11 @@ void main()
             slab_prefix[azimuth * 12 + radial] = mask;
         }
         for (int bit = 16; bit < 32; bit++) {
-            if ((mask & (1u << uint(bit))) != 0u) blocked += 1.0;
+            // The sine of twice the bin's elevation follows its solid angle
+            // times its cosine to the plane's normal.
+            float weight = sin((float(bit) - 15.5) * (PI / 16.0));
+            sky_total += weight;
+            if ((mask & (1u << uint(bit))) == 0u) sky += weight;
         }
     }
     gather_sources(uv);
@@ -443,6 +449,6 @@ void main()
     out_q0 = vec4(min(diffuse, vec3(65504)), receiver.x);
     out_q1 = vec4(min(specular, vec3(65504)), receiver_gloss);
     out_q2 = vec4(normal, valid);
-    out_q3 = vec4(dominant / max(energy, 1e-8), 1.0 - blocked / 128.0,
+    out_q3 = vec4(dominant / max(energy, 1e-8), sky / sky_total,
                   shading_total > 0.0 ? shading / shading_total : 1.0);
 }

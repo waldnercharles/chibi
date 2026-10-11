@@ -14,7 +14,7 @@ Game rules, tuning and scene composition stay in authored content. For a
 reusable capability:
 
 1. Declare the struct in `src/runtime/components.h` with
-   `NODE_COMPONENT_TYPE_DENSE(Name)` (see `GameGlobalBinding`). Use plain
+   `NODE_COMPONENT_TYPE_DENSE(Name)` (see `GlobalBinding`). Use plain
    C fields; enums become named choices, `NODE_HANDLE(ecs.entity)` marks an
    entity reference. Comment what it means and its units, and mark a numeric
    field's unit and editing range with `NODE_UNIT("u/s")` and
@@ -28,7 +28,7 @@ reusable capability:
    through the generated get/set. Keep it optional, so scenes without it
    still work.
 4. Use it in a `test/fixtures/feature-coverage` scene or prototype (KDL key
-   `GAME.<Name>`) and cover its behavior with a pico_unit case.
+   `<Name>`) and cover its behavior with a pico_unit case.
    `make test-projects` fails until the component is used there or listed in
    that fixture's `coverage-gaps.txt` with a reason.
 5. If saved projects change meaning, also follow "Change saved projects".
@@ -112,7 +112,7 @@ edit work with the current engine, merge it before the engine PR, and leave
 its version number alone. Raising `CHIBI_PROJECT_OLDEST_VERSION` is the one
 case that needs those projects migrated first.
 
-Prepared artifact versions (`GAME_PLAYER_PREPARED_VERSION` and the other
+Prepared artifact versions (`PLAYER_PREPARED_VERSION` and the other
 `*_PREPARED_VERSION`s in `sdk/artifact_formats.cmake`) change in the PR that
 changes the format, never in a follow-up. Artifacts are rebuilt from source,
 so they need no migration. If `main` took the same number first, take the

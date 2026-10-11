@@ -24,8 +24,8 @@ extern "C"
     void rml_backend_release_prepared_fonts();
     /* Successful faces remain owned until the final backend shuts RmlUi down.
      * Existing face identities only accept identical bytes and fallback policy. */
-    bool rml_backend_install_font(const game_ui_font *, char *error, size_t);
-    bool rml_backend_install_font_budget(const game_ui_font *, size_t *remaining, char *error, size_t);
+    bool rml_backend_install_font(const ui_font *, char *error, size_t);
+    bool rml_backend_install_font_budget(const ui_font *, size_t *remaining, char *error, size_t);
 
     typedef struct rml_backend_stats
     {

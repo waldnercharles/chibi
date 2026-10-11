@@ -1,7 +1,7 @@
 components {
-    GAME.EngineSystem icon="system"
-    GAME.GameAim tab="Gameplay"
-    GAME.GameAppearance {
+    EngineSystem icon="system"
+    Aim tab="Gameplay"
+    Appearance {
         icon "shape"
         fields {
             antialias {
@@ -9,9 +9,9 @@ components {
             }
         }
     }
-    GAME.GameBody tab="Physics"
-    GAME.GameCamera icon="camera"
-    GAME.GameCollider {
+    Body tab="Physics"
+    Camera icon="camera"
+    Collider {
         tab "Physics"
         fields {
             radius unit="u"
@@ -23,7 +23,7 @@ components {
             }
         }
     }
-    GAME.GameCombustion {
+    Combustion {
         tab "Gameplay"
         fields {
             blast_radius {
@@ -32,20 +32,20 @@ components {
             }
         }
     }
-    GAME.GameDash {
+    Dash {
         fields {
             speed unit="u/s"
             cooldown unit="s"
         }
     }
-    GAME.GameDestructible tab="Physics" icon="diamond"
-    GAME.GameDrive {
+    Destructible tab="Physics" icon="diamond"
+    Drive {
         tab "Physics"
         fields {
             acceleration unit="u/s²"
         }
     }
-    GAME.GameFluidVolume {
+    FluidVolume {
         tab "Physics"
         icon "water"
         fields {
@@ -54,9 +54,9 @@ components {
             }
         }
     }
-    GAME.GameFragmentGlow tab="Material"
-    GAME.GameFuel tab="Gameplay"
-    GAME.GameHRC2D {
+    FragmentGlow tab="Material"
+    Fuel tab="Gameplay"
+    HRC2D {
         tab "Material"
         icon "light"
         fields {
@@ -78,9 +78,9 @@ components {
             }
         }
     }
-    GAME.GameHealth tab="Gameplay" icon="health"
-    GAME.GameInput tab="Gameplay" icon="gamepad"
-    GAME.GameMaterial {
+    Health tab="Gameplay" icon="health"
+    Input tab="Gameplay" icon="gamepad"
+    Material {
         tab "Material"
         fields {
             emission_intensity {
@@ -94,18 +94,18 @@ components {
             }
         }
     }
-    GAME.GameMaterialCavity {
+    MaterialCavity {
         fields {
             radius unit="u"
         }
     }
-    GAME.GameMovement {
+    Movement {
         tab "Gameplay"
         fields {
             speed unit="u/s"
         }
     }
-    GAME.GameParticleEmitter {
+    ParticleEmitter {
         icon "emitter"
         fields {
             absorption {
@@ -113,48 +113,48 @@ components {
             }
         }
     }
-    GAME.GamePickup {
+    Pickup {
         fields {
             lifetime unit="s"
         }
     }
-    GAME.GamePointLight {
+    PointLight {
         fields {
             radius unit="u"
         }
     }
-    GAME.GameProjectile {
+    Projectile {
         icon "projectile"
         fields {
             speed unit="u/s"
             lifetime unit="s"
         }
     }
-    GAME.GameReflection tab="Material"
-    GAME.GameStarfield2D tab="Material"
-    GAME.GameSubstance tab="Physics"
-    GAME.GameSurfaceInfluence {
+    Reflection tab="Material"
+    Starfield2D tab="Material"
+    Substance tab="Physics"
+    SurfaceInfluence {
         fields {
             radius unit="u"
         }
     }
-    GAME.GameTrail {
+    Trail {
         fields {
             lifetime unit="s"
         }
     }
-    GAME.GameVelocity tab="Physics"
-    GAME.GameVision {
+    Velocity tab="Physics"
+    Vision {
         fields {
             radius unit="u"
         }
     }
-    GAME.GameWeapon {
+    Weapon {
         tab "Gameplay"
         fields {
             cooldown unit="s"
         }
     }
-    GAME.MaterialBreakProfile tab="Physics"
-    GAME.MaterialTerrain tab="Material" icon="terrain"
+    MaterialBreakProfile tab="Physics"
+    MaterialTerrain tab="Material" icon="terrain"
 }

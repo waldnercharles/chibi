@@ -14,8 +14,8 @@
  * scale changes how often steps run, and presentation interpolates poses
  * between steps without changing them. */
 
-static ecs_world *world;
-static game_preview_world *live;
+static ecs_world *test_world;
+static preview_world *live;
 static engine *runtime;
 static ecs_entity mover;
 
@@ -23,10 +23,10 @@ static void cleanup()
 {
     engine_free(runtime);
     runtime = NULL;
-    game_preview_world_free(live);
+    preview_world_free(live);
     live = NULL;
-    ecs_world_free(world);
-    world = NULL;
+    ecs_world_free(test_world);
+    test_world = NULL;
 }
 
 /* Units a second, above the speed under which physics puts bodies to sleep. */
@@ -35,31 +35,30 @@ static void cleanup()
 /* A preview engine over one kinematic body moving at SPEED. */
 static bool clock_new()
 {
-    world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(!ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL));
+    test_world = ecs_world_new();
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(!ecs_world_register_component(test_world, REGISTRY_COMPONENTS[i], NULL));
     }
-    live = game_preview_world_new(world);
-    runtime = authoring_engine_new(world, live->runtime);
-    game_prototype_registry registry = { GAME_REGISTRY_COMPONENTS,
-                                         GAME_REGISTRY_COMPONENT_COUNT };
+    live = preview_world_new(test_world);
+    runtime = authoring_engine_new(test_world, live->runtime);
+    prototype_registry registry = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT };
     char error[256] = "";
-    game_prototype *prototype = game_prototype_load(
+    prototype *prototype = prototype_load(
         "name \"Mover\"\n"
         "components {\n"
-        "    GameTransform x=0 y=0\n"
-        "    GameVelocity x=60 y=0\n"
-        "    GameBody type=2\n"
-        "    GameCollider radius=1 category=1\n"
+        "    Transform x=0 y=0\n"
+        "    Velocity x=60 y=0\n"
+        "    Body type=2\n"
+        "    Collider radius=1 category=1\n"
         "}\n",
         &registry,
         error,
         sizeof error
     );
     int spawned = prototype
-                    ? game_prototype_spawn(prototype, world, NULL, &mover, error, sizeof error)
+                    ? prototype_spawn(prototype, test_world, NULL, &mover, error, sizeof error)
                     : -1;
-    game_prototype_free(prototype);
+    prototype_free(prototype);
     if (spawned) {
         fprintf(stderr, "engine clock: %s\n", error);
     }
@@ -71,7 +70,7 @@ static void count_render(void *user)
     (*(int *)user)++;
 }
 
-static int clock_system(ecs_world *, double now, double, void *user, game_schedule_error *)
+static int clock_system(ecs_world *, double now, double, void *user, schedule_error *)
 {
     double *last = user;
     if (now <= *last || now - *last >= ENGINE_FIXED_SECONDS + 1e-10) {
@@ -92,10 +91,10 @@ TEST_CASE(display_rates_run_sixty_steps_a_second)
         engine_set_render_callback(runtime, count_render, &renders);
         REQUIRE(!engine_register_system(
             runtime,
-            &(game_schedule_desc){ .name = "clock",
-                                   .phase = SYSTEM_POST_EVENTS,
-                                   .run = clock_system,
-                                   .user = &system_time }
+            &(schedule_desc){ .name = "clock",
+                              .phase = SYSTEM_POST_EVENTS,
+                              .run = clock_system,
+                              .user = &system_time }
         ));
         for (int i = 0; i <= rates[r]; i++) {
             REQUIRE(engine_frame(runtime, (double)i / rates[r]) == FLOW_OK);
@@ -105,7 +104,7 @@ TEST_CASE(display_rates_run_sixty_steps_a_second)
         REQUIRE(timing->dropped_seconds == 0 && renders == rates[r] + 1);
         /* The system ran once per fixed step at each step's simulation time. */
         REQUIRE(fabs(system_time - 1) < 1e-10);
-        const GameTransform *position = GAME_GameTransform_get_const(world, mover);
+        const Transform *position = Transform_get_const(test_world, mover);
         REQUIRE(fabsf(position->x - SPEED) < .0001f && position->y == 0);
         cleanup();
     }
@@ -188,24 +187,24 @@ TEST_CASE(display_frames_interpolate_without_moving_bodies)
     REQUIRE(clock_new());
     REQUIRE(engine_frame(runtime, 0) == FLOW_OK);
     REQUIRE(engine_frame(runtime, .1) == FLOW_OK);
-    float solved = GAME_GameTransform_get_const(world, mover)->x;
+    float solved = Transform_get_const(test_world, mover)->x;
     REQUIRE(solved > 0);
     REQUIRE(engine_frame(runtime, .1 + ENGINE_FIXED_SECONDS * .5) == FLOW_OK);
-    CF_V2 shown = engine_render_transform(runtime, world, mover).position;
+    CF_V2 shown = engine_render_transform(runtime, test_world, mover).position;
     REQUIRE(fabs(shown.x - (solved - SPEED * ENGINE_FIXED_SECONDS * .5)) < .0001f);
-    REQUIRE(GAME_GameTransform_get_const(world, mover)->x == solved);
+    REQUIRE(Transform_get_const(test_world, mover)->x == solved);
     REQUIRE(engine_last_timing(runtime)->steps == 0);
     /* Pause shows the latest solved pose at once. */
     REQUIRE(!engine_set_playing(runtime, false));
-    REQUIRE(engine_render_transform(runtime, world, mover).position.x == solved);
+    REQUIRE(engine_render_transform(runtime, test_world, mover).position.x == solved);
     return true;
 }
 
 /* A headless engine without input, physics or rendering still steps. */
 TEST_CASE(an_engine_without_optional_modules_steps_headlessly)
 {
-    world = ecs_world_new();
-    runtime = engine_new(world, &(engine_modules){ 0 });
+    test_world = ecs_world_new();
+    runtime = engine_new(test_world, &(engine_modules){ 0 });
     REQUIRE(!engine_set_playing(runtime, false));
     REQUIRE(engine_step(runtime) == FLOW_OK && engine_frame(runtime, 0) == FLOW_OK);
     REQUIRE(engine_last_timing(runtime)->simulation_steps == 1);

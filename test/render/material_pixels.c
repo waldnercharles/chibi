@@ -49,16 +49,12 @@ TEST_CASE(material_parameters_override_one_entity_until_cleared)
     REQUIRE(render_shader_parameters_validate(id, green, &error));
     REQUIRE(render_shader_parameters_validate(id, edited, &error));
     ecs_world *world = ecs_world_new();
-    REQUIRE(ecs_world_register_component(world, &GAME_COMPONENT_GameShader, NULL) == ECS_OK);
+    REQUIRE(ecs_world_register_component(world, &COMPONENT_Shader, NULL) == ECS_OK);
     ecs_entity first = ecs_world_create_entity(world),
                second = ecs_world_create_entity(world);
-    GameShader binding = { .material = TINT, .parameters = green };
-    REQUIRE(
-        ecs_world_record_add(world, first, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
-    );
-    REQUIRE(
-        ecs_world_record_add(world, second, GAME_COMPONENT_GameShader.id, &binding, 0) == ECS_OK
-    );
+    Shader binding = { .material = TINT, .parameters = green };
+    REQUIRE(ecs_world_record_add(world, first, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add(world, second, COMPONENT_Shader.id, &binding, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
     float override[3] = { 0, 0, 1 };
     pin_value inputs[] = {
@@ -185,7 +181,7 @@ TEST_CASE(graph_materials_draw_their_parameters_in_their_shapes)
     REQUIRE(test_register_tint(TINT, (float[3]){ 1, 0, 0 }));
     REQUIRE(test_register_circle_shape(CIRCLE, 4));
     int id = render_shader_find(TINT);
-    GameShader shape = { .shape = CIRCLE };
+    Shader shape = { .shape = CIRCLE };
     REQUIRE(
         render_shader_contains(&shape, NULL, (ecs_entity){ 0 }, (float[2]){ 0 }, (float[2]){ 0 }, 0)
     );
@@ -234,28 +230,25 @@ enum
     MESH_PARTS = 5
 };
 static const ecs_component_desc *const MESH_COMPONENTS[MESH_PARTS] = {
-    &GAME_COMPONENT_GameGeometry3D,
-    &GAME_COMPONENT_GameVisualTransform,
-    &GAME_COMPONENT_GameOrientation,
-    &GAME_COMPONENT_GameMeshSurface2D,
-    &GAME_COMPONENT_GameMaterial
+    &COMPONENT_Geometry3D,
+    &COMPONENT_VisualTransform,
+    &COMPONENT_Orientation,
+    &COMPONENT_MeshSurface2D,
+    &COMPONENT_Material
 };
 
 /* A mesh actor: a blue box 12 units square and 2 tall, drawn as a 2D surface. */
 static ecs_entity mesh_actor(ecs_world *world)
 {
     ecs_entity e = ecs_world_create_entity(world);
-    GameGeometry3D geometry = { .primitive = GAME_PRIMITIVE_BOX,
-                                .width = 12,
-                                .depth = 12,
-                                .height = 2 };
-    GameVisualTransform visual = { .scale = 1 };
-    GameOrientation orientation = { 0 };
-    GameMeshSurface2D surface = { true };
-    GameMaterial material = { .scene = 0x0000ffff,
-                              .albedo = 0x0000ffff,
-                              .absorption = 1,
-                              .edge_light = 1 };
+    Geometry3D geometry = { .primitive = PRIMITIVE_BOX, .width = 12, .depth = 12, .height = 2 };
+    VisualTransform visual = { .scale = 1 };
+    Orientation orientation = { 0 };
+    MeshSurface2D surface = { true };
+    Material material = { .scene = 0x0000ffff,
+                          .albedo = 0x0000ffff,
+                          .absorption = 1,
+                          .edge_light = 1 };
     const void *values[MESH_PARTS] = { &geometry, &visual, &orientation, &surface, &material };
     for (int i = 0; i < MESH_PARTS; i++) {
         assert(ecs_world_record_add(world, e, MESH_COMPONENTS[i]->id, values[i], 0) == ECS_OK);
@@ -512,14 +505,15 @@ TEST_CASE(sprite_maps_tilt_and_raise_their_texels)
     even.points[13] = even.points[14] = 0;
     REQUIRE(raster_only(&even, 1, test_centered(SMALL)));
     REQUIRE(shaded(4, 4, 0, 0, 3) && shaded(12, 12, 0, 0, 3));
-    return true;
-}
-
-/* The height the raster drew at small pixel (x, y). */
-static bool height_at(int x, int y, float *height)
-{
+    /* Graph Height adds after the height map scales the sprite's relief. */
+    REQUIRE(test_register_relief("SpriteRaised", (test_relief){ .height = 2 }));
+    sprite.reserved[0] = (float)render_shader_find("SpriteRaised");
+    REQUIRE(raster_only(&sprite, 1, test_centered(SMALL)));
     REQUIRE(read_raster(render_material_raster_textures(raster).albedo, SMALL));
-    *height = texel(SMALL, x, y, 3);
+    REQUIRE(fabsf(texel(SMALL, 4, 4, 3) - 2) < .02f);
+    REQUIRE(fabsf(texel(SMALL, 12, 4, 3) - 3) < .02f);
+    REQUIRE(fabsf(texel(SMALL, 4, 12, 3) - 4) < .02f);
+    REQUIRE(fabsf(texel(SMALL, 12, 12, 3) - 5) < .02f);
     return true;
 }
 
@@ -538,17 +532,18 @@ TEST_CASE(shapes_stand_at_their_relief)
                                     .scene = { 1, 1, 1, 1 },
                                     .albedo = { 1, 1, 1, 1 },
                                     .absorption = { 1, 1, 1, 1 } };
-    float center, outside;
     REQUIRE(raster_only(&disc, 1, test_centered(SMALL)));
-    REQUIRE(height_at(8, 8, &center) && height_at(1, 1, &outside));
-    REQUIRE(fabsf(center - 3) < .02f && fabsf(outside) < .02f);
+    REQUIRE(read_raster(render_material_raster_textures(raster).albedo, SMALL));
+    REQUIRE(fabsf(texel(SMALL, 8, 8, 3) - 3) < .02f && fabsf(texel(SMALL, 1, 1, 3)) < .02f);
     render_material_entity box = plain_box(0, (float[3]){ 1, 1, 1 });
     box.relief = 5;
     REQUIRE(raster_only(&box, 1, test_centered(SMALL)));
-    REQUIRE(height_at(8, 8, &center) && fabsf(center - 5) < .02f);
+    REQUIRE(read_raster(render_material_raster_textures(raster).albedo, SMALL));
+    REQUIRE(fabsf(texel(SMALL, 8, 8, 3) - 5) < .02f);
     box.reserved[0] = (float)render_shader_find("Raised");
     REQUIRE(raster_only(&box, 1, test_centered(SMALL)));
-    REQUIRE(height_at(8, 8, &center) && fabsf(center - 7) < .02f);
+    REQUIRE(read_raster(render_material_raster_textures(raster).albedo, SMALL));
+    REQUIRE(fabsf(texel(SMALL, 8, 8, 3) - 7) < .02f);
     return true;
 }
 
@@ -822,7 +817,7 @@ static bool volume_color(float color[3])
  * `trace_levels` cascades. */
 static bool set_fluid_lighting(int trace_levels)
 {
-    GameHRC2D lighting = test_reference_lighting();
+    HRC2D lighting = test_reference_lighting();
     render_radiance_lab lab = render_radiance_lab_defaults();
     lighting.adaptive = lighting.feedback = false;
     lab.trace_levels = trace_levels;

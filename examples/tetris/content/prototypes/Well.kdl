@@ -1,5 +1,5 @@
 name "Well"
 components {
-    GAME.GameAppearance border_color=0x5a6080ff border_width=2.0 color=0x0b0c14ff height=324.0 width=164.0
-    GAME.GameTransform x=80.0 y=160.0
+    Appearance border_color=0x5a6080ff border_width=2.0 color=0x0b0c14ff height=324.0 width=164.0
+    Transform x=80.0 y=160.0
 }

@@ -3,6 +3,7 @@
 
 typedef struct av_doc av_doc;
 
+#include <stdbool.h>
 #include <stddef.h>
 
 /* Upgrades the sources under `content`, and the canonical `start_scene` path
@@ -59,5 +60,11 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
  * `//` lines above what it describes, or NULL with `error` set when the file
  * is not one valid declaration or a name is a reserved word in .chibi. */
 char *chibi_migrate_component(const char *kdl, char *error, size_t error_size);
+
+/* Version 23 removes GAME. component namespaces and native Game type prefixes.
+ * Semantic names are rewritten in .chibi source or KDL; unrelated strings and
+ * comments stay intact. Returns an owned copy, or NULL when nothing changes
+ * or KDL parsing fails (with error set). */
+char *chibi_migrate_prefixes(const char *text, bool source, char *error, size_t error_size);
 
 #endif

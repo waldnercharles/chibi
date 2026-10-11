@@ -6,7 +6,7 @@
 
 bool authoring_prototype_parameters_fields(
     material_fields *fields,
-    const game_prototype *prototype,
+    const prototype *prototype,
     char *error,
     size_t size
 )
@@ -15,8 +15,8 @@ bool authoring_prototype_parameters_fields(
         return true;
     }
     for (int i = 0; i < acount(prototype->components); i++) {
-        const game_prototype_component *component = &prototype->components[i];
-        if (component->desc->id != GAME_COMPONENT_MaterialTerrain.id) {
+        const prototype_component *component = &prototype->components[i];
+        if (component->desc->id != COMPONENT_MaterialTerrain.id) {
             continue;
         }
         const MaterialTerrain *terrain = component->data;

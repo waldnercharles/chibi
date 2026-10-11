@@ -12,10 +12,10 @@
 
 typedef struct
 {
-    const game_package_module *records;
+    const package_module *records;
     int count, depth;
     const execution_prepared_linker *native;
-    const game_event_catalog *events;
+    const event_catalog *events;
     execution_prepared_linker linker;
     execution_module **modules;
     execution_module **imports;
@@ -25,7 +25,7 @@ typedef struct
     char *error;
     size_t size, bytes;
     size_t *remaining;
-    const execution_module *charged[GAME_PACKAGE_MAX_MODULES];
+    const execution_module *charged[PACKAGE_MAX_MODULES];
     int charged_count;
 } package_reader;
 
@@ -55,8 +55,8 @@ static bool query(void *user, uint64_t id, execution_prepared_query *out)
 static bool event(void *user, uint64_t id, uint64_t abi)
 {
     package_reader *r = user;
-    for (int i = 0; r->events && i < game_event_catalog_count(r->events); i++) {
-        execution_module_event_info declaration = game_event_catalog_at(r->events, i);
+    for (int i = 0; r->events && i < event_catalog_count(r->events); i++) {
+        execution_module_event_info declaration = event_catalog_at(r->events, i);
         if (declaration.id == id) {
             return declaration.abi == abi;
         }
@@ -80,13 +80,13 @@ static bool charged(const package_reader *r, const execution_module *module)
 }
 static bool charge_import(package_reader *r, const execution_module *module, int depth)
 {
-    if (depth > GAME_PACKAGE_MAX_IMPORT_DEPTH) {
+    if (depth > PACKAGE_MAX_IMPORT_DEPTH) {
         return fail(r, "prepared package import depth exceeds limit");
     }
     if (charged(r, module)) {
         return true;
     }
-    if (r->charged_count == GAME_PACKAGE_MAX_MODULES) {
+    if (r->charged_count == PACKAGE_MAX_MODULES) {
         return fail(r, "prepared package retained generation count exceeds limit");
     }
     size_t bytes = execution_module_storage_bytes(module);
@@ -127,7 +127,7 @@ static execution_module *import(void *user, uint64_t id, uint64_t fingerprint)
             execution_module_retain(r->imports[i]);
             return r->imports[i];
         }
-        if (r->count + acount(r->imports) == GAME_PACKAGE_MAX_MODULES) {
+        if (r->count + acount(r->imports) == PACKAGE_MAX_MODULES) {
             fail(r, "prepared package imported module count exceeds limit");
             return NULL;
         }
@@ -161,13 +161,13 @@ static execution_module *read_module(package_reader *r, int index)
         fail(r, "prepared package import cycle");
         return NULL;
     }
-    if (r->depth == GAME_PACKAGE_MAX_IMPORT_DEPTH) {
+    if (r->depth == PACKAGE_MAX_IMPORT_DEPTH) {
         fail(r, "prepared package import depth exceeds limit");
         return NULL;
     }
     r->depth++;
     r->state[index] = 1;
-    const game_package_module *record = &r->records[index];
+    const package_module *record = &r->records[index];
     char error[256] = { 0 };
     execution_module *module = execution_prepared_read_budget(
         record->data,
@@ -196,7 +196,7 @@ static execution_module *read_module(package_reader *r, int index)
         fail(r, "prepared package module identity differs");
         return NULL;
     }
-    if (r->charged_count == GAME_PACKAGE_MAX_MODULES) {
+    if (r->charged_count == PACKAGE_MAX_MODULES) {
         execution_module_free(module);
         fail(r, "prepared package retained generation count exceeds limit");
         return NULL;
@@ -212,13 +212,13 @@ typedef struct
     char *name;
     execution_module *module;
 } package_item;
-struct game_package_collection
+struct package_collection
 {
     package_item *items;
     int count;
     size_t metadata;
 };
-void game_package_collection_free(game_package_collection *collection)
+void package_collection_free(package_collection *collection)
 {
     assert(collection);
     for (int i = 0; i < collection->count; i++) {
@@ -228,26 +228,26 @@ void game_package_collection_free(game_package_collection *collection)
     free(collection->items);
     free(collection);
 }
-int game_package_collection_count(const game_package_collection *collection)
+int package_collection_count(const package_collection *collection)
 {
     assert(collection);
     return collection->count;
 }
-const char *game_package_collection_name(const game_package_collection *collection, int index)
+const char *package_collection_name(const package_collection *collection, int index)
 {
     assert(collection && index >= 0 && index < collection->count);
     return collection->items[index].name;
 }
-execution_module *game_package_collection_module(const game_package_collection *collection, int index)
+execution_module *package_collection_module(const package_collection *collection, int index)
 {
     assert(collection && index >= 0 && index < collection->count);
     return collection->items[index].module;
 }
-game_package_collection *game_package_read_budget(
-    const game_package_module *records,
+package_collection *package_read_budget(
+    const package_module *records,
     int count,
     const execution_prepared_linker *native,
-    const game_event_catalog *events,
+    const event_catalog *events,
     behavior_backend backend,
     size_t *remaining,
     char *error,
@@ -269,13 +269,12 @@ game_package_collection *game_package_read_budget(
         .size = size,
         .remaining = &budget,
     };
-    if (count > GAME_PACKAGE_MAX_MODULES) {
+    if (count > PACKAGE_MAX_MODULES) {
         fail(&r, "prepared package module count exceeds limit");
         return NULL;
     }
     size_t bytes = 0;
-    size_t metadata = sizeof(game_package_collection) +
-                      (size_t)count * sizeof(package_item);
+    size_t metadata = sizeof(package_collection) + (size_t)count * sizeof(package_item);
     for (int i = 0; i < count; i++) {
         if (!records[i].name || !records[i].name[0] ||
             strnlen(records[i].name, 1025) > 1024 || !records[i].id ||
@@ -283,7 +282,7 @@ game_package_collection *game_package_read_budget(
             fail(&r, "prepared package record is incomplete");
             return NULL;
         }
-        if (records[i].length > GAME_PACKAGE_MAX_BYTES - bytes) {
+        if (records[i].length > PACKAGE_MAX_BYTES - bytes) {
             fail(&r, "prepared package bytes exceed limit");
             return NULL;
         }
@@ -314,17 +313,17 @@ game_package_collection *game_package_read_budget(
         .type = type,
         .import = import,
     };
-    game_package_collection *collection = NULL;
+    package_collection *collection = NULL;
     for (int i = 0; i < count; i++) {
         if (!read_module(&r, i)) {
             goto done;
         }
     }
-    if (!game_module_set_validate((const execution_module *const *)r.modules, count, bytes, error, size)) {
+    if (!module_set_validate((const execution_module *const *)r.modules, count, bytes, error, size)) {
         goto done;
     }
     if (events &&
-        !game_event_catalog_validate(events, (const execution_module *const *)r.modules, count, error, size)) {
+        !event_catalog_validate(events, (const execution_module *const *)r.modules, count, error, size)) {
         goto done;
     }
     collection = xcalloc(1, sizeof *collection);
@@ -355,9 +354,9 @@ done:
     return collection;
 }
 
-game_source_staging *game_package_stage_budget(
-    game_source_registry *registry,
-    const game_package_module *records,
+source_staging *package_stage_budget(
+    source_registry *registry,
+    const package_module *records,
     int count,
     const execution_prepared_linker *native,
     const service_binding *services,
@@ -369,11 +368,11 @@ game_source_staging *game_package_stage_budget(
 {
     assert(registry && remaining);
     size_t budget = *remaining;
-    game_package_collection *collection = game_package_read_budget(
+    package_collection *collection = package_read_budget(
         records,
         count,
         native,
-        game_source_events(registry),
+        source_events(registry),
         backend,
         &budget,
         error,
@@ -382,27 +381,27 @@ game_source_staging *game_package_stage_budget(
     if (!collection) {
         return NULL;
     }
-    game_source_publication *entries = NULL;
+    source_publication *entries = NULL;
     for (int i = 0; i < count; i++) {
         apush(
             entries,
-            ((game_source_publication){ .name = collection->items[i].name,
-                                        .module = collection->items[i].module })
+            ((source_publication){ .name = collection->items[i].name,
+                                   .module = collection->items[i].module })
         );
     }
-    game_source_staging *stage = game_source_stage(registry, entries, count, services, error, size);
+    source_staging *stage = source_stage(registry, entries, count, services, error, size);
     afree(entries);
     budget += collection->metadata;
-    game_package_collection_free(collection);
+    package_collection_free(collection);
     if (stage) {
         *remaining = budget;
     }
     return stage;
 }
 
-game_source_staging *game_package_stage(
-    game_source_registry *registry,
-    const game_package_module *records,
+source_staging *package_stage(
+    source_registry *registry,
+    const package_module *records,
     int count,
     const execution_prepared_linker *native,
     const service_binding *services,
@@ -411,13 +410,13 @@ game_source_staging *game_package_stage(
     size_t size
 )
 {
-    size_t remaining = GAME_PACKAGE_MAX_BYTES;
-    return game_package_stage_budget(registry, records, count, native, services, backend, &remaining, error, size);
+    size_t remaining = PACKAGE_MAX_BYTES;
+    return package_stage_budget(registry, records, count, native, services, backend, &remaining, error, size);
 }
 
-game_source_registry *game_package_load(
+source_registry *package_load(
     ecs_world *world,
-    const game_package_module *records,
+    const package_module *records,
     int count,
     const execution_prepared_linker *native,
     const service_binding *services,
@@ -426,13 +425,12 @@ game_source_registry *game_package_load(
     size_t size
 )
 {
-    game_source_registry *registry = game_source_registry_new(world);
-    game_source_staging *
-        stage = game_package_stage(registry, records, count, native, services, backend, error, size);
+    source_registry *registry = source_registry_new(world);
+    source_staging *stage = package_stage(registry, records, count, native, services, backend, error, size);
     if (!stage) {
-        game_source_registry_free(registry);
+        source_registry_free(registry);
         return NULL;
     }
-    game_source_commit(stage);
+    source_commit(stage);
     return registry;
 }

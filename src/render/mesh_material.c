@@ -83,7 +83,7 @@ struct render_mesh_material
     uint64_t *parameter_hashes;
     CF_StorageBuffer parameter_buffer;
     int parameter_capacity;
-    GameSurfaceQuality quality;
+    SurfaceQuality quality;
     int sdf_trace_debug;
     bool hidden_rejection, has_depth;
     uint64_t instance_buffer;
@@ -180,7 +180,7 @@ bool render_mesh_material_resize(render_mesh_material *pass, int width, int heig
 }
 static bool scratch(render_mesh_material *pass, int width, int height)
 {
-    int samples = pass->quality.resolution == GAME_SURFACE_FULL ? 1 : 2;
+    int samples = pass->quality.resolution == SURFACE_FULL ? 1 : 2;
     pass->active_width = width * samples;
     pass->active_height = height * samples;
     width = (pass->active_width + 63) / 64 * 64;
@@ -394,17 +394,17 @@ static bool draw_actor(
     bool *clear
 )
 {
-    const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
-    const GameMaterial *material = GAME_GameMaterial_get_const(world, entity);
-    GameMaterial fallback = { .scene = appearance ? appearance->color : 0xffffffffu,
-                              .albedo = appearance ? appearance->color : 0xffffffffu,
-                              .edge_light = 1 };
-    game_material_coefficients color;
-    if (!game_material_extract(material ? material : &fallback, &color)) {
+    const Appearance *appearance = Appearance_get_const(world, entity);
+    const Material *material = Material_get_const(world, entity);
+    Material fallback = { .scene = appearance ? appearance->color : 0xffffffffu,
+                          .albedo = appearance ? appearance->color : 0xffffffffu,
+                          .edge_light = 1 };
+    material_coefficients color;
+    if (!material_extract(material ? material : &fallback, &color)) {
         snprintf(pass->error, sizeof pass->error, "Invalid mesh material coefficients.");
         return false;
     }
-    const GameShader *binding = GAME_GameShader_get_const(world, entity);
+    const Shader *binding = Shader_get_const(world, entity);
     render_programs *programs = pass->programs;
     bool ok = true;
     for (int i = 0; i < acount(surface->parts); i++) {
@@ -517,7 +517,7 @@ static bool draw_actor(
 }
 static bool is_sdf(ecs_world *world, ecs_entity entity)
 {
-    const GameSdfSurface3D *sdf = GAME_GameSdfSurface3D_get_const(world, entity);
+    const SdfSurface3D *sdf = SdfSurface3D_get_const(world, entity);
     return sdf && sdf->enabled;
 }
 static bool sdf_record(
@@ -535,7 +535,7 @@ static bool sdf_record(
     if (actor->sdf_shape) {
         pass->work.sdf_lod_instances++;
     }
-    const GameShader *binding = GAME_GameShader_get_const(world, entity);
+    const Shader *binding = Shader_get_const(world, entity);
     key->shape = binding ? render_shader_find(
                                actor->sdf_shape ? actor->sdf_shape : binding->shape
                            )
@@ -558,13 +558,13 @@ static bool sdf_record(
         snprintf(pass->error, sizeof pass->error, "Unknown mesh surface material: %s", name);
         return false;
     }
-    const GameAppearance *appearance = GAME_GameAppearance_get_const(world, entity);
-    const GameMaterial *material = GAME_GameMaterial_get_const(world, entity);
-    GameMaterial fallback = { .scene = appearance ? appearance->color : 0xffffffffu,
-                              .albedo = appearance ? appearance->color : 0xffffffffu,
-                              .edge_light = 1 };
-    game_material_coefficients color;
-    if (!game_material_extract(material ? material : &fallback, &color)) {
+    const Appearance *appearance = Appearance_get_const(world, entity);
+    const Material *material = Material_get_const(world, entity);
+    Material fallback = { .scene = appearance ? appearance->color : 0xffffffffu,
+                          .albedo = appearance ? appearance->color : 0xffffffffu,
+                          .edge_light = 1 };
+    material_coefficients color;
+    if (!material_extract(material ? material : &fallback, &color)) {
         snprintf(pass->error, sizeof pass->error, "Invalid mesh material coefficients.");
         return false;
     }
@@ -596,7 +596,7 @@ static bool sdf_record(
         16
     );
     CF_V3 dims = part->visual.part.dimensions;
-    memcpy(record->dimensions, (float[4]){ dims.x, dims.y, dims.z, GAME_PRIMITIVE_BOX }, 16);
+    memcpy(record->dimensions, (float[4]){ dims.x, dims.y, dims.z, PRIMITIVE_BOX }, 16);
     memcpy(
         record->surface,
         (float[4]){ key->material, time, material ? material->edge_light : 1, 0 },
@@ -1072,8 +1072,8 @@ static int draw_sdfs(
     int program = staged[0].program;
     float shape[] = { key->shape, 0, 0, 0 };
     float quality[] = { pass->quality.sdf_pixel_error,
-                        pass->quality.sdf_normal_mode == GAME_SDF_NORMAL_ANALYTIC ? 0
-                        : pass->quality.sdf_normal_mode == GAME_SDF_NORMAL_TETRAHEDRAL
+                        pass->quality.sdf_normal_mode == SDF_NORMAL_ANALYTIC ? 0
+                        : pass->quality.sdf_normal_mode == SDF_NORMAL_TETRAHEDRAL
                             ? 4
                             : 6,
                         pass->sdf_trace_debug,
@@ -1141,16 +1141,15 @@ void render_mesh_material_set_sdf_batch_limit(render_mesh_material *pass, int li
     assert(pass && limit >= 0 && limit <= RENDER_SDF_BATCH_LIMIT);
     pass->sdf_batch_limit = limit;
 }
-void render_mesh_material_set_quality(render_mesh_material *pass, GameSurfaceQuality quality)
+void render_mesh_material_set_quality(render_mesh_material *pass, SurfaceQuality quality)
 {
-    assert(quality.resolution >= GAME_SURFACE_SUPERSAMPLED && quality.resolution <= GAME_SURFACE_FULL);
+    assert(quality.resolution >= SURFACE_SUPERSAMPLED && quality.resolution <= SURFACE_FULL);
     assert(
         isfinite(quality.sdf_pixel_error) && quality.sdf_pixel_error >= 0 &&
         quality.sdf_pixel_error <= 1
     );
     assert(
-        quality.sdf_normal_mode >= GAME_SDF_NORMAL_CENTRAL &&
-        quality.sdf_normal_mode <= GAME_SDF_NORMAL_ANALYTIC
+        quality.sdf_normal_mode >= SDF_NORMAL_CENTRAL && quality.sdf_normal_mode <= SDF_NORMAL_ANALYTIC
     );
     if (quality.resolution != pass->quality.resolution && pass->canvas.id) {
         cf_destroy_canvas(pass->canvas);
@@ -1226,8 +1225,7 @@ bool render_mesh_material_draw(
         if (ecs_entity_to_u64(actors[i].entity) ==
                 ecs_entity_to_u64(pass->inspection.entity) &&
             pass->inspection.part >= 0) {
-            const GameShader
-                *binding = GAME_GameShader_get_const(world, actors[i].entity);
+            const Shader *binding = Shader_get_const(world, actors[i].entity);
             shader_error diagnostic = { 0 };
             if (!binding || !render_shader_model_preview_snapshot(
                                 render_shader_find(binding->shape),
@@ -1306,7 +1304,7 @@ bool render_mesh_material_draw(
     pass->work.surface_capacity_pixels = pass->scratch_width * pass->scratch_height;
     pass->rect[0] = x;
     pass->rect[1] = y;
-    float scale = pass->quality.resolution == GAME_SURFACE_FULL ? 1 : .5f;
+    float scale = pass->quality.resolution == SURFACE_FULL ? 1 : .5f;
     pass->rect[2] = pass->active_width * scale;
     pass->rect[3] = pass->active_height * scale;
     float rect[] = { view.min_x + x / sx,

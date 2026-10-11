@@ -7,7 +7,7 @@
 #include <assert.h>
 #include <string.h>
 
-pin_spec graph_event_payload_pin(const game_event_field *field)
+pin_spec graph_event_payload_pin(const event_field *field)
 {
     return (pin_spec){ .name = field->name,
                        .type = field->type,
@@ -18,9 +18,9 @@ pin_spec graph_event_payload_pin(const game_event_field *field)
 int graph_host_event_apply(graph *g, node *n)
 {
     assert(n->desc == &NODE_Event);
-    for (int i = 0; i < GAME_HOST_EVENT_COUNT; i++) {
-        const game_host_event_desc *event = &GAME_HOST_EVENTS[i];
-        if (!game_host_event_is(n->reference_name, i)) {
+    for (int i = 0; i < HOST_EVENT_COUNT; i++) {
+        const host_event_desc *event = &HOST_EVENTS[i];
+        if (!host_event_is(n->reference_name, i)) {
             continue;
         }
         /* Then precedes the payload. */
@@ -65,7 +65,7 @@ static int field_index(const node *n, uint64_t id)
 bool graph_event_matches(const node *n, const behavior_asset *definition)
 {
     if (!definition || definition->domain != BEHAVIOR_DOMAIN_EVENT_DEFINITION ||
-        game_host_event_reserved(definition->name) || !n->reference_name ||
+        host_event_reserved(definition->name) || !n->reference_name ||
         strcmp(n->reference_name, definition->name)) {
         return false;
     }
@@ -93,7 +93,7 @@ bool graph_event_matches(const node *n, const behavior_asset *definition)
 int graph_event_apply(graph *g, node *n, const behavior_asset *definition)
 {
     if (!definition || definition->domain != BEHAVIOR_DOMAIN_EVENT_DEFINITION ||
-        game_host_event_reserved(definition->name) || g->flow_pause_count) {
+        host_event_reserved(definition->name) || g->flow_pause_count) {
         return -1;
     }
     bool output = receiver(n);

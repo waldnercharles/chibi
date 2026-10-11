@@ -39,7 +39,7 @@ acceptance. Native generation is owned/freed with the immutable function.
 WASM retains the prepared portable bytecode loop; these native kernels are not
 an interpreter fallback or a new portable format.
 
-Runtime inspection exposes `tick_system_compiled`. `game_behavior_last_update`
+Runtime inspection exposes `tick_system_compiled`. `behavior_last_update`
 reports `system_loop`, counting entries actually attempted inside kernels,
 separately from all prepared/native-loop entries. Compilation availability does
 not promise that the current attachment order forms a profitable span.

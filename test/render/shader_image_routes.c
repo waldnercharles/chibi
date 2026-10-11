@@ -375,7 +375,7 @@ TEST_CASE(fragments_sample_like_the_cpu_across_seams)
 TEST_CASE(image_shapes_contain_what_their_alpha_covers)
 {
     image_shape(keys[ALPHA]);
-    GameShader binding = { .shape = "Image route shape" };
+    Shader binding = { .shape = "Image route shape" };
     float none[2] = { 0 };
     REQUIRE(
         render_shader_contains(&binding, NULL, (ecs_entity){ 0 }, (float[2]){ -2, 2 }, none, 0)

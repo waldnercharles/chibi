@@ -47,9 +47,8 @@ static bool event(void *user, uint64_t id, uint64_t abi)
     if (declaration && declaration->kind == SCRIPT_CAPABILITY_EVENT) {
         return abi == script_catalog_capability_abi(catalog, declaration);
     }
-    for (int i = 0; context->events && i < game_event_catalog_count(context->events);
-         i++) {
-        execution_module_event_info declaration = game_event_catalog_at(context->events, i);
+    for (int i = 0; context->events && i < event_catalog_count(context->events); i++) {
+        execution_module_event_info declaration = event_catalog_at(context->events, i);
         if (declaration.id == id) {
             return declaration.abi == abi;
         }

@@ -77,8 +77,8 @@ static bool validate_events(module_set_reader *r, const execution_module *const 
         const execution_module *module = modules[i];
         for (int j = 0; j < execution_module_event_count(module); j++) {
             execution_module_event_info info = execution_module_event_at(module, j);
-            if (acount(events) == GAME_MODULE_SET_MAX_EVENT_DECLARATIONS ||
-                info.field_count > GAME_MODULE_SET_MAX_EVENT_FIELDS - fields) {
+            if (acount(events) == MODULE_SET_MAX_EVENT_DECLARATIONS ||
+                info.field_count > MODULE_SET_MAX_EVENT_FIELDS - fields) {
                 fail(r, "module set event declarations exceed limit");
                 goto done;
             }
@@ -126,7 +126,7 @@ static bool same_generation(module_set_reader *r, const execution_module *a, con
         fail(r, error);
         goto done;
     }
-    if (left_size > GAME_MODULE_SET_MAX_BYTES - r->bytes) {
+    if (left_size > MODULE_SET_MAX_BYTES - r->bytes) {
         fail(r, "module set dependency bytes exceed limit");
         goto done;
     }
@@ -135,7 +135,7 @@ static bool same_generation(module_set_reader *r, const execution_module *a, con
         fail(r, error);
         goto done;
     }
-    if (right_size > GAME_MODULE_SET_MAX_BYTES - r->bytes) {
+    if (right_size > MODULE_SET_MAX_BYTES - r->bytes) {
         fail(r, "module set dependency bytes exceed limit");
         goto done;
     }
@@ -163,7 +163,7 @@ static bool account_dependency(module_set_reader *r, const execution_module *mod
         return fail(r, error);
     }
     free(bytes);
-    if (length > GAME_MODULE_SET_MAX_BYTES - r->bytes) {
+    if (length > MODULE_SET_MAX_BYTES - r->bytes) {
         return fail(r, "module set dependency bytes exceed limit");
     }
     r->bytes += length;
@@ -176,7 +176,7 @@ static bool collect_dependencies(
     package_dependency **dependencies
 )
 {
-    if (depth > GAME_MODULE_SET_MAX_IMPORT_DEPTH) {
+    if (depth > MODULE_SET_MAX_IMPORT_DEPTH) {
         return fail(r, "module set dependency depth exceeds limit");
     }
     for (int i = 0; i < acount(*dependencies); i++) {
@@ -192,7 +192,7 @@ static bool collect_dependencies(
             return same_generation(r, previous, module);
         }
     }
-    if (acount(*dependencies) == GAME_MODULE_SET_MAX_MODULES) {
+    if (acount(*dependencies) == MODULE_SET_MAX_MODULES) {
         return fail(r, "module set dependency count exceeds limit");
     }
     if (!account_dependency(r, module)) {
@@ -228,7 +228,7 @@ done:
     return valid;
 }
 
-bool game_module_set_validate(
+bool module_set_validate(
     const execution_module *const *modules,
     int count,
     size_t root_bytes,
@@ -248,7 +248,7 @@ bool game_module_set_validate(
         .error = error,
         .size = size,
     };
-    if (count > GAME_MODULE_SET_MAX_MODULES || root_bytes > GAME_MODULE_SET_MAX_BYTES) {
+    if (count > MODULE_SET_MAX_MODULES || root_bytes > MODULE_SET_MAX_BYTES) {
         return fail(&r, "module set exceeds its count or byte limit");
     }
     for (int i = 0; i < count; i++) {

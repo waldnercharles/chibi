@@ -82,10 +82,10 @@ TEST_CASE(preview_owns_project_components_until_its_world_is_freed)
         REQUIRE(!type_catalog_find("PreviousPreview"));
         const ecs_component_desc *heat = ecs_component_catalog_find(project_components(), "PreviewHeat");
         REQUIRE(heat && heat->type == heat_type);
-        game_prototype_preview *preview = chibi_preview_runtime(run);
-        REQUIRE(game_prototype_preview_entity_count(preview) == 1);
-        ecs_world *world = game_prototype_preview_world(preview);
-        ecs_entity entity = game_prototype_preview_entity_at(preview, 0);
+        prototype_preview *preview = chibi_preview_runtime(run);
+        REQUIRE(prototype_preview_entity_count(preview) == 1);
+        ecs_world *world = prototype_preview_world(preview);
+        ecs_entity entity = prototype_preview_entity_at(preview, 0);
         float *level = ecs_component_data(world, entity, heat->id);
         REQUIRE(level && *level == 7);
         *level = 9;

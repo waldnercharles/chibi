@@ -2,7 +2,7 @@
 
 September 13, 2026. Integrating the authored action bindings exposed a population
 scan outside the timed simulation step. Every input sample asked whether each
-action had a listener. `game_behavior_has_event` walked every attachment and every
+action had a listener. `behavior_has_event` walked every attachment and every
 node in its graph; an absent action scanned the entire crowd. At 20,000 enemies,
 a native profile attributed 2,428 of 8,005 main-thread samples to input sampling,
 almost entirely this lookup. The benchmark's broad `render_host` bucket included

@@ -29,7 +29,7 @@ polish remain unfinished.
 - Repeated spawning exposed borrowed ECS descriptor strings; registration and
   migration now own descriptor names/keys. Compiler diagnostics now retain the
   actual root graph ID (zero), preserving source-node lookup.
-- `GameCollider` defines radius, category, and mask. Native contact detection
+- `Collider` defines radius, category, and mask. Native contact detection
   snapshots the world, filters pairs symmetrically, and queues Contact Begin once
   per overlap. It no longer changes health or destroys projectiles.
 - Queued entity events copy scalar payloads and metadata. Delivery is bounded to
@@ -60,12 +60,12 @@ polish remain unfinished.
 - Projectile creation, movement, lifetime, contact, damage, and death are now
   authored in behavior assets. `game/gameplay.c` remains only the shared native
   contact detector used by the behavior hosts.
-- `game/prototype.c:game_prototype_spawn` applies ECS commands internally and
+- `game/prototype.c:prototype_spawn` applies ECS commands internally and
   attaches behaviors after writing prototype defaults. It cannot run inside a
   system query. ECS recording APIs also reject active iteration.
 - `reflect/reflect.c:emit_component_nodes` generates component access against the
   behavior owner. Initializing another entity requires entity-targeted access.
-- `game/behavior.c:game_behavior_attach` dispatches Begin immediately. Its pump
+- `game/behavior.c:behavior_attach` dispatches Begin immediately. Its pump
   can execute attachments in parallel without structural-effect gating.
 - Core flow supports time-based suspension. Host-operation completion needs an
   explicit suspension mechanism; a fabricated timer is not that mechanism.
@@ -94,13 +94,13 @@ snapshot so a subsequent editor change cannot alter an in-flight request.
 Host API shape (see `game/entities.h` for current signatures):
 
 ```c
-game_entities *game_entities_new(game_behavior_world *behaviors);
-void game_entities_free(game_entities *entities);
-int game_entities_register(game_entities *entities, const game_prototype *prototype);
-int game_entities_request_spawn(game_entities *entities, flow_context *ctx,
+entities *entities_new(behavior_world *behaviors);
+void entities_free(entities *entities);
+int entities_register(entities *entities, const prototype *prototype);
+int entities_request_spawn(entities *entities, flow_context *ctx,
                                 const char *prototype_identity);
-int game_entities_request_destroy(game_entities *entities, ecs_entity entity);
-int game_entities_flush(game_entities *entities);
+int entities_request_destroy(entities *entities, ecs_entity entity);
+int entities_flush(entities *entities);
 ```
 
 Keep request and continuation details private. The spawn request records a stable
@@ -115,7 +115,7 @@ reject completion after cancellation or pooled activation reuse.
    output yet. Structural nodes execute serially; they cannot race the queue.
 2. At a boundary after behavior pumping and all active queries, the host creates
    the entity and applies its prototype components **without attaching behaviors**.
-   Extract this component-initialization operation from `game_prototype_spawn`;
+   Extract this component-initialization operation from `prototype_spawn`;
    preserve the existing synchronous editor wrapper.
 3. Resolve Spawn's entity output and resume its continuation serially. The handle
    now names a live entity, so targeted component nodes access ordinary ECS data.
@@ -244,7 +244,7 @@ To reproduce the Debug measurement after `make build`, run
 Move Toward function. It finds the nearest player
 category within 2,000 world units, branches on Found, normalizes target minus
 self, and clamps speed times delta to the remaining distance. Enemy's authored
-GameMovement speed is 90. No target leaves its position unchanged.
+Movement speed is 90. No target leaves its position unchanged.
 
 `Find Nearest Entity` is a generic contextual read with position, radius,
 category bits, and an excluded handle as inputs. It returns Found, Entity,
@@ -297,7 +297,7 @@ The graph captures origin and normalized aim before Spawn Prototype. Those
 Set Variable output values belong to the activation; the continuation does not
 reread a target or shared aim variable after yielding. Projectile initialization
 sets position, direction, and weapon damage, preserving its other prototype
-fields. Damage and cooldown still come from GameWeapon.
+fields. Damage and cooldown still come from Weapon.
 
 `test/auto_weapon.c` exercises both hosts: no-target time, fractional cooldown
 remainder, right/left/diagonal/zero aim, multiple intervals, zero and negative

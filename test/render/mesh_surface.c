@@ -36,20 +36,20 @@ static void set_component(
 TEST_CASE(mesh_surfaces_bound_bank_pick_and_compound)
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        REQUIRE(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     ecs_entity entity = ecs_world_create_entity(world);
-    GameTransform position = { 10, 20 };
-    GameGeometry3D shape = { .primitive = GAME_PRIMITIVE_BOX,
-                             .width = 8,
-                             .height = 4,
-                             .depth = 6,
-                             .elevation = 7 };
-    GameMeshSurface2D marker = { .enabled = true };
-    set_component(world, entity, &GAME_COMPONENT_GameTransform, &position);
-    set_component(world, entity, &GAME_COMPONENT_GameGeometry3D, &shape);
-    set_component(world, entity, &GAME_COMPONENT_GameMeshSurface2D, &marker);
+    Transform position = { 10, 20 };
+    Geometry3D shape = { .primitive = PRIMITIVE_BOX,
+                         .width = 8,
+                         .height = 4,
+                         .depth = 6,
+                         .elevation = 7 };
+    MeshSurface2D marker = { .enabled = true };
+    set_component(world, entity, &COMPONENT_Transform, &position);
+    set_component(world, entity, &COMPONENT_Geometry3D, &shape);
+    set_component(world, entity, &COMPONENT_MeshSurface2D, &marker);
     render_mesh_surface surface = { 0 };
     char error[256];
     REQUIRE(render_mesh_surface_build(world, entity, NULL, &surface, error, sizeof error));
@@ -64,8 +64,8 @@ TEST_CASE(mesh_surfaces_bound_bank_pick_and_compound)
     REQUIRE(close_value(min.y, 17));
     REQUIRE(close_value(max.x, 14));
 
-    GameVisualTransform transform = { .scale = 2, .roll = 1.5707963268f };
-    set_component(world, entity, &GAME_COMPONENT_GameVisualTransform, &transform);
+    VisualTransform transform = { .scale = 2, .roll = 1.5707963268f };
+    set_component(world, entity, &COMPONENT_VisualTransform, &transform);
     REQUIRE(render_mesh_surface_build(world, entity, NULL, &surface, error, sizeof error));
     REQUIRE(close_value(surface.max.y - surface.min.y, 12));
     REQUIRE(close_value(surface.max.z - surface.min.z, 8));
@@ -78,22 +78,22 @@ TEST_CASE(mesh_surfaces_bound_bank_pick_and_compound)
     REQUIRE(close_value(normal.y, 0));
     REQUIRE(close_value(normal.z, 1));
 
-    GameMeshParts parts = { .parts = "(array)- {\n"
-                                     "    - {\n"
-                                     "        primitive 0\n"
-                                     "        material \"Hull\"\n"
-                                     "        (array)size 8 4 6\n"
-                                     "    }\n"
-                                     "    - {\n"
-                                     "        primitive 0\n"
-                                     "        material \"Engine\"\n"
-                                     "        (array)size 2 2 2\n"
-                                     "        (array)position 0 6 0\n"
-                                     "    }\n"
-                                     "}\n" };
-    transform = (GameVisualTransform){ .scale = 1 };
-    set_component(world, entity, &GAME_COMPONENT_GameVisualTransform, &transform);
-    set_component(world, entity, &GAME_COMPONENT_GameMeshParts, &parts);
+    MeshParts parts = { .parts = "(array)- {\n"
+                                 "    - {\n"
+                                 "        primitive 0\n"
+                                 "        material \"Hull\"\n"
+                                 "        (array)size 8 4 6\n"
+                                 "    }\n"
+                                 "    - {\n"
+                                 "        primitive 0\n"
+                                 "        material \"Engine\"\n"
+                                 "        (array)size 2 2 2\n"
+                                 "        (array)position 0 6 0\n"
+                                 "    }\n"
+                                 "}\n" };
+    transform = (VisualTransform){ .scale = 1 };
+    set_component(world, entity, &COMPONENT_VisualTransform, &transform);
+    set_component(world, entity, &COMPONENT_MeshParts, &parts);
     REQUIRE(authoring_parts_prepare(parts.parts, error, sizeof error));
     REQUIRE(render_mesh_surface_build(world, entity, NULL, &surface, error, sizeof error));
     REQUIRE(acount(surface.parts) == 2);
@@ -111,11 +111,10 @@ TEST_CASE(primitive_vertices_have_unit_normals)
 {
     char error[256];
     render_mesh_surface_vertex *vertices = NULL;
-    for (int primitive = GAME_PRIMITIVE_BOX; primitive < GAME_PRIMITIVE_COUNT;
-         primitive++) {
-        bool supported = primitive != GAME_PRIMITIVE_SPHERE &&
-                         primitive != GAME_PRIMITIVE_CAPSULE &&
-                         primitive != GAME_PRIMITIVE_CONE;
+    for (int primitive = PRIMITIVE_BOX; primitive < PRIMITIVE_COUNT; primitive++) {
+        bool supported = primitive != PRIMITIVE_SPHERE &&
+                         primitive != PRIMITIVE_CAPSULE &&
+                         primitive != PRIMITIVE_CONE;
         REQUIRE(
             render_mesh_surface_vertices(primitive, &vertices, error, sizeof error) == supported
         );

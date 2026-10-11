@@ -1,4 +1,4 @@
 name "RechargeSystem"
 components {
-    GAME.EngineSystem asset="Recharge"
+    EngineSystem asset="Recharge"
 }

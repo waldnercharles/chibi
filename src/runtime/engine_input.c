@@ -147,7 +147,7 @@ static void clear_owner(engine_input *input, ecs_entity entity)
     if (!ecs_entity_is_alive(input->world, entity)) {
         return;
     }
-    GameInput *controls = GAME_GameInput_get(input->world, entity);
+    Input *controls = Input_get(input->world, entity);
     if (controls) {
         if ((controls->move.x != 0 || controls->move.y != 0) &&
             !has_entity(input->released, entity)) {
@@ -155,7 +155,7 @@ static void clear_owner(engine_input *input, ecs_entity entity)
         }
         controls->move = (CF_V2){ 0 };
     }
-    GameAim *aim = GAME_GameAim_get(input->world, entity);
+    Aim *aim = Aim_get(input->world, entity);
     if (aim) {
         aim->firing = false;
         aim->manual = false;
@@ -174,7 +174,7 @@ void engine_input_clear(engine_input *input)
      * without dispatching authored gameplay while transport is stopped. Held
      * controls and actions stay, so resuming with the same controls held
      * presses nothing again. */
-    ecs_component_id component = GAME_COMPONENT_GameInput.id;
+    ecs_component_id component = COMPONENT_Input.id;
     if (ecs_world_component(input->world, component)) {
         ecs_query query;
         int result = ecs_query_begin(input->world, &query, &component, 1);
@@ -257,9 +257,9 @@ int engine_input_devices(
     bool *firing
 )
 {
-    _Static_assert(GAME_CONTROL_COUNT < 64, "control bitset");
-    _Static_assert(GAME_PAD_COUNT < 32, "controller bitset");
-    uint32_t all_buttons = ((UINT32_C(1) << GAME_PAD_COUNT) - 1) & ~UINT32_C(1);
+    _Static_assert(CONTROL_COUNT < 64, "control bitset");
+    _Static_assert(PAD_COUNT < 32, "controller bitset");
+    uint32_t all_buttons = ((UINT32_C(1) << PAD_COUNT) - 1) & ~UINT32_C(1);
     for (int i = 0; i < INPUT_CONTROLLER_MAX; i++) {
         if (controllers[i].buttons & ~all_buttons) {
             return FLOW_ERR_ARGUMENT;
@@ -345,13 +345,12 @@ int engine_input_hold(engine_input *input, const input_keyframe *key)
 
 static int apply_aim_sample(engine_input *input)
 {
-    if (!input->aim_sampled ||
-        !ecs_world_component(input->world, GAME_COMPONENT_GameAim.id)) {
+    if (!input->aim_sampled || !ecs_world_component(input->world, COMPONENT_Aim.id)) {
         return FLOW_OK;
     }
-    ecs_component_id required[] = { GAME_COMPONENT_GameInput.id,
-                                    GAME_COMPONENT_GameAim.id,
-                                    GAME_COMPONENT_GameTransform.id };
+    ecs_component_id required[] = { COMPONENT_Input.id,
+                                    COMPONENT_Aim.id,
+                                    COMPONENT_Transform.id };
     ecs_query query;
     int result = ecs_query_begin(input->world, &query, required, 3);
     if (result != ECS_OK) {
@@ -359,11 +358,11 @@ static int apply_aim_sample(engine_input *input)
     }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        GameAim *aim = GAME_GameAim_get(input->world, entity);
+        Aim *aim = Aim_get(input->world, entity);
         aim->firing = input->firing;
         CF_V2 direction = input->aim;
         if (input->aim_point) {
-            CF_V2 position = game_transform_world_2d(input->world, entity).position;
+            CF_V2 position = transform_world_2d(input->world, entity).position;
             direction.x -= position.x;
             direction.y -= position.y;
         }
@@ -400,7 +399,7 @@ static int dispatch(engine_input *input, ecs_entity entity, const char *event, e
 
 static int dispatch_movement(engine_input *input)
 {
-    ecs_component_id component = GAME_COMPONENT_GameInput.id;
+    ecs_component_id component = COMPONENT_Input.id;
     if (!ecs_world_component(input->world, component)) {
         return FLOW_OK;
     }
@@ -410,12 +409,10 @@ static int dispatch_movement(engine_input *input)
         return result;
     }
     CF_V2 direction = input->movement;
-    pin_value value = { .type = PIN_STRUCT,
-                        .type_name = GAME_T_CF_V2.name,
-                        .ptr = &direction };
+    pin_value value = { .type = PIN_STRUCT, .type_name = T_CF_V2.name, .ptr = &direction };
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        GameInput *member = GAME_GameInput_get(input->world, entity);
+        Input *member = Input_get(input->world, entity);
         bool active = direction.x != 0 || direction.y != 0;
         bool was_active = member->move.x != 0 || member->move.y != 0;
         member->move = direction;
@@ -425,7 +422,7 @@ static int dispatch_movement(engine_input *input)
         result = dispatch(
             input,
             entity,
-            game_host_event_name(GAME_HOST_EVENT_INPUT),
+            host_event_name(HOST_EVENT_INPUT),
             (execution_arguments){ &value, 1 }
         );
         if (result < 0) {
@@ -442,7 +439,7 @@ static int apply_movement_sample(engine_input *input)
         return FLOW_OK;
     }
     ecs_entity *controlled = NULL;
-    ecs_component_id component = GAME_COMPONENT_GameInput.id;
+    ecs_component_id component = COMPONENT_Input.id;
     if (ecs_world_component(input->world, component)) {
         ecs_query query;
         int result = ecs_query_begin(input->world, &query, &component, 1);
@@ -458,7 +455,7 @@ static int apply_movement_sample(engine_input *input)
     CF_V2 zero = { 0 };
     pin_value value = {
         .type = PIN_STRUCT,
-        .type_name = GAME_T_CF_V2.name,
+        .type_name = T_CF_V2.name,
         .ptr = &zero,
     };
     int result = FLOW_OK;
@@ -473,7 +470,7 @@ static int apply_movement_sample(engine_input *input)
         result = dispatch(
             input,
             released[i],
-            game_host_event_name(GAME_HOST_EVENT_INPUT),
+            host_event_name(HOST_EVENT_INPUT),
             (execution_arguments){ &value, 1 }
         );
         if (result < 0) {
@@ -486,7 +483,7 @@ static int apply_movement_sample(engine_input *input)
             !ecs_entity_is_alive(input->world, entity)) {
             continue;
         }
-        GameAim *aim = GAME_GameAim_get(input->world, entity);
+        Aim *aim = Aim_get(input->world, entity);
         if (aim) {
             aim->firing = false;
             aim->manual = false;
@@ -494,7 +491,7 @@ static int apply_movement_sample(engine_input *input)
         result = dispatch(
             input,
             entity,
-            game_host_event_name(GAME_HOST_EVENT_INPUT),
+            host_event_name(HOST_EVENT_INPUT),
             (execution_arguments){ &value, 1 }
         );
         if (result < 0) {
@@ -509,7 +506,7 @@ static int apply_movement_sample(engine_input *input)
 
 static int dispatch_actions(engine_input *input)
 {
-    ecs_component_id component = GAME_COMPONENT_GameInput.id;
+    ecs_component_id component = COMPONENT_Input.id;
     if (!ecs_world_component(input->world, component)) {
         free_transitions(input);
         return FLOW_OK;
@@ -537,7 +534,7 @@ static int dispatch_actions(engine_input *input)
          * before running the authored behavior. */
         for (int j = 0; j < acount(recipients); j++) {
             entity = recipients[j];
-            if (!GAME_GameInput_has(input->world, entity)) {
+            if (!Input_has(input->world, entity)) {
                 continue;
             }
             result = dispatch(input, entity, transitions[i].action, (execution_arguments){ 0 });
@@ -606,12 +603,12 @@ static const char *action_pressed(void *service, const pin_value *in, pin_value 
     return NULL;
 }
 
-const node_host_call GAME_INPUT_HELD_CALL = { .service = GAME_INPUT_SERVICE,
-                                              .invoke = action_held,
-                                              .optional_service = true };
-const node_host_call GAME_INPUT_PRESSED_CALL = { .service = GAME_INPUT_SERVICE,
-                                                 .invoke = action_pressed,
-                                                 .optional_service = true };
+const node_host_call INPUT_HELD_CALL = { .service = INPUT_SERVICE,
+                                         .invoke = action_held,
+                                         .optional_service = true };
+const node_host_call INPUT_PRESSED_CALL = { .service = INPUT_SERVICE,
+                                            .invoke = action_pressed,
+                                            .optional_service = true };
 static const char *controller_connected(void *service, const pin_value *in, pin_value *out)
 {
     int controller = in[0].i;
@@ -622,9 +619,9 @@ static const char *controller_connected(void *service, const pin_value *in, pin_
     out[0].b = input && input->controllers[controller].connected;
     return NULL;
 }
-const node_host_call GAME_INPUT_CONTROLLER_CONNECTED_CALL = {
-    .service = GAME_INPUT_SERVICE,
+const node_host_call INPUT_CONTROLLER_CONNECTED_CALL = {
+    .service = INPUT_SERVICE,
     .invoke = controller_connected,
     .optional_service = true,
 };
-const node_access GAME_INPUT_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+const node_access INPUT_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };

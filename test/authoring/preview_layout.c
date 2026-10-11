@@ -6,7 +6,7 @@
 #include "graph/model/registry.h"
 #include "support/array.h"
 #include "support/asset_text.h"
-#include "test/support/game_graph_packs.h"
+#include "test/support/graph_packs.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
@@ -15,15 +15,15 @@
  * alone, while moving a node the author placed is an unsaved edit. */
 
 static behavior_asset *open;
-static game_preview_definition *definition;
+static preview_definition *definition;
 
 static void cleanup()
 {
     behavior_asset_free(open);
     open = NULL;
-    game_preview_definition_free(definition);
+    preview_definition_free(definition);
     definition = NULL;
-    test_game_graph_packs_clear();
+    test_graph_packs_clear();
 }
 
 /* A copy as an editor holds it. Executable source does not preserve node
@@ -67,17 +67,17 @@ static behavior_asset *counter_behavior()
 
 TEST_CASE(arranging_automatic_nodes_keeps_a_definition_saved)
 {
-    REQUIRE(test_game_graph_packs_set());
+    REQUIRE(test_graph_packs_set());
     behavior_asset *source = counter_behavior();
     REQUIRE(source);
     uint64_t automatic = source->graph->nodes[0]->id,
              placed = source->graph->nodes[1]->id;
     source->graph->nodes[0]->placed = false;
-    definition = game_preview_definition_new("Counter", source);
+    definition = preview_definition_new("Counter", source);
     open = authoring_snapshot(definition->working);
     REQUIRE(open);
     graph_node_by_id(open->graph, automatic)->x += 240;
-    REQUIRE(!game_preview_sync_working(definition, open));
+    REQUIRE(!preview_sync_working(definition, open));
     REQUIRE(!definition->dirty && !definition->unsaved);
     REQUIRE(
         graph_node_by_id(definition->working->graph, automatic)->x ==
@@ -85,7 +85,7 @@ TEST_CASE(arranging_automatic_nodes_keeps_a_definition_saved)
     );
     /* Moving a placed node is an unsaved edit. */
     graph_node_by_id(open->graph, placed)->x += 40;
-    REQUIRE(!game_preview_sync_working(definition, open));
+    REQUIRE(!preview_sync_working(definition, open));
     REQUIRE(definition->dirty && definition->unsaved);
     return true;
 }
@@ -95,20 +95,20 @@ TEST_CASE(arranging_automatic_nodes_keeps_a_definition_saved)
 TEST_CASE(arranged_component_access_nodes_keep_their_entries)
 {
     static const char *const kinds[] = {
-        "Get_GameCollider",
-        "GetEntity_GameCollider",
-        "Has_GameCollider",
-        "HasEntity_GameCollider",
-        "Set_GameCollider",
-        "SetEntity_GameCollider",
-        "Add_GameCollider",
-        "Remove_GameCollider",
-        "Make_GameCollider",
-        "Break_GameCollider",
-        "Set_GameCollider_ignore_entity",
+        "Get_Collider",
+        "GetEntity_Collider",
+        "Has_Collider",
+        "HasEntity_Collider",
+        "Set_Collider",
+        "SetEntity_Collider",
+        "Add_Collider",
+        "Remove_Collider",
+        "Make_Collider",
+        "Break_Collider",
+        "Set_Collider_ignore_entity",
     };
     static const float spots[][2] = { { 12, 0 }, { 1576, 261 }, { -1234567, -7654321 } };
-    REQUIRE(test_game_graph_packs_set());
+    REQUIRE(test_graph_packs_set());
     behavior_asset *source = behavior_asset_new("Arranged");
     for (size_t i = 0; i < sizeof kinds / sizeof *kinds; i++) {
         node *n = graph_add_node(source->graph, registry_node_by_name(kinds[i]));
@@ -119,7 +119,7 @@ TEST_CASE(arranged_component_access_nodes_keep_their_entries)
         REQUIRE(n);
         n->placed = false;
     }
-    definition = game_preview_definition_new("Arranged", source);
+    definition = preview_definition_new("Arranged", source);
     for (size_t s = 0; s < sizeof spots / sizeof *spots; s++) {
         open = authoring_snapshot(definition->working);
         REQUIRE(open);
@@ -127,7 +127,7 @@ TEST_CASE(arranged_component_access_nodes_keep_their_entries)
             open->graph->nodes[i]->x = spots[s][0];
             open->graph->nodes[i]->y = spots[s][1];
         }
-        REQUIRE(!game_preview_sync_working(definition, open) && !definition->unsaved);
+        REQUIRE(!preview_sync_working(definition, open) && !definition->unsaved);
         behavior_asset_free(open);
         open = NULL;
     }

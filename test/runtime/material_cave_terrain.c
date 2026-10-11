@@ -181,16 +181,14 @@ TEST_CASE(shipping_cave_parity)
 TEST_CASE(terrain_boundary_cut)
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        REQUIRE(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_preview_world *live = game_preview_world_new(world);
+    preview_world *live = preview_world_new(world);
     char field_error[256];
-    REQUIRE(
-        compile_cave(game_materials_fields(live->runtime->materials), field_error, sizeof field_error)
-    );
+    REQUIRE(compile_cave(materials_fields(live->runtime->materials), field_error, sizeof field_error));
     REQUIRE(material_field_prepare_arguments(
-        game_materials_fields(live->runtime->materials),
+        materials_fields(live->runtime->materials),
         "CaveField",
         "Radius 72\nRoughness 30\n",
         field_error,
@@ -200,21 +198,21 @@ TEST_CASE(terrain_boundary_cut)
     material_test_component(
         world,
         settings,
-        &GAME_COMPONENT_MaterialDestructionWorld,
+        &COMPONENT_MaterialDestructionWorld,
         &(MaterialDestructionWorld){ 8 }
     );
     material_test_component(
         world,
         settings,
-        &GAME_COMPONENT_MaterialFluidWorld,
+        &COMPONENT_MaterialFluidWorld,
         &(MaterialFluidWorld){ .chunk_size = 128, .buffer = 32, .kernel = 10, .particle_limit = 10 }
     );
     ecs_entity source = ecs_world_create_entity(world);
-    material_test_component(world, source, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+    material_test_component(world, source, &COMPONENT_Transform, &(Transform){ 0 });
     material_test_component(
         world,
         source,
-        &GAME_COMPONENT_MaterialTerrain,
+        &COMPONENT_MaterialTerrain,
         &(MaterialTerrain){ .seed = 1729,
                             .width = 512,
                             .height = 512,
@@ -229,16 +227,16 @@ TEST_CASE(terrain_boundary_cut)
                             .min_fragment_cells = 4 }
     );
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
+    REQUIRE(!materials_prepare(live->runtime->materials));
     ecs_entity target = { 0 };
     ecs_query query;
-    ecs_component_id id = GAME_COMPONENT_GameDestructible.id;
+    ecs_component_id id = COMPONENT_Destructible.id;
     REQUIRE(ecs_query_begin(world, &query, &id, 1) == ECS_OK);
     ecs_entity entity;
     int before = 0;
     while (ecs_query_next(&query, &entity)) {
-        const GameTransform *p = GAME_GameTransform_get_const(world, entity);
-        const material_mask *mask = game_materials_mask(live->runtime->materials, entity);
+        const Transform *p = Transform_get_const(world, entity);
+        const material_mask *mask = materials_mask(live->runtime->materials, entity);
         before += mask->count;
         if (p->x < 0 && p->y > 0) {
             target = entity;
@@ -246,22 +244,14 @@ TEST_CASE(terrain_boundary_cut)
     }
     ecs_query_end(&query);
     REQUIRE(ecs_entity_to_u64(target));
-    game_material_state initial = game_materials_inspect(live->runtime->materials);
-    game_materials_damage(
-        live->runtime->materials,
-        target,
-        (fluid_vec){ 0, 220 },
-        12,
-        1,
-        0,
-        (material_impact){ 0 }
-    );
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
+    material_state initial = materials_inspect(live->runtime->materials);
+    materials_damage(live->runtime->materials, target, (fluid_vec){ 0, 220 }, 12, 1, 0, (material_impact){ 0 });
+    REQUIRE(!materials_prepare(live->runtime->materials));
     int after = 0, opened = 0;
     REQUIRE(ecs_query_begin(world, &query, &id, 1) == ECS_OK);
     while (ecs_query_next(&query, &entity)) {
-        const GameTransform *p = GAME_GameTransform_get_const(world, entity);
-        const material_mask *mask = game_materials_mask(live->runtime->materials, entity);
+        const Transform *p = Transform_get_const(world, entity);
+        const material_mask *mask = materials_mask(live->runtime->materials, entity);
         after += mask->count;
         if (p->y > 0) {
             float x = p->x < 0 ? -1 : 1;
@@ -271,58 +261,48 @@ TEST_CASE(terrain_boundary_cut)
     }
     ecs_query_end(&query);
     REQUIRE(opened == 2 && before - after > 100);
-    game_material_state damaged = game_materials_inspect(live->runtime->materials);
+    material_state damaged = materials_inspect(live->runtime->materials);
     REQUIRE(initial.hash != damaged.hash);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    REQUIRE(game_materials_inspect(live->runtime->materials).hash == damaged.hash);
-    REQUIRE(
-        compile_cave(game_materials_fields(live->runtime->materials), field_error, sizeof field_error)
-    );
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    REQUIRE(materials_inspect(live->runtime->materials).hash == damaged.hash);
+    REQUIRE(compile_cave(materials_fields(live->runtime->materials), field_error, sizeof field_error));
     REQUIRE(material_field_prepare_arguments(
-        game_materials_fields(live->runtime->materials),
+        materials_fields(live->runtime->materials),
         "CaveField",
         "Radius 72\nRoughness 30\n",
         field_error,
         sizeof field_error
     ));
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    REQUIRE(game_materials_inspect(live->runtime->materials).cells == initial.cells);
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    REQUIRE(materials_inspect(live->runtime->materials).cells == initial.cells);
     REQUIRE(!ecs_entity_is_alive(world, target));
-    MaterialTerrain *terrain = GAME_MaterialTerrain_get(world, source);
+    MaterialTerrain *terrain = MaterialTerrain_get(world, source);
     const char *original_parameters = terrain->parameters;
     terrain->parameters = "Radius 96\n"
                           "Roughness 30\n";
     REQUIRE(material_field_prepare_arguments(
-        game_materials_fields(live->runtime->materials),
+        materials_fields(live->runtime->materials),
         terrain->field,
         terrain->parameters,
         field_error,
         sizeof field_error
     ));
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    REQUIRE(game_materials_inspect(live->runtime->materials).cells < initial.cells);
-    terrain = GAME_MaterialTerrain_get(world, source);
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    REQUIRE(materials_inspect(live->runtime->materials).cells < initial.cells);
+    terrain = MaterialTerrain_get(world, source);
     terrain->parameters = original_parameters;
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    REQUIRE(game_materials_inspect(live->runtime->materials).cells == initial.cells);
-    game_materials_reset(live->runtime->materials);
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    REQUIRE(materials_inspect(live->runtime->materials).cells == initial.cells);
+    materials_reset(live->runtime->materials);
     REQUIRE(ecs_world_live_count(world) == 2);
-    game_materials_damage(
-        live->runtime->materials,
-        source,
-        (fluid_vec){ 0, 220 },
-        12,
-        1,
-        0,
-        (material_impact){ 0 }
-    );
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    REQUIRE(game_materials_inspect(live->runtime->materials).cells == damaged.cells);
+    materials_damage(live->runtime->materials, source, (fluid_vec){ 0, 220 }, 12, 1, 0, (material_impact){ 0 });
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    REQUIRE(materials_inspect(live->runtime->materials).cells == damaged.cells);
     REQUIRE(ecs_world_live_count(world) > 2);
     REQUIRE(ecs_world_destroy_entity(world, source) == ECS_OK);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
+    REQUIRE(!materials_prepare(live->runtime->materials));
     REQUIRE(ecs_world_live_count(world) == 1);
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(world);
     return true;
 }
@@ -330,33 +310,28 @@ TEST_CASE(terrain_boundary_cut)
 TEST_CASE(terrain_stream_restore)
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        REQUIRE(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_preview_world *live = game_preview_world_new(world);
+    preview_world *live = preview_world_new(world);
     char error[256];
-    REQUIRE(compile_cave(game_materials_fields(live->runtime->materials), error, sizeof error));
+    REQUIRE(compile_cave(materials_fields(live->runtime->materials), error, sizeof error));
     REQUIRE(material_field_prepare_arguments(
-        game_materials_fields(live->runtime->materials),
+        materials_fields(live->runtime->materials),
         "CaveField",
         "Radius 72\nRoughness 30\n",
         error,
         sizeof error
     ));
     ecs_entity camera = ecs_world_create_entity(world);
-    material_test_component(
-        world,
-        camera,
-        &GAME_COMPONENT_GameCamera,
-        &(GameCamera){ .width = 128, .height = 128 }
-    );
-    material_test_component(world, camera, &GAME_COMPONENT_GameTransform, &(GameTransform){ -1500, 0 });
+    material_test_component(world, camera, &COMPONENT_Camera, &(Camera){ .width = 128, .height = 128 });
+    material_test_component(world, camera, &COMPONENT_Transform, &(Transform){ -1500, 0 });
     ecs_entity source = ecs_world_create_entity(world);
-    material_test_component(world, source, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+    material_test_component(world, source, &COMPONENT_Transform, &(Transform){ 0 });
     material_test_component(
         world,
         source,
-        &GAME_COMPONENT_MaterialTerrain,
+        &COMPONENT_MaterialTerrain,
         &(MaterialTerrain){ .seed = 1729,
                             .width = 4096,
                             .height = 512,
@@ -371,24 +346,24 @@ TEST_CASE(terrain_stream_restore)
                             .stream_budget = 64 }
     );
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    game_material_state pristine = game_materials_inspect(live->runtime->materials);
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    material_state pristine = materials_inspect(live->runtime->materials);
     REQUIRE(pristine.streaming.resident > 0 && pristine.cells > 0);
-    ecs_component_id id = GAME_COMPONENT_GameDestructible.id;
+    ecs_component_id id = COMPONENT_Destructible.id;
     ecs_query query;
     ecs_entity entity, target = { 0 };
-    GameTransform position = { 0 };
+    Transform position = { 0 };
     fluid_vec point = { 0 };
     REQUIRE(ecs_query_begin(world, &query, &id, 1) == ECS_OK);
     while (ecs_query_next(&query, &entity)) {
-        const material_mask *mask = game_materials_mask(live->runtime->materials, entity);
+        const material_mask *mask = materials_mask(live->runtime->materials, entity);
         for (int y = 16; y < mask->height - 16 && !ecs_entity_to_u64(target); y++) {
             for (int x = 16; x < mask->width - 16; x++) {
                 if (!mask->cells[y * mask->width + x]) {
                     continue;
                 }
                 target = entity;
-                position = *GAME_GameTransform_get_const(world, entity);
+                position = *Transform_get_const(world, entity);
                 point = (fluid_vec){
                     position.x + (x + .5f - mask->width * .5f) * mask->cell_size,
                     position.y + (y + .5f - mask->height * .5f) * mask->cell_size
@@ -399,27 +374,27 @@ TEST_CASE(terrain_stream_restore)
     }
     ecs_query_end(&query);
     REQUIRE(ecs_entity_to_u64(target));
-    game_materials_damage(live->runtime->materials, target, point, 10, 1, 0, (material_impact){ 0 });
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    REQUIRE(game_materials_inspect(live->runtime->materials).cells < pristine.cells);
+    materials_damage(live->runtime->materials, target, point, 10, 1, 0, (material_impact){ 0 });
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    REQUIRE(materials_inspect(live->runtime->materials).cells < pristine.cells);
     REQUIRE(!material_mask_contains(
-        game_materials_mask(live->runtime->materials, target),
+        materials_mask(live->runtime->materials, target),
         point.x - position.x,
         point.y - position.y
     ));
-    GAME_GameTransform_get(world, camera)->x = 1500;
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
+    Transform_get(world, camera)->x = 1500;
+    REQUIRE(!materials_prepare(live->runtime->materials));
     REQUIRE(!ecs_entity_is_alive(world, target));
-    REQUIRE(game_materials_inspect(live->runtime->materials).streaming.unloaded > 0);
-    GAME_GameTransform_get(world, camera)->x = -1500;
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
+    REQUIRE(materials_inspect(live->runtime->materials).streaming.unloaded > 0);
+    Transform_get(world, camera)->x = -1500;
+    REQUIRE(!materials_prepare(live->runtime->materials));
     bool restored = false;
     REQUIRE(ecs_query_begin(world, &query, &id, 1) == ECS_OK);
     while (ecs_query_next(&query, &entity)) {
-        const GameTransform *p = GAME_GameTransform_get_const(world, entity);
+        const Transform *p = Transform_get_const(world, entity);
         if (p->x == position.x && p->y == position.y) {
             REQUIRE(!material_mask_contains(
-                game_materials_mask(live->runtime->materials, entity),
+                materials_mask(live->runtime->materials, entity),
                 point.x - p->x,
                 point.y - p->y
             ));
@@ -428,29 +403,27 @@ TEST_CASE(terrain_stream_restore)
     }
     ecs_query_end(&query);
     REQUIRE(restored);
-    REQUIRE(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
-    game_physics_reset(live->runtime->physics);
-    game_materials_reset(live->runtime->materials);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    REQUIRE(game_materials_inspect(live->runtime->materials).cells == pristine.cells);
-    REQUIRE(!game_materials_inspect(live->runtime->materials).streaming.stored);
-    MaterialTerrain authored = *GAME_MaterialTerrain_get_const(world, source);
-    REQUIRE(
-        ecs_world_record_remove(world, source, GAME_COMPONENT_MaterialTerrain.id, 0) == ECS_OK
-    );
+    REQUIRE(physics_tick(live->runtime->physics, 1.f / 60) == 0);
+    physics_reset(live->runtime->physics);
+    materials_reset(live->runtime->materials);
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    REQUIRE(materials_inspect(live->runtime->materials).cells == pristine.cells);
+    REQUIRE(!materials_inspect(live->runtime->materials).streaming.stored);
+    MaterialTerrain authored = *MaterialTerrain_get_const(world, source);
+    REQUIRE(ecs_world_record_remove(world, source, COMPONENT_MaterialTerrain.id, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    REQUIRE(!game_materials_inspect(live->runtime->materials).streaming.resident);
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    REQUIRE(!materials_inspect(live->runtime->materials).streaming.resident);
     REQUIRE(ecs_world_live_count(world) == 2);
-    material_test_component(world, source, &GAME_COMPONENT_MaterialTerrain, &authored);
+    material_test_component(world, source, &COMPONENT_MaterialTerrain, &authored);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    REQUIRE(game_materials_inspect(live->runtime->materials).cells == pristine.cells);
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    REQUIRE(materials_inspect(live->runtime->materials).cells == pristine.cells);
     REQUIRE(ecs_world_destroy_entity(world, source) == ECS_OK);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    REQUIRE(!game_materials_inspect(live->runtime->materials).streaming.resident);
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    REQUIRE(!materials_inspect(live->runtime->materials).streaming.resident);
     REQUIRE(ecs_world_live_count(world) == 1);
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(world);
     return true;
 }
@@ -460,33 +433,28 @@ TEST_CASE(terrain_stream_restore)
 TEST_CASE(terrain_host_views)
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        REQUIRE(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_preview_world *live = game_preview_world_new(world);
+    preview_world *live = preview_world_new(world);
     char error[256];
-    REQUIRE(compile_cave(game_materials_fields(live->runtime->materials), error, sizeof error));
+    REQUIRE(compile_cave(materials_fields(live->runtime->materials), error, sizeof error));
     REQUIRE(material_field_prepare_arguments(
-        game_materials_fields(live->runtime->materials),
+        materials_fields(live->runtime->materials),
         "CaveField",
         "Radius 72\nRoughness 30\n",
         error,
         sizeof error
     ));
     ecs_entity camera = ecs_world_create_entity(world);
-    material_test_component(
-        world,
-        camera,
-        &GAME_COMPONENT_GameCamera,
-        &(GameCamera){ .width = 128, .height = 128 }
-    );
-    material_test_component(world, camera, &GAME_COMPONENT_GameTransform, &(GameTransform){ -1500, 0 });
+    material_test_component(world, camera, &COMPONENT_Camera, &(Camera){ .width = 128, .height = 128 });
+    material_test_component(world, camera, &COMPONENT_Transform, &(Transform){ -1500, 0 });
     ecs_entity source = ecs_world_create_entity(world);
-    material_test_component(world, source, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+    material_test_component(world, source, &COMPONENT_Transform, &(Transform){ 0 });
     material_test_component(
         world,
         source,
-        &GAME_COMPONENT_MaterialTerrain,
+        &COMPONENT_MaterialTerrain,
         &(MaterialTerrain){ .seed = 1729,
                             .width = 4096,
                             .height = 512,
@@ -501,27 +469,26 @@ TEST_CASE(terrain_host_views)
                             .stream_budget = 64 }
     );
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    int cameras = game_materials_inspect(live->runtime->materials).streaming.resident;
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    int cameras = materials_inspect(live->runtime->materials).streaming.resident;
     material_stream_view view = { 1500, 0, 900, 0 };
-    game_materials_set_stream_views(live->runtime->materials, &view, 1);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
-    bool waited = game_materials_streaming(live->runtime->materials);
-    for (int i = 0; i < 64 && game_materials_streaming(live->runtime->materials); i++) {
-        REQUIRE(!game_materials_prepare(live->runtime->materials));
+    materials_set_stream_views(live->runtime->materials, &view, 1);
+    REQUIRE(!materials_prepare(live->runtime->materials));
+    bool waited = materials_streaming(live->runtime->materials);
+    for (int i = 0; i < 64 && materials_streaming(live->runtime->materials); i++) {
+        REQUIRE(!materials_prepare(live->runtime->materials));
     }
-    int resident = game_materials_inspect(live->runtime->materials).streaming.resident;
+    int resident = materials_inspect(live->runtime->materials).streaming.resident;
     uint32_t entities = ecs_world_live_count(world);
-    game_materials_reset_except_terrain(live->runtime->materials);
-    REQUIRE(!game_materials_prepare(live->runtime->materials));
+    materials_reset_except_terrain(live->runtime->materials);
+    REQUIRE(!materials_prepare(live->runtime->materials));
     bool kept = ecs_world_live_count(world) == entities &&
-                game_materials_inspect(live->runtime->materials).streaming.resident ==
-                    resident;
-    game_materials_reset(live->runtime->materials);
+                materials_inspect(live->runtime->materials).streaming.resident == resident;
+    materials_reset(live->runtime->materials);
     bool cleared = ecs_world_live_count(world) == 2;
-    REQUIRE(waited && !game_materials_streaming(live->runtime->materials) && resident > cameras);
+    REQUIRE(waited && !materials_streaming(live->runtime->materials) && resident > cameras);
     REQUIRE(kept && cleared);
-    game_preview_world_free(live);
+    preview_world_free(live);
     ecs_world_free(world);
     return true;
 }
@@ -530,21 +497,19 @@ TEST_CASE(terrain_host_views)
 TEST_CASE(terrain_preparation_scratch)
 {
     ecs_world *worlds[2];
-    game_preview_world *lives[2];
+    preview_world *lives[2];
     ecs_entity sources[2][2];
     ecs_entity cameras[2][2];
     for (int owner = 0; owner < 2; owner++) {
         ecs_world *world = worlds[owner] = ecs_world_new();
-        for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-            REQUIRE(
-                ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
-            );
+        for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+            REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
         }
-        game_preview_world *live = lives[owner] = game_preview_world_new(world);
+        preview_world *live = lives[owner] = preview_world_new(world);
         char error[256];
-        REQUIRE(compile_cave(game_materials_fields(live->runtime->materials), error, sizeof error));
+        REQUIRE(compile_cave(materials_fields(live->runtime->materials), error, sizeof error));
         REQUIRE(material_field_prepare_arguments(
-            game_materials_fields(live->runtime->materials),
+            materials_fields(live->runtime->materials),
             "CaveField",
             "Radius 72\nRoughness 30\n",
             error,
@@ -556,26 +521,16 @@ TEST_CASE(terrain_preparation_scratch)
             material_test_component(
                 world,
                 camera,
-                &GAME_COMPONENT_GameCamera,
-                &(GameCamera){ .width = 128, .height = 128 }
+                &COMPONENT_Camera,
+                &(Camera){ .width = 128, .height = 128 }
             );
-            material_test_component(
-                world,
-                camera,
-                &GAME_COMPONENT_GameTransform,
-                &(GameTransform){ x, 0 }
-            );
+            material_test_component(world, camera, &COMPONENT_Transform, &(Transform){ x, 0 });
             ecs_entity source = sources[owner][origin] = ecs_world_create_entity(world);
+            material_test_component(world, source, &COMPONENT_Transform, &(Transform){ x, 0 });
             material_test_component(
                 world,
                 source,
-                &GAME_COMPONENT_GameTransform,
-                &(GameTransform){ x, 0 }
-            );
-            material_test_component(
-                world,
-                source,
-                &GAME_COMPONENT_MaterialTerrain,
+                &COMPONENT_MaterialTerrain,
                 &(MaterialTerrain){ .seed = 1729,
                                     .width = 512,
                                     .height = 512,
@@ -591,15 +546,15 @@ TEST_CASE(terrain_preparation_scratch)
             );
         }
         ecs_entity moving = ecs_world_create_entity(world);
-        material_test_component(world, moving, &GAME_COMPONENT_GameBody, &(GameBody){ .type = GAME_BODY_DYNAMIC });
-        material_test_component(world, moving, &GAME_COMPONENT_GameTransform, &(GameTransform){ 2048, 0 });
-        material_test_component(world, moving, &GAME_COMPONENT_GameVelocity, &(GameVelocity){ 2, 0 });
+        material_test_component(world, moving, &COMPONENT_Body, &(Body){ .type = BODY_DYNAMIC });
+        material_test_component(world, moving, &COMPONENT_Transform, &(Transform){ 2048, 0 });
+        material_test_component(world, moving, &COMPONENT_Velocity, &(Velocity){ 2, 0 });
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-        REQUIRE(!game_materials_prepare(live->runtime->materials));
-        REQUIRE(!game_materials_prepare(live->runtime->materials));
-        game_materials *materials = live->runtime->materials;
+        REQUIRE(!materials_prepare(live->runtime->materials));
+        REQUIRE(!materials_prepare(live->runtime->materials));
+        materials *materials = live->runtime->materials;
         REQUIRE(materials->terrain_views && !acount(materials->terrain_views));
-        int cells = game_materials_inspect(materials).cells;
+        int cells = materials_inspect(materials).cells;
         for (int origin = 0; origin < 2; origin++) {
             material_stream
                 *stream = materials->records[sources[owner][origin].slot].stream;
@@ -622,33 +577,33 @@ TEST_CASE(terrain_preparation_scratch)
          * preparation contributes no further allocations. */
         REQUIRE(after.calls - before.calls == 3);
         REQUIRE(materials->terrain_views == storage && acap(storage) == capacity);
-        REQUIRE(game_materials_inspect(materials).cells == cells);
+        REQUIRE(materials_inspect(materials).cells == cells);
         /* Empty interest after populated preparation must not retain views. */
         for (int origin = 0; origin < 2; origin++) {
-            GAME_GameCamera_get(world, cameras[owner][origin])->disabled = true;
+            Camera_get(world, cameras[owner][origin])->disabled = true;
         }
-        *GAME_GameVelocity_get(world, moving) = (GameVelocity){ 0 };
+        *Velocity_get(world, moving) = (Velocity){ 0 };
         REQUIRE(!material_ecs_generate_terrains(materials));
-        REQUIRE(!game_materials_inspect(materials).streaming.resident);
+        REQUIRE(!materials_inspect(materials).streaming.resident);
         REQUIRE(materials->terrain_views == storage && !acount(materials->terrain_views));
         for (int origin = 0; origin < 2; origin++) {
-            GAME_GameCamera_get(world, cameras[owner][origin])->disabled = false;
+            Camera_get(world, cameras[owner][origin])->disabled = false;
         }
-        GAME_GameVelocity_get(world, moving)->x = 2;
-        game_materials_reset(materials);
+        Velocity_get(world, moving)->x = 2;
+        materials_reset(materials);
         REQUIRE(materials->terrain_views == storage && acap(storage) == capacity);
         REQUIRE(!acount(materials->terrain_views) && !acount(materials->debris_tiles));
-        REQUIRE(!game_materials_prepare(materials));
-        REQUIRE(game_materials_inspect(materials).cells == cells);
+        REQUIRE(!materials_prepare(materials));
+        REQUIRE(materials_inspect(materials).cells == cells);
     }
     REQUIRE(
         lives[0]->runtime->materials->terrain_views !=
         lives[1]->runtime->materials->terrain_views
     );
-    game_preview_world_free(lives[0]);
+    preview_world_free(lives[0]);
     ecs_world_free(worlds[0]);
-    REQUIRE(!game_materials_prepare(lives[1]->runtime->materials));
-    game_preview_world_free(lives[1]);
+    REQUIRE(!materials_prepare(lives[1]->runtime->materials));
+    preview_world_free(lives[1]);
     ecs_world_free(worlds[1]);
     return true;
 }

@@ -16,8 +16,8 @@
 #include <string.h>
 
 static behavior_asset *asset;
-static game_player_asset *visual_assets;
-static game_player_resource_host resource_host;
+static player_asset *visual_assets;
+static player_resource_host resource_host;
 static void *resource_pending;
 static unsigned char *payload;
 static const registry_pack **previous_packs;

@@ -11,12 +11,10 @@ static bool finite_vector(CF_V3 value)
 
 /* Target can name another instance's entity. Keep this write serialized until
  * entry analysis proves disjoint targets. */
-const node_access GAME_VISUAL_REACTION_ACCESS = {
-    .reads = &GAME_COMPONENT_GameVisualMotion.id,
-    .read_count = 1,
-    .writes = &GAME_COMPONENT_GameVisualMotion.id,
-    .write_count = 1
-};
+const node_access VISUAL_REACTION_ACCESS = { .reads = &COMPONENT_VisualMotion.id,
+                                             .read_count = 1,
+                                             .writes = &COMPONENT_VisualMotion.id,
+                                             .write_count = 1 };
 static const char *visual_reaction(void *service, const pin_value *arguments, pin_value *)
 {
     ecs_world *world = service;
@@ -29,9 +27,9 @@ static const char *visual_reaction(void *service, const pin_value *arguments, pi
         return "Trigger Visual Reaction requires an ECS world";
     }
     ecs_entity entity = ecs_entity_from_u64(target.u64);
-    GameVisualMotion *motion = GAME_GameVisualMotion_get(world, entity);
+    VisualMotion *motion = VisualMotion_get(world, entity);
     if (!motion) {
-        return "Trigger Visual Reaction target has no GameVisualMotion";
+        return "Trigger Visual Reaction target has no VisualMotion";
     }
     CF_V3 value = *(const CF_V3 *)rotation.ptr;
     if (!finite_vector(value) || !isfinite(motion->reaction_duration) ||
@@ -43,7 +41,7 @@ static const char *visual_reaction(void *service, const pin_value *arguments, pi
     motion->reaction_age = 0;
     return NULL;
 }
-const node_host_call GAME_VISUAL_REACTION_CALL = {
+const node_host_call VISUAL_REACTION_CALL = {
     .service = "ecs.world",
     .invoke = visual_reaction,
     .missing_service = "Trigger Visual Reaction requires an ECS world",

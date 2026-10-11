@@ -21,63 +21,49 @@ TEST_CASE(fragment_material_frame)
 {
     for (int inherited = 0; inherited < 2; inherited++) {
         ecs_world *world = ecs_world_new();
-        for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-            REQUIRE(
-                ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK
-            );
+        for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+            REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
         }
-        game_preview_world *live = game_preview_world_new(world);
+        preview_world *live = preview_world_new(world);
         ecs_entity config = ecs_world_create_entity(world),
                    slab = ecs_world_create_entity(world);
         material_test_component(
             world,
             config,
-            &GAME_COMPONENT_MaterialDestructionWorld,
+            &COMPONENT_MaterialDestructionWorld,
             &(MaterialDestructionWorld){ 8 }
         );
         material_test_component(
             world,
             config,
-            &GAME_COMPONENT_MaterialFluidWorld,
+            &COMPONENT_MaterialFluidWorld,
             &(MaterialFluidWorld){ 64, 32, 10, 100 }
         );
-        material_test_component(world, slab, &GAME_COMPONENT_GameTransform, &(GameTransform){ 30, -12 });
-        material_test_component(world, slab, &GAME_COMPONENT_GameOrientation, &(GameOrientation){ .4f });
+        material_test_component(world, slab, &COMPONENT_Transform, &(Transform){ 30, -12 });
+        material_test_component(world, slab, &COMPONENT_Orientation, &(Orientation){ .4f });
         material_test_component(
             world,
             slab,
-            &GAME_COMPONENT_GameCollider,
-            &(GameCollider){ .shape = GAME_COLLIDER_BOX,
-                             .width = 20,
-                             .height = 20,
-                             .category = 8,
-                             .mask = 15 }
+            &COMPONENT_Collider,
+            &(Collider){ .shape = COLLIDER_BOX, .width = 20, .height = 20, .category = 8, .mask = 15 }
         );
         material_test_component(
             world,
             slab,
-            &GAME_COMPONENT_GameDestructible,
-            &(GameDestructible){ .cell_size = 1, .min_fragment_cells = 3, .release_fraction = .3f }
+            &COMPONENT_Destructible,
+            &(Destructible){ .cell_size = 1, .min_fragment_cells = 3, .release_fraction = .3f }
         );
-        material_test_component(world, slab, &GAME_COMPONENT_GameShader, &(GameShader){ .material = "Basalt" });
-        GameMaterialFrame expected = { 30, -12, .4f };
+        material_test_component(world, slab, &COMPONENT_Shader, &(Shader){ .material = "Basalt" });
+        MaterialFrame expected = { 30, -12, .4f };
         if (inherited) {
-            expected = (GameMaterialFrame){ -5, 7, 1.1f };
-            material_test_component(world, slab, &GAME_COMPONENT_GameMaterialFrame, &expected);
+            expected = (MaterialFrame){ -5, 7, 1.1f };
+            material_test_component(world, slab, &COMPONENT_MaterialFrame, &expected);
         }
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-        REQUIRE(game_physics_tick(live->runtime->physics, 0) == 0);
-        game_materials_damage(
-            live->runtime->materials,
-            slab,
-            (fluid_vec){ 40, -12 },
-            9,
-            1,
-            0,
-            (material_impact){ 0 }
-        );
-        REQUIRE(game_physics_tick(live->runtime->physics, 0) == 0);
-        game_materials_damage(
+        REQUIRE(physics_tick(live->runtime->physics, 0) == 0);
+        materials_damage(live->runtime->materials, slab, (fluid_vec){ 40, -12 }, 9, 1, 0, (material_impact){ 0 });
+        REQUIRE(physics_tick(live->runtime->physics, 0) == 0);
+        materials_damage(
             live->runtime->materials,
             slab,
             (fluid_vec){ 20, -12 },
@@ -86,14 +72,14 @@ TEST_CASE(fragment_material_frame)
             0,
             (material_impact){ 0 }
         );
-        REQUIRE(game_physics_tick(live->runtime->physics, 0) == 0);
+        REQUIRE(physics_tick(live->runtime->physics, 0) == 0);
         ecs_query query;
         ecs_entity entity;
-        ecs_component_id body = GAME_COMPONENT_GameBody.id;
+        ecs_component_id body = COMPONENT_Body.id;
         int fragments = 0;
         REQUIRE(ecs_query_begin(world, &query, &body, 1) == ECS_OK);
         while (ecs_query_next(&query, &entity)) {
-            const GameMaterialFrame *frame = GAME_GameMaterialFrame_get_const(world, entity);
+            const MaterialFrame *frame = MaterialFrame_get_const(world, entity);
             REQUIRE(
                 frame && frame->x == expected.x && frame->y == expected.y &&
                 frame->radians == expected.radians
@@ -102,7 +88,7 @@ TEST_CASE(fragment_material_frame)
         }
         ecs_query_end(&query);
         REQUIRE(fragments > 0);
-        game_preview_world_free(live);
+        preview_world_free(live);
         ecs_world_free(world);
     }
     return true;
@@ -136,105 +122,94 @@ TEST_CASE(rotated_occlusion)
 TEST_CASE(fragment_penetration)
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        REQUIRE(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_preview_world *live = game_preview_world_new(world);
+    preview_world *live = preview_world_new(world);
     ecs_entity config = ecs_world_create_entity(world);
     material_test_component(
         world,
         config,
-        &GAME_COMPONENT_MaterialDestructionWorld,
+        &COMPONENT_MaterialDestructionWorld,
         &(MaterialDestructionWorld){ 8 }
     );
     material_test_component(
         world,
         config,
-        &GAME_COMPONENT_MaterialFluidWorld,
+        &COMPONENT_MaterialFluidWorld,
         &(MaterialFluidWorld){ 64, 32, 10, 100 }
     );
     for (int i = 0; i < 2; i++) {
         ecs_entity slab = ecs_world_create_entity(world);
+        material_test_component(world, slab, &COMPONENT_Transform, &(Transform){ 20 + 60 * i, 0 });
         material_test_component(
             world,
             slab,
-            &GAME_COMPONENT_GameTransform,
-            &(GameTransform){ 20 + 60 * i, 0 }
+            &COMPONENT_Collider,
+            &(Collider){ .shape = COLLIDER_BOX, .width = 8, .height = 16, .category = 8, .mask = 4 }
         );
         material_test_component(
             world,
             slab,
-            &GAME_COMPONENT_GameCollider,
-            &(GameCollider){ .shape = GAME_COLLIDER_BOX,
-                             .width = 8,
-                             .height = 16,
-                             .category = 8,
-                             .mask = 4 }
-        );
-        material_test_component(
-            world,
-            slab,
-            &GAME_COMPONENT_GameDestructible,
-            &(GameDestructible){ .cell_size = 1,
-                                 .min_fragment_cells = 2,
-                                 .pierceable_fragments = i == 0 }
+            &COMPONENT_Destructible,
+            &(Destructible){ .cell_size = 1,
+                             .min_fragment_cells = 2,
+                             .pierceable_fragments = i == 0 }
         );
         REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
         /* Releasing before mask initialization must preserve the request. */
-        game_materials_release(live->runtime->materials, slab);
+        materials_release(live->runtime->materials, slab);
     }
     ecs_entity wall = ecs_world_create_entity(world),
                shot = ecs_world_create_entity(world);
-    material_test_component(world, wall, &GAME_COMPONENT_GameTransform, &(GameTransform){ 50, 0 });
+    material_test_component(world, wall, &COMPONENT_Transform, &(Transform){ 50, 0 });
     material_test_component(
         world,
         wall,
-        &GAME_COMPONENT_GameCollider,
-        &(
-            GameCollider
-        ){ .shape = GAME_COLLIDER_BOX, .width = 8, .height = 16, .category = 8, .mask = 4 }
+        &COMPONENT_Collider,
+        &(Collider){ .shape = COLLIDER_BOX, .width = 8, .height = 16, .category = 8, .mask = 4 }
     );
-    material_test_component(world, shot, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
-    material_test_component(world, shot, &GAME_COMPONENT_GameVelocity, &(GameVelocity){ 6000, 0 });
+    material_test_component(world, shot, &COMPONENT_Transform, &(Transform){ 0 });
+    material_test_component(world, shot, &COMPONENT_Velocity, &(Velocity){ 6000, 0 });
     material_test_component(
         world,
         shot,
-        &GAME_COMPONENT_GameBody,
-        &(GameBody){ .type = GAME_BODY_KINEMATIC, .continuous = true }
+        &COMPONENT_Body,
+        &(Body){ .type = BODY_KINEMATIC, .continuous = true }
     );
     material_test_component(
         world,
         shot,
-        &GAME_COMPONENT_GameCollider,
-        &(GameCollider){ .radius = 2, .category = 4, .mask = 8, .sensor = true }
+        &COMPONENT_Collider,
+        &(Collider){ .radius = 2, .category = 4, .mask = 8, .sensor = true }
     );
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    game_physics_set_profiling(live->runtime->physics, true);
-    REQUIRE(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
-    REQUIRE(game_materials_inspect(live->runtime->materials).fragments == 2);
-    REQUIRE(GAME_GameTransform_get_const(world, shot)->x < 20);
-    REQUIRE(game_physics_last_profile(live->runtime->physics)->pairs == 1);
+    physics_set_profiling(live->runtime->physics, true);
+    REQUIRE(physics_tick(live->runtime->physics, 1.f / 60) == 0);
+    REQUIRE(materials_inspect(live->runtime->materials).fragments == 2);
+    REQUIRE(Transform_get_const(world, shot)->x < 20);
+    REQUIRE(physics_last_profile(live->runtime->physics)->pairs == 1);
 
-    game_physics_reset(live->runtime->physics);
-    GAME_GameTransform_get(world, shot)->x = 0;
-    GAME_GameCollider_get(world, shot)->pierce_fragments = true;
-    REQUIRE(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
-    float x = GAME_GameTransform_get_const(world, shot)->x;
+    physics_reset(live->runtime->physics);
+    Transform_get(world, shot)->x = 0;
+    Collider_get(world, shot)->pierce_fragments = true;
+    REQUIRE(physics_tick(live->runtime->physics, 1.f / 60) == 0);
+    float x = Transform_get_const(world, shot)->x;
     REQUIRE(x > 43 && x < 45);
     /* The wall clips both travel and events: the far fragment is untouched. */
-    REQUIRE(game_physics_last_profile(live->runtime->physics)->pairs == 2);
+    REQUIRE(physics_last_profile(live->runtime->physics)->pairs == 2);
 
-    REQUIRE(GAME_GameCollider_remove(world, wall, 0) == ECS_OK);
+    REQUIRE(Collider_remove(world, wall, 0) == ECS_OK);
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    game_physics_reset(live->runtime->physics);
-    GAME_GameTransform_get(world, shot)->x = 0;
-    REQUIRE(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
+    physics_reset(live->runtime->physics);
+    Transform_get(world, shot)->x = 0;
+    REQUIRE(physics_tick(live->runtime->physics, 1.f / 60) == 0);
     REQUIRE(
-        GAME_GameTransform_get_const(world, shot)->x > 73 &&
-        GAME_GameTransform_get_const(world, shot)->x < 77
+        Transform_get_const(world, shot)->x > 73 &&
+        Transform_get_const(world, shot)->x < 77
     );
-    REQUIRE(game_physics_last_profile(live->runtime->physics)->pairs == 2);
-    game_preview_world_free(live);
+    REQUIRE(physics_last_profile(live->runtime->physics)->pairs == 2);
+    preview_world_free(live);
     ecs_world_free(world);
     return true;
 }
@@ -242,74 +217,68 @@ TEST_CASE(fragment_penetration)
 TEST_CASE(swept_ignition)
 {
     ecs_world *world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        REQUIRE(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        REQUIRE(ecs_world_register_component(world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    game_preview_world *live = game_preview_world_new(world);
+    preview_world *live = preview_world_new(world);
     ecs_entity config = ecs_world_create_entity(world),
                wall = ecs_world_create_entity(world),
                shot = ecs_world_create_entity(world);
     material_test_component(
         world,
         config,
-        &GAME_COMPONENT_MaterialDestructionWorld,
+        &COMPONENT_MaterialDestructionWorld,
         &(MaterialDestructionWorld){ 8 }
     );
     material_test_component(
         world,
         config,
-        &GAME_COMPONENT_MaterialFluidWorld,
+        &COMPONENT_MaterialFluidWorld,
         &(MaterialFluidWorld){ 64, 32, 10, 100 }
     );
     material_test_component(
         world,
         config,
-        &GAME_COMPONENT_GameCombustion,
-        &(GameCombustion){ .ignition = 1,
-                           .cooling = 2,
-                           .burn_rate = 2,
-                           .heat_release = 2,
-                           .smoke_lifetime = 3 }
+        &COMPONENT_Combustion,
+        &(Combustion){ .ignition = 1, .cooling = 2, .burn_rate = 2, .heat_release = 2, .smoke_lifetime = 3 }
     );
-    material_test_component(world, wall, &GAME_COMPONENT_GameTransform, &(GameTransform){ 0 });
+    material_test_component(world, wall, &COMPONENT_Transform, &(Transform){ 0 });
     material_test_component(
         world,
         wall,
-        &GAME_COMPONENT_GameCollider,
-        &(
-            GameCollider
-        ){ .shape = GAME_COLLIDER_BOX, .width = 2, .height = 40, .category = 8, .mask = 4 }
+        &COMPONENT_Collider,
+        &(Collider){ .shape = COLLIDER_BOX, .width = 2, .height = 40, .category = 8, .mask = 4 }
     );
-    material_test_component(world, wall, &GAME_COMPONENT_GameDestructible, &(GameDestructible){ 1, 3 });
-    material_test_component(world, shot, &GAME_COMPONENT_GameTransform, &(GameTransform){ -20, 0 });
-    material_test_component(world, shot, &GAME_COMPONENT_GameVelocity, &(GameVelocity){ 2400, 0 });
+    material_test_component(world, wall, &COMPONENT_Destructible, &(Destructible){ 1, 3 });
+    material_test_component(world, shot, &COMPONENT_Transform, &(Transform){ -20, 0 });
+    material_test_component(world, shot, &COMPONENT_Velocity, &(Velocity){ 2400, 0 });
     material_test_component(
         world,
         shot,
-        &GAME_COMPONENT_GameBody,
-        &(GameBody){ .type = GAME_BODY_KINEMATIC, .continuous = true }
+        &COMPONENT_Body,
+        &(Body){ .type = BODY_KINEMATIC, .continuous = true }
     );
     material_test_component(
         world,
         shot,
-        &GAME_COMPONENT_GameCollider,
-        &(GameCollider){ .radius = 2, .category = 4, .mask = 8, .sensor = true }
+        &COMPONENT_Collider,
+        &(Collider){ .radius = 2, .category = 4, .mask = 8, .sensor = true }
     );
-    material_test_component(world, shot, &GAME_COMPONENT_GameProjectile, &(GameProjectile){ 0 });
-    material_test_component(world, shot, &GAME_COMPONENT_GameIgniter, &(GameIgniter){ 2 });
+    material_test_component(world, shot, &COMPONENT_Projectile, &(Projectile){ 0 });
+    material_test_component(world, shot, &COMPONENT_Igniter, &(Igniter){ 2 });
     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
-    REQUIRE(game_physics_tick(live->runtime->physics, 0) == 0);
+    REQUIRE(physics_tick(live->runtime->physics, 0) == 0);
     fluid_particle fuel = material_test_particle(8, 0, FLUID_GAS);
     fuel.fuel = 1;
-    REQUIRE(game_materials_emit(live->runtime->materials, fuel));
-    REQUIRE(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
-    REQUIRE(GAME_GameTransform_get_const(world, shot)->x < 0);
-    REQUIRE(!game_materials_inspect(live->runtime->materials).burning_particles);
-    game_materials_damage(live->runtime->materials, wall, (fluid_vec){ 0 }, 10, 1, 0, (material_impact){ 0 });
-    *GAME_GameTransform_get(world, shot) = (GameTransform){ -20, 0 };
-    REQUIRE(game_physics_tick(live->runtime->physics, 1.f / 60) == 0);
-    REQUIRE(game_materials_inspect(live->runtime->materials).burning_particles == 1);
-    game_preview_world_free(live);
+    REQUIRE(materials_emit(live->runtime->materials, fuel));
+    REQUIRE(physics_tick(live->runtime->physics, 1.f / 60) == 0);
+    REQUIRE(Transform_get_const(world, shot)->x < 0);
+    REQUIRE(!materials_inspect(live->runtime->materials).burning_particles);
+    materials_damage(live->runtime->materials, wall, (fluid_vec){ 0 }, 10, 1, 0, (material_impact){ 0 });
+    *Transform_get(world, shot) = (Transform){ -20, 0 };
+    REQUIRE(physics_tick(live->runtime->physics, 1.f / 60) == 0);
+    REQUIRE(materials_inspect(live->runtime->materials).burning_particles == 1);
+    preview_world_free(live);
     ecs_world_free(world);
     return true;
 }

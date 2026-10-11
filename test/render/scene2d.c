@@ -24,8 +24,8 @@ enum
 
 static const unsigned red = 0xff0000ffu;
 
-static ecs_world *world;
-static game_particles *particles;
+static ecs_world *test_world;
+static particles *test_particles;
 static app_scene_renderer *renderer;
 static engine_viewport *viewport;
 static bool drawn;
@@ -33,16 +33,16 @@ static CF_Pixel pixels[PIXELS];
 
 static void draw_scene(void *)
 {
-    drawn = app_scene_renderer_draw(renderer, world, particles, viewport, NULL, (render_skip){ 0 });
+    drawn = app_scene_renderer_draw(renderer, test_world, test_particles, viewport, NULL, (render_skip){ 0 });
 }
 
 static void setup()
 {
-    world = ecs_world_new();
-    for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+    test_world = ecs_world_new();
+    for (int i = 0; i < REGISTRY_COMPONENT_COUNT; i++) {
+        assert(ecs_world_register_component(test_world, REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
-    particles = game_particles_new();
+    test_particles = particles_new();
     renderer = app_scene_renderer_new();
     viewport = engine_viewport_new(SIDE, SIDE);
     engine_viewport_set_view(viewport, &(engine_viewport_view){ .width = SIDE, .height = SIDE });
@@ -53,28 +53,25 @@ static void teardown()
 {
     engine_viewport_free(viewport);
     app_scene_renderer_free(renderer);
-    game_particles_free(particles);
-    ecs_world_free(world);
+    particles_free(test_particles);
+    ecs_world_free(test_world);
 }
 
 static ecs_entity add(ecs_component_id component, const void *data)
 {
-    ecs_entity entity = ecs_world_create_entity(world);
-    assert(ecs_world_record_add(world, entity, component, data, 0) == ECS_OK);
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity entity = ecs_world_create_entity(test_world);
+    assert(ecs_world_record_add(test_world, entity, component, data, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     return entity;
 }
 
 /* A box covering the middle half of the view. */
 static void add_box(unsigned color)
 {
-    ecs_entity box = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 0 });
-    GameAppearance look = { .width = SIDE / 2,
-                            .height = SIDE / 2,
-                            .color = color,
-                            .shape = GAME_SHAPE_BOX };
-    assert(ecs_world_record_add(world, box, GAME_COMPONENT_GameAppearance.id, &look, 0) == ECS_OK);
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity box = add(COMPONENT_Transform.id, &(Transform){ 0 });
+    Appearance look = { .width = SIDE / 2, .height = SIDE / 2, .color = color, .shape = SHAPE_BOX };
+    assert(ecs_world_record_add(test_world, box, COMPONENT_Appearance.id, &look, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
 }
 
 static bool read_pixels()
@@ -134,8 +131,8 @@ TEST_CASE(scenes_without_lighting_draw_their_materials_unlit)
 TEST_CASE(default_lighting_keeps_materials_visible)
 {
     add_box(red);
-    GameHRC2D defaults = game_hrc2d_defaults();
-    ecs_entity settings = add(GAME_COMPONENT_GameHRC2D.id, &defaults);
+    HRC2D defaults = hrc2d_defaults();
+    ecs_entity settings = add(COMPONENT_HRC2D.id, &defaults);
     REQUIRE(draw());
     REQUIRE(lit());
     REQUIRE(shows_red(center()));
@@ -146,7 +143,7 @@ TEST_CASE(default_lighting_keeps_materials_visible)
     app_scene_renderer_set_view(renderer, false, false);
     REQUIRE(draw());
     REQUIRE(lit());
-    REQUIRE(ecs_world_destroy_entity(world, settings) == ECS_OK);
+    REQUIRE(ecs_world_destroy_entity(test_world, settings) == ECS_OK);
     REQUIRE(draw());
     REQUIRE(!lit());
     REQUIRE(shows_red(center()));
@@ -189,17 +186,17 @@ static void prepare_sprite_images()
 /* A white sprite at x 12 shaded by `normal_map`, with no Material. */
 static ecs_entity add_sprite(const char *normal_map, bool flip_x)
 {
-    ecs_entity sprite = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 12, 0 });
-    GameSprite look = { .image = "white.png", .flip_x = flip_x, .normal_map = normal_map };
-    assert(ecs_world_record_add(world, sprite, GAME_COMPONENT_GameSprite.id, &look, 0) == ECS_OK);
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity sprite = add(COMPONENT_Transform.id, &(Transform){ 12, 0 });
+    Sprite look = { .image = "white.png", .flip_x = flip_x, .normal_map = normal_map };
+    assert(ecs_world_record_add(test_world, sprite, COMPONENT_Sprite.id, &look, 0) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     return sprite;
 }
 
 /* Lighting without unlit color or history. */
-static GameHRC2D plain_lighting()
+static HRC2D plain_lighting()
 {
-    GameHRC2D lighting = game_hrc2d_defaults();
+    HRC2D lighting = hrc2d_defaults();
     lighting.ambient = 0;
     lighting.adaptive = false;
     lighting.radiance_hysteresis = lighting.bounce_hysteresis = 1;
@@ -209,17 +206,15 @@ static GameHRC2D plain_lighting()
 /* A white light at x -20, lighting without unlit color or history. */
 static void add_light()
 {
-    ecs_entity light = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ -20, 0 });
-    GameAppearance disc = { .width = 8, .height = 8, .shape = GAME_SHAPE_CIRCLE };
-    GameMaterial glow = { .emission_color = 0xffffffffu,
-                          .emission_intensity = .1f,
-                          .emission_multiplier = 1 };
-    assert(
-        ecs_world_record_add(world, light, GAME_COMPONENT_GameAppearance.id, &disc, 0) == ECS_OK
-    );
-    assert(ecs_world_record_add(world, light, GAME_COMPONENT_GameMaterial.id, &glow, 0) == ECS_OK);
-    GameHRC2D lighting = plain_lighting();
-    add(GAME_COMPONENT_GameHRC2D.id, &lighting);
+    ecs_entity light = add(COMPONENT_Transform.id, &(Transform){ -20, 0 });
+    Appearance disc = { .width = 8, .height = 8, .shape = SHAPE_CIRCLE };
+    Material glow = { .emission_color = 0xffffffffu,
+                      .emission_intensity = .1f,
+                      .emission_multiplier = 1 };
+    assert(ecs_world_record_add(test_world, light, COMPONENT_Appearance.id, &disc, 0) == ECS_OK);
+    assert(ecs_world_record_add(test_world, light, COMPONENT_Material.id, &glow, 0) == ECS_OK);
+    HRC2D lighting = plain_lighting();
+    add(COMPONENT_HRC2D.id, &lighting);
 }
 
 /* The mean green across the sprite's middle row. */
@@ -245,21 +240,21 @@ TEST_CASE(normal_maps_turn_sprites_toward_the_light)
         ecs_entity sprite = add_sprite(maps[i], i == 2);
         REQUIRE(draw());
         green[i] = sprite_green();
-        REQUIRE(ecs_world_destroy_entity(world, sprite) == ECS_OK);
+        REQUIRE(ecs_world_destroy_entity(test_world, sprite) == ECS_OK);
     }
     REQUIRE(green[0] > green[1] + 4 && green[1] > green[2] + 4);
     /* A Material's edge_light decides instead, and at zero the map shades
      * nothing. */
-    GameMaterial matte = { .scene = 0xffffffffu, .albedo = 0xffffffffu };
+    Material matte = { .scene = 0xffffffffu, .albedo = 0xffffffffu };
     for (int i = 0; i < 2; i++) {
         ecs_entity sprite = add_sprite("facing_left.png", i == 1);
         REQUIRE(
-            ecs_world_record_add(world, sprite, GAME_COMPONENT_GameMaterial.id, &matte, 0) == ECS_OK
+            ecs_world_record_add(test_world, sprite, COMPONENT_Material.id, &matte, 0) == ECS_OK
         );
-        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
         REQUIRE(draw());
         green[i] = sprite_green();
-        REQUIRE(ecs_world_destroy_entity(world, sprite) == ECS_OK);
+        REQUIRE(ecs_world_destroy_entity(test_world, sprite) == ECS_OK);
     }
     REQUIRE(abs(green[0] - green[1]) <= 1);
     return true;
@@ -273,19 +268,17 @@ TEST_CASE(sprites_reject_bad_maps_and_relief)
     ecs_entity sprite = add_sprite("small.png", false);
     REQUIRE(!draw());
     REQUIRE(strstr(app_scene_renderer_error(renderer), "small.png is 2x2, not the 16x16 of its image"));
-    REQUIRE(ecs_world_destroy_entity(world, sprite) == ECS_OK);
+    REQUIRE(ecs_world_destroy_entity(test_world, sprite) == ECS_OK);
     sprite = add_sprite("unloaded.png", false);
     REQUIRE(!draw());
     REQUIRE(
         strstr(app_scene_renderer_error(renderer), "Sprite map: Image resource or sampler is not resident: unloaded.png")
     );
-    REQUIRE(ecs_world_destroy_entity(world, sprite) == ECS_OK);
-    sprite = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ 0 });
-    GameSprite raised = { .image = "white.png", .relief = NAN };
-    REQUIRE(
-        ecs_world_record_add(world, sprite, GAME_COMPONENT_GameSprite.id, &raised, 0) == ECS_OK
-    );
-    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_world_destroy_entity(test_world, sprite) == ECS_OK);
+    sprite = add(COMPONENT_Transform.id, &(Transform){ 0 });
+    Sprite raised = { .image = "white.png", .relief = NAN };
+    REQUIRE(ecs_world_record_add(test_world, sprite, COMPONENT_Sprite.id, &raised, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
     REQUIRE(!draw());
     REQUIRE(strstr(app_scene_renderer_error(renderer), "Sprite white.png has no finite relief"));
     return true;
@@ -295,53 +288,45 @@ TEST_CASE(sprites_reject_bad_maps_and_relief)
  * thickness from as far as the view reaches. */
 static void add_floor()
 {
-    ecs_entity floor = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ SIDE / 4, 0 });
-    GameAppearance look = { .width = SIDE / 2,
-                            .height = SIDE,
-                            .color = 0xffffffffu,
-                            .shape = GAME_SHAPE_BOX };
-    GameMaterial closed = { .scene = 0xffffffffu,
-                            .albedo = 0xffffffffu,
-                            .absorption = 1,
-                            .edge_light = 1 };
-    assert(
-        ecs_world_record_add(world, floor, GAME_COMPONENT_GameAppearance.id, &look, 0) == ECS_OK
-    );
-    assert(
-        ecs_world_record_add(world, floor, GAME_COMPONENT_GameMaterial.id, &closed, 0) == ECS_OK
-    );
-    GameHRC2D lighting = plain_lighting();
-    lighting.surface_mode = GAME_HRC_SURFACE_DEPTH;
+    ecs_entity floor = add(COMPONENT_Transform.id, &(Transform){ SIDE / 4, 0 });
+    Appearance look = { .width = SIDE / 2,
+                        .height = SIDE,
+                        .color = 0xffffffffu,
+                        .shape = SHAPE_BOX };
+    Material closed = { .scene = 0xffffffffu,
+                        .albedo = 0xffffffffu,
+                        .absorption = 1,
+                        .edge_light = 1 };
+    assert(ecs_world_record_add(test_world, floor, COMPONENT_Appearance.id, &look, 0) == ECS_OK);
+    assert(ecs_world_record_add(test_world, floor, COMPONENT_Material.id, &closed, 0) == ECS_OK);
+    HRC2D lighting = plain_lighting();
+    lighting.surface_mode = HRC_SURFACE_DEPTH;
     lighting.surface_depth_radius = SIDE;
     lighting.feedback = false;
     lighting.fog = 0;
-    add(GAME_COMPONENT_GameHRC2D.id, &lighting);
+    add(COMPONENT_HRC2D.id, &lighting);
 }
 
 /* The green of the floor's middle, 36 units from a white lamp at x -20
  * drawn as the disc `look` at `scale`. */
-static bool floor_green(GameAppearance look, float scale, int *green)
+static bool floor_green(Appearance look, float scale, int *green)
 {
-    ecs_entity lamp = add(GAME_COMPONENT_GameTransform.id, &(GameTransform){ -20, 0 });
-    look.shape = GAME_SHAPE_CIRCLE;
-    GameMaterial glow = { .scene = 0xffffffffu,
-                          .emission_color = 0xffffffffu,
-                          .emission_intensity = 2,
-                          .emission_multiplier = 1 };
-    GameVisualTransform visual = { .scale = scale };
+    ecs_entity lamp = add(COMPONENT_Transform.id, &(Transform){ -20, 0 });
+    look.shape = SHAPE_CIRCLE;
+    Material glow = { .scene = 0xffffffffu,
+                      .emission_color = 0xffffffffu,
+                      .emission_intensity = 2,
+                      .emission_multiplier = 1 };
+    VisualTransform visual = { .scale = scale };
+    REQUIRE(ecs_world_record_add(test_world, lamp, COMPONENT_Appearance.id, &look, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add(test_world, lamp, COMPONENT_Material.id, &glow, 0) == ECS_OK);
     REQUIRE(
-        ecs_world_record_add(world, lamp, GAME_COMPONENT_GameAppearance.id, &look, 0) == ECS_OK
+        ecs_world_record_add(test_world, lamp, COMPONENT_VisualTransform.id, &visual, 0) == ECS_OK
     );
-    REQUIRE(
-        ecs_world_record_add(world, lamp, GAME_COMPONENT_GameMaterial.id, &glow, 0) == ECS_OK
-    );
-    REQUIRE(
-        ecs_world_record_add(world, lamp, GAME_COMPONENT_GameVisualTransform.id, &visual, 0) == ECS_OK
-    );
-    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
     REQUIRE(draw());
     *green = pixels[SIDE / 2 * SIDE + SIDE / 2 + 16].colors.g;
-    REQUIRE(ecs_world_destroy_entity(world, lamp) == ECS_OK);
+    REQUIRE(ecs_world_destroy_entity(test_world, lamp) == ECS_OK);
     return true;
 }
 
@@ -354,14 +339,12 @@ TEST_CASE(appearance_relief_raises_lights_over_closed_floors)
     add_floor();
     int on_plane, raised, scaled, lower, unfinite;
     CF_Pixel *lamp = &pixels[SIDE / 2 * SIDE + SIDE / 2 - 20];
-    REQUIRE(floor_green((GameAppearance){ .width = 8, .height = 8 }, 1, &on_plane));
-    REQUIRE(floor_green((GameAppearance){ .width = 8, .height = 8, .relief = 24 }, 1, &raised));
+    REQUIRE(floor_green((Appearance){ .width = 8, .height = 8 }, 1, &on_plane));
+    REQUIRE(floor_green((Appearance){ .width = 8, .height = 8, .relief = 24 }, 1, &raised));
     REQUIRE(lamp->colors.g > 200);
-    REQUIRE(floor_green((GameAppearance){ .width = 4, .height = 4, .relief = 12 }, 2, &scaled));
-    REQUIRE(floor_green((GameAppearance){ .width = 8, .height = 8, .relief = 12 }, 1, &lower));
-    REQUIRE(
-        floor_green((GameAppearance){ .width = 8, .height = 8, .relief = NAN }, 1, &unfinite)
-    );
+    REQUIRE(floor_green((Appearance){ .width = 4, .height = 4, .relief = 12 }, 2, &scaled));
+    REQUIRE(floor_green((Appearance){ .width = 8, .height = 8, .relief = 12 }, 1, &lower));
+    REQUIRE(floor_green((Appearance){ .width = 8, .height = 8, .relief = NAN }, 1, &unfinite));
     REQUIRE(lamp->colors.g < 3 && unfinite < 3);
     REQUIRE(on_plane < 3 && raised > 60);
     REQUIRE(abs(scaled - raised) <= 3 && lower < raised - 15);

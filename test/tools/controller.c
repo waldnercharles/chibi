@@ -181,8 +181,8 @@ static void setup()
         "}\n"
     );
     write_file(paths[DRIFT], "system Drift(position: Transform) {\n    position.x += dt\n}\n");
-    write_file(paths[4], "name \"Actor\"\ncomponents {\n    (object)GAME.GameTransform\n    (object)GAME.GameInput\n    (object)GAME.GameAim\n}\n");
-    write_file(paths[5], "name \"Driver\"\ncomponents {\n    GAME.EngineSystem asset=\"Drift\"\n}\n");
+    write_file(paths[4], "name \"Actor\"\ncomponents {\n    (object)Transform\n    (object)Input\n    (object)Aim\n}\n");
+    write_file(paths[5], "name \"Driver\"\ncomponents {\n    EngineSystem asset=\"Drift\"\n}\n");
     write_file(
         paths[6],
         "version 1\nname \"Proof\"\n(array)entities {\n"

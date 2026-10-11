@@ -61,7 +61,7 @@ typedef struct
 
 typedef struct
 {
-    const game_prototype *prototype; /* Merged over its includes; values owns it. */
+    const prototype *prototype; /* Merged over its includes; values owns it. */
     char **includes;
 } prototype_entry;
 
@@ -71,14 +71,14 @@ static authoring_language_catalog *native;
 static source_catalog *project;
 static entry *entries;
 static int problems; /* Reported failures; the coverage case fails on any. */
-static prototype_entry *prototypes;
+static prototype_entry *loaded_prototypes;
 static script_analysis **analyses; /* One per project source, in catalog order. */
 /* Constants that reach a prototype parameter through values, by analysis. */
 static authoring_prototype_name *prototype_names;
 /* The project's declared components and loaded prototypes; scene
  * placements merge over the prototypes. */
 static declared_components *declared;
-static game_prototype_registry registry;
+static prototype_registry registry;
 static project_prototype *values;
 /* Names a scene reaches: its entities' prototypes, behaviors and systems, the
  * prototypes that running sources spawn by reference or through values, the
@@ -171,7 +171,7 @@ static void use_id(entry_kind kind, uint64_t id)
 
 static void use_component_name(const char *name)
 {
-    const char *prefix = "GAME.";
+    const char *prefix = "";
     if (!strncmp(name, prefix, strlen(prefix))) {
         name += strlen(prefix);
     }
@@ -194,7 +194,7 @@ static void use_capability(const script_catalog *catalog, uint64_t id)
     }
 }
 
-/* A generic component call, such as add_component("GAME.Heat"), names its
+/* A generic component call, such as add_component("Heat"), names its
  * component through a selector argument whose capability is the type ID. */
 static void use_component_selector(
     const script_catalog *catalog,
@@ -352,7 +352,7 @@ static bool reach_prototype(const char *name, bool spawned);
 /* An instance a scene runs: its merged components count as used, and its
  * behaviors and the systems its EngineSystem names run. Its children spawn
  * with it, each as its own instance. */
-static void use_instance(const game_prototype *instance)
+static void use_instance(const prototype *instance)
 {
     for (int i = 0; i < acount(instance->child_prototypes); i++) {
         reach_prototype(instance->children->entities[i].prototype, false);
@@ -362,10 +362,10 @@ static void use_instance(const game_prototype *instance)
         reach_behavior(instance->graphs[i]);
     }
     for (int i = 0; i < acount(instance->components); i++) {
-        const game_prototype_component *component = &instance->components[i];
+        const prototype_component *component = &instance->components[i];
         use_component_name(component->desc->name);
         const EngineSystem *system = component->data;
-        if (component->desc->id == GAME_COMPONENT_EngineSystem.id && system->asset) {
+        if (component->desc->id == COMPONENT_EngineSystem.id && system->asset) {
             reach_system(system->asset);
         }
     }
@@ -377,9 +377,9 @@ static void use_instance(const game_prototype *instance)
  * reached anything new. */
 static bool reach_prototype(const char *name, bool spawned)
 {
-    for (int i = 0; i < acount(prototypes); i++) {
-        const prototype_entry *item = &prototypes[i];
-        const game_prototype *prototype = item->prototype;
+    for (int i = 0; i < acount(loaded_prototypes); i++) {
+        const prototype_entry *item = &loaded_prototypes[i];
+        const prototype *prototype = item->prototype;
         if (strcmp(prototype->name, name)) {
             continue;
         }
@@ -419,7 +419,7 @@ static char **prototype_includes(const char *text)
 static void use_prototypes()
 {
     ecs_component_catalog components = project_components();
-    registry = (game_prototype_registry){
+    registry = (prototype_registry){
         .components = components.components,
         .component_count = components.component_count,
     };
@@ -434,25 +434,25 @@ static void use_prototypes()
         }
         prototype_entry item = { .prototype = values[i].prototype,
                                  .includes = prototype_includes(values[i].text) };
-        apush(prototypes, item);
+        apush(loaded_prototypes, item);
     }
 }
 
 /* A placed entity's instance is its prototype with the scene's component
  * overrides merged over it and its own behavior list, if it has one, in
  * place of the prototype's, as at runtime. */
-static void place_prototype(const game_scene_entity *entity)
+static void place_prototype(const scene_entity *entity)
 {
     reach_prototype(entity->prototype, false);
     char error[256];
-    game_prototype *object = project_prepare_object(entity, values, error, sizeof error);
+    prototype *object = project_prepare_object(entity, values, error, sizeof error);
     if (!object) {
         fprintf(stderr, "scene entity %s: %s\n", entity->name, error);
         problems++;
         return;
     }
     use_instance(object);
-    game_prototype_free(object);
+    prototype_free(object);
 }
 
 static void use_scenes()
@@ -461,16 +461,16 @@ static void use_scenes()
     for (int i = 0; i < acount(paths); i++) {
         char *text = tool_read(paths[i]);
         char error[256];
-        game_scene_document *scene = game_scene_document_load(text, error, sizeof error);
+        scene_document *scene = scene_document_load(text, error, sizeof error);
         if (!scene) {
             fprintf(stderr, "%s: %s\n", paths[i], error);
         }
         problems += !scene;
         for (int j = 0; scene && j < acount(scene->entities); j++) {
-            const game_scene_entity *entity = &scene->entities[j];
+            const scene_entity *entity = &scene->entities[j];
             place_prototype(entity);
         }
-        game_scene_document_free(scene);
+        scene_document_free(scene);
         free(text);
     }
     free_paths(paths);
@@ -563,7 +563,7 @@ static bool reach_from(int document)
         const script_catalog_capability
             *capability = script_catalog_capability_by_id(catalog, expression->capability);
         reached |= reach_library(expression->capability);
-        if (capability && !strcmp(capability->name, GAME_ENTITY_SPAWN_SOURCE)) {
+        if (capability && !strcmp(capability->name, ENTITY_SPAWN_SOURCE)) {
             reached |= reach_spawned(analysis, expression);
         }
     }
@@ -586,8 +586,8 @@ static void use_reachable()
             }
         }
     }
-    for (int i = 0; i < acount(prototypes); i++) {
-        const char *name = prototypes[i].prototype->name;
+    for (int i = 0; i < acount(loaded_prototypes); i++) {
+        const char *name = loaded_prototypes[i].prototype->name;
         if (!listed(reached_prototypes, name)) {
             fprintf(stderr, "prototype %s: no scene uses or spawns it\n", name);
             problems++;
@@ -614,10 +614,10 @@ static void use_reachable()
 
 static void free_reach()
 {
-    for (int i = 0; i < acount(prototypes); i++) {
-        free_paths(prototypes[i].includes);
+    for (int i = 0; i < acount(loaded_prototypes); i++) {
+        free_paths(loaded_prototypes[i].includes);
     }
-    afree(prototypes);
+    afree(loaded_prototypes);
     project_prepare_prototypes_free(values);
     free_paths(reached_prototypes);
     free_paths(spawned_prototypes);

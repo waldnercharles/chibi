@@ -15,7 +15,7 @@ MPM still needs a material model and a measured frame budget before adoption.
 
 ## Current integration seam
 
-`game_physics_tick` steps Box2D once with a fixed delta and its configured
+`physics_tick` steps Box2D once with a fixed delta and its configured
 internal substep count, then calls `solve_fluid`. The fluid receives each
 collider's previous/current pose, linear and angular velocity, inverse mass, and
 circle or box obstacle proxies (polygon proxies currently become AABBs here).

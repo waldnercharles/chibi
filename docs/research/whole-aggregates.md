@@ -17,7 +17,7 @@ in the caller's arena and survive callee teardown.
 
 Presence and nominal type names travel separately from the fields. A null
 aggregate can pass through a function unchanged. Dereferencing it fails at the
-original graph/node/pin. A regression test caught loss of `GameTransform`'s
+original graph/node/pin. A regression test caught loss of `Transform`'s
 nominal name when returned through a `CF_V2` parameter; compiled calls now retain
 that metadata. Function-frame tests compare successful results, null failures,
 partial execution and budget diagnostics with the oracle.

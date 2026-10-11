@@ -1,5 +1,5 @@
 name "Camera"
 components {
-    GAME.GameCamera height=360.0 width=480.0
-    GAME.GameTransform x=80.0 y=160.0
+    Camera height=360.0 width=480.0
+    Transform x=80.0 y=160.0
 }

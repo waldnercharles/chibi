@@ -4,7 +4,7 @@
 #include "graph/model/registry.h"
 #include "support/array.h"
 #include "support/asset_text.h"
-#include "test/support/game_graph_packs.h"
+#include "test/support/graph_packs.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
@@ -70,7 +70,7 @@ TEST_CASE(asset_source_navigates_event_payloads)
  * qualified and quoted names, braced fields and incomplete drafts. */
 TEST_CASE(asset_source_completes_unset_properties)
 {
-    REQUIRE(test_game_graph_packs_set());
+    REQUIRE(test_graph_packs_set());
     /* Use declared packs so qualified and quoted names exercise the same
      * reflection metadata as loaded projects, including incomplete drafts. */
     for (int p = 0; p < registry_pack_count(); p++) {
@@ -185,10 +185,10 @@ TEST_CASE(asset_source_reconcile_keeps_authored_text)
         /* Canonical source has nothing authored to keep: an edit writes the
          * target's canonical text, with new members in the target's order. */
         const char *source = "name \"Removable\"\ncomponents {\n"
-                             "    (object)GAME.GameTransform\n}\n";
+                             "    (object)Transform\n}\n";
         const char *canonical = "name \"Removable\"\ncomponents {\n"
-                                "    (object)GAME.GameAim\n"
-                                "    GAME.GameTransform x=1\n}\n";
+                                "    (object)Aim\n"
+                                "    Transform x=1\n}\n";
         char error[256];
         av_doc *target = av_doc_read(canonical, error, sizeof error);
         REQUIRE(target);
@@ -348,7 +348,7 @@ TEST_CASE(asset_source_parses_incomplete_drafts)
  * typed value is a diagnostic. */
 TEST_CASE(asset_source_completes_components_fields_and_values)
 {
-    REQUIRE(test_game_graph_packs_set());
+    REQUIRE(test_graph_packs_set());
     asset_source *source;
     char error[256];
 
@@ -382,12 +382,12 @@ TEST_CASE(asset_source_completes_components_fields_and_values)
     }
 
     /* A scene entity's component block completes the component's fields. */
-    if (type_catalog_find("GameTransform")) {
+    if (type_catalog_find("Transform")) {
         const char
             *draft = "version 1\nname \"Sandbox\"\n(array)entities {\n    - {\n"
                      "        name \"Player\"\n        prototype \"Player\"\n  "
                      "      components {\n"
-                     "            GAME.GameTransform x=-320.0 y\n        }\n   "
+                     "            Transform x=-320.0 y\n        }\n   "
                      " }\n}\n";
         int at = (int)(strstr(draft, "-320.0 y") - draft) + 8;
         source = asset_source_parse(draft);
@@ -523,8 +523,8 @@ TEST_CASE(asset_source_completes_components_fields_and_values)
  * synthetic pack that presents the native types in the graph palette. */
 TEST_CASE(asset_source_resolves_canonical_component_identities)
 {
-    REQUIRE(test_game_graph_packs_set());
-    const char *names[] = { "GAME.GameTransform", "Wrong.GameTransform" };
+    REQUIRE(test_graph_packs_set());
+    const char *names[] = { "Transform", "Wrong.Transform" };
     for (int i = 0; i < 2; i++) {
         char draft[256];
         snprintf(draft, sizeof draft, "components {\n %s x=1 y\n}\n", names[i]);
@@ -546,11 +546,11 @@ TEST_CASE(asset_source_resolves_canonical_component_identities)
         asset_source_free(source);
     }
     /* Typing a component offers the key scene files name it by. */
-    const char *draft = "components {\n GAME.GameT\n}\n";
+    const char *draft = "components {\n T\n}\n";
     asset_source *source = asset_source_parse(draft);
     asset_source_completions choices;
-    asset_source_complete(source, (int)(strstr(draft, "GameT") - draft) + 5, "Scene.kdl", NULL, 0, &choices);
-    REQUIRE(has_completion(&choices, "GAME.GameTransform"));
+    asset_source_complete(source, (int)(strstr(draft, "T") - draft) + 1, "Scene.kdl", NULL, 0, &choices);
+    REQUIRE(has_completion(&choices, "Transform"));
     asset_source_completions_free(&choices);
     asset_source_free(source);
     return true;
@@ -558,7 +558,7 @@ TEST_CASE(asset_source_resolves_canonical_component_identities)
 
 void test_asset_source()
 {
-    pu_setup(NULL, test_game_graph_packs_clear);
+    pu_setup(NULL, test_graph_packs_clear);
     RUN_TEST_CASE(asset_source_completes_unset_properties);
     RUN_TEST_CASE(asset_source_resolves_canonical_component_identities);
     RUN_TEST_CASE(asset_source_navigates_event_payloads);

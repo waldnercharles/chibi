@@ -1,8 +1,8 @@
 # Sprite fixtures
 
-The Lantern Yard scene draws `GameSprite` frames from `content/images/props.png`
+The Lantern Yard scene draws `Sprite` frames from `content/images/props.png`
 without any platformer mechanics. It covers frame cells, `flip_x`, a turned
-sprite, a translated and rotated 2×2 decorative `GameTilemap` with one empty
+sprite, a translated and rotated 2×2 decorative `Tilemap` with one empty
 cell, a Material that tints one crate, emissive sprites that light the yard
 through HRC, and a sprite with zero frame sizes that shows the whole sheet.
 Props and the tilemap carry `props_normal.png` and `props_height.png`, normal

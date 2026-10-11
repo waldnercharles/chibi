@@ -1,5 +1,5 @@
 name "RenderView"
 components {
-    GAME.GameCamera height=280.0 width=400.0
-    (object)GAME.GameTransform
+    Camera height=280.0 width=400.0
+    (object)Transform
 }

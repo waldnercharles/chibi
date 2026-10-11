@@ -345,19 +345,18 @@ TEST_CASE(model_imports_write_each_part_once)
 
     char *prototype = read_file("content/prototypes/Crate.kdl", &length);
     REQUIRE(
-        prototype &&
-        !strcmp(
-            prototype,
-            "name \"Crate\"\n"
-            "components {\n"
-            "    GAME.GameGeometry3D depth=1.0 height=1.0 width=1.0\n"
-            "    GAME.GameMeshAsset source=\"content/meshes/Crate.mesh\"\n"
-            "    GAME.GameTransform3D {\n"
-            "        rotation w=1.0\n"
-            "        scale x=1.0 y=1.0 z=1.0\n"
-            "    }\n"
-            "}\n"
-        )
+        prototype && !strcmp(
+                         prototype,
+                         "name \"Crate\"\n"
+                         "components {\n"
+                         "    Geometry3D depth=1.0 height=1.0 width=1.0\n"
+                         "    MeshAsset source=\"content/meshes/Crate.mesh\"\n"
+                         "    Transform3D {\n"
+                         "        rotation w=1.0\n"
+                         "        scale x=1.0 y=1.0 z=1.0\n"
+                         "    }\n"
+                         "}\n"
+                     )
     );
     free(prototype);
 
@@ -1636,7 +1635,7 @@ TEST_CASE(model_imports_keep_gltf_tangent_frames)
 type_catalog_pack test_model_import_types(int index)
 {
     if (index) {
-        return GAME_TYPE_PACK;
+        return TYPE_PACK;
     }
     return (type_catalog_pack){ .types = SHADER_PACK.types,
                                 .type_count = SHADER_PACK.type_count,

@@ -1,5 +1,5 @@
 library "DirectionMath" {
-    pure function "Direction Orientation"(X: float = 0.0, Y: float = 0.0) -> (Orientation: struct<"GameOrientation"> = null) {
-        return make_game_orientation(atan2(entry.Y, entry.X))
+    pure function "Direction Orientation"(X: float = 0.0, Y: float = 0.0) -> (Orientation: struct<"Orientation"> = null) {
+        return make_orientation(atan2(entry.Y, entry.X))
     }
 }

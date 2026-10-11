@@ -83,7 +83,7 @@ prototype run the prototype's list. A prototype's children spawn with each of
 its instances, so they are reached and run as instances too. Components count on these placed and
 spawned instances, after the scene's overrides, and where running source reads,
 writes or adds them, directly or through a generic call such as
-`add_component("GAME.Heat")`; a system query alone matches nothing without
+`add_component("Heat")`; a system query alone matches nothing without
 them, so it does not count.
 A system runs only while an entity's `EngineSystem` names it. Components the
 project declares in `content/components` load as they do in preparation and
@@ -774,8 +774,8 @@ was unavailable on this host and does not describe the Metal execution. Use `mak
 AGENT_SELECTOR=--viewport-resize` after building that directory's `test_tools`.
 
 `scene2d` draws 2D scenes through the scene renderer and an engine viewport in a
-hidden 64 x 64 app and reads back the app canvas. A scene without `GameHRC2D`
-must show its materials unlit, `game_hrc2d_defaults()` lighting must keep them
+hidden 64 x 64 app and reads back the app canvas. A scene without `HRC2D`
+must show its materials unlit, `hrc2d_defaults()` lighting must keep them
 visible, and the unlit view or removing the settings must stop lighting. A
 sprite whose normal map faces a light must be lit more than flat normals, and
 mirrored, less, unless a Material turns its edge light off; a map must be loaded
@@ -848,14 +848,14 @@ cleared, a world-space material following its layout frame, a graph material's
 parameter through the raster and its own fragment program inside a shape graph's
 circle, mixed batches of graph boxes, plain boxes and meshes uploading only what
 they draw, a sprite's normal and height maps tilting and raising each texel,
-mirrored and turned with it, shapes standing at their relief, raised further by
-a material's Height, and fluids landing where game Y points down, gas
+mirrored and turned with it, sprite height maps scaling relief before a
+material's Height adds to it, and shapes standing at their relief, raised
+further by a material's Height, and fluids landing where game Y points down, gas
 joining and parting, crisp unlit liquid edges, burning cores, plumes without
 holes, fading parcels and wisps along their velocity. Gas and liquid must take
 HRC's light and the wall's shadow with one and three traced cascades, a
 refracting liquid must bend only the background behind it, and a crystal must
-mirror the scene beside it. It passes 600 assertions in 13.2 seconds, 26.2 with
-an empty shader cache.
+mirror the scene beside it. All cases share the production 60-second deadline.
 These selectors need the material graphs of the main build.
 `sdf-visibility` renders 14 small scenes of meshes and SDFs hiding each other
 (occluders, cutouts, holes, partial cover, draw order, equal depth, perspective,

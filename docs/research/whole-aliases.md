@@ -1,7 +1,7 @@
 # Explicit struct alias conversions
 
-The September 12 conversion change lowers `game_transform_to_cf` and
-`game_transform_from_cf` inside whole functions. `NODE_JIT("identity")` is an
+The September 12 conversion change lowers `transform_to_cf` and
+`transform_from_cf` inside whole functions. `NODE_JIT("identity")` is an
 explicit promise that a by-value struct conversion copies the underlying value
 and changes its nominal type. Reflection requires one struct parameter with
 the same canonical C type as the result. The behavior compiler also checks

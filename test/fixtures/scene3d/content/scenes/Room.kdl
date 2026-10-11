@@ -6,7 +6,7 @@ presentation "3d"
         name "Environment"
         prototype "Environment"
         components {
-            GAME.GameEnvironment global_illumination="Medium"
+            Environment global_illumination="Medium"
         }
         (array)behaviors
     }
@@ -14,7 +14,7 @@ presentation "3d"
         name "Camera"
         prototype "Camera"
         components {
-            GAME.GameTransform3D {
+            Transform3D {
                 position x=320.0 y=380.0 z=420.0
                 rotation x=-0.2425 y=0.0 z=0.0 w=0.9701
                 scale x=1.0 y=1.0 z=1.0
@@ -31,9 +31,9 @@ presentation "3d"
         name "Floor"
         prototype "Solid"
         components {
-            GAME.GameTransform x=320.0 y=-180.0
-            GAME.GameGeometry3D primitive=0 width=600.0 depth=400.0 height=4.0 elevation=-2.0
-            GAME.GameMaterial scene=0xc0c0c0ff
+            Transform x=320.0 y=-180.0
+            Geometry3D primitive=0 width=600.0 depth=400.0 height=4.0 elevation=-2.0
+            Material scene=0xc0c0c0ff
         }
         (array)behaviors
     }
@@ -41,9 +41,9 @@ presentation "3d"
         name "Red"
         prototype "Solid"
         components {
-            GAME.GameTransform x=30.0 y=-180.0
-            GAME.GameGeometry3D primitive=0 width=20.0 depth=400.0 height=240.0 elevation=120.0
-            GAME.GameMaterial scene=0xd02020ff
+            Transform x=30.0 y=-180.0
+            Geometry3D primitive=0 width=20.0 depth=400.0 height=240.0 elevation=120.0
+            Material scene=0xd02020ff
         }
         (array)behaviors
     }
@@ -51,9 +51,9 @@ presentation "3d"
         name "Green"
         prototype "Solid"
         components {
-            GAME.GameTransform x=610.0 y=-180.0
-            GAME.GameGeometry3D primitive=0 width=20.0 depth=400.0 height=240.0 elevation=120.0
-            GAME.GameMaterial scene=0x20c020ff
+            Transform x=610.0 y=-180.0
+            Geometry3D primitive=0 width=20.0 depth=400.0 height=240.0 elevation=120.0
+            Material scene=0x20c020ff
         }
         (array)behaviors
     }
@@ -61,9 +61,9 @@ presentation "3d"
         name "Back"
         prototype "Solid"
         components {
-            GAME.GameTransform x=320.0 y=-370.0
-            GAME.GameGeometry3D primitive=0 width=600.0 depth=20.0 height=240.0 elevation=120.0
-            GAME.GameMaterial scene=0xc0c0c0ff
+            Transform x=320.0 y=-370.0
+            Geometry3D primitive=0 width=600.0 depth=20.0 height=240.0 elevation=120.0
+            Material scene=0xc0c0c0ff
         }
         (array)behaviors
     }
@@ -71,9 +71,9 @@ presentation "3d"
         name "Lamp"
         prototype "Solid"
         components {
-            GAME.GameTransform x=500.0 y=-300.0
-            GAME.GameGeometry3D primitive=1 width=40.0 depth=40.0 height=40.0 elevation=20.0
-            GAME.GameMaterial scene=0xffe0b0ff emission_color=0xffa040ff emission_intensity=6.0 emission_multiplier=1.0
+            Transform x=500.0 y=-300.0
+            Geometry3D primitive=1 width=40.0 depth=40.0 height=40.0 elevation=20.0
+            Material scene=0xffe0b0ff emission_color=0xffa040ff emission_intensity=6.0 emission_multiplier=1.0
         }
         (array)behaviors
     }
@@ -81,9 +81,9 @@ presentation "3d"
         name "Block"
         prototype "Solid"
         components {
-            GAME.GameTransform x=320.0 y=-200.0
-            GAME.GameGeometry3D primitive=0 width=120.0 depth=120.0 height=120.0 elevation=60.0
-            GAME.GameMaterial scene=0xc0c0c0ff
+            Transform x=320.0 y=-200.0
+            Geometry3D primitive=0 width=120.0 depth=120.0 height=120.0 elevation=60.0
+            Material scene=0xc0c0c0ff
         }
         (array)behaviors
     }

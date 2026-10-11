@@ -13,7 +13,7 @@ enum
 {
     UI_SIDE = 64
 };
-static rml_backend *ui;
+static rml_backend *backend;
 static CF_Canvas ui_target, ui_texture_view;
 
 static void cleanup_ui()
@@ -24,8 +24,8 @@ static void cleanup_ui()
     if (ui_target.id) {
         cf_destroy_canvas(ui_target);
     }
-    rml_backend_destroy(ui);
-    ui = NULL;
+    rml_backend_destroy(backend);
+    backend = NULL;
     ui_target = ui_texture_view = (CF_Canvas){ 0 };
 }
 
@@ -51,10 +51,10 @@ static bool read_ui(CF_Pixel pixels[UI_SIDE * UI_SIDE])
 TEST_CASE(transparent_ui_presents_source_over_and_exports_straight_alpha)
 {
     cf_app_update(NULL);
-    ui = rml_backend_create(UI_SIDE, UI_SIDE, 1);
-    REQUIRE(ui);
+    backend = rml_backend_create(UI_SIDE, UI_SIDE, 1);
+    REQUIRE(backend);
     rml_element *document = rml_context_load_document_from_memory(
-        rml_backend_context(ui),
+        rml_backend_context(backend),
         "<rml><head><style>body { margin: 0px; width: 64px; height: 64px; "
         "font-family: Inter; font-size: 26px; color: #ff0000; } "
         "div { position: absolute; left: 0px; top: 0px; width: 32px; "
@@ -65,19 +65,19 @@ TEST_CASE(transparent_ui_presents_source_over_and_exports_straight_alpha)
     );
     REQUIRE(document);
     rml_document_show(document, RML_MODAL_NONE, RML_FOCUS_NONE, RML_SCROLL_FLAG_NONE);
-    rml_backend_update(ui, 0);
-    rml_backend_render(ui);
+    rml_backend_update(backend, 0);
+    rml_backend_render(backend);
     ui_target = cf_make_canvas(cf_canvas_defaults(UI_SIDE, UI_SIDE));
     REQUIRE(ui_target.id);
     cf_canvas_set_clear_color(ui_target, cf_make_color_rgba_f(0, 0, 1, 1));
-    rml_backend_present(ui);
+    rml_backend_present(backend);
     cf_render_to(ui_target, true);
 
     /* Copy the public straight-alpha texture into the right half without
      * blending. One readback then compares it with direct presentation on
      * the left, including the font's partial-coverage edge pixels. */
     CF_CanvasParams view = cf_canvas_defaults(UI_SIDE, UI_SIDE);
-    view.attach_target = (CF_Texture){ rml_backend_texture(ui) };
+    view.attach_target = (CF_Texture){ rml_backend_texture(backend) };
     ui_texture_view = cf_make_canvas(view);
     REQUIRE(ui_texture_view.id);
     CF_RenderState replace = cf_render_state_defaults();

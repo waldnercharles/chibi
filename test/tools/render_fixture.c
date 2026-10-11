@@ -90,21 +90,21 @@ TEST_CASE(rendering_fixture_spawns_a_frame_part_and_animates_its_source)
     REQUIRE(yyjson_is_null(yyjson_obj_get(behavior, "last_failure")));
 
     /* The first beam of the 60-unit frame is its lower, back horizontal edge. */
-    REQUIRE(field(beam, "GameGeometry3D", "primitive") == 0);
-    REQUIRE(fabs(field(beam, "GameGeometry3D", "width") - 60) < .001);
-    REQUIRE(fabs(field(beam, "GameGeometry3D", "height") - 10.8) < .001);
-    REQUIRE(fabs(field(beam, "GameGeometry3D", "depth") - 10.8) < .001);
-    REQUIRE(fabs(field(beam, "GameGeometry3D", "elevation") - 11.4) < .001);
-    REQUIRE(fabs(field(beam, "GameVisualTransform", "yaw") - .5) < .001);
-    REQUIRE(field(beam, "GameVisualTransform", "scale") == 1);
+    REQUIRE(field(beam, "Geometry3D", "primitive") == 0);
+    REQUIRE(fabs(field(beam, "Geometry3D", "width") - 60) < .001);
+    REQUIRE(fabs(field(beam, "Geometry3D", "height") - 10.8) < .001);
+    REQUIRE(fabs(field(beam, "Geometry3D", "depth") - 10.8) < .001);
+    REQUIRE(fabs(field(beam, "Geometry3D", "elevation") - 11.4) < .001);
+    REQUIRE(fabs(field(beam, "VisualTransform", "yaw") - .5) < .001);
+    REQUIRE(field(beam, "VisualTransform", "scale") == 1);
     /* Allow the renderer's deterministic trigonometry approximation. */
-    REQUIRE(fabs(field(beam, "GameTransform", "x") - (-100 + 24.6 * sin(.5))) < .1);
-    REQUIRE(fabs(field(beam, "GameTransform", "y") - (70 - 24.6 * cos(.5))) < .1);
+    REQUIRE(fabs(field(beam, "Transform", "x") - (-100 + 24.6 * sin(.5))) < .1);
+    REQUIRE(fabs(field(beam, "Transform", "y") - (70 - 24.6 * cos(.5))) < .1);
 
-    REQUIRE(fabs(field(frame, "GameVisualTransform", "yaw") - (.5 + .8 * 4 / 60)) < .001);
-    double pitch = field(frame, "GameVisualTransform", "pitch");
-    double elevation = field(frame, "GameGeometry3D", "elevation");
-    double age = field(frame, "GameVisualMotion", "reaction_age");
+    REQUIRE(fabs(field(frame, "VisualTransform", "yaw") - (.5 + .8 * 4 / 60)) < .001);
+    double pitch = field(frame, "VisualTransform", "pitch");
+    double elevation = field(frame, "Geometry3D", "elevation");
+    double age = field(frame, "VisualMotion", "reaction_age");
     REQUIRE(pitch > .05 && pitch < .2);
     REQUIRE(elevation > 38 && elevation < 43);
     REQUIRE(age > 0 && age <= 4.0 / 60 + .001);

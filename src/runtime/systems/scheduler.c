@@ -11,13 +11,13 @@
 
 typedef struct
 {
-    game_schedule_desc desc;
+    schedule_desc desc;
     int serial;
 } entry;
-struct game_schedule
+struct schedule
 {
     ecs_world *world;
-    const game_task_system *tasks;
+    const task_system *tasks;
     entry *entries;
     int *order;
     unsigned char *edges;
@@ -51,16 +51,16 @@ static void free_entry(entry *e)
     free_names(e->desc.resource_writes, e->desc.resource_write_count);
     free_names(e->desc.after, e->desc.after_count);
 }
-game_schedule *game_schedule_new(ecs_world *world, const game_task_system *tasks)
+schedule *schedule_new(ecs_world *world, const task_system *tasks)
 {
-    game_schedule *s = xcalloc(1, sizeof *s);
+    schedule *s = xcalloc(1, sizeof *s);
     s->world = world;
     assert(!tasks || (tasks->workers > 0 && tasks->enqueue && tasks->finish));
     s->tasks = tasks;
     s->parallel = true;
     return s;
 }
-void game_schedule_free(game_schedule *s)
+void schedule_free(schedule *s)
 {
     for (int i = 0; i < acount(s->entries); i++) {
         free_entry(&s->entries[i]);
@@ -70,7 +70,7 @@ void game_schedule_free(game_schedule *s)
     free(s->edges);
     free(s);
 }
-static int find(const game_schedule *s, const char *name)
+static int find(const schedule *s, const char *name)
 {
     for (int i = 0; i < acount(s->entries); i++) {
         if (!strcmp(s->entries[i].desc.name, name)) {
@@ -79,7 +79,7 @@ static int find(const game_schedule *s, const char *name)
     }
     return -1;
 }
-int game_schedule_register(game_schedule *s, const game_schedule_desc *d)
+int schedule_register(schedule *s, const schedule_desc *d)
 {
     if (!d || !d->name || !d->name[0] || d->phase < 0 ||
         d->phase >= SYSTEM_PHASE_COUNT || !d->run || d->read_count < 0 ||
@@ -127,7 +127,7 @@ int game_schedule_register(game_schedule *s, const game_schedule_desc *d)
     s->dirty = true;
     return 0;
 }
-void game_schedule_remove(game_schedule *s, const char *name)
+void schedule_remove(schedule *s, const char *name)
 {
     int index = find(s, name);
     if (index < 0) {
@@ -170,7 +170,7 @@ static bool ids_intersect(const uint64_t *a, int na, const uint64_t *b, int nb)
 }
 static bool conflict(const entry *a, const entry *b)
 {
-    const game_schedule_desc *x = &a->desc, *y = &b->desc;
+    const schedule_desc *x = &a->desc, *y = &b->desc;
     return barrier(a) || barrier(b) ||
            ids_intersect(x->writes, x->write_count, y->writes, y->write_count) ||
            ids_intersect(x->writes, x->write_count, y->reads, y->read_count) ||
@@ -189,7 +189,7 @@ static bool before(const entry *a, const entry *b)
     }
     return a->serial < b->serial;
 }
-bool game_schedule_build(game_schedule *s)
+bool schedule_build(schedule *s)
 {
     if (!s->dirty) {
         return !s->error[0];
@@ -270,10 +270,10 @@ bool game_schedule_build(game_schedule *s)
 }
 typedef struct
 {
-    game_schedule *schedule;
+    schedule *schedule;
     int *indices;
     int *results;
-    game_schedule_error *errors;
+    schedule_error *errors;
     double time, delta;
 } batch;
 static void run_batch(int start, int end, uint32_t, void *user)
@@ -290,13 +290,13 @@ static void run_batch(int start, int end, uint32_t, void *user)
         );
     }
 }
-int game_schedule_maintain(game_schedule *s, double time, double delta, game_schedule_error *error)
+int schedule_maintain(schedule *s, double time, double delta, schedule_error *error)
 {
-    if (!game_schedule_build(s)) {
+    if (!schedule_build(s)) {
         return FLOW_ERR_COMPILE;
     }
     for (int i = 0; i < acount(s->order); i++) {
-        game_schedule_desc *d = &s->entries[s->order[i]].desc;
+        schedule_desc *d = &s->entries[s->order[i]].desc;
         if (!d->maintain) {
             continue;
         }
@@ -308,20 +308,20 @@ int game_schedule_maintain(game_schedule *s, double time, double delta, game_sch
     return FLOW_OK;
 }
 
-int game_schedule_field_changed(
-    game_schedule *s,
+int schedule_field_changed(
+    schedule *s,
     ecs_entity entity,
     ecs_component_id component,
     size_t offset,
     pin_value value,
-    game_schedule_error *error
+    schedule_error *error
 )
 {
-    if (!game_schedule_build(s)) {
+    if (!schedule_build(s)) {
         return FLOW_ERR_COMPILE;
     }
     for (int i = 0; i < acount(s->order); i++) {
-        game_schedule_desc *d = &s->entries[s->order[i]].desc;
+        schedule_desc *d = &s->entries[s->order[i]].desc;
         if (!d->field_changed) {
             continue;
         }
@@ -333,9 +333,9 @@ int game_schedule_field_changed(
     return FLOW_OK;
 }
 
-int game_schedule_run(game_schedule *s, system_phase phase, double time, double delta)
+int schedule_run(schedule *s, system_phase phase, double time, double delta)
 {
-    if (!game_schedule_build(s)) {
+    if (!schedule_build(s)) {
         return FLOW_ERR_COMPILE;
     }
     int count = acount(s->entries);
@@ -364,7 +364,7 @@ int game_schedule_run(game_schedule *s, system_phase phase, double time, double 
         }
         int n = acount(indices);
         int *results = xcalloc((size_t)n, sizeof(int));
-        game_schedule_error *errors = xcalloc((size_t)n, sizeof(game_schedule_error));
+        schedule_error *errors = xcalloc((size_t)n, sizeof(schedule_error));
         bool safe = true;
         for (int j = 0; j < n; j++) {
             entry *e = &s->entries[indices[j]];
@@ -377,14 +377,14 @@ int game_schedule_run(game_schedule *s, system_phase phase, double time, double 
             batch b = { s, indices, results, errors, time, delta };
             bool parallel = s->parallel && s->tasks && n > 1;
             for (int j = 0; j < n && parallel; j++) {
-                const game_schedule_desc *desc = &s->entries[indices[j]].desc;
+                const schedule_desc *desc = &s->entries[indices[j]].desc;
                 parallel = !desc->parallel_ready || desc->parallel_ready(desc->user);
             }
             if (parallel) {
                 int result = ecs_world_iteration_begin(s->world);
                 assert(result == ECS_OK);
                 (void)result;
-                const game_task_system *tasks = s->tasks;
+                const task_system *tasks = s->tasks;
                 void *task = tasks->enqueue(run_batch, n, 1, &b, tasks->user);
                 if (task) {
                     tasks->finish(task, tasks->user);
@@ -418,37 +418,37 @@ int game_schedule_run(game_schedule *s, system_phase phase, double time, double 
     }
     return 0;
 }
-const char *game_schedule_error_message(const game_schedule *s)
+const char *schedule_error_message(const schedule *s)
 {
     return s->error[0] ? s->error : NULL;
 }
-const char *game_schedule_warning(const game_schedule *s)
+const char *schedule_warning(const schedule *s)
 {
     return s->warning[0] ? s->warning : NULL;
 }
-void game_schedule_set_parallel(game_schedule *s, bool parallel)
+void schedule_set_parallel(schedule *s, bool parallel)
 {
     s->parallel = parallel;
 }
-int game_schedule_count(const game_schedule *s)
+int schedule_count(const schedule *s)
 {
     return acount(s->order);
 }
-const char *game_schedule_at(const game_schedule *s, int position)
+const char *schedule_at(const schedule *s, int position)
 {
     return s->entries[s->order[position]].desc.name;
 }
-const game_schedule_desc *game_schedule_descriptor_at(const game_schedule *s, int position)
+const schedule_desc *schedule_descriptor_at(const schedule *s, int position)
 {
     assert(position >= 0 && position < acount(s->order));
     return &s->entries[s->order[position]].desc;
 }
-int game_schedule_parallel_batches(const game_schedule *s)
+int schedule_parallel_batches(const schedule *s)
 {
     return s->parallel_batches;
 }
 
-bool game_schedule_dependency(const game_schedule *s, const char *before_name, const char *after_name)
+bool schedule_dependency(const schedule *s, const char *before_name, const char *after_name)
 {
     int a = find(s, before_name), b = find(s, after_name);
     return !s->dirty && !s->error[0] && a >= 0 && b >= 0 &&

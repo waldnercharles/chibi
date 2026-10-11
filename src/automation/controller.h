@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-typedef struct game_prototype_preview game_prototype_preview;
+typedef struct prototype_preview prototype_preview;
 typedef struct chibi_preview_run chibi_preview_run;
 /* Tooling scene preparation shared by headless scenarios and GPU previews.
  * Returns an owned running preview. Rendering hosts initialize rendering first;
@@ -16,7 +16,7 @@ int chibi_automation_preview(
     char *error,
     size_t error_size
 );
-game_prototype_preview *chibi_preview_runtime(chibi_preview_run *run);
+prototype_preview *chibi_preview_runtime(chibi_preview_run *run);
 /* The root ui document the previewed UI shows on: the current scene's, else
  * the project's default; NULL for none. */
 const char *chibi_preview_page(const chibi_preview_run *run);

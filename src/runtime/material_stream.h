@@ -28,7 +28,7 @@ typedef struct
     int island_cells;
     /* Optional borrowed executor for generation. The caller opens its
      * submission scope around material_stream_update. */
-    const game_task_system *tasks;
+    const task_system *tasks;
 } material_stream_desc;
 typedef struct
 {

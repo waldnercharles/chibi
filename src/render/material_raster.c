@@ -87,7 +87,7 @@ struct render_material_raster
     draw_order *order;
     int width, height, tiles, capacity, index_capacity;
     int sdf_batch_limit;
-    GameSurfaceQuality quality;
+    SurfaceQuality quality;
     bool sdf_trace_debug;
     render_mesh_material_work mesh_work;
 };
@@ -124,7 +124,7 @@ void render_material_raster_set_sdf_batch_limit(render_material_raster *r, int l
     }
 }
 
-void render_material_raster_set_quality(render_material_raster *r, GameSurfaceQuality quality)
+void render_material_raster_set_quality(render_material_raster *r, SurfaceQuality quality)
 {
     r->quality = quality;
     if (r->mesh_pass) {

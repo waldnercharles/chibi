@@ -72,11 +72,7 @@ bool render_shader_model_hit(
     model_hit *out,
     shader_error *error
 );
-bool render_shader_binding_parameters_validate(
-    const GameShader *binding,
-    const char *text,
-    shader_error *error
-);
+bool render_shader_binding_parameters_validate(const Shader *binding, const char *text, shader_error *error);
 
 typedef struct
 {
@@ -169,7 +165,7 @@ void render_shader_parameters(
 );
 bool render_shader_bounds(int index, float bounds[2]);
 bool render_shader_contains(
-    const GameShader *binding,
+    const Shader *binding,
     ecs_world *world,
     ecs_entity entity,
     const float local[2],

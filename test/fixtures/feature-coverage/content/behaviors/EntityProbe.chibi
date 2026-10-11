@@ -5,14 +5,14 @@ behavior EntityProbe {
         drone := await spawn_prototype(Drone)
         debris := "Debris" /* Reaches the spawn through a local. */
         await spawn_prototype(debris)
-        await add_component("GAME.GameOrientation") /* Credited through its selector. */
-        if has_component("GAME.GameOrientation", self) {
-            orientation := get_component("GAME.GameOrientation", self)
-            await set_component("GAME.GameOrientation", self, orientation)
-            await remove_component("GAME.GameOrientation")
+        await add_component("Orientation") /* Credited through its selector. */
+        if has_component("Orientation", self) {
+            orientation := get_component("Orientation", self)
+            await set_component("Orientation", self, orientation)
+            await remove_component("Orientation")
         }
-        if has_entities_with_component("GAME.GameCollider") {
-            colliders := find_entities_with_component("GAME.GameCollider")
+        if has_entities_with_component("Collider") {
+            colliders := find_entities_with_component("Collider")
             nearest := find_nearest_entity(self.Transform, 64.0, 2, self)
             if nearest.Found {
                 await send_event<"Probe Signal">(spawner, select(1, Option0: int = 0, Option1: int = 1))

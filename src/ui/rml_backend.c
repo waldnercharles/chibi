@@ -949,19 +949,19 @@ static void set_dimensions(rml_backend *backend)
     apply_dimensions(backend);
 }
 
-static game_ui_font *registered_fonts;
+static ui_font *registered_fonts;
 static size_t registered_font_bytes;
 static bool fonts_ready;
-bool rml_backend_install_font_budget(const game_ui_font *f, size_t *remaining, char *error, size_t size)
+bool rml_backend_install_font_budget(const ui_font *f, size_t *remaining, char *error, size_t size)
 {
     assert(remaining);
     const char *failure = NULL;
-    if (!fonts_ready || !game_ui_font_valid(f)) {
+    if (!fonts_ready || !ui_font_valid(f)) {
         failure = "Font engine unavailable or invalid font record";
     }
     if (!failure) {
         for (int i = 0; i < acount(registered_fonts); i++) {
-            const game_ui_font *old = &registered_fonts[i];
+            const ui_font *old = &registered_fonts[i];
             if (old->style == f->style && old->weight == f->weight &&
                 !strcmp(old->family, f->family)) {
                 if (old->length == f->length && old->fallback == f->fallback &&
@@ -989,7 +989,7 @@ bool rml_backend_install_font_budget(const game_ui_font *f, size_t *remaining, c
         next = cap ? cap * 2 : 16;
     }
     size_t charge = f->length + strlen(f->key) + 1 + strlen(f->family) + 1 +
-                    (size_t)(next - cap) * sizeof(game_ui_font) +
+                    (size_t)(next - cap) * sizeof(ui_font) +
                     (cap ? 0 : sizeof(dyna_hdr));
     if (*remaining < charge) {
         if (size) {
@@ -997,7 +997,7 @@ bool rml_backend_install_font_budget(const game_ui_font *f, size_t *remaining, c
         }
         return false;
     }
-    game_ui_font owned = *f;
+    ui_font owned = *f;
     owned.key = xstrdup(f->key);
     owned.family = xstrdup(f->family);
     unsigned char *bytes = xmalloc(f->length);
@@ -1011,7 +1011,7 @@ bool rml_backend_install_font_budget(const game_ui_font *f, size_t *remaining, c
             owned.weight,
             owned.fallback
         )) {
-        game_ui_font_free(&owned);
+        ui_font_free(&owned);
         if (size) {
             snprintf(error, size, "RmlUi rejected font face");
         }
@@ -1022,7 +1022,7 @@ bool rml_backend_install_font_budget(const game_ui_font *f, size_t *remaining, c
     apush(registered_fonts, owned);
     return true;
 }
-bool rml_backend_install_font(const game_ui_font *f, char *error, size_t size)
+bool rml_backend_install_font(const ui_font *f, char *error, size_t size)
 {
     size_t remaining = SIZE_MAX;
     return rml_backend_install_font_budget(f, &remaining, error, size);
@@ -1037,8 +1037,8 @@ static bool initialize_rml()
         return false;
     }
     fonts_ready = true;
-    for (int i = 0; i < game_ui_builtin_font_count(); i++) {
-        game_ui_font face = game_ui_builtin_font_at(i);
+    for (int i = 0; i < ui_builtin_font_count(); i++) {
+        ui_font face = ui_builtin_font_at(i);
         if (!rml_backend_install_font(&face, NULL, 0)) {
             shut_down();
             return false;
@@ -1099,7 +1099,7 @@ static void shut_down()
     rml_shutdown();
     fonts_ready = false;
     for (int i = 0; i < acount(registered_fonts); i++) {
-        game_ui_font_free(&registered_fonts[i]);
+        ui_font_free(&registered_fonts[i]);
     }
     afree(registered_fonts);
     registered_font_bytes = 0;

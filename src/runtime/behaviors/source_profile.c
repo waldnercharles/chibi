@@ -6,7 +6,7 @@
 
 static void observe(void *context, const execution_profile_sample *sample)
 {
-    game_source_registry *r = context;
+    source_registry *r = context;
     const char *name = NULL;
     for (int i = 0; i < acount(r->records); i++) {
         if (r->records[i].program == sample->program) {
@@ -25,7 +25,7 @@ static void observe(void *context, const execution_profile_sample *sample)
         }
     }
     if (!profile) {
-        if (acount(r->profiles) == GAME_SOURCE_PROFILE_ROWS_MAX) {
+        if (acount(r->profiles) == SOURCE_PROFILE_ROWS_MAX) {
             r->profile_dropped++;
             return;
         }
@@ -33,10 +33,10 @@ static void observe(void *context, const execution_profile_sample *sample)
                                .function = sample->function,
                                .name = xstrdup(name) };
         execution_module_retain(row.module);
-        row.row = (game_source_profile_row){ .module_id = execution_module_id(row.module),
-                                             .owner = sample->owner,
-                                             .name = row.name,
-                                             .cpu_available = true };
+        row.row = (source_profile_row){ .module_id = execution_module_id(row.module),
+                                        .owner = sample->owner,
+                                        .name = row.name,
+                                        .cpu_available = true };
         bool found = false;
         for (int i = 0; i < execution_module_function_count(row.module); i++) {
             execution_module_function_info info = execution_module_function_at(row.module, i);
@@ -72,14 +72,14 @@ static void observe(void *context, const execution_profile_sample *sample)
     profile->row.cpu_available &= sample->cpu_available;
     profile->row.last_status = sample->status;
 }
-void source_profile_bind(game_source_registry *r)
+void source_profile_bind(source_registry *r)
 {
     assert(!r->staging && !r->executing);
     for (int i = 0; i < acount(r->records); i++) {
         execution_program_observe(r->records[i].program, r->profiling ? observe : NULL, r);
     }
 }
-void game_source_profile_reset(game_source_registry *r)
+void source_profile_reset(source_registry *r)
 {
     assert(r && !r->staging && !r->executing);
     for (int i = 0; i < acount(r->profiles); i++) {
@@ -89,26 +89,26 @@ void game_source_profile_reset(game_source_registry *r)
     aclear(r->profiles);
     r->profile_dropped = 0;
 }
-void game_source_profile_enable(game_source_registry *r, bool enabled)
+void source_profile_enable(source_registry *r, bool enabled)
 {
     assert(r && !r->staging && !r->executing);
     if (enabled) {
-        game_source_profile_reset(r);
-        asetcap(r->profiles, GAME_SOURCE_PROFILE_ROWS_MAX);
+        source_profile_reset(r);
+        asetcap(r->profiles, SOURCE_PROFILE_ROWS_MAX);
     }
     r->profiling = enabled;
     source_profile_bind(r);
 }
-int game_source_profile_count(const game_source_registry *r)
+int source_profile_count(const source_registry *r)
 {
     return acount(r->profiles);
 }
-const game_source_profile_row *game_source_profile_at(const game_source_registry *r, int index)
+const source_profile_row *source_profile_at(const source_registry *r, int index)
 {
     assert(index >= 0 && index < acount(r->profiles));
     return &r->profiles[index].row;
 }
-uint64_t game_source_profile_dropped(const game_source_registry *r)
+uint64_t source_profile_dropped(const source_registry *r)
 {
     return r->profile_dropped;
 }

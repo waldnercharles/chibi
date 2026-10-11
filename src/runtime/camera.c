@@ -13,7 +13,7 @@ static const float narrowest_fov = 1.745329e-7f;
 /* The 3D lens of a camera, looking along its global -Z with +Y up from its
  * offset position when it has a Transform3D. False for values the 3D path
  * can't use. */
-static bool camera_lens(const GameCamera *camera, const GameGlobalTransform3D *pose, engine_viewport_lens *lens)
+static bool camera_lens(const Camera *camera, const GlobalTransform3D *pose, engine_viewport_lens *lens)
 {
     float closest = camera->near_clip, farthest = camera->far_clip;
     *lens = (engine_viewport_lens){ .fov = camera->fov,
@@ -42,13 +42,13 @@ static bool camera_lens(const GameCamera *camera, const GameGlobalTransform3D *p
            isfinite(lens->eye.z);
 }
 
-int game_camera_view(ecs_world *world, const engine *runtime, engine_viewport_view *out)
+int camera_view(ecs_world *world, const engine *runtime, engine_viewport_view *out)
 {
-    if (!ecs_world_component(world, GAME_COMPONENT_GameCamera.id) ||
-        game_transform_propagate(world) != ECS_OK) {
+    if (!ecs_world_component(world, COMPONENT_Camera.id) ||
+        transform_propagate(world) != ECS_OK) {
         return 0;
     }
-    ecs_component_id required[] = { GAME_COMPONENT_GameCamera.id };
+    ecs_component_id required[] = { COMPONENT_Camera.id };
     ecs_query query;
     if (ecs_query_begin(world, &query, required, 1) != ECS_OK) {
         return 0;
@@ -56,19 +56,19 @@ int game_camera_view(ecs_world *world, const engine *runtime, engine_viewport_vi
     int found = 0;
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        const GameCamera *camera = GAME_GameCamera_get_const(world, entity);
+        const Camera *camera = Camera_get_const(world, entity);
         if (camera->disabled || ecs_entity_is_retiring(world, entity)) {
             continue;
         }
         /* Drawn as bodies are, between physics steps, so a camera riding one
          * holds still against it. */
-        GameGlobalTransform3D shown;
-        const GameGlobalTransform3D *pose = NULL;
-        if (GAME_GameTransform3D_has(world, entity)) {
+        GlobalTransform3D shown;
+        const GlobalTransform3D *pose = NULL;
+        if (Transform3D_has(world, entity)) {
             shown = engine_render_transform_3d(runtime, world, entity);
             pose = &shown;
         }
-        if (!pose && !GAME_GameTransform_has(world, entity)) {
+        if (!pose && !Transform_has(world, entity)) {
             found = -1;
             break;
         }

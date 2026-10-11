@@ -2,7 +2,7 @@ behavior ProjectilePulse {
     state int[] marks = [1, 2, 1];
     state set<int> seen = [];
 
-    on Tick(GameProjectile projectile) {
+    on Tick(Projectile projectile) {
         for (mark in marks) {
             if (seen.contains(mark)) {
                 projectile.age += event.dt;

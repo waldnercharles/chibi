@@ -38,9 +38,9 @@ static const ecs_component_desc payload_component = { .id = 950,
                                                       .element_size = sizeof(scene_payload),
                                                       .type = &payload_type };
 static ecs_world *world;
-static game_scene *scene;
-static game_scene_instance *instances[2];
-static game_source_registry *registry;
+static scene *document;
+static scene_instance *instances[2];
+static source_registry *registry;
 static behavior_function_builder *builder;
 static execution_module_plan *plan;
 static execution_module *module;
@@ -50,13 +50,13 @@ static bool all_ready;
 
 static void cleanup()
 {
-    game_scene_instance_free(instances[0]);
-    game_scene_instance_free(instances[1]);
+    scene_instance_free(instances[0]);
+    scene_instance_free(instances[1]);
     instances[0] = instances[1] = NULL;
-    game_scene_free(scene);
-    scene = NULL;
+    scene_free(document);
+    document = NULL;
     if (registry) {
-        game_source_registry_free(registry);
+        source_registry_free(registry);
     }
     registry = NULL;
     execution_module_free(module);
@@ -137,10 +137,10 @@ static bool register_module(behavior_backend backend)
         fprintf(stderr, "scene module: %s\n", error);
         return false;
     }
-    registry = game_source_registry_new(world);
-    bool registered = game_source_register(registry, "Observe", module, NULL) == 0;
+    registry = source_registry_new(world);
+    bool registered = source_register(registry, "Observe", module, NULL) == 0;
     if (!registered) {
-        fprintf(stderr, "scene registration: %s\n", game_source_error(registry));
+        fprintf(stderr, "scene registration: %s\n", source_error(registry));
     }
     execution_module_free(module);
     module = NULL;
@@ -154,11 +154,11 @@ static bool prepare_scene(bool missing)
     REQUIRE(input_label);
     memcpy(input_label, "owned label", 12);
     scene_payload payloads[] = { { 7, input_label }, { 9, input_label } };
-    game_scene_component components[] = { { &payload_component, &payloads[0] },
-                                          { &payload_component, &payloads[1] } };
+    scene_component components[] = { { &payload_component, &payloads[0] },
+                                     { &payload_component, &payloads[1] } };
     const char *first[] = { "Observe" },
                *second[] = { missing ? "Missing" : "Observe" };
-    game_scene_object objects[] = {
+    scene_object objects[] = {
         { .name = "First",
           .components = &components[0],
           .component_count = 1,
@@ -171,28 +171,25 @@ static bool prepare_scene(bool missing)
           .behavior_count = 1 },
     };
     char name[] = "OwnedScene", ui[] = "OwnedUI";
-    game_scene_spec spec = { .name = name,
-                             .ui = ui,
-                             .perspective = true,
-                             .physics = game_physics_defaults(),
-                             .objects = objects,
-                             .object_count = 2 };
+    scene_spec spec = { .name = name,
+                        .ui = ui,
+                        .perspective = true,
+                        .physics = physics_defaults(),
+                        .objects = objects,
+                        .object_count = 2 };
     char error[192];
-    scene = game_scene_prepare(&spec, error, sizeof error);
-    REQUIRE(scene);
+    document = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(document);
     memset(name, 'x', sizeof name - 1);
     memset(ui, 'x', sizeof ui - 1);
     memset(input_label, 'x', 11);
     free(input_label);
     input_label = NULL;
-    REQUIRE(
-        !strcmp(game_scene_name(scene), "OwnedScene") &&
-        !strcmp(game_scene_ui(scene), "OwnedUI")
-    );
-    REQUIRE(game_scene_perspective(scene) && game_scene_object_count(scene) == 2);
-    REQUIRE(game_physics_settings_equal(game_scene_physics(scene), game_physics_defaults()));
-    REQUIRE(!strcmp(game_scene_object_name(scene, 1), "Second"));
-    return game_scene_register_components(scene, world, error, sizeof error) == 0;
+    REQUIRE(!strcmp(scene_name(document), "OwnedScene") && !strcmp(scene_ui(document), "OwnedUI"));
+    REQUIRE(scene_perspective(document) && scene_object_count(document) == 2);
+    REQUIRE(physics_settings_equal(scene_physics(document), physics_defaults()));
+    REQUIRE(!strcmp(scene_object_name(document, 1), "Second"));
+    return scene_register_components(document, world, error, sizeof error) == 0;
 }
 TEST_CASE(scene_snapshot_and_complete_deferred_begin)
 {
@@ -204,19 +201,19 @@ TEST_CASE(scene_snapshot_and_complete_deferred_begin)
         REQUIRE(prepare_scene(false));
         char error[192];
         for (int i = 0; i < 2; i++) {
-            instances[i] = game_scene_instantiate(scene, world, registry, error, sizeof error);
+            instances[i] = scene_instantiate(document, world, registry, error, sizeof error);
             if (!instances[i]) {
                 fprintf(stderr, "scene instantiate: %s\n", error);
             }
             REQUIRE(instances[i]);
         }
         REQUIRE(begins == 0 && ecs_world_live_count(world) == 4);
-        game_scene_free(scene);
-        scene = NULL;
-        REQUIRE(game_source_begin(registry, 0, 0) == FLOW_OK);
+        scene_free(document);
+        document = NULL;
+        REQUIRE(source_begin(registry, 0, 0) == FLOW_OK);
         REQUIRE(begins == 4 && all_ready);
-        ecs_entity first = game_scene_instance_entity(instances[0], 0);
-        ecs_entity other = game_scene_instance_entity(instances[1], 0);
+        ecs_entity first = scene_instance_entity(instances[0], 0);
+        ecs_entity other = scene_instance_entity(instances[1], 0);
         REQUIRE(first.slot != other.slot);
         pin_value changed = { .type = PIN_STR, .str = "changed" };
         REQUIRE(
@@ -234,14 +231,13 @@ TEST_CASE(scene_snapshot_and_complete_deferred_begin)
         const scene_payload
             *c = ecs_component_data(world, other, payload_component.id);
         REQUIRE(a && c && !strcmp(a->label, "changed") && !strcmp(c->label, "owned label"));
-        game_scene_instance_free(instances[0]);
+        scene_instance_free(instances[0]);
         instances[0] = NULL;
         REQUIRE(ecs_world_live_count(world) == 2 && !ecs_entity_is_alive(world, first));
         REQUIRE(
-            execution_program_instance(game_source_program(registry, "Observe"), ecs_entity_to_u64(first)) ==
-            NULL
+            execution_program_instance(source_program(registry, "Observe"), ecs_entity_to_u64(first)) == NULL
         );
-        REQUIRE(game_source_begin(registry, 1, 0) == FLOW_OK && begins == 4);
+        REQUIRE(source_begin(registry, 1, 0) == FLOW_OK && begins == 4);
     }
     return true;
 }
@@ -253,30 +249,30 @@ TEST_CASE(scene_failure_preflight_and_pending_begin_cancellation)
     char error[192];
     ecs_entity existing = ecs_world_create_entity(world);
     uint64_t before = ecs_world_hash(world);
-    instances[0] = game_scene_instantiate(scene, world, registry, error, sizeof error);
+    instances[0] = scene_instantiate(document, world, registry, error, sizeof error);
     REQUIRE(!instances[0] && strstr(error, "not registered"));
     REQUIRE(
         ecs_world_live_count(world) == 1 && ecs_entity_is_alive(world, existing) &&
         ecs_world_hash(world) == before && begins == 0
     );
-    game_scene_free(scene);
-    scene = NULL;
+    scene_free(document);
+    document = NULL;
     REQUIRE(prepare_scene(false));
-    instances[0] = game_scene_instantiate(scene, world, registry, error, sizeof error);
+    instances[0] = scene_instantiate(document, world, registry, error, sizeof error);
     if (!instances[0]) {
         fprintf(stderr, "scene instantiate: %s\n", error);
     }
     REQUIRE(instances[0] && begins == 0);
-    ecs_entity entity = game_scene_instance_entity(instances[0], 0);
-    game_scene_instance_free(instances[0]);
+    ecs_entity entity = scene_instance_entity(instances[0], 0);
+    scene_instance_free(instances[0]);
     instances[0] = NULL;
     REQUIRE(
         ecs_world_live_count(world) == 1 && ecs_entity_is_alive(world, existing) &&
         !ecs_entity_is_alive(world, entity)
     );
-    REQUIRE(game_source_begin(registry, 1, 0) == FLOW_OK && begins == 0);
+    REQUIRE(source_begin(registry, 1, 0) == FLOW_OK && begins == 0);
     REQUIRE(
-        execution_program_instance(game_source_program(registry, "Observe"), ecs_entity_to_u64(entity)) == NULL
+        execution_program_instance(source_program(registry, "Observe"), ecs_entity_to_u64(entity)) == NULL
     );
     return true;
 }

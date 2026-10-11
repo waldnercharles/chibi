@@ -4,6 +4,7 @@
 #include "render/device_controls.h"
 #include "render/scene3d.h"
 #include "render/scene_renderer.h"
+#include "render/screenshot.h"
 #include "render/shader_images.h"
 #include "render/shader_parameters.h"
 #include "render/shader_publish.h"
@@ -53,12 +54,15 @@ typedef struct
     ui_world ui;
     double now;
     double fixed_dt;
+    int width, height; /* Explicit canvas dimensions, independent of display DPI. */
 } player_host;
 #define BUNDLE_ARTIFACT "game.chibip"
 #define BUNDLE_ENGINE "engine"
 #define BUNDLE_MOUNT "/chibi-game"
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
+#define CAPTURE_MAX_DIMENSION 640
+#define CAPTURE_MAX_PIXELS 230400
 static volatile sig_atomic_t stopped;
 static rml_input keys[128];
 static int key_count;
@@ -196,7 +200,14 @@ static int sample_input(player_host *host)
                   !engine_viewport_ui_typing(host->viewport);
     uint64_t controls = active ? pressed_controls | game_controls_down() : 0;
     bool firing = false;
-    if (engine_sample_controls(runtime, controls, &firing) < 0) {
+    input_controller_state controllers[INPUT_CONTROLLER_MAX];
+    for (int i = 0; i < INPUT_CONTROLLER_MAX; i++) {
+        controllers[i] = game_controller_state(i);
+        if (!active) {
+            controllers[i].buttons = 0;
+        }
+    }
+    if (engine_sample_devices(runtime, controls, controllers, &firing) < 0) {
         return -1;
     }
     CF_V2 movement = active ? game_controls_movement() : (CF_V2){ 0 };
@@ -257,6 +268,24 @@ static bool number(const char *text, double *out)
     errno = 0;
     *out = strtod(text, &end);
     return !errno && end != text && !*end && isfinite(*out) && *out > 0;
+}
+static bool dimensions(const char *text, int *width, int *height)
+{
+    char *end;
+    errno = 0;
+    long x = strtol(text, &end, 10);
+    if (errno || end == text || *end != 'x' || x < 1 || x > CAPTURE_MAX_DIMENSION) {
+        return false;
+    }
+    const char *second = end + 1;
+    long y = strtol(second, &end, 10);
+    if (errno || end == second || *end || y < 1 || y > CAPTURE_MAX_DIMENSION ||
+        x * y > CAPTURE_MAX_PIXELS) {
+        return false;
+    }
+    *width = (int)x;
+    *height = (int)y;
+    return true;
 }
 /* An exported game keeps its artifact and resources in data/ beside the
  * executable, or in Contents/Resources of a macOS app bundle, with the engine's
@@ -364,6 +393,10 @@ static int run_frame(player_host *host)
         cf_input_disable_ime();
     }
     cf_app_update(NULL);
+    if (host->width && (cf_app_get_canvas_width() != host->width ||
+                        cf_app_get_canvas_height() != host->height)) {
+        cf_app_set_canvas_size(host->width, host->height);
+    }
     if (!text_input(host)) {
         fprintf(stderr, "Invalid or oversized text input\n");
         return -1;
@@ -379,8 +412,10 @@ static int run_frame(player_host *host)
     if (!typing && !engine_is_playing(runtime) && cf_key_just_pressed(CF_KEY_Q)) {
         return 0;
     }
-    int width, height;
-    cf_app_get_size(&width, &height);
+    int width = host->width, height = host->height;
+    if (!width) {
+        cf_app_get_size(&width, &height);
+    }
     engine_viewport_request_resize(host->viewport, width, height);
     engine_viewport_host_input input = { .width = width,
                                          .height = height,
@@ -461,6 +496,8 @@ static void web_frame(void *host)
 int main(int argc, char **argv)
 {
     const char *artifact = NULL, *root = NULL, *shader_dir = NULL, *save_path = NULL;
+    const char *capture = NULL;
+    int width = 0, height = 0;
     bool hidden = false;
     int frames = 0;
     double fixed_dt = 0;
@@ -468,7 +505,8 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         const char *option = argv[i];
         if (!strcmp(option, "--help")) {
-            puts("chibi-player [ARTIFACT] [--resource-root DIR] [--shader-dir DIR] [--save PATH] [--backend vm|sljit] [--hidden] [--frames N] [--fixed-dt SECONDS]");
+            puts("chibi-player [ARTIFACT] [--resource-root DIR] [--shader-dir DIR] [--save PATH] [--backend vm|sljit] [--hidden] [--frames N] [--fixed-dt SECONDS] [--size WIDTHxHEIGHT] [--capture PNG]");
+            puts("--size allows dimensions up to 640 and 230400 pixels; --capture requires --frames and --size.");
             return 0;
         }
         if (!strcmp(option, "--hidden")) {
@@ -488,6 +526,17 @@ int main(int argc, char **argv)
             root = value;
         } else if (!strcmp(option, "--shader-dir")) {
             shader_dir = value;
+        } else if (!strcmp(option, "--size")) {
+            if (!dimensions(value, &width, &height)) {
+                fprintf(stderr, "Invalid canvas size\n");
+                return 2;
+            }
+        } else if (!strcmp(option, "--capture")) {
+            if (!*value) {
+                fprintf(stderr, "Capture path is empty\n");
+                return 2;
+            }
+            capture = value;
         } else if (!strcmp(option, "--save")) {
             save_path = value;
         } else if (!strcmp(option, "--backend") && !strcmp(value, "vm")) {
@@ -507,6 +556,16 @@ int main(int argc, char **argv)
             return 2;
         }
     }
+    if (capture && (!frames || !width)) {
+        fprintf(stderr, "Capture requires --frames and --size\n");
+        return 2;
+    }
+#ifdef __EMSCRIPTEN__
+    if (capture) {
+        fprintf(stderr, "Capture requires the native player\n");
+        return 2;
+    }
+#endif
     char *bundle = artifact ? NULL : bundle_directory();
     char *bundled = bundle ? join(bundle, BUNDLE_ARTIFACT) : NULL;
     char *engine_dir = bundle ? join(bundle, BUNDLE_ENGINE) : NULL;
@@ -528,8 +587,12 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s: %s\n", artifact, error);
         goto release;
     }
-    int initial_width = application.width ? application.width : DEFAULT_WIDTH;
-    int initial_height = application.height ? application.height : DEFAULT_HEIGHT;
+    int initial_width = width             ? width
+                      : application.width ? application.width
+                                          : DEFAULT_WIDTH;
+    int initial_height = height             ? height
+                       : application.height ? application.height
+                                            : DEFAULT_HEIGHT;
     native = host_native_default_catalog_new(
         NULL,
         0,
@@ -550,7 +613,7 @@ int main(int argc, char **argv)
         initial_width,
         initial_height,
         CF_APP_OPTIONS_WINDOW_POS_CENTERED_BIT | CF_APP_OPTIONS_RESIZABLE_BIT |
-            (application.fullscreen ? CF_APP_OPTIONS_FULLSCREEN_BIT : 0) |
+            (application.fullscreen && !width ? CF_APP_OPTIONS_FULLSCREEN_BIT : 0) |
             (hidden ? CF_APP_OPTIONS_HIDDEN_BIT : 0),
         argv[0]
     );
@@ -561,6 +624,8 @@ int main(int argc, char **argv)
     set_icon(root, application.icon);
     static player_host host;
     host.fixed_dt = fixed_dt;
+    host.width = width;
+    host.height = height;
     if (!shader_dir) {
         shader_dir = resource_shaders();
     }
@@ -605,9 +670,18 @@ int main(int argc, char **argv)
         fprintf(stderr, "Save service is unavailable\n");
         goto finish;
     }
-    if (save_path && !game_save_open(host.ui.save, save_path)) {
-        fprintf(stderr, "%s\n", game_save_error(host.ui.save));
-        goto finish;
+    if (host.ui.save && (save_path || application.project_name)) {
+        const char *directory = NULL;
+#ifndef __EMSCRIPTEN__
+        if (!save_path) {
+            directory = cf_fs_get_user_directory("Chibi", "Saves");
+        }
+#endif
+        /* Initial Begin handlers are queued until the first engine frame. */
+        if (!game_save_open_project(host.ui.save, application.project_name, directory, save_path)) {
+            fprintf(stderr, "%s\n", game_save_error(host.ui.save));
+            goto finish;
+        }
     }
     signal(SIGINT, stop);
     signal(SIGTERM, stop);
@@ -625,6 +699,19 @@ int main(int argc, char **argv)
     }
     if (status < 0) {
         goto finish;
+    }
+    if (capture && (frame != frames || app_save_screenshot(capture))) {
+        fprintf(stderr, "Final frame capture failed\n");
+        goto finish;
+    }
+    if (capture) {
+        printf(
+            "capture backend=%s size=%dx%d hidden=%s\n",
+            cf_backend_type_to_string(cf_query_backend()),
+            cf_app_get_canvas_width(),
+            cf_app_get_canvas_height(),
+            hidden ? "true" : "false"
+        );
     }
     printf(
         "frames=%d steps=%llu\n",

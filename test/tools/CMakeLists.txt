@@ -77,7 +77,7 @@ target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
 add_executable(test_tools main.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
-    validate_project.c test_policy.c validation_plan.c publish.c web_storage.c webgpu_staging.c $<TARGET_OBJECTS:chibi_sdk_contracts>
+    validate_project.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c webgpu_staging.c $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
     "${CHIBI_TOOL_ROOT}/third_party/yyjson/yyjson.c")
@@ -90,6 +90,15 @@ add_dependencies(test_tools policy_worker)
 target_compile_features(test_tools PRIVATE c_std_11)
 target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document)
+if(TARGET Chibi::scene_authoring)
+    add_library(chibi_scene_authoring_consumer OBJECT ../authoring/scene_hierarchy.c)
+    target_include_directories(chibi_scene_authoring_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_link_libraries(chibi_scene_authoring_consumer PRIVATE Chibi::scene_authoring Chibi::scene_document)
+    target_compile_options(chibi_scene_authoring_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_scene_authoring_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::scene_authoring Chibi::scene_document)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SCENE_AUTHORING=1)
+endif()
 if(TARGET Chibi::entity_runtime)
     add_library(chibi_native_consumer OBJECT native.c native_values.c native_catalog.c physics.c
         physics3d.c transforms.c tilemap_native.c)
@@ -98,8 +107,8 @@ if(TARGET Chibi::entity_runtime)
         Chibi::physics_runtime Chibi::physics3d_runtime Chibi::material_runtime Chibi::task_pool_runtime
         Chibi::spatial_runtime Chibi::tilemap_runtime Chibi::mesh_runtime)
     if(TARGET Chibi::project_compilation AND TARGET Chibi::image_preparation)
-        target_link_libraries(chibi_native_consumer PRIVATE Chibi::project_compilation Chibi::image_preparation)
-        target_link_libraries(test_tools PRIVATE Chibi::project_compilation Chibi::image_preparation)
+        target_link_libraries(chibi_native_consumer PRIVATE Chibi::project_compilation Chibi::image_preparation Chibi::scenario_document)
+        target_link_libraries(test_tools PRIVATE Chibi::project_compilation Chibi::image_preparation Chibi::scenario_document)
         target_compile_definitions(chibi_native_consumer PRIVATE CHIBI_TEST_PREPARATION=1
             CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
     endif()
@@ -139,6 +148,7 @@ if(TARGET chibi_box3d)
 endif()
 
 if(TARGET Chibi::render)
+    target_sources(test_tools PRIVATE installed_examples.c)
     add_library(chibi_render_consumer OBJECT ../authoring/render_resources.c ../render/hidden_app.c
         ../render/memory_images.c
         ../render/radiance.c ../render/radiance_depth.c ../render/material_borders.c
@@ -233,15 +243,15 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
     target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_RUNTIME=1)
     target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::native_types)
     if(TARGET Chibi::render AND TARGET Chibi::project_preparation)
-        add_library(chibi_source_features_consumer OBJECT ../runtime/source_features.c ../authoring/source_presentation.c
+        add_library(chibi_source_features_consumer OBJECT ../runtime/source_features.c ../runtime/source_input_save.c ../authoring/source_presentation.c
             ../runtime/system_schedule.c ../code_system_runtime.c ../authoring/source_edit.c
             ../authoring/shader_parameters.c ../authoring/component_presentation.c ../language/corpus_semantic.c)
         target_include_directories(chibi_source_features_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
         target_link_libraries(chibi_source_features_consumer PRIVATE Chibi::project_preparation Chibi::component_presentation
-            Chibi::render Chibi::graph_catalog Chibi::host_native_default Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime)
+            Chibi::render Chibi::graph_catalog Chibi::host_native_default Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime Chibi::save_runtime)
         target_compile_options(chibi_source_features_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
         target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_source_features_consumer>)
-        target_link_libraries(test_tools PRIVATE Chibi::project_preparation Chibi::component_presentation Chibi::graph_catalog Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime)
+        target_link_libraries(test_tools PRIVATE Chibi::project_preparation Chibi::component_presentation Chibi::graph_catalog Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime Chibi::save_runtime)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)
         target_compile_definitions(chibi_sdk_contracts PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)
         target_link_libraries(chibi_sdk_contracts PRIVATE Chibi::studio_capabilities)
@@ -252,6 +262,11 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
             target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FEATURE_COVERAGE=1
                 CHIBI_CTL_PATH="$<TARGET_FILE:chibi_ctl>")
             add_dependencies(test_tools chibi_ctl)
+        endif()
+        if(TARGET chibi_automation)
+            target_sources(test_tools PRIVATE preview_components.c preview.c)
+            target_link_libraries(test_tools PRIVATE chibi_automation)
+            target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PREVIEW_COMPONENTS=1 CHIBI_TEST_PREVIEW=1)
         endif()
     endif()
 endif()

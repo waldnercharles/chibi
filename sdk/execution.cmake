@@ -51,7 +51,25 @@ if(CHIBI_ENABLE_SJLIT)
         FetchContent_MakeAvailable(chibi_execution_sljit_source)
         set(execution_sljit_source "${chibi_execution_sljit_source_SOURCE_DIR}")
     endif()
-    add_library(chibi_execution_sljit STATIC "${execution_sljit_source}/sljit_src/sljitLir.c")
+    # Keep dependency caches read-only. The copied entry point resolves its
+    # ARM64 backend locally; other includes still use the original source.
+    set(sljit_patch "${CHIBI_SDK_ROOT}/cmake/patches/sljit-arm64-immediate-negation.patch")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${sljit_patch}")
+    set(sljit_patched_root "${CMAKE_CURRENT_BINARY_DIR}/private/sljit")
+    foreach(source sljitLir.c sljitNativeARM_64.c)
+        configure_file("${execution_sljit_source}/sljit_src/${source}"
+            "${sljit_patched_root}/${source}" COPYONLY)
+    endforeach()
+    find_package(Git REQUIRED)
+    execute_process(
+        COMMAND "${GIT_EXECUTABLE}" apply --unsafe-paths
+            "--directory=${sljit_patched_root}" "${sljit_patch}"
+        RESULT_VARIABLE sljit_patch_result
+        ERROR_VARIABLE sljit_patch_error)
+    if(NOT sljit_patch_result EQUAL 0)
+        message(FATAL_ERROR "Could not patch SLJIT ARM64 immediates: ${sljit_patch_error}")
+    endif()
+    add_library(chibi_execution_sljit STATIC "${sljit_patched_root}/sljitLir.c")
     set_target_properties(chibi_execution_sljit PROPERTIES EXPORT_NAME execution_sljit)
     target_include_directories(chibi_execution_sljit PRIVATE "${execution_sljit_source}/sljit_src")
     target_compile_definitions(chibi_execution_sljit PRIVATE SLJIT_WX_EXECUTABLE_ALLOCATOR=1)

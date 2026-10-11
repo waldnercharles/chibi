@@ -31,8 +31,10 @@ static void header(execution_wire *wire)
 /* The front of the artifact: bounded window settings any host can read alone. */
 static void application(execution_wire *wire, game_player_application *app)
 {
-    const char *title = app->title, *icon = app->icon;
+    const char *project_name = app->project_name, *title = app->title,
+               *icon = app->icon;
     uint64_t width = (uint64_t)app->width, height = (uint64_t)app->height;
+    execution_wire_string(wire, &project_name);
     execution_wire_string(wire, &title);
     execution_wire_string(wire, &icon);
     execution_wire_u64(wire, &width);
@@ -41,7 +43,9 @@ static void application(execution_wire *wire, game_player_application *app)
     if (wire->error) {
         return;
     }
-    if ((title && (!title[0] || strlen(title) > GAME_PLAYER_APPLICATION_TEXT_MAX)) ||
+    if ((project_name && (!project_name[0] ||
+                          strlen(project_name) > GAME_PLAYER_APPLICATION_TEXT_MAX)) ||
+        (title && (!title[0] || strlen(title) > GAME_PLAYER_APPLICATION_TEXT_MAX)) ||
         (icon && (strlen(icon) > GAME_PLAYER_APPLICATION_TEXT_MAX ||
                   !game_player_relative_path(icon))) ||
         width > GAME_PLAYER_APPLICATION_SIZE_MAX ||
@@ -49,6 +53,7 @@ static void application(execution_wire *wire, game_player_application *app)
         wire->error = "Prepared player application settings are invalid";
         return;
     }
+    app->project_name = (char *)project_name;
     app->title = (char *)title;
     app->icon = (char *)icon;
     app->width = (int)width;
@@ -145,12 +150,19 @@ static void assets(execution_wire *wire, game_player_asset **records, int *count
 }
 static void actions(execution_wire *wire, input_action **records, int *count)
 {
-    execution_wire_count(wire, count, 3);
+    execution_wire_count(wire, count, 5);
     for (int i = 0; i < *count && !wire->error; i++) {
         input_action action = wire->reading ? (input_action){ 0 } : (*records)[i];
         wire_name(wire, &action.name);
         execution_wire_u64(wire, &action.controls);
         execution_wire_bool(wire, &action.firing);
+        execution_wire_int(wire, &action.controller);
+        uint64_t buttons = action.buttons;
+        execution_wire_u64(wire, &buttons);
+        if (buttons > UINT32_MAX) {
+            wire->error = "Prepared player controller buttons are invalid";
+        }
+        action.buttons = (uint32_t)buttons;
         if (wire->reading && !wire->error) {
             apush(*records, action);
         }
@@ -467,8 +479,8 @@ bool game_player_application_read(const char *path, game_player_application *app
 {
     assert(path && app && (!size || error));
     *app = (game_player_application){ 0 };
-    /* Header, two bounded strings with their sizes, two sizes and a flag. */
-    unsigned char data[2 * GAME_PLAYER_APPLICATION_TEXT_MAX + 256];
+    /* Header, three bounded strings with their sizes, two sizes and a flag. */
+    unsigned char data[3 * GAME_PLAYER_APPLICATION_TEXT_MAX + 256];
     FILE *file = fopen(path, "rb");
     if (!file) {
         return fail(error, size, "Prepared player file could not be opened");
@@ -486,6 +498,7 @@ bool game_player_application_read(const char *path, game_player_application *app
         return fail(error, size, wire.error);
     }
     *app = read;
+    app->project_name = read.project_name ? xstrdup(read.project_name) : NULL;
     app->title = read.title ? xstrdup(read.title) : NULL;
     app->icon = read.icon ? xstrdup(read.icon) : NULL;
     arena_free(&storage);
@@ -493,6 +506,7 @@ bool game_player_application_read(const char *path, game_player_application *app
 }
 void game_player_application_free(game_player_application *app)
 {
+    free(app->project_name);
     free(app->title);
     free(app->icon);
     *app = (game_player_application){ 0 };

@@ -1,5 +1,14 @@
 # Engine SDK and Chibi language implementation
 
+> Historical plan and delivery evidence for the 2026-10-08 SDK extraction.
+> Use [current status](docs/status.md) for today's backlog and owners, and
+> [architecture](docs/architecture.md) for the current package contracts.
+> The extraction is present in engine `main` at the reconciliation baseline
+> `f3ff608c`. Browser publication was added after this delivery. The branch,
+> repository-visibility constraints, local artifact paths and acceptance limits
+> below describe their recorded checkpoints, not current checkout or deployment
+> state. Later work does not retroactively extend these test results.
+
 ## Objective and authority
 
 Implement the production architecture agreed in this conversation: an engine SDK
@@ -30,7 +39,7 @@ repositories are `waldnercharles/chibi-studio`, `waldnercharles/chibi-arena3d`,
 repository. Branch publication does not merge the refactor into engine `main`
 or change the acceptance limits below.
 
-## Evidence and preservation
+## Historical baseline and preservation
 
 - Branch `cwaldner/code-language-prototype`, based on `1e5d6584`. Preserve the
   conversation's uncommitted prototype and build/test integration while migrating.

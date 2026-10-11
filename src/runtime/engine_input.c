@@ -36,8 +36,9 @@ struct engine_input
     CF_V2 aim;
     bool aim_sampled, aim_point, firing;
     uint64_t controls;
-    /* Controls held after each change since the last step, oldest first. */
-    uint64_t *trail;
+    /* Device snapshots after each change since the last step, oldest first. */
+    input_keyframe *trail;
+    input_controller_state controllers[INPUT_CONTROLLER_MAX];
     input_button *buttons;
     input_transition *transitions;
     ecs_entity *controlled;
@@ -68,6 +69,7 @@ void engine_input_set_actions(engine_input *input, const input_action *actions, 
     free_actions(input);
     for (int i = 0; i < count; i++) {
         input_action action = actions[i];
+        assert(action.controller >= 0 && action.controller < INPUT_CONTROLLER_MAX);
         for (int j = 0; j < i; j++) {
             assert(strcmp(actions[j].name, action.name));
         }
@@ -193,6 +195,7 @@ void engine_input_reset(engine_input *input)
 {
     engine_input_clear(input);
     input->controls = 0;
+    memset(input->controllers, 0, sizeof input->controllers);
     aclear(input->trail);
     clear_actions(input);
     aclear(input->controlled);
@@ -247,14 +250,34 @@ void engine_input_aim(engine_input *input, CF_V2 aim, bool firing, bool point)
     input->aim_sampled = true;
 }
 
-int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
+int engine_input_devices(
+    engine_input *input,
+    uint64_t controls,
+    const input_controller_state controllers[INPUT_CONTROLLER_MAX],
+    bool *firing
+)
 {
     _Static_assert(GAME_CONTROL_COUNT < 64, "control bitset");
-    *firing = false;
-    if (controls != input->controls) {
-        apush(input->trail, controls);
+    _Static_assert(GAME_PAD_COUNT < 32, "controller bitset");
+    uint32_t all_buttons = ((UINT32_C(1) << GAME_PAD_COUNT) - 1) & ~UINT32_C(1);
+    for (int i = 0; i < INPUT_CONTROLLER_MAX; i++) {
+        if (controllers[i].buttons & ~all_buttons) {
+            return FLOW_ERR_ARGUMENT;
+        }
     }
+    input_keyframe previous = engine_input_held(input);
     input->controls = controls;
+    for (int i = 0; i < INPUT_CONTROLLER_MAX; i++) {
+        input->controllers[i] = controllers[i];
+        if (!controllers[i].connected) {
+            input->controllers[i].buttons = 0;
+        }
+    }
+    input_keyframe held = engine_input_held(input);
+    if (!input_keyframe_same(&previous, &held)) {
+        apush(input->trail, held);
+    }
+    *firing = false;
     for (int i = 0; i < acount(input->buttons); i++) {
         if (action_index(input, input->buttons[i].action) < 0 &&
             engine_input_action(input, input->buttons[i].action, false) ==
@@ -264,10 +287,11 @@ int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
     }
     for (int i = 0; i < acount(input->actions); i++) {
         const input_action *action = &input->actions[i];
-        bool down = (controls & action->controls) != 0;
+        bool down = (controls & action->controls) != 0 ||
+                    (input->controllers[action->controller].buttons &
+                     action->buttons) != 0;
         *firing |= down && action->firing;
         int dispatched = engine_input_action(input, action->name, down);
-        /* Held state is useful to Tick graphs without an event receiver. */
         if (dispatched == FLOW_ERR_UNKNOWN_EVENT) {
             update_button(input, action->name, down);
         } else if (dispatched < 0) {
@@ -277,25 +301,43 @@ int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
     return FLOW_OK;
 }
 
-int engine_input_trail(const engine_input *input, const uint64_t **controls)
+int engine_input_controls(engine_input *input, uint64_t controls, bool *firing)
 {
-    *controls = input->trail;
+    return engine_input_devices(input, controls, input->controllers, firing);
+}
+
+int engine_input_controller(engine_input *input, int controller, input_controller_state state, bool *firing)
+{
+    if (controller < 0 || controller >= INPUT_CONTROLLER_MAX) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    input_controller_state controllers[INPUT_CONTROLLER_MAX];
+    memcpy(controllers, input->controllers, sizeof controllers);
+    controllers[controller] = state;
+    return engine_input_devices(input, input->controls, controllers, firing);
+}
+
+int engine_input_trail(const engine_input *input, const input_keyframe **keys)
+{
+    *keys = input->trail;
     return acount(input->trail);
 }
 
 input_keyframe engine_input_held(const engine_input *input)
 {
-    return (input_keyframe){ .movement = input->movement,
-                             .aim = input->aim,
-                             .aim_point = input->aim_point,
-                             .firing = input->firing,
-                             .controls = input->controls };
+    input_keyframe held = { .movement = input->movement,
+                            .aim = input->aim,
+                            .aim_point = input->aim_point,
+                            .firing = input->firing,
+                            .controls = input->controls };
+    memcpy(held.controllers, input->controllers, sizeof held.controllers);
+    return held;
 }
 
 int engine_input_hold(engine_input *input, const input_keyframe *key)
 {
     bool firing;
-    int result = engine_input_controls(input, key->controls, &firing);
+    int result = engine_input_devices(input, key->controls, key->controllers, &firing);
     engine_input_movement(input, key->movement);
     engine_input_aim(input, key->aim, key->firing, key->aim_point);
     return result;
@@ -570,4 +612,19 @@ const node_host_call GAME_INPUT_HELD_CALL = { .service = GAME_INPUT_SERVICE,
 const node_host_call GAME_INPUT_PRESSED_CALL = { .service = GAME_INPUT_SERVICE,
                                                  .invoke = action_pressed,
                                                  .optional_service = true };
+static const char *controller_connected(void *service, const pin_value *in, pin_value *out)
+{
+    int controller = in[0].i;
+    if (controller < 0 || controller >= INPUT_CONTROLLER_MAX) {
+        return "Controller Connected requires a controller slot from 0 to 3";
+    }
+    const engine_input *input = service;
+    out[0].b = input && input->controllers[controller].connected;
+    return NULL;
+}
+const node_host_call GAME_INPUT_CONTROLLER_CONNECTED_CALL = {
+    .service = GAME_INPUT_SERVICE,
+    .invoke = controller_connected,
+    .optional_service = true,
+};
 const node_access GAME_INPUT_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };

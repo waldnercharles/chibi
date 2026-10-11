@@ -669,6 +669,35 @@ int engine_sample_controls(engine *engine, uint64_t controls, bool *firing)
     return engine_input_controls(engine->input, controls, firing);
 }
 
+int engine_sample_devices(
+    engine *engine,
+    uint64_t controls,
+    const input_controller_state controllers[INPUT_CONTROLLER_MAX],
+    bool *firing
+)
+{
+    if (!engine->input) {
+        return FLOW_ERR_STATE;
+    }
+    if (engine->replay || (!engine->playing && !engine->step_requested)) {
+        *firing = false;
+        return FLOW_OK;
+    }
+    return engine_input_devices(engine->input, controls, controllers, firing);
+}
+
+int engine_sample_controller(engine *engine, int controller, input_controller_state state, bool *firing)
+{
+    if (!engine->input) {
+        return FLOW_ERR_STATE;
+    }
+    if (engine->replay || (!engine->playing && !engine->step_requested)) {
+        *firing = false;
+        return FLOW_OK;
+    }
+    return engine_input_controller(engine->input, controller, state, firing);
+}
+
 void engine_record_input(engine *engine, unsigned seed)
 {
     assert(engine->input);
@@ -748,11 +777,12 @@ static void record_step(engine *engine, int step)
 {
     input_keyframe held = engine_input_held(engine->input);
     held.step = step;
-    const uint64_t *trail;
+    const input_keyframe *trail;
     int changes = engine_input_trail(engine->input, &trail);
     for (int i = 0; i + 1 < changes; i++) {
         input_keyframe key = held;
-        key.controls = trail[i];
+        key.controls = trail[i].controls;
+        memcpy(key.controllers, trail[i].controllers, sizeof key.controllers);
         apush(engine->recorded, key);
     }
     int count = acount(engine->recorded);

@@ -1,0 +1,12 @@
+name "PlatformRider3D"
+components {
+    GAME.GameBody3D type="Kinematic"
+    (object)GAME.GameCharacter3D
+    GAME.GameCollider3D category=1 height=48.0 mask=1 radius=12.0 shape="Capsule"
+    GAME.GameGeometry3D depth=24.0 height=48.0 primitive=2 width=24.0
+    GAME.GameMaterial scene=0xf0c060ff
+    GAME.GameTransform3D {
+        scale x=1.0 y=1.0 z=1.0
+    }
+}
+(array)behaviors "PlatformRiderGravity"

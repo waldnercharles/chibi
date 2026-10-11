@@ -1,6 +1,7 @@
 /* The RmlUi backend: a context per backend, drawn by Cute through the render
  * interface below into a premultiplied canvas, then resolved to a
- * straight-alpha canvas the host samples or presents. Rendering records
+ * straight-alpha canvas the host samples. Direct presentation uses the
+ * premultiplied canvas to match Cute's source-over blend. Rendering records
  * RmlUi's calls as commands, and replays them on the GPU after RmlUi's
  * reference GL3 renderer: layers are window-sized canvases, clip masks are
  * stencil, and filters and gradients are rml_gpu programs. */
@@ -2212,7 +2213,7 @@ void rml_backend_present_region(rml_backend *backend, const float region[4])
     cf_draw_projection(
         cf_ortho_2d(center_x, center_y, (region[2] - region[0]) * w, (region[3] - region[1]) * h)
     );
-    cf_draw_canvas(backend->straight_canvas, cf_v2(0, 0), cf_v2(w, h));
+    cf_draw_canvas(backend->premultiplied_canvas, cf_v2(0, 0), cf_v2(w, h));
     cf_draw_pop();
 }
 

@@ -1,0 +1,8 @@
+name "SurfaceSdf"
+components {
+    GAME.GameGeometry3D depth=24.0 elevation=4.0 height=8.0 width=24.0
+    GAME.GameMaterial absorption=1.0 albedo=0xffffffff scene=0xffffffff
+    GAME.GameSdfSurface3D enabled=#true
+    GAME.GameShader material="SurfaceBands" shape="SurfaceRing"
+    GAME.GameTransform x=-22.0 y=-18.0
+}

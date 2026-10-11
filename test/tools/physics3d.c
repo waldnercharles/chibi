@@ -1696,6 +1696,337 @@ static const GameCharacter3D *character_state(ecs_entity walker)
     return GAME_GameCharacter3D_get_const(world, walker);
 }
 
+static ecs_entity platform(GameBodyType type)
+{
+    return collider((ecs_entity){ 0 }, (CF_V3){ 0, -METER / 2, 0 }, box(8 * METER, METER, 8 * METER), type);
+}
+
+TEST_CASE(physics3d_characters_ride_translating_platforms)
+{
+    ecs_entity floor = platform(GAME_BODY_KINEMATIC);
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(character_state(walker)->on_floor);
+    CF_V3 offset = cf_sub_v3(position(walker), position(floor));
+    CF_V3 velocities[] = { { 2 * METER, 0, METER },
+                           { 0, 2 * METER, 0 },
+                           { 0, -2 * METER, 0 } };
+    for (int direction = 0; direction < 3; direction++) {
+        body(floor)->linear_velocity = velocities[direction];
+        for (int i = 0; i < 30; i++) {
+            walk(walker, (CF_V3){ 0 }, true, 1);
+            REQUIRE(character_state(walker)->on_floor);
+            REQUIRE(near_v3(cf_sub_v3(position(walker), position(floor)), offset, 2 * SLOP));
+            REQUIRE(near_v3(body(walker)->linear_velocity, (CF_V3){ 0 }, 1e-3f));
+        }
+    }
+    return true;
+}
+
+TEST_CASE(physics3d_characters_ride_rotating_and_dynamic_platforms)
+{
+    set_gravity((CF_V3){ 0 });
+    ecs_entity floor = platform(GAME_BODY_DYNAMIC);
+    ecs_entity walker = character((CF_V3){ 2 * METER, .9f * METER, 0 });
+    step(STEP);
+    REQUIRE(character_state(walker)->on_floor);
+    CF_V3 offset = cf_sub_v3(position(walker), position(floor));
+    body(floor)->linear_velocity = (CF_V3){ METER, METER, 0 };
+    body(floor)->angular_velocity = (CF_V3){ 0, 2, 0 };
+    for (int i = 0; i < 120; i++) {
+        step(STEP);
+        CF_Quat rotation = GAME_GameTransform3D_get_const(world, floor)->rotation;
+        CF_V3 local = cf_mul_q_v3(
+            cf_quat_conjugate(rotation),
+            cf_sub_v3(position(walker), position(floor))
+        );
+        REQUIRE(near_v3(local, offset, 2 * SLOP));
+        REQUIRE(character_state(walker)->on_floor);
+        REQUIRE(near_v3(body(walker)->linear_velocity, (CF_V3){ 0 }, 1e-3f));
+        REQUIRE(near(GAME_GameTransform3D_get_const(world, walker)->rotation.w, 1, 1e-6f));
+    }
+    REQUIRE(near(position(floor).y, 1.5f * METER, 2 * SLOP));
+    REQUIRE(near(body(floor)->linear_velocity.y, METER, 1e-3f));
+    return true;
+}
+
+TEST_CASE(physics3d_dynamic_platform_forces_do_not_stop_at_the_rider)
+{
+    set_gravity((CF_V3){ 0 });
+    ecs_entity floor = platform(GAME_BODY_DYNAMIC);
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
+    step(STEP);
+    REQUIRE(touched(walker, floor, true));
+    float mass = body(floor)->mass;
+    REQUIRE(mass > 0);
+    REQUIRE(
+        game_physics3d_apply_impulse(physics, floor, (CF_V3){ 0, mass * 2 * METER, 0 }) == FLOW_OK
+    );
+    step(STEP);
+    REQUIRE(near(body(floor)->linear_velocity.y, 2 * METER, 1e-3f));
+    REQUIRE(!touched(walker, floor, false));
+    REQUIRE(character_state(walker)->on_floor);
+    REQUIRE(
+        game_physics3d_apply_force(physics, floor, (CF_V3){ 0, mass * 200 * METER, 0 }) == FLOW_OK
+    );
+    step(STEP);
+    REQUIRE(near(body(floor)->linear_velocity.y, 2 * METER + 200 * METER * STEP, 1e-3f));
+    REQUIRE(!touched(walker, floor, false));
+    REQUIRE(character_state(walker)->on_floor);
+    REQUIRE(near(position(walker).y - position(floor).y, 1.4f * METER, 2 * SLOP));
+    return true;
+}
+
+TEST_CASE(physics3d_platform_carry_stops_at_thin_obstacles)
+{
+    ecs_entity floor = platform(GAME_BODY_KINEMATIC);
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ METER, 2 * METER, 0 },
+        box(.1f * METER, 4 * METER, 8 * METER),
+        GAME_BODY_STATIC
+    );
+    /* Authored movement beyond the wall still sweeps the full carry. */
+    GAME_GameTransform3D_get(world, floor)->position.x += 3 * METER;
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(position(walker).x <= .55f * METER + 2 * SLOP);
+    REQUIRE(position(walker).x > .5f * METER);
+    REQUIRE(near(body(walker)->linear_velocity.x, 0, 1e-3f));
+    REQUIRE(character_state(walker)->on_floor);
+    return true;
+}
+
+TEST_CASE(physics3d_characters_leave_platforms)
+{
+    ecs_entity floor = platform(GAME_BODY_KINEMATIC);
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    body(floor)->linear_velocity.x = 2 * METER;
+    CF_V3 at = position(walker);
+    walk(walker, (CF_V3){ 0, 5 * METER, 0 }, false, 1);
+    REQUIRE(!character_state(walker)->on_floor);
+    REQUIRE(near(position(walker).x, at.x, 1e-3f));
+    walk(walker, (CF_V3){ 0 }, true, 90);
+    REQUIRE(character_state(walker)->on_floor);
+    walk(walker, (CF_V3){ 0, 0, 8 * METER }, true, 60);
+    REQUIRE(!character_state(walker)->on_floor);
+    at = position(walker);
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(near(position(walker).x, at.x, 1e-3f));
+    return true;
+}
+
+TEST_CASE(physics3d_platform_support_drops_replaced_shapes_and_characters)
+{
+    ecs_entity floor = platform(GAME_BODY_KINEMATIC);
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    /* Replacing a collider at a distant pose must not move its old rider. */
+    GAME_GameCollider3D_get(world, floor)->size.x *= .5f;
+    GAME_GameTransform3D_get(world, floor)->position.x = 20 * METER;
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(near(position(walker).x, 0, 1e-3f));
+    REQUIRE(!character_state(walker)->on_floor);
+    GAME_GameTransform3D_get(world, floor)->position.x = 0;
+    GAME_GameTransform3D_get(world, walker)->position = (CF_V3){ 0, .9f * METER, 0 };
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(character_state(walker)->on_floor);
+    GAME_GameTransform3D_get(world, walker)->position.x = -20 * METER;
+    body(floor)->linear_velocity.x = 2 * METER;
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(near(position(walker).x, -20 * METER, 1e-3f));
+    REQUIRE(!character_state(walker)->on_floor);
+    return true;
+}
+
+TEST_CASE(physics3d_platform_support_drops_destroyed_bodies)
+{
+    ecs_entity floor = platform(GAME_BODY_KINEMATIC);
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(ecs_world_record_destroy(world, floor, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    ecs_entity replacement = platform(GAME_BODY_KINEMATIC);
+    GAME_GameTransform3D_get(world, replacement)->position.x = 20 * METER;
+    body(replacement)->linear_velocity.x = 2 * METER;
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(near(position(walker).x, 0, 1e-3f));
+    REQUIRE(!character_state(walker)->on_floor);
+    game_physics3d_reset(physics);
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(near(position(walker).x, 0, 1e-3f));
+    return true;
+}
+
+TEST_CASE(physics3d_platform_support_obeys_filters_and_sensors)
+{
+    ecs_entity floor = platform(GAME_BODY_KINEMATIC);
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
+    for (int change = 0; change < 3; change++) {
+        GAME_GameCollider3D_get(world, floor)->sensor = false;
+        GAME_GameCollider3D_get(world, floor)->mask = 1;
+        GAME_GameCollider3D_get(world, walker)->mask = 1;
+        GAME_GameTransform3D_get(world, floor)->position.x = 0;
+        GAME_GameTransform3D_get(world, walker)->position = (CF_V3){ 0, .9f * METER, 0 };
+        walk(walker, (CF_V3){ 0 }, true, 1);
+        REQUIRE(character_state(walker)->on_floor);
+        switch (change) {
+            case 0: GAME_GameCollider3D_get(world, floor)->sensor = true; break;
+            case 1: GAME_GameCollider3D_get(world, floor)->mask = 2; break;
+            case 2: GAME_GameCollider3D_get(world, walker)->mask = 2; break;
+        }
+        GAME_GameTransform3D_get(world, floor)->position.x = METER;
+        walk(walker, (CF_V3){ 0 }, true, 1);
+        REQUIRE(near(position(walker).x, 0, 1e-3f));
+        REQUIRE(!character_state(walker)->on_floor);
+    }
+    return true;
+}
+
+TEST_CASE(physics3d_platform_support_follows_gravity)
+{
+    ecs_entity sky = set_gravity((CF_V3){ -10 * METER, 0, 0 });
+    ecs_entity floor = collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ -METER / 2, 0, 0 },
+        box(METER, 8 * METER, 8 * METER),
+        GAME_BODY_KINEMATIC
+    );
+    ecs_entity walker = character((CF_V3){ .9f * METER, 0, 0 });
+    GAME_GameTransform3D_get(world, walker)
+        ->rotation = cf_quat_from_axis_angle((CF_V3){ 0, 0, 1 }, 1.57079633f);
+    body(walker)->linear_velocity = (CF_V3){ -METER, 0, 0 };
+    step(STEP);
+    REQUIRE(character_state(walker)->on_floor);
+    CF_V3 offset = cf_sub_v3(position(walker), position(floor));
+    body(floor)->linear_velocity.y = METER;
+    for (int i = 0; i < 30; i++) {
+        body(walker)->linear_velocity = (CF_V3){ -METER, 0, 0 };
+        step(STEP);
+        REQUIRE(near_v3(cf_sub_v3(position(walker), position(floor)), offset, 2 * SLOP));
+        REQUIRE(character_state(walker)->on_floor);
+    }
+    GAME_GameGravity3D_get(world, sky)->acceleration.x *= -1;
+    CF_V3 at = position(walker);
+    body(walker)->linear_velocity = (CF_V3){ 0 };
+    step(STEP);
+    REQUIRE(!character_state(walker)->on_floor);
+    REQUIRE(near(position(walker).y, at.y, 1e-3f));
+    return true;
+}
+
+TEST_CASE(physics3d_platform_carry_refreshes_sensor_contacts)
+{
+    ecs_entity floor = platform(GAME_BODY_KINEMATIC);
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
+    GameCollider3D zone = box(METER, METER, METER);
+    zone.sensor = true;
+    ecs_entity sensor = collider((ecs_entity){ 0 }, (CF_V3){ 2 * METER, METER, 0 }, zone, GAME_BODY_STATIC);
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    GAME_GameTransform3D_get(world, floor)->position.x += 2 * METER;
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(touched(walker, sensor, true));
+    GAME_GameTransform3D_get(world, floor)->position.x += 2 * METER;
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(touched(walker, sensor, false));
+    return true;
+}
+
+TEST_CASE(physics3d_platform_carry_stops_at_ceilings)
+{
+    ecs_entity floor = platform(GAME_BODY_KINEMATIC);
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
+    collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 0, 2.5f * METER, 0 },
+        box(8 * METER, .1f * METER, 8 * METER),
+        GAME_BODY_STATIC
+    );
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    GAME_GameTransform3D_get(world, floor)->position.y += 4 * METER;
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(position(walker).y <= 1.55f * METER + 2 * SLOP);
+    REQUIRE(position(walker).y > 1.5f * METER);
+    REQUIRE(!character_state(walker)->on_floor);
+    return true;
+}
+
+TEST_CASE(physics3d_platform_cannot_push_a_rider_through_a_ceiling)
+{
+    ecs_entity floor = platform(GAME_BODY_KINEMATIC);
+    ecs_entity walker = character((CF_V3){ 0, .9f * METER, 0 });
+    collider(
+        (ecs_entity){ 0 },
+        (CF_V3){ 0, 2.5f * METER, 0 },
+        box(8 * METER, .1f * METER, 8 * METER),
+        GAME_BODY_STATIC
+    );
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    GAME_GameTransform3D_get(world, floor)->position.y += METER;
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(position(walker).y <= 1.55f * METER + 2 * SLOP);
+    REQUIRE(position(walker).y > 1.5f * METER);
+    return true;
+}
+
+TEST_CASE(physics3d_platform_support_uses_a_followers_body)
+{
+    ecs_entity floor = platform(GAME_BODY_KINEMATIC);
+    ecs_entity top = collider(
+        floor,
+        (CF_V3){ 0, METER / 2, 0 },
+        box(8 * METER, METER / 5, 8 * METER),
+        GAME_BODY_STATIC
+    );
+    ecs_entity walker = character((CF_V3){ 2 * METER, METER, 0 });
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(character_state(walker)->on_floor);
+    GAME_GameTransform3D_get(world, floor)->position.x = METER;
+    GAME_GameTransform3D_get(world, floor)
+        ->rotation = cf_quat_from_axis_angle((CF_V3){ 0, 1, 0 }, 1.57079633f);
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(near_v3(position(walker), (CF_V3){ METER, METER, -2 * METER }, 2 * SLOP));
+    REQUIRE(character_state(walker)->on_floor);
+    ecs_entity other = platform(GAME_BODY_KINEMATIC);
+    GAME_GameTransform3D_get(world, other)->position.x = 20 * METER;
+    REQUIRE(ecs_world_record_remove_pair(world, top, ECS_CHILD_OF, floor, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add_pair(world, top, ECS_CHILD_OF, other, 1) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    CF_V3 at = position(walker);
+    body(floor)->linear_velocity.x = METER;
+    body(other)->linear_velocity.x = METER;
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(near(position(walker).x, at.x, 1e-3f));
+    return true;
+}
+
+TEST_CASE(physics3d_platform_tilt_keeps_the_capsule_upright)
+{
+    ecs_entity floor = platform(GAME_BODY_KINEMATIC);
+    ecs_entity walker = character((CF_V3){ 2 * METER, .9f * METER, 0 });
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    CF_Quat tilt = cf_quat_from_axis_angle((CF_V3){ 0, 0, 1 }, .2f);
+    GAME_GameTransform3D_get(world, floor)->rotation = tilt;
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    CF_V3 surface = cf_add_v3(
+        position(floor),
+        cf_mul_q_v3(tilt, (CF_V3){ 2 * METER, .5f * METER, 0 })
+    );
+    REQUIRE(character_state(walker)->on_floor);
+    REQUIRE(near(position(walker).x, surface.x, .04f * METER));
+    REQUIRE(
+        near_v3(character_state(walker)->floor_normal, cf_mul_q_v3(tilt, (CF_V3){ 0, 1, 0 }), 1e-3f)
+    );
+    REQUIRE(near(GAME_GameTransform3D_get_const(world, walker)->rotation.w, 1, 1e-6f));
+    GAME_GameTransform3D_get(world, floor)
+        ->rotation = cf_quat_from_axis_angle((CF_V3){ 0, 0, 1 }, .9f);
+    walk(walker, (CF_V3){ 0 }, true, 1);
+    REQUIRE(!character_state(walker)->on_floor);
+    return true;
+}
+
 /* A character lands, stands without gathering speed, stops at a wall and
  * slides along it, all with the velocity it can actually keep. */
 TEST_CASE(physics3d_characters_slide_along_what_they_meet)
@@ -1867,6 +2198,20 @@ void test_tool_physics3d()
     RUN_TEST_CASE(physics3d_joints_ignore_unused_limits_and_start_anywhere);
     RUN_TEST_CASE(physics3d_joints_need_two_bodies_and_sound_values);
     RUN_TEST_CASE(physics3d_characters_slide_along_what_they_meet);
+    RUN_TEST_CASE(physics3d_characters_ride_translating_platforms);
+    RUN_TEST_CASE(physics3d_characters_ride_rotating_and_dynamic_platforms);
+    RUN_TEST_CASE(physics3d_dynamic_platform_forces_do_not_stop_at_the_rider);
+    RUN_TEST_CASE(physics3d_platform_carry_stops_at_thin_obstacles);
+    RUN_TEST_CASE(physics3d_characters_leave_platforms);
+    RUN_TEST_CASE(physics3d_platform_support_drops_replaced_shapes_and_characters);
+    RUN_TEST_CASE(physics3d_platform_support_drops_destroyed_bodies);
+    RUN_TEST_CASE(physics3d_platform_support_obeys_filters_and_sensors);
+    RUN_TEST_CASE(physics3d_platform_support_follows_gravity);
+    RUN_TEST_CASE(physics3d_platform_carry_refreshes_sensor_contacts);
+    RUN_TEST_CASE(physics3d_platform_carry_stops_at_ceilings);
+    RUN_TEST_CASE(physics3d_platform_cannot_push_a_rider_through_a_ceiling);
+    RUN_TEST_CASE(physics3d_platform_support_uses_a_followers_body);
+    RUN_TEST_CASE(physics3d_platform_tilt_keeps_the_capsule_upright);
     RUN_TEST_CASE(physics3d_characters_meet_only_solid_others);
     RUN_TEST_CASE(physics3d_characters_land_within_a_short_pass);
     RUN_TEST_CASE(physics3d_characters_meet_each_other);

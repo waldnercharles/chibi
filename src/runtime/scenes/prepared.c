@@ -14,7 +14,7 @@
 enum
 {
     SCENE_ITEM_MAX = 1024,
-    SCENE_RECORD_MAX = 4096
+    SCENE_COMPONENT_MAX = 4096
 };
 static const uint64_t magic = UINT64_C(0x31454e4543534843); /* CHSCENE1 */
 static bool error_text(char *error, size_t size, const char *text)
@@ -81,17 +81,16 @@ static void settings(execution_wire *wire, game_physics_settings *p)
         wire->error = "Prepared scene physics settings are invalid";
     }
 }
-static void count(execution_wire *wire, int *value, int *records)
+static void count(execution_wire *wire, int *value)
 {
     execution_wire_count(wire, value, 1);
     if (wire->error) {
         return;
     }
-    if (*value > SCENE_ITEM_MAX || *value > SCENE_RECORD_MAX - *records) {
+    if (*value > SCENE_ITEM_MAX) {
         wire->error = "Prepared scene object/item limit exceeded";
         return;
     }
-    *records += *value;
 }
 static const ecs_component_desc *resolve(execution_wire *wire, ecs_component_catalog catalog, ecs_component_id id)
 {
@@ -224,7 +223,6 @@ static void object_link(execution_wire *wire, game_scene_link *value)
 }
 static void write_scene(execution_wire *wire, const game_scene *scene, char *diagnostic, size_t diagnostic_size)
 {
-    int records = 0;
     const char *name = game_scene_name(scene), *ui = game_scene_ui(scene);
     bool perspective = game_scene_perspective(scene);
     game_physics_settings physics = game_scene_physics(scene);
@@ -233,27 +231,27 @@ static void write_scene(execution_wire *wire, const game_scene *scene, char *dia
     execution_wire_bool(wire, &perspective);
     settings(wire, &physics);
     int objects = game_scene_object_count(scene);
-    count(wire, &objects, &records);
+    count(wire, &objects);
     for (int i = 0; !wire->error && i < objects; i++) {
         const char *object_name = game_scene_object_name(scene, i);
         execution_wire_string(wire, &object_name);
         int parent = game_scene_object_parent(scene, i);
         execution_wire_int(wire, &parent);
         int components = game_scene_object_component_count(scene, i);
-        count(wire, &components, &records);
+        count(wire, &components);
         for (int j = 0; !wire->error && j < components; j++) {
             game_scene_component row = game_scene_object_component_at(scene, i, j);
             component(wire, &row, (ecs_component_catalog){ 0 }, diagnostic, diagnostic_size);
         }
         int behaviors = game_scene_object_behavior_count(scene, i);
-        count(wire, &behaviors, &records);
+        count(wire, &behaviors);
         for (int j = 0; !wire->error && j < behaviors; j++) {
             const char *behavior = game_scene_object_behavior(scene, i, j);
             execution_wire_string(wire, &behavior);
         }
     }
     int links = game_scene_link_count(scene);
-    count(wire, &links, &records);
+    count(wire, &links);
     for (int i = 0; !wire->error && i < links; i++) {
         game_scene_link one = game_scene_link_at(scene, i);
         object_link(wire, &one);
@@ -297,7 +295,7 @@ game_scene *game_scene_prepared_read_budget(
 )
 {
     assert(remaining && (!size || error));
-    if (catalog.component_count < 0 || catalog.component_count > SCENE_RECORD_MAX ||
+    if (catalog.component_count < 0 || catalog.component_count > SCENE_COMPONENT_MAX ||
         (catalog.component_count && !catalog.components)) {
         error_text(error, size, "Prepared scene component catalog is invalid");
         return NULL;
@@ -319,8 +317,7 @@ game_scene *game_scene_prepared_read_budget(
     execution_wire_string(&wire, &spec.ui);
     execution_wire_bool(&wire, &spec.perspective);
     settings(&wire, &spec.physics);
-    int records = 0;
-    count(&wire, &spec.object_count, &records);
+    count(&wire, &spec.object_count);
     game_scene_object *objects = allocate(&wire, spec.object_count, sizeof *objects);
     int *parents = allocate(&wire, spec.object_count, sizeof *parents);
     spec.objects = objects;
@@ -329,20 +326,20 @@ game_scene *game_scene_prepared_read_budget(
         game_scene_object *object = &objects[i];
         execution_wire_string(&wire, &object->name);
         execution_wire_int(&wire, &parents[i]);
-        count(&wire, &object->component_count, &records);
+        count(&wire, &object->component_count);
         game_scene_component *components = allocate(&wire, object->component_count, sizeof *components);
         object->components = components;
         for (int j = 0; !wire.error && j < object->component_count; j++) {
             component(&wire, &components[j], catalog, diagnostic, sizeof diagnostic);
         }
-        count(&wire, &object->behavior_count, &records);
+        count(&wire, &object->behavior_count);
         const char **behaviors = allocate(&wire, object->behavior_count, sizeof *behaviors);
         object->behaviors = behaviors;
         for (int j = 0; !wire.error && j < object->behavior_count; j++) {
             execution_wire_string(&wire, &behaviors[j]);
         }
     }
-    count(&wire, &spec.link_count, &records);
+    count(&wire, &spec.link_count);
     game_scene_link *links = allocate(&wire, spec.link_count, sizeof *links);
     spec.links = links;
     for (int i = 0; !wire.error && i < spec.link_count; i++) {

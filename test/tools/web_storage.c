@@ -19,13 +19,23 @@ static const char *driver =
     "const vm=require('node:vm'), host=require('node:fs');\n"
     "const code=host.readFileSync(process.argv[2],'utf8'), "
     "mode=process.argv[3];\n"
+    "const "
+    "saving=mode.startsWith('save-'),shell=host.readFileSync(process.argv[2]"
+    ".replace(/web_storage\\.js$/,'web_shell.html'),'utf8').match(/"
+    "<script>([\\s\\S]*?)<\\/script>/)[1];\n"
     "const files=new Map(), dirs=new "
     "Set(['/','/projects','/projects/starter']);\n"
     "files.set('/projects/starter/project.kdl',new TextEncoder().encode('name "
     "Starter'));\n"
-    "const "
-    "FS={filesystems:{IDBFS:{}},mount(){},syncfs(_,done){queueMicrotask(()=>"
-    "done(null));},\n"
+    "let held=false,active,maxSyncs=0;const durable=new Map(),syncs=[];\n"
+    "const finish=(job,error)=>{if(!error){durable.clear();for(const [p,data] "
+    "of job.files)"
+    "durable.set(p,data);}job.done(error);};\n"
+    "const FS={filesystems:{IDBFS:{}},mount(){},syncfs(populate,done){"
+    "if(populate){queueMicrotask(()=>done(null));return;}"
+    "const job={done,files:new Map(files)};if(held){syncs.push(job);"
+    "maxSyncs=Math.max(maxSyncs,syncs.length);return;}queueMicrotask(()=>"
+    "finish(job,null));},\n"
     " analyzePath:p=>({exists:files.has(p)||dirs.has(p)}),stat:p=>({mode:dirs."
     "has(p)?1:0}),isDir:m=>m===1,\n"
     " mkdirTree(p){let base='';for(const part of "
@@ -40,20 +50,34 @@ static const char *driver =
     "Set([...files.keys(),...dirs].filter(x=>x.startsWith(p+'/"
     "')).map(x=>x.slice(p.length+1).split('/')[0]))];},\n"
     " unlink:p=>files.delete(p),rmdir:p=>dirs.delete(p)};\n"
-    "let downloads=0,revision='a'.repeat(40),checksum,archive;\n"
+    "let downloads=0,revision='a'.repeat(40),checksum,archive;\n";
+
+static const char *driver_launch =
     "async function launch(search=''){\n"
     " let ready,aborted='',released=false;const done=new Promise(r=>ready=r);\n"
     " const "
     "location={origin:'https://example.test',href:'https://example.test/game/"
     "dev/'+search,search};\n"
-    " const Module={FS,chibiPublishedProject:'project.json',showError(){}};\n"
+    " const handlers={},inputs=[],timers=new "
+    "Map(),status={dataset:{},hidden:true,buttons:[],"
+    "set textContent(text){this.text=text;this.buttons=[];},get "
+    "textContent(){return this.text||'';},"
+    "append(button){this.buttons.push(button);}},"
+    "canvas={addEventListener(){}};let nextTimer=0;\n"
     " const "
-    "context={Module,location,window:{location},navigator:{storage:{}},history:"
+    "context={location,window:{location,addEventListener(name,run){handlers["
+    "name]=run;}},"
+    "document:{getElementById:id=>id==='status'?status:canvas,createElement:"
+    "tag=>{"
+    "const element={click(){}};if(tag==='input')inputs.push(element);return "
+    "element;}},console,"
+    "navigator:{storage:{}},history:"
     "{replaceState(){}},\n"
     " URL,URLSearchParams,TextEncoder,TextDecoder,Uint8Array,DataView,"
     "ArrayBuffer,Blob,Response,\n"
-    " crypto:require('node:crypto').webcrypto,AbortSignal,setTimeout:()=>0,"
-    "clearTimeout(){},\n"
+    " crypto:require('node:crypto').webcrypto,AbortSignal,"
+    "setTimeout(run){timers.set(++nextTimer,run);return nextTimer;},"
+    "clearTimeout:id=>timers.delete(id),\n"
     " addRunDependency(){},removeRunDependency(){released=true;Module."
     "onRuntimeInitialized();ready();},\n"
     " abort(message){aborted=message;ready();},\n"
@@ -65,28 +89,101 @@ static const char *driver =
     "'project.zip',"
     "sha256:mode==='checksum'?'0'.repeat(64):checksum});\n"
     " return new Response(archive);}};\n"
-    " vm.runInNewContext(code,context);\n"
+    " vm.createContext(context);vm.runInContext(shell,context);const "
+    "Module=context.Module;"
+    "Object.assign(Module,{FS,chibiPublishedProject:'project.json'});"
+    "vm.runInContext(code,context);\n"
     " if(!archive){archive=await Module.chibiZipFiles([['project.kdl',new "
     "TextEncoder().encode('name Celeste')],\n"
     " [mode==='traversal'?'../outside':'content/scene.kdl',new "
     "TextEncoder().encode('original')]]).arrayBuffer();\n"
     " checksum=require('node:crypto').createHash('sha256').update(Buffer.from("
     "archive)).digest('hex');}\n"
-    " Module.preRun[0]();await done;return "
+    " Module.preRun[0]();await "
+    "done;Module.setStatus('');active={Module,handlers,inputs,timers,status,"
+    "location};"
+    "return "
     "{root:Module.arguments[1],aborted,released};\n"
     "}\n"
+    "async function startImport(){const "
+    "{Module,inputs}=active,encode=text=>new TextEncoder().encode(text);"
+    "const buffer=await Module.chibiZipFiles([['project.kdl',encode('name "
+    "Imported')],"
+    "['content/scene.kdl',encode('imported')]]).arrayBuffer();"
+    "Module.chibiImportProject();const input=inputs.at(-1);"
+    "input.files=[{name:'imported.zip',arrayBuffer:async()=>buffer}];"
+    "active.importing=input.onchange();return '/workspace/imported/';}\n";
+
+static const char *driver_run =
     "(async()=>{\n"
-    " if(mode==='explicit'){FS.mkdirTree('/workspace/saved');FS.writeFile('/"
+    " if(mode==='explicit'||saving){FS.mkdirTree('/workspace/"
+    "saved');FS.writeFile('/"
     "workspace/saved/project.kdl','name Saved');}\n"
+    " if(saving){FS.writeFile('/workspace/.last','saved');"
+    "FS.writeFile('/workspace/saved/content/scene.kdl','original');"
+    "for(const [p,data] of files)durable.set(p,data);}\n"
     " if(mode==='conflict'){FS.mkdirTree('/workspace/"
     "published-celeste-'+revision);FS.writeFile('/workspace/"
     "published-celeste-'+revision+'/project.kdl','name Existing');}\n"
     " let outcome=await "
-    "launch(mode==='explicit'?'?project=saved':mode==='sample'?'?project-root="
+    "launch(mode==='explicit'||saving?'?project=saved':mode==='sample'?'?"
+    "project-root="
     "projects/starter':mode==='new'?'?new':'');\n"
     " if(mode==='repeat'||mode==='revision'){FS.writeFile(outcome.root+'"
     "content/scene.kdl','edited');\n"
     " if(mode==='revision')revision='b'.repeat(40);outcome=await launch();}\n"
+    " if(saving){\n"
+    " const "
+    "{Module,handlers,timers,status}=active,path=outcome.root+'content/"
+    "scene.kdl';\n"
+    " const warning=()=>{const "
+    "event={defaultPrevented:false,preventDefault(){this.defaultPrevented=true;"
+    "}};"
+    "handlers.beforeunload(event);return event.defaultPrevented;};\n"
+    " const timer=()=>{const "
+    "pending=[...timers.values()];timers.clear();for(const run of "
+    "pending)run();};\n"
+    " const settle=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};\n"
+    " const saved=()=>new TextDecoder().decode(durable.get(path));\n"
+    " const "
+    "save=text=>{Module.chibiUnsaved=true;Module.chibiSaveAsset(path,text);"
+    "FS.writeFile(path,text);Module.chibiUnsaved=false;};\n"
+    " held=true;let created='';if(mode==='save-import-failure'){created=await "
+    "startImport();await settle();}"
+    "else if(mode==='save-open-failure'){"
+    "created=JSON.parse(Module.chibiCreateProject('Created',1)).root;"
+    "Module.chibiOpenProject(created,false);}else save('edited');const "
+    "before=warning(),pendingStatus=status.textContent;"
+    "timer();await settle();const during=warning();\n"
+    " let retained=false,failure='',first='',afterFirst=false,retryLabel='';\n"
+    " if(mode==='save-race'){save('second');timer();await settle();}\n"
+    " if(mode==='save-completion-race')queueMicrotask(()=>queueMicrotask(()=>{"
+    "save('second');Module.chibiOpenProject(outcome.root);}));\n"
+    " finish(syncs.shift(),mode.endsWith('-failure')?Error('disk "
+    "full'):null);await settle();await active.importing;\n"
+    " if(mode==='save-race'||mode==='save-completion-race'){first=saved();"
+    "afterFirst=warning();if(syncs.length)finish(syncs."
+    "shift(),null);await settle();}\n"
+    " const "
+    "openStatus=Module.chibiProjectOpenStatus(),opened=active.location.search,"
+    "createdBefore=created?durable.has(created+'project.kdl'):false,fatal='"
+    "error' in status.dataset;\n"
+    " if(mode.endsWith('-failure')){retained=warning();failure=status."
+    "textContent;"
+    "first=saved();"
+    "const retry=status.buttons[0];retryLabel=retry?.textContent||'';"
+    "if(retry){retry.onclick();await "
+    "settle();finish(syncs.shift(),null);}await "
+    "settle();}\n"
+    " console.log(JSON.stringify({before,during,pendingStatus,after:warning(),"
+    "saved:saved(),"
+    "status:status.textContent,maxSyncs,retained,failure,first,afterFirst,"
+    "retryLabel,openStatus,opened,createdBefore,createdAfter:created?durable."
+    "has(created+'project.kdl'):false,fatal,openedAfter:active.location.search,"
+    "createdContent:created?new "
+    "TextDecoder().decode(durable.get(created+'content/scene.kdl')):''}));"
+    "return;\n"
+    " }\n"
     " const text=p=>files.has(p)?FS.readFile(p,{encoding:'utf8'}):'';\n"
     " console.log(JSON.stringify({...outcome,downloads,content:text(outcome."
     "root+'content/scene.kdl'),\n"
@@ -102,7 +199,12 @@ static void setup()
     assert(mkdtemp(directory));
     snprintf(driver_path, sizeof driver_path, "%s/driver.cjs", directory);
     snprintf(log_path, sizeof log_path, "%s/output.json", directory);
-    tool_write(driver_path, driver);
+    FILE *file = fopen(driver_path, "w");
+    assert(file);
+    assert(fputs(driver, file) >= 0);
+    assert(fputs(driver_launch, file) >= 0);
+    assert(fputs(driver_run, file) >= 0);
+    assert(!fclose(file));
 }
 
 static void teardown()
@@ -242,6 +344,85 @@ TEST_CASE(archive_cannot_escape_its_workspace)
     return true;
 }
 
+TEST_CASE(saved_document_warns_before_unload_until_persistence_completes)
+{
+    REQUIRE(run("save-reload"));
+    REQUIRE(yyjson_get_bool(field("before")));
+    REQUIRE(yyjson_get_bool(field("during")));
+    REQUIRE(!strcmp(text("pendingStatus"), "Saving project..."));
+    REQUIRE(!yyjson_get_bool(field("after")));
+    REQUIRE(!strcmp(text("saved"), "edited"));
+    REQUIRE(!*text("status"));
+    return true;
+}
+
+TEST_CASE(save_during_persistence_waits_for_the_newer_contents)
+{
+    REQUIRE(run("save-race"));
+    REQUIRE(yyjson_get_bool(field("before")));
+    REQUIRE(yyjson_get_bool(field("afterFirst")));
+    REQUIRE(!strcmp(text("first"), "edited"));
+    REQUIRE(yyjson_get_int(field("maxSyncs")) == 1);
+    REQUIRE(!yyjson_get_bool(field("after")));
+    REQUIRE(!strcmp(text("saved"), "second"));
+    return true;
+}
+
+TEST_CASE(save_after_flush_completion_starts_a_new_flush_before_opening)
+{
+    REQUIRE(run("save-completion-race"));
+    REQUIRE(!strcmp(text("first"), "edited"));
+    REQUIRE(yyjson_get_bool(field("afterFirst")));
+    REQUIRE(!yyjson_get_bool(field("after")));
+    REQUIRE(!strcmp(text("saved"), "second"));
+    return true;
+}
+
+TEST_CASE(failed_persistence_warns_until_a_successful_retry)
+{
+    REQUIRE(run("save-failure"));
+    REQUIRE(yyjson_get_bool(field("retained")));
+    REQUIRE(strstr(text("failure"), "disk full"));
+    REQUIRE(!strcmp(text("retryLabel"), "Retry"));
+    REQUIRE(!strcmp(text("first"), "original"));
+    REQUIRE(!yyjson_get_bool(field("after")));
+    REQUIRE(!strcmp(text("saved"), "edited"));
+    REQUIRE(!*text("status"));
+    return true;
+}
+
+TEST_CASE(created_project_failure_keeps_storage_retry_after_inline_error)
+{
+    REQUIRE(run("save-open-failure"));
+    REQUIRE(yyjson_get_bool(field("retained")));
+    REQUIRE(strstr(text("failure"), "disk full"));
+    REQUIRE(!strcmp(text("retryLabel"), "Retry"));
+    REQUIRE(!strcmp(text("openStatus"), "error:disk full"));
+    REQUIRE(!strcmp(text("opened"), "?project=saved"));
+    REQUIRE(!yyjson_get_bool(field("createdBefore")));
+    REQUIRE(yyjson_get_bool(field("createdAfter")));
+    REQUIRE(!yyjson_get_bool(field("after")));
+    REQUIRE(!*text("status"));
+    return true;
+}
+
+TEST_CASE(imported_project_failure_keeps_storage_retry)
+{
+    REQUIRE(run("save-import-failure"));
+    REQUIRE(yyjson_get_bool(field("retained")));
+    REQUIRE(strstr(text("failure"), "disk full"));
+    REQUIRE(!yyjson_get_bool(field("fatal")));
+    REQUIRE(!strcmp(text("retryLabel"), "Retry"));
+    REQUIRE(!strcmp(text("opened"), "?project=saved"));
+    REQUIRE(!strcmp(text("openedAfter"), "?project=saved"));
+    REQUIRE(!yyjson_get_bool(field("createdBefore")));
+    REQUIRE(yyjson_get_bool(field("createdAfter")));
+    REQUIRE(!strcmp(text("createdContent"), "imported"));
+    REQUIRE(!yyjson_get_bool(field("after")));
+    REQUIRE(!*text("status"));
+    return true;
+}
+
 TEST_CASE(browser_export_does_not_require_native_process_apis)
 {
     char include[1024], header[1024], source[1024];
@@ -285,6 +466,12 @@ void test_tool_web_storage()
     RUN_TEST_CASE(checksum_failure_stops_startup);
     RUN_TEST_CASE(download_failure_stops_startup);
     RUN_TEST_CASE(archive_cannot_escape_its_workspace);
+    RUN_TEST_CASE(saved_document_warns_before_unload_until_persistence_completes);
+    RUN_TEST_CASE(save_during_persistence_waits_for_the_newer_contents);
+    RUN_TEST_CASE(save_after_flush_completion_starts_a_new_flush_before_opening);
+    RUN_TEST_CASE(failed_persistence_warns_until_a_successful_retry);
+    RUN_TEST_CASE(created_project_failure_keeps_storage_retry_after_inline_error);
+    RUN_TEST_CASE(imported_project_failure_keeps_storage_retry);
     RUN_TEST_CASE(browser_export_does_not_require_native_process_apis);
     pu_setup(NULL, NULL);
 }

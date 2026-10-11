@@ -3,6 +3,7 @@
 #include "execution/log.h"
 #include "runtime/behaviors/scene_flow.h"
 #include "runtime/engine.h"
+#include "runtime/url.h"
 
 typedef struct world world;
 enum
@@ -50,6 +51,8 @@ materials *world_materials(const world *);
 material_fields *world_fields(const world *);
 /* Scene requests from scripts, which the host applies between frames. */
 scene_flow *world_scenes(const world *);
+/* External URL requests remain disabled until the host opts in. */
+url_requests *world_urls(const world *);
 
 /* Borrowed installed services; callbacks/context and service ownership remain
  * with the world. Valid until world_free. */

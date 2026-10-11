@@ -95,7 +95,8 @@ bool authoring_native_graphs_prepare(
             goto done;
         }
         if (asset->domain == BEHAVIOR_DOMAIN_SHAPE ||
-            asset->domain == BEHAVIOR_DOMAIN_MATERIAL) {
+            asset->domain == BEHAVIOR_DOMAIN_MATERIAL ||
+            asset->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
             shader_error diagnostic = { 0 };
             if (!render_shader_upsert(asset, &diagnostic)) {
                 failed(error, size, sources[i].path, diagnostic.message);

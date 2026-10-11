@@ -7,6 +7,7 @@
  * far planes much past 1e7 near clips toward infinity, so rays unprojected
  * through them collapse. */
 #define ENGINE_VIEWPORT_CLIP_RATIO_MAX 1e6f
+#define ENGINE_VIEWPORT_FOV_DEFAULT 0.6108652382f /* 35 degrees vertically. */
 
 /* How the 3D path sees a camera. A nonzero forward looks along it from eye
  * with up toward the image top; a zero forward frames the center and span from
@@ -29,7 +30,9 @@ typedef struct engine_viewport_camera
     engine_viewport_lens lens;
 } engine_viewport_camera;
 
-/* Logical camera framing, independent of viewport aspect ratio. */
+/* Logical camera framing, independent of viewport aspect ratio. An explicit
+ * lens's vertical field of view frames this height; narrower viewports expand
+ * that angle to keep the authored width visible without moving its eye. */
 typedef struct engine_viewport_view
 {
     float center_x;

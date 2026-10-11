@@ -15,6 +15,7 @@ typedef union
     MeshParts parts;
     HRC2D hrc;
     ParticleEmitter emitter;
+    ParticleField3D field;
     Environment environment;
     DirectionalLight light;
     SpotLight spot;
@@ -101,6 +102,10 @@ static int initial_row(
         storage->emitter = particle_emitter_defaults();
         out->data = &storage->emitter;
         out->size = sizeof storage->emitter;
+    } else if (!strcmp(desc->name, "ParticleField3D")) {
+        storage->field = (ParticleField3D){ .count = 1024, .additive = true };
+        out->data = &storage->field;
+        out->size = sizeof storage->field;
     } else if (!strcmp(desc->name, "Environment")) {
         storage->environment = environment_defaults();
         out->data = &storage->environment;

@@ -268,6 +268,13 @@ extern int ParticleEmitter_has(const ecs_world *, ecs_entity);
 extern int ParticleEmitter_add(ecs_world *, ecs_entity, uint64_t);
 extern int ParticleEmitter_remove(ecs_world *, ecs_entity, uint64_t);
 
+extern const ecs_component_desc COMPONENT_ParticleField3D;
+extern ParticleField3D *ParticleField3D_get(ecs_world *, ecs_entity);
+extern const ParticleField3D *ParticleField3D_get_const(const ecs_world *, ecs_entity);
+extern int ParticleField3D_has(const ecs_world *, ecs_entity);
+extern int ParticleField3D_add(ecs_world *, ecs_entity, uint64_t);
+extern int ParticleField3D_remove(ecs_world *, ecs_entity, uint64_t);
+
 extern const ecs_component_desc COMPONENT_SpawnRequest;
 extern SpawnRequest *SpawnRequest_get(ecs_world *, ecs_entity);
 extern const SpawnRequest *SpawnRequest_get_const(const ecs_world *, ecs_entity);

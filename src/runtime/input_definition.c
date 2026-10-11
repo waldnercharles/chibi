@@ -25,6 +25,9 @@ static const native_parameter_definition CONTROLLER_INPUTS[] = {
 static const native_parameter_definition CONTROLLER_OUTPUTS[] = {
     INPUT_CONTROLLER_CONNECTED_OUTPUTS(PORT)
 };
+static const native_parameter_definition POINTER_OUTPUTS[] = {
+    INPUT_POINTER_RAY_OUTPUTS(PORT)
+};
 #undef PORT
 #define COUNT(A) (sizeof(A) / sizeof *(A))
 #define DEFINITION(KEY, NAME, OUTPUTS)                                         \
@@ -50,6 +53,15 @@ static const native_capability_definition DEFINITIONS[] = {
                                   .input_count = COUNT(CONTROLLER_INPUTS),
                                   .outputs = CONTROLLER_OUTPUTS,
                                   .output_count = COUNT(CONTROLLER_OUTPUTS) },
+    { .canonical_name = INPUT_POINTER_RAY_NAME,
+      .source_name = "get_pointer_ray",
+      INPUT_POINTER_RAY_PRESENTATION,
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .pure = true,
+      .effects = SCRIPT_EFFECT_READ,
+      .completion_output = -1,
+      .outputs = POINTER_OUTPUTS,
+      .output_count = COUNT(POINTER_OUTPUTS) },
 };
 #undef DEFINITION
 #define BINDING(KEY, NAME, OUTPUTS)                                            \
@@ -59,6 +71,8 @@ static const native_definition_binding BINDINGS[] = {
     INPUT_OPERATIONS(BINDING){ .canonical_name = INPUT_CONTROLLER_CONNECTED_NAME,
                                .implementation = { .call = &INPUT_CONTROLLER_CONNECTED_CALL,
                                                    .access = &INPUT_READ_ACCESS } },
+    { .canonical_name = INPUT_POINTER_RAY_NAME,
+      .implementation = { .call = &INPUT_POINTER_RAY_CALL, .access = &INPUT_READ_ACCESS } },
 };
 #undef BINDING
 const native_definition_pack INPUT_DEFINITION_PACK = {

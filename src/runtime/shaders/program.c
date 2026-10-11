@@ -339,6 +339,119 @@ bool shader_graph_validate(const shader_graph *g, shader_error *error)
     }
     return true;
 }
+bool shader_graph_particle_validate(const shader_graph *g, shader_error *error)
+{
+    if (!shader_graph_validate(g, error)) {
+        return false;
+    }
+    if (g->output_count != 3 || g->nodes[g->output[0]].width != 3 ||
+        g->nodes[g->output[1]].width != 1 || g->nodes[g->output[2]].width != 4) {
+        return fail(error, 0, "Particle function must return Position:ShaderVec3, Size:float, Color:ShaderVec4");
+    }
+    if (acount(g->images)) {
+        return fail(error, 0, "Particle functions cannot sample images or volumes");
+    }
+    for (int i = 0; i < acount(g->nodes); i++) {
+        const shader_node *n = &g->nodes[i];
+        switch (n->op) {
+            case SHADER_CONSTANT:
+            case SHADER_PARAMETER:
+            case SHADER_TIME:
+            case SHADER_BEAT_PHASE:
+            case SHADER_BEAT_PULSE:
+            case SHADER_ADD:
+            case SHADER_SUBTRACT:
+            case SHADER_MULTIPLY:
+            case SHADER_DIVIDE:
+            case SHADER_MIN:
+            case SHADER_MAX:
+            case SHADER_ABS:
+            case SHADER_SIN:
+            case SHADER_COS:
+            case SHADER_FRACT:
+            case SHADER_LENGTH:
+            case SHADER_DOT:
+            case SHADER_MIX:
+            case SHADER_SELECT:
+            case SHADER_CIRCLE:
+            case SHADER_BOX:
+            case SHADER_UNION:
+            case SHADER_INTERSECTION:
+            case SHADER_DIFFERENCE:
+            case SHADER_SMOOTH_UNION:
+            case SHADER_VECTOR2:
+            case SHADER_VECTOR3:
+            case SHADER_VECTOR4:
+            case SHADER_X:
+            case SHADER_Y:
+            case SHADER_Z:
+            case SHADER_W:
+            case SHADER_NORMALIZE:
+            case SHADER_CLAMP:
+            case SHADER_SATURATE:
+            case SHADER_STEP:
+            case SHADER_SMOOTHSTEP:
+            case SHADER_NOISE:
+            case SHADER_MAPPING:
+            case SHADER_MAPPING3D:
+            case SHADER_FRESNEL:
+            case SHADER_REMAP:
+            case SHADER_GRADIENT:
+            case SHADER_FRACTAL_NOISE:
+            case SHADER_VORONOI:
+            case SHADER_VORONOI_COLOR:
+            case SHADER_FLOOR:
+            case SHADER_SQRT:
+            case SHADER_SIGN:
+            case SHADER_PLANAR_MAPPING:
+            case SHADER_CYLINDRICAL_MAPPING: break;
+            default:
+                if (error) {
+                    error->node = n->source_id;
+                    snprintf(
+                        error->message,
+                        sizeof error->message,
+                        "Particle function cannot use %s",
+                        shader_op_name(n->op)
+                    );
+                }
+                return false;
+        }
+    }
+    return true;
+}
+bool shader_particle_parameters_validate(
+    char *const names[SHADER_PARAMETER_MAX],
+    const int widths[SHADER_PARAMETER_MAX],
+    shader_error *error
+)
+{
+    static const char *const reserved[] = { "Index", "Count", "Seed" };
+    for (int i = 0; i < 3; i++) {
+        if (!names[i] || strcmp(names[i], reserved[i]) || widths[i] != 1) {
+            return fail(error, 0, "Particle arguments must start with Index:float, Count:float, Seed:float");
+        }
+    }
+    bool end = false;
+    for (int i = 0; i < SHADER_PARAMETER_MAX; i++) {
+        if (!widths[i]) {
+            if (names[i]) {
+                return fail(error, 0, "Particle argument needs a scalar or vector width");
+            }
+            end = true;
+            continue;
+        }
+        if (end || widths[i] < 1 || widths[i] > 4 || !names[i] || !*names[i]) {
+            return fail(error, 0, "Particle arguments must be consecutive named scalar or vector values");
+        }
+        for (int j = 0; j < i; j++) {
+            if (!strcmp(names[i], names[j])) {
+                return fail(error, 0, "Particle argument names must be unique");
+            }
+        }
+    }
+    return true;
+}
 static float component(const shader_graph *g, float (*v)[4], int index, int c)
 {
     return v[index][g->nodes[index].width == 1 ? 0 : c];

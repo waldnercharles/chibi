@@ -94,6 +94,7 @@ if(CHIBI_SDK_BUILD_COMPILER OR CHIBI_SDK_BUILD_NATIVE)
 endif()
 if(CHIBI_SDK_BUILD_NATIVE)
     chibi_sdk_contract(chibi_audio_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities)
+    chibi_sdk_contract(chibi_url_runtime "${CHIBI_SDK_ROOT}/src/runtime" chibi_native_capabilities chibi_support)
     chibi_sdk_contract(chibi_rhythm_runtime "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_native_types chibi_native_capabilities chibi_execution)
     chibi_sdk_contract(chibi_particle_runtime "${CHIBI_SDK_ROOT}/src/runtime"
@@ -109,7 +110,7 @@ if(CHIBI_SDK_BUILD_NATIVE)
         chibi_entity_runtime chibi_native_types chibi_native_capabilities chibi_physics_runtime chibi_spatial_runtime chibi_support)
     chibi_sdk_contract(chibi_engine "${CHIBI_SDK_ROOT}/src/runtime"
         chibi_behavior_runtime chibi_entity_runtime chibi_native_types chibi_scheduling
-        chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime chibi_visibility_runtime chibi_particle_runtime chibi_audio_runtime
+        chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime chibi_visibility_runtime chibi_particle_runtime chibi_audio_runtime chibi_url_runtime
         chibi_ui_runtime chibi_save_runtime chibi_input_runtime chibi_task_pool_runtime
         chibi_spatial_runtime chibi_visual_motion_runtime chibi_execution chibi_support)
     chibi_sdk_contract(chibi_visual_motion_runtime "${CHIBI_SDK_ROOT}/src/runtime"
@@ -130,7 +131,7 @@ if(CHIBI_SDK_BUILD_NATIVE)
         chibi_host_native_catalog chibi_core_capabilities chibi_array_capabilities chibi_field_capabilities
         chibi_state_capabilities chibi_selection_capabilities chibi_set_capabilities chibi_comparison_capabilities
         chibi_conversion_capabilities chibi_text_capabilities chibi_native_bindings chibi_entity_runtime
-        chibi_audio_runtime chibi_rhythm_runtime chibi_vector_capabilities chibi_math_capabilities
+        chibi_audio_runtime chibi_url_runtime chibi_rhythm_runtime chibi_vector_capabilities chibi_math_capabilities
         chibi_arithmetic_capabilities chibi_particle_runtime chibi_save_runtime chibi_ui_runtime
         chibi_visual_motion_runtime chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime
         chibi_visibility_runtime chibi_input_runtime)

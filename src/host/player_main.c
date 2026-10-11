@@ -1,5 +1,6 @@
 #include "execution/backend.h"
 #include "host/native_default.h"
+#include "host/player_url.h"
 #include "platform/cute.h"
 #include "render/device_controls.h"
 #include "render/scene3d.h"
@@ -218,6 +219,14 @@ static int sample_input(desktop_player *host)
         point = engine_viewport_mouse_world(host->viewport, &aim.x, &aim.y);
         aim.y = -aim.y;
     }
+    CF_Ray3 ray;
+    input_pointer_ray pointer = { 0 };
+    if (active && engine_viewport_mouse_ray(host->viewport, &ray)) {
+        pointer = (input_pointer_ray){ .origin = ray.p, .direction = ray.d, .active = true };
+    }
+    if (engine_sample_pointer_ray(runtime, pointer) < 0) {
+        return -1;
+    }
     return engine_sample_aim(runtime, aim, firing, point);
 }
 static bool text_input(desktop_player *host)
@@ -363,6 +372,8 @@ static bool follow_scene(desktop_player *host)
     if (!next) {
         return true;
     }
+    url_requests_cancel(world_urls(player_world(host->player)));
+    player_url_submit(NULL);
     char error[512];
     bool loaded = player_load_scene(host->player, next, error, sizeof error);
     free(next);
@@ -411,6 +422,10 @@ static int run_frame(desktop_player *host)
     }
     if (!typing && !engine_is_playing(runtime) && cf_key_just_pressed(CF_KEY_Q)) {
         return 0;
+    }
+    if (!engine_is_playing(runtime)) {
+        url_requests_cancel(world_urls(world));
+        player_url_submit(NULL);
     }
     int width = host->width, height = host->height;
     if (!width) {
@@ -472,6 +487,11 @@ static int run_frame(desktop_player *host)
     if (!follow_scene(host)) {
         return -1;
     }
+    char *url;
+    if (url_requests_take(world_urls(world), &url)) {
+        player_url_submit(url);
+        free(url);
+    }
     host->now += host->fixed_dt ? host->fixed_dt : CF_DELTA_TIME;
     return 1;
 }
@@ -489,6 +509,7 @@ static void web_frame(void *host)
 {
     if (run_frame(host) <= 0) {
         emscripten_cancel_main_loop();
+        player_url_stop();
         web_stopped();
     }
 }
@@ -656,6 +677,10 @@ int main(int argc, char **argv)
         goto finish;
     }
     world *world = player_world(host.player);
+    if (!hidden && !frames) {
+        url_requests_enable(world_urls(world), true);
+        player_url_start();
+    }
     engine *runtime = world_engine(world);
     const scene *scene = scene_instance_scene(player_scene(host.player));
     engine_viewport_set_perspective(host.viewport, scene_perspective(scene));
@@ -721,6 +746,7 @@ int main(int argc, char **argv)
     );
     result = 0;
 finish:
+    player_url_stop();
     cf_register_key_callback(NULL);
     if (host.viewport) {
         engine_viewport_free(host.viewport);

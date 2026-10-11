@@ -816,6 +816,7 @@ static struct
 {
     int steps;
     unsigned held, pressed, connected;
+    input_pointer_ray pointer;
 } controllers;
 static const char *observe_controllers(void *service, const pin_value *, pin_value *)
 {
@@ -841,7 +842,13 @@ static const char *observe_controllers(void *service, const pin_value *, pin_val
         controllers.pressed |= (unsigned)pressed.b << i;
         controllers.connected |= (unsigned)connected.b << i;
     }
-    return NULL;
+    pin_value pointer[] = { { .type = PIN_BOOL },
+                            { .type = PIN_STRUCT, .ptr = &controllers.pointer.origin },
+                            { .type = PIN_STRUCT,
+                              .ptr = &controllers.pointer.direction } };
+    const char *error = INPUT_POINTER_RAY_CALL.invoke(service, NULL, pointer);
+    controllers.pointer.active = pointer[0].b;
+    return error;
 }
 /* Read the saved map before attaching an observer, so the same sequence tests
  * runtime sampling and the prepared player's controller binding format. */
@@ -1020,6 +1027,65 @@ TEST_CASE(native_controller_bindings_reject_invalid_values)
     REQUIRE(!world_actions_valid(&action, 1));
     return true;
 }
+
+TEST_CASE(native_pointer_ray_records_replays_and_clears_focus)
+{
+    input_pointer_ray samples[] = {
+        { .origin = { 2, 3, 10 }, .direction = { 0, 0, -1 }, .active = true },
+        { .origin = { 2, 3, 10 }, .direction = { 0, 0, -1 }, .active = true },
+        { .origin = { 4, 6, 12 }, .direction = { 1, 0, -1 }, .active = true },
+        { 0 },
+    };
+    for (int backend = 0; backend < 2; backend++) {
+        behavior_backend mode = backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        engine *runtime;
+        REQUIRE(controller_world(&runtime, mode));
+        REQUIRE(engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT) == 0);
+        engine_record_input(runtime, 7);
+        input_pointer_ray invalid = { .active = true };
+        REQUIRE(engine_sample_pointer_ray(runtime, invalid) == FLOW_ERR_ARGUMENT);
+        invalid.direction.z = NAN;
+        REQUIRE(engine_sample_pointer_ray(runtime, invalid) == FLOW_ERR_ARGUMENT);
+        for (int i = 0; i < 4; i++) {
+            if (i == 3) {
+                REQUIRE(engine_set_focus(runtime, ENGINE_FOCUS_NONE) == 0);
+            }
+            REQUIRE(
+                engine_sample_pointer_ray(runtime, i == 3 ? samples[0] : samples[i]) == FLOW_OK
+            );
+            REQUIRE(engine_frame(runtime, (i + 1.5) * ENGINE_FIXED_SECONDS) == 0);
+            REQUIRE(controllers.pointer.active == samples[i].active);
+            REQUIRE(!memcmp(&controllers.pointer.origin, &samples[i].origin, sizeof(CF_V3)));
+            REQUIRE(
+                !memcmp(&controllers.pointer.direction, &samples[i].direction, sizeof(CF_V3))
+            );
+        }
+        int count;
+        const input_keyframe *recorded = engine_recorded_input(runtime, &count);
+        REQUIRE(
+            count == 3 && recorded[0].step == 0 && recorded[1].step == 2 &&
+            recorded[2].step == 3
+        );
+        input_keyframe *keys = NULL;
+        for (int i = 0; i < count; i++) {
+            apush(keys, recorded[i]);
+        }
+        REQUIRE(controller_world(&runtime, mode));
+        engine_replay_input(runtime, keys, count, 7);
+        afree(keys);
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(engine_sample_pointer_ray(runtime, samples[2]) == FLOW_OK);
+            REQUIRE(engine_frame(runtime, (i + 1.5) * ENGINE_FIXED_SECONDS) == 0);
+            REQUIRE(controllers.pointer.active == samples[i].active);
+            REQUIRE(!memcmp(&controllers.pointer.origin, &samples[i].origin, sizeof(CF_V3)));
+            REQUIRE(
+                !memcmp(&controllers.pointer.direction, &samples[i].direction, sizeof(CF_V3))
+            );
+        }
+    }
+    cleanup();
+    return true;
+}
 TEST_CASE(native_controller_device_handoff_keeps_action_held)
 {
     engine *runtime;
@@ -1041,6 +1107,42 @@ TEST_CASE(native_controller_device_handoff_keeps_action_held)
     return true;
 }
 #ifdef CHIBI_TEST_PREPARATION
+TEST_CASE(native_pointer_scenario_roundtrip)
+{
+    const char *text = "scene \"Pointer\"\nframes 2\n(array)keys {\n"
+                       "- frame=0 { pointer { origin x=2 y=3 z=10; direction "
+                       "x=0 y=0 z=-1; } }\n"
+                       "- frame=1\n}\n";
+    char error[256];
+    scenario_document *document = scenario_document_load(text, error, sizeof error);
+    REQUIRE(document && acount(document->keys) == 2);
+    input_keyframe expected = { .pointer = { .origin = { 2, 3, 10 },
+                                             .direction = { 0, 0, -1 },
+                                             .active = true } };
+    REQUIRE(input_keyframe_same(&document->keys[0], &expected));
+    REQUIRE(!document->keys[1].pointer.active);
+    char *saved = scenario_document_save(document);
+    scenario_document *read = scenario_document_load(saved, error, sizeof error);
+    free(saved);
+    REQUIRE(read && acount(read->keys) == 2);
+    REQUIRE(input_keyframe_same(&read->keys[0], &expected));
+    REQUIRE(!read->keys[1].pointer.active);
+    scenario_document_free(read);
+    scenario_document_free(document);
+    const char *invalid[] = {
+        "origin x=0 y=0 z=1; direction x=0 y=0 z=0;",
+        "origin x=0 y=0; direction x=0 y=0 z=-1;",
+        "origin x=0 y=0 z=1; direction x=0 y=0 z=1e100;",
+    };
+    for (int i = 0; i < 3; i++) {
+        char source[256];
+        snprintf(source, sizeof source, "scene \"Pointer\"\nframes 1\n(array)keys { - frame=0 { pointer { %s } } }", invalid[i]);
+        REQUIRE(!scenario_document_load(source, error, sizeof error));
+        REQUIRE(strstr(error, "pointer"));
+    }
+    return true;
+}
+
 TEST_CASE(native_controller_scenario_roundtrip)
 {
     const char
@@ -1943,8 +2045,10 @@ void test_tool_native()
     RUN_TEST_CASE(native_controller_bindings_replay_per_step);
     RUN_TEST_CASE(native_controller_bindings_reject_invalid_values);
     RUN_TEST_CASE(native_controller_device_handoff_keeps_action_held);
+    RUN_TEST_CASE(native_pointer_ray_records_replays_and_clears_focus);
 #ifdef CHIBI_TEST_PREPARATION
     RUN_TEST_CASE(native_controller_scenario_roundtrip);
+    RUN_TEST_CASE(native_pointer_scenario_roundtrip);
 #endif
     RUN_TEST_CASE(native_pause_keeps_held_actions);
     RUN_TEST_CASE(native_world_binds_physics_for_pushes);

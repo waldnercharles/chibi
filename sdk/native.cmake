@@ -106,11 +106,18 @@ chibi_sdk_headers(chibi_entity_runtime PUBLIC runtime/behaviors/entities.h
 target_link_libraries(chibi_entity_runtime PUBLIC chibi_native_types chibi_execution
     chibi_scene_runtime chibi_behavior_runtime chibi_native_capabilities PRIVATE chibi_spatial_runtime chibi_tilemap_runtime)
 add_library(chibi_audio_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/audio.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/audio_analysis.c"
     "${CHIBI_SDK_ROOT}/src/runtime/audio_definition.c")
 add_library(Chibi::audio_runtime ALIAS chibi_audio_runtime)
 set_target_properties(chibi_audio_runtime PROPERTIES EXPORT_NAME audio_runtime)
-chibi_sdk_headers(chibi_audio_runtime PUBLIC runtime/audio.h runtime/audio_definition.h)
+chibi_sdk_headers(chibi_audio_runtime PUBLIC runtime/audio.h runtime/audio_definition.h runtime/audio_analysis.h)
 target_link_libraries(chibi_audio_runtime PUBLIC chibi_native_capabilities)
+add_library(chibi_url_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/url.c"
+    "${CHIBI_SDK_ROOT}/src/runtime/url_definition.c")
+add_library(Chibi::url_runtime ALIAS chibi_url_runtime)
+set_target_properties(chibi_url_runtime PROPERTIES EXPORT_NAME url_runtime)
+chibi_sdk_headers(chibi_url_runtime PUBLIC runtime/url.h runtime/url_definition.h)
+target_link_libraries(chibi_url_runtime PUBLIC chibi_native_capabilities PRIVATE chibi_support)
 add_library(chibi_rhythm_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/rhythm.c"
     "${CHIBI_SDK_ROOT}/src/runtime/rhythm_definition.c")
 add_library(Chibi::rhythm_runtime ALIAS chibi_rhythm_runtime)
@@ -149,7 +156,7 @@ chibi_sdk_headers(chibi_input_runtime PUBLIC runtime/engine_input.h runtime/inpu
 target_link_libraries(chibi_input_runtime PUBLIC chibi_input_action chibi_native_types chibi_native_capabilities chibi_execution_contract chibi_behavior_runtime PRIVATE chibi_events
     chibi_spatial_runtime)
 target_include_directories(chibi_save_runtime PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
-list(APPEND CHIBI_SDK_TARGETS chibi_native_types chibi_entity_runtime chibi_audio_runtime
+list(APPEND CHIBI_SDK_TARGETS chibi_native_types chibi_entity_runtime chibi_audio_runtime chibi_url_runtime
     chibi_rhythm_runtime chibi_particle_runtime chibi_save_runtime chibi_ui_runtime chibi_input_runtime)
 
 add_library(chibi_visual_motion_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/visual_motion.c"
@@ -174,7 +181,7 @@ target_link_libraries(chibi_host_native_default PUBLIC chibi_host_native_catalog
     chibi_core_capabilities chibi_array_capabilities chibi_field_capabilities chibi_state_capabilities
     chibi_selection_capabilities chibi_set_capabilities chibi_comparison_capabilities
     chibi_conversion_capabilities chibi_text_capabilities chibi_native_bindings chibi_entity_runtime
-    chibi_audio_runtime chibi_rhythm_runtime chibi_vector_capabilities chibi_math_capabilities
+    chibi_audio_runtime chibi_url_runtime chibi_rhythm_runtime chibi_vector_capabilities chibi_math_capabilities
     chibi_arithmetic_capabilities chibi_particle_runtime chibi_save_runtime chibi_ui_runtime
     chibi_visual_motion_runtime chibi_physics_runtime chibi_physics3d_runtime chibi_material_runtime chibi_visibility_runtime chibi_input_runtime)
 list(APPEND CHIBI_SDK_TARGETS chibi_host_native_default)

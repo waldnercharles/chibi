@@ -25,6 +25,9 @@ START = time.monotonic()
 HEALTH = None
 NEXT = 'make test-policy-inventory'
 CPU_SELECTORS = {
+    '--player-url': 'player-url',
+    '--audio-analysis': 'audio-analysis',
+    '--shader-webgpu': 'shader-webgpu',
     '--arena': 'arena',
     '--asset-source': 'asset-source',
     '--asset-values': 'asset-values',

@@ -931,6 +931,20 @@ static inline ParticleEmitter particle_emitter_defaults()
                               .active = true };
 }
 
+/* Instanced 3D particles evaluated by Shader.material's pure shader function.
+ * The function owns position, size and HDR color. Geometry3D supplies one
+ * tetrahedron or octahedron; no particle owns an entity or simulation state. */
+typedef NODE_COMPONENT_TYPE_DENSE(ParticleField3D)
+{
+    int count NODE_RANGE(0, 1048576);
+    int seed;
+    /* An authored clock lets a field pause independently of scene time. */
+    float time NODE_UNIT("s");
+    /* Additive fields test solid depth without writing depth or sorting. */
+    bool additive;
+}
+ParticleField3D;
+
 typedef NODE_COMPONENT_TYPE_DENSE(Trail)
 {
     unsigned color NODE_COLOR;

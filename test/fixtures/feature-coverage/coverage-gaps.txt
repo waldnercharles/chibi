@@ -46,3 +46,8 @@ component Drive
 # Move Objects is a Studio-host service rather than a runtime catalog entry.
 # Studio's OutlinerInput uses it; --outliner-move exercises its authored drop
 # event and scene-move covers the scene contract. It cannot run in this fixture.
+
+# External browsing requires an opted-in interactive host and real user input.
+# Source-native-features tests the authored requests without launching websites.
+function Open URL
+function Cancel Open URL

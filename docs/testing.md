@@ -101,6 +101,48 @@ in a feature-coverage scene; it lists the entry as a gap only with a reason. The
 
 ## Temporary 60-second policy
 
+The compiled-runtime rollout passed native, language, tooling, materials and
+project groups under their shared 60-second deadlines. Browser Wasm execution
+passed in serial and pthread configurations. URL gesture coverage passed nine
+cases; the browser audio transport passed two C cases (six assertions) in
+1.372 seconds including its native launcher. Permission and capture endpoints
+are mocked; this does not claim real external recording coverage.
+
+Negative controls reproduced the helper-name migration, particle-as-material,
+resize pointer and delayed-audio bugs before the fixes. The particle preview
+rendered 128 particles and an occluding box in two GPU frames at 320×180 on
+Metal/Cocoa (3.630 seconds including startup). This is rendering evidence, not
+a steady-state performance measurement. The broader `scene3d` check aborts in
+the existing sky path because Metal rejects an unused 128-byte instance-buffer
+layout; the sky source, Cute revision and instance-buffer patch are unchanged.
+Full native/render/Studio coverage remains disabled, not passed.
+
+`player-url` runs nine C-owned URL gesture lifecycle cases through nine short
+Node invocations. It drives the production browser bridge with fake browser
+events and records URL-open requests without a browser, network or GPU. Its
+first combined supervised run passed nine cases and 67 assertions in 2.278
+seconds.
+
+`audio-analysis` runs eleven fixed PCM, frequency-band, amplitude, silence,
+source-selection and snapshot cases, plus one dummy-SDL mixer lifetime case.
+The mixer case shares a two-second callback deadline. It opens no graphics or
+real recording device. `audio-browser` separately drives the Wasm capture bridge
+through the C browser harness; it requires the matching browser test build and
+is excluded from the native audio aggregate.
+
+`shader-webgpu` compiles three generated programs with Cute's runtime shader
+compiler: the noise fragment program and particle vertex programs with and
+without Index usage. The vertex cases read the checked-in shader source, limited
+to 64 KiB, and inspect WGSL and Metal output. They open no app or GPU device.
+`shader-parameters-prepared` runs nine bounded CPU cases covering parameter
+codecs, model and particle staging, signatures and helper linking, rejected mesh
+material use, preview reload/rename failures, and source-budget reclamation for
+129 zero-count particle entities. GPU particle rendering remains separate.
+The combined candidate's first supervised runs passed all twelve audio cases and
+298 assertions in 1.238 seconds, and all three shader compiler cases and 32
+assertions in 0.770 seconds. These measurements do not cover browser capture,
+GPU particle drawing, or the expanded parameter selector.
+
 The retired frontend experiment's five source inputs are preserved as historical
 syntax fixtures in `test/fixtures/language/prototype`. Its earlier parser tests
 do not establish production semantic or execution coverage.
@@ -837,12 +879,21 @@ a later size only once it has been requested for two more draws. A press above
 a level perspective horizon stays captured without a ground point; below it,
 the pointer lands on the ground. Build and run it like `interior-border` with
 `AGENT_SELECTOR=--viewport-resize`.
-Its fourth case draws one 64 x 64 UI frame containing a translucent red rectangle
+Four additional cases check default and authored lens settings across four
+aspect requests, the finite projection of a field of view just below pi, and the
+pointer ray against one displayed 64 x 64 image. Camera projection and ray
+inversion must agree, authored lens values remain unchanged, and out-of-image
+or non-perspective pointer requests must fail. A requested camera or resize keeps
+the pointer ray aligned with the last presented camera until the next draw.
+These checks stay in the same hidden app and shared deadline.
+Its UI case draws one 64 x 64 frame containing a translucent red rectangle
 and a red glyph over opaque blue. One readback compares direct presentation with
 the public straight-alpha texture copied into the other half of the target.
 It requires correct source-over color, partial glyph coverage, and straight RGB
-in the exported texture. The four-case selector passed in 1.219 seconds under the shared 60-second
-deadline on macOS with the native Metal renderer. The old presentation path
+in the exported texture. The earlier four-case workload passed in 1.219 seconds under the shared 60-second
+deadline on macOS with the native Metal renderer. That measurement does not cover
+the current nine-case selector. The combined nine-case run passed in 2.448
+seconds of execution, or 2.668 seconds including the production supervisor. The old presentation path
 failed the new case with red 255 where source-over required 128. Vulkan discovery
 was unavailable on this host and does not describe the Metal execution. Use `make agent-gpu-test BUILD_DIR=<render-build>
 AGENT_SELECTOR=--viewport-resize` after building that directory's `test_tools`.

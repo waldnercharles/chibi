@@ -190,7 +190,8 @@ static bool materials_valid(const resource_generation *g, shader_error *error)
         }
         for (int j = 0; j < acount(a->model.material_dependencies); j++) {
             int index = asset_index(g, a->model.material_dependencies[j]);
-            if (index < 0 || g->assets[index].shape) {
+            if (index < 0 || g->assets[index].shape ||
+                g->assets[index].graph.output_count != SHADER_OUTPUT_MAX) {
                 ok = false;
                 break;
             }
@@ -216,7 +217,8 @@ static bool materials_valid(const resource_generation *g, shader_error *error)
         for (int j = 0; j < parts->count; j++) {
             const char *name = parts->parts[j].material;
             int index = *name ? asset_index(g, name) : 0;
-            if (*name && (index < 0 || g->assets[index].shape)) {
+            if (*name && (index < 0 || g->assets[index].shape ||
+                          g->assets[index].graph.output_count != SHADER_OUTPUT_MAX)) {
                 ok = false;
                 break;
             }
@@ -227,7 +229,9 @@ static bool materials_valid(const resource_generation *g, shader_error *error)
         for (int j = 0; j < acount(mesh->groups); j++) {
             const char *name = mesh->groups[j].material;
             int index = name && *name ? asset_index(g, name) : 0;
-            if (name && *name && (index < 0 || g->assets[index].shape)) {
+            if (name && *name &&
+                (index < 0 || g->assets[index].shape ||
+                 g->assets[index].graph.output_count != SHADER_OUTPUT_MAX)) {
                 ok = false;
                 break;
             }

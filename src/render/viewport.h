@@ -85,6 +85,9 @@ typedef struct engine_viewport_pointer
 void engine_viewport_get_pointer(const engine_viewport *viewport, engine_viewport_pointer *pointer);
 /* Sample this frame's mouse against the last displayed image rectangle. */
 bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, float *y);
+/* The pointer's world-space ray uses the camera and rectangle of the last
+ * displayed 3D image, even when a resize or view change is pending. */
+bool engine_viewport_mouse_ray(const engine_viewport *viewport, CF_Ray3 *ray);
 /* The runtime whose audio plays while a session is shown. */
 void engine_viewport_set_runtime(engine_viewport *viewport, const engine *runtime);
 /* Shows `world`'s Ui documents from content_root/ui over the scene

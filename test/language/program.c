@@ -1008,6 +1008,70 @@ TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_res
     }
     return true;
 }
+TEST_CASE(program_completed_payloads_are_released_without_marking)
+{
+    const char *
+        source = "behavior Completed { seen: double = 0;"
+                 "function Pair(n: double) -> (first: double, second: double) {"
+                 "return(n, n + 1); }"
+                 "on Impulse(amount, enabled) {"
+                 "i := 0; while i < 512 { current := Pair(i);"
+                 "values: double[] = [current.first, current.second];"
+                 "seen = values[0] + values[1]; i += 1; } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        uint64_t marks = arena_collect_marks();
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 1023));
+        REQUIRE(execution_instance_pending(instance) == 0);
+        execution_memory_usage complete = execution_program_memory_usage(program);
+        REQUIRE(complete.payload_bytes == 0 && complete.payload_capacity == 0);
+        /* The completed call owns no suspended work. Free its payloads
+         * directly instead of tracing values that will all be destroyed. */
+        REQUIRE(arena_collect_marks() == marks);
+    }
+    return true;
+}
+TEST_CASE(program_temporary_payloads_preserve_roots_across_collection)
+{
+    const char *source =
+        "behavior Payloads { seen: double = 0;"
+        "function Pair(n: double) -> (first: double, second: double) {"
+        "return(n, n + 1); }"
+        "on Impulse(amount, enabled) {"
+        "saved := Pair(40); kept: double[] = [2, 3, 5];"
+        "i := 0; while i < 512 {"
+        "current := Pair(i); values: double[] = [current.first, "
+        "current.second];"
+        "self.Position.x = values[0]; self.Position.y = values[1]; i += 1; }"
+        "await Delay(1); seen = saved.first + saved.second + kept[0] + kept[2];"
+        "} }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = positioned(0, false);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(instance) == 1);
+        const program_position *updated = ecs_component_data_const(world, owner, 501);
+        REQUIRE(updated && updated->x == 511 && updated->y == 512);
+        REQUIRE(execution_program_update(program, 1, 0, 1000000) == FLOW_OK);
+        REQUIRE(number_state(instance, "seen", 88));
+        REQUIRE(execution_instance_pending(instance) == 0);
+        execution_memory_usage complete = execution_program_memory_usage(program);
+        REQUIRE(complete.payload_bytes == 0 && complete.payload_capacity == 0);
+    }
+    return true;
+}
 TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach)
 {
     const char *source = "behavior Timers { early_count: double = 0; "
@@ -4404,6 +4468,129 @@ TEST_CASE(program_version_22_prefixes_migrate_without_changing_data)
     rmdir(root);
     return true;
 }
+TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers)
+{
+    const char
+        *source = "behavior B {\n"
+                  "    function get_game_input() { }\n"
+                  "    macro get_game_input_custom() -> () { entry Begin {} "
+                  "exit Done; }\n"
+                  "    on Tick(dt: double) {\n"
+                  "        get_game_input()\n"
+                  "        get_game_input_custom()\n"
+                  "        get_game_transform_custom()\n"
+                  "        get_game_transform_macro()\n"
+                  "        \"motion_helpers\".\"get-game-transform-custom\"()\n"
+                  "        \"Motion Helpers\".get_game_transform()\n"
+                  "        \"Motion Helpers\".get_game_transform_macro()\n"
+                  "        p := get_game_velocity()\n"
+                  "        q := Get_GameTransform()\n"
+                  "        Get_GameBodyType()\n"
+                  "        Get_GameGlobalIllumination()\n"
+                  "        self.GameTransform.x = 4\n"
+                  "    }\n"
+                  "}\n";
+    const char
+        *expected = "behavior B {\n"
+                    "    function get_game_input() { }\n"
+                    "    macro get_game_input_custom() -> () { entry Begin {} "
+                    "exit Done; }\n"
+                    "    on Tick(dt: double) {\n"
+                    "        get_game_input()\n"
+                    "        get_game_input_custom()\n"
+                    "        get_game_transform_custom()\n"
+                    "        get_game_transform_macro()\n"
+                    "        "
+                    "\"motion_helpers\".\"get-game-transform-custom\"()\n"
+                    "        \"Motion Helpers\".get_game_transform()\n"
+                    "        \"Motion Helpers\".get_game_transform_macro()\n"
+                    "        p := get_velocity()\n"
+                    "        q := Get_Transform()\n"
+                    "        Get_GameBodyType()\n"
+                    "        Get_GameGlobalIllumination()\n"
+                    "        self.Transform.x = 4\n"
+                    "    }\n"
+                    "}\n";
+    const char
+        *library = "library \"Motion Helpers\" {\n"
+                   "    function \"Get Game Transform Custom\"() { }\n"
+                   "    function get_game_transform() { }\n"
+                   "    function Get_GameBodyType() { }\n"
+                   "    function Get_GameGlobalIllumination() { }\n"
+                   "    function call_helpers() { get_game_transform(); }\n"
+                   "    macro get_game_transform_macro() -> () { entry "
+                   "Begin {} exit Done; }\n"
+                   "}\n";
+    char root[] = "/tmp/chibi-prefix-helpers-XXXXXX", path[256], error[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(path, sizeof path, "%s/content", root);
+    REQUIRE(!mkdir(path, 0700));
+    char metadata[256];
+    snprintf(
+        metadata,
+        sizeof metadata,
+        "{\"version\":2,\"anchors\":[{\"start\":%zu,\"id\":42,\"kind\":"
+        "\"node\"}]}",
+        (size_t)(strstr(source, "self.GameTransform") - source)
+    );
+    char *bound = authoring_source_metadata_bind(metadata, source);
+    REQUIRE(bound);
+    const char *files[][2] = {
+        { "project.kdl", "version 22\ncontent \"content\"\nstart_scene \"Scene.kdl\"\n" },
+        { "content/B.chibi", source },
+        { "content/B.chibi.meta", bound },
+        { "content/Helpers.chibi", library },
+        { "content/Scene.kdl", "version 1\nname \"Scene\"\n(array)entities\n" },
+    };
+    for (int i = 0; i < 5; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        FILE *file = fopen(path, "wb");
+        REQUIRE(file);
+        fputs(files[i][1], file);
+        fclose(file);
+    }
+    free(bound);
+    REQUIRE(chibi_project_migrate(root, error, sizeof error) == CHIBI_PROJECT_VERSION - 22);
+    REQUIRE(!chibi_project_migrate(root, error, sizeof error));
+    bool source_matches = false, library_matches = false, metadata_matches = false;
+    for (int i = 1; i <= 3; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        FILE *file = fopen(path, "rb");
+        REQUIRE(file);
+        char text[2048];
+        text[fread(text, 1, sizeof text - 1, file)] = '\0';
+        fclose(file);
+        if (i == 1) {
+            source_matches = !strcmp(text, expected);
+            if (!source_matches) {
+                fprintf(stderr, "Migrated helper source differs:\n%s", text);
+            }
+        }
+        if (i == 2) {
+            char anchor[64];
+            snprintf(
+                anchor,
+                sizeof anchor,
+                "\"start\":%zu",
+                (size_t)(strstr(expected, "self.Transform") - expected)
+            );
+            metadata_matches = authoring_source_metadata_matches(text, expected) &&
+                               strstr(text, anchor);
+        }
+        if (i == 3) {
+            library_matches = !strcmp(text, library);
+        }
+    }
+    for (int i = 0; i < 5; i++) {
+        snprintf(path, sizeof path, "%s/%s", root, files[i][0]);
+        unlink(path);
+    }
+    snprintf(path, sizeof path, "%s/content", root);
+    rmdir(path);
+    rmdir(root);
+    REQUIRE(source_matches && library_matches && metadata_matches);
+    return true;
+}
 TEST_CASE(program_single_result_call_fields_read_the_result)
 {
     const char *source = "behavior B { n: double = 0;"
@@ -5141,6 +5328,41 @@ TEST_CASE(program_reused_helpers_keep_managed_results_and_resume_fresh_locals)
     return true;
 }
 
+static void count_component_write(ecs_world *, ecs_event, ecs_entity, ecs_component_id, void *user)
+{
+    int *count = user;
+    (*count)++;
+}
+
+TEST_CASE(program_component_scalar_reference_writes_do_not_copy_rows)
+{
+    const char *source =
+        "behavior R { function Add(x: ref double, y: ref double) -> () { "
+        "i := 0.0; while i < 1000 { x += 1; y += 1; i += 1; } }"
+        "on Impulse(amount, enabled) { Add(self.Position.x, self.Position.x); "
+        "self.Position.y = 7; } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = positioned(5, false);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        int writes = 0;
+        REQUIRE(ecs_world_observe(world, ECS_ON_SET, 501, count_component_write, &writes) > 0);
+        const pin_value args[] = { { .type = PIN_F64, .d = 0 },
+                                   { .type = PIN_BOOL, .b = true } };
+        uint64_t blocks = arena_block_allocations();
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 1000000) == FLOW_OK);
+        REQUIRE(arena_block_allocations() - blocks < 32);
+        const program_position *position = ecs_component_data_const(world, owner, 501);
+        REQUIRE(position && position->x == 2005 && position->y == 7);
+        REQUIRE(writes == 0);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(writes == 1);
+    }
+    return true;
+}
+
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
@@ -5156,6 +5378,8 @@ void test_language_program()
     RUN_TEST_CASE(program_result_tuple_copies_survive_mutation_loop_and_resume);
     RUN_TEST_CASE(program_array_literals_are_fresh_copies);
     RUN_TEST_CASE(program_managed_payload_memory_is_bounded_across_root_and_outlined_resumes);
+    RUN_TEST_CASE(program_completed_payloads_are_released_without_marking);
+    RUN_TEST_CASE(program_temporary_payloads_preserve_roots_across_collection);
     RUN_TEST_CASE(program_sibling_timer_actions_complete_independently_and_cancel_on_detach);
     RUN_TEST_CASE(program_failure_snapshot_owns_outlined_source_diagnostics);
     RUN_TEST_CASE(program_integer_and_nominal_enum_literals_preserve_exact_bits);
@@ -5191,6 +5415,7 @@ void test_language_program()
     RUN_TEST_CASE(program_version_20_surface_outputs_take_counter_pin_ids);
     RUN_TEST_CASE(program_version_21_lighting_drops_lab_fields);
     RUN_TEST_CASE(program_version_22_prefixes_migrate_without_changing_data);
+    RUN_TEST_CASE(program_version_22_prefixes_preserve_resolved_helpers);
     RUN_TEST_CASE(program_single_result_call_fields_read_the_result);
     RUN_TEST_CASE(program_results_are_inferred_from_returns);
     RUN_TEST_CASE(program_task_with_several_results_awaits_a_tuple);
@@ -5207,6 +5432,7 @@ void test_language_program()
     RUN_TEST_CASE(program_parameters_defaults_and_contextual_words);
     RUN_TEST_CASE(program_task_shares_boxed_locals);
     RUN_TEST_CASE(program_assignments_and_reference_writes_do_not_allocate);
+    RUN_TEST_CASE(program_component_scalar_reference_writes_do_not_copy_rows);
     RUN_TEST_CASE(program_repeated_helpers_have_bounded_allocations);
     RUN_TEST_CASE(program_reused_helpers_reset_locals_and_preserve_nested_calls);
     RUN_TEST_CASE(program_reused_helpers_keep_managed_results_and_resume_fresh_locals);

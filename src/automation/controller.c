@@ -7374,6 +7374,7 @@ typedef struct
     const av_value *scenario_saved_state; /* a replayed scenario's, borrowed */
     CF_V2 aim;
     bool aim_firing, aim_point, devices_sampled;
+    input_pointer_ray pointer;
     uint64_t controls;
     input_controller_state controllers[INPUT_CONTROLLER_MAX];
 } scenario_context;
@@ -8680,6 +8681,8 @@ typedef struct
     bool aim_firing;
     bool aim_point;
     bool has_aim, has_movement;
+    bool has_pointer;
+    input_pointer_ray pointer;
     yyjson_val *events;
     scenario_action actions[SCENARIO_MAX_ACTIONS];
     int action_count;
@@ -9184,6 +9187,38 @@ static bool parse_scenario_controllers(yyjson_val *value, scenario_input *out, c
     return true;
 }
 
+static bool scenario_vector3(yyjson_val *value, CF_V3 *out)
+{
+    yyjson_val *x = yyjson_obj_get(value, "x"), *y = yyjson_obj_get(value, "y"),
+               *z = yyjson_obj_get(value, "z");
+    if (!yyjson_is_obj(value) || yyjson_obj_size(value) != 3 ||
+        !yyjson_is_num(x) || !yyjson_is_num(y) || !yyjson_is_num(z)) {
+        return false;
+    }
+    double vx = yyjson_get_num(x), vy = yyjson_get_num(y), vz = yyjson_get_num(z);
+    if (!isfinite(vx) || !isfinite(vy) || !isfinite(vz) || fabs(vx) > FLT_MAX ||
+        fabs(vy) > FLT_MAX || fabs(vz) > FLT_MAX) {
+        return false;
+    }
+    *out = (CF_V3){ (float)vx, (float)vy, (float)vz };
+    return true;
+}
+
+static bool scenario_pointer(yyjson_val *value, input_pointer_ray *out)
+{
+    if (yyjson_is_null(value)) {
+        return true;
+    }
+    if (!yyjson_is_obj(value) || yyjson_obj_size(value) != 2 ||
+        !scenario_vector3(yyjson_obj_get(value, "origin"), &out->origin) ||
+        !scenario_vector3(yyjson_obj_get(value, "direction"), &out->direction)) {
+        return false;
+    }
+    CF_V3 d = out->direction;
+    out->active = d.x || d.y || d.z;
+    return out->active;
+}
+
 static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *error, size_t error_size)
 {
     if (!value || !yyjson_is_obj(value)) {
@@ -9191,6 +9226,12 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
         return false;
     }
     *out = (scenario_input){ 0 };
+    yyjson_val *pointer = yyjson_obj_get(value, "pointer");
+    out->has_pointer = pointer != NULL;
+    if (pointer && !scenario_pointer(pointer, &out->pointer)) {
+        snprintf(error, error_size, "pointer needs finite origin and nonzero direction x/y/z vectors, or null");
+        return false;
+    }
     yyjson_val *movement = yyjson_obj_get(value, "movement");
     out->has_movement = movement != NULL;
     if (movement &&
@@ -9359,6 +9400,36 @@ static yyjson_mut_val *add_scenario_input(yyjson_mut_doc *doc, yyjson_mut_val *a
         yyjson_mut_obj_add_bool(doc, aim, "firing", input->aim_firing);
         yyjson_mut_obj_add_bool(doc, aim, "point", input->aim_point);
     }
+    if (input->has_pointer) {
+        if (input->pointer.active) {
+            yyjson_mut_val *pointer = yyjson_mut_obj_add_obj(doc, object, "pointer");
+            yyjson_mut_val *origin = yyjson_mut_obj_add_obj(doc, pointer, "origin");
+            yyjson_mut_obj_add_real(doc, origin, "x", input->pointer.origin.x);
+            yyjson_mut_obj_add_real(doc, origin, "y", input->pointer.origin.y);
+            yyjson_mut_obj_add_real(doc, origin, "z", input->pointer.origin.z);
+            yyjson_mut_val *direction = yyjson_mut_obj_add_obj(doc, pointer, "direction");
+            yyjson_mut_obj_add_real(
+                doc,
+                direction,
+                "x",
+                input->pointer.direction.x
+            );
+            yyjson_mut_obj_add_real(
+                doc,
+                direction,
+                "y",
+                input->pointer.direction.y
+            );
+            yyjson_mut_obj_add_real(
+                doc,
+                direction,
+                "z",
+                input->pointer.direction.z
+            );
+        } else {
+            yyjson_mut_obj_add_null(doc, object, "pointer");
+        }
+    }
     yyjson_mut_val *actions = yyjson_mut_obj_add_arr(doc, object, "actions");
     for (int i = 0; i < input->action_count; i++) {
         yyjson_mut_val *action = yyjson_mut_arr_add_obj(doc, actions);
@@ -9394,6 +9465,13 @@ static int apply_scenario_input(
         context->aim = (CF_V2){ (float)input->aim_x, (float)input->aim_y };
         context->aim_point = input->aim_point;
         context->aim_firing = input->aim_firing;
+    }
+    if (input->has_pointer) {
+        context->pointer = input->pointer;
+    }
+    if (engine_sample_pointer_ray(runtime, context->pointer) < 0) {
+        snprintf(error, error_size, "scenario pointer input failed");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
     if (input->has_controls) {
         context->controls = input->controls;
@@ -12129,6 +12207,14 @@ static int validate_shader_binding(const char *root, const Shader *binding, char
     }
     behavior_asset **sources = NULL;
     int status = load_model_catalog(root, &sources, error, error_size);
+    if (status == CHIBI_AUTOMATION_OK) {
+        behavior_asset **libraries = NULL;
+        status = load_behavior_family_assets(root, family_by_kind("shader-library"), &libraries, error, error_size);
+        for (int i = 0; i < acount(libraries); i++) {
+            apush(sources, libraries[i]);
+        }
+        afree(libraries);
+    }
     const char *names[] = { binding->material, binding->shape };
     const char *kinds[] = { "material", "shape" };
     for (int i = 0; i < 2 && status == CHIBI_AUTOMATION_OK; i++) {
@@ -12141,6 +12227,12 @@ static int validate_shader_binding(const char *root, const Shader *binding, char
                 model |= sources[m]->domain == (i == 0 ? BEHAVIOR_DOMAIN_MATERIAL
                                                        : BEHAVIOR_DOMAIN_MODEL) &&
                          !strcmp(sources[m]->name, names[i]);
+                if (i == 0 && sources[m]->domain == BEHAVIOR_DOMAIN_SHADER_LIBRARY) {
+                    size_t length = strlen(sources[m]->name);
+                    model |= !strncmp(names[i], sources[m]->name, length) &&
+                             names[i][length] == '.' &&
+                             behavior_asset_find_graph_by_name(sources[m], names[i] + length + 1);
+                }
             }
         }
         if (model) {

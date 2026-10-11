@@ -460,7 +460,7 @@ static int output(lowering *l, scope *s, const node *n, int pin)
     }
     return result;
 }
-bool shader_graph_validate_function(const graph *source, shader_error *err)
+bool shader_graph_from_function(const graph *source, shader_graph *result, shader_error *err)
 {
     shader_graph ir;
     shader_graph_init(&ir);
@@ -495,8 +495,8 @@ bool shader_graph_validate_function(const graph *source, shader_error *err)
             error(&l, entry->id, "Shader function has too many arguments");
             goto failed;
         }
-        int argument = shader_graph_add(&ir, SHADER_PARAMETER, w);
-        ir.nodes[argument].source_id = entry->id;
+        int argument = literal(&l, pin, entry->id);
+        ir.nodes[argument].op = SHADER_PARAMETER;
         ir.nodes[argument].parameter = ordinal++;
         apush(s.arguments, argument);
     }
@@ -512,6 +512,10 @@ bool shader_graph_validate_function(const graph *source, shader_error *err)
         if (value < 0) {
             goto failed;
         }
+        if (ir.nodes[value].width != width(&ret->input_pins[i])) {
+            error(&l, ret->id, "Shader function result has the wrong type");
+            goto failed;
+        }
         ir.output[ir.output_count++] = value;
     }
     if (!shader_graph_validate(&ir, err)) {
@@ -520,7 +524,8 @@ bool shader_graph_validate_function(const graph *source, shader_error *err)
     afree(s.arguments);
     afree(s.cache);
     afree(s.visiting);
-    shader_graph_free(&ir);
+    shader_graph_free(result);
+    *result = ir;
     return true;
 failed:
     afree(s.arguments);
@@ -528,6 +533,14 @@ failed:
     afree(s.visiting);
     shader_graph_free(&ir);
     return false;
+}
+bool shader_graph_validate_function(const graph *source, shader_error *err)
+{
+    shader_graph ir;
+    shader_graph_init(&ir);
+    bool valid = shader_graph_from_function(source, &ir, err);
+    shader_graph_free(&ir);
+    return valid;
 }
 /* A Surface Output's Opacity under its Alpha Mode: Opaque keeps every pixel,
  * and Mask turns Opacity into 1 where it reaches Alpha Cutoff and 0 below. */

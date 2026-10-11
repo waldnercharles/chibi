@@ -8,6 +8,10 @@ static const native_parameter_definition MUSIC_IN[] = { AUDIO_MUSIC_INPUTS(NATIV
 static const native_parameter_definition FADE_IN[] = { AUDIO_FADE_INPUTS(NATIVE_PORT) };
 static const native_parameter_definition VOLUME_IN[] = { AUDIO_VOLUME_INPUTS(NATIVE_PORT) };
 static const native_parameter_definition OUTPUTS[] = { AUDIO_OUTPUTS(NATIVE_PORT) };
+static const native_parameter_definition SOURCE_IN[] = { AUDIO_SOURCE_INPUTS(NATIVE_PORT) };
+static const native_parameter_definition ANALYSIS_OUT[] = {
+    AUDIO_ANALYSIS_OUTPUTS(NATIVE_PORT)
+};
 #define ACTION(KEY, SOURCE, INPUTS)                                            \
     { .canonical_name = KEY##_NAME,                                            \
       KEY##_PRESENTATION,                                                      \
@@ -27,6 +31,16 @@ static const native_capability_definition DEFINITIONS[] = {
     ACTION(AUDIO_MASTER_VOLUME, "set_master_volume", VOLUME_IN),
     ACTION(AUDIO_MUSIC_VOLUME, "set_music_volume", VOLUME_IN),
     ACTION(AUDIO_SOUND_VOLUME, "set_sound_volume", VOLUME_IN),
+    ACTION(AUDIO_SOURCE, "set_audio_source", SOURCE_IN),
+    { .canonical_name = AUDIO_ANALYSIS_NAME,
+      AUDIO_ANALYSIS_PRESENTATION,
+      .source_name = "get_audio_analysis",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .pure = true,
+      .outputs = ANALYSIS_OUT,
+      .output_count = NATIVE_COUNT(ANALYSIS_OUT),
+      .completion_output = -1,
+      .effects = SCRIPT_EFFECT_READ },
 };
 #define BIND(KEY)                                                              \
     {                                                                          \
@@ -36,10 +50,16 @@ static const native_capability_definition DEFINITIONS[] = {
         }                                                                      \
     }
 static const native_definition_binding BINDINGS[] = {
-    BIND(AUDIO_TONE),          BIND(AUDIO_SOUND),
-    BIND(AUDIO_MUSIC),         BIND(AUDIO_STOP_MUSIC),
-    BIND(AUDIO_MASTER_VOLUME), BIND(AUDIO_MUSIC_VOLUME),
+    BIND(AUDIO_TONE),
+    BIND(AUDIO_SOUND),
+    BIND(AUDIO_MUSIC),
+    BIND(AUDIO_STOP_MUSIC),
+    BIND(AUDIO_MASTER_VOLUME),
+    BIND(AUDIO_MUSIC_VOLUME),
     BIND(AUDIO_SOUND_VOLUME),
+    BIND(AUDIO_SOURCE),
+    { .canonical_name = AUDIO_ANALYSIS_NAME,
+      .implementation = { .call = &AUDIO_ANALYSIS_CALL, .access = &AUDIO_READ_ACCESS } },
 };
 const native_definition_pack AUDIO_DEFINITION_PACK = {
     .definitions = DEFINITIONS,

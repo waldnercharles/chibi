@@ -35,6 +35,7 @@ struct engine_input
     bool movement_sampled;
     CF_V2 aim;
     bool aim_sampled, aim_point, firing;
+    input_pointer_ray pointer;
     uint64_t controls;
     /* Device snapshots after each change since the last step, oldest first. */
     input_keyframe *trail;
@@ -170,6 +171,7 @@ void engine_input_clear(engine_input *input)
     input->aim_point = false;
     input->aim_sampled = true;
     input->firing = false;
+    input->pointer = (input_pointer_ray){ 0 };
     /* Pause may never run another fixed tick. Clear reflected local input now,
      * without dispatching authored gameplay while transport is stopped. Held
      * controls and actions stay, so resuming with the same controls held
@@ -248,6 +250,11 @@ void engine_input_aim(engine_input *input, CF_V2 aim, bool firing, bool point)
     input->aim_point = point;
     input->firing = firing;
     input->aim_sampled = true;
+}
+
+void engine_input_pointer(engine_input *input, input_pointer_ray pointer)
+{
+    input->pointer = pointer.active ? pointer : (input_pointer_ray){ 0 };
 }
 
 int engine_input_devices(
@@ -329,7 +336,8 @@ input_keyframe engine_input_held(const engine_input *input)
                             .aim = input->aim,
                             .aim_point = input->aim_point,
                             .firing = input->firing,
-                            .controls = input->controls };
+                            .controls = input->controls,
+                            .pointer = input->pointer };
     memcpy(held.controllers, input->controllers, sizeof held.controllers);
     return held;
 }
@@ -340,6 +348,7 @@ int engine_input_hold(engine_input *input, const input_keyframe *key)
     int result = engine_input_devices(input, key->controls, key->controllers, &firing);
     engine_input_movement(input, key->movement);
     engine_input_aim(input, key->aim, key->firing, key->aim_point);
+    engine_input_pointer(input, key->pointer);
     return result;
 }
 
@@ -623,5 +632,21 @@ const node_host_call INPUT_CONTROLLER_CONNECTED_CALL = {
     .service = INPUT_SERVICE,
     .invoke = controller_connected,
     .optional_service = true,
+};
+static const char *pointer_ray(void *service, const pin_value *, pin_value *out)
+{
+    assert(out[1].ptr && out[2].ptr);
+    const engine_input *input = service;
+    input_pointer_ray pointer = input ? input->pointer : (input_pointer_ray){ 0 };
+    out[0].b = pointer.active;
+    *(CF_V3 *)out[1].ptr = pointer.origin;
+    *(CF_V3 *)out[2].ptr = pointer.direction;
+    return NULL;
+}
+const node_host_call INPUT_POINTER_RAY_CALL = {
+    .service = INPUT_SERVICE,
+    .invoke = pointer_ray,
+    .optional_service = true,
+    .reusable = true,
 };
 const node_access INPUT_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };

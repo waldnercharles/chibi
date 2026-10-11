@@ -368,6 +368,19 @@ static const char *read_reference(arena *storage, const pin_value *args, int cou
     *out = retained;
     return NULL;
 }
+static bool component_scalar_path(const language_reference *ref)
+{
+    if (ref->kind != LANGUAGE_REFERENCE_COMPONENT || !ref->path ||
+        ref->type.container != PIN_CONTAINER_SINGLE || ref->type.type == PIN_STRUCT) {
+        return false;
+    }
+    for (const language_reference_path *path = ref->path; path; path = path->parent) {
+        if (path->element) {
+            return false;
+        }
+    }
+    return true;
+}
 static const char *write_reference_value(arena *owner_storage, language_reference *ref, const pin_value *args)
 {
     pin_value root;
@@ -379,6 +392,20 @@ static const char *write_reference_value(arena *owner_storage, language_referenc
     }
     if (!owner_storage) {
         return "Referenced owner has no retained value storage";
+    }
+    if (component_scalar_path(ref)) {
+        size_t offset = (const char *)current - (const char *)root.ptr;
+        return !ref->owner->store_component || ref->owner->store_component(
+                                                   ref->owner,
+                                                   ref->entity,
+                                                   ref->component,
+                                                   ref->layout,
+                                                   offset,
+                                                   ref->type,
+                                                   args[1]
+                                               )
+                 ? "Cannot retain referenced component write"
+                 : NULL;
     }
     pin_value value, retained;
     if (pin_value_snapshot_to_arena(owner_storage, &value, &args[1]) ||

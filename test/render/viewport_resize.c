@@ -1,4 +1,5 @@
 #include "platform/cute.h"
+#include "render/scene3d.h"
 #include "render/viewport.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "ui/rml.h"
@@ -15,6 +16,93 @@ enum
 };
 static rml_backend *backend;
 static CF_Canvas ui_target, ui_texture_view;
+static engine_viewport *camera_viewport;
+
+static void cleanup_camera()
+{
+    engine_viewport_free(camera_viewport);
+    camera_viewport = NULL;
+}
+
+TEST_CASE(explicit_camera_preserves_authored_edges_across_aspects)
+{
+    camera_viewport = engine_viewport_new(UI_SIDE, UI_SIDE);
+    REQUIRE(camera_viewport);
+    const int sizes[][2] = { { 640, 360 }, { 300, 600 }, { 1200, 500 }, { 640, 360 } };
+    const float fovs[] = { 0, CF_PI / 3 };
+    for (int lens = 0; lens < 2; lens++) {
+        engine_viewport_view view = {
+            .width = 16,
+            .height = 9,
+            .lens = { .eye = { 7, 4, 20 },
+                      .forward = { 0, 0, -1 },
+                      .up = { 0, 1, 0 },
+                      .fov = fovs[lens],
+                      .near_clip = 0.1f,
+                      .far_clip = 100 },
+        };
+        engine_viewport_set_view(camera_viewport, &view);
+        float fov = view.lens.fov > 0 ? view.lens.fov : 35 * CF_PI / 180;
+        float half_height = 10 * tanf(fov / 2);
+        for (int size = 0; size < 4; size++) {
+            REQUIRE(
+                !engine_viewport_request_resize(camera_viewport, sizes[size][0], sizes[size][1])
+            );
+            render_scene3d_camera camera;
+            engine_viewport_get_camera3d(camera_viewport, &camera);
+            REQUIRE(cf_len_v3(cf_sub_v3(camera.eye, view.lens.eye)) < 0.00001f);
+            for (int corner = 0; corner < 4; corner++) {
+                CF_V3 point = {
+                    view.lens.eye.x + (corner & 1 ? 1 : -1) * half_height *
+                                          view.width / view.height,
+                    view.lens.eye.y + (corner & 2 ? 1 : -1) * half_height,
+                    view.lens.eye.z - 10,
+                };
+                CF_V3 projected = render_scene3d_project(&camera, point);
+                REQUIRE(fabsf(projected.x) <= 1.00001f && fabsf(projected.y) <= 1.00001f);
+                REQUIRE(fmaxf(fabsf(projected.x), fabsf(projected.y)) > 0.9999f);
+                CF_Ray3 ray = render_scene3d_ray(
+                    &camera,
+                    (CF_V2){ projected.x, projected.y }
+                );
+                REQUIRE(cf_len_v3(cf_cross_v3(cf_sub_v3(point, ray.p), ray.d)) < 0.001f);
+            }
+            engine_viewport_view retained;
+            engine_viewport_get_view(camera_viewport, &retained);
+            REQUIRE(retained.lens.fov == view.lens.fov);
+            engine_viewport_camera fitted;
+            engine_viewport_get_camera(camera_viewport, &fitted);
+            REQUIRE(
+                fitted.lens.near_clip == view.lens.near_clip &&
+                fitted.lens.far_clip == view.lens.far_clip
+            );
+        }
+    }
+    return true;
+}
+
+TEST_CASE(fitted_camera_keeps_a_valid_wide_angle)
+{
+    camera_viewport = engine_viewport_new(UI_SIDE, UI_SIDE);
+    REQUIRE(camera_viewport);
+    engine_viewport_set_view(
+        camera_viewport,
+        &(engine_viewport_view){
+            .width = 16,
+            .height = 9,
+            .lens = { .forward = { 0, 0, -1 }, .up = { 0, 1, 0 }, .fov = nextafterf(CF_PI, 0) },
+        }
+    );
+    engine_viewport_camera fitted;
+    engine_viewport_get_camera(camera_viewport, &fitted);
+    REQUIRE(fitted.lens.fov > 0 && fitted.lens.fov < CF_PI);
+    render_scene3d_camera camera;
+    engine_viewport_get_camera3d(camera_viewport, &camera);
+    for (int i = 0; i < 16; i++) {
+        REQUIRE(isfinite(camera.projection.elements[i]));
+    }
+    return true;
+}
 
 static void cleanup_ui()
 {
@@ -195,6 +283,101 @@ static void frame(engine_viewport *viewport, int width, int height, int *drawn_w
     engine_viewport_pixel_size(viewport, drawn_width, drawn_height);
 }
 
+TEST_CASE(pointer_ray_matches_the_displayed_3d_image)
+{
+    camera_viewport = engine_viewport_new(UI_SIDE, UI_SIDE);
+    REQUIRE(camera_viewport);
+    engine_viewport_set_perspective(camera_viewport, true);
+    engine_viewport_set_view(
+        camera_viewport,
+        &(engine_viewport_view){
+            .width = 16,
+            .height = 9,
+            .lens = { .eye = { 7, 4, 20 }, .forward = { 0, 0, -1 }, .up = { 0, 1, 0 } },
+        }
+    );
+    int width, height;
+    frame(camera_viewport, UI_SIDE, UI_SIDE, &width, &height);
+    engine_viewport_host_input input = { .width = UI_SIDE,
+                                         .height = UI_SIDE,
+                                         .x = 40,
+                                         .y = 24 };
+    engine_viewport_set_host_input(camera_viewport, &input);
+    CF_Ray3 ray;
+    REQUIRE(engine_viewport_mouse_ray(camera_viewport, &ray));
+    REQUIRE(ray.d.z < 0);
+    float t = (5 - ray.p.z) / ray.d.z;
+    REQUIRE(t > 0);
+    CF_V3 hit = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, t));
+    render_scene3d_camera camera;
+    engine_viewport_get_camera3d(camera_viewport, &camera);
+    CF_V3 projected = render_scene3d_project(&camera, hit);
+    REQUIRE(fabsf(projected.x - 0.25f) < 0.0001f);
+    REQUIRE(fabsf(projected.y - 0.25f) < 0.0001f);
+    input.x = -1;
+    engine_viewport_set_host_input(camera_viewport, &input);
+    REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
+    input.x = UI_SIDE;
+    engine_viewport_set_host_input(camera_viewport, &input);
+    REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
+    input.x = 32;
+    input.y = UI_SIDE;
+    engine_viewport_set_host_input(camera_viewport, &input);
+    REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
+    input.y = 32;
+    engine_viewport_set_host_input(camera_viewport, &input);
+    engine_viewport_set_perspective(camera_viewport, false);
+    REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
+    return true;
+}
+
+TEST_CASE(pointer_ray_keeps_displayed_camera_until_next_draw)
+{
+    camera_viewport = engine_viewport_new(UI_SIDE, UI_SIDE / 2);
+    REQUIRE(camera_viewport);
+    engine_viewport_set_perspective(camera_viewport, true);
+    engine_viewport_view view = {
+        .width = 16,
+        .height = 9,
+        .lens = { .eye = { 7, 4, 20 }, .forward = { 0, 0, -1 }, .up = { 0, 1, 0 } },
+    };
+    engine_viewport_set_view(camera_viewport, &view);
+    CF_Ray3 ray;
+    REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
+    int width, height;
+    frame(camera_viewport, UI_SIDE, UI_SIDE / 2, &width, &height);
+    render_scene3d_camera displayed;
+    engine_viewport_get_camera3d(camera_viewport, &displayed);
+
+    /* Input requests the new aspect before the next image is drawn. */
+    engine_viewport_host_input input = { .width = UI_SIDE / 2,
+                                         .height = UI_SIDE,
+                                         .x = 24,
+                                         .y = 8 };
+    engine_viewport_set_host_input(camera_viewport, &input);
+    REQUIRE(engine_viewport_mouse_ray(camera_viewport, &ray));
+    CF_V3 point = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, 10));
+    CF_V3 projected = render_scene3d_project(&displayed, point);
+    REQUIRE(fabsf(projected.x + 0.25f) < 0.0001f);
+    REQUIRE(fabsf(projected.y - 0.5f) < 0.0001f);
+
+    /* A camera move also takes effect only when that view is drawn. */
+    CF_Ray3 previous = ray;
+    view.lens.eye.x += 3;
+    engine_viewport_set_view(camera_viewport, &view);
+    REQUIRE(engine_viewport_mouse_ray(camera_viewport, &ray));
+    REQUIRE(cf_len_v3(cf_sub_v3(ray.p, previous.p)) < 0.0001f);
+    REQUIRE(cf_len_v3(cf_sub_v3(ray.d, previous.d)) < 0.0001f);
+    frame(camera_viewport, UI_SIDE / 2, UI_SIDE, &width, &height);
+    engine_viewport_get_camera3d(camera_viewport, &displayed);
+    REQUIRE(engine_viewport_mouse_ray(camera_viewport, &ray));
+    point = cf_add_v3(ray.p, cf_mul_v3_f(ray.d, 10));
+    projected = render_scene3d_project(&displayed, point);
+    REQUIRE(fabsf(projected.x - 0.5f) < 0.0001f);
+    REQUIRE(fabsf(projected.y - 0.75f) < 0.0001f);
+    return true;
+}
+
 TEST_CASE(first_request_replaces_the_placeholder_at_once)
 {
     engine_viewport *viewport = engine_viewport_new(640, 360);
@@ -294,6 +477,11 @@ void test_render_viewport_resize()
     RUN_TEST_CASE(later_sizes_wait_until_held_for_two_draws);
     RUN_TEST_CASE(a_matching_first_request_keeps_later_sizes_waiting);
     RUN_TEST_CASE(a_press_above_the_horizon_is_captured_without_a_ground_point);
+    pu_setup(NULL, cleanup_camera);
+    RUN_TEST_CASE(explicit_camera_preserves_authored_edges_across_aspects);
+    RUN_TEST_CASE(fitted_camera_keeps_a_valid_wide_angle);
+    RUN_TEST_CASE(pointer_ray_matches_the_displayed_3d_image);
+    RUN_TEST_CASE(pointer_ray_keeps_displayed_camera_until_next_draw);
     pu_setup(NULL, cleanup_ui);
     RUN_TEST_CASE(transparent_ui_presents_source_over_and_exports_straight_alpha);
     pu_clear_setup();

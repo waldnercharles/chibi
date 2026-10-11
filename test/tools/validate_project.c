@@ -638,6 +638,42 @@ TEST_CASE(fields_call_source_libraries)
     return true;
 }
 
+TEST_CASE(particle_shader_bindings_resolve_library_functions)
+{
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"shader-library\",\"name\":\"RainParticles\"}") ==
+        0
+    );
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"new_asset\",\"kind\":\"prototype\",\"name\":\"Rain\"}") == 0
+    );
+    char fixture[4096];
+    snprintf(fixture, sizeof fixture, "%s/test/fixtures/feature-coverage/content/shader-libraries/RainParticles.kdl", tool_root());
+    char *source = tool_read(fixture);
+    REQUIRE(source);
+    write_file("game/content/shader-libraries/RainParticles.kdl", source);
+    free(source);
+    write_file(
+        "game/content/prototypes/Rain.kdl",
+        "name \"Rain\"\ncomponents {\n"
+        " ParticleField3D count=128 seed=7 time=1.0 additive=#true\n"
+        " Geometry3D primitive=5 width=0.6 height=4.0 depth=0.6\n"
+        " Shader material=\"RainParticles.Fall\"\n"
+        " Transform3D { scale x=1.0 y=1.0 z=1.0; }\n}\n"
+    );
+    write_file("game/content/scenes/Start.kdl", "version 1\nname \"Start\"\npresentation \"3d\"\n(array)entities {\n - name=\"Rain\" prototype=\"Rain\"\n}\n");
+    REQUIRE(validate() == 0 && yyjson_get_bool(result("valid")));
+    write_file(
+        "game/content/prototypes/Rain.kdl",
+        "name \"Rain\"\ncomponents {\n"
+        " ParticleField3D count=128\n"
+        " Geometry3D primitive=5 width=1.0 height=1.0 depth=1.0\n"
+        " Shader material=\"RainParticles.Missing\"\n}\n"
+    );
+    REQUIRE(validate() != 0 && errors() > 0);
+    return true;
+}
+
 static void write_bytes(const char *relative, const unsigned char *bytes, size_t length)
 {
     char file[256];
@@ -1594,6 +1630,56 @@ TEST_CASE(scenarios_hold_controller_slots)
     return true;
 }
 
+TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls)
+{
+    const char *folders[] = { "game/content/prototypes", "game/content/behaviors" };
+    for (int i = 0; i < 2; i++) {
+        char directory[256];
+        path(directory, sizeof directory, folders[i]);
+        REQUIRE(mkdir(directory, 0755) == 0 || errno == EEXIST);
+    }
+    write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n (object)Transform\n}\n");
+    write_file(
+        "game/content/behaviors/Pointer.chibi",
+        "behavior Pointer { on Tick {\n"
+        " ray := get_pointer_ray()\n x := -1.0\n"
+        " if ray.Active { x = ray.Origin.x + ray.Direction.x }\n"
+        " request := await open_url(\"https://example.org/\")\n"
+        " if request.Accepted { x = 10000.0 }\n"
+        " self.Transform = vec2(x, 0)\n } }\n"
+    );
+    write_file(
+        "game/content/scenes/Start.kdl",
+        "version 1\nname \"Start\"\n(array)entities {\n"
+        " - name=\"Dot\" prototype=\"Dot\" {\n"
+        " (array)behaviors \"Pointer\"\n }\n}\n"
+    );
+    const char *base = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
+                       "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":3,"
+                       "\"input_timeline\":[{\"frame\":0,\"input\":{"
+                       "\"pointer\":%s}}%s]}";
+    const char *ray = "{\"origin\":{\"x\":6,\"y\":2,\"z\":10},"
+                      "\"direction\":{\"x\":1,\"y\":0,\"z\":-1}}";
+    char request[768];
+    snprintf(request, sizeof request, base, ray, "");
+    REQUIRE(ctl(true, request) == 0 && snapshot_x() == 7);
+    snprintf(request, sizeof request, base, ray, ",{\"frame\":2,\"input\":{\"pointer\":null}}");
+    REQUIRE(ctl(true, request) == 0 && snapshot_x() == -1);
+    const char *invalid[] = {
+        "{\"origin\":{\"x\":0,\"y\":0,\"z\":0},\"direction\":{\"x\":0,\"y\":0,"
+        "\"z\":0}}",
+        "{\"origin\":{\"x\":0,\"y\":0},\"direction\":{\"x\":0,\"y\":0,\"z\":-1}"
+        "}",
+        "{\"origin\":{\"x\":0,\"y\":0,\"z\":0},\"direction\":{\"x\":0,\"y\":0,"
+        "\"z\":1e100}}",
+    };
+    for (int i = 0; i < 3; i++) {
+        snprintf(request, sizeof request, base, invalid[i], "");
+        REQUIRE(ctl(true, request) != 0 && strstr(failure(), "pointer"));
+    }
+    return true;
+}
+
 void test_tool_tetris(const char *binary);
 
 void test_tool_validate_project(const char *binary)
@@ -1618,6 +1704,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(models_import_into_the_project);
 #endif
     RUN_TEST_CASE(scenarios_load_graph_assets);
+    RUN_TEST_CASE(particle_shader_bindings_resolve_library_functions);
     RUN_TEST_CASE(fields_call_source_libraries);
     RUN_TEST_CASE(sounds_must_decode);
     RUN_TEST_CASE(resources_are_limited_together);
@@ -1627,6 +1714,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(prototype_children_come_with_their_instance);
     RUN_TEST_CASE(scene_joints_name_their_other_by_path);
     RUN_TEST_CASE(scenarios_hold_input_actions);
+    RUN_TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls);
     RUN_TEST_CASE(scenarios_hold_controller_slots);
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     RUN_TEST_CASE(unit_mismatches_are_warnings);

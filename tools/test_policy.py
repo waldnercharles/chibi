@@ -19,6 +19,10 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
+    ('--audio-browser',): 'Reviewed two C browser PCM age regressions against production capture transport with fake permission/device endpoints, no recording or GPU; native launcher1case8asserts/browser2cases6asserts1.372s; requires matching Wasm test_tools; shared60s',
+    ('--player-url',): 'Reviewed nine C-owned gesture lifecycle cases through nine short Node invocations of the production EM_JS bridge; trusted keyboard/pointer gestures, copied URL ownership, cancellation/expiry/restart and one-open limits; fake browser APIs, no browser/network/GPU; measured9cases/67asserts2.278s/shared60s; docs/testing.md',
+    ('--audio-analysis',): 'Reviewed twelve fixed CPU cases: PCM bands/levels/onset, chunk/format/channel/source state, snapshot bindings and dummy-SDL mixer lifetime with a shared two-second callback limit; no GPU or real recording; combined measurement12cases/298asserts1.238s/shared60s; docs/testing.md',
+    ('--shader-webgpu',): 'Reviewed three CPU Cute compiler cases: noise fragment WGSL plus indexed/unindexed particle vertex WGSL/MSL; one checked-in vertex source<64KiB, no app/window/GPU; combined measurement3cases/32asserts0.770s/shared60s; docs/testing.md',
     ('--studio-scene-collider3d',): 'First supervised measurement: independently reviewed three in-memory prototypes/actors, queued SDL scaled-box face, sphere radius and capsule height edits, typed undo/redo, parallel-axis/nonfinite refusal and move-face Escape/history restoration, hidden-handle refusal and H-during-drag cancellation; twenty-six hidden1920x1080frames fixed1/60, disposable3file fixture, shared60s',
     ('--studio-scene-gizmo3d',): 'First supervised measurement: independently reviewed six in-memory prototypes/eight actors, queued SDL world/local movement and snapping, orientation and mirrored-child rotation, local scaling, undo/redo, Escape/focus-loss/hidden-panel cancellation, shear/singular-parent refusal; forty-two hidden1920x1080frames fixed1/60, disposable3file fixture, shared60s',
     ('--studio-scene-camera',): 'First supervised measurement: independently reviewed one in-memory cube, SDL orbit/pan/anchored dolly, same-frame RMB+W flight, fractional diagonal wheel pan, above-horizon press and checkpoint lens retention, focus-loss cleanup; thirty hidden1920x1080frames, disposable3file fixture, shared60s',
@@ -38,7 +42,7 @@ NATIVE = {
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
     ('--player-installed-space-cadet-sljit',): 'Pinned installed player SLJIT, four hidden1280x720frames, exact8resources, shared60seconds',
     ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
-    ('--viewport-resize',): 'Reviewed hidden 64x64 app: viewport initial/later resize behavior, captures presses above a perspective horizon without a ground point, plus one 64x64 UI frame/readback checking translucent rectangle and glyph source-over against the public straight-alpha texture; GPU, shared 60s; docs/testing.md',
+    ('--viewport-resize',): 'Reviewed nine bounded hidden64x64 app cases: viewport resize and above-horizon press capture, two lens settings across four aspect requests with project/ray inverse checks, finite near-pi lens fit, displayed-image pointer rays retaining the presented camera until the next draw, and one64x64 UI frame/readback for straight-alpha source-over; GPU, shared60s; docs/testing.md',
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
     ('--radiance',): 'Reviewed hidden 128x128 app: HRC emitter, wall, absorption, bounce and transparent-feedback transport, reset, resize and reused capacity, split color, fractional cells, reduced reconstruction, fitted lighting, every resolution combination, the adaptive ladder, GPU pass timing, and the extend and filter passes alone, with readback; GPU; docs/testing.md',
     ('--radiance-depth',): 'Reviewed hidden 32x32 app with 32x32 and 128x128 targets: HRC Depth thickness light through slabs that block by height unless they glow, from small, moving, edge and mixed-color sources, its falloff, perspective, depth gain on closed receivers, closed receivers taking the light HRC brings open ones, open receivers shading HRC light by facing and height, soft visibility keeping lights on the floor plane lit, gloss, every quality, history, segments and steep planes, and the surface gather by quadrant, crest, reach and turning view, with readback; GPU; docs/testing.md',
@@ -61,7 +65,7 @@ NATIVE = {
     ('--radiance-horizons8',): 'Reviewed hidden 128x128 app: the same horizon cases with eight directions; GPU; docs/testing.md',
     ('--material-pixels',): 'Reviewed hidden 128x128 app: material parameter overrides, world-space and graph materials, shape graphs and fragment programs, fluid placement, gas, liquid, fuel, plume, parcel and wisp pixels, fluid light and shadow, liquid refraction, crystal reflections, compact uploads of mixed graph, plain and mesh batches, sprite normal and height maps, sprite and shape relief raised by a material Height, with readback; GPU; docs/testing.md',
     ('--texture-transform',): 'Reviewed hidden 64x64 app: seven glTF texture transform/baked-UV comparisons with negative controls, 21 frames; GPU; docs/rendering-3d.md',
-    ('--shader-parameters-prepared',): 'Independently reviewed two CPU cases: tiny material/two-parameter codec and generation rejection, plus three-node parameterized model/four prepared records<64KiB staged within2MiB; no GPU; docs/testing.md',
+    ('--shader-parameters-prepared',): 'Reviewed nine bounded CPU cases: material/model parameter codecs and staging, particle signature/default/helper validation, particle staging and rejected mesh-material use, preview reload/rename/rejection, and 129 zero-count field entities for source budget reclamation; no GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
     ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and six refusals, CPU only; docs/testing.md',
     ('--asset-refactor',): 'One asset rename case: four in-memory prototypes, planned rewrites of a nested child and of a child that an including prototype adds, no files, CPU only; docs/testing.md',
@@ -109,6 +113,10 @@ for lab in EXAMPLE_LABS:
         'verified installed package pins, one compile<=20s, source removal/relocation, '
         'four hidden320x180frames/readback<=25s; sampled box also missing-input compile<=10s and two CLI rejections<=5s each; C PNG landmarks, shared60s')
 TOOLS = {
+    'player-url': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--player-url'],
+    'audio-browser': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--audio-browser'],
+    'audio-analysis': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--audio-analysis'],
+    'shader-webgpu': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-webgpu'],
     # Five independently reviewed CPU controller cases: seven tiny files, two entities,
     # thirteen owned children <=10s, twenty fixed simulation frames, shared60s.
     'controller': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--controller',
@@ -229,8 +237,8 @@ TOOLS = {
     # opaque and translucent, through the instanced and tiled draw paths. The agent runs the
     # render-enabled test_tools of its selected build directory.
     'interior-border': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--interior-border'],
-    # Four reviewed hidden-app cases: initial/later viewport resizing and one 64x64 UI frame
-    # with one readback checking source-over plus public straight-alpha texture semantics.
+    # Nine reviewed hidden-app cases: resize/horizon capture, aspect-preserving camera and
+    # wide-angle fit, presented-camera pointer rays through resize, and a 64x64 UI readback.
     'viewport-resize': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--viewport-resize'],
     # Fourteen reviewed hidden-app scenes of meshes and SDFs hiding each other, compared with
     # hidden-surface rejection on and off, plus Cute's whole-canvas depth copy on its own.
@@ -431,7 +439,9 @@ for selector in ('wasm', 'execution', 'program', 'headless', 'publication', 'scr
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
              'wasm-publication', 'wasm-script-benchmark'],
-    'native': ['native-runtime', 'native-catalog', 'native-values', 'physics', 'physics3d',
+    'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
+               'player-url',
+               'physics', 'physics3d',
                'transforms', 'box3d', 'sky-files', 'tilemap', 'runtime-scene', 'scene-prepared',
                'scene-hierarchy', 'render-resources', 'persistent-store', 'whole-alias',
                'whole-integer', 'whole-conversion', 'whole-select', 'whole-math', 'owned-tick',

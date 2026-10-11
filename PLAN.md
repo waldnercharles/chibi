@@ -1,3 +1,38 @@
+# Shared execution interface and web rollout, 2026-10-11
+
+Continue the approved Wasm rollout from engine main `c159b6cd6`. Keep one Chibi
+compile/run interface with sibling SLJIT and Wasm emitters. Move shared execution
+dispatch and host lifetime handling into `src/execution/runner.c`; rename its
+boolean selector from `native` to `compiled`. Keep the VM interpreter explicit.
+This changes module organization, not execution state or ownership contracts.
+
+Stillwater currently depends on engine `e9d23b04e` and game `991ca048`. Its engine
+branch repeats the native-name migration already on main and predates newer
+arena collection and test layout. Port the required functional changes onto
+current main, preserving the newer implementations: measured audio/capture,
+direct scalar component writes, finished-activation collection elision, particle
+fields, responsive camera framing, URL actions and pointer input. Retain the
+helper/macro-aware migration and WebGPU noise fix from the old integration.
+Keep main's project version 23 and existing migrations; migrate the game with
+the matching controller after its source merge.
+
+Preserve the dirty primary engine and Studio checkouts. Use this isolated engine
+checkout and a separate game worktree. Merge the current 3D game's source with
+game main, then record the exact clean engine revision and produced package
+hashes in `toolchain.json`. Publish the tested engine and game source to main.
+Wait for complete engine packages before publishing Studio; publish and verify
+the game through its existing Pages workflow.
+
+Independent reviews cover execution ownership, migration, new runtime/renderer
+capabilities, SDK closure and the merged game. Use admitted C checks under the
+60-second production deadline, native and Emscripten builds, serial/pthread
+Wasm checks and matching game validation. Run only bounded relevant GPU/browser
+checks, including actual music selection, play, Duet and warmed frame timing at
+normal display size. Full GPU/Studio suites remain quarantined. Keep evidence
+under `.chibi/wasm-jit` and game evidence under its existing validation location.
+
+---
+
 # WebAssembly JIT backend, 2026-10-11
 
 Implement the approved browser JIT in the isolated `cwaldner/wasm-jit` branch

@@ -42,6 +42,17 @@
     .category = "Input",                                                       \
     .keywords = "controller gamepad disconnect rejoin", .description = "True while the zero-based controller slot is connected, from 0 to 3."
 
+#define INPUT_POINTER_RAY_NAME "Get Pointer Ray"
+#define INPUT_POINTER_RAY_OUTPUTS(X)                                           \
+    INPUT_PORT(X, "Active", PIN_BOOL, "bool")                                  \
+    INPUT_PORT(X, "Origin", PIN_STRUCT, "CF_V3")                               \
+    INPUT_PORT(X, "Direction", PIN_STRUCT, "CF_V3")
+#define INPUT_POINTER_RAY_PRESENTATION                                         \
+    .category = "Input", .keywords = "mouse cursor camera pick 3d",            \
+    .description = "Reads the world-space pointer ray sampled by the host "    \
+                   "for this fixed step. Inactive without a focused 3D view. " \
+                   "Recordings retain the ray for replay."
+
 extern const native_definition_pack INPUT_DEFINITION_PACK;
 
 #endif

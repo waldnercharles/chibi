@@ -892,7 +892,9 @@ A valid library edit publishes a new field revision and value; an unsupported
 operation refuses the replacement and preserves the previous revision and value.
 This replaces the obsolete test that registered an executable library graph in
 the preview and edited a `.chibi` presentation as executable state. Preview
-executable libraries now require canonical source publication. The existing
-`FieldShapes.chibi` to `MaterialIslands.kdl` linkage gap remains: the native graph
-loader reads KDL documents and does not lower authored `.chibi` libraries into
-field artifacts. This check does not claim that linkage or source hot-apply works.
+executable libraries now require canonical source publication. Two more cases
+lower `FieldShapes.chibi` into a graph library and link `MaterialIslands.kdl`
+against it, and publish a library edit to a live preview: the field relinks to a
+new revision, and a library that drops the called function is refused while the
+field keeps its revision and value. `--validate-project` checks that
+`validate_project` and `preview_field` link a field against a `.chibi` library.

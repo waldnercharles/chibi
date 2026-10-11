@@ -68,3 +68,12 @@ CHIBI_GPU_SELECTOR("--shader-parity")
 /* Ramp recompiles, program tables and image texture routes through raster,
  * fragment and 3D preview programs in a hidden 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--shader-programs")
+/* Orbit cameras over material raster meshes, SDFs and 2D layers in a hidden
+ * 96x80 app, with readback. */
+CHIBI_GPU_SELECTOR("--material-cameras")
+/* Material raster meshes' faces, depth, layers, coverage and imported UVs in
+ * a hidden 96x80 app, with readback. */
+CHIBI_GPU_SELECTOR("--mesh-materials")
+/* SDF surface quality, trace work, gradients and spatial scratch groups in a
+ * hidden 96x80 app, with readback. */
+CHIBI_GPU_SELECTOR("--sdf-quality")

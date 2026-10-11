@@ -50,7 +50,8 @@ RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize':
                     '--material-ramps': 'material-ramps', '--radiance-surface': 'radiance-surface',
                     '--radiance-horizons4': 'radiance-horizons4', '--radiance-horizons8': 'radiance-horizons8',
                     '--material-pixels': 'material-pixels', '--shader-parity': 'shader-parity',
-                    '--shader-programs': 'shader-programs'}
+                    '--shader-programs': 'shader-programs', '--material-cameras': 'material-cameras',
+                    '--mesh-materials': 'mesh-materials', '--sdf-quality': 'sdf-quality'}
 GPU_SELECTORS = PLAYER_SELECTORS | STUDIO_SELECTORS | RENDER_SELECTORS
 PLAYER_RESOURCES = {('ui', 'HUD'), ('ui', 'PauseMenu')} | {
     ('font', f'font/Inter/{weight}/normal') for weight in (400, 500, 600, 700)

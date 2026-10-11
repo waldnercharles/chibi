@@ -134,6 +134,9 @@ void test_shader_effects_cpu();
 void test_shader_image_cpu();
 void test_shader_parity();
 void test_shader_programs();
+void test_material_cameras();
+void test_mesh_materials();
+void test_sdf_quality();
 #endif
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
@@ -206,7 +209,8 @@ int main(int argc, char **argv)
          material_pixels = false, box3d = false, sky_files = false,
          mesh_files = false, model_import = false, model_graphs = false,
          model_catalog = false, render_geometry = false, shader_graphs = false,
-         shader_parity = false, shader_programs = false;
+         shader_parity = false, shader_programs = false,
+         material_cameras = false, mesh_materials = false, sdf_quality = false;
     /* The horizon directions --radiance-horizons4 or 8 checks. */
     int radiance_horizons = 0;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
@@ -293,9 +297,13 @@ int main(int argc, char **argv)
     shader_graphs = argc == 2 && !strcmp(argv[1], "--shader-graphs");
     shader_parity = argc == 2 && !strcmp(argv[1], "--shader-parity");
     shader_programs = argc == 2 && !strcmp(argv[1], "--shader-programs");
+    material_cameras = argc == 2 && !strcmp(argv[1], "--material-cameras");
+    mesh_materials = argc == 2 && !strcmp(argv[1], "--mesh-materials");
+    sdf_quality = argc == 2 && !strcmp(argv[1], "--sdf-quality");
 #endif
     graph_types = model_graphs || model_catalog || shader_graphs ||
-                  shader_parity || shader_programs;
+                  shader_parity || shader_programs || material_cameras ||
+                  mesh_materials || sdf_quality;
 #endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     model_import = argc == 2 && !strcmp(argv[1], "--model-import");
@@ -320,9 +328,10 @@ int main(int argc, char **argv)
         !radiance_surface && !radiance_horizons && !material_pixels && !box3d &&
         !sky_files && !mesh_files && !model_import && !model_graphs &&
         !model_catalog && !shader_graphs && !shader_parity && !shader_programs &&
-        !persistent_store && !whole_alias && !whole_math && !whole_integer &&
-        !whole_conversion && !whole_select && !owned_tick && !parallel_tick &&
-        !source_features && !source_numeric && !source_material && !source_presentation &&
+        !material_cameras && !mesh_materials && !sdf_quality && !persistent_store &&
+        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
+        !whole_select && !owned_tick && !parallel_tick && !source_features &&
+        !source_numeric && !source_material && !source_presentation &&
         !system_schedule && !source_systems && !validate_project && !expansion) {
         fprintf(
             stderr,
@@ -347,7 +356,8 @@ int main(int argc, char **argv)
             "--box3d | "
             "--sky-files | --mesh-files | --model-import | --model-graphs | "
             "--model-catalog | --shader-graphs | --shader-parity | "
-            "--shader-programs | "
+            "--shader-programs | --material-cameras | --mesh-materials | "
+            "--sdf-quality | "
             "--persistent-store | "
             "--whole-alias | "
             "--whole-math | --whole-integer | --whole-conversion | "
@@ -532,8 +542,15 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
-    if (shader_graphs || shader_parity || shader_programs) {
-        if (shader_parity) {
+    if (shader_graphs || shader_parity || shader_programs || material_cameras ||
+        mesh_materials || sdf_quality) {
+        if (material_cameras) {
+            test_material_cameras();
+        } else if (mesh_materials) {
+            test_mesh_materials();
+        } else if (sdf_quality) {
+            test_sdf_quality();
+        } else if (shader_parity) {
             test_shader_parity();
         } else if (shader_programs) {
             test_shader_programs();

@@ -47,8 +47,9 @@ that owns its area; add a selector to `GROUPS` in `tools/test_policy.py` so the
 group, and therefore CI, runs it. Studio's checks live in `chibi-studio`.
 `radiance`, `radiance-depth`, `radiance-surface`, `radiance-horizons4`,
 `radiance-horizons8`, `material-pixels`, `material-sampling`, `scene2d`,
-`scene3d`, `scene3d-gles`, `material-ramps`, `shader-parity` and
-`shader-programs` render through a hidden window,
+`scene3d`, `scene3d-gles`, `material-ramps`, `shader-parity`,
+`shader-programs`, `material-cameras`, `mesh-materials` and `sdf-quality`
+render through a hidden window,
 which needs a display and a GPU driver the CI job does not set up, so they stay
 out of the group; run them with `python3 tools/test_policy.py tool <name>`.
 
@@ -718,6 +719,34 @@ that keeps the last good image. It reads its images from memory. Build and run
 it like `interior-border` with `AGENT_SELECTOR=--shader-programs`. It passes
 70,156 assertions in 6 seconds under ASan/UBSan on Vulkan llvmpipe, whose
 worker threads leak 112 bytes as they do for `material-ramps`, so it runs with
+`detect_leaks=0`.
+`material-cameras` selects six hidden-app 96x80 cases of the material
+raster's orbit camera. Projected bounds of a box under oblique, rolled and
+near-plane cameras must hold every corner an independent clip keeps, and an
+eye circling the view's center must keep its basis and radius. A mesh and an
+SDF swap which is in front as the camera turns half way around, a 2D layer's
+marker lands where a scalar projection puts it, an eye circling a four-actor
+cross sees each side in turn, and emissive SDF spheres project their emission
+where the orbiting eye sees them until an opaque mesh hides one. It passes
+8,045 assertions in 4.8 seconds.
+`mesh-materials` selects eight hidden-app 96x80 cases of meshes in the material
+raster: a box's visible faces, relief and emission, hidden parts that add
+nothing, depth between meshes rather than actor order, ordered 2D layers that
+override it, pitched and rolled planes, even subpixel coverage, padded views
+across a resize, imported meshes that sample their own UVs and hide their back
+faces, and perspective cards of known size, depth, side faces and near-plane
+crops. It passes 151 assertions in 4.6 seconds.
+`sdf-quality` selects ten hidden-app 96x80 cases of SDF surfaces: programs
+specialized for one shape, a growing sphere's analytic heights and normals at
+every resolution, pixel error and normal mode, a thin ring's coverage and hole,
+planes and creases that keep real faces, a rasterized tilted box top, trace and
+normal evaluation counts, analytic gradients under transforms and their
+fallback for unsupported and singular graphs, and spatial scratch groups that
+draw what one scratch does with less work. It passes 118 assertions in 4.3
+seconds.
+Build and run these three like `interior-border`, with `AGENT_SELECTOR` set to
+the selector. They pass under ASan/UBSan on Vulkan llvmpipe, whose worker threads
+leak 112 bytes as they do for `material-ramps`, so they run with
 `detect_leaks=0`.
 `material-ramps` selects four hidden-app 64x64 cases. Nine full color ramps
 fill the first 288 entries of a program's ramp table, so a last ramp's stops

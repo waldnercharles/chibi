@@ -1,12 +1,12 @@
 #include "authoring/shader_prepare.h"
 #include "graph/authoring/graph_edit.h"
+#include "graph/model/registry.h"
 #include "graph/shader/shader_graph.h"
-#include "platform/cute.h"
 #include "render/material_raster.h"
-#include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
 #include "runtime/component_catalog.h"
 #include "support/xalloc.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -168,7 +168,10 @@ static bool winner(float *pixels[TARGETS], const float color[3], const char *lab
     }
     return ok;
 }
-bool test_camera_centered_orbit()
+/* Four actors make a cross around the view's center: an eye circling it sees
+ * blue, green, red and yellow in turn, whatever their order or hidden-surface
+ * rejection, and a full turn draws what the unrotated camera does. */
+TEST_CASE(centered_orbits_see_each_side_in_turn)
 {
     behavior_asset *shape = sphere();
     ecs_world *world = ecs_world_new();
@@ -180,7 +183,7 @@ bool test_camera_centered_orbit()
         &GAME_COMPONENT_GameMeshAsset
     };
     for (int i = 0; i < (int)(sizeof components / sizeof *components); i++) {
-        assert(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
+        REQUIRE(ecs_world_register_component(world, components[i], NULL) == ECS_OK);
     }
     /* Fixed cross in the world's XY plane. The source view sees blue in front;
      * an eye travelling around Z must successively see green, red and yellow. */
@@ -194,7 +197,7 @@ bool test_camera_centered_orbit()
                                            { yellow, { -8, 0 } } };
     const float colors[][3] = { { 0, 0, 1 }, { 0, 1, 0 }, { 1, 0, 0 }, { 1, 1, 0 } };
     render_material_raster *r = render_material_raster_new();
-    bool ok = render_material_raster_resize(r, WIDTH, HEIGHT);
+    REQUIRE(render_material_raster_resize(r, WIDTH, HEIGHT));
     render_material_raster_set_quality(r, (GameSurfaceQuality){ .resolution = GAME_SURFACE_FULL });
     render_material_view base = { .min_x = -48,
                                   .max_y = 40,
@@ -202,9 +205,8 @@ bool test_camera_centered_orbit()
                                   .height = HEIGHT,
                                   .focal_distance = 700 };
     float *legacy[TARGETS] = { 0 };
-    ok &= capture(r, world, fixed, base, legacy) &&
-          winner(legacy, colors[0], "legacy front");
-    float maximum_delta = 0;
+    REQUIRE(capture(r, world, fixed, base, legacy));
+    REQUIRE(winner(legacy, colors[0], "legacy front"));
     for (int angle = 0; angle <= 4; angle++) {
         for (int order = 0; order < 2; order++) {
             for (int hidden = 0; hidden < 2; hidden++) {
@@ -220,34 +222,28 @@ bool test_camera_centered_orbit()
                 float *pixels[TARGETS] = { 0 };
                 char label[80];
                 snprintf(label, sizeof label, "angle%d order%d hidden%d", angle, order, hidden);
-                bool passed = capture(r, world, actors, view, pixels) &&
-                              winner(pixels, colors[angle % 4], label);
-                if ((angle == 0 || angle == 4) && passed) {
-                    for (int t = 0; t < TARGETS; t++) {
-                        for (int i = 0; i < WIDTH * HEIGHT * 4; i++) {
-                            float delta = fabsf(legacy[t][i] - pixels[t][i]);
-                            maximum_delta = fmaxf(maximum_delta, delta);
-                            passed &= delta <= .003f + .002f * fabsf(legacy[t][i]);
-                        }
+                REQUIRE(capture(r, world, actors, view, pixels));
+                bool passed = winner(pixels, colors[angle % 4], label);
+                for (int t = 0; (angle == 0 || angle == 4) && t < TARGETS; t++) {
+                    for (int i = 0; i < WIDTH * HEIGHT * 4; i++) {
+                        float delta = fabsf(legacy[t][i] - pixels[t][i]);
+                        passed &= delta <= .003f + .002f * fabsf(legacy[t][i]);
                     }
                 }
-                printf(
-                    "Centered horizontal orbit %s: %s; expected RGB %g %g %g\n",
-                    label,
-                    passed ? "PASS" : "FAIL",
-                    colors[angle % 4][0],
-                    colors[angle % 4][1],
-                    colors[angle % 4][2]
-                );
-                ok &= passed;
                 release(pixels);
+                REQUIRE(passed);
             }
         }
     }
-    printf("Centered horizontal orbit source-view max delta %.8g\n", maximum_delta);
     release(legacy);
     render_material_raster_free(r);
     ecs_world_free(world);
     behavior_asset_free(shape);
-    return ok;
+    return true;
+}
+
+/* Runs in an open hidden app with the graph packs installed. */
+void test_camera_centered_orbit()
+{
+    RUN_TEST_CASE(centered_orbits_see_each_side_in_turn);
 }

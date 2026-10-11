@@ -214,7 +214,10 @@ if(TARGET Chibi::model_authoring)
         target_sources(test_tools PRIVATE ../graph/model_parameters.c ../graph/model_material_scope.c
             ../graph/model_validation.c ../graph/model_materials.c ../graph/model_surface.c
             ../graph/shader_detail.c ../render/shader_effects.c ../render/shader_image.c
-            ../render/shader_parity.c ../render/shader_program.c ../render/shader_image_routes.c)
+            ../render/shader_parity.c ../render/shader_program.c ../render/shader_image_routes.c
+            ../render/camera_orbit.c ../render/camera_plane.c ../render/camera_centered_orbit.c
+            ../render/camera_emitter_orbit.c ../render/mesh_material.c ../render/sdf_quality.c
+            ../render/sdf_spatial.c)
     endif()
 endif()
 

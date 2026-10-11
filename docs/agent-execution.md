@@ -53,6 +53,10 @@ or explicitly leave the device unknown. They also include image dimensions,
 planned frame counts, elapsed wall time, and time/RSS budgets. Native render results
 carry the same execution metadata. Full checks remain explicitly pending.
 
+Shared GPU assertion fixtures use native hidden windows on macOS and Windows.
+On Linux they prefer SDL's offscreen driver while honoring explicit
+`SDL_VIDEO_DRIVER` or legacy `SDL_VIDEODRIVER` settings.
+
 The default `CHIBI_EXECUTION_PROFILE=iteration` allows reviewed CPU selectors and
 bounded authoring previews. `test/execution_selectors.h` is the CPU allowlist.
 Other selectors are GPU/mixed or unclassified, and are blocked with an outstanding

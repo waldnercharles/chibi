@@ -64,6 +64,9 @@ typedef struct engine_viewport_pointer
     float world_x;
     float world_y;
     float world_per_pixel;
+    /* world_x and world_y hold the pointer's point: always in a 2D view, and
+       in perspective where its ray meets the ground plane. */
+    bool grounded;
     float ndc_x, ndc_y;
     float press_ndc_x, press_ndc_y;
     bool hovered;
@@ -76,8 +79,9 @@ typedef struct engine_viewport_pointer
 } engine_viewport_pointer;
 
 /* Copied from the most recent draw. A left gesture starts inside the image and
- * remains captured outside it through release. Hidden panes or blocked input
- * cancel the gesture. World coordinates use the rendered Y-up projection. */
+ * remains captured outside it through release, above a perspective view's
+ * horizon too. Hidden panes or blocked input cancel the gesture. World
+ * coordinates use the rendered Y-up projection. */
 void engine_viewport_get_pointer(const engine_viewport *viewport, engine_viewport_pointer *pointer);
 /* Sample this frame's mouse against the last displayed image rectangle. */
 bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, float *y);

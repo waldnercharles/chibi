@@ -53,6 +53,10 @@ or explicitly leave the device unknown. They also include image dimensions,
 planned frame counts, elapsed wall time, and time/RSS budgets. Native render results
 carry the same execution metadata. Full checks remain explicitly pending.
 
+Shared GPU assertion fixtures use native hidden windows on macOS and Windows.
+On Linux they prefer SDL's offscreen driver while honoring explicit
+`SDL_VIDEO_DRIVER` or legacy `SDL_VIDEODRIVER` settings.
+
 The default `CHIBI_EXECUTION_PROFILE=iteration` allows reviewed CPU selectors and
 bounded authoring previews. `test/execution_selectors.h` is the CPU allowlist.
 Other selectors are GPU/mixed or unclassified, and are blocked with an outstanding
@@ -303,6 +307,8 @@ fixture. Each runs independently under the shared 60-second supervisor deadline:
 
 | Agent selector | Hidden frames | Accepted interaction |
 | --- | ---: | --- |
+| `--studio-scene-collider3d` | 26 | Scaled box, sphere and capsule handles, typed history, parallel/nonfinite and hidden-handle rejection, Escape/H cancellation; three actors |
+| `--studio-scene-gizmo3d` | 42 | World/local move, snapping, rotation/scaling, history and cancellation; six prototypes/eight actors |
 | `--studio-graph-pointer` | 19 | SDL node selection, wire navigation, Find keys and pointer selection, Escape focus, Home framing |
 | `--studio-asset-pointer` | 20 | SDL filter typing, list/grid clicks with modifiers, exact visible identities and selection |
 | `--studio-debugger-source-history` | 47 | SDL source breakpoint, play, invalid draft, undo/redo, retained paused cursor and value, step and stop |

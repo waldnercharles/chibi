@@ -767,10 +767,10 @@ static bool floor_light(GameHRC2D lighting, bool closed, float floor, float heig
     return true;
 }
 
-/* Depth thickness brings a closed floor, where HRC's light stops, the light
- * HRC brings the same floor open, at any falloff, and intensity leaves it
- * alone. A light near the floor's plane lights it less, as by Lambert's law,
- * and one below it not at all. */
+/* At falloff 0, 1 and 2, a closed floor approximately matches the open
+ * floor's tone-mapped brightness, and intensity leaves the closed floor
+ * unchanged. A light near its plane lights it less, and one below it not
+ * at all. */
 TEST_CASE(closed_receivers_take_the_light_hrc_brings_open_ones)
 {
     GameHRC2D lighting = fill_lighting();
@@ -869,7 +869,7 @@ TEST_CASE(every_depth_quality_lights_and_shadows)
 /* Depth history keeps still light as it is. It drops it for a receiver that
  * turns away, which would otherwise keep its old light as a ghost, for a
  * removed source, for a receiver that tilts toward the light, for a source
- * that dims sharply, and on a reset. */
+ * that dims sharply, a changed distance falloff, and on a reset. */
 TEST_CASE(depth_history_keeps_still_light_and_drops_changes)
 {
     GameHRC2D lighting = depth_lighting();
@@ -886,6 +886,17 @@ TEST_CASE(depth_history_keeps_still_light_and_drops_changes)
     for (int c = 0; c < 3; c++) {
         REQUIRE(fabsf(initial[c] - held[c]) < .001f);
     }
+    /* A moderate falloff edit keeps the geometry and source unchanged. Its
+     * first frame must match a fresh solve, rather than hold the old light. */
+    float falloff[3];
+    lighting.falloff += .25f;
+    REQUIRE(lit(lighting, test_centered(SIDE), falloff));
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), fresh));
+    float change = held[0] - fresh[0];
+    REQUIRE(fresh[0] > .00001f && change > held[0] * .01f);
+    REQUIRE(fabsf(falloff[0] - fresh[0]) < change * .05f);
+    lighting.falloff -= .25f;
+    REQUIRE(lit_fresh(lighting, test_centered(SIDE), held));
     /* Normals hold x and y; z flags a solid surface, and the rebuilt normal
      * faces the viewer. */
     for (int p = 0; p < PIXELS; p++) {

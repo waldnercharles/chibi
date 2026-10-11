@@ -2,6 +2,7 @@
 
 #include "authoring/preview_source_internal.h"
 #include "authoring/shader_prepare.h"
+#include "authoring/source_graph_library.h"
 #include "authoring/source_presentation.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/compiler/material_field.h"
@@ -117,6 +118,7 @@ void game_preview_definition_free(game_preview_definition *definition)
         behavior_asset_free(definition->working);
         behavior_asset_free(definition->applied);
     }
+    behavior_asset_free(definition->field_source);
     compile_report_free(&definition->diagnostics);
     free(definition->name);
     free(definition->path);
@@ -254,10 +256,13 @@ void game_preview_world_free(game_preview_world *world)
     free(world);
 }
 
-static behavior_asset *linked_snapshot(
+/* Links against the world's graph definitions and the source libraries in
+ * `code`, which may be a staged collection. */
+static behavior_asset *link_snapshot(
     game_preview_world *world,
     const behavior_asset *source,
     const game_preview_definition *changed,
+    const authoring_sources *code,
     char *message,
     size_t size
 )
@@ -285,9 +290,25 @@ static behavior_asset *linked_snapshot(
             apush(catalog, d == changed ? d->working : d->applied);
         }
     }
+    behavior_asset **libraries = code ? authoring_source_graph_libraries(code) : NULL;
+    for (int i = 0; i < acount(libraries); i++) {
+        apush(catalog, libraries[i]);
+    }
     behavior_asset *result = behavior_asset_link_libraries(source, catalog, acount(catalog), message, size);
     afree(catalog);
+    authoring_source_graph_libraries_free(libraries);
     return result;
+}
+
+static behavior_asset *linked_snapshot(
+    game_preview_world *world,
+    const behavior_asset *source,
+    const game_preview_definition *changed,
+    char *message,
+    size_t size
+)
+{
+    return link_snapshot(world, source, changed, game_preview_sources_applied(world), message, size);
 }
 
 static bool shader_domain(behavior_domain domain)
@@ -343,6 +364,29 @@ static int registration_error(game_preview_definition *definition, const char *m
     return -1;
 }
 
+/* Keep the authored field independently of its linked applied generation. */
+static bool publish_field(
+    game_preview_world *world,
+    game_preview_definition *definition,
+    const behavior_asset *linked,
+    char *error,
+    size_t size
+)
+{
+    behavior_asset *source = behavior_asset_clone(definition->working);
+    if (!source) {
+        set_message(error, size, "Cannot retain the authored field: %s", graph_last_error());
+        return false;
+    }
+    if (!material_field_compile(game_materials_fields(world->runtime->materials), linked, error, size)) {
+        behavior_asset_free(source);
+        return false;
+    }
+    behavior_asset_free(definition->field_source);
+    definition->field_source = source;
+    return true;
+}
+
 int game_preview_add_definition(game_preview_world *world, game_preview_definition *definition)
 {
     if (!world || !definition || game_preview_sources_staged(world)) {
@@ -370,12 +414,13 @@ int game_preview_add_definition(game_preview_world *world, game_preview_definiti
     if (!linked) {
         return registration_error(definition, message[0] ? message : graph_last_error());
     }
-    if (graph_asset_compile(linked, &definition->diagnostics)) {
+    if (linked->domain != BEHAVIOR_DOMAIN_MODEL &&
+        graph_asset_compile(linked, &definition->diagnostics)) {
         behavior_asset_free(linked);
         return -1;
     }
     if (linked->domain == BEHAVIOR_DOMAIN_FIELD &&
-        !material_field_compile(game_materials_fields(world->runtime->materials), linked, message, sizeof message)) {
+        !publish_field(world, definition, linked, message, sizeof message)) {
         behavior_asset_free(linked);
         return registration_error(definition, message);
     }
@@ -383,7 +428,9 @@ int game_preview_add_definition(game_preview_world *world, game_preview_definiti
         shader_error error = { 0 };
         if (!render_shader_upsert(linked, &error)) {
             behavior_asset_free(linked);
-            return registration_error(definition, error.message);
+            registration_error(definition, error.message);
+            alast(definition->diagnostics.items).node_id = error.node;
+            return -1;
         }
     }
     behavior_asset_free(definition->applied);
@@ -522,7 +569,9 @@ int game_preview_rename_definition(game_preview_world *world, const char *from, 
         }
     }
     if (behavior_asset_set_name(definition->working, to) ||
-        behavior_asset_set_name(definition->applied, to)) {
+        behavior_asset_set_name(definition->applied, to) ||
+        (definition->field_source &&
+         behavior_asset_set_name(definition->field_source, to))) {
         return -1;
     }
     free(definition->name);
@@ -704,6 +753,74 @@ cleanup:
     return status;
 }
 
+bool game_preview_fields_relink(
+    game_preview_world *world,
+    const authoring_sources *code,
+    const char *const *libraries,
+    int count,
+    game_preview_field_relink **out,
+    char *message,
+    size_t size
+)
+{
+    assert(!*out);
+    for (int i = 0; i < acount(world->definitions); i++) {
+        game_preview_definition *d = world->definitions[i];
+        if (d->working_presentation || d->working->domain != BEHAVIOR_DOMAIN_FIELD) {
+            continue;
+        }
+        bool uses = false;
+        for (int g = 0; g < acount(d->applied->graphs); g++) {
+            const char *name = d->applied->graphs[g]->source_asset;
+            for (int l = 0; name && l < count; l++) {
+                uses |= !strcmp(name, libraries[l]);
+            }
+        }
+        if (!uses) {
+            continue;
+        }
+        assert(d->field_source);
+        behavior_asset *snapshot = link_snapshot(world, d->field_source, NULL, code, message, size);
+        field_program *program = snapshot
+                                   ? field_program_compile(snapshot, message, size)
+                                   : NULL;
+        if (!program) {
+            behavior_asset_free(snapshot);
+            game_preview_fields_relink_free(*out);
+            *out = NULL;
+            return false;
+        }
+        field_program_free(program);
+        apush(*out, ((game_preview_field_relink){ d, snapshot }));
+    }
+    return true;
+}
+
+void game_preview_fields_relink_commit(game_preview_world *world, game_preview_field_relink *relinks)
+{
+    char message[256];
+    for (int i = 0; i < acount(relinks); i++) {
+        bool applied = material_field_compile(
+            game_materials_fields(world->runtime->materials),
+            relinks[i].snapshot,
+            message,
+            sizeof message
+        );
+        assert(applied);
+        (void)applied;
+        behavior_asset_free(publish_snapshot(relinks[i].definition, relinks[i].snapshot));
+    }
+    afree(relinks);
+}
+
+void game_preview_fields_relink_free(game_preview_field_relink *relinks)
+{
+    for (int i = 0; i < acount(relinks); i++) {
+        behavior_asset_free(relinks[i].snapshot);
+    }
+    afree(relinks);
+}
+
 static int update_definition(
     game_preview_world *world,
     game_preview_definition *definition,
@@ -770,7 +887,7 @@ static int update_definition(
         return -1;
     }
     if (definition->working->domain == BEHAVIOR_DOMAIN_FIELD &&
-        !material_field_compile(game_materials_fields(world->runtime->materials), snapshot, message, message_size)) {
+        !publish_field(world, definition, snapshot, message, message_size)) {
         behavior_asset_free(snapshot);
         return -1;
     }

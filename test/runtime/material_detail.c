@@ -2,6 +2,7 @@
 #include "runtime/component_catalog.h"
 #include "runtime/material_fluid.h"
 #include "runtime/materials.h"
+#include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <math.h>
@@ -16,7 +17,7 @@ static double energy(const fluid_particle *particles, int count)
     return sum;
 }
 
-static void appearance_preserves_physics()
+TEST_CASE(appearance_preserves_physics)
 {
     material_fluid *surface = material_fluid_new(10, 32);
     material_fluid *grains = material_fluid_new(10, 32);
@@ -28,9 +29,9 @@ static void appearance_preserves_physics()
                              .kind = FLUID_LIQUID,
                              .heat = i == 0 ? 4 : 0,
                              .thermal = { 2, 20 } };
-        assert(material_fluid_add(surface, p));
+        REQUIRE(material_fluid_add(surface, p));
         p.grain_radius = .25f;
-        assert(material_fluid_add(grains, p));
+        REQUIRE(material_fluid_add(grains, p));
     }
     fluid_region region = { -128, -128, 256, 256 };
     fluid_obstacle wall = { .half_size = { 2, 64 } };
@@ -41,9 +42,9 @@ static void appearance_preserves_physics()
         int count, other_count;
         const fluid_particle *ordinary = material_fluid_particles(surface, &count);
         const fluid_particle *fine = material_fluid_particles(grains, &other_count);
-        assert(count == 32 && count == other_count);
+        REQUIRE(count == 32 && count == other_count);
         for (int i = 0; i < count; i++) {
-            assert(
+            REQUIRE(
                 ordinary[i].position.x == fine[i].position.x &&
                 ordinary[i].position.y == fine[i].position.y &&
                 ordinary[i].velocity.x == fine[i].velocity.x &&
@@ -52,12 +53,13 @@ static void appearance_preserves_physics()
                 ordinary[i].radius == fine[i].radius
             );
         }
-        assert(energy(ordinary, count) == energy(fine, count));
-        assert(fabs(energy(fine, count) - 8) < .0001);
-        assert(a.impulse.x == b.impulse.x && a.impulse.y == b.impulse.y);
+        REQUIRE(energy(ordinary, count) == energy(fine, count));
+        REQUIRE(fabs(energy(fine, count) - 8) < .0001);
+        REQUIRE(a.impulse.x == b.impulse.x && a.impulse.y == b.impulse.y);
     }
     material_fluid_free(surface);
     material_fluid_free(grains);
+    return true;
 }
 
 static void add_component(
@@ -70,11 +72,11 @@ static void add_component(
     assert(ecs_world_record_add(world, entity, type->id, value, 0) == ECS_OK);
 }
 
-static void authored_detail()
+TEST_CASE(authored_detail)
 {
     ecs_world *world = ecs_world_new();
     for (int i = 0; i < GAME_REGISTRY_COMPONENT_COUNT; i++) {
-        assert(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
+        REQUIRE(ecs_world_register_component(world, GAME_REGISTRY_COMPONENTS[i], NULL) == ECS_OK);
     }
     game_preview_world *live = game_preview_world_new(world);
     ecs_entity config = ecs_world_create_entity(world);
@@ -98,31 +100,32 @@ static void authored_detail()
             fine = entity;
         }
     }
-    assert(ecs_world_apply_commands(world) == ECS_OK);
-    assert(!game_materials_prepare(live->runtime->materials));
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(!game_materials_prepare(live->runtime->materials));
     int count;
     const fluid_particle *p = material_fluid_particles(
         game_materials_fluid(live->runtime->materials),
         &count
     );
-    assert(count == 2 && p[0].grain_radius == 0 && p[1].grain_radius == .25f);
-    assert(p[0].radius == p[1].radius && p[0].mass == p[1].mass);
+    REQUIRE(count == 2 && p[0].grain_radius == 0 && p[1].grain_radius == .25f);
+    REQUIRE(p[0].radius == p[1].radius && p[0].mass == p[1].mass);
     uint64_t before = game_materials_inspect(live->runtime->materials).hash;
     GameFluidVolume
         *volume = ecs_component_data(world, fine, GAME_COMPONENT_GameFluidVolume.id);
     float invalid[] = { -1, NAN, INFINITY, 11 };
     for (int i = 0; i < 4; i++) {
         volume->grain_radius = invalid[i];
-        assert(game_materials_prepare(live->runtime->materials));
-        assert(game_materials_inspect(live->runtime->materials).hash == before);
+        REQUIRE(game_materials_prepare(live->runtime->materials));
+        REQUIRE(game_materials_inspect(live->runtime->materials).hash == before);
     }
     volume->grain_radius = .25f;
-    assert(!game_materials_prepare(live->runtime->materials));
+    REQUIRE(!game_materials_prepare(live->runtime->materials));
     game_preview_world_free(live);
     ecs_world_free(world);
+    return true;
 }
 
-static void burnout_becomes_smoke()
+TEST_CASE(burnout_becomes_smoke)
 {
     material_fluid *fluid = material_fluid_new(10, 1);
     material_fluid_set_reaction(
@@ -133,7 +136,7 @@ static void burnout_becomes_smoke()
                           .smoke_lifetime = 2,
                           .extinction = .5f }
     );
-    assert(material_fluid_add(
+    REQUIRE(material_fluid_add(
         fluid,
         (fluid_particle){ .mass = 2,
                           .radius = 1,
@@ -147,15 +150,16 @@ static void burnout_becomes_smoke()
     material_fluid_tick(fluid, 1.f / 60, 64, &region, 1, NULL, 0, NULL, 0);
     int count;
     const fluid_particle *p = material_fluid_particles(fluid, &count);
-    assert(count == 1 && p[0].mass == 2 && p[0].thermal.capacity == 3);
-    assert(p[0].kind == FLUID_GAS && p[0].smoke && !p[0].burning);
-    assert(p[0].fuel == 0 && p[0].grain_radius == 0 && p[0].lifetime == 2);
+    REQUIRE(count == 1 && p[0].mass == 2 && p[0].thermal.capacity == 3);
+    REQUIRE(p[0].kind == FLUID_GAS && p[0].smoke && !p[0].burning);
+    REQUIRE(p[0].fuel == 0 && p[0].grain_radius == 0 && p[0].lifetime == 2);
     material_fluid_free(fluid);
+    return true;
 }
 
 void test_material_detail()
 {
-    appearance_preserves_physics();
-    authored_detail();
-    burnout_becomes_smoke();
+    RUN_TEST_CASE(appearance_preserves_physics);
+    RUN_TEST_CASE(authored_detail);
+    RUN_TEST_CASE(burnout_becomes_smoke);
 }

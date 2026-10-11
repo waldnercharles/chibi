@@ -85,7 +85,8 @@ static bool read_pixels()
         cf_sleep(1);
     }
     int bytes = (int)sizeof pixels;
-    bool read = cf_readback_data(readback, pixels, bytes) == bytes;
+    bool read = cf_readback_size(readback) == bytes &&
+                cf_readback_data(readback, pixels, bytes) == bytes;
     cf_destroy_readback(readback);
     return read;
 }
@@ -369,11 +370,17 @@ TEST_CASE(appearance_relief_raises_lights_over_closed_floors)
 
 void test_render_scene2d()
 {
-    setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+#ifdef __linux__
+    if (!getenv("SDL_VIDEODRIVER")) {
+        setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+    }
+#endif
     setenv("CHIBI_RENDER_SHADER_DIR", CHIBI_SOURCE_ROOT "/src/render/shaders", 0);
     CF_AppOptionFlags options = CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT;
     CF_Result made = cf_make_app("scene2d", 0, 0, 0, SIDE, SIDE, options, NULL);
     assert(!cf_is_error(made));
+    /* Pixel assertions sample a fixed target, independent of window density. */
+    cf_app_set_canvas_size(SIDE, SIDE);
     app_scene_renderer_initialize();
     pu_setup(setup, teardown);
     RUN_TEST_CASE(scenes_without_lighting_draw_their_materials_unlit);

@@ -2012,6 +2012,40 @@ TEST_CASE(program_task_stops_with_owner_and_does_not_block_events)
     }
     return true;
 }
+/* Collecting after every run traced every live task each time, so starting
+ * and resuming n tasks took about 13 * n * n marks. The allocation threshold
+ * keeps mark calls proportional to n; threshold scans, sorting and sweeping
+ * are additional collector work that this counter does not measure. */
+#define MANY_TASKS 400
+#define MARKS_PER_TASK 64
+TEST_CASE(program_many_tasks_collect_in_linear_mark_work)
+{
+    const char
+        *source = "behavior Many { done: double = 0;"
+                  "function Wait(n: double) -> () { row: double[] = [n, n];"
+                  "await Delay(1); done += row[0] - n + 1; }"
+                  "on Impulse(amount, enabled) { for (i in 1..amount) { "
+                  "Wait(i) } } }";
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int b = 0; b < 2; b++) {
+        prepare();
+        REQUIRE(compile(source, backends[b]));
+        ecs_entity owner = ecs_world_create_entity(world);
+        execution_instance *instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance != NULL);
+        const pin_value args[] = { { .type = PIN_F64, .d = MANY_TASKS },
+                                   { .type = PIN_BOOL, .b = true } };
+        uint64_t marks = arena_collect_marks();
+        REQUIRE(execution_instance_dispatch(instance, 11, args, 2, 0, 0, 100000) == FLOW_OK);
+        REQUIRE(execution_instance_pending(instance) == MANY_TASKS);
+        REQUIRE(execution_program_update(program, 2, 0, 100000) == FLOW_OK);
+        /* Each task read its own row back after resuming. */
+        REQUIRE(number_state(instance, "done", MANY_TASKS));
+        REQUIRE(execution_instance_pending(instance) == 0);
+        REQUIRE(arena_collect_marks() - marks < MANY_TASKS * MARKS_PER_TASK);
+    }
+    return true;
+}
 TEST_CASE(program_task_semantics_reject_invalid_uses)
 {
     static const struct
@@ -3895,10 +3929,20 @@ TEST_CASE(program_version_21_lighting_drops_lab_fields)
           "particle_focal_length=300.0 "
           "resolution=0.5 trace_levels=3 upscale_mode=\"Edge aware\" "
           "upscale_threshold=0.1\n"
+          "    Other min_resolution=0.75 trace_levels=8\n"
+          "}\n"
+          "detached_components {\n"
+          "    GameHRC2D color_resolution=2 gather_resolution=1 "
+          "surface_depth_emitters=1 surface_depth_near_detail=#true "
+          "surface_thickness=48.0\n"
           "}\n",
           "name \"Lighting\"\n"
           "components {\n"
           "    GAME.GameHRC2D ambient=0.08 resolution=0.5\n"
+          "    Other min_resolution=0.75 trace_levels=8\n"
+          "}\n"
+          "detached_components {\n"
+          "    GameHRC2D surface_thickness=48.0\n"
           "}\n" },
         { "content/scenes/Start.kdl",
           "version 1\n"
@@ -3911,6 +3955,24 @@ TEST_CASE(program_version_21_lighting_drops_lab_fields)
           "            GameHRC2D debug_view=\"Fluence\" horizon_cache=#true "
           "intensity=2.0\n"
           "        }\n"
+          "        retained_components {\n"
+          "            GAME.GameHRC2D horizon_fuse_relief=#true "
+          "horizon_reproject=#true horizon_hierarchy=#true fog=0.2\n"
+          "            Other horizon_cache=#true\n"
+          "        }\n"
+          "        (array)children {\n"
+          "            - {\n"
+          "                name \"Child\"\n"
+          "                prototype \"Lighting\"\n"
+          "                components {\n"
+          "                    GAME.GameHRC2D intensity=0.5 trace_levels=4\n"
+          "                }\n"
+          "                retained_components {\n"
+          "                    GameHRC2D ambient=0.1 horizon_cache=#true\n"
+          "                    Other trace_levels=9\n"
+          "                }\n"
+          "            }\n"
+          "        }\n"
           "    }\n"
           "}\n",
           "version 1\n"
@@ -3921,6 +3983,23 @@ TEST_CASE(program_version_21_lighting_drops_lab_fields)
           "        prototype \"Lighting\"\n"
           "        components {\n"
           "            GameHRC2D intensity=2.0\n"
+          "        }\n"
+          "        retained_components {\n"
+          "            GAME.GameHRC2D fog=0.2\n"
+          "            Other horizon_cache=#true\n"
+          "        }\n"
+          "        (array)children {\n"
+          "            - {\n"
+          "                name \"Child\"\n"
+          "                prototype \"Lighting\"\n"
+          "                components {\n"
+          "                    GAME.GameHRC2D intensity=0.5\n"
+          "                }\n"
+          "                retained_components {\n"
+          "                    GameHRC2D ambient=0.1\n"
+          "                    Other trace_levels=9\n"
+          "                }\n"
+          "            }\n"
           "        }\n"
           "    }\n"
           "}\n" },
@@ -3938,12 +4017,33 @@ TEST_CASE(program_version_21_lighting_drops_lab_fields)
           "            }\n"
           "        }\n"
           "    }\n"
+          "    GameHRC2D {\n"
+          "        fields {\n"
+          "            debug_view label=\"Diagnostic\"\n"
+          "            intensity unit=\"gain\"\n"
+          "        }\n"
+          "    }\n"
+          "    Other {\n"
+          "        fields {\n"
+          "            trace_levels unit=\"steps\"\n"
+          "        }\n"
+          "    }\n"
           "}\n",
           "components {\n"
           "    GAME.GameHRC2D {\n"
           "        tab \"Material\"\n"
           "        fields {\n"
           "            target_fps unit=\"fps\"\n"
+          "        }\n"
+          "    }\n"
+          "    GameHRC2D {\n"
+          "        fields {\n"
+          "            intensity unit=\"gain\"\n"
+          "        }\n"
+          "    }\n"
+          "    Other {\n"
+          "        fields {\n"
+          "            trace_levels unit=\"steps\"\n"
           "        }\n"
           "    }\n"
           "}\n" },
@@ -4632,6 +4732,7 @@ void test_language_program()
     RUN_TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task);
     RUN_TEST_CASE(program_task_slots_are_reused_without_reviving_old_handles);
     RUN_TEST_CASE(program_task_stops_with_owner_and_does_not_block_events);
+    RUN_TEST_CASE(program_many_tasks_collect_in_linear_mark_work);
     RUN_TEST_CASE(program_task_semantics_reject_invalid_uses);
     RUN_TEST_CASE(program_version_10_blocking_calls_migrate_to_awaits);
     RUN_TEST_CASE(program_nested_functions_wait_for_themselves);

@@ -133,6 +133,12 @@ bool test_model_import_active();
 type_catalog_pack test_model_import_types(int index);
 #endif
 
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+/* Model and shader graphs keep vectors and colors in shader-typed defaults,
+ * and their render cases read game-typed components. */
+bool test_graph_types_active();
+type_catalog_pack test_graph_types(int index);
+#endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
 #include "authoring/studio_schema.h"
 bool test_shader_parameters_active();
@@ -140,6 +146,11 @@ type_catalog_pack test_shader_parameters_types();
 #endif
 int type_catalog_pack_count()
 {
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+    if (test_graph_types_active()) {
+        return 2;
+    }
+#endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     if (test_model_import_active()) {
         return 2;
@@ -170,6 +181,11 @@ int type_catalog_pack_count()
 type_catalog_pack type_catalog_pack_at(int index)
 {
     assert(index >= 0 && index < type_catalog_pack_count());
+#ifdef CHIBI_TEST_MODEL_GRAPHS
+    if (test_graph_types_active()) {
+        return test_graph_types(index);
+    }
+#endif
 #ifdef CHIBI_TEST_MODEL_IMPORT
     if (test_model_import_active()) {
         return test_model_import_types(index);
@@ -294,6 +310,37 @@ TEST_CASE(types_array_snapshot_owns_strings_and_names)
     REQUIRE(!strcmp(snapshot->type_name, "test.text"));
     REQUIRE(!strcmp(snapshot->items[0].type_name, "test.text"));
     REQUIRE(!strcmp(snapshot->items[0].str, "original"));
+    return true;
+}
+
+TEST_CASE(types_collection_follows_values_across_arenas)
+{
+    /* A root may point inside a value, and a value may reach another arena's
+     * values; whatever no root reaches is swept. */
+    arena first, second;
+    arena_init_collectable(&first);
+    arena_init_collectable(&second);
+    char *text = arena_alloc(&first, sizeof "kept");
+    memcpy(text, "kept", sizeof "kept");
+    arena_alloc(&first, 32);
+    pin_array *array = pin_array_snapshot_allocate(&second, PIN_STR, NULL, 1);
+    array->items[0] = (pin_value){ .type = PIN_STR, .str = text };
+    arena_alloc(&second, 32);
+    arena *arenas[] = { &first, &second };
+    arena_collection collection;
+    arena_collect_begin(&collection, arenas, 2);
+    arena_collect_mark(&collection, &array->items[0]);
+    arena_collect_mark(&collection, NULL);
+    arena_collect_end(&collection);
+    size_t text_bytes, array_bytes, capacity;
+    arena_usage(&first, &text_bytes, &capacity);
+    arena_usage(&second, &array_bytes, &capacity);
+    REQUIRE(text_bytes == sizeof "kept" && !strcmp(text, "kept"));
+    REQUIRE(array_bytes == sizeof *array + sizeof array->items[0]);
+    REQUIRE(first.kept == text_bytes && second.kept == array_bytes);
+    REQUIRE(first.allocated == 0 && second.allocated == 0);
+    arena_free(&first);
+    arena_free(&second);
     return true;
 }
 
@@ -492,6 +539,7 @@ void test_tool_types()
     RUN_TEST_CASE(types_catalog_composes_ordered_packs);
     RUN_TEST_CASE(types_nested_reflection_reads_writes_and_checks_layout);
     RUN_TEST_CASE(types_array_snapshot_owns_strings_and_names);
+    RUN_TEST_CASE(types_collection_follows_values_across_arenas);
     RUN_TEST_CASE(types_struct_array_snapshot_retains_nested_payload);
     RUN_TEST_CASE(types_document_snapshot_survives_source_release);
     RUN_TEST_CASE(types_document_rejects_invalid_values_without_publication);

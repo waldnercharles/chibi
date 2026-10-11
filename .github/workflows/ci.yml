@@ -82,6 +82,10 @@ jobs:
         run: make test-tools TOOLS_C_COMPILER=clang-18
       - name: Native selectors (one 60-second deadline)
         run: make test-native LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Material selectors (one 60-second deadline)
+        run: make test-materials LIBCLANG_ROOT=/usr/lib/llvm-18
+      - name: Project selectors (one 60-second deadline)
+        run: make test-projects LIBCLANG_ROOT=/usr/lib/llvm-18
       - name: Language selectors (one 60-second deadline)
         run: make test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18
 
@@ -138,6 +142,10 @@ jobs:
         run: make test-tools TOOLS_C_COMPILER="$CC"
       - name: Native selectors (one 60-second deadline)
         run: make test-native LIBCLANG_ROOT="$LLVM"
+      - name: Material selectors (one 60-second deadline)
+        run: make test-materials LIBCLANG_ROOT="$LLVM"
+      - name: Project selectors (one 60-second deadline)
+        run: make test-projects LIBCLANG_ROOT="$LLVM"
       - name: Language selectors (one 60-second deadline)
         run: make test-language-all LIBCLANG_ROOT="$LLVM"
 

@@ -8,7 +8,11 @@
 
 void test_open_hidden_app(const char *title, int width, int height)
 {
-    setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+#ifdef __linux__
+    if (!getenv("SDL_VIDEODRIVER")) {
+        setenv("SDL_VIDEO_DRIVER", "offscreen", 0);
+    }
+#endif
     setenv("CHIBI_RENDER_SHADER_DIR", CHIBI_SOURCE_ROOT "/src/render/shaders", 0);
     CF_AppOptionFlags options = CF_APP_OPTIONS_NO_AUDIO_BIT | CF_APP_OPTIONS_HIDDEN_BIT;
     CF_Result made = cf_make_app(title, 0, 0, 0, width, height, options, NULL);

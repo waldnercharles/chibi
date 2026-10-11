@@ -234,6 +234,52 @@ TEST_CASE(a_matching_first_request_keeps_later_sizes_waiting)
     return true;
 }
 
+/* One host frame of a 160 x 90 image with the left button pressed at (x, y). */
+static engine_viewport_pointer press(engine_viewport *viewport, float x, float y)
+{
+    cf_app_update(NULL);
+    engine_viewport_set_host_input(
+        viewport,
+        &(engine_viewport_host_input){ .width = 160,
+                                       .height = 90,
+                                       .x = x,
+                                       .y = y,
+                                       .hovered = true,
+                                       .down = { true },
+                                       .pressed = { true } }
+    );
+    int drawn = engine_viewport_draw(viewport, &(engine_viewport_controls){ .editing = true });
+    assert(drawn == 0);
+    cf_app_draw_onto_screen(false);
+    engine_viewport_pointer pointer;
+    engine_viewport_get_pointer(viewport, &pointer);
+    return pointer;
+}
+
+TEST_CASE(a_press_above_the_horizon_is_captured_without_a_ground_point)
+{
+    engine_viewport *viewport = engine_viewport_new(160, 90);
+    REQUIRE(viewport);
+    engine_viewport_set_perspective(viewport, true);
+    /* Ten units up, looking level along -Z: the image's top half is sky. */
+    engine_viewport_set_view(
+        viewport,
+        &(engine_viewport_view){
+            .width = 16,
+            .height = 9,
+            .lens = { .eye = { 0, 10, 0 }, .forward = { 0, 0, -1 }, .up = { 0, 1, 0 } } }
+    );
+    engine_viewport_pointer sky = press(viewport, 80, 20);
+    REQUIRE(sky.pressed && sky.down && !sky.grounded && !sky.cancel);
+    REQUIRE(sky.ndc_y > 0);
+    engine_viewport_pointer ground = press(viewport, 80, 80);
+    REQUIRE(ground.pressed && ground.grounded);
+    /* Straight ahead, so on the -Z axis: canvas Y is the ground's -Z. */
+    REQUIRE(fabsf(ground.world_x) < 1e-3f && ground.world_y > 10);
+    engine_viewport_free(viewport);
+    return true;
+}
+
 void test_render_viewport_resize()
 {
 #ifdef __linux__
@@ -247,6 +293,7 @@ void test_render_viewport_resize()
     RUN_TEST_CASE(first_request_replaces_the_placeholder_at_once);
     RUN_TEST_CASE(later_sizes_wait_until_held_for_two_draws);
     RUN_TEST_CASE(a_matching_first_request_keeps_later_sizes_waiting);
+    RUN_TEST_CASE(a_press_above_the_horizon_is_captured_without_a_ground_point);
     pu_setup(NULL, cleanup_ui);
     RUN_TEST_CASE(transparent_ui_presents_source_over_and_exports_straight_alpha);
     pu_clear_setup();

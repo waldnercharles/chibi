@@ -2968,6 +2968,21 @@ static bool drop_lab_fields(av_value *components)
     }
     return changed;
 }
+/* Scene children use the same component and retained-component schema. */
+static bool drop_entity_lab_fields(av_value *entities)
+{
+    bool changed = false;
+    for (size_t i = 0; av_is_arr(entities) && i < av_arr_size(entities); i++) {
+        av_value *entity = av_arr_get(entities, i);
+        if (!av_is_obj(entity)) {
+            continue;
+        }
+        changed |= drop_lab_fields(av_obj_get(entity, "components"));
+        changed |= drop_lab_fields(av_obj_get(entity, "retained_components"));
+        changed |= drop_entity_lab_fields(av_obj_get(entity, "children"));
+    }
+    return changed;
+}
 /* Returns an owned copy of a scene, prototype or component presentation
  * `asset` without the GameHRC2D fields version 22 removes, or NULL when it
  * has none. */
@@ -2982,14 +2997,7 @@ static char *drop_lab_settings(const char *asset)
     }
     bool changed = drop_lab_fields(av_obj_get(root, "components"));
     changed |= drop_lab_fields(av_obj_get(root, "detached_components"));
-    av_value *entities = av_obj_get(root, "entities");
-    for (size_t i = 0; av_is_arr(entities) && i < av_arr_size(entities); i++) {
-        av_value *entity = av_arr_get(entities, i);
-        if (av_is_obj(entity)) {
-            changed |= drop_lab_fields(av_obj_get(entity, "components"));
-            changed |= drop_lab_fields(av_obj_get(entity, "retained_components"));
-        }
-    }
+    changed |= drop_entity_lab_fields(av_obj_get(root, "entities"));
     char *migrated = changed ? asset_text_write(root) : NULL;
     av_doc_free(document);
     return migrated;

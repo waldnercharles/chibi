@@ -2010,7 +2010,7 @@ bool render_radiance_set_lighting(render_radiance *radiance, GameHRC2D lighting,
         radiance->surface_has_history = false;
     }
     GameHRC2D prior = radiance->lighting;
-    if (prior.surface_mode != lighting.surface_mode ||
+    if (prior.falloff != lighting.falloff || prior.surface_mode != lighting.surface_mode ||
         prior.surface_radius != lighting.surface_radius ||
         prior.surface_depth_radius != lighting.surface_depth_radius ||
         prior.surface_thickness != lighting.surface_thickness ||

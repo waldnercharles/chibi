@@ -544,6 +544,100 @@ TEST_CASE(scenarios_load_graph_assets)
     return true;
 }
 
+static const char *const
+    SHAPES_LIBRARY = "library \"Shapes\" {\n"
+                     "    pure function \"Disc\"(X: float = 0.0, Y: float = "
+                     "0.0) -> (Value: float = 0.0) {\n"
+                     "        return field_circle(entry.X, entry.Y, 40.0)\n"
+                     "    }\n"
+                     "}\n";
+
+/* A field that samples Shapes.Disc at its coordinates. */
+static const char *const
+    DISC_FIELD = "version 3\n"
+                 "name \"Disc\"\n"
+                 "domain \"field\"\n"
+                 "id_counter 21\n"
+                 "(array)graphs {\n"
+                 "    - {\n"
+                 "        kind \"event\"\n"
+                 "        name \"\"\n"
+                 "        (array)nodes {\n"
+                 "            - id=10 type=\"Field X\"\n"
+                 "            - id=12 type=\"Field Y\"\n"
+                 "            - {\n"
+                 "                id 14\n"
+                 "                type \"Call Pure Function\"\n"
+                 "                reference_name \"Disc\"\n"
+                 "                reference_asset \"Shapes\"\n"
+                 "                inputs {\n"
+                 "                    X id=15 type=\"float\"\n"
+                 "                    Y id=16 type=\"float\"\n"
+                 "                }\n"
+                 "                outputs {\n"
+                 "                    Value id=17 type=\"float\"\n"
+                 "                }\n"
+                 "            }\n"
+                 "            - id=18 type=\"Field Output\"\n"
+                 "        }\n"
+                 "        (array)edges {\n"
+                 "            - from=\"10.Value\" to=\"14.X\"\n"
+                 "            - from=\"12.Value\" to=\"14.Y\"\n"
+                 "            - from=\"14.Value\" to=\"18.Value\"\n"
+                 "        }\n"
+                 "    }\n"
+                 "}\n";
+
+TEST_CASE(fields_call_source_libraries)
+{
+    /* A field calls a .chibi library function by its library and name. */
+    const char *folders[] = { "game/content/libraries", "game/content/fields" };
+    for (int i = 0; i < 2; i++) {
+        char folder[256];
+        path(folder, sizeof folder, folders[i]);
+        REQUIRE(mkdir(folder, 0700) == 0);
+    }
+    write_file("game/content/libraries/Shapes.chibi", SHAPES_LIBRARY);
+    write_file("game/content/fields/Disc.kdl", DISC_FIELD);
+    REQUIRE(validate() == 0 && errors() == 0);
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"preview_field\",\"kind\":\"field\",\"name\":\"Disc\",\"width\":16,\"height\":16}") ==
+        0
+    );
+    /* Every sample of the 32-unit square lies inside the 40-unit disc. */
+    REQUIRE(yyjson_get_real(result("maximum")) < 0);
+    /* Native preparation rejects a graph/source library name collision,
+     * even when the graph's filename differs from its declared name. */
+    char folder[256], collision[256];
+    path(folder, sizeof folder, "game/content/shader-libraries");
+    REQUIRE(mkdir(folder, 0700) == 0);
+    write_file(
+        "game/content/shader-libraries/Different.kdl",
+        "version 3\nname \"Shapes\"\ndomain \"shader-library\"\nid_counter 1\n"
+        "(array)graphs { - kind=\"event\" name=\"Functions\"; }\n"
+    );
+    static const char
+        refusal[] = "Native graph declaration shares a source library's name";
+    REQUIRE(validate() != 0 && errors() > 0);
+    const char *collision_message = first_message(result("project"));
+    REQUIRE(collision_message && strstr(collision_message, refusal));
+    REQUIRE(
+        ctl(true, "{\"contract\":1,\"operation\":\"run_scenario\",\"kind\":\"scene\",\"name\":\"Start\",\"frames\":1}") !=
+        0
+    );
+    REQUIRE(failure_code() && !strcmp(failure_code(), "validation_failed"));
+    path(collision, sizeof collision, "game/content/shader-libraries/Different.kdl");
+    REQUIRE(unlink(collision) == 0);
+    REQUIRE(validate() == 0 && errors() == 0);
+    /* Without the function, the field's call has nothing to resolve. */
+    write_file("game/content/libraries/Shapes.chibi", "library \"Shapes\" {\n}\n");
+    REQUIRE(validate() != 0 && errors() == 1);
+    yyjson_val *problem = yyjson_arr_get(result("problems"), 0);
+    const char *message = first_message(yyjson_obj_get(problem, "diagnostics"));
+    REQUIRE(!strcmp(message, "Shapes: missing library function"));
+    return true;
+}
+
 static void write_bytes(const char *relative, const unsigned char *bytes, size_t length)
 {
     char file[256];
@@ -1500,6 +1594,8 @@ TEST_CASE(scenarios_hold_controller_slots)
     return true;
 }
 
+void test_tool_tetris(const char *binary);
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -1522,6 +1618,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(models_import_into_the_project);
 #endif
     RUN_TEST_CASE(scenarios_load_graph_assets);
+    RUN_TEST_CASE(fields_call_source_libraries);
     RUN_TEST_CASE(sounds_must_decode);
     RUN_TEST_CASE(resources_are_limited_together);
     RUN_TEST_CASE(manifest_content_folder_is_used);
@@ -1534,6 +1631,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     RUN_TEST_CASE(unit_mismatches_are_warnings);
     pu_clear_setup();
+    test_tool_tetris(binary);
 }
 
 /* The cases that read a project-wide budget's worth of prototypes, kept apart

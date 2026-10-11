@@ -30,6 +30,7 @@
 #include "authoring/source_catalog.h"
 #include "authoring/source_collection.h"
 #include "authoring/source_format.h"
+#include "authoring/source_graph_library.h"
 #include "authoring/source_intelligence.h"
 #include "authoring/source_metadata.h"
 #include "authoring/source_minimize.h"
@@ -1696,6 +1697,11 @@ static void load_catalog_links(const char *root, const asset_entry *entries, cat
             apush(links->assets, asset);
         }
     }
+    behavior_asset **libraries = authoring_source_graph_libraries(links->sources);
+    for (int i = 0; i < acount(libraries); i++) {
+        apush(links->assets, libraries[i]);
+    }
+    afree(libraries);
 }
 
 static void catalog_add_report(catalog_asset *asset, const compile_report *report)
@@ -6377,6 +6383,39 @@ static int handle_read_asset(const char *root, yyjson_val *request, response *re
     return 0;
 }
 
+/* A copy of a field linked to the project's source libraries; NULL on error. */
+static behavior_asset *link_source_libraries(
+    const char *root,
+    const behavior_asset *asset,
+    char *error,
+    size_t error_size
+)
+{
+    authoring_language_catalog *native = source_native_catalog(root, error, error_size);
+    if (!native) {
+        return NULL;
+    }
+    script_lower_bindings bindings = authoring_language_bindings(native);
+    authoring_sources *sources = authoring_sources_prepare(
+        chibi_automation_content(root),
+        authoring_language_catalog_view(native),
+        &bindings,
+        BEHAVIOR_BYTECODE
+    );
+    behavior_asset **libraries = authoring_source_graph_libraries(sources);
+    behavior_asset *linked = behavior_asset_link_libraries(
+        asset,
+        (const behavior_asset *const *)libraries,
+        acount(libraries),
+        error,
+        error_size
+    );
+    authoring_source_graph_libraries_free(libraries);
+    authoring_sources_free(sources);
+    authoring_language_catalog_free(native);
+    return linked;
+}
+
 /* A copy of asset linked to the project's libraries (and, for behaviors,
    event declarations), so validation sees calls into them; NULL on error. */
 static behavior_asset *link_project_libraries(
@@ -6388,7 +6427,7 @@ static behavior_asset *link_project_libraries(
 {
     behavior_asset **libraries = NULL;
     if (asset->domain == BEHAVIOR_DOMAIN_FIELD) {
-        return behavior_asset_clone(asset);
+        return link_source_libraries(root, asset, error, error_size);
     }
     if (asset->domain != BEHAVIOR_DOMAIN_MATERIAL &&
         asset->domain != BEHAVIOR_DOMAIN_SHAPE && asset->domain != BEHAVIOR_DOMAIN_MODEL &&
@@ -9369,14 +9408,19 @@ static int apply_scenario_input(
         memcpy(context->controllers, input->controllers, sizeof context->controllers);
         context->devices_sampled = true;
     }
-    bool firing = context->aim_firing;
+    bool firing = false;
     if (context->devices_sampled &&
         engine_sample_devices(runtime, context->controls, context->controllers, &firing) <
             0) {
         snprintf(error, error_size, "invalid authored action binding");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
-    if (engine_sample_aim(runtime, context->aim, firing, context->aim_point) < 0) {
+    if (engine_sample_aim(
+            runtime,
+            context->aim,
+            context->aim_firing || firing,
+            context->aim_point
+        ) < 0) {
         snprintf(error, error_size, "scenario aim input failed");
         return CHIBI_AUTOMATION_EXECUTION_ERROR;
     }
@@ -12066,10 +12110,17 @@ static int handle_preview_field(const char *root, yyjson_val *request, response 
         response_error(result, exit_code, status, error);
         return -1;
     }
-    behavior_asset *asset = load_project_behavior(root, json);
+    behavior_asset *authored = load_project_behavior(root, json);
     free(json);
-    if (!asset) {
+    if (!authored || authored->domain != BEHAVIOR_DOMAIN_FIELD) {
+        behavior_asset_free(authored);
         response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, "Invalid field asset");
+        return -1;
+    }
+    behavior_asset *asset = link_source_libraries(root, authored, error, sizeof error);
+    behavior_asset_free(authored);
+    if (!asset) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_VALIDATION_ERROR, error);
         return -1;
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");

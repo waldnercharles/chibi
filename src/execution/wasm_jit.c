@@ -265,6 +265,7 @@ int behavior_function_run_wasm(const behavior_function *f, behavior_function_con
     execution_machine_end(&machine, result);
     return result;
 #else
+    (void)f;
     snprintf(last_error, sizeof last_error, "Wasm JIT requires the browser runtime");
     ctx->error_message = last_error;
     return FLOW_ERR_COMPILE;

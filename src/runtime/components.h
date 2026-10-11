@@ -502,7 +502,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameMaterial)
     unsigned border_albedo NODE_COLOR;
     unsigned border_filter NODE_COLOR;
     /* Gain of light received near the surface of a solid, reaching
-     * GameHRC2D.surface_radius into it. Zero disables; no unlit outline. */
+     * GameHRC2D.surface_radius into it. Zero disables; no unlit outline.
+     * With Depth thickness, a solid that absorbs nothing instead takes its
+     * HRC light shaded by its facing and by heights in the way, this much. */
     float edge_light NODE_RANGE(0, 1);
 }
 GameMaterial;
@@ -1262,11 +1264,15 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
      * scaled by GameMaterial.edge_light. Zero disables surface lighting. */
     float surface_radius NODE_UNIT("u");
     /* Blur spreads open-space light; Gather uses bounded visibility probes.
-     * Depth thickness gathers visible emission with finite-depth occluders. */
+     * Depth thickness is the 2.5D mode: it gathers visible emission past
+     * anything with height, and on solids that absorb nothing shades the HRC
+     * light by their facing and those heights. Light passes over a prop that
+     * absorbs nothing where the prop is lower than the light. */
     GameHRCSurfaceMode surface_mode;
     /* Screen-plane reach in project units for Depth thickness mode. */
     float surface_depth_radius;
-    /* Gain of the visible Depth contribution added to HRC. Zero disables it. */
+    /* Gain of Depth light added to solids that absorb light. Zero disables
+     * Depth thickness. */
     float surface_depth_gain;
     /* Source sampling budget; all levels preserve integrated emission. */
     GameHRCDepthQuality surface_depth_quality;
@@ -1283,7 +1289,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(GameHRC2D)
     bool surface_depth_temporal;
     /* Maximum previous-frame weight; zero selects the default of 0.65. */
     float surface_depth_history;
-    /* Assumed camera-depth thickness of visible surfaces in project units. */
+    /* How far below its visible top a surface blocks Depth light, in
+     * project units. A light that absorbs nothing never blocks. */
     float surface_thickness;
     /* Sideways reach of nearby light relative to its height above the plane;
      * larger values deepen normal-mapped relief. */

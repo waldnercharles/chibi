@@ -19,7 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
-    ('--shader-webgpu',): 'Independently reviewed one finite CPU-only noise graph GLSL-to-WGSL compile through the runtime Cute compiler; no app/window/GPU/files/processes; failing-before measurement 0.687s/shared60s',
+    ('--shader-webgpu',): 'Independently reviewed seven finite CPU cases: one noise graph, two particle vertex shaders and four authored curve widths with metadata roundtrip and CPU evaluation; actual GLSL-to-WGSL compilation, bounded checked-in vertex source reads, no app/window/GPU/process/network; graph compilation required for curves; passed 0.580s/shared60s',
     ('--audio-analysis',): 'Independently reviewed twelve C audio cases: finite PCM tones, silence, channel/format/source snapshots, plus one dummy-SDL no-graphics callback/lifetime case with a shared two-second wait; no GPU, network or real recording device; shared60s',
     ('--tilemap-project',): 'Reviewed first CPU measurement: fixed sibling Celeste project, pinned local git baseline56ca9d48<=64KiB, Room<=16KiB, Level<=4KiB,1472cells230oldtiles/fiveactors, three owned controller children<=10s each including two headless simulation frames<=15entities, no GPU/network; shared60s',
     ('--tilemap',): 'Independently reviewed seven fixed CPU grid/cache/point/SAT/bounds/native-binding/prototype cases, at most four parsed cells and three created ECS entities, one <=4KiB KDL and 64x16 PNG preparation, rejected overflow dimensions, no engine frames/GPU/process/network; shared60s',

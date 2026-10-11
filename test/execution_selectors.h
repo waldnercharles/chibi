@@ -7,7 +7,9 @@ CHIBI_CPU_SELECTOR("--system-schedule")
 CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
 /* PCM analysis and a dummy SDL audio device; graphics and real input disabled. */
 CHIBI_CPU_SELECTOR("--audio-analysis")
-/* One generated noise material compiled to WGSL without opening a device. */
+/* Seven CPU cases: one noise shader, two particle vertex shaders and four
+ * authored curve widths with metadata roundtrips and evaluation, compiled to
+ * WGSL without opening a device. Curve cases require graph compilation. */
 CHIBI_CPU_SELECTOR("--shader-webgpu")
 
 /* Explicit opt-in checks against installed products; each runs under the

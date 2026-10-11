@@ -34,6 +34,9 @@ void test_tool_audio_analysis();
 void test_tool_webgpu_staging();
 #ifdef CHIBI_TEST_SHADER_WEBGPU
 void test_tool_shader_webgpu();
+#ifdef CHIBI_TEST_SHADER_CURVES
+void test_tool_shader_curves();
+#endif
 #endif
 void test_tool_types();
 void test_tool_ecs();
@@ -305,6 +308,9 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_SHADER_WEBGPU
     if (shader_webgpu) {
         test_tool_shader_webgpu();
+#ifdef CHIBI_TEST_SHADER_CURVES
+        test_tool_shader_curves();
+#endif
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }

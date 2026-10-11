@@ -295,6 +295,9 @@ NODE(maximum, "Max", 2, binary, any_out, "Returns the larger of A and B per comp
 NODE(absolute, "Abs", 1, unary, any_out, "Returns the absolute value of each component.");
 NODE(sine, "Sin", 1, unary, any_out, "Returns the sine of each component, in radians.");
 NODE(cosine, "Cos", 1, unary, any_out, "Returns the cosine of each component, in radians.");
+NODE(exponential, "Exp", 1, unary, any_out, "Returns e raised to each component.");
+NODE(logarithm, "Log", 1, unary, any_out, "Returns the natural logarithm of each component; inputs must be positive.");
+NODE(power, "Pow", 2, binary, any_out, "Raises A to B per component; scalars broadcast. A must be nonnegative, and B positive where A is zero.");
 NODE(fraction, "Fract", 1, unary, any_out, "Returns each component minus its floor, from 0 up to 1 even for negative values.");
 NODE(floor_node, "Floor", 1, unary, any_out, "Rounds each component down to the nearest whole number.");
 NODE(sqrt_node, "Sqrt", 1, unary, any_out, "Returns the square root of each component, treating negative values as 0.");
@@ -462,6 +465,9 @@ static node_desc *const nodes[] = { &constant,
                                     &absolute,
                                     &sine,
                                     &cosine,
+                                    &exponential,
+                                    &logarithm,
+                                    &power,
                                     &fraction,
                                     &floor_node,
                                     &sqrt_node,

@@ -82,7 +82,10 @@ static const char *const names[] = { "Constant",
                                      "Triplanar Texture",
                                      "Triplanar Texture Alpha",
                                      "Decal Mask",
-                                     "Sampled SDF" };
+                                     "Sampled SDF",
+                                     "Exp",
+                                     "Log",
+                                     "Pow" };
 _Static_assert(sizeof names / sizeof *names == SHADER_OP_COUNT, "shader operation names");
 const char *shader_op_name(shader_op op)
 {
@@ -111,9 +114,10 @@ int shader_op_inputs(shader_op op)
     }
     if ((op >= SHADER_ABS && op <= SHADER_LENGTH) ||
         (op >= SHADER_X && op <= SHADER_W) || op == SHADER_NORMALIZE ||
-        op == SHADER_SAMPLED_SDF || op == SHADER_SATURATE ||
-        op == SHADER_IMAGE_TEXTURE || op == SHADER_IMAGE_TEXTURE_ALPHA ||
-        op == SHADER_SURFACE_INFLUENCE || (op >= SHADER_FLOOR && op <= SHADER_SIGN)) {
+        op == SHADER_SAMPLED_SDF || op == SHADER_SATURATE || op == SHADER_EXP ||
+        op == SHADER_LOG || op == SHADER_IMAGE_TEXTURE ||
+        op == SHADER_IMAGE_TEXTURE_ALPHA || op == SHADER_SURFACE_INFLUENCE ||
+        (op >= SHADER_FLOOR && op <= SHADER_SIGN)) {
         return 1;
     }
     if (op == SHADER_MIX || op == SHADER_SELECT || op == SHADER_SMOOTH_UNION ||
@@ -368,6 +372,9 @@ bool shader_graph_particle_validate(const shader_graph *g, shader_error *error)
             case SHADER_ABS:
             case SHADER_SIN:
             case SHADER_COS:
+            case SHADER_EXP:
+            case SHADER_LOG:
+            case SHADER_POW:
             case SHADER_FRACT:
             case SHADER_LENGTH:
             case SHADER_DOT:
@@ -609,6 +616,9 @@ static bool eval_values(
                 case SHADER_ABS: v[i][j] = fabsf(a[j]); break;
                 case SHADER_SIN: v[i][j] = sinf(a[j]); break;
                 case SHADER_COS: v[i][j] = cosf(a[j]); break;
+                case SHADER_EXP: v[i][j] = expf(a[j]); break;
+                case SHADER_LOG: v[i][j] = logf(a[j]); break;
+                case SHADER_POW: v[i][j] = powf(a[j], b[j]); break;
                 case SHADER_FRACT: v[i][j] = a[j] - floorf(a[j]); break;
                 case SHADER_FLOOR: v[i][j] = floorf(a[j]); break;
                 /* Total math: a negative square root reads as 0, as on the GPU. */
@@ -1358,6 +1368,9 @@ static char *graph_glsl(const shader_graph *g, const char *prefix, int ramp_base
             case SHADER_MAX:
             case SHADER_INTERSECTION: append(&s, "max(%s,%s)", a, b); break;
             case SHADER_DIFFERENCE: append(&s, "max(%s,-%s)", a, b); break;
+            case SHADER_EXP: append(&s, "exp(%s)", a); break;
+            case SHADER_LOG: append(&s, "log(%s)", a); break;
+            case SHADER_POW: append(&s, "pow(%s,%s)", a, b); break;
             case SHADER_FLOOR: append(&s, "floor(%s)", a); break;
             case SHADER_SQRT: append(&s, "sqrt(max(%s,0.0))", a); break;
             case SHADER_SIGN: append(&s, "sign(%s)", a); break;

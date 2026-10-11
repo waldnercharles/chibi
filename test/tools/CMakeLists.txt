@@ -138,6 +138,11 @@ if(TARGET Chibi::platform AND TARGET Chibi::shader_runtime AND NOT CHIBI_INSTALL
     target_include_directories(test_tools PRIVATE "${cute_source}/tools")
     target_link_libraries(test_tools PRIVATE Chibi::shader_runtime Chibi::platform)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SHADER_WEBGPU=1)
+    if(TARGET Chibi::graph_compilation)
+        target_sources(test_tools PRIVATE shader_curves.c)
+        target_link_libraries(test_tools PRIVATE Chibi::graph_compilation Chibi::graph_authoring)
+        target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SHADER_CURVES=1)
+    endif()
 endif()
 
 # Reflection cases drive the native generator that SDK packages are built with.

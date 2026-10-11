@@ -1731,7 +1731,8 @@ const char *shader_catalog_write_parameter_value(void *service, const pin_value 
         ((!strcmp(value.type_name, "ShaderVec2") && fresh.width == 2) ||
          (!strcmp(value.type_name, "ShaderVec3") && fresh.width == 3) ||
          (!strcmp(value.type_name, "ShaderVec4") && fresh.width == 4) ||
-         (!strcmp(value.type_name, "CF_V2") && fresh.width == 2))
+         (!strcmp(value.type_name, "CF_V2") && fresh.width == 2) ||
+         (!strcmp(value.type_name, "CF_V3") && fresh.width == 3))
     ) {
         memcpy(fresh.value, value.ptr, (size_t)fresh.width * sizeof(float));
     } else {

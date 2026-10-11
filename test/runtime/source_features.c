@@ -798,11 +798,16 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
     const char *payloads[] = { "float=0.25",
                                "double=0.5",
                                "bool=true",
-                               "struct<\"CF_V2\">={x:0.25,y:-0.5}" };
-    const float expected[][2] = { { .25f, 0 }, { .5f, 0 }, { 1, 0 }, { .25f, -.5f } };
+                               "struct<\"CF_V2\">={x:0.25,y:-0.5}",
+                               "struct<\"CF_V3\">={x:0.25,y:-0.5,z:3}" };
+    const float expected[][3] = { { .25f, 0, 0 },
+                                  { .5f, 0, 0 },
+                                  { 1, 0, 0 },
+                                  { .25f, -.5f, 0 },
+                                  { .25f, -.5f, 3 } };
     for (int backend = 0; backend < 2; backend++) {
-        for (int kind = 0; kind < 4; kind++) {
-            int width = kind == 3 ? 2 : 1;
+        for (int kind = 0; kind < 5; kind++) {
+            int width = kind >= 3 ? kind - 1 : 1;
             REQUIRE(publish_material(width));
             test_world = ecs_world_new();
             REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Shader, NULL) == 0);
@@ -832,7 +837,8 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
                 kind == 0   ? "float"
                 : kind == 1 ? "double"
                 : kind == 2 ? "bool"
-                            : "struct<\"CF_V2\">"
+                : kind == 3 ? "struct<\"CF_V2\">"
+                            : "struct<\"CF_V3\">"
             );
             REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
             uint64_t tick = execution_module_event(prepared->module, "Tick");
@@ -859,6 +865,60 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
                 for (int field = 0; field < width; field++) {
                     REQUIRE(values[slot][field] == expected[kind][field]);
                 }
+            }
+            cleanup();
+        }
+    }
+    return true;
+}
+
+TEST_CASE(source_native_material_rejects_invalid_vector_parameters)
+{
+    const char
+        *text = "behavior Material { state done:bool=false; "
+                "state point:struct<\"CF_V3\">={x:1,y:2,z:3}; "
+                "on Tick { await set_material_parameter(self,\"Value\",point); "
+                "done=true; } }";
+    for (int backend = 0; backend < 2; backend++) {
+        for (int width = 2; width <= 3; width++) {
+            REQUIRE(publish_material(width));
+            test_world = ecs_world_new();
+            REQUIRE(ecs_world_register_component(test_world, &COMPONENT_Shader, NULL) == ECS_OK);
+            ecs_entity owner = ecs_world_create_entity(test_world);
+            Shader binding = { .material = "Typed host material" };
+            REQUIRE(
+                ecs_world_record_add(test_world, owner, COMPONENT_Shader.id, &binding, 0) == ECS_OK
+            );
+            REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
+            REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+            uint64_t tick = execution_module_event(prepared->module, "Tick"),
+                     point_id = state_id("point");
+            REQUIRE(tick && point_id && done_id);
+            instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+            REQUIRE(instance);
+            retire_producer();
+            if (width == 3) {
+                CF_V3 point = { 1, 2, INFINITY };
+                REQUIRE(
+                    execution_instance_set_state(
+                        instance,
+                        point_id,
+                        (pin_value){ .type = PIN_STRUCT, .type_name = "CF_V3", .ptr = &point }
+                    ) == FLOW_OK
+                );
+            }
+            REQUIRE(dispatch(tick, 1024) == FLOW_ERR_INVALID_GRAPH);
+            const execution_program_failure *failure = execution_program_error(program);
+            REQUIRE(failure && failure->status == FLOW_ERR_INVALID_GRAPH);
+            REQUIRE(
+                !strcmp(failure->message, width == 2 ? "Shader parameter type does not match." : "Shader parameters must be finite.")
+            );
+            REQUIRE(!execution_instance_state(instance, done_id)->b);
+            REQUIRE(execution_instance_pending(instance) == 0);
+            float values[SHADER_PARAMETER_MAX][4];
+            render_shader_parameters(render_shader_find("Typed host material"), test_world, owner, NULL, values);
+            for (int field = 0; field < width; field++) {
+                REQUIRE(values[0][field] == 0);
             }
             cleanup();
         }
@@ -1256,5 +1316,6 @@ void test_source_native_material_features()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait);
+    RUN_TEST_CASE(source_native_material_rejects_invalid_vector_parameters);
     pu_clear_setup();
 }

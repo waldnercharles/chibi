@@ -77,6 +77,9 @@ typedef enum
     SHADER_TRIPLANAR_TEXTURE_ALPHA,
     SHADER_DECAL_MASK,
     SHADER_SAMPLED_SDF,
+    SHADER_EXP,
+    SHADER_LOG,
+    SHADER_POW,
     SHADER_OP_COUNT
 } shader_op;
 enum

@@ -66,3 +66,8 @@ component Drive
 # Source-native-features tests the authored requests without launching websites.
 function Open URL
 function Cancel Open URL
+
+# Shader Exp, Log and Pow are declarative math nodes, outside the native catalog
+# counted here. The CPU-only --shader-webgpu cases round-trip authored shader
+# libraries at widths 1 through 4, evaluate their results and compile them to
+# WGSL. Rendering those operations in a feature scene remains uncovered.

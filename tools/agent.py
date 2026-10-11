@@ -26,9 +26,18 @@ HEALTH = None
 NEXT = 'make test-policy-inventory'
 CPU_SELECTORS = {
     '--compile-installed-space-cadet': 'compile-installed-space-cadet',
+    '--contact-benchmark': 'contact-benchmark',
     '--graph-document': 'graph-document',
     '--graph-functions': 'graph-functions',
     '--graph-presentation': 'graph-presentation',
+    '--material-benchmark': 'material-benchmark',
+    '--material-destruction': 'material-destruction',
+    '--material-ecs': 'material-ecs',
+    '--material-fluids': 'material-fluids',
+    '--material-mpm': 'material-mpm',
+    '--material-render': 'material-render',
+    '--material-simulation': 'material-simulation',
+    '--material-thermal': 'material-thermal',
     '--source-edit': 'source-edit',
     '--source-presentation': 'source-presentation',
     '--source-systems': 'source-systems',

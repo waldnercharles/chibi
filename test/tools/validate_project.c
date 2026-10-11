@@ -1500,6 +1500,87 @@ TEST_CASE(scenarios_hold_controller_slots)
     return true;
 }
 
+/* The text the last snapshot shows in the ui element `selector`, or NULL. */
+static const char *snapshot_ui_text(const char *selector)
+{
+    yyjson_val *texts = result("ui");
+    for (size_t i = 0; i < yyjson_arr_size(texts); i++) {
+        yyjson_val *text = yyjson_arr_get(texts, i);
+        if (reads(yyjson_get_str(yyjson_obj_get(text, "element")), selector)) {
+            return yyjson_get_str(yyjson_obj_get(text, "text"));
+        }
+    }
+    return NULL;
+}
+
+/* Snapshots examples/tetris after `frames` steps that hard-drop a piece
+ * every third step from step 20 until step `restart_step`, then press Enter
+ * there when `restart` is set. */
+static int play_tetris(int frames, bool restart)
+{
+    static const int restart_step = 100;
+    assert(frames >= restart_step);
+    /* 4 is GAME_CONTROL_SPACE and 9 GAME_CONTROL_ENTER. */
+    char timeline[4096] = "";
+    int n = 0;
+    for (int i = 0; 21 + i * 3 < restart_step; i++) {
+        n += snprintf(
+            timeline + n,
+            sizeof timeline - n,
+            "%s{\"frame\":%d,\"input\":{\"controls\":[4]}},"
+            "{\"frame\":%d,\"input\":{\"controls\":[]}}",
+            i ? "," : "",
+            20 + i * 3,
+            21 + i * 3
+        );
+    }
+    if (restart) {
+        n += snprintf(
+            timeline + n,
+            sizeof timeline - n,
+            ",{\"frame\":%d,\"input\":{\"controls\":[9]}},"
+            "{\"frame\":%d,\"input\":{\"controls\":[]}}",
+            restart_step,
+            restart_step + 1
+        );
+    }
+    char request[4608];
+    snprintf(
+        request,
+        sizeof request,
+        "{\"contract\":1,\"operation\":\"runtime_snapshot\","
+        "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":%d,"
+        "\"entity_limit\":1,\"input_timeline\":[%s]}",
+        frames,
+        timeline
+    );
+    write_file("request.json", request);
+    return run("exec \"$0\" --project-root tetris < request.json");
+}
+
+TEST_CASE(tetris_example_plays)
+{
+    /* The acceptance game: written as files, checked by chibi_ctl. Pieces
+     * spawn in columns 3 to 6, so 23 hard drops (92 cells) overflow those 88
+     * cells whatever order the bag deals them in. */
+    char validate[512];
+    snprintf(
+        validate,
+        sizeof validate,
+        "cp -R '%s/examples/tetris' tetris && "
+        "exec \"$0\" --project-root tetris < request.json",
+        tool_root()
+    );
+    write_file("request.json", "{\"contract\":1,\"operation\":\"validate_project\"}");
+    REQUIRE(run(validate) == 0 && errors() == 0);
+    REQUIRE(play_tetris(100, false) == 0);
+    REQUIRE(reads(snapshot_ui_text("#over"), "GAME OVER"));
+    REQUIRE(!reads(snapshot_ui_text("#score"), "0"));
+    REQUIRE(play_tetris(110, true) == 0);
+    REQUIRE(reads(snapshot_ui_text("#score"), "0") && !snapshot_ui_text("#over"));
+    return true;
+}
+
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -1531,6 +1612,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(scene_joints_name_their_other_by_path);
     RUN_TEST_CASE(scenarios_hold_input_actions);
     RUN_TEST_CASE(scenarios_hold_controller_slots);
+    RUN_TEST_CASE(tetris_example_plays);
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     RUN_TEST_CASE(unit_mismatches_are_warnings);
     pu_clear_setup();

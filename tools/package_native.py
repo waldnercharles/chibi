@@ -42,6 +42,10 @@ def copy_notices(stage, build, cache):
     for key, value in cache.items():
         if value and key.endswith('_SOURCE_DIR') and key != 'chibi_SOURCE_DIR':
             sources[key.removesuffix('_SOURCE_DIR')] = Path(value)
+    package = cache.get('CHIBI_DEPENDENCY_PACKAGE')
+    if package:
+        for source in (Path(package).parent / '_deps').glob('*-src'):
+            sources[source.name.removesuffix('-src')] = source
     for name, source in sources.items():
         resolved = source.resolve()
         if (not source.is_dir() or resolved == ROOT or resolved == stage.resolve()

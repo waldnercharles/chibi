@@ -270,6 +270,55 @@ TEST_CASE(browser_export_does_not_require_native_process_apis)
     return true;
 }
 
+TEST_CASE(canvas_layout_changes_notify_the_platform_resize_handler)
+{
+    /* Execute each real shell with browser seams, leaving scenarios and
+     * assertions here. The browser integration checks SDL's backing buffer. */
+    tool_write(
+        driver_path,
+        "const vm=require('node:vm'),fs=require('node:fs');\n"
+        "const html=fs.readFileSync(process.argv[2],'utf8');\n"
+        "let callback,target;const events=[];\n"
+        "const canvas={addEventListener(){},focus(){}};\n"
+        "const status={dataset:{},append(){}};\n"
+        "const context={console,Event,navigator:{},\n"
+        "window:{addEventListener(){},dispatchEvent:e=>events.push(e.type)},\n"
+        "document:{getElementById:id=>id==='canvas'?canvas:status,"
+        "createElement:()=>({}),body:{append(){}}},\n"
+        "ResizeObserver:class{constructor(fn){callback=fn;}observe(node){"
+        "target=node;}}};\n"
+        "vm.runInNewContext(html.match(/<script>([\\s\\S]*?)<\\/script>/"
+        ")[1],context);\n"
+        "for(const [width,height] of JSON.parse(process.argv[3]))"
+        "callback?.([{target:canvas,contentRect:{width,height}}]);\n"
+        "console.log(JSON.stringify({observed:target===canvas,events}));\n"
+    );
+    const char *shells[] = { "src/host/web/index.html", "tools/web_shell.html" };
+    for (int i = 0; i < 2; i++) {
+        char source[1024];
+        snprintf(source, sizeof source, "%s/%s", tool_root(), shells[i]);
+        const char *argv[] = { "node",
+                               driver_path,
+                               source,
+                               "[[0,0],[320,180],[0,0],[640,360]]",
+                               NULL };
+        REQUIRE(tool_run(argv, tool_root(), log_path) == 0);
+        char *output = tool_read(log_path);
+        result = yyjson_read(output, strlen(output), 0);
+        free(output);
+        REQUIRE(result);
+        REQUIRE(yyjson_get_bool(field("observed")));
+        yyjson_val *events = field("events");
+        REQUIRE(yyjson_arr_size(events) == 4);
+        for (int event = 0; event < 4; event++) {
+            REQUIRE(!strcmp(yyjson_get_str(yyjson_arr_get(events, event)), "resize"));
+        }
+        yyjson_doc_free(result);
+        result = NULL;
+    }
+    return true;
+}
+
 void test_tool_web_storage()
 {
     pu_setup(setup, teardown);
@@ -286,5 +335,6 @@ void test_tool_web_storage()
     RUN_TEST_CASE(download_failure_stops_startup);
     RUN_TEST_CASE(archive_cannot_escape_its_workspace);
     RUN_TEST_CASE(browser_export_does_not_require_native_process_apis);
+    RUN_TEST_CASE(canvas_layout_changes_notify_the_platform_resize_handler);
     pu_setup(NULL, NULL);
 }

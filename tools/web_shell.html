@@ -71,6 +71,8 @@
       }
       canvas.addEventListener('contextmenu', event => event.preventDefault());
       canvas.addEventListener('pointerdown', () => canvas.focus());
+      // SDL listens to window resize; canvas layout can change independently.
+      new ResizeObserver(() => window.dispatchEvent(new Event('resize'))).observe(canvas);
       canvas.addEventListener('webglcontextlost', event => {
         event.preventDefault();
         showError('Graphics context lost. Reload this page to continue.');

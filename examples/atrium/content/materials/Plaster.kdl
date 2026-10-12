@@ -1,0 +1,69 @@
+version 3
+name "Plaster"
+domain "material"
+id_counter 13000
+description "Rough lime plaster in the Tint color, mottled and bumped by noise."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 200
+                type "Behavior Expression"
+                reference_name "tint * mix(0.8, 1.05, noise(p, 0.03)) * mix(0.9, 1.0, noise(p, 0.4))"
+                inputs {
+                    tint id=201 type="struct" type_name="ShaderVec3"
+                    p id=202 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=250 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 300
+                type "Behavior Expression"
+                reference_name "noise(p, 0.08) * 0.6 + noise(p, 0.5) * 0.15"
+                inputs {
+                    p id=301 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=350 type="float"
+                }
+            }
+            - {
+                id 1100
+                type "Shader Surface Output"
+                inputs Roughness=0.92 "Alpha Mode"=1
+            }
+            - id=2000 type="Shader WorldPosition"
+            - {
+                id 3000
+                type "Shader Bump"
+                inputs Strength=0.6 Distance=0.5
+            }
+            - {
+                id 4000
+                type "Shader Parameter"
+                reference_name "Tint"
+                outputs {
+                    Value {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=0.72 y=0.3 z=0.2
+                    }
+                }
+            }
+        }
+        (array)edges {
+            - from="200.Result" to="1100.Base Color"
+            - from="300.Result" to="3000.Height"
+            - from="2000.Value" to="200.p"
+            - from="2000.Value" to="300.p"
+            - from="3000.Value" to="1100.Normal"
+            - from="4000.Value" to="200.tint"
+        }
+    }
+    - id=10000 kind="function" math_expression="tint * mix(0.8, 1.05, noise(p, 0.03)) * mix(0.9, 1.0, noise(p, 0.4))" expression_mode=1 entry_id=10001
+    - id=11000 kind="function" math_expression="noise(p, 0.08) * 0.6 + noise(p, 0.5) * 0.15" expression_mode=1 entry_id=11001
+}

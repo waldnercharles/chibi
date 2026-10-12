@@ -1,0 +1,52 @@
+version 3
+name "Glass"
+domain "material"
+id_counter 12000
+description "Clear tinted glass that blends over what lies behind it and turns opaque toward its edges by Fresnel."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 200
+                type "Behavior Expression"
+                reference_name "mix(0.06, 0.85, f)"
+                inputs {
+                    f id=201 type="float"
+                }
+                outputs {
+                    Result id=250 type="float"
+                }
+            }
+            - {
+                id 1100
+                type "Shader Surface Output"
+                inputs Roughness=0.04
+            }
+            - {
+                id 2000
+                type "Shader Fresnel"
+                inputs Power=3.0
+            }
+            - {
+                id 4000
+                type "Shader Parameter"
+                reference_name "Tint"
+                outputs {
+                    Value {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=0.62 y=0.86 z=1.0
+                    }
+                }
+            }
+        }
+        (array)edges {
+            - from="200.Result" to="1100.Opacity"
+            - from="2000.Value" to="200.f"
+            - from="4000.Value" to="1100.Base Color"
+        }
+    }
+    - id=10000 kind="function" math_expression="mix(0.06, 0.85, f)" expression_mode=1 entry_id=10001
+}

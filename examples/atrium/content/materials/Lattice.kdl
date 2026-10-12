@@ -1,0 +1,42 @@
+version 3
+name "Lattice"
+domain "material"
+id_counter 12000
+description "Bronze screen pierced by a grid of round holes; Mask keeps the metal, so the sun casts the pattern."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 200
+                type "Behavior Expression"
+                reference_name "step(0.36, length(fract(uv * vec2(6, 6)) - vec2(0.5, 0.5)))"
+                inputs {
+                    uv id=201 type="struct" type_name="ShaderVec2"
+                }
+                outputs {
+                    Result id=250 type="float"
+                }
+            }
+            - {
+                id 1100
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.5 y=0.33 z=0.18
+                    }
+                    Roughness 0.42
+                    Metallic 0.85
+                    "Alpha Mode" 2
+                }
+            }
+            - id=2000 type="Shader UV"
+        }
+        (array)edges {
+            - from="200.Result" to="1100.Opacity"
+            - from="2000.UV" to="200.uv"
+        }
+    }
+    - id=10000 kind="function" math_expression="step(0.36, length(fract(uv * vec2(6, 6)) - vec2(0.5, 0.5)))" expression_mode=1 entry_id=10001
+}

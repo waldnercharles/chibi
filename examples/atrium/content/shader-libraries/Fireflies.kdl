@@ -1,0 +1,91 @@
+version 3
+name "Fireflies"
+domain "shader-library"
+id_counter 13000
+description "Glowing motes scattered over a Spread by Height volume. Each drifts on its own slow loop and flickers out of phase with the others."
+(array)graphs {
+    - kind="event" name="Functions"
+    - {
+        id 1
+        kind "function"
+        name "Drift"
+        entry_id 10
+        return_id 100
+        call_depth_limit 64
+        (array)nodes {
+            - {
+                id 10
+                type "Function Entry"
+                (array)outputs {
+                    - id=11 name="Index" type="float" kind="data"
+                    - id=12 name="Count" type="float" kind="data"
+                    - id=13 name="Seed" type="float" kind="data"
+                    - id=14 name="Spread" type="float" kind="data" default=150.0
+                    - id=15 name="Height" type="float" kind="data" default=70.0
+                    - id=16 name="Size" type="float" kind="data" default=1.6
+                    - {
+                        id 17
+                        name "Glow"
+                        type "struct"
+                        type_name "ShaderVec4"
+                        kind "data"
+                        default x=2.4 y=1.5 z=0.5 w=1.0
+                    }
+                }
+            }
+            - {
+                id 100
+                type "Return"
+                (array)inputs {
+                    - id=101 name="Position" type="struct" type_name="ShaderVec3" kind="data"
+                    - id=102 name="Size" type="float" kind="data"
+                    - id=103 name="Color" type="struct" type_name="ShaderVec4" kind="data"
+                }
+            }
+            - {
+                id 200
+                type "Behavior Expression"
+                reference_name "vec3(sin(index * 12.9898 + seed) * spread + sin(time * 0.7 + index) * 14, fract(sin(index * 78.233 + seed) * 437.585) * height + sin(time * 1.3 + index * 2.1) * 8, sin(index * 4.1414 + seed * 1.7) * spread + cos(time * 0.6 + index * 1.7) * 14)"
+                inputs {
+                    index id=201 type="float"
+                    seed id=202 type="float"
+                    time id=203 type="float"
+                    spread id=204 type="float"
+                    height id=205 type="float"
+                }
+                outputs {
+                    Result id=208 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 300
+                type "Behavior Expression"
+                reference_name "glow * (0.3 + 0.7 * max(sin(time * 2.3 + index * 7.31), 0))"
+                inputs {
+                    glow id=301 type="struct" type_name="ShaderVec4"
+                    time id=302 type="float"
+                    index id=303 type="float"
+                }
+                outputs {
+                    Result id=308 type="struct" type_name="ShaderVec4"
+                }
+            }
+            - id=400 type="Shader Time"
+        }
+        (array)edges {
+            - from="10.Index" to="200.index"
+            - from="10.Index" to="300.index"
+            - from="10.Seed" to="200.seed"
+            - from="10.Spread" to="200.spread"
+            - from="10.Height" to="200.height"
+            - from="10.Size" to="100.Size"
+            - from="10.Glow" to="300.glow"
+            - from="200.Result" to="100.Position"
+            - from="300.Result" to="100.Color"
+            - from="400.Value" to="200.time"
+            - from="400.Value" to="300.time"
+        }
+    }
+    - id=10000 kind="function" math_expression="vec3(sin(index * 12.9898 + seed) * spread + sin(time * 0.7 + index) * 14, fract(sin(index * 78.233 + seed) * 437.585) * height + sin(time * 1.3 + index * 2.1) * 8, sin(index * 4.1414 + seed * 1.7) * spread + cos(time * 0.6 + index * 1.7) * 14)" expression_mode=1 entry_id=10001
+    - id=11000 kind="function" math_expression="glow * (0.3 + 0.7 * max(sin(time * 2.3 + index * 7.31), 0))" expression_mode=1 entry_id=11001
+}

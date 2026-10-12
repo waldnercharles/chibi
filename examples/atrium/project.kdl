@@ -1,0 +1,5 @@
+version 23
+name "Atrium"
+content "content"
+start_scene "scenes/Atrium.kdl"
+application title="Atrium" width=1280 height=720

@@ -1,0 +1,6 @@
+// Advance a particle field's clock with scene time, so its motes move.
+behavior FieldClock {
+    on Tick(dt) {
+        self.ParticleField3D.time += dt
+    }
+}

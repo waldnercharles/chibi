@@ -1,0 +1,58 @@
+version 3
+name "Crystal"
+domain "material"
+id_counter 12000
+description "Dark glossy crystal whose Glow pulses slowly along its height."
+(array)graphs {
+    - {
+        kind "event"
+        name ""
+        (array)nodes {
+            - {
+                id 200
+                type "Behavior Expression"
+                reference_name "glow * (0.75 + 0.25 * sin(t * 1.7 + p.y * 0.05))"
+                inputs {
+                    glow id=201 type="struct" type_name="ShaderVec3"
+                    t id=202 type="float"
+                    p id=203 type="struct" type_name="ShaderVec3"
+                }
+                outputs {
+                    Result id=250 type="struct" type_name="ShaderVec3"
+                }
+            }
+            - {
+                id 1100
+                type "Shader Surface Output"
+                inputs {
+                    "Base Color" {
+                        default x=0.04 y=0.06 z=0.08
+                    }
+                    Roughness 0.12
+                    "Alpha Mode" 1
+                }
+            }
+            - id=2000 type="Shader WorldPosition"
+            - id=3000 type="Shader Time"
+            - {
+                id 4000
+                type "Shader Parameter"
+                reference_name "Glow"
+                outputs {
+                    Value {
+                        type "struct"
+                        type_name "ShaderVec3"
+                        default x=0.3 y=1.4 z=2.4
+                    }
+                }
+            }
+        }
+        (array)edges {
+            - from="200.Result" to="1100.Emission"
+            - from="2000.Value" to="200.p"
+            - from="3000.Value" to="200.t"
+            - from="4000.Value" to="200.glow"
+        }
+    }
+    - id=10000 kind="function" math_expression="glow * (0.75 + 0.25 * sin(t * 1.7 + p.y * 0.05))" expression_mode=1 entry_id=10001
+}

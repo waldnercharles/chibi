@@ -129,6 +129,34 @@ class PackagingFailureTests(unittest.TestCase):
             self.assertIn('Nested dependency legal notice\n', texts)
             self.assertFalse(any(path.name == 'implementation.h' for path in output.rglob('*')))
 
+    def test_shared_dependency_notices_are_shipped_without_sources(self):
+        with tempfile.TemporaryDirectory(prefix='chibi shared dependency notices ') as directory:
+            root = Path(directory)
+            build, output = self.fake_build(root), root / 'native release'
+            shared = root / 'shared package/build'
+            dependency = shared / '_deps/example-src'
+            nested = dependency / 'vendor/nested'
+            nested.mkdir(parents=True)
+            (dependency / 'LICENSE').write_text('Shared dependency legal notice\n')
+            (nested / 'COPYING').write_text('Shared nested legal notice\n')
+            (nested / 'implementation.h').write_text('private source\n')
+            (shared / 'chibi-dependencies.cmake').write_text('# imported dependencies\n')
+            with (build / 'CMakeCache.txt').open('a') as cache:
+                cache.write(f'CHIBI_DEPENDENCY_PACKAGE:FILEPATH={shared}/chibi-dependencies.cmake\n')
+            self.assertFalse((build / '_deps').exists())
+            result = run([sys.executable, ROOT / 'tools/package_native.py',
+                          '--build', build, '--output', output], root)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            notices = output / 'share/chibi/licenses/example'
+            self.assertEqual((notices / 'LICENSE').read_text(), 'Shared dependency legal notice\n')
+            self.assertEqual((notices / 'vendor/nested/COPYING').read_text(), 'Shared nested legal notice\n')
+            self.assertFalse(any(path.name == 'implementation.h' for path in output.rglob('*')))
+            manifest = json.loads((output / 'share/chibi/engine.json').read_text())
+            for path in notices.rglob('*'):
+                if path.is_file():
+                    self.assertEqual(manifest['files'][path.relative_to(output).as_posix()],
+                                     hashlib.sha256(path.read_bytes()).hexdigest())
+
     def test_development_profiles_are_rejected(self):
         for key, invalid in (('CHIBI_DISTRIBUTION', 'OFF'),
                              ('CHIBI_DEVELOPMENT_RELOAD', 'ON'),

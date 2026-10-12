@@ -31,7 +31,7 @@ NATIVE = {
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
     ('--player-installed-space-cadet-sljit',): 'Pinned installed player SLJIT, four hidden1280x720frames, exact8resources, shared60seconds',
     ('--interior-border',): 'Reviewed hidden 64x64 app: Cute interior border on a circle and a diamond, opaque and translucent, instanced and tiled draw paths with readback; GPU; docs/testing.md',
-    ('--viewport-resize',): 'Reviewed hidden 64x64 app: viewport initial/later resize behavior, plus one 64x64 UI frame/readback checking translucent rectangle and glyph source-over against the public straight-alpha texture; GPU, shared 60s; docs/testing.md',
+    ('--viewport-resize',): 'Reviewed hidden 64x64 app: viewport initial/later resize behavior, one UI frame/readback for alpha, and independently reviewed six fixed surface updates (four zero-area, two 64x64 draws/presents), no added readback/wait/network; GPU, shared 60s; docs/testing.md',
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
     ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky, ramps, imported meshes and their normal maps, imported glTF Standard materials and tangent frames, Transform3D placement and mirroring, occlusion, ambient occlusion, alpha modes and masked shadows with readback; GPU; docs/rendering-3d.md',
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',

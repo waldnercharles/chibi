@@ -654,13 +654,18 @@ int engine_viewport_render(engine_viewport *viewport, float width, float height)
     return 0;
 }
 
-void engine_viewport_present(engine_viewport *viewport)
+bool engine_viewport_present(engine_viewport *viewport)
 {
+    if (viewport->image_size.x <= 0 || viewport->image_size.y <= 0 ||
+        !cf_app_get_canvas().id) {
+        return false;
+    }
     cf_draw_push();
     cf_draw_TSR_absolute((CF_V2){ 0 }, (CF_V2){ 1, 1 }, 0);
     cf_draw_projection(cf_ortho_2d(0, 0, 2, 2));
     cf_draw_canvas(viewport->canvas, (CF_V2){ 0 }, (CF_V2){ 2, 2 });
     cf_draw_pop();
+    return true;
 }
 
 void engine_viewport_set_image_origin(engine_viewport *viewport, float x, float y)

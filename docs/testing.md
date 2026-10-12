@@ -574,8 +574,12 @@ backend has one, so there a failure means Cute's tile shaders did not load.
 `viewport-resize` creates an engine viewport at a 640 x 360 placeholder in a
 hidden app. The first requested size must replace the canvas on that draw, and
 a later size only once it has been requested for two more draws. Build and run
-it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`.
-Its fourth case draws one 64 x 64 UI frame containing a translucent red rectangle
+it like `interior-border` with `AGENT_SELECTOR=--viewport-resize`. A fixed six-update
+case starts without host area, restores it, removes it, and restores it again:
+only the two positive 64 x 64 frames may queue presentation. This checks suspended
+presentation and retained viewport resources; initial browser startup without an
+app canvas still needs a browser check.
+Its UI case draws one 64 x 64 frame containing a translucent red rectangle
 and a red glyph over opaque blue. One readback compares direct presentation with
 the public straight-alpha texture copied into the other half of the target.
 It requires correct source-over color, partial glyph coverage, and straight RGB

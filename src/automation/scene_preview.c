@@ -301,7 +301,11 @@ static bool render_scene(
         }
         /* Readbacks inspect the app canvas, so queue the viewport's complete
          * image there before the host draw flushes and presents it. */
-        engine_viewport_present(scene.viewport);
+        if (!engine_viewport_present(scene.viewport)) {
+            snprintf(error, size, "Preview surface is unavailable");
+            ok = false;
+            break;
+        }
         CHIBI_TRACE_ZONE_BEGIN(present_zone, "Preview present / GPU wait");
         if (render_frames > 2) {
             cf_gpu_sync();

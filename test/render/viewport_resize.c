@@ -370,6 +370,33 @@ TEST_CASE(a_matching_first_request_keeps_later_sizes_waiting)
     return true;
 }
 
+TEST_CASE(presentation_waits_for_host_area_and_resumes)
+{
+    camera_viewport = engine_viewport_new(UI_SIDE, UI_SIDE);
+    REQUIRE(camera_viewport);
+    const int sizes[][2] = {
+        { 0, 0 }, { 0, UI_SIDE },       { UI_SIDE, 0 }, { UI_SIDE, UI_SIDE },
+        { 0, 0 }, { UI_SIDE, UI_SIDE },
+    };
+    for (int i = 0; i < 6; i++) {
+        cf_app_update(NULL);
+        engine_viewport_set_host_input(
+            camera_viewport,
+            &(engine_viewport_host_input){ .width = sizes[i][0], .height = sizes[i][1] }
+        );
+        REQUIRE(engine_viewport_draw(camera_viewport, &(engine_viewport_controls){ 0 }) == 0);
+        bool presented = engine_viewport_present(camera_viewport);
+        REQUIRE(presented == (sizes[i][0] > 0 && sizes[i][1] > 0));
+        if (presented) {
+            cf_app_draw_onto_screen(true);
+        }
+        int width, height;
+        engine_viewport_pixel_size(camera_viewport, &width, &height);
+        REQUIRE(width == UI_SIDE && height == UI_SIDE);
+    }
+    return true;
+}
+
 void test_render_viewport_resize()
 {
 #ifdef __linux__
@@ -384,6 +411,7 @@ void test_render_viewport_resize()
     RUN_TEST_CASE(later_sizes_wait_until_held_for_two_draws);
     RUN_TEST_CASE(a_matching_first_request_keeps_later_sizes_waiting);
     pu_setup(NULL, cleanup_camera);
+    RUN_TEST_CASE(presentation_waits_for_host_area_and_resumes);
     RUN_TEST_CASE(explicit_camera_preserves_authored_edges_across_aspects);
     RUN_TEST_CASE(fitted_camera_keeps_a_valid_wide_angle);
     RUN_TEST_CASE(pointer_ray_matches_the_displayed_3d_image);

@@ -128,8 +128,9 @@ void engine_viewport_set_render_callback(
 
 /* Render to the canvas without a UI host or presentation call. */
 int engine_viewport_render(engine_viewport *, float width, float height);
-/* Queue the canvas across the host target. Its normal draw flush performs the blit. */
-void engine_viewport_present(engine_viewport *);
+/* Queue the canvas across the app target. Returns false while the host has
+ * no image area or app canvas; otherwise its normal draw flush performs the blit. */
+bool engine_viewport_present(engine_viewport *);
 /* Image hosts supply the displayed origin and materialized input events. */
 void engine_viewport_set_image_origin(engine_viewport *, float x, float y);
 void engine_viewport_image_pointer(

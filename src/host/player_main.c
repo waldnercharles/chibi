@@ -455,8 +455,9 @@ static int run_frame(desktop_player *host)
         fprintf(stderr, "%s\n", ui_error);
         return -1;
     }
-    engine_viewport_present(host->viewport);
-    cf_app_draw_onto_screen(true);
+    if (engine_viewport_present(host->viewport)) {
+        cf_app_draw_onto_screen(true);
+    }
     if (!follow_scene(host)) {
         return -1;
     }

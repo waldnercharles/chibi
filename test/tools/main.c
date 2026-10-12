@@ -53,6 +53,7 @@ void test_tool_prepared_runtime(const char *directory);
 void test_tool_scene();
 void test_scene_prepared();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
+void test_player_decode(const char *path, const char *budget);
 void test_particle_fields();
 void test_render_resources();
 void test_render_interior_border();
@@ -154,6 +155,13 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+    if ((argc == 3 || argc == 4) && !strcmp(argv[1], "--player-decode")) {
+        test_player_decode(argv[2], argc == 4 ? argv[3] : NULL);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
     bool tilemap = false, tilemap_project = false;
 #ifdef CHIBI_TEST_TILEMAP
     tilemap = argc == 2 && !strcmp(argv[1], "--tilemap");
@@ -287,7 +295,8 @@ int main(int argc, char **argv)
             "--shader-source-controller chibi_ctl | "
             "--prototype-expansion chibi_ctl | "
             "--prepared "
-            "test_language | --prepared-read directory | --scene | "
+            "test_language | --prepared-read directory | --player-decode "
+            "artifact [budget-bytes] | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
             "| --physics | --physics3d | --transforms "
             "| --render-resources | --interior-border | --viewport-resize | "

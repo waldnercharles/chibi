@@ -25,8 +25,8 @@ CORE_TARGETS = {'ui_document_values', 'text_search', 'image_catalog', 'support',
 COMPILER_TARGETS = {'image_preparation', 'builtin_fonts', 'graph_catalog', 'studio_graph', 'asset_json', 'graph_compilation', 'source_catalog', 'source_presentation', 'graph_model', 'graph_authoring', 'syntax_runtime', 'language_syntax', 'language', 'json', 'compiler', 'authoring', 'studio_capabilities', 'component_presentation', 'project_document', 'input_map', 'prototype_document', 'scene_document', 'reference_index', 'asset_text', 'asset_kdl', 'text_source', 'ui_document', 'ui_authoring', 'ui_syntax'}
 NATIVE_TARGETS = {'visual_catalog', 'json', 'native_types', 'declared_components', 'native_bindings', 'tilemap_runtime', 'spatial_runtime', 'entity_runtime', 'audio_runtime', 'url_runtime', 'rhythm_runtime', 'particle_runtime', 'save_runtime', 'ui_runtime', 'input_runtime', 'host_native_default', 'visibility_runtime', 'engine', 'player', 'visual_motion_runtime', 'material_runtime', 'physics_runtime', 'physics3d_runtime', 'task_pool_runtime', 'box2d', 'box3d'}
 VALUE_TARGETS = {'math', 'vector_capabilities', 'math_capabilities', 'arithmetic_capabilities', 'mesh_runtime', 'model_bake'}
-DESKTOP_TARGETS = {'builtin_fonts', 'platform', 'ui', 'render'}
-NATIVE_AUTHORING_TARGETS = {'shader_preparation', 'project_compilation', 'asset_authoring', 'model_authoring', 'scenario_document'}
+DESKTOP_TARGETS = {'builtin_fonts', 'platform', 'ui', 'render', 'shader_compiler'}
+NATIVE_AUTHORING_TARGETS = {'shader_preparation', 'project_compilation', 'asset_authoring', 'model_authoring', 'scenario_document', 'shader_compiler'}
 DESKTOP_AUTHORING_TARGETS = {'project_preparation', 'model_import'}
 
 
@@ -365,6 +365,8 @@ def check_exports(stage, kind, cache, build):
             expected |= {'task_scheduler'}
         if kind == 'sdk':
             expected |= {'studio_catalog'} | NATIVE_AUTHORING_TARGETS
+            if cache.get('CHIBI_SDK_BUILD_DESKTOP') != 'ON':
+                expected |= {'shader_vendor'}
     if cache.get('CHIBI_SDK_BUILD_DESKTOP') == 'ON':
         expected |= DESKTOP_TARGETS
         if kind == 'sdk':
@@ -405,6 +407,8 @@ def check_exports(stage, kind, cache, build):
             if path.is_dir() and path.name in ('language', 'authoring', 'tree_sitter', 'editor', 'graph'):
                 raise ValueError(f'Runtime package unexpectedly exports {path.name} headers')
         for path in (stage / 'lib').glob('*'):
+            if cache.get('CHIBI_SDK_BUILD_DESKTOP') == 'ON' and path.name in ('libchibi_shader_compiler.a', 'chibi_shader_compiler.lib'):
+                continue
             if path.is_file() and re.search(r'(syntax|language|compiler|authoring|tree.sitter|asset_text|asset_kdl)', path.name, re.I):
                 raise ValueError(f'Runtime package unexpectedly contains {path.name}')
     else:

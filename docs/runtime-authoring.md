@@ -215,7 +215,11 @@ Keep `game.chibip.resources.json` and all declared resources with the prepared
 artifact. Compilation resolves authored source and dependencies before deployment;
 the player loads the prepared artifact and its declared resource closure. The
 installed compiler and deployed player must satisfy the same format and native
-capability requirements. Final product package acceptance is still in progress.
+capability requirements. The standalone player allows 128 MiB of retained canonical
+project data after decoding; the embedding API defaults to 64 MiB unless its host
+selects a budget. This allowance is separate from the 64 MiB encoded-artifact
+limit and the per-module and scratch limits. It does not bound runtime state or
+GPU allocations. Final product package acceptance is still in progress.
 Package integrity and installed-consumer linking do not establish rendered
 player, Studio interaction or browser acceptance.
 

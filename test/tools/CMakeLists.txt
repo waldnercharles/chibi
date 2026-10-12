@@ -166,8 +166,8 @@ if(TARGET Chibi::render)
     target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
     target_link_libraries(chibi_render_consumer PRIVATE Chibi::render)
     target_compile_options(chibi_render_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
-    target_sources(test_tools PRIVATE particle_fields.c $<TARGET_OBJECTS:chibi_render_consumer>)
-    target_link_libraries(test_tools PRIVATE Chibi::render)
+    target_sources(test_tools PRIVATE particle_fields.c player_decode.c $<TARGET_OBJECTS:chibi_render_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::render Chibi::host_native_default Chibi::native_prepared)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_RENDER_RUNTIME=1)
     # Surface materials with roughness and metallic come from material graphs, and
     # the visibility scenes build shader graphs too.

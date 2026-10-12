@@ -3,6 +3,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -200,6 +201,185 @@ TEST_CASE(native_exports_have_package_owners)
     REQUIRE(exports > 0);
     free(packager);
     free(cmake);
+    return true;
+}
+
+static void export_file(const char *stage, const char *relative, const char *text)
+{
+    char filename[1024];
+    path(filename, stage, relative);
+    for (char *cursor = filename + strlen(stage) + 1; *cursor; cursor++) {
+        if (*cursor != '/') {
+            continue;
+        }
+        *cursor = 0;
+        assert(!mkdir(filename, 0700) || errno == EEXIST);
+        *cursor = '/';
+    }
+    tool_write(filename, text);
+}
+
+static void export_group(FILE *file, const char *packager, const char *group)
+{
+    char name[128], declaration[128];
+    snprintf(declaration, sizeof declaration, "\n%s = {", group);
+    const char *cursor = strstr(packager, declaration);
+    assert(cursor);
+    const char *end = strchr(cursor, '}');
+    assert(end);
+    while ((cursor = strchr(cursor, '\'')) && cursor < end) {
+        assert(sscanf(++cursor, "%127[^']", name) == 1);
+        cursor = strchr(cursor, '\'') + 1;
+        /* Shader ownership is the independent fixture contract below. Other
+         * targets come from the existing inventory to avoid duplicating it. */
+        if (strcmp(name, "shader_compiler") && strcmp(name, "shader_vendor")) {
+            fprintf(file, "add_library(Chibi::%s STATIC IMPORTED)\n", name);
+        }
+    }
+}
+
+static void export_fixture(const char *stage, bool sdk, bool desktop)
+{
+    static const char *headers[] = {
+        "execution/execution/prepared.h",
+        "behavior_runtime/runtime/behaviors/package.h",
+        "capabilities/capabilities/catalog.h",
+        "native_capabilities/runtime/native_capabilities.h",
+        "events/runtime/events.h",
+        "ecs/ecs/ecs.h",
+        "tasks/runtime/tasks.h",
+        "scene_runtime/runtime/scenes/scene.h",
+        "scene_runtime/runtime/scenes/prototypes.h",
+        "scheduling/runtime/systems/scheduler.h",
+        "fields/runtime/fields/prepared.h",
+        "field_catalog/runtime/material_field.h"
+    };
+    tool_remove_tree(stage);
+    assert(!mkdir(stage, 0700));
+    for (size_t i = 0; i < sizeof headers / sizeof *headers; i++) {
+        char relative[256];
+        snprintf(relative, sizeof relative, "include/chibi/%s", headers[i]);
+        export_file(stage, relative, "/* public header */\n");
+    }
+    if (sdk) {
+        export_file(stage, "include/chibi/language_syntax/language/syntax.h", "");
+        export_file(stage, "include/chibi/compiler/language/lower.h", "");
+        export_file(stage, "include/chibi/authoring/authoring/source_prepare.h", "");
+    }
+    if (sdk || desktop) {
+        export_file(stage, "include/chibi/shader_compiler/render/shader_text.h", "");
+        export_file(stage, "lib/libchibi_shader_compiler.a", "shader compiler archive");
+    }
+    if (sdk && !desktop) {
+        export_file(stage, "lib/libchibi_shader_vendor.a", "private shader compiler dependency");
+    }
+    export_file(stage, "CMakeFiles/fixture/CMakeSystem.cmake", "set(CMAKE_SYSTEM_NAME \"Darwin\")\n");
+    export_file(stage, "lib/cmake/Chibi/ChibiConfig.cmake", "# relocatable exports\n");
+    export_file(stage, "CMakeCache.txt", desktop ? "CHIBI_SDK_BUILD_NATIVE:BOOL=ON\nCHIBI_SDK_BUILD_DESKTOP:BOOL=ON\nCHIBI_ENABLE_SJLIT:BOOL=OFF\n" : "CHIBI_SDK_BUILD_NATIVE:BOOL=ON\nCHIBI_SDK_BUILD_DESKTOP:BOOL=OFF\nCHIBI_ENABLE_SJLIT:BOOL=OFF\n");
+    char filename[1024];
+    path(filename, tool_root(), "tools/package_sdk.py");
+    char *packager = tool_read(filename);
+    assert(packager);
+    path(filename, stage, "lib/cmake/Chibi/ChibiTargets.cmake");
+    FILE *file = fopen(filename, "w");
+    assert(file);
+    export_group(file, packager, "CORE_TARGETS");
+    export_group(file, packager, "VALUE_TARGETS");
+    export_group(file, packager, "NATIVE_TARGETS");
+    fprintf(file, "add_library(Chibi::task_scheduler STATIC IMPORTED)\n");
+    if (sdk) {
+        export_group(file, packager, "COMPILER_TARGETS");
+        export_group(file, packager, "NATIVE_AUTHORING_TARGETS");
+        fprintf(file, "add_library(Chibi::studio_catalog STATIC IMPORTED)\n");
+    }
+    if (desktop) {
+        export_group(file, packager, "DESKTOP_TARGETS");
+        if (sdk) {
+            export_group(file, packager, "DESKTOP_AUTHORING_TARGETS");
+        }
+    }
+    if (sdk || desktop) {
+        fprintf(file, "add_library(Chibi::shader_compiler STATIC IMPORTED)\n");
+    }
+    if (sdk && !desktop) {
+        fprintf(file, "add_library(Chibi::shader_vendor STATIC IMPORTED)\n");
+    }
+    assert(!fclose(file));
+    free(packager);
+}
+
+static int check_exports(const char *stage, const char *kind)
+{
+    char tools[1024];
+    path(tools, tool_root(), "tools");
+    /* Only invoke the production checker; fixture construction and assertions
+     * remain in this C dispatcher. */
+    const char *argv[] = {
+        "python3",
+        "-B",
+        "-c",
+        "import sys; sys.path.insert(0, sys.argv[1]); import package_sdk as p; "
+        "stage = p.Path(sys.argv[2]); p.check_exports(stage, sys.argv[3], "
+        "p.cache_values(stage), stage)",
+        tools,
+        stage,
+        kind,
+        NULL
+    };
+    return tool_run(argv, directory, log_path);
+}
+
+TEST_CASE(shader_compiler_exports_respect_package_profiles)
+{
+    char stage[1024], filename[1024];
+    path(stage, directory, "sdk exports");
+    assert(!mkdir(stage, 0700));
+    for (int profile = 0; profile < 4; profile++) {
+        bool sdk = profile >= 2, desktop = profile % 2;
+        const char *kind = sdk ? "sdk" : "runtime";
+        export_fixture(stage, sdk, desktop);
+        int status = check_exports(stage, kind);
+        if (status) {
+            char *diagnostic = tool_read(log_path);
+            fprintf(stderr, "%s", diagnostic);
+            free(diagnostic);
+        }
+        REQUIRE(status == 0);
+        if (sdk && !desktop) {
+            export_file(stage, "include/chibi/shader_vendor/private.h", "");
+            REQUIRE(check_exports(stage, kind) != 0);
+            char *diagnostic = tool_read(log_path);
+            REQUIRE(strstr(diagnostic, "Undeclared public header owner: shader_vendor"));
+            free(diagnostic);
+        }
+        if (sdk) {
+            continue;
+        }
+        static const char *archives[] = { "libchibi_shader_compiler.a",
+                                          "chibi_shader_compiler.lib",
+                                          "libchibi_shader_compiler_extra.a",
+                                          "libchibi_compiler.a",
+                                          "libchibi_language.a" };
+        for (size_t i = 0; i < sizeof archives / sizeof *archives; i++) {
+            char relative[256];
+            snprintf(relative, sizeof relative, "lib/%s", archives[i]);
+            export_file(stage, relative, "archive");
+            REQUIRE((check_exports(stage, kind) == 0) == (desktop && i < 2));
+            if (!desktop || i >= 2) {
+                char *diagnostic = tool_read(log_path);
+                REQUIRE(strstr(diagnostic, "Runtime package unexpectedly contains "));
+                REQUIRE(strstr(diagnostic, archives[i]));
+                free(diagnostic);
+            }
+            path(filename, stage, relative);
+            REQUIRE(!unlink(filename));
+        }
+        export_file(stage, "lib/cmake/Chibi/ChibiConfig.cmake", "set(dependency Chibi::compiler)\n");
+        REQUIRE(check_exports(stage, kind) != 0);
+        char *diagnostic = tool_read(log_path);
+        REQUIRE(strstr(diagnostic, "Runtime export contains a compiler/parser dependency"));
+        free(diagnostic);
+    }
     return true;
 }
 
@@ -554,6 +734,7 @@ void test_tool_package()
     tool_write(filename, engine);
     write_profile(-1);
     RUN_TEST_CASE(native_exports_have_package_owners);
+    RUN_TEST_CASE(shader_compiler_exports_respect_package_profiles);
     RUN_TEST_CASE(package_preserves_unrelated_output_and_rejects_nonruntime_packages);
     RUN_TEST_CASE(package_installation_preserves_game_and_rejects_corruption);
     RUN_TEST_CASE(warm_configuration_preserves_input_invalidation);

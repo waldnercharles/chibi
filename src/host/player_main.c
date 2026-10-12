@@ -60,6 +60,7 @@ typedef struct
 #define BUNDLE_MOUNT "/chibi-game"
 #define DEFAULT_WIDTH 1280
 #define DEFAULT_HEIGHT 720
+#define PROJECT_DECODED_BUDGET (128u * 1024u * 1024u)
 static volatile sig_atomic_t stopped;
 static rml_input keys[128];
 static int key_count;
@@ -610,7 +611,8 @@ int main(int argc, char **argv)
     player_host loader = { .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
                            .linker = &host.linker,
                            .log = { log_message, NULL },
-                           .resources = render_prepared_resources(root) };
+                           .resources = render_prepared_resources(root),
+                           .decoded_budget = PROJECT_DECODED_BUDGET };
     host.player = player_open(artifact, &loader, backend, error, sizeof error);
     if (!host.player) {
         fprintf(stderr, "%s\n", error);

@@ -1482,13 +1482,12 @@ static bool parse_material_parameters_scoped(
     return ok;
 }
 
-bool authoring_shader_parameters_prepare(int index, const char *text, shader_error *error)
+/* Publishes the asset's values from `text`, as renderers that draw the asset
+ * alone read them. Names the asset lacks are left to the asset they belong to. */
+static bool publish_plain(int index, const char *text, shader_error *error)
 {
-    if (!text || !*text) {
+    if (!index) {
         return true;
-    }
-    if (!authoring_plain_validate(index, text, error)) {
-        return false;
     }
     shader_values v = { .key = text,
                         .shape = index,
@@ -1496,6 +1495,14 @@ bool authoring_shader_parameters_prepare(int index, const char *text, shader_err
                         .plain = true };
     parse_parameters(&shader_catalog_assets[index - 1], text, v.shape_values);
     return shader_values_publish(&v, error);
+}
+bool authoring_shader_parameters_prepare(int index, const char *text, shader_error *error)
+{
+    if (!text || !*text) {
+        return true;
+    }
+    return authoring_plain_validate(index, text, error) &&
+           publish_plain(index, text, error);
 }
 bool authoring_shader_binding_prepare(const Shader *binding, shader_error *error)
 {
@@ -1519,7 +1526,8 @@ bool authoring_shader_binding_prepare(const Shader *binding, shader_error *error
     for (int i = 0; i <= MODEL_MATERIAL_SLOT_MAX; i++) {
         v.binding_generations[i] = render_shader_generation((int)v.bindings[i][0]);
     }
-    if (!shader_values_publish(&v, error)) {
+    if (!shader_values_publish(&v, error) || !publish_plain(shape, text, error) ||
+        !publish_plain(material, text, error)) {
         return false;
     }
     model_material_entry entries[MODEL_MATERIAL_SLOT_MAX + 1];

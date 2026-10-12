@@ -1,5 +1,0 @@
-system Motion(position: Position, velocity: Velocity) {
-    position.x += velocity.x * dt;
-    await Delay(10);
-    position.y = 99;
-}

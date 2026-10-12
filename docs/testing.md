@@ -1214,3 +1214,29 @@ at its center, and publish library edits to a live preview. The field relinks
 while its valid or invalid unsaved draft stays intact. A library that drops the
 called function is refused while the field keeps its revision, value and draft. `--validate-project` checks that
 `validate_project` and `preview_field` link a field against a `.chibi` library.
+
+
+## External authored examples acceptance
+
+The Examples repository owns `projects/atrium` and `projects/tetris`. Engine
+unit and default CPU groups do not depend on that checkout. Run their explicit
+CPU acceptance with an absolute Examples root and a matching Release controller:
+
+```sh
+CHIBI_EXAMPLES_ROOT=/absolute/path/to/chibi-examples \
+CHIBI_CTL=build-release/bin/chibi_ctl \
+python3 tools/test_policy.py tool examples-projects
+```
+
+`--examples-projects chibi_ctl` is the C tooling dispatcher route; `make
+agent-test AGENT_SELECTOR=--examples-projects` uses the same supervisor. Missing
+external roots or either project fail the cases; they never skip. Three cases
+validate Atrium without warnings, validate and exercise Tetris rotation/drop and
+restart, and verify blocked Hold ends its tick without changing the score. The
+Tetris cases clone their project with copy-on-write and remove the copies after
+each case. They run two 170-frame snapshots and one 22-frame snapshot, reporting
+at most three entities and one behavior per snapshot, without rendering. One
+shared production 60-second deadline covers both validations, all snapshots and
+fixture setup; each child also has the existing 10-second tooling limit.
+The inline language event, system cancellation and binding cases retain both
+VM and compiled-backend coverage without reading the Examples checkout.

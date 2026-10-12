@@ -379,13 +379,13 @@ vec3 sky_radiance(vec3 d)
     if (gi_sky_light.x <= 0.0) return d.y >= 0.0 ? gi_ambient_sky.rgb : gi_ambient_ground.rgb;
     float c = gi_sky_light.z, s = gi_sky_light.w;
     vec3 n = vec3(c * d.x - s * d.z, d.y, s * d.x + c * d.z);
-    vec3 constant = gi_sky_irradiance[0].rgb;
+    vec3 zeroth_band = gi_sky_irradiance[0].rgb;
     vec3 linear = gi_sky_irradiance[1].rgb * n.x + gi_sky_irradiance[2].rgb * n.y +
         gi_sky_irradiance[3].rgb * n.z;
     vec3 quadratic = gi_sky_irradiance[4].rgb * (n.x * n.y) + gi_sky_irradiance[5].rgb * (n.y * n.z) +
         gi_sky_irradiance[6].rgb * (3.0 * n.y * n.y - 1.0) + gi_sky_irradiance[7].rgb * (n.x * n.z) +
         gi_sky_irradiance[8].rgb * (n.x * n.x - n.z * n.z);
-    vec3 radiance = constant / PI + linear * (1.5 / PI) + quadratic * (4.0 / PI);
+    vec3 radiance = zeroth_band / PI + linear * (1.5 / PI) + quadratic * (4.0 / PI);
     return max(radiance, vec3(0.0)) * gi_sky_light.x;
 }
 

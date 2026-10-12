@@ -25,13 +25,6 @@ target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UND
 set_source_files_properties(wasm.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
 add_executable(test_language main.c syntax.c semantic.c execution.c program.c benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
 target_include_directories(test_language PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
-if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    target_compile_definitions(test_language PRIVATE CHIBI_LANGUAGE_EXAMPLE_DIR="/examples/language")
-    target_link_options(test_language PRIVATE "--embed-file=${CHIBI_LANGUAGE_TEST_ROOT}/examples/language@/examples/language")
-else()
-    target_compile_definitions(test_language PRIVATE
-        CHIBI_LANGUAGE_EXAMPLE_DIR="${CHIBI_LANGUAGE_TEST_ROOT}/examples/language")
-endif()
 target_link_libraries(test_language PRIVATE Chibi::authoring Chibi::source_catalog Chibi::input_map Chibi::source_presentation Chibi::behavior_runtime Chibi::field_catalog Chibi::project_document Chibi::prototype_document Chibi::scene_document Chibi::ui_authoring Chibi::ui_document Chibi::text_capabilities Chibi::state_capabilities Chibi::arithmetic_capabilities Chibi::core_capabilities Chibi::graph_model Chibi::graph_authoring Chibi::graph_compilation Chibi::mesh_runtime Chibi::ui_documents test_behavior_consumer)
 target_compile_options(test_language PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 if(APPLE)
@@ -44,7 +37,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 endif()
 
 # Test input discovery is explicit and separate from shipped product resources.
-set(corpus_roots examples/language test/fixtures)
+set(corpus_roots test/fixtures)
 set(CHIBI_LANGUAGE_CORPUS_PROJECTS "" CACHE STRING
     "Explicit absolute external project roots for the bounded language corpus check")
 set(CHIBI_LANGUAGE_CORPUS_MANIFEST "" CACHE FILEPATH

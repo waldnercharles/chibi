@@ -34,6 +34,7 @@ CPU_SELECTORS = {
     '--asset-values': 'asset-values',
     '--behavior-loader': 'behavior-loader',
     '--compile-installed-space-cadet': 'compile-installed-space-cadet',
+    '--examples-projects': 'examples-projects',
     '--contact-benchmark': 'contact-benchmark',
     '--engine-clock': 'engine-clock',
     '--fields': 'fields',

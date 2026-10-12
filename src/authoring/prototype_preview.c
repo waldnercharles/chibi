@@ -363,6 +363,21 @@ static int link_scene(
     return result;
 }
 
+/* Prepares what the entity's overrides name, such as a sky or shader
+ * parameters, as preparing its prototype prepared the prototype's own. */
+static bool prepare_overrides(const prototype_preview_scene_entity *entity, char *error, size_t size)
+{
+    if (!entity->components) {
+        return true;
+    }
+    prototype *copy = prototype_clone(entity->prototype, error, size);
+    bool ok = copy &&
+              !prototype_apply_entity_components(copy, entity->components, error, size) &&
+              authoring_prototype_resources(copy, error, size);
+    prototype_free(copy);
+    return ok;
+}
+
 int prototype_preview_start_scene(
     prototype_preview *preview,
     const prototype_preview_scene_entity *entities,
@@ -388,7 +403,8 @@ int prototype_preview_start_scene(
                 entities[i].prototype,
                 error,
                 error_size
-            )) {
+            ) ||
+            !prepare_overrides(&entities[i], error, error_size)) {
             preview->live->runtime->deferred = false;
             clear_entity(preview);
             return ECS_ERR_ARGUMENT;

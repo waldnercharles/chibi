@@ -14,6 +14,7 @@
 static audio_analysis *analysis, *other;
 static audio *queue;
 void test_tool_audio_tracking();
+void test_tool_audio_character();
 
 static void setup()
 {
@@ -324,7 +325,10 @@ static bool empty_snapshot(audio_measurement frame)
     return silent((
                audio_analysis_frame
            ){ frame.level, frame.bass, frame.mid, frame.treble, frame.onset }) &&
-           !frame.active && same_rhythm(frame.rhythm, (audio_rhythm_frame){ 0 });
+           !frame.active && same_rhythm(frame.rhythm, (audio_rhythm_frame){ 0 }) &&
+           frame.character.centroid == 0 && frame.character.flatness == 0 &&
+           frame.character.flux == 0 && frame.character.low_weight == 0 &&
+           frame.character.width == 0 && frame.character.crest == 0;
 }
 
 TEST_CASE(audio_source_changes_clear_published_levels)
@@ -338,7 +342,8 @@ TEST_CASE(audio_source_changes_clear_published_levels)
         (audio_measurement){ .level = 0.6f,
                              .active = true,
                              .status = AUDIO_READY,
-                             .rhythm = { 120, 0.5f, 0.8f, 0.9f } }
+                             .rhythm = { 120, 0.5f, 0.8f, 0.9f },
+                             .character = { 1200, .1f, .2f, .3f, .4f, .5f } }
     );
     pin_value source = { .type = PIN_I32, .i = 1 };
     REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
@@ -369,7 +374,8 @@ TEST_CASE(audio_snapshot_binding_returns_host_measurements)
                                     .active = true,
                                     .source = 1,
                                     .status = AUDIO_READY,
-                                    .rhythm = { 120, 0.25f, 0.75f, 0.5f } };
+                                    .rhythm = { 120, 0.25f, 0.75f, 0.5f },
+                                    .character = { 1200, .1f, .2f, .3f, .4f, .5f } };
     audio_set_analysis(queue, published);
     audio_measurement frame = audio_get_analysis(queue);
     REQUIRE(frame.level == published.level);
@@ -387,6 +393,11 @@ TEST_CASE(audio_snapshot_binding_returns_host_measurements)
     const float expected_rhythm[] = { 120, 0.25f, 0.75f, 0.5f };
     for (int i = 0; i < 4; i++) {
         REQUIRE(output[i].type == PIN_F32 && output[i].f == expected_rhythm[i]);
+    }
+    REQUIRE(!AUDIO_CHARACTER_CALL.invoke(queue, NULL, output));
+    const float expected_character[] = { 1200, .1f, .2f, .3f, .4f, .5f };
+    for (int i = 0; i < 6; i++) {
+        REQUIRE(output[i].type == PIN_F32 && output[i].f == expected_character[i]);
     }
     return true;
 }
@@ -431,7 +442,8 @@ TEST_CASE(audio_queue_reset_clears_capture_request_and_snapshot)
                              .onset = 0.3f,
                              .active = true,
                              .source = 1,
-                             .status = AUDIO_READY }
+                             .status = AUDIO_READY,
+                             .character = { 1200, .1f, .2f, .3f, .4f, .5f } }
     );
     uint64_t before, after, generation = audio_generation(queue);
     REQUIRE(audio_source(queue, &before) == 1);
@@ -464,4 +476,5 @@ void test_tool_audio_analysis()
     RUN_TEST_CASE(audio_queue_reset_clears_capture_request_and_snapshot);
     pu_setup(NULL, NULL);
     test_tool_audio_tracking();
+    test_tool_audio_character();
 }

@@ -44,16 +44,21 @@ TEST_CASE(audio_output_measures_the_real_mixer_and_resets_across_sources)
     while (SDL_GetTicks() < deadline) {
         render_audio_update(output, queue, true);
         frame = audio_get_analysis(queue);
-        if (frame.level > 0.03f) {
+        if (frame.level > 0.03f && frame.character.centroid > 0) {
             break;
         }
         SDL_Delay(5);
     }
     REQUIRE(frame.active && frame.status == AUDIO_READY && frame.source == 0);
     REQUIRE(frame.level > 0.03f && frame.bass > frame.treble * 4);
+    REQUIRE(frame.character.centroid > 80 && frame.character.centroid < 130);
+    REQUIRE(frame.character.low_weight > .9f && frame.character.flatness < .01f);
     render_audio_update(output, queue, false);
     frame = audio_get_analysis(queue);
     REQUIRE(!frame.active && !frame.level && !frame.onset);
+    REQUIRE(
+        !frame.character.centroid && !frame.character.flux && !frame.character.width
+    );
     pin_value source = { .type = PIN_I32, .i = 1 };
     REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
     render_audio_update(output, queue, true);

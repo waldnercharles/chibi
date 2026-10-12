@@ -116,9 +116,11 @@ struct Opaque_BTT_Struct
   btt_tracking_mode_t   tracking_mode_before_count_in;
   btt_onset_callback_t  onset_callback;
   btt_beat_callback_t   beat_callback;
+  btt_spectrum_callback_t spectrum_callback;
   void* onset_callback_self;
   void* tempo_callback_self;
   void* beat_callback_self;
+  void* spectrum_callback_self;
 };
 
 /*--------------------------------------------------------------------*/
@@ -259,6 +261,7 @@ void      btt_init(BTT* self)
   btt_set_count_in_n                      (self, BTT_DEFAULT_COUNT_IN_N);
   btt_set_onset_tracking_callback         (self, NULL, NULL);
   btt_set_beat_tracking_callback          (self, NULL, NULL);
+  btt_set_spectrum_callback               (self, NULL, NULL);
   
   btt_clear(self);
 }
@@ -366,6 +369,17 @@ static void btt_onset_tracking              (BTT* self, dft_sample_t* real, int 
   
   //get spectrum magnitude, ignore DCC component in future calculations
   rdft_rect_to_polar(real, N);
+
+  if(self->spectrum_callback != NULL)
+    {
+      dft_sample_t dc = real[0];
+      dft_sample_t nyquist = real[n_over_2];
+      real[0] = fabsf(dc);
+      real[n_over_2] = fabsf(nyquist);
+      self->spectrum_callback(self->spectrum_callback_self, real, n_over_2 + 1, self->num_audio_samples_processed);
+      real[0] = dc;
+      real[n_over_2] = nyquist;
+    }
   
   real[0] = 0;
   
@@ -1176,5 +1190,12 @@ btt_beat_callback_t    btt_get_beat_tracking_callback   (BTT* self, void** retur
 {
   *returned_callback_self = self->beat_callback_self;
   return self->beat_callback;
+}
+
+/*--------------------------------------------------------------------*/
+void btt_set_spectrum_callback(BTT* self, btt_spectrum_callback_t callback, void* callback_self)
+{
+  self->spectrum_callback = callback;
+  self->spectrum_callback_self = callback_self;
 }
 

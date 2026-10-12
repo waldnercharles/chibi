@@ -22,6 +22,42 @@ static BTT *tracking_a, *tracking_b;
 static tracking_events events_a, events_b;
 static float tracking_samples[TRACKING_RATE * 4 + 37];
 
+typedef struct
+{
+    BTT *tracker;
+    int calls, peak_bin;
+    float peak, dc, nyquist;
+    unsigned long long sample_time;
+    bool invalid;
+} spectrum_capture;
+
+static void record_spectrum(void *context, const dft_sample_t *magnitudes, int bins, unsigned long long sample_time)
+{
+    spectrum_capture *capture = context;
+    int hop = BTT_SUGGESTED_SPECTRAL_FLUX_STFT_LEN /
+              BTT_SUGGESTED_SPECTRAL_FLUX_STFT_OVERLAP;
+    capture->calls++;
+    capture->sample_time = sample_time;
+    if (bins != BTT_SUGGESTED_SPECTRAL_FLUX_STFT_LEN / 2 + 1) {
+        capture->invalid = true;
+        return;
+    }
+    capture->invalid |= sample_time != (unsigned long long)capture->calls * hop;
+    capture->invalid |= btt_get_num_audio_samples_processed(capture->tracker) !=
+                        sample_time;
+    capture->peak = 0;
+    capture->peak_bin = 0;
+    capture->dc = magnitudes[0];
+    capture->nyquist = magnitudes[bins - 1];
+    for (int i = 0; i < bins; i++) {
+        capture->invalid |= !isfinite(magnitudes[i]) || magnitudes[i] < 0;
+        if (magnitudes[i] > capture->peak) {
+            capture->peak = magnitudes[i];
+            capture->peak_bin = i;
+        }
+    }
+}
+
 static void record_onset(void *context, unsigned long long time)
 {
     tracking_events *events = context;
@@ -175,11 +211,14 @@ TEST_CASE(audio_tracking_clear_matches_a_new_tracker)
         PRIME = TRACKING_RATE * 4 + 37,
         COUNT = TRACKING_RATE * 4 + 37
     };
+    spectrum_capture spectrum = { .tracker = tracking_a };
+    btt_set_spectrum_callback(tracking_a, record_spectrum, &spectrum);
     tracking_pcm(TRACKING_RATE, PRIME);
     btt_init_tempo(tracking_a, 120);
     btt_process(tracking_a, tracking_samples, PRIME);
     REQUIRE(events_a.beat_count > 0 && events_a.onset_count > 0);
     btt_clear(tracking_a);
+    spectrum = (spectrum_capture){ .tracker = tracking_a };
     events_a = (tracking_events){ 0 };
     REQUIRE(btt_get_num_audio_samples_processed(tracking_a) == 0);
     REQUIRE(btt_get_tempo_bpm(tracking_a) == 0);
@@ -193,6 +232,63 @@ TEST_CASE(audio_tracking_clear_matches_a_new_tracker)
     REQUIRE(btt_get_tempo_bpm(tracking_a) == btt_get_tempo_bpm(tracking_b));
     REQUIRE(btt_get_tempo_certainty(tracking_a) == btt_get_tempo_certainty(tracking_b));
     REQUIRE(btt_get_num_audio_samples_processed(tracking_a) == COUNT);
+    REQUIRE(
+        spectrum.calls == COUNT / (BTT_SUGGESTED_SPECTRAL_FLUX_STFT_LEN /
+                                   BTT_SUGGESTED_SPECTRAL_FLUX_STFT_OVERLAP)
+    );
+    REQUIRE(!spectrum.invalid);
+    return true;
+}
+
+TEST_CASE(audio_tracking_spectrum_reports_raw_magnitudes_and_retains_observer)
+{
+    enum
+    {
+        FFT_SIZE = BTT_SUGGESTED_SPECTRAL_FLUX_STFT_LEN,
+        HOP = FFT_SIZE / BTT_SUGGESTED_SPECTRAL_FLUX_STFT_OVERLAP,
+        BIN = 32,
+        COUNT = FFT_SIZE + HOP + 37
+    };
+    for (int i = 0; i < COUNT; i++) {
+        /* Negative DC and Nyquist must be exposed as positive magnitudes. */
+        tracking_samples[i] = 0.6 * sin(TRACKING_TAU * BIN * i / FFT_SIZE) -
+                              0.1 + (i % 2 ? 0.15 : -0.15);
+    }
+    spectrum_capture spectrum = { .tracker = tracking_a };
+    btt_set_spectrum_callback(tracking_a, record_spectrum, &spectrum);
+    btt_set_spectral_compression_gamma(tracking_a, 4);
+    btt_set_noise_cancellation_threshold(tracking_a, -10);
+    btt_set_use_amplitude_normalization(tracking_a, 1);
+    tracking_chunks(tracking_a, COUNT);
+    REQUIRE(spectrum.calls == COUNT / HOP);
+    REQUIRE(spectrum.sample_time == COUNT / HOP * HOP);
+    REQUIRE(btt_get_num_audio_samples_processed(tracking_a) == COUNT);
+    REQUIRE(!spectrum.invalid);
+    REQUIRE(spectrum.peak_bin * (double)TRACKING_RATE / FFT_SIZE == 1378.125);
+    REQUIRE(fabsf(spectrum.peak - 0.6f * FFT_SIZE / 4) < 0.01f);
+    REQUIRE(fabsf(spectrum.dc - 0.1f * FFT_SIZE / 2) < 0.01f);
+    REQUIRE(fabsf(spectrum.nyquist - 0.15f * FFT_SIZE / 2) < 0.01f);
+
+    btt_clear(tracking_a);
+    spectrum = (spectrum_capture){ .tracker = tracking_a };
+    btt_process(tracking_a, tracking_samples, HOP - 1);
+    REQUIRE(spectrum.calls == 0);
+    btt_process(tracking_a, tracking_samples + HOP - 1, 1);
+    REQUIRE(spectrum.calls == 1 && spectrum.sample_time == HOP);
+    REQUIRE(!spectrum.invalid);
+
+    btt_set_sample_rate(tracking_a, 48000);
+    spectrum = (spectrum_capture){ .tracker = tracking_a };
+    btt_process(tracking_a, tracking_samples, COUNT);
+    REQUIRE(spectrum.calls == COUNT / HOP);
+    REQUIRE(spectrum.sample_time == COUNT / HOP * HOP);
+    REQUIRE(!spectrum.invalid);
+    REQUIRE(spectrum.peak_bin * btt_get_sample_rate(tracking_a) / FFT_SIZE == 1500);
+    REQUIRE(fabsf(spectrum.peak - 0.6f * FFT_SIZE / 4) < 0.01f);
+
+    btt_init(tracking_a);
+    btt_process(tracking_a, tracking_samples, COUNT);
+    REQUIRE(spectrum.calls == COUNT / HOP);
     return true;
 }
 
@@ -269,6 +365,7 @@ void test_tool_audio_tracking()
     pu_setup(tracking_setup, tracking_teardown);
     RUN_TEST_CASE(audio_tracking_events_use_sample_positions_across_chunks);
     RUN_TEST_CASE(audio_tracking_clear_matches_a_new_tracker);
+    RUN_TEST_CASE(audio_tracking_spectrum_reports_raw_magnitudes_and_retains_observer);
     RUN_TEST_CASE(audio_tracking_rate_changes_match_native_construction);
     pu_clear_setup();
 }

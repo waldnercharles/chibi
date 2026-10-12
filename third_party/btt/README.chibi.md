@@ -17,6 +17,7 @@ This directory contains the public header and active C core only. Demos, audio f
 - Make the constructor header argument order match its implementation: onset-threshold length precedes CBSS length. Add assertions for the constructor's rate, transform sizes, overlap, and buffer-size preconditions.
 - Return callback context before returning from the callback getters. Allow metronome processing without a registered callback and report its configured tempo without requiring an estimated tempo first.
 - Add `btt_set_sample_rate`, retaining requested tempo limits and metronome BPM while recomputing derived lag, tempo-weight, and filter coefficients, then clearing stream state without allocating. Clamp derived lags to valid buffer indices. Mark BTT's internal processing functions private.
+- Add an optional read-only magnitude-spectrum observer after the existing FFT and magnitude conversion, before DC removal, compression, noise cancellation, and amplitude normalization. It reuses the current transform without allocating. DC and Nyquist are made nonnegative during the callback and restored before tracking continues.
 
 ## Host contract
 
@@ -27,6 +28,10 @@ The host supplies mono float PCM and serializes access to each tracker. Callback
 `unsigned long long btt_get_num_audio_samples_processed(BTT *self)` returns the consumed mono-sample count since clear. During a callback, this is the current hop's frame-end count. After processing returns, it includes every sample in that call, including the unfinished hop.
 
 The tempo certainty getter remains the upstream histogram score. It is not a calibrated probability and can retain its last value through silence. The host must track signal activity and estimate validity separately.
+
+`btt_set_spectrum_callback(BTT *self, btt_spectrum_callback_t callback, void *context)` registers an optional observer. It receives `(context, const dft_sample_t *magnitudes, int bins, unsigned long long sample_time)` synchronously for each STFT hop. The array contains `N/2+1` nonnegative, unnormalized magnitudes from DC through Nyquist. Bin `i` represents `i * sample_rate / N` Hz. These values use the upstream periodic Hann window and precede BTT's spectral compression, thresholding, and normalization. The timestamp is the exact frame-end count since clear, with no onset latency or beat prediction applied.
+
+The observer may read the array only for the duration of the callback. It must not modify the array, retain its pointer, process more audio, or change tracker state. Read-only getters are safe during the callback. Register a null callback to disable it. `btt_clear` and `btt_set_sample_rate` retain the observer and its context; `btt_init` removes it along with the other callbacks.
 
 ## Upstream references
 

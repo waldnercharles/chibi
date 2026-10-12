@@ -93,6 +93,10 @@ typedef struct Opaque_BTT_Struct BTT;
 
 typedef void (*btt_onset_callback_t)             (void* SELF, unsigned long long sample_time);
 typedef void (*btt_beat_callback_t)              (void* SELF, unsigned long long sample_time);
+/* Unnormalized windowed magnitudes, including nonnegative DC and Nyquist.
+   bins is N/2+1; sample_time is the STFT frame end without latency adjustment.
+   The array is valid only during this callback. Do not modify it or tracker state. */
+typedef void (*btt_spectrum_callback_t)          (void* SELF, const dft_sample_t* magnitudes, int bins, unsigned long long sample_time);
 
 /*--------------------------------------------------------------------*/
 /* if you use btt_new you are going to have to empirically determine the analysis_latency_adjustments using the utility in demos/analysis_latency/
@@ -183,6 +187,8 @@ void                 btt_set_onset_tracking_callback  (BTT* self, btt_onset_call
 btt_onset_callback_t btt_get_onset_tracking_callback  (BTT* self, void** returned_callback_self);
 void                 btt_set_beat_tracking_callback   (BTT* self, btt_beat_callback_t callback, void* callback_self);
 btt_beat_callback_t  btt_get_beat_tracking_callback   (BTT* self, void** returned_callback_self);
+/* Clear and sample-rate changes retain this observer; btt_init removes it. */
+void                 btt_set_spectrum_callback        (BTT* self, btt_spectrum_callback_t callback, void* callback_self);
 
 #if defined(__cplusplus)
 }

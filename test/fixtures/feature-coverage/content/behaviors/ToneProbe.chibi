@@ -13,7 +13,9 @@ behavior ToneProbe {
     on Tick(dt) {
         signal := get_audio_analysis()
         rhythm := get_audio_rhythm()
-        self.Transform = vec2(rhythm.Phase * 24 * rhythm.Confidence, rhythm.Beat * 8)
+        character := get_audio_character()
+        self.Transform = vec2(rhythm.Phase * 24 * rhythm.Confidence + character.Width * 8, rhythm.Beat * 8 + character.Flux * 12)
         print_string(format_text("Audio {} {}", signal.Bass, signal.Treble))
+        print_string(format_text("Texture {} {} {} {}", character.Centroid, character.Flatness, character.LowWeight, character.Crest))
     }
 }

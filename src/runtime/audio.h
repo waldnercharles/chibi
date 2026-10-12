@@ -25,6 +25,7 @@ typedef struct
     int source;
     audio_status status;
     audio_rhythm_frame rhythm;
+    audio_character_frame character;
 } audio_measurement;
 typedef struct
 {
@@ -99,6 +100,7 @@ extern const node_host_call AUDIO_SOUND_VOLUME_CALL;
 extern const node_host_call AUDIO_SOURCE_CALL;
 extern const node_host_call AUDIO_ANALYSIS_CALL;
 extern const node_host_call AUDIO_RHYTHM_CALL;
+extern const node_host_call AUDIO_CHARACTER_CALL;
 extern const node_access AUDIO_ACCESS;
 extern const node_access AUDIO_READ_ACCESS;
 #endif

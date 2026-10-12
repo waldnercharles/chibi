@@ -13,6 +13,7 @@
 #define AUDIO_SOURCE_NAME "Set Audio Source"
 #define AUDIO_ANALYSIS_NAME "Get Audio Analysis"
 #define AUDIO_RHYTHM_NAME "Get Audio Rhythm"
+#define AUDIO_CHARACTER_NAME "Get Audio Character"
 #define AUDIO_PORT(X, NAME, KIND, STORAGE, TYPE_NAME, VALUE)                   \
     X(NAME, KIND, STORAGE, TYPE_NAME, PIN_CONTAINER_SINGLE, 0, 0, SCRIPT_REFERENCE_NONE, false, VALUE)
 #define AUDIO_EXEC(X, NAME)                                                    \
@@ -59,6 +60,26 @@
     AUDIO_INT(X, "Status")
 
 extern const native_definition_pack AUDIO_DEFINITION_PACK;
+
+#define AUDIO_CHARACTER_OUTPUTS(X)                                             \
+    AUDIO_FLOAT(X, "Centroid", 0)                                              \
+    AUDIO_FLOAT(X, "Flatness", 0)                                              \
+    AUDIO_FLOAT(X, "Flux", 0)                                                  \
+    AUDIO_FLOAT(X, "LowWeight", 0)                                             \
+    AUDIO_FLOAT(X, "Width", 0)                                                 \
+    AUDIO_FLOAT(X, "Crest", 0)
+#define AUDIO_CHARACTER_PRESENTATION                                           \
+    .category = "Audio",                                                       \
+    .keywords = "spectrum brightness noise texture stereo transient",          \
+    .description = "Reads spectral centroid in Hz, flatness, positive flux, "  \
+                   "low-frequency "                                            \
+                   "power fraction, stereo side-energy fraction and "          \
+                   "1-RMS/peak crest using per-frame channel energy. "         \
+                   "All except centroid are [0,1]; silence and reset return "  \
+                   "zero. "                                                    \
+                   "Spectrum uses one stable dominant channel; stereo width "  \
+                   "uses the first channel pair. Descriptors smooth over "     \
+                   "150 ms; flux releases over 80 ms."
 
 #define AUDIO_RHYTHM_OUTPUTS(X)                                                \
     AUDIO_FLOAT(X, "Tempo", 0)                                                 \

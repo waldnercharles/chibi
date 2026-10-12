@@ -1345,6 +1345,50 @@ TEST_CASE(source_audio_rhythm_reads_live_snapshot_on_both_backends)
     return true;
 }
 
+TEST_CASE(source_audio_character_reads_live_snapshot_on_both_backends)
+{
+    const char *text =
+        "behavior Listener { state centroid:number=0; state flatness:number=0; "
+        "state flux:number=0; state low:number=0; state width:number=0; "
+        "state crest:number=0; on Tick { sound:=get_audio_character(); "
+        "centroid=sound.Centroid; flatness=sound.Flatness; flux=sound.Flux; "
+        "low=sound.LowWeight; width=sound.Width; crest=sound.Crest; } }";
+    for (int backend = 0; backend < 2; backend++) {
+        test_world = ecs_world_new();
+        test_audio = audio_new();
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t tick = execution_module_event(prepared->module, "Tick");
+        const char *names[] = { "centroid", "flatness", "flux",
+                                "low",      "width",    "crest" };
+        uint64_t states[6];
+        for (int i = 0; i < 6; i++) {
+            states[i] = state_id(names[i]);
+            REQUIRE(states[i]);
+        }
+        instance = execution_program_attach(program, 0);
+        REQUIRE(instance && tick);
+        retire_producer();
+        audio_set_analysis(
+            test_audio,
+            (audio_measurement){ .active = true,
+                                 .status = AUDIO_READY,
+                                 .character = { 1200, .1f, .2f, .3f, .4f, .5f } }
+        );
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        const float expected[] = { 1200, .1f, .2f, .3f, .4f, .5f };
+        for (int i = 0; i < 6; i++) {
+            REQUIRE(execution_instance_state(instance, states[i])->d == expected[i]);
+        }
+        audio_reset(test_audio);
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        for (int i = 0; i < 6; i++) {
+            REQUIRE(execution_instance_state(instance, states[i])->d == 0);
+        }
+        cleanup();
+    }
+    return true;
+}
+
 void test_source_native_features()
 {
     pu_setup(NULL, cleanup);
@@ -1357,6 +1401,7 @@ void test_source_native_features()
     RUN_TEST_CASE(url_requests_validate_copy_replace_and_cancel);
     RUN_TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation);
     RUN_TEST_CASE(source_audio_rhythm_reads_live_snapshot_on_both_backends);
+    RUN_TEST_CASE(source_audio_character_reads_live_snapshot_on_both_backends);
     pu_clear_setup();
 }
 

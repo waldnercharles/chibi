@@ -302,6 +302,7 @@ void audio_input_update(audio_input *input, audio *audio, bool playing)
                              .active = active,
                              .source = source,
                              .status = input->status,
-                             .rhythm = audio_analysis_rhythm(input->analysis) }
+                             .rhythm = audio_analysis_rhythm(input->analysis),
+                             .character = audio_analysis_character(input->analysis) }
     );
 }

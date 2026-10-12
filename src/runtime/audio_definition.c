@@ -13,6 +13,9 @@ static const native_parameter_definition ANALYSIS_OUT[] = {
     AUDIO_ANALYSIS_OUTPUTS(NATIVE_PORT)
 };
 static const native_parameter_definition RHYTHM_OUT[] = { AUDIO_RHYTHM_OUTPUTS(NATIVE_PORT) };
+static const native_parameter_definition CHARACTER_OUT[] = {
+    AUDIO_CHARACTER_OUTPUTS(NATIVE_PORT)
+};
 #define ACTION(KEY, SOURCE, INPUTS)                                            \
     { .canonical_name = KEY##_NAME,                                            \
       KEY##_PRESENTATION,                                                      \
@@ -51,6 +54,15 @@ static const native_capability_definition DEFINITIONS[] = {
       .output_count = NATIVE_COUNT(RHYTHM_OUT),
       .completion_output = -1,
       .effects = SCRIPT_EFFECT_READ },
+    { .canonical_name = AUDIO_CHARACTER_NAME,
+      AUDIO_CHARACTER_PRESENTATION,
+      .source_name = "get_audio_character",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .pure = true,
+      .outputs = CHARACTER_OUT,
+      .output_count = NATIVE_COUNT(CHARACTER_OUT),
+      .completion_output = -1,
+      .effects = SCRIPT_EFFECT_READ },
 };
 #define BIND(KEY)                                                              \
     {                                                                          \
@@ -72,6 +84,8 @@ static const native_definition_binding BINDINGS[] = {
       .implementation = { .call = &AUDIO_ANALYSIS_CALL, .access = &AUDIO_READ_ACCESS } },
     { .canonical_name = AUDIO_RHYTHM_NAME,
       .implementation = { .call = &AUDIO_RHYTHM_CALL, .access = &AUDIO_READ_ACCESS } },
+    { .canonical_name = AUDIO_CHARACTER_NAME,
+      .implementation = { .call = &AUDIO_CHARACTER_CALL, .access = &AUDIO_READ_ACCESS } },
 };
 const native_definition_pack AUDIO_DEFINITION_PACK = {
     .definitions = DEFINITIONS,

@@ -39,11 +39,23 @@ static void cleanup()
     tool_remove_tree(root);
 }
 
+/* External examples are required inputs, never a skipped local fallback. */
+static bool example_project(const char *name, char out[4096])
+{
+    const char *examples = getenv("CHIBI_EXAMPLES_ROOT");
+    REQUIRE(examples && examples[0] == '/');
+    char resolved[4096];
+    REQUIRE(realpath(examples, resolved));
+    int n = snprintf(out, 4096, "%s/projects/%s", resolved, name);
+    REQUIRE(n > 0 && n < 4096);
+    REQUIRE(access(out, F_OK) == 0);
+    return true;
+}
+
 static bool clone_project()
 {
     char source[4096], destination[256];
-    int n = snprintf(source, sizeof source, "%s/examples/tetris", tool_root());
-    assert(n > 0 && n < (int)sizeof source);
+    REQUIRE(example_project("tetris", source));
     path(destination, sizeof destination, "tetris");
 #ifdef __APPLE__
     const char *args[] = { "cp", "-cR", source, destination, NULL };
@@ -59,16 +71,15 @@ static yyjson_val *result(const char *key)
     return yyjson_obj_get(yyjson_obj_get(yyjson_doc_get_root(reply), "result"), key);
 }
 
-static int request(const char *text)
+static int request_project(const char *project, const char *text)
 {
     char filename[256];
     path(filename, sizeof filename, "request.json");
     tool_write(filename, text);
-    const char *args[] = { "/bin/sh",
-                           "-c",
-                           "exec \"$0\" --project-root tetris < request.json",
-                           program,
-                           NULL };
+    const char *args[] = {
+        "/bin/sh", "-c",    "exec \"$0\" --project-root \"$1\" < request.json",
+        program,   project, NULL
+    };
     int status = tool_run(args, root, log_path);
     char *output = tool_read(log_path);
     const char *json = output ? strstr(output, "{\"contract\"") : NULL;
@@ -76,6 +87,21 @@ static int request(const char *text)
     reply = json ? yyjson_read(json, strlen(json), YYJSON_READ_STOP_WHEN_DONE) : NULL;
     free(output);
     return reply ? status : -1;
+}
+
+static int request(const char *text)
+{
+    return request_project("tetris", text);
+}
+
+TEST_CASE(atrium_example_is_valid)
+{
+    char project[4096];
+    REQUIRE(example_project("atrium", project));
+    REQUIRE(request_project(project, "{\"contract\":1,\"operation\":\"validate_project\"}") == 0);
+    REQUIRE(yyjson_get_int(result("errors")) == 0);
+    REQUIRE(yyjson_get_int(result("warnings")) == 0);
+    return true;
 }
 
 static const char *ui_text(const char *selector)
@@ -224,10 +250,11 @@ TEST_CASE(tetris_stops_the_tick_when_hold_tops_out)
     return true;
 }
 
-void test_tool_tetris(const char *binary)
+void test_tool_examples_projects(const char *binary)
 {
     assert(realpath(binary, program));
     pu_setup(setup, cleanup);
+    RUN_TEST_CASE(atrium_example_is_valid);
     RUN_TEST_CASE(tetris_example_plays);
     RUN_TEST_CASE(tetris_stops_the_tick_when_hold_tops_out);
     pu_clear_setup();

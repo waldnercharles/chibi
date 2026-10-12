@@ -19,6 +19,8 @@ CHIBI_CPU_SELECTOR("--engine-clock")
 CHIBI_CPU_SELECTOR("--preview-layout")
 CHIBI_CPU_SELECTOR("--fields")
 CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
+/* Required external Examples checkout: project validation and fixed CPU snapshots. */
+CHIBI_CPU_SELECTOR("--examples-projects")
 /* C-owned URL gesture lifecycle cases through Node; no browser/network/GPU. */
 CHIBI_CPU_SELECTOR("--player-url")
 /* Both platform clock initializers with a recorded limiter setter; no clocks. */

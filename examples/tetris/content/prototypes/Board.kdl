@@ -1,7 +1,0 @@
-name "Board"
-components {
-    (object)Input
-    (object)Transform
-    Ui document="Hud"
-}
-(array)behaviors "Tetris"

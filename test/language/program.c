@@ -37,10 +37,10 @@
 
 /* SDK fixture catalog: Position{x,y:double}, Velocity{x:double},
  * Impulse(amount:double,enabled:bool), Tick(dt:double), Delay(Duration:double),
- * self:entity and dt:double. These examples require this embedding catalog.
+ * self:entity and dt:double. These cases use this embedding catalog.
  * Run: make language-build && make test-language-program (selector --program).
  * Semantic type IDs intentionally differ from authoritative ECS component IDs. */
-#define EXAMPLE_SOURCE_CAPACITY 1024
+#define PROGRAM_SOURCE_CAPACITY 1024
 #define MEMORY_TEXT_MIN 512
 #define MEMORY_TEXT_STEP 32
 #define MEMORY_TEXT_MAX 4096
@@ -489,25 +489,6 @@ static bool compile(const char *source, behavior_backend backend)
     program = execution_program_new(module, world, NULL);
     return program != NULL;
 }
-static bool read_example(const char *path, char source[EXAMPLE_SOURCE_CAPACITY])
-{
-    FILE *file = fopen(path, "rb");
-    if (!file) {
-        fprintf(stderr, "program example cannot open: %s\n", path);
-        return false;
-    }
-    size_t count = fread(source, 1, EXAMPLE_SOURCE_CAPACITY, file);
-    bool valid = count < EXAMPLE_SOURCE_CAPACITY && !ferror(file);
-    if (fclose(file)) {
-        valid = false;
-    }
-    if (!valid) {
-        fprintf(stderr, "program example read failed or exceeded source limit: %s\n", path);
-        return false;
-    }
-    source[count] = '\0';
-    return true;
-}
 static uint64_t state_id(const char *name)
 {
     for (int i = 0; i < analysis->symbol_count; i++) {
@@ -534,8 +515,17 @@ static ecs_entity positioned(double x, bool moving)
 
 TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
 {
-    char source[EXAMPLE_SOURCE_CAPACITY];
-    REQUIRE(read_example(CHIBI_LANGUAGE_EXAMPLE_DIR "/accumulator.chibi", source));
+    const char *source = "behavior Accumulator {\n"
+                         "    total: double = 0;\n"
+                         "    seen: bool = false;\n"
+                         "\n"
+                         "    on Impulse(amount, enabled) {\n"
+                         "        if (enabled) {\n"
+                         "            total += amount;\n"
+                         "            seen = true;\n"
+                         "        }\n"
+                         "    }\n"
+                         "}\n";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         prepare();
@@ -564,8 +554,12 @@ TEST_CASE(program_typed_event_changes_state_on_vm_and_sljit)
 
 TEST_CASE(program_system_membership_exit_cancels_pending_work)
 {
-    char source[EXAMPLE_SOURCE_CAPACITY];
-    REQUIRE(read_example(CHIBI_LANGUAGE_EXAMPLE_DIR "/motion.chibi", source));
+    const char
+        *source = "system Motion(position: Position, velocity: Velocity) {\n"
+                  "    position.x += velocity.x * dt;\n"
+                  "    await Delay(10);\n"
+                  "    position.y = 99;\n"
+                  "}\n";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         prepare();
@@ -595,8 +589,9 @@ TEST_CASE(program_system_membership_exit_cancels_pending_work)
 
 TEST_CASE(program_component_binding_runs_and_source_cycle_is_rejected)
 {
-    char source[EXAMPLE_SOURCE_CAPACITY];
-    REQUIRE(read_example(CHIBI_LANGUAGE_EXAMPLE_DIR "/binding.chibi", source));
+    const char *source = "behavior Binding {\n"
+                         "    bind self.Position.y = self.Position.x * 2;\n"
+                         "}\n";
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int i = 0; i < 2; i++) {
         prepare();
@@ -1973,7 +1968,7 @@ TEST_CASE(program_task_continuation_cancels_but_cannot_await_its_task)
                              "yield; await worker" };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int c = 0; c < 3; c++) {
-        char source[EXAMPLE_SOURCE_CAPACITY];
+        char source[PROGRAM_SOURCE_CAPACITY];
         int length = snprintf(
             source,
             sizeof source,
@@ -5082,7 +5077,7 @@ TEST_CASE(program_branch_completes_inside_action_continuation)
     const char *bodies[] = { "n += 1\n inner()", "n += 1\n await Wait()\n inner()" };
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int c = 0; c < 2; c++) {
-        char source[EXAMPLE_SOURCE_CAPACITY];
+        char source[PROGRAM_SOURCE_CAPACITY];
         int length = snprintf(
             source,
             sizeof source,

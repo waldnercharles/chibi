@@ -59,6 +59,7 @@ void test_tool_ecs_query();
 void test_tool_ecs_query_benchmark();
 void test_arena();
 void test_tool_validate_project(const char *binary);
+void test_tool_examples_projects(const char *binary);
 void test_tool_controller(const char *binary);
 void test_tool_render_fixture(const char *binary);
 void test_tool_prototype_expansion(const char *binary);
@@ -482,6 +483,7 @@ int main(int argc, char **argv)
 #ifdef CHIBI_TEST_SCENE_AUTHORING
     scene_hierarchy = argc == 2 && !strcmp(argv[1], "--scene-hierarchy");
 #endif
+    bool examples_projects = argc == 3 && !strcmp(argv[1], "--examples-projects");
     bool validate_project = argc == 3 && !strcmp(argv[1], "--validate-project");
     bool render_fixture = argc == 3 && !strcmp(argv[1], "--render-fixture");
     bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
@@ -651,8 +653,8 @@ int main(int argc, char **argv)
         !whole_math && !whole_integer && !whole_conversion && !whole_select &&
         !owned_tick && !parallel_tick && !source_features && !source_numeric &&
         !source_material && !source_presentation && !system_schedule &&
-        !source_systems && !validate_project && !expansion && !controller &&
-        !render_fixture && !graph_document && !graph_presentation &&
+        !source_systems && !examples_projects && !validate_project && !expansion &&
+        !controller && !render_fixture && !graph_document && !graph_presentation &&
         !graph_functions && !vector_nodes && !material_render && !material) {
         fprintf(
             stderr,
@@ -660,7 +662,8 @@ int main(int argc, char **argv)
             "--web-storage | "
             "--webgpu-staging | --wasm-browser | "
             "--ecs-query-benchmark | --arena | "
-            "--validate-project chibi_ctl | --controller chibi_ctl | "
+            "--examples-projects chibi_ctl | --validate-project chibi_ctl | "
+            "--controller chibi_ctl | "
             "--render-fixture chibi_ctl | --preview-components | "
             "--prototype-expansion chibi_ctl | "
             "--prepared "
@@ -998,6 +1001,8 @@ int main(int argc, char **argv)
         test_tool_prepared_runtime(argv[2]);
     } else if (controller) {
         test_tool_controller(argv[2]);
+    } else if (examples_projects) {
+        test_tool_examples_projects(argv[2]);
     } else if (validate_project) {
         test_tool_validate_project(argv[2]);
     } else if (render_fixture) {

@@ -1532,23 +1532,6 @@ TEST_CASE(unit_mismatches_are_warnings)
     return true;
 }
 
-/* The Atrium example, which shows the 3D renderer's features, stays valid as
- * contracts change. */
-TEST_CASE(atrium_example_is_valid)
-{
-    char command[4352];
-    int n = snprintf(
-        command,
-        sizeof command,
-        "exec \"$0\" --project-root '%s/examples/atrium' < request.json",
-        tool_root()
-    );
-    assert(n > 0 && (size_t)n < sizeof command);
-    write_file("request.json", "{\"contract\":1,\"operation\":\"validate_project\"}");
-    REQUIRE(run(command) == 0 && errors() == 0 && !yyjson_get_int(result("warnings")));
-    return true;
-}
-
 TEST_CASE(scenarios_hold_input_actions)
 {
     /* A scenario's controls reach the input map of the engine that plays it. */
@@ -1697,8 +1680,6 @@ TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls)
     return true;
 }
 
-void test_tool_tetris(const char *binary);
-
 void test_tool_validate_project(const char *binary)
 {
     /* The requests run from the project's temporary folder. */
@@ -1735,9 +1716,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(scenarios_hold_controller_slots);
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     RUN_TEST_CASE(unit_mismatches_are_warnings);
-    RUN_TEST_CASE(atrium_example_is_valid);
     pu_clear_setup();
-    test_tool_tetris(binary);
 }
 
 /* The cases that read a project-wide budget's worth of prototypes, kept apart

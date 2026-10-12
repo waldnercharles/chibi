@@ -39,6 +39,7 @@ NATIVE = {
     ('--studio-asset-pointer',): 'First supervised measurement: independently reviewed four tiny prototypes, SDL filtered list/grid selection and modifiers, twenty hidden1920x1080frames, disposable3file fixture, shared60s',
     ('--studio-debugger-source-history',): 'First supervised measurement: independently reviewed one in-memory Counter actor, SDL breakpoint/play/invalid text/undo/redo/step/stop, retained cursor and runtime value assertions, forty-seven hidden1920x1080frames, at most ten source-level steps, shared60s',
     ('--studio-source-edit',): 'Independently reviewed installed Studio source edit/undo/redo on one tiny Counter draft with leading authored comment: fused calls and editable folded Double(3) Value without Target, actual Value pin menu open-function/back and checked inline transaction, two state Get/Set palette creations with exact catalog freshness after inline/undo, Members declaration/Initial rendering and rename, actual Members Rml Variables+ click and queued activation twice with64dp overflowing list, eight finite first-frame panel compositions including post-layout reveal retries and selected-row containment, filtered Add auto-selection/clear, graph/frame and Members-list reveal queued for bool/entity plus Properties rename and Entity type picker callback with no synthetic Initial, selected Entity actual Add/filter clear/selection and undo, Properties Member retention after cached-node invalidation and explicit different-node switch, undo-all current presentation contains only original integer Count, two ed_connect flow gestures (reorder and move into branch); each edit undone to exact draft before baseline literal edit/undo/redo; one crossframe FrameProbe declaration append/reveal/deselect/undo in Both checks visible card then its removal and graph texture revision change within same four frames; disposable three-file fixture and isolated prefs, four hidden1920x1080frames, shared60s',
+    ('--examples-projects',): 'Reviewed external CHIBI_EXAMPLES_ROOT/projects/{atrium,tetris} required: one Atrium validation, two CoW Tetris fixtures, one Tetris validation, two170-frame and one22-frame CPU runtime snapshots, at most three reported entities/one behavior; no GPU, shared60s; docs/testing.md',
     ('--compile-installed-space-cadet',): 'Pinned installed SpaceCadet fixed36files/144741bytes compiler-only, exact8resource scope, shared60seconds',
     ('--player-installed-space-cadet-vm',): 'Pinned installed player VM, four hidden1280x720frames, exact8resources, shared60seconds',
     ('--player-installed-space-cadet-sljit',): 'Pinned installed player SLJIT, four hidden1280x720frames, exact8resources, shared60seconds',
@@ -66,7 +67,7 @@ NATIVE = {
     ('--radiance-horizons8',): 'Reviewed hidden 128x128 app: the same horizon cases with eight directions; GPU; docs/testing.md',
     ('--material-pixels',): 'Reviewed hidden 128x128 app: material parameter overrides, world-space and graph materials, shape graphs and fragment programs, fluid placement, gas, liquid, fuel, plume, parcel and wisp pixels, fluid light and shadow, liquid refraction, crystal reflections, compact uploads of mixed graph, plain and mesh batches, sprite normal and height maps, sprite and shape relief raised by a material Height, with readback; GPU; docs/testing.md',
     ('--texture-transform',): 'Reviewed hidden 64x64 app: seven glTF texture transform/baked-UV comparisons with negative controls, 21 frames; GPU; docs/rendering-3d.md',
-    ('--shader-parameters-prepared',): 'Reviewed nine bounded CPU cases: material/model parameter codecs and staging, particle signature/default/helper validation, particle staging and rejected mesh-material use, preview reload/rename/rejection, and 129 zero-count field entities for source budget reclamation; no GPU; docs/testing.md',
+    ('--shader-parameters-prepared',): 'Reviewed ten bounded CPU cases: material/model parameter codecs and staging, particle signature/default/helper validation, particle staging and rejected mesh-material use, preview reload/rename/rejection, reconstructed model parameter generations, and 129 zero-count field entities for source budget reclamation; no GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
     ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and six refusals, CPU only; docs/testing.md',
     ('--asset-refactor',): 'One asset rename case: four in-memory prototypes, planned rewrites of a nested child and of a child that an including prototype adds, no files, CPU only; docs/testing.md',
@@ -92,7 +93,7 @@ NATIVE = {
     ('--prototype-documents',): 'Prototype and scene documents with retained components; 8 in-memory cases, CPU only; docs/testing.md',
     ('--reference-index',): 'Reference index over prototypes, scenes and UI pages; 5 cases, CPU only; docs/testing.md',
     ('--asset-source',): 'Asset source edits, completion and hover over reflected components; 6 cases, CPU only; docs/testing.md',
-    ('--behavior-loader',): 'All-or-nothing behavior loading and failed preview launches; 2 cases, CPU only; docs/testing.md',
+    ('--behavior-loader',): 'All-or-nothing behavior loading, failed preview launches and scene override preparation; 3 cases, CPU only; docs/testing.md',
     ('--engine-clock',): 'Engine clock, pause, step and headless engine frames; 6 cases, CPU only; docs/testing.md',
     ('--preview-layout',): 'Preview world layout; 2 cases, CPU only; docs/testing.md',
     ('--fields',): 'Field graphs, sampling, cave fixtures, source-library linking/defaults and publication rollback with retained drafts and name-stable source calls; 18 cases, CPU only; docs/testing.md',
@@ -157,8 +158,10 @@ TOOLS = {
     'new-asset': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--new-asset'],
     # One asset rename case over in-memory prototypes.
     'asset-refactor': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-refactor'],
-    # The validate_project cases, each a scaffolded temporary project and a few runs of an
-    # unsanitized chibi_ctl, since sanitizers make its starts too slow for one deadline.
+    # External inputs are explicit and excluded from all default CPU groups.
+    'examples-projects': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--examples-projects',
+                          str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
+    # Scaffolded project cases use Release chibi_ctl to bound process startup cost.
     'validate-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--validate-project',
                          str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
     # Two validate_project cases whose projects read past the shared prototype expansion

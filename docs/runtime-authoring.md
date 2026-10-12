@@ -29,7 +29,8 @@ printf '%s\n' '{"contract":1,"operation":"new_asset","kind":"behavior","name":"B
   chibi_ctl --project-root tetris
 ```
 
-`examples/tetris` is a complete game made this way.
+[`projects/tetris` in chibi-examples](https://github.com/waldnercharles/chibi-examples/tree/main/projects/tetris)
+is a complete game made this way.
 
 Kinds are `scene`, `prototype`, `behavior`, `event`, `system`, `library`,
 `material`, `shape`, `field`, `shader-library` and `model`. Before running content,

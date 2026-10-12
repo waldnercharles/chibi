@@ -501,6 +501,18 @@ static const char *get_analysis(void *service, const pin_value *, pin_value *out
     out[7] = (pin_value){ .type = PIN_I32, .i = analysis.status };
     return NULL;
 }
+static const char *get_rhythm(void *service, const pin_value *, pin_value *out)
+{
+    audio_rhythm_frame rhythm = audio_get_analysis(service).rhythm;
+    const float values[] = { rhythm.tempo,
+                             rhythm.phase,
+                             rhythm.confidence,
+                             rhythm.beat };
+    for (int i = 0; i < 4; i++) {
+        out[i] = (pin_value){ .type = PIN_F32, .f = values[i] };
+    }
+    return NULL;
+}
 #define CALL(NAME, INVOKE)                                                     \
     const node_host_call NAME = {                                              \
         .service = "game.audio",                                               \
@@ -516,5 +528,6 @@ CALL(AUDIO_MUSIC_VOLUME_CALL, music_volume);
 CALL(AUDIO_SOUND_VOLUME_CALL, sound_volume);
 CALL(AUDIO_SOURCE_CALL, set_source);
 CALL(AUDIO_ANALYSIS_CALL, get_analysis);
+CALL(AUDIO_RHYTHM_CALL, get_rhythm);
 const node_access AUDIO_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };
 const node_access AUDIO_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };

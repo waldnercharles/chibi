@@ -12,6 +12,8 @@ behavior ToneProbe {
 
     on Tick(dt) {
         signal := get_audio_analysis()
+        rhythm := get_audio_rhythm()
+        self.Transform = vec2(rhythm.Phase * 24 * rhythm.Confidence, rhythm.Beat * 8)
         print_string(format_text("Audio {} {}", signal.Bass, signal.Treble))
     }
 }

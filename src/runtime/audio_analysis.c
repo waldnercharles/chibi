@@ -1,9 +1,11 @@
 #include "runtime/audio_analysis.h"
 
+#include "BTT.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <math.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -13,6 +15,8 @@
 #define TREBLE_HZ 2500.0f
 #define TAU 6.283185307179586f
 #define SILENCE 0.00001f
+#define RHYTHM_SILENCE 0.0025f
+#define RHYTHM_HOP 128
 enum
 {
     LEVEL,
@@ -28,21 +32,55 @@ struct audio_analysis
     float low_gain, high_gain, attack, release, onset_release;
     double energy[BANDS];
     float amplitude[BANDS], previous_level, onset;
+    BTT *tracker;
+    double channel_energy[CHANNELS];
+    float rhythm_samples[RHYTHM_HOP];
+    int rhythm_count, rhythm_channel, quiet_windows, onsets;
+    unsigned long long rhythm_clock, last_onset, last_beat, pending_beat;
+    bool heard_beat, beat_pending;
+    uint64_t next_position;
+    bool positioned;
 };
+
+static void heard_onset(void *context, unsigned long long sample)
+{
+    audio_analysis *analysis = context;
+    analysis->last_onset = sample;
+    if (analysis->onsets < 2) {
+        analysis->onsets++;
+    }
+}
+
+static void heard_beat(void *context, unsigned long long sample)
+{
+    audio_analysis *analysis = context;
+    analysis->pending_beat = sample;
+    analysis->beat_pending = true;
+}
 
 audio_analysis *audio_analysis_new()
 {
-    return xcalloc(1, sizeof(audio_analysis));
+    audio_analysis *analysis = xcalloc(1, sizeof(audio_analysis));
+    analysis->tracker = btt_new_default();
+    assert(analysis->tracker);
+    btt_set_onset_threshold_min(analysis->tracker, 0.5);
+    btt_set_onset_tracking_callback(analysis->tracker, heard_onset, analysis);
+    btt_set_beat_tracking_callback(analysis->tracker, heard_beat, analysis);
+    return analysis;
 }
 
 void audio_analysis_free(audio_analysis *analysis)
 {
+    btt_destroy(analysis->tracker);
     free(analysis);
 }
 
 void audio_analysis_reset(audio_analysis *analysis)
 {
+    BTT *tracker = analysis->tracker;
+    btt_clear(tracker);
     memset(analysis, 0, sizeof(*analysis));
+    analysis->tracker = tracker;
 }
 
 static float normalized(float value)
@@ -58,6 +96,17 @@ static void configure(audio_analysis *analysis, int channels, int sample_rate)
     audio_analysis_reset(analysis);
     analysis->channels = channels;
     analysis->sample_rate = sample_rate;
+    if (sample_rate >= BTT_MIN_SAMPLE_RATE && sample_rate <= BTT_MAX_SAMPLE_RATE) {
+        btt_set_sample_rate(analysis->tracker, sample_rate);
+        btt_set_analysis_latency_onset_adjustment(
+            analysis->tracker,
+            (int)round(857.0 * sample_rate / 44100)
+        );
+        btt_set_analysis_latency_beat_adjustment(
+            analysis->tracker,
+            (int)round(1270.0 * sample_rate / 44100)
+        );
+    }
     analysis->window_frames = sample_rate / WINDOWS_PER_SECOND;
     if (!analysis->window_frames) {
         analysis->window_frames = 1;
@@ -89,6 +138,28 @@ static void finish_window(audio_analysis *analysis)
     float onset = normalized((rise - threshold) * 4);
     analysis->onset = fmaxf(onset, analysis->onset * analysis->onset_release);
     analysis->previous_level = rms[LEVEL];
+    /* Select one stable loud channel, rather than cancelling antiphase stereo.
+     * The 40% margin prevents switching on small left/right balance changes. */
+    int loudest = analysis->rhythm_channel;
+    for (int channel = 0; channel < analysis->channels; channel++) {
+        if (analysis->channel_energy[channel] > analysis->channel_energy[loudest] * 1.4) {
+            loudest = channel;
+        }
+    }
+    analysis->rhythm_channel = loudest;
+    memset(analysis->channel_energy, 0, sizeof(analysis->channel_energy));
+    analysis->quiet_windows = rms[LEVEL] <= RHYTHM_SILENCE
+                                ? analysis->quiet_windows + 1
+                                : 0;
+    if (analysis->quiet_windows == 150) {
+        btt_clear(analysis->tracker);
+        analysis->rhythm_clock = analysis->rhythm_count = analysis->onsets = 0;
+        analysis->last_onset = analysis->last_beat = 0;
+        analysis->heard_beat = analysis->beat_pending = false;
+    }
+    if (analysis->quiet_windows > 150) {
+        analysis->quiet_windows = 151;
+    }
     analysis->count = 0;
 }
 
@@ -100,6 +171,7 @@ void audio_analysis_push(audio_analysis *analysis, const float *samples, int fra
         configure(analysis, channels, sample_rate);
     }
     for (int frame = 0; frame < frames; frame++) {
+        float mono = samples[analysis->rhythm_channel];
         for (int channel = 0; channel < channels; channel++) {
             float sample = *samples++;
             assert(isfinite(sample));
@@ -111,14 +183,46 @@ void audio_analysis_push(audio_analysis *analysis, const float *samples, int fra
             float mid = analysis->high[channel] - bass;
             float treble = sample - analysis->high[channel];
             analysis->energy[LEVEL] += (double)sample * sample;
+            analysis->channel_energy[channel] += (double)sample * sample;
             analysis->energy[BASS] += (double)bass * bass;
             analysis->energy[MID] += (double)mid * mid;
             analysis->energy[TREBLE] += (double)treble * treble;
+        }
+        if (sample_rate >= BTT_MIN_SAMPLE_RATE && sample_rate <= BTT_MAX_SAMPLE_RATE) {
+            analysis->rhythm_samples[analysis->rhythm_count++] = mono;
+            analysis->rhythm_clock++;
+            if (analysis->rhythm_count == RHYTHM_HOP) {
+                btt_process(analysis->tracker, analysis->rhythm_samples, RHYTHM_HOP);
+                analysis->rhythm_count = 0;
+            }
+            if (analysis->beat_pending &&
+                analysis->pending_beat <= analysis->rhythm_clock) {
+                analysis->last_beat = analysis->pending_beat;
+                analysis->heard_beat = true;
+                analysis->beat_pending = false;
+            }
         }
         if (++analysis->count == analysis->window_frames) {
             finish_window(analysis);
         }
     }
+}
+
+void audio_analysis_push_at(
+    audio_analysis *analysis,
+    const float *samples,
+    int frames,
+    int channels,
+    int sample_rate,
+    uint64_t position
+)
+{
+    if (analysis->positioned && position != analysis->next_position) {
+        audio_analysis_reset(analysis);
+    }
+    audio_analysis_push(analysis, samples, frames, channels, sample_rate);
+    analysis->next_position = position + frames;
+    analysis->positioned = true;
 }
 
 audio_analysis_frame audio_analysis_read(const audio_analysis *analysis)
@@ -129,5 +233,26 @@ audio_analysis_frame audio_analysis_read(const audio_analysis *analysis)
         .mid = normalized(analysis->amplitude[MID]),
         .treble = normalized(analysis->amplitude[TREBLE]),
         .onset = normalized(analysis->onset),
+    };
+}
+
+audio_rhythm_frame audio_analysis_rhythm(const audio_analysis *analysis)
+{
+    if (analysis->previous_level <= RHYTHM_SILENCE || analysis->onsets < 2 ||
+        !analysis->heard_beat ||
+        analysis->rhythm_clock - analysis->last_onset > analysis->sample_rate * 1.5) {
+        return (audio_rhythm_frame){ 0 };
+    }
+    double tempo = btt_get_tempo_bpm(analysis->tracker);
+    if (tempo <= 0) {
+        return (audio_rhythm_frame){ 0 };
+    }
+    double age = (double)(analysis->rhythm_clock - analysis->last_beat) /
+                 analysis->sample_rate;
+    return (audio_rhythm_frame){
+        .tempo = tempo,
+        .phase = fmod(age * tempo / 60, 1),
+        .confidence = fmin(1, btt_get_tempo_certainty(analysis->tracker)),
+        .beat = exp(-age / 0.08),
     };
 }

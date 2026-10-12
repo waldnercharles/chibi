@@ -27,13 +27,14 @@ typedef struct
 {
     float samples[INPUT_FRAMES * INPUT_CHANNELS];
     int frames, channels, rate;
-    uint64_t timestamp;
+    uint64_t timestamp, position;
 } audio_block;
 struct audio_input
 {
     audio_analysis *analysis;
     audio_block blocks[INPUT_BLOCKS];
     _Atomic unsigned read, write;
+    uint64_t produced;
     SDL_AudioDeviceID output;
     SDL_AudioStream *capture;
     SDL_AudioDeviceID capture_device, capture_physical;
@@ -61,6 +62,7 @@ static void samples(audio_input *input, const float *pcm, int frames, int channe
         unsigned write = atomic_load_explicit(&input->write, memory_order_relaxed);
         unsigned next = (write + 1) % INPUT_BLOCKS;
         if (next == atomic_load_explicit(&input->read, memory_order_acquire)) {
+            input->produced += frames;
             return;
         }
         int count = frames < INPUT_FRAMES ? frames : INPUT_FRAMES;
@@ -70,6 +72,8 @@ static void samples(audio_input *input, const float *pcm, int frames, int channe
         block->channels = channels;
         block->rate = rate;
         block->timestamp = SDL_GetTicks();
+        block->position = input->produced;
+        input->produced += count;
         atomic_store_explicit(&input->write, next, memory_order_release);
         pcm += count * channels;
         frames -= count;
@@ -201,6 +205,7 @@ void audio_input_reset(audio_input *input)
     }
     atomic_store(&input->read, 0);
     atomic_store(&input->write, 0);
+    input->produced = 0;
     input->owner = NULL;
     input->last_data = 0;
     input->status = AUDIO_IDLE;
@@ -268,12 +273,13 @@ void audio_input_update(audio_input *input, audio *audio, bool playing)
         audio_block *block = &input->blocks[read];
         if (playing && input->status == AUDIO_READY &&
             now - block->timestamp < INPUT_STALE_MS) {
-            audio_analysis_push(
+            audio_analysis_push_at(
                 input->analysis,
                 block->samples,
                 block->frames,
                 block->channels,
-                block->rate
+                block->rate,
+                block->position
             );
             input->last_data = block->timestamp;
         }
@@ -295,6 +301,7 @@ void audio_input_update(audio_input *input, audio *audio, bool playing)
                              .onset = frame.onset,
                              .active = active,
                              .source = source,
-                             .status = input->status }
+                             .status = input->status,
+                             .rhythm = audio_analysis_rhythm(input->analysis) }
     );
 }

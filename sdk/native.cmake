@@ -105,13 +105,27 @@ chibi_sdk_headers(chibi_entity_runtime PUBLIC runtime/behaviors/entities.h
     runtime/behaviors/scene_flow.h runtime/behaviors/scene_flow_definition.h)
 target_link_libraries(chibi_entity_runtime PUBLIC chibi_native_types chibi_execution
     chibi_scene_runtime chibi_behavior_runtime chibi_native_capabilities PRIVATE chibi_spatial_runtime chibi_tilemap_runtime)
+set(btt_root "${CHIBI_SDK_ROOT}/third_party/btt")
+add_library(chibi_audio_tracker STATIC
+    "${btt_root}/src/BTT.c" "${btt_root}/src/STFT.c" "${btt_root}/src/DFT.c"
+    "${btt_root}/src/Filter.c" "${btt_root}/src/Statistics.c" "${btt_root}/src/fastsin.c")
+set_target_properties(chibi_audio_tracker PROPERTIES EXPORT_NAME audio_tracker)
+target_include_directories(chibi_audio_tracker PRIVATE "${btt_root}")
+target_compile_definitions(chibi_audio_tracker PRIVATE _DEFAULT_SOURCE)
+target_compile_options(chibi_audio_tracker PRIVATE -w)
+target_link_libraries(chibi_audio_tracker PRIVATE m)
+install(FILES "${btt_root}/LICENSE" "${btt_root}/README.chibi.md"
+    DESTINATION share/chibi/licenses/btt)
+list(APPEND CHIBI_SDK_TARGETS chibi_audio_tracker)
+
 add_library(chibi_audio_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/audio.c"
     "${CHIBI_SDK_ROOT}/src/runtime/audio_analysis.c"
     "${CHIBI_SDK_ROOT}/src/runtime/audio_definition.c")
 add_library(Chibi::audio_runtime ALIAS chibi_audio_runtime)
 set_target_properties(chibi_audio_runtime PROPERTIES EXPORT_NAME audio_runtime)
 chibi_sdk_headers(chibi_audio_runtime PUBLIC runtime/audio.h runtime/audio_definition.h runtime/audio_analysis.h)
-target_link_libraries(chibi_audio_runtime PUBLIC chibi_native_capabilities)
+target_include_directories(chibi_audio_runtime PRIVATE "${btt_root}")
+target_link_libraries(chibi_audio_runtime PUBLIC chibi_native_capabilities PRIVATE chibi_audio_tracker)
 add_library(chibi_url_runtime STATIC "${CHIBI_SDK_ROOT}/src/runtime/url.c"
     "${CHIBI_SDK_ROOT}/src/runtime/url_definition.c")
 add_library(Chibi::url_runtime ALIAS chibi_url_runtime)

@@ -6,12 +6,14 @@
 
 #include <math.h>
 #include <stddef.h>
+#include <stdlib.h>
 
 #define RATE 48000
 #define TAU 6.283185307179586
 #define BLOCK 256
 static audio_analysis *analysis, *other;
 static audio *queue;
+void test_tool_audio_tracking();
 
 static void setup()
 {
@@ -58,6 +60,120 @@ static bool near(audio_analysis_frame a, audio_analysis_frame b, float tolerance
            fabsf(a.bass - b.bass) <= tolerance && fabsf(a.mid - b.mid) <= tolerance &&
            fabsf(a.treble - b.treble) <= tolerance &&
            fabsf(a.onset - b.onset) <= tolerance;
+}
+
+static void rhythm_pcm(float *samples, int at, int count, int rate, float bpm)
+{
+    int period = (int)round(60 * rate / bpm);
+    for (int i = 0; i < count; i++) {
+        double seconds = (double)((at + i) % period) / rate;
+        samples[i] = 0.8 * exp(-seconds * 45) * sin(TAU * 110 * seconds) +
+                     0.008 * sin(TAU * 1600 * (at + i) / rate);
+    }
+}
+
+static void push_rhythm(audio_analysis *target, int rate, float bpm, int seconds)
+{
+    float samples[BLOCK];
+    for (int at = 0; at < rate * seconds; at += BLOCK) {
+        int count = rate * seconds - at;
+        if (count > BLOCK) {
+            count = BLOCK;
+        }
+        rhythm_pcm(samples, at, count, rate, bpm);
+        audio_analysis_push(target, samples, count, 1, rate);
+    }
+}
+
+static bool same_rhythm(audio_rhythm_frame a, audio_rhythm_frame b)
+{
+    return a.tempo == b.tempo && a.phase == b.phase &&
+           a.confidence == b.confidence && a.beat == b.beat;
+}
+
+TEST_CASE(audio_rhythm_tracks_known_tempos)
+{
+    const float tempos[] = { 96, 120, 180 };
+    for (int i = 0; i < 3; i++) {
+        audio_analysis_reset(analysis);
+        push_rhythm(analysis, RATE, tempos[i], 14);
+        audio_rhythm_frame rhythm = audio_analysis_rhythm(analysis);
+        REQUIRE(fabsf(rhythm.tempo - tempos[i]) < tempos[i] * 0.03f);
+        REQUIRE(rhythm.confidence > 0.25f && rhythm.confidence <= 1);
+        REQUIRE(rhythm.phase >= 0 && rhythm.phase < 1);
+        REQUIRE(rhythm.beat >= 0 && rhythm.beat <= 1);
+    }
+    return true;
+}
+
+TEST_CASE(audio_rhythm_is_independent_of_chunks_and_resets)
+{
+    enum
+    {
+        COUNT = RATE * 12 + 103
+    };
+    float *samples = xmalloc(sizeof(float) * COUNT);
+    rhythm_pcm(samples, 0, COUNT, RATE, 120);
+    xalloc_stats before, after;
+    xalloc_stats_get(&before);
+    audio_analysis_push(analysis, samples, COUNT, 1, RATE);
+    for (int at = 0; at < COUNT;) {
+        int count = 1 + at % 1027;
+        if (count > COUNT - at) {
+            count = COUNT - at;
+        }
+        audio_analysis_push(other, samples + at, count, 1, RATE);
+        at += count;
+    }
+    REQUIRE(audio_analysis_rhythm(analysis).confidence > 0.25f);
+    REQUIRE(same_rhythm(audio_analysis_rhythm(analysis), audio_analysis_rhythm(other)));
+    audio_analysis_reset(analysis);
+    audio_analysis_reset(other);
+    audio_analysis_push(analysis, samples, 731, 1, RATE);
+    audio_analysis_reset(analysis);
+    audio_analysis_push(analysis, samples, COUNT, 1, RATE);
+    audio_analysis_push(other, samples, COUNT, 1, RATE);
+    REQUIRE(same_rhythm(audio_analysis_rhythm(analysis), audio_analysis_rhythm(other)));
+    xalloc_stats_get(&after);
+    REQUIRE(before.calls == after.calls);
+    free(samples);
+    return true;
+}
+
+TEST_CASE(audio_rhythm_stops_during_silence_and_sustained_tones)
+{
+    push_rhythm(analysis, RATE, 120, 12);
+    REQUIRE(audio_analysis_rhythm(analysis).confidence > 0.25f);
+    push_tone(analysis, RATE, RATE / 5, 1000, 0, 1);
+    REQUIRE(same_rhythm(audio_analysis_rhythm(analysis), (audio_rhythm_frame){ 0 }));
+    push_tone(analysis, RATE, RATE * 4, 1000, 0.1f, 1);
+    REQUIRE(same_rhythm(audio_analysis_rhythm(analysis), (audio_rhythm_frame){ 0 }));
+    audio_analysis_reset(analysis);
+    REQUIRE(same_rhythm(audio_analysis_rhythm(analysis), (audio_rhythm_frame){ 0 }));
+    push_tone(analysis, RATE, RATE * 4, 1000, 0.1f, 1);
+    REQUIRE(same_rhythm(audio_analysis_rhythm(analysis), (audio_rhythm_frame){ 0 }));
+    return true;
+}
+
+TEST_CASE(audio_rhythm_drops_history_across_missing_pcm)
+{
+    enum
+    {
+        COUNT = RATE * 12
+    };
+    float *samples = xmalloc(sizeof(float) * COUNT);
+    rhythm_pcm(samples, 0, COUNT, RATE, 120);
+    audio_analysis_push_at(analysis, samples, COUNT, 1, RATE, 0);
+    REQUIRE(audio_analysis_rhythm(analysis).confidence > 0.25f);
+    audio_analysis_push_at(analysis, samples, 735, 1, RATE, COUNT + RATE / 3);
+    audio_analysis_push_at(other, samples, 735, 1, RATE, COUNT + RATE / 3);
+    REQUIRE(same_rhythm(audio_analysis_rhythm(analysis), (audio_rhythm_frame){ 0 }));
+    REQUIRE(near(audio_analysis_read(analysis), audio_analysis_read(other), 0));
+    audio_analysis_push_at(analysis, samples + 735, 937, 1, RATE, COUNT + RATE / 3 + 735);
+    audio_analysis_push_at(other, samples + 735, 937, 1, RATE, COUNT + RATE / 3 + 735);
+    REQUIRE(near(audio_analysis_read(analysis), audio_analysis_read(other), 0));
+    free(samples);
+    return true;
 }
 
 TEST_CASE(audio_bands_follow_tone_frequencies)
@@ -208,7 +324,7 @@ static bool empty_snapshot(audio_measurement frame)
     return silent((
                audio_analysis_frame
            ){ frame.level, frame.bass, frame.mid, frame.treble, frame.onset }) &&
-           !frame.active;
+           !frame.active && same_rhythm(frame.rhythm, (audio_rhythm_frame){ 0 });
 }
 
 TEST_CASE(audio_source_changes_clear_published_levels)
@@ -217,7 +333,13 @@ TEST_CASE(audio_source_changes_clear_published_levels)
     REQUIRE(audio_source(queue, &before) == 0);
     REQUIRE(before > 0);
     REQUIRE(audio_get_analysis(queue).status == AUDIO_IDLE);
-    audio_set_analysis(queue, (audio_measurement){ .level = 0.6f, .active = true, .status = AUDIO_READY });
+    audio_set_analysis(
+        queue,
+        (audio_measurement){ .level = 0.6f,
+                             .active = true,
+                             .status = AUDIO_READY,
+                             .rhythm = { 120, 0.5f, 0.8f, 0.9f } }
+    );
     pin_value source = { .type = PIN_I32, .i = 1 };
     REQUIRE(!AUDIO_SOURCE_CALL.invoke(queue, &source, NULL));
     REQUIRE(audio_source(queue, &after) == 1);
@@ -246,7 +368,8 @@ TEST_CASE(audio_snapshot_binding_returns_host_measurements)
                                     .onset = 0.6f,
                                     .active = true,
                                     .source = 1,
-                                    .status = AUDIO_READY };
+                                    .status = AUDIO_READY,
+                                    .rhythm = { 120, 0.25f, 0.75f, 0.5f } };
     audio_set_analysis(queue, published);
     audio_measurement frame = audio_get_analysis(queue);
     REQUIRE(frame.level == published.level);
@@ -260,6 +383,11 @@ TEST_CASE(audio_snapshot_binding_returns_host_measurements)
     REQUIRE(output[5].type == PIN_BOOL && output[5].b);
     REQUIRE(output[6].type == PIN_I32 && output[6].i == 1);
     REQUIRE(output[7].type == PIN_I32 && output[7].i == AUDIO_READY);
+    REQUIRE(!AUDIO_RHYTHM_CALL.invoke(queue, NULL, output));
+    const float expected_rhythm[] = { 120, 0.25f, 0.75f, 0.5f };
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(output[i].type == PIN_F32 && output[i].f == expected_rhythm[i]);
+    }
     return true;
 }
 
@@ -319,6 +447,10 @@ TEST_CASE(audio_queue_reset_clears_capture_request_and_snapshot)
 void test_tool_audio_analysis()
 {
     pu_setup(setup, teardown);
+    RUN_TEST_CASE(audio_rhythm_tracks_known_tempos);
+    RUN_TEST_CASE(audio_rhythm_is_independent_of_chunks_and_resets);
+    RUN_TEST_CASE(audio_rhythm_stops_during_silence_and_sustained_tones);
+    RUN_TEST_CASE(audio_rhythm_drops_history_across_missing_pcm);
     RUN_TEST_CASE(audio_bands_follow_tone_frequencies);
     RUN_TEST_CASE(audio_levels_follow_amplitude_and_stay_normalized);
     RUN_TEST_CASE(audio_silence_and_reset_clear_signal_history);
@@ -331,4 +463,5 @@ void test_tool_audio_analysis()
     RUN_TEST_CASE(audio_invalid_and_duplicate_sources_preserve_state);
     RUN_TEST_CASE(audio_queue_reset_clears_capture_request_and_snapshot);
     pu_setup(NULL, NULL);
+    test_tool_audio_tracking();
 }

@@ -6111,8 +6111,9 @@ static int format_component(const char *root, const char *name, bool check)
 /* A regular file, not a link: formatting rewrites it in place. */
 static bool regular_file(const char *folder, const char *name)
 {
-    char *path = xmalloc(strlen(folder) + strlen(name) + 2);
-    sprintf(path, "%s/%s", folder, name);
+    size_t size = strlen(folder) + strlen(name) + 2;
+    char *path = xmalloc(size);
+    snprintf(path, size, "%s/%s", folder, name);
     struct stat info;
     bool regular = !lstat(path, &info) && S_ISREG(info.st_mode);
     free(path);

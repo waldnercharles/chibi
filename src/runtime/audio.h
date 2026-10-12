@@ -1,6 +1,7 @@
 #ifndef CHIBI_AUDIO_H
 #define CHIBI_AUDIO_H
 #include "execution/host.h"
+#include "runtime/audio_analysis.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -23,6 +24,7 @@ typedef struct
     bool active;
     int source;
     audio_status status;
+    audio_rhythm_frame rhythm;
 } audio_measurement;
 typedef struct
 {
@@ -96,6 +98,7 @@ extern const node_host_call AUDIO_MUSIC_VOLUME_CALL;
 extern const node_host_call AUDIO_SOUND_VOLUME_CALL;
 extern const node_host_call AUDIO_SOURCE_CALL;
 extern const node_host_call AUDIO_ANALYSIS_CALL;
+extern const node_host_call AUDIO_RHYTHM_CALL;
 extern const node_access AUDIO_ACCESS;
 extern const node_access AUDIO_READ_ACCESS;
 #endif

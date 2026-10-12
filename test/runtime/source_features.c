@@ -6,6 +6,7 @@
 #include "execution/status.h"
 #include "render/shader_catalog.h"
 #include "render/shader_publish.h"
+#include "runtime/audio.h"
 #include "runtime/behaviors/entities.h"
 #include "runtime/component_catalog.h"
 #include "runtime/declared_components.h"
@@ -41,6 +42,7 @@ static entities *test_entities;
 static physics3d *test_physics3d;
 static save *test_save;
 static url_requests *test_urls;
+static audio *test_audio;
 static char save_directory[128];
 static engine_input *input_service;
 static declared_components *declared;
@@ -63,6 +65,10 @@ static void cleanup()
         url_requests_free(test_urls);
     }
     test_urls = NULL;
+    if (test_audio) {
+        audio_free(test_audio);
+    }
+    test_audio = NULL;
     if (test_save) {
         save_free(test_save);
     }
@@ -175,6 +181,9 @@ static bool prepare(const char *text, behavior_backend backend)
     }
     if (test_urls) {
         apush(services, ((service_binding){ URL_SERVICE, test_urls }));
+    }
+    if (test_audio) {
+        apush(services, ((service_binding){ "game.audio", test_audio }));
     }
     if (test_particles) {
         apush(services, ((service_binding){ "game.particles", test_particles }));
@@ -1294,6 +1303,48 @@ TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default)
     return true;
 }
 
+TEST_CASE(source_audio_rhythm_reads_live_snapshot_on_both_backends)
+{
+    const char *text =
+        "behavior Listener { state tempo:number=0; state phase:number=0; "
+        "state confidence:number=0; state beat:number=0; on Tick { "
+        "rhythm:=get_audio_rhythm(); tempo=rhythm.Tempo; phase=rhythm.Phase; "
+        "confidence=rhythm.Confidence; beat=rhythm.Beat; } }";
+    for (int backend = 0; backend < 2; backend++) {
+        test_world = ecs_world_new();
+        test_audio = audio_new();
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t tick = execution_module_event(prepared->module, "Tick");
+        const char *names[] = { "tempo", "phase", "confidence", "beat" };
+        uint64_t states[4];
+        for (int i = 0; i < 4; i++) {
+            states[i] = state_id(names[i]);
+            REQUIRE(states[i]);
+        }
+        instance = execution_program_attach(program, 0);
+        REQUIRE(instance && tick);
+        retire_producer();
+        audio_set_analysis(
+            test_audio,
+            (audio_measurement){ .active = true,
+                                 .status = AUDIO_READY,
+                                 .rhythm = { 96, 0.25f, 0.75f, 0.5f } }
+        );
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        const float expected[] = { 96, 0.25f, 0.75f, 0.5f };
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(execution_instance_state(instance, states[i])->d == expected[i]);
+        }
+        audio_reset(test_audio);
+        REQUIRE(dispatch(tick, 1024) >= 0);
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(execution_instance_state(instance, states[i])->d == 0);
+        }
+        cleanup();
+    }
+    return true;
+}
+
 void test_source_native_features()
 {
     pu_setup(NULL, cleanup);
@@ -1305,6 +1356,7 @@ void test_source_native_features()
     RUN_TEST_CASE(project_saves_reopen_isolate_names_and_respect_override);
     RUN_TEST_CASE(url_requests_validate_copy_replace_and_cancel);
     RUN_TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation);
+    RUN_TEST_CASE(source_audio_rhythm_reads_live_snapshot_on_both_backends);
     pu_clear_setup();
 }
 

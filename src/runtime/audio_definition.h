@@ -12,6 +12,7 @@
 #define AUDIO_SOUND_VOLUME_NAME "Set Sound Volume"
 #define AUDIO_SOURCE_NAME "Set Audio Source"
 #define AUDIO_ANALYSIS_NAME "Get Audio Analysis"
+#define AUDIO_RHYTHM_NAME "Get Audio Rhythm"
 #define AUDIO_PORT(X, NAME, KIND, STORAGE, TYPE_NAME, VALUE)                   \
     X(NAME, KIND, STORAGE, TYPE_NAME, PIN_CONTAINER_SINGLE, 0, 0, SCRIPT_REFERENCE_NONE, false, VALUE)
 #define AUDIO_EXEC(X, NAME)                                                    \
@@ -58,6 +59,18 @@
     AUDIO_INT(X, "Status")
 
 extern const native_definition_pack AUDIO_DEFINITION_PACK;
+
+#define AUDIO_RHYTHM_OUTPUTS(X)                                                \
+    AUDIO_FLOAT(X, "Tempo", 0)                                                 \
+    AUDIO_FLOAT(X, "Phase", 0)                                                 \
+    AUDIO_FLOAT(X, "Confidence", 0)                                            \
+    AUDIO_FLOAT(X, "Beat", 0)
+#define AUDIO_RHYTHM_PRESENTATION                                                  \
+    .category = "Audio", .keywords = "tempo phase confidence beat tracking music", \
+    .description = "Reads measured tempo in BPM, beat phase [0,1), rhythmic "      \
+                   "confidence [0,1] and an 80 ms beat envelope. Tracking "        \
+                   "needs several seconds of rhythmic audio; silence and "         \
+                   "stale onset evidence return zero."
 
 #define AUDIO_TONE_PRESENTATION                                                 \
     .category = "Audio", .keywords = "synth beep sound effect cue noise sweep", \

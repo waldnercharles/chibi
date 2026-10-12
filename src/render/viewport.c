@@ -410,7 +410,15 @@ bool engine_viewport_mouse_world(const engine_viewport *viewport, float *x, floa
 
 bool engine_viewport_mouse_ray(const engine_viewport *viewport, CF_Ray3 *ray)
 {
-    CF_V2 mouse = { viewport->host_input.x, viewport->host_input.y };
+    return engine_viewport_ray_at(
+        viewport,
+        (CF_V2){ viewport->host_input.x, viewport->host_input.y },
+        ray
+    );
+}
+
+bool engine_viewport_ray_at(const engine_viewport *viewport, CF_V2 mouse, CF_Ray3 *ray)
+{
     CF_V2 size = viewport->image_size;
     if (!viewport->perspective || size.x <= 0 || size.y <= 0 || mouse.x < 0 ||
         mouse.y < 0 || mouse.x >= size.x || mouse.y >= size.y) {

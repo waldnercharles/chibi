@@ -2,6 +2,9 @@
 
 #include "platform/cute.h"
 
+#include <SDL3/SDL_atomic.h>
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_mouse.h>
 #include <assert.h>
 #include <math.h>
 
@@ -9,6 +12,90 @@
 static const float STICK_DEAD_ZONE = 0.18f;
 /* Triggers count as held past a quarter of their travel. */
 static const int TRIGGER_THRESHOLD = 8192;
+static SDL_SpinLock pointer_lock;
+static device_pointer_sample pointer_pending;
+static bool pointer_watching;
+static bool pointer_gameplay_pending;
+static CF_V2 pointer_gameplay_press;
+
+Control control_for_mouse(CF_MouseButton button)
+{
+    switch (button) {
+        case CF_MOUSE_BUTTON_LEFT: return CONTROL_MOUSE_LEFT;
+        case CF_MOUSE_BUTTON_RIGHT: return CONTROL_MOUSE_RIGHT;
+        case CF_MOUSE_BUTTON_MIDDLE: return CONTROL_MOUSE_MIDDLE;
+        default: return CONTROL_NONE;
+    }
+}
+
+static bool pointer_event(void *, SDL_Event *event)
+{
+    if (event->type == SDL_EVENT_WINDOW_FOCUS_LOST ||
+        event->type == SDL_EVENT_WILL_ENTER_BACKGROUND) {
+        SDL_LockSpinlock(&pointer_lock);
+        pointer_pending = (device_pointer_sample){ 0 };
+        pointer_gameplay_pending = false;
+        SDL_UnlockSpinlock(&pointer_lock);
+        return true;
+    }
+    if (event->type != SDL_EVENT_MOUSE_BUTTON_DOWN) {
+        return true;
+    }
+    int button;
+    switch (event->button.button) {
+        case SDL_BUTTON_LEFT: button = CF_MOUSE_BUTTON_LEFT; break;
+        case SDL_BUTTON_RIGHT: button = CF_MOUSE_BUTTON_RIGHT; break;
+        case SDL_BUTTON_MIDDLE: button = CF_MOUSE_BUTTON_MIDDLE; break;
+        default: return true;
+    }
+    SDL_LockSpinlock(&pointer_lock);
+    if (button == CF_MOUSE_BUTTON_LEFT && !pointer_pending.pressed[button]) {
+        pointer_pending.position = (CF_V2){ event->button.x, event->button.y };
+    }
+    pointer_pending.pressed[button] = true;
+    SDL_UnlockSpinlock(&pointer_lock);
+    return true;
+}
+
+bool controls_pointer_start()
+{
+    assert(!pointer_watching);
+    pointer_watching = SDL_AddEventWatch(pointer_event, NULL);
+    return pointer_watching;
+}
+
+void controls_pointer_stop()
+{
+    if (pointer_watching) {
+        SDL_RemoveEventWatch(pointer_event, NULL);
+        pointer_watching = false;
+    }
+    SDL_LockSpinlock(&pointer_lock);
+    pointer_pending = (device_pointer_sample){ 0 };
+    pointer_gameplay_pending = false;
+    SDL_UnlockSpinlock(&pointer_lock);
+}
+
+device_pointer_sample controls_pointer_take(CF_V2 position)
+{
+    SDL_LockSpinlock(&pointer_lock);
+    device_pointer_sample sample = pointer_pending;
+    pointer_pending = (device_pointer_sample){ 0 };
+    if (sample.pressed[CF_MOUSE_BUTTON_LEFT] && !pointer_gameplay_pending) {
+        pointer_gameplay_press = sample.position;
+        pointer_gameplay_pending = true;
+    }
+    sample.position = pointer_gameplay_pending ? pointer_gameplay_press : position;
+    SDL_UnlockSpinlock(&pointer_lock);
+    return sample;
+}
+
+void controls_pointer_consumed()
+{
+    SDL_LockSpinlock(&pointer_lock);
+    pointer_gameplay_pending = false;
+    SDL_UnlockSpinlock(&pointer_lock);
+}
 
 CF_V2 controls_tilt(float beta, float gamma, int screen_angle)
 {

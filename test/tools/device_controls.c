@@ -2,6 +2,9 @@
 
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_init.h>
+#include <SDL3/SDL_mouse.h>
 #include <math.h>
 
 /* Mirrors STICK_DEAD_ZONE so retuning it is a reviewed contract change. */
@@ -70,9 +73,80 @@ TEST_CASE(tilt_tracks_gravity_in_the_current_screen_axes)
     return true;
 }
 
+TEST_CASE(complete_pointer_taps_retain_the_press_edge_and_location)
+{
+    REQUIRE(SDL_Init(SDL_INIT_EVENTS));
+    REQUIRE(controls_pointer_start());
+    SDL_Event down = { .type = SDL_EVENT_MOUSE_BUTTON_DOWN };
+    down.button.button = SDL_BUTTON_LEFT;
+    down.button.down = true;
+    down.button.x = 80;
+    down.button.y = 120;
+    SDL_Event up = down;
+    up.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    up.button.down = false;
+    up.button.x = 300;
+    up.button.y = 400;
+    REQUIRE(SDL_PushEvent(&down));
+    REQUIRE(SDL_PushEvent(&up));
+    /* Both events precede one host sample, with the release over a different
+     * control. Gameplay keeps the press; UI continues sampling Cute directly. */
+    device_pointer_sample tap = controls_pointer_take((CF_V2){ 300, 400 });
+    REQUIRE(tap.pressed[CF_MOUSE_BUTTON_LEFT]);
+    REQUIRE(control_for_mouse(CF_MOUSE_BUTTON_LEFT) == CONTROL_MOUSE_LEFT);
+    REQUIRE(close_to(tap.position, 80, 120));
+    device_pointer_sample next = controls_pointer_take((CF_V2){ 300, 400 });
+    REQUIRE(!next.pressed[CF_MOUSE_BUTTON_LEFT]);
+    /* A render frame with no fixed step must not retarget the pending press. */
+    REQUIRE(close_to(next.position, 80, 120));
+    controls_pointer_consumed();
+    next = controls_pointer_take((CF_V2){ 300, 400 });
+    REQUIRE(close_to(next.position, 300, 400));
+    REQUIRE(SDL_PushEvent(&down));
+    device_pointer_sample drag = controls_pointer_take((CF_V2){ 150, 180 });
+    REQUIRE(drag.pressed[CF_MOUSE_BUTTON_LEFT]);
+    REQUIRE(close_to(drag.position, 80, 120));
+    controls_pointer_consumed();
+    device_pointer_sample moved = controls_pointer_take((CF_V2){ 150, 180 });
+    REQUIRE(!moved.pressed[CF_MOUSE_BUTTON_LEFT]);
+    REQUIRE(close_to(moved.position, 150, 180));
+    /* Consuming a step must not erase events delivered since the last sample. */
+    REQUIRE(SDL_PushEvent(&down));
+    controls_pointer_consumed();
+    device_pointer_sample later = controls_pointer_take((CF_V2){ 300, 400 });
+    REQUIRE(later.pressed[CF_MOUSE_BUTTON_LEFT]);
+    REQUIRE(close_to(later.position, 80, 120));
+    /* Focus loss cancels both raw edges and a press awaiting simulation. */
+    REQUIRE(SDL_PushEvent(&down));
+    SDL_Event focus = { .type = SDL_EVENT_WINDOW_FOCUS_LOST };
+    REQUIRE(SDL_PushEvent(&focus));
+    device_pointer_sample canceled = controls_pointer_take((CF_V2){ 0 });
+    REQUIRE(!canceled.pressed[CF_MOUSE_BUTTON_LEFT]);
+    REQUIRE(close_to(canceled.position, 0, 0));
+    REQUIRE(SDL_PushEvent(&down));
+    canceled = controls_pointer_take((CF_V2){ 300, 400 });
+    REQUIRE(close_to(canceled.position, 80, 120));
+    /* The host also cancels after transport stop or UI capture. */
+    controls_pointer_consumed();
+    canceled = controls_pointer_take((CF_V2){ 300, 400 });
+    REQUIRE(close_to(canceled.position, 300, 400));
+    REQUIRE(SDL_PushEvent(&down));
+    canceled = controls_pointer_take((CF_V2){ 300, 400 });
+    REQUIRE(close_to(canceled.position, 80, 120));
+    controls_pointer_stop();
+    REQUIRE(SDL_PushEvent(&down));
+    device_pointer_sample stopped = controls_pointer_take((CF_V2){ 0 });
+    REQUIRE(!stopped.pressed[CF_MOUSE_BUTTON_LEFT]);
+    REQUIRE(close_to(stopped.position, 0, 0));
+    SDL_FlushEvents(SDL_EVENT_WINDOW_FOCUS_LOST, SDL_EVENT_MOUSE_BUTTON_UP);
+    SDL_QuitSubSystem(SDL_INIT_EVENTS);
+    return true;
+}
+
 void test_device_controls()
 {
     RUN_TEST_CASE(desktop_keys_map_to_their_game_controls);
     RUN_TEST_CASE(stick_dead_zone_rescales_to_full_length);
     RUN_TEST_CASE(tilt_tracks_gravity_in_the_current_screen_axes);
+    RUN_TEST_CASE(complete_pointer_taps_retain_the_press_edge_and_location);
 }

@@ -191,7 +191,7 @@ static void render(void *context)
         (render_skip){ 0 }
     );
 }
-static int sample_input(desktop_player *host)
+static int sample_input(desktop_player *host, CF_V2 pointer_position)
 {
     engine *runtime = world_engine(player_world(host->player));
     int width, height;
@@ -203,6 +203,9 @@ static int sample_input(desktop_player *host)
     bool active = cf_app_has_focus() && engine_is_playing(runtime) &&
                   !engine_viewport_ui_capture(host->viewport) &&
                   !engine_viewport_ui_typing(host->viewport);
+    if (!active) {
+        controls_pointer_consumed();
+    }
     uint64_t controls = active ? pressed_controls | controls_down() : 0;
     bool firing = false;
     input_controller_state controllers[INPUT_CONTROLLER_MAX];
@@ -225,7 +228,7 @@ static int sample_input(desktop_player *host)
     }
     CF_Ray3 ray;
     input_pointer_ray pointer = { 0 };
-    if (active && engine_viewport_mouse_ray(host->viewport, &ray)) {
+    if (active && engine_viewport_ray_at(host->viewport, pointer_position, &ray)) {
         pointer = (input_pointer_ray){ .origin = ray.p, .direction = ray.d, .active = true };
     }
     if (engine_sample_pointer_ray(runtime, pointer) < 0) {
@@ -390,6 +393,13 @@ static int run_frame(desktop_player *host)
         cf_input_disable_ime();
     }
     cf_app_update(NULL);
+    device_pointer_sample pointer = controls_pointer_take((CF_V2){ cf_mouse_x(),
+                                                                   cf_mouse_y() });
+    for (int i = 0; i < 3; i++) {
+        if (pointer.pressed[i]) {
+            pressed_controls |= UINT64_C(1) << control_for_mouse(i);
+        }
+    }
     if (!text_input(host)) {
         fprintf(stderr, "Invalid or oversized text input\n");
         return -1;
@@ -432,10 +442,16 @@ static int run_frame(desktop_player *host)
     }
     engine_viewport_set_host_input(host->viewport, &input);
     engine_set_focus(runtime, input.focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_NONE);
-    if (sample_input(host) < 0 || engine_frame(runtime, host->now) < 0) {
+    uint64_t steps = engine_last_timing(runtime)->simulation_steps;
+    if (sample_input(host, pointer.position) < 0 ||
+        engine_frame(runtime, host->now) < 0) {
         const char *message = engine_error(runtime);
         fprintf(stderr, "%s\n", message ? message : "Gameplay input rejected");
         return -1;
+    }
+    if (engine_last_timing(runtime)->simulation_steps != steps ||
+        !engine_is_playing(runtime)) {
+        controls_pointer_consumed();
     }
     player_device_submit(engine_take_device_requests(runtime), cf_app_has_focus());
     engine_viewport_view view;
@@ -492,6 +508,7 @@ static void web_frame(void *host)
         emscripten_cancel_main_loop();
         player_url_stop();
         player_device_stop();
+        controls_pointer_stop();
         web_stopped();
     }
 }
@@ -664,6 +681,10 @@ int main(int argc, char **argv)
     signal(SIGINT, stop);
     signal(SIGTERM, stop);
     cf_register_key_callback(key_changed);
+    if (!controls_pointer_start()) {
+        fprintf(stderr, "Cannot watch pointer input\n");
+        goto finish;
+    }
     cf_set_target_framerate(60);
     engine_set_playing(runtime, true);
 #ifdef __EMSCRIPTEN__
@@ -687,6 +708,7 @@ int main(int argc, char **argv)
 finish:
     player_url_stop();
     player_device_stop();
+    controls_pointer_stop();
     cf_register_key_callback(NULL);
     if (host.viewport) {
         engine_viewport_free(host.viewport);

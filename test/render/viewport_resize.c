@@ -320,6 +320,16 @@ TEST_CASE(pointer_ray_matches_the_displayed_3d_image)
     CF_V3 projected = render_scene3d_project(&camera, hit);
     REQUIRE(fabsf(projected.x - 0.25f) < 0.0001f);
     REQUIRE(fabsf(projected.y - 0.25f) < 0.0001f);
+    CF_Ray3 press_ray, unchanged;
+    REQUIRE(engine_viewport_ray_at(camera_viewport, (CF_V2){ 8, 24 }, &press_ray));
+    t = (5 - press_ray.p.z) / press_ray.d.z;
+    hit = cf_add_v3(press_ray.p, cf_mul_v3_f(press_ray.d, t));
+    projected = render_scene3d_project(&camera, hit);
+    REQUIRE(fabsf(projected.x + 0.5f) < 0.0001f);
+    REQUIRE(fabsf(projected.y + 0.5f) < 0.0001f);
+    REQUIRE(engine_viewport_mouse_ray(camera_viewport, &unchanged));
+    REQUIRE(cf_len_v3(cf_sub_v3(ray.p, unchanged.p)) < 0.00001f);
+    REQUIRE(cf_len_v3(cf_sub_v3(ray.d, unchanged.d)) < 0.00001f);
     input.x = -1;
     engine_viewport_set_host_input(camera_viewport, &input);
     REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));

@@ -1,9 +1,12 @@
 #include "authoring/behavior_loader.h"
 
+#include "authoring/image_prepare.h"
 #include "authoring/preview_source.h"
 #include "authoring/source_collection.h"
 #include "authoring/source_prepare.h"
 #include "runtime/component_catalog.h"
+#include "runtime/images/catalog.h"
+#include "runtime/images/sky.h"
 #include "support/asset_text.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -16,7 +19,8 @@
 
 /* The application loader prepares a content root's executable sources into
  * the authoring world and a prototype preview's live world as one collection,
- * and a preview releases what a failed scene launch spawned. */
+ * a preview prepares what a scene's overrides name, and it releases what a
+ * failed scene launch spawned. */
 
 static char root[] = "/tmp/chibi-loader-XXXXXX";
 static ecs_world *ecs;
@@ -68,9 +72,15 @@ static void cleanup()
     test_prototype = NULL;
     remove_behavior("Counter");
     remove_behavior("Broken");
-    char behaviors[512];
-    snprintf(behaviors, sizeof behaviors, "%s/behaviors", root);
-    rmdir(behaviors);
+    render_skies_clear();
+    render_image_catalog_clear();
+    char path[512];
+    snprintf(path, sizeof path, "%s/skies/override.hdr", root);
+    unlink(path);
+    snprintf(path, sizeof path, "%s/skies", root);
+    rmdir(path);
+    snprintf(path, sizeof path, "%s/behaviors", root);
+    rmdir(path);
     rmdir(root);
 }
 
@@ -156,10 +166,45 @@ TEST_CASE(failed_scene_launch_destroys_entities_before_their_strings)
     return true;
 }
 
+TEST_CASE(scene_launch_prepares_what_overrides_name)
+{
+    /* A 2 x 1 sky in flat rows: the prototype names none, the scene does. */
+    char path[512], error[256] = "";
+    snprintf(path, sizeof path, "%s/skies", root);
+    REQUIRE(!mkdir(path, 0700));
+    snprintf(path, sizeof path, "%s/skies/override.hdr", root);
+    FILE *file = fopen(path, "wb");
+    REQUIRE(file);
+    fputs("#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 1 +X 2\n", file);
+    fwrite((unsigned char[8]){ 128, 128, 128, 129, 64, 64, 64, 129 }, 1, 8, file);
+    REQUIRE(!fclose(file));
+    REQUIRE(render_image_mount_content(root, error, sizeof error));
+    prototype_registry prototypes = registry();
+    test_prototype = prototype_load(
+        "name \"Sky\"\ncomponents {\n    Environment\n}\n",
+        &prototypes,
+        error,
+        sizeof error
+    );
+    REQUIRE(test_prototype);
+    preview = prototype_preview_new(&prototypes);
+    av_doc *doc = av_doc_read("Environment sky=\"content/skies/override.hdr\"\n", error, sizeof error);
+    REQUIRE(doc);
+    components = av_value_copy(av_doc_root(doc));
+    av_doc_free(doc);
+    const prototype_preview_scene_entity entity = { .prototype = test_prototype,
+                                                    .parent = -1,
+                                                    .components = components };
+    REQUIRE(prototype_preview_launch_scene(preview, &entity, 1, error, sizeof error) == ECS_OK);
+    REQUIRE(render_sky_find("content/skies/override.hdr"));
+    return true;
+}
+
 void test_behavior_loader()
 {
     pu_setup(setup, cleanup);
     RUN_TEST_CASE(sources_load_into_both_worlds_or_neither);
+    RUN_TEST_CASE(scene_launch_prepares_what_overrides_name);
     RUN_TEST_CASE(failed_scene_launch_destroys_entities_before_their_strings);
     pu_clear_setup();
 }

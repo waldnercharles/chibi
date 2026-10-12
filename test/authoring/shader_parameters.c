@@ -16,6 +16,7 @@
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -73,7 +74,9 @@ static void shader_registry()
     registry_changed = true;
 }
 
-TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
+/* A material whose Tint (white) colors it and whose Opacity (1) sets its
+ * opacity. Returns the Tint node. */
+static node *tint_material()
 {
     shader_registry();
     asset = behavior_asset_new("Preview parameters");
@@ -81,19 +84,39 @@ TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
     graph *g = asset->graph;
     node *output = shader_graph_add_output(g, false);
     const node_desc *parameter = registry_node_by_name("Shader Parameter");
-    REQUIRE(parameter);
+    assert(parameter);
     node *color = graph_add_node(g, parameter);
     node *opacity = graph_add_node(g, parameter);
-    REQUIRE(graph_set_node_reference(g, color, 0, "Tint") == 0);
-    REQUIRE(graph_set_node_reference(g, opacity, 1, "Opacity") == 0);
-    REQUIRE(graph_set_pin_type(g, color, 1, 0, PIN_STRUCT, "ShaderVec3") == 0);
     float tint[3] = { 1, 1, 1 };
     pin_value color_default = { .type = PIN_STRUCT, .type_name = "ShaderVec3", .ptr = tint };
-    REQUIRE(graph_set_pin_default(g, color, 1, 0, &color_default) == 0);
     pin_value opacity_default = { .type = PIN_F32, .f = 1 };
-    REQUIRE(graph_set_pin_default(g, opacity, 1, 0, &opacity_default) == 0);
-    REQUIRE(graph_connect_data(g, color, 0, output, 0) == 0);
-    REQUIRE(graph_connect_data(g, opacity, 0, output, 5) == 0);
+    bool built = !graph_set_node_reference(g, color, 0, "Tint") &&
+                 !graph_set_node_reference(g, opacity, 1, "Opacity") &&
+                 !graph_set_pin_type(g, color, 1, 0, PIN_STRUCT, "ShaderVec3") &&
+                 !graph_set_pin_default(g, color, 1, 0, &color_default) &&
+                 !graph_set_pin_default(g, opacity, 1, 0, &opacity_default) &&
+                 !graph_connect_data(g, color, 0, output, 0) &&
+                 !graph_connect_data(g, opacity, 0, output, 5);
+    assert(built);
+    (void)built;
+    return color;
+}
+
+static int parameter_slot(int shader, const char *name)
+{
+    for (int i = 0; i < 32; i++) {
+        const char *slot = render_shader_parameter_name(shader, i);
+        if (slot && !strcmp(slot, name)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
+{
+    node *color = tint_material();
+    graph *g = asset->graph;
     shader_error error = { 0 };
     REQUIRE(render_shader_upsert(asset, &error));
     int shader = render_shader_find(asset->name);
@@ -107,16 +130,8 @@ TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
     const char *parameter_key = "(array)Tint 1 -2 0.5\nOpacity 4\n";
     float prepared[32][4];
     REQUIRE(shader_values_plain(shader, parameter_key, prepared, &error));
-    int tint_slot = -1, opacity_slot = -1;
-    for (int i = 0; i < 32; i++) {
-        const char *name = render_shader_parameter_name(shader, i);
-        if (name && !strcmp(name, "Tint")) {
-            tint_slot = i;
-        }
-        if (name && !strcmp(name, "Opacity")) {
-            opacity_slot = i;
-        }
-    }
+    int tint_slot = parameter_slot(shader, "Tint"),
+        opacity_slot = parameter_slot(shader, "Opacity");
     REQUIRE(tint_slot >= 0 && opacity_slot >= 0);
     REQUIRE(fabsf(prepared[tint_slot][1] - (-2)) < 0.0001f);
     REQUIRE(fabsf(prepared[opacity_slot][0] - (4)) < 0.0001f);
@@ -133,7 +148,9 @@ TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
     REQUIRE(shader_values_plain(shader, parameter_key, prepared, &error));
     payload[4] ^= 1;
     float changed_tint[3] = { 2, 2, 2 };
-    color_default.ptr = changed_tint;
+    pin_value color_default = { .type = PIN_STRUCT,
+                                .type_name = "ShaderVec3",
+                                .ptr = changed_tint };
     REQUIRE(graph_set_pin_default(g, color, 1, 0, &color_default) == 0);
     REQUIRE(render_shader_upsert(asset, &error));
     REQUIRE(!shader_values_load(payload, payload_size, &error));
@@ -145,6 +162,28 @@ TEST_CASE(shader_parameters_persist_and_reject_stale_generations)
     REQUIRE(strstr(error.message, "finite number or boolean"));
     REQUIRE(!render_shader_parameters_validate(shader, "Missing 1\n", &error));
     REQUIRE(strstr(error.message, "Unknown shader preview parameter"));
+    return true;
+}
+
+/* 3D solids and 2D sprites read a Shader component's parameters as their
+ * material's own values, so preparing the component publishes those too. */
+TEST_CASE(shader_bindings_prepare_their_material_values)
+{
+    tint_material();
+    shader_error error = { 0 };
+    REQUIRE(render_shader_upsert(asset, &error));
+    int shader = render_shader_find(asset->name);
+    REQUIRE(shader);
+    Shader binding = { .material = asset->name,
+                       .parameters = "(array)Tint 0.25 0.5 0.75\n" };
+    REQUIRE(authoring_shader_binding_prepare(&binding, &error));
+    float values[32][4];
+    REQUIRE(shader_values_plain(shader, binding.parameters, values, &error));
+    int tint = parameter_slot(shader, "Tint"),
+        opacity = parameter_slot(shader, "Opacity");
+    REQUIRE(tint >= 0 && opacity >= 0);
+    REQUIRE(values[tint][0] == 0.25f && values[tint][1] == 0.5f && values[tint][2] == 0.75f);
+    REQUIRE(values[opacity][0] == 1);
     return true;
 }
 
@@ -541,6 +580,7 @@ void test_shader_parameters_prepared()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(shader_parameters_persist_and_reject_stale_generations);
+    RUN_TEST_CASE(shader_bindings_prepare_their_material_values);
     RUN_TEST_CASE(particle_function_parameters_survive_preparation);
     RUN_TEST_CASE(particle_function_stages_and_rejects_mesh_material_use);
     RUN_TEST_CASE(particle_function_signature_and_context_are_checked);

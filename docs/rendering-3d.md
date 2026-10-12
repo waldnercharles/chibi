@@ -3,7 +3,11 @@
 A scene with `presentation "3d"` draws through `render/scene3d.c`. Entities with
 `Transform` and `Geometry3D` become lit solids; gameplay x/y maps to world
 x/z and `elevation` is the center height. The renderer writes scene-linear RGBA16F
-into `render/scene3d_post.c`, which applies bloom, exposure and the tone map.
+into `render/scene3d_post.c`, which applies bloom, exposure, the tone map and
+FXAA. The final edge filter uses display colors and the same shader on native,
+WebGPU and WebGL. It preserves flat regions and includes additive particles;
+it uses one extra RGBA8 target and no frame history. Player viewports render
+at the window's pixel density while input stays in logical window coordinates.
 
 An entity with `Transform3D` and `Geometry3D` becomes a solid too. Its
 global transform, through any ChildOf parents, places the solid's center, turns

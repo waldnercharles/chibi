@@ -34,6 +34,7 @@ NATIVE = {
     ('--viewport-resize',): 'Reviewed hidden 64x64 app: viewport initial/later resize behavior, one UI frame/readback for alpha, and independently reviewed six fixed surface updates (four zero-area, two 64x64 draws/presents), no added readback/wait/network; GPU, shared 60s; docs/testing.md',
     ('--sdf-visibility',): 'Reviewed hidden 96x80 app: mesh and SDF occlusion with hidden-surface rejection on and off, depth snapshot copies, readback; GPU; docs/testing.md',
     ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky, ramps, imported meshes and their normal maps, imported glTF Standard materials and tangent frames, Transform3D placement and mirroring, occlusion, ambient occlusion, alpha modes and masked shadows with readback; GPU; docs/rendering-3d.md',
+    ('--scene3d-aa',): 'Independently reviewed two C silhouette cases: one rotated emissive box and one additive octahedron, two tiny constant shader graphs, two hidden 64x64 frames/readbacks each bounded 2s, fixed 4096-pixel scans, no external assets/network/processes; passed 1.620s Cocoa/Metal/shared60s',
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
     ('--particle-depth',): 'Independently reviewed one C pixel case, two constant three-node particle shaders, two one-particle fields, four hidden 64x64 frames/readbacks; near/far opaque-additive overlaps with both persistent field cache orders; GPU, passed 2.094s/shared60s; docs/testing.md',
     ('--particle-state',): 'Independently reviewed one C case, one field with at most 1025 particles and only index 1024 visible for row addressing, eleven hidden 64x64 float readbacks each bounded 2s, ten <=1024x2 two-target state updates, two tiny source publications, no network; passed 1.043s Cocoa/shared60s',
@@ -130,6 +131,7 @@ TOOLS = {
     # Hidden-app 64x64 3D renders: rhythm, ambient, lights, shadows, exposure, the Environment
     # sky and its light, and color ramps.
     'scene3d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d'],
+    'scene3d-aa': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-aa'],
     # Four fixed 64x64 frames isolate opaque/additive particle depth ordering.
     'particle-depth': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--particle-depth'],
     'particle-state': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--particle-state'],
@@ -501,7 +503,7 @@ def main():
             parser.error('unadmitted tooling command')
         if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
                             'studio-graph-visibility', 'interior-border', 'viewport-resize', 'sdf-visibility',
-                            'scene3d', 'scene3d-gles', 'particle-depth', 'particle-state',
+                            'scene3d', 'scene3d-gles', 'scene3d-aa', 'particle-depth', 'particle-state',
                             'material-ramps'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])

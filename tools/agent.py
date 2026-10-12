@@ -48,6 +48,7 @@ STUDIO_ACCEPTANCE = {
 RENDER_SELECTORS = {'--interior-border': 'interior-border', '--viewport-resize': 'viewport-resize',
                     '--sdf-visibility': 'sdf-visibility',
                     '--scene3d': 'scene3d', '--scene3d-gles': 'scene3d-gles',
+                    '--scene3d-aa': 'scene3d-aa',
                     '--particle-depth': 'particle-depth',
                     '--particle-state': 'particle-state',
                     '--material-ramps': 'material-ramps'}

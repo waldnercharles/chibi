@@ -404,10 +404,9 @@ static int run_frame(desktop_player *host)
     }
     int width, height;
     cf_app_get_size(&width, &height);
-    engine_viewport_request_resize(host->viewport, width, height);
     engine_viewport_host_input input = { .width = width,
                                          .height = height,
-                                         .resolution = 1,
+                                         .resolution = cf_app_get_pixel_scale(),
                                          .x = cf_mouse_x(),
                                          .y = cf_mouse_y(),
                                          .hovered = cf_app_has_focus(),

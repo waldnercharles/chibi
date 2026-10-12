@@ -297,12 +297,18 @@ TEST_CASE(pointer_ray_matches_the_displayed_3d_image)
         }
     );
     int width, height;
-    frame(camera_viewport, UI_SIDE, UI_SIDE, &width, &height);
-    engine_viewport_host_input input = { .width = UI_SIDE,
-                                         .height = UI_SIDE,
-                                         .x = 40,
-                                         .y = 24 };
+    /* A 2x display still reports the pointer in logical window coordinates. */
+    engine_viewport_host_input input = { .width = UI_SIDE / 2,
+                                         .height = UI_SIDE / 2,
+                                         .resolution = 2,
+                                         .x = 20,
+                                         .y = 12 };
+    cf_app_update(NULL);
     engine_viewport_set_host_input(camera_viewport, &input);
+    REQUIRE(engine_viewport_draw(camera_viewport, &(engine_viewport_controls){ 0 }) == 0);
+    cf_app_draw_onto_screen(false);
+    engine_viewport_pixel_size(camera_viewport, &width, &height);
+    REQUIRE(width == UI_SIDE && height == UI_SIDE);
     CF_Ray3 ray;
     REQUIRE(engine_viewport_mouse_ray(camera_viewport, &ray));
     REQUIRE(ray.d.z < 0);
@@ -317,14 +323,14 @@ TEST_CASE(pointer_ray_matches_the_displayed_3d_image)
     input.x = -1;
     engine_viewport_set_host_input(camera_viewport, &input);
     REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
-    input.x = UI_SIDE;
+    input.x = input.width;
     engine_viewport_set_host_input(camera_viewport, &input);
     REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
-    input.x = 32;
-    input.y = UI_SIDE;
+    input.x = input.width / 2;
+    input.y = input.height;
     engine_viewport_set_host_input(camera_viewport, &input);
     REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));
-    input.y = 32;
+    input.y = input.height / 2;
     engine_viewport_set_host_input(camera_viewport, &input);
     engine_viewport_set_perspective(camera_viewport, false);
     REQUIRE(!engine_viewport_mouse_ray(camera_viewport, &ray));

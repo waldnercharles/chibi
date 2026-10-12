@@ -29,6 +29,8 @@ CHIBI_GPU_SELECTOR("--viewport-resize")
 CHIBI_GPU_SELECTOR("--sdf-visibility")
 /* The 3D renderer's cases in a hidden 64x64 app, with readback. */
 CHIBI_GPU_SELECTOR("--scene3d")
+/* Two 64x64 frames check solid and additive particle silhouette coverage. */
+CHIBI_GPU_SELECTOR("--scene3d-aa")
 /* Two one-particle fields, four hidden 64x64 frames and pixel readbacks check
  * opaque/additive depth order independently of persistent field cache order. */
 CHIBI_GPU_SELECTOR("--particle-depth")

@@ -200,11 +200,13 @@ static bool read_pixels(CF_Canvas canvas)
 {
     CF_Readback readback = cf_canvas_readback(canvas);
     assert(readback.id);
-    while (!cf_readback_ready(readback)) {
+    uint64_t deadline = cf_get_ticks() + cf_get_tick_frequency() * 2;
+    while (!cf_readback_ready(readback) && cf_get_ticks() < deadline) {
         cf_sleep(1);
     }
     int bytes = (int)sizeof pixels;
-    bool read = cf_readback_data(readback, pixels, bytes) == bytes;
+    bool read = cf_readback_ready(readback) &&
+                cf_readback_data(readback, pixels, bytes) == bytes;
     cf_destroy_readback(readback);
     return read;
 }
@@ -4166,6 +4168,82 @@ void test_render_particle_depth()
     make_scene3d_app(false);
     pu_setup(setup, particle_depth_cleanup);
     RUN_TEST_CASE(solid_particles_occlude_only_additive_particles_behind_them);
+    pu_clear_setup();
+    cf_destroy_app();
+}
+
+/* A flat emissive silhouette has just two colors before antialiasing. Edge
+ * coverage must introduce intermediate colors without changing its interior. */
+static bool antialiased_silhouette()
+{
+    int center = pixels[(SIDE / 2) * SIDE + SIDE / 2].colors.r;
+    REQUIRE(center > 100);
+    int partial = 0;
+    for (int y = 0; y < SIDE; y++) {
+        for (int x = 0; x < SIDE; x++) {
+            int value = pixels[y * SIDE + x].colors.r;
+            partial += value > 5 && value < center - 5;
+            REQUIRE(value <= center + 1);
+            if (x < 4 || y < 4 || x >= SIDE - 4 || y >= SIDE - 4) {
+                REQUIRE(value == 0);
+            }
+            if (x >= SIDE / 2 - 3 && x <= SIDE / 2 + 3 && y >= SIDE / 2 - 3 &&
+                y <= SIDE / 2 + 3) {
+                REQUIRE(value == center);
+            }
+        }
+    }
+    printf("3D silhouette: %d partial edge pixels, interior %d\n", partial, center);
+    REQUIRE(partial >= 24);
+    return true;
+}
+
+TEST_CASE(antialiasing_smooths_geometry_without_blurring_flat_interiors)
+{
+    ecs_entity entity = add_solid(
+        (CF_V3){ 0 },
+        (Geometry3D){ .primitive = PRIMITIVE_BOX, .width = 2, .height = 2, .depth = .1f },
+        0xffu
+    );
+    Material *material = Material_get(test_world, entity);
+    material->emission_color = 0xffffffffu;
+    material->emission_intensity = .5f;
+    material->emission_multiplier = 1;
+    Transform3D transform = { .rotation = { .z = .31f }, .scale = { 1, 1, 1 } };
+    REQUIRE(
+        ecs_world_record_add(test_world, entity, COMPONENT_Transform3D.id, &transform, 0) == ECS_OK
+    );
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
+    look((CF_V3){ 0, 0, 6 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
+    Environment environment = environment_defaults();
+    environment.ambient_intensity = 0;
+    environment.occlusion = OCCLUSION_OFF;
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
+    REQUIRE(render(&environment));
+    REQUIRE(antialiased_silhouette());
+    return true;
+}
+
+TEST_CASE(antialiasing_smooths_additive_particle_silhouettes)
+{
+    REQUIRE(publish_depth_particles());
+    look((CF_V3){ 0, 0, 6 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
+    depth_particle(add_depth_particle(), true, 0);
+    Environment environment = environment_defaults();
+    environment.occlusion = OCCLUSION_OFF;
+    environment.tone_mapping = TONE_MAPPING_NEUTRAL;
+    REQUIRE(render(&environment));
+    REQUIRE(antialiased_silhouette());
+    return true;
+}
+
+void test_render_scene3d_aa()
+{
+    make_scene3d_app(false);
+    printf("3D antialiasing backend: %s\n", cf_backend_type_to_string(cf_query_backend()));
+    pu_setup(setup, particle_depth_cleanup);
+    RUN_TEST_CASE(antialiasing_smooths_geometry_without_blurring_flat_interiors);
+    RUN_TEST_CASE(antialiasing_smooths_additive_particle_silhouettes);
     pu_clear_setup();
     cf_destroy_app();
 }

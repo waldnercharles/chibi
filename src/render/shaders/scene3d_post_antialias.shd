@@ -1,0 +1,32 @@
+// FXAA runs on display colors, after bloom and tone mapping. It leaves flat
+// areas intact and filters along high-contrast edges without frame history.
+float antialias_luma(vec3 value)
+{
+    return dot(value, vec3(0.299, 0.587, 0.114));
+}
+
+vec4 shader(vec4 color, ShaderParams params)
+{
+    vec2 uv = params.uv;
+    vec2 pixel = 1.0 / vec2(textureSize(u_image, 0));
+    vec3 center = texture(u_image, uv).rgb;
+    float middle = antialias_luma(center);
+    float nw = antialias_luma(texture(u_image, uv + pixel * vec2(-1, -1)).rgb);
+    float ne = antialias_luma(texture(u_image, uv + pixel * vec2(1, -1)).rgb);
+    float sw = antialias_luma(texture(u_image, uv + pixel * vec2(-1, 1)).rgb);
+    float se = antialias_luma(texture(u_image, uv + pixel * vec2(1, 1)).rgb);
+    float low = min(middle, min(min(nw, ne), min(sw, se)));
+    float high = max(middle, max(max(nw, ne), max(sw, se)));
+    if (high - low < max(0.03125, high * 0.125)) return vec4(center, 1);
+
+    vec2 along = vec2(sw + se - nw - ne, nw + sw - ne - se);
+    float reduce = max((nw + ne + sw + se) * 0.03125, 0.0078125);
+    along /= min(abs(along.x), abs(along.y)) + reduce;
+    along = clamp(along, vec2(-8), vec2(8)) * pixel;
+    vec3 inner = 0.5 * (texture(u_image, uv - along / 6.0).rgb +
+                        texture(u_image, uv + along / 6.0).rgb);
+    vec3 wide = inner * 0.5 + 0.25 *
+        (texture(u_image, uv - along * 0.5).rgb + texture(u_image, uv + along * 0.5).rgb);
+    float wide_luma = antialias_luma(wide);
+    return vec4(wide_luma < low || wide_luma > high ? inner : wide, 1);
+}

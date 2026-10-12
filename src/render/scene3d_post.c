@@ -30,7 +30,7 @@ typedef struct
 
 typedef struct
 {
-    CF_Canvas scene;
+    CF_Canvas scene, mapped;
     bloom_level levels[LEVELS];
     int width, height, count;
 } post_targets;
@@ -51,7 +51,7 @@ struct render_scene3d_post
     post_targets targets;
     post_exposure exposure;
     CF_Canvas output, pending_output;
-    CF_Shader downsample, blur, composite;
+    CF_Shader downsample, blur, composite, antialias;
     Environment settings;
     bool ready;
     char error[512];
@@ -72,6 +72,7 @@ static void destroy_canvas(CF_Canvas canvas)
 static void destroy_targets(post_targets *targets)
 {
     destroy_canvas(targets->scene);
+    destroy_canvas(targets->mapped);
     for (int i = 0; i < targets->count; i++) {
         destroy_canvas(targets->levels[i].down);
         destroy_canvas(targets->levels[i].horizontal);
@@ -100,6 +101,7 @@ void render_scene3d_post_free(render_scene3d_post *post)
     destroy_shader(post->downsample);
     destroy_shader(post->blur);
     destroy_shader(post->composite);
+    destroy_shader(post->antialias);
     destroy_shader(post->exposure.measure);
     destroy_shader(post->exposure.adapt);
     free(post);
@@ -173,8 +175,9 @@ static bool resize(render_scene3d_post *post, int width, int height)
     }
     post_targets next = { .width = width, .height = height };
     next.scene = make_canvas(width, height, true, true);
+    next.mapped = make_canvas(width, height, false, false);
     CF_Canvas output = make_canvas(width, height, false, false);
-    bool ok = next.scene.id && output.id;
+    bool ok = next.scene.id && next.mapped.id && output.id;
     do {
         width = (width + 1) / 2;
         height = (height + 1) / 2;
@@ -269,6 +272,7 @@ bool render_scene3d_post_prepare(render_scene3d_post *post, int width, int heigh
     if (!load_shader(post, &post->downsample, "scene3d_post_downsample.shd") ||
         !load_shader(post, &post->blur, "scene3d_post_blur.shd") ||
         !load_shader(post, &post->composite, "scene3d_post_composite.shd") ||
+        !load_shader(post, &post->antialias, "scene3d_post_antialias.shd") ||
         (settings->auto_exposure && !prepare_exposure(post)) ||
         !resize(post, width, height)) {
         return false;
@@ -414,9 +418,13 @@ bool render_scene3d_post_process(render_scene3d_post *post, float time)
     cf_draw_set_uniform_int("auto_exposure", settings.auto_exposure);
     cf_draw_set_uniform_int("tone_mapping", settings.tone_mapping);
     cf_draw_push_filter(CF_DRAW_FILTER_NEAREST);
-    pass(source, post->pending_output.id ? post->pending_output : post->output);
+    pass(source, post->targets.mapped);
     RENDER_DRAW_UNBIND_TEXTURES("bloom_low", "bloom_high", "adapted");
     cf_draw_pop_filter();
+    cf_draw_pop_shader();
+
+    cf_draw_push_shader(post->antialias);
+    pass(post->targets.mapped, post->pending_output.id ? post->pending_output : post->output);
     cf_draw_pop_shader();
 
     cf_draw_pop_alpha_discard();

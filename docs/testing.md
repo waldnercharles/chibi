@@ -60,6 +60,16 @@ shared draw queue already orders depth writers before additive commands; no
 additional particle render pass was needed. The test harness does not report
 the graphics backend or device.
 
+`--scene3d-aa` checks edge coverage through the complete 3D post-processing
+path: one rotated emissive box and one additive octahedron particle, with no
+game-specific assets or behavior. Two hidden 64x64 frames use bounded two-second
+readbacks. The cases require intermediate edge colors, unchanged flat interiors
+and black outer borders. Independent review admitted this workload; both cases
+failed with zero partial edge pixels before the fix and passed on Metal with
+`SDL_VIDEO_DRIVER=cocoa` in 1.620 seconds under the shared 60-second supervisor.
+The viewport selector also checks pointer rays in logical coordinates while its
+canvas renders at twice that density, and retains its UI alpha-compositing case.
+
 `--particle-state` checks persistent GLSL particle state in the same hidden
 64x64 renderer. Eleven float readbacks check initialization, position/velocity/age
 retention, repeated clocks, the 0.05-second step cap, authored respawn, rewind,

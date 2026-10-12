@@ -31,6 +31,14 @@ make test-tools          # tooling and process integrations, separate build-tool
 make agent-test AGENT_SELECTOR=--source-edit
 ```
 
+`make agent-test AGENT_SELECTOR=--device-controls` runs the pure keyboard,
+controller and screen-relative tilt cases without starting an app or opening
+devices. The `native-runtime`, `native-catalog`, `source-native-numeric-queries`
+and `validate-project` selectors cover device state validation, fixed-step
+recording/replay, authored request queues on VM and SLJIT, and JSON device and
+pointer samples through the controller. The `Device` feature-coverage scene
+uses these capabilities without game rules.
+
 `make test-native` also builds an unsanitized Release `chibi_ctl` in
 `build-release/` for `validate-project`, which starts `chibi_ctl` dozens of
 times; each start builds the authoring catalog, and under ASan those starts

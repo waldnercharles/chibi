@@ -1263,6 +1263,123 @@ TEST_CASE(source_native_url_action_reports_acceptance_and_cancellation)
     return true;
 }
 
+TEST_CASE(source_device_state_and_requests_follow_service_lifecycle)
+{
+    const char *text =
+        "behavior Device { state width:number=1; state height:number=1; "
+        "state touch:bool=true; state active:bool=true; state status:int=-1; "
+        "state tilt:struct<\"CF_V2\">={}; state haptics:bool=true; state "
+        "mode:int=0; "
+        "on Tick { device:=get_device_state(); width=device.Width; "
+        "height=device.Height; "
+        "touch=device.Touch; active=device.Active; status=device.MotionStatus; "
+        "tilt=device.Tilt; haptics=device.Haptics; "
+        "if mode==0 { request_device_motion(); recenter_device_motion(); "
+        "vibrate_device(1500); } "
+        "if mode==1 { request_device_motion(); recenter_device_motion(); "
+        "disable_device_motion(); } "
+        "if mode==2 { disable_device_motion(); request_device_motion(); "
+        "vibrate_device(28); vibrate_device(18); } "
+        "if mode==3 { vibrate_device(0); } "
+        "if mode==4 { vibrate_device(-1); } "
+        "if mode==5 { vibrate_device(18); } } }";
+    for (int backend = 0; backend < 2; backend++) {
+        test_world = ecs_world_new();
+        REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+        uint64_t tick = execution_module_event(prepared->module, "Tick"),
+                 mode = state_id("mode");
+        const char *names[] = { "width",  "height", "touch",  "active",
+                                "status", "tilt",   "haptics" };
+        uint64_t states[7];
+        for (int i = 0; i < 7; i++) {
+            states[i] = state_id(names[i]);
+            REQUIRE(states[i]);
+        }
+        instance = execution_program_attach(program, 0);
+        REQUIRE(instance && tick && mode);
+        retire_producer();
+        REQUIRE(dispatch(tick, 2048) >= 0);
+        REQUIRE(execution_instance_state(instance, states[0])->d == 0);
+        REQUIRE(!execution_instance_state(instance, states[2])->b);
+        REQUIRE(!execution_instance_state(instance, states[3])->b);
+        REQUIRE(execution_instance_state(instance, states[4])->i == INPUT_MOTION_DISABLED);
+        REQUIRE(!execution_instance_state(instance, states[6])->b);
+        input_service = engine_input_new(test_world, NULL);
+        REQUIRE(execution_program_bind_service(program, INPUT_SERVICE, input_service) == 0);
+        input_device_state sample = { .width = 390,
+                                      .height = 844,
+                                      .touch = true,
+                                      .active = true,
+                                      .motion_status = INPUT_MOTION_READY,
+                                      .tilt = { 12, -8 },
+                                      .haptics = true };
+        REQUIRE(engine_input_device_state(input_service, sample) == FLOW_OK);
+        REQUIRE(dispatch(tick, 2048) >= 0);
+        REQUIRE(execution_instance_state(instance, states[0])->d == 390);
+        REQUIRE(execution_instance_state(instance, states[1])->d == 844);
+        REQUIRE(execution_instance_state(instance, states[2])->b);
+        REQUIRE(execution_instance_state(instance, states[3])->b);
+        REQUIRE(execution_instance_state(instance, states[4])->i == INPUT_MOTION_READY);
+        REQUIRE(execution_instance_state(instance, states[6])->b);
+        input_device_requests requests = engine_input_take_device_requests(input_service);
+        REQUIRE(
+            requests.motion && !requests.disable_motion && requests.recenter &&
+            requests.vibration_ms == 1000
+        );
+        requests = engine_input_take_device_requests(input_service);
+        REQUIRE(
+            !requests.motion && !requests.disable_motion &&
+            !requests.recenter && !requests.vibration_ms
+        );
+        engine_input_clear(input_service);
+        const CF_V2 *retained = execution_instance_state(instance, states[5])->ptr;
+        REQUIRE(retained->x == 12 && retained->y == -8);
+        REQUIRE(
+            execution_instance_set_state(instance, mode, (pin_value){ .type = PIN_I32, .i = 1 }) == 0
+        );
+        REQUIRE(dispatch(tick, 2048) >= 0);
+        requests = engine_input_take_device_requests(input_service);
+        REQUIRE(!requests.motion && requests.disable_motion && !requests.recenter);
+        const CF_V2 *cleared = execution_instance_state(instance, states[5])->ptr;
+        REQUIRE(!cleared->x && !cleared->y);
+        REQUIRE(execution_instance_state(instance, states[0])->d == 390);
+        REQUIRE(
+            execution_instance_set_state(instance, mode, (pin_value){ .type = PIN_I32, .i = 2 }) == 0
+        );
+        REQUIRE(dispatch(tick, 2048) >= 0);
+        requests = engine_input_take_device_requests(input_service);
+        REQUIRE(requests.motion && !requests.disable_motion && requests.vibration_ms == 28);
+        REQUIRE(dispatch(tick, 2048) >= 0);
+        REQUIRE(
+            execution_instance_set_state(instance, mode, (pin_value){ .type = PIN_I32, .i = 3 }) == 0
+        );
+        REQUIRE(dispatch(tick, 2048) >= 0);
+        REQUIRE(engine_input_take_device_requests(input_service).vibration_ms == 0);
+        REQUIRE(
+            execution_instance_set_state(instance, mode, (pin_value){ .type = PIN_I32, .i = 5 }) == 0
+        );
+        REQUIRE(dispatch(tick, 2048) >= 0);
+        REQUIRE(engine_input_take_device_requests(input_service).vibration_ms == 18);
+        sample.active = false;
+        REQUIRE(engine_input_device_state(input_service, sample) == FLOW_OK);
+        REQUIRE(!engine_input_held(input_service).device.tilt.x);
+        sample.active = true;
+        sample.motion_status = INPUT_MOTION_DENIED;
+        REQUIRE(engine_input_device_state(input_service, sample) == FLOW_OK);
+        REQUIRE(!engine_input_held(input_service).device.tilt.y);
+        REQUIRE(dispatch(tick, 2048) >= 0);
+        engine_input_reset(input_service);
+        REQUIRE(engine_input_held(input_service).device.width == 390);
+        REQUIRE(!engine_input_take_device_requests(input_service).motion);
+        REQUIRE(
+            execution_instance_set_state(instance, mode, (pin_value){ .type = PIN_I32, .i = 4 }) == 0
+        );
+        REQUIRE(dispatch(tick, 2048) < 0);
+        cleanup();
+    }
+    return true;
+}
+
 TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default)
 {
     const char *text = "behavior Pointer { state active:bool=true; "
@@ -1415,6 +1532,7 @@ void test_source_native_numeric_queries()
     RUN_TEST_CASE(source_tilemap_queries_use_live_authored_cells);
     RUN_TEST_CASE(source_controller_connected_reads_live_slots);
     RUN_TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default);
+    RUN_TEST_CASE(source_device_state_and_requests_follow_service_lifecycle);
     pu_clear_setup();
 }
 

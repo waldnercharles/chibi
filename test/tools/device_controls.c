@@ -52,8 +52,27 @@ TEST_CASE(stick_dead_zone_rescales_to_full_length)
     return true;
 }
 
+TEST_CASE(tilt_tracks_gravity_in_the_current_screen_axes)
+{
+    REQUIRE(close_to(controls_tilt(0, 0, 0), 0, 0));
+    REQUIRE(close_to(controls_tilt(0, 30, 0), 30, 0));
+    REQUIRE(close_to(controls_tilt(30, 0, 0), 0, 30));
+    REQUIRE(close_to(controls_tilt(30, 0, 90), 30, 0));
+    REQUIRE(close_to(controls_tilt(30, 0, -90), -30, 0));
+    REQUIRE(close_to(controls_tilt(0, 30, 180), -30, 0));
+    /* Upright landscape avoids Euler-angle singularities: a small beta
+     * rotation still produces a small, correctly signed sideways tilt. */
+    CF_V2 upright = controls_tilt(0, -90, 90);
+    CF_V2 tilted = controls_tilt(12, -90, 90);
+    REQUIRE(fabsf(upright.x) < 1e-4f);
+    REQUIRE(fabsf(tilted.x - upright.x - 12) < 1e-4f);
+    REQUIRE(isfinite(tilted.y));
+    return true;
+}
+
 void test_device_controls()
 {
     RUN_TEST_CASE(desktop_keys_map_to_their_game_controls);
     RUN_TEST_CASE(stick_dead_zone_rescales_to_full_length);
+    RUN_TEST_CASE(tilt_tracks_gravity_in_the_current_screen_axes);
 }

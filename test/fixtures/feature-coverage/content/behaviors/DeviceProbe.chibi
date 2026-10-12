@@ -1,0 +1,22 @@
+behavior DeviceProbe {
+    state viewport: struct<"CF_V2"> = { }
+    state touch := false
+    state active := false
+    state motion_status: int = 0
+    state haptics := false
+    on Begin {
+        disable_device_motion()
+        request_device_motion()
+        recenter_device_motion()
+        vibrate_device(1)
+    }
+    on Tick {
+        device := get_device_state()
+        viewport = vec2(device.Width, device.Height)
+        touch = device.Touch
+        active = device.Active
+        motion_status = device.MotionStatus
+        haptics = device.Haptics
+        self.Transform = device.Tilt * 0.1
+    }
+}

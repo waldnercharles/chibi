@@ -33,6 +33,7 @@ CPU_SELECTORS = {
     '--source-presentation': 'source-presentation',
     '--source-systems': 'source-systems',
     '--system-schedule': 'system-schedule',
+    '--device-controls': 'device-controls',
 }
 INSTALLED_PLAYERS = {'--player-installed-space-cadet-vm', '--player-installed-space-cadet-sljit'}
 PLAYER_SELECTORS = {

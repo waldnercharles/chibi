@@ -351,6 +351,41 @@ Controller `input_timeline` entries accept the same `pointer` object with
 `origin` and `direction` objects containing `x`, `y`, `z`. Omitting `pointer`
 holds the previous ray; setting it to JSON `null` clears it.
 
+## Device state and feedback
+
+`get_device_state()` reads the host snapshot held for the fixed step. `Width`
+and `Height` are viewport dimensions in CSS or native logical pixels. `Touch`
+reports touch capability, `Active` reports whether the host is in the
+foreground, and `Haptics` reports vibration capability. `MotionStatus` is
+disabled `0`, waiting `1`, ready `2`, unavailable `3`, or denied `4`. `Tilt` is
+a `CF_V2` of calibrated degrees relative to screen orientation. It is zero
+while motion is not ready, the host is inactive, or gameplay input is paused
+or unfocused. Focus and transport changes clear tilt and queued requests while
+preserving dimensions and capability information.
+
+Call `request_device_motion()` from an authored user action to ask the host
+for sensor permission. `recenter_device_motion()` makes the current orientation
+neutral. `disable_device_motion()` stops motion and cancels a pending permission
+request. The last enable or disable request before the host drains the queue
+wins. Disabling also clears a queued recenter request. `vibrate_device(23)`
+requests one 23 ms pulse. Durations are capped at 1000 ms; zero clears a queued
+pulse, and negative durations fail. Positive requests keep the longest pulse
+until the host drains the queue. A shorter request after zero starts a new pulse.
+Hosts without these capabilities consume requests without producing feedback.
+
+Recordings include the device snapshot and suppress external device requests
+during replay. Scenario KDL keys accept a `device` object with `width`,
+`height`, `touch`, `active`, `motion_status`, `haptics` and optional
+`tilt x=12 y=-8`. Each KDL key holds its complete input, so omitted device state
+is zero. Controller JSON `inputs` and `input_timeline` accept the same fields
+with `"tilt":{"x":12,"y":-8}`. Omitting `device` in a JSON sample preserves
+the previous snapshot; setting it to `null` clears it. Dimensions must be
+finite and nonnegative, status must be `0..4`, and tilt must be finite.
+
+The feature-coverage `Device` scene maps tilt to a transformed probe without
+gameplay mechanics. Its three-step scenario covers portrait, landscape and
+inactive snapshots.
+
 ## GPU particle fields
 
 Put `ParticleField3D`, `Geometry3D` and `Shader` on one transformed entity in a

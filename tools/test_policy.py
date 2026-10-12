@@ -19,6 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
+    ('--device-controls',): 'Bounded C arithmetic cases for keyboard/controller mapping and screen-relative device tilt; no app/window/GPU/network or real input device; shared60s',
     ('--shader-webgpu',): 'Independently reviewed thirteen finite CPU cases: noise, particle graphs, curve widths and direct GLSL with includes, diagnostics and prepared codec; actual backend translation, bounded checked-in vertex source reads, no app/window/GPU/network; passed 0.889s/shared60s',
     ('--audio-analysis',): 'Independently reviewed twenty-eight C audio cases: finite PCM tones/noise/transients/stereo, spectral character, tempo/phase, chunk clocks, reset/rate/gap/silence, vendor spectrum/autocorrelation, channel/format/source snapshots, plus one dummy-SDL no-graphics callback/lifetime case with a shared two-second wait; no GPU, network or real recording device; shared60s',
     ('--tilemap-project',): 'Reviewed first CPU measurement: fixed sibling Celeste project, pinned local git baseline56ca9d48<=64KiB, Room<=16KiB, Level<=4KiB,1472cells230oldtiles/fiveactors, three owned controller children<=10s each including two headless simulation frames<=15entities, no GPU/network; shared60s',
@@ -49,6 +50,7 @@ NATIVE = {
     ('--source-presentation',): 'Independently reviewed five small source/palette cases, graph ownership/layout, invalid drafts, callable-local scope and readable formulas with retained calls/effects, plus two component presentation cases on two in-memory documents, CPU only; docs/testing.md',
 }
 TOOLS = {
+    'device-controls': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--device-controls'],
     'shader-webgpu': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-webgpu'],
     'audio-analysis': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--audio-analysis'],
     'tilemap-project': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--tilemap-project'],
@@ -218,7 +220,7 @@ TOOLS = {
 GROUPS = {
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu', 'physics', 'physics3d', 'transforms',
                'box3d', 'sky-files', 'mesh-files', 'model-import', 'tilemap',
-               'runtime-scene', 'scene-prepared', 'render-resources', 'persistent-store',
+               'runtime-scene', 'scene-prepared', 'render-resources', 'device-controls', 'persistent-store',
                'whole-alias', 'whole-integer', 'whole-conversion', 'whole-select', 'whole-math',
                'owned-tick', 'parallel-tick', 'source-native-features',
                'source-native-numeric-queries', 'source-native-material', 'source-presentation',

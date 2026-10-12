@@ -10,6 +10,18 @@ static const float STICK_DEAD_ZONE = 0.18f;
 /* Triggers count as held past a quarter of their travel. */
 static const int TRIGGER_THRESHOLD = 8192;
 
+CF_V2 controls_tilt(float beta, float gamma, int screen_angle)
+{
+    static const float radians = 0.017453292519943295f;
+    float b = beta * radians, g = gamma * radians;
+    float angle = screen_angle * radians;
+    float x = cosf(b) * sinf(g), y = -sinf(b);
+    float right = x * cosf(angle) - y * sinf(angle);
+    float down = -(x * sinf(angle) + y * cosf(angle));
+    return (CF_V2){ asinf(fmaxf(-1, fminf(1, right))) / radians,
+                    asinf(fmaxf(-1, fminf(1, down))) / radians };
+}
+
 CF_V2 controls_dead_zone(CF_V2 v)
 {
     float length = sqrtf(v.x * v.x + v.y * v.y);

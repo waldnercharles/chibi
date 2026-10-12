@@ -918,6 +918,32 @@ int engine_sample_pointer_ray(engine *engine, input_pointer_ray pointer)
     return FLOW_OK;
 }
 
+int engine_sample_device_state(engine *engine, input_device_state state)
+{
+    if (!engine || !input_device_state_valid(state)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (!engine->input) {
+        return FLOW_ERR_STATE;
+    }
+    if (engine->replay) {
+        return FLOW_OK;
+    }
+    if (!engine->playing || engine->focus != ENGINE_FOCUS_VIEWPORT) {
+        state.tilt = (CF_V2){ 0 };
+    }
+    return engine_input_device_state(engine->input, state);
+}
+
+input_device_requests engine_take_device_requests(engine *engine)
+{
+    if (!engine->input) {
+        return (input_device_requests){ 0 };
+    }
+    input_device_requests requests = engine_input_take_device_requests(engine->input);
+    return engine->replay ? (input_device_requests){ 0 } : requests;
+}
+
 static int flush_initializers(engine *engine)
 {
     if (!engine->modules.entities) {

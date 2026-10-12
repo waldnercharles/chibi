@@ -119,6 +119,34 @@ static bool read_pointer(av_value *value, input_pointer_ray *out)
     return out->active;
 }
 
+static bool read_device(av_value *value, input_device_state *out)
+{
+    av_value *width = av_obj_get(value, "width"),
+             *height = av_obj_get(value, "height"),
+             *status = av_obj_get(value, "motion_status"),
+             *tilt = av_obj_get(value, "tilt");
+    if (!av_is_obj(value) || av_obj_size(value) != 6 + (tilt != NULL) ||
+        !av_is_num(width) || !av_is_num(height) || !av_is_uint(status) ||
+        av_get_uint(status) > INPUT_MOTION_DENIED ||
+        !read_flag(av_obj_get(value, "touch"), &out->touch) ||
+        !read_flag(av_obj_get(value, "active"), &out->active) ||
+        !read_flag(av_obj_get(value, "haptics"), &out->haptics) ||
+        (tilt && !read_vector(tilt, FLT_MAX, &out->tilt))) {
+        return false;
+    }
+    double w = av_get_num(width), h = av_get_num(height);
+    if (!isfinite(w) || !isfinite(h) || w < 0 || h < 0 || w > FLT_MAX || h > FLT_MAX) {
+        return false;
+    }
+    out->width = (float)w;
+    out->height = (float)h;
+    out->motion_status = (int)av_get_uint(status);
+    if (!out->active || out->motion_status != INPUT_MOTION_READY) {
+        out->tilt = (CF_V2){ 0 };
+    }
+    return input_device_state_valid(*out);
+}
+
 static bool read_field(const char *name, av_value *value, input_keyframe *out)
 {
     if (!strcmp(name, "frame")) {
@@ -141,6 +169,9 @@ static bool read_field(const char *name, av_value *value, input_keyframe *out)
     }
     if (!strcmp(name, "pointer")) {
         return read_pointer(value, &out->pointer);
+    }
+    if (!strcmp(name, "device")) {
+        return read_device(value, &out->device);
     }
     return !strcmp(name, "controls") && read_controls(value, &out->controls);
 }
@@ -266,6 +297,18 @@ static void write_key(av_doc *doc, av_value *keys, const input_keyframe *key)
     }
     if (key->firing) {
         av_obj_add_bool(doc, value, "firing", true);
+    }
+    input_device_state device = key->device;
+    if (device.width || device.height || device.touch || device.active ||
+        device.motion_status || device.tilt.x || device.tilt.y || device.haptics) {
+        av_value *state = av_obj_add_obj(doc, value, "device");
+        av_obj_add_val(doc, state, "width", av_float(doc, device.width));
+        av_obj_add_val(doc, state, "height", av_float(doc, device.height));
+        av_obj_add_bool(doc, state, "touch", device.touch);
+        av_obj_add_bool(doc, state, "active", device.active);
+        av_obj_add_int(doc, state, "motion_status", device.motion_status);
+        write_vector(doc, state, "tilt", device.tilt);
+        av_obj_add_bool(doc, state, "haptics", device.haptics);
     }
     if (key->pointer.active) {
         av_value *pointer = av_obj_add_obj(doc, value, "pointer");

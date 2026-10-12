@@ -16,6 +16,9 @@
  *           movement x=1 y=0
  *           aim x=0 y=1
  *           (array)controls "Mouse Left"
+ *           device width=390 height=844 touch=#true active=#true
+ * motion_status=2 haptics=#false { tilt x=12 y=-8
+ *           }
  *           (array)controllers {
  *               - connected=#true { (array)buttons "Dpad Left"; }
  *               - connected=#true { (array)buttons "A"; }
@@ -26,9 +29,10 @@
  *
  * Each key holds its whole input from its frame (a fixed step) until the next
  * key; omitted fields are zero. Keys that share a frame are sampled in order
- * before the step, as controls pressed and released between two steps are. A timeline that does not key frame zero holds
- * no input until its first key. The scene starts as authored, with the
- * game's saved progress replaced by saved_state (none when omitted). */
+ * before the step, as controls pressed and released between two steps are. A
+ * timeline that does not key frame zero holds no input until its first key. The
+ * scene starts as authored, with the game's saved progress replaced by
+ * saved_state (none when omitted). */
 typedef struct
 {
     char *scene;

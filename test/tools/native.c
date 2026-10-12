@@ -817,6 +817,8 @@ static struct
     int steps;
     unsigned held, pressed, connected;
     input_pointer_ray pointer;
+    input_device_state device;
+    bool request_device;
 } controllers;
 static const char *observe_controllers(void *service, const pin_value *, pin_value *)
 {
@@ -848,6 +850,21 @@ static const char *observe_controllers(void *service, const pin_value *, pin_val
                               .ptr = &controllers.pointer.direction } };
     const char *error = INPUT_POINTER_RAY_CALL.invoke(service, NULL, pointer);
     controllers.pointer.active = pointer[0].b;
+    if (error) {
+        return error;
+    }
+    pin_value device[7] = { [5] = { .type = PIN_STRUCT,
+                                    .ptr = &controllers.device.tilt } };
+    error = INPUT_DEVICE_STATE_CALL.invoke(service, NULL, device);
+    controllers.device.width = device[0].f;
+    controllers.device.height = device[1].f;
+    controllers.device.touch = device[2].b;
+    controllers.device.active = device[3].b;
+    controllers.device.motion_status = device[4].i;
+    controllers.device.haptics = device[6].b;
+    if (!error && controllers.request_device) {
+        error = INPUT_REQUEST_MOTION_CALL.invoke(service, NULL, NULL);
+    }
     return error;
 }
 /* Read the saved map before attaching an observer, so the same sequence tests
@@ -1086,6 +1103,89 @@ TEST_CASE(native_pointer_ray_records_replays_and_clears_focus)
     cleanup();
     return true;
 }
+TEST_CASE(native_device_state_records_replays_and_validates)
+{
+    const input_device_state samples[] = {
+        { .width = 390,
+          .height = 844,
+          .touch = true,
+          .active = true,
+          .motion_status = INPUT_MOTION_READY,
+          .tilt = { 12, -8 },
+          .haptics = true },
+        { .width = 844,
+          .height = 390,
+          .touch = true,
+          .active = true,
+          .motion_status = INPUT_MOTION_READY,
+          .tilt = { -5, 9 },
+          .haptics = true },
+        { .width = 844,
+          .height = 390,
+          .touch = true,
+          .active = false,
+          .motion_status = INPUT_MOTION_READY,
+          .haptics = true },
+    };
+    for (int backend = 0; backend < 2; backend++) {
+        behavior_backend mode = backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        engine *runtime;
+        REQUIRE(controller_world(&runtime, mode));
+        REQUIRE(engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT) == 0);
+        engine_record_input(runtime, 11);
+        input_device_state invalid[] = {
+            { .width = -1 },
+            { .height = INFINITY },
+            { .width = NAN },
+            { .motion_status = -1 },
+            { .motion_status = INPUT_MOTION_DENIED + 1 },
+            { .tilt = { NAN, 0 } },
+            { .tilt = { 0, INFINITY } },
+        };
+        for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
+            REQUIRE(engine_sample_device_state(runtime, invalid[i]) == FLOW_ERR_ARGUMENT);
+        }
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(engine_sample_device_state(runtime, samples[i]) == FLOW_OK);
+            REQUIRE(engine_frame(runtime, (i + 1.5) * ENGINE_FIXED_SECONDS) == 0);
+            input_keyframe actual = { .device = controllers.device },
+                           expected = { .device = samples[i] };
+            REQUIRE(input_keyframe_same(&actual, &expected));
+        }
+        int count;
+        const input_keyframe *recorded = engine_recorded_input(runtime, &count);
+        REQUIRE(count == 3);
+        input_keyframe *keys = NULL;
+        for (int i = 0; i < count; i++) {
+            apush(keys, recorded[i]);
+        }
+        REQUIRE(controller_world(&runtime, mode));
+        engine_replay_input(runtime, keys, count, 11);
+        afree(keys);
+        controllers.request_device = true;
+        for (int i = 0; i < 3; i++) {
+            REQUIRE(engine_sample_device_state(runtime, samples[0]) == FLOW_OK);
+            REQUIRE(engine_frame(runtime, (i + 1.5) * ENGINE_FIXED_SECONDS) == 0);
+            input_keyframe actual = { .device = controllers.device },
+                           expected = { .device = samples[i] };
+            REQUIRE(input_keyframe_same(&actual, &expected));
+            REQUIRE(!engine_take_device_requests(runtime).motion);
+        }
+        engine_stop_replay(runtime);
+        REQUIRE(engine_set_focus(runtime, ENGINE_FOCUS_VIEWPORT) == 0);
+        REQUIRE(engine_sample_device_state(runtime, samples[0]) == FLOW_OK);
+        REQUIRE(engine_set_focus(runtime, ENGINE_FOCUS_NONE) == 0);
+        REQUIRE(engine_frame(runtime, 4.5 * ENGINE_FIXED_SECONDS) == 0);
+        REQUIRE(controllers.device.width == 390 && controllers.device.height == 844);
+        REQUIRE(controllers.device.touch && controllers.device.haptics);
+        REQUIRE(controllers.device.tilt.x == 0 && controllers.device.tilt.y == 0);
+        REQUIRE(engine_take_device_requests(runtime).motion);
+        REQUIRE(!engine_take_device_requests(runtime).motion);
+    }
+    cleanup();
+    return true;
+}
+
 TEST_CASE(native_controller_device_handoff_keeps_action_held)
 {
     engine *runtime;
@@ -1107,6 +1207,58 @@ TEST_CASE(native_controller_device_handoff_keeps_action_held)
     return true;
 }
 #ifdef CHIBI_TEST_PREPARATION
+TEST_CASE(native_device_scenario_roundtrip)
+{
+    const char *text = "scene Device\nframes 2\n(array)keys {\n"
+                       "- frame=0 { device width=390 height=844 touch=#true "
+                       "active=#true "
+                       "motion_status=2 haptics=#true { tilt x=12 y=-8; } }\n"
+                       "- frame=1\n}\n";
+    char error[256];
+    scenario_document *document = scenario_document_load(text, error, sizeof error);
+    REQUIRE(document && acount(document->keys) == 2);
+    input_keyframe expected = { .device = {
+                                    .width = 390,
+                                    .height = 844,
+                                    .touch = true,
+                                    .active = true,
+                                    .motion_status = INPUT_MOTION_READY,
+                                    .tilt = { 12, -8 },
+                                    .haptics = true,
+                                } };
+    REQUIRE(input_keyframe_same(&document->keys[0], &expected));
+    char *saved = scenario_document_save(document);
+    scenario_document *read = scenario_document_load(saved, error, sizeof error);
+    free(saved);
+    REQUIRE(read && acount(read->keys) == 2);
+    REQUIRE(input_keyframe_same(&read->keys[0], &expected));
+    REQUIRE(input_keyframe_same(&read->keys[1], &(input_keyframe){ 0 }));
+    scenario_document_free(read);
+    scenario_document_free(document);
+    const char *invalid[] = {
+        "width=-1 height=844 touch=#true active=#true motion_status=2 "
+        "haptics=#true",
+        "width=390 height=844 touch=#true active=#true motion_status=5 "
+        "haptics=#true",
+        "width=1e100 height=844 touch=#true active=#true motion_status=2 "
+        "haptics=#true",
+        "width=390 height=844 touch=1 active=#true motion_status=2 "
+        "haptics=#true",
+    };
+    for (int i = 0; i < 4; i++) {
+        char source[384];
+        snprintf(
+            source,
+            sizeof source,
+            "scene Device\nframes 1\n(array)keys { - frame=0 { device %s; } }",
+            invalid[i]
+        );
+        REQUIRE(!scenario_document_load(source, error, sizeof error));
+        REQUIRE(strstr(error, "device"));
+    }
+    return true;
+}
+
 TEST_CASE(native_pointer_scenario_roundtrip)
 {
     const char *text = "scene \"Pointer\"\nframes 2\n(array)keys {\n"
@@ -2046,7 +2198,9 @@ void test_tool_native()
     RUN_TEST_CASE(native_controller_bindings_reject_invalid_values);
     RUN_TEST_CASE(native_controller_device_handoff_keeps_action_held);
     RUN_TEST_CASE(native_pointer_ray_records_replays_and_clears_focus);
+    RUN_TEST_CASE(native_device_state_records_replays_and_validates);
 #ifdef CHIBI_TEST_PREPARATION
+    RUN_TEST_CASE(native_device_scenario_roundtrip);
     RUN_TEST_CASE(native_controller_scenario_roundtrip);
     RUN_TEST_CASE(native_pointer_scenario_roundtrip);
 #endif

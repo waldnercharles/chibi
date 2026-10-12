@@ -1,0 +1,9 @@
+version 1
+name "Device"
+(array)entities {
+    - {
+        name "Probe"
+        prototype "DeviceProbe"
+        (array)behaviors "DeviceProbe"
+    }
+}

@@ -4,6 +4,8 @@ CHIBI_CPU_SELECTOR("--source-presentation")
 CHIBI_CPU_SELECTOR("--source-edit")
 CHIBI_CPU_SELECTOR("--source-systems")
 CHIBI_CPU_SELECTOR("--system-schedule")
+/* Pure control mapping and screen-relative tilt arithmetic, no app or devices. */
+CHIBI_CPU_SELECTOR("--device-controls")
 CHIBI_CPU_SELECTOR("--compile-installed-space-cadet")
 /* PCM analysis and a dummy SDL audio device; graphics and real input disabled. */
 CHIBI_CPU_SELECTOR("--audio-analysis")

@@ -1,0 +1,32 @@
+scene "Device"
+frames 3
+(array)keys {
+    - {
+        frame 0
+        device {
+            width 390.0
+            height 844.0
+            touch #true
+            active #true
+            motion_status 2
+            tilt x=12.0 y=-8.0
+            haptics #true
+        }
+    }
+    - {
+        frame 1
+        device {
+            width 844.0
+            height 390.0
+            touch #true
+            active #true
+            motion_status 2
+            tilt x=-5.0 y=9.0
+            haptics #true
+        }
+    }
+    - {
+        frame 2
+        device width=844.0 height=390.0 touch=#true active=#false motion_status=2 haptics=#true
+    }
+}

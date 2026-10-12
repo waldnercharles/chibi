@@ -55,4 +55,54 @@
 
 extern const native_definition_pack INPUT_DEFINITION_PACK;
 
+#define INPUT_DEVICE_STATE_NAME "Get Device State"
+#define INPUT_DEVICE_STATE_OUTPUTS(X)                                          \
+    INPUT_PORT(X, "Width", PIN_F32, "float")                                   \
+    INPUT_PORT(X, "Height", PIN_F32, "float")                                  \
+    INPUT_PORT(X, "Touch", PIN_BOOL, "bool")                                   \
+    INPUT_PORT(X, "Active", PIN_BOOL, "bool")                                  \
+    INPUT_PORT(X, "MotionStatus", PIN_I32, "int")                              \
+    INPUT_PORT(X, "Tilt", PIN_STRUCT, "CF_V2")                                 \
+    INPUT_PORT(X, "Haptics", PIN_BOOL, "bool")
+#define INPUT_DEVICE_STATE_PRESENTATION                                          \
+    .category = "Input", .keywords = "viewport phone touch tilt motion haptics", \
+    .description = "Reads viewport width and height in logical pixels, touch "   \
+                   "capability, foreground state, motion status, calibrated "    \
+                   "screen-relative tilt in degrees and haptics capability. "    \
+                   "Motion status is disabled (0), waiting (1), ready (2), "     \
+                   "unavailable (3) or denied (4)."
+#define INPUT_REQUEST_MOTION_NAME "Request Device Motion"
+#define INPUT_DISABLE_MOTION_NAME "Disable Device Motion"
+#define INPUT_RECENTER_MOTION_NAME "Recenter Device Motion"
+#define INPUT_VIBRATE_NAME "Vibrate Device"
+#define INPUT_DEVICE_EXEC(X, NAME)                                             \
+    X(NAME,                                                                    \
+      NATIVE_PARAMETER_EXEC,                                                   \
+      PIN_FLOW,                                                                \
+      NULL,                                                                    \
+      PIN_CONTAINER_SINGLE,                                                    \
+      0,                                                                       \
+      0,                                                                       \
+      SCRIPT_REFERENCE_NONE,                                                   \
+      false,                                                                   \
+      ((pin_value){ 0 }))
+#define INPUT_DEVICE_INPUTS(X) INPUT_DEVICE_EXEC(X, "Exec")
+#define INPUT_DEVICE_OUTPUTS(X) INPUT_DEVICE_EXEC(X, "Then")
+#define INPUT_VIBRATE_INPUTS(X)                                                \
+    INPUT_DEVICE_INPUTS(X) INPUT_PORT(X, "Milliseconds", PIN_I32, "int")
+#define INPUT_REQUEST_MOTION_PRESENTATION                                      \
+    .category = "Input",                                                       \
+    .keywords = "phone sensor permission tilt", .description = "Asks the host to enable device motion from a user gesture."
+#define INPUT_DISABLE_MOTION_PRESENTATION                                      \
+    .category = "Input",                                                       \
+    .keywords = "phone sensor off stop tilt", .description = "Disables device motion and cancels a pending permission request."
+#define INPUT_RECENTER_MOTION_PRESENTATION                                     \
+    .category = "Input", .keywords = "phone sensor calibrate zero tilt",       \
+    .description = "Uses the current device orientation as neutral tilt."
+#define INPUT_VIBRATE_PRESENTATION                                             \
+    .category = "Input", .keywords = "phone haptics vibration pulse",          \
+    .description = "Queues the longest requested vibration pulse, capped at "  \
+                   "1000 milliseconds, until the host drains requests. "       \
+                   "Zero clears the queued pulse; negative durations fail."
+
 #endif

@@ -186,11 +186,11 @@ int main(int argc, char **argv)
     bool expansion = argc == 3 && !strcmp(argv[1], "--prototype-expansion");
     bool native = false, native_values = false, native_catalog = false,
          physics = false, physics3d = false, transforms = false,
-         render_resources = false, interior_border = false,
-         viewport_resize = false, sdf_visibility = false, scene3d = false,
-         scene3d_aa = false, particle_depth = false, particle_state = false,
-         material_ramps = false, box3d = false, sky_files = false,
-         mesh_files = false, model_import = false;
+         render_resources = false, device_controls = false,
+         interior_border = false, viewport_resize = false, sdf_visibility = false,
+         scene3d = false, scene3d_aa = false, particle_depth = false,
+         particle_state = false, material_ramps = false, box3d = false,
+         sky_files = false, mesh_files = false, model_import = false;
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
@@ -240,6 +240,7 @@ int main(int argc, char **argv)
     source_material = argc == 2 && !strcmp(argv[1], "--source-native-material");
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
+    device_controls = argc == 2 && !strcmp(argv[1], "--device-controls");
     render_resources = argc == 2 && !strcmp(argv[1], "--render-resources");
     interior_border = argc == 2 && !strcmp(argv[1], "--interior-border");
     viewport_resize = argc == 2 && !strcmp(argv[1], "--viewport-resize");
@@ -279,8 +280,8 @@ int main(int argc, char **argv)
         !new_asset && !asset_refactor && !tilemap && !tilemap_project &&
         !package && !unit && !web_storage && !webgpu_staging && !audio_analysis &&
         !shader_webgpu && !query_benchmark && !prepared && !read && !scene &&
-        !scene_prepared && !native && !native_values && !native_catalog &&
-        !physics && !physics3d && !transforms && !render_resources &&
+        !scene_prepared && !native && !native_values && !native_catalog && !physics &&
+        !physics3d && !transforms && !render_resources && !device_controls &&
         !interior_border && !viewport_resize && !sdf_visibility && !scene3d &&
         !scene3d_aa && !particle_depth && !particle_state && !material_ramps &&
         !box3d && !sky_files && !mesh_files && !model_import &&
@@ -305,7 +306,8 @@ int main(int argc, char **argv)
             "artifact [budget-bytes] | --scene | "
             "--scene-prepared | --native | --native-values | --native-catalog "
             "| --physics | --physics3d | --transforms "
-            "| --render-resources | --interior-border | --viewport-resize | "
+            "| --render-resources | --device-controls | --interior-border | "
+            "--viewport-resize | "
             "--sdf-visibility | "
             "--scene3d | --scene3d-gles | --scene3d-aa | --particle-depth | "
             "--particle-state "
@@ -426,6 +428,11 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_RENDER_RUNTIME
+    if (device_controls) {
+        test_device_controls();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
     if (render_resources || interior_border || viewport_resize || scene3d ||
         scene3d_aa || particle_depth || particle_state) {
         if (interior_border) {
@@ -442,7 +449,6 @@ int main(int argc, char **argv)
             test_render_particle_depth();
         } else {
             test_render_resources();
-            test_device_controls();
         }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;

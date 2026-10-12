@@ -1,0 +1,4 @@
+name "DeviceProbe"
+components {
+    (object)Transform
+}

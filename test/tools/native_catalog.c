@@ -53,6 +53,23 @@ TEST_CASE(native_application_catalog_links_generated_kernels_and_input_reads)
     REQUIRE(index >= 0);
     declaration = &catalog->capabilities[index];
     REQUIRE(declaration->parameter_count == 1 && declaration->parameters[0].type.storage == PIN_STR);
+    index = script_catalog_find_capability(catalog, "get_device_state", SCRIPT_CAPABILITY_FUNCTION);
+    REQUIRE(index >= 0);
+    declaration = &catalog->capabilities[index];
+    REQUIRE(declaration->result_count == 7);
+    REQUIRE(!strcmp(declaration->results[0].name, "Width"));
+    REQUIRE(!strcmp(declaration->results[5].name, "Tilt"));
+    const char *device_actions[] = {
+        "request_device_motion",
+        "disable_device_motion",
+        "recenter_device_motion",
+        "vibrate_device",
+    };
+    for (int i = 0; i < 4; i++) {
+        REQUIRE(
+            script_catalog_find_capability(catalog, device_actions[i], SCRIPT_CAPABILITY_ACTION) >= 0
+        );
+    }
     /* No host event takes an action's name, so a map may name Fire or Dash. */
     REQUIRE(script_catalog_find_capability(catalog, "Tick", SCRIPT_CAPABILITY_EVENT) >= 0);
     REQUIRE(script_catalog_find_capability(catalog, "Fire", SCRIPT_CAPABILITY_EVENT) < 0);

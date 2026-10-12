@@ -36,6 +36,8 @@ struct engine_input
     CF_V2 aim;
     bool aim_sampled, aim_point, firing;
     input_pointer_ray pointer;
+    input_device_state device;
+    input_device_requests requests;
     uint64_t controls;
     /* Device snapshots after each change since the last step, oldest first. */
     input_keyframe *trail;
@@ -172,6 +174,8 @@ void engine_input_clear(engine_input *input)
     input->aim_sampled = true;
     input->firing = false;
     input->pointer = (input_pointer_ray){ 0 };
+    input->device.tilt = (CF_V2){ 0 };
+    input->requests = (input_device_requests){ 0 };
     /* Pause may never run another fixed tick. Clear reflected local input now,
      * without dispatching authored gameplay while transport is stopped. Held
      * controls and actions stay, so resuming with the same controls held
@@ -257,6 +261,28 @@ void engine_input_pointer(engine_input *input, input_pointer_ray pointer)
     input->pointer = pointer.active ? pointer : (input_pointer_ray){ 0 };
 }
 
+int engine_input_device_state(engine_input *input, input_device_state state)
+{
+    if (!input_device_state_valid(state)) {
+        return FLOW_ERR_ARGUMENT;
+    }
+    if (!state.active || state.motion_status != INPUT_MOTION_READY) {
+        state.tilt = (CF_V2){ 0 };
+    }
+    if (!state.active) {
+        input->requests = (input_device_requests){ 0 };
+    }
+    input->device = state;
+    return FLOW_OK;
+}
+
+input_device_requests engine_input_take_device_requests(engine_input *input)
+{
+    input_device_requests requests = input->requests;
+    input->requests = (input_device_requests){ 0 };
+    return requests;
+}
+
 int engine_input_devices(
     engine_input *input,
     uint64_t controls,
@@ -337,15 +363,20 @@ input_keyframe engine_input_held(const engine_input *input)
                             .aim_point = input->aim_point,
                             .firing = input->firing,
                             .controls = input->controls,
-                            .pointer = input->pointer };
+                            .pointer = input->pointer,
+                            .device = input->device };
     memcpy(held.controllers, input->controllers, sizeof held.controllers);
     return held;
 }
 
 int engine_input_hold(engine_input *input, const input_keyframe *key)
 {
+    int result = engine_input_device_state(input, key->device);
+    if (result < 0) {
+        return result;
+    }
     bool firing;
-    int result = engine_input_devices(input, key->controls, key->controllers, &firing);
+    result = engine_input_devices(input, key->controls, key->controllers, &firing);
     engine_input_movement(input, key->movement);
     engine_input_aim(input, key->aim, key->firing, key->aim_point);
     engine_input_pointer(input, key->pointer);
@@ -650,3 +681,89 @@ const node_host_call INPUT_POINTER_RAY_CALL = {
     .reusable = true,
 };
 const node_access INPUT_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };
+
+static const char *device_state(void *service, const pin_value *, pin_value *out)
+{
+    assert(out[5].ptr);
+    const engine_input *input = service;
+    input_device_state state = input ? input->device : (input_device_state){ 0 };
+    out[0].f = state.width;
+    out[1].f = state.height;
+    out[2].b = state.touch;
+    out[3].b = state.active;
+    out[4].i = state.motion_status;
+    *(CF_V2 *)out[5].ptr = state.tilt;
+    out[6].b = state.haptics;
+    return NULL;
+}
+
+static const char *request_motion(void *service, const pin_value *, pin_value *)
+{
+    engine_input *input = service;
+    if (input) {
+        input->requests.motion = true;
+        input->requests.disable_motion = false;
+    }
+    return NULL;
+}
+
+static const char *disable_motion(void *service, const pin_value *, pin_value *)
+{
+    engine_input *input = service;
+    if (input) {
+        input->requests.disable_motion = true;
+        input->requests.motion = false;
+        input->requests.recenter = false;
+    }
+    return NULL;
+}
+
+static const char *recenter_motion(void *service, const pin_value *, pin_value *)
+{
+    engine_input *input = service;
+    if (input && !input->requests.disable_motion) {
+        input->requests.recenter = true;
+    }
+    return NULL;
+}
+
+static const char *vibrate(void *service, const pin_value *in, pin_value *)
+{
+    int duration = in[0].i;
+    if (duration < 0) {
+        return "Vibrate Device requires nonnegative Milliseconds";
+    }
+    engine_input *input = service;
+    if (input && (!duration || duration > input->requests.vibration_ms)) {
+        input->requests.vibration_ms = duration > 1000 ? 1000 : duration;
+    }
+    return NULL;
+}
+
+const node_host_call INPUT_DEVICE_STATE_CALL = {
+    .service = INPUT_SERVICE,
+    .invoke = device_state,
+    .optional_service = true,
+    .reusable = true,
+};
+const node_host_call INPUT_REQUEST_MOTION_CALL = {
+    .service = INPUT_SERVICE,
+    .invoke = request_motion,
+    .optional_service = true,
+};
+const node_host_call INPUT_DISABLE_MOTION_CALL = {
+    .service = INPUT_SERVICE,
+    .invoke = disable_motion,
+    .optional_service = true,
+};
+const node_host_call INPUT_RECENTER_MOTION_CALL = {
+    .service = INPUT_SERVICE,
+    .invoke = recenter_motion,
+    .optional_service = true,
+};
+const node_host_call INPUT_VIBRATE_CALL = {
+    .service = INPUT_SERVICE,
+    .invoke = vibrate,
+    .optional_service = true,
+};
+const node_access INPUT_DEVICE_ACCESS = { .flags = NODE_EFFECT_HOST_SINK };

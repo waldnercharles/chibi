@@ -1,5 +1,6 @@
 #include "execution/backend.h"
 #include "host/native_default.h"
+#include "host/player_device.h"
 #include "host/player_url.h"
 #include "platform/cute.h"
 #include "render/device_controls.h"
@@ -193,6 +194,12 @@ static void render(void *context)
 static int sample_input(desktop_player *host)
 {
     engine *runtime = world_engine(player_world(host->player));
+    int width, height;
+    cf_app_get_size(&width, &height);
+    if (engine_sample_device_state(runtime, player_device_sample(width, height, cf_app_has_focus())) <
+        0) {
+        return -1;
+    }
     bool active = cf_app_has_focus() && engine_is_playing(runtime) &&
                   !engine_viewport_ui_capture(host->viewport) &&
                   !engine_viewport_ui_typing(host->viewport);
@@ -430,6 +437,7 @@ static int run_frame(desktop_player *host)
         fprintf(stderr, "%s\n", message ? message : "Gameplay input rejected");
         return -1;
     }
+    player_device_submit(engine_take_device_requests(runtime), cf_app_has_focus());
     engine_viewport_view view;
     int camera = camera_view(world_ecs(world), runtime, &view);
     if (camera < 0) {
@@ -483,6 +491,7 @@ static void web_frame(void *host)
     if (run_frame(host) <= 0) {
         emscripten_cancel_main_loop();
         player_url_stop();
+        player_device_stop();
         web_stopped();
     }
 }
@@ -624,6 +633,7 @@ int main(int argc, char **argv)
         player_url_start();
     }
     engine *runtime = world_engine(world);
+    player_device_start();
     const scene *scene = scene_instance_scene(player_scene(host.player));
     engine_viewport_set_perspective(host.viewport, scene_perspective(scene));
     engine_viewport_set_runtime(host.viewport, runtime);
@@ -676,6 +686,7 @@ int main(int argc, char **argv)
     result = 0;
 finish:
     player_url_stop();
+    player_device_stop();
     cf_register_key_callback(NULL);
     if (host.viewport) {
         engine_viewport_free(host.viewport);

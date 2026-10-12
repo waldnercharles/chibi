@@ -1536,6 +1536,62 @@ TEST_CASE(scenarios_hold_controller_slots)
     return true;
 }
 
+TEST_CASE(scenarios_hold_device_state_with_pointer_samples)
+{
+    const char *folders[] = { "game/content/prototypes", "game/content/behaviors" };
+    for (int i = 0; i < 2; i++) {
+        char directory[256];
+        path(directory, sizeof directory, folders[i]);
+        REQUIRE(mkdir(directory, 0755) == 0 || errno == EEXIST);
+    }
+    write_file("game/content/prototypes/Dot.kdl", "name \"Dot\"\ncomponents {\n (object)Transform\n}\n");
+    write_file(
+        "game/content/behaviors/Device.chibi",
+        "behavior Device { on Tick { device:=get_device_state(); "
+        "ray:=get_pointer_ray(); "
+        "request_device_motion(); x:=device.Width + device.Tilt.x; "
+        "if device.Touch && device.Active && device.Haptics && "
+        "device.MotionStatus==2 && ray.Active { x += ray.Origin.x } "
+        "self.Transform=vec2(x,0); } }\n"
+    );
+    write_file(
+        "game/content/scenes/Start.kdl",
+        "version 1\nname \"Start\"\n(array)entities {\n"
+        " - name=\"Dot\" prototype=\"Dot\" { (array)behaviors \"Device\"; "
+        "}\n}\n"
+    );
+    const char
+        *base = "{\"contract\":1,\"operation\":\"runtime_snapshot\","
+                "\"kind\":\"scene\",\"name\":\"Start\",\"frames\":3,"
+                "\"input_timeline\":[{\"frame\":0,\"input\":{\"device\":%s,"
+                "\"pointer\":{\"origin\":{\"x\":6,\"y\":0,\"z\":10},"
+                "\"direction\":{\"x\":0,\"y\":0,\"z\":-1}}}}%s]}";
+    const char *
+        sample = "{\"width\":390,\"height\":844,\"touch\":true,\"active\":true,"
+                 "\"motion_status\":2,\"tilt\":{\"x\":12,\"y\":-8},\"haptics\":"
+                 "true}";
+    char request[1536];
+    snprintf(request, sizeof request, base, sample, ",{\"frame\":2,\"input\":{\"pointer\":null}}");
+    REQUIRE(ctl(true, request) == 0 && snapshot_x() == 402);
+    snprintf(request, sizeof request, base, sample, "");
+    REQUIRE(ctl(true, request) == 0 && snapshot_x() == 408);
+    snprintf(request, sizeof request, base, sample, ",{\"frame\":2,\"input\":{\"device\":null}}");
+    REQUIRE(ctl(true, request) == 0 && snapshot_x() == 0);
+    const char *invalid[] = {
+        "{\"width\":-1,\"height\":844,\"touch\":true,\"active\":true,\"motion_"
+        "status\":2,\"haptics\":true}",
+        "{\"width\":390,\"height\":844,\"touch\":true,\"active\":true,\"motion_"
+        "status\":5,\"haptics\":true}",
+        "{\"width\":390,\"height\":844,\"touch\":true,\"active\":true,\"motion_"
+        "status\":2,\"tilt\":{\"x\":1e100,\"y\":0},\"haptics\":true}",
+    };
+    for (int i = 0; i < 3; i++) {
+        snprintf(request, sizeof request, base, invalid[i], "");
+        REQUIRE(ctl(true, request) != 0 && strstr(failure(), "device"));
+    }
+    return true;
+}
+
 TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls)
 {
     const char *folders[] = { "game/content/prototypes", "game/content/behaviors" };
@@ -1800,6 +1856,7 @@ void test_tool_validate_project(const char *binary)
     RUN_TEST_CASE(scene_joints_name_their_other_by_path);
     RUN_TEST_CASE(scenarios_hold_input_actions);
     RUN_TEST_CASE(scenarios_hold_pointer_rays_and_reject_external_urls);
+    RUN_TEST_CASE(scenarios_hold_device_state_with_pointer_samples);
     RUN_TEST_CASE(scenarios_hold_controller_slots);
     RUN_TEST_CASE(components_are_declared_in_chibi_sources);
     RUN_TEST_CASE(unit_mismatches_are_warnings);

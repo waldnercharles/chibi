@@ -25,5 +25,10 @@ CF_V2 controls_aim();
 /* A stick deflection in [-1, 1] with its radial dead zone removed: zero
  * inside it, then rescaled so the edge reads 0 and full deflection reads 1. */
 CF_V2 controls_dead_zone(CF_V2 stick);
+/* Gravity tilt in screen axes, in degrees: +X right, +Y down. Device angles
+ * follow the browser's intrinsic Z-X-Y convention; screen_angle is clockwise
+ * from the natural screen orientation. Subtract a neutral sample to calibrate
+ * a comfortable pose. */
+CF_V2 controls_tilt(float beta, float gamma, int screen_angle);
 
 #endif

@@ -8715,6 +8715,8 @@ typedef struct
     bool has_aim, has_movement;
     bool has_pointer;
     input_pointer_ray pointer;
+    bool has_device;
+    input_device_state device;
     yyjson_val *events;
     scenario_action actions[SCENARIO_MAX_ACTIONS];
     int action_count;
@@ -9253,6 +9255,52 @@ static bool scenario_pointer(yyjson_val *value, input_pointer_ray *out)
     return out->active;
 }
 
+static bool scenario_device(yyjson_val *value, input_device_state *out)
+{
+    if (yyjson_is_null(value)) {
+        return true;
+    }
+    yyjson_val *width = yyjson_obj_get(value, "width"),
+               *height = yyjson_obj_get(value, "height"),
+               *touch = yyjson_obj_get(value, "touch"),
+               *active = yyjson_obj_get(value, "active"),
+               *status = yyjson_obj_get(value, "motion_status"),
+               *haptics = yyjson_obj_get(value, "haptics"),
+               *tilt = yyjson_obj_get(value, "tilt");
+    if (!yyjson_is_obj(value) || yyjson_obj_size(value) != 6 + (tilt != NULL) ||
+        !yyjson_is_num(width) || !yyjson_is_num(height) || !yyjson_is_bool(touch) ||
+        !yyjson_is_bool(active) || !yyjson_is_bool(haptics) ||
+        !yyjson_is_uint(status) || yyjson_get_uint(status) > INPUT_MOTION_DENIED) {
+        return false;
+    }
+    double w = yyjson_get_num(width), h = yyjson_get_num(height);
+    if (!isfinite(w) || !isfinite(h) || w < 0 || h < 0 || w > FLT_MAX || h > FLT_MAX) {
+        return false;
+    }
+    if (tilt) {
+        yyjson_val *x = yyjson_obj_get(tilt, "x"), *y = yyjson_obj_get(tilt, "y");
+        if (!yyjson_is_obj(tilt) || yyjson_obj_size(tilt) != 2 ||
+            !yyjson_is_num(x) || !yyjson_is_num(y)) {
+            return false;
+        }
+        double tx = yyjson_get_num(x), ty = yyjson_get_num(y);
+        if (!isfinite(tx) || !isfinite(ty) || fabs(tx) > FLT_MAX || fabs(ty) > FLT_MAX) {
+            return false;
+        }
+        out->tilt = (CF_V2){ (float)tx, (float)ty };
+    }
+    out->width = (float)w;
+    out->height = (float)h;
+    out->touch = yyjson_get_bool(touch);
+    out->active = yyjson_get_bool(active);
+    out->motion_status = (int)yyjson_get_uint(status);
+    out->haptics = yyjson_get_bool(haptics);
+    if (!out->active || out->motion_status != INPUT_MOTION_READY) {
+        out->tilt = (CF_V2){ 0 };
+    }
+    return input_device_state_valid(*out);
+}
+
 static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *error, size_t error_size)
 {
     if (!value || !yyjson_is_obj(value)) {
@@ -9260,6 +9308,12 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
         return false;
     }
     *out = (scenario_input){ 0 };
+    yyjson_val *device = yyjson_obj_get(value, "device");
+    out->has_device = device != NULL;
+    if (device && !scenario_device(device, &out->device)) {
+        snprintf(error, error_size, "device needs nonnegative finite width/height, boolean touch/active/haptics, motion_status 0..4 and optional finite tilt x/y, or null");
+        return false;
+    }
     yyjson_val *pointer = yyjson_obj_get(value, "pointer");
     out->has_pointer = pointer != NULL;
     if (pointer && !scenario_pointer(pointer, &out->pointer)) {
@@ -9393,6 +9447,19 @@ static bool parse_scenario_input(yyjson_val *value, scenario_input *out, char *e
 static yyjson_mut_val *add_scenario_input(yyjson_mut_doc *doc, yyjson_mut_val *array, const scenario_input *input)
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
+    if (input->has_device) {
+        input_device_state state = input->device;
+        yyjson_mut_val *device = yyjson_mut_obj_add_obj(doc, object, "device");
+        yyjson_mut_obj_add_real(doc, device, "width", state.width);
+        yyjson_mut_obj_add_real(doc, device, "height", state.height);
+        yyjson_mut_obj_add_bool(doc, device, "touch", state.touch);
+        yyjson_mut_obj_add_bool(doc, device, "active", state.active);
+        yyjson_mut_obj_add_int(doc, device, "motion_status", state.motion_status);
+        yyjson_mut_obj_add_bool(doc, device, "haptics", state.haptics);
+        yyjson_mut_val *tilt = yyjson_mut_obj_add_obj(doc, device, "tilt");
+        yyjson_mut_obj_add_real(doc, tilt, "x", state.tilt.x);
+        yyjson_mut_obj_add_real(doc, tilt, "y", state.tilt.y);
+    }
     if (input->has_controls) {
         yyjson_mut_val *controls = yyjson_mut_obj_add_arr(doc, object, "controls");
         for (int i = 1; i < CONTROL_COUNT; i++) {
@@ -9489,6 +9556,10 @@ static int apply_scenario_input(
 )
 {
     engine *runtime = prototype_preview_runtime(context->preview);
+    if (input->has_device && engine_sample_device_state(runtime, input->device) < 0) {
+        snprintf(error, error_size, "scenario device input failed");
+        return CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
     if (input->has_movement &&
         engine_sample_movement(runtime, (float)input->movement_x, (float)input->movement_y) <
             0) {

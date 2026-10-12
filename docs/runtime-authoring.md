@@ -400,8 +400,10 @@ ChibiParticle rain(ChibiParticleInput p, ChibiParameters u)
 }
 ```
 
-`ChibiParticleInput` contains float `index`, `count`, `seed` and `time` fields.
-The clock is `ParticleField3D.time`. `ChibiParticle` contains `position:vec3`,
+`ChibiParticleInput` contains float `index`, `count`, `seed`, `time`, `age` and
+`delta`, vec3 `position` and `velocity`, and bool `reset`. The clock is
+`ParticleField3D.time`. Without an update entry, position, velocity, age and delta
+are zero and reset is false. `ChibiParticle` contains `position:vec3`,
 `size:float`, `color:vec4`, `scale:vec3`, `rotation:vec3` and `lighting:float`.
 `chibi_particle()` initializes them to zero position, size one, white RGBA,
 unit scale, zero rotation and unlit lighting. Assign every field when constructing
@@ -410,8 +412,8 @@ below.
 
 Write ordinary GLSL scalar/vector math, helper functions, conditionals and
 bounded loops. Define helpers before their callers. The current compiler accepts
-the GLSL 450 subset supported by Cute's shader compiler; this is a particle vertex
-function, not a complete vertex/fragment program. The engine supplies `#version`,
+the GLSL 450 subset supported by Cute's shader compiler. Author particle render
+and optional update functions. The engine supplies `#version`,
 the entry adapter and resource bindings, so do not add `main`, another version
 directive or resource declarations. Textures and fragment operations are not
 part of this particle interface. Text authoring currently accepts GLSL for
@@ -426,6 +428,48 @@ allowed, with a 512 KiB limit per source file. The GLSL compiler consumes this
 source directly, bypassing shader graph IR and its node budget. `validate_asset`
 and project preparation compile the actual particle adapter and report source
 diagnostics; `--format` formats the KDL descriptor and leaves GLSL text intact.
+
+### Persistent GLSL particle state
+
+Add `update "advect"` to a GLSL descriptor to retain position, velocity and age
+on the GPU. Define its update entry in the same bundled source:
+
+```glsl
+ChibiParticleState advect(ChibiParticleInput p, ChibiParameters u,
+                         ChibiParticleState state)
+{
+    if (p.reset) {
+        state.position = vec3(p.index * u.Spacing, 0.0, 0.0);
+        state.velocity = u.Wind;
+        state.age = 0.0;
+        return state;
+    }
+    state.position += state.velocity * p.delta;
+    state.age += p.delta;
+    return state;
+}
+```
+
+`ChibiParticleState` has vec3 `position` and `velocity`, and float `age`. The
+engine passes the previous state both as the `state` argument and as `p.position`,
+`p.velocity` and `p.age`. On reset these values are zero. The update owns all
+three fields, including age. Return the complete next state. The render entry
+receives that state and can assign `drop.position = p.position` or use it to
+compute the other render outputs. Its `p.delta` and `p.reset` describe the most
+recent update.
+
+An advancing field clock runs one update before rendering. Delta is the clock
+advance capped at 0.05 seconds. The same clock retains the state without another
+update. First use initializes at the current clock with `p.reset=true` and zero
+delta, without replaying earlier time. Rendering cadence therefore affects the
+simulation; this is not a fixed-step physics solver.
+
+Count or seed changes, a shader switch or publication, a clock rewind, and a
+world reset restart the state. Removing, hiding or setting a field's count to
+zero releases its state; showing it again initializes it. Ordinary parameter
+edits retain state. Initialize and integrate motion in authored GLSL, using
+parameters for forces and tuning. The engine stores each field's state in
+floating-point textures and keeps no per-particle CPU state or entities.
 
 ### Shader-library particle graphs
 
@@ -461,10 +505,10 @@ sources and 1,048,576 particles in one scene. A zero count hides a field.
 With `additive=#true`, particles blend additively and test opaque scene depth
 without writing depth or sorting individual drops. Fields emit their authored
 color and do not cast shadows or contribute to HRC. The vertex shader computes
-positions and colors; each particle has no CPU simulation state or entity.
-Per-frame CPU updates scale with the number of fields. Each instance retains
-four bytes, uploaded when its count changes, rather than a position/color upload
-every frame. `test/fixtures/feature-coverage` contains the `NativeRainField`
+positions and colors. Optional GLSL updates retain motion state on the GPU.
+Per-frame CPU updates scale with the number of fields. Each instance also uses
+a four-byte geometry attribute, uploaded when its count changes.
+`test/fixtures/feature-coverage` contains the `NativeRainField`
 scene: 128 falling lattice drops at a fixed one-second clock, with an opaque
 box for inspecting depth occlusion. `LitRainField` omits all opaque geometry and
 checks the same lit particles in a particle-only scene. `GlslRainField` uses a

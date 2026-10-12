@@ -32,6 +32,8 @@ CHIBI_GPU_SELECTOR("--scene3d")
 /* Two one-particle fields, four hidden 64x64 frames and pixel readbacks check
  * opaque/additive depth order independently of persistent field cache order. */
 CHIBI_GPU_SELECTOR("--particle-depth")
+/* Eleven 64x64 float readbacks cover retained particle state and resets. */
+CHIBI_GPU_SELECTOR("--particle-state")
 /* The same cases on GLES, under xvfb-run on Linux. */
 CHIBI_GPU_SELECTOR("--scene3d-gles")
 /* Color ramp table cases through 2D and material raster shaders in a hidden

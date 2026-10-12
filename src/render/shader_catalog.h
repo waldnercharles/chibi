@@ -103,6 +103,7 @@ bool render_shader_is_particle(int index);
 /* malloc-owned portable function named sg_particle; rejected unless the catalog
  * record satisfies the complete particle signature and operation contract. */
 char *render_shader_particle_glsl(int index, shader_error *);
+char *render_shader_particle_update_glsl(int index, shader_error *);
 /* Borrowed bundled source, or NULL for graph particles. */
 const shader_text *render_shader_particle_text(int index);
 /* Model bounds use the same validated parameter snapshot as distance evaluation. */

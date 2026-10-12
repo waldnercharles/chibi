@@ -60,6 +60,19 @@ shared draw queue already orders depth writers before additive commands; no
 additional particle render pass was needed. The test harness does not report
 the graphics backend or device.
 
+`--particle-state` checks persistent GLSL particle state in the same hidden
+64x64 renderer. Eleven float readbacks check initialization, position/velocity/age
+retention, repeated clocks, the 0.05-second step cap, authored respawn, rewind,
+count/seed changes and shader replacement. Its count change selects particle
+1024 in a 1025-particle field to check texture-row addressing; only that particle
+draws visible geometry. Each readback waits at most two seconds inside the shared
+60-second supervisor. Independent review approved this finite workload. The
+first successful run used `SDL_VIDEO_DRIVER=cocoa` and passed in 1.043 seconds;
+the default offscreen driver could not initialize on that macOS host. Compiler
+tests separately translate both update and draw shaders to the backend languages.
+`DriftingGrains` is the reusable feature-coverage scene, with authored crosswind,
+gravity and lifetime respawn.
+
 CI runs the build, both groups and `make test-tools` on Linux and macOS. On
 Windows it builds the SDK tools, compiles `test/fixtures/studio` under a
 one-minute step timeout (the test supervisor needs POSIX signals) and builds

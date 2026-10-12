@@ -37,18 +37,49 @@ CF_ShaderCompilerResult render_shader_text_compile(
     return result;
 }
 
-static char *particle_vertex(const char *adapter)
+static char *particle_source(const char *fixed, const char *adapter, bool stateful)
 {
     const char *marker = "// SG_PARTICLE_PROGRAM is replaced by the prepared "
                          "shader function.";
-    const char *at = strstr(shader_particle_vertex, marker);
+    const char *at = strstr(fixed, marker);
     assert(at);
-    size_t prefix = (size_t)(at - shader_particle_vertex);
-    size_t size = strlen(shader_particle_vertex) + strlen(adapter) + 1;
+    const char *define = stateful ? "#define SG_PARTICLE_STATEFUL 1\n" : "";
+    size_t prefix = (size_t)(at - fixed), definitions = strlen(define);
+    size_t size = strlen(fixed) + strlen(adapter) + definitions + 1;
     char *source = xmalloc(size);
-    memcpy(source, shader_particle_vertex, prefix);
+    memcpy(source, define, definitions);
+    memcpy(source + definitions, fixed, prefix);
+    prefix += definitions;
     snprintf(source + prefix, size - prefix, "%s%s", adapter, at + strlen(marker));
     return source;
+}
+
+char *render_shader_particle_vertex_source(const char *adapter, bool stateful)
+{
+    return particle_source(shader_particle_vertex, adapter, stateful);
+}
+
+char *render_shader_particle_update_source(const char *adapter)
+{
+    return particle_source(shader_particle_update_fragment, adapter, false);
+}
+
+const char *render_shader_particle_update_vertex()
+{
+    return shader_particle_update_vertex;
+}
+
+static bool compile_stage(
+    const shader_text *text,
+    const char *source,
+    CF_ShaderCompilerStage stage,
+    shader_error *error
+)
+{
+    CF_ShaderCompilerResult result = render_shader_text_compile(text, source, stage, error);
+    bool ok = result.success;
+    cute_shader_free_result(result);
+    return ok;
 }
 
 bool render_shader_text_validate(
@@ -62,22 +93,27 @@ bool render_shader_text_validate(
     if (!adapter) {
         return false;
     }
-    char *source = particle_vertex(adapter);
-    CF_ShaderCompilerResult vertex = render_shader_text_compile(text, source, CUTE_SHADER_STAGE_VERTEX, error);
-    bool ok = vertex.success;
-    cute_shader_free_result(vertex);
+    char *source = render_shader_particle_vertex_source(adapter, text->update != NULL);
+    bool ok = compile_stage(text, source, CUTE_SHADER_STAGE_VERTEX, error);
     free(source);
     free(adapter);
     if (!ok) {
         return false;
     }
-    CF_ShaderCompilerResult fragment = render_shader_text_compile(
-        text,
-        shader_particle_fragment,
-        CUTE_SHADER_STAGE_FRAGMENT,
-        error
-    );
-    ok = fragment.success;
-    cute_shader_free_result(fragment);
+    if (!compile_stage(text, shader_particle_fragment, CUTE_SHADER_STAGE_FRAGMENT, error)) {
+        return false;
+    }
+    if (!text->update) {
+        return true;
+    }
+    adapter = shader_text_particle_update_glsl(text, names, widths, error);
+    if (!adapter) {
+        return false;
+    }
+    source = render_shader_particle_update_source(adapter);
+    ok = compile_stage(text, shader_particle_update_vertex, CUTE_SHADER_STAGE_VERTEX, error) &&
+         compile_stage(text, source, CUTE_SHADER_STAGE_FRAGMENT, error);
+    free(source);
+    free(adapter);
     return ok;
 }

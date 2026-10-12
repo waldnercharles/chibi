@@ -1,0 +1,5 @@
+behavior DriftingGrainsClock {
+    on Tick(dt) {
+        self.ParticleField3D.time = self.ParticleField3D.time + dt
+    }
+}

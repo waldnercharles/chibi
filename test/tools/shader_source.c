@@ -3,6 +3,7 @@
 #include "authoring/shader_prepare.h"
 #include "render/shader_catalog_records.h"
 #include "support/array.h"
+#include "support/asset_text.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -69,6 +70,7 @@ TEST_CASE(shader_source_metadata_binds_scalars_vectors_and_bundled_files)
     REQUIRE(!strcmp(loaded.name, "Source.Cloud"));
     REQUIRE(!strcmp(loaded.text.path, "shaders/Cloud.glsl"));
     REQUIRE(!strcmp(loaded.text.entry, "cloud"));
+    REQUIRE(!loaded.text.update);
     REQUIRE(acount(loaded.text.includes) == 1);
     REQUIRE(!strcmp(loaded.text.includes[0].path, "Shared.glsl"));
     REQUIRE(!strcmp(loaded.names[0], "Index") && loaded.widths[0] == 1);
@@ -79,6 +81,29 @@ TEST_CASE(shader_source_metadata_binds_scalars_vectors_and_bundled_files)
     REQUIRE(loaded.widths[4] == 2 && loaded.defaults[4][1] == 3);
     REQUIRE(loaded.widths[5] == 3 && loaded.defaults[5][2] == 1);
     REQUIRE(!loaded.names[6]);
+    return true;
+}
+
+TEST_CASE(shader_source_update_survives_descriptor_format_and_owned_clone)
+{
+    REQUIRE(fixture());
+    char text[2048];
+    snprintf(text, sizeof text, "%supdate \"advect\"\n", declaration);
+    av_doc *document = av_doc_read(text, error, sizeof error);
+    REQUIRE(document);
+    char *formatted = av_doc_write(document);
+    av_doc_free(document);
+    REQUIRE(formatted);
+    bool valid = authoring_shader_source_load(content, descriptor, formatted, &loaded, error, sizeof error);
+    free(formatted);
+    REQUIRE(valid);
+    REQUIRE(!strcmp(loaded.text.update, "advect"));
+    shader_text copy = shader_text_clone(&loaded.text);
+    REQUIRE(copy.update != loaded.text.update);
+    shader_prepared_asset_free(&loaded);
+    bool owned = !strcmp(copy.update, "advect") && !strcmp(copy.code, code);
+    shader_text_free(&copy);
+    REQUIRE(owned);
     return true;
 }
 
@@ -95,6 +120,12 @@ TEST_CASE(shader_source_rejects_invalid_metadata_and_project_escape_without_repl
         "\"Cloud.glsl\"\nentry \"cloud\"\n",
         "version 1\nname \"Wrong\"\nkind \"particle\"\nsource "
         "\"Cloud.glsl\"\nentry \"bad-name\"\n",
+        "version 1\nname \"Wrong\"\nkind \"particle\"\nsource "
+        "\"Cloud.glsl\"\nentry \"cloud\"\nupdate \"bad-name\"\n",
+        "version 1\nname \"Wrong\"\nkind \"particle\"\nsource "
+        "\"Cloud.glsl\"\nentry \"cloud\"\nupdate \"\"\n",
+        "version 1\nname \"Wrong\"\nkind \"particle\"\nsource "
+        "\"Cloud.glsl\"\nentry \"cloud\"\nupdate 42\n",
         "version 1\nname \"Wrong\"\nkind \"particle\"\nsource "
         "\"Cloud.glsl\"\nentry \"cloud\"\nparameters { Index { type \"float\"; "
         "default 2; }; }\n",
@@ -199,6 +230,48 @@ TEST_CASE(shader_source_compiler_publication_preserves_last_good_and_retires_rem
     return true;
 }
 
+TEST_CASE(shader_source_update_identity_invalidates_publication)
+{
+    REQUIRE(fixture());
+    char text[4096];
+    snprintf(
+        text,
+        sizeof text,
+        "%s\n"
+        "ChibiParticleState advect(ChibiParticleInput p, ChibiParameters u, "
+        "ChibiParticleState state) {\n"
+        " state.position+=vec3(p.delta*u.Spacing); state.age+=p.delta; return "
+        "state;\n}\n"
+        "ChibiParticleState drift(ChibiParticleInput p, ChibiParameters u, "
+        "ChibiParticleState state) { return advect(p,u,state); }\n",
+        code
+    );
+    tool_write(source, text);
+    REQUIRE(authoring_shader_sources_prepare(content, true, error, sizeof error));
+    int id = render_shader_find("Source.Cloud");
+    REQUIRE(id);
+    uint64_t generation = render_shader_generation(id);
+    snprintf(text, sizeof text, "%supdate \"advect\"\n", declaration);
+    tool_write(descriptor, text);
+    REQUIRE(authoring_shader_sources_prepare(content, true, error, sizeof error));
+    REQUIRE(render_shader_generation(id) != generation);
+    REQUIRE(!strcmp(render_shader_particle_text(id)->update, "advect"));
+    generation = render_shader_generation(id);
+    REQUIRE(authoring_shader_sources_prepare(content, true, error, sizeof error));
+    REQUIRE(render_shader_generation(id) == generation);
+    snprintf(text, sizeof text, "%supdate \"drift\"\n", declaration);
+    tool_write(descriptor, text);
+    REQUIRE(authoring_shader_sources_prepare(content, true, error, sizeof error));
+    REQUIRE(render_shader_generation(id) != generation);
+    REQUIRE(!strcmp(render_shader_particle_text(id)->update, "drift"));
+    generation = render_shader_generation(id);
+    tool_write(descriptor, declaration);
+    REQUIRE(authoring_shader_sources_prepare(content, true, error, sizeof error));
+    REQUIRE(render_shader_generation(id) != generation);
+    REQUIRE(!render_shader_particle_text(id)->update);
+    return true;
+}
+
 TEST_CASE(shader_source_publication_rejects_existing_graph_identity)
 {
     REQUIRE(fixture());
@@ -219,7 +292,9 @@ void test_shader_sources()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(shader_source_metadata_binds_scalars_vectors_and_bundled_files);
+    RUN_TEST_CASE(shader_source_update_survives_descriptor_format_and_owned_clone);
     RUN_TEST_CASE(shader_source_rejects_invalid_metadata_and_project_escape_without_replacement);
     RUN_TEST_CASE(shader_source_compiler_publication_preserves_last_good_and_retires_removed_names);
+    RUN_TEST_CASE(shader_source_update_identity_invalidates_publication);
     RUN_TEST_CASE(shader_source_publication_rejects_existing_graph_identity);
 }

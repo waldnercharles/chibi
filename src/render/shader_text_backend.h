@@ -11,4 +11,9 @@ CF_ShaderCompilerResult render_shader_text_compile(
     CF_ShaderCompilerStage,
     shader_error *
 );
+/* Assembled fixed templates used by both validation and runtime creation.
+ * The assembled sources use free(); the update vertex is borrowed. */
+char *render_shader_particle_vertex_source(const char *adapter, bool stateful);
+char *render_shader_particle_update_source(const char *adapter);
+const char *render_shader_particle_update_vertex();
 #endif

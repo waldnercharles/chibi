@@ -1,0 +1,9 @@
+version 1
+name "DriftingGrains.Float"
+kind "particle"
+source "DriftingGrains.glsl"
+entry "grain"
+update "advect"
+parameters {
+    Lifetime type="float" default=3.0
+}

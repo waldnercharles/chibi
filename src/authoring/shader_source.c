@@ -222,20 +222,22 @@ static bool load(
                    *kind = av_obj_get(value, "kind"),
                    *source = av_obj_get(value, "source"),
                    *entry = av_obj_get(value, "entry"),
+                   *update = av_obj_get(value, "update"),
                    *includes = av_obj_get(value, "includes");
-    static const char *const fields[] = { "version", "name",  "kind",
-                                          "source",  "entry", "parameters",
-                                          "includes" };
+    static const char *const fields[] = { "version",  "name",  "kind",
+                                          "source",   "entry", "parameters",
+                                          "includes", "update" };
     bool valid = false;
-    if (!keys(value, fields, 7) || !av_is_int(version) ||
-        av_get_num(version) != 1 || !string(name) || !av_get_len(name) ||
-        av_get_len(name) > 1024 || !string(kind) ||
-        strcmp(av_get_str(kind), "particle") || !string(source) || !string(entry)) {
+    if (!keys(value, fields, 8) || !av_is_int(version) || av_get_num(version) != 1 ||
+        !string(name) || !av_get_len(name) || av_get_len(name) > 1024 ||
+        !string(kind) || strcmp(av_get_str(kind), "particle") ||
+        !string(source) || !string(entry) || (update && !string(update))) {
         fail(error, size, "%s: shader-source requires version 1, name, kind particle, source and entry", descriptor_path);
         goto done;
     }
     asset.name = xstrdup(av_get_str(name));
     asset.text.entry = xstrdup(av_get_str(entry));
+    asset.text.update = update ? xstrdup(av_get_str(update)) : NULL;
     if (!parameters(av_obj_get(value, "parameters"), &asset, error, size)) {
         goto done;
     }

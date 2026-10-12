@@ -4170,6 +4170,151 @@ void test_render_particle_depth()
     cf_destroy_app();
 }
 
+/* Fixed geometry exposes retained position, velocity and age as linear RGB,
+ * so the public render path provides numeric state evidence without an
+ * inspection-only runtime API. */
+static const char particle_state_code[] =
+    "ChibiParticleState advect(ChibiParticleInput p, ChibiParameters u, "
+    "ChibiParticleState state) {\n"
+    " ChibiParticleState s;\n"
+    " if (any(notEqual(state.position,p.position)) || "
+    "any(notEqual(state.velocity,p.velocity)) || state.age!=p.age) {\n"
+    "  s.position=vec3(9.0); s.velocity=vec3(9.0); s.age=9.0; return s; }\n"
+    " if (p.reset && (any(notEqual(p.position,vec3(0.0))) || "
+    "any(notEqual(p.velocity,vec3(0.0))) || p.age!=0.0 || p.delta!=0.0)) {\n"
+    "  s.position=vec3(9.0); s.velocity=vec3(9.0); s.age=9.0; return s; }\n"
+    " if (p.reset || p.age+p.delta > 0.08) {\n"
+    "  s.position=vec3(p.seed*0.1+p.count*0.01+p.index*0.0001);\n"
+    "  s.velocity=vec3(INITIAL_VELOCITY,0.0,0.0); s.age=0.0; return s; }\n"
+    " s.velocity=p.velocity+vec3(p.delta*10.0,0.0,0.0);\n"
+    " s.position=p.position+s.velocity*p.delta; s.age=p.age+p.delta; return s; "
+    "}\n"
+    "ChibiParticle display(ChibiParticleInput p, ChibiParameters u) {\n"
+    " ChibiParticle s=chibi_particle();\n"
+    " s.size=p.index==p.count-1.0 ? 1.0 : 0.0;\n"
+    " s.color=vec4(0.1+p.age*4.0,0.1+p.position.x,0.1+p.velocity.x*0.1,1.0);\n"
+    " return s; }\n";
+
+static bool publish_state_particle(int velocity)
+{
+    shader_prepared_asset asset;
+    shader_prepared_asset_init(&asset);
+    asset.name = xstrdup("State.Display");
+    asset.kind = SHADER_ASSET_PARTICLE_TEXT;
+    asset.text.path = xstrdup("State.glsl");
+    asset.text.entry = xstrdup("display");
+    asset.text.update = xstrdup("advect");
+    char source[sizeof particle_state_code + 64];
+    snprintf(source, sizeof source, "#define INITIAL_VELOCITY %d.0\n%s", velocity, particle_state_code);
+    asset.text.code = xstrdup(source);
+    const char *names[] = { "Index", "Count", "Seed" };
+    for (int i = 0; i < 3; i++) {
+        asset.names[i] = xstrdup(names[i]);
+        asset.widths[i] = 1;
+    }
+    unsigned char *bytes = NULL;
+    size_t length = 0, remaining = 1024 * 1024;
+    shader_error diagnostic = { 0 };
+    bool written = shader_asset_prepared_write(&asset, &bytes, &length, &diagnostic);
+    shader_prepared_asset_free(&asset);
+    REQUIRE(written);
+    player_asset record = { .name = "State.Display",
+                            .kind = PLAYER_ASSET_SHADER,
+                            .data = bytes,
+                            .length = length };
+    particle_host = render_prepared_resources(NULL);
+    char error[256] = { 0 };
+    void *generation = particle_host.stage(particle_host.context, &record, 1, &remaining, error, sizeof error);
+    free(bytes);
+    REQUIRE(generation);
+    particle_host.commit(particle_host.context, generation, NULL);
+    if (particle_generation) {
+        particle_host.retire(particle_host.context, particle_generation);
+    }
+    particle_generation = generation;
+    return true;
+}
+
+static bool state_pixel(ecs_entity entity, float time, CF_V4 expected)
+{
+    ParticleField3D_get(test_world, entity)->time = time;
+    CF_CanvasParams params = cf_canvas_defaults(SIDE, SIDE);
+    params.target.pixel_format = CF_PIXEL_FORMAT_R32G32B32A32_FLOAT;
+    params.depth_stencil_enable = true;
+    CF_Canvas canvas = cf_make_canvas(params);
+    REQUIRE(canvas.id);
+    cf_canvas_set_clear_color(canvas, (CF_Color){ 0, 0, 0, 1 });
+    cf_app_update(NULL);
+    Environment settings = environment_defaults();
+    bool drawn = render_scene3d_draw(
+        scene3d,
+        test_world,
+        test_particles,
+        &lens,
+        0,
+        runtime,
+        &settings,
+        (render_skip){ 0 }
+    );
+    cf_render_to(canvas, true);
+    cf_app_draw_onto_screen(false);
+    CF_Readback readback = cf_canvas_readback(canvas);
+    CF_V4 actual[PIXELS];
+    uint64_t deadline = cf_get_ticks() + cf_get_tick_frequency() * 2;
+    while (readback.id && !cf_readback_ready(readback) && cf_get_ticks() < deadline) {
+        cf_sleep(1);
+    }
+    bool read = readback.id && cf_readback_ready(readback) &&
+                cf_readback_data(readback, actual, sizeof actual) == sizeof actual;
+    if (readback.id) {
+        cf_destroy_readback(readback);
+    }
+    cf_destroy_canvas(canvas);
+    REQUIRE(drawn && !render_scene3d_error(scene3d)[0]);
+    REQUIRE(read);
+    CF_V4 center = actual[(SIDE / 2) * SIDE + SIDE / 2];
+    REQUIRE(fabsf(center.x - expected.x) < .002f);
+    REQUIRE(fabsf(center.y - expected.y) < .002f);
+    REQUIRE(fabsf(center.z - expected.z) < .002f);
+    return true;
+}
+
+TEST_CASE(persistent_particles_advance_and_reset_through_rendering)
+{
+    REQUIRE(publish_state_particle(1));
+    look((CF_V3){ 0, 0, 6 }, (CF_V3){ 0 }, (CF_V3){ 0, 1, 0 });
+    ecs_entity entity = add_depth_particle();
+    Shader_get(test_world, entity)->material = "State.Display";
+    REQUIRE(state_pixel(entity, 10, (CF_V4){ .1f, .21f, .2f, 1 }));
+    REQUIRE(state_pixel(entity, 10.025f, (CF_V4){ .2f, .24125f, .225f, 1 }));
+    REQUIRE(state_pixel(entity, 10.025f, (CF_V4){ .2f, .24125f, .225f, 1 }));
+    /* A long frame advances only .05 seconds. */
+    REQUIRE(state_pixel(entity, 20, (CF_V4){ .4f, .32875f, .275f, 1 }));
+    /* Authored lifetime respawns after cumulative age passes .08. */
+    REQUIRE(state_pixel(entity, 20.025f, (CF_V4){ .1f, .21f, .2f, 1 }));
+    REQUIRE(state_pixel(entity, 19, (CF_V4){ .1f, .21f, .2f, 1 }));
+    REQUIRE(state_pixel(entity, 19.025f, (CF_V4){ .2f, .24125f, .225f, 1 }));
+    /* Index 1024 occupies the second state-texture row. Only that
+     * particle is visible; its distinct state checks write and fetch addressing. */
+    ParticleField3D_get(test_world, entity)->count = 1025;
+    REQUIRE(state_pixel(entity, 19.025f, (CF_V4){ .1f, 10.5524f, .2f, 1 }));
+    ParticleField3D_get(test_world, entity)->seed = 3;
+    REQUIRE(state_pixel(entity, 19.025f, (CF_V4){ .1f, 10.7524f, .2f, 1 }));
+    REQUIRE(publish_state_particle(2));
+    REQUIRE(state_pixel(entity, 19.025f, (CF_V4){ .1f, 10.7524f, .3f, 1 }));
+    REQUIRE(state_pixel(entity, 19.05f, (CF_V4){ .2f, 10.80865f, .325f, 1 }));
+    return true;
+}
+
+void test_render_particle_state()
+{
+    make_scene3d_app(false);
+    pu_setup(setup, particle_depth_cleanup);
+    RUN_TEST_CASE(persistent_particles_advance_and_reset_through_rendering);
+    pu_clear_setup();
+    cf_destroy_app();
+}
+
 void test_render_scene3d(bool gles)
 {
     make_scene3d_app(gles);

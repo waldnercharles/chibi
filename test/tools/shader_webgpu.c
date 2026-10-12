@@ -71,13 +71,14 @@ static bool compile_particle_vertex(const shader_text *text, int outputs)
     char *at = strstr(source, marker);
     REQUIRE(at);
     *at = 0;
-    size_t bytes = (size_t)length + strlen(glsl) + 80;
+    size_t bytes = (size_t)length + strlen(glsl) + 128;
     vertex = xmalloc(bytes);
     snprintf(
         vertex,
         bytes,
-        "#version 450\n#define SG_PARTICLE_OUTPUT_COUNT %d\n%s%s%s",
+        "#version 450\n#define SG_PARTICLE_OUTPUT_COUNT %d\n%s%s%s%s",
         outputs,
+        text && text->update ? "#define SG_PARTICLE_STATEFUL 1\n" : "",
         source,
         glsl,
         at + strlen(marker)
@@ -227,6 +228,18 @@ static const char
                        "exp(-abs(t))*cos(t); }\n"
                        "void locate(float index,float count,out vec3 position) "
                        "{ position=vec3(index/max(count,1.0),0.0,0.0); }\n";
+static const char *stateful_code =
+    "ChibiParticleState advect(ChibiParticleInput p, ChibiParameters u, "
+    "ChibiParticleState state) {\n"
+    " if (p.reset) { state.position=vec3(p.index/max(p.count,1.0),p.seed,0.0); "
+    "state.velocity=u.Axis; state.age=0.0; return state; }\n"
+    " state.velocity+=vec3(u.Offset,u.Gain)*p.delta;\n"
+    " state.position+=state.velocity*p.delta; state.age+=p.delta; return "
+    "state;\n}\n"
+    "ChibiParticle particles(ChibiParticleInput p, ChibiParameters u) {\n"
+    " ChibiParticle result=chibi_particle(); result.position=p.position;\n"
+    " result.rotation=p.velocity*p.time; result.size=1.0+p.age+p.delta;\n"
+    " result.color=p.reset?vec4(1.0):u.Tint; return result;\n}\n";
 
 static void included_particle()
 {
@@ -279,6 +292,59 @@ TEST_CASE(direct_particle_reports_original_include_path_and_line)
     return true;
 }
 
+TEST_CASE(stateful_particle_compiles_render_and_update_with_typed_parameters)
+{
+    source_particle(stateful_code);
+    source_asset.text.update = xstrdup("advect");
+    shader_error error = { 0 };
+    glsl = shader_text_particle_glsl(
+        &source_asset.text,
+        source_asset.names,
+        source_asset.widths,
+        &error
+    );
+    REQUIRE(glsl);
+    REQUIRE(compile_particle_vertex(&source_asset.text, 6));
+    REQUIRE(strstr(compiled.bytecode.wgsl_src, "particle_step"));
+    REQUIRE(strstr(compiled.bytecode.msl_src, "particle_step"));
+    REQUIRE(render_shader_text_validate(
+        &source_asset.text,
+        source_asset.names,
+        source_asset.widths,
+        &error
+    ));
+    return true;
+}
+
+TEST_CASE(stateful_particle_rejects_wrong_update_result_and_missing_entry)
+{
+    source_particle(
+        "float advect(ChibiParticleInput p,ChibiParameters "
+        "u,ChibiParticleState state) { return p.delta; }\n"
+        "ChibiParticle particles(ChibiParticleInput p,ChibiParameters u) { "
+        "return chibi_particle(); }\n"
+    );
+    source_asset.text.update = xstrdup("advect");
+    shader_error error = { 0 };
+    REQUIRE(!render_shader_text_validate(
+        &source_asset.text,
+        source_asset.names,
+        source_asset.widths,
+        &error
+    ));
+    REQUIRE(*error.message);
+    free(source_asset.text.update);
+    source_asset.text.update = xstrdup("missing_update");
+    REQUIRE(!render_shader_text_validate(
+        &source_asset.text,
+        source_asset.names,
+        source_asset.widths,
+        &error
+    ));
+    REQUIRE(strstr(error.message, "missing_update"));
+    return true;
+}
+
 TEST_CASE(direct_particle_refuses_unbundled_include)
 {
     source_particle("#include \"not-bundled.glsl\"\nChibiParticle particles(ChibiParticleInput p,ChibiParameters u){return chibi_particle();}\n");
@@ -302,6 +368,7 @@ TEST_CASE(direct_particle_prepared_roundtrip_owns_sources_and_defaults)
     size_t budget = 8u * 1024u * 1024u;
     REQUIRE(shader_asset_prepared_read_budget(encoded, length, &budget, &decoded, &error));
     REQUIRE(decoded.kind == SHADER_ASSET_PARTICLE_TEXT);
+    REQUIRE(!decoded.text.update);
     REQUIRE(acount(decoded.graph.nodes) == 0);
     REQUIRE(!strcmp(decoded.text.code, direct_code));
     REQUIRE(acount(decoded.text.includes) == 1);
@@ -309,6 +376,22 @@ TEST_CASE(direct_particle_prepared_roundtrip_owns_sources_and_defaults)
     REQUIRE(decoded.widths[4] == 2 && decoded.widths[5] == 3 && decoded.widths[6] == 4);
     REQUIRE(decoded.defaults[5][0] == 1.25f);
     shader_prepared_asset_free(&source_asset);
+    REQUIRE(render_shader_text_validate(&decoded.text, decoded.names, decoded.widths, &error));
+    return true;
+}
+
+TEST_CASE(stateful_particle_prepared_roundtrip_owns_update_and_compiles)
+{
+    source_particle(stateful_code);
+    source_asset.text.update = xstrdup("advect");
+    shader_error error = { 0 };
+    size_t length = 0, budget = 8u * 1024u * 1024u;
+    REQUIRE(shader_asset_prepared_write(&source_asset, &encoded, &length, &error));
+    REQUIRE(shader_asset_prepared_read_budget(encoded, length, &budget, &decoded, &error));
+    REQUIRE(decoded.text.update != source_asset.text.update);
+    shader_prepared_asset_free(&source_asset);
+    REQUIRE(!strcmp(decoded.text.update, "advect"));
+    REQUIRE(!strcmp(decoded.text.code, stateful_code));
     REQUIRE(render_shader_text_validate(&decoded.text, decoded.names, decoded.widths, &error));
     return true;
 }
@@ -335,9 +418,12 @@ void test_tool_shader_webgpu()
 {
     pu_setup(setup, cleanup);
     RUN_TEST_CASE(direct_particle_compiles_standard_functions_and_typed_parameters);
+    RUN_TEST_CASE(stateful_particle_compiles_render_and_update_with_typed_parameters);
+    RUN_TEST_CASE(stateful_particle_rejects_wrong_update_result_and_missing_entry);
     RUN_TEST_CASE(direct_particle_reports_original_include_path_and_line);
     RUN_TEST_CASE(direct_particle_refuses_unbundled_include);
     RUN_TEST_CASE(direct_particle_prepared_roundtrip_owns_sources_and_defaults);
+    RUN_TEST_CASE(stateful_particle_prepared_roundtrip_owns_update_and_compiles);
     RUN_TEST_CASE(direct_particle_prepared_failures_preserve_destination_and_budget);
     RUN_TEST_CASE(noise_shader_transpiles_without_ambiguous_wgsl_comparison);
     RUN_TEST_CASE(particle_vertex_program_transpiles_instanced_geometry_to_wgsl);

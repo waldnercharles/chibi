@@ -14,16 +14,21 @@ target_include_directories(chibi_shader_compiler PRIVATE "${CMAKE_CURRENT_BINARY
 configure_file("${CHIBI_SDK_ROOT}/src/render/shader_text_backend.h"
     "${CMAKE_CURRENT_BINARY_DIR}/private/shader_compiler/render/shader_text_backend.h" COPYONLY)
 
-# Compile exactly the vertex and fragment templates used by the player, without
-# creating a graphics device. Changes to either template regenerate this header.
+# Compile the draw and state-update templates used by the player without
+# creating a graphics device. Template changes regenerate this header.
 set(particle_sources "")
-foreach(stage vertex fragment)
-    if(stage STREQUAL "vertex")
+foreach(stage vertex fragment update_vertex update_fragment)
+    if(stage MATCHES "vertex$")
         set(extension vert)
     else()
         set(extension frag)
     endif()
-    set(path "${CHIBI_SDK_ROOT}/src/render/shaders/scene3d_particles.${extension}")
+    if(stage MATCHES "^update_")
+        set(stem scene3d_particles_update)
+    else()
+        set(stem scene3d_particles)
+    endif()
+    set(path "${CHIBI_SDK_ROOT}/src/render/shaders/${stem}.${extension}")
     file(READ "${path}" code HEX)
     string(REGEX REPLACE "([0-9a-f][0-9a-f])" "0x\\1," code "${code}")
     string(APPEND particle_sources "static const char shader_particle_${stage}[] = {${code}0};\n")

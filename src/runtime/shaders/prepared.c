@@ -220,7 +220,7 @@ static bool asset_valid(const shader_prepared_asset *a, shader_error *error)
     }
     switch (a->kind) {
         case SHADER_ASSET_GRAPH:
-            if (a->text.path || a->text.entry || a->text.code ||
+            if (a->text.path || a->text.entry || a->text.update || a->text.code ||
                 acount(a->text.includes) || !shader_graph_validate(&a->graph, error)) {
                 return false;
             }
@@ -278,6 +278,7 @@ static void text_wire(execution_wire *w, shader_text *text)
 {
     execution_wire_owned_string(w, &text->path);
     execution_wire_owned_string(w, &text->entry);
+    execution_wire_owned_string(w, &text->update);
     execution_wire_owned_string(w, &text->code);
     int count = w->reading ? 0 : acount(text->includes);
     bounded_count(w, &count, SHADER_TEXT_INCLUDE_MAX);

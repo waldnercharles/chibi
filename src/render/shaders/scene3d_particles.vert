@@ -9,6 +9,7 @@ layout(set = 1, binding = 0) uniform uniform_block {
     vec4 particle_dimensions;
     vec4 particle_clock;
     vec4 particle_rhythm;
+    vec4 particle_step;
     vec4 particle_parameters[32];
     vec4 scene_sun_direction;
     vec4 scene_sun_color;
@@ -24,6 +25,20 @@ layout(set = 1, binding = 0) uniform uniform_block {
 float sg_scene_beat_phase() { return particle_rhythm.x; }
 float sg_scene_beat_pulse() { return particle_rhythm.y; }
 vec3 sg_scene_influence(vec3 position) { return vec3(0.0); }
+
+#ifdef SG_PARTICLE_STATEFUL
+layout(set = 0, binding = 0) uniform sampler2D particle_positions;
+layout(set = 0, binding = 1) uniform sampler2D particle_velocities;
+void sg_particle_state(float index, out vec3 position, out vec3 velocity, out float age)
+{
+    int width = int(particle_step.z);
+    ivec2 pixel = ivec2(int(index) % width, int(index) / width);
+    vec4 value = texelFetch(particle_positions, pixel, 0);
+    position = value.xyz;
+    age = value.w;
+    velocity = texelFetch(particle_velocities, pixel, 0).xyz;
+}
+#endif
 
 // SG_PARTICLE_PROGRAM is replaced by the prepared shader function.
 

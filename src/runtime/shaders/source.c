@@ -13,6 +13,7 @@ void shader_text_free(shader_text *text)
 {
     free(text->path);
     free(text->entry);
+    free(text->update);
     free(text->code);
     for (int i = 0; i < acount(text->includes); i++) {
         free(text->includes[i].path);
@@ -26,6 +27,7 @@ shader_text shader_text_clone(const shader_text *text)
 {
     shader_text copy = { .path = xstrdup(text->path),
                          .entry = xstrdup(text->entry),
+                         .update = text->update ? xstrdup(text->update) : NULL,
                          .code = xstrdup(text->code) };
     for (int i = 0; i < acount(text->includes); i++) {
         apush(
@@ -86,7 +88,8 @@ bool shader_text_validate(
     shader_error *error
 )
 {
-    if (!path_valid(text->path) || !identifier(text->entry) || !text->code ||
+    if (!path_valid(text->path) || !identifier(text->entry) ||
+        (text->update && !identifier(text->update)) || !text->code ||
         !*text->code || acount(text->includes) > SHADER_TEXT_INCLUDE_MAX) {
         return fail(error, "Invalid particle GLSL source metadata");
     }
@@ -141,7 +144,7 @@ static void append(char **text, const char *format, ...)
     va_end(args);
 }
 
-char *shader_text_particle_glsl(
+static char *particle_source(
     const shader_text *text,
     char *const names[32],
     const int widths[32],
@@ -152,11 +155,14 @@ char *shader_text_particle_glsl(
         return NULL;
     }
     char *source = NULL;
-    append(&source, "#define SG_PARTICLE_OUTPUT_COUNT 6\n%s", shader_sample_glsl());
+    append(&source, "%s", shader_sample_glsl());
     append(
         &source,
         "struct ChibiParticleInput { float index; float count; float seed; "
-        "float time; };\n"
+        "float time; vec3 position; vec3 velocity; float age; float delta; "
+        "bool reset; };\n"
+        "struct ChibiParticleState { vec3 position; vec3 velocity; float age; "
+        "};\n"
         "struct ChibiParticle { vec3 position; float size; vec4 color; vec3 "
         "scale; vec3 rotation; float lighting; };\n"
         "ChibiParticle chibi_particle() { ChibiParticle p; "
@@ -178,10 +184,15 @@ char *shader_text_particle_glsl(
     append(&source, "};\n#include \"%s\"\n", text->path);
     append(
         &source,
-        "void sg_particle(SGSample s, vec4 parameters[32], out vec4 result[9]) "
-        "{\n"
+        "ChibiParticleInput chibi_particle_input(SGSample s, vec4 "
+        "parameters[32], "
+        "ChibiParticleState state, float delta, bool reset) {\n"
         "  ChibiParticleInput p; p.index=parameters[0].x; "
         "p.count=parameters[1].x; p.seed=parameters[2].x; p.time=s.time;\n"
+        "  p.position=state.position; p.velocity=state.velocity; "
+        "p.age=state.age; "
+        "p.delta=delta; p.reset=reset; return p;\n}\n"
+        "ChibiParameters chibi_parameters(vec4 parameters[32]) {\n"
         "  ChibiParameters u;\n"
     );
     const char *swizzles[] = { "", "x", "xy", "xyz", "xyzw" };
@@ -193,8 +204,44 @@ char *shader_text_particle_glsl(
     if (!count) {
         append(&source, "  u.chibi_unused=0.0;\n");
     }
+    append(&source, "  return u;\n}\n");
+    return source;
+}
+
+char *shader_text_particle_glsl(
+    const shader_text *text,
+    char *const names[32],
+    const int widths[32],
+    shader_error *error
+)
+{
+    char *source = particle_source(text, names, widths, error);
+    if (!source) {
+        return NULL;
+    }
     append(
         &source,
+        "#define SG_PARTICLE_OUTPUT_COUNT 6\n"
+        "void sg_particle(SGSample s, vec4 parameters[32], out vec4 result[9]) "
+        "{\n"
+        "  ChibiParticleState state; state.position=vec3(0.0); "
+        "state.velocity=vec3(0.0); state.age=0.0;\n"
+    );
+    if (text->update) {
+        append(
+            &source,
+            "  "
+            "sg_particle_state(parameters[0].x,state.position,state.velocity,"
+            "state.age);\n"
+            "  ChibiParticleInput p=chibi_particle_input(s,parameters,state,"
+            "particle_step.x,particle_step.y>0.0);\n"
+        );
+    } else {
+        append(&source, "  ChibiParticleInput p=chibi_particle_input(s,parameters,state,0.0,false);\n");
+    }
+    append(
+        &source,
+        "  ChibiParameters u=chibi_parameters(parameters);\n"
         "  ChibiParticle value=%s(p,u);\n"
         "  result[0]=vec4(value.position,0.0); result[1]=vec4(value.size); "
         "result[2]=value.color;\n"
@@ -202,6 +249,34 @@ char *shader_text_particle_glsl(
         "result[4]=vec4(value.rotation,0.0); result[5]=vec4(value.lighting);\n"
         "}\n",
         text->entry
+    );
+    return source;
+}
+
+char *shader_text_particle_update_glsl(
+    const shader_text *text,
+    char *const names[32],
+    const int widths[32],
+    shader_error *error
+)
+{
+    if (!text->update) {
+        fail(error, "Particle GLSL source has no update entry");
+        return NULL;
+    }
+    char *source = particle_source(text, names, widths, error);
+    if (!source) {
+        return NULL;
+    }
+    append(
+        &source,
+        "ChibiParticleState sg_particle_update(SGSample s, vec4 "
+        "parameters[32], "
+        "ChibiParticleState state, float delta, bool reset) {\n"
+        "  ChibiParticleInput "
+        "p=chibi_particle_input(s,parameters,state,delta,reset);\n"
+        "  return %s(p,chibi_parameters(parameters),state);\n}\n",
+        text->update
     );
     return source;
 }

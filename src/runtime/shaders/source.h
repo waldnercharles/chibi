@@ -21,7 +21,7 @@ typedef struct
  * source needed by a prepared asset travels with it, without filesystem reads. */
 typedef struct
 {
-    char *path, *entry, *code;
+    char *path, *entry, *update, *code;
     shader_text_include *includes;
 } shader_text;
 
@@ -36,6 +36,14 @@ bool shader_text_validate(
 /* GLSL adapter includes the named authored source. Callers pass that source and
  * its include records to their compiler. The returned string uses free(). */
 char *shader_text_particle_glsl(
+    const shader_text *,
+    char *const names[SHADER_PARAMETER_MAX],
+    const int widths[SHADER_PARAMETER_MAX],
+    shader_error *
+);
+/* Optional persistent update adapter. Exposes sg_particle_update(sample,
+ * parameters, state, delta, reset), returning the next ChibiParticleState. */
+char *shader_text_particle_update_glsl(
     const shader_text *,
     char *const names[SHADER_PARAMETER_MAX],
     const int widths[SHADER_PARAMETER_MAX],

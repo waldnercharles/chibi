@@ -1,0 +1,9 @@
+name "DriftingGrains"
+components {
+    Geometry3D depth=1.0 height=1.0 primitive=5 width=1.0
+    ParticleField3D count=96 seed=13
+    Shader material="DriftingGrains.Float"
+    Transform3D {
+        scale x=1.0 y=1.0 z=1.0
+    }
+}

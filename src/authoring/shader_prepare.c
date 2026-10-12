@@ -277,6 +277,8 @@ static bool text_asset_equal(const shader_asset *a, const shader_asset *b)
 {
     if (a->kind != b->kind || strcmp(a->text.path, b->text.path) ||
         strcmp(a->text.entry, b->text.entry) || strcmp(a->text.code, b->text.code) ||
+        (a->text.update != NULL) != (b->text.update != NULL) ||
+        (a->text.update && strcmp(a->text.update, b->text.update)) ||
         acount(a->text.includes) != acount(b->text.includes) ||
         memcmp(a->widths, b->widths, sizeof a->widths) ||
         memcmp(a->defaults, b->defaults, sizeof a->defaults)) {

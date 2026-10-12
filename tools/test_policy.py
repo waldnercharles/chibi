@@ -36,6 +36,7 @@ NATIVE = {
     ('--scene3d',): 'Reviewed hidden 64x64 app: 3D renderer cases for lights, shadows, exposure, sky, ramps, imported meshes and their normal maps, imported glTF Standard materials and tangent frames, Transform3D placement and mirroring, occlusion, ambient occlusion, alpha modes and masked shadows with readback; GPU; docs/rendering-3d.md',
     ('--scene3d-gles',): 'Reviewed hidden 64x64 app on GLES under xvfb-run: the same 3D renderer cases; GPU, Linux; docs/rendering-3d.md',
     ('--particle-depth',): 'Independently reviewed one C pixel case, two constant three-node particle shaders, two one-particle fields, four hidden 64x64 frames/readbacks; near/far opaque-additive overlaps with both persistent field cache orders; GPU, passed 2.094s/shared60s; docs/testing.md',
+    ('--particle-state',): 'Independently reviewed one C case, one field with at most 1025 particles and only index 1024 visible for row addressing, eleven hidden 64x64 float readbacks each bounded 2s, ten <=1024x2 two-target state updates, two tiny source publications, no network; passed 1.043s Cocoa/shared60s',
     ('--material-ramps',): 'Reviewed hidden 64x64 app: four color ramp table cases through 2D and material raster shaders; GPU; docs/testing.md',
     ('--shader-parameters-prepared',): 'Independently reviewed one tiny material/two-parameter preparation, typed codec and generation rejection; CPU only, no GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
@@ -131,6 +132,7 @@ TOOLS = {
     'scene3d': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d'],
     # Four fixed 64x64 frames isolate opaque/additive particle depth ordering.
     'particle-depth': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--particle-depth'],
+    'particle-state': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--particle-state'],
     # The same renders on GLES, the WebGL 2 fallback's backend. GLES needs a display, so the
     # agent runs it under xvfb-run; Linux only.
     'scene3d-gles': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--scene3d-gles'],
@@ -499,7 +501,7 @@ def main():
             parser.error('unadmitted tooling command')
         if arguments[0] in ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
                             'studio-graph-visibility', 'interior-border', 'viewport-resize', 'sdf-visibility',
-                            'scene3d', 'scene3d-gles', 'particle-depth',
+                            'scene3d', 'scene3d-gles', 'particle-depth', 'particle-state',
                             'material-ramps'):
             return run_commands([[sys.executable, str(ROOT / 'tools/agent.py'),
                                   'gpu-test', '--', '--' + arguments[0]]])

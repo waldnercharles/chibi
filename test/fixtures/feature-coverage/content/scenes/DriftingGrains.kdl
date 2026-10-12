@@ -1,0 +1,13 @@
+version 1
+name "DriftingGrains"
+presentation "3d"
+(array)entities {
+    - {
+        name "Grains"
+        prototype "DriftingGrains"
+        (array)behaviors "DriftingGrainsClock"
+    }
+    - name="Camera" prototype="RainCamera"
+    - name="Environment" prototype="RainEnvironment"
+    - name="Lamp" prototype="RainLamp"
+}

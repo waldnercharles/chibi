@@ -311,6 +311,15 @@ const shader_text *render_shader_particle_text(int index)
              ? &shader_catalog_assets[index - 1].text
              : NULL;
 }
+char *render_shader_particle_update_glsl(int index, shader_error *error)
+{
+    const shader_text *text = render_shader_particle_text(index);
+    if (!text || !text->update) {
+        return NULL;
+    }
+    const shader_asset *asset = &shader_catalog_assets[index - 1];
+    return shader_text_particle_update_glsl(text, asset->names, asset->widths, error);
+}
 char *render_shader_particle_glsl(int index, shader_error *error)
 {
     if (!render_shader_is_particle(index)) {

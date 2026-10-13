@@ -218,14 +218,19 @@ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
         chibi_native_types chibi_scene_document)
     chibi_sdk_contract(chibi_asset_authoring "${CHIBI_SDK_ROOT}/src"
         chibi_prototype_document chibi_graph_model chibi_reference_index chibi_field_catalog chibi_authoring
-        chibi_asset_text chibi_scene_document chibi_ui_document chibi_graph_authoring chibi_graph_compilation
+        chibi_asset_text chibi_project_document chibi_scene_document chibi_ui_document chibi_graph_authoring chibi_graph_compilation
         chibi_native_types chibi_text_source chibi_declared_components)
+    chibi_sdk_contract(chibi_material_authoring "${CHIBI_SDK_ROOT}/src"
+        chibi_graph_model chibi_shader_runtime chibi_asset_authoring chibi_graph_authoring
+        chibi_graph_compilation chibi_asset_text chibi_support)
+    chibi_sdk_contract(chibi_resource_catalog "${CHIBI_SDK_ROOT}/src/authoring"
+        chibi_asset_values chibi_image_preparation chibi_mesh_runtime chibi_audio_runtime chibi_support)
     chibi_sdk_contract(chibi_model_authoring "${CHIBI_SDK_ROOT}/src/assets"
         chibi_graph_model chibi_model_bake chibi_image_preparation chibi_shader_preparation chibi_graph_authoring chibi_graph_compilation
         chibi_visual_catalog chibi_asset_text chibi_json chibi_support)
     if(TARGET chibi_model_import)
         chibi_sdk_contract(chibi_model_import "${CHIBI_SDK_ROOT}/src/assets"
-            chibi_graph_model chibi_shader_runtime chibi_platform chibi_asset_authoring chibi_prototype_document
+            chibi_graph_model chibi_shader_runtime chibi_material_authoring chibi_platform chibi_asset_authoring chibi_prototype_document chibi_project_document
             chibi_image_preparation chibi_mesh_runtime chibi_native_types chibi_graph_authoring
             chibi_graph_compilation chibi_asset_text chibi_json chibi_support)
     endif()

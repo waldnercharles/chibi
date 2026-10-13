@@ -31,9 +31,10 @@ make agent-test AGENT_SELECTOR=--source-edit
 
 The agent wrapper runs lightweight discovery in an isolated process with a
 five-second deadline before test/preview/capture actions. A failed loader is
-reported as inconclusive and does not prevent bounded work. This probe examines
-Vulkan only; unavailable Vulkan discovery is not evidence that Metal, GLES or
-another rendering path is unavailable. Plans retain bounded rendering commands
+reported as inconclusive and does not prevent bounded work. On macOS it reads
+OS-reported Metal support through `system_profiler` with a four-second subprocess
+deadline; other platforms use Vulkan discovery. Inconclusive discovery is not
+evidence that another rendering path is unavailable. Plans retain bounded rendering commands
 and require the actual runtime result to establish the backend/device.
 `plan logic|render|temporal` chooses focused commands using the explicit purpose
 and discovered capabilities. Logic plans avoid render initialization even when
@@ -42,7 +43,8 @@ hardware/software classification only guides preview resolution and reporting,
 not assertion thresholds or authorization for full suites. Temporal plans require
 an explicit MP4 request before their suggested capture command is executed.
 
-`doctor` enumerates Vulkan devices without rendering. Device type 4 is CPU; integrated/discrete types identify hardware candidates.
+`doctor` reports Metal support or enumerates Vulkan devices without rendering.
+Vulkan device type 4 is CPU; integrated/discrete types identify hardware candidates.
 Virtual/other types remain unknown rather than being called hardware acceleration. On
 2026-10-05 this environment exposed no `/dev/dri` or NVIDIA device, and both the
 activated ICD and normal loader discovery reported only llvmpipe (LLVM 19.1.7).
@@ -292,6 +294,8 @@ The existing development SpaceCadet routes remain available. New installed-route
 execution evidence is pending independent admission and a supervised run.
 
 
+### Studio interaction checks
+
 The `--studio-source-edit` GPU route accepts explicit absolute
 `CHIBI_STUDIO_SOURCE`, `CHIBI_STUDIO_BUILD`, and
 `CHIBI_STUDIO_ACCEPTANCE_EVIDENCE` paths. It verifies the compiled acceptance
@@ -307,6 +311,7 @@ fixture. Each runs independently under the shared 60-second supervisor deadline:
 
 | Agent selector | Hidden frames | Accepted interaction |
 | --- | ---: | --- |
+| `--studio-material-authoring` | 20 | SDL material preset/name/roughness/create, canonical reload, CPU probe, duplicate refusal and Escape; optional two screenshot readbacks |
 | `--studio-scene-collider3d` | 26 | Scaled box, sphere and capsule handles, typed history, parallel/nonfinite and hidden-handle rejection, Escape/H cancellation; three actors |
 | `--studio-scene-gizmo3d` | 42 | World/local move, snapping, rotation/scaling, history and cancellation; six prototypes/eight actors |
 | `--studio-graph-pointer` | 19 | SDL node selection, wire navigation, Find keys and pointer selection, Escape focus, Home framing |

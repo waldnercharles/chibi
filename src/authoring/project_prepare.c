@@ -366,6 +366,23 @@ static void add_record(yyjson_mut_doc *doc, yyjson_mut_val *records, const char 
 {
     yyjson_mut_val *record = yyjson_mut_arr_add_obj(doc, records);
     yyjson_mut_obj_add_str(doc, record, "kind", kind);
+    const char *policy = "prepared-catalog";
+    if (!strcmp(kind, "sound")) {
+        policy = "sound-directory";
+    } else if (!strcmp(kind, "ui")) {
+        policy = "ui-directory";
+    } else if (!strcmp(kind, "font")) {
+        policy = "ui-font-family";
+    } else if (!strcmp(kind, "mesh") || !strcmp(kind, "sky")) {
+        policy = "scene-component";
+    } else if (!strcmp(kind, "icon")) {
+        policy = "application-icon";
+    } else if (!strcmp(kind, "parts") || !strcmp(kind, "shader-values")) {
+        policy = "generated-bindings";
+    } else if (!strcmp(kind, "image")) {
+        policy = "resident-image-or-ui-resource";
+    }
+    yyjson_mut_obj_add_str(doc, record, "inclusion_policy", policy);
     yyjson_mut_obj_add_str(doc, record, "key", asset->name);
     yyjson_mut_obj_add_uint(doc, record, "bytes", asset->length);
     if (asset->path) {
@@ -394,6 +411,7 @@ static char *manifest(const player_asset *assets, const player_asset *icon, cons
     yyjson_mut_val *root = yyjson_mut_obj(doc);
     yyjson_mut_doc_set_root(doc, root);
     yyjson_mut_obj_add_int(doc, root, "version", 1);
+    yyjson_mut_obj_add_str(doc, root, "hash_algorithm", "fnv1a64");
     char hash[17];
     snprintf(
         hash,

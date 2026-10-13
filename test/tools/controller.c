@@ -1,4 +1,5 @@
 #include "assets/project.h"
+#include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "third_party/yyjson/yyjson.h"
@@ -14,7 +15,7 @@
 #define MAX_REPLIES 16
 
 static const char *program;
-static char root[64], log_path[128];
+static char root[64], log_path[128], recording_path[256];
 static yyjson_doc *replies[MAX_REPLIES];
 static int reply_count, request_count;
 static FILE *requests;
@@ -146,6 +147,7 @@ static int run()
 
 static void setup()
 {
+    recording_path[0] = 0;
     strcpy(root, "/tmp/chibi-controller-XXXXXX");
     assert(mkdtemp(root));
     char *resolved = realpath(root, NULL);
@@ -203,6 +205,9 @@ static void setup()
 static void teardown()
 {
     clear_replies();
+    if (recording_path[0]) {
+        unlink(recording_path);
+    }
     for (size_t i = 0; i < sizeof sources / sizeof *sources; i++) {
         free(sources[i]);
         sources[i] = NULL;
@@ -647,6 +652,173 @@ TEST_CASE(controller_profile_excludes_warmup_only_run)
     return true;
 }
 
+/* A complete decoded 1x1 PNG, also used by the manifest icon validation case.
+ * Keeping it unreferenced proves inventory identity covers raw files outside
+ * the prepared runtime resource closure. */
+static void unused_image()
+{
+    static const unsigned char png[] = {
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+        0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+        0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0xDA, 0x63, 0x64, 0x60, 0xF8, 0x5F,
+        0x0F, 0x00, 0x02, 0x87, 0x01, 0x80, 0xEB, 0x47, 0xBA, 0x92, 0x00, 0x00,
+        0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
+    };
+    char file[256];
+    path(file, sizeof file, "content/unused.png");
+    FILE *stream = fopen(file, "wb");
+    assert(stream && fwrite(png, 1, sizeof png, stream) == sizeof png);
+    assert(!fclose(stream));
+}
+
+TEST_CASE(controller_material_creation_discovery_and_editable_inspection)
+{
+    begin("describe_asset_schema", NULL);
+    yyjson_mut_obj_add_str(request, input, "kind", "material");
+    send();
+    begin("create_material", NULL);
+    yyjson_mut_obj_add_str(request, input, "name", "MetalProof");
+    yyjson_mut_obj_add_str(request, input, "preset", "metal");
+    send();
+    begin("inspect_graph", "content/materials/MetalProof.kdl");
+    yyjson_mut_obj_add_bool(request, input, "cpu_sample", true);
+    send();
+    begin("read_asset", "content/materials/MetalProof.kdl");
+    send();
+    REQUIRE(run() == 0 && ok(0) && ok(1) && ok(2) && ok(3));
+    yyjson_val *schemas = get(result(0), "schemas");
+    REQUIRE(yyjson_arr_size(schemas) == 1);
+    yyjson_val *schema = yyjson_arr_get(schemas, 0);
+    REQUIRE(string_is(get(schema, "kind"), "material"));
+    REQUIRE(yyjson_get_str(get(schema, "example")));
+    REQUIRE(!yyjson_get_bool(get(schema, "complete")));
+    REQUIRE(yyjson_get_bool(get(result(1), "editable")));
+    REQUIRE(string_is(get(result(1), "path"), "content/materials/MetalProof.kdl"));
+    yyjson_val *report = get(result(2), "shader_report");
+    REQUIRE(yyjson_get_bool(get(report, "valid")));
+    REQUIRE(!yyjson_get_bool(get(report, "gpu_executed")));
+    yyjson_val *sample = get(report, "cpu_sample");
+    REQUIRE(yyjson_get_bool(get(sample, "valid")));
+    yyjson_val *outputs = get(sample, "outputs");
+    REQUIRE(fabs(yyjson_get_num(yyjson_arr_get(get(outputs, "roughness"), 0)) - .25) < 1e-6);
+    REQUIRE(fabs(yyjson_get_num(yyjson_arr_get(get(outputs, "metallic"), 0)) - 1) < 1e-6);
+    const char *source = yyjson_get_str(get(result(3), "source"));
+    REQUIRE(source && strstr(source, "graphs") && strstr(source, "MetalProof"));
+    size_t size = strlen(source) + 64;
+    char *edited = xmalloc(size);
+    snprintf(edited, size, "// Hand-authored material note.\n%s", source);
+    write_file("content/materials/MetalProof.kdl", edited);
+    free(edited);
+    begin("validate_asset", "content/materials/MetalProof.kdl");
+    send();
+    begin("read_asset", "content/materials/MetalProof.kdl");
+    send();
+    REQUIRE(run() == 0 && ok(0) && ok(1));
+    REQUIRE(yyjson_get_bool(get(result(0), "valid")));
+    source = yyjson_get_str(get(result(1), "source"));
+    REQUIRE(source && strstr(source, "// Hand-authored material note.") == source);
+    REQUIRE(unchanged());
+    return true;
+}
+
+TEST_CASE(controller_structural_diagnostics_avoid_duplicate_loader_fallout)
+{
+    const char *broken = "version 1\nname \"Proof\"\nphysics { substeps "
+                         "\"two\"; }\n(array)entities\n";
+    write_file("content/scenes/Proof.kdl", broken);
+    begin("validate_asset", "content/scenes/Proof.kdl");
+    send();
+    REQUIRE(run() != 0 && !ok(0));
+    REQUIRE(!yyjson_get_bool(get(result(0), "valid")));
+    yyjson_val *diagnostics = get(result(0), "diagnostics");
+    REQUIRE(yyjson_arr_size(diagnostics) == 1);
+    yyjson_val *diagnostic = yyjson_arr_get(diagnostics, 0);
+    REQUIRE(string_is(get(diagnostic, "code"), "INVALID_TYPE"));
+    REQUIRE(string_is(get(diagnostic, "property_path"), "physics.substeps"));
+    REQUIRE(string_is(get(diagnostic, "expected"), "integer"));
+    REQUIRE(yyjson_get_int(get(diagnostic, "line")) == 3);
+    REQUIRE(yyjson_get_int(get(diagnostic, "end")) > yyjson_get_int(get(diagnostic, "start")));
+    REQUIRE(!string_is(get(diagnostic, "rule_name"), "LOAD"));
+    return true;
+}
+
+TEST_CASE(controller_catalog_exposes_full_resource_identity_with_raw_kind_filters)
+{
+    /* Invalid filters fail even before an inventory contains raw resources. */
+    begin("resource_catalog", NULL);
+    yyjson_mut_val *invalid_kinds = yyjson_mut_obj_add_arr(request, input, "kinds");
+    yyjson_mut_arr_add_int(request, invalid_kinds, 7);
+    send();
+    begin("resource_catalog", NULL);
+    yyjson_mut_obj_add_int(request, input, "query", 7);
+    send();
+    REQUIRE(run() != 0 && !ok(0) && !ok(1));
+    REQUIRE(string_is(get(get(yyjson_doc_get_root(replies[0]), "error"), "code"), "invalid_request"));
+    REQUIRE(string_is(get(get(yyjson_doc_get_root(replies[1]), "error"), "code"), "invalid_request"));
+    unused_image();
+    begin("catalog", NULL);
+    send();
+    begin("search_assets", NULL);
+    yyjson_mut_obj_add_str(request, input, "query", "unused");
+    yyjson_mut_val *kinds = yyjson_mut_obj_add_arr(request, input, "kinds");
+    yyjson_mut_arr_add_str(request, kinds, "image");
+    send();
+    REQUIRE(run() == 0 && ok(0) && ok(1));
+    yyjson_val *catalog = get(result(0), "resource_catalog");
+    yyjson_val *filtered = get(result(1), "resource_catalog");
+    REQUIRE(yyjson_get_bool(get(catalog, "complete")));
+    REQUIRE(yyjson_get_bool(get(filtered, "complete")));
+    const char *identity = yyjson_get_str(get(catalog, "content_hash"));
+    REQUIRE(identity && strlen(identity) == 16);
+    REQUIRE(string_is(get(filtered, "content_hash"), identity));
+    REQUIRE(string_is(get(result(0), "project_content_hash"), identity));
+    REQUIRE(yyjson_get_str(get(catalog, "resource_hash")));
+    REQUIRE(yyjson_arr_size(get(catalog, "authored_sources")) >= 6);
+    yyjson_val *resources = get(filtered, "resources");
+    REQUIRE(yyjson_arr_size(resources) == 1);
+    yyjson_val *image = yyjson_arr_get(resources, 0);
+    REQUIRE(string_is(get(image, "kind"), "image"));
+    REQUIRE(string_is(get(image, "key"), "content/unused.png"));
+    REQUIRE(yyjson_get_str(get(image, "content_hash")));
+    REQUIRE(yyjson_get_int(get(get(image, "metadata"), "width")) == 1);
+    REQUIRE(yyjson_arr_size(get(result(1), "assets")) == 0);
+    REQUIRE(unchanged());
+    return true;
+}
+
+TEST_CASE(controller_replay_rejects_changed_unreferenced_raw_resource)
+{
+    unused_image();
+    begin("record_scenario", NULL);
+    yyjson_mut_obj_add_str(request, input, "kind", "prototype");
+    yyjson_mut_obj_add_str(request, input, "name", "Actor");
+    yyjson_mut_obj_add_uint(request, input, "frames", 1);
+    send();
+    REQUIRE(run() == 0 && ok(0));
+    const char *recorded = yyjson_get_str(get(result(0), "recording_path"));
+    REQUIRE(recorded && strlen(recorded) < sizeof recording_path);
+    snprintf(recording_path, sizeof recording_path, "%s", recorded);
+    begin("replay_scenario", NULL);
+    yyjson_mut_obj_add_str(request, input, "recording_path", recording_path);
+    send();
+    REQUIRE(run() == 0 && ok(0));
+    char file[256];
+    path(file, sizeof file, "content/unused.png");
+    FILE *stream = fopen(file, "ab");
+    REQUIRE(stream && fputc(0, stream) != EOF && !fclose(stream));
+    REQUIRE(unchanged());
+    begin("replay_scenario", NULL);
+    yyjson_mut_obj_add_str(request, input, "recording_path", recording_path);
+    send();
+    REQUIRE(run() != 0 && !ok(0));
+    yyjson_val *error = get(yyjson_doc_get_root(replies[0]), "error");
+    REQUIRE(string_is(get(error, "code"), "validation_failed"));
+    const char *message = yyjson_get_str(get(error, "message"));
+    REQUIRE(message && strstr(message, "runtime content changed"));
+    return true;
+}
+
 void test_tool_controller(const char *binary)
 {
     assert(binary && binary[0] == '/');
@@ -657,5 +829,9 @@ void test_tool_controller(const char *binary)
     RUN_TEST_CASE(controller_inspection_and_execution_status);
     RUN_TEST_CASE(controller_profile_accounts_for_measured_execution);
     RUN_TEST_CASE(controller_profile_excludes_warmup_only_run);
+    RUN_TEST_CASE(controller_material_creation_discovery_and_editable_inspection);
+    RUN_TEST_CASE(controller_structural_diagnostics_avoid_duplicate_loader_fallout);
+    RUN_TEST_CASE(controller_catalog_exposes_full_resource_identity_with_raw_kind_filters);
+    RUN_TEST_CASE(controller_replay_rejects_changed_unreferenced_raw_resource);
     pu_setup(NULL, NULL);
 }

@@ -1,5 +1,6 @@
 #include "assets/model_import.h"
 
+#include "assets/model_import_recipe.h"
 #include "assets/standard_material.h"
 #include "graph/document/serialize.h"
 #include "graph/shader/shader_graph.h"
@@ -15,6 +16,7 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,6 +31,61 @@ static char directory[64];
 static model_import_report report;
 static char error[256];
 static render_mesh_asset mesh;
+
+/* Test-owned syscall adapters forward normally. Only explicitly armed calls
+ * in this fixture directory fail once; production has no failure injection. */
+static int fail_publication;
+static bool fail_staging, fail_restore, fail_backup_cleanup;
+static char retained_backup[256], retained_destination[256];
+int rename(const char *from, const char *to)
+{
+    size_t root_length = strlen(directory);
+    if (fail_restore && !strncmp(from, directory, root_length) &&
+        from[root_length] == '/' && strstr(from, ".chibi-backup-")) {
+        fail_restore = false;
+        assert(strlen(from) < sizeof retained_backup && strlen(to) < sizeof retained_destination);
+        strcpy(retained_backup, from);
+        strcpy(retained_destination, to);
+        errno = EACCES;
+        return -1;
+    }
+    return renameat(AT_FDCWD, from, AT_FDCWD, to);
+}
+int unlink(const char *path)
+{
+    size_t root_length = strlen(directory);
+    if (fail_backup_cleanup && !strncmp(path, directory, root_length) &&
+        path[root_length] == '/' && strstr(path, ".chibi-backup-")) {
+        fail_backup_cleanup = false;
+        assert(strlen(path) < sizeof retained_backup);
+        strcpy(retained_backup, path);
+        errno = EACCES;
+        return -1;
+    }
+    return unlinkat(AT_FDCWD, path, 0);
+}
+int mkstemp(char *path)
+{
+    size_t root_length = strlen(directory);
+    if (fail_staging && !strncmp(path, directory, root_length) &&
+        path[root_length] == '/' && strstr(path, ".chibi-stage-")) {
+        fail_staging = false;
+        errno = EMFILE;
+        return -1;
+    }
+    return mkstemps(path, 0);
+}
+int link(const char *from, const char *to)
+{
+    size_t root_length = strlen(directory);
+    if (fail_publication && !strncmp(from, directory, root_length) &&
+        from[root_length] == '/' && strstr(from, ".chibi-stage-") &&
+        !--fail_publication) {
+        errno = EIO;
+        return -1;
+    }
+    return linkat(AT_FDCWD, from, AT_FDCWD, to, 0);
+}
 
 /* The fixture's square, its texture's u along +x and its image's up, toward
  * v = 0, along +z. */
@@ -47,6 +104,10 @@ static void setup()
 {
     strcpy(directory, "/tmp/chibi-model-import-XXXXXX");
     assert(mkdtemp(directory));
+    char *canonical = realpath(directory, NULL);
+    assert(canonical && strlen(canonical) < sizeof directory);
+    strcpy(directory, canonical);
+    free(canonical);
     const char *folders[] = { "content", "other" };
     for (int i = 0; i < 2; i++) {
         char path[128];
@@ -57,6 +118,10 @@ static void setup()
 
 static void teardown()
 {
+    fail_publication = 0;
+    fail_staging = false;
+    fail_restore = false;
+    fail_backup_cleanup = false;
     model_import_report_free(&report);
     render_mesh_asset_free(&mesh);
     mesh = (render_mesh_asset){ 0 };
@@ -291,6 +356,12 @@ TEST_CASE(model_imports_write_each_part_once)
     crate(&f);
     REQUIRE(import(&f, "crate.gltf", CRATE, "Crate"));
     REQUIRE(wrote(CRATE_FILES, 6) && !acount(report.warnings));
+    REQUIRE(
+        report.vertices == 12 && report.triangles == 6 &&
+        report.materials == 3 && report.images == 1
+    );
+    REQUIRE(report.source_bytes > 0 && report.output_bytes > 0);
+    REQUIRE(report.bounds_min[0] == -2 && report.bounds_max[0] == 2);
     size_t length = 0;
     char *image = read_file("content/textures/Crate/albedo.png", &length);
     REQUIRE(image && length == f.images[0].length && !memcmp(image, f.images[0].bytes, length));
@@ -1631,6 +1702,372 @@ TEST_CASE(model_imports_keep_gltf_tangent_frames)
     return true;
 }
 
+/* Plans expose exact imported geometry and source dependencies without writing. */
+TEST_CASE(model_import_preflight_is_read_only_and_tracks_sources)
+{
+    gltf_fixture f = { 0 };
+    crate(&f);
+    char source[128], content[128];
+    inside(source, sizeof source, "crate.gltf");
+    inside(content, sizeof content, "content");
+    REQUIRE(gltf_fixture_write(&f, source, CRATE));
+    model_import_plan *plan = NULL;
+    REQUIRE(model_import_prepare(content, source, "Crate", false, &plan, error, sizeof error));
+    const model_import_report *metrics = model_import_plan_report(plan);
+    REQUIRE(
+        metrics->vertices == 12 && metrics->triangles == 6 &&
+        metrics->materials == 3 && metrics->images == 1
+    );
+    REQUIRE(metrics->bounds_min[0] == -2 && metrics->bounds_max[0] == 2);
+    REQUIRE(metrics->source_bytes > 0 && metrics->output_bytes > 0);
+    REQUIRE(!exists("content/meshes") && !exists("content/materials") && !exists("content/textures"));
+    int count = 0;
+    const model_import_dependency *dependencies = model_import_plan_dependencies(plan, &count);
+    REQUIRE(count == 3);
+    for (int i = 1; i < count; i++) {
+        REQUIRE(strcmp(dependencies[i - 1].path, dependencies[i].path) < 0);
+    }
+    REQUIRE(model_import_plan_valid(plan, error, sizeof error));
+    FILE *file = fopen(source, "ab");
+    REQUIRE(file && fputs("\n", file) >= 0 && !fclose(file));
+    REQUIRE(!model_import_plan_valid(plan, error, sizeof error) && errno == ESTALE);
+    model_import_plan_free(plan);
+    gltf_fixture_free(&f);
+    return true;
+}
+TEST_CASE(model_import_recipes_preserve_authored_assets_and_reject_drift)
+{
+    gltf_fixture f = { 0 };
+    crate(&f);
+    char source[128];
+    inside(source, sizeof source, "crate.gltf");
+    REQUIRE(gltf_fixture_write(&f, source, CRATE));
+    model_import_recipe_plan *plan = NULL;
+    REQUIRE(
+        model_import_recipe_prepare(directory, "crate.gltf", "Crate", false, true, &plan, error, sizeof error)
+    );
+    REQUIRE(!exists("content/imports"));
+    REQUIRE(model_import_recipe_apply(plan, error, sizeof error));
+    REQUIRE(exists("content/imports/Crate.kdl"));
+    REQUIRE(!model_import_recipe_apply(plan, error, sizeof error));
+    model_import_recipe_free(plan);
+    size_t size = 0;
+    char *original = read_file("content/prototypes/Crate.kdl", &size);
+    REQUIRE(original);
+    char path[256];
+    inside(path, sizeof path, "content/prototypes/Crate.kdl");
+    FILE *file = fopen(path, "ab");
+    REQUIRE(file && fputs("\n// authored override\n", file) >= 0 && !fclose(file));
+    char *authored = read_file("content/prototypes/Crate.kdl", &size);
+    REQUIRE(authored);
+    inside(path, sizeof path, "content/materials/Crate_Painted_Wood.kdl");
+    file = fopen(path, "ab");
+    REQUIRE(file && fputs("\n// authored material\n", file) >= 0 && !fclose(file));
+    char *authored_material = read_file("content/materials/Crate_Painted_Wood.kdl", &size);
+    REQUIRE(authored_material);
+    /* Reimport changed source geometry while retaining both editable assets. */
+    float moved = -3;
+    memcpy(f.buffer, &moved, sizeof moved);
+    REQUIRE(gltf_fixture_write(&f, source, CRATE));
+    REQUIRE(
+        model_import_recipe_prepare(directory, NULL, "Crate", true, true, &plan, error, sizeof error)
+    );
+    int count = 0, preserved = 0;
+    const model_import_action *actions = model_import_recipe_actions(plan, &count);
+    for (int i = 0; i < count; i++) {
+        preserved += actions[i].action == MODEL_IMPORT_PRESERVE;
+    }
+    REQUIRE(preserved == 2);
+    REQUIRE(model_import_recipe_apply(plan, error, sizeof error));
+    model_import_recipe_free(plan);
+    char *after = read_file("content/prototypes/Crate.kdl", &size);
+    REQUIRE(after && !strcmp(after, authored));
+    free(after);
+    after = read_file("content/materials/Crate_Painted_Wood.kdl", &size);
+    REQUIRE(after && !strcmp(after, authored_material));
+    REQUIRE(reads_mesh("content/meshes/Crate.mesh") && mesh.vertices[0].position.x == -6);
+    free(after);
+    free(authored_material);
+    free(authored);
+    free(original);
+    REQUIRE(
+        model_import_recipe_prepare(directory, NULL, "Crate", true, true, &plan, error, sizeof error)
+    );
+    file = fopen(source, "ab");
+    REQUIRE(file && fputs("\n", file) >= 0 && !fclose(file));
+    size_t before_size = 0, after_size = 0;
+    char *before = read_file("content/imports/Crate.kdl", &before_size);
+    REQUIRE(!model_import_recipe_apply(plan, error, sizeof error) && errno == ESTALE);
+    model_import_recipe_free(plan);
+    after = read_file("content/imports/Crate.kdl", &after_size);
+    REQUIRE(before && after && before_size == after_size && !memcmp(before, after, before_size));
+    free(before);
+    free(after);
+    /* Modified generated outputs are conflicts, never treated as overrides. */
+    REQUIRE(put("content/meshes/Crate.mesh", "changed geometry"));
+    REQUIRE(
+        !model_import_recipe_prepare(directory, NULL, "Crate", true, false, &plan, error, sizeof error) &&
+        errno == EEXIST
+    );
+    gltf_fixture_free(&f);
+    return true;
+}
+TEST_CASE(model_import_recipes_reject_conflicts_without_writes)
+{
+    gltf_fixture f = { 0 };
+    crate(&f);
+    char source[128];
+    inside(source, sizeof source, "crate.gltf");
+    REQUIRE(gltf_fixture_write(&f, source, CRATE));
+    REQUIRE(declare("content/prototypes/Other.kdl", "Crate"));
+    model_import_recipe_plan *plan = NULL;
+    REQUIRE(
+        !model_import_recipe_prepare(directory, "crate.gltf", "Crate", false, false, &plan, error, sizeof error)
+    );
+    REQUIRE(!exists("content/imports") && !exists("content/meshes"));
+    char other[128];
+    inside(other, sizeof other, "content/prototypes/Other.kdl");
+    REQUIRE(!unlink(other));
+    REQUIRE(
+        model_import_recipe_prepare(directory, "crate.gltf", "Crate", false, false, &plan, error, sizeof error)
+    );
+    REQUIRE(put("content/prototypes/Crate.kdl", "name \"Crate\"\n"));
+    REQUIRE(!model_import_recipe_apply(plan, error, sizeof error) && errno == ESTALE);
+    REQUIRE(!exists("content/imports") && !exists("content/meshes") && !exists("content/textures"));
+    model_import_recipe_free(plan);
+    /* Recipe source cannot escape the project through a symlink. */
+    char link[128];
+    inside(link, sizeof link, "outside.gltf");
+    REQUIRE(!symlink("/etc/hosts", link));
+    REQUIRE(
+        !model_import_recipe_prepare(directory, "outside.gltf", "Outside", false, false, &plan, error, sizeof error)
+    );
+    gltf_fixture_free(&f);
+    return true;
+}
+
+static bool replace_source_text(const char *old, const char *replacement)
+{
+    size_t size = 0;
+    char *text = read_file("crate.gltf", &size);
+    char *at = text ? strstr(text, old) : NULL;
+    if (!at) {
+        free(text);
+        return false;
+    }
+    size_t length = size - strlen(old) + strlen(replacement) + 1;
+    char *changed = xmalloc(length);
+    snprintf(changed, length, "%.*s%s%s", (int)(at - text), text, replacement, at + strlen(old));
+    bool valid = put("crate.gltf", changed);
+    free(changed);
+    free(text);
+    return valid;
+}
+TEST_CASE(model_import_recipes_keep_dependencies_of_preserved_assets)
+{
+    gltf_fixture f = { 0 };
+    crate(&f);
+    char source[128];
+    inside(source, sizeof source, "crate.gltf");
+    REQUIRE(gltf_fixture_write(&f, source, CRATE));
+    model_import_recipe_plan *plan = NULL;
+    REQUIRE(
+        model_import_recipe_prepare(directory, "crate.gltf", "Crate", false, false, &plan, error, sizeof error)
+    );
+    REQUIRE(model_import_recipe_apply(plan, error, sizeof error));
+    model_import_recipe_free(plan);
+    char prototype[256];
+    inside(prototype, sizeof prototype, "content/prototypes/Crate.kdl");
+    FILE *file = fopen(prototype, "ab");
+    REQUIRE(file && fputs("\n// authored asset\n", file) >= 0 && !fclose(file));
+    REQUIRE(replace_source_text("\"baseColorTexture\":{\"index\":0},", ""));
+    size_t before_size = 0, after_size = 0;
+    char *before = read_file("content/imports/Crate.kdl", &before_size);
+    REQUIRE(
+        !model_import_recipe_prepare(directory, NULL, "Crate", true, false, &plan, error, sizeof error) &&
+        errno == EEXIST
+    );
+    REQUIRE(strstr(error, "preserved authored assets may reference"));
+    char *after = read_file("content/imports/Crate.kdl", &after_size);
+    REQUIRE(before && after && before_size == after_size && !memcmp(before, after, before_size));
+    REQUIRE(exists("content/textures/Crate/albedo.png"));
+    free(before);
+    free(after);
+    gltf_fixture_free(&f);
+    return true;
+}
+TEST_CASE(model_import_recipes_reject_identity_changes_and_strict_warnings)
+{
+    gltf_fixture f = { 0 };
+    crate(&f);
+    char source[128];
+    inside(source, sizeof source, "crate.gltf");
+    REQUIRE(gltf_fixture_write(&f, source, CRATE));
+    REQUIRE(replace_source_text("KHR_materials_emissive_strength", "KHR_unknown"));
+    model_import_recipe_plan *plan = NULL;
+    REQUIRE(
+        !model_import_recipe_prepare(directory, "crate.gltf", "Crate", false, true, &plan, error, sizeof error)
+    );
+    REQUIRE(!exists("content/imports") && !exists("content/meshes"));
+    REQUIRE(gltf_fixture_write(&f, source, CRATE));
+    REQUIRE(
+        model_import_recipe_prepare(directory, "crate.gltf", "Crate", false, false, &plan, error, sizeof error)
+    );
+    REQUIRE(model_import_recipe_apply(plan, error, sizeof error));
+    model_import_recipe_free(plan);
+    /* The sanitized output path is unchanged but the glTF material identity
+     * differs, so the importer must not silently assign this file to it. */
+    REQUIRE(replace_source_text("Painted Wood", "Painted_Wood"));
+    REQUIRE(
+        !model_import_recipe_prepare(directory, NULL, "Crate", true, false, &plan, error, sizeof error) &&
+        errno == EEXIST
+    );
+    REQUIRE(strstr(error, "identity changed"));
+    gltf_fixture_free(&f);
+    return true;
+}
+
+TEST_CASE(model_import_recipes_use_manifest_content_and_reject_manifest_drift)
+{
+    gltf_fixture f = { 0 };
+    crate(&f);
+    char source[128], assets[128];
+    inside(source, sizeof source, "crate.gltf");
+    inside(assets, sizeof assets, "assets");
+    REQUIRE(!mkdir(assets, 0700));
+    REQUIRE(put("project.kdl", "content \"assets\"\n"));
+    REQUIRE(gltf_fixture_write(&f, source, CRATE));
+    model_import_recipe_plan *plan = NULL;
+    REQUIRE(
+        model_import_recipe_prepare(directory, "crate.gltf", "Crate", false, false, &plan, error, sizeof error)
+    );
+    REQUIRE(model_import_recipe_apply(plan, error, sizeof error));
+    model_import_recipe_free(plan);
+    REQUIRE(exists("assets/imports/Crate.kdl") && exists("assets/meshes/Crate.mesh"));
+    REQUIRE(!exists("content/imports") && !exists("content/meshes"));
+    REQUIRE(
+        model_import_recipe_prepare(directory, NULL, "Crate", true, false, &plan, error, sizeof error)
+    );
+    REQUIRE(put("project.kdl", "content \"content\"\n"));
+    REQUIRE(!model_import_recipe_apply(plan, error, sizeof error) && errno == ESTALE);
+    model_import_recipe_free(plan);
+    gltf_fixture_free(&f);
+    return true;
+}
+
+TEST_CASE(model_import_recipes_restore_outputs_after_publication_failure)
+{
+    gltf_fixture f = { 0 };
+    crate(&f);
+    char source[128];
+    inside(source, sizeof source, "crate.gltf");
+    REQUIRE(gltf_fixture_write(&f, source, CRATE));
+    model_import_recipe_plan *plan = NULL;
+    REQUIRE(
+        model_import_recipe_prepare(directory, "crate.gltf", "Crate", false, false, &plan, error, sizeof error)
+    );
+    REQUIRE(model_import_recipe_apply(plan, error, sizeof error));
+    model_import_recipe_free(plan);
+    const char *keys[] = { CRATE_FILES[0],
+                           CRATE_FILES[1],
+                           CRATE_FILES[2],
+                           CRATE_FILES[3],
+                           CRATE_FILES[4],
+                           CRATE_FILES[5],
+                           "content/imports/Crate.kdl" };
+    char *before[7] = { 0 };
+    size_t sizes[7] = { 0 };
+    for (int i = 0; i < 7; i++) {
+        before[i] = read_file(keys[i], &sizes[i]);
+        REQUIRE(before[i]);
+    }
+    float moved = -3;
+    memcpy(f.buffer, &moved, sizeof moved);
+    REQUIRE(gltf_fixture_write(&f, source, CRATE));
+    REQUIRE(
+        model_import_recipe_prepare(directory, NULL, "Crate", true, false, &plan, error, sizeof error)
+    );
+    const char
+        *sentinel = "content/textures/Crate/albedo.png.chibi-stage-XXXXXX";
+    REQUIRE(put(sentinel, "unowned literal template"));
+    fail_staging = true;
+    REQUIRE(!model_import_recipe_apply(plan, error, sizeof error) && errno == EIO);
+    REQUIRE(!fail_staging);
+    REQUIRE(!model_import_recipe_committed(plan));
+    size_t sentinel_size = 0;
+    char *kept = read_file(sentinel, &sentinel_size);
+    REQUIRE(kept && !strcmp(kept, "unowned literal template"));
+    free(kept);
+    for (int i = 0; i < 7; i++) {
+        size_t size = 0;
+        char *after = read_file(keys[i], &size);
+        REQUIRE(after && size == sizes[i] && !memcmp(before[i], after, size));
+        free(after);
+    }
+    char sentinel_path[256];
+    inside(sentinel_path, sizeof sentinel_path, sentinel);
+    REQUIRE(!unlink(sentinel_path));
+    fail_publication = 2;
+    REQUIRE(!model_import_recipe_apply(plan, error, sizeof error) && errno == EIO);
+    REQUIRE(fail_publication == 0);
+    for (int i = 0; i < 7; i++) {
+        size_t size = 0;
+        char *after = read_file(keys[i], &size);
+        REQUIRE(after && size == sizes[i] && !memcmp(before[i], after, size));
+        free(after);
+    }
+    REQUIRE(entries("content/textures/Crate") == 1 && entries("content/materials") == 3);
+    REQUIRE(
+        entries("content/meshes") == 1 && entries("content/prototypes") == 1 &&
+        entries("content/imports") == 1
+    );
+    /* A failed original restoration reports its recoverable path before any
+     * staging debris. Recover it manually, then prove all old bytes remain. */
+    retained_backup[0] = 0;
+    retained_destination[0] = 0;
+    fail_publication = 2;
+    fail_restore = true;
+    REQUIRE(!model_import_recipe_apply(plan, error, sizeof error) && errno == EIO);
+    REQUIRE(!fail_publication && !fail_restore);
+    REQUIRE(!model_import_recipe_committed(plan));
+    REQUIRE(retained_backup[0] && retained_destination[0]);
+    REQUIRE(strstr(error, "Cannot restore import output; original retained at"));
+    REQUIRE(strstr(error, retained_backup) && access(retained_backup, F_OK) == 0);
+    REQUIRE(!rename(retained_backup, retained_destination));
+    for (int i = 0; i < 7; i++) {
+        size_t size = 0;
+        char *after = read_file(keys[i], &size);
+        REQUIRE(after && size == sizes[i] && !memcmp(before[i], after, size));
+        free(after);
+    }
+    /* Once publication commits, cleanup failure must be reported honestly and
+     * must not permit a second application of this already-committed plan. */
+    retained_backup[0] = 0;
+    fail_backup_cleanup = true;
+    REQUIRE(!model_import_recipe_apply(plan, error, sizeof error) && errno == EIO);
+    REQUIRE(!fail_backup_cleanup && retained_backup[0]);
+    REQUIRE(model_import_recipe_committed(plan));
+    REQUIRE(strstr(error, "Import published") && strstr(error, retained_backup));
+    REQUIRE(access(retained_backup, F_OK) == 0);
+    REQUIRE(reads_mesh("content/meshes/Crate.mesh") && mesh.vertices[0].position.x == -6);
+    size_t recipe_size = 0;
+    char *committed_recipe = read_file("content/imports/Crate.kdl", &recipe_size);
+    REQUIRE(
+        committed_recipe && (recipe_size != sizes[6] ||
+                             memcmp(committed_recipe, before[6], recipe_size))
+    );
+    free(committed_recipe);
+    REQUIRE(!model_import_recipe_apply(plan, error, sizeof error) && errno == EINVAL);
+    REQUIRE(strstr(error, "already applied"));
+    REQUIRE(!unlink(retained_backup));
+    for (int i = 0; i < 7; i++) {
+        free(before[i]);
+    }
+    model_import_recipe_free(plan);
+    gltf_fixture_free(&f);
+    return true;
+}
+
 /* Imports write shader-typed material defaults and game-typed prototypes. */
 type_catalog_pack test_model_import_types(int index)
 {
@@ -1668,5 +2105,12 @@ void test_model_import()
     RUN_TEST_CASE(model_imports_count_only_the_vertices_their_triangles_use);
     RUN_TEST_CASE(model_imports_refuse_vast_primitives_before_building_them);
     RUN_TEST_CASE(model_imports_keep_gltf_tangent_frames);
+    RUN_TEST_CASE(model_import_preflight_is_read_only_and_tracks_sources);
+    RUN_TEST_CASE(model_import_recipes_preserve_authored_assets_and_reject_drift);
+    RUN_TEST_CASE(model_import_recipes_reject_conflicts_without_writes);
+    RUN_TEST_CASE(model_import_recipes_reject_identity_changes_and_strict_warnings);
+    RUN_TEST_CASE(model_import_recipes_keep_dependencies_of_preserved_assets);
+    RUN_TEST_CASE(model_import_recipes_use_manifest_content_and_reject_manifest_drift);
+    RUN_TEST_CASE(model_import_recipes_restore_outputs_after_publication_failure);
     pu_clear_setup();
 }

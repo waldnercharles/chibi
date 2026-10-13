@@ -1039,8 +1039,10 @@ TEST_CASE(manifest_content_folder_is_used)
     assert(saved);
     append_manifest("application {\n    fullscreen \"yes\"\n}\n");
     REQUIRE(validate() != 0 && errors() == 1);
-    const char *listed = first_message(result("project"));
-    REQUIRE(listed && strstr(listed, "fullscreen a boolean"));
+    yyjson_val *listed = yyjson_arr_get_first(result("project"));
+    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(listed, "code")), "INVALID_TYPE"));
+    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(listed, "property_path")), "application.fullscreen"));
+    REQUIRE(reads(yyjson_get_str(yyjson_obj_get(listed, "expected")), "boolean"));
     tool_write(kdl, saved);
     free(saved);
     /* A start scene's content/ path stays relative to the project root, as

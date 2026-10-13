@@ -1,4 +1,12 @@
 # Offline asset preparation has no display host dependencies.
+add_library(chibi_resource_catalog STATIC "${CHIBI_SDK_ROOT}/src/authoring/resource_catalog.c")
+add_library(Chibi::resource_catalog ALIAS chibi_resource_catalog)
+set_target_properties(chibi_resource_catalog PROPERTIES EXPORT_NAME resource_catalog)
+chibi_sdk_headers(chibi_resource_catalog PUBLIC authoring/resource_catalog.h)
+target_link_libraries(chibi_resource_catalog PUBLIC chibi_asset_values
+    PRIVATE chibi_image_preparation chibi_mesh_runtime chibi_audio_runtime chibi_support)
+list(APPEND CHIBI_SDK_TARGETS chibi_resource_catalog)
+
 add_library(chibi_shader_preparation STATIC
     "${CHIBI_SDK_ROOT}/src/authoring/shader_prepare.c"
     "${CHIBI_SDK_ROOT}/src/authoring/parts_prepare.c"

@@ -13,6 +13,7 @@
 #include "assets/ui_document.h"
 #include "assets/ui_events.h"
 #include "authoring/application_catalog.h"
+#include "authoring/asset_description.h"
 #include "authoring/behavior_loader.h"
 #include "authoring/component_declarations.h"
 #include "authoring/component_presentation.h"
@@ -25,6 +26,7 @@
 #include "authoring/project_prepare.h"
 #include "authoring/prototype_preview.h"
 #include "authoring/reference_index.h"
+#include "authoring/resource_catalog.h"
 #include "authoring/shader_prepare.h"
 #include "authoring/sound_prepare.h"
 #include "authoring/source_catalog.h"
@@ -40,6 +42,7 @@
 #include "authoring/studio_project.h"
 #include "authoring/studio_schema.h"
 #include "authoring/visual_prepare.h"
+#include "automation/asset_operations.h"
 #include "automation/content_hash.h"
 #include "automation/field_preview.h"
 #include "automation/navigation.h"
@@ -197,6 +200,8 @@ typedef struct
     char *rule_name;
     char *message;
     int line, column; /* 0 when it names no place */
+    int start, end;
+    char code[48], property_path[384], expected[256];
 } catalog_diagnostic;
 
 typedef struct
@@ -322,6 +327,33 @@ static const contract_field CONTRACT_IMPORT_MODEL[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "source", "string", true, "glTF 2.0 model to copy into the project: a .glb, or a .gltf beside its buffers and images." },
     { "name", "string", false, "Name of the prototype, mesh and material prefix; defaults to the source's file name without its extension." },
+    { "recipe", "boolean", false, "Save a repeatable import recipe; requires source inside the project. Defaults to false." },
+    { "strict", "boolean", false, "Recipe/preflight mode rejects any ignored-feature warnings before writing." },
+    { "check", "boolean", false, "Recipe mode prepares and reports actions without writing." },
+};
+static const contract_field CONTRACT_ASSET_SCHEMA[] = {
+    { "kind", "string", false, "Asset family; omit to discover every schema and canonical example." },
+};
+static const contract_field CONTRACT_REIMPORT_MODEL[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "name", "string", true, "Saved content/imports/<name>.kdl recipe." },
+    { "check", "boolean", false, "Report replacements and preserved authored files without applying." },
+    { "strict", "boolean", false, "Reject import warnings before writing." },
+};
+static const contract_field CONTRACT_CREATE_MATERIAL[] = {
+    { "project_root", "string", false, "Project directory; defaults to the controller root." },
+    { "name", "string", true, "New material name. Existing files or declarations are refused." },
+    { "preset", "string", false, "matte, metal, emissive or unlit; defaults to matte." },
+    { "base_color", "number[4]", false, "Linear RGB and opacity, each from zero to one." },
+    { "roughness", "number", false, "Roughness, from zero to one." },
+    { "metallic", "number", false, "Metallic factor, from zero to one." },
+    { "emission", "number[3]", false, "Nonnegative linear RGB emission." },
+    { "normal_scale", "number", false, "Nonnegative normal map strength." },
+    { "occlusion_strength", "number", false, "Occlusion factor, from zero to one." },
+    { "alpha_mode", "string", false, "opaque, blend or mask." },
+    { "alpha_cutoff", "number", false, "Mask threshold, from zero to one." },
+    { "unlit", "boolean", false, "Disable lighting for the generated material." },
+    { "textures", "object", false, "base_color, metallic_roughness, normal, occlusion and emission descriptors: image, filter, wrap, offset, scale and rotation." },
 };
 static const contract_field CONTRACT_ANALYZE_CODE[] = {
     { "project_root", "string", false, "Optional project directory supplying library/event signatures; defaults to the controller root." },
@@ -380,6 +412,7 @@ static const contract_field CONTRACT_INSPECT_GRAPH[] = {
     { "include_layout", "boolean", false, "Include editor coordinates and routing; defaults to false." },
     { "include_pins", "boolean", false, "List each node's pins as \"name: type\" with resolved wildcard types; defaults to true." },
     { "include_uses", "boolean", false, "Count project-wide uses by role of the asset, its functions and macros, and a behavior's variables; defaults to false." },
+    { "cpu_sample", "boolean", false, "Evaluate material/shape outputs at the shared fixed center context and authored defaults; CPU values, not rendered pixels." },
 };
 static const contract_field CONTRACT_INSPECT_SYSTEM[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -522,6 +555,50 @@ static const contract_field CONTRACT_CALL_HIERARCHY[] = {
 };
 
 static const operation_descriptor CONTRACT_OPERATIONS[] = {
+    { "describe_asset_schema",
+      "Describe asset grammar, reference semantics and canonical examples.",
+      CONTRACT_ASSET_SCHEMA,
+      CONTRACT_FIELD_COUNT(CONTRACT_ASSET_SCHEMA),
+      1,
+      true,
+      true,
+      false },
+    { "resource_catalog",
+      "Inspect bounded raw resources, literal consumers, memory estimates and "
+      "inclusion policies.",
+      CONTRACT_SEARCH_ASSETS,
+      CONTRACT_FIELD_COUNT(CONTRACT_SEARCH_ASSETS),
+      1,
+      true,
+      true,
+      false },
+    { "preflight_model",
+      "Prepare a model import and report metrics, dependencies and ignored "
+      "features without writing.",
+      CONTRACT_IMPORT_MODEL,
+      CONTRACT_FIELD_COUNT(CONTRACT_IMPORT_MODEL),
+      1,
+      true,
+      true,
+      false },
+    { "reimport_model",
+      "Reimport a saved recipe, preserving authored files and rejecting stale "
+      "or modified generated outputs.",
+      CONTRACT_REIMPORT_MODEL,
+      CONTRACT_FIELD_COUNT(CONTRACT_REIMPORT_MODEL),
+      1,
+      false,
+      false,
+      false },
+    { "create_material",
+      "Generate an editable standard PBR material using the shared Studio "
+      "creation module.",
+      CONTRACT_CREATE_MATERIAL,
+      CONTRACT_FIELD_COUNT(CONTRACT_CREATE_MATERIAL),
+      1,
+      false,
+      false,
+      false },
     { "search_nodes",
       "Find a ranked page of nodes, configured component nodes, and their pins "
       "for authoring.",
@@ -1237,6 +1314,7 @@ static bool open_content(const char *root, char *error, size_t error_size)
 const char *chibi_automation_content(const char *root)
 {
     assert(PROJECT.root && !strcmp(PROJECT.root, root));
+    (void)root;
     return PROJECT.content;
 }
 
@@ -1824,6 +1902,28 @@ static void catalog_validate_asset(
         }
         return;
     }
+    if (!strcmp(family->extension, DECLARATIVE_ASSET_EXTENSION)) {
+        asset_source *source = asset_source_parse_path(json, path);
+        for (int i = 0; i < acount(source->diagnostics); i++) {
+            const asset_source_diagnostic *item = &source->diagnostics[i];
+            catalog_add_diagnostic(asset, "error", 0, item->code, item->message);
+            catalog_diagnostic *diagnostic = &asset->diagnostics[acount(asset->diagnostics) - 1];
+            diagnostic->line = item->line;
+            diagnostic->column = item->column;
+            diagnostic->start = item->start;
+            diagnostic->end = item->end;
+            snprintf(diagnostic->code, sizeof diagnostic->code, "%s", item->code);
+            snprintf(diagnostic->property_path, sizeof diagnostic->property_path, "%s", item->path);
+            snprintf(diagnostic->expected, sizeof diagnostic->expected, "%s", item->expected);
+        }
+        int errors = acount(source->diagnostics);
+        asset_source_free(source);
+        if (errors) {
+            asset->errors = errors;
+            asset->valid = false;
+            return;
+        }
+    }
     if (family->loader == ASSET_GRAPH) {
         behavior_asset *behavior = behavior_asset_load(json);
         if (!behavior || links->error[0]) {
@@ -1846,7 +1946,7 @@ static void catalog_validate_asset(
         }
         behavior_asset_free(behavior);
     } else if (family->loader == ASSET_PROTOTYPE) {
-        prototype_includes includes = { root };
+        prototype_includes includes = { .root = root };
         prototype_registry registry = registry_with_includes(&includes);
         char error[256] = { 0 };
         prototype *prototype = prototype_load(json, &registry, error, sizeof error);
@@ -3082,6 +3182,20 @@ static yyjson_mut_val *add_pins(
     return array;
 }
 
+static void add_field_metadata(yyjson_mut_doc *doc, yyjson_mut_val *object, const type_field *field)
+{
+    av_doc *description = av_doc_new();
+    av_value *value = authoring_field_describe(description, field);
+    static const char *const keys[] = { "description", "unit", "color", "editing_range", "choices" };
+    for (int i = 0; i < (int)(sizeof keys / sizeof *keys); i++) {
+        const av_value *item = av_obj_get(value, keys[i]);
+        if (item) {
+            yyjson_mut_obj_put(object, yyjson_mut_str(doc, keys[i]), automation_asset_value(doc, item));
+        }
+    }
+    av_doc_free(description);
+}
+
 static void add_type(yyjson_mut_doc *doc, yyjson_mut_val *array, const type_desc *type)
 {
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
@@ -3101,6 +3215,7 @@ static void add_type(yyjson_mut_doc *doc, yyjson_mut_val *array, const type_desc
         if (field->type_name) {
             yyjson_mut_obj_add_strcpy(doc, entry, "type_name", field->type_name);
         }
+        add_field_metadata(doc, entry, field);
     }
 }
 
@@ -3213,7 +3328,35 @@ static void add_load_diagnostic(yyjson_mut_doc *doc, yyjson_mut_val *array, cons
     yyjson_mut_val *object = yyjson_mut_arr_add_obj(doc, array);
     yyjson_mut_obj_add_strcpy(doc, object, "severity", "error");
     yyjson_mut_obj_add_strcpy(doc, object, "rule_name", "LOAD");
+    yyjson_mut_obj_add_str(doc, object, "code", "LOAD");
     yyjson_mut_obj_add_strcpy(doc, object, "message", message ? message : "asset rejected");
+}
+
+static int add_structural_diagnostics(
+    yyjson_mut_doc *doc,
+    yyjson_mut_val *array,
+    const char *text,
+    const char *path
+)
+{
+    asset_source *source = asset_source_parse_path(text, path);
+    int count = acount(source->diagnostics);
+    for (int i = 0; i < count; i++) {
+        const asset_source_diagnostic *diagnostic = &source->diagnostics[i];
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(doc, array);
+        yyjson_mut_obj_add_str(doc, item, "severity", "error");
+        yyjson_mut_obj_add_strcpy(doc, item, "rule_name", diagnostic->code);
+        yyjson_mut_obj_add_strcpy(doc, item, "code", diagnostic->code);
+        yyjson_mut_obj_add_strcpy(doc, item, "message", diagnostic->message);
+        yyjson_mut_obj_add_strcpy(doc, item, "property_path", diagnostic->path);
+        yyjson_mut_obj_add_strcpy(doc, item, "expected", diagnostic->expected);
+        yyjson_mut_obj_add_int(doc, item, "start", diagnostic->start);
+        yyjson_mut_obj_add_int(doc, item, "end", diagnostic->end);
+        yyjson_mut_obj_add_int(doc, item, "line", diagnostic->line);
+        yyjson_mut_obj_add_int(doc, item, "column", diagnostic->column);
+    }
+    asset_source_free(source);
+    return count;
 }
 
 static void add_asset_identity(
@@ -3358,6 +3501,13 @@ static void add_catalog_diagnostics(
         if (diagnostic->line) {
             yyjson_mut_obj_add_int(doc, item, "line", diagnostic->line);
             yyjson_mut_obj_add_int(doc, item, "column", diagnostic->column);
+        }
+        if (diagnostic->code[0]) {
+            yyjson_mut_obj_add_strcpy(doc, item, "code", diagnostic->code);
+            yyjson_mut_obj_add_strcpy(doc, item, "property_path", diagnostic->property_path);
+            yyjson_mut_obj_add_strcpy(doc, item, "expected", diagnostic->expected);
+            yyjson_mut_obj_add_int(doc, item, "start", diagnostic->start);
+            yyjson_mut_obj_add_int(doc, item, "end", diagnostic->end);
         }
     }
 }
@@ -3546,6 +3696,11 @@ static int handle_catalog(const char *root, yyjson_val *request, response *resul
     /* Registry counts only; describe_registry returns the registry itself. */
     yyjson_mut_val *registry = yyjson_mut_obj_add_obj(result->doc, value, "registry");
     add_registry(result->doc, registry);
+    int resources = automation_resources_attach(root, request, result->doc, value, error, sizeof error);
+    if (resources != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, resources, error);
+        return -1;
+    }
     return 0;
 }
 
@@ -3599,6 +3754,11 @@ static int handle_search_assets(const char *root, yyjson_val *request, response 
         add_catalog_asset(result->doc, matches, &assets[found[i].index], assets, acount(assets), page.summary);
     }
     afree(found);
+    int resources = automation_resources_attach(root, request, result->doc, value, error, sizeof error);
+    if (resources != CHIBI_AUTOMATION_OK) {
+        response_error(result, exit_code, resources, error);
+        return -1;
+    }
     return 0;
 }
 
@@ -4844,6 +5004,19 @@ static void file_stem(const char *path, char *stem, size_t size)
 
 static int handle_import_model(const char *root, yyjson_val *request, response *result, int *exit_code)
 {
+    yyjson_val *recipe = yyjson_obj_get(request, "recipe");
+    if (recipe && !yyjson_is_bool(recipe)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "recipe must be a boolean");
+        return -1;
+    }
+    if (yyjson_get_bool(recipe)) {
+        char error[512] = { 0 };
+        int status = automation_asset_handle(root, request, result->doc, result->root, error, sizeof error);
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(result, exit_code, status, error);
+        }
+        return status;
+    }
     const char *source = request_string(request, "source");
     const char *name = request_string(request, "name");
     if (!source || (yyjson_obj_get(request, "name") && !name)) {
@@ -4886,6 +5059,7 @@ static int handle_import_model(const char *root, yyjson_val *request, response *
     }
     yyjson_mut_val *value = yyjson_mut_obj_add_obj(result->doc, result->root, "result");
     yyjson_mut_obj_add_strcpy(result->doc, value, "prototype", name);
+    automation_model_report(result->doc, value, &report);
     yyjson_mut_val *files = yyjson_mut_obj_add_arr(result->doc, value, "files");
     for (int i = 0; i < acount(report.written); i++) {
         yyjson_mut_arr_add_strcpy(result->doc, files, report.written[i]);
@@ -4893,6 +5067,12 @@ static int handle_import_model(const char *root, yyjson_val *request, response *
     yyjson_mut_val *warnings = yyjson_mut_obj_add_arr(result->doc, value, "warnings");
     for (int i = 0; i < acount(report.warnings); i++) {
         yyjson_mut_arr_add_strcpy(result->doc, warnings, report.warnings[i]);
+    }
+    yyjson_mut_val *details = yyjson_mut_obj_add_arr(result->doc, value, "warning_details");
+    for (int i = 0; i < acount(report.warnings); i++) {
+        yyjson_mut_val *item = yyjson_mut_arr_add_obj(result->doc, details);
+        yyjson_mut_obj_add_strcpy(result->doc, item, "code", report.warning_codes[i]);
+        yyjson_mut_obj_add_strcpy(result->doc, item, "message", report.warnings[i]);
     }
     model_import_report_free(&report);
     return 0;
@@ -5082,6 +5262,11 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
         return -1;
     }
     bool include_layout = layout_value && yyjson_get_bool(layout_value);
+    yyjson_val *sample_value = yyjson_obj_get(request, "cpu_sample");
+    if (sample_value && !yyjson_is_bool(sample_value)) {
+        response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "cpu_sample must be a boolean");
+        return -1;
+    }
     yyjson_val *pins_value = yyjson_obj_get(request, "include_pins");
     if (pins_value && !yyjson_is_bool(pins_value)) {
         response_error(result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "include_pins must be a boolean");
@@ -5180,6 +5365,7 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
     behavior_asset *linked = link_project_libraries(root, asset, link_error, sizeof link_error);
     compile_project_graph(root, linked ? linked : asset, &report);
     inspect_model_parameters(root, linked ? linked : asset, asset, result->doc, value);
+    automation_shader_report(result->doc, value, linked ? linked : asset, yyjson_get_bool(sample_value));
     behavior_asset_free(linked);
     inspect_add_variables(
         result->doc,
@@ -5223,6 +5409,15 @@ static int handle_inspect_graph(const char *root, yyjson_val *request, response 
     }
     inspect_add_validation(result->doc, value, asset, &report);
     int errors = report.error_count;
+    yyjson_mut_val *shader_report = yyjson_mut_obj_get(value, "shader_report");
+    yyjson_mut_val *sample = yyjson_mut_obj_get(shader_report, "cpu_sample");
+    if (shader_report &&
+        !yyjson_mut_get_bool(yyjson_mut_obj_get(shader_report, "valid"))) {
+        errors++;
+    }
+    if (sample && !yyjson_mut_get_bool(yyjson_mut_obj_get(sample, "valid"))) {
+        errors++;
+    }
     compile_report_free(&report);
     yyjson_doc_free(source_document);
     behavior_asset_free(asset);
@@ -5952,7 +6147,7 @@ static char *canonical_asset(
         case ASSET_SYSTEM:
             return canonical_source(sources, json, path, metadata, error, error_size);
         case ASSET_PROTOTYPE: {
-            prototype_includes includes = { root };
+            prototype_includes includes = { .root = root };
             prototype_registry registry = registry_with_includes(&includes);
             /* It must resolve, but saves as authored: its own content, naming
              * its includes and children's prototypes. */
@@ -6286,7 +6481,7 @@ static int read_asset_complete(
     for (int i = 0; i < acount(entries); i++) {
         apush(names, xstrdup(entries[i].name));
     }
-    asset_source *source = asset_source_parse(text);
+    asset_source *source = asset_source_parse_path(text, ref->relative);
     asset_source_completions completions = { 0 };
     asset_source_complete(
         source,
@@ -6331,6 +6526,9 @@ static int read_asset_complete(
         const asset_source_diagnostic *diagnostic = &source->diagnostics[i];
         yyjson_mut_val *item = yyjson_mut_arr_add_obj(result->doc, diagnostics);
         yyjson_mut_obj_add_strcpy(result->doc, item, "message", diagnostic->message);
+        yyjson_mut_obj_add_strcpy(result->doc, item, "code", diagnostic->code);
+        yyjson_mut_obj_add_strcpy(result->doc, item, "property_path", diagnostic->path);
+        yyjson_mut_obj_add_strcpy(result->doc, item, "expected", diagnostic->expected);
         yyjson_mut_obj_add_int(result->doc, item, "start", diagnostic->start);
         yyjson_mut_obj_add_int(result->doc, item, "end", diagnostic->end);
         yyjson_mut_obj_add_int(result->doc, item, "line", diagnostic->line);
@@ -6576,7 +6774,12 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
     int errors = 0;
     int warnings = 0;
     int notes = 0;
-    if (ref.family->loader == ASSET_GRAPH) {
+    if (!strcmp(ref.family->extension, DECLARATIVE_ASSET_EXTENSION)) {
+        errors = add_structural_diagnostics(result->doc, diagnostics, json, ref.relative);
+    }
+    if (errors) {
+        /* Structural ranges explain the rejected document without loader fallout. */
+    } else if (ref.family->loader == ASSET_GRAPH) {
         behavior_asset *asset = load_project_behavior(root, json);
         if (!asset) {
             errors = 1;
@@ -6604,7 +6807,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             behavior_asset_free(asset);
         }
     } else if (ref.family->loader == ASSET_PROTOTYPE) {
-        prototype_includes includes = { root };
+        prototype_includes includes = { .root = root };
         prototype_registry registry = registry_with_includes(&includes);
         char load_error[256] = { 0 };
         prototype *prototype = prototype_load(json, &registry, load_error, sizeof load_error);
@@ -6801,6 +7004,29 @@ static int validate_manifest(
 {
     chibi_project project = { 0 };
     char error[512] = { 0 };
+    size_t manifest_size = strlen(root) + sizeof "/project.kdl";
+    char *manifest_path = xmalloc(manifest_size);
+    snprintf(manifest_path, manifest_size, "%s/project.kdl", root);
+    char *manifest_text = read_file(manifest_path, NULL, NULL, error, sizeof error);
+    free(manifest_path);
+    if (manifest_text) {
+        /* Another version's fields may have different types. Let the project
+         * loader report its version requirement before applying this grammar. */
+        av_doc *manifest = asset_text_read(manifest_text, error, sizeof error);
+        const av_value *version = manifest
+                                    ? av_obj_get(av_doc_root(manifest), "version")
+                                    : NULL;
+        bool current = !av_is_int(version) ||
+                       av_get_int(version) == CHIBI_PROJECT_VERSION;
+        av_doc_free(manifest);
+        int structural = current
+                           ? add_structural_diagnostics(doc, diagnostics, manifest_text, "project.kdl")
+                           : 0;
+        free(manifest_text);
+        if (structural) {
+            return structural;
+        }
+    }
     /* Validation never upgrades the project, so an old one fails here. */
     if (chibi_project_read(&project, root, error, sizeof error) != 0) {
         add_load_diagnostic(doc, diagnostics, error);
@@ -7370,6 +7596,7 @@ typedef struct
     prototype_preview *preview;
     asset_entry *runtime_assets;
     uint64_t runtime_hash;
+    char project_content_hash[17];
     char *initial_saved_state;
     const av_value *scenario_saved_state; /* a replayed scenario's, borrowed */
     CF_V2 aim;
@@ -7737,6 +7964,35 @@ static int register_scenario_prototypes(const char *root, scenario_context *cont
         snprintf(hash, sizeof hash, "%016llx", (unsigned long long)audio_library_hash(audio));
         catalog_hash_text(&context->runtime_hash, hash);
     }
+    if (status == CHIBI_AUTOMATION_OK) {
+        av_doc *inventory = authoring_resource_catalog(chibi_automation_content(root), error, error_size);
+        const av_value *inventory_root = inventory ? av_doc_root(inventory) : NULL;
+        const char *hash = av_get_str(av_obj_get(inventory_root, "content_hash"));
+        if (!hash || !av_get_bool(av_obj_get(inventory_root, "complete"))) {
+            snprintf(error, error_size, "Cannot establish complete content identity for deterministic replay");
+            status = CHIBI_AUTOMATION_VALIDATION_ERROR;
+        } else {
+            snprintf(context->project_content_hash, sizeof context->project_content_hash, "%s", hash);
+            catalog_hash_text(&context->runtime_hash, "authored-and-raw-content-v1");
+            catalog_hash_text(&context->runtime_hash, hash);
+        }
+        av_doc_free(inventory);
+        size_t path_size = strlen(root) + sizeof "/project.kdl";
+        char *manifest_path = xmalloc(path_size);
+        snprintf(manifest_path, path_size, "%s/project.kdl", root);
+        uint64_t manifest_hash = 0;
+        char *manifest = read_file(manifest_path, NULL, &manifest_hash, error, error_size);
+        free(manifest_path);
+        if (manifest) {
+            char manifest_identity[17];
+            hash_text(manifest_hash, manifest_identity);
+            catalog_hash_text(&context->runtime_hash, "project.kdl");
+            catalog_hash_text(&context->runtime_hash, manifest_identity);
+            free(manifest);
+        } else {
+            status = CHIBI_AUTOMATION_IO_ERROR;
+        }
+    }
     return status;
 }
 
@@ -7766,7 +8022,7 @@ static int prepare_scenario(
         return status;
     }
 
-    context->includes = (prototype_includes){ root };
+    context->includes = (prototype_includes){ .root = root };
     context->registry = registry_with_includes(&context->includes);
     char *scenario_json = scenario_prototype_text(prototype_json, context->prototype_hash);
     context->prototype = scenario_json
@@ -7952,7 +8208,7 @@ static int prepare_scene_scenario(
         return status;
     }
     context->root = xstrdup(root);
-    context->includes = (prototype_includes){ context->root };
+    context->includes = (prototype_includes){ .root = context->root };
     context->registry = registry_with_includes(&context->includes);
     context->preview = prototype_preview_new(&context->registry);
     if (!context->preview) {
@@ -9997,6 +10253,8 @@ static yyjson_mut_val *add_recording(
     yyjson_mut_obj_add_strcpy(doc, recording, "name", context->prototype_ref.name);
     add_hash_named(doc, recording, "content_hash", context->prototype_hash);
     add_hash_named(doc, recording, "runtime_content_hash", context->runtime_hash);
+    yyjson_mut_obj_add_strcpy(doc, recording, "project_content_hash", context->project_content_hash);
+    yyjson_mut_obj_add_str(doc, recording, "runtime_hash_scope", "authored/runtime records, bounded authored and raw content, audio library and project manifest; fnv1a64 change detection");
     yyjson_doc *saved = yyjson_read(context->initial_saved_state, strlen(context->initial_saved_state), 0);
     yyjson_mut_obj_add_val(
         doc,
@@ -11040,6 +11298,7 @@ static void add_component_schema(
         if (field->description) {
             yyjson_mut_obj_add_str(result->doc, entry, "description", field->description);
         }
+        add_field_metadata(result->doc, entry, field);
     }
     av_value *defaults_value = prototype_native_defaults_value(registry, component);
     char *defaults_json = defaults_value ? av_json_write(defaults_value) : NULL;
@@ -12311,7 +12570,7 @@ static int spawned_bindings(const char *root, const prototype *prototype, char *
  * included. */
 static int validate_prototype_bindings(const char *root, const char *text, char *error, size_t error_size)
 {
-    prototype_includes includes = { root };
+    prototype_includes includes = { .root = root };
     prototype_registry registry = registry_with_includes(&includes);
     prototype *prototype = prototype_load(text, &registry, error, error_size);
     if (!prototype) {
@@ -12462,7 +12721,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
         scene_document_free(scene);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    prototype_includes includes = { root };
+    prototype_includes includes = { .root = root };
     prototype_registry registry = registry_with_includes(&includes);
     int status = validate_scene_paths(scene, &registry, error, error_size);
     bool fallout = false;
@@ -12619,7 +12878,9 @@ static int handle_inspect_ui(const char *root, yyjson_val *request, response *re
 
 static int operation_requires_root(const char *operation)
 {
-    return !strcmp(operation, "execution_status") ||
+    return (automation_asset_operation(operation) &&
+            strcmp(operation, "describe_asset_schema")) ||
+           !strcmp(operation, "execution_status") ||
            !strcmp(operation, "describe_components") ||
            !strcmp(operation, "describe_registry") ||
            !strcmp(operation, "profile_scenario") || !strcmp(operation, "status") ||
@@ -12716,7 +12977,20 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
             return response_finish(&result);
         }
     }
-    if (!strcmp(operation, "execution_status")) {
+    if (automation_asset_operation(operation)) {
+        char error[512] = { 0 };
+        int status = automation_asset_handle(
+            root,
+            root_value,
+            result.doc,
+            result.root,
+            error,
+            sizeof error
+        );
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(&result, exit_code, status, error);
+        }
+    } else if (!strcmp(operation, "execution_status")) {
         handle_execution_status(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "profile_scenario")) {
         handle_profile_scenario(root, root_value, &result, exit_code);

@@ -19,6 +19,12 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
+    ('--gpu-capabilities',): 'Independently reviewed three C-owned discovery cases, eleven injected Python OS profiles, each child<=5s, no actual GPU/process profiler/network; first measurement under shared60s',
+    ('--studio-material-authoring',): 'Independently reviewed one real Studio host run, empty pinned three-file210-byte disposable fixture, one generated material, SDL Metal preset/name/roughness/create/duplicate/Escape and CPU probe interactions; twenty fixed1/60 hidden1920x1080frames, bounded thumbnail queues, optional two existing-frame screenshot readbacks<=10s each, no network/children/sleeps; first measurement under shared60s',
+    ('--asset-schema',): 'Independently reviewed seven tiny in-memory KDL/schema/reflection cases plus eleven canonical asset examples; no file/process/window/GPU/network; first measurement under shared60s',
+    ('--resource-catalog',): 'Independently reviewed eight bounded inventory cases, about thirteen tiny scans, two sparse16MiB+1 pre-read refusals, skipped symlink and C cleanup; no process/window/GPU/network; first measurement under shared60s',
+    ('--shader-authoring',): 'Independently reviewed five cases with four fixed PBR presets, scalar CPU samples, tiny KDL files, one sparse16MiB+1 pre-read refusal, linked declaration refusal and symbolic texture descriptors; no process/window/GPU/network; first measurement under shared60s',
+    ('--cli-authoring',): 'Independently reviewed four bounded argument/evidence cases, tiny temporary JSON/PNG files, failed response retained, malformed PNG refused; no process/window/GPU/network; first measurement under shared60s',
     ('--player-clock',): 'Reviewed two deterministic C cases compiling actual player clock initialization for native and browser with only the Cute limiter setter recorded; no clocks/sleeps/window/GPU; 2cases4asserts passed inside native group3.534s/shared60s; browser case fails with the prior unconditional60FPS setter; docs/testing.md',
     ('--audio-browser',): 'Reviewed two C browser PCM age regressions against production capture transport with fake permission/device endpoints, no recording or GPU; native launcher1case8asserts/browser2cases6asserts1.372s; requires matching Wasm test_tools; shared60s',
     ('--player-url',): 'Reviewed nine C-owned gesture lifecycle cases through nine short Node invocations of the production EM_JS bridge; trusted keyboard/pointer gestures, copied URL ownership, cancellation/expiry/restart and one-open limits; fake browser APIs, no browser/network/GPU; measured9cases/67asserts2.278s/shared60s; docs/testing.md',
@@ -115,13 +121,20 @@ for lab in EXAMPLE_LABS:
         'verified installed package pins, one compile<=20s, source removal/relocation, '
         'four hidden320x180frames/readback<=25s; sampled box also missing-input compile<=10s and two CLI rejections<=5s each; C PNG landmarks, shared60s')
 TOOLS = {
+    'gpu-capabilities': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--gpu-capabilities'],
+    'studio-material-authoring': [sys.executable, str(ROOT / 'tools/agent.py'), 'gpu-test', '--', '--studio-material-authoring'],
+    'asset-schema': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--asset-schema'],
+    'resource-catalog': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--resource-catalog'],
+    'shader-authoring': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-authoring'],
+    'cli-authoring': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--cli-authoring'],
     'player-clock': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--player-clock'],
     'player-url': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--player-url'],
     'audio-browser': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--audio-browser'],
     'audio-analysis': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--audio-analysis'],
     'shader-webgpu': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-webgpu'],
-    # Five independently reviewed CPU controller cases: seven tiny files, two entities,
-    # thirteen owned children <=10s, twenty fixed simulation frames, shared60s.
+    # Nine independently reviewed CPU controller cases: tiny disposable projects,
+    # at most two entities, 25 owned children<=10s, 22 simulation frames total.
+    # Recording also prunes regular chibi-recording-* files older than24h in /tmp.
     'controller': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--controller',
                    str(ROOT / os.environ.get('CHIBI_CTL', 'build-release/bin/chibi_ctl'))],
     # Independently reviewed ten hidden Studio frames, two actors, 225 panel syncs.
@@ -457,7 +470,8 @@ GROUPS = {
                'preview-components', 'graph-document', 'graph-presentation', 'graph-functions',
                'vector-nodes', 'asset-values', 'ui-document', 'text-files', 'fmt', 'particles',
                'png-encoding', 'project-document', 'prototype-documents', 'reference-index',
-               'asset-source', 'behavior-loader', 'engine-clock', 'preview-layout', 'fields',
+               'asset-source', 'asset-schema', 'resource-catalog', 'shader-authoring', 'cli-authoring', 'gpu-capabilities',
+               'behavior-loader', 'engine-clock', 'preview-layout', 'fields',
                'model-graphs', 'model-catalog', 'render-geometry', 'arena', 'shader-graphs'],
     # Whole projects, imported assets and the Release chibi_ctl: feature coverage,
     # project validation and prototype expansion, mesh and model import, and the
@@ -747,7 +761,7 @@ def main():
         if len(arguments) != 1 or arguments[0] not in TOOLS:
             parser.error('unadmitted tooling command')
         if arguments[0] in tuple(f'installed-example-{lab}' for lab in EXAMPLE_LABS) + ('player-installed-space-cadet-vm', 'player-installed-space-cadet-sljit', 'studio-source-edit',
-                            'studio-graph-visibility', 'studio-graph-pointer', 'studio-asset-pointer', 'studio-debugger-source-history', 'studio-scene-move', 'studio-outliner-move', 'studio-scene-camera', 'studio-scene-gizmo3d', 'studio-scene-collider3d', 'interior-border', 'viewport-resize', 'sdf-visibility',
+                            'studio-material-authoring', 'studio-graph-visibility', 'studio-graph-pointer', 'studio-asset-pointer', 'studio-debugger-source-history', 'studio-scene-move', 'studio-outliner-move', 'studio-scene-camera', 'studio-scene-gizmo3d', 'studio-scene-collider3d', 'interior-border', 'viewport-resize', 'sdf-visibility',
                             'radiance', 'radiance-depth', 'material-sampling', 'scene2d', 'scene3d',
                             'scene3d-gles', 'scene3d-gi', 'scene3d-gi-gles',
                             'material-ramps', 'radiance-surface', 'radiance-horizons4',

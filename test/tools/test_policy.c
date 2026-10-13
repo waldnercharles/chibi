@@ -364,6 +364,17 @@ TEST_CASE(studio_acceptance_requires_exact_completion)
         REQUIRE(run("studio-result", selectors[i]) == 0);
         REQUIRE(run("studio-result", selectors[(i + 1) % 3]) == 2);
     }
+    tool_write(filename, "Studio material authoring accepted: frames=20 roughness=0.42 metallic=1 CPU center probe\n");
+    REQUIRE(run("studio-result", "--studio-material-authoring") == 0);
+    output = tool_read(logpath);
+    bool twenty_frames = output && strstr(output, "\"frames\": 20");
+    free(output);
+    REQUIRE(twenty_frames);
+    REQUIRE(run("studio-result", "--studio-asset-pointer") == 2);
+    tool_write(filename, "Studio asset pointer accepted: frames=20\n");
+    REQUIRE(run("studio-result", "--studio-material-authoring") == 2);
+    tool_write(filename, "Studio material authoring accepted: frames=19 roughness=0.42 metallic=1 CPU center probe\n");
+    REQUIRE(run("studio-result", "--studio-material-authoring") == 2);
     return true;
 }
 

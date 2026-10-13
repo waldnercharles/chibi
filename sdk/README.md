@@ -50,6 +50,14 @@ Set `CMAKE_PREFIX_PATH` to the installation. `Chibi::support` provides arenas an
 allocation; `Chibi::ecs` provides entity storage, queries, structural commands and
 execution views without graph dependencies; `Chibi::execution_contract` provides
 instruction/host/status contracts.
+`Chibi::asset_authoring` provides path-aware structural schemas, diagnostics and
+reflected authoring descriptions. `Chibi::material_authoring` owns standard PBR
+creation and owned shader inspection/CPU sample reports. `Chibi::model_import`
+provides immutable import plans and saved, conflict-aware reimport recipes.
+`Chibi::resource_catalog` provides a detached bounded raw-resource inventory and
+authored-source fingerprints. These modules work without a Studio instance;
+Studio and the controller consume their public APIs. See
+[the authoring workflow](../docs/runtime-authoring.md#material-creation-and-shader-inspection).
 `Chibi::asset_values` owns document values and their storage. `Chibi::value_document`
 converts reflected values to owned documents and reads documents into caller-owned
 arenas. Failed reads leave the output value unchanged. Both are optional dependencies for

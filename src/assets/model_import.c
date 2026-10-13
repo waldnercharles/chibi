@@ -61,10 +61,45 @@ static const char *const TEXTURE_KEYS[STANDARD_TEXTURE_COUNT] = {
     [STANDARD_TEXTURE_EMISSION] = "emissiveTexture",
 };
 
+struct model_import_plan
+{
+    char *content, *source, *name;
+    bool allow_existing;
+    model_import_output *outputs;
+    model_import_dependency *dependencies;
+    model_import_report report;
+};
+uint64_t model_import_fingerprint(const void *data, size_t size)
+{
+    const unsigned char *bytes = data;
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (size_t i = 0; i < size; i++) {
+        hash = (hash ^ bytes[i]) * UINT64_C(1099511628211);
+    }
+    return hash;
+}
+static void dependency(model_import_plan *plan, const char *path, const void *data, size_t size)
+{
+    if (!plan) {
+        return;
+    }
+    for (int i = 0; i < acount(plan->dependencies); i++) {
+        if (!strcmp(plan->dependencies[i].path, path)) {
+            return;
+        }
+    }
+    apush(
+        plan->dependencies,
+        ((model_import_dependency){ xstrdup(path), model_import_fingerprint(data, size), size })
+    );
+    plan->report.source_bytes += size;
+}
+
 /* One import: what it read, and what it named and wrote so far. */
 typedef struct
 {
     const char *content, *name;
+    model_import_plan *plan;
     CM_Model *model;
     yyjson_val *root;
     model_import_report *report;
@@ -76,9 +111,9 @@ typedef struct
     char **created; /* paths made, files and folders, to remove on failure */
     char *error;
     size_t size;
-} import;
+} import_context;
 
-static bool fail(import *in, const char *format, ...)
+static bool fail(import_context *in, const char *format, ...)
 {
     va_list arguments;
     va_start(arguments, format);
@@ -87,7 +122,7 @@ static bool fail(import *in, const char *format, ...)
     return false;
 }
 
-static void warn(import *in, const char *format, ...)
+static void warn(import_context *in, const char *format, ...)
 {
     char text[256];
     va_list arguments;
@@ -95,6 +130,11 @@ static void warn(import *in, const char *format, ...)
     vsnprintf(text, sizeof text, format, arguments);
     va_end(arguments);
     apush(in->report->warnings, xstrdup(text));
+    const char *code = strstr(text, "extension")    ? "unsupported-extension"
+                     : strstr(text, "triangle")     ? "degenerate-triangles"
+                     : strstr(text, "single-sided") ? "single-sided-material"
+                                                    : "omitted-feature";
+    apush(in->report->warning_codes, xstrdup(code));
 }
 
 /* The whole file at `path` when it holds at most `limit` bytes, or NULL.
@@ -123,6 +163,8 @@ static void *read_whole(const char *path, size_t limit, size_t *length)
 /* The files a .gltf names beside it, which read_external reads. */
 typedef struct
 {
+    model_import_plan *plan;
+    model_import_report *report;
     const char *folder; /* the model's real folder, which they stay inside */
     size_t budget;      /* the bytes left for them under the import's limit */
     bool over;          /* whether they would have taken more */
@@ -156,6 +198,24 @@ static void *read_external(const char *uri, int *size, void *beside)
     void *data = real && within(files->folder, real)
                    ? read_whole(real, files->budget, &length)
                    : NULL;
+    if (data && files->plan) {
+        for (int i = 0; i < acount(files->plan->dependencies); i++) {
+            const model_import_dependency *dep = &files->plan->dependencies[i];
+            if (!strcmp(dep->path, real) &&
+                (dep->size != length ||
+                 dep->hash != model_import_fingerprint(data, length))) {
+                free(data);
+                data = NULL;
+                break;
+            }
+        }
+    }
+    if (data) {
+        dependency(files->plan, real, data, length);
+        if (!files->plan) {
+            files->report->source_bytes += length;
+        }
+    }
     free(real);
     files->over |= !data && length > files->budget;
     if (data) {
@@ -194,12 +254,12 @@ static yyjson_val *item(yyjson_val *array, int index)
     return index < 0 ? NULL : yyjson_arr_get(array, (size_t)index);
 }
 
-static yyjson_val *json_material(const import *in, int material)
+static yyjson_val *json_material(const import_context *in, int material)
 {
     return item(yyjson_obj_get(in->root, "materials"), material);
 }
 
-static yyjson_val *json_primitive(const import *in, int mesh, int primitive)
+static yyjson_val *json_primitive(const import_context *in, int mesh, int primitive)
 {
     yyjson_val *meshes = yyjson_obj_get(in->root, "meshes");
     return item(yyjson_obj_get(item(meshes, mesh), "primitives"), primitive);
@@ -222,7 +282,7 @@ static bool applied(const char *extension)
 
 /* Refuses a model that requires an extension the import doesn't apply, and
  * warns of the ones it uses without requiring. Lights get their own warning. */
-static bool check_extensions(import *in)
+static bool check_extensions(import_context *in)
 {
     size_t i, count;
     yyjson_val *value;
@@ -253,7 +313,7 @@ static int primitive_material(const CM_Model *model, const CM_Primitive *primiti
 
 /* Whether `name` matches one taken so far; names differing only in case
  * would share a file on case-insensitive file systems. */
-static bool taken(const import *in, const char *name)
+static bool taken(const import_context *in, const char *name)
 {
     for (int i = 0; i < acount(in->taken); i++) {
         if (!strcasecmp(in->taken[i], name)) {
@@ -270,7 +330,7 @@ static bool taken(const import *in, const char *name)
 /* `prefix` and then `label`, each character an asset name refuses turned to
  * '_', at most NEW_ASSET_NAME_MAX bytes, and unlike every name taken so far.
  * The prefix leaves NAME_LABEL_MIN bytes, so the name always runs past it. */
-static char *unique_name(import *in, const char *prefix, const char *label)
+static char *unique_name(import_context *in, const char *prefix, const char *label)
 {
     assert(strlen(prefix) + NAME_LABEL_MIN <= NEW_ASSET_NAME_MAX + 1);
     char base[NEW_ASSET_NAME_MAX + 1];
@@ -293,7 +353,7 @@ static char *unique_name(import *in, const char *prefix, const char *label)
 
 /* Names each glTF material a mesh node draws with, and the default
  * material when a primitive names none. */
-static void name_materials(import *in)
+static void name_materials(import_context *in)
 {
     const CM_Model *model = in->model;
     in->materials = xcalloc((size_t)model->material_count + 1, sizeof *in->materials);
@@ -324,7 +384,7 @@ static void name_materials(import *in)
 
 /* The image's name, else its file's name without folders or extension, else
  * Image<n>. */
-static void image_label(const import *in, int image, char *label, size_t size)
+static void image_label(const import_context *in, int image, char *label, size_t size)
 {
     yyjson_val *json = item(yyjson_obj_get(in->root, "images"), image);
     const char *uri = yyjson_get_str(yyjson_obj_get(json, "uri"));
@@ -340,7 +400,7 @@ static void image_label(const import *in, int image, char *label, size_t size)
 }
 
 /* The image's content key under textures/<model>/, after checking it decodes. */
-static bool name_image(import *in, int image)
+static bool name_image(import_context *in, int image)
 {
     if (in->images[image]) {
         return true;
@@ -364,7 +424,7 @@ static bool name_image(import *in, int image)
     return true;
 }
 
-static yyjson_val *texture_info(const import *in, int material, standard_texture_slot slot)
+static yyjson_val *texture_info(const import_context *in, int material, standard_texture_slot slot)
 {
     yyjson_val *owner = json_material(in, material);
     if (slot == STANDARD_TEXTURE_BASE_COLOR ||
@@ -375,7 +435,7 @@ static yyjson_val *texture_info(const import *in, int material, standard_texture
 }
 
 /* The sampler a material's texture uses, as an engine filter and wrap. */
-static void sample(import *in, int material, standard_texture_slot slot, standard_texture *out)
+static void sample(import_context *in, int material, standard_texture_slot slot, standard_texture *out)
 {
     yyjson_val *info = texture_info(in, material, slot);
     yyjson_val *texture = item(
@@ -425,7 +485,7 @@ static void sample(import *in, int material, standard_texture_slot slot, standar
 
 /* The decoder supplies defaults, but malformed JSON fields must not quietly
  * become identity or zero. All persisted values must fit in a finite float. */
-static bool texture_transform(import *in, int material, standard_texture_slot slot, standard_texture *out)
+static bool texture_transform(import_context *in, int material, standard_texture_slot slot, standard_texture *out)
 {
     yyjson_val *info = texture_info(in, material, slot);
     yyjson_val *extension = yyjson_obj_get(yyjson_obj_get(info, "extensions"), "KHR_texture_transform");
@@ -484,7 +544,7 @@ static bool texture_transform(import *in, int material, standard_texture_slot sl
     return true;
 }
 
-static bool unlit(const import *in, int material)
+static bool unlit(const import_context *in, int material)
 {
     return yyjson_obj_get(yyjson_obj_get(json_material(in, material), "extensions"), "KHR_materials_unlit") !=
            NULL;
@@ -506,7 +566,7 @@ static const CM_TextureRef *texture_ref(const CM_Material *m, standard_texture_s
 /* Check actual used UVs as well as finite parameters: valid floats can
  * overflow during shader scale, rotation or translation. */
 static bool part_texture_transforms(
-    import *in,
+    import_context *in,
     int material,
     const render_mesh_asset *part,
     standard_texture *normal
@@ -550,7 +610,7 @@ static bool part_texture_transforms(
 /* The engine form of a glTF texture slot, after checking the import can
  * sample it as glTF does. */
 static bool texture(
-    import *in,
+    import_context *in,
     int material,
     standard_texture_slot slot,
     const CM_TextureRef *ref,
@@ -603,7 +663,7 @@ static bool finite_factors(const standard_material *material)
 
 /* The Standard form of glTF material `index`, or of the default material
  * when it is -1. */
-static bool standard(import *in, int index, standard_material *out)
+static bool standard(import_context *in, int index, standard_material *out)
 {
     *out = (standard_material){ .base_color = { 1, 1, 1, 1 },
                                 .metallic = 1,
@@ -690,7 +750,7 @@ static void face_cross(CF_V3 a, CF_V3 b, CF_V3 c, double out[3])
 }
 
 /* Whether the primitive's indices make whole triangles of its vertices. */
-static bool whole_triangles(import *in, const CM_Primitive *p)
+static bool whole_triangles(import_context *in, const CM_Primitive *p)
 {
     if (p->index_count % 3) {
         return fail(in, "A primitive's %d indices are not whole triangles", p->index_count);
@@ -725,7 +785,7 @@ static int key_of(const CM_Primitive *p, const kept_part *k, int corner)
  * image. Without normals, each triangle's corners get its own flat normal, as
  * glTF requires. */
 static bool primitive_part(
-    import *in,
+    import_context *in,
     const CM_Primitive *p,
     yyjson_val *json,
     const kept_part *k,
@@ -948,7 +1008,7 @@ static void bake(render_mesh_asset *mesh, const render_mesh_asset *part, CF_M4x4
 /* Whether `mesh` still fits a .mesh file with `k` added, checked before the
  * part is built, so that a vast primitive, or nodes copying one many times,
  * stop before they outgrow memory. */
-static bool fits(import *in, const render_mesh_asset *mesh, const kept_part *k)
+static bool fits(import_context *in, const render_mesh_asset *mesh, const kept_part *k)
 {
     return render_mesh_prepared_fits(
                acount(mesh->vertices) + acount(k->keys),
@@ -1006,7 +1066,7 @@ static bool mirrors(const CM_Model *model, int n)
 
 /* Every mesh node's triangles in the world frame, one group per material in
  * glTF order with the default material's last. */
-static bool bake_mesh(import *in, render_mesh_asset *mesh)
+static bool bake_mesh(import_context *in, render_mesh_asset *mesh)
 {
     const CM_Model *model = in->model;
     CF_M4x4 *frames = world_frames(model);
@@ -1096,7 +1156,7 @@ static bool bake_mesh(import *in, render_mesh_asset *mesh)
 /* Creates the folders of `path` below the content folder, remembering the
  * ones it made. Each must be a folder, not a link that would carry the file
  * out of the project; "x" already refuses a link in the file's place. */
-static bool make_folders(import *in, char *path)
+static bool make_folders(import_context *in, char *path)
 {
     for (char *slash = strchr(path + strlen(in->content) + 1, '/'); slash;
          slash = strchr(slash + 1, '/')) {
@@ -1120,9 +1180,23 @@ static bool make_folders(import *in, char *path)
 }
 
 /* Writes `length` bytes as the new content file `key`, never replacing one. */
-static bool write_new(import *in, const char *key, const void *bytes, size_t length)
+static bool write_new(import_context *in, const char *key, const void *bytes, size_t length)
 {
     assert(!strncmp(key, "content/", 8));
+    if (in->plan) {
+        model_import_output output = {
+            .key = xstrdup(key),
+            .identity = xstrdup(key),
+            .data = xmalloc(length),
+            .size = length,
+            .editable = strstr(key, "content/materials/") == key ||
+                        strstr(key, "content/prototypes/") == key
+        };
+        memcpy(output.data, bytes, length);
+        apush(in->plan->outputs, output);
+        in->report->output_bytes += length;
+        return true;
+    }
     size_t size = strlen(in->content) + strlen(key);
     char *path = xmalloc(size);
     snprintf(path, size, "%s/%s", in->content, key + 8);
@@ -1143,10 +1217,13 @@ static bool write_new(import *in, const char *key, const void *bytes, size_t len
     bool written = fwrite(bytes, 1, length, file) == length;
     written = fclose(file) == 0 && written;
     apush(in->report->written, xstrdup(key));
+    if (written) {
+        in->report->output_bytes += length;
+    }
     return written || fail(in, "Cannot write all of %s", key);
 }
 
-static bool write_text(import *in, const char *key, char *text)
+static bool write_text(import_context *in, const char *key, char *text)
 {
     bool written = write_new(in, key, text, strlen(text));
     free(text);
@@ -1154,7 +1231,7 @@ static bool write_text(import *in, const char *key, char *text)
 }
 
 /* Writes the mesh after reading its bytes back as the engine loads them. */
-static bool write_mesh(import *in, const render_mesh_asset *mesh, const char *key)
+static bool write_mesh(import_context *in, const render_mesh_asset *mesh, const char *key)
 {
     unsigned char *bytes = NULL;
     size_t length = 0, budget = SIZE_MAX;
@@ -1226,7 +1303,7 @@ static char *material_text(const char *name, const standard_material *material)
 /* Reads into `name` the name the asset file at `path` declares, owned by
  * the caller, or NULL when it declares none. Refuses a file it cannot read
  * or parse, since that could hide a clash. */
-static bool declared_name(import *in, const char *path, char **name)
+static bool declared_name(import_context *in, const char *path, char **name)
 {
     const char *shown = path + strlen(in->content) + 1;
     char *text = file_read_text(path);
@@ -1262,7 +1339,7 @@ static bool asset_file(const char *file)
 /* Whether `file`, an asset of `kind` that declares `name`, declares one of
  * the import's names in a file other than the one the import writes for it;
  * write_new refuses to replace that one. */
-static bool clashes(const import *in, new_asset_kind kind, const char *file, const char *name)
+static bool clashes(const import_context *in, new_asset_kind kind, const char *file, const char *name)
 {
     bool prototype = kind == NEW_ASSET_PROTOTYPE;
     if (names_file(file, name) && (prototype || kind == NEW_ASSET_MATERIAL)) {
@@ -1283,7 +1360,7 @@ static bool clashes(const import *in, new_asset_kind kind, const char *file, con
  * them, or -1 when it refuses because one already declares a name the
  * import would declare too, since preparing the project refuses two
  * declarations of one prototype or native graph name. */
-static int undeclared(import *in, new_asset_kind kind)
+static int undeclared(import_context *in, new_asset_kind kind)
 {
     const char *folder = new_asset_folder(kind);
     size_t bytes = strlen(in->content) + strlen(folder) + 2;
@@ -1320,8 +1397,17 @@ static int undeclared(import *in, new_asset_kind kind)
         } else if (name && clashes(in, kind, file, name)) {
             count = -1;
             fail(in, "content/%s/%s already declares %s", folder, file, name);
+            errno = EEXIST;
         } else {
-            count++;
+            bool replacing = false;
+            if (in->plan && in->plan->allow_existing &&
+                kind == NEW_ASSET_MATERIAL && name && names_file(file, name)) {
+                for (int slot = 0; slot <= in->model->material_count; slot++) {
+                    replacing |= in->materials[slot] &&
+                                 !strcmp(in->materials[slot], name);
+                }
+            }
+            count += !replacing;
         }
         free(path);
         free(name);
@@ -1336,7 +1422,7 @@ static int undeclared(import *in, new_asset_kind kind)
  * graphs fit their catalog with its materials. Prototypes share one
  * namespace, and the native graphs, every other declarative kind but
  * scenes, share another with materials. */
-static bool names_free(import *in)
+static bool names_free(import_context *in)
 {
     int graphs = 0;
     for (int kind = 0; kind < NEW_ASSET_KIND_COUNT; kind++) {
@@ -1367,9 +1453,9 @@ static bool names_free(import *in)
 }
 
 /* Every image, material, the mesh and the prototype, as new content files. */
-static bool write_files(import *in, const render_mesh_asset *mesh, const standard_material *materials)
+static bool write_files(import_context *in, const render_mesh_asset *mesh, const standard_material *materials)
 {
-    if (!new_asset_real_folder(in->content, in->error, in->size)) {
+    if (!in->plan && !new_asset_real_folder(in->content, in->error, in->size)) {
         return false;
     }
     const CM_Model *model = in->model;
@@ -1382,6 +1468,20 @@ static bool write_files(import *in, const render_mesh_asset *mesh, const standar
                              )) {
             return false;
         }
+        if (in->plan && in->images[i]) {
+            model_import_output *output = &in->plan->outputs[acount(in->plan->outputs) - 1];
+            free(output->identity);
+            char identity[80];
+            const char *label = model->images[i].name;
+            snprintf(
+                identity,
+                sizeof identity,
+                "image:%d:%016llx",
+                i,
+                (unsigned long long)model_import_fingerprint(label, strlen(label))
+            );
+            output->identity = xstrdup(identity);
+        }
     }
     for (int slot = 0; slot <= model->material_count; slot++) {
         if (!in->materials[slot]) {
@@ -1392,6 +1492,22 @@ static bool write_files(import *in, const render_mesh_asset *mesh, const standar
         if (!write_text(in, key, material_text(in->materials[slot], &materials[slot]))) {
             return false;
         }
+        if (in->plan) {
+            model_import_output *output = &in->plan->outputs[acount(in->plan->outputs) - 1];
+            free(output->identity);
+            char identity[80];
+            const char *label = slot < model->material_count
+                                  ? model->materials[slot].name
+                                  : "default";
+            snprintf(
+                identity,
+                sizeof identity,
+                "material:%d:%016llx",
+                slot,
+                (unsigned long long)model_import_fingerprint(label, strlen(label))
+            );
+            output->identity = xstrdup(identity);
+        }
     }
     char mesh_key[NEW_ASSET_NAME_MAX + 32], prototype_key[NEW_ASSET_NAME_MAX + 32];
     snprintf(mesh_key, sizeof mesh_key, "content/meshes/%s.mesh", in->name);
@@ -1400,7 +1516,7 @@ static bool write_files(import *in, const render_mesh_asset *mesh, const standar
            write_text(in, prototype_key, prototype_text(in->name, mesh_key));
 }
 
-static void warn_unused(import *in)
+static void warn_unused(import_context *in)
 {
     const CM_Model *model = in->model;
     size_t cameras = yyjson_arr_size(yyjson_obj_get(in->root, "cameras"));
@@ -1420,7 +1536,7 @@ static void warn_unused(import *in)
 }
 
 /* Reads the model and writes its files; `in` holds what to undo. */
-static bool run(import *in, const char *path)
+static bool run(import_context *in, const char *path)
 {
     size_t length = 0;
     unsigned char *bytes = read_whole(path, MODEL_IMPORT_BYTES_MAX, &length);
@@ -1439,7 +1555,21 @@ static bool run(import *in, const char *path)
         free(bytes);
         return fail(in, "Cannot find the folder of %s", path);
     }
-    sidecars beside = { .folder = real, .budget = MODEL_IMPORT_BYTES_MAX - length };
+    char *source = realpath(path, NULL);
+    if (!source) {
+        free(real);
+        free(bytes);
+        return fail(in, "Cannot resolve model source");
+    }
+    dependency(in->plan, source, bytes, length);
+    if (!in->plan) {
+        in->report->source_bytes += length;
+    }
+    free(source);
+    sidecars beside = { .plan = in->plan,
+                        .report = in->report,
+                        .folder = real,
+                        .budget = MODEL_IMPORT_BYTES_MAX - length };
     CM_LoadParams params = { .read_fn = read_external,
                              .free_fn = free_external,
                              .udata = &beside };
@@ -1469,6 +1599,31 @@ static bool run(import *in, const char *path)
     if (ok) {
         warn_unused(in);
     }
+    if (ok) {
+        model_import_report *report = in->report;
+        report->vertices = acount(mesh.vertices);
+        report->triangles = acount(mesh.indices) / 3;
+        report->materials = acount(mesh.groups);
+        report->skins = in->model->skin_count;
+        report->animations = in->model->animation_count;
+        report->cameras = (int)yyjson_arr_size(yyjson_obj_get(in->root, "cameras"));
+        report->lights = in->model->light_count;
+        for (int i = 0; i < in->model->image_count; i++) {
+            report->images += in->images[i] != NULL;
+        }
+        for (int i = 0; i < acount(mesh.vertices); i++) {
+            CF_V3 p = mesh.vertices[i].position;
+            float v[] = { p.x, p.y, p.z };
+            for (int axis = 0; axis < 3; axis++) {
+                if (!i || v[axis] < report->bounds_min[axis]) {
+                    report->bounds_min[axis] = v[axis];
+                }
+                if (!i || v[axis] > report->bounds_max[axis]) {
+                    report->bounds_max[axis] = v[axis];
+                }
+            }
+        }
+    }
     ok = ok && names_free(in) && write_files(in, &mesh, materials);
     render_mesh_asset_free(&mesh);
     free(materials);
@@ -1484,11 +1639,12 @@ static void free_names(char **names, int count)
     free(names);
 }
 
-bool model_import(
+static bool execute(
     const char *content,
     const char *path,
     const char *name,
     model_import_report *report,
+    model_import_plan *plan,
     char *error,
     size_t size
 )
@@ -1499,7 +1655,14 @@ bool model_import(
         return false;
     }
     error[0] = 0;
-import in = {.content = content, .name = name, .report = report, .error = error, .size = size };
+    import_context in;
+    memset(&in, 0, sizeof in);
+    in.content = content;
+    in.name = name;
+    in.plan = plan;
+    in.report = report;
+    in.error = error;
+    in.size = size;
     bool ok = run(&in, path);
     for (int i = acount(in.created) - 1; i >= 0; i--) {
         if (!ok) {
@@ -1536,4 +1699,150 @@ void model_import_report_free(model_import_report *report)
         free(report->warnings[i]);
     }
     afree(report->warnings);
+    for (int i = 0; i < acount(report->warning_codes); i++) {
+        free(report->warning_codes[i]);
+    }
+    afree(report->warning_codes);
+    *report = (model_import_report){ 0 };
+}
+
+bool model_import(
+    const char *content,
+    const char *path,
+    const char *name,
+    model_import_report *report,
+    char *error,
+    size_t size
+)
+{
+    return execute(content, path, name, report, NULL, error, size);
+}
+static int dependency_order(const void *a, const void *b)
+{
+    return strcmp(
+        ((const model_import_dependency *)a)->path,
+        ((const model_import_dependency *)b)->path
+    );
+}
+bool model_import_prepare(
+    const char *content,
+    const char *path,
+    const char *name,
+    bool allow_existing,
+    model_import_plan **result,
+    char *error,
+    size_t size
+)
+{
+    *result = NULL;
+    model_import_plan *plan = xcalloc(1, sizeof *plan);
+    plan->content = xstrdup(content);
+    plan->source = xstrdup(path);
+    plan->name = xstrdup(name);
+    plan->allow_existing = allow_existing;
+    if (!execute(content, path, name, &plan->report, plan, error, size)) {
+        model_import_plan_free(plan);
+        return false;
+    }
+    if (acount(plan->dependencies) > 1) {
+        asort(plan->dependencies, dependency_order);
+    }
+    if (!allow_existing) {
+        for (int i = 0; i < acount(plan->outputs); i++) {
+            size_t bytes = strlen(content) + strlen(plan->outputs[i].key) + 2;
+            char *destination = xmalloc(bytes);
+            snprintf(destination, bytes, "%s/%s", content, plan->outputs[i].key + 8);
+            struct stat info;
+            if (!lstat(destination, &info) || errno != ENOENT) {
+                snprintf(error, size, "Import destination already exists or cannot be checked: %s", destination);
+                free(destination);
+                model_import_plan_free(plan);
+                errno = EEXIST;
+                return false;
+            }
+            free(destination);
+        }
+    }
+    *result = plan;
+    return true;
+}
+const model_import_report *model_import_plan_report(const model_import_plan *plan)
+{
+    return &plan->report;
+}
+const model_import_output *model_import_plan_outputs(const model_import_plan *plan, int *count)
+{
+    *count = acount(plan->outputs);
+    return plan->outputs;
+}
+const model_import_dependency *model_import_plan_dependencies(const model_import_plan *plan, int *count)
+{
+    *count = acount(plan->dependencies);
+    return plan->dependencies;
+}
+bool model_import_plan_valid(const model_import_plan *plan, char *error, size_t size)
+{
+    for (int i = 0; i < acount(plan->dependencies); i++) {
+        const model_import_dependency *dep = &plan->dependencies[i];
+        char *real = realpath(dep->path, NULL);
+        size_t length = 0;
+        void *bytes = real && !strcmp(real, dep->path)
+                        ? read_whole(real, MODEL_IMPORT_BYTES_MAX, &length)
+                        : NULL;
+        bool valid = bytes && length == dep->size &&
+                     model_import_fingerprint(bytes, length) == dep->hash;
+        free(bytes);
+        free(real);
+        if (!valid) {
+            errno = ESTALE;
+            snprintf(error, size, "Import source changed since preparation: %s", dep->path);
+            return false;
+        }
+    }
+    /* Repeat preparation to catch namespace collisions and source dependency
+     * changes, including a previously missing or newly referenced dependency. */
+    model_import_plan *fresh = NULL;
+    bool valid = model_import_prepare(
+        plan->content,
+        plan->source,
+        plan->name,
+        plan->allow_existing,
+        &fresh,
+        error,
+        size
+    );
+    if (valid && acount(fresh->dependencies) != acount(plan->dependencies)) {
+        valid = false;
+    }
+    for (int i = 0; valid && i < acount(plan->dependencies); i++) {
+        valid = !strcmp(fresh->dependencies[i].path, plan->dependencies[i].path) &&
+                fresh->dependencies[i].hash == plan->dependencies[i].hash;
+    }
+    model_import_plan_free(fresh);
+    if (!valid && !error[0]) {
+        errno = ESTALE;
+        snprintf(error, size, "Import source snapshot changed");
+    }
+    return valid;
+}
+void model_import_plan_free(model_import_plan *plan)
+{
+    if (!plan) {
+        return;
+    }
+    for (int i = 0; i < acount(plan->outputs); i++) {
+        free(plan->outputs[i].key);
+        free(plan->outputs[i].identity);
+        free(plan->outputs[i].data);
+    }
+    afree(plan->outputs);
+    for (int i = 0; i < acount(plan->dependencies); i++) {
+        free(plan->dependencies[i].path);
+    }
+    afree(plan->dependencies);
+    model_import_report_free(&plan->report);
+    free(plan->content);
+    free(plan->source);
+    free(plan->name);
+    free(plan);
 }

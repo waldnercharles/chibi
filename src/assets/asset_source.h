@@ -1,6 +1,7 @@
 #ifndef CHIBI_ASSET_SOURCE_H
 #define CHIBI_ASSET_SOURCE_H
 
+#include "assets/asset_schema.h"
 #include "support/asset_value.h"
 #include "support/code_completion.h"
 
@@ -14,14 +15,11 @@ typedef struct
     int start, end;
     const char *cls;
 } asset_source_span;
-typedef struct
-{
-    int start, end, line, column;
-    char message[256];
-} asset_source_diagnostic;
+typedef asset_schema_diagnostic asset_source_diagnostic;
 typedef struct
 {
     char *text;
+    const asset_schema *schema;
     av_doc *document;
     asset_source_span *spans;
     asset_source_diagnostic *diagnostics;
@@ -44,6 +42,8 @@ typedef struct
  * The caller frees the returned array with afree. */
 asset_source_span *asset_source_highlight(const char *text);
 asset_source *asset_source_parse(const char *text);
+/* Adds kind-aware structural diagnostics and hover to generic reflection checks. */
+asset_source *asset_source_parse_path(const char *text, const char *path);
 void asset_source_free(asset_source *source);
 void asset_source_position(const asset_source *source, int offset, int *line, int *column);
 /* Registry-aware completion works in incomplete source too. `path` supplies

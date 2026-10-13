@@ -17,6 +17,8 @@ add_library(chibi_asset_authoring STATIC
     "${CHIBI_SDK_ROOT}/src/assets/prototype_instance.c"
     "${CHIBI_SDK_ROOT}/src/assets/field_parameters.c"
     "${CHIBI_SDK_ROOT}/src/assets/new_asset.c"
+    "${CHIBI_SDK_ROOT}/src/assets/asset_schema.c"
+    "${CHIBI_SDK_ROOT}/src/authoring/asset_description.c"
     "${CHIBI_SDK_ROOT}/src/assets/asset_source.c"
     "${CHIBI_SDK_ROOT}/src/assets/reference_adapters.c"
     "${CHIBI_SDK_ROOT}/src/assets/refactor.c")
@@ -25,13 +27,25 @@ set_target_properties(chibi_asset_authoring PROPERTIES EXPORT_NAME asset_authori
 chibi_sdk_headers(chibi_asset_authoring PUBLIC
     assets/call_hierarchy.h
     authoring/native_prototype.h assets/prototype_instance.h assets/field_parameters.h
-    assets/new_asset.h assets/asset_source.h assets/reference_adapters.h assets/refactor.h
+    assets/new_asset.h assets/asset_schema.h assets/asset_source.h assets/reference_adapters.h assets/refactor.h
+    authoring/asset_description.h
     support/code_completion.h)
 target_link_libraries(chibi_asset_authoring PUBLIC
     chibi_prototype_document chibi_graph_model chibi_reference_index chibi_field_catalog
-    PRIVATE chibi_authoring chibi_asset_text chibi_scene_document chibi_ui_document
+    PRIVATE chibi_authoring chibi_asset_text chibi_project_document chibi_scene_document chibi_ui_document
     chibi_graph_authoring chibi_graph_compilation chibi_native_types chibi_text_source
     chibi_declared_components)
+
+add_library(chibi_material_authoring STATIC
+    "${CHIBI_SDK_ROOT}/src/assets/standard_material.c"
+    "${CHIBI_SDK_ROOT}/src/authoring/material_create.c"
+    "${CHIBI_SDK_ROOT}/src/authoring/shader_report.c")
+add_library(Chibi::material_authoring ALIAS chibi_material_authoring)
+set_target_properties(chibi_material_authoring PROPERTIES EXPORT_NAME material_authoring)
+chibi_sdk_headers(chibi_material_authoring PUBLIC assets/standard_material.h
+    authoring/material_create.h authoring/shader_report.h)
+target_link_libraries(chibi_material_authoring PUBLIC chibi_graph_model chibi_shader_runtime
+    PRIVATE chibi_asset_authoring chibi_graph_authoring chibi_graph_compilation chibi_asset_text chibi_support)
 
 add_library(chibi_model_authoring STATIC
     "${CHIBI_SDK_ROOT}/src/assets/model_source.c"
@@ -51,13 +65,13 @@ target_link_libraries(chibi_model_authoring PUBLIC chibi_graph_model chibi_model
 if(CHIBI_SDK_BUILD_DESKTOP)
     add_library(chibi_model_import STATIC
         "${CHIBI_SDK_ROOT}/src/assets/model_import.c"
-        "${CHIBI_SDK_ROOT}/src/assets/standard_material.c")
+        "${CHIBI_SDK_ROOT}/src/assets/model_import_recipe.c")
     add_library(Chibi::model_import ALIAS chibi_model_import)
     set_target_properties(chibi_model_import PROPERTIES EXPORT_NAME model_import)
-    chibi_sdk_headers(chibi_model_import PUBLIC assets/model_import.h assets/standard_material.h)
+    chibi_sdk_headers(chibi_model_import PUBLIC assets/model_import.h assets/model_import_recipe.h)
     target_include_directories(chibi_model_import PRIVATE "${CHIBI_SDK_ROOT}/third_party/yyjson")
-    target_link_libraries(chibi_model_import PUBLIC chibi_graph_model chibi_shader_runtime
-        PRIVATE chibi_platform chibi_asset_authoring chibi_prototype_document chibi_image_preparation
+    target_link_libraries(chibi_model_import PUBLIC chibi_graph_model chibi_shader_runtime chibi_material_authoring
+        PRIVATE chibi_platform chibi_asset_authoring chibi_prototype_document chibi_project_document chibi_image_preparation
         chibi_mesh_runtime chibi_native_types chibi_graph_authoring chibi_graph_compilation
         chibi_asset_text chibi_json chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_model_import)
@@ -70,4 +84,4 @@ chibi_sdk_headers(chibi_scenario_document PUBLIC assets/scenario_document.h)
 target_link_libraries(chibi_scenario_document PUBLIC chibi_asset_values chibi_input_runtime
     PRIVATE chibi_native_types chibi_asset_text)
 
-list(APPEND CHIBI_SDK_TARGETS chibi_scene_authoring chibi_asset_authoring chibi_model_authoring chibi_scenario_document)
+list(APPEND CHIBI_SDK_TARGETS chibi_scene_authoring chibi_asset_authoring chibi_material_authoring chibi_model_authoring chibi_scenario_document)

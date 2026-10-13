@@ -42,6 +42,7 @@ void test_tool_validation_plan();
 void test_tool_publish();
 void test_tool_web_storage();
 void test_tool_player_url();
+void test_tool_gpu_capabilities();
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
 void test_tool_audio_analysis();
 #endif
@@ -51,6 +52,14 @@ void test_tool_shader_webgpu();
 void test_tool_webgpu_staging();
 void test_tool_wasm_browser();
 void test_tool_types();
+#ifdef CHIBI_TEST_ASSET_AUTHORING
+void test_asset_schema();
+void test_tool_resource_catalog();
+void test_shader_authoring();
+#endif
+#ifdef CHIBI_TEST_CLI_AUTHORING
+void test_cli_authoring();
+#endif
 void test_tool_ecs();
 void test_tool_ecs_relationships();
 void test_tool_ecs_hierarchy();
@@ -268,7 +277,9 @@ static const char *const document_selectors[] = {
     "--reference-index",  "--asset-source",
     "--behavior-loader",  "--engine-clock",
     "--preview-layout",   "--fields",
-    "--player-clock",
+    "--player-clock",     "--asset-schema",
+    "--resource-catalog", "--shader-authoring",
+    "--cli-authoring",    "--gpu-capabilities",
 };
 
 static bool selected(int argc, char **argv, const char *name)
@@ -289,6 +300,31 @@ static bool document_selector(int argc, char **argv)
 /* Runs the suites of a document selector; false when none is built. */
 static bool run_document_suites(int argc, char **argv)
 {
+    if (selected(argc, argv, "--gpu-capabilities")) {
+        test_tool_gpu_capabilities();
+        return true;
+    }
+#ifdef CHIBI_TEST_ASSET_AUTHORING
+    if (selected(argc, argv, "--asset-schema")) {
+        source_runtime_active = true;
+        test_asset_schema();
+        return true;
+    }
+    if (selected(argc, argv, "--resource-catalog")) {
+        test_tool_resource_catalog();
+        return true;
+    }
+    if (selected(argc, argv, "--shader-authoring")) {
+        test_shader_authoring();
+        return true;
+    }
+#endif
+#ifdef CHIBI_TEST_CLI_AUTHORING
+    if (selected(argc, argv, "--cli-authoring")) {
+        test_cli_authoring();
+        return true;
+    }
+#endif
     if (selected(argc, argv, "--player-url")) {
         test_tool_player_url();
         return true;

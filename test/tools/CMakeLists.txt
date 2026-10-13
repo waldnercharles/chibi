@@ -87,7 +87,7 @@ target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
 add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
-    validate_project.c tetris.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
+    validate_project.c tetris.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c player_url.c gpu_capabilities.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
     $<TARGET_OBJECTS:chibi_sdk_contracts>
     "${CHIBI_TOOL_ROOT}/src/automation/execution_policy.c"
     "${CHIBI_TOOL_ROOT}/src/host/process.c"
@@ -403,11 +403,21 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
             add_dependencies(test_tools chibi_ctl)
         endif()
         if(TARGET chibi_automation)
-            target_sources(test_tools PRIVATE preview_components.c preview.c)
+            target_sources(test_tools PRIVATE preview_components.c preview.c cli_authoring.c
+                "${CHIBI_TOOL_ROOT}/tools/chibi_ctl/commands.c"
+                "${CHIBI_TOOL_ROOT}/tools/chibi_ctl/evidence.c")
             target_link_libraries(test_tools PRIVATE chibi_automation)
+            target_link_libraries(test_tools PRIVATE Chibi::resource_catalog Chibi::asset_json)
             target_compile_definitions(test_tools PRIVATE CHIBI_TEST_PREVIEW_COMPONENTS=1 CHIBI_TEST_PREVIEW=1)
+            target_compile_definitions(test_tools PRIVATE CHIBI_TEST_CLI_AUTHORING=1)
         endif()
     endif()
+endif()
+
+if(TARGET Chibi::asset_authoring AND TARGET Chibi::material_authoring AND TARGET Chibi::resource_catalog)
+    target_sources(test_tools PRIVATE asset_schema.c resource_catalog.c shader_authoring.c)
+    target_link_libraries(test_tools PRIVATE Chibi::asset_authoring Chibi::material_authoring Chibi::resource_catalog Chibi::asset_json)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_ASSET_AUTHORING=1)
 endif()
 
 # Material simulation cases drive internal solver headers directly, and run

@@ -65,6 +65,45 @@ one-minute step timeout (the test supervisor needs POSIX signals) and builds
 Studio against the installed SDK, without running tests. The Windows jobs are
 advisory until they first pass.
 
+## Asset authoring checks
+
+`make test-native` includes `asset-schema`, `resource-catalog`, `shader-authoring`,
+`cli-authoring` and `gpu-capabilities`. These C cases cover structural source
+ranges, reflected metadata, complete/incomplete inventory identities, PBR source
+round trips, owned reports, fixed CPU shader outputs, direct CLI contracts and
+honest evidence coverage. PNG export decodes and checks dimensions before claiming
+rendered coverage; CPU decoding does not itself launch a GPU workload.
+
+`make test-projects` includes import preflight, dependency drift, custom content
+folders, edited-output preservation, conflict rejection and rollback after a
+failure on the second published file. Staging creation refuses unowned temporary
+filenames; cleanup reports recoverable originals and other residual paths.
+Material creation refuses linked, nonregular or oversized declarations and bounds
+its namespace scan to 16 MiB per file, 64 MiB total and 4,096 entries. Controller cases cover schema/material
+operations, precise diagnostics, resource filters and replay freshness after an
+unreferenced raw resource changes. Project version requirements take precedence
+over the current version's structural grammar.
+
+The admitted `--studio-material-authoring` route uses the installed SDK and the
+same provenance/disposable-fixture checks as other Studio routes. Twenty fixed
+host frames exercise actual SDL/RmlUi preset, name, roughness, Create, CPU probe,
+duplicate refusal and Escape input. Optional evidence captures two existing
+frames, each under the SDK's ten-second readback bound and the route's one shared
+sixty-second deadline. Evidence mode uses Studio's reduced-motion preference.
+It does not cover every color/texture control or browser input. See
+[bounded Studio execution](agent-execution.md#studio-interaction-checks) and
+Studio's `tests/acceptance/README.md`.
+
+The 2026-10-13 asset-authoring candidate passed the native CPU group in 18.242 s,
+project group in 29.923 s, material group in 26.987 s, language group in 10.288 s,
+and tooling/process group in 31.714 s, with build timing excluded. Native engine
+drivers used ASan/UBSan; project process tests used the Release controller.
+Installed SDK controller and native/web Studio builds passed. The final Studio
+route completed in 4.037 s, including two screenshots. One 320×180 shader preview
+reported Metal/Cocoa and exported a decoded PNG; creation, validation, CPU
+inspection and that preview completed under one 2.319 s supervisor run.
+These are bounded local results. Quarantined aggregate suites remain unexecuted.
+
 ## Feature coverage
 
 `test/fixtures/feature-coverage` is the all-features project: one scene per
@@ -306,11 +345,11 @@ The 13-case program selector now passes 1,689 assertions in 0.884 seconds with
 ASan/UBSan on VM and SLJIT. Its new fixed case checks exact signed/unsigned 64-bit
 limits, values above 2^53, contextual nominal enums and five out-of-range rejects.
 
-`python3 tools/test_policy.py tool controller` runs five C command-response cases
+`python3 tools/test_policy.py tool controller` runs nine C command-response cases
 against `build-release/bin/chibi_ctl`, also included in `make test-projects`.
 Set `CHIBI_CTL` and `CHIBI_TOOLS_BUILD_DIR` to select isolated builds. Independent
-review admitted seven tiny generated files per case, two scene entities, thirteen
-owned child processes capped at ten seconds each, and twenty total fixed
+review admitted tiny generated project files, at most two scene entities, twenty-five
+owned child processes capped at ten seconds each, and twenty-two total fixed
 simulation steps under the shared sixty-second deadline. Each fixture is formatted
 through `chibi_ctl --format`, and its files are removed after the case.
 
@@ -324,6 +363,8 @@ after warmup. Sampling starts only at the first measured frame. Module IDs are
 compared within one response; they are not cross-process identity guarantees.
 These CPU command checks do not exercise Studio, rendered graph gestures, GPU
 profiling, or performance thresholds.
+Recording also retains the existing cleanup of regular `chibi-recording-*` files
+older than 24 hours in `/tmp`; that cleanup is not confined to the fixture root.
 
 `python3 tools/test_policy.py tool runtime-scene` runs two public SDK consumer
 cases with four entities/two scene instances, owned component payloads, deferred

@@ -40,6 +40,7 @@ static void diagnostic(asset_source *s, av_source range, const char *message)
                                   .end = range.end == SIZE_MAX ? 0 : (int)range.end };
     asset_source_position(s, d.start, &d.line, &d.column);
     snprintf(d.message, sizeof d.message, "%s", message);
+    snprintf(d.code, sizeof d.code, "%s", "PARSE_ERROR");
     apush(s->diagnostics, d);
 }
 
@@ -227,11 +228,13 @@ static bool valid_field(const type_field *field, const av_value *v)
     return true;
 }
 
-static void validate(asset_source *s, const av_value *value, const type_desc *type)
+static void validate(asset_source *s, const av_value *value, const type_desc *type, const char *path)
 {
     if (av_is_arr(value)) {
         for (size_t i = 0; i < av_arr_size(value); i++) {
-            validate(s, av_arr_get(value, i), NULL);
+            char child_path[384];
+            snprintf(child_path, sizeof child_path, "%.350s[%zu]", path, i);
+            validate(s, av_arr_get(value, i), NULL, child_path);
         }
         return;
     }
@@ -243,6 +246,9 @@ static void validate(asset_source *s, const av_value *value, const type_desc *ty
         const av_value *child = av_obj_value_at(value, i);
         const type_field *field = field_named(type, name);
         char error[256];
+        char child_path[384];
+        snprintf(child_path, sizeof child_path, "%s%s%s", path, *path ? "." : "", name);
+        int count = acount(s->diagnostics);
         if (type && !field) {
             snprintf(error, sizeof error, "Unknown field '%s' of %s", name, type->name);
             diagnostic(s, av_get_source(child), error);
@@ -257,10 +263,40 @@ static void validate(asset_source *s, const av_value *value, const type_desc *ty
             );
             diagnostic(s, av_get_source(child), error);
         }
+        if (acount(s->diagnostics) > count) {
+            asset_source_diagnostic *d = &s->diagnostics[count];
+            snprintf(d->code, sizeof d->code, "%s", field ? "INVALID_TYPE" : "UNKNOWN_FIELD");
+            snprintf(d->path, sizeof d->path, "%s", child_path);
+            snprintf(
+                d->expected,
+                sizeof d->expected,
+                "%s",
+                field ? (field->type_name ? field->type_name
+                                          : pin_type_name(field->type))
+                      : "a reflected field of this component"
+            );
+            const enum_desc *enumeration = field && field->type == PIN_ENUM
+                                             ? type_catalog_enum_find(field->type_name)
+                                             : NULL;
+            if (enumeration) {
+                snprintf(d->code, sizeof d->code, "%s", "INVALID_CHOICE");
+                d->expected[0] = 0;
+                for (int j = 0; j < enumeration->value_count; j++) {
+                    size_t used = strlen(d->expected);
+                    snprintf(
+                        d->expected + used,
+                        sizeof d->expected - used,
+                        "%s%s",
+                        j ? ", " : "",
+                        enumeration->values[j].name
+                    );
+                }
+            }
+        }
         const type_desc *nested = field && field->type == PIN_STRUCT
                                     ? reflected_type_named(field->type_name)
                                     : reflected_type_named(name);
-        validate(s, child, nested);
+        validate(s, child, nested, child_path);
     }
 }
 
@@ -272,7 +308,7 @@ asset_source *asset_source_parse(const char *text)
     char error[256] = "";
     s->document = av_doc_read(text, error, sizeof error);
     if (s->document) {
-        validate(s, av_doc_root(s->document), NULL);
+        validate(s, av_doc_root(s->document), NULL, "");
         return s;
     }
     int line = 1, column = 1;
@@ -293,6 +329,24 @@ asset_source *asset_source_parse(const char *text)
     }
     diagnostic(s, (av_source){ .start = (size_t)at, .end = (size_t)(at + (text[at] != 0)) }, error);
     return s;
+}
+
+asset_source *asset_source_parse_path(const char *text, const char *path)
+{
+    asset_source *source = asset_source_parse(text);
+    source->schema = asset_schema_for_path(path);
+    if (source->document) {
+        asset_schema_diagnostic *items = asset_schema_validate(
+            source->schema,
+            av_doc_root(source->document),
+            text
+        );
+        for (int i = 0; i < acount(items); i++) {
+            apush(source->diagnostics, items[i]);
+        }
+        afree(items);
+    }
+    return source;
 }
 
 void asset_source_free(asset_source *s)
@@ -397,17 +451,19 @@ static void offer_name(
 typedef struct
 {
     const type_desc *type;
+    const asset_schema *schema, *element;
     int node, block;
 } completion_scope;
 
 /* Scope recovery depends on braces and assignments, so it also works when a
  * value, terminator or closing brace has not been typed yet. */
-static completion_scope scope_at(const asset_source *s, int at)
+static completion_scope scope_at(const asset_source *s, int at, const asset_schema *schema)
 {
     completion_scope stack[128];
     for (int i = 0; i < 128; i++) {
         stack[i] = (completion_scope){ .node = -1, .block = -1 };
     }
+    stack[0].schema = schema;
     int depth = 0;
     completion_scope current = stack[0];
     bool node_start = true, annotation = false;
@@ -483,6 +539,15 @@ static completion_scope scope_at(const asset_source *s, int at)
                                               .node = i,
                                               .block = -1 };
             } else if (!current.type) {
+                const asset_schema_field
+                    *property = asset_schema_field_find(current.schema, key);
+                if (current.element && key && !strcmp(key, "-")) {
+                    current.schema = current.element;
+                    current.element = NULL;
+                } else if (property && (property->type == ASSET_SCHEMA_OBJECT || property->type == ASSET_SCHEMA_ARRAY)) {
+                    current.schema = property->object;
+                    current.element = property->element_object;
+                }
                 current.node = i;
                 current.block = -1;
             }
@@ -503,7 +568,7 @@ static completion_scope scope_at(const asset_source *s, int at)
 
 static const type_desc *context(const asset_source *s, int at)
 {
-    return scope_at(s, at).type;
+    return scope_at(s, at, s->schema).type;
 }
 
 static bool property_present(const asset_source *s, completion_scope scope, const char *field, int editing)
@@ -623,7 +688,7 @@ static void kdl_complete(
     char *prefix = xmalloc((size_t)(at - out->start + 1));
     memcpy(prefix, s->text + out->start, (size_t)(at - out->start));
     prefix[at - out->start] = 0;
-    completion_scope scope = scope_at(s, out->start);
+    completion_scope scope = scope_at(s, out->start, asset_schema_for_path(path));
     const type_desc *type = scope.type;
     char field_name[128] = "";
     bool quoted = out->start > 0 && s->text[out->start - 1] == '"';
@@ -653,10 +718,26 @@ static void kdl_complete(
         field_name[n] = 0;
     }
     const type_field *field = field_named(type, field_name);
+    const asset_schema_field *property = asset_schema_field_find(scope.schema, field_name);
     if (type && !field && !assigned && !quoted) {
         value_position = false;
     }
     if (value_position) {
+        if (property) {
+            for (int i = 0; i < property->choice_count; i++) {
+                av_doc *doc = av_doc_new();
+                char *insert = quoted
+                                 ? xstrdup(property->choices[i])
+                                 : av_value_write(av_str(doc, property->choices[i]));
+                offer(out, prefix, property->choices[i], property->description, insert, CODE_COMPLETE_VALUE);
+                free(insert);
+                av_doc_free(doc);
+            }
+            if (property->type == ASSET_SCHEMA_BOOL) {
+                offer(out, prefix, "#true", "boolean", NULL, CODE_COMPLETE_KEYWORD);
+                offer(out, prefix, "#false", "boolean", NULL, CODE_COMPLETE_KEYWORD);
+            }
+        }
         if (field && field->type == PIN_BOOL) {
             offer(out, prefix, "#true", "bool", NULL, CODE_COMPLETE_KEYWORD);
             offer(out, prefix, "#false", "bool", NULL, CODE_COMPLETE_KEYWORD);
@@ -703,6 +784,15 @@ static void kdl_complete(
             }
             offer(out, prefix, type->fields[i].name, type->fields[i].type_name, NULL, CODE_COMPLETE_FIELD);
         }
+    } else if (scope.schema && scope.schema->fields) {
+        for (int i = 0; i < scope.schema->field_count; i++) {
+            const asset_schema_field *property = &scope.schema->fields[i];
+            if (!property_present(s, scope, property->name, *prefix ? out->start : -1)) {
+                offer(out, prefix, property->name, property->description, NULL, CODE_COMPLETE_FIELD);
+            }
+        }
+    } else if (scope.element) {
+        offer(out, prefix, "-", "array element", NULL, CODE_COMPLETE_FIELD);
     } else {
         static const char *const common[] = {
             "name",        "version",  "components", "behaviors",
@@ -710,7 +800,7 @@ static void kdl_complete(
             "variables",   "events",   "inputs",     "outputs",
             "perspective", "physics",  "ui",         "identity"
         };
-        for (size_t i = 0; i < sizeof common / sizeof *common; i++) {
+        for (size_t i = 0; !scope.schema && i < sizeof common / sizeof *common; i++) {
             if (!property_present(s, scope, common[i], *prefix ? out->start : -1)) {
                 offer(out, prefix, common[i], "asset field", NULL, CODE_COMPLETE_FIELD);
             }
@@ -795,6 +885,10 @@ char *asset_source_hover(const asset_source *s, int at)
     }
     const type_desc *type = reflected_type_named(name);
     const type_field *field = field_named(context(s, at), name);
+    av_source range = av_get_source(v);
+    int start = range.name_start == SIZE_MAX ? at : (int)range.name_start;
+    completion_scope scope = scope_at(s, start, s->schema);
+    const asset_schema_field *property = asset_schema_field_find(scope.schema, name);
     char text[512];
     if (type) {
         snprintf(text, sizeof text, "%s\n%d reflected fields", name, type->field_count);
@@ -806,6 +900,15 @@ char *asset_source_hover(const asset_source *s, int at)
             name,
             field->type_name ? field->type_name : pin_type_name(field->type),
             field->description ? field->description : ""
+        );
+    } else if (property) {
+        snprintf(
+            text,
+            sizeof text,
+            "%s: %s\n%s",
+            name,
+            asset_schema_value_name(property->type),
+            property->description ? property->description : ""
         );
     } else {
         snprintf(text, sizeof text, "%s\nasset field", name);

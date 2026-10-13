@@ -12,9 +12,9 @@ endif()
 set(packages asset_authoring asset_json asset_text authoring behavior_runtime
     component_presentation ecs execution execution_contract field_catalog graph_authoring
     graph_compilation graph_model graph_catalog host_native_default image_preparation input_map json
-    model_authoring model_import model_runtime native_capabilities native_types platform project_document
+    material_authoring model_authoring model_import model_runtime native_capabilities native_types platform project_document
     project_preparation project_compilation prototype_document reference_index render
-    scenario_document scene_document shader_preparation source_catalog source_presentation
+    resource_catalog scenario_document scene_document shader_preparation source_catalog source_presentation
     studio_capabilities studio_graph support text_search text_source types ui ui_authoring
     ui_document ui_runtime visual_catalog)
 foreach(package IN LISTS packages)
@@ -26,9 +26,9 @@ if(NOT Chibi_RESOURCE_DIR)
     message(FATAL_ERROR "The installed SDK must export Chibi_RESOURCE_DIR")
 endif()
 get_filename_component(tool_root "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
-set(automation_units controller field_preview navigation content_hash ui_inspect
+set(automation_units controller asset_operations field_preview navigation content_hash ui_inspect
     execution_policy render_preview scene_preview)
-set(automation_headers controller field_preview navigation content_hash ui_inspect
+set(automation_headers controller asset_operations field_preview navigation content_hash ui_inspect
     execution_policy render_preview gpu_capture)
 set(private_headers "${CMAKE_CURRENT_BINARY_DIR}/private")
 foreach(header IN LISTS automation_headers)
@@ -58,7 +58,7 @@ target_include_directories(chibi_automation PRIVATE "${private_headers}")
 foreach(package IN LISTS packages)
     target_link_libraries(chibi_automation PRIVATE Chibi::${package})
 endforeach()
-add_executable(chibi_ctl main.c prepare.c registry.c)
+add_executable(chibi_ctl main.c commands.c evidence.c prepare.c registry.c)
 target_compile_definitions(chibi_ctl PRIVATE CHIBI_CTL_STANDALONE=1)
 target_include_directories(chibi_ctl PRIVATE "${private_headers}")
 target_link_libraries(chibi_ctl PRIVATE chibi_automation)

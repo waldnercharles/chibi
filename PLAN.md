@@ -176,6 +176,11 @@ Earlier architecture work follows for historical context.
 
 # Engine SDK and Chibi language implementation
 
+Active follow-up, 2026-10-13: [asset authoring and game creation](docs/plans/2026-10-13-asset-authoring.md)
+implements asset schemas, repeatable imports, resource inspection, precise
+diagnostics and shared CLI/Studio material authoring. The record below describes
+the earlier SDK separation and remains historical evidence.
+
 > Historical plan and delivery evidence for the 2026-10-08 SDK extraction.
 > Use [current status](docs/status.md) for today's backlog and owners, and
 > [architecture](docs/architecture.md) for the current package contracts.

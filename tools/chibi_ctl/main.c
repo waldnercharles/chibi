@@ -2,6 +2,8 @@
 #include "automation/controller.h"
 #include "automation/execution_policy.h"
 #include "automation/render_preview.h"
+#include "commands.h"
+#include "evidence.h"
 #include "prepare.h"
 #ifdef CHIBI_CTL_STANDALONE
 #include "registry.h"
@@ -26,6 +28,17 @@ static void usage(const char *program)
         "       %s --engine-info\n"
         "       %s --project-root PATH --prepare-project OUTPUT [--scene "
         "PATH]\n"
+        "Direct commands: schema [KIND], assets, resources, validate [PATH], "
+        "inspect PATH [--sample]\n"
+        "  material create NAME --preset matte|metal|emissive|unlit "
+        "[--roughness N] [--metallic N]\n"
+        "  model plan SOURCE --name NAME\n"
+        "  model import SOURCE --name NAME [--recipe]\n"
+        "  model reimport NAME [--check]\n"
+        "Use --project-root PATH and --evidence NEW_DIRECTORY before direct "
+        "commands.\n"
+        "Evidence supports NDJSON stdin and --render/--render-request FILE.\n"
+        "Preview evidence replays the saved request bytes via --render stdin.\n"
         "Read newline-delimited JSON automation requests from stdin.\n"
         "Each non-empty line produces exactly one JSON response on stdout.\n"
         "With --render, read one preview request and produce one response.\n"
@@ -47,7 +60,7 @@ static void usage(const char *program)
     );
 }
 
-static bool configure_render_video()
+static bool configure_render_video(char **blocked)
 {
 #ifdef __linux__
     const char *driver = chibi_preview_video_driver(true);
@@ -64,35 +77,77 @@ static bool configure_render_video()
             return true;
         }
     }
-    printf(
+    char response[1024];
+    snprintf(
+        response,
+        sizeof response,
         "{\"ok\":false,\"status\":\"blocked\",\"full_verification\":false,"
         "\"error\":{\"code\":\"video_driver_unavailable\","
         "\"message\":\"SDL build does not include requested %s video backend; "
         "select a supported SDL_VIDEO_DRIVER or use the documented bounded "
-        "Xvfb path. No fallback was attempted.\"}}\n",
+        "Xvfb path. No fallback was attempted.\"}}",
         driver
     );
+    *blocked = strdup(response);
     return false;
 }
 
-static int render_request(const char *project_root, const char *path)
+static int render_response(chibi_ctl_evidence *evidence, const char *request, char *response, int status)
+{
+    if (!response) {
+        response = strdup("{\"ok\":false,\"error\":{\"code\":\"response_unavailable\",\"message\":\"Could not create preview response\"}}");
+        status = CHIBI_AUTOMATION_EXECUTION_ERROR;
+    }
+    fputs(response, stdout);
+    fputc('\n', stdout);
+    fflush(stdout);
+    bool saved = chibi_ctl_evidence_response(evidence, request, response, status);
+    free(response);
+    return saved ? status : CHIBI_AUTOMATION_IO_ERROR;
+}
+
+static int render_request(const char *project_root, const char *path, chibi_ctl_evidence *evidence)
 {
     char *request = NULL;
     size_t capacity = 0;
     FILE *input = path ? fopen(path, "r") : stdin;
     if (!input) {
         perror("chibi_ctl --render-request");
-        return CHIBI_AUTOMATION_IO_ERROR;
+        return render_response(
+            evidence,
+            "",
+            strdup("{\"ok\":false,\"error\":{\"code\":\"request_unreadable\",\"message\":\"Could not open preview request\"}}"),
+            CHIBI_AUTOMATION_IO_ERROR
+        );
     }
     ssize_t length = getdelim(&request, &capacity, '\0', input);
-    if (path) {
-        fclose(input);
+    bool read_error = ferror(input);
+    if (path && fclose(input)) {
+        read_error = true;
     }
-    if (length <= 0) {
+    if (length > 0 && !chibi_ctl_evidence_request(evidence, request, (size_t)length)) {
         free(request);
-        fprintf(stderr, "chibi_ctl --render: expected one JSON request on stdin\n");
-        return 2;
+        return CHIBI_AUTOMATION_IO_ERROR;
     }
+    if (length <= 0 || read_error) {
+        int status = read_error ? CHIBI_AUTOMATION_IO_ERROR
+                                : CHIBI_AUTOMATION_INVALID_REQUEST;
+        int result = render_response(
+            evidence,
+            request ? request : "",
+            strdup("{\"ok\":false,\"error\":{\"code\":\"request_unreadable\",\"message\":\"Expected one readable JSON preview request\"}}"),
+            status
+        );
+        free(request);
+        return result;
+    }
+    char *blocked = NULL;
+    if (!configure_render_video(&blocked)) {
+        int result = render_response(evidence, request, blocked, CHIBI_AUTOMATION_INVALID_REQUEST);
+        free(request);
+        return result;
+    }
+    chibi_render_deadline();
     int exit_code = 0;
     fflush(stdout);
     int output = dup(STDOUT_FILENO);
@@ -105,21 +160,17 @@ static int render_request(const char *project_root, const char *path)
         abort();
     }
     close(output);
+    int result = render_response(evidence, request, response, exit_code);
     free(request);
-    if (!response) {
-        fprintf(stderr, "chibi_ctl --render: could not create response\n");
-        return 5;
-    }
-    fputs(response, stdout);
-    fputc('\n', stdout);
-    free(response);
-    return exit_code;
+    return result;
 }
 
 static int run(int argc, char **argv)
 {
     const char *project_root = ".";
     const char *request_path = NULL;
+    const char *evidence_path = NULL;
+    char *direct = NULL;
     const char *prepared_path = NULL, *scene = NULL;
     int render = 0;
     bool format = false, check = false, migrate = false;
@@ -167,8 +218,27 @@ static int run(int argc, char **argv)
             scene = argv[++i];
             continue;
         }
+        if (!strcmp(argv[i], "--evidence") && i + 1 < argc) {
+            evidence_path = argv[++i];
+            continue;
+        }
+        if (argv[i][0] != '-') {
+            char error[512];
+            direct = chibi_ctl_command(argc - i, argv + i, error, sizeof error);
+            if (!direct) {
+                fprintf(stderr, "%s\n", error);
+                return CHIBI_AUTOMATION_INVALID_REQUEST;
+            }
+            break;
+        }
         fprintf(stderr, "Unknown argument: %s\n", argv[i]);
         usage(argv[0]);
+        return CHIBI_AUTOMATION_INVALID_REQUEST;
+    }
+    if ((direct && render) ||
+        ((direct || evidence_path) && (migrate || prepared_path || format))) {
+        fprintf(stderr, "Direct commands/evidence cannot be combined with legacy execution flags\n");
+        free(direct);
         return CHIBI_AUTOMATION_INVALID_REQUEST;
     }
     if (migrate) {
@@ -189,11 +259,17 @@ static int run(int argc, char **argv)
         return chibi_prepare_project(project_root, scene, prepared_path);
     }
     if (render) {
-        chibi_render_deadline();
-        if (!configure_render_video()) {
-            return CHIBI_AUTOMATION_INVALID_REQUEST;
+        chibi_ctl_evidence *
+            evidence = evidence_path
+                         ? chibi_ctl_evidence_begin(evidence_path, project_root, true, argc, argv)
+                         : NULL;
+        if (evidence_path && !evidence) {
+            return CHIBI_AUTOMATION_IO_ERROR;
         }
-        return render_request(project_root, request_path);
+        int status = render_request(project_root, request_path, evidence);
+        return chibi_ctl_evidence_finish(evidence, status)
+                 ? status
+                 : CHIBI_AUTOMATION_IO_ERROR;
     }
     if (format) {
         int differing = chibi_automation_format_assets(project_root, check);
@@ -202,11 +278,34 @@ static int run(int argc, char **argv)
                                   : CHIBI_AUTOMATION_OK;
     }
 
+    chibi_ctl_evidence *evidence = NULL;
+    if (evidence_path) {
+        evidence = chibi_ctl_evidence_begin(evidence_path, project_root, false, argc, argv);
+        if (!evidence) {
+            free(direct);
+            return CHIBI_AUTOMATION_IO_ERROR;
+        }
+    }
     char *line = NULL;
     size_t capacity = 0;
     int result = CHIBI_AUTOMATION_OK;
-    while (getline(&line, &capacity, stdin) >= 0) {
-        size_t length = strlen(line);
+    bool pending_direct = direct != NULL;
+    ssize_t read_length = 0;
+    while (pending_direct || (read_length = getline(&line, &capacity, stdin)) >= 0) {
+        size_t length = (size_t)read_length;
+        if (pending_direct) {
+            line = direct;
+            length = strlen(direct);
+            pending_direct = false;
+        }
+        bool saved = chibi_ctl_evidence_request(evidence, line, length);
+        if (direct) {
+            saved = chibi_ctl_evidence_request(evidence, "\n", 1) && saved;
+        }
+        if (!saved) {
+            result = CHIBI_AUTOMATION_IO_ERROR;
+            break;
+        }
         while (length && (line[length - 1] == '\n' || line[length - 1] == '\r')) {
             line[--length] = '\0';
         }
@@ -217,18 +316,34 @@ static int run(int argc, char **argv)
         char *response = chibi_automation_handle(line, project_root, &exit_code);
         if (!response) {
             fprintf(stderr, "chibi_ctl: could not create response\n");
+            chibi_ctl_evidence_response(evidence, line, "null", CHIBI_AUTOMATION_EXECUTION_ERROR);
             result = CHIBI_AUTOMATION_EXECUTION_ERROR;
+            if (direct) {
+                break;
+            }
             continue;
         }
         fputs(response, stdout);
         fputc('\n', stdout);
         fflush(stdout);
+        if (!chibi_ctl_evidence_response(evidence, line, response, exit_code)) {
+            exit_code = CHIBI_AUTOMATION_IO_ERROR;
+        }
         free(response);
         if (exit_code > result) {
             result = exit_code;
         }
+        if (direct) {
+            break;
+        }
+    }
+    if (ferror(stdin) && !direct) {
+        result = CHIBI_AUTOMATION_IO_ERROR;
     }
     free(line);
+    if (!chibi_ctl_evidence_finish(evidence, result)) {
+        return CHIBI_AUTOMATION_IO_ERROR;
+    }
     return result;
 }
 

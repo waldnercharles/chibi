@@ -53,6 +53,67 @@ other prototypes' `(array)includes` find it by that name in the player and in
 prototype with includes but keeps its text as written instead of folding the
 included components in.
 
+## Material creation and shader inspection
+
+The direct CLI commands use the same controller operations as NDJSON requests.
+Place `--project-root` and `--evidence` options before the command:
+
+```sh
+chibi_ctl --project-root game schema material
+chibi_ctl --project-root game material create Steel --preset metal --roughness 0.25
+chibi_ctl --project-root game inspect content/materials/Steel.kdl --sample
+chibi_ctl --project-root game --evidence /tmp/steel-check validate content/materials/Steel.kdl
+```
+
+To use the same packaged SDK generation as Studio, build the standalone
+controller against that installation:
+
+```sh
+cmake -S tools/chibi_ctl -B build-authoring-ctl -G Ninja \
+  -DChibi_DIR="$PWD/dist/sdk/lib/cmake/Chibi" -DCMAKE_BUILD_TYPE=Release
+cmake --build build-authoring-ctl --parallel
+```
+
+Its executable is `build-authoring-ctl/bin/chibi_ctl`. Packaged SDK resources
+provide an engine build ID; evidence also fingerprints the invoked executable.
+An ordinary build tree may have no packaged engine build ID, which is recorded
+as unavailable.
+
+Evidence destinations must be new directories outside project content. Bundles
+retain exact requests and responses, replay arguments, source inventories and
+manifest bytes before and after the operation. Successful native previews also
+export a PNG. Bundles distinguish structural validation, CPU simulation, CPU
+shader samples and GPU renders; they never claim full verification. They record
+drift hashes, not authenticity proofs or project backups.
+
+`schema` lists asset kinds, structural fields, supported source diagnostics and
+canonical examples. Reflected fields carry units, enum choices, color intent and
+editing ranges. A schema marked partial leaves other constraints to its loader.
+`resources` inventories bounded raw resources and quoted consumers, including
+metadata, byte identities and labeled cost estimates. Literal matches may occur
+in comments and do not prove runtime use. Missing or incomplete coverage is explicit.
+
+Material presets are `matte`, `metal`, `emissive` and `unlit`. They produce editable
+KDL through the shared material authoring SDK. The `create_material` JSON operation
+also accepts colors, alpha settings and texture sampling transforms. Studio's
+New Material form calls the same creator. Its Shader contract panel and Evaluate
+center button use the same shader report and fixed CPU context as `inspect --sample`:
+UV `(0.5, 0.5)`, local/world origin, normal/view `+Y`, time/activity zero and authored
+parameter defaults. A CPU sample describes shader outputs at that context; use a
+bounded native preview to inspect rendered appearance.
+
+Saved model imports use `model plan SOURCE --name NAME`,
+`model import SOURCE --name NAME --recipe` and `model reimport NAME [--check]`.
+Recipe sources must be inside the project. Plans report geometry, dependencies,
+warnings and proposed file actions. Reimport updates unchanged generated files,
+preserves edited material/prototype files in full, and rejects stale snapshots
+or conflicting ownership. Publication stages files and rolls back reported
+failures; it does not guarantee recovery from a process crash.
+
+See [the game creation interface](game-creation-interface.md) for supported
+commands, an exact preview request and the proposed mesh, SDF, procedural and
+tilemap tools.
+
 ## Tilemap layers
 
 Put a `Tilemap` on one transformed entity to draw an atlas-backed grid.

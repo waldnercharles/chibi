@@ -31,6 +31,11 @@ CPU_SELECTORS = {
     '--shader-webgpu': 'shader-webgpu',
     '--arena': 'arena',
     '--asset-source': 'asset-source',
+    '--asset-schema': 'asset-schema',
+    '--resource-catalog': 'resource-catalog',
+    '--shader-authoring': 'shader-authoring',
+    '--cli-authoring': 'cli-authoring',
+    '--gpu-capabilities': 'gpu-capabilities',
     '--asset-values': 'asset-values',
     '--behavior-loader': 'behavior-loader',
     '--compile-installed-space-cadet': 'compile-installed-space-cadet',
@@ -73,7 +78,8 @@ PLAYER_SELECTORS = {
     '--player-installed-space-cadet-vm': 'player-installed-space-cadet-vm',
     '--player-installed-space-cadet-sljit': 'player-installed-space-cadet-sljit',
 }
-STUDIO_SELECTORS = {'--studio-source-edit': 'studio-source-edit',
+STUDIO_SELECTORS = {'--studio-material-authoring': 'studio-material-authoring',
+                    '--studio-source-edit': 'studio-source-edit',
                     '--studio-graph-visibility': 'studio-graph-visibility',
                     '--studio-scene-move': 'studio-scene-move',
                     '--studio-outliner-move': 'studio-outliner-move',
@@ -84,6 +90,7 @@ STUDIO_SELECTORS = {'--studio-source-edit': 'studio-source-edit',
                     '--studio-scene-gizmo3d': 'studio-scene-gizmo3d',
                     '--studio-scene-collider3d': 'studio-scene-collider3d'}
 STUDIO_ACCEPTANCE = {
+    '--studio-material-authoring': ('--material-authoring', 20, 'Studio material authoring accepted: frames=20 roughness=0.42 metallic=1 CPU center probe'),
     '--studio-scene-collider3d': ('--scene-collider3d', 26, 'Studio 3D collider handles accepted: frames=26'),
     '--studio-scene-gizmo3d': ('--scene-gizmo3d', 42, 'Studio 3D gizmo accepted: frames=42'),
     '--studio-scene-camera': ('--scene-camera', 30, 'Studio 3D camera accepted: frames=30'),
@@ -424,7 +431,7 @@ def test_plan(purpose, health):
         return dict(plan, commands=['make agent-test AGENT_SELECTOR=--source-edit'],
                     gpu_startup=False, reason='logic_change_selects_CPU_source_assertions')
     if health.get('status') != 'enumerated' or not health.get('devices'):
-        plan['discovery_note'] = 'Vulkan discovery is inconclusive; Metal/GLES/other rendering may work. Verify the actual bounded runtime result.'
+        plan['discovery_note'] = 'Device discovery is inconclusive. Verify the actual bounded runtime result.'
     if purpose == 'temporal':
         return dict(plan, commands=['python3 tools/agent.py mp4 REQUEST.json --frames 60 --output OUTPUT.mp4'],
                     requires_explicit_mp4_request=True, warmup='set gpu_warmup_frames for the scene',
@@ -490,7 +497,7 @@ def main():
     sub = parser.add_subparsers(dest='action', required=True)
     plan = sub.add_parser('plan', help='Choose focused logic/render/temporal work using discovered capabilities')
     plan.add_argument('purpose', choices=['logic', 'render', 'temporal'])
-    sub.add_parser('doctor', help='Read-only Vulkan device discovery; no rendering or driver changes')
+    sub.add_parser('doctor', help='Read-only GPU device discovery; no rendering or driver changes')
     sub.add_parser('list', help='CPU classification, explicit GPU checks and budgets')
     sub.add_parser('hardware-check', help='Refuse unless full hardware validation is opted in')
     from validation_plan import add_parser, validation_plan

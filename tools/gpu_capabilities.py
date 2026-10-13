@@ -1,9 +1,51 @@
 #!/usr/bin/env python3
-"""Read-only Vulkan enumeration; no device creation, rendering or driver changes."""
+"""Read-only GPU discovery; no rendering or driver changes."""
 import ctypes as c
 import glob
 import json
 import os
+import subprocess
+import sys
+
+
+def probe_metal():
+    """Read OS-reported Metal support without creating a rendering device."""
+    result = dict(devices=[], hardware_available=False, acceleration='unknown',
+                  backend='Metal', scope='discovery_only_not_render_validation',
+                  source='system_profiler', discovery_timeout_seconds=4)
+    try:
+        process = subprocess.run(
+            ['/usr/sbin/system_profiler', 'SPDisplaysDataType', '-json', '-timeout', '3'],
+            capture_output=True, text=True, timeout=4, check=True,
+            env=dict(os.environ, LC_ALL='C'))
+        profile = json.loads(process.stdout)
+        if not isinstance(profile, dict) or not isinstance(profile.get('SPDisplaysDataType'), list):
+            return dict(result, status='unavailable', reason='invalid_display_profile')
+        for gpu in profile['SPDisplaysDataType']:
+            if not isinstance(gpu, dict):
+                return dict(result, status='unavailable', reason='invalid_gpu_profile')
+            support = gpu.get('spdisplays_mtlgpufamilysupport', gpu.get('spdisplays_metal', ''))
+            if not isinstance(support, str):
+                support = ''
+            family = support.removeprefix('spdisplays_metal')
+            supported = ((support.startswith('spdisplays_metal') and family.isdecimal()) or
+                         support == 'spdisplays_supported' or
+                         support == 'Supported' or support.startswith('Supported, feature set ') or
+                         (support.startswith('Metal ') and support[6:].isdecimal()))
+            name = gpu.get('sppci_model', gpu.get('_name', 'Unknown GPU'))
+            if not isinstance(name, str):
+                name = 'Unknown GPU'
+            # Do not expose display profiles, serials or other machine metadata.
+            result['devices'].append(dict(name=name, metal_supported=supported,
+                                          metal_support=support))
+        result['hardware_available'] = any(device['metal_supported'] for device in result['devices'])
+        if result['hardware_available']:
+            result['acceleration'] = 'hardware'
+        return dict(result, status='enumerated')
+    except subprocess.TimeoutExpired:
+        return dict(result, status='unavailable', reason='discovery_timeout')
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return dict(result, status='unavailable', reason='display_profile_unavailable')
 
 
 class InstanceInfo(c.Structure):
@@ -22,6 +64,8 @@ def classify_devices(devices):
 
 
 def probe():
+    if sys.platform == 'darwin':
+        return probe_metal()
     result = dict(driver=os.getenv('VK_DRIVER_FILES', 'loader-default'),
                   device_nodes=glob.glob('/dev/dri/*') + glob.glob('/dev/nvidia*'),
                   devices=[], hardware_available=False, acceleration='unknown', backend='Vulkan')

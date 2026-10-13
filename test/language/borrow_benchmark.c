@@ -72,13 +72,23 @@ static uint64_t state_id(const char *name)
     return 0;
 }
 
-static bool compile(behavior_backend backend)
+static bool compile(behavior_backend backend, int helpers)
 {
-    const char *source = "behavior BorrowBench { values: double[] = []; total: "
-                         "double = 0;"
-                         "on Run { sum := 0.0; for value in values { sum += "
-                         "value; } total += sum; } }";
-    syntax = script_parse(source);
+    const char *sources[] = {
+        "behavior BorrowBench { values: double[] = []; total: double = 0;"
+        "on Run { sum := 0.0; for value in values { sum += value; } total += "
+        "sum; } }",
+        "behavior BorrowBench { values: double[] = []; total: double = 0;"
+        "Sum :: pure (input: double[]) -> double { sum := 0.0; "
+        "for value in input { sum += value; } return sum; }"
+        "on Run { total += Sum(values); } }",
+        "behavior BorrowBench { values: double[] = []; total: double = 0;"
+        "Sum :: pure (input: double[]) -> double { sum := 0.0; "
+        "for value in input { sum += value; } return sum; }"
+        "Forward :: pure (input: double[]) -> double { return Sum(input); }"
+        "on Run { total += Forward(values); } }"
+    };
+    syntax = script_parse(sources[helpers]);
     REQUIRE(syntax && !syntax->diagnostic_count);
     analysis = script_analyze(syntax, &catalog);
     if (analysis && !analysis->valid) {
@@ -116,8 +126,9 @@ TEST_CASE(borrow_authored_collection_benchmark)
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     const int sizes[] = { 1, 128 };
     for (int backend = 0; backend < 2; backend++) {
-        for (int sample = 0; sample < 2; sample++) {
-            REQUIRE(compile(backends[backend]));
+        for (int workload = 0; workload < 6; workload++) {
+            int helpers = workload / 2, sample = workload % 2;
+            REQUIRE(compile(backends[backend], helpers));
             uint64_t values_id = state_id("values"), total_id = state_id("total");
             REQUIRE(values_id && total_id);
             execution_instance *instance = execution_program_attach(
@@ -144,9 +155,10 @@ TEST_CASE(borrow_authored_collection_benchmark)
             );
             REQUIRE(execution_instance_state(instance, total_id)->d == expected);
             printf(
-                "BORROW backend=%s items=%d dispatches=%d trials=%d "
+                "BORROW backend=%s helpers=%d items=%d dispatches=%d trials=%d "
                 "element_visits=%d expected=%.0f module_bytes=%zu\n",
                 behavior_backend_name(backends[backend]),
+                helpers,
                 items,
                 DISPATCHES,
                 TRIALS,

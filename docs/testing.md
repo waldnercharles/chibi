@@ -881,6 +881,47 @@ The language follow-up admits these focused C checks under the same supervisor:
   child processes or all-project traversal. It does not establish that every
   repository or external project compiles.
 
+The call-view/reduction follow-up adds bounded affected-contract checks:
+
+- `tool language-reductions` and `tool wasm-reductions` run four fixed public-SDK
+  execution cases on the VM and compiled backend, with at most eight rows, a 4,096-step
+  budget and prepared buffers capped at 64 KiB. They cover producer retirement
+  before prepared reload, typed ordered folding, wrapping, clamping, unordered
+  regrouping, NaN/signed-zero min/max, and whole-log rejection/discard. No files,
+  children, frames or GPU work run. A fifth case finalizes three tiny public-IR
+  predicate variants (snapshot, raw read and native aggregate input) and checks
+  conservative component dependencies without executing rows.
+- `tool source-reductions` covers source/engine scheduling, dependent value/change
+  filters, failed preparation and publication, actual worker overlap with a
+  two-second bounded gate, and debugger pause/resume/reset using fixed supplied
+  clocks and at most four owners per regression fixture. The debugger fixture
+  has one kinematic physics body and no renderer. Worker tasks are always joined.
+  A ninth, one-target case changes a later system's effects while a reducer is
+  paused and checks phase restart with fresh contributions and no physics replay.
+  A tenth case fails one producer before a later peer pauses and checks that the
+  failed batch cancels that peer's log and inspector state without publication.
+- `tool source-reduction-benchmark` compares ordinary serial writes and ordered
+  or unordered reductions, each serially and with a two-worker executor. Five
+  modes each use one target and 256 contributor entities, two systems, one warmup
+  and five trials of eight passes (1,024 contributions per pass). It reports
+  exact values, published revisions, worker participation, log records, retained
+  and peak buffer bytes, allocation traffic and timings. Setup and correctness
+  assertions stay outside timers; elapsed time is never a pass threshold.
+- `tool language-borrow-benchmark` now measures the direct loop and one/two-level
+  ordinary helper calls at the original one/128-item sizes and 32-dispatch,
+  five-trial bounds. There are twelve preparations and 1,920 timed dispatches
+  total, without files/children/frames/GPU work. The same fixture runs on Wasm.
+- The existing borrow ownership selector adds helper forwarding, callback,
+  actual suspension, mutation/escape, prepared linking and program-state-header
+  aliases. The C-export fixture adds a caller export and callback fallback to
+  its one existing shared-library compilation, still capped at 128 KiB source.
+- Four additional scheduler cases use three synthetic registrations, a reverse
+  inline executor and fixed failures/pauses to check ordered publication,
+  prepare-after-commit, discard and resume without replay. They create no worker
+  threads and stay in `tool scheduler-benchmark`.
+- The component-setter source-presentation case also projects four tiny reduction
+  spellings and checks receiver/value origins and reduction-mode cache identity.
+
 These are first-measurement admissions after independent workload review, not
 recorded passes. The original cases, assertions, sanitizers and 60-second limits
 remain intact. Separate semantic, syntax, formatting and prepared-boundary checks

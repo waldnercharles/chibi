@@ -41,7 +41,7 @@ typedef struct
     bool failed, initializing, async_emitted;
     int initializer_depth;
     int target_expression, target_reference, target_value;
-    bool target_cached;
+    bool target_cached, reduction_target;
     bool argument_cached;
     int cached_argument, cached_value;
     bool pattern_cached;
@@ -563,6 +563,7 @@ static int linked_host(
                     case EXECUTION_INTRINSIC_REFERENCE_FIELD:
                     case EXECUTION_INTRINSIC_REFERENCE_READ:
                     case EXECUTION_INTRINSIC_REFERENCE_WRITE:
+                    case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
                     case EXECUTION_INTRINSIC_LOCAL_RELEASE:
                         kind = BEHAVIOR_REFERENCE;
                         break;
@@ -3414,7 +3415,7 @@ static int reference_expression(lower *l, const script_expression *e, bool writt
         headers[8].u64 = type->size;
         slots[5] = !symbol && e->left >= 0 ? expression(l, e->left)
                                            : component_owner(l, symbol, e->range);
-        behavior_function_builder_component(l->builder, type->component_id, false, written);
+        behavior_function_builder_component(l->builder, type->component_id, false, written && !l->reduction_target);
     } else if (symbol && l->variables[e->symbol] >= 0) {
         headers[2].i = LANGUAGE_REFERENCE_STATE;
         headers[3].i = l->variables[e->symbol];
@@ -4371,6 +4372,39 @@ static void assign(lower *l, const script_statement *s)
     l->target_value = saved_value;
     l->target_cached = saved_cached;
 }
+static void reduce(lower *l, const script_statement *s)
+{
+    const script_expression *target = &l->a->expressions[s->expression];
+    l->reduction_target = true;
+    int destination = reference(l, s->expression);
+    l->reduction_target = false;
+    int value = convert(
+        l,
+        expression(l, s->second),
+        l->a->expressions[s->second].type,
+        target->type,
+        s->range
+    );
+    int op = s->reduction == SCRIPT_REDUCTION_MIN ? EXECUTION_REDUCTION_MIN
+           : s->reduction == SCRIPT_REDUCTION_MAX ? EXECUTION_REDUCTION_MAX
+           : s->reduction == SCRIPT_REDUCTION_ADD_UNORDERED
+               ? EXECUTION_REDUCTION_ADD_UNORDERED
+               : EXECUTION_REDUCTION_ADD;
+    pin_value headers[] = { { .type = BF_POINTER_TYPE },
+                            initial(l, target->type),
+                            { .type = PIN_I32, .i = op } };
+    int slots[] = { destination, value, -1 };
+    primitive(
+        l,
+        &EXECUTION_reference_reduce_call,
+        &EXECUTION_assignment_access,
+        headers,
+        slots,
+        3,
+        (script_type){ .storage = PIN_BOOL },
+        s->range
+    );
+}
 static void loop_finish(lower *l, int again, int after)
 {
     lower_loop *loop = &l->loops[acount(l->loops) - 1];
@@ -4635,6 +4669,7 @@ static void statement(lower *l, int index)
             return;
         }
         case SCRIPT_STMT_ASSIGN: assign(l, s); return;
+        case SCRIPT_STMT_REDUCE: reduce(l, s); return;
         case SCRIPT_STMT_EXPRESSION: {
             int value = expression(l, s->expression);
             discard_call_results(l, &l->a->expressions[s->expression], value);

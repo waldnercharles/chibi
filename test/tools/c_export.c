@@ -20,7 +20,8 @@ enum
 {
     ALIAS_FIXTURES = 12,
     BORROW_FIXTURE = ALIAS_FIXTURES + 1,
-    FIXTURES = BORROW_FIXTURE + 1
+    BORROW_CALL_FIXTURE = BORROW_FIXTURE + 1,
+    FIXTURES = BORROW_CALL_FIXTURE + 1
 };
 static behavior_function *functions[FIXTURES];
 static behavior_function_builder *builder;
@@ -234,7 +235,7 @@ static int borrow_value(behavior_function_instruction instruction, bool address)
     return instruction.output;
 }
 
-static bool borrow_fixture()
+static bool borrow_fixture(bool caller)
 {
     /* Retain the protocol bank for ownership assertions. Authored lowering
      * correctly clears consumed banks after loading the result into a slot. */
@@ -299,6 +300,28 @@ static bool borrow_fixture()
         true
     );
     behavior_function_builder_root(builder, BEHAVIOR_BANK_SLOT, held, shape);
+    if (caller) {
+        int call = behavior_function_builder_call(builder, functions[BORROW_FIXTURE], &shape, 1, &output, 1);
+        int argument = borrow_value(
+            (behavior_function_instruction){
+                .op = BF_HOST_SLOT,
+                .type = BF_POINTER_TYPE,
+                .left = behavior_function_builder_call_first(builder, call) },
+            true
+        );
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = BF_WRITE,
+                                             .type = BF_POINTER_TYPE,
+                                             .left = held,
+                                             .right = argument,
+                                             .offset = offsetof(pin_value, d) }
+        );
+        behavior_function_builder_emit(
+            builder,
+            (behavior_function_instruction){ .op = BF_INVOKE, .left = call }
+        );
+    }
     int count = borrow_value(
         (behavior_function_instruction){ .op = BF_READ,
                                          .type = PIN_I32,
@@ -316,25 +339,27 @@ static bool borrow_fixture()
     );
     behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
     char error[256];
-    functions[BORROW_FIXTURE] = behavior_function_builder_finish(builder, error, sizeof error);
-    if (!functions[BORROW_FIXTURE]) {
+    int index = caller ? BORROW_CALL_FIXTURE : BORROW_FIXTURE;
+    functions[index] = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!functions[index]) {
         fprintf(stderr, "C borrow fixture: %s\n", error);
     }
-    REQUIRE(functions[BORROW_FIXTURE]);
+    REQUIRE(functions[index]);
     behavior_function_builder_free(builder);
     builder = NULL;
-    REQUIRE(functions[BORROW_FIXTURE]->runtime_map);
+    REQUIRE(functions[index]->runtime_map);
     int guarded = 0;
-    for (int i = 0; i < acount(functions[BORROW_FIXTURE]->runtime_body); i++) {
-        const behavior_function_instruction *instruction = &functions[BORROW_FIXTURE]
-                                                                ->runtime_body[i];
+    for (int i = 0; i < acount(functions[index]->runtime_body); i++) {
+        const behavior_function_instruction *instruction = &functions[index]->runtime_body[i];
         guarded += instruction->op == BF_HOST_CALL &&
                    instruction->right == BF_HOST_BORROW_ARRAY;
     }
     REQUIRE(guarded == 1);
-    behavior_function_write_c(functions[BORROW_FIXTURE], source, "export_borrow");
+    behavior_function_write_c(functions[index], source, caller ? "export_borrow_call" : "export_borrow");
     return true;
 }
+
+static void export_call_leave(behavior_function_context *, int) {}
 
 static bool borrows_exported_plain_arrays()
 {
@@ -353,7 +378,7 @@ static bool borrows_exported_plain_arrays()
         }
     }
     REQUIRE(guarded == 1 && result >= 0);
-    for (int sample = 0; sample < 4; sample++) {
+    for (int sample = 0; sample < 5; sample++) {
         for (int inspection = 0; inspection < 2; inspection++) {
             release_pause();
             pin_value items[] = { { .type = PIN_F64, .d = 1 },
@@ -392,6 +417,7 @@ static bool borrows_exported_plain_arrays()
                 .results = &output,
                 .activation = sample == 3 ? &pause_activation : NULL,
                 .budget = 1000,
+                .call_leave = sample == 4 ? export_call_leave : NULL,
                 .inspect = inspection ? inspect : NULL
             };
             behavior_function_bind_storage(&pause_context, &pause_storage);
@@ -422,6 +448,34 @@ static bool borrows_exported_plain_arrays()
     return true;
 }
 
+static bool exported_call_snapshots_keep_the_standalone_abi()
+{
+    typedef int (*entry)(behavior_function_context *);
+    entry generated = (entry)dlsym(library, "export_borrow_call");
+    REQUIRE(generated);
+    behavior_function *f = functions[BORROW_CALL_FIXTURE];
+    REQUIRE(f->readonly_collections);
+    release_pause();
+    pin_value item = { .type = PIN_F64, .d = 7 }, output = { .type = PIN_F64 };
+    pin_array array = { .element_type = PIN_F64, .count = 1, .capacity = 1, .items = &item };
+    pin_value input = { .type = PIN_F64, .container = PIN_CONTAINER_ARRAY, .ptr = &array };
+    behavior_function_activation_init(f, &pause_activation);
+    pause_context = (behavior_function_context){ .arguments = &input,
+                                                 .argument_count = 1,
+                                                 .results = &output,
+                                                 .activation = &pause_activation,
+                                                 .budget = 1000 };
+    behavior_function_bind_storage(&pause_context, &pause_storage);
+    REQUIRE(behavior_function_bind(f, &pause_context, NULL, 0));
+    behavior_function_prepare_host(f, &pause_context);
+    REQUIRE(generated(&pause_context) == BEHAVIOR_FUNCTION_CALL_RESULT);
+    const pin_array *held = pause_context.data->values[f->calls[0].first].ptr;
+    REQUIRE(held && held != &array && held->items != &item);
+    item.d = 99;
+    REQUIRE(held->items[0].d == 7);
+    return true;
+}
+
 TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
 {
     snprintf(directory, sizeof directory, "/tmp/chibi-c-export-XXXXXX");
@@ -442,7 +496,8 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
         REQUIRE(fixture(i));
     }
     REQUIRE(pause_fixture());
-    REQUIRE(borrow_fixture());
+    REQUIRE(borrow_fixture(false));
+    REQUIRE(borrow_fixture(true));
     long bytes = ftell(source);
     REQUIRE(bytes > 0 && bytes < 128 * 1024);
     int closed = fclose(source);
@@ -523,6 +578,7 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
     }
     REQUIRE(resumes_exported_pause());
     REQUIRE(borrows_exported_plain_arrays());
+    REQUIRE(exported_call_snapshots_keep_the_standalone_abi());
     return true;
 }
 void test_tool_c_export()

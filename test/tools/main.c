@@ -131,6 +131,8 @@ void test_preview_shader_libraries();
 void test_source_presentation();
 void test_component_presentation();
 void test_system_schedule();
+void test_source_reductions();
+void test_source_reduction_benchmark();
 void test_tool_scheduler_benchmark();
 void test_code_system_runtime();
 void test_code_query_rows();
@@ -553,6 +555,7 @@ int main(int argc, char **argv)
     bool source_features = false, source_numeric = false,
          source_material = false, source_presentation = false,
          system_schedule = false, scheduler_benchmark = false,
+         source_reductions = false, source_reduction_benchmark = false,
          source_systems = false, source_query_rows = false, source_edit = false,
          new_asset = false, asset_refactor = false;
     int corpus = 0;
@@ -603,6 +606,9 @@ int main(int argc, char **argv)
                : !strcmp(argv[1], "--prepare-corpora-sljit") ? 3
                                                              : 0;
     }
+    source_reductions = argc == 2 && !strcmp(argv[1], "--source-reductions");
+    source_reduction_benchmark = argc == 2 &&
+                                 !strcmp(argv[1], "--source-reduction-benchmark");
     system_schedule = argc == 2 && !strcmp(argv[1], "--system-schedule");
     scheduler_benchmark = argc == 2 && !strcmp(argv[1], "--scheduler-benchmark");
     source_systems = argc == 2 && !strcmp(argv[1], "--source-systems");
@@ -699,12 +705,13 @@ int main(int argc, char **argv)
         !arena && !render_geometry && !radiance_surface && !radiance_horizons &&
         !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
         !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
-        !shader_programs && !material_cameras && !mesh_materials && !sdf_quality &&
-        !scene3d_post && !scene3d_shapes && !persistent_store && !whole_alias &&
-        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
-        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
-        !source_material && !source_presentation && !system_schedule &&
-        !scheduler_benchmark && !source_systems && !source_query_rows &&
+        !shader_programs && !material_cameras && !mesh_materials &&
+        !sdf_quality && !scene3d_post && !scene3d_shapes && !persistent_store &&
+        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
+        !whole_select && !owned_tick && !parallel_tick && !source_features &&
+        !source_numeric && !source_material && !source_presentation &&
+        !system_schedule && !scheduler_benchmark && !source_reductions &&
+        !source_reduction_benchmark && !source_systems && !source_query_rows &&
         !examples_projects && !validate_project && !expansion && !controller &&
         !render_fixture && !graph_document && !graph_presentation &&
         !graph_functions && !vector_nodes && !material_render && !material) {
@@ -753,7 +760,8 @@ int main(int argc, char **argv)
             "--source-native-numeric-queries | --source-native-material | "
             "--source-presentation | --system-schedule | --scheduler-benchmark "
             "| --source-systems | "
-            "--source-query-rows | "
+            "--source-query-rows | --source-reductions | "
+            "--source-reduction-benchmark | "
             "--source-edit | --new-asset | --asset-refactor | "
             "--shader-parameters-prepared | "
             "--graph-document | --graph-presentation | --graph-functions | "
@@ -785,7 +793,8 @@ int main(int argc, char **argv)
     source_runtime_active = corpus || unit_fixtures || coverage ||
                             preview_components || shader_parameters || source_edit ||
                             new_asset || asset_refactor || system_schedule ||
-                            scheduler_benchmark || source_systems ||
+                            scheduler_benchmark || source_reductions ||
+                            source_reduction_benchmark || source_systems ||
                             source_query_rows || persistent_store ||
                             source_presentation || whole_alias || whole_math ||
                             whole_integer || whole_conversion || whole_select ||
@@ -850,6 +859,10 @@ int main(int argc, char **argv)
             test_source_edit();
         } else if (system_schedule) {
             test_system_schedule();
+        } else if (source_reductions) {
+            test_source_reductions();
+        } else if (source_reduction_benchmark) {
+            test_source_reduction_benchmark();
         } else if (scheduler_benchmark) {
             test_tool_scheduler_benchmark();
         } else if (source_systems) {

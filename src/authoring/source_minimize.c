@@ -366,7 +366,8 @@ static bool same_statement(const pair *p, int i, int j)
     if (same_write(p, x, y)) {
         return true;
     }
-    if (x->kind != y->kind || x->op != y->op || !same_effects(x->effects, y->effects) ||
+    if (x->kind != y->kind || x->op != y->op || x->reduction != y->reduction ||
+        !same_effects(x->effects, y->effects) ||
         x->child_count != y->child_count || !same_symbol(p, x->symbol, y->symbol) ||
         !same_expression(p, x->expression, y->expression) ||
         !same_expression(p, x->second, y->second) ||

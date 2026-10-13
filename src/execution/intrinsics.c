@@ -591,6 +591,39 @@ static const char *write_reference(arena *storage, const pin_value *args, int co
     *out = (pin_value){ .type = PIN_BOOL, .b = !error };
     return error;
 }
+static const char *reduce_reference(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    assert(count == 3);
+    (void)count;
+    language_reference *ref = (language_reference *)(uintptr_t)args[0].u64;
+    if (!component_scalar_path(ref) || ref->type.type < PIN_I8 ||
+        ref->type.type > PIN_F64 || args[1].type != ref->type.type ||
+        args[1].container != PIN_CONTAINER_SINGLE || args[2].type != PIN_I32 ||
+        args[2].container != PIN_CONTAINER_SINGLE || args[2].i < EXECUTION_REDUCTION_ADD ||
+        args[2].i > EXECUTION_REDUCTION_ADD_UNORDERED) {
+        return "Reduction requires a numeric component field and matching "
+               "value";
+    }
+    pin_value root;
+    const void *target = reference_data(ref, &root);
+    if (!target || !root.ptr || !ref->owner->reduce_component) {
+        return "Reduction destination is unavailable";
+    }
+    size_t offset = (const char *)target - (const char *)root.ptr;
+    int status = ref->owner->reduce_component(
+        ref->owner,
+        ref->entity,
+        ref->component,
+        ref->layout,
+        offset,
+        ref->type,
+        args[1],
+        (execution_reduction_op)args[2].i
+    );
+    *out = (pin_value){ .type = PIN_BOOL, .b = status == 0 };
+    return status ? "Cannot collect component reduction" : NULL;
+}
 /* A declaration starts a new local, so tasks keep the old one in its box. */
 static const char *release_local(arena *storage, const pin_value *args, int count, pin_value *out)
 {
@@ -608,6 +641,7 @@ const node_host_call EXECUTION_local_release_call = { .value = release_local };
 const node_host_call EXECUTION_reference_field_call = { .value = field_reference };
 const node_host_call EXECUTION_reference_read_call = { .value = read_reference };
 const node_host_call EXECUTION_reference_write_call = { .value = write_reference };
+const node_host_call EXECUTION_reference_reduce_call = { .value = reduce_reference };
 static const char *read_action_value(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     assert(count == 3);
@@ -840,6 +874,8 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
             return &EXECUTION_reference_read_call;
         case EXECUTION_INTRINSIC_REFERENCE_WRITE:
             return &EXECUTION_reference_write_call;
+        case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
+            return &EXECUTION_reference_reduce_call;
         case EXECUTION_INTRINSIC_ACTION_READ:
             return &EXECUTION_action_read_call;
         case EXECUTION_INTRINSIC_ACTION_COMPLETE:
@@ -909,6 +945,9 @@ uint64_t execution_intrinsic_id(const node_host_call *call)
     }
     if (call == &EXECUTION_reference_write_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_REFERENCE_WRITE;
+    }
+    if (call == &EXECUTION_reference_reduce_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_REFERENCE_REDUCE;
     }
     if (call == &EXECUTION_action_read_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_ACTION_READ;

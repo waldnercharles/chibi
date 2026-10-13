@@ -205,6 +205,13 @@ static void leave_context(behavior_function_context *ctx, int result)
         execution_request_detach(wait->request);
     }
 }
+bool program_call_views_allowed(const behavior_function_context *ctx)
+{
+    return !ctx->inspect && !ctx->watch && !ctx->trace && !ctx->source_pause &&
+           !ctx->source_capture && !ctx->call_enter &&
+           (!ctx->call_leave || ctx->call_leave == leave_context) &&
+           program_world_views_allowed(ctx);
+}
 execution_activation *program_activation_new(
     execution_instance *instance,
     const behavior_function *function,

@@ -1121,6 +1121,12 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
             return count == 1 && INPUT(0, BF_POINTER_TYPE);
         case EXECUTION_INTRINSIC_REFERENCE_WRITE:
             return count == 2 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
+            return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
+                   values[1].initial.container == PIN_CONTAINER_SINGLE &&
+                   values[1].initial.type >= PIN_I8 &&
+                   values[1].initial.type <= PIN_F64 && INPUT(2, PIN_I32) &&
+                   OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_LOCAL_RELEASE:
             return count == 1 && INPUT(0, BF_POINTER_TYPE) && OUTPUT(PIN_BOOL);
         case EXECUTION_INTRINSIC_ACTION_READ:
@@ -1492,6 +1498,7 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_REFERENCE_FIELD:
                 case EXECUTION_INTRINSIC_REFERENCE_READ:
                 case EXECUTION_INTRINSIC_REFERENCE_WRITE:
+                case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
                 case EXECUTION_INTRINSIC_LOCAL_RELEASE:
                     expected = BEHAVIOR_REFERENCE;
                     break;

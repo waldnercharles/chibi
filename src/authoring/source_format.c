@@ -131,10 +131,10 @@ static bool tight_before(token t)
     TSNode n = t.node, p = ts_node_parent(n);
     return kind(n, ",") || kind(n, ";") || kind(n, ":") || kind(n, ".") ||
            kind(n, "..") || kind(n, ")") || kind(n, "]") ||
-           (kind(n, "(") && (kind(p, "parameter_list") || kind(p, "pattern_bindings") ||
-                             kind(p, "cast_expression") ||
-                             (kind(p, "argument_list") &&
-                              !kind(ts_node_parent(p), "return_statement")))) ||
+           (kind(n, "(") &&
+            (kind(p, "parameter_list") || kind(p, "pattern_bindings") ||
+             kind(p, "cast_expression") || kind(p, "reduce_statement") ||
+             (kind(p, "argument_list") && !kind(ts_node_parent(p), "return_statement")))) ||
            (kind(n, "[") && (kind(p, "type") || kind(p, "index_expression") ||
                              kind(p, "engine_reference"))) ||
            ((kind(n, "<") || kind(n, ">")) &&

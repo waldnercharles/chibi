@@ -109,6 +109,7 @@ static uint64_t semantic_generation(const script_analysis *a, const script_catal
         MIX(s->body);
         MIX(s->alternative);
         MIX(s->op);
+        MIX(s->reduction);
         MIX(s->effects);
         MIX(s->child_count);
         for (int j = 0; j < s->child_count; j++) {

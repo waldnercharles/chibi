@@ -4,6 +4,7 @@
 #include "execution/function_builder.h"
 #include "execution/intrinsics.h"
 #include "execution/prepared.h"
+#include "execution/program_internal.h"
 #include "execution/status.h"
 #include "language/lower.h"
 #include "support/array.h"
@@ -15,6 +16,7 @@
 
 static behavior_function_builder *builder;
 static behavior_function *function;
+static behavior_function *helper_function;
 static behavior_function_context context;
 static behavior_function_activation activation;
 static arena storage;
@@ -22,10 +24,15 @@ static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
 static execution_module *module, *decoded;
+static execution_program *test_program;
+static execution_activation *test_activation;
+static ecs_world *test_world;
 static unsigned char *prepared, *corrupt;
 static bool borrowed_function;
 static int result_bank, opaque_calls, alias_slot;
 static bool pause;
+static pin_value *callback_item;
+static int entered_calls;
 static const pin_value array_shape = { .type = PIN_F64,
                                        .container = PIN_CONTAINER_ARRAY };
 
@@ -40,9 +47,18 @@ static void release_run()
 static void cleanup()
 {
     release_run();
+    if (test_activation) {
+        program_activation_free(test_activation);
+    }
+    execution_program_free(test_program);
+    ecs_world_free(test_world);
+    test_activation = NULL;
+    test_program = NULL;
+    test_world = NULL;
     if (!borrowed_function) {
         behavior_function_free(function);
     }
+    behavior_function_free(helper_function);
     if (builder) {
         behavior_function_builder_free(builder);
     }
@@ -54,6 +70,7 @@ static void cleanup()
     script_analysis_free(analysis);
     script_syntax_free(syntax);
     function = NULL;
+    helper_function = NULL;
     builder = NULL;
     plan = NULL;
     analysis = NULL;
@@ -62,6 +79,8 @@ static void cleanup()
     prepared = corrupt = NULL;
     borrowed_function = false;
     pause = false;
+    callback_item = NULL;
+    entered_calls = 0;
 }
 
 static int emit(behavior_function_instruction i)
@@ -334,6 +353,7 @@ static bool fixture(int kind)
                                               .type = output.type,
                                               .left = result });
     }
+    emit((behavior_function_instruction){ .op = BF_RETURN });
     emit((behavior_function_instruction){ .op = BF_END });
     char error[256];
     function = behavior_function_builder_finish(builder, error, sizeof error);
@@ -352,6 +372,48 @@ static bool fixture(int kind)
 static int inspect(void *, behavior_function_context *, const behavior_source_point *)
 {
     return pause;
+}
+
+static bool forwarding_fixture(int kind)
+{
+    REQUIRE(fixture(kind));
+    helper_function = function;
+    function = NULL;
+    behavior_function_builder_free(builder);
+    builder = behavior_function_builder_new();
+    pin_value scalar = { .type = PIN_F64 };
+    behavior_function_builder_signature(builder, &array_shape, 1, &scalar, 1, NULL, 0);
+    int original = value(
+        (behavior_function_instruction){ .op = BF_ARRAY,
+                                         .type = BF_POINTER_TYPE,
+                                         .target = BF_ARGUMENT,
+                                         .value = array_shape },
+        true
+    );
+    int held = snapshot(original, &EXECUTION_snapshot_call, 0);
+    int call = behavior_function_builder_call(builder, helper_function, &array_shape, 1, &scalar, 1);
+    int argument = host_address(behavior_function_builder_call_first(builder, call));
+    emit((behavior_function_instruction){ .op = BF_WRITE,
+                                          .type = BF_POINTER_TYPE,
+                                          .left = held,
+                                          .right = argument,
+                                          .offset = offsetof(pin_value, d) });
+    emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    int address = host_address(behavior_function_builder_call_results(builder, call));
+    int result = value(
+        (behavior_function_instruction){ .op = BF_LOAD,
+                                         .type = PIN_F64,
+                                         .left = address,
+                                         .offset = offsetof(pin_value, d) },
+        false
+    );
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_F64, .left = result });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    function = behavior_function_builder_finish(builder, error, sizeof error);
+    REQUIRE(function && behavior_function_compile(function));
+    return true;
 }
 
 static void prepare(pin_value *arguments, int count, pin_value *results, pin_value *variables, int mode)
@@ -395,6 +457,241 @@ static size_t bytes()
     size_t used, capacity;
     arena_usage(&storage, &used, &capacity);
     return used;
+}
+
+static bool authored(const char *source)
+{
+    const script_catalog catalog = { 0 };
+    const script_lower_bindings bindings = { 0 };
+    syntax = script_parse(source);
+    REQUIRE(syntax && !syntax->diagnostic_count);
+    analysis = script_analyze(syntax, &catalog);
+    REQUIRE(analysis && analysis->valid);
+    plan = script_lower(analysis, &catalog, &bindings);
+    REQUIRE(plan && plan->valid);
+    char error[256];
+    module = execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    if (!module) {
+        fprintf(stderr, "borrow authored fixture: %s\n", error);
+    }
+    REQUIRE(module);
+    for (int i = 0; i < execution_module_function_count(module); i++) {
+        behavior_function
+            *body = (behavior_function *)execution_module_function_at(module, i).body;
+        REQUIRE(behavior_function_compile(body));
+    }
+    /* Sources put the entry first, also exercising forward helper definitions. */
+    function = (behavior_function *)execution_module_function_at(module, 0).body;
+    borrowed_function = true;
+    return true;
+}
+
+static void mutate_at_call(const behavior_function *, behavior_function_context *)
+{
+    entered_calls++;
+    callback_item->d = 99;
+}
+
+TEST_CASE(borrow_infers_call_scoped_views_through_forwarded_helpers)
+{
+    REQUIRE(authored(
+        "library Borrow {"
+        "Root :: fn (input: double[]) -> double { copy := input; return "
+        "Forward(copy); }"
+        "Forward :: fn (input: double[]) -> double { return Sum(input); }"
+        "Sum :: fn (input: double[]) -> double { total := 0.0; "
+        "for value in input { total += value; } return total; } }"
+    ));
+    REQUIRE(function->readonly_collections);
+    REQUIRE(guarded() > 0);
+    for (int i = 0; i < execution_module_function_count(module); i++) {
+        REQUIRE(execution_module_function_at(module, i).body->readonly_collections);
+    }
+    pin_value items[128];
+    for (int i = 0; i < 128; i++) {
+        items[i] = (pin_value){ .type = PIN_F64, .d = i + 1 };
+    }
+    pin_array array = { .element_type = PIN_F64, .count = 128, .capacity = 128, .items = items };
+    pin_value input = array_shape, output = { .type = PIN_F64 };
+    input.ptr = &array;
+    for (int mode = 0; mode < 4; mode++) {
+        REQUIRE(begin(&input, 1, &output, NULL, mode) == FLOW_OK);
+        REQUIRE(output.d == 8256);
+        REQUIRE(mode < 2 ? bytes() == 0 : bytes() > 0);
+    }
+    release_run();
+    char error[256];
+    size_t length;
+    REQUIRE(execution_prepared_write(module, &prepared, &length, error, sizeof error));
+    const execution_prepared_linker linker = { 0 };
+    decoded = execution_prepared_read(prepared, length, &linker, BEHAVIOR_BYTECODE, error, sizeof error);
+    REQUIRE(decoded);
+    function = (behavior_function *)execution_module_function_at(decoded, 0).body;
+    REQUIRE(function->readonly_collections && guarded() > 0);
+    REQUIRE(begin(&input, 1, &output, NULL, 0) == FLOW_OK);
+    REQUIRE(output.d == 8256 && bytes() == 0);
+    return true;
+}
+
+TEST_CASE(borrow_call_callbacks_keep_their_owned_argument_snapshots)
+{
+    REQUIRE(authored(
+        "library Borrow {"
+        "Root :: pure (input: double[]) -> double { copy := input; return "
+        "Sum(copy) + Sum(copy); }"
+        "Sum :: pure (input: double[]) -> double { total := 0.0; "
+        "for value in input { total += value; } return total; } }"
+    ));
+    REQUIRE(function->readonly_collections);
+    for (int backend = 0; backend < 2; backend++) {
+        pin_value item = { .type = PIN_F64, .d = 7 }, output = item;
+        pin_array array = { .element_type = PIN_F64,
+                            .count = 1,
+                            .capacity = 1,
+                            .items = &item };
+        pin_value input = array_shape;
+        input.ptr = &array;
+        prepare(&input, 1, &output, NULL, backend);
+        callback_item = &item;
+        entered_calls = 0;
+        context.call_enter = mutate_at_call;
+        REQUIRE(behavior_function_run(function, &context, backend) == FLOW_OK);
+        REQUIRE(output.d == 14 && item.d == 99 && entered_calls == 2);
+        REQUIRE(bytes() > 0);
+    }
+    return true;
+}
+
+TEST_CASE(borrow_call_contract_rejects_escape_mutation_suspend_and_recursion)
+{
+    const char *sources[] = {
+        ("library Borrow { Root :: pure (input: double[]) -> double[] { return "
+         "Keep(input); }"
+         "Keep :: pure (input: double[]) -> double[] { return input; } }"),
+        ("library Borrow { Root :: pure (input: double[]) -> double { return "
+         "Change(input); }"
+         "Change :: pure (input: double[]) -> double { input[0] = 99; return "
+         "input[0]; } }"),
+        ("library Borrow { Root :: fn (input: double[]) -> double { return "
+         "await Wait(input); }"
+         "Wait :: fn (input: double[]) -> double { yield; return input[0]; } }"),
+        ("library Borrow { Root :: pure (input: double[]) -> double { "
+         "depth_limit 8; return Root(input); } }")
+    };
+    for (int i = 0; i < 4; i++) {
+        cleanup();
+        REQUIRE(authored(sources[i]));
+        REQUIRE(!function->readonly_collections && guarded() == 0);
+    }
+    return true;
+}
+
+TEST_CASE(borrow_helper_pause_and_wait_retain_arguments_before_resuming)
+{
+    for (int kind = PAUSE; kind <= WAIT; kind++) {
+        cleanup();
+        REQUIRE(forwarding_fixture(kind));
+        REQUIRE(function->readonly_collections == (kind == PAUSE));
+        for (int backend = 0; backend < 2; backend++) {
+            pin_value item = { .type = PIN_F64, .d = 7 }, output = item;
+            pin_array array = { .element_type = PIN_F64,
+                                .count = 1,
+                                .capacity = 1,
+                                .items = &item };
+            pin_value input = array_shape;
+            input.ptr = &array;
+            pause = kind == PAUSE;
+            REQUIRE(
+                begin(&input, 1, &output, NULL, backend + (pause ? 2 : 0)) ==
+                (pause ? FLOW_PAUSED_RESULT : FLOW_SUSPENDED_RESULT)
+            );
+            const behavior_function *active = function;
+            behavior_function_context *child = behavior_function_active_context(&context, &active);
+            REQUIRE(active == helper_function && child != &context);
+            REQUIRE(
+                child->arguments[0].ptr !=
+                context.data->values[function->calls[0].first].ptr
+            );
+            item.d = 99;
+            pause = false;
+            context.source_pause = NULL;
+            REQUIRE(behavior_function_run(function, &context, backend) == FLOW_OK);
+            REQUIRE(output.d == 7);
+        }
+    }
+    return true;
+}
+
+TEST_CASE(borrow_helper_mutation_and_opaque_calls_remain_owning)
+{
+    const int kinds[] = { RAW_WRITE, OPAQUE };
+    for (int i = 0; i < 2; i++) {
+        cleanup();
+        REQUIRE(forwarding_fixture(kinds[i]));
+        REQUIRE(!function->readonly_collections && !helper_function->readonly_collections);
+        for (int backend = 0; backend < 2; backend++) {
+            pin_value item = { .type = PIN_F64, .d = 7 }, output = item;
+            pin_array array = { .element_type = PIN_F64,
+                                .count = 1,
+                                .capacity = 1,
+                                .items = &item };
+            pin_value input = array_shape;
+            input.ptr = &array;
+            opaque_calls = 0;
+            REQUIRE(begin(&input, 1, &output, NULL, backend) == FLOW_OK);
+            REQUIRE(output.d == (i ? 1 : 7) && item.d == 7);
+            REQUIRE(opaque_calls == i);
+            REQUIRE(bytes() > 0);
+        }
+    }
+    return true;
+}
+
+TEST_CASE(borrow_call_guards_program_state_headers_before_commit)
+{
+    REQUIRE(authored(
+        "behavior Borrow { scalar: double = 7;"
+        "Root :: fn (input: double[]) -> double { copy := input; scalar = 99; "
+        "Touch(); return copy[0]; }"
+        "Touch :: fn () -> double { return 0; } }"
+    ));
+    REQUIRE(function->readonly_collections && guarded() > 0);
+    uint64_t state = 0;
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        if (analysis->symbols[i].kind == SCRIPT_STATE &&
+            !strcmp(analysis->symbols[i].name, "scalar")) {
+            state = analysis->symbols[i].id;
+        }
+    }
+    REQUIRE(state);
+    test_world = ecs_world_new();
+    test_program = execution_program_new(module, test_world, NULL);
+    REQUIRE(test_program);
+    execution_instance *instance = execution_program_attach(
+        test_program,
+        ecs_entity_to_u64(ecs_world_create_entity(test_world))
+    );
+    REQUIRE(instance);
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(
+            execution_instance_set_state(instance, state, (pin_value){ .type = PIN_F64, .d = 7 }) == FLOW_OK
+        );
+        test_activation = program_activation_new(instance, function, &array_shape, 1, 0, 0, 10000);
+        REQUIRE(test_activation);
+        /* Native inputs may alias stored headers as well as the active bank.
+         * Inject after the public event boundary's separate ownership copy. */
+        pin_array array = { .element_type = PIN_F64,
+                            .count = 1,
+                            .capacity = 1,
+                            .items = (pin_value *)execution_instance_state(instance, state) };
+        ((pin_value *)test_activation->context.arguments)[0].ptr = &array;
+        REQUIRE(behavior_function_run(function, &test_activation->context, backend) == FLOW_OK);
+        REQUIRE(test_activation->context.results[0].d == 7);
+        REQUIRE(execution_instance_state(instance, state)->d == 99);
+        program_activation_free(test_activation);
+        test_activation = NULL;
+    }
+    return true;
 }
 
 TEST_CASE(borrow_authored_readonly_loop_keeps_scalar_writes)
@@ -697,6 +994,12 @@ TEST_CASE(borrow_flags_cannot_enter_canonical_or_prepared_code)
 void test_language_borrow()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(borrow_infers_call_scoped_views_through_forwarded_helpers);
+    RUN_TEST_CASE(borrow_call_callbacks_keep_their_owned_argument_snapshots);
+    RUN_TEST_CASE(borrow_call_contract_rejects_escape_mutation_suspend_and_recursion);
+    RUN_TEST_CASE(borrow_helper_pause_and_wait_retain_arguments_before_resuming);
+    RUN_TEST_CASE(borrow_helper_mutation_and_opaque_calls_remain_owning);
+    RUN_TEST_CASE(borrow_call_guards_program_state_headers_before_commit);
     RUN_TEST_CASE(borrow_authored_readonly_loop_keeps_scalar_writes);
     RUN_TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors);
     RUN_TEST_CASE(borrow_guards_scalar_banks_aliasing_array_storage);

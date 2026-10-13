@@ -20,7 +20,9 @@ they do not retain a coroutine per row. Serial synchronous invocations now reuse
 one idle activation per program, up to 64 KiB of fixed frame storage. The cache
 rebinds owner, arguments, services and state, and releases host, payload, nested
 call, task and request ownership. Failed, cancelled, inspected and resumed work
-is excluded. Prepared batches still need simultaneous activations per row.
+is excluded. Prepared reduction batches retain compact owner/variable IDs and
+reuse a streaming activation when eligible. Other prepared paths still need
+simultaneous activations per row.
 Value filters use a temporary admission bitmap to preserve evaluation before
 body writes. Query cache limits bound cached
 matching rows, not the separately owned state or task results.
@@ -108,15 +110,82 @@ The repeatable evidence there is removed allocations and avoided rebuilding,
 not a demonstrated wall-time speedup. Keep these distinctions when deciding
 whether to extend the caches or claiming gameplay performance.
 
+### Call views and shared-target reductions
+
+This follow-up starts at main
+`cf00d3ccf76dd81e94ddba55a0210b86434e2100`. Its helper benchmark baseline is that
+tree plus the benchmark-only helper workload, with identical timed bodies in the
+candidate. Native measurements use Clang 19.1.7, Release `-O3`, test assertions enabled
+and sanitizers off. Correctness runs separately with ASan/UBSan and WasmJIT.
+
+The paired helper measurements ran sequentially on CPU 2. Each cell is the median
+of five trials, with the minimum–maximum in parentheses, in µs per dispatch.
+Allocation traffic is requested bytes through `xalloc` per 32 dispatches, not
+live or peak memory. One warmup precedes the measured trials.
+
+| SLJIT array workload | Baseline time | Call-view time | Requested bytes, before → after |
+| --- | --- | --- | --- |
+| Direct, 128 items (control) | 0.934 (0.921–3.164) | 2.153 (0.977–5.420) | 46,592 → 46,592 |
+| One helper, 1 item | 0.840 (0.834–0.881) | 1.091 (1.088–1.137) | 274,176 → 270,336 |
+| One helper, 128 items | 2.183 (2.160–3.895) | 1.755 (1.747–24.119) | 667,392 → 270,336 |
+| Two helpers, 1 item | 1.258 (1.206–3.141) | 1.725 (1.714–6.406) | 483,840 → 480,256 |
+| Two helpers, 128 items | 6.416 (3.099–11.863) | 2.497 (2.414–4.731) | 1,140,224 → 480,256 |
+
+The 128-item helper paths remove about 59% of allocation traffic, with no new
+author annotation. The one-item paths regress in this sample: alias/header
+validation has a cost even when little data would be copied. The unchanged direct
+control also varies substantially, so these timings cannot establish universal
+speedups. VM helper paths reduce allocation traffic too; interpreter and shared
+host timing noise remain large. Further work should reduce repeated guards or
+reuse nested-call storage before adding more view syntax.
+
+The reduction fixture uses two SLJIT systems, 256 contributors, one shared target
+and two fields: 1,024 contributions per pass. Five trials each run eight passes
+after one warmup. The final measurement uses CPUs 2–3 and a verified two-worker
+budget; both worker IDs participated in every parallel trial. These are µs per
+pass, with the same median (minimum–maximum) convention.
+
+| Update mode | Time | Stored records per pass | Published writes per eight-pass trial |
+| --- | --- | --- | --- |
+| Ordinary writes, serial | 2,500 (2,036–3,605) | 0 | 8,192 |
+| Ordered reductions, serial | 2,930 (2,514–3,380) | 1,024 | 8,192 |
+| Ordered reductions, two workers | 2,273 (2,057–3,065) | 1,024 | 8,192 |
+| Unordered sums, serial | 1,936 (1,800–2,177) | 4 | 32 |
+| Unordered sums, two workers | 1,503 (1,472–2,024) | 4 | 32 |
+
+Unordered sums reduce the median by about 34% relative to ordered sums in both
+executor modes for this shared-target fixture. They reduce allocated log/hash
+capacity across the two programs from 73,824 to 2,624 bytes. That gain purchases
+different rounding and publication counts; it is opt-in, not a compiler rewrite
+of ordinary ordered addition. Ordered serial reductions are slower than ordinary
+writes here. Parallel stable reductions preserve ordering without guaranteeing
+that every workload amortizes collection and worker dispatch.
+
+This measurement also includes streaming for simple stateless reducers. It
+retains zero per-entity instance headers, 4,192 bytes of row-ID capacity and
+3,376 bytes of idle activation storage across the two programs. The ordinary
+write control still retains 512 instance headers totaling 147,456 bytes. Each
+individual reduction-log, row-ID and activation cache has a 64 KiB idle cap;
+active work may exceed it and remains proportional to the workload.
+
+Before enabling this streaming path, the reduction trial requested 37,083,328
+bytes through 118,752 allocation calls; afterwards it requests 30,196,288 bytes
+through 106,512 calls. The same counts apply to ordered and unordered modes:
+coalescing removes publication work but does not eliminate the remaining host
+and evaluator allocations. The initial parallel sample also exposed a native
+build bug: a web-only macro overrode the requested two-worker budget with four.
+That gate is now restricted to threaded web builds. Initial four-worker timings
+are not a paired comparison for the final two-worker measurements.
+
 ## Remaining work to evaluate
 
 | Opportunity | Evidence and possible gain | Cost or required proof |
 | --- | --- | --- |
 | Reuse host and nested-call storage | Fixed activation reuse leaves host banks and nested calls allocating on each invocation. | Reset all managed and native ownership, bound retained capacity and measure helper-heavy workloads. |
 | Scale binding cache misses | Stable schedules avoid rebuilding; topology changes still use the original sorter. | A cheaper graph algorithm must preserve stable ordering, conservative dependencies and cycle rejection before writes. |
-| Prepare independent scheduler batches | `runtime/engine.c` disables source preparation when a native system shares the phase. `runtime/behaviors/source.c` combines source parallel eligibility across a whole cohort. | Prepare after preceding dependencies have committed; preserve observer/debug behavior, structural barriers and deterministic failure ordering. |
+| Broaden proven worker eligibility | Preparation now occurs per dependency batch, including phases with native systems. Authored helper calls and several query-source intrinsics still conservatively prevent worker execution. | Carry verified component origins/effects through calls; preserve observer/debug barriers and serial publication. |
 | Narrow compilation invalidation further | Declaration discovery still reparses sources; semantic catalog changes remain a global reuse gate. | Retain syntax with explicit ownership and track actual semantic dependencies, including debugger/source ranges. |
-| Extend collection borrowing | `execution/borrow.c` rejects borrowing when it encounters broad classes of calls and writes. Per-value escape and mutation information could permit more cases. | Prove no retention, no conflicting mutation and valid lifetime across every call; debugger snapshots and suspension remain ownership boundaries. |
+| Extend collection borrowing | Synchronous authored helper chains now qualify; opaque native calls, recursion, managed elements and potentially escaping results still use owning copies. | Prove per-value retention and mutation, verify native lifetime contracts and preserve debugger/suspension ownership. |
 
 ## Language contracts that could help
 
@@ -126,23 +195,36 @@ bodies and exact native access/lifetime contracts must establish that fact.
 Likewise, writing only to `self` does not prove query rows disjoint when a root
 has several target bindings.
 
-Three future language directions merit separate design review:
+The call-view/reduction follow-up implements two of the proposed contracts:
 
-- **Call-scoped read-only collection views:** prove that a callee cannot mutate,
-  return, store or suspend with a borrowed view. This could remove copies through
-  helpers and native calls. The cost is a restriction on retaining those views;
-  callers that need retention still require an owning snapshot. Infer the facts
-  from authored bodies where possible and verify native boundary contracts.
+- **Call-scoped read-only collection views:** inferred for plain arrays through
+  verified synchronous authored helpers. No keyword is required. Mutation,
+  retention, recursion, opaque callbacks and suspension retain owning copies.
+  Runtime guards check actual headers and aliases, including future callee state
+  banks. Native boundary contracts remain future work.
 
-- **Explicit reductions:** shared-target sums or minima could be combined safely
-  in parallel rather than issuing conflicting writes. Integer overflow rules
-  must be defined; floating-point combination order changes rounding and needs
-  an explicit reproducibility decision.
+- **Explicit reductions:** ordered add/min/max collect contributions privately
+  and publish in stable system/query order. `reduce unordered` opts into per-target
+  sum aggregation within a system. Integer addition wraps at its storage width;
+  ordered writes preserve per-write range clamps. Unordered sums require unbounded
+  fields and may change floating-point results and write-revision counts. Systems
+  can run concurrently; rows within a system remain serial. A producer cannot
+  otherwise access its reduced component or suspend.
+
+Further language changes should earn their cost with measured workloads:
+
 - **Checked access contracts:** inferred read/write footprints can retain more
   precision through calls and joins. Optional checked declarations could help
   library authors state intent, but ordinary code should receive the same safe
   optimizations. Field-level independence needs alias and layout proofs, not
   just different field names.
+- **Verified native view contracts:** let a native helper promise and enforce
+  no retention or mutation of borrowed inputs. This could extend copy elimination
+  across the host boundary; incorrect declarations would be an engine bug.
+- **Row-independent reduction bodies:** prohibiting observable cross-row state
+  could permit splitting one large system across workers. Stable publication would
+  still need original row indices and contribution storage. This is not yet a
+  language guarantee or implemented optimization.
 
 Units in function signatures improve compile-time dimensional checking. They
 are erased and do not inherently make arithmetic faster. Range, alias, lifetime

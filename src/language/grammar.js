@@ -44,6 +44,8 @@ const K = Object.fromEntries(
     "sequence",
     "branch",
     "return",
+    "reduce",
+    "unordered",
     "goto",
     "break",
     "continue",
@@ -67,7 +69,7 @@ const K = Object.fromEntries(
   ].map((word) => [word, word]),
 );
 
-const CONTEXTUAL = ["from", "split", "component", "not", "join"];
+const CONTEXTUAL = ["from", "split", "component", "not", "join", "unordered"];
 
 const P = {
   or: 1,
@@ -114,6 +116,8 @@ module.exports = grammar({
     [$._expression, $._member_name],
     [$._expression, $._call_target, $._name],
     [$._expression, $._call_target],
+    [$.reduce_statement, $._expression],
+    [$.reduce_statement, $._call_target],
     [$.measured_type, $._signature_type],
     [$._compound_unit, $._expression],
   ],
@@ -369,6 +373,7 @@ module.exports = grammar({
       choice(
         $.local_declaration,
         $.assignment,
+        $.reduce_statement,
         $.expression_statement,
         $.if_statement,
         $.while_statement,
@@ -403,6 +408,17 @@ module.exports = grammar({
         $._end,
       ),
     expression_statement: ($) => seq($._expression, $._end),
+    reduce_statement: ($) => seq(
+      K.reduce,
+      choice(
+        seq(optional(field("ordering", K.unordered)),
+          field("target", $._expression), field("operator", "+="),
+          field("value", $._expression)),
+        seq(field("operator", choice("min", "max")), "(",
+          field("target", $._expression), ",", field("value", $._expression), ")"),
+      ),
+      $._end,
+    ),
     if_statement: ($) =>
       prec.right(
         seq(
@@ -471,6 +487,7 @@ module.exports = grammar({
     _expression: ($) =>
       choice(
         $.identifier,
+        alias(K.unordered, $.identifier),
         alias("self", $.identifier),
         $.string,
         $.number,
@@ -522,7 +539,7 @@ module.exports = grammar({
         ),
       )),
     _call_target: ($) => choice(
-      $.identifier, $.string, $.engine_reference, $.builtin_reference,
+      $.identifier, alias(K.unordered, $.identifier), $.string, $.engine_reference, $.builtin_reference,
       $.member_expression, $.index_expression, $.call_expression,
       $.parenthesized_expression,
     ),

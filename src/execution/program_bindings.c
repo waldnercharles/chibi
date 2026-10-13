@@ -343,6 +343,12 @@ int execution_program_bindings_all(
 )
 {
     for (int i = 0; i < count; i++) {
+        assert(programs[i]);
+        if (programs[i]->system_prepared && programs[i]->module->effects.reduce_count) {
+            return FLOW_PAUSED_RESULT;
+        }
+    }
+    for (int i = 0; i < count; i++) {
         execution_program *p = programs[i];
         assert(p && !p->dispatching && !p->running);
         p->now = now;

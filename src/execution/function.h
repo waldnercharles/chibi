@@ -12,6 +12,13 @@
 #include <stdio.h>
 
 typedef struct behavior_function behavior_function;
+typedef enum
+{
+    EXECUTION_REDUCTION_ADD,
+    EXECUTION_REDUCTION_MIN,
+    EXECUTION_REDUCTION_MAX,
+    EXECUTION_REDUCTION_ADD_UNORDERED
+} execution_reduction_op;
 behavior_value_kind behavior_function_kind(const behavior_function *, behavior_value_bank, int index);
 const compile_diagnostic *behavior_function_query_diagnostics(
     const behavior_function *function,
@@ -229,6 +236,16 @@ typedef struct behavior_function_context
         size_t offset,
         pin_value declared,
         pin_value value
+    );
+    int (*reduce_component)(
+        struct behavior_function_context *,
+        uint64_t entity,
+        uint64_t component,
+        uint64_t layout,
+        size_t offset,
+        pin_value declared,
+        pin_value value,
+        execution_reduction_op
     );
     double delta_seconds;
     uintptr_t steps;

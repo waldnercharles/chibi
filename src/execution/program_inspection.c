@@ -99,6 +99,8 @@ execution_inspector *execution_program_inspector(execution_program *p)
 {
     assert(p && !p->running);
     if (!p->inspector) {
+        /* Preparation has already chosen retained activations or row IDs. */
+        assert(!p->system_prepared);
         p->inspector = xcalloc(1, sizeof *p->inspector);
         p->inspector->references = 1;
         p->inspector->program = p;

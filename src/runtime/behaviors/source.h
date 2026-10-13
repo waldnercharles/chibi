@@ -109,16 +109,16 @@ int source_dispatch_all(source_registry *, const char *, const pin_value *, int,
 bool source_is_system(const source_registry *, const char *);
 int source_select_systems(source_registry *, const char *const *names, int count);
 int source_run_system(source_registry *, const char *, double now, double delta);
-/* Prepare discovers query membership and creates Begin/system work serially
- * only when the whole cohort is verified synchronous and owner-disjoint.
- * Other cohorts retain serial update order. allow_prepare must be false when
- * an external/native callback in the same phase can run before these systems. Prepare/finish are quiescent
- * registry boundaries. Between them the registry's
- * registrations and services remain fixed. Distinct indices may run once in
- * parallel only when verified module effects permit it and parallel() is true.
- * Profiling, any attached inspector, or any program observer forces serial
- * execution. Run writes only its program/result and caller-local diagnostics. Finish joins
- * no workers: the caller must finish its executor before calling it. */
+/* The phase cohort holds registrations and services fixed. Prepare each index
+ * serially just before its scheduler batch, after preceding batches commit;
+ * this discovers current membership and evaluates current value filters.
+ * Distinct prepared indices may run concurrently only when their verified
+ * effects are independent and parallel(index) is true. Instrumentation forces
+ * serial execution. Finish each index serially in schedule order after joining
+ * all workers, committing only successful predecessors and the current success.
+ * Passing true to finish_index also retains its own paused dispatch without
+ * publishing it; false cancels the dispatch even when it paused.
+ * Finish the cohort at a quiescent boundary; remaining work is discarded. */
 typedef struct source_system_batch source_system_batch;
 #define SOURCE_SYSTEM_BATCH_MAX 1024
 source_system_batch *source_systems_prepare(
@@ -126,12 +126,15 @@ source_system_batch *source_systems_prepare(
     const char *const *,
     int count,
     double now,
-    double delta,
-    bool allow_prepare
+    double delta
 );
-bool source_systems_parallel(const source_system_batch *);
+int source_systems_prepare_index(source_system_batch *, int index, char *error, size_t size);
+bool source_systems_parallel(const source_system_batch *, int index);
 int source_systems_run(source_system_batch *, int index, char *error, size_t size);
+int source_systems_finish_index(source_system_batch *, int index, bool commit, char *error, size_t size);
 int source_systems_finish(source_system_batch *);
+/* Quiescent scene/reset boundary; discard retained paused system dispatches. */
+void source_cancel_systems(source_registry *);
 
 int source_maintain(source_registry *, double now, double delta);
 int source_step(source_registry *, double now, double delta);

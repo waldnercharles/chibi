@@ -131,6 +131,13 @@ typedef struct
     pin_value value;
     arena storage;
 } observer_edge;
+typedef struct
+{
+    uint64_t entity, component, layout;
+    size_t offset;
+    pin_value value;
+    execution_reduction_op op;
+} component_reduction;
 struct execution_program
 {
     execution_module *module;
@@ -152,6 +159,14 @@ struct execution_program
     uint64_t query_rows, query_lookup_steps;
     bool query_streaming;
     uint64_t *query_admissions;
+    /* Detached scalar contributions and immutable prepared query row IDs. */
+    component_reduction *reductions;
+    int *reduction_table;
+    int unordered_reductions, ordered_reductions;
+    uint64_t reduction_contributions, reduction_records;
+    size_t reduction_peak_bytes;
+    uint64_t *system_rows;
+    bool reducing;
     struct execution_program **imports;
     struct execution_program *owner_program;
     queued_event *events;
@@ -174,6 +189,13 @@ struct execution_program
 };
 
 bool program_same_type(pin_value a, pin_value b);
+bool program_world_views_allowed(const behavior_function_context *);
+bool program_view_disjoint(
+    const behavior_function *,
+    const behavior_function_context *,
+    const void *,
+    size_t
+);
 execution_instance *program_instance_row(execution_program *, uint64_t owner, const uint64_t *variables);
 void program_query_consume(execution_instance *);
 bool program_preflight(const execution_module *, const ecs_world *);

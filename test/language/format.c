@@ -47,6 +47,24 @@ TEST_CASE(source_format_block_layout)
     );
     return true;
 }
+TEST_CASE(source_format_reductions)
+{
+    REQUIRE(format(
+        "system Damage(health:Health){reduce health.damage+=2;"
+        "reduce min (health.damage,3);reduce max(health.damage,4);"
+        "reduce unordered health.damage+=5; }"
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "system Damage(health: Health) {\n"
+        "    reduce health.damage += 2;\n"
+        "    reduce min(health.damage, 3);\n"
+        "    reduce max(health.damage, 4);\n"
+        "    reduce unordered health.damage += 5;\n"
+        "}\n"
+    ));
+    return true;
+}
 
 TEST_CASE(source_format_component_measures)
 {
@@ -658,6 +676,7 @@ void test_language_format()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_format_block_layout);
+    RUN_TEST_CASE(source_format_reductions);
     RUN_TEST_CASE(source_format_component_measures);
     RUN_TEST_CASE(source_format_measured_signatures);
     RUN_TEST_CASE(source_format_preserves_comments_and_literals);

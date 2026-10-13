@@ -26,9 +26,9 @@ typedef struct
 typedef struct
 {
     execution_effect_summary *summary;
-    uint64_t *reads, *writes;
+    uint64_t *reads, *writes, *reduces;
     size_t capacity, records;
-    bool counting, valid, predicate;
+    bool counting, valid, predicate, reducing;
     int operation, instruction;
     uint64_t capability, function;
 } effects;
@@ -71,6 +71,7 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
         case EXECUTION_INTRINSIC_REFERENCE_READ:
         case EXECUTION_INTRINSIC_SNAPSHOT: expected = 1; break;
         case EXECUTION_INTRINSIC_REFERENCE_WRITE: expected = 2; break;
+        case EXECUTION_INTRINSIC_REFERENCE_REDUCE: expected = 3; break;
         case EXECUTION_INTRINSIC_QUERY_SOURCE: expected = 5; break;
         case EXECUTION_INTRINSIC_QUERY_TARGET: expected = 4; break;
         case EXECUTION_INTRINSIC_QUERY_VARIABLE: expected = 2; break;
@@ -550,6 +551,50 @@ static void add(effects *e, bool write, uint64_t id)
         e->reads[s->read_count++] = id;
     }
 }
+static void add_reduction(effects *e, uint64_t id)
+{
+    if (e->counting) {
+        add(e, false, id);
+        return;
+    }
+    for (int i = 0; i < e->summary->reduce_count; i++) {
+        if (e->reduces[i] == id) {
+            return;
+        }
+    }
+    e->reduces[e->summary->reduce_count++] = id;
+}
+static bool function_reduces(const behavior_function *f, int depth, int *steps)
+{
+    if (!f || depth > EFFECT_DEPTH || --*steps < 0) {
+        return false;
+    }
+    for (int i = 0; i < acount(f->host_calls); i++) {
+        if (--*steps < 0) {
+            return false;
+        }
+        if (intrinsic(&f->host_calls[i]) ==
+            execution_intrinsic_id(&EXECUTION_reference_reduce_call)) {
+            return true;
+        }
+    }
+    for (int i = 0; i < acount(f->definitions); i++) {
+        if (function_reduces(f->definitions[i], depth + 1, steps)) {
+            return true;
+        }
+    }
+    return false;
+}
+static bool plan_reduces(const execution_module_plan *p)
+{
+    int steps = EFFECT_RECORDS;
+    for (int i = 0; i < p->function_count; i++) {
+        if (function_reduces(p->functions[i].body, 0, &steps)) {
+            return true;
+        }
+    }
+    return false;
+}
 static void unknown(effects *e)
 {
     if (e->counting) {
@@ -604,6 +649,25 @@ static void add_access(effects *e, const node_access *a)
         s->parallel_safe = false;
     }
 }
+static void payload_read(effects *e, const behavior_function *f, int pc, int bank)
+{
+    if (!e->reducing) {
+        return;
+    }
+    int steps = EFFECT_STEPS;
+    origin source = bank_origin(f, pc, bank, 0, &steps);
+    pin_value value = f->data_values[bank].initial;
+    if (source.component) {
+        add(e, false, source.component);
+    } else if (
+        behavior_function_kind(f, BEHAVIOR_BANK_DATA, bank) != BEHAVIOR_VALUE ||
+        value.type == PIN_STRUCT || value.type == PIN_UNION ||
+        value.container != PIN_CONTAINER_SINGLE
+    ) {
+        /* A payload can alias component storage without a scalar load. */
+        unknown(e);
+    }
+}
 static void function(effects *e, const behavior_function *f, int depth)
 {
     if (!f || !e->valid) {
@@ -613,7 +677,7 @@ static void function(effects *e, const behavior_function *f, int depth)
         e->valid = false;
         return;
     }
-    for (int j = 0; j < acount(f->components); j++) {
+    for (int j = 0; !e->reducing && j < acount(f->components); j++) {
         add(e, false, f->components[j].id);
     }
     for (int j = 0; j < acount(f->definitions); j++) {
@@ -642,7 +706,10 @@ static void function(effects *e, const behavior_function *f, int depth)
                                     : 2;
                     origin component = bank_origin(f, pc, call->first + ordinal, 0, &steps);
                     if (component.constant && component.bits) {
-                        add(e, false, component.bits);
+                        if (!e->reducing ||
+                            id != execution_intrinsic_id(&EXECUTION_reference_make_call)) {
+                            add(e, false, component.bits);
+                        }
                     } else {
                         unknown(e);
                     }
@@ -669,9 +736,25 @@ static void function(effects *e, const behavior_function *f, int depth)
                     break;
                 }
                 if (id == execution_intrinsic_id(&EXECUTION_reference_make_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_reference_field_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_union_test_call) ||
+                    id == execution_intrinsic_id(&EXECUTION_reference_field_call)) {
+                    break;
+                }
+                if (id == execution_intrinsic_id(&EXECUTION_union_test_call) ||
                     id == execution_intrinsic_id(&EXECUTION_union_get_call)) {
+                    payload_read(e, f, pc, call->first);
+                    break;
+                }
+                if (id == execution_intrinsic_id(&EXECUTION_reference_reduce_call)) {
+                    int steps = EFFECT_STEPS;
+                    origin target = bank_origin(f, pc, call->first, 0, &steps);
+                    origin op = bank_origin(f, pc, call->first + 2, 0, &steps);
+                    pin_value value = f->data_values[call->first + 1].initial;
+                    if (!target.component || value.container != PIN_CONTAINER_SINGLE ||
+                        value.type < PIN_I8 || value.type > PIN_F64 || !op.constant ||
+                        op.bits > EXECUTION_REDUCTION_ADD_UNORDERED) {
+                        unknown(e);
+                    }
+                    add_reduction(e, target.component);
                     break;
                 }
                 if (id == execution_intrinsic_id(&EXECUTION_reference_read_call) ||
@@ -690,13 +773,14 @@ static void function(effects *e, const behavior_function *f, int depth)
                     if (!target.component || !plain(*value)) {
                         unknown(e);
                     }
-                    if (!target.owner) {
+                    if (!target.owner && (!e->reducing || write)) {
                         e->summary->parallel_safe = false;
                     }
                     add(e, write, target.component);
                     break;
                 }
                 if (id == execution_intrinsic_id(&EXECUTION_snapshot_call)) {
+                    payload_read(e, f, pc, call->first);
                     if (!e->counting &&
                         !plain(f->data_values[call->result_first].initial)) {
                         unknown(e);
@@ -706,6 +790,9 @@ static void function(effects *e, const behavior_function *f, int depth)
                 if (id) {
                     unknown(e);
                     break;
+                }
+                for (int bank = call->first; bank < call->result_first; bank++) {
+                    payload_read(e, f, pc, bank);
                 }
                 add_access(e, call->access);
                 break;
@@ -725,24 +812,36 @@ static void function(effects *e, const behavior_function *f, int depth)
                     }
                 }
                 break;
+            case BF_READ:
+                if (!e->predicate) {
+                    unknown(e);
+                }
+                /* fall through */
             case BF_LOAD:
+                if (e->reducing) {
+                    int steps = EFFECT_STEPS;
+                    origin address = slot_origin(f, pc, i->left, 0, &steps);
+                    if (e->counting || address.component) {
+                        add(e, false, address.component);
+                    }
+                }
                 if (!e->counting) {
                     int steps = EFFECT_STEPS;
                     origin address = slot_origin(f, pc, i->left, 0, &steps);
-                    size_t width = i->type >= PIN_BOOL && i->type <= PIN_F64
-                                     ? behavior_scalar_size(i->type)
-                                     : 0;
+                    bool scalar = (i->type >= PIN_BOOL && i->type <= PIN_F64) ||
+                                  (e->reducing && i->type == PIN_HANDLE);
+                    size_t width = scalar ? behavior_scalar_size(i->type) : 0;
                     bool row = address.component &&
                                behavior_function_kind(f, BEHAVIOR_BANK_SLOT, i->output) ==
                                    BEHAVIOR_VALUE &&
-                               i->type >= PIN_BOOL && i->type <= PIN_F64 &&
-                               address.offset <= address.extent &&
+                               scalar && address.offset <= address.extent &&
                                i->offset <= address.extent - address.offset &&
                                width <= address.extent - address.offset - i->offset;
-                    if (!address.bank && !row && !(e->predicate && address.readable)) {
+                    if (!address.bank && !row &&
+                        !(e->predicate && address.readable && !e->reducing)) {
                         unknown(e);
                     }
-                    if (row && !address.owner) {
+                    if (row && !address.owner && !e->reducing) {
                         e->summary->parallel_safe = false;
                     }
                 }
@@ -764,17 +863,14 @@ static void function(effects *e, const behavior_function *f, int depth)
                     if (!world.world) {
                         unknown(e);
                     }
-                    if (!slot_origin(f, pc, i->right, 0, &steps).owner) {
+                    if (!slot_origin(f, pc, i->right, 0, &steps).owner && !e->reducing) {
                         e->summary->parallel_safe = false;
                     }
                 }
                 break;
             case BF_WORLD:
             case BF_ENTITY: break;
-            case BF_READ:
             case BF_ARGUMENT:
-            case BF_LOCAL:
-            case BF_SAVE:
             case BF_INVOKE:
             case BF_INDEX:
             case BF_COLUMN:
@@ -783,6 +879,12 @@ static void function(effects *e, const behavior_function *f, int depth)
             case BF_HOST_SERVICE:
             case BF_ARRAY:
                 if (!e->predicate) {
+                    unknown(e);
+                }
+                break;
+            case BF_LOCAL:
+            case BF_SAVE:
+                if (!e->predicate && !e->reducing) {
                     unknown(e);
                 }
                 break;
@@ -837,7 +939,8 @@ static void predicate_effects(effects *e, const behavior_function *root)
 static void plan(effects *e, const execution_module_plan *p)
 {
     for (int i = 0; i < p->query_count; i++) {
-        if (p->queries[i].component) {
+        if (p->queries[i].component &&
+            (!e->reducing || p->queries[i].kind == EXECUTION_QUERY_CHANGED)) {
             add(e, false, p->queries[i].component);
         }
         if (p->queries[i].source_relationship) {
@@ -845,7 +948,8 @@ static void plan(effects *e, const execution_module_plan *p)
         }
         e->function = 0;
         predicate_effects(e, p->queries[i].predicate);
-        if (!e->counting && p->queries[i].kind == EXECUTION_QUERY_GENERATOR) {
+        if (!e->counting && !e->reducing &&
+            p->queries[i].kind == EXECUTION_QUERY_GENERATOR) {
             /* Different rows can share the same owner or joined target. */
             e->summary->parallel_safe = false;
         }
@@ -876,6 +980,9 @@ static void plan(effects *e, const execution_module_plan *p)
         for (int j = 0; j < s.write_count; j++) {
             add(e, true, s.writes[j]);
         }
+        for (int j = 0; j < s.reduce_count; j++) {
+            add_reduction(e, s.reduces[j]);
+        }
         if (e->counting) {
             continue;
         }
@@ -888,12 +995,12 @@ static void plan(effects *e, const execution_module_plan *p)
 }
 size_t execution_module_effects_bytes(const execution_module_plan *p)
 {
-    effects e = { .counting = true, .valid = true };
+    effects e = { .counting = true, .valid = true, .reducing = plan_reduces(p) };
     plan(&e, p);
     return !e.valid || e.capacity > EFFECT_RECORDS ||
-                   e.capacity > SIZE_MAX / (2 * sizeof(uint64_t))
+                   e.capacity > SIZE_MAX / (3 * sizeof(uint64_t))
              ? SIZE_MAX
-             : e.capacity * 2 * sizeof(uint64_t);
+             : e.capacity * 3 * sizeof(uint64_t);
 }
 bool execution_module_build_effects(execution_module *m)
 {
@@ -903,10 +1010,11 @@ bool execution_module_build_effects(execution_module *m)
     }
     m->effect_ids = bytes ? xcalloc(1, bytes) : NULL;
     m->effect_bytes = bytes;
-    size_t capacity = bytes / (2 * sizeof(uint64_t));
+    size_t capacity = bytes / (3 * sizeof(uint64_t));
     m->effects = (execution_effect_summary){
         .reads = m->effect_ids,
         .writes = capacity ? m->effect_ids + capacity : NULL,
+        .reduces = capacity ? m->effect_ids + 2 * capacity : NULL,
         .declared = true,
         .deterministic = true,
         .unknown_operation = -1,
@@ -916,8 +1024,23 @@ bool execution_module_build_effects(execution_module *m)
     effects e = { .summary = &m->effects,
                   .reads = m->effect_ids,
                   .writes = capacity ? m->effect_ids + capacity : NULL,
-                  .valid = true };
+                  .reduces = capacity ? m->effect_ids + 2 * capacity : NULL,
+                  .valid = true,
+                  .reducing = plan_reduces(&m->plan) };
     plan(&e, &m->plan);
+    if (e.reducing) {
+        /* Rows may alias through generators or arbitrary target handles. Only
+         * private contributions, never ordinary writes, permit this proof. */
+        m->effects.parallel_safe &= m->effects.reduce_count > 0 &&
+                                    !m->effects.write_count;
+        for (int i = 0; i < m->effects.reduce_count; i++) {
+            for (int j = 0; j < m->effects.read_count; j++) {
+                if (m->effects.reduces[i] == m->effects.reads[j]) {
+                    m->effects.parallel_safe = false;
+                }
+            }
+        }
+    }
     return e.valid;
 }
 execution_effect_summary execution_module_effects(const execution_module *m)
@@ -1045,6 +1168,9 @@ static void cost_host(costs *c, const behavior_function *f, int pc)
             return;
         case EXECUTION_INTRINSIC_REFERENCE_WRITE:
             cost_add(c, f, pc, id, 0, COST_ALL, "Reference write can retain and copy the referenced root value");
+            return;
+        case EXECUTION_INTRINSIC_REFERENCE_REDUCE:
+            cost_add(c, f, pc, id, EXECUTION_COST_ESCAPE, EXECUTION_COST_ALLOCATE, "Reduction retains a scalar contribution until system publication");
             return;
         case EXECUTION_INTRINSIC_COMPONENT_HAS:
         case EXECUTION_INTRINSIC_QUERY_SOURCE:

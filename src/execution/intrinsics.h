@@ -32,6 +32,7 @@ typedef enum
     EXECUTION_INTRINSIC_QUERY_SOURCE = 19,
     EXECUTION_INTRINSIC_QUERY_TARGET = 23,
     EXECUTION_INTRINSIC_QUERY_VARIABLE = 24,
+    EXECUTION_INTRINSIC_REFERENCE_REDUCE = 25,
     EXECUTION_INTRINSIC_UNION_MAKE = 20,
     EXECUTION_INTRINSIC_UNION_TEST = 21,
     EXECUTION_INTRINSIC_UNION_GET = 22,
@@ -46,6 +47,7 @@ extern const node_host_call EXECUTION_reference_make_call;
 extern const node_host_call EXECUTION_reference_field_call;
 extern const node_host_call EXECUTION_reference_read_call;
 extern const node_host_call EXECUTION_reference_write_call;
+extern const node_host_call EXECUTION_reference_reduce_call;
 extern const node_host_call EXECUTION_action_read_call;
 extern const node_host_call EXECUTION_action_complete_call;
 extern const node_host_call EXECUTION_break_request_call, EXECUTION_break_take_call;

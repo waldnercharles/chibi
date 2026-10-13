@@ -501,6 +501,48 @@ static void infer_type(analyzer *a, int symbol, int expression, TSNode node)
     }
     a->out->symbols[symbol].type = type;
 }
+/* Only stored member paths rooted in ECS storage can receive contributions. */
+uint64_t script_analyzer_component_target(const script_analysis *out, int index)
+{
+    while (index >= 0 && out->expressions[index].kind == SCRIPT_EXPR_MEMBER) {
+        const script_expression *e = &out->expressions[index];
+        if (e->read || e->write || e->type.container != PIN_CONTAINER_SINGLE) {
+            return 0;
+        }
+        index = e->left;
+    }
+    if (index < 0) {
+        return 0;
+    }
+    const script_expression *e = &out->expressions[index];
+    if (e->kind == SCRIPT_EXPR_COMPONENT) {
+        return e->capability;
+    }
+    if (e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
+        out->symbols[e->symbol].kind == SCRIPT_COMPONENT) {
+        return out->symbols[e->symbol].type.nominal;
+    }
+    return 0;
+}
+static bool reduction_bounded(const analyzer *a, int index)
+{
+    while (index >= 0 && a->out->expressions[index].kind == SCRIPT_EXPR_MEMBER) {
+        const script_expression *e = &a->out->expressions[index];
+        const script_catalog_type
+            *type = e->left >= 0 ? script_catalog_type_by_id(
+                                       a->catalog,
+                                       a->out->expressions[e->left].type.nominal
+                                   )
+                                 : NULL;
+        for (int i = 0; type && i < type->field_count; i++) {
+            if (type->fields[i].id == e->member && type->fields[i].range_contract) {
+                return true;
+            }
+        }
+        index = e->left;
+    }
+    return false;
+}
 int script_analyzer_statement_inner(analyzer *a, TSNode node)
 {
     if (script_analyzer_is(node, "block")) {
@@ -577,6 +619,43 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node)
                 }
             }
         }
+        return script_analyzer_statement_add(a, result);
+    }
+    if (script_analyzer_is(node, "reduce_statement")) {
+        result.kind = SCRIPT_STMT_REDUCE;
+        if (a->function < 0 ||
+            a->out->functions[a->function].kind != SCRIPT_FUNCTION_SYSTEM) {
+            script_analyzer_diagnostic(a, node, "Reduction requires a synchronous system body");
+        }
+        TSNode target = script_analyzer_field(node, "target");
+        result.expression = script_analyzer_expression(a, target, (script_type){ .flags = SCRIPT_TYPE_UNTYPED });
+        script_expression address = a->out->expressions[result.expression];
+        if (!address.writable || address.kind != SCRIPT_EXPR_MEMBER ||
+            !script_type_numeric(address.type) ||
+            !script_analyzer_component_target(a->out, result.expression)) {
+            script_analyzer_diagnostic(a, target, "Reduction requires a writable scalar numeric component field");
+        }
+        result.second = script_analyzer_expression(
+            a,
+            script_analyzer_field(node, "value"),
+            address.type
+        );
+        script_analyzer_require_values(a, node, result.expression, result.second);
+        TSNode op = script_analyzer_field(node, "operator");
+        result.reduction = script_analyzer_text_is(a, op, "min") ? SCRIPT_REDUCTION_MIN
+                         : script_analyzer_text_is(a, op, "max")
+                             ? SCRIPT_REDUCTION_MAX
+                             : SCRIPT_REDUCTION_ADD;
+        if (!ts_node_is_null(script_analyzer_field(node, "ordering"))) {
+            result.reduction = SCRIPT_REDUCTION_ADD_UNORDERED;
+            if (reduction_bounded(a, result.expression)) {
+                script_analyzer_diagnostic(a, target, "Unordered reduction requires an unbounded component field");
+            }
+        }
+        result.effects = address.effects |
+                         script_analyzer_expr_effects(a, result.second) |
+                         SCRIPT_EFFECT_WRITE;
+        script_analyzer_use(a, target, address.symbol, SCRIPT_WRITE, address.member);
         return script_analyzer_statement_add(a, result);
     }
     if (script_analyzer_is(node, "assignment")) {

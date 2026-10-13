@@ -159,7 +159,15 @@ typedef enum
     SCRIPT_STMT_SEQUENCE,
     SCRIPT_STMT_MATCH,
     SCRIPT_STMT_CASE,
+    SCRIPT_STMT_REDUCE,
 } script_statement_kind;
+typedef enum
+{
+    SCRIPT_REDUCTION_ADD,
+    SCRIPT_REDUCTION_MIN,
+    SCRIPT_REDUCTION_MAX,
+    SCRIPT_REDUCTION_ADD_UNORDERED,
+} script_reduction_op;
 typedef struct
 {
     script_statement_kind kind;
@@ -168,6 +176,7 @@ typedef struct
     int *children;
     int child_count;
     script_operator op;
+    script_reduction_op reduction;
     unsigned effects;
 } script_statement;
 typedef enum

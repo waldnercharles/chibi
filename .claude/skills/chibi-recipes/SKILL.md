@@ -17,8 +17,11 @@ reusable capability:
    `NODE_COMPONENT_TYPE_DENSE(Name)` (see `GlobalBinding`). Use plain
    C fields; enums become named choices, `NODE_HANDLE(ecs.entity)` marks an
    entity reference. Comment what it means and its units, and mark a numeric
-   field's unit and editing range with `NODE_UNIT("u/s")` and
-   `NODE_RANGE(0, 1)` so editors show them. Give it a Properties tab or icon
+   field's unit and stored-value contract with `NODE_UNIT("u/s")` and
+   `NODE_RANGE(0, 1)`. Owning writes clamp the range; use `NODE_RANGE_HINT`
+   only for a slider whose endpoints are not semantic limits. Native writes
+   through row pointers must call `ecs_component_modified` before publication.
+   Give it a Properties tab or icon
    in `src/authoring/engine_components.kdl`.
 2. Build (`make build`). The reflect step regenerates the native type tables
    and adds the component's row to `src/runtime/component_ids.tsv`. Commit

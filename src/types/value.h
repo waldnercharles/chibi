@@ -24,7 +24,9 @@
     X(PIN_STR, "const char *")                                                 \
     X(PIN_HANDLE, "handle")                                                    \
     X(PIN_STRUCT, "struct")                                                    \
-    X(PIN_ENUM, "enum")
+    X(PIN_ENUM, "enum")                                                        \
+    X(PIN_TASK, "task")                                                        \
+    X(PIN_UNION, "union")
 
 DEFINE_ENUM(pin_type, PIN_TYPE_LIST)
 

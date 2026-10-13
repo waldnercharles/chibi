@@ -72,8 +72,9 @@ configure_file("${box3d_SOURCE_DIR}/src/block_allocator.c"
     "${box3d_patched_root}/src/block_allocator.c" COPYONLY)
 find_package(Git REQUIRED)
 execute_process(
-    COMMAND "${GIT_EXECUTABLE}" apply --unsafe-paths
-        "--directory=${box3d_patched_root}" "${box3d_patch}"
+    COMMAND "${GIT_EXECUTABLE}" "--work-tree=${box3d_patched_root}"
+        apply "${box3d_patch}"
+    WORKING_DIRECTORY "${box3d_patched_root}"
     RESULT_VARIABLE box3d_patch_result
     ERROR_VARIABLE box3d_patch_error)
 if(NOT box3d_patch_result EQUAL 0)

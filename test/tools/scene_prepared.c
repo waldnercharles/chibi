@@ -31,6 +31,7 @@ static ecs_world *world;
 static unsigned char *bytes, *changed;
 static size_t length;
 static ecs_component_desc component;
+static bool project_types;
 static void cleanup()
 {
     scene_instance_free(instance);
@@ -44,6 +45,10 @@ static void cleanup()
     free(changed);
     bytes = changed = NULL;
     length = 0;
+    if (project_types) {
+        type_catalog_set_project(NULL);
+        project_types = false;
+    }
 }
 static bool prepare()
 {
@@ -253,6 +258,22 @@ TEST_CASE(prepared_scene_rejects_component_identity_conflicts)
         REQUIRE(!document);
         REQUIRE(strstr(error, "identity has conflicting layouts"));
     }
+    /* Separate descriptors with the same layout remain interchangeable. */
+    type_desc equivalent = *type;
+    second = first;
+    second.type = &equivalent;
+    document = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(document);
+    scene_free(document);
+    document = NULL;
+    type_field fields[2];
+    REQUIRE(type->field_count == 2);
+    memcpy(fields, type->fields, sizeof fields);
+    fields[1].name = "renamed_label";
+    equivalent.fields = fields;
+    document = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(!document);
+    REQUIRE(strstr(error, "identity has conflicting layouts"));
     /* Missing optional keys do not make unrelated components identical. */
     first.key = NULL;
     second = first;
@@ -268,6 +289,76 @@ TEST_CASE(prepared_scene_rejects_component_identity_conflicts)
     document = scene_prepare(&spec, error, sizeof error);
     REQUIRE(!document);
     REQUIRE(strstr(error, "object component is duplicated"));
+    return true;
+}
+
+TEST_CASE(prepared_scene_rechecks_shared_layouts_after_nested_catalog_replacement)
+{
+    const type_field wide_field = { .name = "amount",
+                                    .type = PIN_F64,
+                                    .size = sizeof(double),
+                                    .range_contract = true,
+                                    .min = 0,
+                                    .max = 10 };
+    type_field narrow_field = wide_field;
+    narrow_field.max = 5;
+    const type_desc wide = { .name = "scene.test.amount",
+                             .size = sizeof(double),
+                             .fields = &wide_field,
+                             .field_count = 1 };
+    type_desc narrow = wide;
+    narrow.fields = &narrow_field;
+    const type_field nested = { .name = "nested",
+                                .type = PIN_STRUCT,
+                                .type_name = wide.name,
+                                .size = sizeof(double) };
+    const type_desc outer = { .name = "scene.test.nested",
+                              .size = sizeof(double),
+                              .fields = &nested,
+                              .field_count = 1 };
+    const type_desc *types[] = { &wide };
+    type_catalog_pack pack = { .types = types, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    project_types = true;
+    ecs_component_desc first = { .id = 970,
+                                 .name = "NestedRange",
+                                 .type = &outer,
+                                 .element_size = sizeof(double),
+                                 .layout_hash = ecs_layout_hash(&outer) };
+    ecs_component_desc second = first;
+    double amounts[] = { 9, 12 };
+    scene_component rows[] = { { &first, &amounts[0] }, { &second, &amounts[1] } };
+    scene_object objects[] = {
+        { .name = "First", .components = &rows[0], .component_count = 1 },
+        { .name = "Second", .components = &rows[1], .component_count = 1 },
+    };
+    scene_spec spec = { .name = "NestedRanges",
+                        .physics = physics_defaults(),
+                        .objects = objects,
+                        .object_count = 2 };
+    char error[256];
+    document = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(document);
+    REQUIRE(*(const double *)scene_object_component_at(document, 0, 0).data == 9);
+    REQUIRE(*(const double *)scene_object_component_at(document, 1, 0).data == 10);
+    /* Sharing a type never exempts a row's advertised hash from validation. */
+    second.layout_hash ^= 1;
+    decoded = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(!decoded && strstr(error, "layout hash differs"));
+    second = first;
+    type_catalog_set_project(NULL);
+    types[0] = &narrow;
+    type_catalog_set_project(&pack);
+    REQUIRE(first.layout_hash != ecs_layout_hash(&outer));
+    decoded = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(!decoded && strstr(error, "layout hash differs"));
+    first.layout_hash = second.layout_hash = ecs_layout_hash(&outer);
+    decoded = scene_prepare(&spec, error, sizeof error);
+    REQUIRE(decoded);
+    REQUIRE(*(const double *)scene_object_component_at(decoded, 0, 0).data == 5);
+    REQUIRE(*(const double *)scene_object_component_at(decoded, 1, 0).data == 5);
+    REQUIRE(*(const double *)scene_object_component_at(document, 0, 0).data == 9);
+    cleanup();
     return true;
 }
 
@@ -623,6 +714,7 @@ void test_scene_prepared()
     RUN_TEST_CASE(prepared_scene_survives_input_retirement_and_instantiation);
     RUN_TEST_CASE(prepared_scene_roundtrips_repeated_component_rows);
     RUN_TEST_CASE(prepared_scene_rejects_component_identity_conflicts);
+    RUN_TEST_CASE(prepared_scene_rechecks_shared_layouts_after_nested_catalog_replacement);
     RUN_TEST_CASE(prepared_scene_rejects_incompatible_and_malformed_records);
     RUN_TEST_CASE(prepared_scene_rejects_misplaced_parents_and_sibling_names);
     RUN_TEST_CASE(prepared_scene_rejects_links_to_no_handle);

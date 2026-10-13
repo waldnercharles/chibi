@@ -9,7 +9,7 @@ behavior "ProjectileBehavior" {
             destroy_entity(self)
         }
     }
-    function "Face Direction"(X: float = 0.0, Y: float = 0.0) {
+    "Face Direction" :: fn(X: float = 0.0, Y: float = 0.0) {
         after entry {
             if self.Orientation {
                 if greater_or_equal(0.0, "Direction Magnitude"(entry.X, entry.Y)) {
@@ -23,7 +23,7 @@ behavior "ProjectileBehavior" {
             }
         }
     }
-    pure function "Direction Magnitude"<T0: float, T1: float, T2: float>(x: T0 = 0.0, y: T1 = 0.0) -> (Result: T2 = 0.0) {
+    "Direction Magnitude" :: pure fn<T0: float, T1: float, T2: float>(x: T0 = 0.0, y: T1 = 0.0) -> (Result: T2 = 0.0) {
         return abs(entry.x) + abs(entry.y)
     }
 }

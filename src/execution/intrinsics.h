@@ -29,11 +29,18 @@ typedef enum
     EXECUTION_INTRINSIC_STATE_TRANSITION = 16,
     EXECUTION_INTRINSIC_RETRIGGER_ACTION = 17,
     EXECUTION_INTRINSIC_LOCAL_RELEASE = 18,
+    EXECUTION_INTRINSIC_QUERY_SOURCE = 19,
+    EXECUTION_INTRINSIC_QUERY_TARGET = 23,
+    EXECUTION_INTRINSIC_UNION_MAKE = 20,
+    EXECUTION_INTRINSIC_UNION_TEST = 21,
+    EXECUTION_INTRINSIC_UNION_GET = 22,
 } execution_intrinsic;
 extern const node_host_call EXECUTION_state_demand_call,
     EXECUTION_state_transition_call, EXECUTION_retrigger_action_call;
 extern const node_host_call EXECUTION_snapshot_call;
 extern const node_host_call EXECUTION_construct_call;
+extern const node_host_call EXECUTION_union_make_call,
+    EXECUTION_union_test_call, EXECUTION_union_get_call;
 extern const node_host_call EXECUTION_reference_make_call;
 extern const node_host_call EXECUTION_reference_field_call;
 extern const node_host_call EXECUTION_reference_read_call;
@@ -45,6 +52,8 @@ extern const node_host_call EXECUTION_event_read_call;
 extern const node_host_call EXECUTION_local_release_call;
 extern const node_host_call EXECUTION_component_has_call,
     EXECUTION_component_membership_call;
+extern const node_host_call EXECUTION_query_source_call;
+extern const node_host_call EXECUTION_query_target_call;
 extern const node_access EXECUTION_component_read_access,
     EXECUTION_component_membership_access;
 extern const node_access EXECUTION_assignment_access, EXECUTION_value_access;

@@ -125,12 +125,13 @@ add_library(chibi_types STATIC
     "${CHIBI_SDK_ROOT}/src/types/catalog.c"
     "${CHIBI_SDK_ROOT}/src/types/array.c"
     "${CHIBI_SDK_ROOT}/src/types/trace.c"
+    "${CHIBI_SDK_ROOT}/src/types/union.c"
     "${CHIBI_SDK_ROOT}/src/types/index.c"
     "${CHIBI_SDK_ROOT}/src/types/value_format.c"
     "${CHIBI_SDK_ROOT}/src/types/value_wire.c")
 add_library(Chibi::types ALIAS chibi_types)
 set_target_properties(chibi_types PROPERTIES EXPORT_NAME types)
-chibi_sdk_headers(chibi_types PUBLIC types/value.h types/type.h types/catalog.h types/array.h types/trace.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
+chibi_sdk_headers(chibi_types PUBLIC types/value.h types/type.h types/catalog.h types/array.h types/trace.h types/union.h types/annotate.h types/state_machine.h types/value_format.h types/scalar.h types/value_wire.h)
 target_link_libraries(chibi_types PUBLIC chibi_support)
 if(UNIX)
     target_link_libraries(chibi_types PRIVATE m)
@@ -175,6 +176,10 @@ add_library(Chibi::native_capabilities ALIAS chibi_native_capabilities)
 set_target_properties(chibi_native_capabilities PROPERTIES EXPORT_NAME native_capabilities)
 chibi_sdk_headers(chibi_native_capabilities PUBLIC runtime/native_capabilities.h runtime/native_definitions.h
     runtime/type_definitions.h)
+configure_file("${CHIBI_SDK_ROOT}/src/capabilities/catalog_index.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/native_capabilities/capabilities/catalog_index.h" COPYONLY)
+target_include_directories(chibi_native_capabilities PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/private/native_capabilities")
 target_link_libraries(chibi_native_capabilities PUBLIC chibi_capabilities chibi_execution_contract)
 
 add_library(chibi_ecs STATIC "${CHIBI_SDK_ROOT}/src/ecs/ecs.c"
@@ -434,7 +439,11 @@ if(CHIBI_SDK_BUILD_COMPILER)
         PRIVATE chibi_types chibi_asset_values chibi_asset_text chibi_support)
     list(APPEND CHIBI_SDK_TARGETS chibi_input_map)
     add_library(chibi_project_document STATIC "${CHIBI_SDK_ROOT}/src/assets/project.c"
-        "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c")
+        "${CHIBI_SDK_ROOT}/src/assets/project_migrate.c"
+        "${CHIBI_SDK_ROOT}/src/assets/project_parser23.c")
+    target_include_directories(chibi_project_document PRIVATE "${CHIBI_SDK_ROOT}/src/language/src")
+    set_source_files_properties("${CHIBI_SDK_ROOT}/src/assets/project_parser23.c"
+        PROPERTIES COMPILE_OPTIONS "-w")
     add_library(Chibi::project_document ALIAS chibi_project_document)
     set_target_properties(chibi_project_document PROPERTIES EXPORT_NAME project_document)
     chibi_sdk_headers(chibi_project_document PUBLIC assets/project.h assets/project_migrate.h)

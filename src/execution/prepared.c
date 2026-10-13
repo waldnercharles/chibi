@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/union.h"
 
 #include <float.h>
 #include <limits.h>
@@ -44,7 +45,7 @@ static bool value_identity(prepared_context *c, const pin_value *value, unsigned
     if (depth > EXECUTION_WIRE_MAX_DEPTH) {
         return false;
     }
-    if (value->type_name && value->type >= PIN_HANDLE) {
+    if (value->type_name && value->type >= PIN_HANDLE && value->type != PIN_TASK) {
         bool found = false;
         for (int i = 0; i < c->plan->type_count; i++) {
             const execution_type_requirement *t = &c->plan->types[i];
@@ -64,6 +65,13 @@ static bool value_identity(prepared_context *c, const pin_value *value, unsigned
         const pin_array *array = value->ptr;
         for (int i = 0; i < array->count; i++) {
             if (!value_identity(c, &array->items[i], depth + 1)) {
+                return false;
+            }
+        }
+    } else if (value->type == PIN_UNION) {
+        const pin_union *tagged = value->ptr;
+        for (int i = 0; i < tagged->count; i++) {
+            if (!value_identity(c, &tagged->values[i], depth + 1)) {
                 return false;
             }
         }
@@ -402,7 +410,7 @@ static void types(prepared_context *c)
         ENUM(v->storage);
         STRING(v->name);
         SIZE(v->size);
-        if (!v->id || !v->name || v->storage < PIN_BOOL || v->storage > PIN_ENUM) {
+        if (!v->id || !v->name || v->storage < PIN_BOOL || v->storage > PIN_UNION) {
             w->error = "invalid prepared type requirement";
             break;
         }
@@ -571,6 +579,8 @@ static void payload(prepared_context *c)
         execution_module_query *v = &p->queries[index];
         ENUM(v->kind);
         U64(v->component);
+        U64(v->source_relationship);
+        INT(v->source_traversal);
         ints(w, &v->children, &v->child_count);
     });
     INT(p->query);

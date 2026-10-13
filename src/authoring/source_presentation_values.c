@@ -36,6 +36,11 @@ static const char *expression_name(source_projection *p, const script_expression
         case SCRIPT_EXPR_CALL: return "Call";
         case SCRIPT_EXPR_MEMBER: return "Field";
         case SCRIPT_EXPR_COMPONENT: return "Component";
+        case SCRIPT_EXPR_RELATION: return "Relationship targets";
+        case SCRIPT_EXPR_UNION: return "Union";
+        case SCRIPT_EXPR_IS: return e->negated ? "is not" : "is";
+        case SCRIPT_EXPR_AS: return "as";
+        case SCRIPT_EXPR_UNWRAP: return "Matched value";
         case SCRIPT_EXPR_INDEX: return "Index";
         case SCRIPT_EXPR_ARRAY: return "Array";
         case SCRIPT_EXPR_STRUCT: return "Struct";

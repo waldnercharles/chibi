@@ -117,6 +117,15 @@ static bool compile(behavior_backend backend)
         }
         return false;
     }
+    bool native_cost = false;
+    for (int i = 0; i < source->performance_count; i++) {
+        const authoring_performance_diagnostic *d = &source->performance[i];
+        native_cost |= d->possible && d->cost == EXECUTION_COST_ALLOCATE &&
+                       strstr(d->message, "Native call") != NULL;
+    }
+    if (!native_cost || source->diagnostic_count) {
+        return false;
+    }
     module = source->module;
     execution_module_retain(module);
     /* The runtime retains executable definitions after the authoring snapshot retires. */
@@ -148,11 +157,18 @@ TEST_CASE(headless_prepared_artifact_retires_producer_and_file)
         char error[256];
         REQUIRE(execution_prepared_write(module, &prepared_bytes, &length, error, sizeof error));
         REQUIRE(length > 32);
+        execution_cost_summary costs = execution_module_costs(module);
         execution_module_free(module);
         module = NULL;
         /* The isolated consumer object links only installed runtime packages. */
         module = headless_consumer_read(prepared_bytes, length, backends[backend], print_abi);
         REQUIRE(module);
+        execution_cost_summary loaded_costs = execution_module_costs(module);
+        REQUIRE(costs.complete && loaded_costs.complete);
+        REQUIRE(
+            costs.proven == loaded_costs.proven &&
+            costs.possible == loaded_costs.possible
+        );
         free(prepared_bytes);
         prepared_bytes = NULL;
         execution_module *loaded = module;

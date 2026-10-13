@@ -14,11 +14,14 @@ static int run_compiled(const behavior_function *f, behavior_function_context *c
 #ifdef __EMSCRIPTEN__
     return behavior_function_run_wasm(f, ctx);
 #else
-    bool inspected = ctx->inspect || ctx->watch || ctx->trace;
+    bool inspected = ctx->inspect || ctx->watch || ctx->trace ||
+                     ctx->source_pause || ctx->source_capture;
     assert(f->artifact->code);
-    void *entry = inspected && f->artifact->inspection_code
-                    ? f->artifact->inspection_code
-                    : behavior_function_entry(f);
+    if (inspected && !behavior_function_compile_inspection(f)) {
+        return behavior_function_run_interpreted(f, ctx);
+    }
+    void *entry = inspected ? f->artifact->inspection_code
+                            : behavior_function_entry(f);
     return ((int (*)(behavior_function_context *))entry)(ctx);
 #endif
 }

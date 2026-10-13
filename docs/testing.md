@@ -756,6 +756,19 @@ CI runs `make test-tools`; the planner's `--tools` also selects that complete gr
 Both modes retain one shared 60-second supervisor deadline. Retired script suites
 have not been reproduced completely.
 
+For reflection range metadata, `python3 tools/test_policy.py tool reflect-ranges`
+selects two existing C cases with unchanged assertions: numeric units and range
+generation, malformed and nonnumeric annotations, unsafe endpoints, distinct
+hints/defaults, and failed generation preserving prior outputs. The fixed sources
+are below 2 KiB; twelve reflection children retain their existing ten-second
+limits inside one shared 60-second supervisor deadline. There are no engine
+frames, GPU or network operations. This is an admission for the first supervised
+measurement, not a recorded pass. Configure the tooling driver with
+`CHIBI_REFLECT_EXECUTABLE` and select its directory with `CHIBI_TOOLS_BUILD_DIR`;
+the selector rejects a driver built without reflection. The complete tooling
+group retains both cases. This focused check covers reflection range metadata
+only and does not establish a complete tooling-group pass.
+
 Configure/build separately and report that time separately from test execution:
 
 ```sh

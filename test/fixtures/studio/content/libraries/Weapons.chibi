@@ -1,5 +1,5 @@
 library "Weapons" {
-    function "Ignore Shooter"(Shooter: handle<"ecs.entity"> = 0, Projectile: handle<"ecs.entity"> = 0) {
+    "Ignore Shooter" :: fn(Shooter: handle<"ecs.entity"> = 0, Projectile: handle<"ecs.entity"> = 0) {
         after entry {
             entry.Projectile.Collider.ignore_entity = entry.Shooter
             return

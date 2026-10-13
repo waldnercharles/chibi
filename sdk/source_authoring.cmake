@@ -12,6 +12,8 @@ foreach(header source_catalog_snapshot source_prepare_internal)
     configure_file("${CHIBI_SDK_ROOT}/src/authoring/${header}.h"
         "${CMAKE_CURRENT_BINARY_DIR}/private/source_catalog/authoring/${header}.h" COPYONLY)
 endforeach()
+configure_file("${CHIBI_SDK_ROOT}/src/capabilities/catalog_index.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/private/source_catalog/capabilities/catalog_index.h" COPYONLY)
 target_include_directories(chibi_source_catalog PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/private/source_catalog")
 target_link_libraries(chibi_source_catalog PUBLIC chibi_authoring chibi_input_map

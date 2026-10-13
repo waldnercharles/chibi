@@ -123,5 +123,19 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
         result.payload_capacity += capacity;
     }
     afree(values);
+    p = p->owner_program;
+    result.task_lookup_steps = p->task_lookup_steps;
+    for (int scope = -1; scope < acount(p->imports); scope++) {
+        const execution_program *program = scope < 0 ? p : p->imports[scope];
+        for (int i = 0; i < acount(program->instances); i++) {
+            const execution_instance *instance = program->instances[i];
+            result.task_slots += acount(instance->tasks);
+            for (int j = 0; j < acount(instance->tasks); j++) {
+                const execution_task *task = &instance->tasks[j];
+                result.retained_tasks += task->generation && !task->activation;
+                result.task_result_bytes += arena_storage_bytes(&task->storage);
+            }
+        }
+    }
     return result;
 }

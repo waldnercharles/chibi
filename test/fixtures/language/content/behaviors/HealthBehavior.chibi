@@ -22,7 +22,7 @@ behavior "HealthBehavior" {
         } else {
         }
     }
-    function "Apply Damage"(Current: int = 0, Maximum: int = 0, Amount: int = 0, Source: handle<"ecs.entity"> = 0) -> () {
+    "Apply Damage" :: fn(Current: int = 0, Maximum: int = 0, Amount: int = 0, Source: handle<"ecs.entity"> = 0) -> () {
         depth_limit 0;
         action current_remaininghealth = HealthChanged(Current: plain double = convert<"To Real">(entry.Current), RemainingHealth: plain double = cast<double>(clamp(convert<"To Real">(entry.Current) - clamp(convert<"To Real">(entry.Amount), 0, convert<"To Real">(entry.Current)), 0, convert<"To Real">(entry.Maximum))));
         after entry {
@@ -56,7 +56,7 @@ behavior "HealthBehavior" {
             return ();
         }
     }
-    function "Notify Encounter"() -> () {
+    "Notify Encounter" :: fn() -> () {
         depth_limit 0;
         after entry {
             if (has_encounter_member()) {

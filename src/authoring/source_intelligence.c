@@ -67,6 +67,7 @@ static const char *highlight(const authoring_navigation *index, authoring_target
         case SCRIPT_PARAMETER:
         case SCRIPT_RESULT: return "tok-param";
         case SCRIPT_COMPONENT:
+        case SCRIPT_TYPE:
         case SCRIPT_TYPE_PARAMETER: return "tok-type";
         case SCRIPT_EVENT: return "tok-event";
         case SCRIPT_FUNCTION:
@@ -855,7 +856,7 @@ void authoring_source_complete(
         if (receiver.storage == PIN_HANDLE && receiver.nominal == catalog->entity_type) {
             for (int i = 0; i < catalog->type_count; i++) {
                 const script_catalog_type *t = &catalog->types[i];
-                if (!t->component) {
+                if (t->internal || !t->component) {
                     continue;
                 }
                 const char *name = t->source_name ? t->source_name : t->name;
@@ -974,6 +975,9 @@ void authoring_source_complete(
     if (!events) {
         for (int i = 0; i < catalog->type_count; i++) {
             const script_catalog_type *t = &catalog->types[i];
+            if (t->internal) {
+                continue;
+            }
             const char *name = t->source_name ? t->source_name : t->name;
             offer(
                 out,

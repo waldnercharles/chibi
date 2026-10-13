@@ -53,7 +53,7 @@ static const char *driver =
     "let downloads=0,revision='a'.repeat(40),checksum,archive;\n";
 
 static const char *driver_launch =
-    "async function launch(search=''){\n"
+    "async launch :: fn(search=''){\n"
     " let ready,aborted='',released=false;const done=new Promise(r=>ready=r);\n"
     " const "
     "location={origin:'https://example.test',href:'https://example.test/game/"
@@ -105,7 +105,7 @@ static const char *driver_launch =
     "return "
     "{root:Module.arguments[1],aborted,released};\n"
     "}\n"
-    "async function startImport(){const "
+    "async startImport :: fn(){const "
     "{Module,inputs}=active,encode=text=>new TextEncoder().encode(text);"
     "const buffer=await Module.chibiZipFiles([['project.kdl',encode('name "
     "Imported')],"

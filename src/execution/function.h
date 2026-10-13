@@ -63,6 +63,36 @@ typedef struct
     const char *asset_name;
     int start, end, line, column;
 } behavior_function_source;
+enum
+{
+    EXECUTION_COST_ALLOCATE = 1u << 0,
+    EXECUTION_COST_COPY = 1u << 1,
+    EXECUTION_COST_ESCAPE = 1u << 2,
+    EXECUTION_COST_KINDS = 3,
+};
+typedef struct
+{
+    const behavior_function *function;
+    int instruction;
+    uint64_t capability;
+    const char *reason;
+} execution_cost_site;
+typedef struct
+{
+    unsigned proven, possible;
+    bool complete;
+    /* First evidence for each bit above; borrowed from the owning generation. */
+    execution_cost_site proven_sites[EXECUTION_COST_KINDS];
+    execution_cost_site possible_sites[EXECUTION_COST_KINDS];
+} execution_cost_summary;
+/* Derived from normal finalized instructions and transitive linked callees.
+ * Proven means an operation exists, not that every branch executes it. Allocate
+ * means a dynamic storage request (possibly satisfied by an arena/pool); copy
+ * excludes scalar moves; escape means retention beyond the producing frame or
+ * expression. Possible covers nullable values, caches, and unknown native code.
+ * This bounded structural analysis does not estimate time, counts, complexity,
+ * or backend/activation setup costs. No authored annotations are required. */
+execution_cost_summary behavior_function_costs(const behavior_function *);
 typedef enum
 {
     BEHAVIOR_FUNCTION_BUDGET,
@@ -327,6 +357,13 @@ void behavior_function_trace_values(
     const behavior_function *,
     const behavior_function_context *,
     arena_marker,
+    void *user
+);
+/* Typed roots for owner-managed values such as task handles. */
+void behavior_function_visit_values(
+    const behavior_function *,
+    const behavior_function_context *,
+    void (*visit)(void *, const pin_value *),
     void *user
 );
 bool behavior_function_resumable(const behavior_function *function);

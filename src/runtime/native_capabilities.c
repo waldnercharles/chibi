@@ -1,5 +1,6 @@
 #include "runtime/native_capabilities.h"
 
+#include "capabilities/catalog_index.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -19,6 +20,7 @@ struct native_capabilities
     script_catalog_type *types;
     script_catalog_capability *capabilities;
     script_catalog_global *declarations;
+    script_catalog_relationship *relationships;
     native_capability_binding *bindings;
     native_global_binding *globals;
     type_desc *layouts;
@@ -44,6 +46,52 @@ static bool reject(char *error, size_t size, const char *message, uint64_t id)
 static bool same_text(const char *a, const char *b)
 {
     return a == b || (a && b && !strcmp(a, b));
+}
+static bool add_relationship(
+    native_capabilities *n,
+    const script_catalog_relationship *source,
+    char *error,
+    size_t size
+)
+{
+    if (!source->id || !source->name || !source->name[0] ||
+        (source->traversable && !source->exclusive)) {
+        return reject(
+            error,
+            size,
+            "Invalid native relationship declaration",
+            source->id
+        );
+    }
+    bool child_of = !strcmp(source->name, "ChildOf");
+    if ((source->id == SCRIPT_CHILD_OF || child_of) &&
+        (source->id != SCRIPT_CHILD_OF || !child_of || !source->exclusive ||
+         !source->traversable)) {
+        return reject(
+            error,
+            size,
+            "Conflicting built-in ChildOf relationship",
+            source->id
+        );
+    }
+    for (int i = 0; i < acount(n->relationships); i++) {
+        const script_catalog_relationship *prior = &n->relationships[i];
+        if (prior->id == source->id || !strcmp(prior->name, source->name)) {
+            return (prior->id == source->id && !strcmp(prior->name, source->name) &&
+                    prior->exclusive == source->exclusive &&
+                    prior->traversable == source->traversable) ||
+                   reject(
+                       error,
+                       size,
+                       "Conflicting native relationship declarations",
+                       source->id
+                   );
+        }
+    }
+    script_catalog_relationship copy = *source;
+    copy.name = own(n, source->name);
+    apush(n->relationships, copy);
+    return true;
 }
 static bool same_type(const script_catalog_type *a, const script_catalog_type *b)
 {
@@ -140,6 +188,10 @@ static bool add_type(
             n,
             layout && !fields[i].unit ? layout->fields[i].unit : fields[i].unit
         );
+        /* Only the owning target layout can establish a stored-value range. */
+        fields[i].range_contract = layout && layout->fields[i].range_contract;
+        fields[i].min = layout ? layout->fields[i].min : 0;
+        fields[i].max = layout ? layout->fields[i].max : 0;
     }
     copy.fields = fields;
     apush(n->types, copy);
@@ -187,6 +239,7 @@ static bool names(native_capabilities *n, const char *const *source, int count, 
 }
 static bool add_capability(
     native_capabilities *n,
+    catalog_index *index,
     const script_catalog_capability *source,
     char *error,
     size_t size
@@ -200,10 +253,8 @@ static bool add_capability(
             source->id
         );
     }
-    for (int i = 0; i < acount(n->capabilities); ++i) {
-        if (n->capabilities[i].id == source->id) {
-            return reject(error, size, "Duplicate native capability", source->id);
-        }
+    if (catalog_index_add(index, source->id, acount(n->capabilities)) >= 0) {
+        return reject(error, size, "Duplicate native capability", source->id);
     }
     script_catalog_capability copy = *source;
     copy.name = own(n, source->name);
@@ -243,10 +294,18 @@ static bool add_global(native_capabilities *n, const script_catalog_global *sour
     apush(n->declarations, copy);
     return true;
 }
-static bool add_binding(native_capabilities *n, native_capability_binding copy, char *error, size_t size)
+static bool add_binding(
+    native_capabilities *n,
+    const catalog_index *index,
+    native_capability_binding copy,
+    char *error,
+    size_t size
+)
 {
-    const script_catalog_capability
-        *declaration = script_catalog_capability_by_id(&n->catalog, copy.id);
+    int row = catalog_index_find(index, copy.id);
+    const script_catalog_capability *declaration = row >= 0
+                                                     ? &n->catalog.capabilities[row]
+                                                     : NULL;
     if (!declaration || copy.abi || copy.result_count < 0 ||
         (copy.result_count && !copy.result_pins) ||
         (!!copy.call + !!copy.command + !!copy.query + !!copy.intrinsic) != 1) {
@@ -361,6 +420,7 @@ native_capabilities *native_capabilities_new(
     native_capabilities *n = xcalloc(1, sizeof(*n));
     n->references = 1;
     const type_desc **layouts = NULL;
+    catalog_index capabilities = { 0 };
     for (int p = 0; p < count; ++p) {
         if (packs[p].layout_count < 0 || (packs[p].layout_count && !packs[p].layouts)) {
             reject(error, size, "Invalid native layout pack", 0);
@@ -372,6 +432,12 @@ native_capabilities *native_capabilities_new(
                 (layout->field_count && !layout->fields)) {
                 reject(error, size, "Invalid native target layout", 0);
                 goto fail;
+            }
+            for (int j = 0; j < layout->field_count; ++j) {
+                if (!type_field_range_valid(&layout->fields[j])) {
+                    reject(error, size, "Invalid native field range contract", 0);
+                    goto fail;
+                }
             }
             apush(layouts, layout);
         }
@@ -396,8 +462,11 @@ native_capabilities *native_capabilities_new(
         if (!catalog || catalog->type_count < 0 || catalog->capability_count < 0 ||
             catalog->global_count < 0 || (catalog->type_count && !catalog->types) ||
             (catalog->capability_count && !catalog->capabilities) ||
-            (catalog->global_count && !catalog->globals) || pack->binding_count < 0 ||
-            pack->global_count < 0 || (pack->binding_count && !pack->bindings) ||
+            (catalog->global_count && !catalog->globals) ||
+            catalog->relationship_count < 0 ||
+            (catalog->relationship_count && !catalog->relationships) ||
+            pack->binding_count < 0 || pack->global_count < 0 ||
+            (pack->binding_count && !pack->bindings) ||
             (pack->global_count && !pack->globals)) {
             reject(error, size, "Invalid native pack", 0);
             goto fail;
@@ -421,12 +490,17 @@ native_capabilities *native_capabilities_new(
             }
         }
         for (int i = 0; i < catalog->capability_count; ++i) {
-            if (!add_capability(n, &catalog->capabilities[i], error, size)) {
+            if (!add_capability(n, &capabilities, &catalog->capabilities[i], error, size)) {
                 goto fail;
             }
         }
         for (int i = 0; i < catalog->global_count; ++i) {
             if (!add_global(n, &catalog->globals[i], error, size)) {
+                goto fail;
+            }
+        }
+        for (int i = 0; i < catalog->relationship_count; ++i) {
+            if (!add_relationship(n, &catalog->relationships[i], error, size)) {
                 goto fail;
             }
         }
@@ -437,12 +511,14 @@ native_capabilities *native_capabilities_new(
     n->catalog.capability_count = acount(n->capabilities);
     n->catalog.globals = n->declarations;
     n->catalog.global_count = acount(n->declarations);
+    n->catalog.relationships = n->relationships;
+    n->catalog.relationship_count = acount(n->relationships);
     if (!field_nominals(n, layouts, acount(layouts), error, size)) {
         goto fail;
     }
     for (int p = 0; p < count; ++p) {
         for (int i = 0; i < packs[p].binding_count; ++i) {
-            if (!add_binding(n, packs[p].bindings[i], error, size)) {
+            if (!add_binding(n, &capabilities, packs[p].bindings[i], error, size)) {
                 goto fail;
             }
         }
@@ -485,9 +561,11 @@ native_capabilities *native_capabilities_new(
         apush(n->layouts, copy);
     }
     afree(layouts);
+    catalog_index_free(&capabilities);
     return n;
 fail:
     afree(layouts);
+    catalog_index_free(&capabilities);
     native_capabilities_free(n);
     return NULL;
 }
@@ -510,6 +588,7 @@ void native_capabilities_free(native_capabilities *n)
     afree(n->types);
     afree(n->capabilities);
     afree(n->declarations);
+    afree(n->relationships);
     afree(n->bindings);
     afree(n->globals);
     afree(n->layouts);

@@ -243,9 +243,10 @@ authoring_source_presentation *authoring_source_presentation_new(
             analysis->scopes[s->scope].function >= 0) {
             continue;
         }
-        if (s->kind == SCRIPT_STATE || s->kind == SCRIPT_SHARED_STATE ||
-            s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_ACTION ||
-            s->kind == SCRIPT_EVENT || s->kind == SCRIPT_COMPONENT) {
+        if (s->kind == SCRIPT_CONSTANT || s->kind == SCRIPT_STATE ||
+            s->kind == SCRIPT_SHARED_STATE || s->kind == SCRIPT_LOCAL ||
+            s->kind == SCRIPT_ACTION || s->kind == SCRIPT_EVENT ||
+            s->kind == SCRIPT_COMPONENT) {
             source_view_declaration(&p, i);
         }
         if (s->kind == SCRIPT_COMPONENT) {

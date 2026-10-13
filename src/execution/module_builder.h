@@ -58,6 +58,8 @@ typedef struct
 {
     execution_query_kind kind;
     uint64_t component;
+    uint64_t source_relationship;
+    int source_traversal;
     int *children; /* Owned malloc buffer. */
     int child_count;
 } execution_module_query;

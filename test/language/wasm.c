@@ -101,9 +101,9 @@ TEST_CASE(wasm_default_executes_emitted_code_with_numeric_and_array_helpers)
     REQUIRE(behavior_backend_available(BEHAVIOR_WASM));
     const char *
         source = "behavior B { total: double = 0;"
-                 "function Pair(x: double) -> (r: double[]) { return [x, x + "
+                 "Pair :: fn(x: double) -> (r: double[]) { return [x, x + "
                  "1] }"
-                 "function Step(x: int) -> (r: double) {"
+                 "Step :: fn(x: int) -> (r: double) {"
                  "if (x & 1) == 0 { return cast<double>(x * 3) }"
                  "return cast<double>(-x) }"
                  "on Run { total = 0; i: int = 0; while i < 8 {"
@@ -132,7 +132,7 @@ TEST_CASE(wasm_helper_resumes_and_budget_failure_is_reported)
 {
     REQUIRE(compile(
         "behavior B { total: double = 0;"
-        "function Later(x: double) -> (r: double) { yield; return x * 2 }"
+        "Later :: fn(x: double) -> (r: double) { yield; return x * 2 }"
         "on Run { total = 1; total += await Later(4); total += 10 } }",
         BEHAVIOR_WASM
     ));
@@ -318,7 +318,7 @@ TEST_CASE(wasm_prepared_reload_owns_its_compiled_generation)
 {
     REQUIRE(compile(
         "behavior B { total: double = 0;"
-        "function Add(x: double) -> (r: double) { return x + 3 }"
+        "Add :: fn(x: double) -> (r: double) { return x + 3 }"
         "on Run { total += Add(4) } }",
         BEHAVIOR_WASM
     ));

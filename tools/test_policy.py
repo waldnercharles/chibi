@@ -19,6 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
+    ('--reflect-ranges',): 'First supervised measurement: two reviewed existing C reflection cases, twelve children with existing 10s limits, fixed sources <2KiB, numeric units/ranges/hints/defaults, malformed and unsafe endpoints, transactional failed outputs; no engine frames/GPU/network; shared 60s; docs/testing.md',
     ('--player-clock',): 'Reviewed two deterministic C cases compiling actual player clock initialization for native and browser with only the Cute limiter setter recorded; no clocks/sleeps/window/GPU; 2cases4asserts passed inside native group3.534s/shared60s; browser case fails with the prior unconditional60FPS setter; docs/testing.md',
     ('--audio-browser',): 'Reviewed two C browser PCM age regressions against production capture transport with fake permission/device endpoints, no recording or GPU; native launcher1case8asserts/browser2cases6asserts1.372s; requires matching Wasm test_tools; shared60s',
     ('--player-url',): 'Reviewed nine C-owned gesture lifecycle cases through nine short Node invocations of the production EM_JS bridge; trusted keyboard/pointer gestures, copied URL ownership, cancellation/expiry/restart and one-open limits; fake browser APIs, no browser/network/GPU; measured9cases/67asserts2.278s/shared60s; docs/testing.md',
@@ -429,6 +430,7 @@ TOOLS = {
     'web-storage': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--web-storage'],
     'webgpu-staging': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--webgpu-staging'],
     'native-tools': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools')],
+    'reflect-ranges': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--reflect-ranges'],
 
 }
 # Every admitted selector of each built driver, run under one shared deadline.

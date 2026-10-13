@@ -1,5 +1,8 @@
+#include "execution/definition.h"
 #include "execution/function_builder.h"
+#include "execution/intrinsics.h"
 #include "execution/log.h"
+#include "execution/module_effects.h"
 #include "execution/scalar.h"
 #include "execution/service.h"
 #include "execution/status.h"
@@ -7,7 +10,9 @@
 #include "support/arena.h"
 #include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/array.h"
 #include "types/catalog.h"
+#include "types/union.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -16,13 +21,13 @@
 typedef struct
 {
     int32_t value;
-} execution_box;
+} fixture_box;
 static const type_field box_field = { .name = "value",
                                       .type = PIN_I32,
                                       .size = sizeof(int32_t),
                                       .type_name = "int" };
 static const type_desc box_type = { .name = "fixture.box",
-                                    .size = sizeof(execution_box),
+                                    .size = sizeof(fixture_box),
                                     .fields = &box_field,
                                     .field_count = 1 };
 static const type_desc *const types[] = { &box_type };
@@ -140,6 +145,93 @@ static const char *scale(void *, const pin_value *arguments, pin_value *results)
     host_calls++;
     results[0].d = arguments[0].d * 2;
     return NULL;
+}
+
+static int source_pauses, source_captures;
+static int source_pause(void *, behavior_function_context *, const behavior_source_point *)
+{
+    source_pauses++;
+    return 1;
+}
+static void source_capture(
+    void *,
+    behavior_function_context *,
+    const behavior_source_watch *,
+    const pin_value *value
+)
+{
+    assert(value && value->i == 37);
+    source_captures++;
+}
+TEST_CASE(execution_source_inspection_is_lazy_and_preserves_resume)
+{
+    builder = behavior_function_builder_new();
+    pin_value result = { .type = PIN_I32 };
+    behavior_function_builder_signature(builder, NULL, 0, &result, 1, NULL, 0);
+    int point = behavior_function_builder_source_point(
+        builder,
+        (behavior_source_point){ .occurrence = 1, .kind = BEHAVIOR_SOURCE_STATEMENT }
+    );
+    int watch = behavior_function_builder_source_watch(
+        builder,
+        (behavior_source_watch){
+            .origin = { .occurrence = 2, .kind = BEHAVIOR_SOURCE_EXPRESSION },
+            .initial = result }
+    );
+    int value = slot(PIN_I32);
+    emit((behavior_function_instruction){ .op = BF_CONSTANT,
+                                          .type = PIN_I32,
+                                          .output = value,
+                                          .value = { .type = PIN_I32, .i = 37 } });
+    emit((behavior_function_instruction){ .op = BF_SOURCE_POINT, .left = point });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_SOURCE_WATCH, .type = PIN_I32, .left = value, .target = watch });
+    emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = value });
+    emit((behavior_function_instruction){ .op = BF_RETURN });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(behavior_function_compile(function));
+    REQUIRE(!function->artifact->inspection_code);
+    int observers = 0;
+    for (int pc = 0; pc < acount(function->instructions); pc++) {
+        behavior_function_op op = function->instructions[pc].op;
+        if (op == BF_SOURCE_POINT || op == BF_SOURCE_WATCH) {
+            observers++;
+            REQUIRE(!behavior_function_runtime_keeps(function, pc));
+        }
+    }
+    REQUIRE(observers == 2);
+    execution_cost_summary costs = behavior_function_costs(function);
+    REQUIRE(costs.complete && !costs.proven && !costs.possible);
+    pin_value output = result;
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(run(NULL, 0, NULL, &output, backend == 1, 100) == FLOW_OK);
+        REQUIRE(output.i == 37);
+        REQUIRE(!function->artifact->inspection_code);
+    }
+    for (int backend = 0; backend < 2; backend++) {
+        source_pauses = source_captures = 0;
+        context.source_pause = source_pause;
+        context.source_capture = source_capture;
+        REQUIRE(behavior_function_run(function, &context, backend == 1) == FLOW_PAUSED_RESULT);
+        REQUIRE(source_pauses == 1 && source_captures == 0);
+        REQUIRE(behavior_function_run(function, &context, backend == 1) == FLOW_OK);
+        REQUIRE(source_pauses == 1 && source_captures == 1);
+    }
+#ifndef __EMSCRIPTEN__
+    void *inspection = function->artifact->inspection_code;
+    REQUIRE(inspection);
+    REQUIRE(behavior_function_compile_inspection(function));
+    REQUIRE(function->artifact->inspection_code == inspection);
+#endif
+    /* Detaching after a pause resumes correctly in the compact normal body. */
+    REQUIRE(behavior_function_run(function, &context, true) == FLOW_PAUSED_RESULT);
+    context.source_pause = NULL;
+    context.source_capture = NULL;
+    REQUIRE(behavior_function_run(function, &context, true) == FLOW_OK);
+    REQUIRE(source_captures == 1);
+    return true;
 }
 
 TEST_CASE(execution_branches_state_and_host_calls)
@@ -343,6 +435,8 @@ TEST_CASE(execution_linked_function_returns_checked_value)
     emit((behavior_function_instruction){ .op = BF_RETURN });
     emit((behavior_function_instruction){ .op = BF_END });
     REQUIRE(finish());
+    execution_cost_summary costs = behavior_function_costs(function);
+    REQUIRE(costs.complete && !costs.proven && !costs.possible);
     callee = function;
     function = NULL;
     behavior_function_builder_free(builder);
@@ -365,6 +459,8 @@ TEST_CASE(execution_linked_function_returns_checked_value)
     emit((behavior_function_instruction){ .op = BF_RESULT, .type = PIN_I32, .left = output });
     emit((behavior_function_instruction){ .op = BF_END });
     REQUIRE(finish());
+    costs = behavior_function_costs(function);
+    REQUIRE(costs.complete && costs.proven == EXECUTION_COST_ALLOCATE && !costs.possible);
     REQUIRE(behavior_function_compile(callee));
     REQUIRE(behavior_function_compile(function));
     for (int backend = 0; backend < 2; backend++) {
@@ -410,6 +506,11 @@ TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service)
     emit((behavior_function_instruction){ .op = BF_END });
     REQUIRE(finish());
     REQUIRE(behavior_function_compile(callee));
+    execution_cost_summary costs = behavior_function_costs(function);
+    REQUIRE(costs.complete && costs.proven == EXECUTION_COST_ALLOCATE);
+    REQUIRE(costs.possible == (EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY | EXECUTION_COST_ESCAPE));
+    REQUIRE(costs.possible_sites[0].function == callee);
+    REQUIRE(strstr(costs.possible_sites[0].reason, "Native call"));
     REQUIRE(behavior_function_compile(function));
     int first = 31, second = 73;
     apush(log_services, ((service_binding){ "fixture.rebound", &first }));
@@ -430,6 +531,308 @@ TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service)
         behavior_function_rebind_services(function, &context, log_services);
         REQUIRE(behavior_function_run(function, &context, backend == 1) == FLOW_OK);
         REQUIRE(host_calls == 2 && rebound_values[1] == second);
+    }
+    return true;
+}
+
+TEST_CASE(execution_costs_verify_intrinsics_and_follow_recursive_calls)
+{
+    builder = behavior_function_builder_new();
+    pin_value values[] = {
+        { .type = PIN_I32, .container = PIN_CONTAINER_ARRAY },
+        { .type = PIN_I32, .i = 37 },
+    };
+    int host = behavior_function_builder_host(
+        builder,
+        &EXECUTION_construct_call,
+        &EXECUTION_value_access,
+        values,
+        2,
+        values,
+        1
+    );
+    uint64_t id = execution_intrinsic_id(&EXECUTION_construct_call);
+    REQUIRE(
+        behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    execution_cost_summary costs = behavior_function_costs(function);
+    REQUIRE(costs.complete && costs.proven == (EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY));
+    REQUIRE(!costs.possible);
+    REQUIRE(costs.proven_sites[1].capability == id);
+    callee = function;
+    function = NULL;
+    behavior_function_builder_free(builder);
+    builder = behavior_function_builder_new();
+    int call = behavior_function_builder_call(builder, callee, NULL, 0, NULL, 0);
+    emit((behavior_function_instruction){ .op = BF_INVOKE, .left = call });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    costs = behavior_function_costs(function);
+    REQUIRE(costs.complete && !costs.possible);
+    REQUIRE(costs.proven_sites[1].function == callee);
+    /* Recursion revisits a definition without unbounded traversal. */
+    function->calls[call].function = function;
+    costs = behavior_function_costs(function);
+    REQUIRE(costs.complete && costs.proven == EXECUTION_COST_ALLOCATE && !costs.possible);
+    function->calls[call].function = callee;
+    /* A matching stable ID alone must not lend a native callback the verified
+     * intrinsic's cost contract. */
+    const node_host_call changed = { .invoke = scale };
+    callee->host_calls[host].call = &changed;
+    costs = behavior_function_costs(function);
+    REQUIRE(costs.complete && costs.proven == EXECUTION_COST_ALLOCATE);
+    REQUIRE(costs.possible == (EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY | EXECUTION_COST_ESCAPE));
+    callee->host_calls[host].call = &EXECUTION_construct_call;
+    cleanup();
+    builder = behavior_function_builder_new();
+    pin_value tag = { .type = PIN_U64, .u64 = PIN_UNION_CANCELLED_TAG };
+    pin_value result = { .type = PIN_UNION };
+    host = behavior_function_builder_host(
+        builder,
+        &EXECUTION_union_make_call,
+        &EXECUTION_value_access,
+        &tag,
+        1,
+        &result,
+        1
+    );
+    id = execution_intrinsic_id(&EXECUTION_union_make_call);
+    REQUIRE(
+        behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    costs = behavior_function_costs(function);
+    REQUIRE(costs.complete && !costs.proven && !costs.possible);
+    const node_host_call *patterns[] = { &EXECUTION_union_test_call,
+                                         &EXECUTION_union_get_call };
+    for (int j = 0; j < 2; j++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        pin_value args[] = { { .type = PIN_UNION },
+                             tag,
+                             j ? (pin_value){ .type = PIN_I32 } : tag,
+                             { .type = PIN_BOOL, .b = true },
+                             tag };
+        pin_value output = { .type = j ? PIN_UNION : PIN_BOOL };
+        host = behavior_function_builder_host(
+            builder,
+            patterns[j],
+            &EXECUTION_value_access,
+            args,
+            j ? 5 : 3,
+            &output,
+            1
+        );
+        id = execution_intrinsic_id(patterns[j]);
+        REQUIRE(
+            behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+        );
+        emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                              .target = host,
+                                              .left = BEHAVIOR_FUNCTION_HOST_DATA });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        costs = behavior_function_costs(function);
+        REQUIRE(costs.complete && !costs.proven && !costs.possible);
+        execution_module_function entry = { .id = 1,
+                                            .kind = EXECUTION_FUNCTION_SYSTEM,
+                                            .body = function };
+        execution_module module = { .plan = { .functions = &entry,
+                                              .function_count = 1 } };
+        REQUIRE(execution_module_build_effects(&module));
+        execution_effect_summary effects = execution_module_effects(&module);
+        REQUIRE(effects.declared && effects.parallel_safe && effects.deterministic);
+        REQUIRE(!effects.structural && !effects.host_sink && !effects.world_read);
+        REQUIRE(!effects.read_count && !effects.write_count && !module.effect_ids);
+    }
+    cleanup();
+    builder = behavior_function_builder_new();
+    pin_value empty = { .type = PIN_STRUCT, .type_name = "fixture.box" };
+    host = behavior_function_builder_host(
+        builder,
+        &EXECUTION_construct_call,
+        &EXECUTION_value_access,
+        &empty,
+        1,
+        &empty,
+        1
+    );
+    id = execution_intrinsic_id(&EXECUTION_construct_call);
+    REQUIRE(
+        behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    costs = behavior_function_costs(function);
+    REQUIRE(costs.complete && costs.proven == EXECUTION_COST_ALLOCATE);
+    REQUIRE(costs.possible == EXECUTION_COST_COPY);
+    return true;
+}
+
+TEST_CASE(execution_verifier_rejects_invalid_saved_aggregate_roots)
+{
+    for (int invalid = 0; invalid < 7; invalid++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        int pointer = address_slot();
+        behavior_function_builder_root(
+            builder,
+            BEHAVIOR_BANK_SLOT,
+            pointer,
+            (pin_value){ .type = PIN_TASK, .container = PIN_CONTAINER_ARRAY }
+        );
+        behavior_function *draft = (behavior_function *)
+            behavior_function_builder_definition(builder);
+        behavior_value_root *root = &draft->value_roots[0];
+        switch (invalid) {
+            case 0: root->bank = BEHAVIOR_BANK_ARGUMENT; break;
+            case 1: root->index = acount(draft->slots); break;
+            case 2: root->index = -1; break;
+            case 3: root->shape.container = PIN_CONTAINER_SINGLE; break;
+            case 4: root->shape.ptr = (void *)(uintptr_t)1; break;
+            case 5: draft->slot_kinds[pointer] = BEHAVIOR_VALUE; break;
+            case 6: {
+                behavior_value_root duplicate = *root;
+                apush(draft->value_roots, duplicate);
+                break;
+            }
+        }
+        emit((behavior_function_instruction){ .op = BF_END });
+        char error[192];
+        REQUIRE(!behavior_function_builder_finish(builder, error, sizeof error));
+        REQUIRE(error[0]);
+    }
+    return true;
+}
+
+TEST_CASE(execution_costs_include_managed_scalar_result_and_state_escape)
+{
+    const pin_type types[] = { PIN_I32, PIN_STR, PIN_NAME, PIN_UNION, PIN_TASK };
+    for (int mode = 0; mode < 10; mode++) {
+        int i = mode % 5;
+        bool persistent = mode >= 5;
+        cleanup();
+        builder = behavior_function_builder_new();
+        pin_value initial = { .type = types[i] };
+        behavior_function_builder_signature(builder, &initial, 1, &initial, !persistent, &initial, persistent);
+        int value = slot(types[i]);
+        emit((
+            behavior_function_instruction
+        ){ .op = BF_ARGUMENT, .type = types[i], .value = initial, .output = value });
+        emit((behavior_function_instruction){ .op = persistent ? BF_STORE : BF_RESULT,
+                                              .type = types[i],
+                                              .left = value });
+        emit((behavior_function_instruction){ .op = BF_RETURN });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        execution_cost_summary costs = behavior_function_costs(function);
+        REQUIRE(costs.complete && !costs.possible);
+        REQUIRE(costs.proven == (i ? EXECUTION_COST_ESCAPE : 0));
+    }
+    return true;
+}
+
+typedef struct
+{
+    pin_value expected;
+    int matches, others;
+} visited_aggregate;
+static void count_aggregate(void *user, const pin_value *value)
+{
+    visited_aggregate *seen = user;
+    if (value->container != PIN_CONTAINER_ARRAY) {
+        return;
+    }
+    if (value->type == seen->expected.type && value->ptr == seen->expected.ptr) {
+        seen->matches++;
+    } else {
+        seen->others++;
+    }
+}
+TEST_CASE(execution_saved_aggregate_roots_keep_only_live_shapes)
+{
+    for (int union_array = 0; union_array < 2; union_array++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        pin_value shape = { .type = union_array ? PIN_UNION : PIN_TASK,
+                            .container = PIN_CONTAINER_ARRAY };
+        pin_value arguments[] = { shape, shape };
+        pin_value results[] = { { .type = BF_POINTER_TYPE },
+                                { .type = BF_POINTER_TYPE } };
+        behavior_function_builder_signature(builder, arguments, 2, results, 2, NULL, 0);
+        int input[2], locals[2];
+        for (int i = 0; i < 2; i++) {
+            input[i] = address_slot();
+            locals[i] = behavior_function_builder_local(builder, results[i]);
+            REQUIRE(
+                behavior_function_builder_kind(builder, BEHAVIOR_BANK_LOCAL, locals[i], BEHAVIOR_ADDRESS)
+            );
+            REQUIRE(
+                behavior_function_builder_kind(builder, BEHAVIOR_BANK_RESULT, i, BEHAVIOR_ADDRESS)
+            );
+            behavior_function_builder_root(builder, BEHAVIOR_BANK_SLOT, input[i], shape);
+            behavior_function_builder_root(builder, BEHAVIOR_BANK_LOCAL, locals[i], shape);
+            emit((behavior_function_instruction){ .op = BF_ARRAY,
+                                                  .type = BF_POINTER_TYPE,
+                                                  .target = BF_ARGUMENT,
+                                                  .left = i,
+                                                  .output = input[i],
+                                                  .value = shape });
+            emit((behavior_function_instruction){ .op = BF_SAVE,
+                                                  .type = BF_POINTER_TYPE,
+                                                  .target = locals[i],
+                                                  .left = input[i] });
+        }
+        emit((behavior_function_instruction){ .op = BF_SUSPEND });
+        emit((behavior_function_instruction){ .op = BF_RESULT,
+                                              .type = BF_POINTER_TYPE,
+                                              .left = input[0] });
+        int restored = address_slot();
+        emit((behavior_function_instruction){ .op = BF_LOCAL,
+                                              .type = BF_POINTER_TYPE,
+                                              .left = locals[0],
+                                              .output = restored });
+        emit((
+            behavior_function_instruction
+        ){ .op = BF_RESULT, .type = BF_POINTER_TYPE, .left = restored, .target = 1 });
+        emit((behavior_function_instruction){ .op = BF_END });
+        REQUIRE(finish());
+        REQUIRE(acount(function->data_values) == 0);
+        REQUIRE(acount(function->suspensions) == 1);
+        REQUIRE(acount(function->suspensions[0].roots) == 2);
+        REQUIRE(behavior_function_compile(function));
+        for (int i = 0; i < 2; i++) {
+            arguments[i].ptr = pin_array_allocate(&managed, shape.type, NULL, 1);
+        }
+        for (int backend = 0; backend < 2; backend++) {
+            REQUIRE(run(arguments, 2, NULL, results, backend == 1, 100) == FLOW_SUSPENDED_RESULT);
+            /* Remove the independent argument roots to exercise only saved
+             * slot/local metadata, including rejection of the dead array. */
+            context.arguments = NULL;
+            context.argument_count = 0;
+            visited_aggregate seen = { .expected = arguments[0] };
+            behavior_function_visit_values(function, &context, count_aggregate, &seen);
+            REQUIRE(seen.matches == 2 && seen.others == 0);
+            context.arguments = arguments;
+            context.argument_count = 2;
+            REQUIRE(behavior_function_run(function, &context, backend == 1) == FLOW_OK);
+            REQUIRE(
+                results[0].ptr == arguments[0].ptr &&
+                results[1].ptr == arguments[0].ptr
+            );
+        }
     }
     return true;
 }
@@ -506,7 +909,7 @@ TEST_CASE(execution_verifier_rejects_signature_and_local_type_mismatches)
     emit((behavior_function_instruction){ .op = BF_ARGUMENT,
                                           .type = PIN_I32,
                                           .indirect = true,
-                                          .offset = sizeof(execution_box),
+                                          .offset = sizeof(fixture_box),
                                           .value = number });
     emit((behavior_function_instruction){ .op = BF_END });
     char error[256];
@@ -907,14 +1310,65 @@ TEST_CASE(execution_synchronous_action_owns_outcomes_and_validates_selection)
     return true;
 }
 
+TEST_CASE(execution_union_extraction_checks_dynamic_payload_type)
+{
+    pin_value payload = { .type = PIN_STR, .str = "owned payload" }, value;
+    REQUIRE(!pin_union_value(&managed, 42, &payload, 1, &value));
+    builder = behavior_function_builder_new();
+    pin_value args[] = { value,
+                         { .type = PIN_U64, .u64 = 42 },
+                         { .type = PIN_I32 },
+                         { .type = PIN_BOOL } };
+    pin_value output = { .type = PIN_F64 };
+    args[3].b = true;
+    REQUIRE(EXECUTION_union_get_call.value(&managed, args, 4, &output));
+    REQUIRE(output.type == PIN_F64);
+    args[3].b = false;
+    pin_value invalid_tag = { .type = PIN_U64 };
+    REQUIRE(EXECUTION_union_make_call.value(&managed, &invalid_tag, 1, &output));
+    int host = behavior_function_builder_host(
+        builder,
+        &EXECUTION_union_get_call,
+        &EXECUTION_value_access,
+        args,
+        4,
+        &output,
+        1
+    );
+    uint64_t id = execution_intrinsic_id(&EXECUTION_union_get_call);
+    REQUIRE(
+        behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+    );
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    emit((behavior_function_instruction){ .op = BF_END });
+    REQUIRE(finish());
+    REQUIRE(behavior_function_compile(function));
+    for (int backend = 0; backend < 2; backend++) {
+        REQUIRE(run(NULL, 0, NULL, NULL, backend == 1, 100) == FLOW_ERR_INVALID_GRAPH);
+        REQUIRE(
+            context.error_message &&
+            !strcmp(context.error_message, "Union payload differs from the extraction type")
+        );
+    }
+    return true;
+}
+
 void test_language_execution()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(execution_union_extraction_checks_dynamic_payload_type);
     RUN_TEST_CASE(execution_branches_state_and_host_calls);
+    RUN_TEST_CASE(execution_source_inspection_is_lazy_and_preserves_resume);
+    RUN_TEST_CASE(execution_costs_verify_intrinsics_and_follow_recursive_calls);
+    RUN_TEST_CASE(execution_costs_include_managed_scalar_result_and_state_escape);
     RUN_TEST_CASE(execution_finished_definition_owns_producer_strings);
     RUN_TEST_CASE(execution_verifier_rejects_invalid_lowering);
     RUN_TEST_CASE(execution_budget_limits_checked_back_edges);
     RUN_TEST_CASE(execution_verifier_rejects_invalid_banks_and_metadata);
+    RUN_TEST_CASE(execution_verifier_rejects_invalid_saved_aggregate_roots);
+    RUN_TEST_CASE(execution_saved_aggregate_roots_keep_only_live_shapes);
     RUN_TEST_CASE(execution_verifier_rejects_signature_and_local_type_mismatches);
     RUN_TEST_CASE(execution_linked_function_returns_checked_value);
     RUN_TEST_CASE(execution_reused_helper_resets_host_bank_and_rebinds_service);

@@ -1,5 +1,5 @@
 library Beat {
-    function Pulse() {
+    Pulse :: fn() {
         return scene_rhythm().Pulse
     }
 }

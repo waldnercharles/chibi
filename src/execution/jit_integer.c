@@ -19,6 +19,8 @@ int behavior_jit_integer_move(pin_type type)
         case PIN_U32: return SLJIT_MOV_U32;
         case PIN_I64:
         case PIN_U64:
+        case PIN_UNION:
+        case PIN_TASK:
         case PIN_HANDLE: return SLJIT_MOV;
         case PIN_NAME:
         case PIN_STR: return SLJIT_MOV_P;
@@ -356,7 +358,8 @@ bool behavior_jit_integer(
         return true;
     }
     bool integer = behavior_scalar_integer(i->type) || i->type == PIN_BOOL ||
-                   i->type == PIN_HANDLE || behavior_scalar_string(i->type);
+                   (i->type == PIN_HANDLE || i->type == PIN_TASK || i->type == PIN_UNION) ||
+                   behavior_scalar_string(i->type);
     if (i->op == BF_CAST) {
         cast(m, i, dest, offset);
         return true;
@@ -366,7 +369,8 @@ bool behavior_jit_integer(
                            : PIN_FLOW;
     if ((i->op >= BF_ADD && i->op <= BF_NE && behavior_scalar_integer(left_type)) ||
         ((i->op == BF_EQ || i->op == BF_NE) &&
-         (left_type == PIN_BOOL || left_type == PIN_HANDLE))) {
+         (left_type == PIN_BOOL || (left_type == PIN_HANDLE || left_type == PIN_TASK ||
+                                    left_type == PIN_UNION)))) {
         arithmetic(m, i, dest, offset);
         return true;
     }

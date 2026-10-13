@@ -21,6 +21,9 @@ typedef struct
  * proves a synchronous SYSTEM closure with disjoint owning-entity writes.
  * Unknown effects retain conservative flags and cannot enter worker execution. */
 execution_effect_summary execution_module_effects(const execution_module *);
+/* Includes module entry points, binding bodies, and imported modules. For one
+ * entry point use behavior_function_costs(info.body), which follows only calls. */
+execution_cost_summary execution_module_costs(const execution_module *);
 
 /* Owned canonical storage including arena/vector capacities and nested tables.
  * Imports, backend code/cache allocations and live instance banks are excluded.
@@ -32,9 +35,13 @@ bool execution_module_components_valid(const execution_module *, const ecs_world
 typedef struct
 {
     size_t payload_bytes, payload_capacity;
+    int task_slots, retained_tasks;
+    size_t task_result_bytes;
+    uint64_t task_lookup_steps; /* Handle-index probes in the last collection. */
 } execution_memory_usage;
 /* After each safe event/update boundary, bytes describe live managed values;
- * capacity includes reusable allocation slots. Control banks are excluded. */
+ * capacity includes reusable allocation slots. Task result bytes include their
+ * owned snapshots; task slots include reusable slots. Other control banks are excluded. */
 execution_memory_usage execution_program_memory_usage(const execution_program *);
 /* Owned snapshot. Copying the record preserves all text and source coordinates.
  * The first failure is retained until explicitly cleared. The borrowed getter

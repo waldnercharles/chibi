@@ -89,8 +89,15 @@ typedef struct behavior_function_vm_storage
 } behavior_function_vm_storage;
 typedef struct
 {
+    behavior_value_bank bank;
+    int index;
+    pin_value shape;
+} behavior_value_root;
+typedef struct
+{
     int pc;
     int *values; /* Slots followed by locals, in the activation's scalar storage. */
+    behavior_value_root *roots; /* Aggregate shapes for the live saved values. */
 } behavior_function_suspension;
 /* A read-only entity reduction has a checked prelude, one cursor loop and a
  * private accumulator. Publication uses these regions to fuse compatible scans. */
@@ -116,6 +123,7 @@ struct behavior_function
     behavior_reduction *reductions;
     compile_diagnostic *query_diagnostics;
     behavior_function_suspension *suspensions;
+    behavior_value_root *value_roots;
     behavior_function_point *points;
     behavior_source_point *source_points;
     behavior_source_watch *source_watches;
@@ -201,6 +209,7 @@ void behavior_function_own(behavior_function *function);
 void behavior_function_parallel_proof(behavior_function *function);
 void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);
+bool behavior_function_compile_inspection(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
 /* Canonicalize registry/builtin names whose lifetime exceeds program generations. */
 bool behavior_function_static_name(const char **name);

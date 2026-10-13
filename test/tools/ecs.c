@@ -7,6 +7,7 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 
 typedef struct
@@ -296,6 +297,41 @@ TEST_CASE(ecs_reflected_field_writes_retain_strings)
     REQUIRE(!strcmp(retained, "retained"));
     REQUIRE(ecs_component_read_field(world, entity, record_desc.id, 1, &value) == ECS_OK);
     REQUIRE(!strcmp(value.str, "replacement"));
+    return true;
+}
+
+TEST_CASE(ecs_strings_deduplicate_collisions_and_survive_growth)
+{
+    const ecs_execution_view *view = ecs_world_execution(world);
+    const char *empty = view->intern_string(view, NULL);
+    REQUIRE(empty && !*empty && empty == view->intern_string(view, ""));
+    /* These share the initial hash bucket; equality must compare full text. */
+    char text[] = "a";
+    const char *first = view->intern_string(view, text);
+    const char *collision = view->intern_string(view, "q");
+    text[0] = 'x';
+    REQUIRE(first != collision && !strcmp(first, "a") && !strcmp(collision, "q"));
+    const char *retained[2048];
+    for (int i = 0; i < 2048; i++) {
+        char value[32];
+        snprintf(value, sizeof value, "world-string-%d", i);
+        retained[i] = view->intern_string(view, value);
+    }
+    for (int i = 2047; i >= 0; i--) {
+        char value[32];
+        snprintf(value, sizeof value, "world-string-%d", i);
+        REQUIRE(!strcmp(retained[i], value));
+        REQUIRE(retained[i] == view->intern_string(view, value));
+    }
+    REQUIRE(first == view->intern_string(view, "a"));
+    REQUIRE(collision == view->intern_string(view, "q"));
+    REQUIRE(empty == view->intern_string(view, NULL));
+    ecs_world *other = ecs_world_new();
+    const ecs_execution_view *other_view = ecs_world_execution(other);
+    const char *other_string = other_view->intern_string(other_view, "a");
+    REQUIRE(other_string != first && !strcmp(other_string, first));
+    ecs_world_free(other);
+    REQUIRE(!strcmp(first, "a"));
     return true;
 }
 
@@ -737,6 +773,7 @@ void test_tool_ecs()
     RUN_TEST_CASE(ecs_or_chains_and_negation_match_in_slot_order);
     RUN_TEST_CASE(ecs_execution_view_refreshes_after_growth_and_registration);
     RUN_TEST_CASE(ecs_reflected_field_writes_retain_strings);
+    RUN_TEST_CASE(ecs_strings_deduplicate_collisions_and_survive_growth);
     RUN_TEST_CASE(ecs_managed_rows_outlive_sources_and_reclaim_replacements);
     RUN_TEST_CASE(ecs_managed_storage_retires_on_remove_destroy_and_world_free);
     RUN_TEST_CASE(ecs_observers_see_add_set_and_remove_at_the_sync_point);

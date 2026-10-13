@@ -3,6 +3,15 @@
 
 #include "language/lower.h"
 
+typedef struct
+{
+    uint64_t function; /* Entry point whose transitive body carries this cost. */
+    unsigned cost;     /* One EXECUTION_COST_* bit. */
+    bool possible;
+    behavior_function_source origin; /* May point into a linked library. */
+    char message[192];
+} authoring_performance_diagnostic;
+
 /* One owned source generation. Preparation never replaces a live registration.
  * Invalid edits retain syntax, resolved facts and diagnostics for authoring. */
 typedef struct
@@ -13,6 +22,8 @@ typedef struct
     execution_module *module;
     script_diagnostic *diagnostics;
     int diagnostic_count;
+    authoring_performance_diagnostic *performance;
+    int performance_count;
     bool valid;
 } authoring_source;
 

@@ -66,6 +66,9 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     }
     size_t retained = bank(pauses, sizeof(behavior_function_suspension));
     retained = sum(retained, product(pauses, bank(values, sizeof(int))));
+    /* Every live aggregate can contribute one logical shape per suspension.
+     * Shapes borrow decoded metadata; only the derived vectors grow here. */
+    retained = sum(retained, product(pauses, bank(acount(f->value_roots), sizeof(behavior_value_root))));
     /* Runtime read reuse owns a canonical-PC body, a compact body and map. */
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
     retained = sum(retained, bank(count, sizeof(behavior_function_instruction)));
@@ -78,6 +81,9 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     size_t scratch = product(count + 1, product(words, sizeof(uint64_t)));
     scratch = sum(scratch, product(count, 2 * sizeof(bool) + 3 * sizeof(int)));
     scratch = sum(scratch, product(slots, sizeof(int)));
+    if (acount(f->value_roots)) {
+        scratch = sum(scratch, product(values + 1, sizeof(bool)));
+    }
     /* Suspension liveness uses a separate matrix+row. Summing phases is a
      * conservative peak bound; none of these counts comes from file size. */
     words = (values + 63) / 64 + 1;

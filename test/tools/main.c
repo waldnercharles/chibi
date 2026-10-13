@@ -209,6 +209,7 @@ void test_model_import();
 #endif
 #ifdef CHIBI_TEST_REFLECT
 void test_tool_reflect();
+void test_tool_reflect_ranges();
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
 void test_tool_native();
@@ -460,6 +461,18 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
+    if (argc == 2 && !strcmp(argv[1], "--reflect-ranges")) {
+#ifdef CHIBI_TEST_REFLECT
+        tool_init();
+        pu_display_time(true);
+        test_tool_reflect_ranges();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s is not built in this configuration\n", argv[1]);
+        return 2;
+#endif
+    }
     bool tilemap = false, tilemap_project = false;
 #ifdef CHIBI_TEST_TILEMAP
     tilemap = argc == 2 && !strcmp(argv[1], "--tilemap");
@@ -659,6 +672,7 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
+            "--reflect-ranges | "
             "--web-storage | "
             "--webgpu-staging | --wasm-browser | "
             "--ecs-query-benchmark | --arena | "

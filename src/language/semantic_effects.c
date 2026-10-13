@@ -103,6 +103,17 @@ void script_analyzer_finish_effects(analyzer *a)
     const unsigned impure = SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
                             SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND |
                             SCRIPT_EFFECT_RANDOM;
+    for (int i = 0; i < acount(out->statements); i++) {
+        const script_statement *s = &out->statements[i];
+        if (s->kind == SCRIPT_STMT_FOREACH &&
+            out->expressions[s->expression].kind == SCRIPT_EXPR_RELATION &&
+            (out->statements[s->body].effects &
+             (SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_STRUCTURAL))) {
+            script_diagnostic d = { .range = s->range };
+            snprintf(d.message, sizeof d.message, "Streaming relationship iteration cannot suspend or change entity structure");
+            apush(out->diagnostics, d);
+        }
+    }
     for (int i = 0; i < acount(out->functions); i++) {
         script_function *function = &out->functions[i];
         if (function->pure && function->effects & impure) {
@@ -220,6 +231,7 @@ void script_analyzer_callable_definition(analyzer *a, int index, TSNode body)
     }
     a->out->functions[index].body = script_analyzer_statement_add(a, block);
     a->out->functions[index].effects = block.effects;
+    script_analyzer_union_results(a, index, body);
     a->scope = old_scope;
     a->function = old_function;
     asetlen(a->narrowed, 0);

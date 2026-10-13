@@ -108,9 +108,9 @@ TEST_CASE(language_callable_types_entries_and_results)
 {
     parse(
         "library Helpers {\n"
-        "pure function Identity<T: plain int>(ref int source, item: T = 1) "
+        "Identity :: pure fn<T: plain int>(ref int source, item: T = 1) "
         "-> (Result: T) { return item }\n"
-        "function Apply(amount: int) -> () { entry Run { return(); } exit "
+        "Apply :: fn(amount: int) -> () { entry Run { return(); } exit "
         "Done; }\n"
         "macro Route(key: name) -> (Success: bool) { return.Success(true); }\n"
         "converted := engine[\"To Real\"](Value: int = 3);\n"
@@ -142,7 +142,7 @@ TEST_CASE(language_system_queries_and_control_flow)
         "while dt > 0 { break; }\n"
         "for (i in 0..3) { continue; }\n"
         "foreach (item in [1, 2]) { consume(item); }\n"
-        "match enum (choice) { case 0 { consume(0); } default { consume(1); } "
+        "switch (choice) { case 0: { consume(0); } case: { consume(1); } "
         "}\n"
         "sequence { branch { destroy(self); } branch { await delay(Duration: "
         "1); } }\n"
@@ -156,6 +156,67 @@ TEST_CASE(language_system_queries_and_control_flow)
     TSNode body = field(system, "body");
     REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 0)), "query_declaration"));
     REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 4)), "for_statement"));
+    return true;
+}
+
+TEST_CASE(language_definitions_unions_and_type_patterns)
+{
+    parse(
+        "library Combat {\n"
+        "BaseDamage :: 12\n"
+        "DamageFor :: pure fn(level: int) -> number { return level * 2 }\n"
+        "OtherDamage :: (level: int) -> number { return level + BaseDamage }\n"
+        "AttackState :: union { Idle | Windup(remaining: number) | "
+        "Active(damage: number) }\n"
+        "Status :: union { \"Yes\" | \"No\" };\n"
+        "Evaluate :: (result: number | Cancelled) {\n"
+        "if result is number num_result { consume(num_result) }\n"
+        "if result is not Cancelled { consume(result as number) }\n"
+        "switch result {\n"
+        "case .Windup(remaining): consume(remaining)\n"
+        "case .Idle: { consume(0) }\n"
+        "case: consume(1)\n"
+        "}\n"
+        "}\n"
+        "}"
+    );
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode body = declaration_body();
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 0)), "constant_declaration"));
+    REQUIRE(node_text(field(ts_node_named_child(body, 1), "results"), "number"));
+    REQUIRE(!strcmp(ts_node_type(ts_node_named_child(body, 3)), "union_declaration"));
+    TSNode callable = ts_node_named_child(body, 5);
+    TSNode condition = field(ts_node_named_child(field(callable, "body"), 0), "condition");
+    REQUIRE(!strcmp(ts_node_type(condition), "is_expression"));
+    REQUIRE(node_text(field(condition, "binding"), "num_result"));
+    return true;
+}
+
+TEST_CASE(language_query_header_and_cancel_deadline)
+{
+    parse(
+        "system Home query position: Transform, aim: Targets.Transform, "
+        "parent: Velocity? from ancestor(ChildOf) "
+        "where position and (aim or not parent) {\n"
+        "on Tick { charge := Charge(); cancel charge after 1.5 }\n"
+        "}"
+    );
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode system = ts_node_named_child(ts_tree_root_node(original->tree), 0);
+    REQUIRE(!ts_node_is_null(field(system, "where")));
+    REQUIRE(ts_node_named_child_count(field(system, "parameters")) == 3);
+    TSNode handler = ts_node_named_child(field(system, "body"), 0);
+    TSNode cancel = ts_node_named_child(field(handler, "body"), 1);
+    REQUIRE(node_text(field(cancel, "duration"), "1.5"));
+    return true;
+}
+
+TEST_CASE(language_obsolete_declaration_tokens_rejected)
+{
+    parse("library Old { function Compute() { return 1 } }");
+    REQUIRE(original->diagnostic_count > 0);
+    parse("behavior Old { on Tick { match (1) { case 1 { return } } } }");
+    REQUIRE(original->diagnostic_count > 0);
     return true;
 }
 
@@ -223,7 +284,7 @@ TEST_CASE(language_invalid_source_has_positioned_diagnostics)
         "behavior Broken { true := 1 }",
         "behavior Broken { on Begin { value := ; } }",
         "behavior Broken { on Begin { if true { }",
-        "library Broken { function MissingBody() -> () }",
+        "library Broken { MissingBody :: fn() -> () }",
         "behavior Broken { on Begin { nudge(&speed) } }",
     };
     for (int i = 0; i < 6; i++) {
@@ -422,6 +483,9 @@ void test_language_syntax()
     RUN_TEST_CASE(language_declarations_actions_and_bindings);
     RUN_TEST_CASE(language_callable_types_entries_and_results);
     RUN_TEST_CASE(language_system_queries_and_control_flow);
+    RUN_TEST_CASE(language_definitions_unions_and_type_patterns);
+    RUN_TEST_CASE(language_query_header_and_cancel_deadline);
+    RUN_TEST_CASE(language_obsolete_declaration_tokens_rejected);
     RUN_TEST_CASE(language_expressions_precedence_and_continuation);
     RUN_TEST_CASE(language_invalid_source_has_positioned_diagnostics);
     RUN_TEST_CASE(language_incremental_snapshot_matches_fresh);

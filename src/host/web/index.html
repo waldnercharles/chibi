@@ -38,13 +38,13 @@
       const status = document.getElementById('status');
       const diagnostics = document.getElementById('diagnostics');
       const showDiagnostics = new URLSearchParams(location.search).get('diagnostics') === '1';
-      const graphics = { renderer: 'Starting', fps: 0, frameMs: 0, error: '' };
+      const graphics = { renderer: 'Starting', asyncify: false, fps: 0, frameMs: 0, error: '' };
       let frames = 0;
       let started;
       const updateDiagnostics = () => {
         if (!showDiagnostics) return;
         diagnostics.hidden = false;
-        diagnostics.textContent = `${graphics.renderer}\n${graphics.fps.toFixed(1)} FPS | ${graphics.frameMs.toFixed(1)} ms/frame\n` +
+        diagnostics.textContent = `${graphics.renderer} | Asyncify ${graphics.asyncify ? 'on' : 'off'}\n${graphics.fps.toFixed(1)} FPS | ${graphics.frameMs.toFixed(1)} ms/frame\n` +
           `Canvas ${canvas.width} × ${canvas.height}\nDisplay ${Math.round(canvas.clientWidth)} × ${Math.round(canvas.clientHeight)} | DPR ${devicePixelRatio}` +
           (graphics.error ? `\n${graphics.error}` : '');
       };
@@ -69,8 +69,9 @@
       return {
         canvas,
         chibiGraphics: graphics,
-        chibiRenderer: renderer => {
+        chibiRenderer: (renderer, asyncify) => {
           graphics.renderer = renderer;
+          graphics.asyncify = Boolean(asyncify);
           updateDiagnostics();
         },
         chibiGraphicsError: message => {

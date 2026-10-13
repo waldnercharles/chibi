@@ -149,6 +149,9 @@ if(CHIBI_WEB_PLAYER)
     set_property(TARGET chibi-player APPEND PROPERTY LINK_DEPENDS "${web}/player_data.js")
     target_link_options(chibi-player PRIVATE "--pre-js=${web}/player_data.js"
         -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sFORCE_FILESYSTEM=1)
+    if(CHIBI_WEB_PLAYER_ASYNCIFY)
+        target_link_options(chibi-player PRIVATE -sASYNCIFY=1 -sASYNCIFY_STACK_SIZE=2097152)
+    endif()
     install(FILES "$<TARGET_FILE:chibi-player>" "$<TARGET_FILE_DIR:chibi-player>/chibi-player.wasm"
         "${web}/index.html" DESTINATION . COMPONENT web_player EXCLUDE_FROM_ALL)
 elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

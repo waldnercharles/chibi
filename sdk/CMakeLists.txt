@@ -30,6 +30,7 @@ option(CHIBI_SDK_BUILD_NATIVE "Build built-in component and entity packages" OFF
 option(CHIBI_SDK_BUILD_DESKTOP "Build desktop platform, rendering and UI packages" OFF)
 option(CHIBI_WEB_THREADS "Build the web SDK with pthread workers" OFF)
 option(CHIBI_WEB_PLAYER "Build the browser player that chibi export --web ships" OFF)
+option(CHIBI_WEB_PLAYER_ASYNCIFY "Enable Asyncify in the browser player" OFF)
 set(CHIBI_WEB_WORKERS 4 CACHE STRING "Total worker budget for the threaded web SDK")
 if(CHIBI_WEB_THREADS)
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

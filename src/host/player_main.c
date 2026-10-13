@@ -498,8 +498,8 @@ static int run_frame(desktop_player *host)
 EM_JS(void, web_stopped, (), {
     Module['chibiStopped']?.();
 })
-EM_JS(void, web_renderer, (int webgpu), {
-    Module['chibiRenderer']?.(webgpu ? 'WebGPU' : 'WebGL 2');
+EM_JS(void, web_renderer, (int webgpu, int asyncify), {
+    Module['chibiRenderer']?.(webgpu ? 'WebGPU' : 'WebGL 2', Boolean(asyncify));
 })
 EM_JS(void, web_frame_complete, (), {
     Module['chibiFrame']?.();
@@ -622,7 +622,7 @@ int main(int argc, char **argv)
         goto release;
     }
 #ifdef __EMSCRIPTEN__
-    web_renderer(cf_query_backend() == CF_BACKEND_TYPE_WEBGPU);
+    web_renderer(cf_query_backend() == CF_BACKEND_TYPE_WEBGPU, emscripten_has_asyncify());
 #endif
     set_icon(root, application.icon);
     static desktop_player host;

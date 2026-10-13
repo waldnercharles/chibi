@@ -170,6 +170,14 @@ The compiler SDK installs packaging tools and `install_game_runtime.py` under
 without an engine checkout. Supply `--package` and an explicit `--config` containing
 absolute game paths. Installed tools leave the SDK file inventory unchanged.
 
+The browser player defaults to Asyncify disabled. To build a comparison player,
+run `make package-web-player WEB_SDK_CMAKE_FLAGS=-DCHIBI_WEB_PLAYER_ASYNCIFY=ON`
+with separate `WEB_PLAYER_BUILD_DIR` and `WEB_PLAYER_OUTPUT` directories. This
+enables Asyncify only for the player's final link, with a 2 MiB Asyncify stack;
+the compiler stays unchanged. `?diagnostics=1` reports the runtime's actual
+Asyncify capability. Asyncify changes yielding and waiting behavior and can add
+overhead, so compare it on the affected device before changing a release.
+
 For browser Studio, `make package-web-sdk` configures the same packages with
 Emscripten and SLJIT disabled. This SDK is library-only even when compiler,
 native capabilities and desktop renderer are enabled. Its manifest records the

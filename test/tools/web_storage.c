@@ -387,6 +387,7 @@ TEST_CASE(player_diagnostics_are_opt_in_and_webgl_override_skips_device_request)
     REQUIRE(run_player_shell("{\"search\":\"\"}"));
     REQUIRE(yyjson_get_bool(field("hidden")));
     REQUIRE(!yyjson_get_bool(field("hasFrame")));
+    REQUIRE(!yyjson_get_bool(field("asyncify")));
     REQUIRE(yyjson_get_int(field("adapters")) == 1);
     REQUIRE(yyjson_get_int(field("devices")) == 1);
     REQUIRE(yyjson_get_bool(field("adopted")));
@@ -407,7 +408,7 @@ TEST_CASE(player_diagnostics_measure_completed_frames_after_startup)
 {
     REQUIRE(run_player_shell(
         "{\"search\":\"?diagnostics=1\",\"actions\":["
-        "{\"call\":\"chibiRenderer\",\"args\":[\"WebGL 2\"]},"
+        "{\"call\":\"chibiRenderer\",\"args\":[\"WebGL 2\",true]},"
         "{\"at\":5000,\"call\":\"chibiFrame\",\"snapshot\":true},"
         "{\"call\":\"chibiFrame\",\"repeat\":60,\"step\":16.666666666667}]}"
     ));
@@ -416,6 +417,8 @@ TEST_CASE(player_diagnostics_measure_completed_frames_after_startup)
     /* A requested device does not determine the renderer the runtime selected. */
     REQUIRE(yyjson_get_bool(field("adopted")));
     REQUIRE(!strcmp(text("renderer"), "WebGL 2"));
+    REQUIRE(yyjson_get_bool(field("asyncify")));
+    REQUIRE(strstr(text("text"), "Asyncify on"));
     REQUIRE(yyjson_get_num(yyjson_obj_get(yyjson_arr_get(field("snapshots"), 0), "fps")) == 0);
     REQUIRE(yyjson_get_num(field("fps")) > 59.9);
     REQUIRE(yyjson_get_num(field("fps")) < 60.1);

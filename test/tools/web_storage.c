@@ -13,6 +13,8 @@ static char directory[] = "/tmp/chibi-web-storage-XXXXXX";
 static char driver_path[1024], log_path[1024];
 static yyjson_doc *result;
 
+void test_tool_web_gpu_profile();
+
 /* Node runs the production browser bridge with only browser/FS seams replaced.
  * Scenarios and assertions belong to the C dispatcher, not a second JS suite. */
 static const char *driver =
@@ -280,7 +282,7 @@ TEST_CASE(canvas_layout_changes_notify_the_platform_resize_handler)
         "const html=fs.readFileSync(process.argv[2],'utf8');\n"
         "let callback,target;const events=[];\n"
         "const canvas={addEventListener(){},focus(){}};\n"
-        "const status={dataset:{},append(){}};\n"
+        "const status={dataset:{},append(){},addEventListener(){}};\n"
         "const context={console,Event,navigator:{},URLSearchParams,"
         "location:{search:''},performance:{now:()=>0},\n"
         "window:{addEventListener(){},dispatchEvent:e=>events.push(e.type)},\n"
@@ -332,6 +334,8 @@ static const char *player_shell_driver =
     "addEventListener:(name,fn)=>listeners[name]=fn,focus(){}};\n"
     "const status={dataset:{},hidden:false,textContent:''};\n"
     "const diagnostics={hidden:true,textContent:''};\n"
+    "const copyReport={hidden:true,textContent:'Copy "
+    "report',addEventListener(){}};\n"
     "const device={lost:new Promise(resolve=>lost=resolve)};\n"
     "const adapter={limits:{maxColorAttachmentBytesPerSample:64},features:[],"
     "async requestDevice(){devices++;return device;}};\n"
@@ -340,12 +344,15 @@ static const char *player_shell_driver =
     "3,\n"
     "navigator:{gpu:{async requestAdapter(){adapters++;return adapter;}}},\n"
     "window:{dispatchEvent(){}},ResizeObserver:class{observe(){}},\n"
-    "document:{getElementById:id=>({canvas,status,diagnostics})[id],"
+    "document:{getElementById:id=>({canvas,status,diagnostics,'copy-report':"
+    "copyReport})[id],"
     "createElement:()=>({}),body:{append:script=>scripts.push(script.src)}}};\n"
     "const snapshot=()=>({...context.Module.chibiGraphics,"
     "hidden:diagnostics.hidden,text:diagnostics.textContent,"
     "statusHidden:status.hidden,statusText:status.textContent,"
-    "hasFrame:typeof context.Module.chibiFrame==='function'});\n"
+    "hasFrame:typeof context.Module.chibiFrame==='function',"
+    "timingEnabled:context.Module.chibiTimingEnabled===true,"
+    "report:context.Module.chibiReport?.()});\n"
     "(async()=>{\n"
     "await "
     "vm.runInNewContext(html.match(/<script>([\\s\\S]*?)<\\/script>/"
@@ -483,6 +490,55 @@ TEST_CASE(player_diagnostics_show_context_loss_and_player_stop)
     return true;
 }
 
+TEST_CASE(player_profile_separates_frame_work_from_callback_gaps)
+{
+    REQUIRE(run_player_shell("{\"search\":\"?diagnostics=1\"}"));
+    REQUIRE(!yyjson_get_bool(field("timingEnabled")));
+    REQUIRE(run_player_shell(
+        "{\"search\":\"?profile=1&dpr=1\",\"actions\":["
+        "{\"call\":\"chibiFrameTimings\",\"args\":[{\"startMs\":100,\"endMs\":"
+        "110,"
+        "\"totalMs\":10,\"updateMs\":2,\"simulationMs\":3,\"drawMs\":4,"
+        "\"presentMs\":0.5,\"otherMs\":0.5}]},"
+        "{\"call\":\"chibiFrameTimings\",\"args\":[{\"startMs\":125,\"endMs\":"
+        "145,"
+        "\"totalMs\":20,\"updateMs\":1,\"simulationMs\":2,\"drawMs\":3,"
+        "\"presentMs\":4,\"otherMs\":10}]}]}"
+    ));
+    REQUIRE(yyjson_get_bool(field("timingEnabled")));
+    REQUIRE(!yyjson_get_bool(field("hidden")));
+    yyjson_val *timing = field("timings");
+    REQUIRE(yyjson_get_num(yyjson_obj_get(timing, "totalMs")) == 15);
+    REQUIRE(yyjson_get_num(yyjson_obj_get(timing, "gapMs")) == 15);
+    REQUIRE(yyjson_get_num(yyjson_obj_get(timing, "simulationMs")) == 2.5);
+    REQUIRE(yyjson_get_num(yyjson_obj_get(timing, "drawMs")) == 3.5);
+    REQUIRE(strstr(text("text"), "Main-thread wall"));
+    REQUIRE(strstr(text("text"), "Between callbacks"));
+    REQUIRE(strstr(text("text"), "requested 1"));
+    yyjson_val *report = field("report");
+    REQUIRE(yyjson_get_int(yyjson_obj_get(report, "requestedDpr")) == 1);
+    yyjson_val *samples = yyjson_obj_get(report, "frames");
+    REQUIRE(yyjson_arr_size(samples) == 2);
+    REQUIRE(yyjson_is_null(yyjson_obj_get(yyjson_arr_get(samples, 0), "gapMs")));
+    REQUIRE(yyjson_get_num(yyjson_obj_get(yyjson_arr_get(samples, 1), "gapMs")) == 15);
+    return true;
+}
+
+TEST_CASE(player_profile_bounds_report_history)
+{
+    REQUIRE(run_player_shell(
+        "{\"search\":\"?profile=1\",\"actions\":["
+        "{\"call\":\"chibiFrameTimings\",\"repeat\":130,\"args\":[{"
+        "\"startMs\":10,\"endMs\":20,\"totalMs\":10,\"updateMs\":2,"
+        "\"simulationMs\":3,\"drawMs\":4,\"presentMs\":0.5,\"otherMs\":0.5}]}]}"
+    ));
+    yyjson_val *report = field("report");
+    REQUIRE(yyjson_arr_size(yyjson_obj_get(report, "frames")) == 120);
+    REQUIRE(yyjson_get_int(yyjson_obj_get(report, "totalFrames")) == 130);
+    REQUIRE(yyjson_is_null(yyjson_obj_get(report, "requestedDpr")));
+    return true;
+}
+
 void test_tool_web_storage()
 {
     pu_setup(setup, teardown);
@@ -504,5 +560,8 @@ void test_tool_web_storage()
     RUN_TEST_CASE(player_diagnostics_measure_completed_frames_after_startup);
     RUN_TEST_CASE(player_diagnostics_show_device_errors_and_loss);
     RUN_TEST_CASE(player_diagnostics_show_context_loss_and_player_stop);
+    RUN_TEST_CASE(player_profile_separates_frame_work_from_callback_gaps);
+    RUN_TEST_CASE(player_profile_bounds_report_history);
+    test_tool_web_gpu_profile();
     pu_setup(NULL, NULL);
 }

@@ -25,29 +25,357 @@
       color: #d9e1ed; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap;
       overflow-wrap: anywhere; pointer-events: none;
     }
+    #copy-report { position: fixed; bottom: calc(8px + env(safe-area-inset-bottom)); right: calc(8px + env(safe-area-inset-right)); padding: 8px 12px; }
   </style>
 </head>
 <body>
   <canvas id="canvas" tabindex="0" aria-label="{{TITLE}}"></canvas>
   <p id="status" role="status" aria-live="polite">Loading...</p>
   <pre id="diagnostics" hidden aria-label="Graphics diagnostics"></pre>
+  <button id="copy-report" hidden type="button">Copy report</button>
   <noscript>JavaScript is required to play this game.</noscript>
   <script>
+    // Optional diagnostics only. No waits, extra submissions, or changes to backend selection.
+    function createGpuProfile(Module, device) {
+      const MAX_QUERIES = 256, MAX_ENCODERS = 16, MAX_PENDING = 2;
+      const pending = [], history = [], commands = new WeakMap();
+      let active = null, serial = 0, nextSample = 0, published = 0;
+      let latest = { completionMs: null, executionMs: null, status: 'waiting', label: 'GPU timing' };
+      let gl, extension, glChecked = false, glTimestamps = false;
+      let glTimingAllowed = true;
+      let timestamps = Boolean(device?.features?.has?.('timestamp-query'));
+      const clock = () => performance.now();
+      const publish = (sample, retain = false) => {
+        const result = {
+          sampleId: sample.id, frameId: sample.frameId, startedAt: sample.started,
+          reportedAt: clock(), renderer: sample.renderer,
+          completionMs: sample.completionMs ?? null,
+          executionMs: !sample.partial && sample.measured ? sample.executionMs : null,
+          status: sample.partial ? 'partial' : sample.measured ? 'ready' : 'unavailable',
+          label: sample.kind === 'webgpu' ? 'GPU pass time' : 'GPU interval',
+          detail: sample.detail || '', partial: sample.partial,
+          passCount: sample.passCount, queryCount: sample.queryCount,
+          encoderCount: sample.records.length, pendingFrames: pending.length - (retain ? 0 : 1),
+        };
+        const previous = history.findIndex(result => result.sampleId === sample.id);
+        if (previous >= 0) history[previous] = result;
+        else history.push(result);
+        if (history.length > 120) history.shift();
+        if (sample.id >= published) {
+          published = sample.id;
+          latest = result;
+          Module.chibiGraphics.gpu = result;
+        }
+        const index = pending.indexOf(sample);
+        if (!retain && index >= 0) pending.splice(index, 1);
+      };
+      const complete = sample => {
+        if (!sample.closed || !sample.completionDone || sample.reads ||
+            sample.records.some(record => record.count && !record.submitted)) return;
+        publish(sample);
+      };
+      const release = record => {
+        record.query?.destroy();
+        record.resolve?.destroy();
+        record.read?.destroy();
+        record.query = record.resolve = record.read = null;
+      };
+      const partial = (sample, message) => {
+        sample.partial = true;
+        sample.detail = message;
+      };
+
+      // Measure existing render/compute passes. Timestamp resolve and copy commands
+      // join their existing command buffer; mapping begins after its existing submit.
+      if (device?.createCommandEncoder && device?.queue?.submit && timestamps) {
+        try {
+          const createEncoder = device.createCommandEncoder.bind(device);
+          const submit = device.queue.submit.bind(device.queue);
+          device.createCommandEncoder = (...args) => {
+            const encoder = createEncoder(...args);
+            const sample = active;
+            if (!timestamps || !sample || sample.kind !== 'webgpu') return encoder;
+            if (sample.records.length >= MAX_ENCODERS) {
+              partial(sample, 'Timestamp encoder limit reached');
+              return encoder;
+            }
+            const record = { sample, count: 0, submitted: false, finished: false };
+            sample.records.push(record);
+            for (const method of ['beginRenderPass', 'beginComputePass']) {
+              const begin = encoder[method]?.bind(encoder);
+              if (!begin) continue;
+              encoder[method] = descriptor => {
+                if (record.disabled || sample !== active || descriptor?.timestampWrites ||
+                    sample.queryCount + 2 > MAX_QUERIES) {
+                  partial(sample, 'Timestamp scope, ownership, or query limit exceeded');
+                  return begin(descriptor);
+                }
+                try {
+                  if (!record.query) {
+                    record.query = device.createQuerySet({ type: 'timestamp', count: MAX_QUERIES });
+                    record.resolve = device.createBuffer({ size: MAX_QUERIES * 8,
+                      usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
+                    record.read = device.createBuffer({ size: MAX_QUERIES * 8,
+                      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ });
+                  }
+                } catch (error) {
+                  partial(sample, `Timestamp resources unavailable: ${error.message}`);
+                  record.disabled = true;
+                  release(record);
+                  return begin(descriptor);
+                }
+                const index = record.count;
+                record.count += 2;
+                sample.queryCount += 2;
+                sample.passCount++;
+                return begin({ ...descriptor, timestampWrites: {
+                  querySet: record.query, beginningOfPassWriteIndex: index,
+                  endOfPassWriteIndex: index + 1,
+                } });
+              };
+            }
+            const finish = encoder.finish.bind(encoder);
+            encoder.finish = (...finishArgs) => {
+              if (record.count) {
+                encoder.resolveQuerySet(record.query, 0, record.count, record.resolve, 0);
+                encoder.copyBufferToBuffer(record.resolve, 0, record.read, 0, record.count * 8);
+              }
+              const command = finish(...finishArgs);
+              record.finished = true;
+              commands.set(command, record);
+              return command;
+            };
+            return encoder;
+          };
+          device.queue.submit = buffers => {
+            const list = Array.from(buffers);
+            const result = submit(list);
+            for (const command of list) {
+              const record = commands.get(command);
+              if (!record || record.submitted) continue;
+              record.submitted = true;
+              const sample = record.sample;
+              if (sample !== active) partial(sample, 'Timestamp command crossed frame boundary');
+              if (!record.count) { release(record); continue; }
+              sample.reads++;
+              Promise.resolve().then(() => record.read.mapAsync(GPUMapMode.READ, 0, record.count * 8))
+                .then(() => {
+                  const values = new BigUint64Array(record.read.getMappedRange(0, record.count * 8));
+                  for (let i = 0; i < values.length; i += 2) {
+                    if (values[i + 1] < values[i]) {
+                      partial(sample, 'Invalid timestamp order');
+                      break;
+                    }
+                    sample.executionMs += Number(values[i + 1] - values[i]) / 1e6;
+                  }
+                  sample.measured = true;
+                  record.read.unmap();
+                }, error => partial(sample, `Timestamp read unavailable: ${error.message}`))
+                .catch(error => partial(sample, `Timestamp read unavailable: ${error.message}`))
+                .finally(() => { release(record); sample.reads--; complete(sample); });
+            }
+            return result;
+          };
+        } catch {
+          timestamps = false;
+        }
+      } else {
+        timestamps = false;
+      }
+
+      const pollGL = () => {
+        if (!gl || !extension || !glTimingAllowed ||
+            !pending.some(sample => sample.kind === 'webgl' && sample.closed && sample.queries)) return;
+        const lost = gl.isContextLost();
+        const disjoint = lost || gl.getParameter(extension.GPU_DISJOINT_EXT);
+        for (const sample of [...pending]) {
+          if (sample.kind !== 'webgl' || !sample.closed || !sample.queries) continue;
+          if (!disjoint && !gl.getQueryParameter(sample.queries[1], gl.QUERY_RESULT_AVAILABLE)) continue;
+          if (disjoint) {
+            partial(sample, 'GPU timer disjoint or context lost');
+          } else {
+            const start = gl.getQueryParameter(sample.queries[0], gl.QUERY_RESULT);
+            const end = gl.getQueryParameter(sample.queries[1], gl.QUERY_RESULT);
+            if (end >= start) {
+              sample.executionMs = (end - start) / 1e6;
+              sample.measured = true;
+            } else partial(sample, 'Invalid timestamp order');
+          }
+          sample.queries.forEach(query => gl.deleteQuery(query));
+          sample.queries = null;
+          complete(sample);
+        }
+      };
+      let frameId = 0;
+      const beginFrame = (perspective = false) => {
+        frameId++;
+        // The 2D renderer owns the context's clear-on-read disjoint state. Once
+        // observed, keep that ownership even after a later scene transition.
+        if (!perspective) {
+          glTimingAllowed = false;
+          for (const sample of [...pending]) {
+            if (sample.kind !== 'webgl' || !sample.queries) continue;
+            sample.queries.forEach(query => gl.deleteQuery(query));
+            sample.queries = null;
+            partial(sample, 'GPU timestamp profiling disabled after a 2D frame');
+            complete(sample);
+          }
+        }
+        pollGL();
+        if (pending.length >= MAX_PENDING) {
+          latest = { ...latest, status: latest.partial ? 'partial' : 'pending',
+            pendingFrames: pending.length,
+            detail: latest.partial ? latest.detail : 'Waiting for GPU samples; further sampling paused' };
+          Module.chibiGraphics.gpu = latest;
+          return;
+        }
+        if (active || clock() < nextSample) return;
+        const renderer = Module.chibiGraphics.renderer;
+        const kind = renderer === 'WebGPU' ? 'webgpu' : renderer === 'WebGL 2' ? 'webgl' : '';
+        if (!kind) return;
+        nextSample = clock() + 1000;
+        const sample = { id: ++serial, frameId, started: clock(), renderer, kind,
+          records: [], queryCount: 0, passCount: 0, executionMs: 0,
+          reads: 0, partial: false, measured: false, closed: false, completionDone: false };
+        active = sample;
+        pending.push(sample);
+        if (kind === 'webgpu') {
+          if (!timestamps) sample.detail = 'GPU execution timestamps unavailable; completion latency only';
+          return;
+        }
+        if (!glTimingAllowed) {
+          sample.detail = 'GPU timestamp profiling unavailable after a 2D frame';
+          return;
+        }
+        if (!glChecked) {
+          glChecked = true;
+          gl = Module.canvas?.getContext?.('webgl2');
+          extension = gl?.getExtension?.('EXT_disjoint_timer_query_webgl2');
+          glTimestamps = Boolean(extension &&
+            gl.getQuery(extension.TIMESTAMP_EXT, extension.QUERY_COUNTER_BITS_EXT) > 0);
+        }
+        if (!glTimestamps || gl.isContextLost()) {
+          sample.detail = 'GPU timestamp pairs unavailable; elapsed queries are reserved for renderer timing';
+          return;
+        }
+        gl.getParameter(extension.GPU_DISJOINT_EXT);
+        sample.queries = [gl.createQuery(), gl.createQuery()];
+        if (sample.queries.some(query => !query)) {
+          sample.queries.forEach(query => { if (query) gl.deleteQuery(query); });
+          sample.queries = null;
+          sample.detail = 'GPU timestamp query allocation failed';
+          return;
+        }
+        sample.queryCount = 2;
+        extension.queryCounterEXT(sample.queries[0], extension.TIMESTAMP_EXT);
+      };
+      const endFrame = () => {
+        const sample = active;
+        active = null;
+        if (!sample) { pollGL(); return latest; }
+        sample.closed = true;
+        if (sample.kind === 'webgl') {
+          sample.completionDone = true;
+          if (sample.queries) extension.queryCounterEXT(sample.queries[1], extension.TIMESTAMP_EXT);
+          else complete(sample);
+          pollGL();
+          return latest;
+        }
+        for (const record of sample.records) {
+          if (!record.submitted) {
+            partial(sample, 'Timestamp encoder not submitted; sample pending within resource cap');
+          }
+        }
+        if (sample.records.some(record => record.count && !record.submitted)) publish(sample, true);
+        if (!sample.passCount && timestamps) sample.detail = 'No render or compute passes captured';
+        if (typeof device?.queue?.onSubmittedWorkDone !== 'function') {
+          sample.detail = 'GPU completion callback unavailable';
+          sample.completionDone = true;
+          complete(sample);
+          return latest;
+        }
+        const started = clock();
+        let completion;
+        try {
+          completion = device.queue.onSubmittedWorkDone();
+        } catch (error) {
+          sample.detail = `GPU completion unavailable: ${error.message}`;
+          sample.completionDone = true;
+          complete(sample);
+          return latest;
+        }
+        Promise.resolve(completion)
+          .then(() => { sample.completionMs = clock() - started; },
+            error => { sample.detail = `GPU completion unavailable: ${error.message}`; })
+          .finally(() => { sample.completionDone = true; complete(sample); });
+        return latest;
+      };
+      Module.chibiGraphics.gpu = latest;
+      return { beginFrame, endFrame, report: () => ({ ...latest, pendingFrames: pending.length }),
+        history: () => history.slice() };
+    }
+
     var Module = (() => {
       const canvas = document.getElementById('canvas');
       const status = document.getElementById('status');
       const diagnostics = document.getElementById('diagnostics');
-      const showDiagnostics = new URLSearchParams(location.search).get('diagnostics') === '1';
+      const copyReport = document.getElementById('copy-report');
+      const params = new URLSearchParams(location.search);
+      const profile = params.get('profile') === '1';
+      const requestedDpr = params.get('dpr') === '1' ? 1 : null;
+      const showDiagnostics = profile || params.get('diagnostics') === '1';
       const graphics = { renderer: 'Starting', asyncify: false, fps: 0, frameMs: 0, error: '' };
+      const samples = [];
+      let totalFrames = 0;
+      let previousEnd;
+      let lastProfilePaint = -Infinity;
+      let gpuProfile;
       let frames = 0;
       let started;
+      const report = () => ({
+        format: 1,
+        capture: 'frame-profile-v1',
+        userAgent: navigator.userAgent || '',
+        renderer: graphics.renderer,
+        asyncify: graphics.asyncify,
+        requestedDpr,
+        deviceDpr: devicePixelRatio,
+        canvas: [canvas.width, canvas.height],
+        display: [canvas.clientWidth, canvas.clientHeight],
+        renderScale: canvas.clientWidth ? canvas.width / canvas.clientWidth : null,
+        fps: graphics.fps,
+        frameMs: graphics.frameMs,
+        timings: graphics.timings || null,
+        gpu: gpuProfile?.report() || null,
+        gpuSamples: gpuProfile?.history() || [],
+        totalFrames,
+        frames: samples.slice(),
+        error: graphics.error,
+      });
       const updateDiagnostics = () => {
         if (!showDiagnostics) return;
         diagnostics.hidden = false;
         diagnostics.textContent = `${graphics.renderer} | Asyncify ${graphics.asyncify ? 'on' : 'off'}\n${graphics.fps.toFixed(1)} FPS | ${graphics.frameMs.toFixed(1)} ms/frame\n` +
           `Canvas ${canvas.width} × ${canvas.height}\nDisplay ${Math.round(canvas.clientWidth)} × ${Math.round(canvas.clientHeight)} | DPR ${devicePixelRatio}` +
+          (requestedDpr ? ` | requested ${requestedDpr}` : '') +
+          (graphics.timings ? `\nMain-thread wall ${graphics.timings.totalMs.toFixed(1)} ms\n` +
+            `Update/pacing ${graphics.timings.updateMs.toFixed(1)} | Sim ${graphics.timings.simulationMs.toFixed(1)}\n` +
+            `Draw ${graphics.timings.drawMs.toFixed(1)} | Present ${graphics.timings.presentMs.toFixed(1)}\n` +
+            `Other ${graphics.timings.otherMs.toFixed(1)} | Between callbacks ${graphics.timings.gapMs?.toFixed(1) ?? '—'} ms` : '') +
+          (profile ? `\n${graphics.gpu?.label || 'GPU time'} [${graphics.gpu?.status || 'waiting'}]: ${graphics.gpu?.executionMs?.toFixed(1) ?? 'unavailable'} ms\n` +
+            `GPU completion latency: ${graphics.gpu?.completionMs?.toFixed(1) ?? (graphics.gpu?.status === 'unavailable' ? 'unavailable' : 'pending')} ms\n` +
+            (graphics.gpu?.detail || '') : '') +
           (graphics.error ? `\n${graphics.error}` : '');
       };
+      copyReport.hidden = !profile;
+      copyReport.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(JSON.stringify(report(), null, 2));
+          copyReport.textContent = 'Report copied';
+        } catch {
+          copyReport.textContent = 'Copy failed';
+        }
+      });
       let lastError = '';
       const fail = message => {
         graphics.fps = 0;
@@ -69,6 +397,33 @@
       return {
         canvas,
         chibiGraphics: graphics,
+        chibiTimingEnabled: profile,
+        chibiReport: profile ? report : undefined,
+        chibiFrameStart: profile ? perspective => {
+          if (!gpuProfile && typeof createGpuProfile === 'function') {
+            gpuProfile = createGpuProfile(Module, Module.preinitializedWebGPUDevice);
+          }
+          gpuProfile?.beginFrame(perspective);
+        } : undefined,
+        chibiFrameTimings: profile ? timing => {
+          const gapMs = previousEnd === undefined ? null : Math.max(0, timing.startMs - previousEnd);
+          previousEnd = timing.endMs;
+          samples.push({ ...timing, gapMs, frameId: totalFrames + 1 });
+          totalFrames++;
+          if (samples.length > 120) samples.shift();
+          const window = samples.filter(sample => sample.endMs >= timing.endMs - 2000);
+          const average = key => {
+            const values = window.map(sample => sample[key]).filter(value => value !== null);
+            return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+          };
+          graphics.timings = Object.fromEntries(['updateMs', 'simulationMs', 'drawMs', 'presentMs', 'otherMs', 'totalMs', 'gapMs'].map(key => [key, average(key)]));
+          gpuProfile?.endFrame();
+          const now = performance.now();
+          if (now - lastProfilePaint >= 1000) {
+            lastProfilePaint = now;
+            updateDiagnostics();
+          }
+        } : undefined,
         chibiRenderer: (renderer, asyncify) => {
           graphics.renderer = renderer;
           graphics.asyncify = Boolean(asyncify);

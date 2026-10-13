@@ -178,6 +178,18 @@ the compiler stays unchanged. `?diagnostics=1` reports the runtime's actual
 Asyncify capability. Asyncify changes yielding and waiting behavior and can add
 overhead, so compare it on the affected device before changing a release.
 
+`?dpr=1` disables the browser player's high-DPI backbuffer while preserving
+the canvas's CSS size. `?profile=1` enables frame diagnostics and a Copy report
+button. Combine them to compare pixel cost against the same player's default
+resolution. Main-thread phase times include pacing, driver calls and any yields;
+they are elapsed time, not CPU utilization. Between-callback time is separate.
+Optional GPU samples never wait or add queue submissions. WebGPU pass timestamps
+exclude copies, uploads and browser composition; WebGL timestamp intervals are
+limited to 3D scenes so they cannot consume the 2D renderer's disjoint state.
+GPU completion latency is separate from execution time. Unsupported, pending
+and incomplete GPU measurements remain explicitly marked in the copied report.
+The report retains the latest 120 frame and GPU samples locally.
+
 For browser Studio, `make package-web-sdk` configures the same packages with
 Emscripten and SLJIT disabled. This SDK is library-only even when compiler,
 native capabilities and desktop renderer are enabled. Its manifest records the

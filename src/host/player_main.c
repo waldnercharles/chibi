@@ -28,6 +28,25 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+
+static struct
+{
+    bool enabled;
+    double start, end;
+    double update_start, update_end;
+    double simulation_start, simulation_end;
+    double draw_start, draw_end;
+    double present_start, present_end;
+} web_timings;
+
+#define WEB_FRAME_TIME(mark)                                                   \
+    do {                                                                       \
+        if (web_timings.enabled) {                                             \
+            web_timings.mark = emscripten_get_now();                           \
+        }                                                                      \
+    } while (0)
+#else
+#define WEB_FRAME_TIME(mark) ((void)0)
 #endif
 
 /* This final application supplies one explicit native type composition. */
@@ -392,7 +411,9 @@ static int run_frame(desktop_player *host)
     } else {
         cf_input_disable_ime();
     }
+    WEB_FRAME_TIME(update_start);
     cf_app_update(NULL);
+    WEB_FRAME_TIME(update_end);
     device_pointer_sample pointer = controls_pointer_take((CF_V2){ cf_mouse_x(),
                                                                    cf_mouse_y() });
     for (int i = 0; i < 3; i++) {
@@ -443,12 +464,14 @@ static int run_frame(desktop_player *host)
     engine_viewport_set_host_input(host->viewport, &input);
     engine_set_focus(runtime, input.focused ? ENGINE_FOCUS_VIEWPORT : ENGINE_FOCUS_NONE);
     uint64_t steps = engine_last_timing(runtime)->simulation_steps;
-    if (sample_input(host, pointer.position) < 0 ||
-        engine_frame(runtime, host->now) < 0) {
+    int input_status = sample_input(host, pointer.position);
+    WEB_FRAME_TIME(simulation_start);
+    if (input_status < 0 || engine_frame(runtime, host->now) < 0) {
         const char *message = engine_error(runtime);
         fprintf(stderr, "%s\n", message ? message : "Gameplay input rejected");
         return -1;
     }
+    WEB_FRAME_TIME(simulation_end);
     if (engine_last_timing(runtime)->simulation_steps != steps ||
         !engine_is_playing(runtime)) {
         controls_pointer_consumed();
@@ -464,6 +487,7 @@ static int run_frame(desktop_player *host)
         engine_viewport_set_view(host->viewport, &view);
     }
     engine_viewport_set_time(host->viewport, host->now);
+    WEB_FRAME_TIME(draw_start);
     if (engine_viewport_draw(
             host->viewport,
             &(engine_viewport_controls){ .playing = engine_is_playing(runtime),
@@ -473,14 +497,17 @@ static int run_frame(desktop_player *host)
         fprintf(stderr, "%s\n", app_scene_renderer_error(host->renderer));
         return -1;
     }
+    WEB_FRAME_TIME(draw_end);
     const char *ui_error = render_ui_error(engine_viewport_ui(host->viewport));
     if (ui_error[0]) {
         fprintf(stderr, "%s\n", ui_error);
         return -1;
     }
+    WEB_FRAME_TIME(present_start);
     if (engine_viewport_present(host->viewport)) {
         cf_app_draw_onto_screen(true);
     }
+    WEB_FRAME_TIME(present_end);
     if (!follow_scene(host)) {
         return -1;
     }
@@ -504,8 +531,31 @@ EM_JS(void, web_renderer, (int webgpu, int asyncify), {
 EM_JS(int, web_force_gl, (), {
     return new URLSearchParams(location.search).get('renderer') === 'webgl';
 })
+EM_JS(int, web_low_resolution, (), {
+    return new URLSearchParams(location.search).get('dpr') === '1';
+})
+EM_JS(int, web_timing_enabled, (), {
+    return Module['chibiTimingEnabled'] === true;
+})
 EM_JS(void, web_frame_complete, (), {
     Module['chibiFrame']?.();
+})
+EM_JS(void, web_frame_start, (int perspective), {
+    Module['chibiFrameStart']?.(Boolean(perspective));
+})
+EM_JS(void, web_frame_timings,
+    (double update_ms, double simulation_ms, double draw_ms, double present_ms,
+     double other_ms, double total_ms, double start_ms, double end_ms), {
+    Module['chibiFrameTimings']?.({
+        updateMs: update_ms,
+        simulationMs: simulation_ms,
+        drawMs: draw_ms,
+        presentMs: present_ms,
+        otherMs: other_ms,
+        totalMs: total_ms,
+        startMs: start_ms,
+        endMs: end_ms
+    });
 })
 // clang-format on
 
@@ -513,6 +563,10 @@ EM_JS(void, web_frame_complete, (), {
  * last frame, with the reason shown on the page. */
 static void web_frame(void *host)
 {
+    WEB_FRAME_TIME(start);
+    if (web_timings.enabled) {
+        web_frame_start(engine_viewport_perspective(((desktop_player *)host)->viewport));
+    }
     if (run_frame(host) <= 0) {
         emscripten_cancel_main_loop();
         player_url_stop();
@@ -522,6 +576,24 @@ static void web_frame(void *host)
         return;
     }
     web_frame_complete();
+    if (web_timings.enabled) {
+        WEB_FRAME_TIME(end);
+        double update = web_timings.update_end - web_timings.update_start;
+        double simulation = web_timings.simulation_end - web_timings.simulation_start;
+        double draw = web_timings.draw_end - web_timings.draw_start;
+        double present = web_timings.present_end - web_timings.present_start;
+        double total = web_timings.end - web_timings.start;
+        web_frame_timings(
+            update,
+            simulation,
+            draw,
+            present,
+            total - update - simulation - draw - present,
+            total,
+            web_timings.start,
+            web_timings.end
+        );
+    }
 }
 #endif
 int main(int argc, char **argv)
@@ -616,6 +688,9 @@ int main(int argc, char **argv)
     if (web_force_gl()) {
         options |= CF_APP_OPTIONS_GFX_OPENGL_BIT;
     }
+    if (web_low_resolution()) {
+        options |= CF_APP_OPTIONS_NO_HIGH_DPI_BIT;
+    }
 #endif
     CF_Result made = cf_make_app(
         application.title ? application.title : "Chibi Player",
@@ -709,6 +784,7 @@ int main(int argc, char **argv)
     cf_set_target_framerate(60);
     engine_set_playing(runtime, true);
 #ifdef __EMSCRIPTEN__
+    web_timings.enabled = web_timing_enabled();
     emscripten_set_main_loop_arg(web_frame, &host, 0, true);
 #endif
     int status = 1, frame = 0;

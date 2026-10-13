@@ -59,7 +59,7 @@ not frame-rate promises.
 | Reactive binding order cache | The complete ordered live work stream and program generation identities still match the cached dependency topology. Values and dynamic targets are reevaluated. | One schedule per owning program, at most 16 programs, 1,024 rows and 64 KiB. Cache misses use the existing sorter; larger workloads execute normally. |
 | Unchanged scheduler registration | Every copied descriptor field, callback, effect, phase and dependency is equal, and no prior error needs recovery. | Registration retains its existing descriptor. Batch scratch retains at most 128 entries; recursive and larger batches use temporary storage. |
 | Presentation-only compilation reuse | Capability category, keywords and description have no executable meaning; all semantic metadata and binding generations still match. | Fresh catalogs own current display text. Parsing/declaration discovery and semantic edits still do their existing work. |
-| Read-only array snapshot borrowing | The complete synchronous body cannot mutate, retain or observe the identity of a plain array. Runtime guards also check item headers and aliases with mutable scalar banks. | Linear header validation remains; managed or inconsistent arrays use the original deep copy. Suspension, inspection and opaque calls keep snapshot ownership. |
+| Read-only array snapshot borrowing | The complete synchronous body cannot mutate, retain or observe the identity of a plain array. Runtime guards also check item headers and aliases with mutable execution storage. | Linear header validation remains; managed or inconsistent arrays use the original deep copy. Suspension, inspection and opaque calls keep snapshot ownership. |
 
 Cache limits constrain retained optimization storage, not gameplay entities,
 task counts or valid program sizes. `activation_cache_bytes`,
@@ -74,7 +74,8 @@ ran sequentially on CPU 2 under the unchanged 60-second supervisor. Timed loop
 bodies and workloads match the benchmark-only baseline above; new correctness
 assertions run outside the timed loops. Each row reports the median of five
 trials, with the full minimum-to-maximum range in parentheses. This is a shared
-host measurement, not a confidence interval or a frame-time prediction.
+host measurement, not a confidence interval or a frame-time prediction. Array
+rows were remeasured after extending the guards to saved and VM scratch storage.
 
 | Workload | Baseline time | Optimized time | Allocation calls per trial, before → after |
 | --- | --- | --- | --- |
@@ -83,16 +84,16 @@ host measurement, not a confidence interval or a frame-time prediction.
 | SLJIT helper event, ns/root | 1,550 (1,386–2,001) | 1,881 (1,767–2,147) | 48,000 → 38,400 |
 | SLJIT stable bindings, µs/maintenance | 54.05 (24.94–77.79) | 18.34 (12.57–35.84) | 2,364 → 2,112 |
 | SLJIT binding membership churn, µs/maintenance | 43.66 (24.27–161.18) | 44.22 (20.81–84.62) | 2,406 → 2,238 |
-| SLJIT one-item array, µs/dispatch | 0.438 (0.437–0.697) | 0.364 (0.362–1.840) | 288 → 128 |
-| SLJIT 128-item array, µs/dispatch | 2.090 (1.594–3.925) | 0.871 (0.869–0.896) | 288 → 128 |
-| VM 128-item array, µs/dispatch | 59.25 (42.19–73.58) | 89.52 (42.66–127.69) | 352 → 128 |
+| SLJIT one-item array, µs/dispatch | 0.437 (0.435–0.728) | 0.426 (0.396–4.623) | 288 → 128 |
+| SLJIT 128-item array, µs/dispatch | 1.648 (1.611–9.286) | 0.946 (0.932–8.746) | 288 → 128 |
+| VM 128-item array, µs/dispatch | 45.59 (41.72–76.70) | 56.00 (46.00–59.62) | 352 → 128 |
 | Presentation-only edit, ms/preparation | 0.611 (0.499–1.296) | 0.365 (0.201–0.793) | 624 → 203 |
 | Unchanged-source control, ms/preparation | 0.359 (0.224–0.684) | 0.561 (0.165–1.056) | 203 → 203 |
 | Identical scheduler refresh, ns/pass | 5,106 (3,751–13,654) | 2,037 (1,239–6,383) | 8,320 → 0 |
 | Warm scheduler dispatch, ns/pass | 650 (630–964) | 2,340 (642–2,918) | 384 → 0 |
 
-The compiled 128-item loop is the clearest timing improvement in this sample
-(about 2.4×). Its allocation traffic falls from 367,104 to 46,592 requested bytes
+The compiled 128-item loop's median improves by about 1.7× in the refreshed
+sample, with outliers in both builds. Its allocation traffic falls from 367,104 to 46,592 requested bytes
 per 32 dispatches. That combined fixture also benefits from activation reuse;
 the separate ownership tests isolate the eliminated snapshot copy.
 Presentation edits reuse all four prepared sources instead of none, reducing

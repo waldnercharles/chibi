@@ -21,6 +21,7 @@ enum
     TEXT_EVENT,
     WAIT_EVENT,
     DELAY_ACTION,
+    REENTER_EVENT,
     CACHE_LIMIT = 64 * 1024
 };
 static const script_catalog_parameter amount = { .name = "amount",
@@ -55,9 +56,14 @@ static const script_catalog_capability capabilities[] = {
       .outcome_count = 1,
       .completion_outcome = 0,
       .effects = SCRIPT_EFFECT_SUSPEND },
+    { .id = REENTER_EVENT,
+      .name = "Reenter",
+      .kind = SCRIPT_CAPABILITY_EVENT,
+      .parameters = &amount,
+      .parameter_count = 1 },
 };
 static const script_catalog catalog = { .capabilities = capabilities,
-                                        .capability_count = 4 };
+                                        .capability_count = 5 };
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module *module;
@@ -167,19 +173,24 @@ static bool cached()
            usage.activation_cache_bytes <= CACHE_LIMIT &&
            usage.payload_capacity == 0;
 }
-static void nested_run(void *user, const execution_profile_sample *sample)
+static void count_runs(void *user, const execution_profile_sample *sample)
 {
     (void)sample;
-    execution_program_observe(program, NULL, NULL);
-    *(int *)user = run(1, 7, 3);
+    (*(int *)user)++;
 }
 TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
     for (int backend = 0; backend < 2; backend++) {
-        REQUIRE(
-            prepare("behavior Cache { state total:double=0; on Run(amount:double) { total+=amount; } }", backends[backend])
-        );
+        REQUIRE(prepare(
+            "behavior Cache { state total:double=0; "
+            "Work :: (value:double) { total+=value; if value<0 { await "
+            "Delay(1); } } "
+            "on Run(amount:double) { total+=amount; } "
+            "on Reenter(amount:double) { total+=amount; child:task=Work(7); "
+            "total+=amount; } }",
+            backends[backend]
+        ));
         REQUIRE(
             execution_instance_set_state(
                 instances[1],
@@ -206,18 +217,24 @@ TEST_CASE(activation_cache_rebinds_owner_and_preserves_reentrant_work)
             execution_instance_dispatch(instances[0], RUN_EVENT, NULL, 0, 2.5, 0, 1000) == FLOW_OK
         );
         REQUIRE(total(0, 4) && cached());
-        int nested_status = FLOW_ERR_STATE;
-        execution_program_observe(program, nested_run, &nested_status);
-        REQUIRE(run(0, 2, 3) == FLOW_OK);
-        REQUIRE(nested_status == FLOW_OK && total(0, 6) && total(1, 19) && cached());
+        /* A task starts a distinct activation while this handler is still
+         * live. The untaken wait makes it a task that completes immediately. */
+        int samples = 0;
+        execution_program_observe(program, count_runs, &samples);
+        int nested_status = dispatch(0, REENTER_EVENT, (pin_value){ .type = PIN_F64, .d = 2 }, 3);
+        execution_program_observe(program, NULL, NULL);
+        REQUIRE(nested_status == FLOW_OK && samples == 2);
+        REQUIRE(total(0, 15) && total(1, 12) && cached());
+        REQUIRE(dispatch(1, REENTER_EVENT, (pin_value){ .type = PIN_F64, .d = 3 }, 4) == FLOW_OK);
+        REQUIRE(total(0, 15) && total(1, 25) && cached());
         REQUIRE(execution_program_replace(program, module, false) == FLOW_OK);
         REQUIRE(execution_program_memory_usage(program).activation_cache_bytes == 0);
         for (int i = 0; i < 2; i++) {
             instances[i] = execution_program_instance(program, owners[i]);
             REQUIRE(instances[i]);
         }
-        REQUIRE(total(0, 6) && total(1, 19));
-        REQUIRE(run(1, 4, 4) == FLOW_OK && total(1, 23) && cached());
+        REQUIRE(total(0, 15) && total(1, 25));
+        REQUIRE(run(1, 4, 5) == FLOW_OK && total(1, 29) && cached());
         cleanup();
     }
     return true;

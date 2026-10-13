@@ -762,7 +762,8 @@ synchronous invocation, including loops that update unrelated scalar state.
 The compiler rejects borrowing when addresses escape, collection storage can
 change, raw header or pointer identity is observed, an opaque helper runs, or
 execution can suspend. Runtime guards check the actual array and element headers
-and exclude overlap with writable context, state, result and host-value banks.
+and exclude overlap with writable context, state, result, host-value, saved
+activation and VM scratch banks.
 Matching arrays avoid snapshot allocations and element copies; checking their
 headers still takes linear time. Other inputs retain the canonical deep copy and
 its errors, including mixed element headers supplied by native callers. Debug

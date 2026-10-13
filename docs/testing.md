@@ -835,7 +835,7 @@ The language follow-up admits these focused C checks under the same supervisor:
   limits. There are no frames, child processes or GPU work.
 - `tool language-activation-cache` and `tool wasm-activation-cache` use four
   cases on both backends to check warm allocation counts, owner/default reset,
-  reentrant observation, reload, managed payloads, errors, concurrent suspended
+  nested tasks, read-only observation, reload, managed payloads, errors, suspended
   work and debugger pause/resume. Each fixture has at most two entities and ten
   supplied-time dispatch/pump/step operations. One cap fixture has 4,096 scalar
   default arguments and a two-instruction body, executed twice, to prove large
@@ -843,7 +843,7 @@ The language follow-up admits these focused C checks under the same supervisor:
   processes or GPU work are involved.
 - `tool language-borrow` and `tool wasm-borrow` use six fixed cases: one authored
   read-only array loop with 0, 1 and 128 items; null/empty/mixed-header and failure
-  fallbacks; raw scalar-bank aliasing; mutation/identity/capacity/escape/opaque
+  fallbacks; scalar, saved-activation and VM scratch aliasing; mutation/identity/capacity/escape/opaque
   call exclusions; debug and real-wait continuation; and an in-memory prepared
   roundtrip that rederives the optimization and rejects a forged canonical flag
   (two buffers, each below 64 KiB). Native/Wasm normal and
@@ -852,8 +852,9 @@ The language follow-up admits these focused C checks under the same supervisor:
 - `tool c-export-alias` executes twelve tiny generated-C I32/I64 DIV/MOD
   fixtures covering operand and result aliases, signed inputs, division by zero
   and overflow, plus one authored union fixture for source pause, debugger detach
-  and continuation. One extra verified array function executes six normal and
-  inspection calls, checking guarded borrowing and mixed-header fallback copies.
+  and continuation. One extra verified array function executes eight normal and
+  inspection calls, checking guarded borrowing, mixed-header fallback copies and
+  an array whose items alias the public activation's saved-value bank.
   One compiler child builds one temporary shared library from less
   than 128 KiB of generated source, using the configured compiler and C/build-type
   flags, enabled sanitizers and assertions. The existing 10-second child and shared 60-second

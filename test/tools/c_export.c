@@ -5,6 +5,7 @@
 #include "export_compiler.h"
 #include "language/lower.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
@@ -352,7 +353,7 @@ static bool borrows_exported_plain_arrays()
         }
     }
     REQUIRE(guarded == 1 && result >= 0);
-    for (int sample = 0; sample < 3; sample++) {
+    for (int sample = 0; sample < 4; sample++) {
         for (int inspection = 0; inspection < 2; inspection++) {
             release_pause();
             pin_value items[] = { { .type = PIN_F64, .d = 1 },
@@ -370,33 +371,50 @@ static bool borrows_exported_plain_arrays()
             } else if (sample == 2) {
                 /* A plain header cannot prove that each payload is plain. */
                 items[1] = (pin_value){ .type = PIN_STR, .str = "managed" };
+            } else if (sample == 3) {
+                /* Native inputs can alias the public saved-value bank even
+                 * when this function itself never suspends. */
+                int saved = acount(f->slots) + acount(f->locals) + acount(f->frames);
+                REQUIRE((size_t)saved * sizeof *pause_activation.values >= sizeof(pin_value));
+                pause_activation
+                    .values = xcalloc((size_t)saved, sizeof *pause_activation.values);
+                values.items = (pin_value *)pause_activation.values;
+                values.items[0] = items[0];
+                values.count = values.capacity = 1;
             }
             pin_value input = { .type = PIN_F64,
                                 .container = PIN_CONTAINER_ARRAY,
                                 .ptr = &values };
             pin_value output = { .type = PIN_F64, .d = -1 };
-            pause_context = (behavior_function_context){ .arguments = &input,
-                                                         .argument_count = 1,
-                                                         .results = &output,
-                                                         .budget = 1000,
-                                                         .inspect = inspection
-                                                                      ? inspect
-                                                                      : NULL };
+            pause_context = (behavior_function_context){
+                .arguments = &input,
+                .argument_count = 1,
+                .results = &output,
+                .activation = sample == 3 ? &pause_activation : NULL,
+                .budget = 1000,
+                .inspect = inspection ? inspect : NULL
+            };
             behavior_function_bind_storage(&pause_context, &pause_storage);
             REQUIRE(behavior_function_bind(f, &pause_context, NULL, 0));
             behavior_function_prepare_host(f, &pause_context);
             REQUIRE(generated(&pause_context) == FLOW_OK);
-            REQUIRE(output.d == 3);
+            REQUIRE(output.d == values.count);
             const pin_array *snapshot = pause_context.data->values[result].ptr;
             if (!sample && !inspection) {
                 REQUIRE(snapshot == &values);
                 REQUIRE(!arena_storage_bytes(&pause_storage));
             } else {
-                REQUIRE(snapshot && snapshot != &values && snapshot->count == 3);
+                REQUIRE(
+                    snapshot && snapshot != &values && snapshot->count == values.count
+                );
+                REQUIRE(snapshot->items != values.items);
                 REQUIRE(arena_storage_bytes(&pause_storage) > 0);
-                if (sample) {
+                if (sample == 1 || sample == 2) {
                     REQUIRE(snapshot->items[1].str != items[1].str);
                     REQUIRE(!strcmp(snapshot->items[1].str, "managed"));
+                } else {
+                    REQUIRE(snapshot->items[0].type == PIN_F64);
+                    REQUIRE(snapshot->items[0].d == 1);
                 }
             }
         }

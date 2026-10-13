@@ -8,6 +8,58 @@
 #include <assert.h>
 #include <stdlib.h>
 
+/* Bytecode and Wasm also overwrite their retained scratch slots. Generated C
+ * uses C locals instead; only the public activation banks apply there. */
+static bool vm_disjoint(
+    const behavior_function *f,
+    const behavior_function_context *ctx,
+    const pin_array *array
+)
+{
+    if (!array || !ctx->activation || !ctx->activation->vm) {
+        return true;
+    }
+    const behavior_function_vm_storage *vm = ctx->activation->vm;
+    uint64_t values = (uint64_t)acount(f->slots) + (uint64_t)acount(f->locals) + 1;
+    size_t frames = (size_t)acount(f->frames);
+    if (f->fast) {
+        uint64_t fast = (uint64_t)acount(f->fast->slots) +
+                        (uint64_t)acount(f->fast->locals) + 1;
+        if (fast > values) {
+            values = fast;
+        }
+        if ((size_t)acount(f->fast->frames) > frames) {
+            frames = (size_t)acount(f->fast->frames);
+        }
+    }
+    if (values > SIZE_MAX) {
+        return false;
+    }
+    /* The shared guard already checked count, shape, and byte arithmetic. */
+    const void *ranges[] = { array, array->items };
+    const size_t sizes[] = { sizeof *array, (size_t)array->count * sizeof *array->items };
+    for (int j = 0; j < 2; j++) {
+        if (behavior_borrow_overlap(ranges[j], sizes[j], vm, 1, sizeof *vm) ||
+            behavior_borrow_overlap(
+                ranges[j],
+                sizes[j],
+                vm->values,
+                (size_t)values,
+                sizeof *vm->values
+            ) ||
+            behavior_borrow_overlap(
+                ranges[j],
+                sizes[j],
+                vm->parents,
+                frames,
+                sizeof *vm->parents
+            )) {
+            return false;
+        }
+    }
+    return true;
+}
+
 const char *behavior_function_borrow_snapshot(behavior_function_context *ctx, int host)
 {
     const behavior_function *f = ctx->data->function;
@@ -15,9 +67,17 @@ const char *behavior_function_borrow_snapshot(behavior_function_context *ctx, in
     const pin_value *input = ctx->data->values + h->first;
     pin_value *output = ctx->data->values + h->result_first;
     assert(h->result_first == h->first + 1 && h->result_count == 1);
-    return behavior_borrow_array(ctx, f->variable_count, f->result_count, acount(f->data_values), input, output)
-             ? NULL
-             : EXECUTION_snapshot_call.value(ctx->value_storage, input, 1, output);
+    const behavior_borrow_layout layout = {
+        f->variable_count, f->result_count,   acount(f->data_values),
+        acount(f->slots),  acount(f->locals), acount(f->frames)
+    };
+    pin_value borrowed;
+    if (behavior_borrow_array(ctx, layout, input, &borrowed) &&
+        vm_disjoint(f, ctx, input->ptr)) {
+        *output = borrowed;
+        return NULL;
+    }
+    return EXECUTION_snapshot_call.value(ctx->value_storage, input, 1, output);
 }
 
 typedef enum

@@ -24,7 +24,7 @@ static execution_module_plan *plan;
 static execution_module *module, *decoded;
 static unsigned char *prepared, *corrupt;
 static bool borrowed_function;
-static int result_bank, opaque_calls;
+static int result_bank, opaque_calls, alias_slot;
 static bool pause;
 static const pin_value array_shape = { .type = PIN_F64,
                                        .container = PIN_CONTAINER_ARRAY };
@@ -171,6 +171,8 @@ enum
     VARIABLE_ALIAS,
     RESULT_ALIAS,
     HOST_ALIAS,
+    SAVED_ALIAS,
+    VM_ALIAS,
     PAUSE,
     WAIT,
     OPAQUE,
@@ -197,6 +199,17 @@ static bool fixture(int kind)
     );
     if (kind == HOST_ALIAS) {
         REQUIRE(behavior_function_builder_values(builder, &scalar, 1) == 0);
+    }
+    if (kind == SAVED_ALIAS) {
+        /* Leave enough saved words for one complete item header. The parameter
+         * store below overwrites that item's payload in every backend. */
+        int words = (int)((sizeof(pin_value) + sizeof(uint64_t) - 1) / sizeof(uint64_t));
+        for (int j = 0; j < words; j++) {
+            behavior_function_builder_local(builder, scalar);
+        }
+        behavior_function *draft = (behavior_function *)
+            behavior_function_builder_definition(builder);
+        draft->locals[offsetof(pin_value, d) / sizeof(uint64_t)].parameter = true;
     }
     int original = value(
         (behavior_function_instruction){ .op = BF_ARRAY,
@@ -228,14 +241,26 @@ static bool fixture(int kind)
         );
     }
     if (kind == RAW_WRITE || kind == VARIABLE_ALIAS || kind == RESULT_ALIAS ||
-        kind == HOST_ALIAS) {
+        kind == HOST_ALIAS || kind == SAVED_ALIAS || kind == VM_ALIAS) {
         int replacement = value(
             (behavior_function_instruction){ .op = BF_CONSTANT,
                                              .type = PIN_F64,
                                              .value = { .type = PIN_F64, .d = 99 } },
             false
         );
-        if (kind == RAW_WRITE || kind == HOST_ALIAS) {
+        if (kind == SAVED_ALIAS) {
+            emit((behavior_function_instruction){
+                .op = BF_SAVE,
+                .type = PIN_F64,
+                .left = replacement,
+                .target = offsetof(pin_value, d) / sizeof(uint64_t) });
+        } else if (kind == VM_ALIAS) {
+            alias_slot = replacement;
+            /* Keep the overwrite observable to ordinary IR liveness. */
+            emit((behavior_function_instruction){ .op = BF_RESULT,
+                                                  .type = PIN_F64,
+                                                  .left = replacement });
+        } else if (kind == RAW_WRITE || kind == HOST_ALIAS) {
             int item = kind == RAW_WRITE ? first_item(original) : host_address(0);
             emit((behavior_function_instruction){ .op = BF_WRITE,
                                                   .type = PIN_F64,
@@ -249,7 +274,7 @@ static bool fixture(int kind)
                 .left = replacement });
         }
     }
-    if (kind == PAUSE) {
+    if (kind == PAUSE || kind == SAVED_ALIAS || kind == VM_ALIAS) {
         int point = behavior_function_builder_source_point(
             builder,
             (behavior_source_point){ .occurrence = 1, .kind = BEHAVIOR_SOURCE_STATEMENT }
@@ -481,15 +506,18 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
     pin_array bad = { .element_type = PIN_F64, .count = -1 };
     pin_value input = array_shape, output;
     input.ptr = &bad;
-    REQUIRE(
-        !behavior_borrow_array(&context, 0, 1, acount(function->data_values), &input, &output)
-    );
+    REQUIRE(!behavior_borrow_array(
+        &context,
+        (behavior_borrow_layout){ .results = 1, .data = acount(function->data_values) },
+        &input,
+        &output
+    ));
     return true;
 }
 
 TEST_CASE(borrow_guards_scalar_banks_aliasing_array_storage)
 {
-    for (int kind = VARIABLE_ALIAS; kind <= HOST_ALIAS; kind++) {
+    for (int kind = VARIABLE_ALIAS; kind <= VM_ALIAS; kind++) {
         cleanup();
         REQUIRE(fixture(kind));
         REQUIRE(guarded() == 1);
@@ -511,11 +539,24 @@ TEST_CASE(borrow_guards_scalar_banks_aliasing_array_storage)
             if (kind == HOST_ALIAS) {
                 context.data->values[0] = item;
                 array.items = context.data->values;
+            } else if (kind == SAVED_ALIAS) {
+                array.items = (pin_value *)(activation.values + acount(function->slots));
+                *array.items = item;
+            } else if (kind == VM_ALIAS) {
+                /* Retain actual scratch from an earlier bytecode invocation. */
+                REQUIRE(behavior_function_run(function, &context, false) == FLOW_OK);
+                REQUIRE(activation.vm && activation.vm->values);
+                arena_free(&storage);
+                behavior_function_reset_data(context.data);
+                array.items = activation.vm->values + alias_slot;
+                *array.items = item;
             }
             REQUIRE(behavior_function_run(function, &context, mode % 2) == FLOW_OK);
             REQUIRE((kind == RESULT_ALIAS ? item.d : output.d) == 7);
             REQUIRE(kind != VARIABLE_ALIAS || item.d == 99);
             REQUIRE(kind != HOST_ALIAS || array.items[0].d == 99);
+            REQUIRE(kind != SAVED_ALIAS || array.items[0].d == 99);
+            REQUIRE(kind != VM_ALIAS || mode % 2 || array.items[0].d == 99);
             REQUIRE(bytes() > 0);
         }
     }

@@ -432,11 +432,15 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                         fprintf(
                             out,
                             "c->error_message=NULL;if(!behavior_borrow_array(c,"
-                            "%d,%d,%d,c->data->values+%d,c->"
+                            "(behavior_borrow_layout){%d,%d,%d,%d,%d,%d},c->"
+                            "data->values+%d,c->"
                             "data->values+%d))",
                             f->variable_count,
                             f->result_count,
                             acount(f->data_values),
+                            acount(f->slots),
+                            acount(f->locals),
+                            acount(f->frames),
                             spec->first,
                             spec->result_first
                         );

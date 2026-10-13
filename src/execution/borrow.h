@@ -6,6 +6,11 @@
 
 #include <string.h>
 
+typedef struct
+{
+    int variables, results, data, slots, locals, frames;
+} behavior_borrow_layout;
+
 static inline bool behavior_borrow_plain(pin_value value)
 {
     return value.container == PIN_CONTAINER_SINGLE &&
@@ -34,15 +39,45 @@ static inline bool behavior_borrow_disjoint(
     const behavior_function_context *ctx,
     const void *address,
     size_t bytes,
-    int variables,
-    int results,
-    int data
+    behavior_borrow_layout layout
 )
 {
-    return !behavior_borrow_overlap(address, bytes, ctx, 1, sizeof *ctx) &&
-           !behavior_borrow_overlap(address, bytes, ctx->variables, (size_t)variables, sizeof(pin_value)) &&
-           !behavior_borrow_overlap(address, bytes, ctx->results, (size_t)results, sizeof(pin_value)) &&
-           !behavior_borrow_overlap(address, bytes, ctx->data->values, (size_t)data, sizeof(pin_value));
+    if (behavior_borrow_overlap(address, bytes, ctx, 1, sizeof *ctx) ||
+        behavior_borrow_overlap(address, bytes, ctx->variables, (size_t)layout.variables, sizeof(pin_value)) ||
+        behavior_borrow_overlap(address, bytes, ctx->results, (size_t)layout.results, sizeof(pin_value)) ||
+        behavior_borrow_overlap(
+            address,
+            bytes,
+            ctx->data->values,
+            (size_t)layout.data,
+            sizeof(pin_value)
+        )) {
+        return false;
+    }
+    const behavior_function_activation *a = ctx->activation;
+    if (!a) {
+        return true;
+    }
+    uint64_t saved = (uint64_t)layout.slots + (uint64_t)layout.locals +
+                     (uint64_t)layout.frames;
+    if (saved > SIZE_MAX) {
+        return false;
+    }
+    return !behavior_borrow_overlap(address, bytes, a, 1, sizeof *a) &&
+           !behavior_borrow_overlap(
+               address,
+               bytes,
+               a->values,
+               (size_t)saved,
+               sizeof *a->values
+           ) &&
+           !behavior_borrow_overlap(
+               address,
+               bytes,
+               a->wake_times,
+               (size_t)layout.frames,
+               sizeof *a->wake_times
+           );
 }
 
 /* The compiler proves storage is stable and unobserved for this invocation.
@@ -50,9 +85,7 @@ static inline bool behavior_borrow_disjoint(
  * canonical deep-copy behavior instead of trusting the declared array type. */
 static inline bool behavior_borrow_array(
     const behavior_function_context *ctx,
-    int variables,
-    int results,
-    int data,
+    behavior_borrow_layout layout,
     const pin_value *value,
     pin_value *out
 )
@@ -68,15 +101,8 @@ static inline bool behavior_borrow_array(
             (size_t)array->count > SIZE_MAX / sizeof(pin_value) ||
             array->element_type != value->type ||
             !behavior_borrow_name(array->type_name, value->type_name) ||
-            !behavior_borrow_disjoint(ctx, array, sizeof *array, variables, results, data) ||
-            !behavior_borrow_disjoint(
-                ctx,
-                array->items,
-                (size_t)array->count * sizeof(pin_value),
-                variables,
-                results,
-                data
-            )) {
+            !behavior_borrow_disjoint(ctx, array, sizeof *array, layout) ||
+            !behavior_borrow_disjoint(ctx, array->items, (size_t)array->count * sizeof(pin_value), layout)) {
             return false;
         }
         for (int j = 0; j < array->count; j++) {

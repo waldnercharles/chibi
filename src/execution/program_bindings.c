@@ -181,8 +181,131 @@ int program_binding_run(execution_instance *instance, int binding_index, double 
 typedef struct
 {
     execution_instance *instance;
+    uint64_t owner;
     int binding;
 } binding_work;
+/* Retaining a tiny generation key prevents pointer reuse after peer teardown
+ * without retaining the peer's module, instances or managed values. Programs
+ * have immutable modules; replacement swaps the complete program generation. */
+struct binding_identity
+{
+    unsigned references;
+};
+struct binding_schedule
+{
+    struct binding_identity **identities;
+    int program_count;
+    binding_work *work;
+    int *order;
+};
+enum
+{
+    BINDING_CACHE_PROGRAMS = 16,
+    BINDING_CACHE_ROWS = 1024,
+    BINDING_CACHE_BYTES = 64 * 1024,
+};
+static void identity_free(struct binding_identity *identity)
+{
+    if (identity && !--identity->references) {
+        free(identity);
+    }
+}
+static void schedule_free(execution_program *p)
+{
+    struct binding_schedule *s = p->binding_schedule;
+    if (!s) {
+        return;
+    }
+    for (int i = 0; i < s->program_count; i++) {
+        identity_free(s->identities[i]);
+    }
+    free(s->identities);
+    afree(s->work);
+    afree(s->order);
+    free(s);
+    p->binding_schedule = NULL;
+}
+void program_bindings_free(execution_program *p)
+{
+    schedule_free(p);
+    identity_free(p->binding_identity);
+    p->binding_identity = NULL;
+}
+static size_t schedule_bytes(const struct binding_schedule *s)
+{
+    if (!s) {
+        return 0;
+    }
+    return sizeof *s +
+           (size_t)s->program_count * (sizeof *s->identities + sizeof **s->identities) +
+           (s->work ? sizeof(dyna_hdr) + (size_t)acap(s->work) * sizeof *s->work : 0) +
+           (s->order ? sizeof(dyna_hdr) + (size_t)acap(s->order) * sizeof *s->order : 0);
+}
+size_t program_binding_storage_bytes(const execution_program *p)
+{
+    return schedule_bytes(p->binding_schedule) +
+           (p->binding_identity ? sizeof *p->binding_identity : 0);
+}
+static bool schedule_matches(const struct binding_schedule *s, execution_program *const *programs, int count)
+{
+    if (!s || count != s->program_count) {
+        return false;
+    }
+    int row = 0;
+    for (int i = 0; i < count; i++) {
+        execution_program *p = programs[i];
+        if (p->binding_identity != s->identities[i]) {
+            return false;
+        }
+        for (int a = 0; a < acount(p->instances); a++) {
+            execution_instance *instance = p->instances[a];
+            if (instance->query_managed && !instance->query_ready) {
+                continue;
+            }
+            for (int b = 0; b < p->module->plan.binding_count; b++, row++) {
+                if (row == acount(s->work) || s->work[row].instance != instance ||
+                    s->work[row].owner != instance->owner ||
+                    s->work[row].binding != b) {
+                    return false;
+                }
+            }
+        }
+    }
+    /* No cached instance is dereferenced before the whole current stream has
+     * matched. Recycled instances with the same owner/module have the same
+     * conservative field topology; execution uses that current live address. */
+    return row == acount(s->work);
+}
+static bool schedule_save(execution_program *const *programs, int count, binding_work *work, int *order)
+{
+    if (count <= 0 || count > BINDING_CACHE_PROGRAMS ||
+        acount(work) > BINDING_CACHE_ROWS) {
+        return false;
+    }
+    struct binding_schedule candidate = {
+        .program_count = count,
+        .work = work,
+        .order = order,
+    };
+    if (schedule_bytes(&candidate) + sizeof(struct binding_identity) >
+        BINDING_CACHE_BYTES) {
+        return false;
+    }
+    struct binding_schedule *s = xmalloc(sizeof *s);
+    *s = candidate;
+    s->identities = xmalloc((size_t)count * sizeof *s->identities);
+    for (int i = 0; i < count; i++) {
+        execution_program *p = programs[i];
+        if (!p->binding_identity) {
+            p->binding_identity = xmalloc(sizeof *p->binding_identity);
+            p->binding_identity->references = 1;
+        }
+        s->identities[i] = p->binding_identity;
+        s->identities[i]->references++;
+    }
+    programs[0]->binding_schedule = s;
+    return true;
+}
 static size_t binding_width(const execution_module_binding *b)
 {
     return b->target_type.container >= PIN_CONTAINER_ARRAY ? sizeof(pin_array *)
@@ -219,25 +342,33 @@ int execution_program_bindings_all(
     size_t size
 )
 {
-    binding_work *work = NULL;
     for (int i = 0; i < count; i++) {
         execution_program *p = programs[i];
         assert(p && !p->dispatching && !p->running);
         p->now = now;
         p->delta = delta;
         p->budget = budget ? budget : 10000;
+    }
+    execution_program *owner = count > 0 ? programs[0] : NULL;
+    bool cached = owner && schedule_matches(owner->binding_schedule, programs, count);
+    binding_work *work = cached ? owner->binding_schedule->work : NULL;
+    int *order = cached ? owner->binding_schedule->order : NULL;
+    if (!cached && owner) {
+        schedule_free(owner);
+    }
+    for (int i = 0; !cached && i < count; i++) {
+        execution_program *p = programs[i];
         for (int a = 0; a < acount(p->instances); a++) {
             if (p->instances[a]->query_managed && !p->instances[a]->query_ready) {
                 continue;
             }
             for (int b = 0; b < p->module->plan.binding_count; b++) {
-                apush(work, ((binding_work){ p->instances[a], b }));
+                apush(work, ((binding_work){ p->instances[a], p->instances[a]->owner, b }));
             }
         }
     }
-    bool *done = xcalloc((size_t)(acount(work) + 1), sizeof *done);
-    int *order = NULL;
-    for (int n = 0; n < acount(work); n++) {
+    bool *done = cached ? NULL : xcalloc((size_t)(acount(work) + 1), sizeof *done);
+    for (int n = 0; !cached && n < acount(work); n++) {
         int ready = -1;
         for (int i = 0; i < acount(work) && ready < 0; i++) {
             if (done[i]) {
@@ -262,6 +393,9 @@ int execution_program_bindings_all(
         apush(order, ready);
     }
     free(done);
+    if (!cached) {
+        cached = schedule_save(programs, count, work, order);
+    }
     for (int i = 0; i < count; i++) {
         programs[i]->dispatching = true;
     }
@@ -280,8 +414,12 @@ int execution_program_bindings_all(
         programs[i]->dispatching = false;
         program_collect_states(programs[i]);
     }
-    afree(order);
-    afree(work);
+    if (!cached) {
+        afree(order);
+        afree(work);
+    } else if (result) {
+        schedule_free(owner);
+    }
     if (!result && size) {
         error[0] = 0;
     }

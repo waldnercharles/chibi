@@ -240,6 +240,7 @@ void behavior_function_rebind_host(
     const struct service_binding *
 );
 void behavior_function_borrow_arrays(behavior_function *function);
+void behavior_function_borrow_snapshots(behavior_function *function, const bool *keep);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);
 void behavior_function_optimize_ranges(behavior_function *function, const bool *keep);

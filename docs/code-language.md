@@ -757,6 +757,19 @@ It preserves floating-point rounding, NaN and signed-zero behavior; `n := 0`
 still infers `number`. Generic component reads do not acquire range proofs from
 metadata alone.
 
+Read-only plain-array traversals can borrow their existing storage during a
+synchronous invocation, including loops that update unrelated scalar state.
+The compiler rejects borrowing when addresses escape, collection storage can
+change, raw header or pointer identity is observed, an opaque helper runs, or
+execution can suspend. Runtime guards check the actual array and element headers
+and exclude overlap with writable context, state, result and host-value banks.
+Matching arrays avoid snapshot allocations and element copies; checking their
+headers still takes linear time. Other inputs retain the canonical deep copy and
+its errors, including mixed element headers supplied by native callers. Debug
+inspection retains owned snapshots, and prepared modules recompute the proof
+instead of trusting saved optimization flags. Purity alone does not establish
+that a helper cannot mutate an aliased collection.
+
 Preview source preparation reuses unchanged analysis and executable generations
 through `authoring_sources_prepare_incremental`. Exact source identity/text,
 catalog metadata/defaults, backend and native binding generation must match.

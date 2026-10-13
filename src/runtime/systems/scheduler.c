@@ -14,6 +14,15 @@ typedef struct
     schedule_desc desc;
     int serial;
 } entry;
+typedef struct
+{
+    int index, result;
+    schedule_error error;
+} batch_entry;
+enum
+{
+    BATCH_CACHE_ENTRIES = 128
+};
 struct schedule
 {
     ecs_world *world;
@@ -21,7 +30,8 @@ struct schedule
     entry *entries;
     int *order;
     unsigned char *edges;
-    bool dirty, parallel;
+    batch_entry *scratch;
+    bool dirty, parallel, scratch_busy;
     int next_serial, parallel_batches;
     char error[256], warning[256];
 };
@@ -67,6 +77,7 @@ void schedule_free(schedule *s)
     }
     afree(s->entries);
     afree(s->order);
+    afree(s->scratch);
     free(s->edges);
     free(s);
 }
@@ -78,6 +89,36 @@ static int find(const schedule *s, const char *name)
         }
     }
     return -1;
+}
+static bool names_equal(const char *const *a, const char *const *b, int count)
+{
+    for (int i = 0; i < count; i++) {
+        if (strcmp(a[i], b[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+static bool same(const schedule_desc *a, const schedule_desc *b)
+{
+    return a->phase == b->phase && a->order == b->order &&
+           a->read_count == b->read_count && a->write_count == b->write_count &&
+           a->resource_read_count == b->resource_read_count &&
+           a->resource_write_count == b->resource_write_count &&
+           a->after_count == b->after_count && a->declared == b->declared &&
+           a->structural == b->structural && a->host_sink == b->host_sink &&
+           a->world_read == b->world_read && a->deterministic == b->deterministic &&
+           a->parallel_safe == b->parallel_safe && a->identity == b->identity &&
+           a->run == b->run && a->prepare == b->prepare &&
+           a->parallel_ready == b->parallel_ready && a->maintain == b->maintain &&
+           a->field_changed == b->field_changed && a->user == b->user &&
+           (!a->read_count ||
+            !memcmp(a->reads, b->reads, (size_t)a->read_count * sizeof *a->reads)) &&
+           (!a->write_count ||
+            !memcmp(a->writes, b->writes, (size_t)a->write_count * sizeof *a->writes)) &&
+           names_equal(a->resource_reads, b->resource_reads, a->resource_read_count) &&
+           names_equal(a->resource_writes, b->resource_writes, a->resource_write_count) &&
+           names_equal(a->after, b->after, a->after_count);
 }
 int schedule_register(schedule *s, const schedule_desc *d)
 {
@@ -96,6 +137,12 @@ int schedule_register(schedule *s, const schedule_desc *d)
             strcmp(s->entries[i].desc.name, d->name)) {
             return -1; /* A System owns mutable query and execution storage. */
         }
+    }
+    int index = find(s, d->name);
+    /* A failed run is retried by re-registering its descriptor. Keep that
+     * rebuild path, and never discard an already pending topology change. */
+    if (index >= 0 && !s->error[0] && same(&s->entries[index].desc, d)) {
+        return 0;
     }
     entry e = { .desc = *d, .serial = s->next_serial++ };
     e.desc.name = xstrdup(d->name);
@@ -116,7 +163,6 @@ int schedule_register(schedule *s, const schedule_desc *d)
             (size_t)d->write_count * sizeof *d->writes
         );
     }
-    int index = find(s, d->name);
     if (index < 0) {
         apush(s->entries, e);
     } else {
@@ -271,23 +317,17 @@ bool schedule_build(schedule *s)
 typedef struct
 {
     schedule *schedule;
-    int *indices;
-    int *results;
-    schedule_error *errors;
+    batch_entry *entries;
     double time, delta;
 } batch;
 static void run_batch(int start, int end, uint32_t, void *user)
 {
     batch *b = user;
     for (int i = start; i < end; i++) {
-        entry *e = &b->schedule->entries[b->indices[i]];
-        b->results[i] = e->desc.run(
-            b->schedule->world,
-            b->time,
-            b->delta,
-            e->desc.user,
-            &b->errors[i]
-        );
+        batch_entry *item = &b->entries[i];
+        entry *e = &b->schedule->entries[item->index];
+        item->result = e->desc
+                           .run(b->schedule->world, b->time, b->delta, e->desc.user, &item->error);
     }
 }
 int schedule_maintain(schedule *s, double time, double delta, schedule_error *error)
@@ -339,45 +379,50 @@ int schedule_run(schedule *s, system_phase phase, double time, double delta)
         return FLOW_ERR_COMPILE;
     }
     int count = acount(s->entries);
+    bool cache = !s->scratch_busy;
+    batch_entry *items = cache ? s->scratch : NULL;
+    if (cache) {
+        s->scratch = NULL;
+        s->scratch_busy = true;
+    }
+    int result = 0;
     for (int at = 0; at < count;) {
         int first = s->order[at];
         if (s->entries[first].desc.phase != phase) {
             at++;
             continue;
         }
-        int *indices = NULL;
-        apush(indices, first);
+        aclear(items);
+        apush(items, ((batch_entry){ .index = first }));
         at++;
         while (at < count && s->entries[s->order[at]].desc.phase == phase &&
                !barrier(&s->entries[first])) {
             int next = s->order[at];
             bool independent = true;
-            for (int j = 0; j < acount(indices); j++) {
-                independent &= !s->edges[indices[j] * count + next] &&
-                               !conflict(&s->entries[indices[j]], &s->entries[next]);
+            for (int j = 0; j < acount(items); j++) {
+                independent &= !s->edges[items[j].index * count + next] &&
+                               !conflict(&s->entries[items[j].index], &s->entries[next]);
             }
             if (!independent) {
                 break;
             }
-            apush(indices, next);
+            apush(items, ((batch_entry){ .index = next }));
             at++;
         }
-        int n = acount(indices);
-        int *results = xcalloc((size_t)n, sizeof(int));
-        schedule_error *errors = xcalloc((size_t)n, sizeof(schedule_error));
+        int n = acount(items);
         bool safe = true;
         for (int j = 0; j < n; j++) {
-            entry *e = &s->entries[indices[j]];
+            entry *e = &s->entries[items[j].index];
             if (e->desc.prepare) {
-                results[j] = e->desc.prepare(e->desc.user, &errors[j]);
-                safe &= results[j] >= 0;
+                items[j].result = e->desc.prepare(e->desc.user, &items[j].error);
+                safe &= items[j].result >= 0;
             }
         }
         if (safe) {
-            batch b = { s, indices, results, errors, time, delta };
+            batch b = { s, items, time, delta };
             bool parallel = s->parallel && s->tasks && n > 1;
             for (int j = 0; j < n && parallel; j++) {
-                const schedule_desc *desc = &s->entries[indices[j]].desc;
+                const schedule_desc *desc = &s->entries[items[j].index].desc;
                 parallel = !desc->parallel_ready || desc->parallel_ready(desc->user);
             }
             if (parallel) {
@@ -395,28 +440,32 @@ int schedule_run(schedule *s, system_phase phase, double time, double delta)
                 run_batch(0, n, 0, &b);
             }
         }
-        int result = 0;
         for (int j = 0; j < n; j++) {
-            if (results[j] < 0) {
+            if (items[j].result < 0) {
                 snprintf(
                     s->error,
                     sizeof s->error,
                     "System %s: %s",
-                    s->entries[indices[j]].desc.name,
-                    errors[j].message[0] ? errors[j].message : "execution failed"
+                    s->entries[items[j].index].desc.name,
+                    items[j].error.message[0] ? items[j].error.message : "execution failed"
                 );
-                result = results[j];
+                result = items[j].result;
                 break;
             }
         }
-        free(results);
-        free(errors);
-        afree(indices);
         if (result < 0) {
-            return result;
+            break;
         }
     }
-    return 0;
+    if (cache) {
+        s->scratch_busy = false;
+        if (acap(items) <= BATCH_CACHE_ENTRIES) {
+            s->scratch = items;
+            items = NULL;
+        }
+    }
+    afree(items);
+    return result;
 }
 const char *schedule_error_message(const schedule *s)
 {
@@ -446,6 +495,11 @@ const schedule_desc *schedule_descriptor_at(const schedule *s, int position)
 int schedule_parallel_batches(const schedule *s)
 {
     return s->parallel_batches;
+}
+size_t schedule_scratch_bytes(const schedule *s)
+{
+    return s->scratch ? sizeof(dyna_hdr) + (size_t)acap(s->scratch) * sizeof *s->scratch
+                      : 0;
 }
 
 bool schedule_dependency(const schedule *s, const char *before_name, const char *after_name)

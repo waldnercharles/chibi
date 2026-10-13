@@ -24,8 +24,10 @@ authoring_sources *authoring_sources_prepare_catalog(
     behavior_backend
 );
 /* Consumes the new snapshot and shares unchanged immutable source generations
- * with previous. Exact text/identity/catalog, backend and nonzero binding
+ * with previous. Exact text/identity/semantic catalog, backend and nonzero binding
  * generation must match; changed libraries invalidate all dependent modules.
+ * Capability category/keywords/description may change without rebuilding source;
+ * authoring views use the new collection's independently owned catalog.
  * No prior collection is retained. Collections own analyzed source generations;
  * executable imports separately retain modules. Declaration discovery/parsing
  * still runs; this reuses full analysis, lowering and compiled functions.

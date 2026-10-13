@@ -65,5 +65,8 @@ const char *schedule_at(const schedule *, int);
  * use the built schedule order returned by count/at. */
 const schedule_desc *schedule_descriptor_at(const schedule *, int);
 int schedule_parallel_batches(const schedule *);
+/* Dispatch scratch retained between runs; excludes in-flight temporary storage.
+ * At most 128 batch entries are retained; larger and recursive runs use temporary storage. */
+size_t schedule_scratch_bytes(const schedule *);
 bool schedule_dependency(const schedule *, const char *, const char *);
 #endif

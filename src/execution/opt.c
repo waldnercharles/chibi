@@ -358,6 +358,7 @@ void behavior_function_runtime_code(behavior_function *f)
             behavior_function_reuse_reads(f, keep);
             behavior_function_scalarize_unions(f, keep);
             behavior_function_optimize_ranges(f, keep);
+            behavior_function_borrow_snapshots(f, keep);
             memcpy(live, saved, (size_t)(slots + 1) * sizeof *live);
         }
         const behavior_function_instruction *code = pass ? f->runtime_body

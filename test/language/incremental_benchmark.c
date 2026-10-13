@@ -199,7 +199,10 @@ TEST_CASE(incremental_preparation_benchmark)
                 REQUIRE(source(current, "Independent") == source(previous, "Independent"));
                 REQUIRE(source(current, "Caller") != source(previous, "Caller"));
             }
-            /* Presentation reuse is measured, not required by the baseline. */
+            if (mode == 2) {
+                REQUIRE(reused == SOURCE_COUNT);
+                REQUIRE(source(current, "Caller") == source(previous, "Caller"));
+            }
             REQUIRE(presentation_is(current, tick.category, tick.keywords, tick.description));
             REQUIRE(presentation_is(previous, CATEGORY, KEYWORDS, DESCRIPTION));
             REQUIRE(value_is(current, "Caller", mode == 1 ? 10 : 3));

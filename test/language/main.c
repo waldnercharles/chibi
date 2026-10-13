@@ -20,6 +20,9 @@ void test_language_activation_benchmark();
 void test_language_binding_benchmark();
 void test_language_borrow_benchmark();
 void test_language_incremental_benchmark();
+void test_language_borrow();
+void test_language_binding_schedule();
+void test_language_activation_cache();
 void test_language_headless();
 void test_language_format();
 void test_language_navigation();
@@ -54,6 +57,9 @@ int main(int argc, char **argv)
     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool scalarize = argc == 2 && !strcmp(argv[1], "--scalarize");
+    bool borrow = argc == 2 && !strcmp(argv[1], "--borrow");
+    bool binding_schedule = argc == 2 && !strcmp(argv[1], "--binding-schedule");
+    bool activation_cache = argc == 2 && !strcmp(argv[1], "--activation-cache");
     bool headless = argc == 2 && !strcmp(argv[1], "--headless");
     bool navigation = argc == 2 && !strcmp(argv[1], "--navigation");
     bool publication = argc == 2 && !strcmp(argv[1], "--publication");
@@ -68,7 +74,8 @@ int main(int argc, char **argv)
         (!format && !prepared && !execution && !semantic && !benchmark &&
          !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
          !incremental_benchmark && !wasm && !program && !query_program &&
-         !incremental && !ranges && !scalarize && !headless && !navigation &&
+         !incremental && !ranges && !scalarize && !borrow &&
+         !binding_schedule && !activation_cache && !headless && !navigation &&
          !publication && !field_runtime && !prototype && !ui_authoring &&
          !text_format && !graph_model && !graph_authoring && !model_runtime &&
          ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
@@ -76,7 +83,8 @@ int main(int argc, char **argv)
             stderr,
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
             "| --program | --query-program | --incremental | --ranges | "
-            "--scalarize | "
+            "--scalarize | --borrow | --binding-schedule | --activation-cache "
+            "| "
             "--script-benchmark | --activation-benchmark | --binding-benchmark "
             "| "
             "--borrow-benchmark | --incremental-benchmark | --wasm | "
@@ -105,6 +113,12 @@ int main(int argc, char **argv)
         test_language_borrow_benchmark();
     } else if (incremental_benchmark) {
         test_language_incremental_benchmark();
+    } else if (borrow) {
+        test_language_borrow();
+    } else if (binding_schedule) {
+        test_language_binding_schedule();
+    } else if (activation_cache) {
+        test_language_activation_cache();
     } else if (model_runtime) {
         test_model_runtime();
     } else if (graph_authoring) {

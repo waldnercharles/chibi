@@ -309,7 +309,13 @@ matches and live continuations. The query cache's byte cap does not cap this
 separate state. Use a body loop when one root should own the state for all its
 targets. Proven stateless, synchronous generator systems can stream through one
 temporary row instead of retaining an instance for every tuple. Each admitted
-body still creates a temporary activation; frame reuse is a separate opportunity.
+body uses an activation. Serial synchronous invocations can reuse one idle
+activation per program, retaining at most 64 KiB of fixed frame storage. Payloads,
+host banks and nested calls still release their owned storage between invocations.
+Suspended, inspected, cancelled and failed work does not return to this cache.
+Prepared system batches still need separate activations for simultaneous rows.
+`execution_program_memory_usage` reports idle `activation_cache_bytes` separately
+from live activation headers.
 Value-filtered streaming first records one admission bit per structural row so
 body writes cannot change later rows' admission within the same update.
 

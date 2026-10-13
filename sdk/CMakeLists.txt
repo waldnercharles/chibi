@@ -165,7 +165,7 @@ add_library(Chibi::execution_contract ALIAS chibi_execution_contract)
 set_target_properties(chibi_execution_contract PROPERTIES EXPORT_NAME execution_contract)
 chibi_sdk_headers(chibi_execution_contract INTERFACE execution/host.h execution/status.h
     execution/service.h execution/log.h execution/instruction.h execution/state.h execution/function.h
-    execution/diagnostic.h execution/backend.h execution/component.h execution/scalar.h
+    execution/diagnostic.h execution/backend.h execution/component.h execution/scalar.h execution/borrow.h
     execution/request.h execution/source_debug.h execution/value_kind.h execution/arguments.h execution/random.h)
 target_link_libraries(chibi_execution_contract INTERFACE chibi_types)
 

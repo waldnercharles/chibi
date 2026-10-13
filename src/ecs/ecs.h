@@ -392,6 +392,14 @@ int ecs_world_unobserve(ecs_world *, int observer);
  * Mutable row/execution pointers bypass validation until this commit call.
  * Consumers must not assume ranges for uncommitted native pointer writes. */
 int ecs_component_modified(ecs_world *, ecs_entity, ecs_component_id);
+/* Enable per-row publication versions. Writes (including equal values) and
+ * component additions advance the version; borrowed pointer writes require
+ * ecs_component_modified. Tracking belongs to the world and survives removals.
+ * UINT64_MAX is saturated and must always be treated as changed. */
+int ecs_component_track_changes(ecs_world *, ecs_component_id);
+uint64_t ecs_component_version(const ecs_world *, ecs_entity, ecs_component_id);
+/* Shared world-owned counter storage, excluding allocator overhead. */
+size_t ecs_world_change_tracking_bytes(const ecs_world *);
 uint64_t ecs_world_hash(const ecs_world *world);
 uint32_t ecs_world_live_count(const ecs_world *world);
 uint32_t ecs_world_high_water_mark(const ecs_world *world);

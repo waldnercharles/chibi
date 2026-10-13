@@ -1,5 +1,6 @@
 #include "execution/intrinsics.h"
 
+#include "ecs/ecs.h"
 #include "ecs/execution.h"
 #include "execution/function.h"
 #include "execution/scalar.h"
@@ -691,6 +692,21 @@ static const char *query_target_value(arena *storage, const pin_value *args, int
     return NULL;
 }
 const node_host_call EXECUTION_query_target_call = { .value = query_target_value };
+static const char *query_variable_value(arena *storage, const pin_value *args, int count, pin_value *out)
+{
+    (void)storage;
+    assert(count == 2);
+    (void)count;
+    const behavior_function_context *context = value_context(args[0]);
+    int variable = args[1].i;
+    if (!context->query_variables || variable < 1 || variable > ECS_QUERY_VARS) {
+        return "Query variable is not bound";
+    }
+    *out = (pin_value){ .type = PIN_HANDLE,
+                        .u64 = context->query_variables[variable - 1] };
+    return NULL;
+}
+const node_host_call EXECUTION_query_variable_call = { .value = query_variable_value };
 static const char *component_membership_value(arena *storage, const pin_value *args, int count, pin_value *out)
 {
     (void)storage;
@@ -834,6 +850,8 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
             return &EXECUTION_query_source_call;
         case EXECUTION_INTRINSIC_QUERY_TARGET:
             return &EXECUTION_query_target_call;
+        case EXECUTION_INTRINSIC_QUERY_VARIABLE:
+            return &EXECUTION_query_variable_call;
         case EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP:
             return &EXECUTION_component_membership_call;
         case EXECUTION_INTRINSIC_BREAK_REQUEST:
@@ -847,6 +865,9 @@ const node_host_call *execution_intrinsic_call(execution_intrinsic id)
 }
 uint64_t execution_intrinsic_id(const node_host_call *call)
 {
+    if (call == &EXECUTION_query_variable_call) {
+        return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_QUERY_VARIABLE;
+    }
     if (call == &EXECUTION_query_target_call) {
         return UINT64_C(0x4348494900000000) | EXECUTION_INTRINSIC_QUERY_TARGET;
     }
@@ -932,7 +953,7 @@ const node_access *execution_intrinsic_access(uint64_t id)
         case EXECUTION_INTRINSIC_CONSTRUCT:
         case EXECUTION_INTRINSIC_REFERENCE_MAKE:
         case EXECUTION_INTRINSIC_REFERENCE_FIELD:
-            return &EXECUTION_value_access;
+        case EXECUTION_INTRINSIC_QUERY_VARIABLE: return &EXECUTION_value_access;
         case EXECUTION_INTRINSIC_COMPONENT_HAS:
         case EXECUTION_INTRINSIC_QUERY_SOURCE:
         case EXECUTION_INTRINSIC_QUERY_TARGET:

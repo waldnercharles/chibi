@@ -356,6 +356,7 @@ static void refresh(invocation_frame *frame, const behavior_function_context *ro
     context->retrigger = root->retrigger;
     context->variable_storage = root->variable_storage;
     context->value_owner = root->value_owner;
+    context->query_variables = root->query_variables;
     context->store_value = root->store_value;
     context->add_set_value = root->add_set_value;
     context->own_type_name = root->own_type_name;

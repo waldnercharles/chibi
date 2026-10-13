@@ -2,6 +2,7 @@
 #include "authoring/preview_runtime.h"
 #include "authoring/source_format.h"
 #include "authoring/source_prepare.h"
+#include "execution/inspection.h"
 #include "execution/status.h"
 #include "host/native_default.h"
 #include "runtime/component_catalog.h"
@@ -34,10 +35,18 @@ static source_registry *input_sources;
 static engine_input *test_source_input;
 static authoring_language_catalog *input_catalog;
 static authoring_source *input_source;
+static execution_program *query_other_program;
+static execution_inspector *query_debugger;
+static const ecs_relationship_desc query_targets = {
+    .id = 100002,
+    .key = "test.query.targets",
+    .name = "Targets"
+};
 
 static system_fixture fixture_new()
 {
     system_fixture f = { .world = ecs_world_new() };
+    assert(!ecs_world_register_relationship(f.world, &query_targets, NULL));
     const ecs_component_desc *components[] = {
         &COMPONENT_Health,    &COMPONENT_Aim,      &COMPONENT_Collider,
         &COMPONENT_Transform, &COMPONENT_Movement, &COMPONENT_Input
@@ -50,7 +59,19 @@ static system_fixture fixture_new()
                                               .name = "Child",
                                               .kind = SCRIPT_CAPABILITY_PROTOTYPE,
                                               .completion_outcome = -1 };
-    const script_catalog project = { .capabilities = &child, .capability_count = 1 };
+    const script_catalog_relationship targets = { .id = 100002, .name = "Targets" };
+    const script_catalog_type disabled = { .id = 100003,
+                                           .name = "Disabled",
+                                           .type = { .storage = PIN_STRUCT,
+                                                     .nominal = 100003 },
+                                           .component = true,
+                                           .component_id = ECS_DISABLED };
+    const script_catalog project = { .capabilities = &child,
+                                     .capability_count = 1,
+                                     .relationships = &targets,
+                                     .relationship_count = 1,
+                                     .types = &disabled,
+                                     .type_count = 1 };
     char error[256];
     native_capabilities *table = host_native_default_catalog_new(NULL, 0, NULL, 0, error, sizeof error);
     assert(table);
@@ -499,6 +520,10 @@ static bool camera_follow_runtime(behavior_backend backend)
 }
 static void cleanup()
 {
+    execution_inspector_free(query_debugger);
+    query_debugger = NULL;
+    execution_program_free(query_other_program);
+    query_other_program = NULL;
     if (test_source_input) {
         engine_input_free(test_source_input);
     }
@@ -665,6 +690,316 @@ TEST_CASE(source_input_actions_deliver_one_typed_edge_without_graph_objects)
         REQUIRE(state(&f, owner, "pulses") == 1);
     }
     return true;
+}
+
+static uint64_t query_state_id(system_fixture *f, const char *name)
+{
+    for (int i = 0; i < f->source->analysis->symbol_count; i++) {
+        const script_symbol *symbol = &f->source->analysis->symbols[i];
+        if (symbol->kind == SCRIPT_STATE && !strcmp(symbol->name, name)) {
+            return symbol->id;
+        }
+    }
+    return 0;
+}
+static execution_instance *query_row(system_fixture *f, ecs_entity owner, ecs_entity target)
+{
+    uint64_t variable = ecs_entity_to_u64(target);
+    return execution_program_row(f->program, ecs_entity_to_u64(owner), &variable, 1);
+}
+static double row_number(system_fixture *f, execution_instance *row, const char *name)
+{
+    const pin_value *value = row ? execution_instance_state(row, query_state_id(f, name))
+                                 : NULL;
+    return value ? value->d : NAN;
+}
+static ecs_entity aim_target(system_fixture *f, ecs_entity owner, bool firing)
+{
+    ecs_entity target = ecs_world_create_entity(f->world);
+    assert(!Aim_add(f->world, target, 0));
+    assert(!ecs_world_record_add_pair(f->world, owner, query_targets.id, target, 0));
+    assert(!ecs_world_apply_commands(f->world));
+    Aim_get(f->world, target)->firing = firing;
+    return target;
+}
+TEST_CASE(source_query_tuple_state_wait_reload_and_generation)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity owner = health(&f);
+        ecs_entity first = aim_target(&f, owner, true),
+                   second = aim_target(&f, owner, false);
+        REQUIRE(prepare(
+            &f,
+            "system Rows query h:Health join target in self.Targets join a:Aim "
+            "from target { "
+            "state starts:double=0; starts+=1; await delay(Duration:1); "
+            "if a.Firing { h.Current+=10; } else { h.Current+=1; } }",
+            backends[backend]
+        ));
+        REQUIRE(tick(&f, 0));
+        REQUIRE(query_row(&f, owner, first) != query_row(&f, owner, second));
+        REQUIRE(row_number(&f, query_row(&f, owner, first), "starts") == 1);
+        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 1);
+        REQUIRE(!execution_instance_set_state(
+            query_row(&f, owner, first),
+            query_state_id(&f, "starts"),
+            (pin_value){ .type = PIN_F64, .d = 7 }
+        ));
+        REQUIRE(!execution_program_replace(f.program, f.source->module, false));
+        REQUIRE(row_number(&f, query_row(&f, owner, first), "starts") == 7);
+        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 1);
+        REQUIRE(tick(&f, .1));
+        REQUIRE(row_number(&f, query_row(&f, owner, first), "starts") == 8);
+        REQUIRE(row_number(&f, query_row(&f, owner, second), "starts") == 2);
+        REQUIRE(!ecs_world_destroy_entity(f.world, first));
+        REQUIRE(tick(&f, .2));
+        REQUIRE(!query_row(&f, owner, first));
+        REQUIRE(execution_instance_pending(query_row(&f, owner, second)) == 1);
+        ecs_entity replacement = aim_target(&f, owner, true);
+        REQUIRE(
+            replacement.slot == first.slot && replacement.generation != first.generation
+        );
+        REQUIRE(tick(&f, .3));
+        REQUIRE(row_number(&f, query_row(&f, owner, replacement), "starts") == 1);
+        REQUIRE(tick(&f, 1.2));
+        REQUIRE(Health_get_const(f.world, owner)->current == 1);
+        execution_program_detach(f.program, ecs_entity_to_u64(owner));
+        REQUIRE(!query_row(&f, owner, second) && !query_row(&f, owner, replacement));
+        fixture_free(&f);
+    }
+    return true;
+}
+TEST_CASE(source_query_changed_consumers_preserve_busy_writes)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity owner = health(&f);
+        REQUIRE(prepare(
+            &f,
+            "system Changed query h:Health where changed(h) { state "
+            "calls:double=0; "
+            "calls+=1; await delay(Duration:1); }",
+            backends[backend]
+        ));
+        REQUIRE(tick(&f, 0));
+        execution_program *other = execution_program_new(f.source->module, f.world, NULL);
+        query_other_program = other;
+        REQUIRE(other);
+        REQUIRE(!execution_program_step(other, 0, .1, 10000));
+        REQUIRE(!ecs_component_modified(f.world, owner, COMPONENT_Health.id));
+        REQUIRE(tick(&f, .1));
+        REQUIRE(state(&f, owner, "calls") == 1);
+        REQUIRE(tick(&f, 1.1));
+        REQUIRE(state(&f, owner, "calls") == 2);
+        REQUIRE(!execution_program_step(other, 1.1, .1, 10000));
+        REQUIRE(
+            execution_instance_state(
+                execution_program_instance(other, ecs_entity_to_u64(owner)),
+                query_state_id(&f, "calls")
+            )
+                ->d == 2
+        );
+        Health_get(f.world, owner)->current = 7;
+        REQUIRE(tick(&f, 2.2));
+        REQUIRE(state(&f, owner, "calls") == 2);
+        REQUIRE(!ecs_component_modified(f.world, owner, COMPONENT_Health.id));
+        REQUIRE(tick(&f, 2.3));
+        REQUIRE(state(&f, owner, "calls") == 3);
+        REQUIRE(!execution_program_step(other, 2.3, .1, 10000));
+        REQUIRE(
+            execution_instance_state(
+                execution_program_instance(other, ecs_entity_to_u64(owner)),
+                query_state_id(&f, "calls")
+            )
+                ->d == 3
+        );
+        execution_program_free(other);
+        query_other_program = NULL;
+        fixture_free(&f);
+    }
+    return true;
+}
+TEST_CASE(source_query_changed_provider_and_pure_helper)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity one = health(&f), two = health(&f), child = health(&f);
+        REQUIRE(!Aim_add(f.world, child, 0));
+        REQUIRE(!ecs_world_record_add_pair(f.world, child, ECS_CHILD_OF, one, 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        REQUIRE(prepare(
+            &f,
+            "system Providers query h:Health, a:Aim, base:Health from "
+            "ancestor(ChildOf) "
+            "where changed(base) and Accept(h) { state calls:double=0; "
+            "calls+=1; "
+            "Accept :: (value:Health)->bool { return value.Current>=0; } }",
+            backends[backend]
+        ));
+        REQUIRE(tick(&f, 0));
+        REQUIRE(state(&f, child, "calls") == 1);
+        REQUIRE(tick(&f, .1));
+        REQUIRE(state(&f, child, "calls") == 1);
+        REQUIRE(!ecs_world_record_add_pair(f.world, child, ECS_CHILD_OF, two, 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        REQUIRE(tick(&f, .2));
+        REQUIRE(state(&f, child, "calls") == 2);
+        fixture_free(&f);
+    }
+    return true;
+}
+TEST_CASE(source_query_value_snapshot_streams_without_instances)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity owner = health(&f);
+        for (int i = 0; i < 32; i++) {
+            aim_target(&f, owner, true);
+        }
+        REQUIRE(prepare(
+            &f,
+            "system Stream query h:Health join target in self.Targets join "
+            "a:Aim from target "
+            "where h.Current==0 and a.Firing { h.Current+=1; }",
+            backends[backend]
+        ));
+        REQUIRE(!execution_program_prepare_system(f.program, 0, .1, 10000));
+        execution_memory_usage memory = execution_program_memory_usage(f.program);
+        int run = execution_program_run_system(f.program);
+        int finish = execution_program_finish_system(f.program);
+        REQUIRE(memory.instance_count == 0 && memory.activation_bytes == 0);
+        REQUIRE(memory.query_rows == 32 && memory.query_history_bytes == sizeof(uint64_t));
+        REQUIRE(!run && !finish);
+        REQUIRE(Health_get_const(f.world, owner)->current == 32);
+        memory = execution_program_memory_usage(f.program);
+        REQUIRE(memory.instance_count == 0 && memory.query_history_bytes == 0);
+        REQUIRE(tick(&f, .1));
+        REQUIRE(Health_get_const(f.world, owner)->current == 32);
+        fixture_free(&f);
+    }
+    return true;
+}
+TEST_CASE(source_query_filters_gate_both_binding_paths)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity owner = health(&f);
+        REQUIRE(!Aim_add(f.world, owner, 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        Health_get(f.world, owner)->current = 1;
+        REQUIRE(
+            prepare(&f, "system Gate query h:Health, a:Aim where h.Current>0 or has(Disabled) { bind a.Manual=!a.Firing; }", backends[backend])
+        );
+        REQUIRE(tick(&f, 0));
+        REQUIRE(Aim_get_const(f.world, owner)->manual);
+        Health_get(f.world, owner)->current = 0;
+        Aim_get(f.world, owner)->firing = true;
+        REQUIRE(tick(&f, .1));
+        REQUIRE(Aim_get_const(f.world, owner)->manual);
+        char error[256];
+        REQUIRE(!execution_program_bindings_all(&f.program, 1, .1, .1, 10000, error, sizeof error));
+        REQUIRE(Aim_get_const(f.world, owner)->manual);
+        REQUIRE(!ecs_world_record_add(f.world, owner, ECS_DISABLED, NULL, 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        REQUIRE(tick(&f, .2));
+        REQUIRE(!Aim_get_const(f.world, owner)->manual);
+        fixture_free(&f);
+    }
+    return true;
+}
+TEST_CASE(source_query_chained_rows_keep_events_and_inspection_distinct)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, BEHAVIOR_SLJIT };
+    for (int backend = 0; backend < 2; backend++) {
+        system_fixture f = fixture_new();
+        ecs_entity owner = health(&f);
+        ecs_entity middle[2], leaf[2];
+        for (int i = 0; i < 2; i++) {
+            middle[i] = ecs_world_create_entity(f.world);
+            REQUIRE(
+                !ecs_world_record_add_pair(f.world, owner, query_targets.id, middle[i], 0)
+            );
+            REQUIRE(!ecs_world_apply_commands(f.world));
+            leaf[i] = aim_target(&f, middle[i], i != 0);
+        }
+        REQUIRE(prepare(
+            &f,
+            "system Chains query h:Health join middle in self.Targets join "
+            "target in middle.Targets "
+            "join a:Aim from target { state ticks:double=0; state "
+            "pulses:double=0; "
+            "on Begin { pulses+=1; } ticks+=1; if a.Firing { h.Current+=10; } "
+            "else { h.Current+=1; } }",
+            backends[backend]
+        ));
+        query_debugger = execution_program_inspector(f.program);
+        REQUIRE(query_debugger);
+        REQUIRE(tick(&f, 0));
+        uint64_t variables[2][2];
+        execution_instance *rows[2];
+        for (int i = 0; i < 2; i++) {
+            variables[i][0] = ecs_entity_to_u64(middle[i]);
+            variables[i][1] = ecs_entity_to_u64(leaf[i]);
+            rows[i] = execution_program_row(f.program, ecs_entity_to_u64(owner), variables[i], 2);
+            REQUIRE(row_number(&f, rows[i], "ticks") == 1);
+            REQUIRE(row_number(&f, rows[i], "pulses") == 1);
+        }
+        REQUIRE(Health_get_const(f.world, owner)->current == 11);
+        bool watched[2] = { false, false };
+        for (int i = 0; i < execution_inspector_watch_count(query_debugger); i++) {
+            const execution_debug_watch *watch = execution_inspector_watch_at(query_debugger, i);
+            for (int row = 0; row < 2; row++) {
+                watched[row] |= watch->owner == ecs_entity_to_u64(owner) &&
+                                watch->query_variables[0] == variables[row][0] &&
+                                watch->query_variables[1] == variables[row][1];
+            }
+        }
+        REQUIRE(watched[0] && watched[1]);
+        uint64_t begin = execution_module_event(f.source->module, "Begin");
+        REQUIRE(
+            begin &&
+            !execution_program_dispatch(f.program, begin, ecs_entity_to_u64(owner), NULL, 0, .1, .1, 10000)
+        );
+        REQUIRE(row_number(&f, rows[0], "pulses") == 2);
+        REQUIRE(row_number(&f, rows[1], "pulses") == 2);
+        REQUIRE(
+            !ecs_world_record_remove_pair(f.world, middle[0], query_targets.id, leaf[0], 0)
+        );
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        REQUIRE(tick(&f, .2));
+        REQUIRE(!execution_program_row(f.program, ecs_entity_to_u64(owner), variables[0], 2));
+        REQUIRE(row_number(&f, rows[1], "ticks") == 2);
+        execution_debug_cursor cursor;
+        REQUIRE(
+            execution_inspector_owner_cursor(query_debugger, ecs_entity_to_u64(owner), &cursor)
+        );
+        REQUIRE(!cursor.retired && cursor.query_variables[0] == variables[1][0]);
+        REQUIRE(!Aim_remove(f.world, leaf[1], 0));
+        REQUIRE(!ecs_world_apply_commands(f.world));
+        REQUIRE(tick(&f, .3));
+        REQUIRE(!execution_program_row(f.program, ecs_entity_to_u64(owner), variables[1], 2));
+        execution_inspector_free(query_debugger);
+        query_debugger = NULL;
+        fixture_free(&f);
+    }
+    return true;
+}
+void test_code_query_rows()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_query_tuple_state_wait_reload_and_generation);
+    RUN_TEST_CASE(source_query_changed_consumers_preserve_busy_writes);
+    RUN_TEST_CASE(source_query_changed_provider_and_pure_helper);
+    RUN_TEST_CASE(source_query_value_snapshot_streams_without_instances);
+    RUN_TEST_CASE(source_query_filters_gate_both_binding_paths);
+    RUN_TEST_CASE(source_query_chained_rows_keep_events_and_inspection_distinct);
+    pu_clear_setup();
 }
 
 void test_code_system_runtime()

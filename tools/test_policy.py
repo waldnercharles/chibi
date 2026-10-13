@@ -72,6 +72,7 @@ NATIVE = {
     ('--texture-transform',): 'Reviewed hidden 64x64 app: seven glTF texture transform/baked-UV comparisons with negative controls, 21 frames; GPU; docs/rendering-3d.md',
     ('--shader-parameters-prepared',): 'Reviewed ten bounded CPU cases: material/model parameter codecs and staging, particle signature/default/helper validation, particle staging and rejected mesh-material use, preview reload/rename/rejection, reconstructed model parameter generations, and 129 zero-count field entities for source budget reclamation; no GPU; docs/testing.md',
     ('--source-systems',): 'First supervised measurement; independently reviewed eleven pico source system cases on VM/SLJIT, fixed pumps and at most 259 entities, CPU only; docs/testing.md',
+    ('--source-query-rows',): 'First supervised measurement; reviewed finite tuple/filter lifecycle cases on VM/SLJIT, at most 33 entities and six supplied-time steps per fixture, CPU only; docs/testing.md',
     ('--new-asset',): 'One new-asset scaffolding case: one temporary content folder, three written assets and six refusals, CPU only; docs/testing.md',
     ('--asset-refactor',): 'One asset rename case: four in-memory prototypes, planned rewrites of a nested child and of a child that an including prototype adds, no files, CPU only; docs/testing.md',
     ('--source-edit',): 'Independently reviewed fifteen fixed source-edit cases, tiny literal inputs and checked transactions including extraction/inline/signature/binding/capture/layout, fused-call delete/move/expression/insert/extraction, named-action disable/enable edits and Value input replace/connect preserving its assignment destination, source Get/Set creation with qualified quoted state identity/defaults/typed producers and lexical shadow checks, declaration append after leading line/block comments and component compound Get/Set metadata remap with distinct positions/comments/watched pins, checked state retype preserving comments/compatible initializers and rejecting ill-typed uses, no files/world/runtime/process/GPU; shared60s; docs/testing.md',
@@ -187,6 +188,7 @@ TOOLS = {
     'system-schedule': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--system-schedule'],
     # Same admitted eleven fixed source-system cases through installed public consumer, VM and SLJIT.
     'source-systems': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-systems'],
+    'source-query-rows': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--source-query-rows'],
     # Reviewed six tiny immutable module generations, two backend worlds, aggregate/string ownership.
     'persistent-store': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--persistent-store'],
     # Reviewed three source presentation/default/layout and actual native palette composition cases, CPU only.
@@ -471,7 +473,7 @@ GROUPS = {
                'whole-integer', 'whole-conversion', 'whole-select', 'whole-math', 'owned-tick',
                'parallel-tick', 'source-native-features', 'source-native-numeric-queries',
                'source-native-material', 'source-presentation', 'system-schedule',
-               'source-systems', 'source-edit', 'new-asset', 'asset-refactor',
+               'source-systems', 'source-query-rows', 'source-edit', 'new-asset', 'asset-refactor',
                'shader-parameters-prepared', 'language-prepared', 'ecs-query-benchmark',
                'preview-components', 'graph-document', 'graph-presentation', 'graph-functions',
                'vector-nodes', 'asset-values', 'ui-document', 'text-files', 'fmt', 'particles',

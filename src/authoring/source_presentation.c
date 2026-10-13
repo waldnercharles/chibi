@@ -43,6 +43,7 @@ static uint64_t semantic_generation(const script_analysis *a, const script_catal
         const script_symbol *s = &a->symbols[i];
         MIX(s->id);
         NAME(s->name);
+        NAME(s->unit);
         MIX(s->capability);
         MIX(s->kind);
         TYPE(s->type);
@@ -152,9 +153,11 @@ static uint64_t semantic_generation(const script_analysis *a, const script_catal
         /* Port names are source syntax, excluded from the execution ABI. */
         for (int j = 0; j < c->parameter_count; j++) {
             NAME(c->parameters[j].name);
+            NAME(c->parameters[j].unit);
         }
         for (int j = 0; j < c->result_count; j++) {
             NAME(c->results[j].name);
+            NAME(c->results[j].unit);
         }
     }
 #undef MIX

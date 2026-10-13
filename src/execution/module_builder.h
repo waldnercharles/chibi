@@ -54,6 +54,9 @@ typedef enum
     EXECUTION_QUERY_ANY,
     EXECUTION_QUERY_NOT,
     EXECUTION_QUERY_RELATION,
+    EXECUTION_QUERY_GENERATOR,
+    EXECUTION_QUERY_VALUE,
+    EXECUTION_QUERY_CHANGED,
 } execution_query_kind;
 typedef struct
 {
@@ -61,7 +64,9 @@ typedef struct
     uint64_t component;
     uint64_t source_relationship;
     int source_traversal;
-    int *children; /* Owned malloc buffer. */
+    int source_variable, target_variable;
+    behavior_function *predicate; /* Owned evaluator for EXECUTION_QUERY_VALUE. */
+    int *children;                /* Owned malloc buffer. */
     int child_count;
 } execution_module_query;
 typedef struct
@@ -134,6 +139,8 @@ typedef struct execution_module_plan
     int state_count, function_count, query_count, binding_count, action_count,
         diagnostic_count;
     int query;
+    int query_filter; /* One-based authored header filter; zero if absent. */
+    int query_variable_count;
     uint64_t id, owner_type;
     arena storage;
     bool valid;

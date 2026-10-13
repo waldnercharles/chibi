@@ -572,6 +572,7 @@ static int linked_host(
                     case EXECUTION_INTRINSIC_COMPONENT_HAS:
                     case EXECUTION_INTRINSIC_QUERY_SOURCE:
                     case EXECUTION_INTRINSIC_QUERY_TARGET:
+                    case EXECUTION_INTRINSIC_QUERY_VARIABLE:
                     case EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP:
                     case EXECUTION_INTRINSIC_BREAK_REQUEST:
                     case EXECUTION_INTRINSIC_BREAK_TAKE:
@@ -2833,9 +2834,35 @@ static int keyed_getter(lower *l, const script_expression *e, const script_catal
     );
     return host_result(l, behavior_function_builder_host_results(l->builder, index), e->type, e->range);
 }
+static int query_variable_value(lower *l, int variable, script_range range)
+{
+    if (!variable) {
+        return value_op(l, (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE }, range);
+    }
+    pin_value headers[] = { { .type = BF_POINTER_TYPE },
+                            { .type = PIN_I32, .i = variable } };
+    int slots[] = { value_op(
+                        l,
+                        (behavior_function_instruction){ .op = BF_CONTEXT,
+                                                         .type = BF_POINTER_TYPE,
+                                                         .target = 1 },
+                        range
+                    ),
+                    -1 };
+    return primitive(
+        l,
+        &EXECUTION_query_variable_call,
+        &EXECUTION_value_access,
+        headers,
+        slots,
+        2,
+        (script_type){ .storage = PIN_HANDLE },
+        range
+    );
+}
 static int component_owner(lower *l, const script_symbol *symbol, script_range range)
 {
-    int owner = value_op(l, (behavior_function_instruction){ .op = BF_OWNER, .type = PIN_HANDLE }, range);
+    int owner = query_variable_value(l, symbol ? symbol->source_variable : 0, range);
     if (!symbol || !symbol->source_relationship) {
         return owner;
     }
@@ -3076,6 +3103,9 @@ static int symbol_value(lower *l, const script_expression *e)
     }
     if (s->kind == SCRIPT_COMPONENT) {
         return reference_read(l, reference_expression(l, e, false), s->type, e->range);
+    }
+    if (s->kind == SCRIPT_QUERY_VARIABLE) {
+        return query_variable_value(l, s->source_variable, e->range);
     }
     if (l->variables[e->symbol] >= 0) {
         if (!(s->type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
@@ -4950,6 +4980,10 @@ static int *indices(int count)
 }
 static void discard_bodies(execution_module_plan *module)
 {
+    for (int i = 0; i < module->query_count; i++) {
+        behavior_function_free(module->queries[i].predicate);
+        module->queries[i].predicate = NULL;
+    }
     for (int i = 0; i < module->function_count; i++) {
         behavior_function_free(module->functions[i].body);
         module->functions[i].body = NULL;
@@ -5144,7 +5178,8 @@ static void binding_fields(lower *l, execution_module_binding *binding, int inde
         if (base && base->kind == SCRIPT_EXPR_SYMBOL && base->symbol >= 0 &&
             l->a->symbols[base->symbol].kind == SCRIPT_COMPONENT) {
             nominal = l->a->symbols[base->symbol].type.nominal;
-            any_entity = l->a->symbols[base->symbol].source_relationship != 0;
+            any_entity = l->a->symbols[base->symbol].source_relationship != 0 ||
+                         l->a->symbols[base->symbol].source_variable != 0;
         }
         const script_catalog_type *type = script_catalog_type_by_id(l->catalog, nominal);
         if (type && type->component_id) {
@@ -5170,7 +5205,13 @@ static void binding_fields(lower *l, execution_module_binding *binding, int inde
             const script_catalog_type
                 *type = script_catalog_type_by_id(l->catalog, symbol->type.nominal);
             if (type && type->component_id) {
-                field_access(binding, type->component_id, 0, type->size, symbol->source_relationship != 0);
+                field_access(
+                    binding,
+                    type->component_id,
+                    0,
+                    type->size,
+                    symbol->source_relationship != 0 || symbol->source_variable != 0
+                );
             }
         }
         return;
@@ -5737,6 +5778,8 @@ execution_module_plan *script_lower(
     m->type_count = acount(m->types);
     lower l = { .a = a, .catalog = catalog, .bindings = bindings, .module = m };
     m->query = a->query;
+    m->query_filter = a->query_filter + 1;
+    m->query_variable_count = a->query_variable_count;
     m->owner_type = a->owner_type;
     l.variables = indices(a->symbol_count);
     l.constant_values = xcalloc((size_t)a->symbol_count, sizeof *l.constant_values);
@@ -5794,6 +5837,8 @@ execution_module_plan *script_lower(
                                      .component = source->component,
                                      .source_relationship = source->source_relationship,
                                      .source_traversal = source->source_traversal,
+                                     .source_variable = source->source_variable,
+                                     .target_variable = source->target_variable,
                                      .child_count = source->child_count };
         q.children = xmalloc((size_t)(q.child_count + 1) * sizeof *q.children);
         if (q.child_count) {
@@ -6101,7 +6146,9 @@ execution_module_plan *script_lower(
         pin_value result = initial(&l, type);
         behavior_function_builder_signature(l.builder, NULL, 0, &result, 1, vars, acount(vars));
         afree(vars);
-        int value = receiver >= 0
+        int value = query_component
+                      ? component_owner(&l, &a->symbols[receiver_expression->symbol], f->range)
+                  : receiver >= 0
                       ? expression(&l, receiver)
                       : value_op(
                             &l,
@@ -6155,6 +6202,19 @@ execution_module_plan *script_lower(
         free(l.addresses);
         free(l.parameters);
         free(l.results);
+    }
+    for (int i = 0; i < a->query_count && !l.failed; i++) {
+        const script_query *query = &a->queries[i];
+        if (query->kind == SCRIPT_QUERY_VALUE) {
+            script_type boolean = { .storage = PIN_BOOL };
+            m->queries[i].predicate = value_evaluator(
+                &l,
+                &query->value,
+                &boolean,
+                1,
+                query->range
+            );
+        }
     }
     for (int i = 0; i < a->binding_count && !l.failed; i++) {
         const script_binding *binding = &a->bindings[i];

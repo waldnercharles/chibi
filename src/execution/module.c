@@ -79,6 +79,9 @@ size_t execution_module_storage_bytes(const execution_module *m)
         vector_storage(&bytes, b->fields, sizeof *b->fields);
     }
     for (int i = 0; i < p->query_count; i++) {
+        if (p->queries[i].predicate) {
+            add_storage(&bytes, 1, behavior_function_storage_bytes(p->queries[i].predicate));
+        }
         add_storage(
             &bytes,
             (size_t)p->queries[i].child_count,
@@ -131,6 +134,7 @@ static void destroy_plan(execution_module_plan *m)
         afree(m->bindings[i].fields);
     }
     for (int i = 0; i < acount(m->queries); i++) {
+        behavior_function_free(m->queries[i].predicate);
         free(m->queries[i].children);
     }
     for (int i = 0; i < acount(m->actions); i++) {
@@ -175,38 +179,109 @@ void execution_module_free(execution_module *m)
     free(m->effect_ids);
     free(m);
 }
-static bool query_valid(const execution_module_plan *m, int index, unsigned char *seen)
+static bool query_valid(
+    const execution_module_plan *m,
+    int index,
+    unsigned char *seen,
+    unsigned *bound,
+    bool generators,
+    unsigned depth,
+    int *steps
+)
 {
-    if (index < 0 || index >= m->query_count || seen[index] == 1) {
+    if (index < 0 || index >= m->query_count || seen[index] == 1 ||
+        depth > 64 || --*steps < 0) {
         return false;
-    }
-    if (seen[index] == 2) {
-        return true;
     }
     seen[index] = 1;
     const execution_module_query *q = &m->queries[index];
-    if (q->kind < EXECUTION_QUERY_HAS || q->kind > EXECUTION_QUERY_RELATION ||
-        q->child_count < 0) {
+    if (q->kind < EXECUTION_QUERY_HAS || q->kind > EXECUTION_QUERY_CHANGED ||
+        q->child_count < 0 || (q->child_count && !q->children) ||
+        q->source_variable < 0 || q->source_variable > m->query_variable_count ||
+        q->target_variable < 0 || q->target_variable > m->query_variable_count ||
+        !(*bound & (1u << q->source_variable))) {
         return false;
     }
-    if ((q->kind == EXECUTION_QUERY_HAS || q->kind == EXECUTION_QUERY_RELATION) &&
-        (!q->component || q->child_count)) {
+    bool leaf = q->kind == EXECUTION_QUERY_HAS ||
+                q->kind == EXECUTION_QUERY_RELATION ||
+                q->kind == EXECUTION_QUERY_GENERATOR ||
+                q->kind == EXECUTION_QUERY_CHANGED;
+    if ((leaf && (!q->component || q->child_count)) || (!leaf && q->component) ||
+        (q->kind != EXECUTION_QUERY_GENERATOR && q->target_variable) ||
+        (q->kind != EXECUTION_QUERY_VALUE && q->predicate)) {
         return false;
     }
     if (q->source_traversal < 0 || q->source_traversal > 2 ||
         (q->source_traversal && !q->source_relationship) ||
-        (q->kind != EXECUTION_QUERY_HAS && q->source_relationship)) {
+        (q->kind != EXECUTION_QUERY_HAS && q->kind != EXECUTION_QUERY_CHANGED &&
+         q->source_relationship)) {
         return false;
+    }
+    if (q->kind == EXECUTION_QUERY_GENERATOR) {
+        if (!generators || !q->target_variable ||
+            *bound != (1u << q->target_variable) - 1) {
+            return false;
+        }
+        *bound |= 1u << q->target_variable;
+    }
+    if (q->kind == EXECUTION_QUERY_VALUE) {
+        const behavior_function *f = q->predicate;
+        if (q->child_count || !f || !f->frozen || f->argument_count ||
+            f->variable_count != m->state_count || f->result_count != 1 ||
+            f->result_defaults[0].type != PIN_BOOL ||
+            f->result_defaults[0].container != PIN_CONTAINER_SINGLE ||
+            !execution_query_predicate_valid(f, *bound)) {
+            return false;
+        }
     }
     if (q->kind == EXECUTION_QUERY_NOT && q->child_count != 1) {
         return false;
     }
     for (int i = 0; i < q->child_count; i++) {
-        if (!query_valid(m, q->children[i], seen)) {
+        if (!query_valid(m, q->children[i], seen, bound, generators && q->kind == EXECUTION_QUERY_ALL, depth + 1, steps)) {
             return false;
         }
     }
     seen[index] = 2;
+    return true;
+}
+static bool query_filter_valid(const execution_module_plan *m, int index, unsigned char *seen)
+{
+    if (seen[index] == 3) {
+        return true;
+    }
+    seen[index] = 3;
+    const execution_module_query *q = &m->queries[index];
+    if (q->kind == EXECUTION_QUERY_GENERATOR) {
+        return false;
+    }
+    for (int i = 0; i < q->child_count; i++) {
+        if (!query_filter_valid(m, q->children[i], seen)) {
+            return false;
+        }
+    }
+    return true;
+}
+static bool query_filter_path(
+    const execution_module_plan *m,
+    int index,
+    bool mandatory,
+    int *count,
+    int *steps
+)
+{
+    if (--*steps < 0) {
+        return false;
+    }
+    if (index == m->query_filter - 1) {
+        return mandatory && ++*count == 1;
+    }
+    const execution_module_query *q = &m->queries[index];
+    for (int i = 0; i < q->child_count; i++) {
+        if (!query_filter_path(m, q->children[i], mandatory && q->kind == EXECUTION_QUERY_ALL, count, steps)) {
+            return false;
+        }
+    }
     return true;
 }
 static bool require_service(execution_module_plan *m, const char *name, bool decoded)
@@ -613,12 +688,47 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
         }
         m->states[i].initial = copy;
     }
+    if (m->query_filter < 0 || m->query_filter > m->query_count ||
+        m->query_variable_count < 0 ||
+        m->query_variable_count > ECS_QUERY_VARS || m->query < -1 ||
+        (m->query < 0 &&
+         (m->query_count || m->query_variable_count || m->query_filter))) {
+        snprintf(error, size, "query variable schema is invalid");
+        return FLOW_ERR_COMPILE;
+    }
     if (m->query >= 0) {
         unsigned char *seen = xcalloc((size_t)(m->query_count + 1), 1);
-        bool valid = query_valid(m, m->query, seen);
+        unsigned bound = 1;
+        int steps = 200000;
+        bool valid = query_valid(m, m->query, seen, &bound, true, 0, &steps) &&
+                     bound == (1u << (m->query_variable_count + 1)) - 1;
+        for (int i = 0; i < m->query_count; i++) {
+            valid &= seen[i] == 2;
+        }
+        if (valid && m->query_filter) {
+            int matches = 0;
+            steps = 200000;
+            valid = query_filter_path(m, m->query, true, &matches, &steps) &&
+                    matches == 1 && query_filter_valid(m, m->query_filter - 1, seen);
+            for (int i = 0; i < m->query_count; i++) {
+                if ((m->queries[i].kind == EXECUTION_QUERY_VALUE ||
+                     m->queries[i].kind == EXECUTION_QUERY_CHANGED) &&
+                    seen[i] != 3) {
+                    valid = false;
+                }
+            }
+        }
         free(seen);
         if (!valid) {
-            snprintf(error, size, "query contains invalid indices or a cycle");
+            snprintf(error, size, "query has invalid structure, variable bindings, or an impure predicate");
+            return FLOW_ERR_COMPILE;
+        }
+    }
+    for (int i = 0; i < m->query_count; i++) {
+        behavior_function *predicate = m->queries[i].predicate;
+        if (predicate && backend != BEHAVIOR_BYTECODE &&
+            !behavior_function_compile(predicate)) {
+            snprintf(error, size, "%s query predicate emission failed", behavior_backend_name(backend));
             return FLOW_ERR_COMPILE;
         }
     }
@@ -815,6 +925,12 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
         }
     }
     const behavior_function **seen = NULL;
+    for (int i = 0; i < m->query_count; i++) {
+        if (m->queries[i].predicate &&
+            !function_requirements(m, m->queries[i].predicate, &seen, decoded)) {
+            goto services_missing;
+        }
+    }
     for (int i = 0; i < m->function_count; i++) {
         if (!function_requirements(m, m->functions[i].body, &seen, decoded)) {
             goto services_missing;

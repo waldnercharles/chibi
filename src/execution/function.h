@@ -260,6 +260,7 @@ typedef struct behavior_function_context
     void (*release_local)(struct behavior_function_context *context, pin_value *local);
     int error_status;
     uint64_t owner;
+    const uint64_t *query_variables; /* Current tuple; borrowed instance storage. */
     const char *owner_type_name;
     const struct ecs_execution_view *world, *binding_world;
     /* Optional column table for a synchronous span with stable ECS storage. */

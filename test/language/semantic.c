@@ -299,6 +299,118 @@ TEST_CASE(language_query_joins_and_filters_share_source_rules)
     }
     return true;
 }
+TEST_CASE(language_query_generators_bind_rows_and_pure_value_filters)
+{
+    const script_catalog_relationship relationships[] = {
+        { .id = 601, .name = "Targets" },
+        { .id = 602, .name = "Likes" },
+    };
+    script_catalog queries = catalog;
+    queries.relationships = relationships;
+    queries.relationship_count = 2;
+    cleanup();
+    syntax = script_parse(
+        "system Follow query p: Position join target in self.Targets "
+        "join next in target.Likes join aim: Position? from next "
+        "where Positive(p.x) and (aim and aim.x > p.x) and changed(aim) "
+        "and has(target.Likes) and not has(next.Placement) "
+        "{ Positive :: (x: float) -> bool { positive := x > 0; return "
+        "positive; } "
+        "if aim { p.x = aim.x; } }"
+    );
+    analysis = script_analyze(syntax, &queries);
+    REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
+    REQUIRE(analysis->query_variable_count == 2);
+    int generators = 0, predicates = 0;
+    bool changed = false, membership = false, optional = false;
+    for (int i = 0; i < analysis->query_count; i++) {
+        const script_query *query = &analysis->queries[i];
+        if (query->kind == SCRIPT_QUERY_GENERATOR) {
+            generators++;
+            REQUIRE(query->source_variable == generators - 1);
+            REQUIRE(query->target_variable == generators);
+            REQUIRE(query->component == (uint64_t)(600 + generators));
+        }
+        predicates += query->kind == SCRIPT_QUERY_VALUE;
+        changed |= query->kind == SCRIPT_QUERY_CHANGED &&
+                   query->component == 501 && query->source_variable == 2;
+        membership |= query->kind == SCRIPT_QUERY_RELATION &&
+                      query->component == 602 && query->source_variable == 1;
+        REQUIRE(
+            !(query->kind == SCRIPT_QUERY_HAS && query->component == 501 &&
+              query->source_variable == 2)
+        );
+    }
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        const script_symbol *symbol = &analysis->symbols[i];
+        optional |= !strcmp(symbol->name, "aim") && symbol->source_variable == 2 &&
+                    (symbol->type.flags & SCRIPT_TYPE_OPTIONAL);
+    }
+    REQUIRE(generators == 2 && predicates == 3 && changed && membership && optional);
+    return true;
+}
+TEST_CASE(language_query_filters_reject_effects_and_unbound_variables)
+{
+    const script_catalog_relationship targets = { .id = 601, .name = "Targets" };
+    script_catalog queries = catalog;
+    queries.relationships = &targets;
+    queries.relationship_count = 1;
+    const char *invalid[] = {
+        "system Bad join target in later.Targets join later in self.Targets {}",
+        "system Bad join target in target.Targets {}",
+        "system Bad join target in self.Unknown {}",
+        "system Bad join target in self.Targets join target in self.Targets {}",
+        "system Bad join target in self.Targets join p: Position? from target "
+        "where p.x > 0 {}",
+        "system Bad join target in self.Targets join p: Position? from target "
+        "where p or p.x > 0 {}",
+        "system Bad join target in self.Targets join p: Position from target { "
+        "bind p.x = 1; }",
+        "system Bad query p: Position where changed(p.x) {}",
+        "system Bad query p: Position where p.x > 0 { query changed(p); }",
+        "system Bad query p: Position { query p.x > 0; }",
+        "system Bad query p: Position where changed(p, p) {}",
+        "system Bad query p: Position where p.x {}",
+        "system Bad query p: Position where Mutating() { Mutating :: () -> "
+        "bool { mutate(); return true; } }",
+        "system Bad query p: Position where Deferred() { Deferred :: () -> "
+        "bool { yield; return true; } }",
+        "system Bad query p: Position where await Deferred() { "
+        "A :: () {} B :: () {} C :: () {} D :: () {} E :: () {} F :: () {} "
+        "Deferred :: () -> bool { yield; return true; } }",
+        "system Bad query p: Position where enabled { state enabled := true; }",
+        "system Bad query p: Position where enabled { enabled := true; }",
+        "system Bad query p: Position where ReadLocal() { enabled := true; "
+        "ReadLocal :: () -> bool { return enabled; } }",
+        "system Bad query p: Position where ReadState() { shared enabled := "
+        "true; ReadState :: () -> bool { return enabled; } }",
+        "system Bad query p: Position where ReadState() { state enabled := "
+        "true; ReadState :: () -> bool { return Inner(); } Inner :: () -> bool "
+        "{ return enabled; } }",
+        "system Bad query p: Position where event.dt > 0 {}",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        cleanup();
+        syntax = script_parse(invalid[i]);
+        analysis = script_analyze(syntax, &queries);
+        REQUIRE(syntax->diagnostic_count == 0);
+        REQUIRE(!analysis->valid);
+    }
+    REQUIRE(
+        diagnostic("Query predicate cannot read system state, body locals or event payload; test invocation values in the system body")
+    );
+    cleanup();
+    syntax = script_parse(
+        "system Many join a in self.Targets join b in a.Targets "
+        "join c in b.Targets join d in c.Targets join e in d.Targets "
+        "join f in e.Targets join g in f.Targets join h in g.Targets "
+        "join i in h.Targets {}"
+    );
+    analysis = script_analyze(syntax, &queries);
+    REQUIRE(syntax->diagnostic_count == 0 && !analysis->valid);
+    REQUIRE(diagnostic("Query supports at most eight target variables"));
+    return true;
+}
 TEST_CASE(language_derived_component_is_read_only)
 {
     parse("system Follow(placement: Placement, position: Position) { position.x = placement.x; }");
@@ -533,10 +645,12 @@ TEST_CASE(language_component_declares_measured_fields)
         "    drift: -1.5..2 rad /* per */ / s\n"
         "    rate: banana/basket; count: 0..12 banana\n"
         "    level: float\n"
+        "    stored: float charge\n"
+        "    measured: int u/s\n"
         "    at: Position\n"
         "}\n"
     );
-    REQUIRE(c && !component_diagnostics && acount(c->fields) == 9);
+    REQUIRE(c && !component_diagnostics && acount(c->fields) == 11);
     REQUIRE(!strcmp(c->name, "Projectile"));
     REQUIRE(!strcmp(c->description, "Something fired.\nTwice described."));
     REQUIRE(field_is(component_field(c, "speed"), "number", "u/s", 0, 600));
@@ -551,6 +665,8 @@ TEST_CASE(language_component_declares_measured_fields)
     REQUIRE(field_is(component_field(c, "rate"), "number", "banana/basket", 0, 0));
     REQUIRE(field_is(component_field(c, "count"), "number", "banana", 0, 12));
     REQUIRE(field_is(component_field(c, "level"), "float", NULL, 0, 0));
+    REQUIRE(field_is(component_field(c, "stored"), "float", "charge", 0, 0));
+    REQUIRE(field_is(component_field(c, "measured"), "int", "u/s", 0, 0));
     REQUIRE(field_is(component_field(c, "at"), "Position", NULL, 0, 0));
     script_component_free(c);
     /* Unit names stay free names outside a field's type, and executable
@@ -882,6 +998,151 @@ static void annotated_global(const char *unit, const char *body)
     cleanup();
     syntax = script_parse(source);
     analysis = script_analyze(syntax, &with_unit);
+}
+
+static void measured_source(const char *source)
+{
+    cleanup();
+    syntax = script_parse(source);
+    analysis = script_analyze(syntax, &measured);
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(stderr, "signature units: %s\n", analysis->diagnostics[i].message);
+    }
+}
+TEST_CASE(language_units_check_callable_contracts)
+{
+    measured_source(
+        "library Measures { "
+        "Travel :: (speed: u/s, elapsed: s) -> u { return speed * elapsed; } "
+        "Charge :: (value: float charge) -> number charge { return value; } "
+        "First :: (value: u) -> u { return Later(value); } "
+        "Later :: (value: u) -> u { if value > 0 { return First(value - 1); } "
+        "return value; } "
+        "Borrow :: (value: ref number u) -> ref number u { return value; } "
+        "Pair :: (distance: u, elapsed: s) -> (Distance: u, Elapsed: s) { "
+        "return(distance, elapsed); } "
+        "Use :: (distance: u, elapsed: s) -> u { pair := Pair(distance, "
+        "elapsed); pair = Pair(distance, elapsed); pair.Distance = distance; "
+        "return Travel(pair.Distance / pair.Elapsed, elapsed); } "
+        "Plain :: () { count := 0; } }"
+    );
+    REQUIRE(analysis->valid);
+    bool plain = false, measured_parameter = false;
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        const script_symbol *s = &analysis->symbols[i];
+        if (!strcmp(s->name, "count")) {
+            plain = s->type.storage == PIN_F64 && !s->unit;
+        }
+        if (!strcmp(s->name, "speed")) {
+            measured_parameter = s->type.storage == PIN_F64 && s->unit &&
+                                 !strcmp(s->unit, "u/s");
+        }
+    }
+    REQUIRE(plain && measured_parameter);
+    return true;
+}
+TEST_CASE(language_units_reject_callable_mismatches)
+{
+    const struct
+    {
+        const char *source, *message;
+    } cases[] = {
+        { "library M { Bad :: (elapsed: s) -> u { return elapsed; } }",
+          "Units differ: u = s" },
+        { "library M { Bad :: (elapsed: s) { Later(elapsed); } Later :: "
+          "(distance: u) {} }",
+          "Units differ: u argument s" },
+        { "library M { Bad :: (distance: ref number u, elapsed: s) { distance "
+          "= elapsed; } }",
+          "Units differ: u = s" },
+        { "library M { Bad :: (body: Body) { Later(body.speed); } Later :: "
+          "(distance: ref float u) {} }",
+          "Units differ: u argument u/s" },
+        { "library M { Bad :: (elapsed: ref number s) -> ref number u { return "
+          "elapsed; } }",
+          "Units differ: u = s" },
+        { "library M { Bad :: (distance: u = dt) {} }", "Units differ: u default s" },
+        { "library M { Bad :: () -> (Distance: u = dt) {} }", "Units differ: u default s" },
+        { "library M { Bad :: () -> (Distance: u, Elapsed: s) { "
+          "return(Distance: dt, Elapsed: 1); } }",
+          "Units differ: u = s" },
+        { "library M { Bad :: (unused: number u^0) {} }", "Invalid unit 'u^0'" },
+        { "library M { Bad :: (unused: string s) {} }",
+          "A measured signature requires a numeric storage type" },
+        { "library M { Bad :: (unused: flaot) {} }", "Unknown type 'flaot'" },
+        { "library M { First :: () -> (Value: u, Other: s) { return(1, 1); } "
+          "Second :: () -> (Value: s, Other: s) { return(1, 1); } "
+          "Bad :: () { tuple := First(); tuple = Second(); } }",
+          "Incompatible types: expected struct, got struct" },
+        { "library M { Pair :: () -> (Value: u, Other: s) { return(1, 1); } "
+          "Bad :: () { tuple := Pair(); tuple.Value = dt; } }",
+          "Units differ: u = s" },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        measured_source(cases[i].source);
+        REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
+        REQUIRE(diagnostic(cases[i].message));
+    }
+    return true;
+}
+TEST_CASE(language_units_follow_native_signatures_and_task_results)
+{
+    const script_catalog_parameter parameter = { .name = "distance",
+                                                 .unit = "u",
+                                                 .type = { .storage = PIN_F64 } };
+    const script_catalog_parameter result = { .name = "Elapsed",
+                                              .unit = "s",
+                                              .type = { .storage = PIN_F64 } };
+    const script_catalog_capability capability = { .id = 91,
+                                                   .name = "Measured",
+                                                   .parameters = &parameter,
+                                                   .parameter_count = 1,
+                                                   .results = &result,
+                                                   .result_count = 1 };
+    script_catalog native = measured;
+    native.capabilities = &capability;
+    native.capability_count = 1;
+    const char *sources[] = {
+        "library M { Bad :: (elapsed: s) -> s { return Measured(elapsed); } }",
+        "library M { Bad :: () -> u { return Measured(1); } }",
+        ("library M { Bad :: () -> u { value := Measured(1); return "
+         "value.Elapsed; } }"),
+    };
+    const char *messages[] = { "Units differ: u argument s",
+                               "Units differ: u = s",
+                               "Units differ: u = s" };
+    for (int i = 0; i < 3; i++) {
+        cleanup();
+        syntax = script_parse(sources[i]);
+        analysis = script_analyze(syntax, &native);
+        REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
+        REQUIRE(diagnostic(messages[i]));
+    }
+    script_catalog_capability variadic = capability;
+    variadic.variadic = true;
+    native.capabilities = &variadic;
+    cleanup();
+    syntax = script_parse("library M { Bad :: (elapsed: s) -> s { return Measured(1, elapsed); } }");
+    analysis = script_analyze(syntax, &native);
+    REQUIRE(!analysis->valid && diagnostic("Units differ: u argument s"));
+    const script_catalog_capability event = { .id = 92,
+                                              .name = "Tick",
+                                              .kind = SCRIPT_CAPABILITY_EVENT,
+                                              .parameters = &result,
+                                              .parameter_count = 1 };
+    native.capabilities = &event;
+    native.tick_event = event.id;
+    cleanup();
+    syntax = script_parse("behavior M { on Tick(elapsed) { self.Body.x = elapsed; } }");
+    analysis = script_analyze(syntax, &native);
+    REQUIRE(!analysis->valid && diagnostic("Units differ: u = s"));
+    measured_source(
+        "library M { Work :: (distance: u) -> u { yield; return distance; } "
+        "Bad :: () -> s { pending := Work(1); outcome := await pending; "
+        "if outcome is number value { return value; } return 0; } }"
+    );
+    REQUIRE(!analysis->valid && diagnostic("Units differ: s = u"));
+    return true;
 }
 
 TEST_CASE(language_units_reject_malformed_metadata_and_overflow)
@@ -1226,6 +1487,8 @@ void test_language_semantic()
     RUN_TEST_CASE(language_optional_component_requires_presence_guard);
     RUN_TEST_CASE(language_query_header_resolves_boolean_filters_and_sources);
     RUN_TEST_CASE(language_query_joins_and_filters_share_source_rules);
+    RUN_TEST_CASE(language_query_generators_bind_rows_and_pure_value_filters);
+    RUN_TEST_CASE(language_query_filters_reject_effects_and_unbound_variables);
     RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
     RUN_TEST_CASE(language_hex_literal_fills_integer_storage);
@@ -1245,6 +1508,9 @@ void test_language_semantic()
     RUN_TEST_CASE(language_units_skip_invalid_sources);
     RUN_TEST_CASE(language_units_check_all_fallback_values);
     RUN_TEST_CASE(language_units_follow_constant_and_state_initializers);
+    RUN_TEST_CASE(language_units_check_callable_contracts);
+    RUN_TEST_CASE(language_units_reject_callable_mismatches);
+    RUN_TEST_CASE(language_units_follow_native_signatures_and_task_results);
     RUN_TEST_CASE(language_units_reject_malformed_metadata_and_overflow);
     pu_clear_setup();
 }

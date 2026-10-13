@@ -1,5 +1,6 @@
 #ifndef CHIBI_EXECUTION_INSPECTION_H
 #define CHIBI_EXECUTION_INSPECTION_H
+#include "ecs/ecs.h"
 #include "execution/module.h"
 
 typedef struct execution_inspector execution_inspector;
@@ -20,6 +21,7 @@ typedef enum
 typedef struct
 {
     uint64_t generation, run, step, module, function, owner;
+    uint64_t query_variables[ECS_QUERY_VARS];
     behavior_source_point point;
     int depth, status;
     bool retired;
@@ -27,6 +29,7 @@ typedef struct
 typedef struct
 {
     uint64_t generation, run, module, function, owner;
+    uint64_t query_variables[ECS_QUERY_VARS];
     behavior_source_watch source;
     pin_value value;
     execution_watch_availability availability;
@@ -40,6 +43,7 @@ typedef struct
 typedef struct
 {
     uint64_t generation, owner, module, function, occurrence;
+    uint64_t query_variables[ECS_QUERY_VARS];
     uint64_t from_module, from_function, from_occurrence;
     uint64_t count;
     double time;
@@ -65,6 +69,9 @@ execution_inspector *execution_inspector_retain(execution_inspector *);
 void execution_inspector_free(execution_inspector *);
 execution_debug_cursor execution_inspector_cursor(const execution_inspector *);
 /* Keeps the selected owner's last cursor/stack while siblings run or retire.
+ * Multi-target owners expose their last tuple in cursor.query_variables;
+ * watch and activity rows retain distinct tuples. Pause selects the next
+ * matching owner activation and subsequent controls address that exact run.
  * At most 64 owner snapshots are retained; selection pins its cursor/stack and
  * existing watch rows against eviction by sibling owners.
  * Owner zero clears selection. Controls address the sole paused activation. */

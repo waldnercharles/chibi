@@ -285,7 +285,7 @@ TEST_CASE(scalar_unions_preserve_failed_extraction_contracts)
     return true;
 }
 
-TEST_CASE(scalar_unions_keep_values_across_control_joins_and_waits)
+TEST_CASE(scalar_unions_optimize_control_joins_but_keep_waits_owned)
 {
     for (int suspension = 0; suspension < 2; suspension++) {
         cleanup();
@@ -318,7 +318,7 @@ TEST_CASE(scalar_unions_keep_values_across_control_joins_and_waits)
                                                         .left = local });
         result(extract(object, output, 0, false, 42), PIN_F64, 0);
         REQUIRE(finish());
-        REQUIRE(calls(true) == 2);
+        REQUIRE(calls(true) == (suspension ? 2 : 0));
         for (int backend = 0; backend < 2; backend++) {
             for (int branch = 0; branch < 2; branch++) {
                 input[1].b = branch;
@@ -330,6 +330,9 @@ TEST_CASE(scalar_unions_keep_values_across_control_joins_and_waits)
                 }
                 REQUIRE(status == FLOW_OK);
                 REQUIRE(!memcmp(&output.d, &input[0].d, sizeof output.d));
+                size_t bytes, capacity;
+                arena_usage(&storage, &bytes, &capacity);
+                REQUIRE(suspension ? bytes > 0 : bytes == 0);
             }
         }
     }
@@ -545,17 +548,274 @@ TEST_CASE(scalar_unions_restore_payload_when_leaving_source_inspection)
     return true;
 }
 
+TEST_CASE(scalar_unions_follow_local_aliases_through_diamonds)
+{
+    builder = behavior_function_builder_new();
+    pin_value inputs[] = { { .type = PIN_F64 }, { .type = PIN_BOOL } };
+    pin_value output = inputs[0], shape = { .type = PIN_UNION };
+    behavior_function_builder_signature(builder, inputs, 2, &output, 1, NULL, 0);
+    int object = make_union(inputs[0], argument(inputs[0], 0));
+    int local = behavior_function_builder_local(builder, shape);
+    int alias = behavior_function_builder_local(builder, shape);
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_SAVE, .type = PIN_UNION, .left = object, .target = local });
+    int condition = argument(inputs[1], 1);
+    int branch = emit((behavior_function_instruction){ .op = BF_BRANCH,
+                                                       .left = condition });
+    int first = value((behavior_function_instruction){ .op = BF_LOCAL,
+                                                       .type = PIN_UNION,
+                                                       .left = local });
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_SAVE, .type = PIN_UNION, .left = first, .target = alias });
+    int jump = emit((behavior_function_instruction){ .op = BF_JUMP });
+    REQUIRE(behavior_function_builder_patch_target(builder, branch, jump + 1));
+    int second = call(&EXECUTION_snapshot_call, &shape, &object, 1, shape);
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_SAVE, .type = PIN_UNION, .left = second, .target = alias });
+    int join = value((behavior_function_instruction){ .op = BF_LOCAL,
+                                                      .type = PIN_UNION,
+                                                      .left = alias });
+    int join_pc = acount(behavior_function_builder_definition(builder)->instructions) - 1;
+    REQUIRE(behavior_function_builder_patch_target(builder, jump, join_pc));
+    result(extract(join, output, 0, false, 42), PIN_F64, 0);
+    REQUIRE(finish());
+    REQUIRE(calls(false) == 3 && calls(true) == 0);
+    const double samples[] = { 3.75, -0.0, INFINITY, NAN };
+    for (int mode = 0; mode < 4; mode++) {
+        for (int branch_value = 0; branch_value < 2; branch_value++) {
+            for (int sample = 0; sample < 4; sample++) {
+                inputs[0].d = samples[sample];
+                inputs[1].b = branch_value;
+                REQUIRE(begin(inputs, 2, &output, mode) == FLOW_OK);
+                REQUIRE(!memcmp(&output.d, &inputs[0].d, sizeof output.d));
+                size_t bytes, capacity;
+                arena_usage(&storage, &bytes, &capacity);
+                REQUIRE(mode < 2 ? bytes == 0 : bytes > 0);
+            }
+        }
+    }
+    return true;
+}
+
+TEST_CASE(scalar_unions_keep_distinct_incoming_values_materialized)
+{
+    builder = behavior_function_builder_new();
+    pin_value inputs[] = { { .type = PIN_F64, .d = 3.75 }, { .type = PIN_BOOL } };
+    pin_value output = inputs[0], shape = { .type = PIN_UNION };
+    behavior_function_builder_signature(builder, inputs, 2, &output, 1, NULL, 0);
+    int local = behavior_function_builder_local(builder, shape);
+    int condition = argument(inputs[1], 1);
+    int branch = emit((behavior_function_instruction){ .op = BF_BRANCH,
+                                                       .left = condition });
+    int first = make_union(inputs[0], argument(inputs[0], 0));
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_SAVE, .type = PIN_UNION, .left = first, .target = local });
+    int jump = emit((behavior_function_instruction){ .op = BF_JUMP });
+    REQUIRE(behavior_function_builder_patch_target(builder, branch, jump + 1));
+    pin_value other = { .type = PIN_F64, .d = -8.5 };
+    int number = value((behavior_function_instruction){ .op = BF_CONSTANT,
+                                                        .type = PIN_F64,
+                                                        .value = other });
+    int second = make_union(other, number);
+    emit((
+        behavior_function_instruction
+    ){ .op = BF_SAVE, .type = PIN_UNION, .left = second, .target = local });
+    int join = value((behavior_function_instruction){ .op = BF_LOCAL,
+                                                      .type = PIN_UNION,
+                                                      .left = local });
+    int join_pc = acount(behavior_function_builder_definition(builder)->instructions) - 1;
+    REQUIRE(behavior_function_builder_patch_target(builder, jump, join_pc));
+    result(extract(join, output, 0, false, 42), PIN_F64, 0);
+    REQUIRE(finish());
+    REQUIRE(calls(true) == 3);
+    for (int mode = 0; mode < 4; mode++) {
+        for (int branch_value = 0; branch_value < 2; branch_value++) {
+            inputs[1].b = branch_value;
+            REQUIRE(begin(inputs, 2, &output, mode) == FLOW_OK);
+            REQUIRE(output.d == (branch_value ? other.d : inputs[0].d));
+            size_t bytes, capacity;
+            arena_usage(&storage, &bytes, &capacity);
+            REQUIRE(bytes > 0);
+        }
+    }
+    return true;
+}
+
+TEST_CASE(scalar_unions_remove_nested_snapshots_and_keep_escaping_dependencies)
+{
+    for (int escaping = 0; escaping < 3; escaping++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        pin_value input = { .type = PIN_F64, .d = 7.25 },
+                  shape = { .type = PIN_UNION };
+        pin_value output = escaping ? shape : input;
+        behavior_function_builder_signature(builder, &input, 1, &output, 1, NULL, 0);
+        int inner = make_union(input, argument(input, 0));
+        int outer = make_union(shape, inner);
+        outer = call(&EXECUTION_snapshot_call, &shape, &outer, 1, shape);
+        int returned = outer;
+        if (escaping != 1) {
+            returned = extract(outer, shape, 0, false, 42);
+        }
+        if (!escaping) {
+            returned = extract(returned, input, 0, false, 42);
+        }
+        result(returned, output.type, 0);
+        REQUIRE(finish());
+        REQUIRE(calls(true) == (escaping == 1 ? 3 : escaping == 2 ? 4 : 0));
+        for (int mode = 0; mode < 4; mode++) {
+            REQUIRE(begin(&input, 1, &output, mode) == FLOW_OK);
+            if (escaping) {
+                const pin_union *payload = output.ptr;
+                REQUIRE(payload && payload->tag == 42 && payload->count == 1);
+                if (escaping == 1) {
+                    payload = payload->values[0].ptr;
+                    REQUIRE(payload && payload->tag == 42 && payload->count == 1);
+                }
+                REQUIRE(payload->values[0].d == input.d);
+            } else {
+                REQUIRE(output.d == input.d);
+            }
+            size_t bytes, capacity;
+            arena_usage(&storage, &bytes, &capacity);
+            REQUIRE(!escaping && mode < 2 ? bytes == 0 : bytes > 0);
+        }
+    }
+    return true;
+}
+
+static int scalar_call_count;
+static bool scalar_call_fails;
+static const char *scalar_effect(void *, const pin_value *args, pin_value *out)
+{
+    scalar_call_count++;
+    if (scalar_call_fails) {
+        return "scalar call failed";
+    }
+    out[0].d = args[0].d + 1;
+    return NULL;
+}
+
+TEST_CASE(scalar_unions_cross_isolated_calls_without_removing_effects_or_errors)
+{
+    builder = behavior_function_builder_new();
+    pin_value input = { .type = PIN_F64, .d = 7.25 };
+    pin_value output[] = { input, input };
+    behavior_function_builder_signature(builder, &input, 1, output, 2, NULL, 0);
+    int object = make_union(input, argument(input, 0));
+    const node_host_call callback = { .invoke = scalar_effect };
+    const node_access effects = { .flags = NODE_EFFECT_HOST_SINK };
+    int host = behavior_function_builder_host(builder, &callback, &effects, &input, 1, &input, 1);
+    emit((behavior_function_instruction){ .op = BF_HOST_CALL,
+                                          .target = host,
+                                          .left = BEHAVIOR_FUNCTION_HOST_DATA });
+    int pointer = address(behavior_function_builder_host_results(builder, host));
+    int returned = value((
+        behavior_function_instruction
+    ){ .op = BF_LOAD, .type = PIN_F64, .left = pointer, .offset = offsetof(pin_value, d) });
+    result(returned, PIN_F64, 1);
+    result(extract(object, input, 0, false, 42), PIN_F64, 0);
+    REQUIRE(finish());
+    REQUIRE(calls(false) == 3 && calls(true) == 1);
+    for (int mode = 0; mode < 4; mode++) {
+        for (int fail = 0; fail < 2; fail++) {
+            scalar_call_count = 0;
+            scalar_call_fails = fail;
+            output[0].d = output[1].d = -99;
+            REQUIRE(begin(&input, 1, output, mode) == (fail ? FLOW_ERR_INVALID_GRAPH : FLOW_OK));
+            REQUIRE(scalar_call_count == 1);
+            if (fail) {
+                REQUIRE(output[0].d == -99 && output[1].d == -99);
+                REQUIRE(!strcmp(context.error_message, "scalar call failed"));
+            } else {
+                REQUIRE(output[0].d == input.d && output[1].d == input.d + 1);
+            }
+            size_t bytes, capacity;
+            arena_usage(&storage, &bytes, &capacity);
+            REQUIRE(mode < 2 ? bytes == 0 : bytes > 0);
+        }
+    }
+    return true;
+}
+
+TEST_CASE(scalar_unions_keep_nested_managed_payload_snapshots)
+{
+    builder = behavior_function_builder_new();
+    pin_value input = { .type = PIN_STR }, output = input,
+              shape = { .type = PIN_UNION };
+    behavior_function_builder_signature(builder, &input, 1, &output, 1, NULL, 0);
+    int inner = make_union(input, argument(input, 0));
+    int outer = make_union(shape, inner);
+    int payload = extract(outer, shape, 0, false, 42);
+    result(extract(payload, output, 0, false, 42), PIN_STR, 0);
+    REQUIRE(finish());
+    REQUIRE(calls(true) == 4);
+    for (int mode = 0; mode < 4; mode++) {
+        char original[] = "snapshot";
+        input.str = original;
+        REQUIRE(begin(&input, 1, &output, mode) == FLOW_OK);
+        original[0] = 'X';
+        REQUIRE(output.str && !strcmp(output.str, "snapshot"));
+        size_t bytes, capacity;
+        arena_usage(&storage, &bytes, &capacity);
+        REQUIRE(bytes > 0);
+    }
+    return true;
+}
+
+TEST_CASE(scalar_unions_bound_control_flow_scratch_and_keep_safe_fallback)
+{
+    builder = behavior_function_builder_new();
+    pin_value inputs[] = { { .type = PIN_F64, .d = -8.25 }, { .type = PIN_BOOL } };
+    pin_value output = inputs[0];
+    behavior_function_builder_signature(builder, inputs, 2, &output, 1, NULL, 0);
+    /* Unused scalar capacity still belongs to the verified function. Keep this
+     * fixture small while exceeding the separate forward-analysis cap. */
+    for (int j = 0; j < 256; j++) {
+        behavior_function_builder_slot(builder, PIN_F64);
+    }
+    int object = make_union(inputs[0], argument(inputs[0], 0));
+    int condition = argument(inputs[1], 1);
+    for (int j = 0; j < 512; j++) {
+        int pc = emit((behavior_function_instruction){ .op = BF_BRANCH,
+                                                       .left = condition });
+        REQUIRE(behavior_function_builder_patch_target(builder, pc, pc + 1));
+    }
+    result(extract(object, output, 0, false, 42), PIN_F64, 0);
+    REQUIRE(finish());
+    REQUIRE(behavior_function_scalarize_scratch(function) == 0);
+    REQUIRE(calls(true) == 2);
+    for (int mode = 0; mode < 2; mode++) {
+        for (int branch_value = 0; branch_value < 2; branch_value++) {
+            inputs[1].b = branch_value;
+            REQUIRE(begin(inputs, 2, &output, mode) == FLOW_OK);
+            REQUIRE(output.d == inputs[0].d);
+        }
+    }
+    return true;
+}
+
 void test_language_scalarize()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(scalar_unions_remove_nonescaping_payloads_snapshots_and_tag_checks);
     RUN_TEST_CASE(scalar_unions_keep_escaping_and_managed_payloads_owned);
     RUN_TEST_CASE(scalar_unions_preserve_failed_extraction_contracts);
-    RUN_TEST_CASE(scalar_unions_keep_values_across_control_joins_and_waits);
+    RUN_TEST_CASE(scalar_unions_optimize_control_joins_but_keep_waits_owned);
     RUN_TEST_CASE(scalar_unions_reject_forged_intrinsic_identity);
     RUN_TEST_CASE(scalar_unions_keep_values_used_by_a_loop);
     RUN_TEST_CASE(scalar_unions_preserve_payload_before_secondary_slot_overwrite);
     RUN_TEST_CASE(scalar_unions_optimize_authored_local_patterns);
     RUN_TEST_CASE(scalar_unions_restore_payload_when_leaving_source_inspection);
+    RUN_TEST_CASE(scalar_unions_follow_local_aliases_through_diamonds);
+    RUN_TEST_CASE(scalar_unions_keep_distinct_incoming_values_materialized);
+    RUN_TEST_CASE(scalar_unions_remove_nested_snapshots_and_keep_escaping_dependencies);
+    RUN_TEST_CASE(scalar_unions_cross_isolated_calls_without_removing_effects_or_errors);
+    RUN_TEST_CASE(scalar_unions_keep_nested_managed_payload_snapshots);
+    RUN_TEST_CASE(scalar_unions_bound_control_flow_scratch_and_keep_safe_fallback);
     pu_clear_setup();
 }

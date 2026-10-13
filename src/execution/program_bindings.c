@@ -50,6 +50,12 @@ bool program_binding_order(execution_program *p)
 }
 int program_binding_run(execution_instance *instance, int binding_index, double now, double delta, unsigned budget)
 {
+    if (instance->query_managed && !instance->query_ready) {
+        return FLOW_OK;
+    }
+    if (!program_instance_busy(instance)) {
+        program_query_consume(instance);
+    }
     execution_program *p = instance->program;
     const execution_module_binding *binding = &p->module->plan.bindings[binding_index];
     binding_cache *cache = &instance->bindings[binding_index];
@@ -221,6 +227,9 @@ int execution_program_bindings_all(
         p->delta = delta;
         p->budget = budget ? budget : 10000;
         for (int a = 0; a < acount(p->instances); a++) {
+            if (p->instances[a]->query_managed && !p->instances[a]->query_ready) {
+                continue;
+            }
             for (int b = 0; b < p->module->plan.binding_count; b++) {
                 apush(work, ((binding_work){ p->instances[a], b }));
             }

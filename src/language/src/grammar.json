@@ -262,6 +262,10 @@
               {
                 "type": "SYMBOL",
                 "name": "measure"
+              },
+              {
+                "type": "SYMBOL",
+                "name": "measured_type"
               }
             ]
           }
@@ -405,6 +409,49 @@
               }
             ]
           }
+        }
+      ]
+    },
+    "measured_type": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "base",
+          "content": {
+            "type": "SYMBOL",
+            "name": "type"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "unit",
+          "content": {
+            "type": "SYMBOL",
+            "name": "unit"
+          }
+        }
+      ]
+    },
+    "_signature_type": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "type"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "measured_type"
+        },
+        {
+          "type": "ALIAS",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_compound_unit"
+          },
+          "named": true,
+          "value": "unit"
         }
       ]
     },
@@ -1392,7 +1439,7 @@
                       },
                       {
                         "type": "SYMBOL",
-                        "name": "type"
+                        "name": "_signature_type"
                       }
                     ]
                   }
@@ -1643,11 +1690,49 @@
           "value": "join"
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "parameters",
+              "content": {
+                "type": "SYMBOL",
+                "name": "query_parameter_list"
+              }
+            },
+            {
+              "type": "FIELD",
+              "name": "generator",
+              "content": {
+                "type": "SYMBOL",
+                "name": "query_generator"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "query_generator": {
+      "type": "SEQ",
+      "members": [
+        {
           "type": "FIELD",
-          "name": "parameters",
+          "name": "name",
           "content": {
             "type": "SYMBOL",
-            "name": "query_parameter_list"
+            "name": "_name"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "in"
+        },
+        {
+          "type": "FIELD",
+          "name": "source",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expression"
           }
         }
       ]
@@ -1684,7 +1769,7 @@
                           "name": "type",
                           "content": {
                             "type": "SYMBOL",
-                            "name": "type"
+                            "name": "_signature_type"
                           }
                         }
                       ]
@@ -1704,7 +1789,7 @@
                   "name": "type",
                   "content": {
                     "type": "SYMBOL",
-                    "name": "type"
+                    "name": "_signature_type"
                   }
                 },
                 {
@@ -4833,6 +4918,14 @@
     [
       "_expression",
       "_call_target"
+    ],
+    [
+      "measured_type",
+      "_signature_type"
+    ],
+    [
+      "_compound_unit",
+      "_expression"
     ]
   ],
   "precedences": [],

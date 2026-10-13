@@ -50,16 +50,10 @@ static char *text(const reader *r, TSNode node)
     out[end - start] = 0;
     return out;
 }
-static bool text_is(const reader *r, TSNode node, const char *expected)
-{
-    uint32_t start = ts_node_start_byte(node), end = ts_node_end_byte(node);
-    return end - start == strlen(expected) &&
-           !memcmp(r->syntax->text + start, expected, end - start);
-}
-static bool known_unit(const reader *r, TSNode node)
+bool script_unit_shorthand(const char *name)
 {
     for (size_t i = 0; i < sizeof UNITS / sizeof *UNITS; i++) {
-        if (text_is(r, node, UNITS[i])) {
+        if (!strcmp(name, UNITS[i])) {
             return true;
         }
     }
@@ -182,6 +176,16 @@ static char *unit(reader *r, TSNode node)
 }
 static void type(reader *r, TSNode node, script_component_field *out)
 {
+    if (is(node, "measured_type")) {
+        type(r, field(node, "base"), out);
+        if (out->unit || !out->type ||
+            !script_type_numeric(script_builtin_type(out->type))) {
+            report(r, node, "A measured field requires a numeric storage type");
+            return;
+        }
+        out->unit = unit(r, field(node, "unit"));
+        return;
+    }
     if (is(node, "measure")) {
         out->type = xstrdup("number");
         TSNode limits = field(node, "range"), measured = field(node, "unit");
@@ -217,7 +221,7 @@ static void type(reader *r, TSNode node, script_component_field *out)
     }
     TSNode word = ts_node_named_child(type_name, 0);
     if (ts_node_named_child_count(type_name) == 1 && is(word, "identifier") &&
-        known_unit(r, word)) {
+        script_unit_shorthand(out->type)) {
         free(out->type);
         out->type = xstrdup("number");
         out->unit = text(r, word);

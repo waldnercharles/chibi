@@ -1,3 +1,4 @@
+#include "language/component.h"
 #include "language/semantic_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -162,6 +163,68 @@ static unit parse(const char *text)
     }
     return out;
 }
+/* Unit nodes contain flat terms and separators; omit trivia without changing
+ * dimension spelling. The same metadata parser also checks native signatures. */
+static char *signature_unit(analyzer *a, TSNode node)
+{
+    char *text = NULL;
+    for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+        TSNode child = ts_node_child(node, i);
+        if (ts_node_is_extra(child)) {
+            continue;
+        }
+        char *part = script_analyzer_text_copy(a, child);
+        if (script_analyzer_is(child, "identifier") &&
+            (!(script_builtin_type(part).flags & SCRIPT_TYPE_ERROR) ||
+             script_catalog_find_type(a->catalog, part) >= 0)) {
+            script_analyzer_diagnostic(a, child, "'%s' is a type, not a unit", part);
+        }
+        for (const char *c = part; *c; c++) {
+            apush(text, *c);
+        }
+        free(part);
+    }
+    apush(text, 0);
+    char *owned = xstrdup(text);
+    afree(text);
+    if (parse(owned).kind == UNIT_INVALID) {
+        script_analyzer_diagnostic(a, node, "Invalid unit '%s'", owned);
+    }
+    return owned;
+}
+script_type script_analyzer_signature_type(analyzer *a, TSNode node, char **unit_text)
+{
+    *unit_text = NULL;
+    TSNode measured = script_analyzer_field(node, "unit");
+    if (script_analyzer_is(node, "unit")) {
+        *unit_text = signature_unit(a, node);
+        return script_builtin_type("number");
+    }
+    if (script_analyzer_is(node, "measured_type")) {
+        script_type type = script_analyzer_type_node(a, script_analyzer_field(node, "base"));
+        *unit_text = signature_unit(a, measured);
+        if (!script_type_numeric(type)) {
+            script_analyzer_diagnostic(a, node, "A measured signature requires a numeric storage type");
+        }
+        return type;
+    }
+    if (script_analyzer_is(node, "type")) {
+        TSNode name_node = script_analyzer_field(node, "name");
+        char *name = script_analyzer_name_copy(a, name_node);
+        int symbol = script_analyzer_lookup_name(a, name);
+        bool named_type = symbol >= 0 &&
+                          (a->out->symbols[symbol].kind == SCRIPT_TYPE ||
+                           a->out->symbols[symbol].kind == SCRIPT_TYPE_PARAMETER);
+        if (script_unit_shorthand(name) && !named_type &&
+            script_catalog_find_type(a->catalog, name) == -1 &&
+            ts_node_child_count(node) == 1) {
+            *unit_text = name;
+            return script_builtin_type("number");
+        }
+        free(name);
+    }
+    return script_analyzer_type_node(a, node);
+}
 static void append_term(char *out, size_t size, term t)
 {
     int power = abs(t.power);
@@ -238,6 +301,16 @@ static bool same(unit x, unit y)
         }
     }
     return true;
+}
+void script_analyzer_signature_unit(analyzer *a, TSNode node, const char *expected, const char *actual)
+{
+    unit x = parse(expected), y = parse(actual);
+    if (x.kind == UNIT_KNOWN && y.kind == UNIT_KNOWN && !same(x, y)) {
+        char left[UNIT_TEXT], right[UNIT_TEXT];
+        format(x, left, sizeof left);
+        format(y, right, sizeof right);
+        script_analyzer_diagnostic(a, node, "Units differ: %s annotation %s", left, right);
+    }
 }
 static bool clash(unit x, unit y)
 {
@@ -321,6 +394,62 @@ static const char *symbol_text(script_operator op)
     }
 }
 static unit expression_unit(pass *p, int index);
+static const script_catalog_capability *call_capability(pass *p, const script_expression *e)
+{
+    uint64_t id = e->capability;
+    if (e->kind == SCRIPT_EXPR_JOIN && e->left >= 0) {
+        id = p->a->out->expressions[e->left].type.nominal;
+    }
+    return script_catalog_capability_by_id(p->a->catalog, id);
+}
+static unit result_unit(pass *p, const script_expression *e, int index)
+{
+    if (!e) {
+        return UNKNOWN;
+    }
+    if ((e->kind == SCRIPT_EXPR_CALL || e->kind == SCRIPT_EXPR_JOIN) && e->right >= 0) {
+        const script_function *f = &p->a->out->functions[e->right];
+        return index < f->result_count
+                 ? annotated(p, e->range, p->a->out->symbols[f->results[index]].unit)
+                 : UNKNOWN;
+    }
+    const script_catalog_capability *c = call_capability(p, e);
+    return c && index < c->result_count
+             ? annotated(p, e->range, c->results[index].unit)
+             : UNKNOWN;
+}
+static unit call(pass *p, const script_expression *e)
+{
+    const script_function *f = e->right >= 0 ? &p->a->out->functions[e->right] : NULL;
+    const script_catalog_capability *c = f ? NULL : call_capability(p, e);
+    for (int i = 0; i < e->argument_count; i++) {
+        const script_argument *argument = &e->arguments[i];
+        int index = argument->parameter;
+        const char *text = NULL;
+        if (index >= 0 && f && index < f->parameter_count) {
+            text = p->a->out->symbols[f->parameters[index]].unit;
+        } else if (index >= 0 && c && index < c->parameter_count) {
+            text = c->parameters[index].unit;
+        } else if (c && c->event_sender && index >= c->parameter_count) {
+            const script_catalog_capability
+                *event = script_catalog_capability_by_id(p->a->catalog, e->member);
+            index -= c->parameter_count;
+            if (event && index < event->parameter_count) {
+                text = event->parameters[index].unit;
+            }
+        } else if (c && c->variadic && c->parameter_count && index >= c->parameter_count) {
+            text = c->parameters[c->parameter_count - 1].unit;
+        }
+        match(
+            p,
+            argument->range,
+            annotated(p, argument->range, text),
+            "argument",
+            expression_unit(p, argument->value)
+        );
+    }
+    return !e->task && e->result_count == 1 ? result_unit(p, e, 0) : UNKNOWN;
+}
 
 static unit operation(pass *p, script_range range, script_operator op, int left, int right)
 {
@@ -349,7 +478,30 @@ static unit operation(pass *p, script_range range, script_operator op, int left,
 }
 static unit member(pass *p, const script_expression *e)
 {
+    /* Authored parameter/result ports retain their own symbol identity. */
+    for (int i = 0; i < p->a->out->symbol_count; i++) {
+        const script_symbol *s = &p->a->out->symbols[i];
+        if (s->id == e->member &&
+            (s->kind == SCRIPT_PARAMETER || s->kind == SCRIPT_RESULT)) {
+            return annotated(p, e->range, s->unit);
+        }
+    }
     const script_expression *receiver = &p->a->out->expressions[e->left];
+    const script_expression *source = script_analyzer_result_source(p->a, e->left);
+    const script_catalog_capability *c = source ? call_capability(p, source) : NULL;
+    if (source &&
+        (source->kind == SCRIPT_EXPR_CALL || source->kind == SCRIPT_EXPR_JOIN) &&
+        c && e->offset < (size_t)c->result_count &&
+        e->member == script_catalog_id("port", c->results[e->offset].name)) {
+        return result_unit(p, source, (int)e->offset);
+    }
+    const script_catalog_capability
+        *payload = script_catalog_capability_by_id(p->a->catalog, receiver->type.nominal);
+    if ((receiver->type.flags & SCRIPT_TYPE_RESULTS) && payload &&
+        payload->kind == SCRIPT_CAPABILITY_EVENT &&
+        e->offset < (size_t)payload->parameter_count) {
+        return annotated(p, e->range, payload->parameters[e->offset].unit);
+    }
     const script_catalog_type
         *type = script_catalog_type_by_id(p->a->catalog, receiver->type.nominal);
     for (int i = 0; type && i < type->field_count; i++) {
@@ -362,6 +514,9 @@ static unit member(pass *p, const script_expression *e)
 static unit symbol(pass *p, int index, script_range range)
 {
     const script_symbol *s = &p->a->out->symbols[index];
+    if (s->unit) {
+        return annotated(p, range, s->unit);
+    }
     if (s->kind == SCRIPT_GLOBAL) {
         for (int i = 0; i < p->a->catalog->global_count; i++) {
             if (p->a->catalog->globals[i].id == s->id) {
@@ -369,6 +524,14 @@ static unit symbol(pass *p, int index, script_range range)
             }
         }
         return UNKNOWN;
+    }
+    if (s->kind == SCRIPT_LOCAL && s->initializer < 0) {
+        for (int i = 0; i < p->a->out->expression_count; i++) {
+            const script_expression *condition = &p->a->out->expressions[i];
+            if (condition->kind == SCRIPT_EXPR_IS && condition->symbol == index) {
+                return expression_unit(p, condition->left);
+            }
+        }
     }
     if ((s->kind != SCRIPT_LOCAL && s->kind != SCRIPT_CONSTANT &&
          s->kind != SCRIPT_STATE && s->kind != SCRIPT_SHARED_STATE) ||
@@ -391,6 +554,11 @@ static unit compute(pass *p, const script_expression *e)
         case SCRIPT_EXPR_BINARY:
             return operation(p, e->range, e->op, e->left, e->right);
         case SCRIPT_EXPR_CAST: return expression_unit(p, e->left);
+        case SCRIPT_EXPR_UNWRAP:
+        case SCRIPT_EXPR_AS: return expression_unit(p, e->left);
+        case SCRIPT_EXPR_CALL: return call(p, e);
+        case SCRIPT_EXPR_JOIN:
+            return e->result_count == 1 ? result_unit(p, e, 0) : UNKNOWN;
         case SCRIPT_EXPR_FALLBACK: {
             unit result = expression_unit(p, e->left);
             for (int i = 0; i < e->argument_count; i++) {
@@ -457,7 +625,9 @@ static void scale(pass *p, const script_statement *s, unit target, unit value)
 }
 static void assignment(pass *p, const script_statement *s)
 {
-    unit target = expression_unit(p, s->expression);
+    unit target = s->expression >= 0 ? expression_unit(p, s->expression)
+                : s->symbol >= 0     ? symbol(p, s->symbol, s->range)
+                                     : UNKNOWN;
     unit value = expression_unit(p, s->second);
     switch (s->op) {
         case SCRIPT_OP_NONE:
@@ -487,6 +657,15 @@ void script_analyzer_units(analyzer *a)
     pass p = { a,
                xcalloc((size_t)count + 1, sizeof *p.units),
                xcalloc((size_t)count + 1, sizeof *p.visits) };
+    for (int i = 0; i < out->symbol_count; i++) {
+        const script_symbol *s = &out->symbols[i];
+        if (s->unit) {
+            unit expected = annotated(&p, s->declaration, s->unit);
+            if (s->initializer >= 0) {
+                match(&p, s->declaration, expected, "default", expression_unit(&p, s->initializer));
+            }
+        }
+    }
     for (int i = 0; i < count; i++) {
         expression_unit(&p, i);
     }

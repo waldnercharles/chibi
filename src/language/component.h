@@ -43,4 +43,6 @@ script_component *script_component_read(
     script_diagnostic **diagnostics
 );
 void script_component_free(script_component *);
+/* Common unambiguous unit names that may stand alone in a numeric type slot. */
+bool script_unit_shorthand(const char *);
 #endif

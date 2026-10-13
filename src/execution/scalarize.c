@@ -3,12 +3,13 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* An unobserved, nonescaping union with plain payloads is just its tag and
- * scalar values. Keep its canonical allocation path for inspection.
- * This pass deliberately stops at joins, loop edges, opaque calls and waits. */
+/* Unobserved, nonescaping unions are tags and immutable payloads. Forward
+ * control flow meets identities across aliases; nested candidates share escape
+ * dependencies. Canonical inspection and real suspension ownership stay intact. */
 typedef struct
 {
     int object, owner, slot;
@@ -19,15 +20,70 @@ typedef struct
 {
     uint64_t tag;
     scalar_value *payload;
-    int region;
+    int region, group;
     bool escapes;
 } scalar_union;
+
+#define FLOW_SCRATCH_LIMIT (4 * 1024 * 1024)
+
+size_t behavior_function_scalarize_scratch(const behavior_function *f)
+{
+    size_t edges = 0, count = acount(f->instructions);
+    for (int pc = 0; pc < (int)count; pc++) {
+        const behavior_function_instruction *i = &f->instructions[pc];
+        if (i->op == BF_JUMP || i->op == BF_BRANCH) {
+            if (i->target <= pc) {
+                return 0;
+            }
+            edges++;
+        }
+    }
+    size_t width = 0, limit = FLOW_SCRATCH_LIMIT / sizeof(scalar_value);
+    const int sizes[] = { acount(f->slots), acount(f->locals), acount(f->data_values) };
+    for (int j = 0; j < 3; j++) {
+        if ((size_t)sizes[j] > limit - width) {
+            return 0;
+        }
+        width += sizes[j];
+    }
+    if (count > FLOW_SCRATCH_LIMIT / sizeof(scalar_value *)) {
+        return 0;
+    }
+    size_t row = width * sizeof(scalar_value),
+           pointers = count * sizeof(scalar_value *);
+    if (row > FLOW_SCRATCH_LIMIT || pointers > FLOW_SCRATCH_LIMIT ||
+        (row && edges > (FLOW_SCRATCH_LIMIT - pointers) / row)) {
+        return 0;
+    }
+    return pointers + edges * row;
+}
 
 static bool plain(pin_value value)
 {
     return value.container == PIN_CONTAINER_SINGLE &&
            ((value.type >= PIN_BOOL && value.type <= PIN_F64) ||
             value.type == PIN_HANDLE || value.type == PIN_ENUM);
+}
+
+/* These callbacks receive scalar banks, never the execution context or a
+ * reference to a virtual object. They still execute, including side effects
+ * and errors. Purity by itself would not prove this isolation. */
+static bool isolated_call(const behavior_function *f, const behavior_function_instruction *i)
+{
+    if (i->op != BF_HOST_CALL) {
+        return false;
+    }
+    const behavior_function_host_call *h = &f->host_calls[i->target];
+    if (h->call->context || h->call->action || (!h->call->invoke && !h->call->value)) {
+        return false;
+    }
+    for (int j = h->first; j < h->result_first + h->result_count; j++) {
+        if (!plain(f->data_values[j].initial) ||
+            f->data_values[j].kind != BEHAVIOR_VALUE) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static int intrinsic(const behavior_function *f, const behavior_function_instruction *i)
@@ -61,13 +117,16 @@ static bool boundary(const behavior_function *f, const behavior_function_instruc
     return i->op == BF_JUMP || i->op == BF_BRANCH || i->op == BF_RETURN ||
            i->op == BF_END || i->op == BF_FAIL || i->op == BF_SUSPEND ||
            i->op == BF_DELAY || i->op == BF_INVOKE || i->op == BF_COMMAND ||
-           i->op == BF_COMMAND_BEGIN || i->op == BF_QUERY || i->op == BF_ENTER ||
-           i->op == BF_LEAVE || (i->op == BF_HOST_CALL && !intrinsic(f, i));
+           i->op == BF_COMMAND_BEGIN || i->op == BF_QUERY ||
+           i->op == BF_ENTER || i->op == BF_LEAVE ||
+           (i->op == BF_HOST_CALL && !intrinsic(f, i) && !isolated_call(f, i));
 }
 
-static void read_region(int *regions, int index, int region)
+static void read_region(int *regions, int index, int region, bool forward)
 {
-    regions[index] = regions[index] == -1 || regions[index] == region ? region : -2;
+    regions[index] = forward || regions[index] == -1 || regions[index] == region
+                       ? region
+                       : -2;
 }
 
 static bool same_type(pin_value a, pin_value b)
@@ -90,6 +149,67 @@ static void escape(scalar_union *objects, int object)
 {
     if (object) {
         objects[object - 1].escapes = true;
+    }
+}
+
+static int group(scalar_union *objects, int object)
+{
+    int root = object;
+    while (objects[root - 1].group != root) {
+        root = objects[root - 1].group;
+    }
+    while (object != root) {
+        int parent = objects[object - 1].group;
+        objects[object - 1].group = root;
+        object = parent;
+    }
+    return root;
+}
+
+static bool same_value(scalar_value a, scalar_value b)
+{
+    return a.known == b.known &&
+           (!a.known ||
+            (a.object == b.object && a.owner == b.owner && a.slot == b.slot &&
+             same_type(a.value, b.value) && a.value.u64 == b.value.u64));
+}
+
+typedef struct
+{
+    int width, mutable;
+    const int *reads;
+} scalar_flow;
+
+static void meet(
+    scalar_union *objects,
+    scalar_value *to,
+    const scalar_value *from,
+    const scalar_flow *flow,
+    int pc
+)
+{
+    for (int j = 0; j < flow->width; j++) {
+        if (!same_value(to[j], from[j])) {
+            /* Dead path-local banks need no materialization. Unique slots
+             * additionally have verifier-proven dominating definitions, so a
+             * slot absent on one predecessor cannot be read after this join. */
+            if (j < flow->mutable && flow->reads[j] >= pc) {
+                escape(objects, to[j].object);
+                escape(objects, to[j].owner);
+                escape(objects, from[j].object);
+                escape(objects, from[j].owner);
+            }
+            to[j] = (scalar_value){ 0 };
+        }
+    }
+}
+
+static void forget(scalar_union *objects, scalar_value *state, int count)
+{
+    for (int j = 0; j < count; j++) {
+        escape(objects, state[j].object);
+        escape(objects, state[j].owner);
+        state[j] = (scalar_value){ 0 };
     }
 }
 
@@ -117,7 +237,9 @@ static scalar_value union_call(
         scalar_union object = { .tag = args[0].value.u64, .region = region };
         for (int j = 1; j < count; j++) {
             pin_value header = f->data_values[h->first + j].initial;
-            if (!args[j].known || args[j].object || !plain(header)) {
+            bool nested = args[j].object && header.type == PIN_UNION &&
+                          header.container == PIN_CONTAINER_SINGLE;
+            if (!args[j].known || (!nested && (args[j].object || !plain(header)))) {
                 afree(object.payload);
                 return (scalar_value){ 0 };
             }
@@ -130,6 +252,13 @@ static scalar_value union_call(
         }
         apush(*objects, object);
         *owner = acount(*objects);
+        (*objects)[*owner - 1].group = *owner;
+        for (int j = 0; j < acount(object.payload); j++) {
+            int nested = object.payload[j].object;
+            if (nested) {
+                (*objects)[group(*objects, nested) - 1].group = *owner;
+            }
+        }
         return (scalar_value){ .known = true, .object = *owner, .owner = *owner };
     }
     int object = args[0].object;
@@ -194,6 +323,10 @@ void behavior_function_scalarize_unions(behavior_function *f, bool *keep)
 {
     int count = acount(f->instructions), values = acount(f->slots);
     int bank_count = acount(f->data_values), local_count = acount(f->locals);
+    if (bank_count > INT_MAX - local_count ||
+        values >= INT_MAX - bank_count - local_count) {
+        return;
+    }
     if (!acount(f->host_calls)) {
         return;
     }
@@ -226,11 +359,12 @@ void behavior_function_scalarize_unions(behavior_function *f, bool *keep)
     if (!unique) {
         return;
     }
+    bool forward = behavior_function_scalarize_scratch(f) != 0;
     int *regions = xcalloc((size_t)count, sizeof *regions);
     bool *starts = xcalloc((size_t)count, sizeof *starts);
     int *addresses = xmalloc((size_t)(values + 1) * sizeof *addresses);
-    int *bank_reads = xmalloc((size_t)(bank_count + 1) * sizeof *bank_reads);
-    int *local_reads = xmalloc((size_t)(local_count + 1) * sizeof *local_reads);
+    int *bank_reads = xmalloc((size_t)(bank_count + local_count + 1) * sizeof *bank_reads);
+    int *local_reads = bank_reads + bank_count;
     bool *written = xcalloc((size_t)(bank_count + 1), sizeof *written);
     bool *unsafe = xcalloc((size_t)(bank_count + 1), sizeof *unsafe);
     bool *pinned = xcalloc((size_t)(values + local_count + 1), sizeof *pinned);
@@ -265,13 +399,13 @@ void behavior_function_scalarize_unions(behavior_function *f, bool *keep)
     }
     int region = 0;
     for (int pc = 0; pc < count; pc++) {
-        regions[pc] = region += starts[pc];
+        regions[pc] = forward ? 0 : (region += starts[pc]);
         const behavior_function_instruction *i = &code[pc];
         if (!keep[pc]) {
             continue;
         }
         if ((i->op == BF_LOAD || i->op == BF_READ) && addresses[i->left] >= 0) {
-            read_region(bank_reads, addresses[i->left], region);
+            read_region(bank_reads, addresses[i->left], forward ? pc : region, forward);
         }
         if (i->op == BF_WRITE && addresses[i->right] >= 0) {
             written[addresses[i->right]] = true;
@@ -306,26 +440,45 @@ void behavior_function_scalarize_unions(behavior_function *f, bool *keep)
             }
         }
         if (i->op == BF_LOCAL) {
-            read_region(local_reads, i->left, region);
+            read_region(local_reads, i->left, forward ? pc : region, forward);
         }
         if (i->op == BF_HOST_CALL) {
             const behavior_function_host_call *h = &f->host_calls[i->target];
             for (int j = h->first; j < h->result_first; j++) {
-                read_region(bank_reads, j, region);
+                read_region(bank_reads, j, forward ? pc : region, forward);
             }
             for (int j = 0; j < h->result_count; j++) {
                 written[h->result_first + j] = true;
             }
         }
     }
-    scalar_value *banks = xcalloc((size_t)(bank_count + 1), sizeof *banks);
-    scalar_value *locals = xcalloc((size_t)(local_count + 1), sizeof *locals);
-    scalar_value *slots = xcalloc((size_t)(values + 1), sizeof *slots);
+    int width = bank_count + local_count + values;
+    const scalar_flow flow = { .width = width,
+                               .mutable = bank_count + local_count,
+                               .reads = bank_reads };
+    scalar_value *state = xcalloc((size_t)(width + 1), sizeof *state);
+    scalar_value *banks = state, *locals = banks + bank_count,
+                 *slots = locals + local_count;
+    scalar_value **incoming = forward ? xcalloc((size_t)count, sizeof *incoming) : NULL;
     scalar_value *replacement = xcalloc((size_t)count, sizeof *replacement);
     int *owners = xcalloc((size_t)count, sizeof *owners);
     scalar_union *objects = NULL;
     int previous_region = -1;
+    bool reached = true;
     for (int pc = 0; pc < count; pc++) {
+        if (forward && incoming[pc]) {
+            if (reached) {
+                meet(objects, state, incoming[pc], &flow, pc);
+            } else {
+                memcpy(state, incoming[pc], (size_t)width * sizeof *state);
+            }
+            free(incoming[pc]);
+            incoming[pc] = NULL;
+            reached = true;
+        }
+        if (!reached) {
+            continue;
+        }
         if (!keep[pc]) {
             continue;
         }
@@ -356,8 +509,8 @@ void behavior_function_scalarize_unions(behavior_function *f, bool *keep)
             if (left) {
                 owners[pc] = left;
                 consumed = true;
-                if (unsafe[bank] ||
-                    (bank_reads[bank] != region && bank_reads[bank] != -1)) {
+                if (unsafe[bank] || (!forward && bank_reads[bank] != region &&
+                                     bank_reads[bank] != -1)) {
                     escape(objects, left);
                 }
             }
@@ -366,8 +519,9 @@ void behavior_function_scalarize_unions(behavior_function *f, bool *keep)
             if (left) {
                 owners[pc] = left;
                 consumed = true;
-                if (pinned[values + i->target] || (local_reads[i->target] != region &&
-                                                   local_reads[i->target] != -1)) {
+                if (pinned[values + i->target] ||
+                    (!forward && local_reads[i->target] != region &&
+                     local_reads[i->target] != -1)) {
                     escape(objects, left);
                 }
             }
@@ -413,6 +567,36 @@ void behavior_function_scalarize_unions(behavior_function *f, bool *keep)
         if (behavior_function_third_slot(i->op)) {
             escape(objects, slots[i->target].object);
         }
+        if (forward) {
+            if (i->op == BF_BRANCH || i->op == BF_JUMP) {
+                if (!incoming[i->target]) {
+                    incoming[i->target] = xmalloc((size_t)width * sizeof *state);
+                    memcpy(incoming[i->target], state, (size_t)width * sizeof *state);
+                } else {
+                    meet(objects, incoming[i->target], state, &flow, i->target);
+                }
+            }
+            if (i->op == BF_JUMP || i->op == BF_RETURN || i->op == BF_END ||
+                i->op == BF_FAIL) {
+                reached = false;
+            } else if (boundary(f, i) && i->op != BF_BRANCH) {
+                forget(objects, state, width);
+                for (int j = 0; j < bank_count; j++) {
+                    banks[j] = written[j] ? (scalar_value){ 0 }
+                                          : scalar(f->data_values[j].initial);
+                }
+            }
+        }
+    }
+    /* A materialized parent needs its nested payloads, and an escaping nested
+     * alias must keep every construction/snapshot sharing that candidate. */
+    for (int j = 0; j < acount(objects); j++) {
+        if (objects[j].escapes) {
+            objects[group(objects, j + 1) - 1].escapes = true;
+        }
+    }
+    for (int j = 0; j < acount(objects); j++) {
+        objects[j].escapes = objects[group(objects, j + 1) - 1].escapes;
     }
     int *aliases = xmalloc((size_t)(values + 1) * sizeof *aliases);
     for (int j = 0; j < values; j++) {
@@ -458,13 +642,11 @@ void behavior_function_scalarize_unions(behavior_function *f, bool *keep)
     free(aliases);
     free(owners);
     free(replacement);
-    free(slots);
-    free(locals);
-    free(banks);
+    free(incoming);
+    free(state);
     free(written);
     free(unsafe);
     free(pinned);
-    free(local_reads);
     free(bank_reads);
     free(addresses);
     free(starts);

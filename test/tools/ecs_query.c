@@ -890,6 +890,54 @@ TEST_CASE(ecs_query_filters_prune_before_later_variable_generators)
     return true;
 }
 
+TEST_CASE(ecs_component_versions_track_publications_without_invalidating_membership)
+{
+    ecs_entity entity = spawn();
+    add(entity, &position_desc);
+    add(entity, &team_desc);
+    apply();
+    REQUIRE(ecs_component_track_changes(world, position_desc.id) == ECS_OK);
+    REQUIRE(ecs_world_iteration_begin(world) == ECS_OK);
+    REQUIRE(ecs_component_track_changes(world, position_desc.id) == ECS_ERR_ITERATING);
+    REQUIRE(ecs_world_iteration_end(world) == ECS_OK);
+    const ecs_term terms[] = { { .id = position_desc.id }, { .id = team_desc.id } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 2, &plan) == ECS_OK);
+    REQUIRE(collect_plan(plan, NULL, 0) == 1);
+    uint64_t before = ecs_component_version(world, entity, position_desc.id);
+    REQUIRE(
+        ecs_component_write_field(world, entity, position_desc.id, 0, (pin_value){ .type = PIN_I32, .i = 0 }) ==
+        ECS_OK
+    );
+    uint64_t written = ecs_component_version(world, entity, position_desc.id);
+    REQUIRE(written > before);
+    apply();
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) == written);
+    REQUIRE(collect_plan(plan, NULL, 0) == 1);
+    REQUIRE(ecs_query_plan_stats(plan).cache_hits == 1);
+    *(int *)ecs_component_data(world, entity, position_desc.id) = 7;
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) == written);
+    REQUIRE(ecs_component_modified(world, entity, position_desc.id) == ECS_OK);
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) > written);
+    uint64_t marked = ecs_component_version(world, entity, position_desc.id);
+    REQUIRE(ecs_world_reserve_entities(world, 2048) == ECS_OK);
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) == marked);
+    REQUIRE(ecs_world_record_remove(world, entity, position_desc.id, 0) == ECS_OK);
+    apply();
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) == 0);
+    add(entity, &position_desc);
+    apply();
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) > marked);
+    REQUIRE(ecs_world_destroy_entity(world, entity) == ECS_OK);
+    ecs_entity replacement = spawn();
+    add(replacement, &position_desc);
+    apply();
+    REQUIRE(ecs_component_version(world, entity, position_desc.id) == 0);
+    REQUIRE(ecs_component_version(world, replacement, position_desc.id) > 0);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
 void test_tool_ecs_query()
 {
     pu_setup(prepare_world, release_world);
@@ -914,5 +962,6 @@ void test_tool_ecs_query()
     RUN_TEST_CASE(ecs_query_cache_all_entity_plans_track_lifetimes);
     RUN_TEST_CASE(ecs_query_candidates_use_actual_sparse_and_dense_costs);
     RUN_TEST_CASE(ecs_query_filters_prune_before_later_variable_generators);
+    RUN_TEST_CASE(ecs_component_versions_track_publications_without_invalidating_membership);
     pu_clear_setup();
 }

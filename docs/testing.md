@@ -777,18 +777,30 @@ The language follow-up admits these focused C checks under the same supervisor:
   relationship products to check the 1 MiB retention limit. They assert invalidation,
   live values, generation safety, partial-iteration behavior, allocation counts and
   work counters. No files, child processes, engine frames or GPU work run.
-- `tool language-query-program` selects five existing/new source-system cases for
-  relationship joins, qualified filters, optional targets, multi-target streams,
-  suspension and prepared round trips. The complete program selector retains them.
+- `tool language-query-program` selects source-system cases for relationship
+  joins, qualified filters, optional targets, multi-target streams, suspension and
+  prepared round trips. The SDK cases and `tool source-query-rows` check generation-aware tuple
+  state, reload, independent change cursors, same-value publication, busy tasks,
+  provider changes, pure helper predicates, value-gate timing, binding gates and
+  stateless memory accounting. Builder/prepared rejection cases check unbound
+  variables and impure predicates. The complete program selector retains the SDK
+  cases; the native group retains the full-engine source-query cases.
+  The new runtime fixtures use at most 33 entities and six supplied-time steps
+  per backend, without files, children or GPU work.
 - `tool language-incremental` prepares four tiny source overlays per case and
   checks unchanged-generation reuse, dependency and catalog invalidation, binding
   generations, backend changes and ownership after older collections retire.
+  Signature-unit cases cover cross-library contracts, unit-only invalidation and
+  owned native metadata after the producing catalog is retired.
   It uses disposable empty source roots and bounded in-process preparations.
 - `tool language-scalarize` and `tool language-ranges` compare canonical and
   optimized scalar IR and execute fixed numeric, ownership and control-flow
   counterexamples on the VM, compiled backend and inspection path where applicable.
   Allocation and instruction assertions establish removed work; elapsed time is
   not an optimization oracle. There are no child processes, frames or GPU work.
+  The scalarization cases include forward joins, nested union escapes, retained
+  native side effects/errors and bounded analysis fallback; real waits, managed
+  payloads and inspection remain conservative counterexamples.
 - `tool wasm-query-program`, `tool wasm-scalarize` and `tool wasm-ranges` run
   those same C cases through the browser target's Node launcher.
 - `tool c-export-alias` executes twelve tiny generated-C I32/I64 DIV/MOD

@@ -38,10 +38,18 @@ typedef struct
     int task_slots, retained_tasks;
     size_t task_result_bytes;
     uint64_t task_lookup_steps; /* Handle-index probes in the last collection. */
+    int instance_count;
+    size_t instance_bytes, state_bank_bytes, activation_bytes;
+    size_t query_history_bytes, query_index_bytes, ecs_change_bytes;
+    uint64_t query_rows, query_lookup_steps;
 } execution_memory_usage;
 /* After each safe event/update boundary, bytes describe live managed values;
  * capacity includes reusable allocation slots. Task result bytes include their
- * owned snapshots; task slots include reusable slots. Other control banks are excluded. */
+ * owned snapshots; task slots include reusable slots. Instance/activation headers,
+ * fixed state banks, query history and index slots are logical byte counts and
+ * exclude allocator overhead and nested buffers. ecs_change_bytes is shared
+ * world-owned storage (do not sum across programs); query counters describe the
+ * latest refresh. Stateless streaming retains no instance headers. */
 execution_memory_usage execution_program_memory_usage(const execution_program *);
 /* Owned snapshot. Copying the record preserves all text and source coordinates.
  * The first failure is retained until explicitly cleared. The borrowed getter
@@ -149,9 +157,20 @@ bool execution_program_service_bind_valid(const execution_program *, const char 
 void execution_program_free(execution_program *program);
 /* Disabling retires automatic query attachments. Explicit attachments remain active. */
 void execution_program_set_enabled(execution_program *program, bool enabled);
+/* Multi-target systems attach their tuples automatically; owner-only attach
+ * returns NULL for those modules. */
 execution_instance *execution_program_attach(execution_program *program, uint64_t owner);
 void execution_program_detach(execution_program *program, uint64_t owner);
 execution_instance *execution_program_instance(execution_program *program, uint64_t owner);
+/* Exact tuple lookup. Variables are numbered from one; count excludes root.
+ * The owner-only lookup returns the first attached row; detach removes all
+ * rows of the owner. This accessor preserves generation-bearing handles. */
+execution_instance *execution_program_row(
+    execution_program *,
+    uint64_t owner,
+    const uint64_t *variables,
+    int count
+);
 /* Queued payloads are snapshotted. Dispatch and structural effects occur at the
  * caller's event boundary, preserving stable iteration membership. */
 /* Nested dispatch appends to the next event boundary; outer dispatch pumps the

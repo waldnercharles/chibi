@@ -152,11 +152,13 @@ them, so `charge.rate * dt` is in `charge` because
 `dt` and `delta` are in seconds. `+`, `-`, `%`, comparisons, assignment and `bind` need the
 same unit on both sides. A plain number literal takes the unit it meets in a
 sum or comparison, and as a factor it may carry any unit, so `3 * dt` is not
-checked. A value nothing measures, such as a local set to `0` or a function's
-result, has no dimensional proof. Measured initializers propagate their units
+checked. A value nothing measures, such as a local set to `0` or an unannotated
+function result, has no dimensional proof. Measured initializers propagate their units
 through locals, constants and state; every possible `fallback` value is checked.
-Function signatures do not yet carry units, so checking does not establish a
-dimensional guarantee across arbitrary calls. The engine's own fields carry
+Function parameters and results can declare erased units, for example
+`Distance :: (speed: u/s, elapsed: s) -> u`. Calls, defaults, returns and writes
+through `ref` parameters check these contracts, including across libraries.
+Unannotated signatures remain dimensionally unknown. The engine's own fields carry
 units too: a `Movement.speed` is in `u/s` and a collider's `radius` is in `u`.
 Proven mismatches and malformed referenced unit metadata are compile errors;
 `validate_project` reports their source locations and prevents execution:
@@ -210,15 +212,15 @@ Test optional presence again after a structural change or suspension.
 Several roots may share a target, so sourced access does not assume that their
 writes are independent.
 
-`join` groups sourced component bindings; it does not introduce another loop or
-an entity alias. `join aim: Targets.Transform` and a regular header binding
+`join` followed by a typed binding groups sourced components; it does not
+introduce another loop or an entity alias. `join aim: Targets.Transform` and a regular header binding
 `aim: Targets.Transform` have identical membership and access costs. The expanded
 spelling is `join aim: Transform from Targets`; root bindings can explicitly say
-`position: Transform from self`. A `join` must name a relationship or ancestor
+`position: Transform from self`. A typed `join` must name a relationship, bound entity variable or ancestor
 source. Several bindings can share one `join`, separated by commas, or use
 separate `join` clauses.
 
-Every `where` term filters the root's membership. `Frozen` or `self.Frozen` tests
+Pure membership `where` clauses filter the root's membership. `Frozen` or `self.Frozen` tests
 the root; `Targets.Frozen` tests its exclusive target. A missing target makes
 `Targets.Frozen` false and `not Targets.Frozen` true. Thus the optional join above
 keeps a projectile without a target, but excludes one whose target is frozen.
@@ -251,7 +253,7 @@ Filters use the same source notation: `where ancestor(ChildOf).Team` or
 `where self_or_ancestor(ChildOf).Team`. Each term independently searches for its
 requested component; two ancestor terms need not select the same provider.
 
-For a relationship with multiple targets, iterate explicitly. This visits one
+For a relationship with multiple targets, a body loop visits one
 target at a time without materializing an array, while the system's state and
 outer body still run once per root:
 
@@ -272,12 +274,79 @@ bindings remove the root from membership when their provider disappears;
 optional bindings do not. Reactive `bind` destinations remain on the root;
 write a target or ancestor in the system body.
 
-The authoring language deliberately keeps one system execution per root. Pair
-variables, multi-target joins and arbitrary fixed sources remain explicit body
-code, using relationship loops and `target.Component` access. Headers do not
-expose the native query API's variable-binding rows, cascade ordering, arbitrary
-value predicates or change filters. Existence tests and scalar sources cover
-membership without importing those extra row and ordering semantics.
+To give each matching target its own system execution, use an explicit generator
+in the header:
+
+```code
+system DamageTargets query damage: Damage
+    join target in self.Targets
+    join health: Health from target
+    where health.value > 0 and changed(damage) {
+    health.value -= damage.amount
+}
+```
+
+`join target in self.Targets` binds an entity variable for each target. The typed
+binding reads `Health` from that variable. Generators can chain through earlier
+variables, such as `join ally in target.Allies`, or enumerate another relationship
+from `self`. Two independent generators with eight and four targets produce up
+to 32 rows per root. The current query engine supports eight named variables;
+forward references, duplicate names and uses before binding are errors.
+
+An optional component binding does not make its generator optional. A root with
+no `Targets` has no generated rows; a target without an optional component still
+has a row. `has(target.Health)` tests component membership on the bound entity,
+and `has(target.Targets)` tests relationship existence without creating more rows.
+The existing scalar join spelling continues to execute once per root.
+
+Each complete root/target tuple owns independent state and suspended work. Entity
+generations participate in identity: a tuple absent at the next membership
+refresh releases its state and cancels its work; a later entity reusing a slot
+cannot inherit it. Removing and restoring the same relationship entirely between
+refreshes preserves the tuple. Reordering
+relationships preserves surviving tuples' state. The cost grows with retained
+matches and live continuations. The query cache's byte cap does not cap this
+separate state. Use a body loop when one root should own the state for all its
+targets. Proven stateless, synchronous generator systems can stream through one
+temporary row instead of retaining an instance for every tuple. Each admitted
+body still creates a temporary activation; frame reuse is a separate opportunity.
+Value-filtered streaming first records one admission bit per structural row so
+body writes cannot change later rows' admission within the same update.
+
+### Value and change filters
+
+`where` also accepts Boolean value expressions using component bindings,
+constants, supported globals and read-only helper functions. Preserve ordinary
+short-circuit order: `where aim and aim.x > 0` guards an optional binding; `where
+aim or aim.x > 0` does not. Header predicates cannot write, suspend, perform host
+side effects, consume randomness, or read system state or event payloads. These
+restrictions also apply through helpers. Put conditions on persistent system
+state inside the body, so rejecting a query row need not construct that state.
+
+`changed(damage)` observes published writes to the whole bound component, not
+only the fields used in the body. A same-value write counts. A new matching row
+is eligible once. Each system row has its own observation history, so another
+system does not consume its notification. Direct native pointer writes become
+observable when their owner calls `ecs_component_modified`.
+
+The complete dynamic `where` expression gates new work in source order. Required
+header bindings and generators define structural membership; membership tests
+inside a mixed value/change expression belong to that gate. A false gate does not destroy
+existing tuple state or cancel an already suspended body. Structural tuple loss
+does. Changes are consumed only when new work is admitted, so a busy row does not
+lose a write while waiting. Writing a component watched by the same system can
+make that row eligible again on a later update.
+
+Change tracking stores an eight-byte revision per world slot for each tracked
+component, shared across systems, plus source/revision history per retained row
+and `changed` term. `execution_program_memory_usage` reports logical instance,
+activation, state-bank, query-history and index bytes separately. Allocator
+overhead and nested buffers are excluded from those header counts; shared ECS
+tracking bytes should not be summed across programs.
+
+Component values and predicate results are not part of the structural query
+cache. They are checked against current execution data. Cascade ordering and
+arbitrary fixed-entity sources remain native-query features.
 
 Native queries use `ecs_query_plan_new`, `ecs_query_begin_plan` and
 `ecs_query_plan_free` to reuse a world-bound logical plan. The world must outlive

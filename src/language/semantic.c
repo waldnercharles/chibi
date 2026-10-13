@@ -43,6 +43,7 @@ static script_analysis *analyze(
     script_analysis *out = xcalloc(1, sizeof *out);
     out->text = xstrdup(syntax->text);
     out->query = -1;
+    out->query_filter = -1;
     out->owner_symbol = -1;
     out->owner_type = catalog->entity_type
                         ? catalog->entity_type
@@ -154,6 +155,11 @@ static script_analysis *analyze(
                 script_analyzer_callable_definition(&a, function, body);
             }
             script_analyzer_callable_definitions(&a, false);
+            TSNode where = script_analyzer_field(program, "where");
+            if (out->kind == SCRIPT_PROGRAM_SYSTEM && !ts_node_is_null(where)) {
+                out->query_filter = script_analyzer_query_expression(&a, where);
+                script_analyzer_query_intersect(&a, out->query_filter);
+            }
         }
         if (declarations && out->kind == SCRIPT_PROGRAM_LIBRARY) {
             /* Library signatures need inferred results; the full analysis
@@ -244,6 +250,7 @@ void script_analysis_free(script_analysis *out)
     free(out->identity);
     for (int i = 0; i < acount(out->symbols); i++) {
         free(out->symbols[i].name);
+        free(out->symbols[i].unit);
     }
     for (int i = 0; i < acount(out->expressions); i++) {
         script_expression *expression = &out->expressions[i];

@@ -95,6 +95,7 @@ typedef enum
 typedef struct
 {
     const char *name;
+    const char *unit; /* Erased dimensional contract; NULL means unknown. */
     script_type type;
     script_reference_kind reference_kind;
     uint64_t member; /* Reflected field identity for aggregate make/break ports. */

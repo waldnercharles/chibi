@@ -8,6 +8,7 @@
 #include "execution/program_inspection.h"
 #include "execution/program_internal.h"
 #include "execution/request.h"
+#include "execution/runner.h"
 #include "execution/status.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -19,6 +20,49 @@
 #include <string.h>
 
 #define PENDING_SERVICE_LIMIT 256
+
+static bool query_dynamic(const execution_module *m, int index)
+{
+    const execution_module_query *q = &m->plan.queries[index];
+    if (q->kind == EXECUTION_QUERY_VALUE || q->kind == EXECUTION_QUERY_CHANGED) {
+        return true;
+    }
+    for (int i = 0; i < q->child_count; i++) {
+        if (query_dynamic(m, q->children[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+static bool stream_function(const behavior_function *f, int depth, int *steps)
+{
+    if (depth > 32 || --*steps < 0) {
+        return false;
+    }
+    for (int i = 0; i < acount(f->instructions); i++) {
+        if (--*steps < 0) {
+            return false;
+        }
+        const behavior_function_instruction *instruction = &f->instructions[i];
+        /* Debug points also have suspension storage, but cannot pause the
+         * uninspected stream. Only real waits and task lifetime prevent reuse. */
+        if (instruction->op == BF_SUSPEND || instruction->op == BF_DELAY ||
+            instruction->op == BF_RETRIGGER) {
+            return false;
+        }
+        if (instruction->op == BF_CONTEXT && !instruction->target &&
+            instruction->offset == offsetof(behavior_function_context, instance_time)) {
+            return false;
+        }
+    }
+    for (int i = 0; i < acount(f->calls); i++) {
+        if (f->calls[i].task ||
+            !stream_function(f->calls[i].function, depth + 1, steps)) {
+            return false;
+        }
+    }
+    return true;
+}
 
 bool program_same_type(pin_value a, pin_value b)
 {
@@ -52,15 +96,60 @@ static int state_assign(state_value *state, const pin_value *value)
 /* Lowers a compiled query tree to terms. A group needs a scope unless it is
  * an AND of ANDs; every ANY gets one, so neighboring OR chains stay apart.
  * An empty scope holds, so an empty ANY holds a negated one instead. */
+static void query_generators(const execution_module *m, int index, ecs_term **terms)
+{
+    const execution_module_query *q = &m->plan.queries[index];
+    if (q->kind == EXECUTION_QUERY_GENERATOR) {
+        apush(
+            *terms,
+            ((ecs_term){ .id = q->component,
+                         .src_var = q->source_variable,
+                         .target_var = q->target_variable })
+        );
+        return;
+    }
+    if (q->kind == EXECUTION_QUERY_ALL) {
+        for (int i = 0; i < q->child_count; i++) {
+            query_generators(m, q->children[i], terms);
+        }
+    }
+}
+static bool query_names_disabled(const execution_module *m, int index)
+{
+    const execution_module_query *q = &m->plan.queries[index];
+    if (q->component == ECS_DISABLED) {
+        return true;
+    }
+    for (int i = 0; i < q->child_count; i++) {
+        if (query_names_disabled(m, q->children[i])) {
+            return true;
+        }
+    }
+    return false;
+}
 static void query_import(const execution_module *m, int index, ecs_oper oper, ecs_term **terms)
 {
     const execution_module_query *q = &m->plan.queries[index];
-    if (q->kind == EXECUTION_QUERY_HAS || q->kind == EXECUTION_QUERY_RELATION) {
+    bool filter = (m->plan.query_filter && index == m->plan.query_filter - 1) ||
+                  (!m->plan.query_filter && index == m->plan.query);
+    if (filter && query_dynamic(m, index)) {
+        query_generators(m, index, terms);
+        if (query_names_disabled(m, index)) {
+            apush(*terms, ((ecs_term){ .id = ECS_DISABLED, .oper = ECS_OPTIONAL }));
+        }
+        apush(*terms, ((ecs_term){ .kind = ECS_TERM_OPEN, .oper = oper == ECS_NOT ? ECS_AND : oper }));
+        apush(*terms, ((ecs_term){ .kind = ECS_TERM_CLOSE }));
+        return;
+    }
+    if (q->kind == EXECUTION_QUERY_HAS || q->kind == EXECUTION_QUERY_RELATION ||
+        q->kind == EXECUTION_QUERY_GENERATOR) {
         apush(
             *terms,
             ((ecs_term){ .oper = oper,
                          .id = q->component,
-                         .target_var = q->kind == EXECUTION_QUERY_RELATION ? ECS_WILDCARD : 0,
+                         .target_var = q->kind == EXECUTION_QUERY_RELATION ? ECS_WILDCARD
+                                                                           : q->target_variable,
+                         .src_var = q->source_variable,
                          .src_rel = q->source_traversal ? 0 : q->source_relationship,
                          .trav = (ecs_trav)q->source_traversal,
                          .trav_rel = q->source_relationship })
@@ -168,6 +257,15 @@ static execution_program *program_new(
         }
     }
     if (m->plan.query >= 0) {
+        for (int i = 0; i < m->plan.query_count; i++) {
+            if (m->plan.queries[i].kind == EXECUTION_QUERY_CHANGED) {
+                if (ecs_component_track_changes(world, m->plan.queries[i].component)) {
+                    execution_program_free(p);
+                    return NULL;
+                }
+                apush(p->change_queries, i);
+            }
+        }
         ecs_term *terms = NULL;
         query_import(m, m->plan.query, ECS_AND, &terms);
         int status = ecs_query_plan_new(world, terms, acount(terms), &p->query_plan);
@@ -204,6 +302,18 @@ static execution_program *program_new(
         }
         afree(modules);
     }
+    execution_effect_summary effects = execution_module_effects(m);
+    /* Shared callees can occur along many paths. Bound this optional proof;
+     * falling back to retained rows does not limit program execution. */
+    int stream_steps = 4096;
+    p->query_streaming = m->plan.query_variable_count && m->plan.query >= 0 &&
+                         !m->plan.state_count && !m->plan.binding_count &&
+                         !m->plan.action_count && !m->plan.import_count &&
+                         m->plan.function_count == 1 &&
+                         m->plan.functions[0].kind == EXECUTION_FUNCTION_SYSTEM &&
+                         !acount(p->change_queries) && effects.declared &&
+                         !effects.structural && !effects.host_sink &&
+                         stream_function(m->plan.functions[0].body, 0, &stream_steps);
     return p;
 }
 execution_program *execution_program_new(execution_module *m, ecs_world *world, const service_binding *services)
@@ -303,6 +413,11 @@ void program_collect_states(execution_program *p)
 }
 static bool module_function(const execution_module *m, const behavior_function *f)
 {
+    for (int i = 0; i < m->plan.query_count; i++) {
+        if (m->plan.queries[i].predicate == f) {
+            return true;
+        }
+    }
     for (int i = 0; i < m->plan.function_count; i++) {
         if (m->plan.functions[i].body == f || m->plan.functions[i].subscription == f) {
             return true;
@@ -323,7 +438,11 @@ static execution_instance *function_instance(execution_activation *a, const beha
     }
     for (int i = 0; i < acount(p->imports); i++) {
         if (module_function(p->imports[i]->module, f)) {
-            return execution_program_instance(p->imports[i], a->instance->owner);
+            return program_instance_row(
+                p->imports[i],
+                a->instance->owner,
+                a->instance->query_variables
+            );
         }
     }
     assert(!"executable function has no owning module");
@@ -342,6 +461,7 @@ void program_bind_instance(const behavior_function *f, behavior_function_context
     ctx->variables = instance->values;
     ctx->variable_storage = instance->layouts;
     ctx->value_owner = instance;
+    ctx->query_variables = a->instance->query_variables;
     ctx->states = instance->node_states;
     ctx->instance_time = &instance->time;
 }
@@ -423,17 +543,77 @@ execution_instance *execution_program_instance(execution_program *p, uint64_t ow
     }
     return NULL;
 }
-execution_instance *execution_program_attach(execution_program *p, uint64_t owner)
+static uint64_t row_hash(uint64_t owner, const uint64_t *variables)
 {
-    assert(!p->dispatching && !p->system_prepared);
-    execution_instance *existing = execution_program_instance(p, owner);
+    uint64_t hash = owner;
+    for (int i = 0; i < ECS_QUERY_VARS; i++) {
+        hash ^= variables[i] + UINT64_C(0x9e3779b97f4a7c15) + (hash << 6) +
+                (hash >> 2);
+    }
+    hash ^= hash >> 30;
+    hash *= UINT64_C(0xbf58476d1ce4e5b9);
+    hash ^= hash >> 27;
+    return hash;
+}
+static int row_bucket(execution_program *p, uint64_t owner, const uint64_t *variables)
+{
+    int mask = acount(p->row_table) - 1;
+    int bucket = (int)(row_hash(owner, variables) & (unsigned)mask);
+    while (p->row_table[bucket]) {
+        p->query_lookup_steps++;
+        execution_instance *instance = p->row_table[bucket];
+        if (instance->owner == owner &&
+            !memcmp(instance->query_variables, variables, sizeof instance->query_variables)) {
+            break;
+        }
+        bucket = (bucket + 1) & mask;
+    }
+    return bucket;
+}
+execution_instance *program_instance_row(execution_program *p, uint64_t owner, const uint64_t *variables)
+{
+    return acount(p->row_table) ? p->row_table[row_bucket(p, owner, variables)] : NULL;
+}
+execution_instance *execution_program_row(
+    execution_program *p,
+    uint64_t owner,
+    const uint64_t *variables,
+    int count
+)
+{
+    if (count < 0 || count > ECS_QUERY_VARS || (count && !variables)) {
+        return NULL;
+    }
+    uint64_t tuple[ECS_QUERY_VARS] = { 0 };
+    if (count) {
+        memcpy(tuple, variables, (size_t)count * sizeof *tuple);
+    }
+    return program_instance_row(p, owner, tuple);
+}
+static void row_insert(execution_program *p, execution_instance *instance)
+{
+    int capacity = acount(p->row_table);
+    if (acount(p->instances) * 2 >= capacity) {
+        capacity = capacity ? capacity * 2 : 16;
+        asetlen(p->row_table, capacity);
+        memset(p->row_table, 0, (size_t)capacity * sizeof *p->row_table);
+        for (int i = 0; i < acount(p->instances); i++) {
+            execution_instance *row = p->instances[i];
+            p->row_table[row_bucket(p, row->owner, row->query_variables)] = row;
+        }
+    }
+    p->row_table[row_bucket(p, instance->owner, instance->query_variables)] = instance;
+}
+static execution_instance *attach_row(execution_program *p, uint64_t owner, const uint64_t *variables)
+{
+    execution_instance *existing = program_instance_row(p, owner, variables);
     if (existing) {
-        existing->query_managed = false;
         return existing;
     }
     execution_instance *instance = xcalloc(1, sizeof *instance);
     instance->program = p;
     instance->owner = owner;
+    memcpy(instance->query_variables, variables, sizeof instance->query_variables);
     asetlen(instance->node_states, p->module->plan.action_count);
     if (p->module->plan.action_count) {
         memset(
@@ -443,13 +623,27 @@ execution_instance *execution_program_attach(execution_program *p, uint64_t owne
         );
     }
     int count = p->module->plan.state_count;
-    instance->states = xcalloc((size_t)(count + 1), sizeof *instance->states);
-    instance->values = xcalloc((size_t)(count + 1), sizeof *instance->values);
-    instance->layouts = xcalloc((size_t)(count + 1), sizeof *instance->layouts);
-    instance->bindings = xcalloc(
-        (size_t)(p->module->plan.binding_count + 1),
-        sizeof *instance->bindings
-    );
+    if (count) {
+        instance->states = xcalloc((size_t)count, sizeof *instance->states);
+        instance->values = xcalloc((size_t)count, sizeof *instance->values);
+        instance->layouts = xcalloc((size_t)count, sizeof *instance->layouts);
+    }
+    if (p->module->plan.binding_count) {
+        instance->bindings = xcalloc(
+            (size_t)p->module->plan.binding_count,
+            sizeof *instance->bindings
+        );
+    }
+    if (acount(p->change_queries)) {
+        instance->query_changes = xcalloc(
+            (size_t)acount(p->change_queries),
+            sizeof *instance->query_changes
+        );
+        instance->query_snapshot = xcalloc(
+            (size_t)acount(p->change_queries),
+            sizeof *instance->query_snapshot
+        );
+    }
     for (int i = 0; i < count; i++) {
         if (!p->module->plan.states[i].shared) {
             int result = state_assign(
@@ -461,10 +655,23 @@ execution_instance *execution_program_attach(execution_program *p, uint64_t owne
         }
     }
     sync_state(instance);
+    instance->index = acount(p->instances);
     apush(p->instances, instance);
+    row_insert(p, instance);
     for (int i = 0; i < acount(p->imports); i++) {
-        execution_program_attach(p->imports[i], owner);
+        attach_row(p->imports[i], owner, variables);
     }
+    return instance;
+}
+execution_instance *execution_program_attach(execution_program *p, uint64_t owner)
+{
+    assert(!p->dispatching && !p->system_prepared);
+    if (p->module->plan.query_variable_count) {
+        return NULL; /* Multi-target rows are bound by the structural query. */
+    }
+    uint64_t variables[ECS_QUERY_VARS] = { 0 };
+    execution_instance *instance = attach_row(p, owner, variables);
+    instance->query_managed = false;
     return instance;
 }
 static void instance_free(execution_instance *instance)
@@ -490,22 +697,50 @@ static void instance_free(execution_instance *instance)
         arena_free(&instance->bindings[i].storage);
     }
     free(instance->bindings);
+    free(instance->query_changes);
+    free(instance->query_snapshot);
     afree(instance->node_states);
     arena_free(&instance->selections);
     free(instance);
 }
+static void detach_row(execution_program *p, int index)
+{
+    execution_instance *instance = p->instances[index];
+    uint64_t owner = instance->owner;
+    uint64_t variables[ECS_QUERY_VARS];
+    memcpy(variables, instance->query_variables, sizeof variables);
+    int bucket = row_bucket(p, instance->owner, instance->query_variables);
+    int mask = acount(p->row_table) - 1;
+    p->row_table[bucket] = NULL;
+    for (int next = (bucket + 1) & mask; p->row_table[next]; next = (next + 1) & mask) {
+        execution_instance *row = p->row_table[next];
+        p->row_table[next] = NULL;
+        p->row_table[row_bucket(p, row->owner, row->query_variables)] = row;
+    }
+    instance_free(instance);
+    int last = acount(p->instances) - 1;
+    if (index != last) {
+        p->instances[index] = p->instances[last];
+        p->instances[index]->index = index;
+    }
+    asetlen(p->instances, last);
+    for (int j = 0; j < acount(p->imports); j++) {
+        execution_program *child = p->imports[j];
+        execution_instance *row = program_instance_row(child, owner, variables);
+        if (row) {
+            detach_row(child, row->index);
+        }
+    }
+}
 void execution_program_detach(execution_program *p, uint64_t owner)
 {
     assert(!p->dispatching && !p->system_prepared);
-    for (int i = 0; i < acount(p->instances); i++) {
+    for (int i = 0; i < acount(p->instances);) {
         if (p->instances[i]->owner == owner) {
-            instance_free(p->instances[i]);
-            for (int j = 0; j < acount(p->imports); j++) {
-                execution_program_detach(p->imports[j], owner);
-            }
-            adel(p->instances, i);
-            return;
+            detach_row(p, i);
+            continue;
         }
+        i++;
     }
 }
 void execution_program_free(execution_program *p)
@@ -520,6 +755,9 @@ void execution_program_free(execution_program *p)
         instance_free(p->instances[i]);
     }
     afree(p->instances);
+    afree(p->row_table);
+    afree(p->change_queries);
+    afree(p->query_admissions);
     for (int i = 0; i < acount(p->imports); i++) {
         execution_program_free(p->imports[i]);
     }
@@ -850,38 +1088,347 @@ void execution_program_set_enabled(execution_program *p, bool enabled)
     for (int i = 0; i < acount(p->instances);) {
         execution_instance *instance = p->instances[i];
         if (instance->query_managed) {
-            execution_program_detach(p, instance->owner);
+            detach_row(p, i);
             continue;
         }
         i++;
     }
     program_collect_states(p);
 }
-static uint64_t *owners(execution_program *p)
+static ecs_entity query_source(execution_instance *instance, const execution_module_query *q)
 {
-    uint64_t *out = NULL;
+    uint64_t source = q->source_variable
+                        ? instance->query_variables[q->source_variable - 1]
+                        : instance->owner;
+    return ecs_query_source(
+        instance->program->world,
+        ecs_entity_from_u64(source),
+        q->component,
+        q->source_relationship,
+        (ecs_trav)q->source_traversal
+    );
+}
+static void query_snapshot(execution_instance *instance)
+{
+    execution_program *p = instance->program;
+    for (int i = 0; i < acount(p->change_queries); i++) {
+        const execution_module_query *q = &p->module->plan.queries[p->change_queries[i]];
+        ecs_entity source = query_source(instance, q);
+        instance->query_snapshot[i] = (query_change){
+            .entity = ecs_entity_to_u64(source),
+            .version = ecs_component_version(p->world, source, q->component)
+        };
+    }
+}
+static int query_matches(execution_instance *instance, int index)
+{
+    execution_program *p = instance->program;
+    const execution_module_query *q = &p->module->plan.queries[index];
+    switch (q->kind) {
+        case EXECUTION_QUERY_GENERATOR: return true;
+        case EXECUTION_QUERY_HAS: return query_source(instance, q).slot != 0;
+        case EXECUTION_QUERY_RELATION: {
+            uint64_t source = q->source_variable
+                                ? instance->query_variables[q->source_variable - 1]
+                                : instance->owner;
+            return ecs_pair_target_count(p->world, ecs_entity_from_u64(source), q->component) >
+                   0;
+        }
+        case EXECUTION_QUERY_CHANGED:
+            for (int i = 0; i < acount(p->change_queries); i++) {
+                if (p->change_queries[i] == index) {
+                    query_change now = instance->query_snapshot[i];
+                    query_change before = instance->query_changes[i];
+                    return now.entity && (!instance->query_started ||
+                                          now.entity != before.entity ||
+                                          now.version != before.version ||
+                                          now.version == UINT64_MAX);
+                }
+            }
+            assert(!"change query is not tracked");
+            return FLOW_ERR_STATE;
+        case EXECUTION_QUERY_VALUE: {
+            arena storage = { 0 };
+            behavior_function_activation activation = { 0 };
+            bool resumable = behavior_function_resumable(q->predicate);
+            if (resumable) {
+                behavior_function_activation_init(q->predicate, &activation);
+            }
+            pin_value result = { .type = PIN_BOOL };
+            behavior_function_context context = {
+                .activation = resumable ? &activation : NULL,
+                .owner = instance->owner,
+                .query_variables = instance->query_variables,
+                .results = &result,
+                .now = p->now,
+                .delta_seconds = p->delta,
+                .budget = p->budget,
+                .services = p->services
+            };
+            behavior_function_bind_storage(&context, &storage);
+            if (!behavior_function_bind(
+                    q->predicate,
+                    &context,
+                    p->services,
+                    instance->owner
+                )) {
+                behavior_function_activation_free(&activation);
+                arena_free(&storage);
+                return FLOW_ERR_ARGUMENT;
+            }
+            bool compiled = p->module->backend != BEHAVIOR_BYTECODE;
+            int status = resumable
+                           ? behavior_function_run(q->predicate, &context, compiled)
+                           : behavior_function_run_once(q->predicate, &context, compiled);
+            if (status < 0 && !p->failure.status) {
+                p->failure = (execution_program_failure){
+                    .status = status,
+                    .kind = context.failure,
+                    .module_id = p->module->plan.id,
+                    .owner = instance->owner
+                };
+                snprintf(
+                    p->failure.message,
+                    sizeof p->failure.message,
+                    "%s",
+                    context.error_message ? context.error_message : "query predicate failed"
+                );
+            }
+            behavior_function_release_host(&context);
+            behavior_function_activation_free(&activation);
+            arena_free(&storage);
+            return status < 0 ? status : status ? FLOW_ERR_STATE : result.b;
+        }
+        case EXECUTION_QUERY_ALL:
+        case EXECUTION_QUERY_ANY:
+        case EXECUTION_QUERY_NOT:
+            for (int i = 0; i < q->child_count; i++) {
+                int match = query_matches(instance, q->children[i]);
+                if (match < 0) {
+                    return match;
+                }
+                if (q->kind == EXECUTION_QUERY_NOT) {
+                    return !match;
+                }
+                if ((q->kind == EXECUTION_QUERY_ALL && !match) ||
+                    (q->kind == EXECUTION_QUERY_ANY && match)) {
+                    return match;
+                }
+            }
+            return q->kind == EXECUTION_QUERY_ALL;
+    }
+    return FLOW_ERR_STATE;
+}
+void program_query_consume(execution_instance *instance)
+{
+    instance->query_started = true;
+    int count = acount(instance->program->change_queries);
+    if (count) {
+        memcpy(
+            instance->query_changes,
+            instance->query_snapshot,
+            (size_t)count * sizeof *instance->query_changes
+        );
+    }
+}
+static int compare_rows(const void *left, const void *right)
+{
+    const execution_instance *a = *(execution_instance *const *)left;
+    const execution_instance *b = *(execution_instance *const *)right;
+    if (a->query_managed != b->query_managed) {
+        return a->query_managed ? 1 : -1;
+    }
+    if (!a->query_managed) {
+        return (a->index > b->index) - (a->index < b->index);
+    }
+    return (a->query_order > b->query_order) - (a->query_order < b->query_order);
+}
+static int refresh_rows(execution_program *p)
+{
+    p->query_rows = 0;
+    p->query_lookup_steps = 0;
     for (int i = 0; i < acount(p->instances); i++) {
-        if (!p->instances[i]->query_managed) {
-            apush(out, p->instances[i]->owner);
+        execution_instance *instance = p->instances[i];
+        instance->query_seen = !instance->query_managed;
+        instance->query_ready = !instance->query_managed;
+    }
+    if (p->queried && p->enabled) {
+        ecs_query query;
+        int status = ecs_query_begin_plan(p->query_plan, &query);
+        if (status) {
+            return FLOW_ERR_STATE;
+        }
+        query_change *snapshot = acount(p->change_queries)
+                                   ? xcalloc((size_t)acount(p->change_queries), sizeof *snapshot)
+                                   : NULL;
+        query_change *initial = acount(p->change_queries)
+                                  ? xcalloc((size_t)acount(p->change_queries), sizeof *initial)
+                                  : NULL;
+        ecs_entity entity;
+        while (ecs_query_next(&query, &entity)) {
+            execution_instance candidate = { .program = p,
+                                             .owner = ecs_entity_to_u64(entity),
+                                             .query_snapshot = snapshot,
+                                             .query_changes = initial };
+            for (int i = 0; i < p->module->plan.query_variable_count; i++) {
+                candidate.query_variables[i] = ecs_entity_to_u64(
+                    ecs_query_var(&query, i + 1)
+                );
+            }
+            p->query_rows++;
+            execution_instance
+                *instance = program_instance_row(p, candidate.owner, candidate.query_variables);
+            bool added = !instance;
+            if (added) {
+                instance = &candidate;
+            }
+            instance->query_seen = true;
+            query_snapshot(instance);
+            int match = query_matches(instance, p->module->plan.query);
+            if (added && match > 0) {
+                instance = attach_row(p, candidate.owner, candidate.query_variables);
+                instance->query_managed = true;
+                instance->query_new = true;
+                instance->query_seen = true;
+                if (acount(p->change_queries)) {
+                    memcpy(
+                        instance->query_snapshot,
+                        snapshot,
+                        (size_t)acount(p->change_queries) * sizeof *snapshot
+                    );
+                }
+            }
+            instance->query_ready = match > 0;
+            instance->query_order = p->query_rows;
+            if (match < 0) {
+                ecs_query_end(&query);
+                free(snapshot);
+                free(initial);
+                return match;
+            }
+        }
+        free(snapshot);
+        free(initial);
+        ecs_query_end(&query);
+    }
+    for (int i = 0; i < acount(p->instances);) {
+        execution_instance *instance = p->instances[i];
+        bool alive = !instance->owner || !p->world ||
+                     ecs_entity_is_alive(p->world, ecs_entity_from_u64(instance->owner));
+        if (!instance->query_seen || !alive) {
+            detach_row(p, i);
+            continue;
+        }
+        i++;
+    }
+    if (acount(p->instances) > 1) {
+        qsort(p->instances, (size_t)acount(p->instances), sizeof *p->instances, compare_rows);
+        for (int i = 0; i < acount(p->instances); i++) {
+            p->instances[i]->index = i;
         }
     }
-    if (!p->queried || !p->enabled) {
-        return out;
+    uint64_t begin = execution_module_event(p->module, "Begin");
+    for (int i = 0; i < acount(p->instances); i++) {
+        execution_instance *instance = p->instances[i];
+        if (instance->query_new && instance->query_ready) {
+            instance->query_new = false;
+            if (!begin) {
+                continue;
+            }
+            int status = execution_instance_dispatch(instance, begin, NULL, 0, p->now, p->delta, p->budget);
+            if (status < 0) {
+                return status;
+            }
+        }
+    }
+    return FLOW_OK;
+}
+static bool streaming(const execution_program *p)
+{
+    return p->query_streaming && !p->inspector && !acount(p->instances);
+}
+static int prepare_stream(execution_program *p)
+{
+    asetlen(p->query_admissions, 0);
+    p->query_rows = 0;
+    if (!p->enabled || !query_dynamic(p->module, p->module->plan.query)) {
+        return FLOW_OK;
     }
     ecs_query query;
-    int status = ecs_query_begin_plan(p->query_plan, &query);
-    assert(!status);
-    (void)status;
+    if (ecs_query_begin_plan(p->query_plan, &query)) {
+        return FLOW_ERR_STATE;
+    }
     ecs_entity entity;
     while (ecs_query_next(&query, &entity)) {
-        uint64_t owner = ecs_entity_to_u64(entity);
-        if (!execution_program_instance(p, owner) ||
-            execution_program_instance(p, owner)->query_managed) {
-            apush(out, owner);
+        execution_instance row = { .program = p, .owner = ecs_entity_to_u64(entity) };
+        for (int i = 0; i < p->module->plan.query_variable_count; i++) {
+            row.query_variables[i] = ecs_entity_to_u64(ecs_query_var(&query, i + 1));
         }
+        int match = query_matches(&row, p->module->plan.query);
+        if (match < 0) {
+            ecs_query_end(&query);
+            return match;
+        }
+        unsigned bit = (unsigned)(p->query_rows % 64);
+        if (!bit) {
+            apush(p->query_admissions, UINT64_C(0));
+        }
+        if (match) {
+            p->query_admissions[acount(p->query_admissions) - 1] |= UINT64_C(1) << bit;
+        }
+        p->query_rows++;
     }
     ecs_query_end(&query);
-    return out;
+    return FLOW_OK;
+}
+static int stream_rows(execution_program *p)
+{
+    p->query_rows = 0;
+    p->query_lookup_steps = 0;
+    if (!p->enabled) {
+        return FLOW_OK;
+    }
+    ecs_query query;
+    if (ecs_query_begin_plan(p->query_plan, &query)) {
+        return FLOW_ERR_STATE;
+    }
+    execution_instance row = { .program = p, .query_managed = true };
+    ecs_entity entity;
+    int status = FLOW_OK;
+    p->dispatching = true;
+    while (ecs_query_next(&query, &entity)) {
+        row.owner = ecs_entity_to_u64(entity);
+        for (int i = 0; i < p->module->plan.query_variable_count; i++) {
+            row.query_variables[i] = ecs_entity_to_u64(ecs_query_var(&query, i + 1));
+        }
+        uint64_t index = p->query_rows++;
+        if (acount(p->query_admissions) &&
+            !(p->query_admissions[index / 64] & (UINT64_C(1) << (index % 64)))) {
+            continue;
+        }
+        execution_activation *a = program_activation_new(
+            &row,
+            p->module->plan.functions[0].body,
+            NULL,
+            0,
+            p->now,
+            p->delta,
+            p->budget
+        );
+        if (!a) {
+            status = FLOW_ERR_ARGUMENT;
+            break;
+        }
+        status = program_activation_run(a, p->now, p->delta, p->budget);
+        assert(status <= 0 && !acount(a->requests));
+        program_activation_free(a);
+        if (status < 0) {
+            break;
+        }
+    }
+    p->dispatching = false;
+    ecs_query_end(&query);
+    return status;
 }
 static int program_run(execution_program *p, double now, double delta, unsigned budget, int phase)
 {
@@ -891,37 +1438,28 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
     p->now = now;
     p->delta = delta;
     p->budget = budget ? budget : 10000;
-    uint64_t *membership = owners(p);
-    for (int i = 0; i < acount(p->instances);) {
-        uint64_t owner = p->instances[i]->owner;
-        bool retained = !p->instances[i]->query_managed;
-        for (int j = 0; j < acount(membership); j++) {
-            retained |= membership[j] == owner;
+    if (streaming(p)) {
+        /* These modules have no handlers, bindings, state, or suspension. */
+        for (int i = 0; i < acount(p->events); i++) {
+            free(p->events[i].arguments);
+            arena_free(&p->events[i].storage);
         }
-        bool alive = !owner || !p->world ||
-                     ecs_entity_is_alive(p->world, ecs_entity_from_u64(owner));
-        if (!retained || !alive) {
-            execution_program_detach(p, owner);
-            continue;
-        }
-        i++;
-    }
-    uint64_t begin = execution_module_event(p->module, "Begin");
-    for (int i = 0; i < acount(membership); i++) {
-        if (execution_program_instance(p, membership[i])) {
-            continue;
-        }
-        execution_instance *instance = execution_program_attach(p, membership[i]);
-        instance->query_managed = true;
-        if (begin) {
-            int status = execution_instance_dispatch(instance, begin, NULL, 0, now, delta, p->budget);
-            if (status < 0) {
-                afree(membership);
-                return status;
+        asetlen(p->events, 0);
+        int status = prepare_stream(p);
+        if (status < 0 || !update) {
+            if (status < 0 || phase != -1) {
+                afree(p->query_admissions);
             }
+            return status;
         }
+        status = stream_rows(p);
+        afree(p->query_admissions);
+        return status;
     }
-    afree(membership);
+    int refreshed = refresh_rows(p);
+    if (refreshed < 0) {
+        return refreshed;
+    }
     p->dispatching = true;
     int observed = program_observers_maintain(p, now, delta, p->budget);
     if (observed < 0) {
@@ -963,7 +1501,7 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
                 continue;
             }
             bool active = program_instance_busy(instance);
-            if (active) {
+            if (active || !instance->query_ready) {
                 continue;
             }
             execution_activation *
@@ -972,6 +1510,7 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
                 p->dispatching = false;
                 return FLOW_ERR_ARGUMENT;
             }
+            program_query_consume(instance);
             int status = program_activation_run(a, now, delta, p->budget);
             if (!a->finished || acount(a->requests)) {
                 apush(instance->activations, a);
@@ -988,13 +1527,9 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
     p->events = NULL;
     for (int i = 0; i < acount(events); i++) {
         queued_event *e = &events[i];
-        uint64_t *targets = owners(p);
         int failure = FLOW_OK;
-        for (int j = 0; j < acount(targets); j++) {
-            execution_instance *instance = execution_program_instance(p, targets[j]);
-            if (!instance) {
-                continue;
-            }
+        for (int j = 0; j < acount(p->instances); j++) {
+            execution_instance *instance = p->instances[j];
             int status = dispatch_to(instance, e->event, e->owner, e->arguments, e->count, now, delta, p->budget);
             if (status == FLOW_ERR_UNKNOWN_EVENT) {
                 continue;
@@ -1004,7 +1539,6 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
                 break;
             }
         }
-        afree(targets);
         free(e->arguments);
         arena_free(&e->storage);
         if (failure < 0) {
@@ -1059,7 +1593,8 @@ int execution_program_prepare_system(execution_program *p, double now, double de
 {
     assert(p && !p->system_prepared && !p->running && !p->dispatching);
     p->updates++;
-    int status = execution_program_pump(p, now, delta, budget);
+    int status = program_run(p, now, delta, budget, -1);
+    program_apply_services(p);
     if (status < 0) {
         return status;
     }
@@ -1070,7 +1605,7 @@ int execution_program_prepare_system(execution_program *p, double now, double de
         execution_instance *instance = p->instances[i];
         instance->time += delta;
         instance->last_time = now;
-        if (!p->enabled || program_instance_busy(instance)) {
+        if (!p->enabled || !instance->query_ready || program_instance_busy(instance)) {
             continue;
         }
         for (int f = 0; f < p->module->plan.function_count; f++) {
@@ -1094,6 +1629,10 @@ int execution_program_run_system(execution_program *p)
 {
     assert(p && p->system_prepared && !p->system_ran && !p->dispatching && !p->running);
     p->system_ran = true;
+    if (streaming(p)) {
+        p->system_status = stream_rows(p);
+        return p->system_status;
+    }
     p->dispatching = true;
     for (int i = 0; i < acount(p->system_activations); i++) {
         execution_activation *a = p->system_activations[i];
@@ -1102,6 +1641,7 @@ int execution_program_run_system(execution_program *p)
             p->system_activations[i] = NULL;
             continue;
         }
+        program_query_consume(a->instance);
         int status = program_activation_run(a, p->now, p->delta, p->budget);
         if (!a->finished || acount(a->requests)) {
             apush(a->instance->activations, a);
@@ -1128,6 +1668,7 @@ int execution_program_finish_system(execution_program *p)
     }
     asetlen(p->system_activations, 0);
     p->system_prepared = false;
+    afree(p->query_admissions);
     int status = p->system_status;
     if (status >= 0) {
         status = program_observers_maintain(p, p->now, p->delta, p->budget);
@@ -1186,10 +1727,15 @@ static void preserve_shared(execution_program *next, const execution_program *be
         }
     }
 }
-static void preserve_state(execution_program *next, const execution_program *before, uint64_t owner)
+static void preserve_state(
+    execution_program *next,
+    const execution_program *before,
+    uint64_t owner,
+    const uint64_t *variables
+)
 {
-    execution_instance *old = execution_program_instance((execution_program *)before, owner);
-    execution_instance *instance = execution_program_instance(next, owner);
+    execution_instance *old = program_instance_row((execution_program *)before, owner, variables);
+    execution_instance *instance = program_instance_row(next, owner, variables);
     assert(instance);
     if (!old) {
         return;
@@ -1230,6 +1776,57 @@ static void preserve_state(execution_program *next, const execution_program *bef
         assert(!status);
         (void)status;
     }
+}
+static bool query_shape_equal(const execution_module *a, const execution_module *b)
+{
+    if (a->plan.query_variable_count != b->plan.query_variable_count) {
+        return false;
+    }
+    int next = 0;
+    for (int i = 0; i < a->plan.query_count; i++) {
+        const execution_module_query *x = &a->plan.queries[i];
+        if (x->kind != EXECUTION_QUERY_GENERATOR) {
+            continue;
+        }
+        while (next < b->plan.query_count &&
+               b->plan.queries[next].kind != EXECUTION_QUERY_GENERATOR) {
+            next++;
+        }
+        if (next == b->plan.query_count) {
+            return false;
+        }
+        const execution_module_query *y = &b->plan.queries[next++];
+        if (x->component != y->component || x->source_variable != y->source_variable ||
+            x->target_variable != y->target_variable) {
+            return false;
+        }
+    }
+    return true;
+}
+static void preserve_changes(execution_instance *next, const execution_instance *old)
+{
+    if (!old->query_started) {
+        return;
+    }
+    const execution_program *a = next->program, *b = old->program;
+    for (int i = 0; i < acount(a->change_queries); i++) {
+        const execution_module_query *x = &a->module->plan.queries[a->change_queries[i]];
+        bool found = false;
+        for (int j = 0; j < acount(b->change_queries); j++) {
+            const execution_module_query *y = &b->module->plan.queries[b->change_queries[j]];
+            if (x->component == y->component && x->source_variable == y->source_variable &&
+                x->source_relationship == y->source_relationship &&
+                x->source_traversal == y->source_traversal) {
+                next->query_changes[i] = old->query_changes[j];
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            return;
+        }
+    }
+    next->query_started = true;
 }
 execution_program *execution_program_prepare_replace(
     const execution_program *p,
@@ -1298,13 +1895,17 @@ execution_program *execution_program_prepare_replace_services(
     }
     for (int i = 0; i < acount(p->instances); i++) {
         execution_instance *before = p->instances[i];
-        execution_instance *after = execution_program_attach(next, before->owner);
+        if (before->query_managed && !query_shape_equal(module, p->module)) {
+            continue;
+        }
+        execution_instance *after = attach_row(next, before->owner, before->query_variables);
         after->query_managed = before->query_managed;
         after->time = restart ? 0 : before->time;
         if (restart) {
             continue;
         }
-        preserve_state(next, p, before->owner);
+        preserve_state(next, p, before->owner, before->query_variables);
+        preserve_changes(after, before);
         for (int n = 0; n < acount(next->imports); n++) {
             for (int o = 0; o < acount(p->imports); o++) {
                 const execution_module *old = p->imports[o]->module;
@@ -1312,7 +1913,12 @@ execution_program *execution_program_prepare_replace_services(
                 if (old != now && (!now->plan.id || now->plan.id != old->plan.id)) {
                     continue;
                 }
-                preserve_state(next->imports[n], p->imports[o], before->owner);
+                preserve_state(
+                    next->imports[n],
+                    p->imports[o],
+                    before->owner,
+                    before->query_variables
+                );
                 break;
             }
         }

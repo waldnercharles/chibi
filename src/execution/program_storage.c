@@ -116,6 +116,7 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
     assert(p && !p->owner_program->running);
     execution_memory_usage result = { 0 };
     execution_activation **values = activations(p->owner_program, NULL);
+    result.activation_bytes = (size_t)acount(values) * sizeof(execution_activation);
     for (int i = 0; i < acount(values); i++) {
         size_t bytes, capacity;
         arena_usage(&values[i]->payload, &bytes, &capacity);
@@ -125,8 +126,35 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
     afree(values);
     p = p->owner_program;
     result.task_lookup_steps = p->task_lookup_steps;
+    result.query_rows = p->query_rows;
+    result.query_lookup_steps = p->query_lookup_steps;
+    result.ecs_change_bytes = p->world ? ecs_world_change_tracking_bytes(p->world) : 0;
     for (int scope = -1; scope < acount(p->imports); scope++) {
         const execution_program *program = scope < 0 ? p : p->imports[scope];
+        for (int i = 0; i < acount(program->system_activations); i++) {
+            const execution_activation *activation = program->system_activations[i];
+            if (activation) {
+                result.activation_bytes += sizeof *activation;
+                size_t bytes, capacity;
+                arena_usage(&activation->payload, &bytes, &capacity);
+                result.payload_bytes += bytes;
+                result.payload_capacity += capacity;
+            }
+        }
+        result.instance_count += acount(program->instances);
+        result.instance_bytes += (size_t)acount(program->instances) *
+                                 sizeof(execution_instance);
+        result.query_index_bytes += (size_t)acount(program->row_table) *
+                                    sizeof *program->row_table;
+        result.query_history_bytes += (size_t)acount(program->instances) *
+                                      (size_t)acount(program->change_queries) *
+                                      2 * sizeof(query_change);
+        result.query_history_bytes += (size_t)acount(program->query_admissions) *
+                                      sizeof(uint64_t);
+        result.state_bank_bytes += (size_t)acount(program->instances) *
+                                   (size_t)program->module->plan.state_count *
+                                   (sizeof(state_value) + sizeof(pin_value) +
+                                    sizeof(behavior_variable_storage));
         for (int i = 0; i < acount(program->instances); i++) {
             const execution_instance *instance = program->instances[i];
             result.task_slots += acount(instance->tasks);

@@ -1,6 +1,7 @@
 #include "execution/machine.h"
 
 #include "ecs/execution.h"
+#include "execution/borrow.h"
 #include "execution/definition.h"
 #include "execution/random.h"
 #include "execution/status.h"
@@ -405,7 +406,9 @@ int execution_machine_step(execution_machine *m, int pc)
                 }
                 break;
             }
-            ctx->error_message = call->value
+            ctx->error_message = i->right == BF_HOST_BORROW_ARRAY
+                                   ? behavior_function_borrow_snapshot(ctx, i->target)
+                               : call->value
                                    ? call->value(
                                          ctx->value_storage,
                                          ctx->data->values + spec->first,

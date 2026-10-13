@@ -1,12 +1,15 @@
 #include "execution/definition.h"
 #include "execution/function_builder.h"
+#include "execution/intrinsics.h"
 #include "execution/status.h"
 #include "export_compiler.h"
 #include "language/lower.h"
 #include "support/array.h"
+#include "support/xalloc.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 
+#include <assert.h>
 #include <dlfcn.h>
 #include <limits.h>
 #include <stdio.h>
@@ -16,7 +19,8 @@
 enum
 {
     ALIAS_FIXTURES = 12,
-    FIXTURES = ALIAS_FIXTURES + 1
+    BORROW_FIXTURE = ALIAS_FIXTURES + 1,
+    FIXTURES = BORROW_FIXTURE + 1
 };
 static behavior_function *functions[FIXTURES];
 static behavior_function_builder *builder;
@@ -213,6 +217,211 @@ static bool resumes_exported_pause()
     return true;
 }
 
+static int borrow_value(behavior_function_instruction instruction, bool address)
+{
+    instruction.output = behavior_function_builder_slot(builder, instruction.type);
+    if (address) {
+        bool typed = behavior_function_builder_kind(
+            builder,
+            BEHAVIOR_BANK_SLOT,
+            instruction.output,
+            BEHAVIOR_ADDRESS
+        );
+        assert(typed);
+        (void)typed;
+    }
+    behavior_function_builder_emit(builder, instruction);
+    return instruction.output;
+}
+
+static bool borrow_fixture()
+{
+    /* Retain the protocol bank for ownership assertions. Authored lowering
+     * correctly clears consumed banks after loading the result into a slot. */
+    const pin_value shape = { .type = PIN_F64, .container = PIN_CONTAINER_ARRAY };
+    const pin_value output = { .type = PIN_F64 };
+    builder = behavior_function_builder_new();
+    behavior_function_builder_signature(builder, &shape, 1, &output, 1, NULL, 0);
+    int original = borrow_value(
+        (behavior_function_instruction){ .op = BF_ARRAY,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = 0,
+                                         .target = BF_ARGUMENT,
+                                         .value = shape },
+        true
+    );
+    int host = behavior_function_builder_host(
+        builder,
+        &EXECUTION_snapshot_call,
+        &EXECUTION_value_access,
+        &shape,
+        1,
+        &shape,
+        1
+    );
+    uint64_t id = execution_intrinsic_id(&EXECUTION_snapshot_call);
+    REQUIRE(
+        behavior_function_builder_host_identity(builder, host, id, execution_intrinsic_abi(id))
+    );
+    int input = borrow_value(
+        (behavior_function_instruction){
+            .op = BF_HOST_SLOT,
+            .type = BF_POINTER_TYPE,
+            .left = behavior_function_builder_host_first(builder, host) },
+        true
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_WRITE,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = original,
+                                         .right = input,
+                                         .offset = offsetof(pin_value, d) }
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_HOST_CALL,
+                                         .target = host,
+                                         .left = BEHAVIOR_FUNCTION_HOST_DATA }
+    );
+    int result = borrow_value(
+        (behavior_function_instruction){
+            .op = BF_HOST_SLOT,
+            .type = BF_POINTER_TYPE,
+            .left = behavior_function_builder_host_results(builder, host) },
+        true
+    );
+    int held = borrow_value(
+        (behavior_function_instruction){ .op = BF_LOAD,
+                                         .type = BF_POINTER_TYPE,
+                                         .left = result,
+                                         .offset = offsetof(pin_value, d) },
+        true
+    );
+    behavior_function_builder_root(builder, BEHAVIOR_BANK_SLOT, held, shape);
+    int count = borrow_value(
+        (behavior_function_instruction){ .op = BF_READ,
+                                         .type = PIN_I32,
+                                         .left = held,
+                                         .offset = offsetof(pin_array, count) },
+        false
+    );
+    int converted = borrow_value(
+        (behavior_function_instruction){ .op = BF_CAST, .type = PIN_F64, .left = count },
+        false
+    );
+    behavior_function_builder_emit(
+        builder,
+        (behavior_function_instruction){ .op = BF_RESULT, .type = PIN_F64, .left = converted }
+    );
+    behavior_function_builder_emit(builder, (behavior_function_instruction){ .op = BF_END });
+    char error[256];
+    functions[BORROW_FIXTURE] = behavior_function_builder_finish(builder, error, sizeof error);
+    if (!functions[BORROW_FIXTURE]) {
+        fprintf(stderr, "C borrow fixture: %s\n", error);
+    }
+    REQUIRE(functions[BORROW_FIXTURE]);
+    behavior_function_builder_free(builder);
+    builder = NULL;
+    REQUIRE(functions[BORROW_FIXTURE]->runtime_map);
+    int guarded = 0;
+    for (int i = 0; i < acount(functions[BORROW_FIXTURE]->runtime_body); i++) {
+        const behavior_function_instruction *instruction = &functions[BORROW_FIXTURE]
+                                                                ->runtime_body[i];
+        guarded += instruction->op == BF_HOST_CALL &&
+                   instruction->right == BF_HOST_BORROW_ARRAY;
+    }
+    REQUIRE(guarded == 1);
+    behavior_function_write_c(functions[BORROW_FIXTURE], source, "export_borrow");
+    return true;
+}
+
+static bool borrows_exported_plain_arrays()
+{
+    typedef int (*entry)(behavior_function_context *);
+    entry generated = (entry)dlsym(library, "export_borrow");
+    REQUIRE(generated);
+    behavior_function *f = functions[BORROW_FIXTURE];
+    int result = -1, guarded = 0;
+    for (int i = 0; i < acount(f->runtime_body); i++) {
+        const behavior_function_instruction *instruction = &f->runtime_body[i];
+        if (instruction->op == BF_HOST_CALL &&
+            instruction->right == BF_HOST_BORROW_ARRAY) {
+            REQUIRE(!f->instructions[i].right);
+            result = f->host_calls[instruction->target].result_first;
+            guarded++;
+        }
+    }
+    REQUIRE(guarded == 1 && result >= 0);
+    for (int sample = 0; sample < 4; sample++) {
+        for (int inspection = 0; inspection < 2; inspection++) {
+            release_pause();
+            pin_value items[] = { { .type = PIN_F64, .d = 1 },
+                                  { .type = PIN_F64, .d = 2 },
+                                  { .type = PIN_F64, .d = 3 } };
+            pin_array values = { .element_type = PIN_F64,
+                                 .count = 3,
+                                 .capacity = 3,
+                                 .items = items };
+            if (sample == 1) {
+                values.element_type = PIN_STR;
+                for (int item = 0; item < 3; item++) {
+                    items[item] = (pin_value){ .type = PIN_STR, .str = "managed" };
+                }
+            } else if (sample == 2) {
+                /* A plain header cannot prove that each payload is plain. */
+                items[1] = (pin_value){ .type = PIN_STR, .str = "managed" };
+            } else if (sample == 3) {
+                /* Native inputs can alias the public saved-value bank even
+                 * when this function itself never suspends. */
+                int saved = acount(f->slots) + acount(f->locals) + acount(f->frames);
+                REQUIRE((size_t)saved * sizeof *pause_activation.values >= sizeof(pin_value));
+                pause_activation
+                    .values = xcalloc((size_t)saved, sizeof *pause_activation.values);
+                values.items = (pin_value *)pause_activation.values;
+                values.items[0] = items[0];
+                values.count = values.capacity = 1;
+            }
+            pin_value input = { .type = PIN_F64,
+                                .container = PIN_CONTAINER_ARRAY,
+                                .ptr = &values };
+            pin_value output = { .type = PIN_F64, .d = -1 };
+            pause_context = (behavior_function_context){
+                .arguments = &input,
+                .argument_count = 1,
+                .results = &output,
+                .activation = sample == 3 ? &pause_activation : NULL,
+                .budget = 1000,
+                .inspect = inspection ? inspect : NULL
+            };
+            behavior_function_bind_storage(&pause_context, &pause_storage);
+            REQUIRE(behavior_function_bind(f, &pause_context, NULL, 0));
+            behavior_function_prepare_host(f, &pause_context);
+            REQUIRE(generated(&pause_context) == FLOW_OK);
+            REQUIRE(output.d == values.count);
+            const pin_array *snapshot = pause_context.data->values[result].ptr;
+            if (!sample && !inspection) {
+                REQUIRE(snapshot == &values);
+                REQUIRE(!arena_storage_bytes(&pause_storage));
+            } else {
+                REQUIRE(
+                    snapshot && snapshot != &values && snapshot->count == values.count
+                );
+                REQUIRE(snapshot->items != values.items);
+                REQUIRE(arena_storage_bytes(&pause_storage) > 0);
+                if (sample == 1 || sample == 2) {
+                    REQUIRE(snapshot->items[1].str != items[1].str);
+                    REQUIRE(!strcmp(snapshot->items[1].str, "managed"));
+                } else {
+                    REQUIRE(snapshot->items[0].type == PIN_F64);
+                    REQUIRE(snapshot->items[0].d == 1);
+                }
+            }
+        }
+    }
+    return true;
+}
+
 TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
 {
     snprintf(directory, sizeof directory, "/tmp/chibi-c-export-XXXXXX");
@@ -233,6 +442,7 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
         REQUIRE(fixture(i));
     }
     REQUIRE(pause_fixture());
+    REQUIRE(borrow_fixture());
     long bytes = ftell(source);
     REQUIRE(bytes > 0 && bytes < 128 * 1024);
     int closed = fclose(source);
@@ -312,6 +522,7 @@ TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
         }
     }
     REQUIRE(resumes_exported_pause());
+    REQUIRE(borrows_exported_plain_arrays());
     return true;
 }
 void test_tool_c_export()

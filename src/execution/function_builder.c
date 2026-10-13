@@ -785,6 +785,7 @@ static const char *verify_instruction(const behavior_function *f, int pc)
             break;
         case BF_HOST_CALL:
             CHECK(index_valid(i->target, acount(f->host_calls)), "invalid host capability");
+            CHECK(!i->right, "runtime host flags are not canonical instructions");
             CHECK(i->left == BEHAVIOR_FUNCTION_HOST_DATA || i->left == BEHAVIOR_FUNCTION_HOST_FLOW, "invalid host failure kind");
             break;
         case BF_INVOKE:

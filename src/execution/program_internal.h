@@ -56,6 +56,7 @@ struct execution_activation
     int status;
     /* Cancelled while running: stops when control returns to it. */
     bool finished, running, has_run, stopping;
+    bool cacheable; /* Cleared by inspection, suspension, cancellation or resumption. */
 };
 typedef struct
 {
@@ -157,10 +158,13 @@ struct execution_program
     observer_edge *field_edges;
     ecs_query_plan *query_plan;
     int *binding_order;
+    struct binding_schedule *binding_schedule;
+    struct binding_identity *binding_identity;
     double now, delta;
     unsigned budget;
     bool dispatching, enabled, queried;
     execution_activation *running;
+    execution_activation *spare_activation; /* Idle, with no borrowed instance/context. */
     execution_activation **system_activations;
     bool system_prepared, system_ran;
     int system_status;
@@ -174,9 +178,13 @@ execution_instance *program_instance_row(execution_program *, uint64_t owner, co
 void program_query_consume(execution_instance *);
 bool program_preflight(const execution_module *, const ecs_world *);
 bool program_binding_order(execution_program *p);
+void program_bindings_free(execution_program *);
+size_t program_binding_storage_bytes(const execution_program *);
 int program_binding_run(execution_instance *, int, double, double, unsigned);
 void program_collect_states(execution_program *p);
 void program_activation_free(execution_activation *a);
+void program_activation_cache_free(execution_program *);
+size_t program_activation_cache_bytes(const execution_program *);
 void program_activation_cancel(execution_activation *a);
 void program_bind_tasks(behavior_function_context *);
 int program_task_command(

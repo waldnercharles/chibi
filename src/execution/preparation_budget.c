@@ -97,6 +97,10 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
      * definition versions and control-entry marks. */
     scratch = sum(scratch, product(slots + 1, 3 * sizeof(max_align_t) + sizeof(int)));
     scratch = sum(scratch, product(count + 1, sizeof(bool)));
+    /* Read-only array borrowing keeps one kind/bank fact per scalar slot and
+     * a logical-array marker per local. */
+    scratch = sum(scratch, product(slots + 1, 2 * sizeof(int)));
+    scratch = sum(scratch, product(locals + 1, sizeof(bool)));
     /* Union scalar replacement keeps facts for slots, banks, locals and PCs,
      * plus one candidate per constructor and its immutable scalar payloads. */
     if (acount(f->host_calls)) {

@@ -803,10 +803,59 @@ The language follow-up admits these focused C checks under the same supervisor:
   payloads and inspection remain conservative counterexamples.
 - `tool wasm-query-program`, `tool wasm-scalarize` and `tool wasm-ranges` run
   those same C cases through the browser target's Node launcher.
+- The optimizer microbenchmarks below use the existing C dispatchers, five
+  small trials and the same 60-second supervisor. Setup and correctness checks
+  stay outside timed loops; no elapsed-time threshold determines a pass.
+  `xalloc` requested bytes measure allocation traffic through that allocator,
+  not live or peak memory. Compare Release builds with identical flags and
+  retain native sanitizer and Wasm correctness coverage separately.
+  `tool language-activation-benchmark` runs three source workloads on 32 owners
+  for 100 invocations per owner per trial, on VM and the compiled backend.
+  `tool language-binding-benchmark` maintains two programs with eight owners
+  and a three-binding chain, for 12 iterations per trial, with stable and changed
+  membership. `tool language-borrow-benchmark` sums arrays of one and 128
+  elements for 32 dispatches per trial on both backends.
+  `tool language-incremental-benchmark` prepares four tiny in-memory sources
+  once initially, then five times for each of unchanged, body-edit and
+  presentation-edit modes; it creates one disposable empty source directory.
+  `tool scheduler-benchmark` compares identical registration and warm dispatch
+  of 12 systems over 128 passes per trial, plus owned-descriptor, dependency and
+  failure checks. These fixtures perform no child-process, engine-frame or GPU
+  work. The four language selectors also have `wasm-` variants using the same
+  C checks. Initial admissions establish bounded work, not measured speedups.
+  The scheduler selector also covers unchanged owned descriptors, callback and
+  effect replacement, failure retry and ordering, one recursive dispatch, and a
+  129-system oversized-cache fallback. There are eight fixed cases; cached
+  allocation assertions and retained scratch accounting complement timings.
+- `tool language-binding-schedule` and `tool wasm-binding-schedule` exercise four
+  fixed binding-cache cases on both backends: module/owner generation changes,
+  peer destruction, caller ordering, cycle rejection before writes, query-gate
+  changes and dynamic dependency targets. Cache fallback uses 17 programs and
+  1,025 independent constant binding rows, proving cache bounds are not execution
+  limits. There are no frames, child processes or GPU work.
+- `tool language-activation-cache` and `tool wasm-activation-cache` use four
+  cases on both backends to check warm allocation counts, owner/default reset,
+  nested tasks, read-only observation, reload, managed payloads, errors, suspended
+  work and debugger pause/resume. Each fixture has at most two entities and ten
+  supplied-time dispatch/pump/step operations. One cap fixture has 4,096 scalar
+  default arguments and a two-instruction body, executed twice, to prove large
+  activations still run without retaining oversized storage. No frames, child
+  processes or GPU work are involved.
+- `tool language-borrow` and `tool wasm-borrow` use six fixed cases: one authored
+  read-only array loop with 0, 1 and 128 items; null/empty/mixed-header and failure
+  fallbacks; scalar, saved-activation and VM scratch aliasing; mutation/identity/capacity/escape/opaque
+  call exclusions; debug and real-wait continuation; and an in-memory prepared
+  roundtrip that rederives the optimization and rejects a forged canonical flag
+  (two buffers, each below 64 KiB). Native/Wasm normal and
+  inspection execution compare exact values, pointer ownership and arena bytes.
+  There are no files, frames, child processes or GPU work.
 - `tool c-export-alias` executes twelve tiny generated-C I32/I64 DIV/MOD
   fixtures covering operand and result aliases, signed inputs, division by zero
   and overflow, plus one authored union fixture for source pause, debugger detach
-  and continuation. One compiler child builds one temporary shared library from less
+  and continuation. One extra verified array function executes eight normal and
+  inspection calls, checking guarded borrowing, mixed-header fallback copies and
+  an array whose items alias the public activation's saved-value bank.
+  One compiler child builds one temporary shared library from less
   than 128 KiB of generated source, using the configured compiler and C/build-type
   flags, enabled sanitizers and assertions. The existing 10-second child and shared 60-second
   deadlines apply. The existing tooling driver loads the library and compares 120

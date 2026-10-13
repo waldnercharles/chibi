@@ -256,10 +256,7 @@ bool source_catalog_metadata_equal(const script_catalog *a, const script_catalog
         if (x->id != y->id || !same_text(x->name, y->name) ||
             !same_text(x->qualified_name, y->qualified_name) ||
             !same_text(x->operator_name, y->operator_name) ||
-            !same_text(x->method_name, y->method_name) ||
-            !same_text(x->category, y->category) ||
-            !same_text(x->keywords, y->keywords) ||
-            !same_text(x->description, y->description) || x->kind != y->kind ||
+            !same_text(x->method_name, y->method_name) || x->kind != y->kind ||
             x->state_access != y->state_access || x->state_kind != y->state_kind ||
             x->component_access != y->component_access ||
             x->struct_access != y->struct_access || x->component != y->component ||

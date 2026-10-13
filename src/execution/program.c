@@ -779,12 +779,14 @@ void execution_program_free(execution_program *p)
     free(p->shared);
     ecs_query_plan_free(p->query_plan);
     afree(p->binding_order);
+    program_bindings_free(p);
     afree(p->services);
     for (int i = 0; i < acount(p->pending_services); i++) {
         free((void *)p->pending_services[i].type_name);
     }
     afree(p->pending_services);
     arena_free(&p->service_names);
+    program_activation_cache_free(p);
     execution_module_free(p->module);
     free(p->name);
     free(p);

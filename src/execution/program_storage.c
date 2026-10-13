@@ -131,6 +131,7 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
     result.ecs_change_bytes = p->world ? ecs_world_change_tracking_bytes(p->world) : 0;
     for (int scope = -1; scope < acount(p->imports); scope++) {
         const execution_program *program = scope < 0 ? p : p->imports[scope];
+        result.activation_cache_bytes += program_activation_cache_bytes(program);
         for (int i = 0; i < acount(program->system_activations); i++) {
             const execution_activation *activation = program->system_activations[i];
             if (activation) {
@@ -146,6 +147,7 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
                                  sizeof(execution_instance);
         result.query_index_bytes += (size_t)acount(program->row_table) *
                                     sizeof *program->row_table;
+        result.binding_schedule_bytes += program_binding_storage_bytes(program);
         result.query_history_bytes += (size_t)acount(program->instances) *
                                       (size_t)acount(program->change_queries) *
                                       2 * sizeof(query_change);

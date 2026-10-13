@@ -145,6 +145,12 @@ enum
 {
     BF_STORE_VALUE_SET_ADD = 1
 };
+/* Derived runtime bodies only. Canonical and prepared instructions reject this
+ * flag; verification and the borrowing proof run before it can be introduced. */
+enum
+{
+    BF_HOST_BORROW_ARRAY = 1
+};
 static inline bool behavior_function_math(behavior_function_op op)
 {
     return op >= BF_SIN && op <= BF_FMA;

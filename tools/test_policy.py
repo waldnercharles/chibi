@@ -19,7 +19,7 @@ DEADLINE = 'CHIBI_TEST_DEADLINE'
 PROCESS_GROUP = 'CHIBI_TEST_PROCESS_GROUP'
 # Exact invocations, not selector prefixes. Historical times are not guarantees.
 NATIVE = {
-    ('--c-export-alias',): 'Reviewed bounded C case: twelve tiny I32/I64 DIV/MOD operand-alias fixtures plus one authored union pause/detach/continuation fixture, one shared-library compiler child with existing10s limit, source<128KiB, 120 alias executions and two pause/resume samples including negative zero, native POSIX source build with authoring only, same configured C flags/sanitizers; no new executable/frames/GPU/network; shared60s; docs/testing.md',
+    ('--c-export-alias',): 'Reviewed bounded C case: twelve tiny I32/I64 DIV/MOD operand-alias fixtures, one authored union pause/detach/continuation fixture and one verified guarded-array fixture, one shared-library compiler child with existing10s limit, source<128KiB, 120 alias executions, two pause/resume samples including negative zero and eight array calls including saved-bank alias fallback, native POSIX source build with authoring only, same configured C flags/sanitizers; no new executable/frames/GPU/network; shared60s; docs/testing.md',
     ('--ecs-query',): 'Reviewed bounded C ECS query cases: membership/binding cache invalidation, live values, partial traversal, generation safety, allocation-free stable iteration, candidate costs and capped Cartesian retention; no processes/files/frames/GPU; shared60s; docs/testing.md',
     ('--reflect-ranges',): 'First supervised measurement: two reviewed existing C reflection cases, twelve children with existing 10s limits, fixed sources <2KiB, numeric units/ranges/hints/defaults, malformed and unsafe endpoints, transactional failed outputs; no engine frames/GPU/network; shared 60s; docs/testing.md',
     ('--player-clock',): 'Reviewed two deterministic C cases compiling actual player clock initialization for native and browser with only the Cute limiter setter recorded; no clocks/sleeps/window/GPU; 2cases4asserts passed inside native group3.534s/shared60s; browser case fails with the prior unconditional60FPS setter; docs/testing.md',
@@ -77,6 +77,7 @@ NATIVE = {
     ('--asset-refactor',): 'One asset rename case: four in-memory prototypes, planned rewrites of a nested child and of a child that an including prototype adds, no files, CPU only; docs/testing.md',
     ('--source-edit',): 'Independently reviewed fifteen fixed source-edit cases, tiny literal inputs and checked transactions including extraction/inline/signature/binding/capture/layout, fused-call delete/move/expression/insert/extraction, named-action disable/enable edits and Value input replace/connect preserving its assignment destination, source Get/Set creation with qualified quoted state identity/defaults/typed producers and lexical shadow checks, declaration append after leading line/block comments and component compound Get/Set metadata remap with distinct positions/comments/watched pins, checked state retype preserving comments/compatible initializers and rejecting ill-typed uses, no files/world/runtime/process/GPU; shared60s; docs/testing.md',
     ('--ecs-query-benchmark',): 'Reviewed three fixed ECS query workloads, 4096 entities x 2000 passes each, CPU only; run through benchmark_trials',
+    ('--scheduler-benchmark',): 'Reviewed tiny C scheduler workloads: 12 systems x128 passes x5 trials, stable refresh and run-only, owned-descriptor/dependency/failure checks; no threads/files/frames/GPU; shared60s; docs/testing.md',
     ('--system-schedule',): 'First supervised measurement; independently reviewed fixed dependency/order cases, 62 small engine frames and serial/parallel 128 entities x 20 frames, CPU only; docs/testing.md',
     ('--material-destruction',): 'Material damage, terrain preparation, debris, blasts and their impacts on bodies; 26 cases, fixed grids, CPU only; docs/testing.md',
     ('--material-fluids',): 'Fluid flow, cohesion, buoyancy and cave fields; 12 cases, fixed grids, CPU only; docs/testing.md',
@@ -422,6 +423,7 @@ TOOLS = {
     # each with 100 loop iterations, four warmups, no frames/files/GPU; shared60s.
     'script-benchmark': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                          '--script-benchmark'],
+    'scheduler-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--scheduler-benchmark'],
     # Reviewed source-to-runtime event/system/binding cases with finite supplied-time steps.
     'language-query-program': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--query-program'],
     # Bounded in-process SDK generation reuse and invalidation, with four tiny source overlays.
@@ -452,6 +454,14 @@ TOOLS = {
     'c-export-alias': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--c-export-alias'],
 
 }
+# Tiny fixed C optimizer workloads; correctness checks accompany timing samples.
+for selector in ('activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark'):
+    TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
+
+# Reviewed fixed ownership/topology counterexamples, no frames or child processes.
+for selector in ('binding-schedule', 'borrow', 'activation-cache'):
+    TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
+
 # Every admitted selector of each built driver, run under one shared deadline.
 for lab in EXAMPLE_LABS:
     TOOLS[f'installed-example-{lab}'] = [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
@@ -459,12 +469,13 @@ for lab in EXAMPLE_LABS:
 
 # The same finite C dispatcher compiled for Wasm, with no JavaScript assertions.
 wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
-for selector in ('wasm', 'execution', 'program', 'headless', 'publication', 'script-benchmark', 'query-program', 'ranges', 'scalarize'):
+for selector in ('wasm', 'execution', 'program', 'headless', 'publication', 'script-benchmark', 'query-program', 'ranges', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache'):
     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
 
 GROUPS = {
     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
-             'wasm-publication', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize'],
+             'wasm-publication', 'wasm-script-benchmark', 'wasm-ranges', 'wasm-scalarize',
+             'wasm-activation-benchmark', 'wasm-binding-benchmark', 'wasm-borrow-benchmark', 'wasm-incremental-benchmark', 'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache'],
     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
                'player-url', 'player-clock',
                'physics', 'physics3d',
@@ -474,7 +485,7 @@ GROUPS = {
                'parallel-tick', 'source-native-features', 'source-native-numeric-queries',
                'source-native-material', 'source-presentation', 'system-schedule',
                'source-systems', 'source-query-rows', 'source-edit', 'new-asset', 'asset-refactor',
-               'shader-parameters-prepared', 'language-prepared', 'ecs-query-benchmark',
+               'shader-parameters-prepared', 'language-prepared', 'ecs-query-benchmark', 'scheduler-benchmark',
                'preview-components', 'graph-document', 'graph-presentation', 'graph-functions',
                'vector-nodes', 'asset-values', 'ui-document', 'text-files', 'fmt', 'particles',
                'png-encoding', 'project-document', 'prototype-documents', 'reference-index',
@@ -492,6 +503,8 @@ GROUPS = {
                   'material-simulation', 'material-ecs', 'material-render', 'material-benchmark',
                   'contact-benchmark'],
     'language': ['language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-ranges', 'language-scalarize', 'script-benchmark',
+                 'language-activation-benchmark', 'language-binding-benchmark', 'language-borrow-benchmark', 'language-incremental-benchmark',
+                 'language-binding-schedule', 'language-borrow', 'language-activation-cache',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication',
                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
                  'graph-authoring', 'model-runtime'],

@@ -1,3 +1,4 @@
+#include "execution/borrow.h"
 #include "execution/jit_internal.h"
 #include "support/array.h"
 
@@ -91,6 +92,10 @@ bool behavior_jit_host_call(
             SLJIT_IMM,
             (sljit_sw)spec->call->context
         );
+    } else if (i->right == BF_HOST_BORROW_ARRAY) {
+        sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R0, 0, m->context, 0);
+        sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R1, 0, SLJIT_IMM, i->target);
+        sljit_emit_icall(c, SLJIT_CALL, SLJIT_ARGS2(P, P, 32), SLJIT_IMM, (sljit_sw)behavior_function_borrow_snapshot);
     } else if (spec->call->value) {
         sljit_emit_op1(c, SLJIT_MOV_P, SLJIT_R3, 0, SLJIT_R2, 0);
         sljit_emit_op1(c, SLJIT_MOV32, SLJIT_R2, 0, SLJIT_IMM, spec->result_first - spec->first);

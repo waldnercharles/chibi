@@ -40,16 +40,22 @@ typedef struct
     uint64_t task_lookup_steps; /* Handle-index probes in the last collection. */
     int instance_count;
     size_t instance_bytes, state_bank_bytes, activation_bytes;
+    size_t activation_cache_bytes;
     size_t query_history_bytes, query_index_bytes, ecs_change_bytes;
+    size_t binding_schedule_bytes;
     uint64_t query_rows, query_lookup_steps;
 } execution_memory_usage;
 /* After each safe event/update boundary, bytes describe live managed values;
  * capacity includes reusable allocation slots. Task result bytes include their
  * owned snapshots; task slots include reusable slots. Instance/activation headers,
  * fixed state banks, query history and index slots are logical byte counts and
- * exclude allocator overhead and nested buffers. ecs_change_bytes is shared
+ * exclude allocator overhead and nested buffers. activation_cache_bytes counts
+ * owned idle activation storage separately, bounded to 64 KiB per program.
+ * ecs_change_bytes is shared
  * world-owned storage (do not sum across programs); query counters describe the
- * latest refresh. Stateless streaming retains no instance headers. */
+ * latest refresh. Stateless streaming retains no instance headers. Binding
+ * schedule bytes include retained buffers and an upper bound for shared
+ * generation keys, which may also belong to another program's cache. */
 execution_memory_usage execution_program_memory_usage(const execution_program *);
 /* Owned snapshot. Copying the record preserves all text and source coordinates.
  * The first failure is retained until explicitly cleared. The borrowed getter

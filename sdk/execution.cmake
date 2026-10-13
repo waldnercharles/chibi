@@ -1,5 +1,5 @@
 set(CHIBI_EXECUTION_SOURCES
-    artifact.c backend.c c.c call.c component.c ecs_reader.c function.c function_builder.c fusion.c host.c inputs.c intrinsics.c
+    artifact.c backend.c borrow.c c.c call.c component.c ecs_reader.c function.c function_builder.c fusion.c host.c inputs.c intrinsics.c
     jit.c jit_component.c jit_host_call.c jit_integer.c jit_memory.c jit_registers.c
     jit_suspend.c jit_system.c jit_watch.c log.c machine.c module.c module_effects.c opt.c parallel.c
     preparation_budget.c prepared.c prepared_function.c program.c program_inspection.c program_activation.c

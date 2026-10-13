@@ -19,6 +19,90 @@
 #include <string.h>
 #include <time.h>
 
+#define ACTIVATION_CACHE_BYTES ((size_t)64 * 1024)
+
+static int vm_slots(const behavior_function *f)
+{
+    int count = acount(f->slots) + acount(f->locals) + 1;
+    if (f->fast) {
+        int fast = acount(f->fast->slots) + acount(f->fast->locals) + 1;
+        if (fast > count) {
+            count = fast;
+        }
+    }
+    return count;
+}
+static int vm_frames(const behavior_function *f)
+{
+    int count = acount(f->frames);
+    return f->fast && acount(f->fast->frames) > count ? acount(f->fast->frames) : count;
+}
+static size_t cache_bytes(const execution_activation *a)
+{
+    const behavior_function *f = a->function;
+    size_t bytes = sizeof *a + arena_storage_bytes(&a->storage);
+    if (a->activation.values) {
+        bytes += ((size_t)acount(f->slots) + acount(f->locals) + acount(f->frames)) *
+                 sizeof *a->activation.values;
+    }
+    if (a->activation.wake_times) {
+        bytes += (size_t)acount(f->frames) * sizeof *a->activation.wake_times;
+    }
+    if (a->activation.vm) {
+        bytes += sizeof *a->activation.vm;
+        bytes += (size_t)vm_slots(f) * sizeof *a->activation.vm->values;
+        if (a->activation.vm->parents) {
+            bytes += (size_t)vm_frames(f) * sizeof *a->activation.vm->parents;
+        }
+    }
+    return bytes;
+}
+size_t program_activation_cache_bytes(const execution_program *p)
+{
+    return p->spare_activation ? cache_bytes(p->spare_activation) : 0;
+}
+/* Only use after host/call/task ownership has been released, or before binding. */
+static void discard(execution_activation *a)
+{
+    behavior_function_activation_free(&a->activation);
+    arena_free(&a->storage);
+    arena_free(&a->payload);
+    free(a);
+}
+void program_activation_cache_free(execution_program *p)
+{
+    execution_activation *a = p->spare_activation;
+    p->spare_activation = NULL;
+    if (a) {
+        discard(a);
+    }
+}
+static void reset_scratch(execution_activation *a)
+{
+    const behavior_function *f = a->function;
+    behavior_function_activation *saved = &a->activation;
+    assert(!saved->calls);
+    if (saved->values) {
+        size_t count = (size_t)acount(f->slots) + acount(f->locals) + acount(f->frames);
+        memset(saved->values, 0, count * sizeof *saved->values);
+    }
+    if (saved->wake_times) {
+        memset(saved->wake_times, 0, (size_t)acount(f->frames) * sizeof *saved->wake_times);
+    }
+    if (saved->vm) {
+        memset(saved->vm->values, 0, (size_t)vm_slots(f) * sizeof *saved->vm->values);
+        if (saved->vm->parents) {
+            memset(
+                saved->vm->parents,
+                0,
+                (size_t)vm_frames(f) * sizeof *saved->vm->parents
+            );
+        }
+    }
+    *saved = (behavior_function_activation){ .values = saved->values,
+                                             .wake_times = saved->wake_times,
+                                             .vm = saved->vm };
+}
 static void unlink_continuation(execution_activation *a)
 {
     if (!a->continuation_context) {
@@ -53,6 +137,7 @@ static void cancel_continuations(behavior_function_context *ctx)
 }
 void program_activation_cancel(execution_activation *a)
 {
+    a->cacheable = false;
     behavior_function_visit_contexts(&a->context, cancel_continuations);
     while (acount(a->requests)) {
         execution_request_detach(a->requests[0]->request);
@@ -62,6 +147,14 @@ void program_activation_cancel(execution_activation *a)
 }
 void program_activation_free(execution_activation *activation)
 {
+    execution_program *p = activation->instance->program;
+    bool keep = activation->cacheable && activation->has_run &&
+                activation->finished && activation->status == FLOW_OK &&
+                !activation->stopping && !activation->task &&
+                !activation->origin_action && !activation->continuation_owner &&
+                !activation->context.pending_commands &&
+                !acount(activation->requests) && !p->owner_program->inspector &&
+                !p->spare_activation;
     program_task_finished(activation, true);
     program_boxes_free(activation);
     program_inspection_release(activation);
@@ -72,11 +165,22 @@ void program_activation_free(execution_activation *activation)
     }
     afree(activation->requests);
     afree(activation->actions);
-    behavior_function_activation_free(&activation->activation);
+    behavior_function_clear_calls(&activation->activation);
     behavior_function_release_host(&activation->context);
-    arena_free(&activation->storage);
     arena_free(&activation->payload);
-    free(activation);
+    if (keep && !p->spare_activation &&
+        cache_bytes(activation) <= ACTIVATION_CACHE_BYTES) {
+        arena storage = activation->storage;
+        behavior_function_activation saved = activation->activation;
+        const behavior_function *function = activation->function;
+        arena_reset(&storage);
+        *activation = (execution_activation){ .function = function,
+                                              .storage = storage,
+                                              .activation = saved };
+        p->spare_activation = activation;
+        return;
+    }
+    discard(activation);
 }
 static void leave_context(behavior_function_context *ctx, int result)
 {
@@ -111,25 +215,34 @@ execution_activation *program_activation_new(
     unsigned budget
 )
 {
-    execution_activation *a = xcalloc(1, sizeof *a);
-    a->instance = instance;
-    a->function = function;
     int declared = 0, result_count = 0;
     const pin_value *defaults = behavior_function_arguments(function, &declared);
     const pin_value *result_defaults = behavior_function_results(function, &result_count);
     if (count < 0 || count > declared) {
-        free(a);
         return NULL;
     }
+    execution_program *p = instance->program;
+    if (p->spare_activation && (p->spare_activation->function != function ||
+                                p->owner_program->inspector)) {
+        program_activation_cache_free(p);
+    }
+    execution_activation *a = p->spare_activation;
+    p->spare_activation = NULL; /* Reentrant work cannot borrow this live frame. */
+    if (a) {
+        reset_scratch(a);
+    } else {
+        a = xcalloc(1, sizeof *a);
+    }
+    a->instance = instance;
+    a->function = function;
+    a->cacheable = true;
     arena_init_collectable(&a->payload);
     pin_value *args = arena_alloc(&a->storage, (size_t)(declared + 1) * sizeof *args);
     for (int i = 0; i < declared; i++) {
         const pin_value *value = i < count ? &arguments[i] : &defaults[i];
         if (!program_same_type(defaults[i], *value) ||
             pin_value_snapshot_to_arena(&a->payload, &args[i], value)) {
-            arena_free(&a->storage);
-            arena_free(&a->payload);
-            free(a);
+            discard(a);
             return NULL;
         }
     }
@@ -141,7 +254,7 @@ execution_activation *program_activation_new(
     }
     behavior_function_prepare_results(function, results, &a->storage);
     bool resumable = behavior_function_resumable(function);
-    if (resumable) {
+    if (resumable && !a->activation.values) {
         behavior_function_activation_init(function, &a->activation);
     }
     a->context = (behavior_function_context){ .activation = resumable ? &a->activation
@@ -211,6 +324,7 @@ void program_continuation_finish(execution_activation *a)
 }
 int program_activation_run(execution_activation *a, double now, double delta, unsigned budget)
 {
+    a->cacheable &= !a->has_run && !a->instance->program->owner_program->inspector;
     if (program_task_due(a, now)) {
         program_tasks_tick(a->instance, now);
     }
@@ -295,6 +409,7 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         &a->context,
         a->instance->program->module->backend != BEHAVIOR_BYTECODE
     );
+    a->cacheable &= a->status == FLOW_OK && !acount(a->requests);
     if (observed->observer) {
         clock_t end = clock();
         bool available = start != (clock_t)-1 && end != (clock_t)-1 && end >= start;

@@ -428,6 +428,23 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     break;
                 }
                 if (spec->call->value) {
+                    if (i->right == BF_HOST_BORROW_ARRAY) {
+                        fprintf(
+                            out,
+                            "c->error_message=NULL;if(!behavior_borrow_array(c,"
+                            "(behavior_borrow_layout){%d,%d,%d,%d,%d,%d},c->"
+                            "data->values+%d,c->"
+                            "data->values+%d))",
+                            f->variable_count,
+                            f->result_count,
+                            acount(f->data_values),
+                            acount(f->slots),
+                            acount(f->locals),
+                            acount(f->frames),
+                            spec->first,
+                            spec->result_first
+                        );
+                    }
                     fprintf(
                         out,
                         "{c->error_message=c->data->calls[%d].value(c->value_"
@@ -1045,7 +1062,8 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         out,
         "#include \"execution/scalar.h\"\n#include "
         "\"execution/function.h\"\n#include "
-        "\"execution/random.h\"\n#include <math.h>\n#include "
+        "\"execution/random.h\"\n#include \"execution/borrow.h\"\n#include "
+        "<math.h>\n#include "
         "<string.h>\n#include \"support/cos_sin.h\"\n#include "
         "\"ecs/execution.h\"\n%sint %s",
         local ? "static inline " : "",

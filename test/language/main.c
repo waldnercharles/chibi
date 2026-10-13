@@ -16,6 +16,13 @@ void test_language_incremental();
 void test_numeric_ranges();
 void test_language_scalarize();
 void test_language_benchmark();
+void test_language_activation_benchmark();
+void test_language_binding_benchmark();
+void test_language_borrow_benchmark();
+void test_language_incremental_benchmark();
+void test_language_borrow();
+void test_language_binding_schedule();
+void test_language_activation_cache();
 void test_language_headless();
 void test_language_format();
 void test_language_navigation();
@@ -38,12 +45,21 @@ int main(int argc, char **argv)
     bool semantic = argc == 2 && !strcmp(argv[1], "--semantic");
     bool execution = argc == 2 && !strcmp(argv[1], "--execution");
     bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
+    bool activation_benchmark = argc == 2 &&
+                                !strcmp(argv[1], "--activation-benchmark");
+    bool binding_benchmark = argc == 2 && !strcmp(argv[1], "--binding-benchmark");
+    bool borrow_benchmark = argc == 2 && !strcmp(argv[1], "--borrow-benchmark");
+    bool incremental_benchmark = argc == 2 &&
+                                 !strcmp(argv[1], "--incremental-benchmark");
     bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
     bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
     bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
     bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
     bool scalarize = argc == 2 && !strcmp(argv[1], "--scalarize");
+    bool borrow = argc == 2 && !strcmp(argv[1], "--borrow");
+    bool binding_schedule = argc == 2 && !strcmp(argv[1], "--binding-schedule");
+    bool activation_cache = argc == 2 && !strcmp(argv[1], "--activation-cache");
     bool headless = argc == 2 && !strcmp(argv[1], "--headless");
     bool navigation = argc == 2 && !strcmp(argv[1], "--navigation");
     bool publication = argc == 2 && !strcmp(argv[1], "--publication");
@@ -55,17 +71,24 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !execution && !semantic && !benchmark && !wasm &&
-         !program && !query_program && !incremental && !ranges && !scalarize &&
-         !headless && !navigation && !publication && !field_runtime && !prototype &&
-         !ui_authoring && !text_format && !graph_model && !graph_authoring &&
-         !model_runtime && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+        (!format && !prepared && !execution && !semantic && !benchmark &&
+         !activation_benchmark && !binding_benchmark && !borrow_benchmark &&
+         !incremental_benchmark && !wasm && !program && !query_program &&
+         !incremental && !ranges && !scalarize && !borrow &&
+         !binding_schedule && !activation_cache && !headless && !navigation &&
+         !publication && !field_runtime && !prototype && !ui_authoring &&
+         !text_format && !graph_model && !graph_authoring && !model_runtime &&
+         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
             "| --program | --query-program | --incremental | --ranges | "
-            "--scalarize | "
-            "--script-benchmark | --wasm | --headless | "
+            "--scalarize | --borrow | --binding-schedule | --activation-cache "
+            "| "
+            "--script-benchmark | --activation-benchmark | --binding-benchmark "
+            "| "
+            "--borrow-benchmark | --incremental-benchmark | --wasm | "
+            "--headless | "
             "--navigation | "
             "--publication | "
             "--field-runtime | --prototype-document | --ui-authoring | "
@@ -82,6 +105,20 @@ int main(int argc, char **argv)
         test_language_wasm();
     } else if (benchmark) {
         test_language_benchmark();
+    } else if (activation_benchmark) {
+        test_language_activation_benchmark();
+    } else if (binding_benchmark) {
+        test_language_binding_benchmark();
+    } else if (borrow_benchmark) {
+        test_language_borrow_benchmark();
+    } else if (incremental_benchmark) {
+        test_language_incremental_benchmark();
+    } else if (borrow) {
+        test_language_borrow();
+    } else if (binding_schedule) {
+        test_language_binding_schedule();
+    } else if (activation_cache) {
+        test_language_activation_cache();
     } else if (model_runtime) {
         test_model_runtime();
     } else if (graph_authoring) {

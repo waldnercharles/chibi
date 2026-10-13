@@ -163,6 +163,49 @@ TEST_CASE(unchanged_sources_reuse_analysis_and_executables_after_old_collection_
     return true;
 }
 
+TEST_CASE(display_edits_reuse_sources_with_independently_owned_catalogs)
+{
+    static const char *const text[] = { "Lifecycle", "tick update", "Run one update." };
+    char buffers[3][32];
+    const char **fields[] = { &tick.category, &tick.keywords, &tick.description };
+    generations[0] = prepare(-1, BEHAVIOR_BYTECODE);
+    REQUIRE(valid(0));
+    for (int change = 0; change < 3; change++) {
+        strcpy(buffers[change], text[change]);
+        *fields[change] = buffers[change];
+        generations[1] = prepare(0, BEHAVIOR_BYTECODE);
+        REQUIRE(valid(1) && authoring_sources_reused(generations[1]) == 4);
+        REQUIRE(source(0, "Caller") == source(1, "Caller"));
+        const script_catalog_capability *old = script_catalog_capability_by_id(
+            authoring_sources_catalog(generations[0]),
+            tick.id
+        );
+        const script_catalog_capability *fresh = script_catalog_capability_by_id(
+            authoring_sources_catalog(generations[1]),
+            tick.id
+        );
+        REQUIRE(old && fresh);
+        const char *old_text[] = { old->category, old->keywords, old->description };
+        const char *fresh_text[] = { fresh->category, fresh->keywords, fresh->description };
+        REQUIRE(!old_text[change]);
+        buffers[change][0] = '!';
+        for (int field = 0; field <= change; field++) {
+            REQUIRE(!strcmp(fresh_text[field], text[field]));
+            if (field < change) {
+                REQUIRE(!strcmp(old_text[field], text[field]));
+            }
+        }
+        REQUIRE(value_is(0, "Caller", 3) && value_is(1, "Caller", 3));
+        discard(0);
+        REQUIRE(!strcmp(fresh_text[change], text[change]));
+        REQUIRE(value_is(1, "Caller", 3));
+        buffers[change][0] = text[change][0];
+        generations[0] = generations[1];
+        generations[1] = NULL;
+    }
+    return true;
+}
+
 TEST_CASE(body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources)
 {
     const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
@@ -236,12 +279,16 @@ TEST_CASE(catalog_defaults_effects_units_layouts_and_relationships_invalidate_re
                                            .has_default = true,
                                            .default_value = { .type = PIN_F64,
                                                               .d = 0.0 } };
+    script_catalog_parameter result = { .name = "Result",
+                                        .type = { .storage = PIN_F64 } };
     script_catalog_capability capabilities[2] = { tick,
                                                   { .id = 50,
                                                     .name = "Other",
-                                                    .kind = SCRIPT_CAPABILITY_EVENT,
+                                                    .kind = SCRIPT_CAPABILITY_FUNCTION,
                                                     .parameters = &parameter,
-                                                    .parameter_count = 1 } };
+                                                    .parameter_count = 1,
+                                                    .results = &result,
+                                                    .result_count = 1 } };
     script_catalog_global global = { .id = 51,
                                      .name = "distance",
                                      .type = { .storage = PIN_F64 },
@@ -273,7 +320,7 @@ TEST_CASE(catalog_defaults_effects_units_layouts_and_relationships_invalidate_re
     generations[1] = prepare(0, BEHAVIOR_BYTECODE);
     REQUIRE(valid(1) && authoring_sources_reused(generations[1]) == 4);
     discard(1);
-    for (int change = 0; change < 8; change++) {
+    for (int change = 0; change < 11; change++) {
         switch (change) {
             case 0: parameter.default_value.d = -0.0; break;
             case 1: capabilities[1].effects = SCRIPT_EFFECT_WRITE; break;
@@ -287,6 +334,9 @@ TEST_CASE(catalog_defaults_effects_units_layouts_and_relationships_invalidate_re
             case 5: relationship.exclusive = false; break;
             case 6: field.type.flags = SCRIPT_TYPE_REFERENCE; break;
             case 7: parameter.unit = "charge"; break;
+            case 8: capabilities[1].name = "Renamed"; break;
+            case 9: parameter.name = "renamed_input"; break;
+            case 10: result.name = "RenamedResult"; break;
         }
         generations[1] = prepare(0, BEHAVIOR_BYTECODE);
         REQUIRE(valid(1));
@@ -653,6 +703,7 @@ void test_language_incremental()
 {
     pu_setup(setup, cleanup);
     RUN_TEST_CASE(unchanged_sources_reuse_analysis_and_executables_after_old_collection_dies);
+    RUN_TEST_CASE(display_edits_reuse_sources_with_independently_owned_catalogs);
     RUN_TEST_CASE(body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources);
     RUN_TEST_CASE(binding_generations_and_backends_are_required_cache_inputs);
     RUN_TEST_CASE(catalog_defaults_effects_units_layouts_and_relationships_invalidate_reuse);

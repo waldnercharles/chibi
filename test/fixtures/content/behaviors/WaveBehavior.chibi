@@ -11,7 +11,7 @@ behavior "WaveBehavior" {
             await "Spawn Within Wave Limit"(find_nearest_entity(self.Transform, 1000000.0, 1, engine["Self"]()).Position)
         }
     }
-    function "Spawn Within Wave Limit"("Player Position": struct<"CF_V2"> = null) {
+    "Spawn Within Wave Limit" :: fn("Player Position": struct<"CF_V2"> = null) {
         after entry {
             while state."Elapsed" >= max(state."Interval", B: float = 0.01) {
                 if state."Spawned" >= state."CountLimit" {
@@ -26,7 +26,7 @@ behavior "WaveBehavior" {
             return
         }
     }
-    function "Spawn Enemy"("Player Position": struct<"CF_V2"> = null) {
+    "Spawn Enemy" :: fn("Player Position": struct<"CF_V2"> = null) {
         action spawn_prototype = engine["Spawn Prototype"]("Enemy")
         after entry {
             spawn_prototype()

@@ -84,7 +84,7 @@ TEST_CASE(source_view_clone_owns_defaults_and_edit_origins)
 {
     REQUIRE(project(
         "behavior View { text: string = \"hello\";"
-        " function Pair(n: double) -> (total: double, message: string) {"
+        " Pair :: fn(n: double) -> (total: double, message: string) {"
         " return (n, text); }"
         " on Tick { current := Pair(2); text = current.message; } }"
     ));
@@ -190,7 +190,7 @@ TEST_CASE(source_view_locals_stay_in_their_callable)
 {
     REQUIRE(project(
         "behavior View { count: double = 0;"
-        " function Target(n: double) -> (result: double) {"
+        " Target :: fn(n: double) -> (result: double) {"
         " width := n * 8; if (n > 0) { nested := width - 1; return nested; }"
         " return width; }"
         " on Tick { width := Target(count); count = width; } }"
@@ -228,7 +228,7 @@ TEST_CASE(source_view_entries_have_layout_priority)
 {
     REQUIRE(project(
         "behavior View { count: double = 0;"
-        " function Target(n: double) -> (result: double) {"
+        " Target :: fn(n: double) -> (result: double) {"
         " unused := 7; return n + 1; }"
         " on Tick { unused := 8; count = Target(count); } }"
     ));
@@ -260,7 +260,7 @@ TEST_CASE(source_view_formulas_preserve_readable_source)
 {
     REQUIRE(project(
         "behavior View { count: double = 0;"
-        " function Target(n: double) -> (result: double) {"
+        " Target :: fn(n: double) -> (result: double) {"
         " return (n * 8 + 2) / 2; }"
         " on Tick { count += (Target(count) - count) * (1 - 0.01); } }"
     ));
@@ -303,7 +303,7 @@ TEST_CASE(source_view_formulas_preserve_readable_source)
     cleanup();
     REQUIRE(project(
         "behavior View { count: double = 0;"
-        " function Next() -> (result: double) { count += 1; return count; }"
+        " Next :: fn() -> (result: double) { count += 1; return count; }"
         " on Tick { count = Next() + 2; } }"
     ));
     REQUIRE(analysis->diagnostic_count == 0);
@@ -408,7 +408,7 @@ TEST_CASE(source_view_branch_terminals_do_not_rejoin)
 {
     REQUIRE(project(
         "behavior Inventory { items: double = 0;"
-        " function Inspect(limit: double) -> (total: double) {"
+        " Inspect :: fn(limit: double) -> (total: double) {"
         " if items > limit { return 1; } else { items = 2; }"
         " items = 3; return items; } on Tick {} }"
     ));
@@ -726,10 +726,10 @@ TEST_CASE(source_view_authored_calls_keep_named_typed_editable_ports)
 {
     REQUIRE(project(
         "behavior Inventory { count: double = 0;"
-        " function Pair(amount: double, text: string) -> (total: double, "
+        " Pair :: fn(amount: double, text: string) -> (total: double, "
         "message: string) {"
         " return (amount + 1, text); }"
-        " function Other() -> (value: double) { return 3; }"
+        " Other :: fn() -> (value: double) { return 3; }"
         " on Tick { current := Pair(text: \"apple\", amount: 2); count = "
         "current.total; await Delay(0.1); } }"
     ));
@@ -800,7 +800,7 @@ TEST_CASE(source_view_effectful_authored_calls_remain_explicit)
 {
     REQUIRE(project(
         "behavior Counter { count: double = 0;"
-        " function Next(amount: double) -> (total: double) { count += amount; "
+        " Next :: fn(amount: double) -> (total: double) { count += amount; "
         "return count; }"
         " on Tick { count = Next(2) + 1; } }"
     ));
@@ -827,7 +827,7 @@ TEST_CASE(source_view_small_value_calls_fold_with_editable_origins)
 {
     REQUIRE(project(
         "behavior Counter { count: double = 0;"
-        " function Double(amount: double) -> (total: double) { return amount * "
+        " Double :: fn(amount: double) -> (total: double) { return amount * "
         "2; }"
         " on Tick { count = Double(2); } }"
     ));
@@ -968,7 +968,7 @@ TEST_CASE(source_view_short_circuit_effects_are_not_eager_flow)
 {
     REQUIRE(project(
         "behavior Counter { count: double = 0; ready: bool = false;"
-        " function Check(amount: double) -> (ok: bool) { count += amount; "
+        " Check :: fn(amount: double) -> (ok: bool) { count += amount; "
         "return true; }"
         " on Tick { ready = ready && Check(1); } }"
     ));
@@ -1069,9 +1069,28 @@ static bool native_palette_composition_keeps_declared_capabilities()
     palette = NULL;
     return true;
 }
+TEST_CASE(source_view_keeps_constant_definitions)
+{
+    REQUIRE(project("behavior View { Base :: 2; Run :: () { Local :: Base + 1; } }"));
+    REQUIRE(analysis->valid);
+    int constants = 0;
+    for (int i = 0; i < authoring_source_presentation_origin_count(view); i++) {
+        const source_presentation_origin *origin = authoring_source_presentation_origin_at(view, i);
+        if (origin->kind != SOURCE_PRESENTATION_SYMBOL || origin->pin ||
+            analysis->symbols[origin->record].kind != SCRIPT_CONSTANT) {
+            continue;
+        }
+        REQUIRE(origin_node(view, origin));
+        constants++;
+    }
+    REQUIRE(constants == 2);
+    return true;
+}
+
 void test_source_presentation()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_view_keeps_constant_definitions);
     RUN_TEST_CASE(source_view_clone_owns_defaults_and_edit_origins);
     RUN_TEST_CASE(source_views_keep_named_invalid_drafts);
     RUN_TEST_CASE(source_view_locals_stay_in_their_callable);

@@ -20,6 +20,8 @@ typedef enum
     SCRIPT_COMPONENT,
     SCRIPT_LABEL,
     SCRIPT_TYPE_PARAMETER,
+    SCRIPT_TYPE,
+    SCRIPT_CONSTANT,
 } script_symbol_kind;
 typedef struct
 {
@@ -30,8 +32,11 @@ typedef struct
     script_range declaration;
     int scope, initializer, function;
     bool writable, disabled, resolving, outcome;
-    bool boxed;       /* A task keeps this local by reference. */
-    bool mixed_tasks; /* Holds tasks of different functions. */
+    bool boxed;                   /* A task keeps this local by reference. */
+    bool mixed_tasks;             /* Holds tasks of different functions. */
+    unsigned mutations;           /* Invalidates proofs after assignments. */
+    uint64_t source_relationship; /* Query component provider; zero is self. */
+    int source_traversal;         /* script_query_source */
 } script_symbol;
 typedef enum
 {
@@ -73,6 +78,11 @@ typedef enum
     SCRIPT_EXPR_YIELD,
     SCRIPT_EXPR_JOIN,   /* await of a task handle in left */
     SCRIPT_EXPR_CANCEL, /* cancel of a task handle in left */
+    SCRIPT_EXPR_RELATION, /* Streaming relationship targets; only a foreach source. */
+    SCRIPT_EXPR_UNION,
+    SCRIPT_EXPR_IS,
+    SCRIPT_EXPR_AS,
+    SCRIPT_EXPR_UNWRAP,
 } script_expression_kind;
 typedef enum
 {
@@ -122,6 +132,11 @@ typedef struct
     unsigned effects;
     bool writable, awaited, constant_snapshot, partial;
     bool task; /* An unawaited call to a waiting function starts a task. */
+    script_type tested; /* Pattern target / safe extraction payload type. */
+    uint64_t tag; /* Union case identity; zero means a statically false test. */
+    bool negated;
+    uint64_t *pattern_tags;
+    int pattern_tag_count;
 } script_expression;
 typedef enum
 {
@@ -187,6 +202,8 @@ typedef struct
 {
     script_query_kind kind;
     uint64_t component;
+    uint64_t source_relationship;
+    int source_traversal;
     int *children;
     int child_count;
     script_range range;
@@ -220,6 +237,8 @@ typedef struct
     script_function *functions;
     script_query *queries;
     script_binding *bindings;
+    script_catalog_type *types; /* Authored and structural union definitions. */
+    int type_count;
     script_diagnostic *diagnostics;
     script_diagnostic *warnings; /* Unit mismatches; never invalidate. */
     int symbol_count, use_count, scope_count, expression_count, statement_count,

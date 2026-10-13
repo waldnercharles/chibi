@@ -5,6 +5,8 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/scalar.h"
+#include "types/trace.h"
+#include "types/union.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -249,6 +251,44 @@ static uint64_t scalar_bits(pin_value v)
     return behavior_scalar_bits(v);
 }
 static void value(execution_wire *, pin_value *, unsigned);
+static void tagged_value(execution_wire *w, pin_value *v, unsigned depth)
+{
+    const pin_union *source = w->reading ? NULL : v->ptr;
+    bool present = source != NULL;
+    execution_wire_bool(w, &present);
+    if (w->error || !present) {
+        return;
+    }
+    uint64_t tag = source ? source->tag : 0;
+    int count = source ? source->count : 0;
+    execution_wire_u64(w, &tag);
+    execution_wire_count(w, &count, 3);
+    if (w->error) {
+        return;
+    }
+    if (!tag || (tag == PIN_UNION_CANCELLED_TAG && count)) {
+        fail(w, "Prepared union tag is invalid");
+        return;
+    }
+    pin_union *decoded = NULL;
+    if (w->reading) {
+        decoded = execution_wire_allocate(w, sizeof *decoded + (size_t)count * sizeof(pin_value));
+        if (!decoded) {
+            return;
+        }
+        *decoded = (pin_union){ .tag = tag, .count = count };
+        memset(decoded->values, 0, (size_t)count * sizeof(pin_value));
+        pin_arena_trace_union(w->storage, decoded);
+        v->ptr = decoded;
+    }
+    for (int i = 0; i < count && !w->error; i++) {
+        pin_value item = source ? source->values[i] : (pin_value){ 0 };
+        value(w, &item, depth + 1);
+        if (decoded) {
+            decoded->values[i] = item;
+        }
+    }
+}
 static void structure(execution_wire *w, pin_value *v, unsigned depth)
 {
     const type_desc *type = type_catalog_find(v->type_name);
@@ -350,6 +390,7 @@ static void collection(execution_wire *w, pin_value *v, unsigned depth)
                               .capacity = count,
                               .items = (pin_value *)(array + 1) };
         memset(array->items, 0, (size_t)count * sizeof *array->items);
+        pin_arena_trace_array(w->storage, array);
         v->ptr = array;
     } else if (
         array->element_type != v->type || !same_name(array->type_name, v->type_name) ||
@@ -387,7 +428,7 @@ static void value(execution_wire *w, pin_value *v, unsigned depth)
     if (w->error) {
         return;
     }
-    if (tag < PIN_FLOW || tag > PIN_ENUM || container < PIN_CONTAINER_SINGLE ||
+    if (tag < PIN_FLOW || tag > PIN_UNION || container < PIN_CONTAINER_SINGLE ||
         container > PIN_CONTAINER_MAP || (tag == PIN_FLOW && container)) {
         fail(w, "Prepared value tag is invalid");
         return;
@@ -411,6 +452,10 @@ static void value(execution_wire *w, pin_value *v, unsigned depth)
         structure(w, v, depth);
         return;
     }
+    if (tag == PIN_UNION) {
+        tagged_value(w, v, depth);
+        return;
+    }
     if (tag == PIN_STR || tag == PIN_NAME) {
         execution_wire_string(w, &v->str);
         return;
@@ -420,7 +465,7 @@ static void value(execution_wire *w, pin_value *v, unsigned depth)
     if (w->error) {
         return;
     }
-    if ((tag == PIN_HANDLE || tag == PIN_FLOW) && bits) {
+    if ((tag == PIN_HANDLE || tag == PIN_TASK || tag == PIN_FLOW) && bits) {
         fail(w, "Prepared handles and flow values must be zero");
         return;
     }
@@ -448,7 +493,8 @@ static void value(execution_wire *w, pin_value *v, unsigned depth)
                 memcpy(&decoded.e, &narrow, sizeof narrow);
                 break;
             }
-            case PIN_HANDLE: decoded.u64 = 0; break;
+            case PIN_HANDLE:
+            case PIN_TASK: decoded.u64 = 0; break;
             default: fail(w, "Prepared scalar type is invalid"); return;
         }
     }

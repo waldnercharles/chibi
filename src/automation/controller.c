@@ -1846,7 +1846,7 @@ static void catalog_validate_asset(
         }
         behavior_asset_free(behavior);
     } else if (family->loader == ASSET_PROTOTYPE) {
-        prototype_includes includes = { root };
+        prototype_includes includes = { .root = root };
         prototype_registry registry = registry_with_includes(&includes);
         char error[256] = { 0 };
         prototype *prototype = prototype_load(json, &registry, error, sizeof error);
@@ -5952,7 +5952,7 @@ static char *canonical_asset(
         case ASSET_SYSTEM:
             return canonical_source(sources, json, path, metadata, error, error_size);
         case ASSET_PROTOTYPE: {
-            prototype_includes includes = { root };
+            prototype_includes includes = { .root = root };
             prototype_registry registry = registry_with_includes(&includes);
             /* It must resolve, but saves as authored: its own content, naming
              * its includes and children's prototypes. */
@@ -6604,7 +6604,7 @@ static int handle_validate_asset(const char *root, yyjson_val *request, response
             behavior_asset_free(asset);
         }
     } else if (ref.family->loader == ASSET_PROTOTYPE) {
-        prototype_includes includes = { root };
+        prototype_includes includes = { .root = root };
         prototype_registry registry = registry_with_includes(&includes);
         char load_error[256] = { 0 };
         prototype *prototype = prototype_load(json, &registry, load_error, sizeof load_error);
@@ -7291,6 +7291,10 @@ static void scenario_hash_value(uint64_t *hash, pin_type type, const char *type_
             }
             break;
         }
+        case PIN_TASK:
+        case PIN_UNION:
+            assert(false && "Managed task and union values cannot be ECS fields");
+            break;
         case PIN_FLOW: break;
     }
 }
@@ -7766,7 +7770,7 @@ static int prepare_scenario(
         return status;
     }
 
-    context->includes = (prototype_includes){ root };
+    context->includes = (prototype_includes){ .root = root };
     context->registry = registry_with_includes(&context->includes);
     char *scenario_json = scenario_prototype_text(prototype_json, context->prototype_hash);
     context->prototype = scenario_json
@@ -7952,7 +7956,7 @@ static int prepare_scene_scenario(
         return status;
     }
     context->root = xstrdup(root);
-    context->includes = (prototype_includes){ context->root };
+    context->includes = (prototype_includes){ .root = context->root };
     context->registry = registry_with_includes(&context->includes);
     context->preview = prototype_preview_new(&context->registry);
     if (!context->preview) {
@@ -12311,7 +12315,7 @@ static int spawned_bindings(const char *root, const prototype *prototype, char *
  * included. */
 static int validate_prototype_bindings(const char *root, const char *text, char *error, size_t error_size)
 {
-    prototype_includes includes = { root };
+    prototype_includes includes = { .root = root };
     prototype_registry registry = registry_with_includes(&includes);
     prototype *prototype = prototype_load(text, &registry, error, error_size);
     if (!prototype) {
@@ -12462,7 +12466,7 @@ static int validate_scene_dependencies(const char *root, const char *json, char 
         scene_document_free(scene);
         return CHIBI_AUTOMATION_VALIDATION_ERROR;
     }
-    prototype_includes includes = { root };
+    prototype_includes includes = { .root = root };
     prototype_registry registry = registry_with_includes(&includes);
     int status = validate_scene_paths(scene, &registry, error, error_size);
     bool fallout = false;

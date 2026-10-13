@@ -546,7 +546,7 @@ TEST_CASE(scenarios_load_graph_assets)
 
 static const char *const
     SHAPES_LIBRARY = "library \"Shapes\" {\n"
-                     "    pure function \"Disc\"(X: float = 0.0, Y: float = "
+                     "    \"Disc\" :: pure fn(X: float = 0.0, Y: float = "
                      "0.0) -> (Value: float = 0.0) {\n"
                      "        return field_circle(entry.X, entry.Y, 40.0)\n"
                      "    }\n"

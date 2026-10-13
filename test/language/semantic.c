@@ -134,6 +134,101 @@ TEST_CASE(language_optional_component_requires_presence_guard)
     REQUIRE(analysis->valid);
     return true;
 }
+TEST_CASE(language_query_header_resolves_boolean_filters_and_sources)
+{
+    const script_catalog_relationship relationships[] = {
+        { .id = 601, .name = "Targets", .exclusive = true },
+        { .id = 602, .name = "Likes" },
+    };
+    script_catalog queries = catalog;
+    queries.relationships = relationships;
+    queries.relationship_count = 2;
+    cleanup();
+    syntax = script_parse(
+        "system Follow query p: Position, aim: Targets.Position?, "
+        "up: Placement from ancestor(ChildOf) "
+        "where (Position or Placement) and not self.Placement "
+        "{ if aim { p.x = aim.x + up.x; } }"
+    );
+    analysis = script_analyze(syntax, &queries);
+    REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
+    bool found_path = false, found_ancestor = false;
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        const script_symbol *symbol = &analysis->symbols[i];
+        found_path |= !strcmp(symbol->name, "aim") &&
+                      symbol->source_relationship == 601 &&
+                      (symbol->type.flags & SCRIPT_TYPE_OPTIONAL);
+        found_ancestor |= !strcmp(symbol->name, "up") && symbol->source_traversal == 1;
+    }
+    REQUIRE(found_path && found_ancestor && analysis->query >= 0);
+    cleanup();
+    syntax = script_parse(
+        "system Follow query target: Targets.Position without Position { "
+        "target.x += 1; }"
+    );
+    analysis = script_analyze(syntax, &queries);
+    REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
+    parse("system Bad query p: Position without Position { p.x = 1; }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("A component cannot be both a parameter and excluded"));
+    parse(
+        "system Inherit query p: Position from ancestor(ChildOf) without "
+        "Position { p.x += 1; }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "system Inherit query p: Position from self_or_ancestor(ChildOf) "
+        "without Position { p.x += 1; }"
+    );
+    REQUIRE(analysis->valid);
+    cleanup();
+    syntax = script_parse("system Bad query p: Likes.Position { p.x = 1; }");
+    analysis = script_analyze(syntax, &queries);
+    REQUIRE(syntax->diagnostic_count == 0 && !analysis->valid);
+    REQUIRE(
+        diagnostic("Scalar query path requires an exclusive relationship; iterate multiple targets explicitly")
+    );
+    parse("system Bad query p: Position where target.Position { p.x = 1; }");
+    REQUIRE(!analysis->valid && diagnostic("Query membership source must be self"));
+    parse("system Safe query p: Position? { if p { p.x = 1; p.y = 2; } }");
+    REQUIRE(analysis->valid);
+    parse("system Waiting query p: Position? { if p { yield; p.x = 1; } }");
+    REQUIRE(
+        !analysis->valid &&
+        diagnostic("Optional component requires a presence guard before member access")
+    );
+    script_catalog_capability structural_capabilities[3];
+    memcpy(structural_capabilities, capabilities, sizeof structural_capabilities);
+    structural_capabilities[2].effects = SCRIPT_EFFECT_STRUCTURAL;
+    queries.capabilities = structural_capabilities;
+    cleanup();
+    syntax = script_parse("system Changed query p: Position? { if p { mutate(); p.x = 1; } }");
+    analysis = script_analyze(syntax, &queries);
+    REQUIRE(
+        !analysis->valid &&
+        diagnostic("Optional component requires a presence guard before member access")
+    );
+    const script_catalog_relationship shadow = { .id = 601,
+                                                 .name = "ChildOf",
+                                                 .exclusive = true };
+    queries.relationships = &shadow;
+    queries.relationship_count = 1;
+    cleanup();
+    syntax = script_parse("system Builtin query p: ChildOf.Position { for target in self.ChildOf {} }");
+    analysis = script_analyze(syntax, &queries);
+    REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
+    bool builtin_path = false, builtin_stream = false;
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        builtin_path |= analysis->symbols[i].source_relationship == SCRIPT_CHILD_OF;
+    }
+    for (int i = 0; i < analysis->expression_count; i++) {
+        const script_expression *expression = &analysis->expressions[i];
+        builtin_stream |= expression->kind == SCRIPT_EXPR_RELATION &&
+                          expression->capability == SCRIPT_CHILD_OF;
+    }
+    REQUIRE(builtin_path && builtin_stream);
+    return true;
+}
 TEST_CASE(language_derived_component_is_read_only)
 {
     parse("system Follow(placement: Placement, position: Position) { position.x = placement.x; }");
@@ -238,7 +333,7 @@ TEST_CASE(language_vector_operator_resolves_catalog_identity)
 }
 TEST_CASE(language_pure_call_chain_rejects_effects)
 {
-    parse("library Effects { function Write() -> () { mutate(); } pure function Read() -> () { Write(); } }");
+    parse("library Effects { Write :: fn() -> () { mutate(); } Read :: pure fn() -> () { Write(); } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid);
     bool found = false;
@@ -246,7 +341,7 @@ TEST_CASE(language_pure_call_chain_rejects_effects)
         found |= strstr(analysis->diagnostics[i].message, "Pure function") != NULL;
     }
     REQUIRE(found);
-    parse("library Effects { pure function Read() -> (output: int) { return 1; } }");
+    parse("library Effects { Read :: pure fn() -> (output: int) { return 1; } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
     return true;
@@ -261,7 +356,7 @@ TEST_CASE(language_discarded_pure_result_rejected)
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
     REQUIRE(diagnostic("sum returns a new value and changes nothing; assign its result"));
-    parse("library Values { function One() -> (count: int) { return 1; } function Use() -> () { One(); } }");
+    parse("library Values { One :: fn() -> (count: int) { return 1; } Use :: fn() -> () { One(); } }");
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(analysis->valid);
     parse("system Motion(position: Position) { position = VectorAdd(position, position); mutate(); }");
@@ -283,9 +378,9 @@ TEST_CASE(language_binding_cycle_rejected)
 TEST_CASE(language_inferred_return_of_several_results_is_rejected)
 {
     parse(
-        "library Tuples { function Pair() -> (a: double, b: double) { "
+        "library Tuples { Pair :: fn() -> (a: double, b: double) { "
         "return(1, 2) } "
-        "function Both() { return Pair() } }"
+        "Both :: fn() { return Pair() } }"
     );
     REQUIRE(syntax->diagnostic_count == 0);
     REQUIRE(!analysis->valid);
@@ -295,9 +390,9 @@ TEST_CASE(language_inferred_return_of_several_results_is_rejected)
         "return(Hit: r.Hit, Distance: r.Distance)"
     ));
     parse(
-        "library Tuples { function Pair() -> (a: double, b: double) { "
+        "library Tuples { Pair :: fn() -> (a: double, b: double) { "
         "return(1, 2) } "
-        "function First() { return Pair().a } }"
+        "First :: fn() { return Pair().a } }"
     );
     REQUIRE(analysis->valid);
     return true;
@@ -634,11 +729,309 @@ TEST_CASE(language_units_skip_invalid_sources)
     return true;
 }
 
+TEST_CASE(language_constants_reject_runtime_dependencies_and_writes)
+{
+    parse(
+        "library Constants { Base :: 2; Total :: Base * 3; "
+        "Compute :: pure fn(x: int) -> int { Twice :: 2; return x * Twice } }"
+    );
+    REQUIRE(analysis->valid);
+    int count = 0;
+    for (int i = 0; i < analysis->symbol_count; i++) {
+        if (analysis->symbols[i].kind == SCRIPT_CONSTANT) {
+            REQUIRE(!analysis->symbols[i].writable);
+            count++;
+        }
+    }
+    REQUIRE(count == 3);
+    parse("behavior Constants { value := 2; Frozen :: value; }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Constant initializer requires compile-time values and operators"));
+    parse("library Constants { Run :: (x: int) { Frozen :: x; } }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Constant initializer requires compile-time values and operators"));
+    parse("library Constants { Frozen :: 2; Run :: () { Frozen = 3; } }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Assignment requires a writable value"));
+    parse("library Constants { A :: B; B :: A; }");
+    REQUIRE(!analysis->valid);
+    return true;
+}
+
+TEST_CASE(language_unions_share_patterns_and_require_exhaustive_switches)
+{
+    parse(
+        "library Unions { AttackState :: union { Idle | Windup(remaining: "
+        "number) | Active(damage: number) }; "
+        "Run :: (value: AttackState) -> number { switch value { case .Idle: "
+        "return 0; "
+        "case .Windup(remaining): return remaining; case .Active(damage): "
+        "return damage; } } }"
+    );
+    REQUIRE(analysis->valid);
+    REQUIRE(analysis->type_count == 1);
+    REQUIRE(analysis->types[0].variant_count == 3);
+    parse(
+        "library Unions { Status :: union { \"Yes\" | \"No\" }; "
+        "Run :: (value: Status) -> number { switch value { case \"Yes\": "
+        "return 1; } } }"
+    );
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Non-exhaustive switch: a union alternative is missing"));
+    parse(
+        "library Unions { Status :: union { \"Yes\" | \"No\" }; "
+        "Run :: (value: Status) -> number { switch value { case \"Yes\": "
+        "return 1; "
+        "case \"Yes\": return 2; case \"No\": return 0; } } }"
+    );
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Unreachable duplicate union pattern"));
+    parse("behavior Unions { Choice :: union { A | B }; state value: Choice; }");
+    REQUIRE(!analysis->valid);
+    parse(
+        "library Unions { Choice :: union { A | B }; "
+        "Run :: () -> Choice { } }"
+    );
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Union result 'Result' requires a value on every return path"));
+    parse("library Unions { Choice :: union { A | B }; Run :: () -> Choice { return Result; } }");
+    REQUIRE(!analysis->valid);
+    parse(
+        "library Unions { Choice :: union { A | B }; "
+        "Run :: () -> (value: Choice = Choice.A) { return; } }"
+    );
+    REQUIRE(analysis->valid);
+    parse("behavior Unions { Choice :: union { A | B }; state value: Choice = null; }");
+    REQUIRE(!analysis->valid);
+    parse(
+        "library Unions { Choice :: union { A | B }; "
+        "Run :: (value: Choice?) { switch value { case .A: return; case .B: "
+        "return; } } }"
+    );
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Optional union requires a presence guard before switching"));
+    parse(
+        "library Unions { Choice :: union { A | B }; "
+        "Run :: (value: Choice?) { if value { switch value { case .A: "
+        "return; case .B: return; } } } }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Choice :: union { A | B }; "
+        "Run :: (value: Choice?) { if value is Choice.A { return; } "
+        "switch value { case .A: return; case .B: return; } } }"
+    );
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Optional union requires a presence guard before switching"));
+    parse(
+        "library Unions { Choice :: union { A | B }; "
+        "Run :: (flag: bool) -> Choice { if flag { return Choice.A; } } }"
+    );
+    REQUIRE(!analysis->valid);
+    parse(
+        "library Unions { Choice :: union { A | B }; "
+        "Run :: (flag: bool) -> Choice { if flag { return Choice.A; } else { "
+        "return Choice.B; } } }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Choice :: union { A | B }; "
+        "Run :: (value: Choice) -> Choice { switch value { case .A: return "
+        "Choice.B; case .B: return Choice.A; } } }"
+    );
+    REQUIRE(analysis->valid);
+    parse("library Unions { Choice :: union { A | B }; Default :: Choice.A; }");
+    REQUIRE(analysis->valid);
+    parse("library Unions { List :: union { Nil | Cons(tail: List) }; }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Recursive owned union payloads are not supported"));
+    parse(
+        "library Unions { First :: union { One(next: Second[]) }; "
+        "Second :: union { Two(next: First?) }; }"
+    );
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Recursive owned union payloads are not supported"));
+    parse(
+        "library Unions { First :: union { One(next: Second) }; "
+        "Second :: union { Two(value: number) }; }"
+    );
+    REQUIRE(analysis->valid);
+    return true;
+}
+TEST_CASE(language_cancelled_builtin_cannot_be_shadowed)
+{
+    const char *sources[] = {
+        "library Reserved { Run :: () { Cancelled := 1; copy := Cancelled; } }",
+        "behavior Reserved { Cancelled: number = 1; }",
+        "library Reserved { Cancelled :: 1; }",
+        "library Reserved { Run :: (Cancelled: number) {} }",
+        "library Reserved { Run :: () -> (Cancelled: number) {} }",
+        "library Reserved { Cancelled :: () {} }",
+        "library Reserved { Cancelled :: union { A | B }; }",
+        ("library Reserved { Run :: (value: number | Cancelled) { "
+         "if value is number Cancelled {} } }"),
+    };
+    for (int i = 0; i < (int)(sizeof sources / sizeof *sources); i++) {
+        parse(sources[i]);
+        REQUIRE(!analysis->valid);
+        REQUIRE(diagnostic("'Cancelled' is reserved for the cancellation singleton"));
+    }
+    parse(
+        "library Reserved { Choice :: union { Cancelled(Cancelled: number) | "
+        "Value }; "
+        "Run :: () -> number { value := Choice.Cancelled(Cancelled: 3); "
+        "if value is .Cancelled(payload) { return payload; } return 0; } }"
+    );
+    REQUIRE(analysis->valid);
+    script_component *component = read_component("component Status { Cancelled: float }");
+    REQUIRE(component && !component_diagnostics);
+    REQUIRE(!strcmp(component->fields[0].name, "Cancelled"));
+    script_component_free(component);
+    return true;
+}
+
+TEST_CASE(language_switch_exhaustiveness_respects_narrowed_tags)
+{
+    parse(
+        "library Unions { Choice :: union { A | B(value: number) }; "
+        "Run :: (value: Choice) -> number { if value is Choice.B { "
+        "switch value { case .B(payload): return payload; } } return 0; } }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Choice :: union { A | B(value: number) }; "
+        "Run :: (value: Choice) -> number { if value is Choice.A { return 0; } "
+        "switch value { case .B(payload): return payload; } } }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Choice :: union { A | B(value: number) }; "
+        "Run :: (value: Choice) -> number { "
+        "switch value { case .B(payload): return payload; } } }"
+    );
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Non-exhaustive switch: a union alternative is missing"));
+    parse(
+        "library Unions { Choice :: union { A | B | C }; "
+        "Run :: (value: Choice) -> number { if value is Choice.A { return 0; } "
+        "switch value { case .B: return 1; case .C: return 2; } } }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Choice :: union { A | B | C }; "
+        "Run :: (value: Choice) -> number { if value is Choice.A { return 0; } "
+        "switch value { case .B: return 1; } } }"
+    );
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Non-exhaustive switch: a union alternative is missing"));
+    return true;
+}
+
+TEST_CASE(language_type_patterns_narrow_and_invalidate)
+{
+    parse(
+        "library Unions { Run :: (result: number | Cancelled) -> number { "
+        "if result is Cancelled { return 0; } return result + 1; } }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Run :: (result: number | Cancelled) -> number { "
+        "if result is number num_result { return num_result; } return 0; } }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Run :: (result: number | Cancelled) -> number { "
+        "if result is number { result = Cancelled; return result + 1; } return "
+        "0; } }"
+    );
+    REQUIRE(!analysis->valid);
+    parse(
+        "library Unions { Run :: (result: number | Cancelled) -> number { "
+        "if result is number num_result { return num_result; } return "
+        "num_result; } }"
+    );
+    REQUIRE(!analysis->valid);
+    parse(
+        "library Unions { Run :: (result: number | Cancelled) -> number { "
+        "if result is number { mutate(); return result + 1; } return 0; } }"
+    );
+    REQUIRE(!analysis->valid);
+    parse(
+        "library Unions { Run :: (result: number | Cancelled) -> number { "
+        "if result is number num_result || true { return num_result; } return "
+        "0; } }"
+    );
+    REQUIRE(!analysis->valid);
+    parse(
+        "library Unions { Run :: (result: number | Cancelled) -> number { "
+        "if result is not Cancelled { return result; } return 0; } }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Run :: (result: number | Cancelled) -> number { "
+        "switch result { case Cancelled: return 0; case: return result + 1; "
+        "} } }"
+    );
+    REQUIRE(analysis->valid);
+    parse("library Unions { Outer :: (local: number) { Inner :: () -> number { return local; } } }");
+    REQUIRE(!analysis->valid);
+    REQUIRE(diagnostic("Nested functions require enclosing locals to be passed as parameters"));
+    parse("library Unions { Run :: (result: number | Cancelled) -> number? { return result as number; } }");
+    REQUIRE(analysis->valid);
+    parse("library Unions { Run :: (value: int?) -> number? { return value; } }");
+    REQUIRE(!analysis->valid);
+    parse("library Unions { Run :: (value: int) -> number? { return value; } }");
+    REQUIRE(!analysis->valid);
+    parse("library Unions { Run :: () -> int? { return 0; } }");
+    REQUIRE(analysis->valid);
+    parse("library Unions { Run :: (value: int?) -> number? { if value { return cast<number>(value); } return nil; } }");
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Run :: (pending: task<number>) -> number { "
+        "result := await pending; if result is not Cancelled { return result; "
+        "} return 0; } }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Work :: () -> number { yield; return 0; } "
+        "Run :: () -> number { pending: task<number> = Work(); result := await "
+        "pending; "
+        "if result is number value { return value; } return 1; } }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Run :: (pending: task<number>[]) -> number { "
+        "result := await pending[0]; if result is not Cancelled { return "
+        "result; } return 0; } }"
+    );
+    REQUIRE(analysis->valid);
+    parse(
+        "library Unions { Run :: (pending: task<number>[]) -> number { "
+        "result := await pending; return 0; } }"
+    );
+    REQUIRE(!analysis->valid);
+    parse("library Unions { Run :: (pending: task<number>[]) -> bool { return !pending; } }");
+    REQUIRE(!analysis->valid);
+    parse(
+        "library Unions { Run :: (pending: task<number?>) -> number { "
+        "result := await pending; if result is not Cancelled { value := "
+        "result; if value { return value; } } return 0; } }"
+    );
+    REQUIRE(analysis->valid);
+    return true;
+}
+
 void test_language_semantic()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(language_unions_share_patterns_and_require_exhaustive_switches);
+    RUN_TEST_CASE(language_cancelled_builtin_cannot_be_shadowed);
+    RUN_TEST_CASE(language_switch_exhaustiveness_respects_narrowed_tags);
+    RUN_TEST_CASE(language_type_patterns_narrow_and_invalidate);
+    RUN_TEST_CASE(language_constants_reject_runtime_dependencies_and_writes);
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
     RUN_TEST_CASE(language_optional_component_requires_presence_guard);
+    RUN_TEST_CASE(language_query_header_resolves_boolean_filters_and_sources);
     RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
     RUN_TEST_CASE(language_hex_literal_fills_integer_storage);

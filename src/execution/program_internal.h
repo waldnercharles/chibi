@@ -72,11 +72,9 @@ typedef struct
     arena storage;
     bool seen;
 } observer_cache;
-/* A task slot keeps its results after the task finishes so a later await can
- * read them. Handles carry the slot generation, so a reused slot's old handles
- * neither wait nor cancel. Links name slots as index + 1, 0 for none: a running
- * task is in its running parent's child list, and a finished one is in the
- * instance's queue of finished slots, oldest first. */
+/* Tasks retain completion snapshots while a live handle can observe them.
+ * Links name slots as index + 1, 0 for none. Running tasks form their parent's
+ * child list; unused slots form the instance's spare list. */
 typedef struct
 {
     uint32_t generation;
@@ -85,7 +83,9 @@ typedef struct
     pin_value *results;
     int result_count;
     arena storage;
-    flow_host_request **waiters;
+    struct task_waiter *waiters;
+    double started, deadline;
+    bool timed, cancelled, marked;
 } execution_task;
 struct execution_instance
 {
@@ -99,8 +99,7 @@ struct execution_instance
     observer_cache *observations;
     execution_activation **activations;
     execution_task *tasks;
-    int finished_first, finished_last, finished_count;
-    int spare; /* Evicted slots, linked by next. */
+    int spare; /* Unobserved finished slots, linked by next. */
     arena selections;
     execution_activation *running;
     execution_activation **system_activations;
@@ -126,6 +125,7 @@ struct execution_program
 {
     execution_module *module;
     uint64_t updates;
+    uint64_t task_lookup_steps;
     execution_program_failure failure;
     execution_profile_observer observer;
     void *observer_context;
@@ -141,7 +141,7 @@ struct execution_program
     struct execution_program *owner_program;
     queued_event *events;
     observer_edge *field_edges;
-    ecs_term *query; /* Membership terms, when queried. */
+    ecs_query_plan *query_plan;
     int *binding_order;
     double now, delta;
     unsigned budget;
@@ -175,6 +175,9 @@ void program_task_finished(execution_activation *, bool cancelled);
 void program_boxes_detach(execution_activation *, behavior_function_context *context);
 void program_boxes_free(execution_activation *);
 void program_tasks_free(execution_instance *);
+void program_tasks_collect(execution_program *);
+void program_tasks_tick(execution_instance *, double now);
+bool program_task_due(const execution_activation *, double now);
 bool program_request_deliver(flow_host_request *, const pin_value *, int);
 int program_activation_run(execution_activation *, double, double, unsigned);
 execution_activation *program_activation_new(

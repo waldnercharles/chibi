@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/union.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -547,6 +548,18 @@ static bool value_size(size_t *total, const pin_value *v, int nesting)
         const type_desc *type = type_catalog_find(v->type_name);
         return type && add_size(total, type->size) &&
                fields_size(total, type, v->ptr, nesting + 1);
+    }
+    if (v->type == PIN_UNION && v->ptr) {
+        const pin_union *value = v->ptr;
+        if (value->count < 0 || value->count > 65536 ||
+            !add_size(total, sizeof *value + (size_t)value->count * sizeof(pin_value))) {
+            return false;
+        }
+        for (int n = 0; n < value->count; n++) {
+            if (!value_size(total, &value->values[n], nesting + 1)) {
+                return false;
+            }
+        }
     }
     return v->type != PIN_FLOW;
 }

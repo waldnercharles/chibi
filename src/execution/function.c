@@ -120,6 +120,14 @@ void behavior_function_own(behavior_function *f)
     for (int i = 0; i < acount(f->variable_defaults); i++) {
         own_value(a, &f->variable_defaults[i]);
     }
+    for (int i = 0; i < acount(f->value_roots); i++) {
+        own_value(a, &f->value_roots[i].shape);
+    }
+    for (int i = 0; i < acount(f->suspensions); i++) {
+        for (int j = 0; j < acount(f->suspensions[i].roots); j++) {
+            own_value(a, &f->suspensions[i].roots[j].shape);
+        }
+    }
     own_instructions(a, f->instructions);
     own_instructions(a, f->runtime_instructions);
     own_instructions(a, f->runtime_body);
@@ -320,8 +328,10 @@ void behavior_function_free(behavior_function *f)
     behavior_function_free(f->fast);
     for (int i = 0; i < acount(f->suspensions); i++) {
         afree(f->suspensions[i].values);
+        afree(f->suspensions[i].roots);
     }
     afree(f->suspensions);
+    afree(f->value_roots);
     afree(f->instructions);
     afree(f->runtime_instructions);
     afree(f->runtime_body);
@@ -387,16 +397,6 @@ static bool compile_artifact(behavior_function *f)
         );
     }
     f->artifact->code = behavior_function_jit(f, false);
-    if (f->artifact->code && (acount(f->points) || acount(f->source_points))) {
-        f->artifact->inspection_addresses = xcalloc(
-            (size_t)acount(f->instructions),
-            sizeof *f->artifact->inspection_addresses
-        );
-        f->artifact->inspection_code = behavior_function_jit(f, true);
-        if (!f->artifact->inspection_code) {
-            return false;
-        }
-    }
     if (!f->artifact->code || !f->fast) {
         return f->artifact->code != NULL;
     }
@@ -406,6 +406,35 @@ static bool compile_artifact(behavior_function *f)
     f->artifact->dispatch = behavior_function_guard(f);
     return f->artifact->dispatch != NULL;
 #endif
+}
+bool behavior_function_compile_inspection(const behavior_function *f)
+{
+    enum
+    {
+        UNCOMPILED,
+        COMPILING,
+        COMPILED,
+        FAILED
+    };
+    execution_artifact *artifact = f->artifact;
+    unsigned state = atomic_load_explicit(&artifact->inspection_state, memory_order_acquire);
+    if (state == COMPILED) {
+        return true;
+    }
+    if (state != UNCOMPILED ||
+        !atomic_compare_exchange_strong(&artifact->inspection_state, &state, COMPILING)) {
+        /* Another activation may be compiling. Its caller can use bytecode
+         * immediately without waiting or reading partially published maps. */
+        return false;
+    }
+    artifact->inspection_addresses = xcalloc(
+        (size_t)acount(f->instructions),
+        sizeof *artifact->inspection_addresses
+    );
+    artifact->inspection_code = behavior_function_jit(f, true);
+    bool compiled = artifact->inspection_code != NULL;
+    atomic_store_explicit(&artifact->inspection_state, compiled ? COMPILED : FAILED, memory_order_release);
+    return compiled;
 }
 bool behavior_function_compile(behavior_function *f)
 {

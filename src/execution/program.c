@@ -56,7 +56,14 @@ static void query_import(const execution_module *m, int index, ecs_oper oper, ec
 {
     const execution_module_query *q = &m->plan.queries[index];
     if (q->kind == EXECUTION_QUERY_HAS) {
-        apush(*terms, ((ecs_term){ .oper = oper, .id = q->component }));
+        apush(
+            *terms,
+            ((ecs_term){ .oper = oper,
+                         .id = q->component,
+                         .src_rel = q->source_traversal ? 0 : q->source_relationship,
+                         .trav = (ecs_trav)q->source_traversal,
+                         .trav_rel = q->source_relationship })
+        );
         return;
     }
     if (q->kind == EXECUTION_QUERY_NOT && oper != ECS_OR) {
@@ -160,7 +167,14 @@ static execution_program *program_new(
         }
     }
     if (m->plan.query >= 0) {
-        query_import(m, m->plan.query, ECS_AND, &p->query);
+        ecs_term *terms = NULL;
+        query_import(m, m->plan.query, ECS_AND, &terms);
+        int status = ecs_query_plan_new(world, terms, acount(terms), &p->query_plan);
+        afree(terms);
+        if (status) {
+            execution_program_free(p);
+            return NULL;
+        }
         p->queried = true;
     }
     if (!program_binding_order(p)) {
@@ -283,6 +297,7 @@ void program_collect_states(execution_program *p)
     for (int i = 0; i < acount(p->imports); i++) {
         collect_scope(p, p->imports[i]);
     }
+    program_tasks_collect(p);
     program_collect_payloads(p, NULL);
 }
 static bool module_function(const execution_module *m, const behavior_function *f)
@@ -523,7 +538,7 @@ void execution_program_free(execution_program *p)
         }
     }
     free(p->shared);
-    afree(p->query);
+    ecs_query_plan_free(p->query_plan);
     afree(p->binding_order);
     afree(p->services);
     for (int i = 0; i < acount(p->pending_services); i++) {
@@ -853,7 +868,7 @@ static uint64_t *owners(execution_program *p)
         return out;
     }
     ecs_query query;
-    int status = ecs_query_begin_terms(p->world, &query, p->query, acount(p->query));
+    int status = ecs_query_begin_plan(p->query_plan, &query);
     assert(!status);
     (void)status;
     ecs_entity entity;
@@ -918,6 +933,7 @@ static int program_run(execution_program *p, double now, double delta, unsigned 
             instance->time += delta;
         }
         instance->last_time = now;
+        program_tasks_tick(instance, now);
         for (int j = 0; j < acount(instance->activations);) {
             execution_activation *a = instance->activations[j];
             if (!a->finished && a->context.wake_time > now) {

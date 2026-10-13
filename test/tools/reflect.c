@@ -368,8 +368,8 @@ TEST_CASE(numeric_fields_reflect_their_unit_and_range)
     REQUIRE(reflectf(COMPONENT PRESENTED, "float damage") == 0);
     char *types = tool_read(output);
     bool presented = types && strstr(types, "\"speed\", PIN_F32,") &&
-                     strstr(types, "false, \"u/s\", 0, 2.5 },") &&
-                     strstr(types, "false, NULL, 0, 0 },");
+                     strstr(types, "false, \"u/s\", 0, 2.5, true, 0 },") &&
+                     strstr(types, "false, NULL, 0, 0, false, 0 },");
     free(types);
     REQUIRE(presented);
     snapshot(&output_before, output);
@@ -381,11 +381,34 @@ TEST_CASE(numeric_fields_reflect_their_unit_and_range)
         "float suffixed __attribute__((annotate(\"node:range:0 1f\")))",
         "float single __attribute__((annotate(\"node:range:1\")))",
         "float endless __attribute__((annotate(\"node:range:-inf 0\")))",
+        "int fractional __attribute__((annotate(\"node:range:0 1.5\")))",
+        "int overflow __attribute__((annotate(\"node:range:0 2147483648\")))",
+        ("float both __attribute__((annotate(\"node:range:0 1\"), "
+         "annotate(\"node:range-hint:0 1\")))"),
+        "float fallback __attribute__((annotate(\"node:range-default:1\")))",
     };
     for (int i = 0; i < (int)(sizeof invalid / sizeof *invalid); i++) {
         REQUIRE(reflectf(COMPONENT PRESENTED, invalid[i]) != 0);
         REQUIRE(outputs_unchanged());
     }
+    return true;
+}
+
+TEST_CASE(numeric_range_hints_and_defaults_are_distinct)
+{
+    REQUIRE(
+        reflectf(
+            COMPONENT PRESENTED,
+            "float hint __attribute__((annotate(\"node:range-hint:0 1\"))); "
+            "float fallback __attribute__((annotate(\"node:range:0 1\"), "
+            "annotate(\"node:range-default:0.5\")))"
+        ) == 0
+    );
+    char *types = tool_read(output);
+    bool distinct = types && strstr(types, "false, NULL, 0, 1, false, 0 },") &&
+                    strstr(types, "false, NULL, 0, 1, true, 0.5 },");
+    free(types);
+    REQUIRE(distinct);
     return true;
 }
 
@@ -487,6 +510,7 @@ void test_tool_reflect()
     RUN_TEST_CASE(failed_reflection_keeps_linked_outputs);
     RUN_TEST_CASE(handle_pins_keep_their_nominal_type);
     RUN_TEST_CASE(numeric_fields_reflect_their_unit_and_range);
+    RUN_TEST_CASE(numeric_range_hints_and_defaults_are_distinct);
     RUN_TEST_CASE(jit_identity_requires_one_matching_struct_argument);
     RUN_TEST_CASE(derived_component_names_its_source);
     RUN_TEST_CASE(empty_prefix_generates_canonical_component_names);

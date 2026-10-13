@@ -1,9 +1,12 @@
 #include "ecs/ecs.h"
 #include "ecs/execution.h"
 #include "third_party/pico_headers/pico_unit.h"
+#include "types/catalog.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stddef.h>
+#include <stdio.h>
 
 /* Name and Disabled. The ChildOf relationship is not a component. */
 #define BUILT_IN_COMPONENTS 2
@@ -65,6 +68,7 @@ static const ecs_component_desc late_desc = {
 };
 
 static ecs_world *world;
+static bool schema_project;
 
 static void prepare_world()
 {
@@ -77,6 +81,10 @@ static void release_world()
 {
     ecs_world_free(world);
     world = NULL;
+    if (schema_project) {
+        type_catalog_set_project(NULL);
+        schema_project = false;
+    }
 }
 
 static ecs_entity spawn()
@@ -340,6 +348,246 @@ TEST_CASE(ecs_canceled_destroys_and_slot_reuse_keep_rows_coherent)
     return true;
 }
 
+typedef struct
+{
+    double value, positive;
+    float fraction, hint;
+    int count;
+    const char *label;
+} bounded_row;
+static const type_field bounded_fields[] = {
+    { .name = "value",
+      .type = PIN_F64,
+      .size = sizeof(double),
+      .range_contract = true,
+      .min = 0,
+      .max = 10,
+      .range_default = 4.25 },
+    { .name = "positive",
+      .type = PIN_F64,
+      .offset = offsetof(bounded_row, positive),
+      .size = sizeof(double),
+      .range_contract = true,
+      .min = 2,
+      .max = 5 },
+    { .name = "fraction",
+      .type = PIN_F32,
+      .offset = offsetof(bounded_row, fraction),
+      .size = sizeof(float),
+      .range_contract = true,
+      .min = .1,
+      .max = .9 },
+    { .name = "hint",
+      .type = PIN_F32,
+      .offset = offsetof(bounded_row, hint),
+      .size = sizeof(float),
+      .min = 0,
+      .max = 1 },
+    { .name = "count",
+      .type = PIN_I32,
+      .offset = offsetof(bounded_row, count),
+      .size = sizeof(int),
+      .range_contract = true,
+      .min = 0,
+      .max = 10 },
+    { .name = "label",
+      .type = PIN_STR,
+      .offset = offsetof(bounded_row, label),
+      .size = sizeof(const char *) },
+};
+static const type_desc bounded_type = {
+    .name = "BoundedRow",
+    .size = sizeof(bounded_row),
+    .fields = bounded_fields,
+    .field_count = 6,
+};
+static const ecs_component_desc bounded_desc = {
+    .id = 804,
+    .key = "test.BoundedRow",
+    .name = "BoundedRow",
+    .element_size = sizeof(bounded_row),
+    .type = &bounded_type,
+};
+TEST_CASE(ecs_range_contracts_cover_native_publication_and_pointer_commits)
+{
+    REQUIRE(ecs_world_register_component(world, &bounded_desc, NULL) == ECS_OK);
+    ecs_entity entity = spawn();
+    REQUIRE(add(entity, bounded_desc.id, NULL) == ECS_OK);
+    bounded_row *row = ecs_component_data(world, entity, bounded_desc.id);
+    REQUIRE(row && row->value == 0 && row->positive == 2 && row->fraction >= .1);
+    bounded_row initial = { .value = -12,
+                            .positive = INFINITY,
+                            .fraction = .375f,
+                            .hint = 12,
+                            .count = INT32_MAX };
+    entity = spawn();
+    REQUIRE(ecs_world_record_add(world, entity, bounded_desc.id, NULL, 0) == ECS_OK);
+    REQUIRE(ecs_world_record_add(world, entity, bounded_desc.id, &initial, 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    row = ecs_component_data(world, entity, bounded_desc.id);
+    REQUIRE(row->value == 0 && row->positive == 5 && row->fraction == .375f);
+    REQUIRE(row->hint == 12 && row->count == 10);
+    pin_value number = { .type = PIN_F64, .d = 1.75 };
+    REQUIRE(ecs_component_write_field(world, entity, bounded_desc.id, 0, number) == ECS_OK);
+    REQUIRE(row->value == 1.75);
+    number.d = INFINITY;
+    REQUIRE(ecs_component_write_value(world, entity, bounded_desc.id, 0, number, number) == ECS_OK);
+    REQUIRE(row->value == 10);
+    number.d = -INFINITY;
+    REQUIRE(ecs_component_write_field(world, entity, bounded_desc.id, 0, number) == ECS_OK);
+    REQUIRE(row->value == 0);
+    number.d = NAN;
+    REQUIRE(ecs_component_write_field(world, entity, bounded_desc.id, 0, number) == ECS_OK);
+    REQUIRE(row->value == 4.25);
+    initial = (bounded_row){ .value = 100,
+                             .positive = NAN,
+                             .fraction = INFINITY,
+                             .count = -4 };
+    pin_value whole = { .type = PIN_STRUCT, .type_name = bounded_type.name, .ptr = &initial };
+    REQUIRE(ecs_component_write_value(world, entity, bounded_desc.id, 0, whole, whole) == ECS_OK);
+    REQUIRE(row->value == 10 && row->positive == 2 && row->fraction <= .9 && row->count == 0);
+    /* A borrowed pointer deliberately exposes uncommitted storage. Its owner
+     * must commit before consumers or compiler range proofs may rely on it. */
+    row->value = -90;
+    row->fraction = NAN;
+    REQUIRE(row->value == -90);
+    REQUIRE(ecs_component_modified(world, entity, bounded_desc.id) == ECS_OK);
+    REQUIRE(row->value == 0 && row->fraction >= .1 && row->fraction <= .9);
+    /* A whole-value commit must also validate the equal managed-row fast
+     * path when its source aliases a row modified through a native pointer. */
+    row->value = 100;
+    whole.ptr = row;
+    REQUIRE(ecs_component_write_value(world, entity, bounded_desc.id, 0, whole, whole) == ECS_OK);
+    REQUIRE(row->value == 10);
+    return true;
+}
+
+TEST_CASE(range_metadata_rejects_unsafe_integer_endpoints)
+{
+    type_field field = { .type = PIN_I64, .range_contract = true, .min = 0, .max = 0x1p63 };
+    REQUIRE(!type_field_range_valid(&field));
+    field.max = 10.5;
+    REQUIRE(!type_field_range_valid(&field));
+    field.max = 10;
+    REQUIRE(type_field_range_valid(&field));
+    pin_value value = { .type = PIN_I64, .i64 = INT64_MAX };
+    REQUIRE(pin_clamp_field(&field, value).i64 == 10);
+    field.type = PIN_U64;
+    field.max = 0x1p64;
+    REQUIRE(!type_field_range_valid(&field));
+    field.type = PIN_F32;
+    field.max = INFINITY;
+    REQUIRE(!type_field_range_valid(&field));
+    return true;
+}
+
+TEST_CASE(ecs_registration_rejects_nested_invalid_ranges_and_unowned_values)
+{
+    static type_field leaf;
+    leaf = (type_field){ .name = "value",
+                         .type = PIN_F64,
+                         .size = sizeof(double),
+                         .range_contract = true,
+                         .min = 0,
+                         .max = 10 };
+    static const type_desc nested = { .name = "test.ecs.range_leaf",
+                                      .size = sizeof(double),
+                                      .fields = &leaf,
+                                      .field_count = 1 };
+    static const type_field child = { .name = "nested",
+                                      .type = PIN_STRUCT,
+                                      .size = sizeof(double),
+                                      .type_name = "test.ecs.range_leaf" };
+    static const type_desc outer = { .name = "test.ecs.range_parent",
+                                     .size = sizeof(double),
+                                     .fields = &child,
+                                     .field_count = 1 };
+    static const type_desc *types[] = { &nested };
+    type_catalog_pack pack = { .types = types, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    schema_project = true;
+    ecs_component_desc desc = { .id = 805,
+                                .name = "NestedRanges",
+                                .element_size = sizeof(double),
+                                .type = &outer };
+    int before = ecs_world_component_count(world);
+    leaf.max = -1;
+    REQUIRE(ecs_world_register_component(world, &desc, NULL) == ECS_ERR_ARGUMENT);
+    leaf.max = NAN;
+    REQUIRE(ecs_world_register_component(world, &desc, NULL) == ECS_ERR_ARGUMENT);
+    leaf.max = 10;
+    leaf.type = PIN_STR;
+    REQUIRE(ecs_world_register_component(world, &desc, NULL) == ECS_ERR_ARGUMENT);
+    leaf.range_contract = false;
+    const pin_type unowned[] = { PIN_TASK, PIN_UNION };
+    for (int i = 0; i < 2; i++) {
+        leaf.type = unowned[i];
+        REQUIRE(ecs_world_register_component(world, &desc, NULL) == ECS_ERR_ARGUMENT);
+        desc.type = &nested;
+        REQUIRE(ecs_world_register_component(world, &desc, NULL) == ECS_ERR_ARGUMENT);
+        desc.type = &outer;
+    }
+    REQUIRE(ecs_world_component_count(world) == before);
+    leaf.type = PIN_F64;
+    leaf.range_contract = true;
+    REQUIRE(ecs_world_register_component(world, &desc, NULL) == ECS_OK);
+    ecs_entity entity = spawn();
+    REQUIRE(add(entity, desc.id, &(double){ 100 }) == ECS_OK);
+    const double *value = ecs_component_data_const(world, entity, desc.id);
+    REQUIRE(value && *value == 10);
+    return true;
+}
+
+TEST_CASE(ecs_registration_bounds_nested_range_traversal)
+{
+    enum
+    {
+        COUNT = TYPE_MAX_NESTING + 1
+    };
+    static type_field fields[COUNT];
+    static type_desc types[COUNT];
+    static char names[COUNT][48];
+    static const type_desc *items[COUNT];
+    for (int i = 0; i < COUNT; i++) {
+        snprintf(names[i], sizeof names[i], "test.ecs.range_layer_%d", i);
+        types[i] = (type_desc){ .name = names[i],
+                                .size = sizeof(double),
+                                .fields = &fields[i],
+                                .field_count = 1 };
+        items[i] = &types[i];
+        fields[i] = (type_field){ .name = "value",
+                                  .type = PIN_STRUCT,
+                                  .size = sizeof(double),
+                                  .type_name = i + 1 < COUNT ? names[i + 1] : NULL };
+    }
+    fields[COUNT - 1] = (type_field){ .name = "value",
+                                      .type = PIN_F64,
+                                      .size = sizeof(double),
+                                      .range_contract = true,
+                                      .min = 2,
+                                      .max = 5 };
+    type_catalog_pack pack = { .types = items, .type_count = COUNT };
+    type_catalog_set_project(&pack);
+    schema_project = true;
+    ecs_component_desc desc = { .id = 806,
+                                .name = "DeepRanges",
+                                .element_size = sizeof(double),
+                                .type = &types[0] };
+    int before = ecs_world_component_count(world);
+    REQUIRE(ecs_world_register_component(world, &desc, NULL) == ECS_ERR_ARGUMENT);
+    fields[2].type_name = names[1];
+    REQUIRE(ecs_world_register_component(world, &desc, NULL) == ECS_ERR_ARGUMENT);
+    REQUIRE(ecs_world_component_count(world) == before);
+    fields[2].type_name = names[3];
+    fields[COUNT - 2] = fields[COUNT - 1];
+    REQUIRE(ecs_world_register_component(world, &desc, NULL) == ECS_OK);
+    ecs_entity entity = spawn();
+    REQUIRE(add(entity, desc.id, NULL) == ECS_OK);
+    const double *value = ecs_component_data_const(world, entity, desc.id);
+    REQUIRE(value && *value == 2);
+    return true;
+}
+
 void test_tool_ecs_world()
 {
     pu_setup(prepare_world, release_world);
@@ -351,5 +599,9 @@ void test_tool_ecs_world()
     RUN_TEST_CASE(ecs_growth_keeps_low_rows_and_mixed_index_queries_ordered);
     RUN_TEST_CASE(ecs_iteration_rejects_growth_and_registration);
     RUN_TEST_CASE(ecs_canceled_destroys_and_slot_reuse_keep_rows_coherent);
+    RUN_TEST_CASE(ecs_range_contracts_cover_native_publication_and_pointer_commits);
+    RUN_TEST_CASE(range_metadata_rejects_unsafe_integer_endpoints);
+    RUN_TEST_CASE(ecs_registration_rejects_nested_invalid_ranges_and_unowned_values);
+    RUN_TEST_CASE(ecs_registration_bounds_nested_range_traversal);
     pu_clear_setup();
 }

@@ -284,7 +284,7 @@ static bool nested_spawn_outlives_frame(behavior_backend backend)
         &f,
         "behavior Spawner {\n"
         "    made := 0.0\n"
-        "    function Make() {\n"
+        "    Make :: fn() {\n"
         "        await spawn(Child)\n"
         "        made += 1\n"
         "    }\n"

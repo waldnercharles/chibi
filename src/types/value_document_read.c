@@ -186,7 +186,20 @@ static int read_struct(const char *type_name, const av_value *document, pin_valu
             return -1;
         }
         pin_value member;
-        if (read_value(field->type, field->type_name, value, &member, reader)) {
+        int result;
+        if (field->range_contract && av_is_num(value) &&
+            (field->type == PIN_F32 || field->type == PIN_F64)) {
+            member = pin_field_number(field, av_get_num(value));
+            result = 0;
+        } else {
+            result = read_value(field->type, field->type_name, value, &member, reader);
+        }
+        if (result && !reader->failed && field->range_contract &&
+            (av_is_sint(value) || av_is_uint(value))) {
+            member = pin_field_number(field, av_get_num(value));
+            result = 0;
+        }
+        if (result) {
             if (field->type != PIN_STRUCT) {
                 read_error(
                     reader,

@@ -15,6 +15,7 @@ static void finish_joins(analyzer *a)
         const script_expression *e = &a->out->expressions[i];
         if (e->kind != SCRIPT_EXPR_JOIN || !e->result_count ||
             a->out->expressions[e->left].kind != SCRIPT_EXPR_SYMBOL ||
+            a->out->symbols[a->out->expressions[e->left].symbol].type.parameter ||
             !a->out->symbols[a->out->expressions[e->left].symbol].mixed_tasks) {
             continue;
         }
@@ -51,6 +52,12 @@ static script_analysis *analyze(
                    .scope = -1,
                    .function = -1,
                    .declarations_only = declarations };
+    a.catalog_view = *catalog;
+    for (int i = 0; i < catalog->type_count; i++) {
+        apush(a.catalog_types, catalog->types[i]);
+    }
+    a.catalog_view.types = a.catalog_types;
+    a.catalog = &a.catalog_view;
     for (int i = 0; i < syntax->diagnostic_count; i++) {
         apush(out->diagnostics, syntax->diagnostics[i]);
     }
@@ -124,8 +131,9 @@ static script_analysis *analyze(
             for (int j = 0; j < acount(a.initializers); j++) {
                 int symbol = a.initializers[j].symbol;
                 script_symbol_kind kind = out->symbols[symbol].kind;
-                if (kind == SCRIPT_PARAMETER || kind == SCRIPT_RESULT ||
-                    kind == SCRIPT_STATE || kind == SCRIPT_SHARED_STATE) {
+                if (kind == SCRIPT_CONSTANT || kind == SCRIPT_PARAMETER ||
+                    kind == SCRIPT_RESULT || kind == SCRIPT_STATE ||
+                    kind == SCRIPT_SHARED_STATE) {
                     script_analyzer_resolve_initializer(&a, symbol);
                 }
             }
@@ -194,6 +202,7 @@ static script_analysis *analyze(
     afree(a.initializers);
     afree(a.bodies);
     afree(a.narrowed);
+    afree(a.catalog_types);
     return out;
 }
 script_analysis *script_analyze(const script_syntax *syntax, const script_catalog *catalog)
@@ -242,6 +251,7 @@ void script_analysis_free(script_analysis *out)
         }
         afree(expression->arguments);
         afree(expression->results);
+        afree(expression->pattern_tags);
     }
     for (int i = 0; i < acount(out->statements); i++) {
         afree(out->statements[i].children);
@@ -267,6 +277,7 @@ void script_analysis_free(script_analysis *out)
     afree(out->functions);
     afree(out->queries);
     afree(out->bindings);
+    afree(out->types);
     afree(out->diagnostics);
     afree(out->warnings);
     arena_free(&out->constants);

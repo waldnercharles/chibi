@@ -1,8 +1,10 @@
 #include "ecs/ecs.h"
+#include "support/xalloc.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 
 static const type_field value_fields[] = {
     { .name = "value", .type = PIN_I32, .offset = 0, .size = sizeof(int), .type_name = "int" },
@@ -360,6 +362,178 @@ TEST_CASE(ecs_invalid_terms_are_rejected)
     return true;
 }
 
+TEST_CASE(ecs_reusable_plans_refresh_sources_membership_and_storage)
+{
+    ecs_entity root = spawn(), parent = spawn(), child = spawn();
+    add(root, &team_desc);
+    add(parent, &team_desc);
+    add(child, &position_desc);
+    pair(parent, ECS_CHILD_OF, root);
+    pair(child, ECS_CHILD_OF, parent);
+    pair(child, owner_desc.id, parent);
+    apply();
+    ecs_term terms[] = { { .id = position_desc.id },
+                         { .id = team_desc.id, .trav = ECS_UP },
+                         { .id = team_desc.id, .src_rel = owner_desc.id } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 3, &plan) == ECS_OK);
+    ecs_query query;
+    ecs_entity found;
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(ecs_query_next(&query, &found) && same(found, child));
+    REQUIRE(same(ecs_query_src(&query, 1), parent));
+    REQUIRE(same(ecs_query_src(&query, 2), parent));
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    REQUIRE(ecs_world_record_remove(world, parent, team_desc.id, 0) == ECS_OK);
+    pair(child, owner_desc.id, root);
+    apply();
+    REQUIRE(ecs_world_reserve_entities(world, 2048) == ECS_OK);
+    /* Reallocation of both registration tables must not stale a plan. */
+    for (int i = 0; i < 24; i++) {
+        char key[64];
+        snprintf(key, sizeof key, "sdk.query.extra.%d", i);
+        ecs_component_desc component = { .id = 3000 + i,
+                                         .key = key,
+                                         .name = key,
+                                         .element_size = sizeof(int),
+                                         .type = &value_type };
+        REQUIRE(ecs_world_register_component(world, &component, NULL) == ECS_OK);
+        ecs_relationship_desc relationship = { .id = 4000 + i, .key = key, .name = key };
+        snprintf(key, sizeof key, "sdk.query.relation.%d", i);
+        REQUIRE(ecs_world_register_relationship(world, &relationship, NULL) == ECS_OK);
+    }
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(ecs_query_next(&query, &found) && same(found, child));
+    REQUIRE(same(ecs_query_src(&query, 1), root));
+    REQUIRE(same(ecs_query_src(&query, 2), root));
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    REQUIRE(ecs_world_record_remove(world, root, team_desc.id, 0) == ECS_OK);
+    apply();
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_scalar_sources_are_optional_and_exclusive)
+{
+    ecs_entity root = spawn(), child = spawn(), missing = spawn();
+    add(root, &team_desc);
+    add(child, &position_desc);
+    add(missing, &position_desc);
+    pair(child, owner_desc.id, root);
+    pair(child, ECS_CHILD_OF, root);
+    apply();
+    ecs_term terms[] = {
+        { .id = position_desc.id },
+        { .id = team_desc.id, .src_rel = owner_desc.id, .oper = ECS_OPTIONAL }
+    };
+    ecs_query query;
+    REQUIRE(ecs_query_begin_terms(world, &query, terms, 2) == ECS_OK);
+    ecs_entity found;
+    REQUIRE(ecs_query_next(&query, &found) && same(found, child));
+    REQUIRE(same(ecs_query_src(&query, 1), root));
+    REQUIRE(ecs_query_next(&query, &found) && same(found, missing));
+    REQUIRE(!ecs_query_src(&query, 1).slot);
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    REQUIRE(same(ecs_query_source(world, child, team_desc.id, ECS_CHILD_OF, ECS_UP), root));
+    REQUIRE(!ecs_query_source(world, root, team_desc.id, ECS_CHILD_OF, ECS_UP).slot);
+    REQUIRE(same(ecs_query_source(world, root, team_desc.id, ECS_CHILD_OF, ECS_SELF_UP), root));
+    terms[1].src_rel = likes_desc.id;
+    REQUIRE(ecs_query_begin_terms(world, &query, terms, 2) == ECS_ERR_ARGUMENT);
+    return true;
+}
+
+TEST_CASE(ecs_reusable_boolean_plan_avoids_iteration_allocations)
+{
+    ecs_entity a = spawn(), b = spawn();
+    add(a, &position_desc);
+    add(b, &position_desc);
+    add(b, &frozen_desc);
+    apply();
+    const ecs_term terms[] = { { .id = position_desc.id },
+                               { .id = frozen_desc.id, .oper = ECS_NOT } };
+    xalloc_stats before, fresh, reused;
+    xalloc_stats_get(&before);
+    for (int i = 0; i < 8; i++) {
+        uint32_t slots[2];
+        REQUIRE(collect(terms, 2, slots, 2) == 1 && slots[0] == a.slot);
+    }
+    xalloc_stats_get(&fresh);
+    REQUIRE(fresh.calls > before.calls);
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 2, &plan) == ECS_OK);
+    xalloc_stats_get(&before);
+    for (int i = 0; i < 8; i++) {
+        ecs_query query;
+        ecs_entity found;
+        REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+        REQUIRE(ecs_query_next(&query, &found) && same(found, a));
+        REQUIRE(!ecs_query_next(&query, &found));
+        ecs_query_end(&query);
+    }
+    xalloc_stats_get(&reused);
+    REQUIRE(reused.calls == before.calls);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_reusable_fixed_source_does_not_follow_recycled_entities)
+{
+    ecs_entity settings = spawn(), entity = spawn();
+    add(settings, &team_desc);
+    add(entity, &position_desc);
+    apply();
+    const ecs_term terms[] = { { .id = position_desc.id },
+                               { .id = team_desc.id, .src = settings } };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, terms, 2, &plan) == ECS_OK);
+    ecs_query query;
+    ecs_entity found;
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(ecs_query_next(&query, &found) && same(found, entity));
+    ecs_query_end(&query);
+    REQUIRE(ecs_world_destroy_entity(world, settings) == ECS_OK);
+    ecs_entity replacement = spawn();
+    REQUIRE(replacement.slot == settings.slot && !same(replacement, settings));
+    add(replacement, &team_desc);
+    apply();
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
+TEST_CASE(ecs_reusable_pair_candidates_recheck_target_generations)
+{
+    ecs_entity target = spawn(), source = spawn();
+    pair(source, likes_desc.id, target);
+    apply();
+    const ecs_term term = { .id = likes_desc.id, .target = target };
+    ecs_query_plan *plan = NULL;
+    REQUIRE(ecs_query_plan_new(world, &term, 1, &plan) == ECS_OK);
+    ecs_query query;
+    ecs_entity found;
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(ecs_query_next(&query, &found) && same(found, source));
+    ecs_query_end(&query);
+    REQUIRE(ecs_world_destroy_entity(world, target) == ECS_OK);
+    ecs_entity replacement = spawn();
+    REQUIRE(replacement.slot == target.slot && !same(replacement, target));
+    pair(source, likes_desc.id, replacement);
+    apply();
+    REQUIRE(ecs_query_begin_plan(plan, &query) == ECS_OK);
+    REQUIRE(!ecs_query_next(&query, &found));
+    ecs_query_end(&query);
+    ecs_query_plan_free(plan);
+    return true;
+}
+
 void test_tool_ecs_query()
 {
     pu_setup(prepare_world, release_world);
@@ -370,5 +544,10 @@ void test_tool_ecs_query()
     RUN_TEST_CASE(ecs_scopes_nest_any_boolean_expression);
     RUN_TEST_CASE(ecs_fixed_sources_gate_every_result);
     RUN_TEST_CASE(ecs_invalid_terms_are_rejected);
+    RUN_TEST_CASE(ecs_reusable_plans_refresh_sources_membership_and_storage);
+    RUN_TEST_CASE(ecs_scalar_sources_are_optional_and_exclusive);
+    RUN_TEST_CASE(ecs_reusable_boolean_plan_avoids_iteration_allocations);
+    RUN_TEST_CASE(ecs_reusable_fixed_source_does_not_follow_recycled_entities);
+    RUN_TEST_CASE(ecs_reusable_pair_candidates_recheck_target_generations);
     pu_clear_setup();
 }

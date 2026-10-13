@@ -511,7 +511,8 @@ static void trace_context(
                                           : f->locals[value - slots].initial.type;
             behavior_value_kind kind = value < slots ? f->slot_kinds[value]
                                                      : f->locals[value - slots].kind;
-            if (kind != BEHAVIOR_VALUE || type == PIN_STR || type == PIN_NAME) {
+            if (kind != BEHAVIOR_VALUE || type == PIN_STR || type == PIN_NAME ||
+                type == PIN_UNION) {
                 mark(user, (const void *)(uintptr_t)a->values[value]);
             }
         }
@@ -546,6 +547,79 @@ void behavior_function_trace_values(
                                                     : NULL;
     for (int i = 0; calls && i < acount(calls->frames); i++) {
         trace_context(calls->frames[i]->function, &calls->frames[i]->context, mark, user);
+    }
+}
+static void visit_bank(
+    const pin_value *values,
+    int count,
+    void (*visit)(void *, const pin_value *),
+    void *user
+)
+{
+    for (int i = 0; i < count; i++) {
+        visit(user, &values[i]);
+    }
+}
+static void visit_context(
+    const behavior_function *f,
+    const behavior_function_context *ctx,
+    void (*visit)(void *, const pin_value *),
+    void *user
+)
+{
+    const behavior_function_activation *a = ctx->activation;
+    if (a && a->values && a->pc > 0) {
+        const behavior_function_suspension
+            *s = &f->suspensions[f->instructions[a->pc - 1].target];
+        int slots = acount(f->slots);
+        for (int i = 0; i < acount(s->roots); i++) {
+            pin_value value = s->roots[i].shape;
+            value.ptr = (void *)(uintptr_t)a->values[s->roots[i].index];
+            visit(user, &value);
+        }
+        for (int i = 0; i < acount(s->values); i++) {
+            int index = s->values[i];
+            pin_type type = index < slots ? f->slots[index]
+                                          : f->locals[index - slots].initial.type;
+            if (type == PIN_TASK || type == PIN_UNION) {
+                pin_value value = { .type = type, .u64 = a->values[index] };
+                if (type == PIN_UNION) {
+                    value.ptr = (void *)(uintptr_t)a->values[index];
+                }
+                visit(user, &value);
+            }
+        }
+    }
+    visit_bank(ctx->arguments, ctx->argument_count, visit, user);
+    visit_bank(ctx->results, f->result_count, visit, user);
+    visit_bank(ctx->variables, f->variable_count, visit, user);
+    visit_bank(ctx->command_arguments, acount(f->command_arguments), visit, user);
+    visit_bank(ctx->command_results, acount(f->command_results), visit, user);
+    if (!ctx->data) {
+        return;
+    }
+    visit_bank(ctx->data->values, acount(f->data_values), visit, user);
+    for (int i = 0; i < acount(f->data_values); i++) {
+        if (f->data_values[i].size) {
+            pin_value value = f->data_values[i].initial;
+            value.ptr = ctx->data->buffers[i];
+            visit(user, &value);
+        }
+    }
+}
+void behavior_function_visit_values(
+    const behavior_function *f,
+    const behavior_function_context *ctx,
+    void (*visit)(void *, const pin_value *),
+    void *user
+)
+{
+    visit_context(f, ctx, visit, user);
+    const struct behavior_function_calls *calls = ctx->activation
+                                                    ? ctx->activation->calls
+                                                    : NULL;
+    for (int i = 0; calls && i < acount(calls->frames); i++) {
+        visit_context(calls->frames[i]->function, &calls->frames[i]->context, visit, user);
     }
 }
 typedef struct

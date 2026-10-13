@@ -192,7 +192,7 @@ TEST_CASE(prepared_source_generations_write_after_analysis_retirement)
                                 .entity_type = 700,
                                 .tick_event = 11 };
     REQUIRE(
-        compile_source("library Depot { count:int=10; function Next() -> (amount:int) { count+=1; return(count); } }")
+        compile_source("library Depot { count:int=10; Next :: fn() -> (amount:int) { count+=1; return(count); } }")
     );
     REQUIRE(save("library.prepared"));
     library = module;
@@ -207,7 +207,7 @@ TEST_CASE(prepared_source_generations_write_after_analysis_retirement)
     execution_module_free(library);
     library = NULL;
     REQUIRE(
-        compile_source("library Depot { count:int=10; function Next() -> (amount:int) { count+=2; return(count); } }")
+        compile_source("library Depot { count:int=10; Next :: fn() -> (amount:int) { count+=2; return(count); } }")
     );
     REQUIRE(save("wrong-library.prepared"));
     char path[PREPARED_TEST_MAX_PATH];
@@ -236,20 +236,20 @@ TEST_CASE(prepared_external_closure_generations)
                                             .type = { .storage = PIN_BOOL } };
     catalog = (script_catalog){ .capabilities = variant, .capability_count = 5 };
     const char *leaves[] = {
-        ("behavior Leaf { on Add(amount:int) {} function "
-         "Next()->(amount:int){return(1);} }"),
-        ("behavior Leaf { on Add(amount:int) {} function "
-         "Next()->(amount:int){return(1);} }"),
-        ("behavior Leaf { on Add(amount:int) {} function "
-         "Next()->(amount:int){return(2);} }"),
-        ("behavior EventLeaf { on Add(amount:bool) {} function "
-         "Next()->(amount:int){return(1);} }"),
+        ("behavior Leaf { on Add(amount:int) {} Next :: fn"
+         "()->(amount:int){return(1);} }"),
+        ("behavior Leaf { on Add(amount:int) {} Next :: fn"
+         "()->(amount:int){return(1);} }"),
+        ("behavior Leaf { on Add(amount:int) {} Next :: fn"
+         "()->(amount:int){return(2);} }"),
+        ("behavior EventLeaf { on Add(amount:bool) {} Next :: fn"
+         "()->(amount:int){return(1);} }"),
     };
     const char *middle[] = {
-        "library Middle { function Next()->(amount:int){return(1);} }",
-        "library GoodMiddle { function Next()->(amount:int){return(1);} }",
-        "library BadMiddle { function Next()->(amount:int){return(1);} }",
-        "library EventMiddle { function Next()->(amount:int){return(1);} }",
+        "library Middle { Next :: fn()->(amount:int){return(1);} }",
+        "library GoodMiddle { Next :: fn()->(amount:int){return(1);} }",
+        "library BadMiddle { Next :: fn()->(amount:int){return(1);} }",
+        "library EventMiddle { Next :: fn()->(amount:int){return(1);} }",
     };
     const char *roots[] = {
         "behavior Closure { on Begin {} }",
@@ -422,8 +422,8 @@ TEST_CASE(prepared_debug_source_points_write_after_analysis_retirement)
                                 .tick_event = 11 };
     state_id = 0;
     REQUIRE(compile_source(
-        "behavior Inspect {count:int=0; function "
-        "Work()->(Value:int){count+=1;return count;}"
+        "behavior Inspect {count:int=0; Work :: fn"
+        "()->(Value:int){count+=1;return count;}"
         "on Tick(){last:=Work();count+=last;}}"
     ));
     REQUIRE(state_id);

@@ -6,6 +6,7 @@
 #include "support/xalloc.h"
 #include "types/catalog.h"
 #include "types/scalar.h"
+#include "types/union.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -48,6 +49,23 @@ static uint64_t intrinsic(const behavior_function_host_call *host)
     int count = host->result_first - host->first;
     int expected = -1;
     switch ((execution_intrinsic)(host->capability_id & UINT64_C(0xffffffff))) {
+        case EXECUTION_INTRINSIC_CONSTRUCT:
+        case EXECUTION_INTRINSIC_UNION_MAKE:
+            if (count < 1 || host->result_count != 1) {
+                return 0;
+            }
+            break;
+        case EXECUTION_INTRINSIC_UNION_TEST:
+        case EXECUTION_INTRINSIC_UNION_GET: {
+            int minimum = (host->capability_id & UINT64_C(0xffffffff)) ==
+                                  EXECUTION_INTRINSIC_UNION_TEST
+                            ? 2
+                            : 4;
+            if (count < minimum || host->result_count != 1) {
+                return 0;
+            }
+            break;
+        }
         case EXECUTION_INTRINSIC_REFERENCE_MAKE: expected = 9; break;
         case EXECUTION_INTRINSIC_REFERENCE_FIELD: expected = 4; break;
         case EXECUTION_INTRINSIC_REFERENCE_READ:
@@ -125,6 +143,20 @@ static origin bank_origin(const behavior_function *f, int pc, int bank, int dept
         if (id == execution_intrinsic_id(&EXECUTION_reference_field_call) ||
             id == execution_intrinsic_id(&EXECUTION_snapshot_call)) {
             return bank_origin(f, j, call->first, depth + 1, steps);
+        }
+        if (id == execution_intrinsic_id(&EXECUTION_reference_read_call)) {
+            origin target = bank_origin(f, j, call->first, depth + 1, steps);
+            pin_value value = f->data_values[bank].initial;
+            const type_desc *type = value.type == PIN_STRUCT &&
+                                            value.container == PIN_CONTAINER_SINGLE
+                                      ? type_catalog_find(value.type_name)
+                                      : NULL;
+            if (target.owner && target.component && type && type_is_plain(type)) {
+                /* The snapshot retains its source access, with its own bounds. */
+                return (origin){ .owner = true,
+                                 .component = target.component,
+                                 .extent = type->size };
+            }
         }
         return none;
     }
@@ -301,7 +333,9 @@ static void function(effects *e, const behavior_function *f, int depth)
                 e->capability = call->capability_id;
                 uint64_t id = intrinsic(call);
                 if (id == execution_intrinsic_id(&EXECUTION_reference_make_call) ||
-                    id == execution_intrinsic_id(&EXECUTION_reference_field_call)) {
+                    id == execution_intrinsic_id(&EXECUTION_reference_field_call) ||
+                    id == execution_intrinsic_id(&EXECUTION_union_test_call) ||
+                    id == execution_intrinsic_id(&EXECUTION_union_get_call)) {
                     break;
                 }
                 if (id == execution_intrinsic_id(&EXECUTION_reference_read_call) ||
@@ -496,4 +530,281 @@ execution_effect_summary execution_module_effects(const execution_module *m)
 {
     assert(m);
     return m->effects;
+}
+
+#define COST_FUNCTIONS 1024
+#define COST_ALL                                                               \
+    (EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY | EXECUTION_COST_ESCAPE)
+typedef struct
+{
+    execution_cost_summary summary;
+    const behavior_function **visited;
+    const execution_module **modules;
+    int steps;
+} costs;
+
+static void cost_add(
+    costs *c,
+    const behavior_function *f,
+    int pc,
+    uint64_t capability,
+    unsigned proven,
+    unsigned possible,
+    const char *reason
+)
+{
+    execution_cost_site site = { f, pc, capability, reason };
+    for (int bit = 0; bit < EXECUTION_COST_KINDS; bit++) {
+        unsigned mask = 1u << bit;
+        if ((proven & mask) && !(c->summary.proven & mask)) {
+            c->summary.proven_sites[bit] = site;
+        }
+        if ((possible & mask) && !(c->summary.possible & mask)) {
+            c->summary.possible_sites[bit] = site;
+        }
+    }
+    c->summary.proven |= proven;
+    c->summary.possible |= possible;
+}
+
+/* A snapshot copies type-name text even when the payload itself is scalar. */
+static bool snapshot_storage(pin_value value)
+{
+    return value.type_name || value.container != PIN_CONTAINER_SINGLE ||
+           value.type == PIN_STR || value.type == PIN_NAME ||
+           value.type == PIN_STRUCT || value.type == PIN_UNION;
+}
+
+static bool managed_value(pin_value value)
+{
+    return value.container != PIN_CONTAINER_SINGLE || value.type == PIN_STRUCT ||
+           value.type == PIN_STR || value.type == PIN_NAME ||
+           value.type == PIN_UNION || value.type == PIN_TASK;
+}
+
+static void cost_host(costs *c, const behavior_function *f, int pc)
+{
+    const behavior_function_host_call *call = &f->host_calls[f->instructions[pc].target];
+    uint64_t id = intrinsic(call);
+    unsigned allocate_copy = EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY;
+    if (!id) {
+        cost_add(c, f, pc, call->capability_id, 0, COST_ALL, "Native call has no verified allocation, copy, or escape contract");
+        return;
+    }
+    switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
+        case EXECUTION_INTRINSIC_UNION_MAKE: {
+            int count = call->result_first - call->first;
+            if (count > 1) {
+                cost_add(c, f, pc, id, allocate_copy, 0, "Union construction allocates a payload and snapshots supplied values");
+                return;
+            }
+            origin tag = bank_origin(f, pc, call->first, 0, &c->steps);
+            if (tag.constant && tag.bits == PIN_UNION_CANCELLED_TAG) {
+                return;
+            }
+            cost_add(
+                c,
+                f,
+                pc,
+                id,
+                tag.constant ? EXECUTION_COST_ALLOCATE : 0,
+                tag.constant ? 0 : EXECUTION_COST_ALLOCATE,
+                "Union construction allocates a payload unless it selects the "
+                "cancelled singleton"
+            );
+            return;
+        }
+        case EXECUTION_INTRINSIC_CONSTRUCT: {
+            bool fields = call->result_first - call->first > 1;
+            pin_value header = f->data_values[call->first].initial;
+            cost_add(
+                c,
+                f,
+                pc,
+                id,
+                EXECUTION_COST_ALLOCATE |
+                    (fields || (header.container != PIN_CONTAINER_SINGLE &&
+                                header.type_name)
+                         ? EXECUTION_COST_COPY
+                         : 0),
+                !fields && header.type == PIN_STRUCT ? EXECUTION_COST_COPY : 0,
+                "Value construction allocates storage and copies its fields or "
+                "elements"
+            );
+            return;
+        }
+        case EXECUTION_INTRINSIC_REFERENCE_MAKE:
+            cost_add(c, f, pc, id, EXECUTION_COST_ALLOCATE, 0, "Logical reference construction allocates reference storage");
+            return;
+        case EXECUTION_INTRINSIC_REFERENCE_FIELD:
+            cost_add(c, f, pc, id, allocate_copy, 0, "Field reference construction allocates and copies a reference path");
+            return;
+        case EXECUTION_INTRINSIC_SNAPSHOT:
+        case EXECUTION_INTRINSIC_REFERENCE_READ:
+        case EXECUTION_INTRINSIC_ACTION_READ:
+        case EXECUTION_INTRINSIC_EVENT_READ:
+            for (int j = 0; j < call->result_count; j++) {
+                if (snapshot_storage(f->data_values[call->result_first + j].initial)) {
+                    cost_add(c, f, pc, id, 0, allocate_copy, "Value snapshot can allocate and copy managed payload or type metadata");
+                }
+            }
+            return;
+        case EXECUTION_INTRINSIC_REFERENCE_WRITE:
+            cost_add(c, f, pc, id, 0, COST_ALL, "Reference write can retain and copy the referenced root value");
+            return;
+        case EXECUTION_INTRINSIC_COMPONENT_HAS:
+        case EXECUTION_INTRINSIC_QUERY_SOURCE:
+        case EXECUTION_INTRINSIC_QUERY_TARGET:
+        case EXECUTION_INTRINSIC_UNION_TEST:
+        case EXECUTION_INTRINSIC_UNION_GET:
+        case EXECUTION_INTRINSIC_BREAK_TAKE: return;
+        default:
+            /* These delegate to runtime callbacks, which may publish events,
+             * retain results, or grow state. Pure/effect flags do not prove costs. */
+            cost_add(c, f, pc, id, 0, COST_ALL, "Runtime callback can allocate, copy, or retain values");
+            return;
+    }
+}
+
+static void cost_function(costs *c, const behavior_function *f)
+{
+    if (!f || !c->summary.complete) {
+        return;
+    }
+    for (int j = 0; j < acount(c->visited); j++) {
+        if (c->visited[j] == f) {
+            return;
+        }
+    }
+    if (acount(c->visited) == COST_FUNCTIONS) {
+        c->summary.complete = false;
+        cost_add(c, f, -1, 0, 0, COST_ALL, "Cost analysis reached its function budget");
+        return;
+    }
+    apush(c->visited, f);
+    const behavior_function_instruction *code = f->runtime_body ? f->runtime_body
+                                                                : f->instructions;
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        if (--c->steps < 0) {
+            c->summary.complete = false;
+            cost_add(c, f, pc, 0, 0, COST_ALL, "Cost analysis reached its instruction budget");
+            return;
+        }
+        if (!behavior_function_runtime_keeps(f, pc)) {
+            continue;
+        }
+        const behavior_function_instruction *i = &code[pc];
+        switch (i->op) {
+            case BF_HOST_CALL: cost_host(c, f, pc); break;
+            case BF_INVOKE: {
+                const behavior_function_invocation *call = &f->calls[i->left];
+                cost_add(
+                    c,
+                    f,
+                    pc,
+                    0,
+                    EXECUTION_COST_ALLOCATE,
+                    call->task ? EXECUTION_COST_COPY | EXECUTION_COST_ESCAPE : 0,
+                    call->task ? "Task invocation allocates storage and can "
+                                 "retain captured values"
+                               : "Outlined function invocation allocates "
+                                 "argument and result banks"
+                );
+                for (int j = 0; j < call->count; j++) {
+                    if (snapshot_storage(f->data_values[call->first + j].initial)) {
+                        cost_add(c, f, pc, 0, 0, EXECUTION_COST_COPY | EXECUTION_COST_ESCAPE, "Invocation snapshots managed arguments beyond the producing expression");
+                    }
+                }
+                cost_function(c, call->function);
+                break;
+            }
+            case BF_COPY_STRING:
+            case BF_COPY_ARRAY:
+                cost_add(c, f, pc, 0, 0, EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY, "Managed copy allocates and copies when its input is non-null");
+                break;
+            case BF_INTERN_STRING:
+                cost_add(c, f, pc, 0, EXECUTION_COST_ESCAPE, EXECUTION_COST_ALLOCATE | EXECUTION_COST_COPY, "World string interning retains text and allocates/copies on a cache miss");
+                break;
+            case BF_OWN_NAME:
+                cost_add(c, f, pc, 0, 0, COST_ALL, "Owner name interning can retain, allocate, and copy new text");
+                break;
+            case BF_STORE_VALUE:
+                cost_add(c, f, pc, 0, 0, COST_ALL, "Persistent value storage can retain and snapshot a managed value");
+                break;
+            case BF_STORE:
+                if (managed_value(f->variable_defaults[i->target])) {
+                    cost_add(c, f, pc, 0, EXECUTION_COST_ESCAPE, 0, "Managed value is retained in persistent state");
+                }
+                break;
+            case BF_RESULT_ARRAY:
+                cost_add(c, f, pc, 0, EXECUTION_COST_ESCAPE, 0, "Managed result crosses the producing function boundary");
+                break;
+            case BF_RETURN:
+            case BF_END:
+                for (int j = 0; j < f->result_count; j++) {
+                    if (managed_value(f->result_defaults[j]) ||
+                        f->result_kinds[j] == BEHAVIOR_REFERENCE) {
+                        cost_add(c, f, pc, 0, EXECUTION_COST_ESCAPE, 0, "Managed result crosses the producing function boundary");
+                        break;
+                    }
+                }
+                break;
+            case BF_QUERY:
+            case BF_COMMAND:
+            case BF_COMMAND_BEGIN:
+            case BF_STATE_SELECT:
+            case BF_RETRIGGER:
+                cost_add(c, f, pc, 0, 0, COST_ALL, "Runtime service has input-dependent allocation, copy, or retention costs");
+                break;
+            default: break;
+        }
+    }
+}
+
+execution_cost_summary behavior_function_costs(const behavior_function *f)
+{
+    assert(f);
+    costs c = { .summary.complete = true, .steps = EFFECT_STEPS };
+    cost_function(&c, f);
+    afree(c.visited);
+    return c.summary;
+}
+
+static void cost_module(costs *c, const execution_module *m, int depth)
+{
+    if (!c->summary.complete) {
+        return;
+    }
+    for (int i = 0; i < acount(c->modules); i++) {
+        if (c->modules[i] == m) {
+            return;
+        }
+    }
+    if (depth > EFFECT_DEPTH || acount(c->modules) == COST_FUNCTIONS) {
+        c->summary.complete = false;
+        cost_add(c, NULL, -1, 0, 0, COST_ALL, "Cost analysis reached its import depth budget");
+        return;
+    }
+    apush(c->modules, m);
+    for (int i = 0; i < m->plan.function_count; i++) {
+        cost_function(c, m->plan.functions[i].body);
+        cost_function(c, m->plan.functions[i].subscription);
+    }
+    for (int i = 0; i < m->plan.binding_count; i++) {
+        cost_function(c, m->plan.bindings[i].body);
+        cost_function(c, m->plan.bindings[i].dependencies);
+    }
+    for (int i = 0; i < m->plan.import_count; i++) {
+        cost_module(c, m->plan.imports[i], depth + 1);
+    }
+}
+
+execution_cost_summary execution_module_costs(const execution_module *m)
+{
+    assert(m);
+    costs c = { .summary.complete = true, .steps = EFFECT_STEPS };
+    cost_module(&c, m, 0);
+    afree(c.visited);
+    afree(c.modules);
+    return c.summary;
 }

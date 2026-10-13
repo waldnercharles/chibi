@@ -344,7 +344,8 @@ void behavior_function_runtime_code(behavior_function *f)
      * needed after that continuation, including values read only by watches. */
     for (int j = 0; j < acount(f->suspensions); j++) {
         const behavior_function_suspension *s = &f->suspensions[j];
-        if (f->instructions[s->pc].op == BF_POINT) {
+        if (f->instructions[s->pc].op == BF_POINT ||
+            f->instructions[s->pc].op == BF_SOURCE_POINT) {
             continue;
         }
         for (int k = 0; k < acount(s->values); k++) {
@@ -365,7 +366,8 @@ void behavior_function_runtime_code(behavior_function *f)
         for (int pc = count - 1; pc >= 0; pc--) {
             const behavior_function_instruction *i = &code[pc];
             if ((pass && !keep[pc]) || behavior_function_observer(i->op) ||
-                i->op == BF_POINT || (discardable(i->op) && !live[i->output])) {
+                i->op == BF_POINT || i->op == BF_SOURCE_POINT ||
+                i->op == BF_SOURCE_WATCH || (discardable(i->op) && !live[i->output])) {
                 keep[pc] = false;
                 continue;
             }

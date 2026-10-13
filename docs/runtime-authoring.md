@@ -81,16 +81,17 @@ reaches. `intensity` scales how bright emissive surfaces look, and `resolution`
 sets the detail of the light grid. `sky` lights a side view from above: open
 ground receives its color, and absorbing materials block it like other light,
 so the ground under an overhang and the inside of a cave stay dark. Studio adds the component with `ambient` and
-`intensity` at 1 and `resolution` at 0.5, but KDL loads an omitted field as
-zero, so write every setting a scene needs. See the `Lighting` prototype in
-`test/fixtures/sprites`.
+`intensity` at 1 and `resolution` at 0.5, but KDL initializes an omitted field to
+zero before range validation (`resolution` becomes 0.1), so write every setting
+a scene needs. See the `Lighting` prototype in `test/fixtures/sprites`.
 
 ## Declare components
 
 A game declares its own component types under `content/components`, one `.chibi`
 file per component. Fields are laid out in order with natural alignment and start
-zeroed. A field's type is a script scalar (`bool`, `int`, `float`, `double`,
-`number`, `string`, `entity`, ...), an engine struct such as `CF_V2`, or a
+zeroed, then clamped into any declared range. A field's type is a script scalar
+(`bool`, `int`, `float`, `double`, `number`, `string`, `entity`, ...), an engine
+struct such as `CF_V2`, or a
 measure: a `number` with an optional range and an optional unit. The `//`
 comments directly above the component and each field describe them.
 
@@ -106,10 +107,41 @@ component Charge {
 }
 ```
 
-A range such as `0..1` or `-1.5..2` sets the field's editing range in Studio. It
-is a hint, never a clamp: scripts and assets may store any value. A unit such as
-`u/s`, `rad`, `u/s^2` (shown as u/s²) or `banana/basket` labels the value. Unit
-names mean units only in a field's type, so `s` stays a free name in scripts.
+A range such as `0..1` or `-1.5..2` is an inclusive stored-value contract. Scripts,
+asset loads, aggregate constructors, prepared players and native engine writes
+clamp values outside it to the nearest endpoint. Bounded `number` fields keep
+fractions: assigning `2.75` into `0..10` stores `2.75`. Explicit `cast<int>(2.75)`
+truncates toward zero. Each assignment clamps independently; two saturating
+updates cannot be reassociated. Floating arithmetic may overflow to infinity
+before the store; positive/negative infinity clamp to the high/low endpoint.
+NaN becomes the field's validated default, or zero clamped into the interval
+when no default is declared, with a development diagnostic and no exception.
+KDL text still rejects nonfinite literals before loading; typed asset values
+and prepared streams use the same validation as runtime writes.
+
+Native `NODE_RANGE` declares the same contract. `NODE_RANGE_DEFAULT` supplies a
+finite NaN fallback. `NODE_RANGE_HINT` is only a slider suggestion. The existing
+friction sliders, 3D restitution, appearance antialias width, optical absorption,
+material edge light and HDR emission use hints because their native consumers
+permit values above the slider's maximum. Other existing native range
+annotations are contracts.
+
+Native writes through mutable C row pointers and the execution view bypass
+validation until `ecs_component_modified` commits the row. Reflected write APIs
+and component insertion validate immediately; constructors and scene preparation
+validate newly published values. Copying an aggregate preserves its value.
+Range metadata alone is not proof about a borrowed C pointer. Compiler range
+facts may originate only from a validated value; unchecked pointer loads do
+not authorize check elimination or arithmetic reassociation. Component range
+changes invalidate the linked storage contract, and prepared players retain
+their ranges. Reloaded scripts and whole-component snapshots use the world's
+registered component schema while a replacement catalog is being prepared.
+Generic local values and nested layouts still use the current nominal type
+catalog; replacing their physical layouts while those values are live remains
+outside the existing runtime contract.
+
+A unit such as `u/s`, `rad`, `u/s^2` (shown as u/s²) or `banana/basket` labels the
+value. Unit names mean units only in a field's type, so `s` stays a free name in scripts.
 A unit standing alone must be a common one (`u`, `px`, `m`, `s`, `ms`, `rad`,
 `deg`, `Hz`, `fps`, `bpm`, `EV`, `dB`, `kg`, `N`), so a misspelled type name
 is reported instead of becoming a unit; after a range or with a `/`, any name
@@ -138,6 +170,80 @@ declarations in the prepared artifact, so the player needs no source.
 `chibi_ctl` formats, validates, describes and runs them like engine components.
 Projects saved before version 20 declared components in KDL; `--migrate`
 rewrites each into `.chibi`.
+
+## System queries
+
+A system's query header binds components and infers reads and writes from its
+body. Required bindings determine which root entities run it. `where` combines
+component membership with `and`, `or`, `not` and parentheses; an unqualified
+component always refers to the root entity, as does `self.Component`.
+
+```code
+system Home query position: Transform, velocity: Velocity,
+    aim: Targets.Transform? where (Player or Ally) and not Frozen {
+    if aim {
+        position.x = aim.x
+        position.y = aim.y
+    }
+}
+```
+
+Here `Targets` must be an engine relationship exposed in the script catalog
+with the exclusive trait. A scalar `Targets.Transform` binding follows that
+single target and requires its component. Adding `?` keeps roots with no target
+or no target component; test the binding before reading its fields. Reads and
+writes resolve the current provider rather than retaining a component pointer.
+Test optional presence again after a structural change or suspension.
+Several roots may share a target, so sourced access does not assume that their
+writes are independent.
+
+Ancestor sources are explicit and independent of relationship paths:
+
+```code
+system Inherit query position: Transform,
+    team: Team from ancestor(ChildOf) {
+    position.x = team.spawn_x
+}
+```
+
+`ancestor(ChildOf)` starts at the parent and selects the nearest ancestor with
+the requested component. `self_or_ancestor(ChildOf)` checks the root first.
+Traversal requires an exclusive, traversable relationship. `ChildOf` is built
+in; other names and their traits come from the embedding engine's catalog.
+An optional ancestor binding uses the same `?` spelling. A compact path does
+not implicitly continue searching ancestors.
+
+For a relationship with multiple targets, iterate explicitly. This visits one
+target at a time without materializing an array, while the system's state and
+outer body still run once per root:
+
+```code
+system DamageTargets query damage: Damage {
+    for target in self.Targets {
+        if target.Health {
+            target.Health.value -= damage.amount
+        }
+    }
+}
+```
+
+The loop supplies target identity for component access and ordinary Boolean
+conditions. Its body may write component values, but cannot suspend or change
+entity structure while the relationship stream is open. Required scalar query
+bindings remove the root from membership when their provider disappears;
+optional bindings do not. Reactive `bind` destinations remain on the root;
+write a target or ancestor in the system body. Header `join` bindings and
+target-qualified header filters are not currently implemented.
+
+Native queries use `ecs_query_plan_new`, `ecs_query_begin_plan` and
+`ecs_query_plan_free` to reuse a world-bound logical plan. The world must outlive
+the plan, and only one iterator may use a plan at a time. Between iterations,
+component registration, entity growth, pair edits and component membership
+changes are supported. Each begin refreshes storage references, candidate
+selection and ancestor caches. Pure filters may be reordered for selectivity;
+variable-binding terms retain dependency order. Authored systems retain this
+plan across updates. The native API also exposes pair variables, Boolean
+scopes, `ECS_UP`, `ECS_SELF_UP` and explicit cascade ordering.
 
 ## Scene entities
 

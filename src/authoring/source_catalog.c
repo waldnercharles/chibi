@@ -586,6 +586,93 @@ static void *grow(source_catalog *c, const void *items, int count, int extra, si
     memcpy(grown, items, (size_t)count * size);
     return grown;
 }
+static bool library_type_source(const script_syntax *syntax)
+{
+    /* Invalid syntax may recover a library declaration during analysis. */
+    if (syntax->diagnostic_count) {
+        return true;
+    }
+    TSNode root = ts_tree_root_node(syntax->tree);
+    for (uint32_t i = 0; i < ts_node_named_child_count(root); i++) {
+        TSNode program = ts_node_named_child(root, i);
+        if (ts_node_is_extra(program)) {
+            continue;
+        }
+        const char *kind = ts_node_type(program);
+        return strcmp(kind, "behavior") && strcmp(kind, "system");
+    }
+    return true;
+}
+/* Publish library type identities before callable signatures. A second pass
+ * resolves payloads that name a type from a later library in source order. */
+static void declared_types(source_catalog *c)
+{
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < acount(c->sources); i++) {
+            source_catalog_source *source = &c->sources[i];
+            if (!library_type_source(source->syntax)) {
+                continue;
+            }
+            script_analysis *analysis = script_declarations_document(
+                source->syntax,
+                &c->view,
+                source->identity
+            );
+            if (analysis->kind != SCRIPT_PROGRAM_LIBRARY || !analysis->type_count) {
+                script_analysis_free(analysis);
+                continue;
+            }
+            script_catalog input = { .types = analysis->types,
+                                     .type_count = analysis->type_count },
+                           owned;
+            if (!source_catalog_snapshot(&c->storage, &input, &owned)) {
+                error(c, source->path, (script_range){ 0 }, "Cannot retain declared type payload");
+                script_analysis_free(analysis);
+                continue;
+            }
+            for (int j = 0; j < owned.type_count; j++) {
+                script_catalog_type type = owned.types[j];
+                if (!type.internal) {
+                    const char *local = type.source_name ? type.source_name
+                                                         : type.name;
+                    size_t bytes = strlen(analysis->name) + strlen(local) + 2;
+                    char *qualified = arena_alloc(&c->storage, bytes);
+                    snprintf(qualified, bytes, "%s.%s", analysis->name, local);
+                    type.name = qualified;
+                    type.source_name = local;
+                }
+                int existing = -1;
+                bool duplicate = false;
+                for (int k = 0; k < c->view.type_count; k++) {
+                    if (c->view.types[k].id == type.id) {
+                        existing = k;
+                    } else if (
+                        !type.internal && !c->view.types[k].internal &&
+                        !strcmp(c->view.types[k].name, type.name)
+                    ) {
+                        duplicate = true;
+                    }
+                }
+                if (duplicate) {
+                    if (pass) {
+                        char message[192];
+                        snprintf(message, sizeof message, "Duplicate exported type name '%s'", type.name);
+                        error(c, source->path, (script_range){ 0 }, message);
+                    }
+                    continue;
+                }
+                if (existing >= 0) {
+                    ((script_catalog_type *)c->view.types)[existing] = type;
+                    continue;
+                }
+                script_catalog_type *types = grow(c, c->view.types, c->view.type_count, 1, sizeof *types);
+                types[c->view.type_count++] = type;
+                c->view.types = types;
+            }
+            script_analysis_free(analysis);
+        }
+    }
+}
 /* An edit of the input map replaces the file, and one without text removes
  * it. */
 static char *input_text(source_catalog *c, const char *path)
@@ -1118,6 +1205,7 @@ static source_catalog *build(
             }
         }
     }
+    declared_types(c);
     for (int i = 0; i < acount(c->sources); i++) {
         source_catalog_source *source = &c->sources[i];
         script_analysis

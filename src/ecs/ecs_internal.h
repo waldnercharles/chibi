@@ -79,7 +79,8 @@ struct ecs_world
     ecs_relationship *relationships;
     int *depth; /* ChildOf ancestors of each slot. */
     ecs_command *commands;
-    char **field_strings; /* Interned values assigned through the field API. */
+    char **field_strings; /* Open-addressed, world-owned interned string table. */
+    int field_string_count;
     uint64_t next_sequence;
     int iteration_depth;
     bool applying;

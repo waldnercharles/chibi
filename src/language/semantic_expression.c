@@ -168,6 +168,7 @@ bool script_analyzer_resolve_operator(analyzer *a, TSNode node, TSNode operator_
 
 static int number_constant(analyzer *a, TSNode node, script_type expected, bool negate)
 {
+    expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
     script_expression result = { .kind = SCRIPT_EXPR_CONSTANT,
                                  .symbol = -1,
                                  .left = -1,
@@ -399,10 +400,28 @@ static int join_task(analyzer *a, TSNode node, int value)
             result.type = result.results[0];
         } else if (count > 1) {
             result.type = (script_type){ .storage = PIN_STRUCT,
+                                         .nominal = symbol->id,
                                          .flags = SCRIPT_TYPE_RESULTS };
         }
         break;
     }
+    if (task.parameter) {
+        const script_catalog_type *success = script_catalog_type_by_id(a->catalog, task.parameter);
+        if (success) {
+            result.type = success->type;
+            if (!result.result_count && result.type.storage != PIN_FLOW) {
+                apush(result.results, result.type);
+                result.result_count = 1;
+            }
+        }
+    }
+    result.tested = result.type;
+    result.tag = (result.type.flags & SCRIPT_TYPE_UNION) &&
+                         result.type.container == PIN_CONTAINER_SINGLE &&
+                         !(result.type.flags & SCRIPT_TYPE_BOXED_OPTIONAL)
+                   ? 0
+                   : script_type_tag(result.type);
+    result.type = script_analyzer_await_type(a, node, result.tested);
     asetlen(a->narrowed, 0);
     return script_analyzer_expr_add(a, result);
 }
@@ -434,7 +453,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
         if (call->kind == SCRIPT_EXPR_STORE) {
             return value; /* A state write completes synchronously. */
         }
-        if (call->type.flags & SCRIPT_TYPE_TASK) {
+        if ((call->type.flags & SCRIPT_TYPE_TASK) &&
+            !(call->type.flags & SCRIPT_TYPE_OPTIONAL) &&
+            call->type.container == PIN_CONTAINER_SINGLE) {
             return join_task(a, node, value);
         }
         if (call->kind != SCRIPT_EXPR_CALL) {
@@ -475,9 +496,24 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                                                   : PIN_STR };
         result.constant = (pin_value){ .type = result.type.storage,
                                        .str = script_analyzer_name_copy(a, node) };
+        result.type.flags |= SCRIPT_TYPE_LITERAL;
+        result.type
+            .parameter = script_catalog_id("union-literal", result.constant.str);
         return script_analyzer_expr_add(a, result);
     }
     if (script_analyzer_is(node, "nil")) {
+        if ((expected.flags & SCRIPT_TYPE_TASK) &&
+            !(expected.flags & SCRIPT_TYPE_OPTIONAL) &&
+            expected.container == PIN_CONTAINER_SINGLE) {
+            result.kind = SCRIPT_EXPR_CONSTANT;
+            result.type = expected;
+            result.constant = (pin_value){ .type = PIN_TASK };
+            return script_analyzer_expr_add(a, result);
+        }
+        if (expected.storage == PIN_UNION && expected.container == PIN_CONTAINER_SINGLE &&
+            !(expected.flags & SCRIPT_TYPE_OPTIONAL)) {
+            script_analyzer_diagnostic(a, node, "A nonoptional union requires one of its alternatives");
+        }
         result.kind = SCRIPT_EXPR_NIL;
         result.type = expected;
         if (script_analyzer_text_is(a, node, "null") &&
@@ -495,6 +531,12 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
     }
     if (script_analyzer_is(node, "identifier") ||
         script_analyzer_is(node, "builtin_reference")) {
+        if (script_analyzer_text_is(a, node, "Cancelled")) {
+            result.kind = SCRIPT_EXPR_UNION;
+            result.type = script_cancelled_type();
+            result.tag = script_type_tag(result.type);
+            return script_analyzer_expr_add(a, result);
+        }
         int index = script_analyzer_lookup(a, node);
         if (index < 0) {
             char *name = script_analyzer_name_copy(a, node);
@@ -511,6 +553,13 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
             }
         }
         script_symbol symbol = a->out->symbols[index];
+        int owner = symbol.scope >= 0 ? a->out->scopes[symbol.scope].function : -1;
+        if (a->function >= 0 && owner >= 0 && owner != a->function &&
+            a->out->functions[a->function].kind == SCRIPT_FUNCTION_AUTHORED &&
+            (symbol.kind == SCRIPT_LOCAL || symbol.kind == SCRIPT_PARAMETER ||
+             symbol.kind == SCRIPT_RESULT)) {
+            script_analyzer_diagnostic(a, node, "Nested functions require enclosing locals to be passed as parameters");
+        }
         result.kind = SCRIPT_EXPR_SYMBOL;
         result.type = symbol.type;
         result.symbol = index;
@@ -525,12 +574,51 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                            ? SCRIPT_EFFECT_READ
                            : 0;
         script_analyzer_use(a, node, index, SCRIPT_READ, 0);
+        script_type narrowed = script_analyzer_narrowed_type(a, index, result.type);
+        if ((symbol.type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
+            script_analyzer_present(a, index)) {
+            narrowed.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+        }
+        if (((symbol.type.flags & SCRIPT_TYPE_UNION) &&
+             (!(narrowed.flags & SCRIPT_TYPE_UNION) || narrowed.container != PIN_CONTAINER_SINGLE ||
+              ((narrowed.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
+               !(symbol.type.flags & SCRIPT_TYPE_BOXED_OPTIONAL)))) ||
+            ((symbol.type.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
+             !(narrowed.flags & SCRIPT_TYPE_BOXED_OPTIONAL))) {
+            result.type = symbol.type;
+            int source = script_analyzer_expr_add(a, result);
+            return script_analyzer_expr_add(
+                a,
+                (script_expression){ .kind = SCRIPT_EXPR_UNWRAP,
+                                     .type = narrowed,
+                                     .range = result.range,
+                                     .left = source,
+                                     .right = -1,
+                                     .symbol = -1,
+                                     .entry = -1,
+                                     .tag = 0,
+                                     .effects = result.effects }
+            );
+        }
+        result.type = narrowed;
         return script_analyzer_expr_add(a, result);
     }
+    if (script_analyzer_is(node, "is_expression") ||
+        script_analyzer_is(node, "as_expression")) {
+        return script_analyzer_pattern_expression(a, node);
+    }
     if (script_analyzer_is(node, "member_expression")) {
+        int variant = script_analyzer_union_constructor(a, node);
+        if (variant >= 0) {
+            return variant;
+        }
         return script_analyzer_member_expression(a, node, expected);
     }
     if (script_analyzer_is(node, "call_expression")) {
+        int variant = script_analyzer_union_constructor(a, node);
+        if (variant >= 0) {
+            return variant;
+        }
         return script_analyzer_call_expression(a, node, expected);
     }
     if (script_analyzer_is(node, "cast_expression")) {
@@ -571,7 +659,9 @@ int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expec
                         : script_analyzer_expr_type(a, result.left);
         result.effects = script_analyzer_expr_effects(a, result.left);
         if (result.op == SCRIPT_OP_NOT) {
-            if (!(result.type.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_TASK))) {
+            if (!(result.type.flags & SCRIPT_TYPE_OPTIONAL) &&
+                !((result.type.flags & SCRIPT_TYPE_TASK) &&
+                  result.type.container == PIN_CONTAINER_SINGLE)) {
                 script_analyzer_require(
                     a,
                     node,
@@ -807,6 +897,15 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected)
     }
     a->depth++;
     int result = script_analyzer_expression_inner(a, node, expected);
+    const script_expression *resolved = &a->out->expressions[result];
+    bool unknown_effects = resolved->kind == SCRIPT_EXPR_CALL &&
+                           resolved->right >= 0 &&
+                           !a->out->functions[resolved->right].pure;
+    if (unknown_effects || (script_analyzer_expr_effects(a, result) &
+                            (SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_STRUCTURAL |
+                             SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_HOST))) {
+        script_analyzer_invalidate_narrowing(a, -1);
+    }
     a->depth--;
     return result;
 }

@@ -176,8 +176,8 @@ static void setup()
     write_file(
         paths[HELPERS],
         "library Helpers {\n"
-        "    function Twice(value: int) { return value * 2 }\n"
-        "    function Taken(value: int) { return value }\n"
+        "    Twice :: fn(value: int) { return value * 2 }\n"
+        "    Taken :: fn(value: int) { return value }\n"
         "}\n"
     );
     write_file(paths[DRIFT], "system Drift(position: Transform) {\n    position.x += dt\n}\n");

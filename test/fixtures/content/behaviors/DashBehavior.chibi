@@ -17,7 +17,7 @@ behavior "DashBehavior" {
     on "Contact Begin" {
         await "Strike Target"(event.Other)
     }
-    function "Capture Dash Direction"() {
+    "Capture Dash Direction" :: fn() {
         after entry {
             if abs(break_cf_v2(self.Input.move).x) + abs(break_cf_v2(self.Input.move).y) >= 0.0001 {
                 self.Dash.direction = vec2_norm(self.Input.move)
@@ -28,14 +28,14 @@ behavior "DashBehavior" {
             }
         }
     }
-    function "Drive Dash"() {
+    "Drive Dash" :: fn() {
         after entry {
             self.Velocity = self.Dash.direction * self.Dash.speed
             self.Orientation = "DirectionMath"."Direction Orientation"(break_cf_v2(self.Dash.direction).x, break_cf_v2(self.Dash.direction).y)
             return
         }
     }
-    function "Restore Movement"() {
+    "Restore Movement" :: fn() {
         after entry {
             if self.Input {
                 self.Velocity = "MovementActions"."Movement Velocity"(self.Input.move, self.Movement)
@@ -49,7 +49,7 @@ behavior "DashBehavior" {
             }
         }
     }
-    function "Advance Dash"() {
+    "Advance Dash" :: fn() {
         action set_gamedash_remaining = set_dash_remaining(max(self.Dash.remaining - delta_time(), B: float = 0.0))
         after entry {
             set_gamedash_remaining()
@@ -63,7 +63,7 @@ behavior "DashBehavior" {
             }
         }
     }
-    function "Advance Dash Timers"() {
+    "Advance Dash Timers" :: fn() {
         after entry {
             if state."Just Started" {
                 state."Just Started" = false
@@ -79,7 +79,7 @@ behavior "DashBehavior" {
             }
         }
     }
-    function "Strike Target"(Other: handle<"ecs.entity"> = 0) {
+    "Strike Target" :: fn(Other: handle<"ecs.entity"> = 0) {
         after entry {
             if 0.0 < self.Dash.remaining {
                 if entry.Other.Health {
@@ -106,7 +106,7 @@ behavior "DashBehavior" {
             }
         }
     }
-    function "Strike Current Contacts"() {
+    "Strike Current Contacts" :: fn() {
         after entry {
             foreach (foreach_2 in get_contact_entities(self, 2)) {
                 await "Strike Target"(foreach_2)
@@ -114,7 +114,7 @@ behavior "DashBehavior" {
             return
         }
     }
-    function "Start Dash"() {
+    "Start Dash" :: fn() {
         after entry {
             if self.Health.current >= 1 {
                 await "Capture Dash Direction"()

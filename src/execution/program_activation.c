@@ -211,6 +211,9 @@ void program_continuation_finish(execution_activation *a)
 }
 int program_activation_run(execution_activation *a, double now, double delta, unsigned budget)
 {
+    if (program_task_due(a, now)) {
+        program_tasks_tick(a->instance, now);
+    }
     if (a->finished) {
         return a->status;
     }
@@ -240,7 +243,8 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         int completed = program_complete_action(
             wait->context,
             command->node_id,
-            wait->context->command_results + command->result_first,
+            command->result_count ? wait->context->command_results + command->result_first
+                                  : NULL,
             command->result_count
         );
         wait->delivered = true;

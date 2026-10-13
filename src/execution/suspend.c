@@ -102,6 +102,15 @@ static void suspensions(behavior_function *f)
                 apush(s->values, v);
             }
         }
+        for (int i = 0; i < acount(f->value_roots); i++) {
+            behavior_value_root root = f->value_roots[i];
+            int index = root.index +
+                        (root.bank == BEHAVIOR_BANK_LOCAL ? acount(f->slots) : 0);
+            if (bits[index / 64] & (UINT64_C(1) << (index % 64))) {
+                root.index = index;
+                apush(s->roots, root);
+            }
+        }
     }
     free(next);
     free(live);

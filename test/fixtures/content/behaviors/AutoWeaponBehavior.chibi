@@ -5,7 +5,7 @@ behavior "AutoWeaponBehavior" {
             await "Fire Ready Projectiles"(self.Transform, direction_to<"Direction To">(self.Transform, find_nearest_entity(self.Transform, 600.0, 2, engine["Self"]()).Position), self.Weapon.damage)
         }
     }
-    function "Fire Ready Projectiles"(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0) {
+    "Fire Ready Projectiles" :: fn(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0) {
         after entry {
             state."Elapsed" = state."Elapsed" + delta_time()
             while "WeaponActions"."Check Firing Interval"(state."Elapsed", self.Weapon.cooldown).Ready {

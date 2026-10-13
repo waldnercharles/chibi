@@ -192,11 +192,26 @@ static void type(reader *r, TSNode node, script_component_field *out)
         return;
     }
     TSNode type_name = field(node, "name");
+    bool union_type = is(node, "union_type");
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        union_type |= is(ts_node_named_child(node, i), "union_type");
+    }
+    if (union_type) {
+        report(r, node, "ECS component fields cannot own union payloads");
+        return;
+    }
     if (ts_node_named_child_count(node) != 1 || ts_node_child_count(node) != 1) {
         report(r, node, "A component field holds a number, a scalar or a struct");
         return;
     }
     out->type = text(r, type_name);
+    script_type builtin = script_builtin_type(out->type);
+    int named = script_catalog_find_type(r->catalog, out->type);
+    if (builtin.storage == PIN_UNION ||
+        (named >= 0 && r->catalog->types[named].type.storage == PIN_UNION)) {
+        report(r, node, "ECS component fields cannot own union payloads");
+        return;
+    }
     if (type_known(r, out->type)) {
         return;
     }

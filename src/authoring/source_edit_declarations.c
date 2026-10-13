@@ -72,7 +72,7 @@ static bool variable_type(const script_catalog *catalog, const char *text, scrip
     if (!text || !text[0] || strlen(text) > 4096) {
         return false;
     }
-    const char *prefix = "behavior __VariableType { function __probe(__value: ";
+    const char *prefix = "behavior __VariableType { __probe :: fn(__value: ";
     const char *suffix = ") {} }";
     size_t bytes = strlen(prefix) + strlen(text) + strlen(suffix) + 1;
     char *probe = xmalloc(bytes);
@@ -276,7 +276,7 @@ bool source_edit_declarations(
             /* A named expression is a function, recomputed at each call. */
             size_t bytes = strlen(quoted) + strlen(r->expression) + 32;
             fragment = xmalloc(bytes);
-            snprintf(fragment, bytes, "function %s() { return %s }", quoted, r->expression);
+            snprintf(fragment, bytes, "%s :: fn() { return %s }", quoted, r->expression);
         } else {
             size_t bytes = strlen(quoted) + 64;
             fragment = xmalloc(bytes);
@@ -285,7 +285,7 @@ bool source_edit_declarations(
                 bytes,
                 r->kind == AUTHORING_EDIT_CREATE_MACRO
                     ? "macro %s()->() { entry Start {} }"
-                    : "function %s()->() {}",
+                    : "%s :: fn()->() {}",
                 quoted
             );
         }

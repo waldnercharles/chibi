@@ -17,7 +17,7 @@ typedef struct
 {
     TSNode node;
     int start, end;
-    bool open, close, end_line, nest_open, nest_close;
+    bool open, close, end_line, nest_open, nest_close, case_open, case_close;
 } token;
 
 static bool kind(TSNode node, const char *name)
@@ -29,8 +29,8 @@ static bool block(TSNode node)
 {
     return kind(node, "block") || kind(node, "declaration_body") ||
            kind(node, "system_body") || kind(node, "callable_body") ||
-           kind(node, "component_body") || kind(node, "match_statement") ||
-           kind(node, "sequence_statement");
+           kind(node, "component_body") || kind(node, "switch_statement") ||
+           kind(node, "union_declaration") || kind(node, "sequence_statement");
 }
 
 /* Brackets whose contents may continue on later lines. */
@@ -59,6 +59,10 @@ static token leaf(TSNode node)
     TSNode parent = ts_node_parent(node);
     t.open = kind(node, "{") && block(parent);
     t.close = kind(node, "}") && block(parent);
+    if (kind(node, ":") && kind(parent, "switch_arm")) {
+        TSNode body = ts_node_child_by_field_name(parent, "body", 4);
+        t.case_open = !kind(ts_node_child(body, 0), "{");
+    }
     t.nest_open = (kind(node, "(") || kind(node, "[") || kind(node, "{")) &&
                   nest(parent);
     t.nest_close = (kind(node, ")") || kind(node, "]") || kind(node, "}")) &&
@@ -67,6 +71,10 @@ static token leaf(TSNode node)
          !ts_node_is_null(p) && ts_node_end_byte(p) == (uint32_t)t.end;
          p = ts_node_parent(p)) {
         t.end_line |= end_line(p);
+        if (kind(p, "block") && kind(ts_node_parent(p), "switch_arm") &&
+            !kind(ts_node_child(p, 0), "{")) {
+            t.case_close = true;
+        }
     }
     return t;
 }
@@ -123,7 +131,8 @@ static bool tight_before(token t)
     TSNode n = t.node, p = ts_node_parent(n);
     return kind(n, ",") || kind(n, ";") || kind(n, ":") || kind(n, ".") ||
            kind(n, "..") || kind(n, ")") || kind(n, "]") ||
-           (kind(n, "(") && (kind(p, "parameter_list") || kind(p, "cast_expression") ||
+           (kind(n, "(") && (kind(p, "parameter_list") || kind(p, "pattern_bindings") ||
+                             kind(p, "cast_expression") ||
                              (kind(p, "argument_list") &&
                               !kind(ts_node_parent(p), "return_statement")))) ||
            (kind(n, "[") && (kind(p, "type") || kind(p, "index_expression") ||
@@ -139,7 +148,8 @@ static bool tight_after(token t)
     TSNode n = t.node, p = ts_node_parent(n);
     return kind(n, "(") || kind(n, "[") || kind(n, ".") || kind(n, "..") ||
            unit_operator(n) ||
-           (kind(p, "unary_expression") && ts_node_start_byte(p) == (uint32_t)t.start) ||
+           (kind(p, "unary_expression") && !kind(n, "not") &&
+            ts_node_start_byte(p) == (uint32_t)t.start) ||
            (kind(n, "<") &&
             (kind(p, "type_argument_list") || kind(p, "type_parameter_list") ||
              kind(p, "cast_expression")));
@@ -242,11 +252,12 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
             bool comment = kind(current.node, "comment");
             bool inline_comment = comment && !lines;
             bool empty_block = previous.open && current.close;
-            bool chained = previous.close && kind(current.node, "else");
+            bool chained = previous.close &&
+                           (kind(current.node, "else") || kind(current.node, ";"));
             bool newline = (lines && !chained) ||
                            (!inline_comment && !empty_block && !chained &&
-                            (previous.open || previous.close ||
-                             previous.end_line || current.close));
+                            (previous.open || previous.close || previous.end_line ||
+                             previous.case_open || current.close));
             if (newline) {
                 if (!append(&out, lines > 1 ? "\n\n" : "\n", lines > 1 ? 2 : 1)) {
                     goto limit;
@@ -257,8 +268,9 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
                     }
                 }
             } else if (
-                !empty_block && ((!tight_before(current) && !tight_after(previous)) ||
-                                 kind(previous.node, "->"))
+                !empty_block &&
+                ((!tight_before(current) && !tight_after(previous)) ||
+                 kind(previous.node, "->") || kind(previous.node, "::"))
             ) {
                 if (!append(&out, " ", 1)) {
                     goto limit;
@@ -268,8 +280,11 @@ char *authoring_source_format(const script_syntax *source, char *error, size_t s
         if (!append(&out, source->text + current.start, current.end - current.start)) {
             goto limit;
         }
-        if (current.open) {
+        if (current.open || current.case_open) {
             indent++;
+        }
+        if (current.case_close) {
+            indent--;
         }
         if (current.nest_open) {
             bool wraps = false;

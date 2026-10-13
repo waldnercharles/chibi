@@ -192,6 +192,11 @@ static bool query_valid(const execution_module_plan *m, int index, unsigned char
     if (q->kind == EXECUTION_QUERY_HAS && (!q->component || q->child_count)) {
         return false;
     }
+    if (q->source_traversal < 0 || q->source_traversal > 2 ||
+        (q->source_traversal && !q->source_relationship) ||
+        (q->kind != EXECUTION_QUERY_HAS && q->source_relationship)) {
+        return false;
+    }
     if (q->kind == EXECUTION_QUERY_NOT && q->child_count != 1) {
         return false;
     }

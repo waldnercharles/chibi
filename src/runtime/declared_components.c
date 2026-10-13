@@ -8,6 +8,7 @@
 #include "types/catalog.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -177,13 +178,17 @@ static bool build(declared_components *c, int index, const declared_component *i
                              .description = own(c, f->description),
                              .unit = own(c, f->unit),
                              .min = f->min,
-                             .max = f->max };
+                             .max = f->max,
+                             .range_contract = f->min != f->max };
         size_t field_alignment;
         script_type type;
         if (!field_type(f->type, &field, &field_alignment, &type)) {
             char message[160];
             snprintf(message, sizeof message, "field %s has unknown type %s", f->name, f->type);
             return fail(error, size, name, message);
+        }
+        if (!isfinite(f->min) || !isfinite(f->max) || !type_field_range_valid(&field)) {
+            return fail(error, size, name, "range endpoints must fit the field's numeric storage");
         }
         offset = (offset + field_alignment - 1) / field_alignment * field_alignment;
         field.offset = offset;
@@ -194,12 +199,17 @@ static bool build(declared_components *c, int index, const declared_component *i
         size_t bytes = strlen(name) + strlen(field.name) + 2;
         char *qualified = arena_alloc(&c->storage, bytes);
         snprintf(qualified, bytes, "%s.%s", name, field.name);
-        script_fields[i] = (script_catalog_field){ .id = script_catalog_id("field", qualified),
-                                                   .name = field.name,
-                                                   .type = type,
-                                                   .offset = field.offset,
-                                                   .writable = true,
-                                                   .unit = field.unit };
+        script_fields[i] = (script_catalog_field){
+            .id = script_catalog_id("field", qualified),
+            .name = field.name,
+            .type = type,
+            .offset = field.offset,
+            .writable = true,
+            .unit = field.unit,
+            .range_contract = field.range_contract,
+            .min = field.min,
+            .max = field.max
+        };
     }
     type_desc *type = &c->types[index];
     *type = (type_desc){ .name = name,
@@ -366,9 +376,20 @@ void declared_components_wire(execution_wire *wire, declared_components **out)
             if (!wire->reading) {
                 field->name = (*out)->types[i].fields[j].name;
                 field->type = (*out)->spellings[i][j];
+                field->min = (*out)->types[i].fields[j].min;
+                field->max = (*out)->types[i].fields[j].max;
             }
             execution_wire_string(wire, &field->name);
             execution_wire_string(wire, &field->type);
+            uint64_t min, max;
+            memcpy(&min, &field->min, sizeof min);
+            memcpy(&max, &field->max, sizeof max);
+            execution_wire_u64(wire, &min);
+            execution_wire_u64(wire, &max);
+            if (wire->reading) {
+                memcpy(&field->min, &min, sizeof min);
+                memcpy(&field->max, &max, sizeof max);
+            }
         }
         component->fields = fields[i];
     }

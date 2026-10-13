@@ -94,7 +94,14 @@ static reflection_counts emit_reflection(FILE *out, const collect_ctx *ctx)
             emit_string(out, f->description);
             fprintf(out, ", %s, ", f->color ? "true" : "false");
             emit_string(out, f->unit);
-            fprintf(out, ", %.17g, %.17g },\n", f->min, f->max);
+            fprintf(
+                out,
+                ", %.17g, %.17g, %s, %.17g },\n",
+                f->min,
+                f->max,
+                f->range_contract ? "true" : "false",
+                f->range_default
+            );
         }
         fputs("};\n\n", out);
 

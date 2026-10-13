@@ -8,6 +8,18 @@ static bool installed(const ecs_world *world, uint64_t id)
 {
     return !id || (world && ecs_world_component(world, id));
 }
+static bool source_installed(const ecs_world *world, uint64_t id, int traversal)
+{
+    if (!id) {
+        return traversal == ECS_SELF;
+    }
+    const ecs_relationship_desc *relationship = world
+                                                  ? ecs_world_relationship(world, id)
+                                                  : NULL;
+    unsigned traits = ECS_REL_EXCLUSIVE | (traversal ? ECS_REL_TRAVERSABLE : 0);
+    return traversal >= ECS_SELF && traversal <= ECS_SELF_UP && relationship &&
+           (relationship->traits & traits) == traits;
+}
 static bool layout_matches(const ecs_world *world, uint64_t id, uint64_t layout, size_t size)
 {
     const ecs_component_desc *component = world ? ecs_world_component(world, id) : NULL;
@@ -78,7 +90,23 @@ static bool function_valid(const behavior_function *f, const ecs_world *world)
         if (!access_valid(world, host->access)) {
             return false;
         }
+        if (host->call != &EXECUTION_query_source_call &&
+            host->call != &EXECUTION_query_target_call &&
+            host->call != &EXECUTION_reference_make_call &&
+            host->call != &EXECUTION_component_has_call &&
+            host->call != &EXECUTION_component_membership_call) {
+            continue;
+        }
         const behavior_function_data_value *values = f->data_values + host->first;
+        if (host->call == &EXECUTION_query_source_call &&
+            (!installed(world, values[2].initial.u64) ||
+             !source_installed(world, values[3].initial.u64, values[4].initial.i))) {
+            return false;
+        }
+        if (host->call == &EXECUTION_query_target_call &&
+            (!world || !ecs_world_relationship(world, values[2].initial.u64))) {
+            return false;
+        }
         if (host->call == &EXECUTION_reference_make_call &&
             values[2].initial.i == LANGUAGE_REFERENCE_COMPONENT &&
             !layout_matches(
@@ -102,7 +130,12 @@ bool program_preflight(const execution_module *module, const ecs_world *world)
     const execution_module_plan *plan = &module->plan;
     for (int i = 0; i < plan->query_count; i++) {
         if (plan->queries[i].kind == EXECUTION_QUERY_HAS &&
-            !installed(world, plan->queries[i].component)) {
+            (!installed(world, plan->queries[i].component) ||
+             !source_installed(
+                 world,
+                 plan->queries[i].source_relationship,
+                 plan->queries[i].source_traversal
+             ))) {
             return false;
         }
     }

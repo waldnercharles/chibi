@@ -68,9 +68,46 @@ bool source_catalog_snapshot(arena *storage, const script_catalog *source, scrip
             fields[j].read_key = text(storage, fields[j].read_key);
         }
         types[i].fields = fields;
+        script_catalog_variant *variants = arena_alloc(
+            storage,
+            (size_t)types[i].variant_count * sizeof *variants
+        );
+        for (int j = 0; j < types[i].variant_count; j++) {
+            variants[j] = types[i].variants[j];
+            variants[j].name = text(storage, variants[j].name);
+            script_catalog_field *payload = arena_alloc(
+                storage,
+                (size_t)variants[j].field_count * sizeof *payload
+            );
+            for (int k = 0; k < variants[j].field_count; k++) {
+                payload[k] = variants[j].fields[k];
+                payload[k].name = text(storage, payload[k].name);
+                payload[k].unit = text(storage, payload[k].unit);
+                payload[k].read_key = text(storage, payload[k].read_key);
+            }
+            variants[j].fields = payload;
+            if (variants[j].is_literal && pin_value_snapshot_to_arena(
+                                              storage,
+                                              &variants[j].literal,
+                                              &types[i].variants[j].literal
+                                          )) {
+                return false;
+            }
+        }
+        types[i].variants = variants;
     }
     out->types = types;
     out->type_count = source->type_count;
+    script_catalog_relationship *relationships = arena_alloc(
+        storage,
+        (size_t)source->relationship_count * sizeof *relationships
+    );
+    for (int i = 0; i < source->relationship_count; i++) {
+        relationships[i] = source->relationships[i];
+        relationships[i].name = text(storage, relationships[i].name);
+    }
+    out->relationships = relationships;
+    out->relationship_count = source->relationship_count;
     script_catalog_global *globals = arena_alloc(storage, (size_t)source->global_count * sizeof *globals);
     for (int i = 0; i < source->global_count; i++) {
         globals[i] = source->globals[i];

@@ -74,7 +74,8 @@ void execution_machine_begin(
             frame_count = acount(f->fast->frames);
         }
     }
-    bool inspected = ctx->inspect || ctx->watch || ctx->trace;
+    bool inspected = ctx->inspect || ctx->watch || ctx->trace ||
+                     ctx->source_pause || ctx->source_capture;
     if (compact && behavior_function_fast_allowed(f, ctx)) {
         f = f->fast;
     }

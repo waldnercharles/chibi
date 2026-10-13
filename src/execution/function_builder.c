@@ -17,6 +17,7 @@ struct behavior_function_builder
     behavior_function *function;
     bool decoded;
     size_t arena_budget;
+    int *slot_roots, *local_roots;
 };
 behavior_function_builder *behavior_function_builder_new()
 {
@@ -33,6 +34,8 @@ behavior_function_builder *behavior_function_builder_new()
 void behavior_function_builder_free(behavior_function_builder *b)
 {
     behavior_function_free(b->function);
+    afree(b->slot_roots);
+    afree(b->local_roots);
     free(b);
 }
 void behavior_function_builder_signature(
@@ -124,6 +127,31 @@ int behavior_function_builder_local(behavior_function_builder *b, pin_value init
     int index = acount(b->function->locals);
     apush(b->function->locals, ((behavior_function_local){ .initial = initial }));
     return index;
+}
+void behavior_function_builder_root(
+    behavior_function_builder *b,
+    behavior_value_bank bank,
+    int index,
+    pin_value shape
+)
+{
+    assert(bank == BEHAVIOR_BANK_SLOT || bank == BEHAVIOR_BANK_LOCAL);
+    assert(index >= 0 && (shape.container != PIN_CONTAINER_SINGLE || shape.type == PIN_STRUCT));
+    shape.ptr = NULL;
+    int **indices = bank == BEHAVIOR_BANK_SLOT ? &b->slot_roots : &b->local_roots;
+    while (acount(*indices) <= index) {
+        apush(*indices, -1);
+    }
+    int found = (*indices)[index];
+    if (found >= 0) {
+        assert(
+            b->function->value_roots[found].shape.type == shape.type &&
+            b->function->value_roots[found].shape.container == shape.container
+        );
+        return;
+    }
+    (*indices)[index] = acount(b->function->value_roots);
+    apush(b->function->value_roots, ((behavior_value_root){ bank, index, shape }));
 }
 int behavior_function_builder_origin(behavior_function_builder *b, behavior_function_source source)
 {
@@ -340,7 +368,7 @@ int behavior_function_builder_task(
         callee,
         arguments,
         argument_count,
-        &(pin_value){ .type = PIN_U64 },
+        &(pin_value){ .type = PIN_TASK },
         1
     );
     b->function->calls[index].task = true;
@@ -475,7 +503,8 @@ static bool index_valid(int index, int count)
 }
 static bool scalar_type(pin_type type)
 {
-    return (type >= PIN_BOOL && type <= PIN_HANDLE) || type == PIN_ENUM;
+    return (type >= PIN_BOOL && type <= PIN_HANDLE) || type == PIN_ENUM ||
+           type == PIN_TASK || type == PIN_UNION;
 }
 static bool same_type(pin_value a, pin_value b)
 {
@@ -661,7 +690,7 @@ static const char *verify_instruction(const behavior_function *f, int pc)
             CHECK(i->type == (i->op == BF_PRESENT ? PIN_BOOL : BF_POINTER_TYPE), "invalid header output type");
             CHECK(
                 i->op != BF_ARRAY || value->type == PIN_STRUCT ||
-                    value->container != PIN_CONTAINER_SINGLE,
+                    value->type == PIN_UNION || value->container != PIN_CONTAINER_SINGLE,
                 "ARRAY requires an aggregate header"
             );
             CHECK(
@@ -993,7 +1022,7 @@ static const char *verify_instruction(const behavior_function *f, int pc)
 static bool value_type_valid(pin_value value)
 {
     if (value.container < PIN_CONTAINER_SINGLE || value.container > PIN_CONTAINER_MAP ||
-        (!scalar_type(value.type) && value.type != PIN_STRUCT)) {
+        (!scalar_type(value.type) && value.type != PIN_STRUCT && value.type != PIN_UNION)) {
         return false;
     }
     return value.type != PIN_STRUCT ||
@@ -1015,6 +1044,29 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
     switch ((execution_intrinsic)(id & UINT64_C(0xffffffff))) {
         case EXECUTION_INTRINSIC_SNAPSHOT:
             return count == 1 && same_type(values[0].initial, output);
+        case EXECUTION_INTRINSIC_UNION_MAKE:
+            return count >= 1 && INPUT(0, PIN_U64) && OUTPUT(PIN_UNION);
+        case EXECUTION_INTRINSIC_UNION_TEST:
+            if (count < 2 || !INPUT(0, PIN_UNION) || !OUTPUT(PIN_BOOL)) {
+                return false;
+            }
+            for (int i = 1; i < count; i++) {
+                if (!INPUT(i, PIN_U64)) {
+                    return false;
+                }
+            }
+            return true;
+        case EXECUTION_INTRINSIC_UNION_GET:
+            if (count < 4 || !INPUT(0, PIN_UNION) || !INPUT(1, PIN_U64) ||
+                !INPUT(2, PIN_I32) || !INPUT(3, PIN_BOOL)) {
+                return false;
+            }
+            for (int i = 4; i < count; i++) {
+                if (!INPUT(i, PIN_U64)) {
+                    return false;
+                }
+            }
+            return !values[3].initial.b || OUTPUT(PIN_UNION);
         case EXECUTION_INTRINSIC_CONSTRUCT:
             if (count < 1 || !same_type(values[0].initial, output)) {
                 return false;
@@ -1080,6 +1132,13 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
         case EXECUTION_INTRINSIC_COMPONENT_HAS:
             return count == 3 && INPUT(0, BF_POINTER_TYPE) &&
                    INPUT(1, PIN_HANDLE) && INPUT(2, PIN_U64) && OUTPUT(PIN_BOOL);
+        case EXECUTION_INTRINSIC_QUERY_SOURCE:
+            return count == 5 && INPUT(0, BF_POINTER_TYPE) &&
+                   INPUT(1, PIN_HANDLE) && INPUT(2, PIN_U64) &&
+                   INPUT(3, PIN_U64) && INPUT(4, PIN_I32) && OUTPUT(PIN_HANDLE);
+        case EXECUTION_INTRINSIC_QUERY_TARGET:
+            return count == 4 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_HANDLE) &&
+                   INPUT(2, PIN_U64) && INPUT(3, PIN_I32) && OUTPUT(PIN_HANDLE);
         case EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP:
             return count == 4 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_HANDLE) &&
                    INPUT(2, PIN_U64) && INPUT(3, PIN_BOOL) && OUTPUT(PIN_BOOL);
@@ -1095,8 +1154,9 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
 static bool value_kind_valid(behavior_value_kind kind, pin_value initial)
 {
     return kind >= BEHAVIOR_VALUE && kind <= BEHAVIOR_REFERENCE &&
-           (kind == BEHAVIOR_VALUE ||
-            (scalar_bank(initial, BF_POINTER_TYPE) && !initial.u64));
+           (kind == BEHAVIOR_VALUE || ((scalar_bank(initial, BF_POINTER_TYPE) ||
+                                        scalar_bank(initial, PIN_UNION)) &&
+                                       !initial.u64));
 }
 static behavior_value_kind payload_kind(pin_value value, behavior_value_kind kind)
 {
@@ -1189,7 +1249,9 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
         case BF_CONTEXT:
             output = i->target == 1 || context_address(i->offset) ? BEHAVIOR_ADDRESS
                                                                   : BEHAVIOR_VALUE;
-            CHECK_KIND(output != BEHAVIOR_ADDRESS || i->type == BF_POINTER_TYPE);
+            CHECK_KIND(
+                output != BEHAVIOR_ADDRESS || i->type == BF_POINTER_TYPE || i->type == PIN_UNION
+            );
             break;
         case BF_LOAD:
         case BF_READ: {
@@ -1207,7 +1269,10 @@ static const char *verify_instruction_kinds(const behavior_function *f, int pc, 
                 CHECK_KIND(output == BEHAVIOR_ADDRESS);
             } else {
                 CHECK_KIND(output != BEHAVIOR_REFERENCE);
-                CHECK_KIND(output != BEHAVIOR_ADDRESS || i->type == BF_POINTER_TYPE);
+                CHECK_KIND(
+                    output != BEHAVIOR_ADDRESS || i->type == BF_POINTER_TYPE ||
+                    i->type == PIN_UNION
+                );
             }
             break;
         }
@@ -1369,7 +1434,8 @@ static const char *verify_kinds(const behavior_function *f)
     for (int i = 0; i < acount(f->slots); i++) {
         behavior_value_kind kind = f->slot_kinds[i];
         if (kind < BEHAVIOR_VALUE || kind > BEHAVIOR_REFERENCE ||
-            (kind != BEHAVIOR_VALUE && f->slots[i] != BF_POINTER_TYPE)) {
+            (kind != BEHAVIOR_VALUE && f->slots[i] != BF_POINTER_TYPE &&
+             f->slots[i] != PIN_UNION)) {
             return "invalid slot provenance";
         }
     }
@@ -1429,6 +1495,8 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_ACTION_READ:
                 case EXECUTION_INTRINSIC_ACTION_COMPLETE:
                 case EXECUTION_INTRINSIC_COMPONENT_HAS:
+                case EXECUTION_INTRINSIC_QUERY_SOURCE:
+                case EXECUTION_INTRINSIC_QUERY_TARGET:
                 case EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP:
                 case EXECUTION_INTRINSIC_BREAK_REQUEST:
                 case EXECUTION_INTRINSIC_BREAK_TAKE:
@@ -1470,6 +1538,38 @@ static const char *source_watch_error(const behavior_source_watch *watch)
     }
     return NULL;
 }
+static const char *verify_value_roots(const behavior_function *f)
+{
+    if (!acount(f->value_roots)) {
+        return NULL;
+    }
+    size_t slots = (size_t)acount(f->slots), locals = (size_t)acount(f->locals);
+    bool *seen = xcalloc(slots + locals + 1, sizeof *seen);
+    const char *error = NULL;
+    for (int i = 0; i < acount(f->value_roots); i++) {
+        const behavior_value_root *root = &f->value_roots[i];
+        bool slot = root->bank == BEHAVIOR_BANK_SLOT;
+        if ((!slot && root->bank != BEHAVIOR_BANK_LOCAL) || root->index < 0 ||
+            root->index >= (slot ? acount(f->slots) : acount(f->locals)) ||
+            (slot ? f->slots[root->index] : f->locals[root->index].initial.type) !=
+                BF_POINTER_TYPE ||
+            behavior_function_kind(f, root->bank, root->index) != BEHAVIOR_ADDRESS ||
+            !value_type_valid(root->shape) || root->shape.ptr ||
+            (root->shape.container == PIN_CONTAINER_SINGLE &&
+             root->shape.type != PIN_STRUCT)) {
+            error = "invalid saved aggregate root metadata";
+            break;
+        }
+        size_t index = (size_t)root->index + (slot ? 0 : slots);
+        if (seen[index]) {
+            error = "duplicate saved aggregate root metadata";
+            break;
+        }
+        seen[index] = true;
+    }
+    free(seen);
+    return error;
+}
 static const char *verify_metadata(const behavior_function *f)
 {
     if (f->argument_count != acount(f->argument_defaults) ||
@@ -1480,6 +1580,10 @@ static const char *verify_metadata(const behavior_function *f)
     const char *kind_error = verify_kinds(f);
     if (kind_error) {
         return kind_error;
+    }
+    const char *root_error = verify_value_roots(f);
+    if (root_error) {
+        return root_error;
     }
     for (int i = 0; i < acount(f->source_points); i++) {
         if (!source_point_valid(f->source_points[i])) {
@@ -1629,11 +1733,18 @@ static const char *verify_metadata(const behavior_function *f)
             case NODE_COMMAND_YIELD:
             case NODE_COMMAND_TASK_JOIN:
             case NODE_COMMAND_TASK_CANCEL:
-            case NODE_COMMAND_TASK_RUNNING: {
+            case NODE_COMMAND_TASK_RUNNING:
+            case NODE_COMMAND_TASK_CANCEL_AFTER: {
                 bool handle = command->intrinsic != NODE_COMMAND_YIELD;
+                bool join = command->intrinsic == NODE_COMMAND_TASK_JOIN;
+                bool timed = command->intrinsic == NODE_COMMAND_TASK_CANCEL_AFTER;
                 if (command->invoke || command->begin || command->service ||
-                    spec->count != handle ||
-                    (handle && f->command_arguments[spec->first].type != PIN_U64) ||
+                    spec->count != (int)handle + (int)(join || timed) ||
+                    (handle && f->command_arguments[spec->first].type != PIN_TASK) ||
+                    ((join || timed) && f->command_arguments[spec->first + 1].type !=
+                                            (join ? PIN_U64 : PIN_F64)) ||
+                    (join && (spec->result_count != 1 ||
+                              f->command_results[spec->result_first].type != PIN_UNION)) ||
                     (command->intrinsic == NODE_COMMAND_TASK_RUNNING
                          ? spec->result_count != 1 ||
                                f->command_results[spec->result_first].type != PIN_BOOL
@@ -1684,8 +1795,8 @@ static const char *verify_metadata(const behavior_function *f)
                 return "callee argument type differs from invocation";
             }
         }
-        if (call->task && f->data_values[call->result_first].initial.type != PIN_U64) {
-            return "task invocation requires one uint64 handle";
+        if (call->task && f->data_values[call->result_first].initial.type != PIN_TASK) {
+            return "task invocation requires one task handle";
         }
         for (int result = 0; !call->task && result < call->result_count; result++) {
             if (f->data_values[call->result_first + result].kind !=

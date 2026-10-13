@@ -1861,7 +1861,7 @@ typedef struct
     CF_V2 drift;
 } charge;
 static const declared_field charge_fields[] = {
-    { .name = "level", .type = "float" },
+    { .name = "level", .type = "float", .min = 0, .max = 2 },
     { .name = "cycles", .type = "int" },
     { .name = "full", .type = "bool" },
     { .name = "source", .type = "entity" },
@@ -1876,6 +1876,58 @@ static bool rejected(const char *name, const char *type, const char *message)
     declared_components_free(set);
     return !set && strstr(error, message);
 }
+TEST_CASE(native_ranges_distinguish_contracts_from_valid_wider_domains)
+{
+    const struct
+    {
+        const ecs_component_desc *component;
+        const char *field;
+        bool contract;
+    } fields[] = {
+        { &COMPONENT_Collider, "restitution", true },
+        { &COMPONENT_Collider, "friction", false },
+        { &COMPONENT_Collider3D, "restitution", false },
+        { &COMPONENT_Collider3D, "friction", false },
+        { &COMPONENT_Combustion, "blast_radius", true },
+        { &COMPONENT_FluidVolume, "absorption", false },
+        { &COMPONENT_Appearance, "antialias", false },
+        { &COMPONENT_Material, "emission_intensity", false },
+        { &COMPONENT_Material, "absorption", false },
+        { &COMPONENT_Material, "edge_light", false },
+        { &COMPONENT_SurfaceQuality, "sdf_pixel_error", true },
+        { &COMPONENT_ParticleEmitter, "absorption", false },
+        { &COMPONENT_ParticleField3D, "count", true },
+        { &COMPONENT_HRC2D, "resolution", true },
+        { &COMPONENT_HRC2D, "bounce_hysteresis", true },
+        { &COMPONENT_HRC2D, "radiance_hysteresis", true },
+        { &COMPONENT_HRC2D, "surface_depth_shadow_softness", true },
+        { &COMPONENT_HRC2D, "bloom", true },
+    };
+    for (int i = 0; i < (int)(sizeof fields / sizeof *fields); i++) {
+        const type_field
+            *field = pin_type_field_path(fields[i].component->type, fields[i].field);
+        REQUIRE(
+            field && field->min < field->max &&
+            field->range_contract == fields[i].contract
+        );
+    }
+    Material material = { .absorption = 2, .emission_intensity = 20, .edge_light = 4 };
+    type_validate_ranges(COMPONENT_Material.type, &material);
+    REQUIRE(
+        material.absorption == 2 && material.emission_intensity == 20 &&
+        material.edge_light == 4
+    );
+    HRC2D lighting = { .resolution = NAN,
+                       .bounce_hysteresis = NAN,
+                       .radiance_hysteresis = INFINITY };
+    type_validate_ranges(COMPONENT_HRC2D.type, &lighting);
+    REQUIRE(
+        lighting.resolution == .5f && lighting.bounce_hysteresis == .8f &&
+        lighting.radiance_hysteresis == 1
+    );
+    return true;
+}
+
 TEST_CASE(native_player_reads_declared_components)
 {
     char error[192];
@@ -1958,6 +2010,26 @@ TEST_CASE(native_player_reads_declared_components)
     REQUIRE(test_player);
     ecs_world *own = world_ecs(player_world(test_player));
     REQUIRE(ecs_world_component(own, charge_id)->type == type);
+    ecs_entity retained_cell = scene_instance_entity(player_scene(test_player), 0);
+    REQUIRE(
+        ecs_component_write_field(own, retained_cell, charge_id, 0, (pin_value){ .type = PIN_F32, .f = 99 }) ==
+        ECS_OK
+    );
+    const charge *retained_row = ecs_component_data_const(own, retained_cell, charge_id);
+    REQUIRE(retained_row && retained_row->level == 2);
+    declared_field tightened_fields[5];
+    memcpy(tightened_fields, charge_fields, sizeof tightened_fields);
+    tightened_fields[0].max = 1;
+    declared_component tightened = component;
+    tightened.fields = tightened_fields;
+    declared_components *latest = declared_components_new(&tightened, 1, error, sizeof error);
+    REQUIRE(latest && type_catalog_find("Charge")->size == type->size);
+    REQUIRE(type_layout_hash(type_catalog_find("Charge")) != type_layout_hash(type));
+    charge retained_value = { .level = 1.75f, .cycles = 2 };
+    pin_value whole = { .type = PIN_STRUCT, .type_name = "Charge", .ptr = &retained_value };
+    REQUIRE(ecs_component_write_value(own, retained_cell, charge_id, 0, whole, whole) == ECS_OK);
+    REQUIRE(retained_row->level == 1.75f);
+    declared_components_free(latest);
     player_free(test_player);
     test_player = NULL;
     declared_components_free(newer);
@@ -1986,7 +2058,7 @@ TEST_CASE(native_player_reads_declared_components)
     declared_components_free(older);
     REQUIRE(!type_catalog_find("Battery") && !script_catalog_project());
     REQUIRE(project_components().component_count == REGISTRY_COMPONENT_COUNT);
-    /* A measure's unit and range reach its type field for editors. */
+    /* Measures carry a runtime range contract as well as a display unit. */
     declared_field rate = { .name = "rate",
                             .type = "number",
                             .unit = "u/s",
@@ -1998,7 +2070,7 @@ TEST_CASE(native_player_reads_declared_components)
     const type_field *hint = &type_catalog_find("Charge")->fields[0];
     REQUIRE(
         hint->type == PIN_F64 && !strcmp(hint->unit, "u/s") && hint->min == 0 &&
-        hint->max == 10
+        hint->max == 10 && hint->range_contract
     );
     declared_components_free(hinted);
     player_host player_host_context = {
@@ -2022,6 +2094,12 @@ TEST_CASE(native_player_reads_declared_components)
     ecs_entity cell = scene_instance_entity(player_scene(test_player), 0);
     const charge *read = ecs_component_data_const(ecs, cell, charge_id);
     REQUIRE(read && read->level == 1.25f && read->cycles == 2 && read->full);
+    const type_field *level_contract = &type_catalog_find("Charge")->fields[0];
+    REQUIRE(level_contract->range_contract && level_contract->max == 2);
+    REQUIRE(
+        ecs_component_write_field(ecs, cell, charge_id, 0, (pin_value){ .type = PIN_F32, .f = 99 }) == ECS_OK
+    );
+    REQUIRE(read->level == 2);
     REQUIRE(read->drift.x == 1 && read->drift.y == -1);
     REQUIRE(project_components().component_count == REGISTRY_COMPONENT_COUNT + 1);
     player_free(test_player);
@@ -2040,6 +2118,7 @@ void test_tool_native()
     RUN_TEST_CASE(native_player_loads_named_scenes);
     RUN_TEST_CASE(native_player_plays_sounds);
     RUN_TEST_CASE(native_player_reads_declared_components);
+    RUN_TEST_CASE(native_ranges_distinguish_contracts_from_valid_wider_domains);
     RUN_TEST_CASE(native_action_state_combines_sources_per_step);
     RUN_TEST_CASE(native_recorded_taps_replay_per_step);
     RUN_TEST_CASE(native_controller_bindings_replay_per_step);

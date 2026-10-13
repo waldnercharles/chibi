@@ -16,7 +16,8 @@ static void constant(FILE *out, pin_type type, pin_value value)
         type_name(out, value.str);
         return;
     }
-    if (behavior_scalar_integer(type) || type == PIN_HANDLE) {
+    if (behavior_scalar_integer(type) ||
+        (type == PIN_HANDLE || type == PIN_TASK || type == PIN_UNION)) {
         uint64_t bits = behavior_scalar_bits(value);
         fprintf(out, "(%s)UINT64_C(%llu)", behavior_scalar_c_type(type), (unsigned long long)bits);
         return;
@@ -1065,7 +1066,7 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         fprintf(out, "}\n");
     }
     if (f->runtime_map) {
-        fprintf(out, "if(!c->inspect && !c->watch && !c->trace){\n");
+        fprintf(out, "if(!c->inspect && !c->watch && !c->trace && !c->source_pause && !c->source_capture){\n");
         body(f, out, 'N', false);
         fprintf(out, "}\n");
     }

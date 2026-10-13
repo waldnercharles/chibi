@@ -2,6 +2,7 @@
 
 #include "types/array.h"
 #include "types/catalog.h"
+#include "types/union.h"
 
 #include <stdio.h>
 
@@ -48,6 +49,26 @@ const char *pin_value_to_string(const pin_value *v)
         case PIN_STR:
             snprintf(buf, PIN_FMT_CAP, "%s", v->str ? v->str : "");
             break;
+        case PIN_TASK:
+            snprintf(buf, PIN_FMT_CAP, "task(%llu)", (unsigned long long)v->u64);
+            break;
+        case PIN_UNION: {
+            const pin_union *value = v->ptr;
+            if (!value) {
+                snprintf(buf, PIN_FMT_CAP, "nil");
+            } else if (value->tag == PIN_UNION_CANCELLED_TAG) {
+                snprintf(buf, PIN_FMT_CAP, "Cancelled");
+            } else {
+                snprintf(
+                    buf,
+                    PIN_FMT_CAP,
+                    "%s(%llu)",
+                    v->type_name ? v->type_name : "union",
+                    (unsigned long long)value->tag
+                );
+            }
+            break;
+        }
         case PIN_HANDLE:
             if (v->type_name) {
                 snprintf(

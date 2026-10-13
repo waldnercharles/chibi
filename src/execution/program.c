@@ -55,11 +55,12 @@ static int state_assign(state_value *state, const pin_value *value)
 static void query_import(const execution_module *m, int index, ecs_oper oper, ecs_term **terms)
 {
     const execution_module_query *q = &m->plan.queries[index];
-    if (q->kind == EXECUTION_QUERY_HAS) {
+    if (q->kind == EXECUTION_QUERY_HAS || q->kind == EXECUTION_QUERY_RELATION) {
         apush(
             *terms,
             ((ecs_term){ .oper = oper,
                          .id = q->component,
+                         .target_var = q->kind == EXECUTION_QUERY_RELATION ? ECS_WILDCARD : 0,
                          .src_rel = q->source_traversal ? 0 : q->source_relationship,
                          .trav = (ecs_trav)q->source_traversal,
                          .trav_rel = q->source_relationship })

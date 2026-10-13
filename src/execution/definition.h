@@ -174,6 +174,24 @@ static inline bool behavior_function_inspectable(const behavior_function *f)
     return f->waits || f->host_calls != NULL || f->calls != NULL ||
            f->managed || f->custom_lowering || f->checkpoints || f->pin_watches;
 }
+static inline bool behavior_function_inspection_required(
+    const behavior_function *f,
+    const behavior_function_context *ctx
+)
+{
+    if (ctx->inspect || ctx->watch || ctx->trace || ctx->source_pause ||
+        ctx->source_capture) {
+        return true;
+    }
+    if (!ctx->activation || !ctx->activation->pc) {
+        return false;
+    }
+    /* A debug pause saves canonical live values. After detaching inspection,
+     * finish this continuation canonically: optimized aliases may require
+     * different slots. Real waits remain boundaries shared by both bodies. */
+    behavior_function_op op = f->instructions[ctx->activation->pc - 1].op;
+    return op == BF_POINT || op == BF_SOURCE_POINT;
+}
 void behavior_function_calls_free(struct behavior_function_calls *calls);
 static inline bool behavior_function_runtime_keeps(const behavior_function *f, int pc)
 {
@@ -224,7 +242,9 @@ void behavior_function_rebind_host(
 void behavior_function_borrow_arrays(behavior_function *function);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);
+void behavior_function_optimize_ranges(behavior_function *function, const bool *keep);
 void behavior_function_optimize(behavior_function *function);
+void behavior_function_scalarize_unions(behavior_function *function, bool *keep);
 typedef struct
 {
     int first, last; /* Canonical instruction PCs of immutable I32 inputs. */

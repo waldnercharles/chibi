@@ -2,7 +2,8 @@
 #include "execution/definition.h"
 #include "execution/module_builder.h"
 /* Additional peak allocation bound for decoded verification/finalization.
- * Decoded payloads stay owned; no optimizer or payload snapshot is run.
+ * Decoded payloads stay owned; no source lowering or payload snapshot is run.
+ * Derived runtime optimization storage is included in this bound.
  * Installed descriptor copies use a separate bounded arena allocation path.
  * SIZE_MAX reports an unsupported count or overflow. */
 size_t behavior_function_preparation_bytes(const behavior_function *);

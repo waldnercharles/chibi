@@ -95,6 +95,9 @@ static inline const char *behavior_scalar_c_type(pin_type type)
  * conversion it needs from these and BF_CONVERT. */
 static inline bool behavior_scalar_cast_supported(pin_type from, pin_type to)
 {
+    if (from == to && (to == PIN_F32 || to == PIN_F64)) {
+        return true;
+    }
     if (to == PIN_F64) {
         return from >= PIN_BOOL && from <= PIN_I64;
     }
@@ -106,6 +109,9 @@ static inline bool behavior_scalar_cast_supported(pin_type from, pin_type to)
 static inline pin_value behavior_scalar_cast(pin_value a, pin_type type)
 {
     assert(behavior_scalar_cast_supported(a.type, type));
+    if (a.type == type) {
+        return a;
+    }
     pin_value out = { .type = type };
     if (a.type == PIN_I32 && (type == PIN_U32 || type == PIN_U64)) {
         if (type == PIN_U32) {

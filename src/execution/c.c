@@ -848,7 +848,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             case BF_CAST: {
                 pin_type from = f->slots[i->left];
                 const char *type = behavior_scalar_c_type(i->type);
-                if (i->type == PIN_F64 || from == PIN_I32) {
+                if (from == i->type || i->type == PIN_F64 || from == PIN_I32) {
                     fprintf(out, "v%d=(%s)v%d;\n", i->output, type, i->left);
                     break;
                 }
@@ -990,12 +990,19 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     if (i->target >= 0) {
                         fprintf(
                             out,
-                            "v%d=v%d%s v%d;\n",
-                            i->target,
+                            "{%s primary=v%d%s v%d, secondary=v%d%s v%d;"
+                            "v%d=secondary;v%d=primary;}\n",
+                            behavior_scalar_c_type(i->type),
+                            i->left,
+                            i->op == BF_DIV ? "/" : "%",
+                            i->right,
                             i->left,
                             i->op == BF_DIV ? "%" : "/",
-                            i->right
+                            i->right,
+                            i->target,
+                            i->output
                         );
+                        break;
                     }
                 }
                 if (i->op >= BF_ADD && i->op <= BF_MUL &&
@@ -1066,7 +1073,17 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         fprintf(out, "}\n");
     }
     if (f->runtime_map) {
-        fprintf(out, "if(!c->inspect && !c->watch && !c->trace && !c->source_pause && !c->source_capture){\n");
+        fprintf(out, "if(!c->inspect && !c->watch && !c->trace && !c->source_pause && !c->source_capture");
+        /* Keep detached debug continuations canonical, as the runtime's
+         * behavior_function_inspection_required selection does. */
+        for (int i = 0; i < acount(f->suspensions); i++) {
+            int pc = f->suspensions[i].pc;
+            behavior_function_op op = f->instructions[pc].op;
+            if (op == BF_POINT || op == BF_SOURCE_POINT) {
+                fprintf(out, " && (!c->activation || c->activation->pc!=%d)", pc + 1);
+            }
+        }
+        fprintf(out, "){\n");
         body(f, out, 'N', false);
         fprintf(out, "}\n");
     }

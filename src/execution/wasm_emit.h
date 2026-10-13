@@ -8,6 +8,7 @@
  * The caller owns the returned malloc allocation. */
 bool execution_wasm_emit(
     const behavior_function *function,
+    bool inspected,
     unsigned char **bytes,
     size_t *size,
     char *error,

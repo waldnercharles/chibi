@@ -28,13 +28,14 @@ static script_analysis *analyze(
     const script_syntax *syntax,
     const script_catalog *catalog,
     bool declarations,
-    const char *key
+    const char *key,
+    bool complete
 )
 {
     assert(syntax && syntax->tree && catalog);
     script_syntax *recovered = script_analyzer_recovery_syntax(syntax);
     if (recovered) {
-        script_analysis *out = analyze(recovered, catalog, declarations, key);
+        script_analysis *out = analyze(recovered, catalog, declarations, key, false);
         script_analyzer_recovery_restore(out, syntax);
         script_syntax_free(recovered);
         return out;
@@ -195,8 +196,10 @@ static script_analysis *analyze(
     out->binding_count = acount(out->bindings);
     out->diagnostic_count = acount(out->diagnostics);
     out->valid = !out->diagnostic_count;
-    if (out->valid && !declarations) {
+    if (out->valid && !declarations && complete) {
         script_analyzer_units(&a);
+        out->diagnostic_count = acount(out->diagnostics);
+        out->valid = !out->diagnostic_count;
     }
     out->warning_count = acount(out->warnings);
     afree(a.initializers);
@@ -207,7 +210,7 @@ static script_analysis *analyze(
 }
 script_analysis *script_analyze(const script_syntax *syntax, const script_catalog *catalog)
 {
-    return analyze(syntax, catalog, false, NULL);
+    return analyze(syntax, catalog, false, NULL, true);
 }
 script_analysis *script_analyze_document(
     const script_syntax *syntax,
@@ -216,11 +219,11 @@ script_analysis *script_analyze_document(
 )
 {
     assert(key && key[0]);
-    return analyze(syntax, catalog, false, key);
+    return analyze(syntax, catalog, false, key, true);
 }
 script_analysis *script_declarations(const script_syntax *syntax, const script_catalog *catalog)
 {
-    return analyze(syntax, catalog, true, NULL);
+    return analyze(syntax, catalog, true, NULL, true);
 }
 script_analysis *script_declarations_document(
     const script_syntax *syntax,
@@ -229,7 +232,7 @@ script_analysis *script_declarations_document(
 )
 {
     assert(key && key[0]);
-    return analyze(syntax, catalog, true, key);
+    return analyze(syntax, catalog, true, key, true);
 }
 void script_analysis_free(script_analysis *out)
 {

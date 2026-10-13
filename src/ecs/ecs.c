@@ -255,6 +255,7 @@ static int reserve_component(ecs_world *world, ecs_component *component, uint32_
 
 static void occupancy_count(ecs_world *world, ecs_component *component, uint32_t slot, int change)
 {
+    query_revision_change(&component->query_revision);
     component->count += change;
     component->singleton ^= slot;
     ecs_execution_column *column = &world->execution_columns[component - world->components];
@@ -496,6 +497,7 @@ static int apply_create(ecs_world *world, const ecs_command *command)
     world->occupied[slot] = 1;
     world->pending_destroy[slot] = DESTROY_NONE;
     world->live_count++;
+    query_revision_change(&world->query_revision);
     return ECS_OK;
 }
 
@@ -612,6 +614,7 @@ static void retire_entity(ecs_world *world, ecs_entity entity)
     world->depth[entity.slot] = 0;
     world->pending_destroy[entity.slot] = DESTROY_APPLIED;
     world->live_count--;
+    query_revision_change(&world->query_revision);
     advance_generation(world, entity.slot);
     trim_high_water(world);
 }

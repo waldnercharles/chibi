@@ -21,6 +21,7 @@ typedef struct
     uint64_t *modified; /* Rows awaiting ON_SET; allocated while ON_SET is observed. */
     bool dirty;         /* Some modified bit may be set. */
     ecs_component_id *with; /* Components an add of this one implies. */
+    uint64_t query_revision; /* Membership only; payload writes keep it unchanged. */
 } ecs_component;
 
 typedef struct
@@ -29,6 +30,7 @@ typedef struct
     ecs_entity *target;   /* Exclusive: each source slot's target, or zero. */
     ecs_entity **targets; /* Otherwise: each source slot's targets, ascending. */
     uint32_t **sources;   /* Each target slot's sources, in insertion order. */
+    uint64_t query_revision; /* Edges and source order. */
 } ecs_relationship;
 
 typedef struct ecs_command ecs_command;
@@ -86,8 +88,18 @@ struct ecs_world
     bool applying;
     ecs_observer_entry *observers;
     int last_observer;
-    unsigned observed; /* Union of every observer's event bit. */
+    unsigned observed;       /* Union of every observer's event bit. */
+    uint64_t query_revision; /* Entity creation/destruction, including generations. */
 };
+
+/* Saturation disables reuse of this dependency instead of wrapping to an old
+ * cache stamp. This remains safe in release builds too. */
+static inline void query_revision_change(uint64_t *revision)
+{
+    if (*revision < UINT64_MAX) {
+        (*revision)++;
+    }
+}
 
 static inline bool slot_valid(const ecs_world *world, uint32_t slot)
 {

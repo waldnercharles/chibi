@@ -46,7 +46,9 @@ static bool global(void *user, uint64_t id, behavior_function_instruction *out)
 script_lower_bindings authoring_native_bindings(const native_capabilities *table)
 {
     assert(table);
-    return (
-        script_lower_bindings
-    ){ .user = (void *)table, .host = host, .action = action, .global = global };
+    return (script_lower_bindings){ .user = (void *)table,
+                                    .host = host,
+                                    .action = action,
+                                    .global = global,
+                                    .generation = native_capabilities_generation(table) };
 }

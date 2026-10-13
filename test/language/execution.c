@@ -225,7 +225,7 @@ TEST_CASE(execution_source_inspection_is_lazy_and_preserves_resume)
     REQUIRE(behavior_function_compile_inspection(function));
     REQUIRE(function->artifact->inspection_code == inspection);
 #endif
-    /* Detaching after a pause resumes correctly in the compact normal body. */
+    /* Detaching after a pause preserves the canonical continuation's state. */
     REQUIRE(behavior_function_run(function, &context, true) == FLOW_PAUSED_RESULT);
     context.source_pause = NULL;
     context.source_capture = NULL;

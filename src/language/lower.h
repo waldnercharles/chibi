@@ -27,6 +27,10 @@ typedef struct
     bool (*host)(void *user, uint64_t capability, script_lower_host *out);
     bool (*action)(void *user, uint64_t capability, uint64_t instance, int entry, script_lower_host *out);
     bool (*global)(void *user, uint64_t capability, behavior_function_instruction *out);
+    /* Nonzero immutable binding generation for incremental preparation. Change
+     * it whenever resolution, descriptors or callbacks change. Zero disables
+     * reuse; a user address or callback address alone is not a freshness key. */
+    uint64_t generation;
 } script_lower_bindings;
 /* Invalid modules retain diagnostics but contain no executable bodies. Neither
  * analysis nor catalog needs to outlive the module. Host descriptors do. */

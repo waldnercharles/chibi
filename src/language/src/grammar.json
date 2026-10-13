@@ -128,6 +128,17 @@
           ]
         },
         {
+          "type": "REPEAT",
+          "content": {
+            "type": "FIELD",
+            "name": "join",
+            "content": {
+              "type": "SYMBOL",
+              "name": "query_join"
+            }
+          }
+        },
+        {
           "type": "CHOICE",
           "members": [
             {
@@ -1621,6 +1632,23 @@
               "type": "BLANK"
             }
           ]
+        }
+      ]
+    },
+    "query_join": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "join"
+        },
+        {
+          "type": "FIELD",
+          "name": "parameters",
+          "content": {
+            "type": "SYMBOL",
+            "name": "query_parameter_list"
+          }
         }
       ]
     },

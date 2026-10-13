@@ -189,7 +189,7 @@ TEST_CASE(language_query_header_resolves_boolean_filters_and_sources)
         diagnostic("Scalar query path requires an exclusive relationship; iterate multiple targets explicitly")
     );
     parse("system Bad query p: Position where target.Position { p.x = 1; }");
-    REQUIRE(!analysis->valid && diagnostic("Query membership source must be self"));
+    REQUIRE(!analysis->valid && diagnostic("Unknown query relationship 'target'"));
     parse("system Safe query p: Position? { if p { p.x = 1; p.y = 2; } }");
     REQUIRE(analysis->valid);
     parse("system Waiting query p: Position? { if p { yield; p.x = 1; } }");
@@ -227,6 +227,76 @@ TEST_CASE(language_query_header_resolves_boolean_filters_and_sources)
                           expression->capability == SCRIPT_CHILD_OF;
     }
     REQUIRE(builtin_path && builtin_stream);
+    return true;
+}
+TEST_CASE(language_query_joins_and_filters_share_source_rules)
+{
+    const script_catalog_relationship relationships[] = {
+        { .id = 601, .name = "Targets", .exclusive = true },
+        { .id = 602, .name = "Likes" },
+    };
+    script_catalog queries = catalog;
+    queries.relationships = relationships;
+    queries.relationship_count = 2;
+    cleanup();
+    syntax = script_parse(
+        "system Follow query p: Position from self "
+        "join aim: Position? from Targets "
+        "join up: Placement from ancestor(ChildOf) "
+        "where self.Position and not Targets.Placement and "
+        "ancestor(ChildOf).Position and has(Likes) "
+        "{ if aim { p.x = aim.x + up.x; } }"
+    );
+    analysis = script_analyze(syntax, &queries);
+    REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
+    bool target_filter = false, ancestor_filter = false, existential = false;
+    for (int i = 0; i < analysis->query_count; i++) {
+        const script_query *term = &analysis->queries[i];
+        target_filter |= term->kind == SCRIPT_QUERY_HAS && term->component == 502 &&
+                         term->source_relationship == 601 &&
+                         term->source_traversal == SCRIPT_SOURCE_SELF;
+        ancestor_filter |= term->kind == SCRIPT_QUERY_HAS && term->component == 501 &&
+                           term->source_relationship == SCRIPT_CHILD_OF &&
+                           term->source_traversal == SCRIPT_SOURCE_ANCESTOR;
+        existential |= term->kind == SCRIPT_QUERY_RELATION && term->component == 602;
+    }
+    REQUIRE(target_filter && ancestor_filter && existential);
+    const char *valid[] = {
+        "system Follow query p: Position join aim: Targets.Position { p.x = "
+        "aim.x; }",
+        "system Follow join aim: Targets.Position? where not Targets.Placement "
+        "{ if aim { aim.x = 1; } }",
+        "system Follow query p: Position where has(Targets.Position) or not "
+        "has(Likes) { p.x = 1; }",
+        "system Follow query p: Position where "
+        "self_or_ancestor(ChildOf).Placement { p.x = 1; }",
+        "system Follow query p: Position join up: Position from "
+        "ancestor(/* parent */ ChildOf /* edge */) where "
+        "has(/* any target */ Likes) and "
+        "self_or_ancestor(/* provider */ ChildOf).Position { p.x = up.x; }",
+    };
+    for (size_t i = 0; i < sizeof valid / sizeof *valid; i++) {
+        cleanup();
+        syntax = script_parse(valid[i]);
+        analysis = script_analyze(syntax, &queries);
+        REQUIRE(syntax->diagnostic_count == 0 && analysis->valid);
+    }
+    const char *invalid[] = {
+        "system Bad join p: Position {}",
+        "system Bad join p: Targets.Position from self {}",
+        "system Bad join p: Likes.Position {}",
+        "system Bad query p: Position where Likes.Placement {}",
+        "system Bad query p: Position join aim: Targets.Position? { if aim { "
+        "yield; p.x = aim.x; } }",
+        "system Bad query p: Position join aim: Targets.Position? where "
+        "Targets.Position { p.x = aim.x; }",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        cleanup();
+        syntax = script_parse(invalid[i]);
+        analysis = script_analyze(syntax, &queries);
+        REQUIRE(syntax->diagnostic_count == 0 && !analysis->valid);
+    }
     return true;
 }
 TEST_CASE(language_derived_component_is_read_only)
@@ -615,15 +685,6 @@ static void measure(const char *body)
         fprintf(stderr, "semantic: %s\n", analysis->diagnostics[i].message);
     }
 }
-static const script_diagnostic *warning(const char *message)
-{
-    for (int i = 0; i < analysis->warning_count; i++) {
-        if (!strcmp(analysis->warnings[i].message, message)) {
-            return &analysis->warnings[i];
-        }
-    }
-    return NULL;
-}
 TEST_CASE(language_units_combine_through_arithmetic)
 {
     measure(
@@ -657,7 +718,7 @@ TEST_CASE(language_units_combine_through_arithmetic)
     REQUIRE(analysis->warning_count == 0);
     return true;
 }
-TEST_CASE(language_units_warn_on_mismatch)
+TEST_CASE(language_units_reject_mismatch)
 {
     measure(
         "body.x += body.speed\n"
@@ -676,32 +737,51 @@ TEST_CASE(language_units_warn_on_mismatch)
         "body.x %= body.speed\n"
         "body.x = fallback(body.speed, default: 0)\n"
     );
-    /* Warnings first: the program still runs. */
-    REQUIRE(analysis->valid);
-    REQUIRE(warning("Units differ: u += u/s")->range.line == 3);
-    REQUIRE(warning("Units differ: u = rad"));
-    REQUIRE(warning("Units differ: u/s < u"));
-    REQUIRE(warning("Units differ: u + s"));
-    REQUIRE(warning("Units differ: *= would turn u into u·s"));
-    REQUIRE(warning("Units differ: u = u/s²"));
-    REQUIRE(warning("Units differ: u = 1"));
-    REQUIRE(warning("Units differ: u = rad"));
-    /* One mistake, one warning: the sum is wrong, not its assignment. */
-    REQUIRE(warning("Units differ: u/s + u"));
-    REQUIRE(warning("Units differ: m³ = kg"));
-    REQUIRE(warning("Units differ: u = u/s^4"));
-    REQUIRE(warning("Units differ: u/s = 1/s"));
-    REQUIRE(warning("Units differ: u % u/s"));
-    REQUIRE(warning("Units differ: u %= u/s"));
+    /* Proven dimensional mistakes prevent execution. */
+    REQUIRE(!analysis->valid && analysis->warning_count == 0);
+    REQUIRE(diagnostic("Units differ: u += u/s")->range.line == 3);
+    REQUIRE(diagnostic("Units differ: u = rad"));
+    REQUIRE(diagnostic("Units differ: u/s < u"));
+    REQUIRE(diagnostic("Units differ: u + s"));
+    REQUIRE(diagnostic("Units differ: *= would turn u into u·s"));
+    REQUIRE(diagnostic("Units differ: u = u/s²"));
+    REQUIRE(diagnostic("Units differ: u = 1"));
+    REQUIRE(diagnostic("Units differ: u = rad"));
+    /* One mistake, one diagnostic: the sum is wrong, not its assignment. */
+    REQUIRE(diagnostic("Units differ: u/s + u"));
+    REQUIRE(diagnostic("Units differ: m³ = kg"));
+    REQUIRE(diagnostic("Units differ: u = u/s^4"));
+    REQUIRE(diagnostic("Units differ: u/s = 1/s"));
+    REQUIRE(diagnostic("Units differ: u % u/s"));
+    REQUIRE(diagnostic("Units differ: u %= u/s"));
     /* A fallback measures what it reads first. */
-    REQUIRE(warning("Units differ: u = u/s"));
-    REQUIRE(analysis->warning_count == 15);
+    REQUIRE(diagnostic("Units differ: u = u/s"));
+    REQUIRE(analysis->diagnostic_count == 15);
     /* Listed in source order. */
-    for (int i = 1; i < analysis->warning_count; i++) {
+    for (int i = 1; i < analysis->diagnostic_count; i++) {
         REQUIRE(
-            analysis->warnings[i - 1].range.start <= analysis->warnings[i].range.start
+            analysis->diagnostics[i - 1].range.start <=
+            analysis->diagnostics[i].range.start
         );
     }
+    return true;
+}
+TEST_CASE(language_units_check_struct_field_initializers)
+{
+    measure("copy: Body = {x: body.speed}; body = copy;\n");
+    REQUIRE(!analysis->valid && diagnostic("Units differ: u = u/s"));
+    measure("copy: Body = {x: dt}; body.x = copy.x;\n");
+    REQUIRE(!analysis->valid && diagnostic("Units differ: u = s"));
+    measure("copy: Body = {x: body.speed * dt}; body.x = copy.x;\n");
+    REQUIRE(analysis->valid);
+    return true;
+}
+TEST_CASE(language_units_check_empty_struct_defaults)
+{
+    measure("copy: Body = null; body = copy;\n");
+    REQUIRE(analysis->valid);
+    parse("system Reset query p: Position { if true { copy := event; copy = null; } }");
+    REQUIRE(!analysis->valid && diagnostic("Incompatible result tuple shape"));
     return true;
 }
 TEST_CASE(language_units_check_bindings)
@@ -714,9 +794,9 @@ TEST_CASE(language_units_check_bindings)
         "}\n"
     );
     analysis = script_analyze(syntax, &measured);
-    REQUIRE(analysis->valid && analysis->binding_count == 2);
-    REQUIRE(analysis->warning_count == 1);
-    REQUIRE(warning("Units differ: u = u/s")->range.line == 2);
+    REQUIRE(!analysis->valid && analysis->binding_count == 2);
+    REQUIRE(analysis->diagnostic_count == 1);
+    REQUIRE(diagnostic("Units differ: u = u/s")->range.line == 2);
     return true;
 }
 TEST_CASE(language_units_skip_invalid_sources)
@@ -726,6 +806,119 @@ TEST_CASE(language_units_skip_invalid_sources)
     syntax = script_parse("system Move(body: Body) {\n    body.x = (body.speed + 1");
     analysis = script_analyze(syntax, &measured);
     REQUIRE(!analysis->valid && analysis->warning_count == 0);
+    REQUIRE(!diagnostic("Units differ: u = u/s"));
+    return true;
+}
+
+TEST_CASE(language_units_check_all_fallback_values)
+{
+    measure("body.x = fallback(body.x, binding: body.speed, default: 0)\n");
+    REQUIRE(!analysis->valid);
+    REQUIRE(analysis->diagnostic_count == 1 && analysis->warning_count == 0);
+    REQUIRE(diagnostic("Units differ: u fallback u/s"));
+    measure("body.x = fallback(body.x, binding: body.x, default: 0)\n");
+    REQUIRE(analysis->valid && analysis->diagnostic_count == 0);
+    return true;
+}
+
+TEST_CASE(language_units_follow_constant_and_state_initializers)
+{
+    const char *sources[] = {
+        "system Move(body: Body) { elapsed := dt; if true { body.x = elapsed; "
+        "} }",
+        "system Move(body: Body) { shared elapsed := dt; if true { body.x = "
+        "elapsed; } }",
+    };
+    for (size_t i = 0; i < sizeof sources / sizeof *sources; i++) {
+        cleanup();
+        syntax = script_parse(sources[i]);
+        analysis = script_analyze(syntax, &measured);
+        REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
+        REQUIRE(diagnostic("Units differ: u = s"));
+    }
+    measure("Step :: 2; body.x = body.speed * dt * Step;\n");
+    REQUIRE(analysis->valid && analysis->diagnostic_count == 0);
+    /* Component reads are effects, even from a constant copy. A plain reflected
+     * value supports constant field access and carries the same unit metadata. */
+    script_catalog_type measured_value = body_type;
+    measured_value.component = false;
+    measured_value.component_id = 0;
+    script_catalog values = measured;
+    values.types = &measured_value;
+    cleanup();
+    syntax = script_parse(
+        "library Measured { Run :: () { Origin :: cast<Body>({x: 1}); "
+        "Step :: Origin.x; body: Body = {}; body.speed = Step; } }"
+    );
+    analysis = script_analyze(syntax, &values);
+    REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
+    REQUIRE(diagnostic("Units differ: u/s = u"));
+
+    const script_catalog_capability setter = { .id = 71,
+                                               .name = "set_measure",
+                                               .state_access = SCRIPT_STATE_ACCESS_WRITE };
+    script_catalog with_setter = measured;
+    with_setter.capabilities = &setter;
+    with_setter.capability_count = 1;
+    cleanup();
+    syntax = script_parse("system Move(body: Body) { elapsed := dt; if true { set_measure<elapsed>(body.x); } }");
+    analysis = script_analyze(syntax, &with_setter);
+    REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
+    REQUIRE(diagnostic("Units differ: s = u"));
+    return true;
+}
+
+static void annotated_global(const char *unit, const char *body)
+{
+    char source[1024];
+    snprintf(source, sizeof source, "library Measured { Run :: () { %s } }", body);
+    const script_catalog_global global = { .id = 70,
+                                           .name = "measured",
+                                           .type = { .storage = PIN_F64 },
+                                           .unit = unit };
+    script_catalog with_unit = measured;
+    with_unit.globals = &global;
+    with_unit.global_count = 1;
+    cleanup();
+    syntax = script_parse(source);
+    analysis = script_analyze(syntax, &with_unit);
+}
+
+TEST_CASE(language_units_reject_malformed_metadata_and_overflow)
+{
+    const char *invalid[] = { "",
+                              "u/",
+                              "u//s",
+                              "u^",
+                              "u^0",
+                              "u^2.5",
+                              "u^2147483648",
+                              "u^-2147483648",
+                              "u^99999999999999999999999999999999",
+                              "u·",
+                              "1u",
+                              "not a unit",
+                              "a/b/c/d/e/f/g/h/i" };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        annotated_global(invalid[i], "value := measured;");
+        REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
+        REQUIRE(
+            strstr(analysis->diagnostics[0].message, "Invalid unit '") ==
+            analysis->diagnostics[0].message
+        );
+        REQUIRE(analysis->warning_count == 0);
+    }
+    annotated_global("u^2147483647", "value := measured * measured;");
+    REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
+    REQUIRE(diagnostic("Unit expression exceeds supported dimensional complexity"));
+    annotated_global("u^-2147483647", "value := measured * measured;");
+    REQUIRE(!analysis->valid && analysis->diagnostic_count == 1);
+    REQUIRE(diagnostic("Unit expression exceeds supported dimensional complexity"));
+    /* Custom names are nominal dimensions, not misspellings of an SI registry. */
+    annotated_global("charge/basket", "value := measured / measured;");
+    REQUIRE(analysis->valid && analysis->diagnostic_count == 0);
+    annotated_global(NULL, "value := measured;");
+    REQUIRE(analysis->valid && analysis->diagnostic_count == 0);
     return true;
 }
 
@@ -1032,6 +1225,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
     RUN_TEST_CASE(language_optional_component_requires_presence_guard);
     RUN_TEST_CASE(language_query_header_resolves_boolean_filters_and_sources);
+    RUN_TEST_CASE(language_query_joins_and_filters_share_source_rules);
     RUN_TEST_CASE(language_derived_component_is_read_only);
     RUN_TEST_CASE(language_numeric_literal_storage_limits);
     RUN_TEST_CASE(language_hex_literal_fills_integer_storage);
@@ -1044,8 +1238,13 @@ void test_language_semantic()
     RUN_TEST_CASE(language_component_declares_measured_fields);
     RUN_TEST_CASE(language_component_rejects_invalid_fields);
     RUN_TEST_CASE(language_units_combine_through_arithmetic);
-    RUN_TEST_CASE(language_units_warn_on_mismatch);
+    RUN_TEST_CASE(language_units_reject_mismatch);
+    RUN_TEST_CASE(language_units_check_struct_field_initializers);
+    RUN_TEST_CASE(language_units_check_empty_struct_defaults);
     RUN_TEST_CASE(language_units_check_bindings);
     RUN_TEST_CASE(language_units_skip_invalid_sources);
+    RUN_TEST_CASE(language_units_check_all_fallback_values);
+    RUN_TEST_CASE(language_units_follow_constant_and_state_initializers);
+    RUN_TEST_CASE(language_units_reject_malformed_metadata_and_overflow);
     pu_clear_setup();
 }

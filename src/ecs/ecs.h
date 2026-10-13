@@ -323,19 +323,31 @@ bool ecs_component_accepts_value(const ecs_world *, ecs_component_id, size_t off
 /* Retain reflected string values until the world is freed. */
 const char *ecs_world_intern_string(ecs_world *world, const char *text);
 
-/* Queries visit results in a deterministic order: ascending slot, the
- * smallest dense component list, or a pair target's sources in the order they
+/* Queries visit results in a deterministic order: ascending slot through a
+ * selected component index, or a pair target's sources in the order they
  * were added, then by depth under cascade. They skip Disabled entities unless
  * a term names ECS_DISABLED. ecs_query_begin is the AND of components on
  * $this. Terms are copied, so they may be freed after begin. */
 int ecs_query_begin(ecs_world *world, ecs_query *query, const ecs_component_id *components, int component_count);
 int ecs_query_begin_terms(ecs_world *, ecs_query *, const ecs_term *terms, int term_count);
-/* A reusable, world-bound logical plan. The world must outlive it. Only one
- * iterator can use it at a time. Each begin refreshes storage references and
- * candidate estimates; structural changes between iterations are supported. */
+/* A reusable, world-bound plan. The world must outlive it. Only one iterator
+ * can use it at a time. Fully consumed iterations cache membership and source
+ * bindings, never component values. Relevant membership/relationship/lifetime
+ * changes invalidate them. Row payload retention is bounded to 1 MiB per plan;
+ * larger results stream normally. Single-component queries without Disabled
+ * filtering use their direct index. Partial iterations never publish a cache. */
 int ecs_query_plan_new(ecs_world *, const ecs_term *, int term_count, ecs_query_plan **out);
 void ecs_query_plan_free(ecs_query_plan *);
 int ecs_query_begin_plan(ecs_query_plan *, ecs_query *);
+typedef struct
+{
+    uint64_t cache_hits, cache_builds, cache_overflows;
+    uint64_t candidates, node_tests, source_resolutions, binding_steps;
+    size_t retained_bytes;
+    int cached_rows;
+} ecs_query_stats;
+/* Cumulative operation counts; no wall-clock estimates or component values. */
+ecs_query_stats ecs_query_plan_stats(const ecs_query_plan *);
 /* Resolve a component on self, one exclusive relationship target, or the
  * nearest ancestor. Missing entities, pairs and components return zero. */
 ecs_entity ecs_query_source(

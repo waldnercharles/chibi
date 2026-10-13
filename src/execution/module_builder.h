@@ -53,6 +53,7 @@ typedef enum
     EXECUTION_QUERY_ALL,
     EXECUTION_QUERY_ANY,
     EXECUTION_QUERY_NOT,
+    EXECUTION_QUERY_RELATION,
 } execution_query_kind;
 typedef struct
 {

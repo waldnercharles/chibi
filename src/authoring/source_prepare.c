@@ -5,6 +5,7 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,6 +64,7 @@ authoring_source *authoring_source_analyze(
 {
     assert(path && syntax && catalog);
     authoring_source *source = xcalloc(1, sizeof *source);
+    source->references = 1;
     source->path = xstrdup(path);
     source->syntax = xcalloc(1, sizeof *source->syntax);
     source->syntax->text = xstrdup(syntax->text);
@@ -142,9 +144,19 @@ authoring_source *authoring_source_prepare_document(
     return source;
 }
 
+authoring_source *authoring_source_retain(authoring_source *source)
+{
+    assert(source && source->references > 0 && source->references < INT_MAX);
+    source->references++;
+    return source;
+}
 void authoring_source_free(authoring_source *source)
 {
     if (!source) {
+        return;
+    }
+    assert(source->references > 0);
+    if (--source->references) {
         return;
     }
     execution_module_free(source->module);

@@ -33,6 +33,7 @@ const K = Object.fromEntries(
     "dataflow",
     "depth_limit",
     "query",
+    "join",
     "if",
     "else",
     "while",
@@ -66,7 +67,7 @@ const K = Object.fromEntries(
   ].map((word) => [word, word]),
 );
 
-const CONTEXTUAL = ["from", "split", "component", "not"];
+const CONTEXTUAL = ["from", "split", "component", "not", "join"];
 
 const P = {
   or: 1,
@@ -133,6 +134,7 @@ module.exports = grammar({
           field("parameters", $.parameter_list),
           seq(K.query, field("parameters", $.query_parameter_list)),
         )),
+        repeat(field("join", $.query_join)),
         optional(field("without", $.without_clause)),
         optional(seq(K.where, field("where", $._expression))),
         field("body", $.system_body),
@@ -297,6 +299,7 @@ module.exports = grammar({
       ),
     parameter_list: ($) => seq("(", optional(comma($.parameter)), ")"),
     query_parameter_list: ($) => comma($.parameter),
+    query_join: ($) => seq(K.join, field("parameters", $.query_parameter_list)),
     parameter: ($) =>
       seq(
         choice(

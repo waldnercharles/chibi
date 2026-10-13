@@ -395,6 +395,7 @@ static void helper(writer *w, int pc)
 
 bool execution_wasm_emit(
     const behavior_function *f,
+    bool inspected,
     unsigned char **bytes,
     size_t *size,
     char *error,
@@ -402,6 +403,12 @@ bool execution_wasm_emit(
 )
 {
     assert(f && bytes && size);
+    behavior_function runtime;
+    if (!inspected && f->runtime_body) {
+        runtime = *f;
+        runtime.instructions = f->runtime_body;
+        f = &runtime;
+    }
     *bytes = NULL;
     *size = 0;
     int count = acount(f->instructions);
@@ -518,6 +525,9 @@ bool execution_wasm_emit(
         int end = block + 1 < block_count ? starts[block + 1] : count;
         int next = end;
         for (int pc = starts[block]; pc < end; pc++) {
+            if (!inspected && !behavior_function_runtime_keeps(f, pc)) {
+                continue;
+            }
             const behavior_function_instruction *i = &f->instructions[pc];
             if (i->op == BF_JUMP) {
                 next = i->target;

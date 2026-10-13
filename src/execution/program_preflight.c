@@ -129,6 +129,10 @@ bool program_preflight(const execution_module *module, const ecs_world *world)
 {
     const execution_module_plan *plan = &module->plan;
     for (int i = 0; i < plan->query_count; i++) {
+        if (plan->queries[i].kind == EXECUTION_QUERY_RELATION &&
+            (!world || !ecs_world_relationship(world, plan->queries[i].component))) {
+            return false;
+        }
         if (plan->queries[i].kind == EXECUTION_QUERY_HAS &&
             (!installed(world, plan->queries[i].component) ||
              !source_installed(

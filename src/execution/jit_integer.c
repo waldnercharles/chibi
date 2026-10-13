@@ -130,6 +130,18 @@ static void cast(const behavior_machine *m, const behavior_function_instruction 
 {
     struct sljit_compiler *c = m->compiler;
     pin_type from = m->function->slots[i->left];
+    if (from == i->type) {
+        int source = m->registers[i->left];
+        sljit_emit_fop1(
+            c,
+            from == PIN_F32 ? SLJIT_MOV_F32 : SLJIT_MOV_F64,
+            dest,
+            offset,
+            source ? source : SLJIT_MEM1(SLJIT_SP),
+            source ? 0 : i->left * sizeof(double)
+        );
+        return;
+    }
     if (i->type == PIN_F64) {
         load(m, i->left, SLJIT_R0);
         sljit_emit_fop1(

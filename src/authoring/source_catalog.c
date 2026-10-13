@@ -57,6 +57,8 @@ struct source_catalog
     const source_catalog_edit *edits;
     bool *edit_used;
     int edit_count;
+    unsigned char *default_key;
+    bool defaults_known;
 };
 static const char *own(source_catalog *c, const char *text)
 {
@@ -1293,6 +1295,7 @@ static source_catalog *build(
             error(c, reference->path, reference->range, message);
         }
     }
+    c->defaults_known = source_catalog_default_key(&c->view, &c->default_key);
     return c;
 }
 source_catalog *source_catalog_new(const char *root, const script_catalog *native)
@@ -1320,6 +1323,14 @@ source_catalog *source_catalog_replaced(
 const script_catalog *source_catalog_view(const source_catalog *c)
 {
     return &c->view;
+}
+bool source_catalog_same(const source_catalog *a, const source_catalog *b)
+{
+    int bytes = acount(a->default_key);
+    return a->defaults_known && b->defaults_known &&
+           bytes == acount(b->default_key) &&
+           (!bytes || !memcmp(a->default_key, b->default_key, (size_t)bytes)) &&
+           source_catalog_metadata_equal(&a->view, &b->view);
 }
 const input_action *source_catalog_input(const source_catalog *c)
 {
@@ -1374,6 +1385,7 @@ void source_catalog_free(source_catalog *c)
     afree(c->references);
     afree(c->diagnostics);
     afree(c->capabilities);
+    afree(c->default_key);
     input_map_free(c->input);
     arena_free(&c->storage);
     free(c);

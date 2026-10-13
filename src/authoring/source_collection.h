@@ -23,6 +23,21 @@ authoring_sources *authoring_sources_prepare_catalog(
     const script_lower_bindings *,
     behavior_backend
 );
+/* Consumes the new snapshot and shares unchanged immutable source generations
+ * with previous. Exact text/identity/catalog, backend and nonzero binding
+ * generation must match; changed libraries invalidate all dependent modules.
+ * No prior collection is retained. Collections own analyzed source generations;
+ * executable imports separately retain modules. Declaration discovery/parsing
+ * still runs; this reuses full analysis, lowering and compiled functions.
+ * Binding descriptors must remain immutable for their declared generation. */
+authoring_sources *authoring_sources_prepare_incremental(
+    source_catalog *owned,
+    const script_lower_bindings *,
+    behavior_backend,
+    const authoring_sources *previous
+);
+/* Number of complete source generations reused in this preparation. */
+int authoring_sources_reused(const authoring_sources *);
 const script_catalog *authoring_sources_catalog(const authoring_sources *);
 /* The project's input map, an array.h vector owned by the collection. */
 const input_action *authoring_sources_input(const authoring_sources *);

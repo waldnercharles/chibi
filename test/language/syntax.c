@@ -211,6 +211,24 @@ TEST_CASE(language_query_header_and_cancel_deadline)
     return true;
 }
 
+TEST_CASE(language_query_generators_preserve_authored_order)
+{
+    parse(
+        "system Track query p: Position join target in self.Targets "
+        "join next in target.Targets join aim: Position? from next "
+        "where aim and aim.x > p.x and changed(p) {}"
+    );
+    REQUIRE(original->diagnostic_count == 0);
+    TSNode system = ts_node_named_child(ts_tree_root_node(original->tree), 0);
+    TSNode first = field(ts_node_named_child(system, 2), "generator");
+    TSNode second = field(ts_node_named_child(system, 3), "generator");
+    REQUIRE(node_text(field(first, "name"), "target"));
+    REQUIRE(node_text(field(first, "source"), "self.Targets"));
+    REQUIRE(node_text(field(second, "name"), "next"));
+    REQUIRE(node_text(field(second, "source"), "target.Targets"));
+    return true;
+}
+
 TEST_CASE(language_obsolete_declaration_tokens_rejected)
 {
     parse("library Old { function Compute() { return 1 } }");
@@ -485,6 +503,7 @@ void test_language_syntax()
     RUN_TEST_CASE(language_system_queries_and_control_flow);
     RUN_TEST_CASE(language_definitions_unions_and_type_patterns);
     RUN_TEST_CASE(language_query_header_and_cancel_deadline);
+    RUN_TEST_CASE(language_query_generators_preserve_authored_order);
     RUN_TEST_CASE(language_obsolete_declaration_tokens_rejected);
     RUN_TEST_CASE(language_expressions_precedence_and_continuation);
     RUN_TEST_CASE(language_invalid_source_has_positioned_diagnostics);

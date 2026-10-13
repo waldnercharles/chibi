@@ -940,6 +940,7 @@ static script_catalog_parameter *parameters(
     for (int i = 0; i < count; i++) {
         const script_symbol *symbol = &a->symbols[symbols[i]];
         values[i] = (script_catalog_parameter){ .name = own(c, symbol->name),
+                                                .unit = own(c, symbol->unit),
                                                 .type = symbol->type };
         if (symbol->initializer >= 0) {
             const script_expression *expression = &a->expressions[symbol->initializer];

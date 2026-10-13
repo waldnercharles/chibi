@@ -31,6 +31,7 @@ typedef enum
     EXECUTION_INTRINSIC_LOCAL_RELEASE = 18,
     EXECUTION_INTRINSIC_QUERY_SOURCE = 19,
     EXECUTION_INTRINSIC_QUERY_TARGET = 23,
+    EXECUTION_INTRINSIC_QUERY_VARIABLE = 24,
     EXECUTION_INTRINSIC_UNION_MAKE = 20,
     EXECUTION_INTRINSIC_UNION_TEST = 21,
     EXECUTION_INTRINSIC_UNION_GET = 22,
@@ -54,6 +55,7 @@ extern const node_host_call EXECUTION_component_has_call,
     EXECUTION_component_membership_call;
 extern const node_host_call EXECUTION_query_source_call;
 extern const node_host_call EXECUTION_query_target_call;
+extern const node_host_call EXECUTION_query_variable_call;
 extern const node_access EXECUTION_component_read_access,
     EXECUTION_component_membership_access;
 extern const node_access EXECUTION_assignment_access, EXECUTION_value_access;

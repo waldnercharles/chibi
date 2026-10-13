@@ -39,6 +39,7 @@ static bool parameters(
     for (int i = 0; i < count; i++) {
         copy[i] = source[i];
         copy[i].name = text(storage, source[i].name);
+        copy[i].unit = text(storage, source[i].unit);
         if (source[i].has_default && pin_value_snapshot_to_arena(
                                          storage,
                                          &copy[i].default_value,
@@ -185,9 +186,10 @@ static bool same_parameters(const script_catalog_parameter *a, const script_cata
 {
     for (int i = 0; i < count; i++) {
         const script_catalog_parameter *x = &a[i], *y = &b[i];
-        if (!same_text(x->name, y->name) || !same_type(x->type, y->type) ||
-            x->reference_kind != y->reference_kind || x->member != y->member ||
-            x->has_default != y->has_default || x->default_owner != y->default_owner) {
+        if (!same_text(x->name, y->name) || !same_text(x->unit, y->unit) ||
+            !same_type(x->type, y->type) || x->reference_kind != y->reference_kind ||
+            x->member != y->member || x->has_default != y->has_default ||
+            x->default_owner != y->default_owner) {
             return false;
         }
     }

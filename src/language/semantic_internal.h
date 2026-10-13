@@ -85,6 +85,8 @@ const script_expression *script_analyzer_result_source(const analyzer *, int exp
 void script_analyzer_require_values(analyzer *, TSNode, int target, int value);
 script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *source);
 script_type script_analyzer_type_node(analyzer *a, TSNode node);
+script_type script_analyzer_signature_type(analyzer *, TSNode, char **unit);
+void script_analyzer_signature_unit(analyzer *, TSNode, const char *expected, const char *actual);
 int script_analyzer_expr_add(analyzer *a, script_expression expression);
 script_type script_analyzer_expr_type(const analyzer *a, int expression);
 unsigned script_analyzer_expr_effects(const analyzer *a, int expression);

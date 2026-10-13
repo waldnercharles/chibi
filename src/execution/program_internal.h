@@ -87,11 +87,20 @@ typedef struct
     double started, deadline;
     bool timed, cancelled, marked;
 } execution_task;
+typedef struct
+{
+    uint64_t entity, version;
+} query_change;
 struct execution_instance
 {
     execution_program *program;
     uint64_t owner;
     bool query_managed;
+    int index;
+    bool query_seen, query_ready, query_started, query_new;
+    uint64_t query_variables[ECS_QUERY_VARS];
+    uint64_t query_order;
+    query_change *query_changes, *query_snapshot;
     pin_value *values, *node_states;
     state_value *states;
     behavior_variable_storage *layouts;
@@ -137,6 +146,11 @@ struct execution_program
     eval_component_reader reader;
     state_value *shared;
     execution_instance **instances;
+    execution_instance **row_table;
+    int *change_queries;
+    uint64_t query_rows, query_lookup_steps;
+    bool query_streaming;
+    uint64_t *query_admissions;
     struct execution_program **imports;
     struct execution_program *owner_program;
     queued_event *events;
@@ -156,6 +170,8 @@ struct execution_program
 };
 
 bool program_same_type(pin_value a, pin_value b);
+execution_instance *program_instance_row(execution_program *, uint64_t owner, const uint64_t *variables);
+void program_query_consume(execution_instance *);
 bool program_preflight(const execution_module *, const ecs_world *);
 bool program_binding_order(execution_program *p);
 int program_binding_run(execution_instance *, int, double, double, unsigned);

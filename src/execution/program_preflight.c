@@ -129,11 +129,13 @@ bool program_preflight(const execution_module *module, const ecs_world *world)
 {
     const execution_module_plan *plan = &module->plan;
     for (int i = 0; i < plan->query_count; i++) {
-        if (plan->queries[i].kind == EXECUTION_QUERY_RELATION &&
+        if ((plan->queries[i].kind == EXECUTION_QUERY_RELATION ||
+             plan->queries[i].kind == EXECUTION_QUERY_GENERATOR) &&
             (!world || !ecs_world_relationship(world, plan->queries[i].component))) {
             return false;
         }
-        if (plan->queries[i].kind == EXECUTION_QUERY_HAS &&
+        if ((plan->queries[i].kind == EXECUTION_QUERY_HAS ||
+             plan->queries[i].kind == EXECUTION_QUERY_CHANGED) &&
             (!installed(world, plan->queries[i].component) ||
              !source_installed(
                  world,
@@ -144,6 +146,9 @@ bool program_preflight(const execution_module *module, const ecs_world *world)
         }
     }
     const behavior_function **functions = NULL;
+    for (int i = 0; i < plan->query_count; i++) {
+        add_function(&functions, plan->queries[i].predicate);
+    }
     for (int i = 0; i < plan->binding_count; i++) {
         const execution_module_binding *binding = &plan->bindings[i];
         const ecs_component_desc

@@ -22,11 +22,13 @@ typedef enum
     SCRIPT_TYPE_PARAMETER,
     SCRIPT_TYPE,
     SCRIPT_CONSTANT,
+    SCRIPT_QUERY_VARIABLE,
 } script_symbol_kind;
 typedef struct
 {
     uint64_t id, capability;
     char *name;
+    char *unit; /* Owned erased parameter/result annotation; NULL means unknown. */
     script_symbol_kind kind;
     script_type type;
     script_range declaration;
@@ -37,6 +39,7 @@ typedef struct
     unsigned mutations;           /* Invalidates proofs after assignments. */
     uint64_t source_relationship; /* Query component provider; zero is self. */
     int source_traversal;         /* script_query_source */
+    int source_variable;          /* Query row variable; zero is self. */
 } script_symbol;
 typedef enum
 {
@@ -197,7 +200,10 @@ typedef enum
     SCRIPT_QUERY_ALL,
     SCRIPT_QUERY_ANY,
     SCRIPT_QUERY_NOT,
-    SCRIPT_QUERY_RELATION /* At least one relationship target; one row per root. */
+    SCRIPT_QUERY_RELATION, /* At least one relationship target; one row per root. */
+    SCRIPT_QUERY_GENERATOR,
+    SCRIPT_QUERY_VALUE,
+    SCRIPT_QUERY_CHANGED,
 } script_query_kind;
 typedef struct
 {
@@ -205,6 +211,8 @@ typedef struct
     uint64_t component;
     uint64_t source_relationship;
     int source_traversal;
+    int source_variable, target_variable;
+    int value; /* Boolean expression for SCRIPT_QUERY_VALUE. */
     int *children;
     int child_count;
     script_range range;
@@ -245,6 +253,8 @@ typedef struct
     int symbol_count, use_count, scope_count, expression_count, statement_count,
         function_count, query_count, binding_count, diagnostic_count, warning_count;
     int query;
+    int query_filter; /* Authored header filter; separate from row requirements. */
+    int query_variable_count;
     int owner_symbol;
     uint64_t owner_type;
     bool valid;

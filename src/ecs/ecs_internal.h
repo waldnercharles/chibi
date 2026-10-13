@@ -22,6 +22,7 @@ typedef struct
     bool dirty;         /* Some modified bit may be set. */
     ecs_component_id *with; /* Components an add of this one implies. */
     uint64_t query_revision; /* Membership only; payload writes keep it unchanged. */
+    uint64_t *versions;      /* Lazily tracked per-row publication versions. */
 } ecs_component;
 
 typedef struct

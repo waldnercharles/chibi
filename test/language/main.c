@@ -11,6 +11,7 @@ void test_language_wasm();
 void test_language_semantic();
 void test_language_program();
 void test_language_query_program();
+void test_language_query_boundary();
 void test_language_incremental();
 void test_numeric_ranges();
 void test_language_scalarize();
@@ -110,6 +111,7 @@ int main(int argc, char **argv)
         test_language_headless();
     } else if (query_program) {
         test_language_query_program();
+        test_language_query_boundary();
     } else if (incremental) {
         test_language_incremental();
     } else if (ranges) {
@@ -118,6 +120,7 @@ int main(int argc, char **argv)
         test_language_scalarize();
     } else if (program) {
         test_language_program();
+        test_language_query_boundary();
     } else if (semantic) {
         test_language_semantic();
     } else if (execution) {

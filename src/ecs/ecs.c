@@ -214,6 +214,9 @@ int ecs_world_reserve_entities(ecs_world *world, uint32_t capacity)
                 sizeof *c->modified
             );
         }
+        if (c->versions) {
+            c->versions = ecs_grow_storage(c->versions, old, count, sizeof *c->versions);
+        }
         update_execution_column(world, i);
     }
     for (int i = 0; i < acount(world->relationships); i++) {
@@ -380,6 +383,18 @@ static bool world_observes(const ecs_world *world, ecs_event event)
 /* Writers of one component may run on several threads, so marks are atomic. */
 static void mark_modified(ecs_component *component, uint32_t slot)
 {
+    if (component->versions) {
+        uint64_t previous = __atomic_load_n(&component->versions[slot], __ATOMIC_RELAXED);
+        while (previous < UINT64_MAX && !__atomic_compare_exchange_n(
+                                            &component->versions[slot],
+                                            &previous,
+                                            previous + 1,
+                                            false,
+                                            __ATOMIC_RELAXED,
+                                            __ATOMIC_RELAXED
+                                        )) {
+        }
+    }
     if (component->modified) {
         __atomic_fetch_or(&component->modified[slot / 64u], UINT64_C(1) << (slot % 64u), __ATOMIC_RELAXED);
         __atomic_store_n(&component->dirty, true, __ATOMIC_RELAXED);
@@ -665,6 +680,9 @@ static int add_component(ecs_world *world, ecs_component *component, ecs_entity 
     }
     type_validate_ranges(component->desc.type, address);
     occupancy_add(world, component, entity.slot);
+    if (component->versions && !value) {
+        query_revision_change(&component->versions[entity.slot]);
+    }
     for (int i = 0; result == ECS_OK && i < acount(component->with); i++) {
         ecs_component *implied = find_component(world, component->with[i]);
         if (!component_matches(implied, entity.slot)) {
@@ -991,6 +1009,7 @@ void ecs_world_free(ecs_world *world)
         free(world->components[i].occupancy);
         afree(world->components[i].dense);
         free(world->components[i].modified);
+        free(world->components[i].versions);
         afree(world->components[i].with);
     }
     afree(world->components);
@@ -2004,6 +2023,44 @@ int ecs_component_modified(ecs_world *world, ecs_entity entity, ecs_component_id
     );
     mark_modified(component, entity.slot);
     return ECS_OK;
+}
+
+int ecs_component_track_changes(ecs_world *world, ecs_component_id id)
+{
+    ecs_component *component = world ? find_component(world, id) : NULL;
+    if (!component) {
+        return ECS_ERR_COMPONENT;
+    }
+    if (world->iteration_depth || world->applying) {
+        return ECS_ERR_ITERATING;
+    }
+    if (!component->versions) {
+        component
+            ->versions = xcalloc(world->execution.slot_count, sizeof *component->versions);
+    }
+    return ECS_OK;
+}
+
+uint64_t ecs_component_version(const ecs_world *world, ecs_entity entity, ecs_component_id id)
+{
+    const ecs_component *component = world ? find_component((ecs_world *)world, id)
+                                           : NULL;
+    if (!component || !component->versions || !entity_matches(world, entity) ||
+        !component_matches(component, entity.slot)) {
+        return 0;
+    }
+    return __atomic_load_n(&component->versions[entity.slot], __ATOMIC_RELAXED);
+}
+
+size_t ecs_world_change_tracking_bytes(const ecs_world *world)
+{
+    size_t bytes = 0;
+    for (int i = 0; i < acount(world->components); i++) {
+        if (world->components[i].versions) {
+            bytes += (size_t)world->execution.slot_count * sizeof(uint64_t);
+        }
+    }
+    return bytes;
 }
 
 int ecs_world_iteration_begin(ecs_world *world)

@@ -1,6 +1,7 @@
 #include "authoring/native_bindings.h"
 #include "authoring/source_collection.h"
 #include "backend.h"
+#include "capabilities/definition.h"
 #include "execution/status.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/array.h"
@@ -272,7 +273,7 @@ TEST_CASE(catalog_defaults_effects_units_layouts_and_relationships_invalidate_re
     generations[1] = prepare(0, BEHAVIOR_BYTECODE);
     REQUIRE(valid(1) && authoring_sources_reused(generations[1]) == 4);
     discard(1);
-    for (int change = 0; change < 7; change++) {
+    for (int change = 0; change < 8; change++) {
         switch (change) {
             case 0: parameter.default_value.d = -0.0; break;
             case 1: capabilities[1].effects = SCRIPT_EFFECT_WRITE; break;
@@ -285,6 +286,7 @@ TEST_CASE(catalog_defaults_effects_units_layouts_and_relationships_invalidate_re
             case 4: type.layout++; break;
             case 5: relationship.exclusive = false; break;
             case 6: field.type.flags = SCRIPT_TYPE_REFERENCE; break;
+            case 7: parameter.unit = "charge"; break;
         }
         generations[1] = prepare(0, BEHAVIOR_BYTECODE);
         REQUIRE(valid(1));
@@ -293,6 +295,133 @@ TEST_CASE(catalog_defaults_effects_units_layouts_and_relationships_invalidate_re
         generations[0] = generations[1];
         generations[1] = NULL;
     }
+    return true;
+}
+
+TEST_CASE(signature_units_cross_libraries_and_invalidate_same_layout_callers)
+{
+    /* The caller sorts before its callee: declarations carry units before bodies. */
+    snprintf(paths[0], sizeof paths[0], "%s/libraries/ZLeaf.chibi", root);
+    edits[0].text = "library Leaf { Value :: (distance: number u = 2) -> "
+                    "number u { return distance; } }";
+    edits[1]
+        .text = "library Middle { Value :: () -> u { return Leaf.Value(); } }";
+    generations[0] = prepare(-1, BEHAVIOR_BYTECODE);
+    REQUIRE(valid(0));
+    generations[1] = prepare(0, BEHAVIOR_BYTECODE);
+    REQUIRE(valid(1) && authoring_sources_reused(generations[1]) == 4);
+    discard(1);
+    edits[0].text = "library Leaf { Value :: (distance: number s = 2) -> "
+                    "number s { return distance; } }";
+    generations[1] = prepare(0, BEHAVIOR_BYTECODE);
+    REQUIRE(!authoring_sources_valid(generations[1]));
+    REQUIRE(!authoring_sources_reused(generations[1]));
+    const authoring_source *caller = source(1, "Middle");
+    REQUIRE(caller && caller->diagnostic_count == 1);
+    REQUIRE(!strcmp(caller->diagnostics[0].message, "Units differ: u = s"));
+    REQUIRE(value_is(0, "Caller", 2));
+    discard(1);
+    edits[1].text = "library Middle { Value :: (distance: u = 2) -> s { return "
+                    "Leaf.Value(distance); } }";
+    generations[1] = prepare(0, BEHAVIOR_BYTECODE);
+    caller = source(1, "Middle");
+    REQUIRE(caller && !caller->valid && caller->diagnostic_count == 1);
+    REQUIRE(!strcmp(caller->diagnostics[0].message, "Units differ: s argument u"));
+    return true;
+}
+
+TEST_CASE(native_signature_unit_snapshots_own_metadata)
+{
+    char parameter_unit[] = "u", result_unit[] = "s";
+    script_catalog_parameter parameter = { .name = "distance",
+                                           .unit = parameter_unit,
+                                           .type = { .storage = PIN_F64 } };
+    script_catalog_parameter result = { .name = "Elapsed",
+                                        .unit = result_unit,
+                                        .type = { .storage = PIN_F64 } };
+    const script_catalog_capability capabilities[] = { tick,
+                                                       { .id = 81,
+                                                         .name = "Measured",
+                                                         .parameters = &parameter,
+                                                         .parameter_count = 1,
+                                                         .results = &result,
+                                                         .result_count = 1 } };
+    catalog.capabilities = capabilities;
+    catalog.capability_count = 2;
+    native_capability_pack pack = { .catalog = &catalog };
+    char error[192];
+    tables[0] = native_capabilities_new(&pack, 1, error, sizeof error);
+    REQUIRE(tables[0]);
+    const script_catalog_capability *owned = script_catalog_capability_by_id(
+        native_capabilities_catalog(tables[0]),
+        81
+    );
+    REQUIRE(
+        owned && !strcmp(owned->parameters[0].unit, "u") &&
+        !strcmp(owned->results[0].unit, "s")
+    );
+    generations[0] = prepare(-1, BEHAVIOR_BYTECODE);
+    REQUIRE(valid(0));
+    parameter_unit[0] = 's';
+    REQUIRE(!strcmp(owned->parameters[0].unit, "u") && !strcmp(owned->results[0].unit, "s"));
+    generations[1] = prepare(0, BEHAVIOR_BYTECODE);
+    REQUIRE(valid(1) && !authoring_sources_reused(generations[1]));
+    discard(0);
+    generations[0] = generations[1];
+    generations[1] = NULL;
+    result_unit[0] = 'u';
+    REQUIRE(!strcmp(owned->results[0].unit, "s"));
+    generations[1] = prepare(0, BEHAVIOR_BYTECODE);
+    REQUIRE(valid(1) && !authoring_sources_reused(generations[1]));
+    return true;
+}
+
+TEST_CASE(native_definitions_preserve_signature_units)
+{
+    char parameter_unit[] = "u", result_unit[] = "s";
+    native_parameter_definition input = { .name = "Distance",
+                                          .storage = PIN_F64,
+                                          .unit = parameter_unit };
+    native_parameter_definition output = { .name = "Elapsed",
+                                           .storage = PIN_F64,
+                                           .unit = result_unit };
+    const native_capability_definition definition = {
+        .canonical_name = "Measured",
+        .source_name = "Measured",
+        .inputs = &input,
+        .input_count = 1,
+        .outputs = &output,
+        .output_count = 1,
+        .completion_output = -1
+    };
+    const script_catalog base = { 0 };
+    char error[192];
+    native_definition_catalog *
+        converted = native_definition_catalog_new(&base, &definition, 1, NULL, 0, error, sizeof error);
+    REQUIRE(converted);
+    native_capability_pack pack = { .catalog = native_definition_catalog_view(converted) };
+    tables[0] = native_capabilities_new(&pack, 1, error, sizeof error);
+    native_definition_catalog_free(converted);
+    REQUIRE(tables[0]);
+    parameter_unit[0] = 's';
+    result_unit[0] = 'u';
+    const script_catalog_capability *owned = script_catalog_capability_by_id(
+        native_capabilities_catalog(tables[0]),
+        native_capability_definition_id(&definition)
+    );
+    REQUIRE(
+        owned && !strcmp(owned->parameters[0].unit, "u") &&
+        !strcmp(owned->results[0].unit, "s")
+    );
+    input.storage = PIN_STR;
+    converted = native_definition_catalog_new(&base, &definition, 1, NULL, 0, error, sizeof error);
+    REQUIRE(!converted);
+    REQUIRE(strstr(error, "A measured port requires a numeric type"));
+    input.storage = PIN_F64;
+    input.unit = "";
+    converted = native_definition_catalog_new(&base, &definition, 1, NULL, 0, error, sizeof error);
+    REQUIRE(!converted);
+    REQUIRE(strstr(error, "nonempty unit"));
     return true;
 }
 
@@ -527,6 +656,9 @@ void test_language_incremental()
     RUN_TEST_CASE(body_edits_rebuild_transitive_callers_and_preserve_unrelated_sources);
     RUN_TEST_CASE(binding_generations_and_backends_are_required_cache_inputs);
     RUN_TEST_CASE(catalog_defaults_effects_units_layouts_and_relationships_invalidate_reuse);
+    RUN_TEST_CASE(signature_units_cross_libraries_and_invalidate_same_layout_callers);
+    RUN_TEST_CASE(native_signature_unit_snapshots_own_metadata);
+    RUN_TEST_CASE(native_definitions_preserve_signature_units);
     RUN_TEST_CASE(invalid_edits_and_document_moves_preserve_previous_generations);
     RUN_TEST_CASE(native_binding_tables_supply_nonrepeating_generation_keys);
     RUN_TEST_CASE(struct_defaults_use_frozen_values_and_actual_snapshot_layout);

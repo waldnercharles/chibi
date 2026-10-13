@@ -68,6 +68,21 @@ TEST_CASE(source_format_component_measures)
     return true;
 }
 
+TEST_CASE(source_format_measured_signatures)
+{
+    REQUIRE(format(
+        "library Measures{Travel::(speed:number u / s,elapsed:s)->u{return "
+        "speed*elapsed;}"
+        "Borrow::(value:ref float charge)->ref float charge{return value;}}"
+    ));
+    REQUIRE(strstr(text, "speed: number u/s"));
+    REQUIRE(strstr(text, "elapsed: s"));
+    REQUIRE(strstr(text, "-> u"));
+    REQUIRE(strstr(text, "value: ref float charge"));
+    REQUIRE(strstr(text, "-> ref float charge"));
+    return true;
+}
+
 TEST_CASE(source_format_preserves_comments_and_literals)
 {
     const char *input = "// module comment\nbehavior \"quoted name\" { value "
@@ -142,6 +157,20 @@ TEST_CASE(source_format_query_header_words)
     );
     REQUIRE(strstr(text, "velocity: Velocity?"));
     REQUIRE(strstr(text, "join aim: Targets.Transform?"));
+    return true;
+}
+
+TEST_CASE(source_format_query_generators_and_value_filters)
+{
+    REQUIRE(format(
+        "system Follow query p:Position join target in self.Targets "
+        "join next in target.Targets join aim:Position? from next "
+        "where aim and aim.x>p.x and changed(aim){p.x=aim.x;}"
+    ));
+    REQUIRE(strstr(text, "join target in self.Targets"));
+    REQUIRE(strstr(text, "join next in target.Targets"));
+    REQUIRE(strstr(text, "join aim: Position? from next"));
+    REQUIRE(strstr(text, "where aim and aim.x > p.x and changed(aim)"));
     return true;
 }
 
@@ -630,11 +659,13 @@ void test_language_format()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_format_block_layout);
     RUN_TEST_CASE(source_format_component_measures);
+    RUN_TEST_CASE(source_format_measured_signatures);
     RUN_TEST_CASE(source_format_preserves_comments_and_literals);
     RUN_TEST_CASE(source_format_preserves_expression_structure);
     RUN_TEST_CASE(source_format_system_types_and_control_flow);
     RUN_TEST_CASE(source_format_switch_arm_indentation);
     RUN_TEST_CASE(source_format_query_header_words);
+    RUN_TEST_CASE(source_format_query_generators_and_value_filters);
     RUN_TEST_CASE(source_format_incomplete_source_is_unchanged);
     RUN_TEST_CASE(source_metadata_preserves_bound_identities);
     RUN_TEST_CASE(source_metadata_rejects_stale_or_changed_tokens);

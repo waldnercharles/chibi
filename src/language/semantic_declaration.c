@@ -71,9 +71,13 @@ int script_analyzer_function_new(analyzer *a, TSNode node, script_function_kind 
 }
 void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bool results)
 {
-    if (results && script_analyzer_is(node, "type")) {
-        script_type type = script_analyzer_type_node(a, node);
+    if (results && !ts_node_is_null(node) &&
+        !script_analyzer_is(node, "parameter_list")) {
+        char *unit;
+        script_type type = script_analyzer_signature_type(a, node, &unit);
         int symbol = script_analyzer_result_new(a, node, "Result", type);
+        free(a->out->symbols[symbol].unit);
+        a->out->symbols[symbol].unit = unit;
         apush(a->out->functions[function_index].results, symbol);
         return;
     }
@@ -82,7 +86,12 @@ void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bo
         if (ts_node_is_extra(parameter)) {
             continue;
         }
-        script_type type = script_analyzer_type_node(a, script_analyzer_field(parameter, "type"));
+        char *unit;
+        script_type type = script_analyzer_signature_type(
+            a,
+            script_analyzer_field(parameter, "type"),
+            &unit
+        );
         if (type.flags & SCRIPT_TYPE_UNTYPED) {
             script_analyzer_diagnostic(a, parameter, "Callable parameters and results require a type");
             type = script_analyzer_bad_type();
@@ -94,6 +103,8 @@ void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bo
             type,
             true
         );
+        free(a->out->symbols[symbol].unit);
+        a->out->symbols[symbol].unit = unit;
         script_function *function = &a->out->functions[function_index];
         if (results) {
             apush(function->results, symbol);
@@ -258,16 +269,44 @@ static TSNode query_argument(TSNode arguments)
     }
     return result;
 }
-/* Sources identify a provider, never expand a root into several rows. */
-static uint64_t query_source(analyzer *a, TSNode source, int *traversal)
+/* A provider is the root, a previously bound row variable, or a scalar path. */
+static int query_variable(analyzer *a, TSNode node)
+{
+    if (script_analyzer_text_is(a, node, "self")) {
+        script_analyzer_use(a, node, a->out->owner_symbol, SCRIPT_READ, 0);
+        return 0;
+    }
+    int symbol = script_analyzer_lookup(a, node);
+    if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_QUERY_VARIABLE) {
+        script_analyzer_use(a, node, symbol, SCRIPT_READ, 0);
+        return a->out->symbols[symbol].source_variable;
+    }
+    script_analyzer_diagnostic(a, node, "Query source requires self or an earlier query variable");
+    return 0;
+}
+static uint64_t query_source(analyzer *a, TSNode source, int *traversal, int *variable)
 {
     *traversal = SCRIPT_SOURCE_SELF;
+    *variable = 0;
     if (script_analyzer_text_is(a, source, "self")) {
         return 0;
     }
     if (script_analyzer_is(source, "identifier")) {
+        int symbol = script_analyzer_lookup(a, source);
+        if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_QUERY_VARIABLE) {
+            *variable = query_variable(a, source);
+            return 0;
+        }
         char *name = script_analyzer_name_copy(a, source);
         uint64_t relationship = query_relationship(a, source, name, false);
+        free(name);
+        return relationship;
+    }
+    if (script_analyzer_is(source, "member_expression")) {
+        *variable = query_variable(a, script_analyzer_field(source, "object"));
+        TSNode member = script_analyzer_field(source, "member");
+        char *name = script_analyzer_name_copy(a, member);
+        uint64_t relationship = query_relationship(a, member, name, false);
         free(name);
         return relationship;
     }
@@ -278,7 +317,7 @@ static uint64_t query_source(analyzer *a, TSNode source, int *traversal)
     bool self_up = script_analyzer_text_is(a, function, "self_or_ancestor");
     if (!script_analyzer_is(source, "call_expression") || (!up && !self_up) ||
         ts_node_is_null(relation)) {
-        script_analyzer_diagnostic(a, source, "Query source requires self, an exclusive relationship, ancestor(Relationship) or self_or_ancestor(Relationship)");
+        script_analyzer_diagnostic(a, source, "Query source requires self, a query variable, an exclusive relationship, ancestor(Relationship) or self_or_ancestor(Relationship)");
         return 0;
     }
     char *name = script_analyzer_name_copy(a, relation);
@@ -296,10 +335,11 @@ static script_query query_membership(analyzer *a, TSNode node, bool relationship
         result.source_relationship = query_source(
             a,
             script_analyzer_field(node, "object"),
-            &result.source_traversal
+            &result.source_traversal,
+            &result.source_variable
         );
         name = script_analyzer_field(node, "member");
-        relationship_allowed = false;
+        relationship_allowed &= !result.source_relationship;
     }
     char *text = script_analyzer_name_copy(a, name);
     int index = script_catalog_find_type(a->catalog, text);
@@ -322,79 +362,174 @@ static script_query query_membership(analyzer *a, TSNode node, bool relationship
     free(text);
     return result;
 }
+static bool query_membership_node(analyzer *a, TSNode node)
+{
+    TSNode name = script_analyzer_is(node, "member_expression")
+                    ? script_analyzer_field(node, "member")
+                    : node;
+    if (!script_analyzer_is(node, "identifier") &&
+        !script_analyzer_is(node, "member_expression")) {
+        return false;
+    }
+    if (script_analyzer_is(node, "identifier") && script_analyzer_lookup(a, node) >= 0) {
+        return false;
+    }
+    char *text = script_analyzer_name_copy(a, name);
+    int index = script_catalog_find_type(a->catalog, text);
+    free(text);
+    return index >= 0 && a->catalog->types[index].component;
+}
+static void query_narrow(analyzer *a, int index, bool truth)
+{
+    const script_query *query = &a->out->queries[index];
+    if (query->kind == SCRIPT_QUERY_VALUE) {
+        script_analyzer_narrow_condition(a, query->value, truth);
+        return;
+    }
+    if (query->kind == SCRIPT_QUERY_NOT && query->child_count == 1) {
+        query_narrow(a, query->children[0], !truth);
+        return;
+    }
+    if ((query->kind == SCRIPT_QUERY_ALL && truth) ||
+        (query->kind == SCRIPT_QUERY_ANY && !truth)) {
+        for (int i = 0; i < query->child_count; i++) {
+            query_narrow(a, query->children[i], truth);
+        }
+    }
+}
+static void query_narrow_restore(analyzer *a, narrowing *saved)
+{
+    asetlen(a->narrowed, 0);
+    for (int i = 0; i < acount(saved); i++) {
+        apush(a->narrowed, saved[i]);
+    }
+    afree(saved);
+}
+static script_query query_changed(analyzer *a, TSNode node, TSNode arguments)
+{
+    script_query result = { .kind = SCRIPT_QUERY_CHANGED,
+                            .range = script_analyzer_range(node) };
+    TSNode argument = query_argument(arguments);
+    if (ts_node_is_null(argument)) {
+        script_analyzer_diagnostic(a, node, "changed requires one component or component binding");
+        return result;
+    }
+    int symbol = script_analyzer_is(argument, "identifier")
+                   ? script_analyzer_lookup(a, argument)
+                   : -1;
+    if (symbol >= 0 && a->out->symbols[symbol].kind == SCRIPT_COMPONENT) {
+        const script_symbol *binding = &a->out->symbols[symbol];
+        const script_catalog_type
+            *type = script_catalog_type_by_id(a->catalog, binding->type.nominal);
+        result.component = type ? type->component_id : 0;
+        result.source_relationship = binding->source_relationship;
+        result.source_traversal = binding->source_traversal;
+        result.source_variable = binding->source_variable;
+        script_analyzer_use(a, argument, symbol, SCRIPT_READ, 0);
+        return result;
+    }
+    result = query_membership(a, argument, false);
+    result.kind = SCRIPT_QUERY_CHANGED;
+    result.range = script_analyzer_range(node);
+    return result;
+}
 int script_analyzer_query_expression(analyzer *a, TSNode node)
 {
     script_query result = { .range = script_analyzer_range(node) };
     if (script_analyzer_is(node, "parenthesized_expression")) {
         return script_analyzer_query_expression(a, script_analyzer_field(node, "expression"));
     }
-    if (script_analyzer_is(node, "unary_expression")) {
-        TSNode op = script_analyzer_field(node, "operator");
-        if (!script_analyzer_text_is(a, op, "!") &&
-            !script_analyzer_text_is(a, op, "not")) {
-            script_analyzer_diagnostic(a, op, "Query unary operator must be not");
-        }
+    TSNode op = script_analyzer_field(node, "operator");
+    if (script_analyzer_is(node, "unary_expression") &&
+        (script_analyzer_text_is(a, op, "!") || script_analyzer_text_is(a, op, "not"))) {
         result.kind = SCRIPT_QUERY_NOT;
         apush(
             result.children,
             script_analyzer_query_expression(a, script_analyzer_field(node, "operand"))
         );
-        result.child_count = 1;
-        apush(a->out->queries, result);
-        return acount(a->out->queries) - 1;
-    }
-    if (script_analyzer_is(node, "binary_expression")) {
-        TSNode op = script_analyzer_field(node, "operator");
+    } else if (
+        script_analyzer_is(node, "binary_expression") &&
+        (script_analyzer_text_is(a, op, "or") || script_analyzer_text_is(a, op, "||") ||
+         script_analyzer_text_is(a, op, "and") || script_analyzer_text_is(a, op, "&&"))
+    ) {
         bool any = script_analyzer_text_is(a, op, "or") ||
                    script_analyzer_text_is(a, op, "||");
-        if (!any && !script_analyzer_text_is(a, op, "and") &&
-            !script_analyzer_text_is(a, op, "&&")) {
-            script_analyzer_diagnostic(a, op, "Query binary operator must be and or or");
-        }
         result.kind = any ? SCRIPT_QUERY_ANY : SCRIPT_QUERY_ALL;
-        apush(result.children, script_analyzer_query_expression(a, script_analyzer_field(node, "left")));
+        narrowing *saved = NULL;
+        for (int i = 0; i < acount(a->narrowed); i++) {
+            apush(saved, a->narrowed[i]);
+        }
+        int left = script_analyzer_query_expression(a, script_analyzer_field(node, "left"));
+        apush(result.children, left);
+        query_narrow(a, left, !any);
         apush(result.children, script_analyzer_query_expression(a, script_analyzer_field(node, "right")));
-        result.child_count = 2;
-        apush(a->out->queries, result);
-        return acount(a->out->queries) - 1;
-    }
-    if (script_analyzer_is(node, "identifier") ||
-        script_analyzer_is(node, "member_expression")) {
+        query_narrow_restore(a, saved);
+    } else if (query_membership_node(a, node)) {
         result = query_membership(a, node, false);
-        apush(a->out->queries, result);
-        return acount(a->out->queries) - 1;
-    }
-    TSNode function = script_analyzer_field(node, "function"),
-           arguments = script_analyzer_field(node, "arguments");
-    if (!script_analyzer_is(node, "call_expression")) {
-        script_analyzer_diagnostic(a, node, "Query requires has, all, any or not terms");
-        result.kind = SCRIPT_QUERY_ALL;
-    } else if (script_analyzer_text_is(a, function, "has")) {
-        TSNode argument = query_argument(arguments);
-        if (ts_node_is_null(argument)) {
-            script_analyzer_diagnostic(a, node, "has requires one component or relationship");
-        } else {
-            result = query_membership(a, argument, true);
-        }
     } else {
-        if (script_analyzer_text_is(a, function, "all")) {
-            result.kind = SCRIPT_QUERY_ALL;
-        } else if (script_analyzer_text_is(a, function, "any")) {
-            result.kind = SCRIPT_QUERY_ANY;
-        } else if (script_analyzer_text_is(a, function, "not")) {
-            result.kind = SCRIPT_QUERY_NOT;
-        } else {
-            script_analyzer_diagnostic(a, function, "Unknown query operator");
-            result.kind = SCRIPT_QUERY_ALL;
-        }
-        for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
-            TSNode term = ts_node_named_child(arguments, i);
-            if (!ts_node_is_extra(term)) {
-                apush(result.children, script_analyzer_query_expression(a, term));
+        TSNode function = script_analyzer_field(node, "function");
+        TSNode arguments = script_analyzer_field(node, "arguments");
+        bool call = script_analyzer_is(node, "call_expression");
+        if (call && script_analyzer_text_is(a, function, "has")) {
+            TSNode argument = query_argument(arguments);
+            if (ts_node_is_null(argument)) {
+                script_analyzer_diagnostic(a, node, "has requires one component or relationship");
+                result.kind = SCRIPT_QUERY_HAS;
+            } else {
+                result = query_membership(a, argument, true);
             }
-        }
-        if (result.kind == SCRIPT_QUERY_NOT && acount(result.children) != 1) {
-            script_analyzer_diagnostic(a, node, "not requires exactly one query term");
+        } else if (call && script_analyzer_text_is(a, function, "changed")) {
+            result = query_changed(a, node, arguments);
+        } else if (
+            call && (script_analyzer_text_is(a, function, "all") ||
+                     script_analyzer_text_is(a, function, "any") ||
+                     script_analyzer_text_is(a, function, "not"))
+        ) {
+            result.kind = script_analyzer_text_is(a, function, "all") ? SCRIPT_QUERY_ALL
+                        : script_analyzer_text_is(a, function, "any")
+                            ? SCRIPT_QUERY_ANY
+                            : SCRIPT_QUERY_NOT;
+            narrowing *saved = NULL;
+            for (int i = 0; i < acount(a->narrowed); i++) {
+                apush(saved, a->narrowed[i]);
+            }
+            for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
+                TSNode term = ts_node_named_child(arguments, i);
+                if (ts_node_is_extra(term)) {
+                    continue;
+                }
+                int child = script_analyzer_query_expression(a, term);
+                apush(result.children, child);
+                if (result.kind != SCRIPT_QUERY_NOT) {
+                    query_narrow(a, child, result.kind == SCRIPT_QUERY_ALL);
+                }
+            }
+            query_narrow_restore(a, saved);
+            if (result.kind == SCRIPT_QUERY_NOT && acount(result.children) != 1) {
+                script_analyzer_diagnostic(a, node, "not requires exactly one query term");
+            }
+        } else {
+            result.kind = SCRIPT_QUERY_VALUE;
+            result.value = script_analyzer_expression(a, node, script_analyzer_boolean_type());
+            script_analyzer_condition_type(a, node, result.value);
+            /* Presence conditions become ordinary boolean evaluator results. */
+            if (script_analyzer_expr_type(a, result.value).flags & SCRIPT_TYPE_OPTIONAL) {
+                for (int i = 0; i < 2; i++) {
+                    result.value = script_analyzer_expr_add(
+                        a,
+                        (script_expression){
+                            .kind = SCRIPT_EXPR_UNARY,
+                            .op = SCRIPT_OP_NOT,
+                            .type = script_analyzer_boolean_type(),
+                            .range = result.range,
+                            .left = result.value,
+                            .right = -1,
+                            .symbol = -1,
+                            .effects = script_analyzer_expr_effects(a, result.value),
+                        }
+                    );
+                }
+            }
         }
     }
     result.child_count = acount(result.children);
@@ -446,6 +581,7 @@ static void query_parameters(analyzer *a, TSNode parameters_node, bool joined)
         char *dot = strchr(type_name, '.');
         uint64_t relationship = 0;
         int traversal = SCRIPT_SOURCE_SELF;
+        int variable = 0;
         script_type type;
         if (dot && script_catalog_find_type(a->catalog, type_name) < 0) {
             *dot = 0;
@@ -469,11 +605,11 @@ static void query_parameters(analyzer *a, TSNode parameters_node, bool joined)
             if (relationship) {
                 script_analyzer_diagnostic(a, source, "Query binding specifies its source twice");
             } else {
-                relationship = query_source(a, source, &traversal);
+                relationship = query_source(a, source, &traversal, &variable);
             }
         }
-        if (joined && !relationship) {
-            script_analyzer_diagnostic(a, parameter, "join requires a relationship or ancestor source");
+        if (joined && !relationship && !variable) {
+            script_analyzer_diagnostic(a, parameter, "join requires a query variable, relationship or ancestor source");
         }
         const script_catalog_type *component = script_catalog_type_by_id(a->catalog, type.nominal);
         if (!component || !component->component) {
@@ -494,13 +630,54 @@ static void query_parameters(analyzer *a, TSNode parameters_node, bool joined)
         );
         a->out->symbols[symbol].source_relationship = relationship;
         a->out->symbols[symbol].source_traversal = traversal;
+        a->out->symbols[symbol].source_variable = variable;
         if (component && !(type.flags & SCRIPT_TYPE_OPTIONAL)) {
             int term = script_analyzer_query_component(a, parameter, component->component_id, false);
             a->out->queries[term].source_relationship = relationship;
             a->out->queries[term].source_traversal = traversal;
+            a->out->queries[term].source_variable = variable;
             script_analyzer_query_intersect(a, term);
         }
     }
+}
+static void query_generator(analyzer *a, TSNode node)
+{
+    TSNode source = script_analyzer_field(node, "source");
+    if (!script_analyzer_is(source, "member_expression")) {
+        script_analyzer_diagnostic(a, source, "Query generator requires source.Relationship");
+        return;
+    }
+    int source_variable = query_variable(a, script_analyzer_field(source, "object"));
+    TSNode relation = script_analyzer_field(source, "member");
+    char *name = script_analyzer_name_copy(a, relation);
+    uint64_t relationship = query_relationship_id(a, name);
+    if (!relationship) {
+        script_analyzer_diagnostic(a, relation, "Unknown query relationship '%s'", name);
+    }
+    free(name);
+    /* Keep the frontend independent from ECS headers. This is the row ABI. */
+    if (a->out->query_variable_count == 8) {
+        script_analyzer_diagnostic(a, node, "Query supports at most eight target variables");
+        return;
+    }
+    int variable = ++a->out->query_variable_count;
+    int symbol = script_analyzer_symbol_new(
+        a,
+        script_analyzer_field(node, "name"),
+        SCRIPT_QUERY_VARIABLE,
+        (script_type){ .storage = PIN_HANDLE, .nominal = a->catalog->entity_type },
+        false
+    );
+    a->out->symbols[symbol].source_variable = variable;
+    apush(
+        a->out->queries,
+        ((script_query){ .kind = SCRIPT_QUERY_GENERATOR,
+                         .component = relationship,
+                         .source_variable = source_variable,
+                         .target_variable = variable,
+                         .range = script_analyzer_range(node) })
+    );
+    script_analyzer_query_intersect(a, acount(a->out->queries) - 1);
 }
 void script_analyzer_system_parameters(analyzer *a, TSNode root)
 {
@@ -510,13 +687,14 @@ void script_analyzer_system_parameters(analyzer *a, TSNode root)
     for (uint32_t i = 0; i < script_analyzer_named_count(root); i++) {
         TSNode child = ts_node_named_child(root, i);
         if (script_analyzer_is(child, "query_join")) {
-            query_parameters(a, script_analyzer_field(child, "parameters"), true);
+            TSNode generator = script_analyzer_field(child, "generator");
+            if (!ts_node_is_null(generator)) {
+                query_generator(a, generator);
+            } else {
+                query_parameters(a, script_analyzer_field(child, "parameters"), true);
+            }
             joined = true;
         }
-    }
-    TSNode where = script_analyzer_field(root, "where");
-    if (!ts_node_is_null(where)) {
-        script_analyzer_query_intersect(a, script_analyzer_query_expression(a, where));
     }
     if (a->out->query < 0 && (!ts_node_is_null(parameters_node) || joined)) {
         apush(a->out->queries, ((script_query){ .kind = SCRIPT_QUERY_ALL }));
@@ -536,6 +714,7 @@ void script_analyzer_system_parameters(analyzer *a, TSNode root)
         }
         for (int j = 0; j < acount(a->out->symbols); j++) {
             if (a->out->symbols[j].kind == SCRIPT_COMPONENT &&
+                !a->out->symbols[j].source_variable &&
                 !a->out->symbols[j].source_relationship &&
                 a->out->symbols[j].type.nominal == component->id) {
                 script_analyzer_diagnostic(a, node, "A component cannot be both a parameter and excluded");
@@ -661,7 +840,9 @@ static script_catalog_parameter *authored_payload(const analyzer *a, const int *
         const script_symbol *symbol = &a->out->symbols[symbols[i]];
         apush(
             payload,
-            ((script_catalog_parameter){ .name = symbol->name, .type = symbol->type })
+            ((script_catalog_parameter){ .name = symbol->name,
+                                         .unit = symbol->unit,
+                                         .type = symbol->type })
         );
     }
     return payload;
@@ -863,8 +1044,17 @@ void script_analyzer_handler(analyzer *a, TSNode node)
         script_type type = ordinal < count ? payload[ordinal].type
                                            : script_analyzer_bad_type();
         TSNode annotation = script_analyzer_field(parameter, "type");
+        char *unit = NULL;
         if (!ts_node_is_null(annotation)) {
-            script_analyzer_require(a, annotation, type, script_analyzer_type_node(a, annotation));
+            script_analyzer_require(
+                a,
+                annotation,
+                type,
+                script_analyzer_signature_type(a, annotation, &unit)
+            );
+            if (ordinal < count) {
+                script_analyzer_signature_unit(a, annotation, payload[ordinal].unit, unit);
+            }
         }
         int symbol = script_analyzer_symbol_new(
             a,
@@ -873,6 +1063,11 @@ void script_analyzer_handler(analyzer *a, TSNode node)
             type,
             (type.flags & SCRIPT_TYPE_REFERENCE) != 0
         );
+        free(a->out->symbols[symbol].unit);
+        a->out->symbols[symbol].unit = unit ? unit
+                                     : ordinal < count && payload[ordinal].unit
+                                         ? xstrdup(payload[ordinal].unit)
+                                         : NULL;
         apush(a->out->functions[function].parameters, symbol);
         ordinal++;
     }
@@ -880,6 +1075,7 @@ void script_analyzer_handler(analyzer *a, TSNode node)
         for (int i = 0; i < count; i++) {
             script_symbol hidden = {
                 .name = xstrdup(payload[i].name),
+                .unit = payload[i].unit ? xstrdup(payload[i].unit) : NULL,
                 .kind = SCRIPT_PARAMETER,
                 .id = script_catalog_id("payload-port", payload[i].name),
                 .type = payload[i].type,
@@ -992,7 +1188,8 @@ void script_analyzer_binding(analyzer *a, TSNode node)
     }
     if (base >= 0 && a->out->expressions[base].kind == SCRIPT_EXPR_SYMBOL &&
         a->out->expressions[base].symbol >= 0 &&
-        a->out->symbols[a->out->expressions[base].symbol].source_relationship) {
+        (a->out->symbols[a->out->expressions[base].symbol].source_relationship ||
+         a->out->symbols[a->out->expressions[base].symbol].source_variable)) {
         script_analyzer_diagnostic(a, node, "Reactive binding destination must belong to self; write query sources in the system body");
     }
     result.value = script_analyzer_expression(
@@ -1034,6 +1231,19 @@ bool script_analyzer_declaration_kind(TSNode node)
            script_analyzer_is(node, "entry_declaration") ||
            script_analyzer_is(node, "exit_declaration");
 }
+static bool query_dynamic(const script_analysis *out, int index)
+{
+    const script_query *query = &out->queries[index];
+    if (query->kind == SCRIPT_QUERY_VALUE || query->kind == SCRIPT_QUERY_CHANGED) {
+        return true;
+    }
+    for (int i = 0; i < query->child_count; i++) {
+        if (query_dynamic(out, query->children[i])) {
+            return true;
+        }
+    }
+    return false;
+}
 void script_analyzer_definition_pass(analyzer *a, TSNode body)
 {
     for (uint32_t i = 0; i < script_analyzer_named_count(body); i++) {
@@ -1049,10 +1259,11 @@ void script_analyzer_definition_pass(analyzer *a, TSNode body)
             if (a->out->kind != SCRIPT_PROGRAM_SYSTEM) {
                 script_analyzer_diagnostic(a, node, "Queries belong to system declarations");
             }
-            script_analyzer_query_intersect(
-                a,
-                script_analyzer_query_expression(a, script_analyzer_field(node, "value"))
-            );
+            int query = script_analyzer_query_expression(a, script_analyzer_field(node, "value"));
+            if (query_dynamic(a->out, query)) {
+                script_analyzer_diagnostic(a, node, "Value and change filters belong in the system header where clause");
+            }
+            script_analyzer_query_intersect(a, query);
         } else if (script_analyzer_is(node, "events_declaration")) {
             int old = a->scope;
             a->scope = script_analyzer_scope_at(a, script_analyzer_field(node, "body"));

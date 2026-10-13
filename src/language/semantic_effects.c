@@ -53,6 +53,61 @@ bool script_analyzer_function_waits(const analyzer *a, int function)
     }
     return false;
 }
+enum
+{
+    QUERY_STARTS_TASK = 1,
+    QUERY_READS_INVOCATION = 2
+};
+static unsigned query_expression_restrictions(const script_analysis *, int, bool *);
+static unsigned query_statement_restrictions(const script_analysis *out, int index, bool *functions)
+{
+    if (index < 0) {
+        return 0;
+    }
+    const script_statement *statement = &out->statements[index];
+    unsigned restrictions = query_expression_restrictions(out, statement->expression, functions) |
+                            query_expression_restrictions(out, statement->second, functions) |
+                            query_expression_restrictions(out, statement->third, functions) |
+                            query_statement_restrictions(out, statement->body, functions) |
+                            query_statement_restrictions(out, statement->alternative, functions);
+    for (int i = 0; i < statement->child_count; i++) {
+        restrictions |= query_statement_restrictions(out, statement->children[i], functions);
+    }
+    return restrictions;
+}
+static unsigned query_expression_restrictions(const script_analysis *out, int index, bool *functions)
+{
+    if (index < 0) {
+        return 0;
+    }
+    const script_expression *value = &out->expressions[index];
+    unsigned restrictions = value->task ? QUERY_STARTS_TASK : 0;
+    if (value->kind == SCRIPT_EXPR_SYMBOL && value->symbol >= 0) {
+        const script_symbol *symbol = &out->symbols[value->symbol];
+        if (symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
+            ((symbol->kind == SCRIPT_PARAMETER || symbol->kind == SCRIPT_LOCAL) &&
+             symbol->scope >= 0 && out->scopes[symbol->scope].function < 0)) {
+            restrictions |= QUERY_READS_INVOCATION;
+        }
+    }
+    restrictions |= query_expression_restrictions(out, value->left, functions);
+    if (value->kind == SCRIPT_EXPR_CALL || value->kind == SCRIPT_EXPR_JOIN) {
+        if (value->right >= 0 && !functions[value->right]) {
+            functions[value->right] = true;
+            restrictions |= query_statement_restrictions(
+                out,
+                out->functions[value->right].body,
+                functions
+            );
+        }
+    } else {
+        restrictions |= query_expression_restrictions(out, value->right, functions);
+    }
+    for (int i = 0; i < value->argument_count; i++) {
+        restrictions |= query_expression_restrictions(out, value->arguments[i].value, functions);
+    }
+    return restrictions;
+}
 void script_analyzer_finish_effects(analyzer *a)
 {
     script_analysis *out = a->out;
@@ -64,7 +119,8 @@ void script_analyzer_finish_effects(analyzer *a)
             if (expression->left >= 0) {
                 effects |= out->expressions[expression->left].effects;
             }
-            if (expression->kind == SCRIPT_EXPR_CALL) {
+            if (expression->kind == SCRIPT_EXPR_CALL ||
+                expression->kind == SCRIPT_EXPR_JOIN) {
                 if (expression->right >= 0) {
                     effects |= out->functions[expression->right].effects &
                                ~(expression->task ? SCRIPT_EFFECT_SUSPEND : 0u);
@@ -103,6 +159,26 @@ void script_analyzer_finish_effects(analyzer *a)
     const unsigned impure = SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
                             SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND |
                             SCRIPT_EFFECT_RANDOM;
+    for (int i = 0; i < acount(out->queries); i++) {
+        const script_query *query = &out->queries[i];
+        if (query->kind != SCRIPT_QUERY_VALUE) {
+            continue;
+        }
+        bool *functions = xcalloc((size_t)(acount(out->functions) + 1), sizeof *functions);
+        unsigned restrictions = query_expression_restrictions(out, query->value, functions);
+        free(functions);
+        if ((out->expressions[query->value].effects & impure) ||
+            (restrictions & QUERY_STARTS_TASK)) {
+            script_diagnostic d = { .range = query->range };
+            snprintf(d.message, sizeof d.message, "Query predicate requires a deterministic value without side effects or suspension");
+            apush(out->diagnostics, d);
+        }
+        if (restrictions & QUERY_READS_INVOCATION) {
+            script_diagnostic d = { .range = query->range };
+            snprintf(d.message, sizeof d.message, "Query predicate cannot read system state, body locals or event payload; test invocation values in the system body");
+            apush(out->diagnostics, d);
+        }
+    }
     for (int i = 0; i < acount(out->statements); i++) {
         const script_statement *s = &out->statements[i];
         if (s->kind == SCRIPT_STMT_FOREACH &&

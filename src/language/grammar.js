@@ -114,6 +114,8 @@ module.exports = grammar({
     [$._expression, $._member_name],
     [$._expression, $._call_target, $._name],
     [$._expression, $._call_target],
+    [$.measured_type, $._signature_type],
+    [$._compound_unit, $._expression],
   ],
   rules: {
     source_file: ($) =>
@@ -152,7 +154,7 @@ module.exports = grammar({
       seq(
         field("name", $._name),
         ":",
-        field("type", choice($.type, $.measure)),
+        field("type", choice($.type, $.measure, $.measured_type)),
         $._end,
       ),
     // A lone name is a type; a unit standing alone reads as one and resolves
@@ -168,6 +170,8 @@ module.exports = grammar({
     _negative_number: ($) => seq(field("operator", "-"), field("operand", $.number)),
     // u, s, u/s, u/s^2: unit names exist only here, so they stay free names.
     unit: ($) => seq($._unit_term, repeat(seq("/", $._unit_term))),
+    measured_type: ($) => seq(field("base", $.type), field("unit", $.unit)),
+    _signature_type: ($) => choice($.type, $.measured_type, alias($._compound_unit, $.unit)),
     _compound_unit: ($) =>
       choice(
         seq($.identifier, "^", $.number, repeat(seq("/", $._unit_term))),
@@ -285,7 +289,7 @@ module.exports = grammar({
       seq(
         optional(field("type_parameters", $.type_parameter_list)),
         field("parameters", $.parameter_list),
-        optional(seq("->", field("results", choice($.parameter_list, $.type)))),
+        optional(seq("->", field("results", choice($.parameter_list, $._signature_type)))),
         field("body", $.callable_body),
       ),
     callable_body: ($) =>
@@ -299,15 +303,21 @@ module.exports = grammar({
       ),
     parameter_list: ($) => seq("(", optional(comma($.parameter)), ")"),
     query_parameter_list: ($) => comma($.parameter),
-    query_join: ($) => seq(K.join, field("parameters", $.query_parameter_list)),
+    query_join: ($) => seq(K.join, choice(
+      field("parameters", $.query_parameter_list),
+      field("generator", $.query_generator),
+    )),
+    query_generator: ($) => seq(
+      field("name", $._name), K.in, field("source", $._expression),
+    ),
     parameter: ($) =>
       seq(
         choice(
           seq(
             field("name", $._name),
-            optional(seq(":", field("type", $.type))),
+            optional(seq(":", field("type", $._signature_type))),
           ),
-          seq(field("type", $.type), field("name", $._name)),
+          seq(field("type", $._signature_type), field("name", $._name)),
         ),
         optional(seq(choice(K.from, K.split), field("source", $._expression))),
         optional(seq("=", field("value", $._expression))),

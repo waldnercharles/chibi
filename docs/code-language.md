@@ -439,6 +439,29 @@ A single result may be named with `-> (Damage: number)`, and multiple results re
 that parenthesized form. Anonymous function values and closures are not supported
 by the current callable model.
 
+Function parameters and results can carry the same erased dimensional units as
+component fields:
+
+```code
+Distance :: (speed: u/s, elapsed: s) -> u {
+    return speed * elapsed
+}
+ChargeRate :: (charge: number charge, elapsed: s) -> number charge/s {
+    return charge / elapsed
+}
+```
+
+Known standalone unit names and compound units use `number` storage. An explicit
+numeric storage type can precede the unit, as in `float u/s` or `number charge`.
+Unknown bare type names remain errors; use the explicit form for a custom single
+dimension. Units are checked at calls, defaults, returns and reference writes,
+including named multiple results and imported signatures. Native callable
+metadata can supply the same contract. Incompatible known dimensions are compile
+errors, and unit-only signature edits invalidate affected compiled callers.
+Unannotated parameters/results remain dimensionally unknown; this does not infer
+unit-polymorphic signatures or permit cyclic library publication. Numeric
+inference and runtime representation stay unchanged.
+
 Functions declare data parameters and results. Ordinary functions infer their
 execution continuation; `Name :: pure fn(...)` declares a data-only signature. Calls
 use the function name directly. Qualification selects an external library:
@@ -720,9 +743,14 @@ completion, preserving values while temporarily forgoing optimization of that
 continuation.
 
 Normal VM and compiled bodies also remove construction, snapshots and tag/payload
-operations for nonescaping unions of plain scalars within a proven control region.
-Managed payloads, escaped values and values crossing joins, loops, opaque calls or
-suspension keep their owning representation. Inspection retains the canonical
+operations for nonescaping unions of plain scalars, including nested unions and
+aliases whose incoming values agree at forward control-flow joins. Isolated native
+calls with only plain scalar inputs and outputs preserve unrelated virtual values;
+the calls, side effects and errors still execute. Different values merged at a
+join, backedges, managed payloads, escaped values, authored calls, context callbacks
+and suspension retain their owning representation. Analysis has a bounded scratch
+budget and conservatively retains allocations when it cannot prove safety.
+Inspection retains the canonical
 operations. Numeric interval analysis removes proven redundant clamps and tests,
 and can compare original integers when widening them to `number` was exact.
 It preserves floating-point rounding, NaN and signed-zero behavior; `n := 0`

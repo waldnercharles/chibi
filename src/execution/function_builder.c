@@ -1139,6 +1139,9 @@ static bool intrinsic_schema(const behavior_function *f, const behavior_function
         case EXECUTION_INTRINSIC_QUERY_TARGET:
             return count == 4 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_HANDLE) &&
                    INPUT(2, PIN_U64) && INPUT(3, PIN_I32) && OUTPUT(PIN_HANDLE);
+        case EXECUTION_INTRINSIC_QUERY_VARIABLE:
+            return count == 2 && INPUT(0, BF_POINTER_TYPE) &&
+                   INPUT(1, PIN_I32) && OUTPUT(PIN_HANDLE);
         case EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP:
             return count == 4 && INPUT(0, BF_POINTER_TYPE) && INPUT(1, PIN_HANDLE) &&
                    INPUT(2, PIN_U64) && INPUT(3, PIN_BOOL) && OUTPUT(PIN_BOOL);
@@ -1497,6 +1500,7 @@ static bool intrinsic_kinds(const behavior_function *f, const behavior_function_
                 case EXECUTION_INTRINSIC_COMPONENT_HAS:
                 case EXECUTION_INTRINSIC_QUERY_SOURCE:
                 case EXECUTION_INTRINSIC_QUERY_TARGET:
+                case EXECUTION_INTRINSIC_QUERY_VARIABLE:
                 case EXECUTION_INTRINSIC_COMPONENT_MEMBERSHIP:
                 case EXECUTION_INTRINSIC_BREAK_REQUEST:
                 case EXECUTION_INTRINSIC_BREAK_TAKE:

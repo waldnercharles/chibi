@@ -100,8 +100,9 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     /* Union scalar replacement keeps facts for slots, banks, locals and PCs,
      * plus one candidate per constructor and its immutable scalar payloads. */
     if (acount(f->host_calls)) {
+        scratch = sum(scratch, behavior_function_scalarize_scratch(f));
         size_t fact = sizeof(pin_value) + 3 * sizeof(int) + sizeof(max_align_t);
-        size_t object = sizeof(uint64_t) + sizeof(void *) + sizeof(int) +
+        size_t object = sizeof(uint64_t) + sizeof(void *) + 2 * sizeof(int) +
                         sizeof(max_align_t);
         scratch = sum(scratch, product(count, fact + 2 * sizeof(int) + sizeof(bool)));
         scratch = sum(scratch, product(slots + 1, fact + 2 * sizeof(int) + 2 * sizeof(bool)));
@@ -254,10 +255,10 @@ static bool owned_functions(const behavior_function *f, unsigned depth, size_t *
 static bool module_functions(const execution_module_plan *p, unsigned depth, size_t *count)
 {
     if (depth == PREPARATION_CLOSURE_DEPTH || p->function_count < 0 ||
-        p->binding_count < 0 || p->import_count < 0 ||
+        p->binding_count < 0 || p->import_count < 0 || p->query_count < 0 ||
         p->function_count > acount(p->functions) ||
         p->binding_count > acount(p->bindings) ||
-        p->import_count > acount(p->imports)) {
+        p->import_count > acount(p->imports) || p->query_count > acount(p->queries)) {
         return false;
     }
     if (*count == PREPARATION_CLOSURE_FUNCTIONS) {
@@ -277,6 +278,11 @@ static bool module_functions(const execution_module_plan *p, unsigned depth, siz
             return false;
         }
     }
+    for (int i = 0; i < p->query_count; i++) {
+        if (!owned_functions(p->queries[i].predicate, 0, count)) {
+            return false;
+        }
+    }
     /* Repeated import DAG paths deliberately overcount. Bound traversal before
      * any scratch allocation; no visited table is needed to establish safety. */
     for (int i = 0; i < p->import_count; i++) {
@@ -292,8 +298,11 @@ size_t execution_module_preparation_bytes(const execution_module_plan *p)
     if (p->query_count < 0 || !module_functions(p, 0, &count)) {
         return SIZE_MAX;
     }
-    /* The service requirement walk's seen vector can reach every retained
-     * imported body. Query validation owns one query_count+1 byte row. These phases do not
-     * overlap, but summing them avoids depending on publication ordering. */
-    return sum(bank(count, sizeof(const behavior_function *)), (size_t)p->query_count + 1);
+    /* Service, predicate purity and predicate-effect walks each own a seen
+     * vector bounded by the retained closure. Query validation owns one byte
+     * per node. Sum phases conservatively rather than relying on their order. */
+    return sum(
+        product(3, bank(count, sizeof(const behavior_function *))),
+        (size_t)p->query_count + 1
+    );
 }

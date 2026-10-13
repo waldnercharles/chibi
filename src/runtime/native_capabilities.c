@@ -214,6 +214,7 @@ static bool parameters(
     for (int i = 0; i < count; ++i) {
         copy[i] = source[i];
         copy[i].name = own(n, source[i].name);
+        copy[i].unit = own(n, source[i].unit);
         if (source[i].has_default && pin_value_snapshot_to_arena(
                                          &n->storage,
                                          &copy[i].default_value,

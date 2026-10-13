@@ -996,6 +996,203 @@ static bool number_state(execution_instance *instance, const char *name, double 
     const pin_value *value = execution_instance_state(instance, state_id(name));
     return value && value->type == PIN_F64 && value->d == expected;
 }
+static const script_catalog_relationship row_relationship = { .id = 601, .name = "Targets" };
+static const ecs_relationship_desc row_targets = { .id = 601,
+                                                   .key = "program.row-targets",
+                                                   .name = "Targets" };
+static execution_instance *program_query_tuple(ecs_entity owner, ecs_entity target)
+{
+    uint64_t variable = ecs_entity_to_u64(target);
+    return execution_program_row(program, ecs_entity_to_u64(owner), &variable, 1);
+}
+TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple)
+{
+    script_catalog active = catalog;
+    active.relationships = &row_relationship;
+    active.relationship_count = 1;
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        REQUIRE(ecs_world_register_relationship(world, &row_targets, NULL) == ECS_OK);
+        ecs_entity owner = positioned(0, false), first = positioned(10, true),
+                   second = positioned(20, true);
+        REQUIRE(ecs_world_record_add_pair(world, owner, row_targets.id, first, 0) == ECS_OK);
+        REQUIRE(ecs_world_record_add_pair(world, owner, row_targets.id, second, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(compile_catalog(
+            "system Rows query p:Position join target in self.Targets "
+            "join aim:Position from target { state starts:double=0; "
+            "starts+=1; await Delay(1); p.y+=aim.x; }",
+            backends[backend],
+            &active
+        ));
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        execution_instance *one = program_query_tuple(owner, first);
+        execution_instance *two = program_query_tuple(owner, second);
+        REQUIRE(one && two && one != two);
+        REQUIRE(number_state(one, "starts", 1) && number_state(two, "starts", 1));
+        REQUIRE(
+            execution_instance_set_state(
+                one,
+                state_id("starts"),
+                (pin_value){ .type = PIN_F64, .d = 7 }
+            ) == FLOW_OK
+        );
+        REQUIRE(number_state(two, "starts", 1));
+        REQUIRE(ecs_world_record_remove_pair(world, owner, row_targets.id, first, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_step(program, .25, 0, 1000) == FLOW_OK);
+        REQUIRE(!program_query_tuple(owner, first));
+        REQUIRE(execution_instance_pending(two) == 1);
+        REQUIRE(execution_program_step(program, 1.25, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            ((const program_position *)ecs_component_data_const(world, owner, 501))
+                ->y == 20
+        );
+        REQUIRE(number_state(two, "starts", 2));
+        REQUIRE(ecs_world_record_add_pair(world, owner, row_targets.id, first, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_step(program, 1.5, 0, 1000) == FLOW_OK);
+        one = program_query_tuple(owner, first);
+        REQUIRE(one && number_state(one, "starts", 1) && number_state(two, "starts", 2));
+    }
+    return true;
+}
+TEST_CASE(program_query_changed_preserves_busy_published_writes)
+{
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        ecs_entity owner = positioned(0, false);
+        REQUIRE(compile_module(
+            "system Changed query p:Position where changed(p) and Accept(p.x) "
+            "{ "
+            "Accept :: (value:double)->bool { return value>=0; } "
+            "state calls:double=0; calls+=1; await Delay(1); }",
+            backends[backend]
+        ));
+        unsigned char *bytes = NULL;
+        size_t length = 0;
+        char error[256];
+        REQUIRE(execution_prepared_write(module, &bytes, &length, error, sizeof error));
+        const execution_prepared_linker linker = { .type = program_prepared_type };
+        execution_module *loaded = execution_prepared_read(
+            bytes,
+            length,
+            &linker,
+            backends[backend],
+            error,
+            sizeof error
+        );
+        free(bytes);
+        REQUIRE(loaded);
+        execution_module_free(module);
+        module = loaded;
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        execution_instance *instance = execution_program_instance(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance && number_state(instance, "calls", 1));
+        REQUIRE(ecs_component_modified(world, owner, 501) == ECS_OK);
+        REQUIRE(execution_program_step(program, .2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "calls", 1));
+        REQUIRE(execution_program_step(program, 1.2, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "calls", 2));
+        REQUIRE(execution_program_step(program, 2.3, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "calls", 2) && execution_instance_pending(instance) == 0);
+        ((program_position *)ecs_component_data(world, owner, 501))->x = 2;
+        REQUIRE(execution_program_step(program, 2.4, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "calls", 2));
+        REQUIRE(ecs_component_modified(world, owner, 501) == ECS_OK);
+        REQUIRE(execution_program_step(program, 2.5, 0, 1000) == FLOW_OK);
+        REQUIRE(number_state(instance, "calls", 3));
+    }
+    return true;
+}
+TEST_CASE(program_query_admission_is_frozen_before_row_writes)
+{
+    script_catalog active = catalog;
+    active.relationships = &row_relationship;
+    active.relationship_count = 1;
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        REQUIRE(ecs_world_register_relationship(world, &row_targets, NULL) == ECS_OK);
+        ecs_entity owner = positioned(0, false);
+        for (int target = 0; target < 3; target++) {
+            ecs_entity entity = ecs_world_create_entity(world);
+            REQUIRE(ecs_world_record_add_pair(world, owner, row_targets.id, entity, 0) == ECS_OK);
+        }
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(compile_catalog(
+            "system Snapshot query p:Position join target in self.Targets "
+            "where p.x==0 { p.x+=1; }",
+            backends[backend],
+            &active
+        ));
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        REQUIRE(execution_program_prepare_system(program, 0, 0, 1000) == FLOW_OK);
+        execution_memory_usage memory = execution_program_memory_usage(program);
+        double before = ((const program_position *)ecs_component_data_const(world, owner, 501))
+                            ->x;
+        int run = execution_program_run_system(program);
+        int finish = execution_program_finish_system(program);
+        REQUIRE(memory.instance_count == 0 && memory.activation_bytes == 0);
+        REQUIRE(memory.query_rows == 3 && memory.query_history_bytes == sizeof(uint64_t));
+        REQUIRE(before == 0);
+        REQUIRE(run == FLOW_OK && finish == FLOW_OK);
+        REQUIRE(
+            ((const program_position *)ecs_component_data_const(world, owner, 501))
+                ->x == 3
+        );
+        memory = execution_program_memory_usage(program);
+        REQUIRE(memory.instance_count == 0 && memory.query_history_bytes == 0);
+        REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
+        REQUIRE(
+            ((const program_position *)ecs_component_data_const(world, owner, 501))
+                ->x == 3
+        );
+    }
+    return true;
+}
+TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order)
+{
+    const char *sources[] = {
+        "system Ordered where Risky(cast<int>(self.Position.x)) and "
+        "has(Velocity) { "
+        "Risky :: (index:int)->bool { values:=[10,20]; return values[index]>0; "
+        "} }",
+        "system Guarded where has(Velocity) and "
+        "Risky(cast<int>(self.Position.x)) { "
+        "Risky :: (index:int)->bool { values:=[10,20]; return values[index]>0; "
+        "} }",
+    };
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        for (int order = 0; order < 2; order++) {
+            prepare();
+            ecs_entity owner = positioned(2, false);
+            REQUIRE(compile(sources[order], backends[backend]));
+            int status = execution_program_step(program, 0, 0, 1000);
+            if (!order) {
+                REQUIRE(status < 0);
+                const execution_program_failure *failure = execution_program_error(program);
+                REQUIRE(
+                    failure && failure->status == status &&
+                    failure->owner == ecs_entity_to_u64(owner)
+                );
+            } else {
+                REQUIRE(status == FLOW_OK && !execution_program_error(program));
+                REQUIRE(!execution_program_instance(program, ecs_entity_to_u64(owner)));
+            }
+        }
+    }
+    return true;
+}
+
 TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_replace)
 {
     const char *library_source = "library Store { count: double = 10;"
@@ -6564,6 +6761,10 @@ void test_language_query_program()
     RUN_TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension);
     RUN_TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions);
     RUN_TEST_CASE(program_relationship_loops_stream_targets_explicitly);
+    RUN_TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple);
+    RUN_TEST_CASE(program_query_changed_preserves_busy_published_writes);
+    RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);
+    RUN_TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order);
     pu_clear_setup();
 }
 
@@ -6584,6 +6785,10 @@ void test_language_program()
     RUN_TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension);
     RUN_TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions);
     RUN_TEST_CASE(program_relationship_loops_stream_targets_explicitly);
+    RUN_TEST_CASE(program_query_rows_keep_state_and_cancel_removed_tuple);
+    RUN_TEST_CASE(program_query_changed_preserves_busy_published_writes);
+    RUN_TEST_CASE(program_query_admission_is_frozen_before_row_writes);
+    RUN_TEST_CASE(program_query_value_filters_preserve_short_circuit_failure_order);
     RUN_TEST_CASE(program_component_binding_runs_and_source_cycle_is_rejected);
     RUN_TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_replace);
     RUN_TEST_CASE(program_system_shared_state_survives_membership_and_is_registration_owned);

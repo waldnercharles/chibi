@@ -316,9 +316,10 @@ int program_activation_run(execution_activation *a, double now, double delta, un
         a->instance->running = before;
     }
     for (int i = 0; i < acount(a->instance->program->imports); i++) {
-        execution_instance *instance = execution_program_instance(
+        execution_instance *instance = program_instance_row(
             a->instance->program->imports[i],
-            a->instance->owner
+            a->instance->owner,
+            a->instance->query_variables
         );
         if (instance && instance->running == a) {
             instance->running = before;

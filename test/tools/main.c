@@ -132,6 +132,7 @@ void test_source_presentation();
 void test_component_presentation();
 void test_system_schedule();
 void test_code_system_runtime();
+void test_code_query_rows();
 void test_source_edit();
 void test_shader_parameters_prepared();
 int run_language_semantic_corpora(const char *);
@@ -548,9 +549,9 @@ int main(int argc, char **argv)
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
-    bool source_features = false, source_numeric = false,
-         source_material = false, source_presentation = false,
-         system_schedule = false, source_systems = false, source_edit = false,
+    bool source_features = false, source_numeric = false, source_material = false,
+         source_presentation = false, system_schedule = false,
+         source_systems = false, source_query_rows = false, source_edit = false,
          new_asset = false, asset_refactor = false;
     int corpus = 0;
     bool unit_fixtures = false;
@@ -602,6 +603,7 @@ int main(int argc, char **argv)
     }
     system_schedule = argc == 2 && !strcmp(argv[1], "--system-schedule");
     source_systems = argc == 2 && !strcmp(argv[1], "--source-systems");
+    source_query_rows = argc == 2 && !strcmp(argv[1], "--source-query-rows");
     source_presentation = argc == 2 && !strcmp(argv[1], "--source-presentation");
     source_features = argc == 2 && !strcmp(argv[1], "--source-native-features");
     source_numeric = argc == 2 && !strcmp(argv[1], "--source-native-numeric-queries");
@@ -694,13 +696,14 @@ int main(int argc, char **argv)
         !arena && !render_geometry && !radiance_surface && !radiance_horizons &&
         !material_pixels && !box3d && !sky_files && !mesh_files && !model_import &&
         !model_graphs && !model_catalog && !shader_graphs && !shader_parity &&
-        !shader_programs && !material_cameras && !mesh_materials && !sdf_quality &&
-        !scene3d_post && !scene3d_shapes && !persistent_store && !whole_alias &&
-        !whole_math && !whole_integer && !whole_conversion && !whole_select &&
-        !owned_tick && !parallel_tick && !source_features && !source_numeric &&
-        !source_material && !source_presentation && !system_schedule &&
-        !source_systems && !examples_projects && !validate_project && !expansion &&
-        !controller && !render_fixture && !graph_document && !graph_presentation &&
+        !shader_programs && !material_cameras && !mesh_materials &&
+        !sdf_quality && !scene3d_post && !scene3d_shapes && !persistent_store &&
+        !whole_alias && !whole_math && !whole_integer && !whole_conversion &&
+        !whole_select && !owned_tick && !parallel_tick && !source_features &&
+        !source_numeric && !source_material && !source_presentation &&
+        !system_schedule && !source_systems && !source_query_rows &&
+        !examples_projects && !validate_project && !expansion && !controller &&
+        !render_fixture && !graph_document && !graph_presentation &&
         !graph_functions && !vector_nodes && !material_render && !material) {
         fprintf(
             stderr,
@@ -746,6 +749,7 @@ int main(int argc, char **argv)
             "--parallel-tick | --source-native-features | "
             "--source-native-numeric-queries | --source-native-material | "
             "--source-presentation | --system-schedule | --source-systems | "
+            "--source-query-rows | "
             "--source-edit | --new-asset | --asset-refactor | "
             "--shader-parameters-prepared | "
             "--graph-document | --graph-presentation | --graph-functions | "
@@ -777,7 +781,8 @@ int main(int argc, char **argv)
     source_runtime_active = corpus || unit_fixtures || coverage ||
                             preview_components || shader_parameters ||
                             source_edit || new_asset || asset_refactor ||
-                            system_schedule || source_systems || persistent_store ||
+                            system_schedule || source_systems ||
+                            source_query_rows || persistent_store ||
                             source_presentation || whole_alias || whole_math ||
                             whole_integer || whole_conversion || whole_select ||
                             owned_tick || parallel_tick || source_features ||
@@ -843,6 +848,8 @@ int main(int argc, char **argv)
             test_system_schedule();
         } else if (source_systems) {
             test_code_system_runtime();
+        } else if (source_query_rows) {
+            test_code_query_rows();
         } else if (source_presentation) {
             test_source_presentation();
             test_component_presentation();

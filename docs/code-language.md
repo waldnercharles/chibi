@@ -772,7 +772,7 @@ that a helper cannot mutate an aliased collection.
 
 Preview source preparation reuses unchanged analysis and executable generations
 through `authoring_sources_prepare_incremental`. Exact source identity/text,
-catalog metadata/defaults, backend and native binding generation must match.
+semantic catalog metadata/defaults, backend and native binding generation must match.
 Editing a library body rebuilds its transitive callers. Generations own their
 data independently of older collections; declaration discovery and parsing still
 run. Default comparison evidence is capped at 1 MiB and depth 64; unsupported

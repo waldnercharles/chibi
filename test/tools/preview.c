@@ -5,6 +5,7 @@
 #include "graph/authoring/asset_edit.h"
 #include "graph/authoring/graph_edit.h"
 #include "graph/document/library.h"
+#include "graph/document/serialize.h"
 #include "graph/model/registry.h"
 #include "graph/nodes/core_nodes.h"
 #include "graph/shader/shader_graph.h"
@@ -157,6 +158,29 @@ TEST_CASE(preview_publishes_and_removes_particle_functions)
     REQUIRE(particle_preview_fixture());
     REQUIRE(particle_preview_result(4, 0.75f));
     preview_definition *definition = preview_find_definition(live, "PreviewParticles");
+    /* Opening a native graph automatically arranges its unplaced nodes. That
+     * view may consume the applied generation, while a real pin edit may not. */
+    graph *working_view = definition->working->graphs[1];
+    graph_node_by_id(working_view, working_view->entry_id)->placed = false;
+    library = behavior_asset_clone(definition->working);
+    graph *view = library->graphs[1];
+    node *entry = graph_node_by_id(view, view->entry_id);
+    REQUIRE(!entry->placed);
+    entry->x += 120;
+    entry->y += 40;
+    REQUIRE(!behavior_asset_equal(definition->working, library));
+    REQUIRE(preview_working_matches(definition, library));
+    entry->placed = true;
+    REQUIRE(!preview_working_matches(definition, library));
+    entry->placed = false;
+    REQUIRE(
+        !graph_set_pin_default(view, entry, true, 3, &(pin_value){ .type = PIN_F32, .f = 1.5f })
+    );
+    REQUIRE(!preview_working_matches(definition, library));
+    REQUIRE(!preview_working_matches(NULL, library));
+    REQUIRE(!preview_working_matches(definition, NULL));
+    behavior_asset_free(library);
+    library = NULL;
     graph *g = definition->working->graphs[1];
     REQUIRE(!graph_set_pin_default(
         g,

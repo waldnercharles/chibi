@@ -9,6 +9,7 @@
 #include "render/scene3d_post.h"
 #include "render/scene_renderer.h"
 #include "render/shader_catalog.h"
+#include "render/shader_preview.h"
 #include "render/shader_program.h"
 #include "render/viewport.h"
 #include "runtime/camera.h"
@@ -409,6 +410,46 @@ TEST_CASE(default_clips_stay_ordered_for_close_framings)
     REQUIRE(look_through_camera() == 1);
     depth = render_scene3d_project(&lens, (CF_V3){ 1, 0, 0 }).z;
     REQUIRE(depth > 0 && depth < 1);
+    return true;
+}
+
+TEST_CASE(shader_preview_view_preserves_default_and_orbits_about_framed_target)
+{
+    engine_viewport_camera framing = { .center_x = 12,
+                                       .center_y = -7,
+                                       .span_width = 180,
+                                       .span_height = 160 };
+    render_scene3d_camera expected = render_scene3d_camera_frame(&framing), view;
+    REQUIRE(render_shader_preview_view_camera(&framing, 0, 0, 1, &view));
+    REQUIRE(!memcmp(&view.view, &expected.view, sizeof view.view));
+    REQUIRE(!memcmp(&view.projection, &expected.projection, sizeof view.projection));
+    REQUIRE(!memcmp(&view.eye, &expected.eye, sizeof view.eye));
+    CF_V3 target = { 12, 0, 7 };
+    float distance = cf_len_v3(cf_sub_v3(expected.eye, target));
+    REQUIRE(render_shader_preview_view_camera(&framing, .8f, -.6f, 2, &view));
+    REQUIRE(fabsf(cf_len_v3(cf_sub_v3(view.eye, target)) - distance / 2) < .001f);
+    CF_V3 center = render_scene3d_project(&view, target);
+    REQUIRE(fabsf(center.x) < .00001f && fabsf(center.y) < .00001f);
+    REQUIRE(center.z > 0 && center.z < 1);
+    REQUIRE(fabsf(view.eye.x - expected.eye.x) > 1);
+    for (int i = -1; i <= 1; i += 2) {
+        REQUIRE(render_shader_preview_view_camera(
+            &framing,
+            i * RENDER_SHADER_PREVIEW_YAW_MAX,
+            i * RENDER_SHADER_PREVIEW_PITCH_MAX,
+            RENDER_SHADER_PREVIEW_ZOOM_MIN,
+            &view
+        ));
+        center = render_scene3d_project(&view, target);
+        REQUIRE(isfinite(center.x) && isfinite(center.y) && isfinite(center.z));
+        REQUIRE(fabsf(center.x) < .00001f && fabsf(center.y) < .00001f);
+    }
+    render_scene3d_camera preserved = view;
+    REQUIRE(!render_shader_preview_view_camera(&framing, NAN, 0, 1, &view));
+    REQUIRE(!render_shader_preview_view_camera(&framing, 0, 2, 1, &view));
+    REQUIRE(!render_shader_preview_view_camera(&framing, 0, 0, 0, &view));
+    REQUIRE(!render_shader_preview_view_camera(&framing, 0, 0, 5, &view));
+    REQUIRE(!memcmp(&view, &preserved, sizeof view));
     return true;
 }
 
@@ -4606,6 +4647,12 @@ static void close_app()
 {
     pu_clear_setup();
     cf_destroy_app();
+}
+
+/* Pure camera planning: this route creates no app/window/GPU context. */
+void test_shader_preview_camera()
+{
+    RUN_TEST_CASE(shader_preview_view_preserves_default_and_orbits_about_framed_target);
 }
 
 void test_render_scene3d(bool gles)

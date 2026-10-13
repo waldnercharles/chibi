@@ -96,11 +96,13 @@ in comments and do not prove runtime use. Missing or incomplete coverage is expl
 Material presets are `matte`, `metal`, `emissive` and `unlit`. They produce editable
 KDL through the shared material authoring SDK. The `create_material` JSON operation
 also accepts colors, alpha settings and texture sampling transforms. Studio's
-New Material form calls the same creator. Its Shader contract panel and Evaluate
-center button use the same shader report and fixed CPU context as `inspect --sample`:
-UV `(0.5, 0.5)`, local/world origin, normal/view `+Y`, time/activity zero and authored
-parameter defaults. A CPU sample describes shader outputs at that context; use a
-bounded native preview to inspect rendered appearance.
+New Material form calls the same creator. Node Properties shows a rendered
+preview and edits authored parameter defaults. Collapsed Diagnostics contains
+static costs and Evaluate sample, using a chosen UV and preview time with
+local/world origin, normal/view `+Y` and zero beat/influence. CPU values describe
+shader outputs before lighting. Export evidence saves the current rendered PNG,
+linked source, inputs, sample, backend provenance and replay request. See
+[material authoring](material-authoring.md).
 
 Saved model imports use `model plan SOURCE --name NAME`,
 `model import SOURCE --name NAME --recipe` and `model reimport NAME [--check]`.

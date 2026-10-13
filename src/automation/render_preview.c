@@ -87,6 +87,11 @@ typedef struct
 
 typedef struct
 {
+    float yaw, pitch, zoom;
+} preview_view;
+
+typedef struct
+{
     bool enabled;
     int columns, rows;
     float uv_min[2], uv_max[2];
@@ -203,6 +208,57 @@ static bool parse_preview_camera(yyjson_val *value, preview_camera *camera, char
         return false;
     }
     camera->enabled = true;
+    return true;
+}
+
+static bool parse_preview_view(yyjson_val *value, preview_view *view, char *error, size_t error_size)
+{
+    *view = (preview_view){ .zoom = 1 };
+    if (!value) {
+        return true;
+    }
+    if (!yyjson_is_obj(value)) {
+        set_error(error, error_size, "view must be an object with yaw, pitch and zoom numbers");
+        return false;
+    }
+    const char *names[] = { "yaw", "pitch", "zoom" };
+    float *outputs[] = { &view->yaw, &view->pitch, &view->zoom };
+    const double minimum[] = { -RENDER_SHADER_PREVIEW_YAW_MAX,
+                               -RENDER_SHADER_PREVIEW_PITCH_MAX,
+                               RENDER_SHADER_PREVIEW_ZOOM_MIN };
+    const double maximum[] = { RENDER_SHADER_PREVIEW_YAW_MAX,
+                               RENDER_SHADER_PREVIEW_PITCH_MAX,
+                               RENDER_SHADER_PREVIEW_ZOOM_MAX };
+    for (int i = 0; i < 3; i++) {
+        yyjson_val *member = yyjson_obj_get(value, names[i]);
+        if (!member) {
+            continue;
+        }
+        double number = yyjson_get_num(member);
+        if (!yyjson_is_num(member) || !isfinite(number) ||
+            number < minimum[i] || number > maximum[i]) {
+            snprintf(
+                error,
+                error_size,
+                "view.%s must be finite and within [%g,%g]",
+                names[i],
+                minimum[i],
+                maximum[i]
+            );
+            return false;
+        }
+        *outputs[i] = (float)number;
+    }
+    size_t index, count;
+    yyjson_val *key, *member;
+    yyjson_obj_foreach(value, index, count, key, member)
+    {
+        const char *name = yyjson_get_str(key);
+        if (strcmp(name, "yaw") && strcmp(name, "pitch") && strcmp(name, "zoom")) {
+            set_error(error, error_size, "view accepts only yaw, pitch and zoom");
+            return false;
+        }
+    }
     return true;
 }
 
@@ -1097,6 +1153,15 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         yyjson_doc_free(document);
         return response_finish(&response);
     }
+    preview_view view;
+    if (!parse_preview_view(yyjson_obj_get(root, "view"), &view, error, sizeof error)) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, error);
+        if (exit_code) {
+            *exit_code = response.status;
+        }
+        yyjson_doc_free(document);
+        return response_finish(&response);
+    }
     render_scene3d_activity activity;
     if (!parse_preview_activity(root, &activity, error, sizeof error)) {
         response_error(&response, PREVIEW_INVALID_REQUEST, error);
@@ -1165,6 +1230,19 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         yyjson_doc_free(document);
         return response_finish(&response);
     }
+    if (asset->domain == BEHAVIOR_DOMAIN_SHAPE && (view.yaw || view.pitch)) {
+        response_error(&response, PREVIEW_INVALID_REQUEST, "Shape previews support zoom only; view.yaw and view.pitch must be zero.");
+        if (exit_code) {
+            *exit_code = response.status;
+        }
+        behavior_asset_free(asset);
+        yyjson_doc_free(document);
+        return response_finish(&response);
+    }
+    yyjson_mut_val *view_result = yyjson_mut_obj_add_obj(response.doc, response.result, "view");
+    yyjson_mut_obj_add_real(response.doc, view_result, "yaw", view.yaw);
+    yyjson_mut_obj_add_real(response.doc, view_result, "pitch", view.pitch);
+    yyjson_mut_obj_add_real(response.doc, view_result, "zoom", view.zoom);
     if (asset->domain != ref.family->domain) {
         behavior_asset_free(asset);
         response_diagnostic(&response, "error", 0, "asset domain does not match its requested kind");
@@ -1283,6 +1361,9 @@ char *chibi_render_preview_handle(const char *request, const char *default_root,
         .center_y = camera.center_y,
         .span_width = camera.span_width,
         .span_height = camera.span_height,
+        .yaw = view.yaw,
+        .pitch = view.pitch,
+        .zoom = view.zoom,
         .activity = activity,
     };
     char original_directory[PATH_MAX];

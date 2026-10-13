@@ -18,9 +18,9 @@ they do not establish that a build, editor interaction or device test passed.
 | Find assets and resources | `assets`, `resources` | Existing asset browser | Resource inventory/consumer/cost presentation needs a dedicated editor view. |
 | Validate and repair | `validate [PATH]`, structured source diagnostics | Shared source-language assistance | Precise source ranges cover supported structural errors; generic compiler/load errors can remain. |
 | Create a material | `material create`, richer `create_material` JSON operation | New Material form with presets, colors, surface factors and alpha settings | CLI shorthand exposes a subset of the JSON fields. |
-| Inspect a shader | `inspect PATH`, `inspect PATH --sample` | Shader contract panel and Evaluate center | CPU compilation, static costs and a fixed CPU sample do not establish rendered appearance. |
+| Inspect a shader | `inspect PATH`, `inspect PATH --sample` | Rendered preview, editable authored parameters and collapsed Diagnostics with a CPU sample | CPU outputs are values before lighting; static costs are estimates. Rendered appearance and platform verification require separate evidence. |
 | Import and reimport models | `model plan`, `model import --recipe`, `model reimport --check` | Existing import entry points | Saved-recipe review/reimport UI remains follow-up work. |
-| Preserve review evidence | `--evidence` around direct/NDJSON commands and rendered previews | Existing previews | A shared evidence export UI remains follow-up work. |
+| Preserve review evidence | `--evidence` around direct/NDJSON commands and rendered previews | Export evidence for the current material/shape preview, including a linked snapshot, PNG, report and replay request | General scenario evidence review, rerun and comparison UI remains follow-up work. |
 
 The owning contracts are [asset schemas](../src/assets/asset_schema.h),
 [resource inventory](../src/authoring/resource_catalog.h),
@@ -58,9 +58,12 @@ The preview runs through the existing native hidden-window renderer and its
 execution policy. Its response contains the PNG and actual backend/video-driver
 metadata; the evidence directory also contains the decoded PNG for inspection.
 Full verification is not implied. Studio's New Material form creates an
-editable graph through the same generator. The Shader contract panel reports
-parameters, image sampling settings and static work; Evaluate center uses the
-same fixed CPU context as `inspect --sample`.
+editable graph through the same generator. Material Properties shows a retained
+rendered preview and typed parameter defaults. Drag the preview to orbit, scroll
+to zoom, or edit the view and fixed time under Preview settings. Diagnostics
+contains static costs and an explicit CPU sample. Export evidence saves a
+portable linked snapshot, verified frozen image dependencies, the rendered PNG,
+sample results and a CLI replay request. See [material authoring](material-authoring.md).
 
 Model iteration has separate review and publication steps:
 
@@ -214,7 +217,7 @@ initial state, frame count, fixed timestep, input events, RNG state and selected
 assertions. Prefer invariants such as expected entity counts or collision outcomes
 to brittle whole-image comparisons. Stop at the first actionable failure.
 
-Future evidence UI should let a person rerun a saved check, inspect source diffs,
+Broader evidence UI should let a person rerun a saved check, inspect source diffs,
 open failed assertions and compare captures. Cache checks by source/dependency,
 build, parameters and backend identities. Run static checks before CPU probes and
 bounded renders. Honor the [60-second policy](testing.md#temporary-60-second-policy);
@@ -224,8 +227,9 @@ an unexecuted or quarantined check remains unverified.
 
 1. Finish and validate the material/shader creation, inspection, sampling and
    evidence workflow in both interfaces.
-2. Add shared edit transactions, recipe/reimport review and evidence export in
-   Studio. Prove failure preservation and undo with small fixtures.
+2. Add shared edit transactions, recipe/reimport review and general scenario
+   evidence review in Studio. Extend failure preservation and undo coverage with
+   small fixtures.
 3. Deliver basic tilemap authoring with the shared operation model, then integer
    grids, autotiling and the first restricted importer.
 4. Expand construction and procedural tools using the same recipes, probes,

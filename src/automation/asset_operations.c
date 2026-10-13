@@ -613,6 +613,13 @@ void automation_shader_report(
         yyjson_mut_obj_add_int(doc, parameter, "slot", i);
         yyjson_mut_obj_add_strcpy(doc, parameter, "name", report.names[i]);
         yyjson_mut_obj_add_int(doc, parameter, "width", report.widths[i]);
+        static const char *const presentations[] = { "scalar", "vector", "color" };
+        yyjson_mut_obj_add_str(
+            doc,
+            parameter,
+            "presentation",
+            presentations[report.presentation[i]]
+        );
         add_vector(doc, parameter, "default", report.defaults[i], report.widths[i]);
     }
     yyjson_mut_val *images = yyjson_mut_obj_add_arr(doc, value, "images");

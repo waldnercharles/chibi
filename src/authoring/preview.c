@@ -191,6 +191,14 @@ static bool same_document(const behavior_asset *a, const behavior_asset *b)
     return same;
 }
 
+bool preview_working_matches(const preview_definition *definition, const behavior_asset *source)
+{
+    return definition && definition->working && source &&
+           !definition->working_presentation &&
+           (behavior_asset_equal(definition->working, source) ||
+            same_document(definition->working, source));
+}
+
 int preview_sync_working(preview_definition *definition, const behavior_asset *source)
 {
     if (!definition || !source) {

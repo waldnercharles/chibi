@@ -72,7 +72,7 @@ CHIBI_GPU_SELECTOR("--studio-debugger-source-history")
 CHIBI_GPU_SELECTOR("--studio-scene-camera")
 CHIBI_GPU_SELECTOR("--studio-scene-gizmo3d")
 CHIBI_GPU_SELECTOR("--studio-scene-collider3d")
-/* One material form, save, CPU probe and collision refusal; twenty fixed frames. */
+/* Material form, preview/edit/cancel/history, CPU sample and evidence; 48 fixed frames. */
 CHIBI_GPU_SELECTOR("--studio-material-authoring")
 /* Cute's interior border on two shapes in a hidden 64x64 app, through the
  * instanced and tiled draw paths, with readback. */

@@ -1,6 +1,8 @@
 #ifndef CHIBI_AUTOMATION_CONTROLLER_H
 #define CHIBI_AUTOMATION_CONTROLLER_H
 
+#include "authoring/automation_contract.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -31,7 +33,6 @@ void chibi_preview_free(chibi_preview_run *run);
 
 enum
 {
-    CHIBI_AUTOMATION_CONTRACT = 1,
     CHIBI_AUTOMATION_OK = 0,
     CHIBI_AUTOMATION_INVALID_REQUEST = 2,
     CHIBI_AUTOMATION_IO_ERROR = 3,

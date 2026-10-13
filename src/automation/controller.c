@@ -521,6 +521,7 @@ static const contract_field CONTRACT_PREVIEW_SHADER[] = {
     { "influence", "array", false, "Material Surface Influence linear RGB at the preview center, fading out at radius 50; default none." },
     { "parameters", "object", false, "Shader Parameter overrides keyed by authored parameter name; scalar values or exact-width numeric arrays." },
     { "camera", "object", false, "Optional preview framing with center and span two-vectors." },
+    { "view", "object", false, "Replayable preview: yaw radians [-pi,pi], pitch radians [-pi/2,pi/2], zoom [0.25,4]. Defaults 0,0,1; shapes support zoom only." },
     { "sample_grid", "object", false, "Optional bounded CPU shader samples over an explicit UV rectangle." },
     { "include_source", "boolean", false, "Include bounded generated GLSL, default false." },
 };

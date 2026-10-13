@@ -39,13 +39,16 @@ target_link_libraries(chibi_asset_authoring PUBLIC
 add_library(chibi_material_authoring STATIC
     "${CHIBI_SDK_ROOT}/src/assets/standard_material.c"
     "${CHIBI_SDK_ROOT}/src/authoring/material_create.c"
-    "${CHIBI_SDK_ROOT}/src/authoring/shader_report.c")
+    "${CHIBI_SDK_ROOT}/src/authoring/shader_report.c"
+    "${CHIBI_SDK_ROOT}/src/authoring/shader_evidence.c")
 add_library(Chibi::material_authoring ALIAS chibi_material_authoring)
 set_target_properties(chibi_material_authoring PROPERTIES EXPORT_NAME material_authoring)
 chibi_sdk_headers(chibi_material_authoring PUBLIC assets/standard_material.h
-    authoring/material_create.h authoring/shader_report.h)
+    authoring/material_create.h authoring/shader_report.h authoring/shader_evidence.h
+    authoring/automation_contract.h)
 target_link_libraries(chibi_material_authoring PUBLIC chibi_graph_model chibi_shader_runtime
-    PRIVATE chibi_asset_authoring chibi_graph_authoring chibi_graph_compilation chibi_asset_text chibi_support)
+    PRIVATE chibi_asset_authoring chibi_graph_authoring chibi_graph_compilation chibi_asset_text
+    chibi_image_preparation chibi_project_document chibi_asset_json chibi_support)
 
 add_library(chibi_model_authoring STATIC
     "${CHIBI_SDK_ROOT}/src/assets/model_source.c"

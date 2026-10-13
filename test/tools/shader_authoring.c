@@ -1,12 +1,15 @@
 #include "authoring/material_create.h"
 #include "authoring/shader_report.h"
+#include "graph/authoring/graph_edit.h"
 #include "graph/document/serialize.h"
+#include "graph/nodes/core_nodes.h"
 #include "graph/shader/shader_graph.h"
 #include "support/array.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
 #include "types/catalog.h"
 
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
@@ -227,6 +230,216 @@ TEST_CASE(material_creation_refuses_symlink_content_folder)
     return true;
 }
 
+static node *parameter(graph *g, int slot, int width, const char *name, const float *values)
+{
+    node *n = graph_add_node(g, registry_node_by_name("Shader Parameter"));
+    assert(n && shader_graph_init_node(g, n));
+    assert(graph_set_node_reference(g, n, (uint64_t)slot, name) == 0);
+    static const char *const types[] = { NULL, NULL, "ShaderVec2", "ShaderVec3", "ShaderVec4" };
+    pin_type type = width == 1 ? PIN_F32 : PIN_STRUCT;
+    assert(graph_set_pin_type(g, n, 1, 0, type, types[width]) == 0);
+    pin_value value = { .type = type, .type_name = types[width] };
+    if (width == 1) {
+        value.f = values[0];
+    } else {
+        value.ptr = (void *)values;
+    }
+    assert(graph_set_pin_default(g, n, 1, 0, &value) == 0);
+    return n;
+}
+
+TEST_CASE(shader_parameter_defaults_edit_authored_declarations_and_cpu_outputs)
+{
+    standard_material material = material_authoring_defaults(MATERIAL_AUTHORING_METAL);
+    behavior_asset *asset = standard_material_build("Surface", &material);
+    shader_authoring_report before;
+    shader_authoring_report_init(&before);
+    shader_error error;
+    REQUIRE(shader_authoring_inspect(asset, &before, &error));
+    REQUIRE(before.source_nodes[STANDARD_BASE_COLOR]);
+    REQUIRE(before.presentation[STANDARD_BASE_COLOR] == SHADER_AUTHORING_COLOR);
+    REQUIRE(before.presentation[STANDARD_ROUGHNESS] == SHADER_AUTHORING_SCALAR);
+    node *roughness = graph_node_by_id(asset->graph, before.source_nodes[STANDARD_ROUGHNESS]);
+    REQUIRE(roughness);
+    REQUIRE(
+        graph_set_node_reference(asset->graph, roughness, STANDARD_ROUGHNESS, "coating.response") == 0
+    );
+    float scalar = .61f;
+    float color[] = { 1.3f, .02f, .4f };
+    REQUIRE(shader_authoring_set_default(asset, STANDARD_ROUGHNESS, &scalar, 1, &error));
+    REQUIRE(shader_authoring_set_default(asset, STANDARD_BASE_COLOR, color, 3, &error));
+    color[0] = 99; /* Caller storage must not become the graph's default storage. */
+    shader_authoring_report after;
+    shader_authoring_report_init(&after);
+    REQUIRE(shader_authoring_inspect(asset, &after, &error));
+    REQUIRE(!strcmp(after.names[STANDARD_ROUGHNESS], "coating.response"));
+    REQUIRE(after.source_nodes[STANDARD_ROUGHNESS] == roughness->id);
+    REQUIRE(before.defaults[STANDARD_ROUGHNESS][0] == material.roughness);
+    REQUIRE(fabsf(after.defaults[STANDARD_BASE_COLOR][0] - 1.3f) < .00001f);
+    shader_sample_context context = shader_authoring_center_context(asset);
+    float outputs[SHADER_OUTPUT_MAX][4];
+    REQUIRE(shader_authoring_sample(&after, &context, NULL, outputs, &error));
+    REQUIRE(fabsf(outputs[SHADER_SURFACE_ROUGHNESS][0] - .61f) < .00001f);
+    REQUIRE(fabsf(outputs[SHADER_SURFACE_BASE_COLOR][0] - 1.3f) < .00001f);
+    char *saved = behavior_asset_save(asset);
+    behavior_asset *loaded = behavior_asset_load(saved);
+    REQUIRE(loaded);
+    shader_authoring_report roundtrip;
+    shader_authoring_report_init(&roundtrip);
+    REQUIRE(shader_authoring_inspect(loaded, &roundtrip, &error));
+    REQUIRE(!strcmp(roundtrip.names[STANDARD_ROUGHNESS], "coating.response"));
+    REQUIRE(fabsf(roundtrip.defaults[STANDARD_ROUGHNESS][0] - .61f) < .00001f);
+    shader_authoring_report_free(&roundtrip);
+    shader_authoring_report_free(&after);
+    shader_authoring_report_free(&before);
+    behavior_asset_free(loaded);
+    behavior_asset_free(asset);
+    free(saved);
+    return true;
+}
+
+TEST_CASE(shader_parameter_vector_defaults_preserve_shape_semantics)
+{
+    for (int width = 2; width <= 4; width++) {
+        behavior_asset *asset = behavior_asset_new("Shape");
+        asset->domain = BEHAVIOR_DOMAIN_SHAPE;
+        asset->bounds[0] = asset->bounds[1] = 32;
+        node *output = shader_graph_add_output(asset->graph, true);
+        float values[] = { 1, 2, 3, 4 };
+        node *value = parameter(asset->graph, 17, width, "Base Color", values);
+        node *length = graph_add_node(asset->graph, registry_node_by_name("Shader Length"));
+        REQUIRE(output && length);
+        REQUIRE(graph_connect_data(asset->graph, value, 0, length, 0) == 0);
+        REQUIRE(graph_connect_data(asset->graph, length, 0, output, 0) == 0);
+        shader_authoring_report report;
+        shader_authoring_report_init(&report);
+        shader_error error;
+        REQUIRE(shader_authoring_inspect(asset, &report, &error));
+        REQUIRE(report.widths[17] == width);
+        REQUIRE(report.presentation[17] == SHADER_AUTHORING_VECTOR);
+        REQUIRE(report.source_nodes[17] == value->id);
+        if (width == 3) {
+            value->output_pins[0].flags |= PIN_FLAG_COLOR;
+            REQUIRE(shader_authoring_inspect(asset, &report, &error));
+            REQUIRE(report.presentation[17] == SHADER_AUTHORING_COLOR);
+        }
+        float edited[] = { 3, 4, 0, 0 };
+        REQUIRE(shader_authoring_set_default(asset, 17, edited, width, &error));
+        REQUIRE(shader_authoring_inspect(asset, &report, &error));
+        shader_sample_context context = shader_authoring_center_context(asset);
+        float outputs[SHADER_OUTPUT_MAX][4];
+        REQUIRE(shader_authoring_sample(&report, &context, NULL, outputs, &error));
+        REQUIRE(fabsf(outputs[0][0] - 5) < .00001f);
+        REQUIRE(!strcmp(report.names[17], "Base Color"));
+        shader_authoring_report_free(&report);
+        behavior_asset_free(asset);
+    }
+    return true;
+}
+
+TEST_CASE(shader_parameter_invalid_changes_preserve_source_and_unused_slots_are_editable)
+{
+    standard_material material = material_authoring_defaults(MATERIAL_AUTHORING_MATTE);
+    behavior_asset *asset = standard_material_build("Surface", &material);
+    float initial = 2;
+    parameter(asset->graph, 22, 1, "Unused declaration", &initial);
+    shader_error error;
+    float scalar = .2f;
+    REQUIRE(shader_authoring_set_default(asset, 22, &scalar, 1, &error));
+    char *before = behavior_asset_save(asset);
+    float invalid[] = { NAN, 0, 1 };
+    REQUIRE(!shader_authoring_set_default(asset, STANDARD_BASE_COLOR, invalid, 3, &error));
+    REQUIRE(!shader_authoring_set_default(asset, STANDARD_BASE_COLOR, &scalar, 1, &error));
+    REQUIRE(!shader_authoring_set_default(asset, 23, &scalar, 1, &error));
+    REQUIRE(!shader_authoring_set_default(asset, SHADER_PARAMETER_MAX, &scalar, 1, &error));
+    REQUIRE(!shader_authoring_set_default(asset, -1, &scalar, 1, &error));
+    char *after = behavior_asset_save(asset);
+    REQUIRE(!strcmp(before, after));
+    free(before);
+    free(after);
+    behavior_asset_free(asset);
+    return true;
+}
+
+TEST_CASE(shader_parameter_scalar_storage_rejects_fractional_integers_and_nonboolean_values)
+{
+    behavior_asset *asset = behavior_asset_new("Surface");
+    asset->domain = BEHAVIOR_DOMAIN_MATERIAL;
+    float initial = 1;
+    node *integer = parameter(asset->graph, 4, 1, "Layer count", &initial);
+    node *boolean = parameter(asset->graph, 5, 1, "Enabled", &initial);
+    REQUIRE(graph_set_pin_type(asset->graph, integer, 1, 0, PIN_I32, NULL) == 0);
+    REQUIRE(graph_set_pin_type(asset->graph, boolean, 1, 0, PIN_BOOL, NULL) == 0);
+    shader_error error;
+    float value = 3;
+    REQUIRE(shader_authoring_set_default(asset, 4, &value, 1, &error));
+    REQUIRE(integer->output_pins[0].default_value.i == 3);
+    value = 1;
+    REQUIRE(shader_authoring_set_default(asset, 5, &value, 1, &error));
+    REQUIRE(boolean->output_pins[0].default_value.b);
+    char *before = behavior_asset_save(asset);
+    value = 3.25f;
+    REQUIRE(!shader_authoring_set_default(asset, 4, &value, 1, &error));
+    value = 2147483648.0f;
+    REQUIRE(!shader_authoring_set_default(asset, 4, &value, 1, &error));
+    value = 2;
+    REQUIRE(!shader_authoring_set_default(asset, 5, &value, 1, &error));
+    char *after = behavior_asset_save(asset);
+    REQUIRE(!strcmp(before, after));
+    free(before);
+    free(after);
+    behavior_asset_free(asset);
+    return true;
+}
+
+TEST_CASE(shader_parameter_editing_repairs_sources_without_linking_other_nodes)
+{
+    standard_material material = material_authoring_defaults(MATERIAL_AUTHORING_MATTE);
+    behavior_asset *asset = standard_material_build("Surface", &material);
+    shader_authoring_report report;
+    shader_authoring_report_init(&report);
+    shader_error error;
+    REQUIRE(shader_authoring_inspect(asset, &report, &error));
+    node *source = graph_node_by_id(asset->graph, report.source_nodes[STANDARD_ROUGHNESS]);
+    node *output = NULL;
+    for (int i = 0; i < acount(asset->graph->nodes); i++) {
+        node *n = asset->graph->nodes[i];
+        if (!strcmp(n->desc->name, "Shader Surface Output")) {
+            output = n;
+        }
+    }
+    REQUIRE(source && output);
+    node *call = graph_add_node(asset->graph, &NODE_CallPureFunction);
+    REQUIRE(call);
+    pin_spec returned = { .name = "Result",
+                          .type = PIN_F32,
+                          .kind = PIN_DATA,
+                          .default_value = { .type = PIN_F32 } };
+    int pin = graph_add_pin(asset->graph, call, 1, &returned);
+    REQUIRE(pin >= 0);
+    REQUIRE(graph_set_node_reference(asset->graph, call, 999, "Detail") == 0);
+    REQUIRE(graph_set_node_reference_asset(asset->graph, call, "ExternalShaderLibrary") == 0);
+    REQUIRE(graph_connect_data(asset->graph, call, pin, output, SHADER_SURFACE_HEIGHT) == 0);
+    REQUIRE(!shader_authoring_inspect(asset, &report, &error));
+    float value = .42f;
+    REQUIRE(shader_authoring_set_default(asset, STANDARD_ROUGHNESS, &value, 1, &error));
+    REQUIRE(fabsf(source->output_pins[0].default_value.f - .42f) < .00001f);
+    REQUIRE(call->reference_id == 999 && !strcmp(call->reference_asset, "ExternalShaderLibrary"));
+    REQUIRE(!shader_authoring_inspect(asset, &report, &error));
+    float duplicate = .1f;
+    parameter(asset->graph, STANDARD_ROUGHNESS, 1, "Ambiguous", &duplicate);
+    char *before = behavior_asset_save(asset);
+    REQUIRE(!shader_authoring_set_default(asset, STANDARD_ROUGHNESS, &value, 1, &error));
+    REQUIRE(strstr(error.message, "more than one"));
+    char *after = behavior_asset_save(asset);
+    REQUIRE(!strcmp(before, after));
+    free(before);
+    free(after);
+    shader_authoring_report_free(&report);
+    behavior_asset_free(asset);
+    return true;
+}
+
 void test_shader_authoring()
 {
     pu_setup(setup, cleanup);
@@ -235,5 +448,10 @@ void test_shader_authoring()
     RUN_TEST_CASE(material_creation_refuses_existing_declarations_and_invalid_sources);
     RUN_TEST_CASE(material_texture_settings_survive_source_generation);
     RUN_TEST_CASE(material_creation_refuses_symlink_content_folder);
+    RUN_TEST_CASE(shader_parameter_defaults_edit_authored_declarations_and_cpu_outputs);
+    RUN_TEST_CASE(shader_parameter_vector_defaults_preserve_shape_semantics);
+    RUN_TEST_CASE(shader_parameter_invalid_changes_preserve_source_and_unused_slots_are_editable);
+    RUN_TEST_CASE(shader_parameter_scalar_storage_rejects_fractional_integers_and_nonboolean_values);
+    RUN_TEST_CASE(shader_parameter_editing_repairs_sources_without_linking_other_nodes);
     pu_clear_setup();
 }

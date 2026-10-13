@@ -97,6 +97,7 @@ void test_render_material_coefficients();
 void test_render_material_lod();
 void test_render_scene2d();
 void test_render_scene3d(bool gles);
+void test_shader_preview_camera();
 void test_render_scene3d_gi(bool gles);
 void test_device_controls();
 #endif
@@ -316,6 +317,9 @@ static bool run_document_suites(int argc, char **argv)
     }
     if (selected(argc, argv, "--shader-authoring")) {
         test_shader_authoring();
+#ifdef CHIBI_TEST_RENDER_RUNTIME
+        test_shader_preview_camera();
+#endif
         return true;
     }
 #endif

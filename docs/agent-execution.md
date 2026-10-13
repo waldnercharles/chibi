@@ -311,7 +311,7 @@ fixture. Each runs independently under the shared 60-second supervisor deadline:
 
 | Agent selector | Hidden frames | Accepted interaction |
 | --- | ---: | --- |
-| `--studio-material-authoring` | 20 | SDL material preset/name/roughness/create, canonical reload, CPU probe, duplicate refusal and Escape; optional two screenshot readbacks |
+| `--studio-material-authoring` | 60 | SDL material creation, typed edit, live scrub Escape/Undo-before-release, fresh edit/history, native scrollbar-thumb navigation, rendered preview, CPU probe and evidence export; two tiny in-memory history documents; optional three screenshot readbacks and bounded six-file bundle copy |
 | `--studio-scene-collider3d` | 26 | Scaled box, sphere and capsule handles, typed history, parallel/nonfinite and hidden-handle rejection, Escape/H cancellation; three actors |
 | `--studio-scene-gizmo3d` | 42 | World/local move, snapping, rotation/scaling, history and cancellation; six prototypes/eight actors |
 | `--studio-graph-pointer` | 19 | SDL node selection, wire navigation, Find keys and pointer selection, Escape focus, Home framing |

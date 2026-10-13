@@ -133,8 +133,15 @@ static bool decode(void *, const char *key, shader_image_view *out, char *error,
     free(bytes);
     return decoded;
 }
-const char *image_prepare_check(const void *bytes, size_t length, char *error, size_t size)
+const char *image_prepare_decode(
+    const void *bytes,
+    size_t length,
+    shader_image_view *out,
+    char *error,
+    size_t size
+)
 {
+    *out = (shader_image_view){ 0 };
     static const unsigned char png_magic[] = { 0x89, 'P',  'N',  'G',
                                                '\r', '\n', 0x1a, '\n' };
     static const unsigned char jpg_magic[] = { 0xff, 0xd8, 0xff };
@@ -150,13 +157,19 @@ const char *image_prepare_check(const void *bytes, size_t length, char *error, s
         failure(error, size, "Image is over 64 MiB");
         return NULL;
     }
-    shader_image_view view;
-    if (!decode_bytes(bytes, (int)length, png, &view, error, size)) {
+    if (!decode_bytes(bytes, (int)length, png, out, error, size)) {
         return NULL;
     }
-    free((void *)view.pixels);
     return png ? "png" : "jpg";
 }
+const char *image_prepare_check(const void *bytes, size_t length, char *error, size_t size)
+{
+    shader_image_view view;
+    const char *format = image_prepare_decode(bytes, length, &view, error, size);
+    free((void *)view.pixels);
+    return format;
+}
+
 void *image_prepare_png_read(const char *path, int *length, char *error, size_t size)
 {
     FILE *file = fopen(path, "rb");

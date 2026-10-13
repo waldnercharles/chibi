@@ -85,12 +85,24 @@ unreferenced raw resource changes. Project version requirements take precedence
 over the current version's structural grammar.
 
 The admitted `--studio-material-authoring` route uses the installed SDK and the
-same provenance/disposable-fixture checks as other Studio routes. Twenty fixed
-host frames exercise actual SDL/RmlUi preset, name, roughness, Create, CPU probe,
-duplicate refusal and Escape input. Optional evidence captures two existing
-frames, each under the SDK's ten-second readback bound and the route's one shared
-sixty-second deadline. Evidence mode uses Studio's reduced-motion preference.
-It does not cover every color/texture control or browser input. See
+same provenance/disposable-fixture checks as other Studio routes. Sixty fixed
+host frames exercise actual SDL/RmlUi material creation, typed edits, scrub
+cancellation, Undo before pointer release, a fresh edit with undo/redo, save,
+rendered preview, native scrollbar-thumb navigation, Diagnostics, CPU sampling,
+evidence export and duplicate refusal. Two tiny in-memory material documents
+additionally cover pending history across document switches and local-function
+navigation. One auxiliary material and shader library check that a library
+publication refreshes the material report without a local edit. Each definition
+serializes to at most 16 KiB; both are removed after the check and add no frames
+or readbacks. Each
+of four scrollbar reveals performs at most 64 hit tests inside the native
+scrollbar, then one SDL thumb-drag batch. One
+asynchronous preview readback and three optional existing-frame screenshots stay
+inside the shared sixty-second deadline; each screenshot retains the SDK's
+ten-second bound. Optional review mode also copies six completed bundle files,
+each at most 1 MiB through a 16 KiB buffer with exclusive creation and partial
+copy cleanup. Evidence mode uses Studio's reduced-motion preference. It does
+not cover every color/texture control or browser input. See
 [bounded Studio execution](agent-execution.md#studio-interaction-checks) and
 Studio's `tests/acceptance/README.md`.
 
@@ -102,7 +114,9 @@ Installed SDK controller and native/web Studio builds passed. The final Studio
 route completed in 4.037 s, including two screenshots. One 320×180 shader preview
 reported Metal/Cocoa and exported a decoded PNG; creation, validation, CPU
 inspection and that preview completed under one 2.319 s supervisor run.
-These are bounded local results. Quarantined aggregate suites remain unexecuted.
+These results describe the original 20-frame asset-authoring interface, before
+the 60-frame Properties redesign route. They do not validate the redesigned UI.
+Quarantined aggregate suites remain unexecuted.
 
 ## Feature coverage
 

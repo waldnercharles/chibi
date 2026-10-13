@@ -90,7 +90,7 @@ STUDIO_SELECTORS = {'--studio-material-authoring': 'studio-material-authoring',
                     '--studio-scene-gizmo3d': 'studio-scene-gizmo3d',
                     '--studio-scene-collider3d': 'studio-scene-collider3d'}
 STUDIO_ACCEPTANCE = {
-    '--studio-material-authoring': ('--material-authoring', 20, 'Studio material authoring accepted: frames=20 roughness=0.42 metallic=1 CPU center probe'),
+    '--studio-material-authoring': ('--material-authoring', 60, 'Studio material authoring accepted: frames=60 roughness=0.65 metallic=1 rendered preview edit/cancel/undo/redo evidence'),
     '--studio-scene-collider3d': ('--scene-collider3d', 26, 'Studio 3D collider handles accepted: frames=26'),
     '--studio-scene-gizmo3d': ('--scene-gizmo3d', 42, 'Studio 3D gizmo accepted: frames=42'),
     '--studio-scene-camera': ('--scene-camera', 30, 'Studio 3D camera accepted: frames=30'),

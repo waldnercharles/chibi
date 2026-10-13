@@ -50,6 +50,10 @@ const char *preview_definition_path(const preview_definition *definition);
 int preview_definition_set_path(preview_definition *definition, const char *path);
 int preview_definition_count(const preview_world *world);
 preview_definition *preview_definition_at(preview_world *world, int index);
+/* Native graph authored content matches the working generation. Automatic node
+ * arrangement (x/y/placed for unplaced nodes) does not change authored content.
+ * Source presentations use their canonical source generation instead. */
+bool preview_working_matches(const preview_definition *, const behavior_asset *);
 /* Copies source into the working copy. Moving automatic nodes leaves the
    definition saved and applied. */
 int preview_sync_working(preview_definition *definition, const behavior_asset *source);

@@ -25,6 +25,7 @@ struct render_shader_preview
     render_scene3d_activity activity;
     float center_x, center_y;
     float span_width, span_height;
+    float zoom;
     int width, height;
     int program;
     bool material;
@@ -43,6 +44,88 @@ static void set_error(shader_error *error, const char *message)
 static void set_preview_error(render_shader_preview *preview, const char *message)
 {
     snprintf(preview->error, sizeof preview->error, "%s", message ? message : "");
+}
+
+static bool view_valid(float yaw, float pitch, float zoom)
+{
+    return isfinite(yaw) && fabsf(yaw) <= RENDER_SHADER_PREVIEW_YAW_MAX &&
+           isfinite(pitch) && fabsf(pitch) <= RENDER_SHADER_PREVIEW_PITCH_MAX &&
+           isfinite(zoom) && zoom >= RENDER_SHADER_PREVIEW_ZOOM_MIN &&
+           zoom <= RENDER_SHADER_PREVIEW_ZOOM_MAX;
+}
+
+static CF_V3 rotate_view(CF_V3 value, float yaw, float pitch)
+{
+    CF_V3 tilted = { value.x,
+                     value.y * cosf(pitch) - value.z * sinf(pitch),
+                     value.y * sinf(pitch) + value.z * cosf(pitch) };
+    return (CF_V3){ tilted.x * cosf(yaw) + tilted.z * sinf(yaw),
+                    tilted.y,
+                    -tilted.x * sinf(yaw) + tilted.z * cosf(yaw) };
+}
+
+bool render_shader_preview_view_camera(
+    const engine_viewport_camera *framing,
+    float yaw,
+    float pitch,
+    float zoom,
+    render_scene3d_camera *output
+)
+{
+    if (!view_valid(yaw, pitch, zoom)) {
+        return false;
+    }
+    engine_viewport_camera frame = *framing;
+    frame.span_width /= zoom;
+    frame.span_height /= zoom;
+    if (!isfinite(frame.center_x) || !isfinite(frame.center_y) ||
+        !isfinite(frame.span_width) || !isfinite(frame.span_height) ||
+        !(frame.span_width > 0) || !(frame.span_height > 0)) {
+        return false;
+    }
+    render_scene3d_camera base = render_scene3d_camera_frame(&frame);
+    if (!yaw && !pitch) {
+        *output = base;
+        return true;
+    }
+    CF_V3 target = { frame.center_x, 0, -frame.center_y };
+    CF_V3 offset = rotate_view(cf_sub_v3(base.eye, target), yaw, pitch);
+    frame.lens.eye = cf_add_v3(target, offset);
+    frame.lens.forward = cf_neg_v3(offset);
+    frame.lens.up = rotate_view((CF_V3){ 0, 1, 0 }, yaw, pitch);
+    *output = render_scene3d_camera_frame(&frame);
+    return true;
+}
+
+bool render_shader_preview_set_view(render_shader_preview *preview, float yaw, float pitch, float zoom)
+{
+    if (!view_valid(yaw, pitch, zoom)) {
+        set_preview_error(preview, "Preview view requires finite yaw within +/-pi, pitch within +/-pi/2 and zoom in [0.25,4].");
+        return false;
+    }
+    if (!preview->material && (yaw || pitch)) {
+        set_preview_error(preview, "Shape previews support zoom only; yaw and pitch must be zero.");
+        return false;
+    }
+    if (preview->material) {
+        engine_viewport_camera framing = { .center_x = preview->center_x,
+                                           .center_y = preview->center_y,
+                                           .span_width = preview->span_width,
+                                           .span_height = preview->span_height };
+        if (!render_shader_preview_view_camera(
+                &framing,
+                yaw,
+                pitch,
+                zoom,
+                &preview->camera
+            )) {
+            set_preview_error(preview, "Preview view requires finite framing with positive spans after zoom.");
+            return false;
+        }
+    }
+    preview->zoom = zoom;
+    preview->error[0] = 0;
+    return true;
 }
 
 static bool prepare_material_preview(render_shader_preview *preview, int width, int height, shader_error *error)
@@ -153,6 +236,16 @@ static render_shader_preview *preview_new(
             );
         }
     }
+    if (!render_shader_preview_set_view(
+            preview,
+            options->yaw,
+            options->pitch,
+            options->zoom ? options->zoom : 1
+        )) {
+        set_error(error, preview->error);
+        render_shader_preview_free(preview);
+        return NULL;
+    }
     return preview;
 }
 
@@ -244,8 +337,8 @@ bool render_shader_preview_draw(render_shader_preview *preview, float time, cons
     cf_draw_projection(cf_ortho_2d(
         preview->center_x,
         preview->center_y,
-        preview->span_width,
-        preview->span_height
+        preview->span_width / preview->zoom,
+        preview->span_height / preview->zoom
     ));
     render_shader_fragment_draw(preview->programs, preview->program, &preview->entity, (CF_V2){ 1, 1 });
     cf_draw_pop();

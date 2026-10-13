@@ -7,6 +7,17 @@ bool render_image_mount_content(const char *root, char *error, size_t size);
 /* The bytes of the file at `path` when they decode as a PNG, owned by the
  * caller, with their count in `length`; NULL with `error` saying why not. */
 void *image_prepare_png_read(const char *path, int *length, char *error, size_t size);
+/* Pure bounded memory decode, no catalog publication, GPU or platform calls.
+ * Returns "png"/"jpg" and owned straight-alpha RGBA8 rows in out->pixels;
+ * free((void *)out->pixels). Failure resets out to zero and reports an error.
+ * Uses the same 64 MiB byte and resident side limits as image_prepare_check. */
+const char *image_prepare_decode(
+    const void *bytes,
+    size_t length,
+    shader_image_view *out,
+    char *error,
+    size_t size
+);
 /* "png" or "jpg" when `bytes` decode as that image within the resident side
  * limit; NULL with `error` saying why not. */
 const char *image_prepare_check(const void *bytes, size_t length, char *error, size_t size);

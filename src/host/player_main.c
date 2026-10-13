@@ -501,6 +501,9 @@ EM_JS(void, web_stopped, (), {
 EM_JS(void, web_renderer, (int webgpu, int asyncify), {
     Module['chibiRenderer']?.(webgpu ? 'WebGPU' : 'WebGL 2', Boolean(asyncify));
 })
+EM_JS(int, web_force_gl, (), {
+    return new URLSearchParams(location.search).get('renderer') === 'webgl';
+})
 EM_JS(void, web_frame_complete, (), {
     Module['chibiFrame']?.();
 })
@@ -605,6 +608,15 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s\n", error);
         goto release;
     }
+    int options = CF_APP_OPTIONS_WINDOW_POS_CENTERED_BIT |
+                  CF_APP_OPTIONS_RESIZABLE_BIT |
+                  (application.fullscreen ? CF_APP_OPTIONS_FULLSCREEN_BIT : 0) |
+                  (hidden ? CF_APP_OPTIONS_HIDDEN_BIT : 0);
+#ifdef __EMSCRIPTEN__
+    if (web_force_gl()) {
+        options |= CF_APP_OPTIONS_GFX_OPENGL_BIT;
+    }
+#endif
     CF_Result made = cf_make_app(
         application.title ? application.title : "Chibi Player",
         0,
@@ -612,9 +624,7 @@ int main(int argc, char **argv)
         0,
         initial_width,
         initial_height,
-        CF_APP_OPTIONS_WINDOW_POS_CENTERED_BIT | CF_APP_OPTIONS_RESIZABLE_BIT |
-            (application.fullscreen ? CF_APP_OPTIONS_FULLSCREEN_BIT : 0) |
-            (hidden ? CF_APP_OPTIONS_HIDDEN_BIT : 0),
+        options,
         argv[0]
     );
     if (cf_is_error(made)) {

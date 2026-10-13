@@ -224,7 +224,9 @@ void behavior_function_rebind_host(
 void behavior_function_borrow_arrays(behavior_function *function);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);
+void behavior_function_optimize_ranges(behavior_function *function, const bool *keep);
 void behavior_function_optimize(behavior_function *function);
+void behavior_function_scalarize_unions(behavior_function *function, bool *keep);
 typedef struct
 {
     int first, last; /* Canonical instruction PCs of immutable I32 inputs. */

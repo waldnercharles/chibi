@@ -101,6 +101,32 @@ add_dependencies(test_tools policy_worker)
 target_compile_features(test_tools PRIVATE c_std_11)
 target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document)
+if(UNIX AND NOT CMAKE_CROSSCOMPILING AND NOT CHIBI_INSTALLED_SDK AND
+   NOT CMAKE_CONFIGURATION_TYPES)
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" export_build_type)
+    separate_arguments(export_flags NATIVE_COMMAND
+        "${CMAKE_C_COMPILER_ARG1} ${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${export_build_type}}")
+    # Root builds supply sanitizers through directory options rather than CFLAGS.
+    if(CHIBI_ENABLE_SANITIZERS AND
+       (CMAKE_C_COMPILER_ID MATCHES "Clang|GNU" OR
+        CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU"))
+        list(APPEND export_flags "-fsanitize=${CHIBI_SANITIZERS}" -fno-omit-frame-pointer)
+    endif()
+    list(APPEND export_flags -UNDEBUG)
+    set(CHIBI_EXPORT_COMPILER_ARGUMENTS "")
+    foreach(argument IN ITEMS "${CMAKE_C_COMPILER}" ${export_flags})
+        string(REPLACE "\\" "\\\\" argument "${argument}")
+        string(REPLACE "\"" "\\\"" argument "${argument}")
+        string(APPEND CHIBI_EXPORT_COMPILER_ARGUMENTS "    \"${argument}\",\n")
+    endforeach()
+    configure_file(export_compiler.h.in
+        "${CMAKE_CURRENT_BINARY_DIR}/testing/include/export_compiler.h" @ONLY)
+    set_source_files_properties(c_export.c PROPERTIES
+        INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_sources(test_tools PRIVATE c_export.c)
+    target_link_libraries(test_tools PRIVATE Chibi::execution ${CMAKE_DL_LIBS})
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_C_EXPORT=1)
+endif()
 if(TARGET Chibi::audio_runtime)
     target_sources(test_tools PRIVATE audio_analysis.c)
     target_link_libraries(test_tools PRIVATE Chibi::audio_runtime)
@@ -374,6 +400,7 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         target_link_libraries(chibi_source_features_consumer PRIVATE Chibi::project_preparation Chibi::component_presentation
             Chibi::render Chibi::graph_catalog Chibi::host_native_default Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime Chibi::save_runtime)
         target_compile_options(chibi_source_features_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+        target_compile_definitions(chibi_source_features_consumer PRIVATE CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}")
         target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_source_features_consumer>)
         target_link_libraries(test_tools PRIVATE Chibi::project_preparation Chibi::component_presentation Chibi::graph_catalog Chibi::task_pool_runtime Chibi::math_capabilities Chibi::particle_runtime Chibi::save_runtime)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_SOURCE_FEATURES=1)

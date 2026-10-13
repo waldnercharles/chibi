@@ -83,6 +83,10 @@ void hierarchy_move_child(ecs_world *world, uint32_t child, int index)
         assert(at < count);
     }
     index = index < count ? index : count - 1;
+    if (index == at) {
+        return;
+    }
+    query_revision_change(&world->relationships[CHILD_OF_RELATIONSHIP].query_revision);
     if (index < at) {
         memmove(&children[index + 1], &children[index], (size_t)(at - index) * sizeof *children);
     } else {

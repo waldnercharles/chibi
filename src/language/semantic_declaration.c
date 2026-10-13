@@ -213,6 +213,115 @@ void script_analyzer_declare_function(analyzer *a, TSNode node)
     a->scope = old_scope;
     a->function = old_function;
 }
+static uint64_t query_relationship_id(const analyzer *a, const char *name)
+{
+    if (!strcmp(name, "ChildOf")) {
+        return SCRIPT_CHILD_OF;
+    }
+    for (int i = 0; i < a->catalog->relationship_count; i++) {
+        if (!strcmp(a->catalog->relationships[i].name, name)) {
+            return a->catalog->relationships[i].id;
+        }
+    }
+    return 0;
+}
+static uint64_t query_relationship(analyzer *a, TSNode node, const char *name, bool ancestor)
+{
+    if (!strcmp(name, "ChildOf")) {
+        return SCRIPT_CHILD_OF;
+    }
+    for (int i = 0; i < a->catalog->relationship_count; i++) {
+        const script_catalog_relationship *r = &a->catalog->relationships[i];
+        if (strcmp(r->name, name)) {
+            continue;
+        }
+        if (!r->exclusive || (ancestor && !r->traversable)) {
+            script_analyzer_diagnostic(a, node, ancestor ? "Ancestor source requires an exclusive traversable relationship" : "Scalar query path requires an exclusive relationship; iterate multiple targets explicitly");
+        }
+        return r->id;
+    }
+    script_analyzer_diagnostic(a, node, "Unknown query relationship '%s'", name);
+    return 0;
+}
+static TSNode query_argument(TSNode arguments)
+{
+    TSNode result = { 0 };
+    for (uint32_t i = 0; i < script_analyzer_named_count(arguments); i++) {
+        TSNode child = ts_node_named_child(arguments, i);
+        if (ts_node_is_extra(child)) {
+            continue;
+        }
+        if (!ts_node_is_null(result)) {
+            return (TSNode){ 0 };
+        }
+        result = child;
+    }
+    return result;
+}
+/* Sources identify a provider, never expand a root into several rows. */
+static uint64_t query_source(analyzer *a, TSNode source, int *traversal)
+{
+    *traversal = SCRIPT_SOURCE_SELF;
+    if (script_analyzer_text_is(a, source, "self")) {
+        return 0;
+    }
+    if (script_analyzer_is(source, "identifier")) {
+        char *name = script_analyzer_name_copy(a, source);
+        uint64_t relationship = query_relationship(a, source, name, false);
+        free(name);
+        return relationship;
+    }
+    TSNode function = script_analyzer_field(source, "function");
+    TSNode arguments = script_analyzer_field(source, "arguments");
+    TSNode relation = query_argument(arguments);
+    bool up = script_analyzer_text_is(a, function, "ancestor");
+    bool self_up = script_analyzer_text_is(a, function, "self_or_ancestor");
+    if (!script_analyzer_is(source, "call_expression") || (!up && !self_up) ||
+        ts_node_is_null(relation)) {
+        script_analyzer_diagnostic(a, source, "Query source requires self, an exclusive relationship, ancestor(Relationship) or self_or_ancestor(Relationship)");
+        return 0;
+    }
+    char *name = script_analyzer_name_copy(a, relation);
+    uint64_t relationship = query_relationship(a, relation, name, true);
+    *traversal = up ? SCRIPT_SOURCE_ANCESTOR : SCRIPT_SOURCE_SELF_OR_ANCESTOR;
+    free(name);
+    return relationship;
+}
+static script_query query_membership(analyzer *a, TSNode node, bool relationship_allowed)
+{
+    script_query result = { .kind = SCRIPT_QUERY_HAS,
+                            .range = script_analyzer_range(node) };
+    TSNode name = node;
+    if (script_analyzer_is(node, "member_expression")) {
+        result.source_relationship = query_source(
+            a,
+            script_analyzer_field(node, "object"),
+            &result.source_traversal
+        );
+        name = script_analyzer_field(node, "member");
+        relationship_allowed = false;
+    }
+    char *text = script_analyzer_name_copy(a, name);
+    int index = script_catalog_find_type(a->catalog, text);
+    uint64_t relationship = relationship_allowed ? query_relationship_id(a, text) : 0;
+    if (index >= 0 && a->catalog->types[index].component) {
+        result.component = a->catalog->types[index].component_id;
+        script_analyzer_use(
+            a,
+            name,
+            -1,
+            SCRIPT_TYPE_USE,
+            a->catalog->types[index].id
+        );
+    } else if (relationship && index < 0) {
+        result.kind = SCRIPT_QUERY_RELATION;
+        result.component = relationship;
+    } else {
+        script_analyzer_diagnostic(a, name, "Unknown/ambiguous query component '%s'", text);
+    }
+    free(text);
+    return result;
+}
 int script_analyzer_query_expression(analyzer *a, TSNode node)
 {
     script_query result = { .range = script_analyzer_range(node) };
@@ -251,29 +360,7 @@ int script_analyzer_query_expression(analyzer *a, TSNode node)
     }
     if (script_analyzer_is(node, "identifier") ||
         script_analyzer_is(node, "member_expression")) {
-        TSNode name = node;
-        if (script_analyzer_is(node, "member_expression")) {
-            if (!script_analyzer_text_is(a, script_analyzer_field(node, "object"), "self")) {
-                script_analyzer_diagnostic(a, node, "Query membership source must be self");
-            }
-            name = script_analyzer_field(node, "member");
-        }
-        char *text = script_analyzer_name_copy(a, name);
-        int index = script_catalog_find_type(a->catalog, text);
-        if (index < 0 || !a->catalog->types[index].component) {
-            script_analyzer_diagnostic(a, name, "Unknown/ambiguous query component '%s'", text);
-        } else {
-            result.component = a->catalog->types[index].component_id;
-            script_analyzer_use(
-                a,
-                name,
-                -1,
-                SCRIPT_TYPE_USE,
-                a->catalog->types[index].id
-            );
-        }
-        free(text);
-        result.kind = SCRIPT_QUERY_HAS;
+        result = query_membership(a, node, false);
         apush(a->out->queries, result);
         return acount(a->out->queries) - 1;
     }
@@ -283,19 +370,12 @@ int script_analyzer_query_expression(analyzer *a, TSNode node)
         script_analyzer_diagnostic(a, node, "Query requires has, all, any or not terms");
         result.kind = SCRIPT_QUERY_ALL;
     } else if (script_analyzer_text_is(a, function, "has")) {
-        result.kind = SCRIPT_QUERY_HAS;
-        TSNode value = ts_node_named_child(arguments, 0);
-        char *name = script_analyzer_name_copy(a, value);
-        int component = script_catalog_find_type(a->catalog, name);
-        if (component < 0 || !a->catalog->types[component].component) {
-            script_analyzer_diagnostic(a, value, "Unknown/ambiguous query component '%s'", name);
+        TSNode argument = query_argument(arguments);
+        if (ts_node_is_null(argument)) {
+            script_analyzer_diagnostic(a, node, "has requires one component or relationship");
         } else {
-            result.component = a->catalog->types[component].component_id;
+            result = query_membership(a, argument, true);
         }
-        if (script_analyzer_named_count(arguments) != 1) {
-            script_analyzer_diagnostic(a, node, "has requires one component");
-        }
-        free(name);
     } else {
         if (script_analyzer_text_is(a, function, "all")) {
             result.kind = SCRIPT_QUERY_ALL;
@@ -353,27 +433,8 @@ void script_analyzer_query_intersect(analyzer *a, int term)
     apush(a->out->queries, all);
     a->out->query = acount(a->out->queries) - 1;
 }
-static uint64_t query_relationship(analyzer *a, TSNode node, const char *name, bool ancestor)
+static void query_parameters(analyzer *a, TSNode parameters_node, bool joined)
 {
-    if (!strcmp(name, "ChildOf")) {
-        return SCRIPT_CHILD_OF;
-    }
-    for (int i = 0; i < a->catalog->relationship_count; i++) {
-        const script_catalog_relationship *r = &a->catalog->relationships[i];
-        if (strcmp(r->name, name)) {
-            continue;
-        }
-        if (!r->exclusive || (ancestor && !r->traversable)) {
-            script_analyzer_diagnostic(a, node, ancestor ? "Ancestor source requires an exclusive traversable relationship" : "Scalar query path requires an exclusive relationship; iterate multiple targets explicitly");
-        }
-        return r->id;
-    }
-    script_analyzer_diagnostic(a, node, "Unknown query relationship '%s'", name);
-    return 0;
-}
-void script_analyzer_system_parameters(analyzer *a, TSNode root)
-{
-    TSNode parameters_node = script_analyzer_field(root, "parameters");
     for (uint32_t i = 0; i < script_analyzer_named_count(parameters_node); i++) {
         TSNode parameter = ts_node_named_child(parameters_node, i);
         if (ts_node_is_extra(parameter)) {
@@ -405,20 +466,14 @@ void script_analyzer_system_parameters(analyzer *a, TSNode root)
         free(type_name);
         TSNode source = script_analyzer_field(parameter, "source");
         if (!ts_node_is_null(source)) {
-            TSNode function = script_analyzer_field(source, "function");
-            TSNode arguments = script_analyzer_field(source, "arguments");
-            bool up = script_analyzer_text_is(a, function, "ancestor");
-            bool self_up = script_analyzer_text_is(a, function, "self_or_ancestor");
-            if (relationship || !script_analyzer_is(source, "call_expression") ||
-                (!up && !self_up) || script_analyzer_named_count(arguments) != 1) {
-                script_analyzer_diagnostic(a, source, "Query source requires ancestor(Relationship) or self_or_ancestor(Relationship)");
+            if (relationship) {
+                script_analyzer_diagnostic(a, source, "Query binding specifies its source twice");
             } else {
-                TSNode relation = ts_node_named_child(arguments, 0);
-                char *name = script_analyzer_name_copy(a, relation);
-                relationship = query_relationship(a, relation, name, true);
-                traversal = up ? SCRIPT_SOURCE_ANCESTOR : SCRIPT_SOURCE_SELF_OR_ANCESTOR;
-                free(name);
+                relationship = query_source(a, source, &traversal);
             }
+        }
+        if (joined && !relationship) {
+            script_analyzer_diagnostic(a, parameter, "join requires a relationship or ancestor source");
         }
         const script_catalog_type *component = script_catalog_type_by_id(a->catalog, type.nominal);
         if (!component || !component->component) {
@@ -446,11 +501,24 @@ void script_analyzer_system_parameters(analyzer *a, TSNode root)
             script_analyzer_query_intersect(a, term);
         }
     }
+}
+void script_analyzer_system_parameters(analyzer *a, TSNode root)
+{
+    TSNode parameters_node = script_analyzer_field(root, "parameters");
+    query_parameters(a, parameters_node, false);
+    bool joined = false;
+    for (uint32_t i = 0; i < script_analyzer_named_count(root); i++) {
+        TSNode child = ts_node_named_child(root, i);
+        if (script_analyzer_is(child, "query_join")) {
+            query_parameters(a, script_analyzer_field(child, "parameters"), true);
+            joined = true;
+        }
+    }
     TSNode where = script_analyzer_field(root, "where");
     if (!ts_node_is_null(where)) {
         script_analyzer_query_intersect(a, script_analyzer_query_expression(a, where));
     }
-    if (a->out->query < 0 && !ts_node_is_null(parameters_node)) {
+    if (a->out->query < 0 && (!ts_node_is_null(parameters_node) || joined)) {
         apush(a->out->queries, ((script_query){ .kind = SCRIPT_QUERY_ALL }));
         a->out->query = acount(a->out->queries) - 1;
     }

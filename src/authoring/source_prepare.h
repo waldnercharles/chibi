@@ -25,6 +25,7 @@ typedef struct
     authoring_performance_diagnostic *performance;
     int performance_count;
     bool valid;
+    int references; /* Immutable generations may be shared by source collections. */
 } authoring_source;
 
 /* Catalog declarations are copied by analysis/lowering. Native callback

@@ -8,6 +8,7 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,7 @@
 struct native_capabilities
 {
     int references;
+    uint64_t generation;
     arena storage;
     script_catalog catalog;
     script_catalog_type *types;
@@ -25,6 +27,7 @@ struct native_capabilities
     native_global_binding *globals;
     type_desc *layouts;
 };
+static atomic_uint_fast64_t next_generation = 1;
 
 static const char *own(native_capabilities *n, const char *text)
 {
@@ -419,6 +422,8 @@ native_capabilities *native_capabilities_new(
     }
     native_capabilities *n = xcalloc(1, sizeof(*n));
     n->references = 1;
+    n->generation = atomic_fetch_add_explicit(&next_generation, 1, memory_order_relaxed);
+    assert(n->generation && n->generation != UINT64_MAX);
     const type_desc **layouts = NULL;
     catalog_index capabilities = { 0 };
     for (int p = 0; p < count; ++p) {
@@ -568,6 +573,11 @@ fail:
     catalog_index_free(&capabilities);
     native_capabilities_free(n);
     return NULL;
+}
+uint64_t native_capabilities_generation(const native_capabilities *n)
+{
+    assert(n);
+    return n->generation;
 }
 native_capabilities *native_capabilities_retain(native_capabilities *n)
 {

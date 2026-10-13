@@ -147,6 +147,7 @@ static void remove_target(ecs_relationship *relationship, uint32_t source, uint3
 
 void relationship_link(ecs_relationship *relationship, uint32_t source, ecs_entity target)
 {
+    query_revision_change(&relationship->query_revision);
     if (exclusive(relationship)) {
         ecs_entity old = relationship->target[source];
         if (old.slot) {
@@ -170,6 +171,7 @@ void relationship_link(ecs_relationship *relationship, uint32_t source, ecs_enti
 
 void relationship_unlink(ecs_relationship *relationship, uint32_t source, ecs_entity target)
 {
+    query_revision_change(&relationship->query_revision);
     remove_target(relationship, source, target.slot);
     remove_source(relationship, target.slot, source);
 }
@@ -182,6 +184,9 @@ void relationship_detach(ecs_world *world, uint32_t slot)
             relationship_unlink(relationship, slot, relationship_target(relationship, slot, 0));
         }
         uint32_t *sources = relationship->sources[slot];
+        if (acount(sources)) {
+            query_revision_change(&relationship->query_revision);
+        }
         for (int i = 0; i < acount(sources); i++) {
             remove_target(relationship, sources[i], slot);
         }

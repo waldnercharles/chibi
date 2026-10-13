@@ -133,10 +133,15 @@ TEST_CASE(source_format_query_header_words)
 {
     REQUIRE(format(
         "system Move query position:Transform,velocity:Velocity? "
-        "where not Disabled and (velocity or Active){on Tick{position.x+=1;}}"
+        "join aim:Targets.Transform? where not Disabled and "
+        "(Targets.Active or ancestor(ChildOf).Active) and has(Targets)"
+        "{on Tick{position.x+=1;}}"
     ));
-    REQUIRE(strstr(text, "where not Disabled and (velocity or Active)"));
+    REQUIRE(
+        strstr(text, "where not Disabled and (Targets.Active or ancestor(ChildOf).Active) and has(Targets)")
+    );
     REQUIRE(strstr(text, "velocity: Velocity?"));
+    REQUIRE(strstr(text, "join aim: Targets.Transform?"));
     return true;
 }
 

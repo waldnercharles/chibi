@@ -93,6 +93,36 @@ size_t behavior_function_preparation_bytes(const behavior_function *f)
     scratch = sum(scratch, product(count, sizeof(int) + 2 * sizeof(bool)));
     scratch = sum(scratch, product(slots + 1, 2 * sizeof(int) + 3 * sizeof(bool)));
     scratch = sum(scratch, product(data + 1, sizeof(int) + sizeof(bool)));
+    /* Numeric interval facts (two doubles, three ints, a bool and padding),
+     * definition versions and control-entry marks. */
+    scratch = sum(scratch, product(slots + 1, 3 * sizeof(max_align_t) + sizeof(int)));
+    scratch = sum(scratch, product(count + 1, sizeof(bool)));
+    /* Union scalar replacement keeps facts for slots, banks, locals and PCs,
+     * plus one candidate per constructor and its immutable scalar payloads. */
+    if (acount(f->host_calls)) {
+        size_t fact = sizeof(pin_value) + 3 * sizeof(int) + sizeof(max_align_t);
+        size_t object = sizeof(uint64_t) + sizeof(void *) + sizeof(int) +
+                        sizeof(max_align_t);
+        scratch = sum(scratch, product(count, fact + 2 * sizeof(int) + sizeof(bool)));
+        scratch = sum(scratch, product(slots + 1, fact + 2 * sizeof(int) + 2 * sizeof(bool)));
+        scratch = sum(scratch, product(data + 1, fact + sizeof(int) + 2 * sizeof(bool)));
+        scratch = sum(scratch, product(locals + 1, fact + sizeof(int) + sizeof(bool)));
+        scratch = sum(scratch, bank(count, object));
+        for (int pc = 0; pc < acount(f->instructions); pc++) {
+            const behavior_function_instruction *i = &f->instructions[pc];
+            if (i->op == BF_HOST_CALL) {
+                if (i->target < 0 || i->target >= acount(f->host_calls)) {
+                    return SIZE_MAX;
+                }
+                const behavior_function_host_call *h = &f->host_calls[i->target];
+                if (h->first < 0 || h->result_first < h->first ||
+                    h->result_first > acount(f->data_values)) {
+                    return SIZE_MAX;
+                }
+                scratch = sum(scratch, bank((size_t)(h->result_first - h->first), fact));
+            }
+        }
+    }
     /* parallel proof origin is two bools + two ints, padded no larger than
      * two ints and two max_align_t units. Count its actual target bool bank. */
     scratch = sum(scratch, product(slots + 1, 2 * sizeof(int) + 2 * sizeof(max_align_t)));

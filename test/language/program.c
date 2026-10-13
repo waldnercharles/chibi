@@ -778,6 +778,139 @@ TEST_CASE(program_query_required_path_keeps_one_instance_per_root)
     return true;
 }
 
+TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension)
+{
+    const script_catalog_relationship relationships[] = {
+        { .id = 601, .name = "Targets", .exclusive = true },
+        { .id = 602, .name = "Likes" },
+    };
+    const ecs_relationship_desc targets = { .id = 601,
+                                            .key = "program.targets",
+                                            .name = "Targets",
+                                            .traits = ECS_REL_EXCLUSIVE };
+    const ecs_relationship_desc likes = { .id = 602, .key = "program.likes", .name = "Likes" };
+    script_catalog active = catalog;
+    active.relationships = relationships;
+    active.relationship_count = 2;
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        REQUIRE(ecs_world_register_relationship(world, &targets, NULL) == ECS_OK);
+        ecs_entity first = positioned(10, true), second = positioned(20, true),
+                   root = positioned(1, false), missing = positioned(2, false);
+        REQUIRE(ecs_world_record_add_pair(world, root, targets.id, first, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(compile_catalog(
+            "system Follow query p: Position from self join aim: "
+            "Targets.Position "
+            "where not self.Velocity and Targets.Velocity and has(Likes) { "
+            "count: double = 0; count += 1; p.x = count; "
+            "await Delay(1); p.y = aim.x; }",
+            backends[backend],
+            &active
+        ));
+        REQUIRE(!execution_module_effects(module).parallel_safe);
+        unsigned char *bytes = NULL;
+        size_t length = 0;
+        char error[256];
+        REQUIRE(execution_prepared_write(module, &bytes, &length, error, sizeof error));
+        const execution_prepared_linker linker = { .type = program_prepared_type };
+        execution_module *loaded = execution_prepared_read(
+            bytes,
+            length,
+            &linker,
+            backends[backend],
+            error,
+            sizeof error
+        );
+        free(bytes);
+        REQUIRE(loaded);
+        execution_module_free(module);
+        module = loaded;
+        REQUIRE(!execution_program_new(module, world, NULL));
+        REQUIRE(ecs_world_register_relationship(world, &likes, NULL) == ECS_OK);
+        REQUIRE(ecs_world_record_add_pair(world, root, likes.id, first, 0) == ECS_OK);
+        REQUIRE(ecs_world_record_add_pair(world, root, likes.id, second, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        const program_position *row = ecs_component_data_const(world, root, 501);
+        REQUIRE(row && row->x == 1 && row->y == 0);
+        REQUIRE(!execution_program_instance(program, ecs_entity_to_u64(missing)));
+        REQUIRE(ecs_world_record_add_pair(world, root, targets.id, second, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
+        row = ecs_component_data_const(world, root, 501);
+        REQUIRE(row && row->x == 2 && row->y == 20);
+        REQUIRE(ecs_world_record_remove(world, second, 502, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_step(program, 2, 0, 1000) == FLOW_OK);
+        REQUIRE(!execution_program_instance(program, ecs_entity_to_u64(root)));
+        row = ecs_component_data_const(world, root, 501);
+        REQUIRE(row && row->x == 2 && row->y == 20);
+        REQUIRE(ecs_world_record_add_pair(world, root, targets.id, first, 0) == ECS_OK);
+        REQUIRE(ecs_world_record_remove_pair(world, root, likes.id, first, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_step(program, 3, 0, 1000) == FLOW_OK);
+        REQUIRE(execution_program_instance(program, ecs_entity_to_u64(root)));
+        row = ecs_component_data_const(world, root, 501);
+        REQUIRE(row && row->x == 1);
+        REQUIRE(ecs_world_record_remove_pair(world, root, likes.id, second, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_step(program, 4, 0, 1000) == FLOW_OK);
+        REQUIRE(!execution_program_instance(program, ecs_entity_to_u64(root)));
+    }
+    return true;
+}
+
+TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions)
+{
+    const script_catalog_relationship relationships[] = {
+        { .id = 601, .name = "Targets", .exclusive = true },
+    };
+    const ecs_relationship_desc targets = { .id = 601,
+                                            .key = "program.targets",
+                                            .name = "Targets",
+                                            .traits = ECS_REL_EXCLUSIVE };
+    script_catalog active = catalog;
+    active.relationships = relationships;
+    active.relationship_count = 1;
+    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
+    for (int backend = 0; backend < 2; backend++) {
+        prepare();
+        REQUIRE(ecs_world_register_relationship(world, &targets, NULL) == ECS_OK);
+        ecs_entity target = positioned(10, true), filtered = positioned(1, false),
+                   missing = positioned(2, false);
+        REQUIRE(ecs_world_record_add_pair(world, filtered, targets.id, target, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(compile_catalog(
+            "system Follow query p: Position join aim: Targets.Position? "
+            "where not self.Velocity and not Targets.Velocity { "
+            "p.y += 1; if aim { p.x = aim.x; } }",
+            backends[backend],
+            &active
+        ));
+        program = execution_program_new(module, world, NULL);
+        REQUIRE(program);
+        REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+        REQUIRE(!execution_program_instance(program, ecs_entity_to_u64(filtered)));
+        const program_position *row = ecs_component_data_const(world, missing, 501);
+        REQUIRE(row && row->x == 2 && row->y == 1);
+        REQUIRE(ecs_world_record_remove(world, target, 502, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_step(program, 1, 0, 1000) == FLOW_OK);
+        row = ecs_component_data_const(world, filtered, 501);
+        REQUIRE(row && row->x == 10 && row->y == 1);
+        REQUIRE(ecs_world_record_remove(world, target, 501, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+        REQUIRE(execution_program_step(program, 2, 0, 1000) == FLOW_OK);
+        row = ecs_component_data_const(world, filtered, 501);
+        REQUIRE(row && row->x == 10 && row->y == 2);
+    }
+    return true;
+}
+
 TEST_CASE(program_relationship_loops_stream_targets_explicitly)
 {
     const script_catalog_relationship relationships[] = { { .id = 601, .name = "Targets" } };
@@ -6423,6 +6556,17 @@ TEST_CASE(program_general_unions_construct_match_and_extract)
     return true;
 }
 
+void test_language_query_program()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(program_query_sources_resolve_current_targets_and_nearest_ancestors);
+    RUN_TEST_CASE(program_query_required_path_keeps_one_instance_per_root);
+    RUN_TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension);
+    RUN_TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions);
+    RUN_TEST_CASE(program_relationship_loops_stream_targets_explicitly);
+    pu_clear_setup();
+}
+
 void test_language_program()
 {
     pu_setup(NULL, cleanup);
@@ -6437,6 +6581,8 @@ void test_language_program()
     RUN_TEST_CASE(program_system_membership_exit_cancels_pending_work);
     RUN_TEST_CASE(program_query_sources_resolve_current_targets_and_nearest_ancestors);
     RUN_TEST_CASE(program_query_required_path_keeps_one_instance_per_root);
+    RUN_TEST_CASE(program_query_joins_filter_targets_and_refresh_across_suspension);
+    RUN_TEST_CASE(program_query_optional_joins_preserve_missing_target_exclusions);
     RUN_TEST_CASE(program_relationship_loops_stream_targets_explicitly);
     RUN_TEST_CASE(program_component_binding_runs_and_source_cycle_is_rejected);
     RUN_TEST_CASE(program_imported_library_preserves_owner_namespace_and_reader_after_replace);

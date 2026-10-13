@@ -848,7 +848,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             case BF_CAST: {
                 pin_type from = f->slots[i->left];
                 const char *type = behavior_scalar_c_type(i->type);
-                if (i->type == PIN_F64 || from == PIN_I32) {
+                if (from == i->type || i->type == PIN_F64 || from == PIN_I32) {
                     fprintf(out, "v%d=(%s)v%d;\n", i->output, type, i->left);
                     break;
                 }
@@ -990,12 +990,19 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     if (i->target >= 0) {
                         fprintf(
                             out,
-                            "v%d=v%d%s v%d;\n",
-                            i->target,
+                            "{%s primary=v%d%s v%d, secondary=v%d%s v%d;"
+                            "v%d=secondary;v%d=primary;}\n",
+                            behavior_scalar_c_type(i->type),
+                            i->left,
+                            i->op == BF_DIV ? "/" : "%",
+                            i->right,
                             i->left,
                             i->op == BF_DIV ? "%" : "/",
-                            i->right
+                            i->right,
+                            i->target,
+                            i->output
                         );
+                        break;
                     }
                 }
                 if (i->op >= BF_ADD && i->op <= BF_MUL &&

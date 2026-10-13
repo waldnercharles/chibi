@@ -1,5 +1,6 @@
 #include "authoring/source_collection.h"
 
+#include "authoring/source_catalog_snapshot.h"
 #include "authoring/source_link.h"
 #include "authoring/source_prepare_internal.h"
 #include "support/array.h"
@@ -16,6 +17,9 @@ struct authoring_sources
     authoring_source **sources;
     bool valid;
     int references;
+    script_lower_bindings bindings;
+    behavior_backend backend;
+    int reused;
 };
 
 static int library_owner(const authoring_sources *sources, uint64_t id)
@@ -60,23 +64,69 @@ authoring_sources *authoring_sources_prepare_catalog(
     behavior_backend backend
 )
 {
+    return authoring_sources_prepare_incremental(owned, bindings, backend, NULL);
+}
+
+static authoring_source *unchanged_source(const authoring_sources *previous, const source_catalog_source *current)
+{
+    for (int i = 0; previous && i < acount(previous->sources); i++) {
+        authoring_source *source = previous->sources[i];
+        if (source->valid && !strcmp(source->path, current->path) &&
+            !strcmp(source->analysis->identity, current->identity) &&
+            !strcmp(source->syntax->text, current->text)) {
+            return authoring_source_retain(source);
+        }
+    }
+    return NULL;
+}
+
+authoring_sources *authoring_sources_prepare_incremental(
+    source_catalog *owned,
+    const script_lower_bindings *bindings,
+    behavior_backend backend,
+    const authoring_sources *previous
+)
+{
     assert(owned && bindings);
     authoring_sources *sources = xcalloc(1, sizeof *sources);
     sources->references = 1;
     sources->catalog = owned;
+    sources->bindings = *bindings;
+    sources->backend = backend;
     const script_catalog *catalog = source_catalog_view(sources->catalog);
     int count = source_catalog_source_count(sources->catalog);
+    bool compatible = previous && bindings->generation &&
+                      bindings->generation == previous->bindings.generation &&
+                      bindings->user == previous->bindings.user &&
+                      bindings->host == previous->bindings.host &&
+                      bindings->action == previous->bindings.action &&
+                      bindings->global == previous->bindings.global &&
+                      backend == previous->backend &&
+                      !source_catalog_diagnostic_count(owned) &&
+                      !source_catalog_diagnostic_count(previous->catalog) &&
+                      source_catalog_same(owned, previous->catalog);
+    bool *reuse = xcalloc((size_t)count, sizeof *reuse);
     for (int i = 0; i < count; i++) {
         const source_catalog_source *source = source_catalog_source_at(sources->catalog, i);
+        authoring_source *prior = compatible ? unchanged_source(previous, source)
+                                             : NULL;
+        reuse[i] = prior != NULL;
         apush(
             sources->sources,
-            authoring_source_analyze(source->path, source->identity, source->syntax, catalog)
+            prior ? prior
+                  : authoring_source_analyze(
+                        source->path,
+                        source->identity,
+                        source->syntax,
+                        catalog
+                    )
         );
     }
     if (source_catalog_diagnostic_count(sources->catalog)) {
         for (int i = 0; i < count; i++) {
             reject(sources->sources[i], AUTHORING_SOURCES_CATALOG_INCOMPLETE);
         }
+        free(reuse);
         return sources;
     }
     bool *dependencies = xcalloc((size_t)count * (size_t)count, sizeof *dependencies);
@@ -85,14 +135,45 @@ authoring_sources *authoring_sources_prepare_catalog(
         const script_analysis *analysis = sources->sources[i]->analysis;
         for (int j = 0; j < analysis->expression_count; j++) {
             const script_expression *expression = &analysis->expressions[j];
-            if (expression->kind != SCRIPT_EXPR_CALL || expression->right >= 0) {
-                continue;
-            }
-            int owner = library_owner(sources, expression->capability);
-            if (owner >= 0 && owner != i) {
-                dependencies[i * count + owner] = true;
+            const uint64_t ids[] = { expression->capability,
+                                     expression->read,
+                                     expression->write };
+            for (int id = 0; id < 3; id++) {
+                int owner = ids[id] ? library_owner(sources, ids[id]) : -1;
+                if (owner >= 0 && owner != i) {
+                    dependencies[i * count + owner] = true;
+                }
             }
         }
+    }
+    /* A caller retains the exact library bodies it was linked against. Even
+     * when declarations did not change, a body edit invalidates every caller
+     * transitively before any executable generation is selected. */
+    bool changed;
+    do {
+        changed = false;
+        for (int i = 0; i < count; i++) {
+            for (int j = 0; reuse[i] && j < count; j++) {
+                if (dependencies[i * count + j] && !reuse[j]) {
+                    reuse[i] = false;
+                    changed = true;
+                }
+            }
+        }
+    } while (changed);
+    for (int i = 0; i < count; i++) {
+        authoring_source *source = sources->sources[i];
+        if (source->module && !reuse[i]) {
+            const source_catalog_source *input = source_catalog_source_at(owned, i);
+            sources->sources[i] = authoring_source_analyze(
+                input->path,
+                input->identity,
+                input->syntax,
+                catalog
+            );
+            authoring_source_free(source);
+        }
+        sources->reused += reuse[i];
     }
     execution_module **libraries = NULL;
     int remaining = count;
@@ -116,16 +197,16 @@ authoring_sources *authoring_sources_prepare_catalog(
             authoring_source *source = sources->sources[i];
             if (invalid) {
                 reject(source, "Imported library has no valid executable generation");
-            } else {
+            } else if (!reuse[i]) {
                 authoring_source_link link = { .native = *bindings,
                                                .catalog = catalog,
                                                .libraries = libraries,
                                                .library_count = acount(libraries) };
                 script_lower_bindings resolved = authoring_source_bindings(&link);
                 authoring_source_lower(source, catalog, &resolved, backend);
-                if (source->valid && source->analysis->kind == SCRIPT_PROGRAM_LIBRARY) {
-                    apush(libraries, source->module);
-                }
+            }
+            if (source->valid && source->analysis->kind == SCRIPT_PROGRAM_LIBRARY) {
+                apush(libraries, source->module);
             }
             done[i] = true;
             remaining--;
@@ -147,7 +228,14 @@ authoring_sources *authoring_sources_prepare_catalog(
     afree(libraries);
     free(dependencies);
     free(done);
+    free(reuse);
     return sources;
+}
+
+int authoring_sources_reused(const authoring_sources *sources)
+{
+    assert(sources);
+    return sources->reused;
 }
 
 const script_catalog *authoring_sources_catalog(const authoring_sources *sources)

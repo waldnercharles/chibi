@@ -1,7 +1,7 @@
 #ifndef CHIBI_EXECUTION_PREPARED_H
 #define CHIBI_EXECUTION_PREPARED_H
 
-#define EXECUTION_PREPARED_VERSION 11
+#define EXECUTION_PREPARED_VERSION 12
 #include "execution/host.h"
 #include "execution/module.h"
 #include "types/type.h"

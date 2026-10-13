@@ -35,6 +35,9 @@ void test_tool_tilemap();
 void test_tool_tilemap_project();
 #endif
 void test_tool_execution_policy();
+#ifdef CHIBI_TEST_C_EXPORT
+void test_tool_c_export();
+#endif
 void test_tool_package();
 void test_tool_collab();
 void test_tool_test_policy();
@@ -56,6 +59,7 @@ void test_tool_ecs_relationships();
 void test_tool_ecs_hierarchy();
 void test_tool_ecs_world();
 void test_tool_ecs_query();
+void test_tool_validate_units(const char *binary);
 void test_tool_ecs_query_benchmark();
 void test_arena();
 void test_tool_validate_project(const char *binary);
@@ -133,6 +137,7 @@ void test_shader_parameters_prepared();
 int run_language_semantic_corpora(const char *);
 int run_language_prepare_corpora(const char *);
 int run_language_prepare_corpora_sljit(const char *);
+void test_language_unit_fixtures();
 void test_source_native_numeric_queries();
 void test_source_native_material_features();
 #endif
@@ -461,6 +466,32 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
+    if (argc == 3 && !strcmp(argv[1], "--unit-validation")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_validate_units(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--ecs-query")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_ecs_query();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--c-export-alias")) {
+#ifdef CHIBI_TEST_C_EXPORT
+        tool_init();
+        pu_display_time(true);
+        test_tool_c_export();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires a native in-tree POSIX single-configuration build\n", argv[1]);
+        return 2;
+#endif
+    }
     if (argc == 2 && !strcmp(argv[1], "--reflect-ranges")) {
 #ifdef CHIBI_TEST_REFLECT
         tool_init();
@@ -522,6 +553,7 @@ int main(int argc, char **argv)
          system_schedule = false, source_systems = false, source_edit = false,
          new_asset = false, asset_refactor = false;
     int corpus = 0;
+    bool unit_fixtures = false;
     /* The material selector given, or none. */
     int material = 0;
 #ifdef CHIBI_TEST_MATERIAL_RUNTIME
@@ -559,6 +591,7 @@ int main(int argc, char **argv)
     asset_refactor = argc == 2 && !strcmp(argv[1], "--asset-refactor");
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
+    unit_fixtures = argc == 2 && !strcmp(argv[1], "--unit-fixtures");
     shader_parameters = argc == 2 && !strcmp(argv[1], "--shader-parameters-prepared");
     source_edit = argc == 2 && !strcmp(argv[1], "--source-edit");
     if (argc == 3) {
@@ -649,12 +682,12 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !example && !corpus && !coverage && !preview_components &&
-        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
-        !tilemap && !tilemap_project && !package && !unit && !web_storage &&
-        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared &&
-        !read && !scene && !scene_prepared && !scene_hierarchy && !native &&
-        !native_values && !native_catalog && !physics && !physics3d &&
+    if (argc != 1 && !example && !corpus && !unit_fixtures && !coverage &&
+        !preview_components && !shader_parameters && !source_edit && !new_asset &&
+        !asset_refactor && !tilemap && !tilemap_project && !package && !unit &&
+        !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
+        !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
+        !native && !native_values && !native_catalog && !physics && !physics3d &&
         !transforms && !render_resources && !interior_border && !viewport_resize &&
         !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
         !scene2d && !scene3d && !material_ramps && !texture_transform &&
@@ -672,7 +705,9 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
-            "--reflect-ranges | "
+            "--reflect-ranges | --c-export-alias | --ecs-query | "
+            "--unit-fixtures | "
+            "--unit-validation <chibi_ctl> | "
             "--web-storage | "
             "--webgpu-staging | --wasm-browser | "
             "--ecs-query-benchmark | --arena | "
@@ -739,10 +774,10 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = corpus || coverage || preview_components ||
-                            shader_parameters || source_edit || new_asset ||
-                            asset_refactor || system_schedule ||
-                            source_systems || persistent_store ||
+    source_runtime_active = corpus || unit_fixtures || coverage ||
+                            preview_components || shader_parameters ||
+                            source_edit || new_asset || asset_refactor ||
+                            system_schedule || source_systems || persistent_store ||
                             source_presentation || whole_alias || whole_math ||
                             whole_integer || whole_conversion || whole_select ||
                             owned_tick || parallel_tick || source_features ||
@@ -784,6 +819,11 @@ int main(int argc, char **argv)
         }
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
+        if (unit_fixtures) {
+            test_language_unit_fixtures();
+            pu_print_stats();
+            return pu_test_failed() ? 1 : 0;
+        }
         if (corpus) {
             return corpus == 1 ? run_language_semantic_corpora(argv[2])
                  : corpus == 2 ? run_language_prepare_corpora(argv[2])
@@ -1044,6 +1084,9 @@ int main(int argc, char **argv)
         test_tool_test_policy();
         test_tool_validation_plan();
         test_tool_publish();
+#ifdef CHIBI_TEST_C_EXPORT
+        test_tool_c_export();
+#endif
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
         test_tool_audio_analysis();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
@@ -1052,6 +1095,10 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_REFLECT
         test_tool_reflect();
+#endif
+#ifdef CHIBI_TEST_SOURCE_FEATURES
+        source_runtime_active = true;
+        test_language_unit_fixtures();
 #endif
     }
     pu_print_stats();

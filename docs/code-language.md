@@ -75,8 +75,9 @@ system FreeMotion(position: Transform, velocity: Velocity)
 
 A file under `content/components` declares one component instead: its fields
 and their types, ranges and units. Scripts check those units, and the engine
-fields' units and `dt`'s seconds, and a mismatch is a warning. See "Declare
-components" in `runtime-authoring.md`.
+fields' units and `dt`'s seconds. Proven unit mismatches and malformed referenced
+unit metadata are compile errors. See "Declare components" in
+`runtime-authoring.md`.
 
 A behavior, library or system is a readable program. Its declarations and
 statements resolve into an owned typed semantic program. Direct lowering produces
@@ -512,9 +513,13 @@ without declared membership use the runtime's inferred component query.
 
 The separate header form, `system Move query position: Transform, velocity:
 Velocity where not Frozen { ... }`, supports Boolean membership filters and
-relationship-sourced bindings. A binding such as `aim: Targets.Transform?`
-follows an exclusive relationship; `team: Team from ancestor(ChildOf)` selects
-the nearest matching ancestor. Access is inferred from the body. See
+relationship-sourced bindings. `join aim: Targets.Transform?` groups a binding
+that follows an exclusive relationship; the existing comma-separated binding
+has the same meaning. `team: Team from ancestor(ChildOf)` selects the nearest
+matching ancestor. Sources also accept `from self` and `from Targets`. Header
+filters can test `self.Frozen`, `Targets.Frozen` or
+`ancestor(ChildOf).Frozen`; `has(Targets)` tests relationship existence without
+repeating the root's body. Access is inferred from the body. See
 [query headers and relationship sources](runtime-authoring.md) for source
 selection, explicit relationship loops, and their lifetime restrictions.
 
@@ -710,6 +715,26 @@ inspection code is compiled on first use and cached for the retained definition;
 concurrent first-use inspection can execute bytecode until compilation publishes
 the complete code and resume map. Pauses, watches, and changing inspection at a
 continuation preserve the canonical instruction locations.
+
+Normal VM and compiled bodies also remove construction, snapshots and tag/payload
+operations for nonescaping unions of plain scalars within a proven control region.
+Managed payloads, escaped values and values crossing joins, loops, opaque calls or
+suspension keep their owning representation. Inspection retains the canonical
+operations. Numeric interval analysis removes proven redundant clamps and tests,
+and can compare original integers when widening them to `number` was exact.
+It preserves floating-point rounding, NaN and signed-zero behavior; `n := 0`
+still infers `number`. Generic component reads do not acquire range proofs from
+metadata alone.
+
+Preview source preparation reuses unchanged analysis and executable generations
+through `authoring_sources_prepare_incremental`. Exact source identity/text,
+catalog metadata/defaults, backend and native binding generation must match.
+Editing a library body rebuilds its transitive callers. Generations own their
+data independently of older collections; declaration discovery and parsing still
+run. Default comparison evidence is capped at 1 MiB and depth 64; unsupported
+defaults, managed struct pointers or padding can conservatively prevent reuse.
+Custom binding providers must supply a nonzero immutable generation to opt into
+reuse. This is an in-process cache, with no persistent artifacts.
 
 World-owned strings use a hash table with exact text comparison and stable
 allocations until world teardown. A null input interns as an empty string.

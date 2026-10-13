@@ -769,6 +769,60 @@ the selector rejects a driver built without reflection. The complete tooling
 group retains both cases. This focused check covers reflection range metadata
 only and does not establish a complete tooling-group pass.
 
+The language follow-up admits these focused C checks under the same supervisor:
+
+- `tool ecs-query` runs the existing ECS query correctness cases plus bounded
+  membership-cache and query-planning regressions. They create at most 256
+  entities, reserve at most 2,048 slots, and enumerate at most two 36-by-36-by-36
+  relationship products to check the 1 MiB retention limit. They assert invalidation,
+  live values, generation safety, partial-iteration behavior, allocation counts and
+  work counters. No files, child processes, engine frames or GPU work run.
+- `tool language-query-program` selects five existing/new source-system cases for
+  relationship joins, qualified filters, optional targets, multi-target streams,
+  suspension and prepared round trips. The complete program selector retains them.
+- `tool language-incremental` prepares four tiny source overlays per case and
+  checks unchanged-generation reuse, dependency and catalog invalidation, binding
+  generations, backend changes and ownership after older collections retire.
+  It uses disposable empty source roots and bounded in-process preparations.
+- `tool language-scalarize` and `tool language-ranges` compare canonical and
+  optimized scalar IR and execute fixed numeric, ownership and control-flow
+  counterexamples on the VM, compiled backend and inspection path where applicable.
+  Allocation and instruction assertions establish removed work; elapsed time is
+  not an optimization oracle. There are no child processes, frames or GPU work.
+- `tool wasm-query-program`, `tool wasm-scalarize` and `tool wasm-ranges` run
+  those same C cases through the browser target's Node launcher.
+- `tool c-export-alias` executes twelve tiny generated-C I32/I64 DIV/MOD
+  fixtures covering operand and result aliases, signed inputs, division by zero
+  and overflow. One compiler child builds one temporary shared library from less
+  than 128 KiB of generated source, using the configured compiler and C/build-type
+  flags, enabled sanitizers and assertions. The existing 10-second child and shared 60-second
+  deadlines apply. The existing tooling driver loads the library and compares 120
+  normal/inspection executions against the canonical VM, then removes all files.
+  This native POSIX source-build check is unavailable for Wasm, cross compilation,
+  multi-configuration generators and installed-SDK builds; an explicit unavailable
+  selector returns failure.
+  The default tooling group retains it. No separate executable, frames or GPU work
+  are introduced.
+- `tool unit-validation` runs the existing single controller unit-diagnostic
+  case with its original setup/cleanup. Tiny component/system sources cover
+  project/source errors and same-layout unit changes in one retained controller.
+  Its original child deadlines and shared 60-second limit remain unchanged;
+  it runs no gameplay frames or GPU work.
+- `tool unit-fixtures` checks six fixed measured sources from
+  `declared-components` and `feature-coverage` against their native and declared
+  component catalogs. It limits each executable source to 16 KiB, their total
+  to 64 KiB, and the two component declarations to 16 KiB combined. These sources
+  use only native and declared component capabilities, so no unrelated scene,
+  prototype or executable declarations are needed. No other bodies are analyzed.
+  This is semantic-only representative rollout coverage: no lowering, JIT, scenes,
+  child processes or all-project traversal. It does not establish that every
+  repository or external project compiles.
+
+These are first-measurement admissions after independent workload review, not
+recorded passes. The original cases, assertions, sanitizers and 60-second limits
+remain intact. Separate semantic, syntax, formatting and prepared-boundary checks
+still cover their affected contracts; these selectors do not imply a full-suite pass.
+
 Configure/build separately and report that time separately from test execution:
 
 ```sh

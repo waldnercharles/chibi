@@ -185,11 +185,12 @@ static bool query_valid(const execution_module_plan *m, int index, unsigned char
     }
     seen[index] = 1;
     const execution_module_query *q = &m->queries[index];
-    if (q->kind < EXECUTION_QUERY_HAS || q->kind > EXECUTION_QUERY_NOT ||
+    if (q->kind < EXECUTION_QUERY_HAS || q->kind > EXECUTION_QUERY_RELATION ||
         q->child_count < 0) {
         return false;
     }
-    if (q->kind == EXECUTION_QUERY_HAS && (!q->component || q->child_count)) {
+    if ((q->kind == EXECUTION_QUERY_HAS || q->kind == EXECUTION_QUERY_RELATION) &&
+        (!q->component || q->child_count)) {
         return false;
     }
     if (q->source_traversal < 0 || q->source_traversal > 2 ||

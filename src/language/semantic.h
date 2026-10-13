@@ -196,7 +196,8 @@ typedef enum
     SCRIPT_QUERY_HAS,
     SCRIPT_QUERY_ALL,
     SCRIPT_QUERY_ANY,
-    SCRIPT_QUERY_NOT
+    SCRIPT_QUERY_NOT,
+    SCRIPT_QUERY_RELATION /* At least one relationship target; one row per root. */
 } script_query_kind;
 typedef struct
 {
@@ -240,7 +241,7 @@ typedef struct
     script_catalog_type *types; /* Authored and structural union definitions. */
     int type_count;
     script_diagnostic *diagnostics;
-    script_diagnostic *warnings; /* Unit mismatches; never invalidate. */
+    script_diagnostic *warnings; /* Advisory diagnostics; never invalidate. */
     int symbol_count, use_count, scope_count, expression_count, statement_count,
         function_count, query_count, binding_count, diagnostic_count, warning_count;
     int query;

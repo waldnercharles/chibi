@@ -329,14 +329,11 @@ done:
  * copies after local compaction, while retaining checks and all effects. */
 static bool discardable(behavior_function_op op)
 {
-    return op <= BF_ARRAY || op == BF_LOAD || op == BF_READ || op == BF_SELECT;
+    return op <= BF_ARRAY || op == BF_LOAD || op == BF_READ ||
+           op == BF_SELECT || op == BF_CAST || op == BF_CONVERT;
 }
 void behavior_function_runtime_code(behavior_function *f)
 {
-    if (!acount(f->watches) && !acount(f->source_watches) && !acount(f->source_points) &&
-        !acount(f->edges) && !f->component_access && !f->component_bindings) {
-        return;
-    }
     int count = acount(f->instructions), slots = acount(f->slots);
     bool *live = xcalloc((size_t)(slots + 1), sizeof *live);
     bool *keep = xcalloc((size_t)count, sizeof *keep);
@@ -359,6 +356,8 @@ void behavior_function_runtime_code(behavior_function *f)
     for (int pass = 0; pass < 2; pass++) {
         if (pass) {
             behavior_function_reuse_reads(f, keep);
+            behavior_function_scalarize_unions(f, keep);
+            behavior_function_optimize_ranges(f, keep);
             memcpy(live, saved, (size_t)(slots + 1) * sizeof *live);
         }
         const behavior_function_instruction *code = pass ? f->runtime_body

@@ -10,6 +10,10 @@ void test_language_execution();
 void test_language_wasm();
 void test_language_semantic();
 void test_language_program();
+void test_language_query_program();
+void test_language_incremental();
+void test_numeric_ranges();
+void test_language_scalarize();
 void test_language_benchmark();
 void test_language_headless();
 void test_language_format();
@@ -35,6 +39,10 @@ int main(int argc, char **argv)
     bool benchmark = argc == 2 && !strcmp(argv[1], "--script-benchmark");
     bool wasm = argc == 2 && !strcmp(argv[1], "--wasm");
     bool program = argc == 2 && !strcmp(argv[1], "--program");
+    bool query_program = argc == 2 && !strcmp(argv[1], "--query-program");
+    bool incremental = argc == 2 && !strcmp(argv[1], "--incremental");
+    bool ranges = argc == 2 && !strcmp(argv[1], "--ranges");
+    bool scalarize = argc == 2 && !strcmp(argv[1], "--scalarize");
     bool headless = argc == 2 && !strcmp(argv[1], "--headless");
     bool navigation = argc == 2 && !strcmp(argv[1], "--navigation");
     bool publication = argc == 2 && !strcmp(argv[1], "--publication");
@@ -46,15 +54,17 @@ int main(int argc, char **argv)
     bool text_format = argc == 2 && !strcmp(argv[1], "--text-format");
     bool ui_authoring = argc == 2 && !strcmp(argv[1], "--ui-authoring");
     if ((format && argc == 4 && !corpus) ||
-        (!format && !prepared && !execution && !semantic && !benchmark &&
-         !wasm && !program && !headless && !navigation && !publication &&
-         !field_runtime && !prototype && !ui_authoring && !text_format &&
-         !graph_model && !graph_authoring && !model_runtime &&
-         ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
+        (!format && !prepared && !execution && !semantic && !benchmark && !wasm &&
+         !program && !query_program && !incremental && !ranges && !scalarize &&
+         !headless && !navigation && !publication && !field_runtime && !prototype &&
+         !ui_authoring && !text_format && !graph_model && !graph_authoring &&
+         !model_runtime && ((argc != 2 && !corpus) || strcmp(argv[1], "--syntax")))) {
         fprintf(
             stderr,
             "Usage: %s --syntax [--corpus manifest] | --execution | --semantic "
-            "| --program | --script-benchmark | --wasm | --headless | "
+            "| --program | --query-program | --incremental | --ranges | "
+            "--scalarize | "
+            "--script-benchmark | --wasm | --headless | "
             "--navigation | "
             "--publication | "
             "--field-runtime | --prototype-document | --ui-authoring | "
@@ -98,6 +108,14 @@ int main(int argc, char **argv)
         test_language_prepared_write(argv[2]);
     } else if (headless) {
         test_language_headless();
+    } else if (query_program) {
+        test_language_query_program();
+    } else if (incremental) {
+        test_language_incremental();
+    } else if (ranges) {
+        test_numeric_ranges();
+    } else if (scalarize) {
+        test_language_scalarize();
     } else if (program) {
         test_language_program();
     } else if (semantic) {

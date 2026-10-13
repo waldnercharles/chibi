@@ -14,6 +14,9 @@
 #define STAGING_DEADLINE_MS 55000
 #define TRACKED_POINTERS 8192
 #define CALLBACK_LIMIT_MS 1000
+#define BURST_UPLOADS 17
+#define BURST_WIDTH 1024
+#define BURST_BYTES (BURST_WIDTH * BURST_WIDTH * 4)
 
 int cf_webgpu_staging_orphans();
 void cf_webgpu_staging_stats(uint64_t *allocated_bytes, int *pending, int *free_chunks);
@@ -35,6 +38,9 @@ static double cleanup_deadline;
 static void *live_pointers[TRACKED_POINTERS];
 static int live_count;
 static int pending_readbacks;
+static CF_Texture burst_texture;
+static uint64_t burst_peak;
+static double burst_deadline;
 
 static int live_index(void *pointer)
 {
@@ -133,6 +139,17 @@ TEST_CASE(staging_buffers_return_to_the_pool)
 TEST_CASE(staging_callbacks_finish_after_destroy)
 {
     REQUIRE(cf_webgpu_staging_orphans() == 0);
+    return true;
+}
+
+TEST_CASE(surplus_staging_buffers_retire_after_remapping)
+{
+    REQUIRE(burst_texture.id);
+    REQUIRE(burst_peak > STAGING_LIMIT);
+    REQUIRE(pending == 0);
+    REQUIRE(allocated <= STAGING_LIMIT);
+    REQUIRE(allocated > 0);
+    REQUIRE(free_chunks > 0);
     return true;
 }
 
@@ -291,6 +308,52 @@ static void complete_shutdown(void *unused)
     report_complete(NULL);
 }
 
+static void finish_shutdown()
+{
+    if (app_created && frames == STAGING_FRAMES) {
+        cf_allocator_override((CF_Allocator){
+            .alloc_fn = tracked_alloc,
+            .free_fn = tracked_free,
+            .calloc_fn = tracked_calloc,
+            .realloc_fn = tracked_realloc,
+        });
+        RUN_TEST_CASE(destroy_releases_pending_readback_owner);
+        RUN_TEST_CASE(shutdown_releases_pending_readback_owner);
+    }
+    if (app_created) {
+        cf_destroy_app();
+        app_created = false;
+    }
+    // Restore the caller's allocator before delayed callbacks can run. Every
+    // readback owner must already have left the custom allocator at shutdown.
+    cf_allocator_restore_default();
+    initial_orphans = cf_webgpu_staging_orphans();
+    cleanup_deadline = callback_deadline();
+    emscripten_async_call(complete_shutdown, NULL, 0);
+}
+
+static void complete_burst(void *unused)
+{
+    (void)unused;
+    cf_app_update(NULL);
+    cf_webgpu_staging_stats(&allocated, &pending, &free_chunks);
+    if (pending && emscripten_get_now() < burst_deadline) {
+        emscripten_async_call(complete_burst, NULL, 16);
+        return;
+    }
+    printf(
+        "WebGPU upload burst: peak=%" PRIu64 " retained=%" PRIu64
+        " pending=%d free=%d\n",
+        burst_peak,
+        allocated,
+        pending,
+        free_chunks
+    );
+    RUN_TEST_CASE(surplus_staging_buffers_retire_after_remapping);
+    cf_destroy_texture(burst_texture);
+    finish_shutdown();
+}
+
 static void finish()
 {
     RUN_TEST_CASE(staging_buffers_return_to_the_pool);
@@ -314,26 +377,23 @@ static void finish()
         measured_frames ? frame_total_ms / measured_frames : 0,
         frame_max_ms
     );
-    if (app_created && frames == STAGING_FRAMES) {
-        cf_allocator_override((CF_Allocator){
-            .alloc_fn = tracked_alloc,
-            .free_fn = tracked_free,
-            .calloc_fn = tracked_calloc,
-            .realloc_fn = tracked_realloc,
-        });
-        RUN_TEST_CASE(destroy_releases_pending_readback_owner);
-        RUN_TEST_CASE(shutdown_releases_pending_readback_owner);
+    if (!pu_test_failed() && app_created && frames == STAGING_FRAMES) {
+        burst_texture = cf_make_texture(cf_texture_defaults(BURST_WIDTH, BURST_WIDTH));
+        uint8_t *pixels = calloc(1, BURST_BYTES);
+        assert(pixels);
+        // A single JS turn prevents pending remaps from completing during the
+        // fixed 68 MiB burst. Each upload fills one ordinary staging chunk.
+        for (int i = 0; i < BURST_UPLOADS; i++) {
+            cf_texture_update(burst_texture, pixels, BURST_BYTES);
+        }
+        free(pixels);
+        cf_gpu_submit();
+        cf_webgpu_staging_stats(&burst_peak, &pending, &free_chunks);
+        burst_deadline = callback_deadline();
+        emscripten_async_call(complete_burst, NULL, 0);
+        return;
     }
-    if (app_created) {
-        cf_destroy_app();
-        app_created = false;
-    }
-    // Restore the caller's allocator before delayed callbacks can run. Every
-    // readback owner must already have left the custom allocator at shutdown.
-    cf_allocator_restore_default();
-    initial_orphans = cf_webgpu_staging_orphans();
-    cleanup_deadline = callback_deadline();
-    emscripten_async_call(complete_shutdown, NULL, 0);
+    finish_shutdown();
 }
 
 static void frame(void *unused)

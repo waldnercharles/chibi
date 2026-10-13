@@ -355,9 +355,17 @@ including controller startup, source preparation and the two simulation frames.
 `python3 tools/test_policy.py tool webgpu-staging` runs a C-owned disposable
 Chrome process against the browser build of the same tooling dispatcher in
 `build-webgpu-test`. It draws one 64-by-64 quad for 120 animation frames, checks
-staging-buffer reuse and a 64 MiB peak ceiling, then checks that destroying a
-pending readback or its app releases the custom-allocator owner immediately. It
-restores the default allocator before draining cancelled callbacks. With an
+staging-buffer reuse and a 64 MiB peak ceiling for that steady workload. A finite
+burst of seventeen 4 MiB texture uploads then deliberately exceeds the ceiling
+without yielding. After remaps complete, the pool must retain at most 64 MiB and
+still have reusable chunks. This checks retained capacity, not a hard bound on
+in-flight memory. Independent review admitted the burst before its first run.
+The old implementation retained 72 MiB after remaps completed and failed in
+5.654 seconds. With upstream `b853247` backported, the same 72 MiB peak shrank to
+64 MiB with 16 reusable chunks; all eight browser cases passed in 4.032 seconds.
+The harness then checks that destroying a pending readback or its app releases
+the custom-allocator owner immediately. It restores the default allocator before
+draining cancelled callbacks. With an
 imported device it recreates the app, delivers a controlled old loss continuation,
 and verifies that the new app stays healthy. A real validation error must reach
 both CF and the page's listener; a real device destruction must mark the backend
@@ -367,6 +375,13 @@ The isolated Cute source is selected with `CHIBI_TEST_CUTE_SOURCE`; the comparis
 build's `CHIBI_TEST_WEBGPU_BASELINE=ON` retains CF's ASYNCIFY initialization.
 Callback wall time excludes the first 30 frames and is diagnostic, not a timing
 assertion. This small workload does not establish whole-game performance.
+
+The `web-storage` selector also executes the player shell with browser seams.
+Its four diagnostics cases check opt-in visibility, actual backend notification,
+the WebGL override, completed-frame timing that excludes startup, and visible
+graphics failures. Seven finite Node invocations use no network or GPU and at
+most 61 frame callbacks. Independent review admitted them under the existing
+60-second supervisor; real player integration still requires browser checks.
 
 `python3 tools/test_policy.py tool source-native-numeric-queries` selects five
 finite C cases on VM and SLJIT. Besides numeric outputs and nested entity query

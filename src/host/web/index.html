@@ -19,18 +19,41 @@
       overflow-wrap: anywhere; pointer-events: none;
     }
     #status[data-error] { border-color: #9d4b55; color: #ffd9dd; }
+    #diagnostics {
+      position: fixed; top: calc(8px + env(safe-area-inset-top)); right: calc(8px + env(safe-area-inset-right));
+      max-width: calc(100% - 32px); margin: 0; padding: 8px 10px; background: #101620e8;
+      color: #d9e1ed; font: 12px/1.5 ui-monospace, monospace; white-space: pre-wrap;
+      overflow-wrap: anywhere; pointer-events: none;
+    }
   </style>
 </head>
 <body>
   <canvas id="canvas" tabindex="0" aria-label="{{TITLE}}"></canvas>
   <p id="status" role="status" aria-live="polite">Loading...</p>
+  <pre id="diagnostics" hidden aria-label="Graphics diagnostics"></pre>
   <noscript>JavaScript is required to play this game.</noscript>
   <script>
     var Module = (() => {
       const canvas = document.getElementById('canvas');
       const status = document.getElementById('status');
+      const diagnostics = document.getElementById('diagnostics');
+      const showDiagnostics = new URLSearchParams(location.search).get('diagnostics') === '1';
+      const graphics = { renderer: 'Starting', fps: 0, frameMs: 0, error: '' };
+      let frames = 0;
+      let started;
+      const updateDiagnostics = () => {
+        if (!showDiagnostics) return;
+        diagnostics.hidden = false;
+        diagnostics.textContent = `${graphics.renderer}\n${graphics.fps.toFixed(1)} FPS | ${graphics.frameMs.toFixed(1)} ms/frame\n` +
+          `Canvas ${canvas.width} × ${canvas.height}\nDisplay ${Math.round(canvas.clientWidth)} × ${Math.round(canvas.clientHeight)} | DPR ${devicePixelRatio}` +
+          (graphics.error ? `\n${graphics.error}` : '');
+      };
       let lastError = '';
       const fail = message => {
+        graphics.fps = 0;
+        graphics.frameMs = 0;
+        graphics.error = String(message);
+        updateDiagnostics();
         status.dataset.error = '';
         status.textContent = String(message);
         status.hidden = false;
@@ -45,6 +68,30 @@
       });
       return {
         canvas,
+        chibiGraphics: graphics,
+        chibiRenderer: renderer => {
+          graphics.renderer = renderer;
+          updateDiagnostics();
+        },
+        chibiGraphicsError: message => {
+          graphics.error = String(message);
+          updateDiagnostics();
+        },
+        chibiFrame: showDiagnostics ? () => {
+          const now = performance.now();
+          if (started === undefined) {
+            started = now;
+            return;
+          }
+          frames++;
+          const elapsed = now - started;
+          if (elapsed < 1000) return;
+          graphics.fps = frames * 1000 / elapsed;
+          graphics.frameMs = elapsed / frames;
+          frames = 0;
+          started = now;
+          updateDiagnostics();
+        } : undefined,
         printErr: text => {
           console.error(text);
           lastError = text;
@@ -66,8 +113,9 @@
       // The 2D material raster writes six RGBA16F targets at once
       // (src/render/material_raster.c), so smaller adapters use WebGL 2.
       const colorBytesPerSample = 6 * 8;
+      const forceWebGL = new URLSearchParams(location.search).get('renderer') === 'webgl';
       try {
-        const adapter = await navigator.gpu?.requestAdapter({ powerPreference: 'high-performance' });
+        const adapter = forceWebGL ? null : await navigator.gpu?.requestAdapter({ powerPreference: 'high-performance' });
         if (adapter?.limits.maxColorAttachmentBytesPerSample >= colorBytesPerSample) {
           const requiredLimits = {};
           for (const name in adapter.limits) requiredLimits[name] = adapter.limits[name];
@@ -75,7 +123,10 @@
           device.lost.then(info => {
             if (info.reason !== 'destroyed') Module.chibiFail('Graphics device lost. Reload this page to continue.');
           });
-          device.onuncapturederror = event => console.error(`WebGPU: ${event.error.message}`);
+          device.onuncapturederror = event => {
+            console.error(`WebGPU: ${event.error.message}`);
+            Module.chibiGraphicsError(event.error.message);
+          };
           Module.preinitializedWebGPUDevice = device;
         }
       } catch (error) {

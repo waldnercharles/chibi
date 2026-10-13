@@ -281,7 +281,8 @@ TEST_CASE(canvas_layout_changes_notify_the_platform_resize_handler)
         "let callback,target;const events=[];\n"
         "const canvas={addEventListener(){},focus(){}};\n"
         "const status={dataset:{},append(){}};\n"
-        "const context={console,Event,navigator:{},\n"
+        "const context={console,Event,navigator:{},URLSearchParams,"
+        "location:{search:''},performance:{now:()=>0},\n"
         "window:{addEventListener(){},dispatchEvent:e=>events.push(e.type)},\n"
         "document:{getElementById:id=>id==='canvas'?canvas:status,"
         "createElement:()=>({}),body:{append(){}}},\n"
@@ -319,6 +320,166 @@ TEST_CASE(canvas_layout_changes_notify_the_platform_resize_handler)
     return true;
 }
 
+/* The browser loads no generated player here. C supplies callbacks, time and
+ * device events; the production shell decides what to request and display. */
+static const char *player_shell_driver =
+    "const vm=require('node:vm'),fs=require('node:fs');\n"
+    "const html=fs.readFileSync(process.argv[2],'utf8');\n"
+    "const input=JSON.parse(process.argv[3]);\n"
+    "let now=0,adapters=0,devices=0,prevented=false,lost;\n"
+    "const listeners={},scripts=[],snapshots=[];\n"
+    "const canvas={width:960,height:540,clientWidth:320,clientHeight:180,"
+    "addEventListener:(name,fn)=>listeners[name]=fn,focus(){}};\n"
+    "const status={dataset:{},hidden:false,textContent:''};\n"
+    "const diagnostics={hidden:true,textContent:''};\n"
+    "const device={lost:new Promise(resolve=>lost=resolve)};\n"
+    "const adapter={limits:{maxColorAttachmentBytesPerSample:64},features:[],"
+    "async requestDevice(){devices++;return device;}};\n"
+    "const context={console:{log(){},warn(){},error(){}},Event,URLSearchParams,"
+    "location:{search:input.search},performance:{now:()=>now},devicePixelRatio:"
+    "3,\n"
+    "navigator:{gpu:{async requestAdapter(){adapters++;return adapter;}}},\n"
+    "window:{dispatchEvent(){}},ResizeObserver:class{observe(){}},\n"
+    "document:{getElementById:id=>({canvas,status,diagnostics})[id],"
+    "createElement:()=>({}),body:{append:script=>scripts.push(script.src)}}};\n"
+    "const snapshot=()=>({...context.Module.chibiGraphics,"
+    "hidden:diagnostics.hidden,text:diagnostics.textContent,"
+    "statusHidden:status.hidden,statusText:status.textContent,"
+    "hasFrame:typeof context.Module.chibiFrame==='function'});\n"
+    "(async()=>{\n"
+    "await "
+    "vm.runInNewContext(html.match(/<script>([\\s\\S]*?)<\\/script>/"
+    ")[1],context);\n"
+    "for(const action of input.actions||[]){\n"
+    "if(action.at!==undefined)now=action.at;\n"
+    "for(let i=0;i<(action.repeat||1);i++){now+=action.step||0;\n"
+    "if(action.call)context.Module[action.call](...(action.args||[]));}\n"
+    "if(action.event)listeners[action.event]({preventDefault(){prevented=true;}"
+    "});\n"
+    "if(action.deviceError)device.onuncapturederror({error:{message:action."
+    "deviceError}});\n"
+    "if(action.deviceLost){lost({reason:action.deviceLost});await "
+    "Promise.resolve();}\n"
+    "if(action.snapshot)snapshots.push(snapshot());}\n"
+    "console.log(JSON.stringify({...snapshot(),adapters,devices,scripts,"
+    "prevented,"
+    "adopted:context.Module.preinitializedWebGPUDevice===device,snapshots}));\n"
+    "})().catch(error=>{console.error(error);process.exitCode=1;});\n";
+
+static bool run_player_shell(const char *input)
+{
+    tool_write(driver_path, player_shell_driver);
+    char source[1024];
+    snprintf(source, sizeof source, "%s/src/host/web/index.html", tool_root());
+    const char *argv[] = { "node", driver_path, source, input, NULL };
+    if (tool_run(argv, tool_root(), log_path)) {
+        return false;
+    }
+    char *output = tool_read(log_path);
+    yyjson_doc_free(result);
+    result = yyjson_read(output, strlen(output), 0);
+    free(output);
+    return result != NULL;
+}
+
+TEST_CASE(player_diagnostics_are_opt_in_and_webgl_override_skips_device_request)
+{
+    REQUIRE(run_player_shell("{\"search\":\"\"}"));
+    REQUIRE(yyjson_get_bool(field("hidden")));
+    REQUIRE(!yyjson_get_bool(field("hasFrame")));
+    REQUIRE(yyjson_get_int(field("adapters")) == 1);
+    REQUIRE(yyjson_get_int(field("devices")) == 1);
+    REQUIRE(yyjson_get_bool(field("adopted")));
+    REQUIRE(yyjson_arr_size(field("scripts")) == 1);
+    REQUIRE(!strcmp(yyjson_get_str(yyjson_arr_get(field("scripts"), 0)), "chibi-player.js"));
+
+    REQUIRE(run_player_shell("{\"search\":\"?renderer=webgl\"}"));
+    REQUIRE(yyjson_get_bool(field("hidden")));
+    REQUIRE(!yyjson_get_bool(field("hasFrame")));
+    REQUIRE(yyjson_get_int(field("adapters")) == 0);
+    REQUIRE(yyjson_get_int(field("devices")) == 0);
+    REQUIRE(!yyjson_get_bool(field("adopted")));
+    REQUIRE(yyjson_arr_size(field("scripts")) == 1);
+    return true;
+}
+
+TEST_CASE(player_diagnostics_measure_completed_frames_after_startup)
+{
+    REQUIRE(run_player_shell(
+        "{\"search\":\"?diagnostics=1\",\"actions\":["
+        "{\"call\":\"chibiRenderer\",\"args\":[\"WebGL 2\"]},"
+        "{\"at\":5000,\"call\":\"chibiFrame\",\"snapshot\":true},"
+        "{\"call\":\"chibiFrame\",\"repeat\":60,\"step\":16.666666666667}]}"
+    ));
+    REQUIRE(yyjson_get_bool(field("hasFrame")));
+    REQUIRE(!yyjson_get_bool(field("hidden")));
+    /* A requested device does not determine the renderer the runtime selected. */
+    REQUIRE(yyjson_get_bool(field("adopted")));
+    REQUIRE(!strcmp(text("renderer"), "WebGL 2"));
+    REQUIRE(yyjson_get_num(yyjson_obj_get(yyjson_arr_get(field("snapshots"), 0), "fps")) == 0);
+    REQUIRE(yyjson_get_num(field("fps")) > 59.9);
+    REQUIRE(yyjson_get_num(field("fps")) < 60.1);
+    REQUIRE(yyjson_get_num(field("frameMs")) > 16.6);
+    REQUIRE(yyjson_get_num(field("frameMs")) < 16.7);
+    REQUIRE(strstr(text("text"), "WebGL 2"));
+    REQUIRE(strstr(text("text"), "960 ") && strstr(text("text"), "540"));
+    REQUIRE(strstr(text("text"), "320 ") && strstr(text("text"), "180"));
+    REQUIRE(strstr(text("text"), "DPR 3"));
+    return true;
+}
+
+TEST_CASE(player_diagnostics_show_device_errors_and_loss)
+{
+    REQUIRE(run_player_shell(
+        "{\"search\":\"?diagnostics=1\",\"actions\":["
+        "{\"call\":\"chibiRenderer\",\"args\":[\"WebGPU\"]},"
+        "{\"deviceError\":\"test validation failure\"}]}"
+    ));
+    REQUIRE(!yyjson_get_bool(field("hidden")));
+    REQUIRE(!strcmp(text("renderer"), "WebGPU"));
+    REQUIRE(!strcmp(text("error"), "test validation failure"));
+    REQUIRE(strstr(text("text"), "test validation failure"));
+
+    REQUIRE(run_player_shell(
+        "{\"search\":\"?diagnostics=1\",\"actions\":["
+        "{\"call\":\"chibiRenderer\",\"args\":[\"WebGPU\"]},"
+        "{\"deviceLost\":\"unknown\"}]}"
+    ));
+    REQUIRE(!yyjson_get_bool(field("hidden")));
+    REQUIRE(!yyjson_get_bool(field("statusHidden")));
+    REQUIRE(strstr(text("error"), "Graphics device lost"));
+    REQUIRE(!strcmp(text("error"), text("statusText")));
+    REQUIRE(yyjson_get_num(field("fps")) == 0);
+    return true;
+}
+
+TEST_CASE(player_diagnostics_show_context_loss_and_player_stop)
+{
+    REQUIRE(run_player_shell(
+        "{\"search\":\"?diagnostics=1&renderer=webgl\",\"actions\":["
+        "{\"call\":\"chibiRenderer\",\"args\":[\"WebGL 2\"]},"
+        "{\"event\":\"webglcontextlost\"}]}"
+    ));
+    REQUIRE(yyjson_get_bool(field("prevented")));
+    REQUIRE(!yyjson_get_bool(field("hidden")));
+    REQUIRE(!yyjson_get_bool(field("statusHidden")));
+    REQUIRE(strstr(text("error"), "Graphics context lost"));
+    REQUIRE(!strcmp(text("error"), text("statusText")));
+    REQUIRE(yyjson_get_num(field("fps")) == 0);
+
+    REQUIRE(run_player_shell(
+        "{\"search\":\"?diagnostics=1\",\"actions\":["
+        "{\"call\":\"printErr\",\"args\":[\"test render failure\"]},"
+        "{\"call\":\"chibiStopped\"}]}"
+    ));
+    REQUIRE(!yyjson_get_bool(field("hidden")));
+    REQUIRE(!yyjson_get_bool(field("statusHidden")));
+    REQUIRE(!strcmp(text("error"), "test render failure"));
+    REQUIRE(!strcmp(text("error"), text("statusText")));
+    REQUIRE(yyjson_get_num(field("fps")) == 0);
+    return true;
+}
+
 void test_tool_web_storage()
 {
     pu_setup(setup, teardown);
@@ -336,5 +497,9 @@ void test_tool_web_storage()
     RUN_TEST_CASE(archive_cannot_escape_its_workspace);
     RUN_TEST_CASE(browser_export_does_not_require_native_process_apis);
     RUN_TEST_CASE(canvas_layout_changes_notify_the_platform_resize_handler);
+    RUN_TEST_CASE(player_diagnostics_are_opt_in_and_webgl_override_skips_device_request);
+    RUN_TEST_CASE(player_diagnostics_measure_completed_frames_after_startup);
+    RUN_TEST_CASE(player_diagnostics_show_device_errors_and_loss);
+    RUN_TEST_CASE(player_diagnostics_show_context_loss_and_player_stop);
     pu_setup(NULL, NULL);
 }

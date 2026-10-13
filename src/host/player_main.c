@@ -498,6 +498,12 @@ static int run_frame(desktop_player *host)
 EM_JS(void, web_stopped, (), {
     Module['chibiStopped']?.();
 })
+EM_JS(void, web_renderer, (int webgpu), {
+    Module['chibiRenderer']?.(webgpu ? 'WebGPU' : 'WebGL 2');
+})
+EM_JS(void, web_frame_complete, (), {
+    Module['chibiFrame']?.();
+})
 // clang-format on
 
 /* The browser calls this every animation frame. A stopped game stays on its
@@ -510,7 +516,9 @@ static void web_frame(void *host)
         player_device_stop();
         controls_pointer_stop();
         web_stopped();
+        return;
     }
+    web_frame_complete();
 }
 #endif
 int main(int argc, char **argv)
@@ -613,6 +621,9 @@ int main(int argc, char **argv)
         fprintf(stderr, "%s\n", made.details);
         goto release;
     }
+#ifdef __EMSCRIPTEN__
+    web_renderer(cf_query_backend() == CF_BACKEND_TYPE_WEBGPU);
+#endif
     set_icon(root, application.icon);
     static desktop_player host;
     host.fixed_dt = fixed_dt;

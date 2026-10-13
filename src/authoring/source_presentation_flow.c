@@ -40,17 +40,20 @@ static const char *statement_name(source_projection *p, const script_statement *
     static const char *names[] = { "Block",  "Declare",  "Set",    "Evaluate",
                                    "Branch", "While",    "For",    "For Each",
                                    "Break",  "Continue", "Return", "Label",
-                                   "Goto",   "Sequence", "Switch", "Case" };
+                                   "Goto",   "Sequence", "Switch", "Case",
+                                   "Reduce" };
     if (s->kind == SCRIPT_STMT_RETURN &&
         p->analysis->functions[p->function].kind == SCRIPT_FUNCTION_HANDLER) {
         return "End Event";
     }
-    if (s->kind != SCRIPT_STMT_ASSIGN && s->kind != SCRIPT_STMT_DECLARE) {
+    if (s->kind != SCRIPT_STMT_ASSIGN && s->kind != SCRIPT_STMT_DECLARE &&
+        s->kind != SCRIPT_STMT_REDUCE) {
         return names[s->kind];
     }
     const char *target = s->symbol >= 0 ? p->analysis->symbols[s->symbol].name : "Value";
     int length = (int)strlen(target);
-    if (s->kind == SCRIPT_STMT_ASSIGN && s->expression >= 0) {
+    if ((s->kind == SCRIPT_STMT_ASSIGN || s->kind == SCRIPT_STMT_REDUCE) &&
+        s->expression >= 0) {
         const script_expression *destination = &p->analysis->expressions[s->expression];
         if (destination->kind == SCRIPT_EXPR_SYMBOL && destination->symbol >= 0) {
             target = p->analysis->symbols[destination->symbol].name;
@@ -68,6 +71,13 @@ static const char *statement_name(source_projection *p, const script_statement *
         case SCRIPT_OP_DIV: operation = "Divide"; break;
         case SCRIPT_OP_MOD: operation = "Modulo"; break;
         default: break;
+    }
+    if (s->kind == SCRIPT_STMT_REDUCE) {
+        operation = s->reduction == SCRIPT_REDUCTION_MIN ? "Reduce min"
+                  : s->reduction == SCRIPT_REDUCTION_MAX ? "Reduce max"
+                  : s->reduction == SCRIPT_REDUCTION_ADD_UNORDERED
+                      ? "Reduce unordered add"
+                      : "Reduce add";
     }
     size_t size = strlen(operation) + (size_t)length + 2;
     char *name = xmalloc(size);
@@ -156,7 +166,8 @@ static node *statement_box(source_projection *p, int index)
     int first_value = acount(inputs);
     int receivers = 0;
     bool entity_receiver = false;
-    const script_expression *destination = s->kind == SCRIPT_STMT_ASSIGN &&
+    const script_expression *destination = (s->kind == SCRIPT_STMT_ASSIGN ||
+                                            s->kind == SCRIPT_STMT_REDUCE) &&
                                                    s->expression >= 0
                                              ? &p->analysis->expressions[s->expression]
                                              : NULL;
@@ -197,7 +208,7 @@ static node *statement_box(source_projection *p, int index)
         const char *name = "Value";
         if (s->kind == SCRIPT_STMT_IF || s->kind == SCRIPT_STMT_WHILE) {
             name = "Condition";
-        } else if (s->kind == SCRIPT_STMT_ASSIGN) {
+        } else if (s->kind == SCRIPT_STMT_ASSIGN || s->kind == SCRIPT_STMT_REDUCE) {
             name = i >= receivers ? "Value"
                  : destination->kind == SCRIPT_EXPR_INDEX
                      ? (i ? "Index" : "Collection")

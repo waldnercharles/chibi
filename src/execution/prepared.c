@@ -329,6 +329,7 @@ static uint64_t context_abi()
                               FIELD(bind_instance),
                               FIELD(commit_instance),
                               FIELD(store_component),
+                              FIELD(reduce_component),
                               FIELD(delta_seconds),
                               FIELD(steps),
                               FIELD(budget),

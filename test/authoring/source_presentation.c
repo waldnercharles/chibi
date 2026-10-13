@@ -698,27 +698,85 @@ TEST_CASE(source_view_component_setters_expose_entity_not_component_read)
                                                  .entity_type = 40,
                                                  .capabilities = capabilities,
                                                  .capability_count = 2 };
-    syntax = script_parse("behavior Motion { on Tick { self.Position.x = 7; } }");
-    analysis = script_analyze(syntax, &declarations);
-    REQUIRE(analysis->diagnostic_count == 0);
-    view = authoring_source_presentation_new(analysis, &declarations, NULL);
-    REQUIRE(view);
-    node *set = statement_at("self.Position.x = 7");
-    REQUIRE(set && set->input_count == 3);
-    int entity = named_pin(set->input_pins, set->input_count, PIN_DATA, "Entity");
-    REQUIRE(entity >= 0);
-    graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Tick");
-    REQUIRE(g);
-    const source_presentation_origin *o = authoring_source_presentation_origin(
-        view,
-        g->graph_id,
-        set->id,
-        set->input_pins[entity].id
-    );
-    REQUIRE(o && o->range.end - o->range.start == 4);
-    REQUIRE(!strncmp(authoring_source_presentation_text(view) + o->range.start, "self", 4));
-    for (int i = 0; i < acount(g->nodes); i++) {
-        REQUIRE(strcmp(g->nodes[i]->desc->name, "Get Position"));
+    const char *sources[] = {
+        "behavior Motion { on Tick { self.Position.x = 7; } }",
+        "system Motion(position: Position) { reduce self.Position.x += 7; }",
+        "system Motion(position: Position) { reduce min(self.Position.x, 7); }",
+        "system Motion(position: Position) { reduce max(self.Position.x, 7); }",
+        "system Motion(position: Position) { reduce unordered self.Position.x "
+        "+= 7; }",
+    };
+    const char *titles[] = { "Set self.Position.x",
+                             "Reduce add self.Position.x",
+                             "Reduce min self.Position.x",
+                             "Reduce max self.Position.x",
+                             "Reduce unordered add self.Position.x" };
+    const char *pins[] = { "Entity", "Value" }, *ranges[] = { "self", "7" };
+    for (int sample = 0; sample < 5; sample++) {
+        cleanup();
+        syntax = script_parse(sources[sample]);
+        REQUIRE(syntax->diagnostic_count == 0);
+        analysis = script_analyze(syntax, &declarations);
+        REQUIRE(analysis->diagnostic_count == 0);
+        view = authoring_source_presentation_new(analysis, &declarations, NULL);
+        REQUIRE(view);
+        const source_presentation_origin *statement = source_origin(
+            view,
+            SOURCE_PRESENTATION_STATEMENT,
+            sample ? "reduce" : "self.Position.x = 7"
+        );
+        REQUIRE(statement);
+        REQUIRE(authoring_source_presentation_matches(view, analysis, &declarations));
+        if (sample) {
+            script_statement *reduction = &analysis->statements[statement->record];
+            script_reduction_op original = reduction->reduction;
+            reduction->reduction = original == SCRIPT_REDUCTION_ADD
+                                     ? SCRIPT_REDUCTION_MIN
+                                     : SCRIPT_REDUCTION_ADD;
+            REQUIRE(!authoring_source_presentation_matches(view, analysis, &declarations));
+            reduction->reduction = original;
+            REQUIRE(authoring_source_presentation_matches(view, analysis, &declarations));
+        }
+        node *set = origin_node(view, statement);
+        REQUIRE(set && set->input_count == 3 && !strcmp(set->desc->name, titles[sample]));
+        graph *g = behavior_asset_find_graph(
+            authoring_source_presentation_view(view),
+            statement->graph
+        );
+        REQUIRE(g);
+        for (int i = 0; i < 2; i++) {
+            int pin = named_pin(set->input_pins, set->input_count, PIN_DATA, pins[i]);
+            REQUIRE(pin >= 0);
+            const source_presentation_origin *o = authoring_source_presentation_origin(
+                view,
+                g->graph_id,
+                set->id,
+                set->input_pins[pin].id
+            );
+            REQUIRE(o && o->kind == SOURCE_PRESENTATION_EXPRESSION);
+            REQUIRE(o->range.end - o->range.start == (int)strlen(ranges[i]));
+            REQUIRE(!strncmp(
+                authoring_source_presentation_text(view) + o->range.start,
+                ranges[i],
+                strlen(ranges[i])
+            ));
+        }
+        const source_presentation_origin *target = NULL;
+        for (int i = 0; i < authoring_source_presentation_origin_count(view); i++) {
+            const source_presentation_origin *o = authoring_source_presentation_origin_at(view, i);
+            if (o->kind == SOURCE_PRESENTATION_EXPRESSION && !o->pin &&
+                o->graph == g->graph_id && o->node == set->id) {
+                target = o;
+                break;
+            }
+        }
+        REQUIRE(target && target->range.end - target->range.start == 15);
+        REQUIRE(
+            !strncmp(authoring_source_presentation_text(view) + target->range.start, "self.Position.x", 15)
+        );
+        for (int i = 0; i < acount(g->nodes); i++) {
+            REQUIRE(strcmp(g->nodes[i]->desc->name, "Get Position"));
+        }
     }
     return true;
 }

@@ -546,6 +546,65 @@ repeating the root's body. Access is inferred from the body. See
 [query headers and relationship sources](runtime-authoring.md) for source
 selection, explicit relationship loops, and their lifetime restrictions.
 
+### Shared-target reductions
+
+A synchronous system can contribute to a numeric component field without reading
+and writing the destination immediately:
+
+```chibi
+system Damage query projectile: Projectile {
+    reduce projectile.Target.Health.Damage += projectile.Damage
+}
+system Closest query candidate: Candidate {
+    reduce min(candidate.Target.Threat.Distance, candidate.Distance)
+}
+```
+
+The destination must be a writable numeric ECS component field. Contributions
+are evaluated when the statement runs, then published after the system batch
+finishes and before the next dependent system prepares its query. A producer
+cannot ordinarily read or write a component it reduces; this includes reachable
+helpers, bindings and value/change filters. Component-presence tests are allowed.
+The restriction lets separate systems calculate contributions to shared targets
+concurrently. Query rows within each system still execute sequentially.
+
+Ordinary `reduce` replays contributions in stable system/query order, including
+integer wrapping at the destination width, clamping each bounded-field update,
+and normal floating-point rounding. Min/max use the existing comparison-and-select
+rules: the incoming value wins ties and unordered NaN comparisons. Units are
+checked as for assignment. A failed system discards its contributions; earlier
+successful systems stay published, and later peers' contributions are discarded.
+This is not a rollback of ordinary writes. Debug pauses retain the unfinished
+reduction dispatch and resume it before dependent work proceeds.
+Reloading a paused system cancels its unfinished log. A scheduling change while
+paused restarts the current system phase with fresh dispatches, including systems
+already run in that phase; completed earlier engine phases stay complete. Scene
+reset and engine teardown also cancel held dispatches.
+
+Opt in to regrouped sums when the changed numeric behavior is acceptable:
+
+```chibi
+system Damage query projectile: Projectile {
+    reduce unordered projectile.Target.Health.Damage += projectile.Damage
+}
+```
+
+`unordered` combines contributions per target within each system, then adds the
+subtotal to the field. This reduces log entries and publication work when many
+rows share targets. It can change floating-point rounding, NaNs and signed zero,
+so use ordinary reductions for calculations that need the default reproducible
+order. Integer addition still wraps at its declared width. Unordered sums require
+fields without a stored range contract; clamping once would differ from clamping
+each update. A producer cannot mix unordered sums with ordered reductions on the
+same component. Min/max remain ordered. Publication occurs once per aggregated
+target field, so its write-revision count differs from the ordered form.
+
+Reduction logs and prepared query rows use temporary memory proportional to the
+work. Idle buffers have bounded retention; the retention limit does not limit
+valid query size. Reductions avoid conflicting direct writes, but do not guarantee
+a speedup: small workloads can cost more to collect and publish than a serial
+ordinary update.
+
 ### State lifetime and live reload
 
 State belongs to a behavior instance and persists across event executions and
@@ -770,6 +829,18 @@ its errors, including mixed element headers supplied by native callers. Debug
 inspection retains owned snapshots, and prepared modules recompute the proof
 instead of trusting saved optimization flags. Purity alone does not establish
 that a helper cannot mutate an aliased collection.
+
+The same proof follows synchronous authored helper chains. Eligible array
+parameters become internal call-scoped read-only views automatically; no new
+parameter syntax or author annotation is required. The callee cannot mutate,
+return, retain, expose collection identity, start tasks, or suspend with a view.
+Unsupported or recursive call chains keep owning copies. Runtime checks cover
+actual argument headers, ancestor scratch and bound library state, and recognize
+only the engine's exact safe callbacks. Custom callbacks and debugging keep
+snapshots. Generated C conservatively retains caller snapshots around helper
+calls, while its shared call driver can still borrow verified helper arguments.
+These restrictions govern when the optimization applies; ordinary array helpers
+retain their existing value semantics when it cannot apply.
 
 Preview source preparation reuses unchanged analysis and executable generations
 through `authoring_sources_prepare_incremental`. Exact source identity/text,

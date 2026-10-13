@@ -142,6 +142,7 @@ void script_analyzer_task_hints(analyzer *a, TSNode node);
 void script_analyzer_infer_task(analyzer *a, int symbol, script_type value);
 unsigned script_analyzer_statement_effects(script_analysis *out, script_statement *statement);
 void script_analyzer_finish_effects(analyzer *a);
+uint64_t script_analyzer_component_target(const script_analysis *, int);
 void script_analyzer_finish_boxes(analyzer *a);
 bool script_analyzer_binding_depends(const script_binding *reader, const script_binding *writer);
 void script_analyzer_finish_bindings(analyzer *a);

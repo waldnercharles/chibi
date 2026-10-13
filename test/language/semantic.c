@@ -56,12 +56,13 @@ static const script_catalog_capability capabilities[] = {
       .result_count = 1,
       .pure = true },
     { .id = 32, .name = "mutate", .effects = SCRIPT_EFFECT_WRITE },
+    { .id = 33, .name = "opaque_host", .effects = SCRIPT_EFFECT_HOST },
 };
 static const script_catalog catalog = {
     .types = types,
     .type_count = 2,
     .capabilities = capabilities,
-    .capability_count = 3,
+    .capability_count = (int)(sizeof capabilities / sizeof *capabilities),
     .entity_type = 40,
     .tick_event = 30,
 };
@@ -134,6 +135,147 @@ TEST_CASE(language_optional_component_requires_presence_guard)
     REQUIRE(analysis->valid);
     return true;
 }
+TEST_CASE(language_reductions_resolve_stored_fields_and_membership)
+{
+    parse(
+        "system Motion(position: Position?) where has(Position) { "
+        "Amount :: pure fn() -> float { return 2; } "
+        "if position { reduce position.x += Amount(); "
+        "reduce min(position.x, 3); reduce max(position.y, 4); } }"
+    );
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(analysis->valid);
+    int reductions = 0;
+    for (int i = 0; i < analysis->statement_count; i++) {
+        const script_statement *s = &analysis->statements[i];
+        if (s->kind == SCRIPT_STMT_REDUCE) {
+            REQUIRE(analysis->expressions[s->expression].type.storage == PIN_F32);
+            REQUIRE(s->reduction == (script_reduction_op)reductions);
+            reductions++;
+        }
+    }
+    REQUIRE(reductions == 3);
+    parse("system Motion(position: Position) { reduce self.Position.x += 1; }");
+    REQUIRE(analysis->valid);
+    parse("system Motion(position: Position?) { if position != nil { reduce position.x += 1; } }");
+    REQUIRE(analysis->valid);
+    return true;
+}
+TEST_CASE(language_reductions_require_system_component_fields)
+{
+    const char *invalid_targets[] = {
+        "system Motion { total := 0; reduce total += 1; }",
+        "system Motion { if true { total := 0; reduce total += 1; } }",
+        "system Motion(position: Position) { reduce position += position; }",
+        "system Motion(position: Placement) { reduce position.x += 1; }",
+        "system Motion(position: Position?) { reduce position.x += 1; }",
+    };
+    for (int i = 0; i < (int)(sizeof invalid_targets / sizeof *invalid_targets); i++) {
+        parse(invalid_targets[i]);
+        REQUIRE(syntax->diagnostic_count == 0);
+        REQUIRE(!analysis->valid);
+    }
+    parse("behavior Motion { on Tick { reduce self.Position.x += 1; } }");
+    REQUIRE(diagnostic("Reduction requires a synchronous system body"));
+    parse("system Motion(position: Position) { Update :: () { reduce position.x += 1; } Update(); }");
+    REQUIRE(diagnostic("Reduction requires a synchronous system body"));
+    return true;
+}
+TEST_CASE(language_reduction_producers_reject_conflicting_component_values)
+{
+    const char *sources[] = {
+        "system Motion(position: Position) { reduce position.x += position.y; "
+        "}",
+        "system Motion(position: Position) { position.y = 0; reduce position.x "
+        "+= 1; }",
+        "system Motion(position: Position) { if position.y > 0 { reduce "
+        "position.x += 1; } }",
+        "system Motion(position: Position) where position.y > 0 { reduce "
+        "position.x += 1; }",
+        "system Motion(position: Position) where changed(position) { reduce "
+        "position.x += 1; }",
+        "system Motion(position: Position) { if true { snapshot := position; "
+        "reduce position.x += 1; } }",
+        "system Motion(position: Position) { Read :: () -> float { return "
+        "position.y; } reduce position.x += Read(); }",
+        "system Motion(position: Position) { reduce position.x += 1; "
+        "self.Position.y = 2; }",
+        "system Motion(position: Position) { bind position.y = 2; reduce "
+        "position.x += 1; }",
+        "system Motion(position: Position) { Read :: (n: int) -> float { if n "
+        "> 0 { return Read(n - 1); } return position.y; } reduce position.x += "
+        "Read(1); }",
+        "system Motion(position: Position) { Owner :: () -> entity { "
+        "position.y = 1; return self; } reduce Owner().Position.x += 1; }",
+    };
+    for (int i = 0; i < (int)(sizeof sources / sizeof *sources); i++) {
+        parse(sources[i]);
+        REQUIRE(syntax->diagnostic_count == 0);
+        REQUIRE(
+            diagnostic("Reduction producer cannot read or write component 'Position' outside reductions")
+        );
+    }
+    parse("system Motion(position: Position) { mutate(); reduce position.x += 1; }");
+    REQUIRE(diagnostic("Reduction producer cannot call an opaque component accessor"));
+    parse("system Motion(position: Position) { opaque_host(); reduce position.x += 1; }");
+    REQUIRE(diagnostic("Reduction producer cannot call an opaque component accessor"));
+    parse("system Motion(position: Position, other: Placement) { reduce position.x += other.y; }");
+    REQUIRE(analysis->valid);
+    return true;
+}
+TEST_CASE(language_reduction_producers_cannot_suspend_or_start_tasks)
+{
+    parse("system Motion(position: Position) { reduce position.x += 1; yield; }");
+    REQUIRE(diagnostic("Reduction requires a synchronous system body without tasks"));
+    parse("system Motion(position: Position) { Work :: () { yield; } Work(); reduce position.x += 1; }");
+    REQUIRE(diagnostic("Reduction requires a synchronous system body without tasks"));
+    return true;
+}
+TEST_CASE(language_unordered_reductions_require_unbounded_isolated_components)
+{
+    parse("system Motion(position: Position) { reduce unordered position.x += 1; reduce unordered position.y += 2; }");
+    REQUIRE(syntax->diagnostic_count == 0);
+    REQUIRE(analysis->valid);
+    int count = 0;
+    for (int i = 0; i < analysis->statement_count; i++) {
+        if (analysis->statements[i].kind == SCRIPT_STMT_REDUCE) {
+            REQUIRE(analysis->statements[i].reduction == SCRIPT_REDUCTION_ADD_UNORDERED);
+            count++;
+        }
+    }
+    REQUIRE(count == 2);
+    parse("system Motion(unordered: Position) { reduce unordered.x += 1; }");
+    REQUIRE(analysis->valid);
+    parse("system Motion(position: Position) { reduce unordered position.x += 1; reduce position.y += 2; }");
+    REQUIRE(diagnostic("A component cannot mix ordered and unordered reductions in one system"));
+    parse("system Motion(position: Position) { reduce min(position.y, 2); reduce unordered position.x += 1; }");
+    REQUIRE(diagnostic("A component cannot mix ordered and unordered reductions in one system"));
+
+    script_catalog_field bounded_fields[2];
+    memcpy(bounded_fields, fields, sizeof bounded_fields);
+    bounded_fields[0].range_contract = true;
+    bounded_fields[0].min = 0;
+    bounded_fields[0].max = 10;
+    script_catalog_type bounded_type = types[0];
+    bounded_type.fields = bounded_fields;
+    script_catalog bounded = catalog;
+    bounded.types = &bounded_type;
+    bounded.type_count = 1;
+    cleanup();
+    syntax = script_parse("system Motion(position: Position) { reduce unordered position.x += 1; }");
+    analysis = script_analyze(syntax, &bounded);
+    REQUIRE(diagnostic("Unordered reduction requires an unbounded component field"));
+    cleanup();
+    syntax = script_parse("system Motion(position: Position) { reduce position.x += 1; }");
+    analysis = script_analyze(syntax, &bounded);
+    REQUIRE(analysis->valid);
+    cleanup();
+    bounded_fields[0].range_contract = false;
+    syntax = script_parse("system Motion(position: Position) { reduce unordered position.x += 1; }");
+    analysis = script_analyze(syntax, &bounded);
+    REQUIRE(analysis->valid); /* A slider hint is not a stored range contract. */
+    return true;
+}
 TEST_CASE(language_query_header_resolves_boolean_filters_and_sources)
 {
     const script_catalog_relationship relationships[] = {
@@ -197,10 +339,12 @@ TEST_CASE(language_query_header_resolves_boolean_filters_and_sources)
         !analysis->valid &&
         diagnostic("Optional component requires a presence guard before member access")
     );
-    script_catalog_capability structural_capabilities[3];
+    script_catalog_capability structural_capabilities[sizeof capabilities / sizeof *capabilities];
     memcpy(structural_capabilities, capabilities, sizeof structural_capabilities);
     structural_capabilities[2].effects = SCRIPT_EFFECT_STRUCTURAL;
     queries.capabilities = structural_capabilities;
+    queries.capability_count = (int)(sizeof structural_capabilities /
+                                     sizeof *structural_capabilities);
     cleanup();
     syntax = script_parse("system Changed query p: Position? { if p { mutate(); p.x = 1; } }");
     analysis = script_analyze(syntax, &queries);
@@ -832,6 +976,16 @@ TEST_CASE(language_units_combine_through_arithmetic)
         fprintf(stderr, "unexpected: %s\n", analysis->warnings[i].message);
     }
     REQUIRE(analysis->warning_count == 0);
+    return true;
+}
+TEST_CASE(language_reductions_check_contribution_units)
+{
+    measure("reduce body.x += dt\n");
+    REQUIRE(diagnostic("Units differ: u = s"));
+    measure("reduce min(body.x, dt)\n");
+    REQUIRE(diagnostic("Units differ: u = s"));
+    measure("reduce max(body.x, 2)\n");
+    REQUIRE(analysis->valid);
     return true;
 }
 TEST_CASE(language_units_reject_mismatch)
@@ -1485,6 +1639,12 @@ void test_language_semantic()
     RUN_TEST_CASE(language_constants_reject_runtime_dependencies_and_writes);
     RUN_TEST_CASE(language_shadowing_resolves_nearest_declaration);
     RUN_TEST_CASE(language_optional_component_requires_presence_guard);
+    RUN_TEST_CASE(language_reductions_resolve_stored_fields_and_membership);
+    RUN_TEST_CASE(language_reductions_require_system_component_fields);
+    RUN_TEST_CASE(language_reduction_producers_reject_conflicting_component_values);
+    RUN_TEST_CASE(language_reduction_producers_cannot_suspend_or_start_tasks);
+    RUN_TEST_CASE(language_unordered_reductions_require_unbounded_isolated_components);
+    RUN_TEST_CASE(language_reductions_check_contribution_units);
     RUN_TEST_CASE(language_query_header_resolves_boolean_filters_and_sources);
     RUN_TEST_CASE(language_query_joins_and_filters_share_source_rules);
     RUN_TEST_CASE(language_query_generators_bind_rows_and_pure_value_filters);

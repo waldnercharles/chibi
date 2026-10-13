@@ -17,6 +17,7 @@ typedef struct
 typedef struct
 {
     int index, result;
+    bool ran;
     schedule_error error;
 } batch_entry;
 enum
@@ -33,6 +34,9 @@ struct schedule
     batch_entry *scratch;
     bool dirty, parallel, scratch_busy;
     int next_serial, parallel_batches;
+    bool paused;
+    system_phase paused_phase;
+    int resume_at;
     char error[256], warning[256];
 };
 
@@ -57,6 +61,7 @@ static void free_entry(entry *e)
     free((char *)e->desc.name);
     free((void *)e->desc.reads);
     free((void *)e->desc.writes);
+    free((void *)e->desc.reduces);
     free_names(e->desc.resource_reads, e->desc.resource_read_count);
     free_names(e->desc.resource_writes, e->desc.resource_write_count);
     free_names(e->desc.after, e->desc.after_count);
@@ -103,19 +108,22 @@ static bool same(const schedule_desc *a, const schedule_desc *b)
 {
     return a->phase == b->phase && a->order == b->order &&
            a->read_count == b->read_count && a->write_count == b->write_count &&
+           a->reduce_count == b->reduce_count &&
            a->resource_read_count == b->resource_read_count &&
            a->resource_write_count == b->resource_write_count &&
            a->after_count == b->after_count && a->declared == b->declared &&
            a->structural == b->structural && a->host_sink == b->host_sink &&
            a->world_read == b->world_read && a->deterministic == b->deterministic &&
            a->parallel_safe == b->parallel_safe && a->identity == b->identity &&
-           a->run == b->run && a->prepare == b->prepare &&
+           a->run == b->run && a->prepare == b->prepare && a->finish == b->finish &&
            a->parallel_ready == b->parallel_ready && a->maintain == b->maintain &&
            a->field_changed == b->field_changed && a->user == b->user &&
            (!a->read_count ||
             !memcmp(a->reads, b->reads, (size_t)a->read_count * sizeof *a->reads)) &&
            (!a->write_count ||
             !memcmp(a->writes, b->writes, (size_t)a->write_count * sizeof *a->writes)) &&
+           (!a->reduce_count ||
+            !memcmp(a->reduces, b->reduces, (size_t)a->reduce_count * sizeof *a->reduces)) &&
            names_equal(a->resource_reads, b->resource_reads, a->resource_read_count) &&
            names_equal(a->resource_writes, b->resource_writes, a->resource_write_count) &&
            names_equal(a->after, b->after, a->after_count);
@@ -124,9 +132,10 @@ int schedule_register(schedule *s, const schedule_desc *d)
 {
     if (!d || !d->name || !d->name[0] || d->phase < 0 ||
         d->phase >= SYSTEM_PHASE_COUNT || !d->run || d->read_count < 0 ||
-        d->write_count < 0 || d->resource_read_count < 0 ||
+        d->write_count < 0 || d->reduce_count < 0 || d->resource_read_count < 0 ||
         d->resource_write_count < 0 || d->after_count < 0 ||
         (d->read_count && !d->reads) || (d->write_count && !d->writes) ||
+        (d->reduce_count && (!d->reduces || !d->prepare || !d->finish)) ||
         (d->resource_read_count && !d->resource_reads) ||
         (d->resource_write_count && !d->resource_writes) ||
         (d->after_count && !d->after)) {
@@ -153,6 +162,7 @@ int schedule_register(schedule *s, const schedule_desc *d)
     e.desc.after = (const char *const *)copy_names(d->after, d->after_count);
     e.desc.reads = xmalloc((size_t)d->read_count * sizeof *d->reads);
     e.desc.writes = xmalloc((size_t)d->write_count * sizeof *d->writes);
+    e.desc.reduces = xmalloc((size_t)d->reduce_count * sizeof *d->reduces);
     if (d->read_count) {
         memcpy((void *)e.desc.reads, d->reads, (size_t)d->read_count * sizeof *d->reads);
     }
@@ -163,6 +173,13 @@ int schedule_register(schedule *s, const schedule_desc *d)
             (size_t)d->write_count * sizeof *d->writes
         );
     }
+    if (d->reduce_count) {
+        memcpy(
+            (void *)e.desc.reduces,
+            d->reduces,
+            (size_t)d->reduce_count * sizeof *d->reduces
+        );
+    }
     if (index < 0) {
         apush(s->entries, e);
     } else {
@@ -171,6 +188,7 @@ int schedule_register(schedule *s, const schedule_desc *d)
         s->entries[index] = e;
     }
     s->dirty = true;
+    s->paused = false;
     return 0;
 }
 void schedule_remove(schedule *s, const char *name)
@@ -185,6 +203,7 @@ void schedule_remove(schedule *s, const char *name)
     }
     asetlen(s->entries, acount(s->entries) - 1);
     s->dirty = true;
+    s->paused = false;
 }
 static bool names_intersect(const char *const *a, int na, const char *const *b, int nb)
 {
@@ -196,6 +215,17 @@ static bool names_intersect(const char *const *a, int na, const char *const *b, 
         }
     }
     return false;
+}
+void schedule_reset(schedule *s)
+{
+    assert(s && !s->scratch_busy);
+    s->paused = false;
+    s->resume_at = 0;
+    s->dirty = true;
+}
+bool schedule_paused(const schedule *s)
+{
+    return s->paused;
 }
 static bool barrier(const entry *e)
 {
@@ -221,6 +251,10 @@ static bool conflict(const entry *a, const entry *b)
            ids_intersect(x->writes, x->write_count, y->writes, y->write_count) ||
            ids_intersect(x->writes, x->write_count, y->reads, y->read_count) ||
            ids_intersect(y->writes, y->write_count, x->reads, x->read_count) ||
+           ids_intersect(x->reduces, x->reduce_count, y->reads, y->read_count) ||
+           ids_intersect(x->reduces, x->reduce_count, y->writes, y->write_count) ||
+           ids_intersect(y->reduces, y->reduce_count, x->reads, x->read_count) ||
+           ids_intersect(y->reduces, y->reduce_count, x->writes, x->write_count) ||
            names_intersect(x->resource_writes, x->resource_write_count, y->resource_reads, y->resource_read_count) ||
            names_intersect(y->resource_writes, y->resource_write_count, x->resource_reads, x->resource_read_count) ||
            names_intersect(x->resource_writes, x->resource_write_count, y->resource_writes, y->resource_write_count);
@@ -326,8 +360,12 @@ static void run_batch(int start, int end, uint32_t, void *user)
     for (int i = start; i < end; i++) {
         batch_entry *item = &b->entries[i];
         entry *e = &b->schedule->entries[item->index];
+        item->ran = true;
         item->result = e->desc
                            .run(b->schedule->world, b->time, b->delta, e->desc.user, &item->error);
+        if (item->result == FLOW_PAUSED_RESULT) {
+            break;
+        }
     }
 }
 int schedule_maintain(schedule *s, double time, double delta, schedule_error *error)
@@ -386,7 +424,16 @@ int schedule_run(schedule *s, system_phase phase, double time, double delta)
         s->scratch_busy = true;
     }
     int result = 0;
-    for (int at = 0; at < count;) {
+    if (s->paused && s->paused_phase != phase) {
+        if (cache) {
+            s->scratch = items;
+            s->scratch_busy = false;
+        }
+        return FLOW_PAUSED_RESULT;
+    }
+    int start = s->paused ? s->resume_at : 0;
+    s->paused = false;
+    for (int at = start; at < count;) {
         int first = s->order[at];
         if (s->entries[first].desc.phase != phase) {
             at++;
@@ -440,8 +487,41 @@ int schedule_run(schedule *s, system_phase phase, double time, double delta)
                 run_batch(0, n, 0, &b);
             }
         }
+        bool commit = safe;
         for (int j = 0; j < n; j++) {
-            if (items[j].result < 0) {
+            schedule_desc *desc = &s->entries[items[j].index].desc;
+            bool accepted = commit && items[j].ran &&
+                            (items[j].result == FLOW_OK ||
+                             items[j].result == FLOW_PAUSED_RESULT);
+            commit &= items[j].ran && items[j].result == FLOW_OK;
+            if (desc->finish) {
+                schedule_error error = { 0 };
+                int finished = desc->finish(desc->user, accepted, &error);
+                if (items[j].result >= 0 && finished < 0) {
+                    items[j].result = finished;
+                    items[j].error = error;
+                    commit = false;
+                }
+                if (finished == FLOW_PAUSED_RESULT) {
+                    commit = false;
+                    if (!result) {
+                        s->paused = true;
+                        s->paused_phase = phase;
+                        s->resume_at = at - n + j;
+                        result = FLOW_PAUSED_RESULT;
+                    }
+                }
+            }
+            if (items[j].result == FLOW_PAUSED_RESULT) {
+                commit = false;
+                if (!result) {
+                    s->paused = true;
+                    s->paused_phase = phase;
+                    s->resume_at = at - n + j;
+                    result = FLOW_PAUSED_RESULT;
+                }
+            }
+            if (!result && items[j].result < 0) {
                 snprintf(
                     s->error,
                     sizeof s->error,
@@ -450,10 +530,9 @@ int schedule_run(schedule *s, system_phase phase, double time, double delta)
                     items[j].error.message[0] ? items[j].error.message : "execution failed"
                 );
                 result = items[j].result;
-                break;
             }
         }
-        if (result < 0) {
+        if (result != FLOW_OK) {
             break;
         }
     }

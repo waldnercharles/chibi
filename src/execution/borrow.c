@@ -2,11 +2,19 @@
 
 #include "execution/definition.h"
 #include "execution/intrinsics.h"
+#include "execution/program_internal.h"
 #include "support/array.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
 #include <stdlib.h>
+
+enum
+{
+    BORROW_DEPTH = 64,
+    BORROW_FUNCTIONS = 256,
+    BORROW_INSTRUCTIONS = 200000
+};
 
 /* Bytecode and Wasm also overwrite their retained scratch slots. Generated C
  * uses C locals instead; only the public activation banks apply there. */
@@ -60,6 +68,103 @@ static bool vm_disjoint(
     return true;
 }
 
+/* Binding/committing even a read-only imported helper synchronizes its header
+ * banks. Check those future banks before the caller starts borrowing, without
+ * running binding or changing the source value before a fallback snapshot. */
+static bool calls_disjoint(
+    const behavior_function *f,
+    const behavior_function_context *ctx,
+    const pin_array *array
+)
+{
+    if (!array || !ctx->bind_instance) {
+        return true;
+    }
+    const behavior_function *functions[BORROW_FUNCTIONS] = { f };
+    int count = 1, edges = 0;
+    for (int at = 0; at < count; at++) {
+        const behavior_function *current = functions[at];
+        if (!program_view_disjoint(current, ctx, array, sizeof *array) ||
+            !program_view_disjoint(
+                current,
+                ctx,
+                array->items,
+                (size_t)array->count * sizeof *array->items
+            )) {
+            return false;
+        }
+        for (int i = 0; i < acount(current->calls); i++) {
+            const behavior_function *callee = current->calls[i].function;
+            if (++edges > BORROW_INSTRUCTIONS) {
+                return false;
+            }
+            bool seen = false;
+            for (int j = 0; j < count; j++) {
+                seen |= functions[j] == callee;
+            }
+            if (seen) {
+                continue;
+            }
+            if (!callee || count == BORROW_FUNCTIONS) {
+                return false;
+            }
+            functions[count++] = callee;
+        }
+    }
+    return true;
+}
+
+bool behavior_function_borrow_argument(
+    const behavior_function *f,
+    const behavior_function_context *ctx,
+    const pin_value *input,
+    pin_value *output
+)
+{
+    const behavior_borrow_layout layout = {
+        f->variable_count, f->result_count,   acount(f->data_values),
+        acount(f->slots),  acount(f->locals), acount(f->frames)
+    };
+    pin_value borrowed;
+    if (!program_call_views_allowed(ctx) ||
+        !behavior_borrow_array(ctx, layout, input, &borrowed) ||
+        !vm_disjoint(f, ctx, input->ptr) || !calls_disjoint(f, ctx, input->ptr)) {
+        return false;
+    }
+    const pin_array *array = input->ptr;
+    for (const behavior_function_context *parent = ctx->parent; parent;
+         parent = parent->parent) {
+        const behavior_function *owner = parent->source_function;
+        if (!owner || !program_call_views_allowed(parent)) {
+            return false;
+        }
+        const behavior_borrow_layout banks = {
+            owner->variable_count,      owner->result_count,
+            acount(owner->data_values), acount(owner->slots),
+            acount(owner->locals),      acount(owner->frames)
+        };
+        if (array && (!behavior_borrow_disjoint(parent, array, sizeof *array, banks) ||
+                      !behavior_borrow_disjoint(
+                          parent,
+                          array->items,
+                          (size_t)array->count * sizeof *array->items,
+                          banks
+                      ) ||
+                      !vm_disjoint(owner, parent, array) ||
+                      !program_view_disjoint(owner, parent, array, sizeof *array) ||
+                      !program_view_disjoint(
+                          owner,
+                          parent,
+                          array->items,
+                          (size_t)array->count * sizeof *array->items
+                      ))) {
+            return false;
+        }
+    }
+    *output = borrowed;
+    return true;
+}
+
 const char *behavior_function_borrow_snapshot(behavior_function_context *ctx, int host)
 {
     const behavior_function *f = ctx->data->function;
@@ -67,14 +172,7 @@ const char *behavior_function_borrow_snapshot(behavior_function_context *ctx, in
     const pin_value *input = ctx->data->values + h->first;
     pin_value *output = ctx->data->values + h->result_first;
     assert(h->result_first == h->first + 1 && h->result_count == 1);
-    const behavior_borrow_layout layout = {
-        f->variable_count, f->result_count,   acount(f->data_values),
-        acount(f->slots),  acount(f->locals), acount(f->frames)
-    };
-    pin_value borrowed;
-    if (behavior_borrow_array(ctx, layout, input, &borrowed) &&
-        vm_disjoint(f, ctx, input->ptr)) {
-        *output = borrowed;
+    if (behavior_function_borrow_argument(f, ctx, input, output)) {
         return NULL;
     }
     return EXECUTION_snapshot_call.value(ctx->value_storage, input, 1, output);
@@ -97,6 +195,14 @@ typedef struct
     borrow_kind kind;
     int bank;
 } borrow_value;
+
+typedef struct
+{
+    const behavior_function *active[BORROW_DEPTH];
+    int depth, functions, instructions;
+} borrow_proof;
+
+static bool readonly(const behavior_function *, const bool *, borrow_proof *);
 
 static bool array_type(pin_value value)
 {
@@ -141,7 +247,8 @@ static bool instruction(
     const behavior_function *f,
     const behavior_function_instruction *i,
     borrow_value *slots,
-    const bool *locals
+    const bool *locals,
+    borrow_proof *proof
 )
 {
     if (i->indirect) {
@@ -253,9 +360,22 @@ static bool instruction(
             return array_type(header) ? array(a) && i->type == BF_POINTER_TYPE
                                       : a.kind == VALUE && i->type == header.type;
         case BF_HOST_CALL: return snapshot(f, i);
+        case BF_INVOKE: {
+            const behavior_function_invocation *call = &f->calls[i->left];
+            const behavior_function *callee = call->function;
+            if (call->task || !callee || !callee->frozen ||
+                call->count != callee->argument_count ||
+                call->result_count != callee->result_count) {
+                return false;
+            }
+            return readonly(callee, NULL, proof);
+        }
         case BF_STORE:
         case BF_RESULT:
-            return a.kind == VALUE &&
+            /* A caller's snapshot can overlap a future imported state bank,
+             * which is not bound yet. Nested callees may write private scalar
+             * results, but only the guarded root may publish scalar state. */
+            return (i->op != BF_STORE || proof->depth == 1) && a.kind == VALUE &&
                    behavior_borrow_plain((
                        i->op == BF_STORE ? f->variable_defaults : f->result_defaults
                    )[i->target]);
@@ -312,16 +432,36 @@ static bool instruction(
     return true;
 }
 
-void behavior_function_borrow_snapshots(behavior_function *f, const bool *keep)
+static bool readonly(const behavior_function *f, const bool *keep, borrow_proof *proof)
 {
     int count = acount(f->instructions);
-    bool candidate = false;
-    for (int pc = 0; pc < count; pc++) {
-        candidate |= keep[pc] && snapshot(f, &f->runtime_body[pc]);
+    if (!f->runtime_body || proof->depth == BORROW_DEPTH ||
+        ++proof->functions > BORROW_FUNCTIONS ||
+        count > BORROW_INSTRUCTIONS - proof->instructions ||
+        acount(f->slots) > BORROW_INSTRUCTIONS ||
+        acount(f->locals) > BORROW_INSTRUCTIONS) {
+        return false;
     }
-    if (!candidate) {
-        return;
+    for (int j = 0; j < proof->depth; j++) {
+        if (proof->active[j] == f) {
+            return false;
+        }
     }
+    for (int j = 0; j < f->argument_count; j++) {
+        if (f->argument_kinds[j] != BEHAVIOR_VALUE ||
+            (!array_type(f->argument_defaults[j]) &&
+             !behavior_borrow_plain(f->argument_defaults[j]))) {
+            return false;
+        }
+    }
+    for (int j = 0; j < f->result_count; j++) {
+        if (f->result_kinds[j] != BEHAVIOR_VALUE ||
+            !behavior_borrow_plain(f->result_defaults[j])) {
+            return false;
+        }
+    }
+    proof->instructions += count;
+    proof->active[proof->depth++] = f;
     bool *locals = xcalloc((size_t)acount(f->locals) + 1, sizeof *locals);
     for (int j = 0; j < acount(f->value_roots); j++) {
         const behavior_value_root *root = &f->value_roots[j];
@@ -332,17 +472,48 @@ void behavior_function_borrow_snapshots(behavior_function *f, const bool *keep)
     borrow_value *slots = xcalloc((size_t)acount(f->slots) + 1, sizeof *slots);
     bool safe = true;
     for (int pc = 0; pc < count && safe; pc++) {
-        if (keep[pc]) {
-            safe = instruction(f, &f->runtime_body[pc], slots, locals);
+        if (keep ? keep[pc] : behavior_function_runtime_keeps(f, pc)) {
+            safe = instruction(f, &f->runtime_body[pc], slots, locals, proof);
         }
     }
-    if (safe) {
-        for (int pc = 0; pc < count; pc++) {
-            if (keep[pc] && f->runtime_body[pc].op == BF_HOST_CALL) {
-                f->runtime_body[pc].right = BF_HOST_BORROW_ARRAY;
-            }
-        }
-    }
+    proof->depth--;
     free(slots);
     free(locals);
+    return safe;
+}
+
+void behavior_function_borrow_snapshots(behavior_function *f, const bool *keep)
+{
+    borrow_proof proof = { 0 };
+    f->readonly_collections = readonly(f, keep, &proof);
+    if (!f->readonly_collections) {
+        return;
+    }
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        if (keep[pc] && snapshot(f, &f->runtime_body[pc])) {
+            f->runtime_body[pc].right = BF_HOST_BORROW_ARRAY;
+        }
+    }
+}
+
+/* Finalization order is not call order. Publication retries the proof after all
+ * callees have been verified, before compiling any owned definition. Only the
+ * derived guard flags change; canonical instructions and resume maps stay put. */
+void behavior_function_prepare_borrows(behavior_function *f)
+{
+    if (!f || !f->frozen) {
+        return;
+    }
+    borrow_proof proof = { 0 };
+    f->readonly_collections = readonly(f, NULL, &proof);
+    if (!f->readonly_collections) {
+        return;
+    }
+    for (int pc = 0; pc < acount(f->instructions); pc++) {
+        if (behavior_function_runtime_keeps(f, pc) &&
+            snapshot(f, &f->runtime_body[pc])) {
+            f->runtime_body[pc].right = BF_HOST_BORROW_ARRAY;
+            f->runtime_instructions[f->runtime_map[pc]].right = BF_HOST_BORROW_ARRAY;
+        }
+    }
 }

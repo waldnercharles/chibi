@@ -48,7 +48,7 @@ static inline bool behavior_borrow_disjoint(
         behavior_borrow_overlap(
             address,
             bytes,
-            ctx->data->values,
+            ctx->data ? ctx->data->values : NULL,
             (size_t)layout.data,
             sizeof(pin_value)
         )) {
@@ -118,5 +118,11 @@ static inline bool behavior_borrow_array(
 }
 
 const char *behavior_function_borrow_snapshot(behavior_function_context *, int);
+bool behavior_function_borrow_argument(
+    const behavior_function *,
+    const behavior_function_context *,
+    const pin_value *,
+    pin_value *
+);
 
 #endif

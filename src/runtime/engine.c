@@ -37,7 +37,12 @@ typedef enum
 {
     STEP_IDLE,
     STEP_BEHAVIORS,
-    STEP_CONTACTS
+    STEP_PRE_PHYSICS,
+    STEP_POST_PHYSICS,
+    STEP_CONTACTS,
+    STEP_COMMANDS,
+    STEP_POST_EVENTS,
+    STEP_PRESENTATION
 } step_phase;
 
 struct engine
@@ -154,6 +159,10 @@ static bool engine_paused(const engine *e)
 {
     return e->modules.paused && e->modules.paused(e->modules.context);
 }
+static bool system_stage(const engine *e)
+{
+    return e->phase >= STEP_PRE_PHYSICS && e->phase != STEP_CONTACTS;
+}
 static void boundary(engine *e)
 {
     e->source_input.now = e->timing.simulation_time;
@@ -249,6 +258,9 @@ void engine_free(engine *engine)
     if (!engine) {
         return;
     }
+    if (engine->modules.sources) {
+        source_cancel_systems(engine->modules.sources);
+    }
     if (engine->emitters) {
         particle_emitters_free(engine->emitters);
     }
@@ -308,11 +320,36 @@ static int source_system_run(ecs_world *, double, double, void *user, schedule_e
     error->status = status;
     return status;
 }
+static int source_system_prepare(void *user, schedule_error *error)
+{
+    authored_system *system = user;
+    assert(system->batch);
+    error->status = source_systems_prepare_index(
+        system->batch,
+        system->batch_index,
+        error->message,
+        sizeof error->message
+    );
+    return error->status;
+}
+static int source_system_finish(void *user, bool commit, schedule_error *error)
+{
+    authored_system *system = user;
+    assert(system->batch);
+    error->status = source_systems_finish_index(
+        system->batch,
+        system->batch_index,
+        commit,
+        error->message,
+        sizeof error->message
+    );
+    return error->status;
+}
 static bool source_system_parallel(void *user)
 {
     authored_system *system = user;
     assert(system->batch);
-    return source_systems_parallel(system->batch);
+    return source_systems_parallel(system->batch, system->batch_index);
 }
 static int sync_authored_systems(engine *engine)
 {
@@ -434,12 +471,16 @@ static int sync_authored_systems(engine *engine)
                                .order = system->order,
                                .identity = system->program,
                                .run = source_system_run,
+                               .prepare = source_system_prepare,
+                               .finish = source_system_finish,
                                .parallel_ready = source_system_parallel,
                                .user = system,
                                .reads = effects.reads,
                                .read_count = effects.read_count,
                                .writes = effects.writes,
                                .write_count = effects.write_count,
+                               .reduces = effects.reduces,
+                               .reduce_count = effects.reduce_count,
                                .declared = effects.declared,
                                .structural = effects.structural,
                                .host_sink = effects.host_sink,
@@ -506,26 +547,13 @@ static int run_system_phase(engine *engine, system_phase phase)
             apush(names, system->name);
         }
     }
-    bool source_only = true;
-    for (int i = 0; i < schedule_count(engine->systems); i++) {
-        const schedule_desc *desc = schedule_descriptor_at(engine->systems, i);
-        if (desc->phase != phase) {
-            continue;
-        }
-        bool source = false;
-        for (int j = 0; j < acount(names); j++) {
-            source |= !strcmp(desc->name, names[j]);
-        }
-        source_only &= source;
-    }
     source_registry *sources = engine->modules.sources;
     source_system_batch *batch = sources ? source_systems_prepare(
                                                sources,
                                                names,
                                                acount(names),
                                                engine->timing.simulation_time,
-                                               ENGINE_FIXED_SECONDS,
-                                               source_only
+                                               ENGINE_FIXED_SECONDS
                                            )
                                          : NULL;
     afree(names);
@@ -556,7 +584,7 @@ static int run_system_phase(engine *engine, system_phase phase)
             schedule_error_message(engine->systems)
         );
     }
-    return result < 0 ? result : maintain_bindings(engine);
+    return result != FLOW_OK ? result : maintain_bindings(engine);
 }
 
 void engine_set_render_callback(engine *engine, engine_render_fn fn, void *user)
@@ -590,7 +618,11 @@ void engine_reset(engine *engine)
 
 void engine_reset_scene(engine *engine)
 {
-    /* A step waiting on the old scene's initializers ends with it. */
+    /* Held work belongs to the old scene, including unpublished reductions. */
+    if (engine->modules.sources) {
+        source_cancel_systems(engine->modules.sources);
+    }
+    schedule_reset(engine->systems);
     engine->phase = STEP_IDLE;
     engine->error[0] = 0;
     engine->scene_steps = engine->timing.simulation_steps;
@@ -994,19 +1026,45 @@ static int propagate_transforms(engine *engine)
     return result;
 }
 
+static int apply_step_commands(engine *engine)
+{
+    CHIBI_TRACE_ZONE_BEGIN(zone, "ECS command apply");
+    int result = ecs_world_apply_commands(engine->world);
+    CHIBI_TRACE_ZONE_END(zone);
+    engine->timing.command_apply_count++;
+    return result != ECS_OK ? result : maintain_bindings(engine);
+}
+
 static int finish_systems(engine *engine)
 {
     int result = FLOW_OK;
-    if (has_simulation(engine)) {
-        if (engine->phase == STEP_BEHAVIORS) {
+    bool simulation = has_simulation(engine);
+    if (engine->phase == STEP_IDLE) {
+        assert(!simulation);
+        engine->phase = STEP_COMMANDS;
+    }
+    if (engine->phase == STEP_BEHAVIORS) {
+        result = sync_authored_systems(engine);
+        if (result < 0) {
+            return result;
+        }
+        engine->phase = STEP_PRE_PHYSICS;
+    }
+    if (!simulation && engine->phase == STEP_COMMANDS) {
+        if ((result = apply_step_commands(engine)) != FLOW_OK) {
+            return result;
+        }
+        engine->phase = STEP_PRE_PHYSICS;
+    }
+    if (engine->phase == STEP_PRE_PHYSICS) {
+        result = run_system_phase(engine, SYSTEM_PRE_PHYSICS);
+        if (result != FLOW_OK) {
+            return result;
+        }
+        if (simulation) {
             struct timespec start, end;
             if (clock_now(&start) != 0) {
                 return FLOW_ERR_STATE;
-            }
-            result = sync_authored_systems(engine);
-            if (result < 0 ||
-                (result = run_system_phase(engine, SYSTEM_PRE_PHYSICS)) < 0) {
-                return result;
             }
             CHIBI_TRACE_ZONE_BEGIN(physics_zone, "Physics");
             result = engine->modules.physics
@@ -1040,15 +1098,20 @@ static int finish_systems(engine *engine)
                 return FLOW_ERR_STATE;
             }
             engine->timing.physics_ms += elapsed_ms(start, end);
-            if ((result = propagate_transforms(engine)) < 0) {
-                return result;
-            }
-            result = run_system_phase(engine, SYSTEM_POST_PHYSICS);
-            if (result < 0) {
-                return result;
-            }
-            engine->phase = STEP_CONTACTS;
         }
+        if ((result = propagate_transforms(engine)) < 0) {
+            return result;
+        }
+        engine->phase = STEP_POST_PHYSICS;
+    }
+    if (engine->phase == STEP_POST_PHYSICS) {
+        result = run_system_phase(engine, SYSTEM_POST_PHYSICS);
+        if (result != FLOW_OK) {
+            return result;
+        }
+        engine->phase = simulation ? STEP_CONTACTS : STEP_POST_EVENTS;
+    }
+    if (engine->phase == STEP_CONTACTS) {
         struct timespec start, end;
         if (clock_now(&start) != 0) {
             return FLOW_ERR_STATE;
@@ -1061,31 +1124,29 @@ static int finish_systems(engine *engine)
         }
         engine->timing.events_ms += elapsed_ms(start, end);
         if (result != 0) {
-            return result < 0 ? result : FLOW_OK;
-        }
-    }
-    CHIBI_TRACE_ZONE_BEGIN(commands_zone, "ECS command apply");
-    result = ecs_world_apply_commands(engine->world);
-    CHIBI_TRACE_ZONE_END(commands_zone);
-    engine->timing.command_apply_count++;
-    if (result != ECS_OK) {
-        return result;
-    }
-    if ((result = maintain_bindings(engine)) < 0) {
-        return result;
-    }
-    CHIBI_TRACE_ZONE_BEGIN(systems_zone, "ECS systems");
-    if (!has_simulation(engine)) {
-        /* PostPhysics sees the placements PrePhysics left, as it does when
-         * physics runs between them. */
-        if ((result = run_system_phase(engine, SYSTEM_PRE_PHYSICS)) < 0 ||
-            (result = propagate_transforms(engine)) < 0 ||
-            (result = run_system_phase(engine, SYSTEM_POST_PHYSICS)) < 0) {
             return result;
         }
+        engine->phase = STEP_COMMANDS;
     }
-    if ((result = run_system_phase(engine, SYSTEM_POST_EVENTS)) < 0 ||
-        (result = run_system_phase(engine, SYSTEM_PRESENTATION)) < 0) {
+    if (engine->phase == STEP_COMMANDS) {
+        if ((result = apply_step_commands(engine)) != FLOW_OK) {
+            return result;
+        }
+        engine->phase = STEP_POST_EVENTS;
+    }
+    CHIBI_TRACE_ZONE_BEGIN(systems_zone, "ECS systems");
+    if (engine->phase == STEP_POST_EVENTS) {
+        result = run_system_phase(engine, SYSTEM_POST_EVENTS);
+        if (result != FLOW_OK) {
+            CHIBI_TRACE_ZONE_END(systems_zone);
+            return result;
+        }
+        engine->phase = STEP_PRESENTATION;
+    }
+    assert(engine->phase == STEP_PRESENTATION);
+    result = run_system_phase(engine, SYSTEM_PRESENTATION);
+    if (result != FLOW_OK) {
+        CHIBI_TRACE_ZONE_END(systems_zone);
         return result;
     }
     CHIBI_TRACE_ZONE_END(systems_zone);
@@ -1135,7 +1196,20 @@ static int finish_step(engine *engine)
 static int continue_step(engine *engine)
 {
     engine_modules *live = &engine->modules;
-    if (!has_simulation(engine)) {
+    if (!has_simulation(engine) || system_stage(engine)) {
+        /* A held scheduler phase owns its remaining rows and unpublished
+         * reductions. Resume it before pumping unrelated source work. */
+        if (system_stage(engine)) {
+            int result = sync_authored_systems(engine);
+            if (result < 0) {
+                return result;
+            }
+            if (!schedule_paused(engine->systems) && live->sources) {
+                /* Changed descriptors restart this phase. Its old private
+                 * contributions must not outlive the scheduler cursor. */
+                source_cancel_systems(live->sources);
+            }
+        }
         return finish_step(engine);
     }
     boundary(engine);
@@ -1285,9 +1359,11 @@ static int advance_frame(engine *engine, double monotonic_time)
     }
     if (!paused &&
         (engine->playing || engine->step_requested || engine->phase != STEP_IDLE)) {
-        result = flush_initializers(engine);
-        if (result < 0) {
-            return result;
+        if (!system_stage(engine)) {
+            result = flush_initializers(engine);
+            if (result < 0) {
+                return result;
+            }
         }
         paused = engine_paused(engine);
         if (!result && !paused && engine->phase != STEP_IDLE) {
@@ -1298,7 +1374,8 @@ static int advance_frame(engine *engine, double monotonic_time)
             paused = engine_paused(engine);
         }
     }
-    if (!paused && (engine->playing || engine->step_requested)) {
+    if (!paused && engine->phase == STEP_IDLE &&
+        (engine->playing || engine->step_requested)) {
         if (engine->playing) {
             engine->timing.dropped_seconds += fmax(0, elapsed - ENGINE_FRAME_SECONDS_MAX);
             engine->accumulator += fmin(elapsed, ENGINE_FRAME_SECONDS_MAX) *
@@ -1319,7 +1396,7 @@ static int advance_frame(engine *engine, double monotonic_time)
             if (result < 0) {
                 return result;
             }
-            if (engine_paused(engine)) {
+            if (result == FLOW_PAUSED_RESULT || engine_paused(engine)) {
                 break;
             }
         }

@@ -129,6 +129,8 @@ struct behavior_function
     behavior_source_watch *source_watches;
     bool waits, breakpoints, batchable, managed, custom_lowering, uses_storage,
         checkpoints, pin_watches;
+    /* Recomputed from verified bodies, never serialized or accepted as an ABI promise. */
+    bool readonly_collections;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
     size_t watch_size;
@@ -241,6 +243,8 @@ void behavior_function_rebind_host(
 );
 void behavior_function_borrow_arrays(behavior_function *function);
 void behavior_function_borrow_snapshots(behavior_function *function, const bool *keep);
+void behavior_function_prepare_borrows(behavior_function *function);
+bool program_call_views_allowed(const behavior_function_context *context);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);
 void behavior_function_optimize_ranges(behavior_function *function, const bool *keep);

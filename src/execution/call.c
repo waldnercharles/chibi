@@ -1,3 +1,4 @@
+#include "execution/borrow.h"
 #include "execution/definition.h"
 #include "execution/runner.h"
 #include "execution/service.h"
@@ -278,6 +279,7 @@ static invocation_frame *frame_new(
         .call_enter = parent->call_enter,
         .call_leave = parent->call_leave,
         .activation = &frame->activation,
+        .variables = parent->variables,
         .data = frame->data,
         .budget = parent->budget,
         .call_depth = depth,
@@ -297,13 +299,25 @@ static invocation_frame *frame_new(
         .request_action_break = parent->request_action_break,
         .take_action_break = parent->take_action_break,
         .store_component = parent->store_component,
+        .reduce_component = parent->reduce_component,
         .component_membership = parent->component_membership,
         .failure_observer = parent->failure_observer,
         .bind_instance = parent->bind_instance,
         .commit_instance = parent->commit_instance
     };
+    bool views = call.function->readonly_collections &&
+                 !behavior_function_inspection_required(function, parent) &&
+                 program_call_views_allowed(parent);
     pin_value *arguments = arena_alloc(&frame->storage, (size_t)(call.count + 1) * sizeof *arguments);
     for (int p = 0; p < call.count; p++) {
+        if (views && behavior_function_borrow_argument(
+                         call.function,
+                         &frame->context,
+                         &parent->data->values[call.first + p],
+                         &arguments[p]
+                     )) {
+            continue;
+        }
         if (pin_value_snapshot_to_arena(
                 &frame->storage,
                 &arguments[p],

@@ -670,7 +670,8 @@ void script_analyzer_units(analyzer *a)
         expression_unit(&p, i);
     }
     for (int i = 0; i < acount(out->statements); i++) {
-        if (out->statements[i].kind == SCRIPT_STMT_ASSIGN) {
+        if (out->statements[i].kind == SCRIPT_STMT_ASSIGN ||
+            out->statements[i].kind == SCRIPT_STMT_REDUCE) {
             assignment(&p, &out->statements[i]);
         }
     }

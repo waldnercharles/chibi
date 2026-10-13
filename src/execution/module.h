@@ -10,15 +10,17 @@ typedef struct execution_instance execution_instance;
 typedef struct execution_module execution_module;
 typedef struct
 {
-    const uint64_t *reads, *writes;
-    int read_count, write_count;
+    const uint64_t *reads, *writes, *reduces;
+    int read_count, write_count, reduce_count;
     bool declared, structural, host_sink, world_read, deterministic, parallel_safe;
     /* First instruction whose effects could not be proved; -1 when absent. */
     int unknown_operation, unknown_instruction;
     uint64_t unknown_capability, unknown_function;
 } execution_effect_summary;
 /* Immutable verified effects, rederived after prepared linking. parallel_safe
- * proves a synchronous SYSTEM closure with disjoint owning-entity writes.
+ * proves a synchronous SYSTEM closure with disjoint owning-entity writes or
+ * private reduction contributions. Reduced components are published in order
+ * at the system boundary and conflict with ordinary readers and writers.
  * Unknown effects retain conservative flags and cannot enter worker execution. */
 execution_effect_summary execution_module_effects(const execution_module *);
 /* Includes module entry points, binding bodies, and imported modules. For one
@@ -43,6 +45,10 @@ typedef struct
     size_t activation_cache_bytes;
     size_t query_history_bytes, query_index_bytes, ecs_change_bytes;
     size_t binding_schedule_bytes;
+    size_t reduction_bytes, reduction_capacity;
+    size_t system_row_bytes, system_row_capacity;
+    uint64_t reduction_contributions, reduction_records;
+    size_t reduction_peak_bytes;
     uint64_t query_rows, query_lookup_steps;
 } execution_memory_usage;
 /* After each safe event/update boundary, bytes describe live managed values;
@@ -202,10 +208,18 @@ int execution_program_update(execution_program *program, double now, double delt
 /* Serial preparation refreshes query membership, Begin, queued events and
  * ready continuations, then owns the system activations for one update.
  * run_system performs no query refresh. The caller keeps world membership and
- * services fixed until serial finish_system consumes the prepared update. */
+ * services fixed until serial finish_system consumes the prepared update.
+ * Create an inspector before preparation; an existing inspector remains usable
+ * while its prepared update is paused. */
 int execution_program_prepare_system(execution_program *, double now, double delta, unsigned budget);
 int execution_program_run_system(execution_program *);
 int execution_program_finish_system(execution_program *);
+/* Cancel publication before finish, for a successful worker after an earlier
+ * scheduler peer failed. Collection storage retains at most 64 KiB when idle. */
+void execution_program_discard_reductions(execution_program *);
+/* Cancel a quiescent prepared dispatch, including a retained debugger pause.
+ * Discards contributions and releases pending activations without publication. */
+void execution_program_cancel_system(execution_program *);
 /* Orders all attached entity bindings by overlapping normalized ECS fields.
  * A cycle is rejected before any binding output is committed. */
 int execution_program_bindings_all(

@@ -630,14 +630,13 @@ typedef struct
 {
     execution_program *program;
     int status;
-    bool ran, prepared;
+    bool ran, prepared, finished, parallel;
 } system_result;
 struct source_system_batch
 {
     source_registry *registry;
     system_result *results;
     int count;
-    bool parallel;
     double now, delta;
 };
 source_system_batch *source_systems_prepare(
@@ -645,8 +644,7 @@ source_system_batch *source_systems_prepare(
     const char *const *names,
     int count,
     double now,
-    double delta,
-    bool allow_prepare
+    double delta
 )
 {
     assert(r && !r->staging && !r->executing);
@@ -673,36 +671,66 @@ source_system_batch *source_systems_prepare(
     batch->count = count;
     batch->now = now;
     batch->delta = delta;
-    batch->parallel = allow_prepare && !r->profiling;
     batch->results = xcalloc((size_t)count, sizeof *batch->results);
     for (int i = 0; i < count; i++) {
         batch->results[i].program = r->records[record_index(r, names[i])].program;
-        execution_program *program = batch->results[i].program;
-        execution_effect_summary effects = execution_module_effects(
-            execution_program_module(program)
-        );
-        batch->parallel &= effects.parallel_safe &&
-                           !execution_program_inspection(program) &&
-                           !execution_program_observed(program);
     }
     begin_boundary(r);
     r->executing++;
-    if (batch->parallel) {
-        for (int i = 0; i < count; i++) {
-            system_result *result = &batch->results[i];
-            result->status = execution_program_prepare_system(result->program, now, delta, 10000);
-            result->prepared = result->status >= 0;
-        }
-        for (int i = 0; i < count; i++) {
-            batch->parallel &= batch->results[i].prepared;
-        }
-    }
     return batch;
 }
-bool source_systems_parallel(const source_system_batch *batch)
+static int system_error(system_result *result, char *error, size_t size)
 {
-    assert(batch);
-    return batch->parallel;
+    if (!size) {
+        return result->status;
+    }
+    error[0] = 0;
+    if (result->status >= 0) {
+        return result->status;
+    }
+    const execution_program_failure *failure = execution_program_error(result->program);
+    if (failure) {
+        snprintf(
+            error,
+            size,
+            "%s:%d:%d: %s",
+            failure->asset_name,
+            failure->line,
+            failure->column,
+            failure->message
+        );
+        return result->status;
+    }
+    snprintf(error, size, "Source execution failed with status %d", result->status);
+    return result->status;
+}
+int source_systems_prepare_index(source_system_batch *batch, int index, char *error, size_t size)
+{
+    assert(batch && index >= 0 && index < batch->count && (!size || error));
+    system_result *result = &batch->results[index];
+    assert(!result->ran && !result->prepared && !result->finished);
+    execution_program *program = result->program;
+    execution_effect_summary effects = execution_module_effects(
+        execution_program_module(program)
+    );
+    result->parallel = effects.parallel_safe && !batch->registry->profiling &&
+                       !execution_program_inspection(program) &&
+                       !execution_program_observed(program);
+    if (result->parallel || effects.reduce_count) {
+        result->status = execution_program_prepare_system(
+            program,
+            batch->now,
+            batch->delta,
+            10000
+        );
+        result->prepared = result->status >= 0;
+    }
+    return system_error(result, error, size);
+}
+bool source_systems_parallel(const source_system_batch *batch, int index)
+{
+    assert(batch && index >= 0 && index < batch->count);
+    return batch->results[index].parallel && batch->results[index].prepared;
 }
 int source_systems_run(source_system_batch *batch, int index, char *error, size_t size)
 {
@@ -720,33 +748,29 @@ int source_systems_run(source_system_batch *batch, int index, char *error, size_
                                  10000
                              );
     }
-    if (size) {
-        error[0] = 0;
-        if (result->status < 0) {
-            const execution_program_failure *failure = execution_program_error(
-                result->program
-            );
-            if (failure) {
-                snprintf(
-                    error,
-                    size,
-                    "%s:%d:%d: %s",
-                    failure->asset_name,
-                    failure->line,
-                    failure->column,
-                    failure->message
-                );
-            } else {
-                snprintf(
-                    error,
-                    size,
-                    "Source execution failed with status %d",
-                    result->status
-                );
-            }
+    return system_error(result, error, size);
+}
+int source_systems_finish_index(source_system_batch *batch, int index, bool commit, char *error, size_t size)
+{
+    assert(batch && index >= 0 && index < batch->count && (!size || error));
+    system_result *result = &batch->results[index];
+    assert(!result->finished);
+    result->finished = true;
+    if (result->prepared) {
+        int status = FLOW_OK;
+        if (commit) {
+            status = execution_program_finish_system(result->program);
+        } else {
+            /* A discarded peer can have paused after an earlier failure.
+             * Cancel its activation and inspector together with its log. */
+            execution_program_cancel_system(result->program);
+        }
+        result->prepared = false;
+        if (result->status >= 0) {
+            result->status = status;
         }
     }
-    return result->status;
+    return system_error(result, error, size);
 }
 int source_systems_finish(source_system_batch *batch)
 {
@@ -755,11 +779,8 @@ int source_systems_finish(source_system_batch *batch)
     int status = 0;
     for (int i = 0; i < batch->count; i++) {
         system_result *result = &batch->results[i];
-        if (result->prepared) {
-            int finished = execution_program_finish_system(result->program);
-            if (result->status >= 0) {
-                result->status = finished;
-            }
+        if (!result->finished) {
+            source_systems_finish_index(batch, i, false, NULL, 0);
         }
         if (result->status < 0 && status >= 0) {
             status = program_status(r, result->program, result->status);
@@ -778,6 +799,13 @@ int source_maintain(source_registry *r, double now, double delta)
     int status = maintain(r, now, delta);
     r->executing--;
     return status;
+}
+void source_cancel_systems(source_registry *r)
+{
+    assert(r && !r->executing && !r->staging);
+    for (int i = 0; i < acount(r->records); i++) {
+        execution_program_cancel_system(r->records[i].program);
+    }
 }
 const char *source_error(const source_registry *r)
 {

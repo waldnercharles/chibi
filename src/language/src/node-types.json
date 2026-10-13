@@ -1227,6 +1227,10 @@
           "named": true
         },
         {
+          "type": "reduce_statement",
+          "named": true
+        },
+        {
           "type": "return_statement",
           "named": true
         },
@@ -1442,6 +1446,10 @@
         },
         {
           "type": "query_declaration",
+          "named": true
+        },
+        {
+          "type": "reduce_statement",
           "named": true
         },
         {
@@ -4392,6 +4400,204 @@
     }
   },
   {
+    "type": "reduce_statement",
+    "named": true,
+    "fields": {
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "+=",
+            "named": false
+          },
+          {
+            "type": "max",
+            "named": false
+          },
+          {
+            "type": "min",
+            "named": false
+          }
+        ]
+      },
+      "ordering": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "unordered",
+            "named": false
+          }
+        ]
+      },
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "array_expression",
+            "named": true
+          },
+          {
+            "type": "as_expression",
+            "named": true
+          },
+          {
+            "type": "await_expression",
+            "named": true
+          },
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin_reference",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "cast_expression",
+            "named": true
+          },
+          {
+            "type": "engine_reference",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "index_expression",
+            "named": true
+          },
+          {
+            "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "member_expression",
+            "named": true
+          },
+          {
+            "type": "nil",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "struct_expression",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "array_expression",
+            "named": true
+          },
+          {
+            "type": "as_expression",
+            "named": true
+          },
+          {
+            "type": "await_expression",
+            "named": true
+          },
+          {
+            "type": "binary_expression",
+            "named": true
+          },
+          {
+            "type": "boolean",
+            "named": true
+          },
+          {
+            "type": "builtin_reference",
+            "named": true
+          },
+          {
+            "type": "call_expression",
+            "named": true
+          },
+          {
+            "type": "cast_expression",
+            "named": true
+          },
+          {
+            "type": "engine_reference",
+            "named": true
+          },
+          {
+            "type": "identifier",
+            "named": true
+          },
+          {
+            "type": "index_expression",
+            "named": true
+          },
+          {
+            "type": "is_expression",
+            "named": true
+          },
+          {
+            "type": "member_expression",
+            "named": true
+          },
+          {
+            "type": "nil",
+            "named": true
+          },
+          {
+            "type": "number",
+            "named": true
+          },
+          {
+            "type": "parenthesized_expression",
+            "named": true
+          },
+          {
+            "type": "string",
+            "named": true
+          },
+          {
+            "type": "struct_expression",
+            "named": true
+          },
+          {
+            "type": "unary_expression",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "return_statement",
     "named": true,
     "fields": {
@@ -5227,6 +5433,10 @@
         },
         {
           "type": "query_declaration",
+          "named": true
+        },
+        {
+          "type": "reduce_statement",
           "named": true
         },
         {
@@ -6267,6 +6477,14 @@
     "named": false
   },
   {
+    "type": "max",
+    "named": false
+  },
+  {
+    "type": "min",
+    "named": false
+  },
+  {
     "type": "nil",
     "named": false
   },
@@ -6304,6 +6522,10 @@
   },
   {
     "type": "query",
+    "named": false
+  },
+  {
+    "type": "reduce",
     "named": false
   },
   {
@@ -6360,6 +6582,10 @@
   },
   {
     "type": "union",
+    "named": false
+  },
+  {
+    "type": "unordered",
     "named": false
   },
   {

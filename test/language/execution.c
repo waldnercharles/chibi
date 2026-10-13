@@ -32,16 +32,20 @@ static const type_desc box_type = { .name = "fixture.box",
                                     .field_count = 1 };
 static const type_desc *const types[] = { &box_type };
 type_catalog_pack test_program_types();
+type_catalog_pack test_reductions_types();
 type_catalog_pack test_graph_model_types();
 
 int type_catalog_pack_count()
 {
-    return 4;
+    return 5;
 }
 
 type_catalog_pack type_catalog_pack_at(int index)
 {
-    assert(index >= 0 && index < 4);
+    assert(index >= 0 && index < 5);
+    if (index == 4) {
+        return test_reductions_types();
+    }
     if (index == 1) {
         return test_program_types();
     }

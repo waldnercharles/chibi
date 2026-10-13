@@ -726,6 +726,7 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
     }
     for (int i = 0; i < m->query_count; i++) {
         behavior_function *predicate = m->queries[i].predicate;
+        behavior_function_prepare_borrows(predicate);
         if (predicate && backend != BEHAVIOR_BYTECODE &&
             !behavior_function_compile(predicate)) {
             snprintf(error, size, "%s query predicate emission failed", behavior_backend_name(backend));
@@ -805,6 +806,8 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
             snprintf(error, size, "function %d has an invalid capture schema", i);
             return FLOW_ERR_COMPILE;
         }
+        behavior_function_prepare_borrows(f->body);
+        behavior_function_prepare_borrows(f->subscription);
         if (backend != BEHAVIOR_BYTECODE &&
             (!behavior_function_compile(f->body) ||
              (f->subscription && !behavior_function_compile(f->subscription)))) {
@@ -855,6 +858,8 @@ static int publish(execution_module_plan *m, behavior_backend backend, char *err
                 return FLOW_ERR_COMPILE;
             }
         }
+        behavior_function_prepare_borrows(b->body);
+        behavior_function_prepare_borrows(b->dependencies);
         if (backend != BEHAVIOR_BYTECODE &&
             (!behavior_function_compile(b->body) ||
              (b->dependencies && !behavior_function_compile(b->dependencies)))) {

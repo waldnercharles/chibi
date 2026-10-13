@@ -132,6 +132,28 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
     for (int scope = -1; scope < acount(p->imports); scope++) {
         const execution_program *program = scope < 0 ? p : p->imports[scope];
         result.activation_cache_bytes += program_activation_cache_bytes(program);
+        result.reduction_bytes += (size_t)acount(program->reductions) *
+                                  sizeof *program->reductions;
+        result.reduction_capacity += program->reductions
+                                       ? sizeof(dyna_hdr) +
+                                             (size_t)acap(program->reductions) *
+                                                 sizeof *program->reductions
+                                       : 0;
+        result.reduction_capacity += program->reduction_table
+                                       ? sizeof(dyna_hdr) +
+                                             (size_t)acap(program->reduction_table) *
+                                                 sizeof *program->reduction_table
+                                       : 0;
+        result.reduction_contributions += program->reduction_contributions;
+        result.reduction_records += program->reduction_records;
+        result.reduction_peak_bytes += program->reduction_peak_bytes;
+        result.system_row_bytes += (size_t)acount(program->system_rows) *
+                                   sizeof *program->system_rows;
+        result.system_row_capacity += program->system_rows
+                                        ? sizeof(dyna_hdr) +
+                                              (size_t)acap(program->system_rows) *
+                                                  sizeof *program->system_rows
+                                        : 0;
         for (int i = 0; i < acount(program->system_activations); i++) {
             const execution_activation *activation = program->system_activations[i];
             if (activation) {

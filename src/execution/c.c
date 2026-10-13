@@ -428,10 +428,17 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     break;
                 }
                 if (spec->call->value) {
-                    if (i->right == BF_HOST_BORROW_ARRAY) {
+                    /* Exported entries keep their self-contained C ABI. The
+                     * shared invocation driver borrows verified arguments;
+                     * caller snapshots need its callback identity guard too. */
+                    if (i->right == BF_HOST_BORROW_ARRAY && !f->calls) {
                         fprintf(
                             out,
-                            "c->error_message=NULL;if(!behavior_borrow_array(c,"
+                            "c->error_message=NULL;if(c->call_enter||c->call_"
+                            "leave||"
+                            "c->bind_instance||c->commit_instance||c->failure_"
+                            "observer||"
+                            "!behavior_borrow_array(c,"
                             "(behavior_borrow_layout){%d,%d,%d,%d,%d,%d},c->"
                             "data->values+%d,c->"
                             "data->values+%d))",

@@ -489,7 +489,7 @@ TEST_CASE(empty_prefix_generates_canonical_component_names)
     return true;
 }
 
-void test_tool_reflect()
+static void begin()
 {
     strcpy(directory, "/tmp/chibi-reflect-test-XXXXXX");
     assert(mkdtemp(directory));
@@ -500,6 +500,30 @@ void test_tool_reflect()
     path(log_path, "reflect.log");
     path(output_target, "types.c.stable");
     path(manifest_target, "components.tsv.stable");
+}
+
+static void end()
+{
+    afree(original);
+    afree(inserted);
+    afree(readded);
+    afree(latest);
+    free(output_before.text);
+    free(manifest_before.text);
+    tool_remove_tree(directory);
+}
+
+void test_tool_reflect_ranges()
+{
+    begin();
+    RUN_TEST_CASE(numeric_fields_reflect_their_unit_and_range);
+    RUN_TEST_CASE(numeric_range_hints_and_defaults_are_distinct);
+    end();
+}
+
+void test_tool_reflect()
+{
+    begin();
     RUN_TEST_CASE(component_insertion_keeps_existing_identities);
     RUN_TEST_CASE(component_rename_keeps_its_identity);
     RUN_TEST_CASE(restored_component_name_reclaims_its_alias);
@@ -514,11 +538,5 @@ void test_tool_reflect()
     RUN_TEST_CASE(jit_identity_requires_one_matching_struct_argument);
     RUN_TEST_CASE(derived_component_names_its_source);
     RUN_TEST_CASE(empty_prefix_generates_canonical_component_names);
-    afree(original);
-    afree(inserted);
-    afree(readded);
-    afree(latest);
-    free(output_before.text);
-    free(manifest_before.text);
-    tool_remove_tree(directory);
+    end();
 }

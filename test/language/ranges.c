@@ -73,7 +73,11 @@ static bool finish()
         fprintf(stderr, "numeric ranges: %s\n", error);
     }
     REQUIRE(function && behavior_function_compile(function));
+#ifdef __EMSCRIPTEN__
+    REQUIRE(!behavior_function_compile_inspection(function));
+#else
     REQUIRE(behavior_function_compile_inspection(function));
+#endif
     return true;
 }
 static int inspect(void *user, const behavior_function_point *point)

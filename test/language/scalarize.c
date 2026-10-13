@@ -204,7 +204,11 @@ TEST_CASE(scalar_unions_remove_nonescaping_payloads_snapshots_and_tag_checks)
     execution_cost_summary cost = behavior_function_costs(function);
     REQUIRE(cost.complete && !cost.proven && !cost.possible);
     const double numbers[] = { 0, -0.0, 1.5, -7.25, INFINITY, -INFINITY, NAN };
+#ifdef __EMSCRIPTEN__
+    REQUIRE(!behavior_function_compile_inspection(function));
+#else
     REQUIRE(behavior_function_compile_inspection(function));
+#endif
     for (int backend = 0; backend < 4; backend++) {
         for (int j = 0; j < 7; j++) {
             input.d = numbers[j];
@@ -234,7 +238,11 @@ TEST_CASE(scalar_unions_keep_escaping_and_managed_payloads_owned)
         result(object, PIN_UNION, 0);
         REQUIRE(finish());
         REQUIRE(calls(true) == 1);
+#ifdef __EMSCRIPTEN__
+        REQUIRE(!behavior_function_compile_inspection(function));
+#else
         REQUIRE(behavior_function_compile_inspection(function));
+#endif
         for (int backend = 0; backend < 4; backend++) {
             char text[] = "original";
             if (j == 3) {

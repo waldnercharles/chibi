@@ -1507,6 +1507,7 @@ TEST_CASE(unit_mismatches_are_errors)
     REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(first, "severity")), "error"));
     REQUIRE(!strcmp(message_at(diagnostics, 0), "Units differ: charge += charge/s"));
     REQUIRE(yyjson_get_int(yyjson_obj_get(first, "line")) == 3);
+    REQUIRE(yyjson_get_int(yyjson_obj_get(first, "column")) == 5);
     REQUIRE(!strcmp(message_at(diagnostics, 1), "Units differ: u = u/s"));
     REQUIRE(!strcmp(message_at(diagnostics, 2), "Units differ: u += s"));
     /* Validating one source reports the same errors and locations. */
@@ -1517,6 +1518,9 @@ TEST_CASE(unit_mismatches_are_errors)
     REQUIRE(errors() == 3 && yyjson_get_int(result("warnings")) == 0);
     diagnostics = result("diagnostics");
     REQUIRE(yyjson_get_int(yyjson_obj_get(yyjson_arr_get(diagnostics, 0), "severity")) == 1);
+    first = yyjson_arr_get(diagnostics, 0);
+    REQUIRE(yyjson_get_int(yyjson_obj_get(first, "line")) == 3);
+    REQUIRE(yyjson_get_int(yyjson_obj_get(first, "column")) == 5);
     /* One chibi_ctl sees a unit change that leaves the layout as it was. */
     write_file("Charge.chibi", "component Charge {\n    level: 0..100 charge\n    rate: 0..10 charge\n}\n");
     write_file("request.json", "{\"contract\":1,\"operation\":\"validate_project\"}\n");

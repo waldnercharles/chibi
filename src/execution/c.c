@@ -1073,7 +1073,17 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         fprintf(out, "}\n");
     }
     if (f->runtime_map) {
-        fprintf(out, "if(!c->inspect && !c->watch && !c->trace && !c->source_pause && !c->source_capture){\n");
+        fprintf(out, "if(!c->inspect && !c->watch && !c->trace && !c->source_pause && !c->source_capture");
+        /* Keep detached debug continuations canonical, as the runtime's
+         * behavior_function_inspection_required selection does. */
+        for (int i = 0; i < acount(f->suspensions); i++) {
+            int pc = f->suspensions[i].pc;
+            behavior_function_op op = f->instructions[pc].op;
+            if (op == BF_POINT || op == BF_SOURCE_POINT) {
+                fprintf(out, " && (!c->activation || c->activation->pc!=%d)", pc + 1);
+            }
+        }
+        fprintf(out, "){\n");
         body(f, out, 'N', false);
         fprintf(out, "}\n");
     }

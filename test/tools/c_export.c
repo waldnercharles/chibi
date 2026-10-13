@@ -1,6 +1,8 @@
+#include "execution/definition.h"
 #include "execution/function_builder.h"
 #include "execution/status.h"
 #include "export_compiler.h"
+#include "language/lower.h"
 #include "support/array.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -13,16 +15,38 @@
 
 enum
 {
-    FIXTURES = 12
+    ALIAS_FIXTURES = 12,
+    FIXTURES = ALIAS_FIXTURES + 1
 };
 static behavior_function *functions[FIXTURES];
 static behavior_function_builder *builder;
 static char directory[128];
 static FILE *source;
 static void *library;
+static script_syntax *syntax;
+static script_analysis *analysis;
+static execution_module_plan *plan;
+static behavior_function_context pause_context;
+static behavior_function_activation pause_activation;
+static arena pause_storage;
+
+static void release_pause()
+{
+    behavior_function_release_host(&pause_context);
+    behavior_function_activation_free(&pause_activation);
+    arena_free(&pause_storage);
+    pause_context = (behavior_function_context){ 0 };
+}
 
 static void cleanup()
 {
+    release_pause();
+    execution_module_plan_free(plan);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    plan = NULL;
+    analysis = NULL;
+    syntax = NULL;
     if (source) {
         fclose(source);
     }
@@ -120,7 +144,76 @@ static int inspect(void *user, const behavior_function_point *point)
     (void)point;
     return 0;
 }
-TEST_CASE(generated_c_division_preserves_aliased_operands)
+
+static bool pause_fixture()
+{
+    const script_catalog catalog = { 0 };
+    const script_lower_bindings bindings = { 0 };
+    syntax = script_parse(
+        "library Scalar {\n"
+        "Eval :: pure (amount: number) -> number {\n"
+        "value: number | Cancelled = amount;\n"
+        "if value is number found { return found; }\n"
+        "return 0; } }"
+    );
+    REQUIRE(syntax && !syntax->diagnostic_count);
+    analysis = script_analyze(syntax, &catalog);
+    REQUIRE(analysis && analysis->valid);
+    plan = script_lower(analysis, &catalog, &bindings);
+    REQUIRE(plan && plan->valid);
+    for (int i = 0; i < plan->function_count; i++) {
+        behavior_function *body = plan->functions[i].body;
+        if (body && body->argument_count == 1 && body->result_count == 1) {
+            functions[ALIAS_FIXTURES] = body;
+            plan->functions[i].body = NULL;
+            break;
+        }
+    }
+    REQUIRE(functions[ALIAS_FIXTURES]);
+    behavior_function_write_c(functions[ALIAS_FIXTURES], source, "export_pause");
+    return true;
+}
+
+static int pause_line(void *, behavior_function_context *, const behavior_source_point *point)
+{
+    return point->line == 4 && point->kind == BEHAVIOR_SOURCE_STATEMENT;
+}
+
+static bool resumes_exported_pause()
+{
+    typedef int (*entry)(behavior_function_context *);
+    entry generated = (entry)dlsym(library, "export_pause");
+    REQUIRE(generated);
+    behavior_function *f = functions[ALIAS_FIXTURES];
+    const double samples[] = { 3.75, -0.0 };
+    for (int i = 0; i < 2; i++) {
+        release_pause();
+        pin_value input = { .type = PIN_F64, .d = samples[i] };
+        pin_value output = { .type = PIN_F64, .d = 99 };
+        behavior_function_activation_init(f, &pause_activation);
+        pause_context = (behavior_function_context){
+            .activation = &pause_activation,
+            .arguments = &input,
+            .argument_count = 1,
+            .results = &output,
+            .budget = 100,
+            .source_pause = pause_line,
+            .source_function = f,
+            .source_points = f->source_points,
+            .source_watches = f->source_watches,
+        };
+        behavior_function_bind_storage(&pause_context, &pause_storage);
+        REQUIRE(behavior_function_bind(f, &pause_context, NULL, 0));
+        behavior_function_prepare_host(f, &pause_context);
+        REQUIRE(generated(&pause_context) == FLOW_PAUSED_RESULT);
+        pause_context.source_pause = NULL;
+        REQUIRE(generated(&pause_context) == FLOW_OK);
+        REQUIRE(!memcmp(&output.d, &input.d, sizeof output.d));
+    }
+    return true;
+}
+
+TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations)
 {
     snprintf(directory, sizeof directory, "/tmp/chibi-c-export-XXXXXX");
     char *created = mkdtemp(directory);
@@ -128,16 +221,18 @@ TEST_CASE(generated_c_division_preserves_aliased_operands)
         directory[0] = 0;
     }
     REQUIRE(created);
-    char input[256], output[256], log[256], includes[PATH_MAX];
+    char input[256], output[256], log[256], includes[PATH_MAX], debug[PATH_MAX];
     snprintf(input, sizeof input, "%s/aliases.c", directory);
     snprintf(output, sizeof output, "%s/aliases.so", directory);
     snprintf(log, sizeof log, "%s/compiler.log", directory);
     snprintf(includes, sizeof includes, "%s/src", tool_root());
+    snprintf(debug, sizeof debug, "%s/src/execution/source_debug.c", tool_root());
     source = fopen(input, "w");
     REQUIRE(source);
-    for (int i = 0; i < FIXTURES; i++) {
+    for (int i = 0; i < ALIAS_FIXTURES; i++) {
         REQUIRE(fixture(i));
     }
+    REQUIRE(pause_fixture());
     long bytes = ftell(source);
     REQUIRE(bytes > 0 && bytes < 128 * 1024);
     int closed = fclose(source);
@@ -147,8 +242,9 @@ TEST_CASE(generated_c_division_preserves_aliased_operands)
     for (int i = 0; export_compiler[i]; i++) {
         apush(argv, export_compiler[i]);
     }
-    const char *arguments[] = { "-std=c11", "-shared", "-fPIC", "-I", includes,
-                                input,      "-o",      output,  NULL };
+    const char *arguments[] = { "-std=c11", "-shared", "-fPIC", "-I",
+                                includes,   input,     debug,   "-o",
+                                output,     NULL };
     for (int i = 0; i < (int)(sizeof arguments / sizeof *arguments); i++) {
         apush(argv, arguments[i]);
     }
@@ -160,7 +256,7 @@ TEST_CASE(generated_c_division_preserves_aliased_operands)
         fprintf(stderr, "C export load: %s\n", dlerror());
     }
     REQUIRE(library);
-    for (int i = 0; i < FIXTURES; i++) {
+    for (int i = 0; i < ALIAS_FIXTURES; i++) {
         char name[40];
         snprintf(name, sizeof name, "export_alias_%d", i);
         typedef int (*entry)(behavior_function_context *);
@@ -215,11 +311,12 @@ TEST_CASE(generated_c_division_preserves_aliased_operands)
             }
         }
     }
+    REQUIRE(resumes_exported_pause());
     return true;
 }
 void test_tool_c_export()
 {
     pu_setup(NULL, cleanup);
-    RUN_TEST_CASE(generated_c_division_preserves_aliased_operands);
+    RUN_TEST_CASE(generated_c_preserves_aliased_operands_and_debug_continuations);
     pu_clear_setup();
 }

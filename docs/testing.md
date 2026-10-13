@@ -793,12 +793,14 @@ The language follow-up admits these focused C checks under the same supervisor:
   those same C cases through the browser target's Node launcher.
 - `tool c-export-alias` executes twelve tiny generated-C I32/I64 DIV/MOD
   fixtures covering operand and result aliases, signed inputs, division by zero
-  and overflow. One compiler child builds one temporary shared library from less
+  and overflow, plus one authored union fixture for source pause, debugger detach
+  and continuation. One compiler child builds one temporary shared library from less
   than 128 KiB of generated source, using the configured compiler and C/build-type
   flags, enabled sanitizers and assertions. The existing 10-second child and shared 60-second
   deadlines apply. The existing tooling driver loads the library and compares 120
-  normal/inspection executions against the canonical VM, then removes all files.
-  This native POSIX source-build check is unavailable for Wasm, cross compilation,
+  normal/inspection executions against the canonical VM and runs two pause/resume
+  samples including negative zero, then removes all files.
+  This native POSIX source-build check requires authoring and is unavailable for Wasm, cross compilation,
   multi-configuration generators and installed-SDK builds; an explicit unavailable
   selector returns failure.
   The default tooling group retains it. No separate executable, frames or GPU work

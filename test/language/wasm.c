@@ -261,6 +261,51 @@ static bool runs_value(const behavior_function *function, int expected)
     return status == FLOW_OK && result.type == PIN_I32 && result.i == expected;
 }
 
+static int inspect_point(void *, const behavior_function_point *)
+{
+    return false;
+}
+
+TEST_CASE(wasm_inspection_entry_is_lazy_reused_and_retired_with_its_function)
+{
+    execution_wasm_jit_stats before, normal, inspected, reused, retired;
+    execution_wasm_jit_get_stats(&before);
+    scratch_function = scratch_body(1, 42);
+    REQUIRE(scratch_function && behavior_function_compile(scratch_function));
+    pin_value result = { .type = PIN_I32 };
+    scratch_context = (behavior_function_context){
+        .activation = &scratch_activation,
+        .results = &result,
+        .budget = 100,
+    };
+    behavior_function_bind_storage(&scratch_context, &scratch_storage);
+    REQUIRE(behavior_function_bind(scratch_function, &scratch_context, NULL, 0));
+    REQUIRE(behavior_function_run(scratch_function, &scratch_context, true) == FLOW_OK);
+    REQUIRE(result.i == 42);
+    execution_wasm_jit_get_stats(&normal);
+    REQUIRE(normal.compilations == before.compilations + 1);
+    REQUIRE(normal.live_entries == before.live_entries + 1);
+
+    scratch_context.inspect = inspect_point;
+    result.i = 0;
+    REQUIRE(behavior_function_run(scratch_function, &scratch_context, true) == FLOW_OK);
+    REQUIRE(result.i == 42);
+    execution_wasm_jit_get_stats(&inspected);
+    REQUIRE(inspected.compilations == normal.compilations + 1);
+    REQUIRE(inspected.live_entries == normal.live_entries + 1);
+    REQUIRE(behavior_function_run(scratch_function, &scratch_context, true) == FLOW_OK);
+    scratch_context.inspect = NULL;
+    REQUIRE(behavior_function_run(scratch_function, &scratch_context, true) == FLOW_OK);
+    execution_wasm_jit_get_stats(&reused);
+    REQUIRE(reused.compilations == inspected.compilations);
+    REQUIRE(reused.live_entries == inspected.live_entries);
+    REQUIRE(reused.compile_failures == before.compile_failures);
+    cleanup();
+    execution_wasm_jit_get_stats(&retired);
+    REQUIRE(retired.live_entries == before.live_entries);
+    return true;
+}
+
 #define LIVE_FUNCTION_COUNT 257
 TEST_CASE(wasm_live_functions_keep_their_installed_entries)
 {
@@ -421,6 +466,7 @@ void test_language_wasm()
     RUN_TEST_CASE(wasm_helper_resumes_and_budget_failure_is_reported);
     RUN_TEST_CASE(wasm_integer_operations_preserve_width_and_exact_bits);
     RUN_TEST_CASE(wasm_canonical_body_reuses_storage_after_smaller_vm_body);
+    RUN_TEST_CASE(wasm_inspection_entry_is_lazy_reused_and_retired_with_its_function);
     RUN_TEST_CASE(wasm_live_functions_keep_their_installed_entries);
     RUN_TEST_CASE(wasm_retiring_one_function_preserves_other_live_entries);
     RUN_TEST_CASE(wasm_prepared_reload_owns_its_compiled_generation);

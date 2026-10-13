@@ -710,11 +710,14 @@ activation setup. Analysis
 is bounded to 1,024 definitions/modules and 200,000 instructions; exceeding a
 budget returns conservative possible costs and an incomplete summary.
 
-Normal native and bytecode bodies omit source watch and pause operations. Native
-inspection code is compiled on first use and cached for the retained definition;
-concurrent first-use inspection can execute bytecode until compilation publishes
-the complete code and resume map. Pauses, watches, and changing inspection at a
-continuation preserve the canonical instruction locations.
+Normal native, Wasm and bytecode bodies omit source watch and pause operations.
+Native and Wasm inspection code is compiled on first use and cached for the
+retained definition. Concurrent native first-use inspection can execute bytecode
+until compilation publishes the complete code and resume map. Pauses and watches
+preserve the canonical instruction locations. Detaching inspection after a debug
+pause keeps that saved continuation canonical until its next real wait or
+completion, preserving values while temporarily forgoing optimization of that
+continuation.
 
 Normal VM and compiled bodies also remove construction, snapshots and tag/payload
 operations for nonescaping unions of plain scalars within a proven control region.

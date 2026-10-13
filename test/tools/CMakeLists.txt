@@ -101,7 +101,7 @@ add_dependencies(test_tools policy_worker)
 target_compile_features(test_tools PRIVATE c_std_11)
 target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document)
-if(UNIX AND NOT CMAKE_CROSSCOMPILING AND NOT CHIBI_INSTALLED_SDK AND
+if(TARGET Chibi::authoring AND UNIX AND NOT CMAKE_CROSSCOMPILING AND NOT CHIBI_INSTALLED_SDK AND
    NOT CMAKE_CONFIGURATION_TYPES)
     string(TOUPPER "${CMAKE_BUILD_TYPE}" export_build_type)
     separate_arguments(export_flags NATIVE_COMMAND
@@ -124,7 +124,7 @@ if(UNIX AND NOT CMAKE_CROSSCOMPILING AND NOT CHIBI_INSTALLED_SDK AND
     set_source_files_properties(c_export.c PROPERTIES
         INCLUDE_DIRECTORIES "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
     target_sources(test_tools PRIVATE c_export.c)
-    target_link_libraries(test_tools PRIVATE Chibi::execution ${CMAKE_DL_LIBS})
+    target_link_libraries(test_tools PRIVATE Chibi::authoring Chibi::execution ${CMAKE_DL_LIBS})
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_C_EXPORT=1)
 endif()
 if(TARGET Chibi::audio_runtime)

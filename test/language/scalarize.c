@@ -19,6 +19,7 @@ static arena storage;
 static script_syntax *syntax;
 static script_analysis *analysis;
 static execution_module_plan *plan;
+static bool pause_source;
 
 static void release_run()
 {
@@ -43,6 +44,7 @@ static void cleanup()
     plan = NULL;
     analysis = NULL;
     syntax = NULL;
+    pause_source = false;
 }
 
 static int emit(behavior_function_instruction i)
@@ -144,7 +146,7 @@ static bool finish()
 
 static int inspect(void *, behavior_function_context *, const behavior_source_point *)
 {
-    return 0;
+    return pause_source;
 }
 
 static int begin(pin_value *args, int count, pin_value *results, int mode)
@@ -503,6 +505,46 @@ TEST_CASE(scalar_unions_optimize_authored_local_patterns)
     return true;
 }
 
+TEST_CASE(scalar_unions_restore_payload_when_leaving_source_inspection)
+{
+    for (int extracted = 0; extracted < 2; extracted++) {
+        cleanup();
+        builder = behavior_function_builder_new();
+        pin_value input = { .type = PIN_F64 }, output = input;
+        behavior_function_builder_signature(builder, &input, 1, &output, 1, NULL, 0);
+        int object = make_union(input, argument(input, 0));
+        int payload = extracted ? extract(object, output, 0, false, 42) : -1;
+        int point = behavior_function_builder_source_point(
+            builder,
+            (behavior_source_point){ .occurrence = 1, .kind = BEHAVIOR_SOURCE_STATEMENT }
+        );
+        emit((behavior_function_instruction){ .op = BF_SOURCE_POINT, .left = point });
+        result(extracted ? payload : extract(object, output, 0, false, 42), PIN_F64, 0);
+        REQUIRE(finish());
+        REQUIRE(calls(true) == 0);
+        const double cases[] = { 3.75, -0.0 };
+        for (int backend = 0; backend < 2; backend++) {
+            for (int j = 0; j < 2; j++) {
+                input.d = cases[j];
+                pause_source = true;
+                REQUIRE(begin(&input, 1, &output, backend + 2) == FLOW_PAUSED_RESULT);
+                /* A continuation must carry its complete saved state. A fresh
+                 * activation prevents dead VM slots from masking a missing save. */
+                behavior_function_activation resumed = { 0 };
+                behavior_function_activation_init(function, &resumed);
+                behavior_function_copy_activation(function, &resumed, &activation);
+                behavior_function_activation_free(&activation);
+                activation = resumed;
+                context.source_pause = NULL;
+                pause_source = false;
+                REQUIRE(behavior_function_run(function, &context, backend) == FLOW_OK);
+                REQUIRE(!memcmp(&output.d, &input.d, sizeof output.d));
+            }
+        }
+    }
+    return true;
+}
+
 void test_language_scalarize()
 {
     pu_setup(NULL, cleanup);
@@ -514,5 +556,6 @@ void test_language_scalarize()
     RUN_TEST_CASE(scalar_unions_keep_values_used_by_a_loop);
     RUN_TEST_CASE(scalar_unions_preserve_payload_before_secondary_slot_overwrite);
     RUN_TEST_CASE(scalar_unions_optimize_authored_local_patterns);
+    RUN_TEST_CASE(scalar_unions_restore_payload_when_leaving_source_inspection);
     pu_clear_setup();
 }

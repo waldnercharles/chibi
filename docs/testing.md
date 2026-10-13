@@ -803,6 +803,26 @@ The language follow-up admits these focused C checks under the same supervisor:
   payloads and inspection remain conservative counterexamples.
 - `tool wasm-query-program`, `tool wasm-scalarize` and `tool wasm-ranges` run
   those same C cases through the browser target's Node launcher.
+- The optimizer microbenchmarks below use the existing C dispatchers, five
+  small trials and the same 60-second supervisor. Setup and correctness checks
+  stay outside timed loops; no elapsed-time threshold determines a pass.
+  `xalloc` requested bytes measure allocation traffic through that allocator,
+  not live or peak memory. Compare Release builds with identical flags and
+  retain native sanitizer and Wasm correctness coverage separately.
+  `tool language-activation-benchmark` runs three source workloads on 32 owners
+  for 100 invocations per owner per trial, on VM and the compiled backend.
+  `tool language-binding-benchmark` maintains two programs with eight owners
+  and a three-binding chain, for 12 iterations per trial, with stable and changed
+  membership. `tool language-borrow-benchmark` sums arrays of one and 128
+  elements for 32 dispatches per trial on both backends.
+  `tool language-incremental-benchmark` prepares four tiny in-memory sources
+  once initially, then five times for each of unchanged, body-edit and
+  presentation-edit modes; it creates one disposable empty source directory.
+  `tool scheduler-benchmark` compares identical registration and warm dispatch
+  of 12 systems over 128 passes per trial, plus owned-descriptor, dependency and
+  failure checks. These fixtures perform no child-process, engine-frame or GPU
+  work. The four language selectors also have `wasm-` variants using the same
+  C checks. Initial admissions establish bounded work, not measured speedups.
 - `tool c-export-alias` executes twelve tiny generated-C I32/I64 DIV/MOD
   fixtures covering operand and result aliases, signed inputs, division by zero
   and overflow, plus one authored union fixture for source pause, debugger detach

@@ -9,14 +9,14 @@
 #include <assert.h>
 #include <string.h>
 
-static ecs_world *world;
+static ecs_world *test_world;
 static player *name_player;
 static scene *name_scene;
 static arena name_storage;
 
 static void prepare_world()
 {
-    world = ecs_world_new();
+    test_world = ecs_world_new();
 }
 
 static void release_world()
@@ -30,13 +30,13 @@ static void release_world()
     }
     name_scene = NULL;
     arena_free(&name_storage);
-    ecs_world_free(world);
-    world = NULL;
+    ecs_world_free(test_world);
+    test_world = NULL;
 }
 
 static ecs_entity spawn()
 {
-    ecs_entity entity = ecs_world_create_entity(world);
+    ecs_entity entity = ecs_world_create_entity(test_world);
     assert(entity.slot);
     return entity;
 }
@@ -45,18 +45,18 @@ static ecs_entity spawn_child(ecs_entity parent, const char *name)
 {
     ecs_entity entity = spawn();
     if (parent.slot) {
-        assert(ecs_world_record_add_pair(world, entity, ECS_CHILD_OF, parent, 0) == ECS_OK);
+        assert(ecs_world_record_add_pair(test_world, entity, ECS_CHILD_OF, parent, 0) == ECS_OK);
     }
     if (name) {
-        assert(ecs_world_record_name(world, entity, name, 1) == ECS_OK);
+        assert(ecs_world_record_name(test_world, entity, name, 1) == ECS_OK);
     }
-    assert(ecs_world_apply_commands(world) == ECS_OK);
+    assert(ecs_world_apply_commands(test_world) == ECS_OK);
     return entity;
 }
 
 TEST_CASE(entity_name_snapshots_names_and_rejects_retiring_or_stale_handles)
 {
-    entities *owner = entities_new(world, NULL);
+    entities *owner = entities_new(test_world, NULL);
     arena storage = { 0 };
     behavior_function_context context = { .value_storage = &storage };
     ecs_entity entity = spawn_child((ecs_entity){ 0 }, "Panel");
@@ -65,8 +65,8 @@ TEST_CASE(entity_name_snapshots_names_and_rejects_retiring_or_stale_handles)
     REQUIRE(!ENTITY_NAME_CALL.context(&context, owner, &argument, &result));
     REQUIRE(!strcmp(result.str, "Panel"));
     const char *snapshot = result.str;
-    REQUIRE(ecs_world_record_name(world, entity, "Renamed", 0) == ECS_OK);
-    REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+    REQUIRE(ecs_world_record_name(test_world, entity, "Renamed", 0) == ECS_OK);
+    REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
     REQUIRE(!ENTITY_NAME_CALL.context(&context, owner, &argument, &result));
     REQUIRE(!strcmp(result.str, "Renamed") && !strcmp(snapshot, "Panel"));
     entities_request_destroy(owner, entity);

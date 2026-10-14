@@ -4,7 +4,61 @@ Studio source and shell assets are owned by the extracted `chibi-studio`
 repository. Paths under `src/editor/` and `projects/studio/` in this guide are
 relative to that repository. The engine supplies the shared SDK interfaces.
 
-The goal: a user authors a UI widget from start to finish inside Studio, and every part of the editor can be inspected from the editor. Behavior-node internals written in C are the only exception. The measure is how much of the editor can be shown editing itself.
+The goal: Studio is a Chibi application authored in RML, RCSS and `.chibi`, and
+every part of its editor implementation can be inspected and edited from Studio.
+Native runtime and reusable capability implementations belong in the engine.
+
+## Authored editor target
+
+The user's 2026-10-13 clarification replaces the hybrid C controller model as
+the intended end state. `chibi-studio` should contain no C/C++ editor
+implementation. RML defines component structure, RCSS defines appearance, and
+`.chibi` defines editor state, interaction, commands and workflows. The engine
+hosts the application and exposes reusable capabilities through typed bindings.
+Editor policy remains authored; moving an editor controller into the engine does
+not complete a migration.
+
+Existing Studio C/C++ is migration debt. The native kit and command adapters
+describe current behavior to preserve, rather than the default construction path
+for new features. Components should use the shared authored widgets so a person
+or agent changes the same RML, RCSS and `.chibi` sources. Changing an editor
+layout or workflow should not require compiling Studio-specific native code.
+
+### First migration: material and shader authoring
+
+The asset-authoring candidate's `studio_shader.c` is an intermediate native
+implementation, not an authored completion of this workflow. Shared RML widgets,
+UI data binding and `.chibi` behavior state already exist. Material services have
+C APIs, but their document, inspection, preview and evidence operations are not
+registered as `.chibi` capabilities yet.
+
+| Reusable capability needed | Authored ownership |
+| --- | --- |
+| Revisioned asset documents and begin/update/commit/cancel transactions | Selection, drafts, gesture boundaries and undo/redo commands |
+| Material creation, typed parameter inspection and shader sampling | New Material form, field composition, diagnostics disclosure and sample settings |
+| Typed resource inventory and validated image-reference edits | Image filtering, search, selection and texture-field presentation |
+| Owned preview resources with publication/image revisions and errors | Preview visibility, fixed time, orbit/zoom state and reset behavior |
+| Typed surface pointer/wheel and control commit/cancel events | Interaction policy and presentation feedback |
+| Bounded capture/evidence jobs with completion/error results | Export command, progress, errors and result presentation |
+
+These services should wrap the existing shared material, resource-catalog,
+shader-report, preview and evidence APIs. They should expose typed values and
+owned resource identities instead of raw C pointers or a command that runs an
+entire material panel.
+The same authoring operations must remain usable through the CLI; exercise new
+capabilities from an ordinary authored fixture as well as Studio.
+
+The first migration is complete when the material form and Properties component
+are RML/RCSS with `.chibi` behavior, the material-specific native panel/controller
+is removed, and the existing create/edit/cancel/undo/save/preview/sample/export
+checks pass through those authored controls. A static RML wrapper around a
+C-owned workflow does not meet this criterion. Preserve linked-library refresh,
+image-generation checks and frozen replay evidence during the migration.
+
+The whole-editor target additionally requires replacing the remaining native
+shell, document, graph and tool controllers, and launching the Studio project
+through a generic engine host. This document does not claim that migration is
+implemented or validated.
 
 ## References
 
@@ -68,7 +122,7 @@ Unity's UI Toolkit is the closest analog: UXML/USS map to RML/RCSS.
 
   So panels, the Scene view and page themes update without a new API. The `code_apply_live` preference chooses between live and on-save.
 - **Commands are one table.** `studio_commands.c` feeds menus, the palette, shortcuts and authored UI, where `emit('studio.<id>')` runs a command, `emit('studio.<id>', index)` runs it on a tab or an area, as VS Code's commands take arguments, and `commands.<id>` binds its state. Ids are camelCase, so both name it the same.
-- **Authored UI hosts native content through slots**, as Unity's IMGUIContainer does. The graph canvas, the viewport, the areas' editors still in the kit and the kit's own menus stay native; the Workspace's places hold each area's document, and the palette, the asset pickers, the refactor popover, the graph canvas's context menus and Properties' Node and Member tabs are authored (`Palette.rml`, `Picker.rml`, `Refactor.rml`, `GraphMenu.rml`, `Properties.rml` with `GraphField`). A choice or asset field on a graph node, in the canvas's own context, opens Studio's picker under a box (`studio_palette_open_box`). Authored menus and popovers share one stack with the kit's popups (`src/ui/popover.c`, F3). A popover marked `data-template`, as the Menu and Submenu widgets are, builds its content when it opens and removes it after its exit transition.
+- **The transitional implementation hosts native content through slots**, as Unity's IMGUIContainer does. The graph canvas, the viewport, the areas' editors still in the kit and the kit's own menus are currently native; the Workspace's places hold each area's document, and the palette, the asset pickers, the refactor popover, the graph canvas's context menus and portions of Properties' Node and Member tabs are authored (`Palette.rml`, `Picker.rml`, `Refactor.rml`, `GraphMenu.rml`, `Properties.rml` with `GraphField`). A choice or asset field on a graph node, in the canvas's own context, opens Studio's picker under a box (`studio_palette_open_box`). Authored menus and popovers share one stack with the kit's popups (`src/ui/popover.c`, F3). A popover marked `data-template`, as the Menu and Submenu widgets are, builds its content when it opens and removes it after its exit transition. These native editor controllers remain migration work under the authored target above.
 
 ## Contracts
 
@@ -174,19 +228,19 @@ Each workstream is one agent in its own worktree and branch, with one PR. Only i
 
 ## Rules for every workstream
 
-- Branch from current `main`; rebase before the PR.
-- Run the gates below. CI isn't running, so they run locally.
-  - `make build`
-  - `make test`
-  - `CHIBI_ALLOW_DESKTOP_RENDER_TESTS=1 make test-render`
-  - `make check-format`
-  - `build/chibi_ctl --project-root <root> --format` after hand-editing assets
-  - `make web`, then check it in the browser
-- Serve the extracted Studio product with `make web-serve STUDIO_SOURCE=<studio repository> WEB_PORT=<port>` and stop that server process explicitly.
-- In the hidden browser pane:
-  - run `_emscripten_set_main_loop_timing(2, 1)` first;
-  - move the pointer with `PointerEvent('pointermove')`;
-  - hold a modifier with a keydown that spans frames.
-- Build one worktree at a time where you can (`make build JOBS=4`). Each build directory takes about 2 GB.
-- Polish: follow `docs/prototypes/studio/DESIGN.md` and `docs/editor-ui-references.md`, and use the kit's primitives. Review each new surface in the web build in both themes and both densities.
-- Update `docs/editor-ui-references.md` and the status table in `docs/authoring-navigation.md` as features land.
+Follow the owning repository's `AGENTS.md` and the current
+[supervised test policy](testing.md#temporary-60-second-policy). Choose admitted
+checks for the changed contracts, keep configuration/build timing separate, and
+report quarantined coverage as unpassed. The earlier `make test-render` instruction
+is superseded by that policy.
+
+Build Studio against an installed SDK. Validate authored controls through actual
+input and the native/web builds appropriate to the change; synthetic browser DOM
+events alone do not establish user interaction. Stop task-owned preview servers
+after validation. Format hand-edited assets through `chibi_ctl --format` and keep
+extracted-file hashes current when their contents change.
+
+Follow [the visual design](prototypes/studio/DESIGN.md) and
+[the UI references](editor-ui-references.md), and reuse shared authored components
+and behaviors. Review new surfaces in the web build in both themes and densities.
+Update capability/status documentation when implementation and validation change.

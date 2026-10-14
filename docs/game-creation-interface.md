@@ -6,6 +6,12 @@ sources, report the same errors and produce comparable evidence. The useful unit
 is a complete workflow: create an asset, inspect it, change it, validate it, try it
 in a scene and explain the result.
 
+Studio itself should be an authored Chibi application: RML components, RCSS
+styles and `.chibi` editor behavior. The shared SDK supplies capabilities for
+both authored tools and CLI clients. The current native material workflow is an
+intermediate implementation; see the
+[authored editor target](studio-ui-authoring.md#authored-editor-target).
+
 This document separates the implementation in the asset-authoring candidate from
 recommendations for later work. Source references describe available contracts;
 they do not establish that a build, editor interaction or device test passed.

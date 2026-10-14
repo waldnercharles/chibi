@@ -1,5 +1,10 @@
 # Material authoring in Studio
 
+This describes the current native implementation in the asset-authoring
+candidate. Its C-driven panel does not yet meet the
+[authored editor target](studio-ui-authoring.md#authored-editor-target), which
+requires RML, RCSS and `.chibi` ownership of the editor workflow.
+
 Open a material's graph and its Node Properties. The asset name identifies the
 preview. Parameters edits the authored defaults with numeric, vector, boolean
 and color controls. Textures chooses project images. Save commits the source to

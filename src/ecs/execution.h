@@ -17,6 +17,9 @@ typedef struct ecs_execution_column
     int count;
     /* XOR of occupied slots; identifies the sole row when count is one. */
     uint32_t singleton;
+    /* Same borrowed lifetime as the registered component descriptor; resolving
+     * it through the global catalog could select a newer schema. */
+    const struct type_desc *type;
 } ecs_execution_column;
 
 typedef struct ecs_execution_view
@@ -29,6 +32,19 @@ typedef struct ecs_execution_view
     int capacity;
     /* Retains reflected string writes for the world's lifetime. */
     const char *(*intern_string)(const struct ecs_execution_view *world, const char *text);
+    uint64_t (*query_source)(
+        const struct ecs_execution_view *,
+        uint64_t owner,
+        uint64_t component,
+        uint64_t relationship,
+        int traversal
+    );
+    uint64_t (*query_target)(
+        const struct ecs_execution_view *,
+        uint64_t owner,
+        uint64_t relationship,
+        int index
+    );
 } ecs_execution_view;
 
 /* ecs_world begins with this view. Its ecs.world service pointer therefore

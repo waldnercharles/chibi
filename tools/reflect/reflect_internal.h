@@ -20,6 +20,8 @@ typedef struct
     bool color;        /* Explicit packed RGBA semantic. */
     char *unit;        /* Numeric presentation unit, or NULL. */
     double min, max;   /* Numeric presentation range; equal when unbounded. */
+    bool range_contract;
+    double range_default;
 } field_info;
 
 static inline const char *field_type_name(const field_info *field)

@@ -497,6 +497,13 @@ static uint64_t parallel_world(bool parallel, int count, int frames, double *ela
     }
     task_pool *pool = task_pool_acquire_workers(2);
     const task_system *tasks = task_pool_tasks(pool);
+#if !defined(__EMSCRIPTEN__)
+    assert(tasks->workers >= 1 && tasks->workers <= 2);
+#elif defined(CHIBI_WEB_WORKERS)
+    assert(tasks->workers >= 1 && tasks->workers <= CHIBI_WEB_WORKERS);
+#else
+    assert(tasks->workers == 1);
+#endif
     schedule *s = schedule_new(world, tasks);
     schedule_set_parallel(s, parallel);
     uint64_t transform = COMPONENT_Transform.id,

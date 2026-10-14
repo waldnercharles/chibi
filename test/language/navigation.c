@@ -188,7 +188,7 @@ static char *apply(int document)
 
 TEST_CASE(navigation_resolves_shadowed_identity)
 {
-    const char *sources[] = { "library Scope { function F(x:int)->(r:int){ if "
+    const char *sources[] = { "library Scope { F :: fn(x:int)->(r:int){ if "
                               "true { x:=2; r=x; } r=x; return(r); } }" };
     REQUIRE(project(sources, 1));
     const authoring_reference *outer = at(0, "x:int"), *inner = at(0, "x:=2");
@@ -201,7 +201,7 @@ TEST_CASE(navigation_resolves_shadowed_identity)
     REQUIRE(plan->count == 2);
     edited = apply(0);
     REQUIRE(edited);
-    REQUIRE(strstr(edited, "F(outer:int)"));
+    REQUIRE(strstr(edited, "F :: fn(outer:int)"));
     REQUIRE(strstr(edited, "x:=2; r=x;"));
     REQUIRE(strstr(edited, "r=outer;"));
     return true;
@@ -210,7 +210,7 @@ TEST_CASE(navigation_resolves_shadowed_identity)
 TEST_CASE(rename_rejects_capture_in_both_directions)
 {
     const char *sources[] = {
-        "library Capture { function F(x:int)->(r:int){ y:=2; if true { z:=3; "
+        "library Capture { F :: fn(x:int)->(r:int){ y:=2; if true { z:=3; "
         "r=x+y+z; } return(r); } }"
     };
     REQUIRE(project(sources, 1));
@@ -227,14 +227,14 @@ TEST_CASE(rename_rejects_capture_in_both_directions)
 TEST_CASE(rename_cross_file_callable_parameters_results_and_program)
 {
     const char *sources[] = {
-        "library Utils { pure function "
-        "Pair(amount:int)->(first:int,second:int){ return(amount,amount+1); } "
+        "library Utils { Pair :: pure fn"
+        "(amount:int)->(first:int,second:int){ return(amount,amount+1); } "
         "}",
         "behavior App { on Tick { Split:=99; answer:=Utils.Pair(amount:2); "
         "total:=answer.first; } }",
     };
     REQUIRE(project(sources, 2));
-    const authoring_reference *function = at(0, "Pair("),
+    const authoring_reference *function = at(0, "Pair ::"),
                               *parameter = at(0, "amount:int"),
                               *result = at(0, "first:int"),
                               *program = at(0, "Utils");
@@ -273,8 +273,8 @@ TEST_CASE(rename_cross_file_callable_parameters_results_and_program)
 TEST_CASE(rename_preserves_quoted_names_and_escapes)
 {
     const char *sources[] = {
-        "library \"Odd Library\" { pure function "
-        "\"quoted\\\" fn\"(arg:int)->(output:int){ return(arg); } }",
+        "library \"Odd Library\" { "
+        "\"quoted\\\" fn\" :: pure fn(arg:int)->(output:int){ return(arg); } }",
         "behavior App { on Tick { answer:=\"Odd Library\".\"quoted\\\" "
         "fn\"(3); "
         "} }",
@@ -309,18 +309,18 @@ TEST_CASE(navigation_tracks_native_field_access_roles)
 TEST_CASE(rename_rejects_collisions_and_invalid_project_drafts)
 {
     const char *sources[] = {
-        "library First { pure function F()->(r:int){ return(1); } pure "
-        "function G()->(r:int){ return(2); } }",
-        "library Other { pure function H()->(r:int){ return(3); } }",
+        "library First { F :: pure fn()->(r:int){ return(1); } "
+        "G :: pure fn()->(r:int){ return(2); } }",
+        "library Other { H :: pure fn()->(r:int){ return(3); } }",
     };
     REQUIRE(project(sources, 2));
-    const authoring_reference *function = at(0, "F()"), *program = at(0, "First");
+    const authoring_reference *function = at(0, "F ::"), *program = at(0, "First");
     REQUIRE(function && program);
     REQUIRE(!plan_rename(function->target, "G"));
     REQUIRE(!plan_rename(program->target, "Other"));
     const char *invalid[] = { sources[0], "behavior Broken { on Tick { missing(); } }" };
     REQUIRE(!project(invalid, 2));
-    function = at(0, "F()");
+    function = at(0, "F ::");
     REQUIRE(function);
     REQUIRE(!plan_rename(function->target, "Better"));
     REQUIRE(strstr(error, "valid project"));
@@ -371,7 +371,7 @@ static const authoring_completion *completion(const char *name)
 
 TEST_CASE(intelligence_scope_identity_and_owned_outputs)
 {
-    const char *sources[] = { "library Scope { function F(x:int)->(r:int){ if "
+    const char *sources[] = { "library Scope { F :: fn(x:int)->(r:int){ if "
                               "true { x:=2; r=x; } r=x; return(r); } }" };
     REQUIRE(project(sources, 1));
     const char *text = documents[0].syntax->text;
@@ -396,7 +396,7 @@ TEST_CASE(intelligence_scope_identity_and_owned_outputs)
 TEST_CASE(intelligence_signatures_and_semantic_highlights)
 {
     const char *sources[] = {
-        "library Math { function Twice(input:int)->(answer:int) "
+        "library Math { Twice :: fn(input:int)->(answer:int) "
         "{ answer=input*2; return(answer); } }",
         "behavior App { score:=0; on Tick { score=Math.Twice(3); } }"
     };
@@ -424,8 +424,8 @@ TEST_CASE(intelligence_signatures_and_semantic_highlights)
 TEST_CASE(library_signatures_infer_results_from_returns)
 {
     const char *sources[] = {
-        "library Math { function Twice(input:int) { return input * 2 }"
-        " function Both(input:int) { return(Low: Twice(input), High: input * "
+        "library Math { Twice :: fn(input:int) { return input * 2 }"
+        " Both :: fn(input:int) { return(Low: Twice(input), High: input * "
         "4) } }",
         "behavior App { score:=0; on Tick { score=Math.Twice(3) + "
         "Math.Both(1).High; } }"
@@ -437,11 +437,38 @@ TEST_CASE(library_signatures_infer_results_from_returns)
     REQUIRE(edited && !strcmp(edited, "Math.Twice(input: int) -> (Result: int)"));
     /* A's Math.Twice is the library's, not the behavior's Twice, which calls A. */
     const char *qualified[] = {
-        "library Math { function Twice(input:int) { return input * 2 } }",
-        "behavior App { score:=0; function A(x:int) { return Math.Twice(x) }"
-        " function Twice(x:int) { return A(x) } on Tick { score=Twice(3); } }"
+        "library Math { Twice :: fn(input:int) { return input * 2 } }",
+        "behavior App { score:=0; A :: fn(x:int) { return Math.Twice(x) }"
+        " Twice :: fn(x:int) { return A(x) } on Tick { score=Twice(3); } }"
     };
     REQUIRE(project(qualified, 2));
+    return true;
+}
+
+TEST_CASE(rename_implicit_results_cannot_edit_return_type_or_expression)
+{
+    const char *sources[] = {
+        "library Results { Explicit :: () -> number { return 1; } "
+        "Inferred :: () { return 2; } }"
+    };
+    REQUIRE(project(sources, 1));
+    const script_analysis *analysis = documents[0].analysis;
+    int checked = 0;
+    for (int i = 0; i < analysis->function_count; i++) {
+        const script_function *function = &analysis->functions[i];
+        if (function->kind != SCRIPT_FUNCTION_AUTHORED || function->symbol < 0) {
+            continue;
+        }
+        REQUIRE(function->result_count == 1);
+        const script_symbol *result = &analysis->symbols[function->results[0]];
+        authoring_target target = { .kind = AUTHORING_SYMBOL,
+                                    .document = 0,
+                                    .id = result->id };
+        REQUIRE(!authoring_navigation_definition(navigation, target));
+        REQUIRE(!plan_rename(target, "Changed"));
+        checked++;
+    }
+    REQUIRE(checked == 2);
     return true;
 }
 
@@ -532,8 +559,8 @@ TEST_CASE(intelligence_ranks_typed_visible_symbols_and_recovers_library_members)
         REQUIRE(authoring_target_equal(score->target, definition->target));
     }
     const char *qualified[] = {
-        "library Shared { function "
-        "Multiply(x:int)->(answer:int){return(x);} }",
+        "library Shared { Multiply :: fn"
+        "(x:int)->(answer:int){return(x);} }",
         "behavior Names { on Tick { chosen:=Shared.Mul; } }"
     };
     REQUIRE(!project(qualified, 2));
@@ -544,7 +571,7 @@ TEST_CASE(intelligence_ranks_typed_visible_symbols_and_recovers_library_members)
     const authoring_completion *multiply = completion("Multiply");
     REQUIRE(multiply && !strcmp(multiply->insert, "Multiply"));
     REQUIRE(multiply->target.kind == AUTHORING_CALLABLE);
-    const authoring_reference *definition = at(0, "Multiply(");
+    const authoring_reference *definition = at(0, "Multiply ::");
     REQUIRE(definition && authoring_target_equal(multiply->target, definition->target));
     REQUIRE(
         completions.count == 1 && completions.range.start == cursor - 3 &&
@@ -929,8 +956,8 @@ static bool names_prototype(int document, const char *token, uint64_t id)
 TEST_CASE(navigation_follows_prototype_names_into_spawn)
 {
     const char *sources[] = {
-        "library Effects { function Launch(kind:name=\"\"){ Spawn(kind); } "
-        "function Burst(kind:name=\"Ember\"){ Launch(kind:kind); } }",
+        "library Effects { Launch :: fn(kind:name=\"\"){ Spawn(kind); } "
+        "Burst :: fn(kind:name=\"Ember\"){ Launch(kind:kind); } }",
         "behavior App { label:=\"Spark\"; aim:name=\"Spark\"; on Tick { "
         "pick:=\"Spark\"; Spawn(pick); aim=\"Ember\"; Spawn(aim); "
         "Effects.Burst(kind:\"Spark\"); miss:=\"Nothing\"; "
@@ -960,7 +987,7 @@ TEST_CASE(navigation_follows_prototype_names_into_spawn)
 TEST_CASE(prototype_rename_skips_omitted_defaults)
 {
     const char *sources[] = {
-        "library Effects { function Burst(kind:name=\"Spark\"){ Spawn(kind); } "
+        "library Effects { Burst :: fn(kind:name=\"Spark\"){ Spawn(kind); } "
         "}",
         "behavior App { on Tick { Effects.Burst(); } }",
     };
@@ -1333,6 +1360,235 @@ TEST_CASE(rename_scene_global_updates_all_binders_and_qualified_uses)
     return true;
 }
 
+TEST_CASE(catalog_publishes_union_payloads_from_later_libraries)
+{
+    base_catalog();
+    char root[] = "/tmp/chibi-union-catalog-XXXXXX", first[256], second[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(first, sizeof first, "%s/libraries/First.chibi", root);
+    snprintf(second, sizeof second, "%s/libraries/Second.chibi", root);
+    const source_catalog_edit edits[] = {
+        { .path = first,
+          .text = "library First { Envelope :: union { Some(value: "
+                  "Second.Payload) | Empty }; "
+                  "Pass :: (value: Envelope) -> Envelope { return value; } }" },
+        { .path = second,
+          .text = "library Second { Payload :: union { Ready(label: string) | "
+                  "\"missing\" }; "
+                  "Identity :: (value: int | Cancelled) -> int | Cancelled { "
+                  "return value; } }" },
+    };
+    input_catalog = source_catalog_replaced(root, &catalog, edits, 2);
+    rmdir(root);
+    for (int i = 0; i < source_catalog_diagnostic_count(input_catalog); i++) {
+        fprintf(
+            stderr,
+            "union catalog: %s\n",
+            source_catalog_diagnostic_at(input_catalog, i)->message
+        );
+    }
+    REQUIRE(!source_catalog_diagnostic_count(input_catalog));
+    const script_catalog *view = source_catalog_view(input_catalog);
+    int envelope_index = script_catalog_find_type(view, "First.Envelope");
+    int payload_index = script_catalog_find_type(view, "Second.Payload");
+    REQUIRE(envelope_index >= 0 && payload_index >= 0);
+    const script_catalog_type *envelope = &view->types[envelope_index];
+    const script_catalog_type *payload = &view->types[payload_index];
+    REQUIRE(envelope->variant_count == 2 && payload->variant_count == 2);
+    REQUIRE(!strcmp(envelope->source_name, "Envelope"));
+    REQUIRE(!strcmp(envelope->variants[0].name, "Some"));
+    REQUIRE(envelope->variants[0].field_count == 1);
+    REQUIRE(envelope->variants[0].fields[0].type.nominal == payload->id);
+    REQUIRE(!strcmp(payload->variants[0].fields[0].name, "label"));
+    REQUIRE(payload->variants[0].fields[0].type.storage == PIN_STR);
+    REQUIRE(payload->variants[1].is_literal);
+    REQUIRE(!strcmp(payload->variants[1].literal.str, "missing"));
+    int pass = script_catalog_find_capability(view, "First.Pass", SCRIPT_CAPABILITY_FUNCTION);
+    REQUIRE(pass >= 0);
+    REQUIRE(view->capabilities[pass].parameter_count == 1);
+    REQUIRE(view->capabilities[pass].result_count == 1);
+    REQUIRE(view->capabilities[pass].parameters[0].type.nominal == envelope->id);
+    REQUIRE(view->capabilities[pass].results[0].type.nominal == envelope->id);
+    bool internal = false;
+    for (int i = 0; i < view->type_count; i++) {
+        const script_catalog_type *type = &view->types[i];
+        if (!type->internal) {
+            continue;
+        }
+        internal = true;
+        REQUIRE(!type->source_name);
+        REQUIRE(strncmp(type->name, "First.", 6) && strncmp(type->name, "Second.", 7));
+        REQUIRE(script_catalog_type_by_id(view, type->id) == type);
+        REQUIRE(script_catalog_find_type(view, type->name) < 0);
+    }
+    REQUIRE(internal);
+    return true;
+}
+
+TEST_CASE(catalog_preserves_signature_only_union_and_task_exports)
+{
+    base_catalog();
+    char root[] = "/tmp/chibi-signature-catalog-XXXXXX";
+    char library[256], behavior[256], system[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(library, sizeof library, "%s/libraries/Values.chibi", root);
+    snprintf(behavior, sizeof behavior, "%s/behaviors/Owner.chibi", root);
+    snprintf(system, sizeof system, "%s/systems/Active.chibi", root);
+    const source_catalog_edit edits[] = {
+        { .path = library,
+          .text = "library Values { "
+                  "Identity :: (value: int | Cancelled) -> int | Cancelled { "
+                  "return value; } "
+                  "Keep :: (value: task<int>) -> task<int> { return value; } "
+                  "Twice :: (value: int) -> int { return value * 2; } }" },
+        { .path = behavior, .text = "// Library types remain exported.\nbehavior Owner { score: int = 1; }" },
+        { .path = system, .text = "system Active { count: int = 0; }" },
+    };
+    input_catalog = source_catalog_replaced(root, &catalog, edits, 3);
+    REQUIRE(!rmdir(root));
+    REQUIRE(!source_catalog_diagnostic_count(input_catalog));
+    REQUIRE(source_catalog_source_count(input_catalog) == 3);
+    const script_catalog *view = source_catalog_view(input_catalog);
+    int identity = script_catalog_find_capability(view, "Values.Identity", SCRIPT_CAPABILITY_FUNCTION);
+    int keep = script_catalog_find_capability(view, "Values.Keep", SCRIPT_CAPABILITY_FUNCTION);
+    int twice = script_catalog_find_capability(view, "Values.Twice", SCRIPT_CAPABILITY_FUNCTION);
+    REQUIRE(identity >= 0 && keep >= 0 && twice >= 0);
+    const script_catalog_capability *functions[] = { &view->capabilities[identity],
+                                                     &view->capabilities[keep] };
+    for (int i = 0; i < 2; i++) {
+        REQUIRE(functions[i]->parameter_count == 1 && functions[i]->result_count == 1);
+        script_type parameter = functions[i]->parameters[0].type;
+        REQUIRE(script_type_equal(parameter, functions[i]->results[0].type));
+        const script_catalog_type *type = script_catalog_type_by_id(
+            view,
+            i ? parameter.parameter : parameter.nominal
+        );
+        REQUIRE(type && type->internal);
+        if (i) {
+            REQUIRE(parameter.flags & SCRIPT_TYPE_TASK);
+            REQUIRE(type->type.storage == PIN_I32);
+        } else {
+            REQUIRE(parameter.flags & SCRIPT_TYPE_UNION);
+            REQUIRE(type->variant_count == 2);
+        }
+    }
+    return true;
+}
+
+TEST_CASE(catalog_preserves_invalid_behavior_diagnostics)
+{
+    base_catalog();
+    char root[] = "/tmp/chibi-invalid-catalog-XXXXXX", invalid[256], incomplete[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(invalid, sizeof invalid, "%s/behaviors/Invalid.chibi", root);
+    snprintf(incomplete, sizeof incomplete, "%s/behaviors/Incomplete.chibi", root);
+    const source_catalog_edit edits[] = {
+        { .path = invalid, .text = "behavior Invalid { value: Missing; }" },
+        { .path = incomplete, .text = "behavior Incomplete { value: int = 1;" },
+    };
+    input_catalog = source_catalog_replaced(root, &catalog, edits, 2);
+    REQUIRE(!rmdir(root));
+    bool invalid_reported = false, incomplete_reported = false, recovered = false;
+    for (int i = 0; i < source_catalog_diagnostic_count(input_catalog); i++) {
+        const source_catalog_diagnostic *diagnostic = source_catalog_diagnostic_at(input_catalog, i);
+        invalid_reported |= !strcmp(diagnostic->path, invalid) &&
+                            !strcmp(diagnostic->message, "Unknown type 'Missing'");
+        incomplete_reported |= !strcmp(diagnostic->path, incomplete);
+    }
+    for (int i = 0; i < source_catalog_source_count(input_catalog); i++) {
+        const source_catalog_source *source = source_catalog_source_at(input_catalog, i);
+        if (strcmp(source->path, incomplete)) {
+            continue;
+        }
+        REQUIRE(source->syntax->diagnostic_count && !source->declarations->valid);
+        for (int j = 0; j < source->declarations->symbol_count; j++) {
+            recovered |= !strcmp(source->declarations->symbols[j].name, "value");
+        }
+    }
+    REQUIRE(invalid_reported && incomplete_reported && recovered);
+    return true;
+}
+
+TEST_CASE(catalog_owns_union_variant_names_fields_and_literals)
+{
+    base_catalog();
+    char name[] = "Decision", variant[] = "Ready", field[] = "payload";
+    char unit[] = "seconds", read_key[] = "read", literal[] = "done";
+    script_catalog_field payload = { .name = field,
+                                     .unit = unit,
+                                     .read_key = read_key,
+                                     .type = { .storage = PIN_STR } };
+    script_catalog_variant variants[] = {
+        { .name = variant, .tag = 901, .tagged = true, .fields = &payload, .field_count = 1 },
+        { .name = literal,
+          .tag = 902,
+          .is_literal = true,
+          .literal = { .type = PIN_STR, .str = literal } },
+    };
+    script_catalog_type type = {
+        .id = 900,
+        .name = name,
+        .source_name = name,
+        .type = { .storage = PIN_UNION, .nominal = 900, .flags = SCRIPT_TYPE_UNION },
+        .variants = variants,
+        .variant_count = 2,
+        .size = sizeof(void *)
+    };
+    script_catalog native = { .types = &type, .type_count = 1 };
+    char root[] = "/tmp/chibi-union-snapshot-XXXXXX";
+    REQUIRE(mkdtemp(root));
+    input_catalog = source_catalog_new(root, &native);
+    rmdir(root);
+    REQUIRE(!source_catalog_diagnostic_count(input_catalog));
+    script_catalog_parameter result = { .type = type.type };
+    script_catalog_capability callable = { .kind = SCRIPT_CAPABILITY_FUNCTION,
+                                           .results = &result,
+                                           .result_count = 1 };
+    uint64_t abi = script_catalog_capability_abi(&native, &callable);
+    payload.type.storage = PIN_I32;
+    REQUIRE(script_catalog_capability_abi(&native, &callable) != abi);
+    payload.type.storage = PIN_STR;
+    name[0] = variant[0] = field[0] = unit[0] = read_key[0] = literal[0] = '!';
+    variants[0].field_count = 0;
+    payload.type.storage = PIN_I32;
+    const script_catalog_type *owned = &source_catalog_view(input_catalog)->types[0];
+    REQUIRE(!strcmp(owned->name, "Decision") && !strcmp(owned->source_name, "Decision"));
+    REQUIRE(owned->variant_count == 2 && owned->variants[0].field_count == 1);
+    REQUIRE(!strcmp(owned->variants[0].name, "Ready"));
+    REQUIRE(!strcmp(owned->variants[0].fields[0].name, "payload"));
+    REQUIRE(!strcmp(owned->variants[0].fields[0].unit, "seconds"));
+    REQUIRE(!strcmp(owned->variants[0].fields[0].read_key, "read"));
+    REQUIRE(owned->variants[0].fields[0].type.storage == PIN_STR);
+    REQUIRE(!strcmp(owned->variants[1].name, "done"));
+    REQUIRE(!strcmp(owned->variants[1].literal.str, "done"));
+    REQUIRE(script_catalog_capability_abi(source_catalog_view(input_catalog), &callable) == abi);
+    return true;
+}
+
+TEST_CASE(catalog_rejects_duplicate_exported_union_names)
+{
+    base_catalog();
+    char root[] = "/tmp/chibi-union-duplicate-XXXXXX", first[256], second[256];
+    REQUIRE(mkdtemp(root));
+    snprintf(first, sizeof first, "%s/libraries/First.chibi", root);
+    snprintf(second, sizeof second, "%s/libraries/Second.chibi", root);
+    const source_catalog_edit edits[] = {
+        { .path = first, .text = "library Same { Choice :: union { Left }; }" },
+        { .path = second, .text = "library Same { Choice :: union { Right }; }" },
+    };
+    input_catalog = source_catalog_replaced(root, &catalog, edits, 2);
+    rmdir(root);
+    bool duplicate = false;
+    for (int i = 0; i < source_catalog_diagnostic_count(input_catalog); i++) {
+        duplicate |= strstr(
+                         source_catalog_diagnostic_at(input_catalog, i)->message,
+                         "Duplicate exported type name 'Same.Choice'"
+                     ) != NULL;
+    }
+    REQUIRE(duplicate);
+    return true;
+}
+
 void test_language_navigation()
 {
     pu_setup(NULL, cleanup);
@@ -1347,6 +1603,7 @@ void test_language_navigation()
     RUN_TEST_CASE(intelligence_scope_identity_and_owned_outputs);
     RUN_TEST_CASE(intelligence_signatures_and_semantic_highlights);
     RUN_TEST_CASE(library_signatures_infer_results_from_returns);
+    RUN_TEST_CASE(rename_implicit_results_cannot_edit_return_type_or_expression);
     RUN_TEST_CASE(intelligence_recovers_reflected_members_and_rejects_comments);
     RUN_TEST_CASE(intelligence_ranks_typed_visible_symbols_and_recovers_library_members);
     RUN_TEST_CASE(intelligence_prototype_arguments_use_declared_reference_context);
@@ -1359,5 +1616,10 @@ void test_language_navigation()
     RUN_TEST_CASE(rename_input_action_edits_the_input_map_and_scripts);
     RUN_TEST_CASE(navigation_connects_scene_globals_and_completes_typed_bindings);
     RUN_TEST_CASE(rename_scene_global_updates_all_binders_and_qualified_uses);
+    RUN_TEST_CASE(catalog_publishes_union_payloads_from_later_libraries);
+    RUN_TEST_CASE(catalog_preserves_signature_only_union_and_task_exports);
+    RUN_TEST_CASE(catalog_preserves_invalid_behavior_diagnostics);
+    RUN_TEST_CASE(catalog_owns_union_variant_names_fields_and_literals);
+    RUN_TEST_CASE(catalog_rejects_duplicate_exported_union_names);
     pu_setup(NULL, NULL);
 }

@@ -67,4 +67,9 @@ char *chibi_migrate_component(const char *kdl, char *error, size_t error_size);
  * or KDL parsing fails (with error set). */
 char *chibi_migrate_prefixes(const char *text, bool source, char *error, size_t error_size);
 
+/* Version 24 replaces function declarations and match statements with :: and
+ * switch. Leaves comments and names intact; *migrated stays NULL when
+ * unchanged. Returns 0 on success or -1 with error set for invalid source. */
+int chibi_migrate_declarations(const char *source, char **migrated, char *error, size_t error_size);
+
 #endif

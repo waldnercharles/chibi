@@ -49,7 +49,7 @@ static bool same_component(const ecs_component_desc *a, const ecs_component_desc
     return a->id == b->id && a->element_size == b->element_size &&
            same_name(a->key, b->key) && same_name(a->name, b->name) &&
            a->index == b->index &&
-           ecs_layout_hash(a->type) == ecs_layout_hash(b->type);
+           (a->type == b->type || ecs_layout_hash(a->type) == ecs_layout_hash(b->type));
 }
 typedef struct
 {
@@ -148,6 +148,10 @@ scene *scene_prepare(const scene_spec *spec, char *error, size_t size)
     scene->spec.objects = objects;
     int *parents = arena_alloc(&scene->storage, (size_t)spec->object_count * sizeof *parents);
     scene->spec.parents = parents;
+    /* Repeated rows often share a type. Keep this memo within preparation:
+     * a later call may resolve its nested types through a different catalog. */
+    const type_desc *checked_type = NULL;
+    uint64_t checked_layout = 0;
     for (int i = 0; i < spec->object_count; i++) {
         const scene_object *input = &spec->objects[i];
         parents[i] = spec->parents ? spec->parents[i] : -1;
@@ -188,9 +192,15 @@ scene *scene_prepare(const scene_spec *spec, char *error, size_t size)
                 fail(error, size, "prepared scene component is derived, not authored");
                 goto failed;
             }
-            if (desc->layout_hash && desc->layout_hash != ecs_layout_hash(desc->type)) {
-                fail(error, size, "prepared scene component layout hash differs");
-                goto failed;
+            if (desc->layout_hash) {
+                if (checked_type != desc->type) {
+                    checked_type = desc->type;
+                    checked_layout = ecs_layout_hash(desc->type);
+                }
+                if (desc->layout_hash != checked_layout) {
+                    fail(error, size, "prepared scene component layout hash differs");
+                    goto failed;
+                }
             }
             ecs_component_desc *copy = arena_alloc(&scene->storage, sizeof *copy);
             *copy = *desc;
@@ -203,6 +213,7 @@ scene *scene_prepare(const scene_spec *spec, char *error, size_t size)
                 fail(error, size, "prepared scene component payload cannot be snapshotted");
                 goto failed;
             }
+            type_validate_ranges(desc->type, data);
             components[j] = (scene_component){ copy, data };
             apush(rows, ((component_row){ copy, i }));
         }

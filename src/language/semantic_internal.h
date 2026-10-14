@@ -42,11 +42,16 @@ typedef struct
 {
     int symbol;
     bool present;
+    script_type type;
+    bool typed;
+    unsigned mutations;
 } narrowing;
 typedef struct
 {
     const script_syntax *syntax;
     const script_catalog *catalog;
+    script_catalog catalog_view;
+    script_catalog_type *catalog_types;
     script_analysis *out;
     initializer *initializers;
     function_body *bodies;
@@ -80,6 +85,8 @@ const script_expression *script_analyzer_result_source(const analyzer *, int exp
 void script_analyzer_require_values(analyzer *, TSNode, int target, int value);
 script_type script_analyzer_type_text(analyzer *a, TSNode node, const char *source);
 script_type script_analyzer_type_node(analyzer *a, TSNode node);
+script_type script_analyzer_signature_type(analyzer *, TSNode, char **unit);
+void script_analyzer_signature_unit(analyzer *, TSNode, const char *expected, const char *actual);
 int script_analyzer_expr_add(analyzer *a, script_expression expression);
 script_type script_analyzer_expr_type(const analyzer *a, int expression);
 unsigned script_analyzer_expr_effects(const analyzer *a, int expression);
@@ -106,6 +113,7 @@ script_type script_analyzer_arithmetic_type(script_type left, script_type right)
 int script_analyzer_expression_inner(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_expression(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_statement_add(analyzer *a, script_statement statement);
+void script_analyzer_union_results(analyzer *a, int function, TSNode body);
 void script_analyzer_narrow_condition(analyzer *a, int expression_index, bool truth);
 void script_analyzer_condition_type(analyzer *a, TSNode node, int value);
 bool script_analyzer_function_waits(const analyzer *a, int function);
@@ -114,6 +122,7 @@ int script_analyzer_statement_inner(analyzer *a, TSNode node);
 int script_analyzer_statement(analyzer *a, TSNode node);
 bool script_analyzer_token_present(const analyzer *a, TSNode node, const char *word);
 void script_analyzer_declare_value(analyzer *a, TSNode node);
+void script_analyzer_declare_constant(analyzer *a, TSNode node);
 int script_analyzer_function_new(analyzer *a, TSNode node, script_function_kind kind, int symbol);
 void script_analyzer_parameters(analyzer *a, TSNode node, int function_index, bool results);
 void script_analyzer_declare_function(analyzer *a, TSNode node);
@@ -133,6 +142,7 @@ void script_analyzer_task_hints(analyzer *a, TSNode node);
 void script_analyzer_infer_task(analyzer *a, int symbol, script_type value);
 unsigned script_analyzer_statement_effects(script_analysis *out, script_statement *statement);
 void script_analyzer_finish_effects(analyzer *a);
+uint64_t script_analyzer_component_target(const script_analysis *, int);
 void script_analyzer_finish_boxes(analyzer *a);
 bool script_analyzer_binding_depends(const script_binding *reader, const script_binding *writer);
 void script_analyzer_finish_bindings(analyzer *a);
@@ -143,4 +153,13 @@ void script_analyzer_host_declarations(analyzer *a, TSNode root);
 bool script_analyzer_resolve_operator(analyzer *, TSNode, TSNode, script_expression *);
 bool script_analyzer_numeric_aggregate(const script_catalog *, script_type, int);
 void script_analyzer_units(analyzer *a);
+void script_analyzer_union_declarations(analyzer *, TSNode);
+script_type script_analyzer_union_type(analyzer *, TSNode, const script_type *, int);
+script_type script_analyzer_await_type(analyzer *, TSNode, script_type);
+script_type script_analyzer_task_type(analyzer *, script_type, uint64_t);
+int script_analyzer_union_constructor(analyzer *, TSNode);
+int script_analyzer_pattern_expression(analyzer *, TSNode);
+int script_analyzer_pattern(analyzer *, TSNode, int);
+script_type script_analyzer_narrowed_type(const analyzer *, int, script_type);
+void script_analyzer_invalidate_narrowing(analyzer *, int);
 #endif

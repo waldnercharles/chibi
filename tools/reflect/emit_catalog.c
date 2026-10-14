@@ -446,10 +446,14 @@ void emit_native_catalog(FILE *out, const collect_ctx *ctx)
             type(out, field->pin, field_type_name(field), 0);
             fprintf(
                 out,
-                ", .offset = offsetof(%s, %s), .writable = %s },\n",
+                ", .offset = offsetof(%s, %s), .writable = %s, .range_contract "
+                "= %s, .min = %.17g, .max = %.17g },\n",
                 s->name,
                 field->name,
-                s->derived_from ? "false" : "true"
+                s->derived_from ? "false" : "true",
+                field->range_contract ? "true" : "false",
+                field->min,
+                field->max
             );
         }
         if (!acount(s->fields)) {

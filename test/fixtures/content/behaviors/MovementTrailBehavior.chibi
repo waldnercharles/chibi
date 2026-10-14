@@ -7,7 +7,7 @@ behavior "MovementTrailBehavior" {
             await "Emit Movement Trail"(event.Direction)
         }
     }
-    function "Emit Movement Trail"(Direction: struct<"CF_V2"> = null) {
+    "Emit Movement Trail" :: fn(Direction: struct<"CF_V2"> = null) {
         depth_limit 32
         after entry {
             state."Particle Carry" = state."Particle Carry" + "Emission Budget"(delta_time())
@@ -18,10 +18,10 @@ behavior "MovementTrailBehavior" {
             return
         }
     }
-    pure function "Emission Budget"<T0: float, T1: float>(dt: T0 = 0.0) -> (Result: T1 = 0.0) {
+    "Emission Budget" :: pure fn<T0: float, T1: float>(dt: T0 = 0.0) -> (Result: T1 = 0.0) {
         return clamp(entry, real(0.0), real(0.10000000149011612)) * real(64.0)
     }
-    pure function "Is Stationary"(Direction: struct<"CF_V2"> = null) -> (Stationary: bool = false) {
+    "Is Stationary" :: pure fn(Direction: struct<"CF_V2"> = null) -> (Stationary: bool = false) {
         depth_limit 32
         return 0.0 >= entry.Direction.x * entry.Direction.x + entry.Direction.y * entry.Direction.y
     }

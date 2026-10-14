@@ -149,7 +149,7 @@ void script_analyzer_recovery_restore(script_analysis *out, const script_syntax 
     }
     out->diagnostic_count = acount(out->diagnostics);
     out->valid = false;
-    /* Only a valid program's units are checked. */
+    /* Recovered drafts do not publish advisory diagnostics. */
     asetlen(out->warnings, 0);
     out->warning_count = 0;
 }

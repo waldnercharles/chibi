@@ -47,6 +47,24 @@ TEST_CASE(source_format_block_layout)
     );
     return true;
 }
+TEST_CASE(source_format_reductions)
+{
+    REQUIRE(format(
+        "system Damage(health:Health){reduce health.damage+=2;"
+        "reduce min (health.damage,3);reduce max(health.damage,4);"
+        "reduce unordered health.damage+=5; }"
+    ));
+    REQUIRE(!strcmp(
+        text,
+        "system Damage(health: Health) {\n"
+        "    reduce health.damage += 2;\n"
+        "    reduce min(health.damage, 3);\n"
+        "    reduce max(health.damage, 4);\n"
+        "    reduce unordered health.damage += 5;\n"
+        "}\n"
+    ));
+    return true;
+}
 
 TEST_CASE(source_format_component_measures)
 {
@@ -68,6 +86,21 @@ TEST_CASE(source_format_component_measures)
     return true;
 }
 
+TEST_CASE(source_format_measured_signatures)
+{
+    REQUIRE(format(
+        "library Measures{Travel::(speed:number u / s,elapsed:s)->u{return "
+        "speed*elapsed;}"
+        "Borrow::(value:ref float charge)->ref float charge{return value;}}"
+    ));
+    REQUIRE(strstr(text, "speed: number u/s"));
+    REQUIRE(strstr(text, "elapsed: s"));
+    REQUIRE(strstr(text, "-> u"));
+    REQUIRE(strstr(text, "value: ref float charge"));
+    REQUIRE(strstr(text, "-> ref float charge"));
+    return true;
+}
+
 TEST_CASE(source_format_preserves_comments_and_literals)
 {
     const char *input = "// module comment\nbehavior \"quoted name\" { value "
@@ -86,7 +119,7 @@ TEST_CASE(source_format_preserves_comments_and_literals)
 TEST_CASE(source_format_preserves_expression_structure)
 {
     REQUIRE(format(
-        "library Math{pure function Compute(x:int)->(r:int){\n"
+        "library Math{Compute :: pure fn(x:int)->(r:int){\n"
         "a:={left:1,right:[2,3]};\n"
         "r=x+\n2*3; if r>0 {return(r);}else{return(-x);}\n"
         "} macro Step()->(){entry Again{} exit Done;} }"
@@ -105,13 +138,57 @@ TEST_CASE(source_format_system_types_and_control_flow)
     REQUIRE(format(
         "system Move(Position p) without Disabled{query p;\n"
         "on Tick(dt:float){for(i in 0..3){p.x+=cast<float>(i);}\n"
-        "while p.x>0{p.x-=1;} match enum(p.mode){case 1{continue;} "
-        "default{break;}}}\n"
-        "function F(x:array<int>)->(r:int){return(g<int>(x[0]));}}"
+        "while p.x>0{p.x-=1;} switch (p.mode){case 1: {continue;} "
+        "case: {break;}}}\n"
+        "F :: fn(x:array<int>)->(r:int){return(g<int>(x[0]));}}"
     ));
     REQUIRE(strstr(text, "array<int>"));
     REQUIRE(strstr(text, "g<int>(x[0])"));
     REQUIRE(strstr(text, "cast<float>(i)"));
+    return true;
+}
+
+TEST_CASE(source_format_switch_arm_indentation)
+{
+    REQUIRE(format(
+        "library Damage{Base::2;DamageFor::(level:int)->number{"
+        "switch level{case 1:consume(Base);consume(3);case 2:{consume(4);}"
+        "case:consume(5);}}}"
+    ));
+    REQUIRE(strstr(text, "DamageFor :: (level: int) -> number {"));
+    REQUIRE(strstr(text, "case 1:\n                consume(Base);\n                consume(3);"));
+    REQUIRE(strstr(text, "            case 2: {\n                consume(4);"));
+    REQUIRE(strstr(text, "            case:\n                consume(5);"));
+    return true;
+}
+
+TEST_CASE(source_format_query_header_words)
+{
+    REQUIRE(format(
+        "system Move query position:Transform,velocity:Velocity? "
+        "join aim:Targets.Transform? where not Disabled and "
+        "(Targets.Active or ancestor(ChildOf).Active) and has(Targets)"
+        "{on Tick{position.x+=1;}}"
+    ));
+    REQUIRE(
+        strstr(text, "where not Disabled and (Targets.Active or ancestor(ChildOf).Active) and has(Targets)")
+    );
+    REQUIRE(strstr(text, "velocity: Velocity?"));
+    REQUIRE(strstr(text, "join aim: Targets.Transform?"));
+    return true;
+}
+
+TEST_CASE(source_format_query_generators_and_value_filters)
+{
+    REQUIRE(format(
+        "system Follow query p:Position join target in self.Targets "
+        "join next in target.Targets join aim:Position? from next "
+        "where aim and aim.x>p.x and changed(aim){p.x=aim.x;}"
+    ));
+    REQUIRE(strstr(text, "join target in self.Targets"));
+    REQUIRE(strstr(text, "join next in target.Targets"));
+    REQUIRE(strstr(text, "join aim: Position? from next"));
+    REQUIRE(strstr(text, "where aim and aim.x > p.x and changed(aim)"));
     return true;
 }
 
@@ -271,14 +348,14 @@ TEST_CASE(source_minimize_drops_redundant_text)
 {
     REQUIRE(minimize(
         "library Demo {\n"
-        "    function Scale(a: float = 0.0, b: float = 2.0) -> (r: float = "
+        "    Scale :: fn(a: float = 0.0, b: float = 2.0) -> (r: float = "
         "0.0) {\n"
         "        r = a * b;\n"
         "    }\n"
-        "    function Twice(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "    Twice :: fn(a: float = 0.0) -> (r: float = 0.0) {\n"
         "        return(a * 2.0);\n"
         "    }\n"
-        "    function Use() -> () {\n"
+        "    Use :: fn() -> () {\n"
         "        x: float = Scale(a: 1.0, b: 2.0);\n"
         "        y: float = Scale(b: 3.0);\n"
         "        if (x > 0) {\n"
@@ -289,14 +366,14 @@ TEST_CASE(source_minimize_drops_redundant_text)
         "    }\n"
         "}\n",
         "library Demo {\n"
-        "    function Scale(a: float = 0.0, b: float = 2.0) -> (r: float = "
+        "    Scale :: fn(a: float = 0.0, b: float = 2.0) -> (r: float = "
         "0.0) {\n"
         "        r = a * b\n"
         "    }\n"
-        "    function Twice(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "    Twice :: fn(a: float = 0.0) -> (r: float = 0.0) {\n"
         "        return a * 2.0\n"
         "    }\n"
-        "    function Use() {\n"
+        "    Use :: fn() {\n"
         "        x := Scale(1.0)\n"
         "        y := Scale(b: 3.0)\n"
         "        if x > 0 {\n"
@@ -314,12 +391,12 @@ TEST_CASE(source_minimize_reaches_a_fixed_point)
     /* Each round drops only the outermost of nested redundant parentheses. */
     REQUIRE(minimize(
         "library Demo {\n"
-        "    function Use(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "    Use :: fn(a: float = 0.0) -> (r: float = 0.0) {\n"
         "        return ((((((((((((a))))))))))))\n"
         "    }\n"
         "}\n",
         "library Demo {\n"
-        "    function Use(a: float = 0.0) -> (r: float = 0.0) {\n"
+        "    Use :: fn(a: float = 0.0) -> (r: float = 0.0) {\n"
         "        return a\n"
         "    }\n"
         "}\n"
@@ -332,26 +409,26 @@ TEST_CASE(source_minimize_keeps_argument_order)
     /* Arguments run in source order, so out-of-order labels stay. */
     REQUIRE(minimize(
         "library Demo {\n"
-        "    function Pair(a: float = 0.0, b: float = 0.0) -> (r: float = 0.0) "
+        "    Pair :: fn(a: float = 0.0, b: float = 0.0) -> (r: float = 0.0) "
         "{\n"
         "        return a - b\n"
         "    }\n"
-        "    function Next() -> (r: float = 0.0) {\n"
+        "    Next :: fn() -> (r: float = 0.0) {\n"
         "        return 1.0\n"
         "    }\n"
-        "    function Use() -> (r: float = 0.0) {\n"
+        "    Use :: fn() -> (r: float = 0.0) {\n"
         "        return Pair(b: Next(), a: Next())\n"
         "    }\n"
         "}\n",
         "library Demo {\n"
-        "    function Pair(a: float = 0.0, b: float = 0.0) -> (r: float = 0.0) "
+        "    Pair :: fn(a: float = 0.0, b: float = 0.0) -> (r: float = 0.0) "
         "{\n"
         "        return a - b\n"
         "    }\n"
-        "    function Next() -> (r: float = 0.0) {\n"
+        "    Next :: fn() -> (r: float = 0.0) {\n"
         "        return 1.0\n"
         "    }\n"
-        "    function Use() -> (r: float = 0.0) {\n"
+        "    Use :: fn() -> (r: float = 0.0) {\n"
         "        return Pair(b: Next(), a: Next())\n"
         "    }\n"
         "}\n"
@@ -362,14 +439,14 @@ TEST_CASE(source_minimize_keeps_argument_order)
 TEST_CASE(source_minimize_keeps_invalid_source)
 {
     const char
-        *input = "library Demo { function F() -> () { x := missing(a: 1); } }";
+        *input = "library Demo { F :: fn() -> () { x := missing(a: 1); } }";
     REQUIRE(minimize(input, input));
     return true;
 }
 
 TEST_CASE(source_format_keeps_else_and_arrow_spacing)
 {
-    REQUIRE(format("library M{function F(x:int)->(r:int){if x>0{r=1;}\nelse{r=engine [\"Self\"]();}}}"));
+    REQUIRE(format("library M{F :: fn(x:int)->(r:int){if x>0{r=1;}\nelse{r=engine [\"Self\"]();}}}"));
     REQUIRE(strstr(text, "-> (r: int)"));
     REQUIRE(strstr(text, "} else {"));
     REQUIRE(strstr(text, "engine[\"Self\"]()"));
@@ -380,7 +457,7 @@ TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges)
 {
     REQUIRE(minimize(
         "library Demo {\n"
-        "    function F(a: bool, b: bool, c: bool, m: int) {\n"
+        "    F :: fn(a: bool, b: bool, c: bool, m: int) {\n"
         "        x := a || (b && c)\n"
         "        y := (a && b) || (c)\n"
         "        z := m | (m & 3)\n"
@@ -391,7 +468,7 @@ TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges)
         "    }\n"
         "}\n",
         "library Demo {\n"
-        "    function F(a: bool, b: bool, c: bool, m: int) {\n"
+        "    F :: fn(a: bool, b: bool, c: bool, m: int) {\n"
         "        x := a || (b && c)\n"
         "        y := (a && b) || c\n"
         "        z := m | (m & 3)\n"
@@ -404,7 +481,7 @@ TEST_CASE(source_minimize_keeps_mixed_grouping_and_tight_ranges)
     ));
     free(text);
     text = NULL;
-    REQUIRE(format("library M{function F(m:int){for i in 0 .. m-1{m+=i;}}}"));
+    REQUIRE(format("library M{F :: fn(m:int){for i in 0 .. m-1{m+=i;}}}"));
     REQUIRE(strstr(text, "for i in 0..m - 1 {"));
     return true;
 }
@@ -599,10 +676,15 @@ void test_language_format()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(source_format_block_layout);
+    RUN_TEST_CASE(source_format_reductions);
     RUN_TEST_CASE(source_format_component_measures);
+    RUN_TEST_CASE(source_format_measured_signatures);
     RUN_TEST_CASE(source_format_preserves_comments_and_literals);
     RUN_TEST_CASE(source_format_preserves_expression_structure);
     RUN_TEST_CASE(source_format_system_types_and_control_flow);
+    RUN_TEST_CASE(source_format_switch_arm_indentation);
+    RUN_TEST_CASE(source_format_query_header_words);
+    RUN_TEST_CASE(source_format_query_generators_and_value_filters);
     RUN_TEST_CASE(source_format_incomplete_source_is_unchanged);
     RUN_TEST_CASE(source_metadata_preserves_bound_identities);
     RUN_TEST_CASE(source_metadata_rejects_stale_or_changed_tokens);

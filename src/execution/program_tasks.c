@@ -7,20 +7,26 @@
 #include "execution/task.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
+#include "types/catalog.h"
+#include "types/union.h"
 
 #include <assert.h>
 #include <stdatomic.h>
 #include <stdlib.h>
+#include <string.h>
 
-/* Finished slots keep their results for later awaits until this many have
- * accumulated; the oldest is then reused under a new generation, and awaiting
- * its old handle fails. */
-#define TASK_RETAINED 32
+typedef struct task_waiter
+{
+    flow_host_request *request;
+    uint64_t tag;
+} task_waiter;
 
 const node_command EXECUTION_Yield = { .intrinsic = NODE_COMMAND_YIELD };
 const node_command EXECUTION_TaskJoin = { .intrinsic = NODE_COMMAND_TASK_JOIN };
 const node_command EXECUTION_TaskCancel = { .intrinsic = NODE_COMMAND_TASK_CANCEL };
 const node_command EXECUTION_TaskRunning = { .intrinsic = NODE_COMMAND_TASK_RUNNING };
+const node_command EXECUTION_TaskCancelAfter = { .intrinsic = NODE_COMMAND_TASK_CANCEL_AFTER };
 
 static const struct
 {
@@ -31,6 +37,7 @@ static const struct
     { EXECUTION_TASK_JOIN_ID, &EXECUTION_TaskJoin },
     { EXECUTION_TASK_CANCEL_ID, &EXECUTION_TaskCancel },
     { EXECUTION_TASK_RUNNING_ID, &EXECUTION_TaskRunning },
+    { EXECUTION_TASK_CANCEL_AFTER_ID, &EXECUTION_TaskCancelAfter },
 };
 
 const node_command *execution_task_command(uint64_t id, uint64_t abi)
@@ -72,9 +79,12 @@ static uint64_t handle_of(const execution_instance *instance, const execution_ta
 }
 static execution_task *find(execution_instance *instance, uint64_t handle)
 {
-    int slot = (int)(handle & UINT32_MAX) - 1;
-    if (slot < 0 || slot >= acount(instance->tasks) || !(handle >> 32) ||
-        instance->tasks[slot].generation != handle >> 32) {
+    uint32_t link = (uint32_t)handle;
+    if (!link || link > (uint32_t)acount(instance->tasks) || !(handle >> 32)) {
+        return NULL;
+    }
+    int slot = (int)(link - 1);
+    if (instance->tasks[slot].generation != handle >> 32) {
         return NULL;
     }
     return &instance->tasks[slot];
@@ -87,20 +97,14 @@ static int link_of(const execution_instance *instance, const execution_task *t)
 {
     return (int)(t - instance->tasks + 1);
 }
-/* Drops the oldest finished task's results and invalidates its handle. */
-static void evict(execution_instance *instance)
+/* Collection recycles a finished task only after every observing handle is gone. */
+static void reclaim(execution_instance *instance, execution_task *t)
 {
-    execution_task *t = slot(instance, instance->finished_first);
-    int link = instance->finished_first;
-    instance->finished_first = t->next;
-    instance->finished_last = t->next ? instance->finished_last : 0;
-    instance->finished_count--;
+    int link = link_of(instance, t);
     arena_free(&t->storage);
     *t = (execution_task){ .next = instance->spare };
     instance->spare = link;
 }
-/* Reuses an evicted slot. Finishing evicts, so starting a task never
- * expires a result early. */
 static execution_task *task_new(execution_instance *instance)
 {
     if (!instance->spare) {
@@ -123,8 +127,7 @@ static void adopt(execution_instance *instance, execution_task *parent, executio
     }
     parent->child = link_of(instance, t);
 }
-/* Leaves the parent's child list, orphans the children and joins the queue of
- * finished slots. */
+/* Leaves the parent's child list and orphans its children. */
 static void retire(execution_instance *instance, execution_task *t)
 {
     execution_task *previous = slot(instance, t->previous),
@@ -140,17 +143,7 @@ static void retire(execution_instance *instance, execution_task *t)
     for (execution_task *c = slot(instance, t->child); c; c = slot(instance, c->next)) {
         c->parent = 0;
     }
-    int link = link_of(instance, t);
     *t = (execution_task){ .generation = t->generation, .storage = t->storage };
-    if (instance->finished_last) {
-        slot(instance, instance->finished_last)->next = link;
-    } else {
-        instance->finished_first = link;
-    }
-    instance->finished_last = link;
-    if (++instance->finished_count > TASK_RETAINED) {
-        evict(instance);
-    }
 }
 
 static void box_release(execution_box *box)
@@ -268,11 +261,12 @@ static int start_task(behavior_function_context *ctx, int index)
     execution_task *t = task_new(instance),
                    *parent = find(instance, program_owning_task(caller));
     t->activation = a;
+    t->started = ctx->now;
     if (parent) {
         adopt(instance, parent, t);
     }
     a->task = handle_of(instance, t);
-    ctx->data->values[call->result_first] = (pin_value){ .type = PIN_U64,
+    ctx->data->values[call->result_first] = (pin_value){ .type = PIN_TASK,
                                                          .u64 = a->task };
     int status = program_activation_run(a, ctx->now, ctx->delta_seconds, ctx->budget);
     if (!a->finished || acount(a->requests)) {
@@ -292,6 +286,36 @@ void program_bind_tasks(behavior_function_context *ctx)
     ctx->release_local = release_local;
 }
 
+/* Delivery snapshots into each waiter's payload, independently of task lifetime. */
+static void deliver(const execution_task *t, task_waiter waiter)
+{
+    pin_union *borrowed = NULL;
+    pin_value result;
+    if (!t || t->cancelled) {
+        pin_union_cancelled(&result);
+    } else if (
+        waiter.tag == 0 && t->result_count == 1 && t->results[0].type == PIN_UNION &&
+        t->results[0].container == PIN_CONTAINER_SINGLE
+    ) {
+        result = t->results[0];
+    } else {
+        assert(waiter.tag && t->result_count >= 0);
+        assert((size_t)t->result_count <= (SIZE_MAX - sizeof(pin_union)) / sizeof(pin_value));
+        size_t bytes = (size_t)t->result_count * sizeof(pin_value);
+        borrowed = xmalloc(sizeof *borrowed + bytes);
+        *borrowed = (pin_union){ .tag = waiter.tag, .count = t->result_count };
+        if (bytes) {
+            memcpy(borrowed->values, t->results, bytes);
+        }
+        result = (pin_value){ .type = PIN_UNION, .ptr = borrowed };
+    }
+    /* Only the wrapper borrows task storage. Delivery synchronously snapshots
+     * it into the waiter's arena before completing its request; no borrowed
+     * payload survives this call, and each waiter gets an independent copy. */
+    program_request_deliver(waiter.request, &result, 1);
+    free(borrowed);
+    flow_host_release(waiter.request);
+}
 void program_task_finished(execution_activation *a, bool cancelled)
 {
     execution_instance *instance = a->instance;
@@ -299,22 +323,24 @@ void program_task_finished(execution_activation *a, bool cancelled)
     if (!t || t->activation != a) {
         return;
     }
-    flow_host_request **waiters = t->waiters;
+    task_waiter *waiters = t->waiters;
     retire(instance, t);
-    int count = acount(a->function->result_defaults);
-    t->results = arena_alloc(&t->storage, (size_t)(count + 1) * sizeof *t->results);
+    t->cancelled = cancelled || a->status < 0;
+    int count = t->cancelled ? 0 : acount(a->function->result_defaults);
+    t->results = count ? arena_alloc(&t->storage, (size_t)count * sizeof *t->results)
+                       : NULL;
     t->result_count = count;
     for (int i = 0; i < count; i++) {
-        const pin_value *value = cancelled || a->status < 0
-                                   ? &a->function->result_defaults[i]
-                                   : &a->context.results[i];
-        int status = pin_value_snapshot_to_arena(&t->storage, &t->results[i], value);
+        int status = pin_value_snapshot_to_arena(
+            &t->storage,
+            &t->results[i],
+            &a->context.results[i]
+        );
         assert(!status);
         (void)status;
     }
     for (int i = 0; i < acount(waiters); i++) {
-        program_request_deliver(waiters[i], t->results, t->result_count);
-        flow_host_release(waiters[i]);
+        deliver(t, waiters[i]);
     }
     afree(waiters);
 }
@@ -341,6 +367,21 @@ static void cancel(execution_instance *instance, uint64_t handle)
     program_task_finished(a, true);
 }
 
+bool program_task_due(const execution_activation *a, double now)
+{
+    execution_task *t = find(a->instance, program_owning_task(a));
+    return t && t->activation && t->timed && t->deadline <= now;
+}
+void program_tasks_tick(execution_instance *instance, double now)
+{
+    for (int i = 0; i < acount(instance->tasks); i++) {
+        execution_task *t = &instance->tasks[i];
+        if (t->activation && t->timed && t->deadline <= now) {
+            cancel(instance, handle_of(instance, t));
+        }
+    }
+}
+
 int program_task_command(
     behavior_function_context *ctx,
     const behavior_function_command *spec,
@@ -351,12 +392,35 @@ int program_task_command(
     execution_activation *a = ctx->inspection_user;
     execution_instance *instance = a->instance;
     uint64_t handle = ctx->command_arguments[spec->first].u64;
+    /* The command consumes its handle. A pending join is rooted by its waiter;
+     * keeping protocol scratch here would retain an otherwise dropped result. */
+    ctx->command_arguments[spec->first].u64 = 0;
     execution_task *t = find(instance, handle);
     bool running = t && t->activation;
     switch (kind) {
         case NODE_COMMAND_TASK_RUNNING:
             program_request_deliver(request, &(pin_value){ .type = PIN_BOOL, .b = running }, 1);
             break;
+        case NODE_COMMAND_TASK_CANCEL_AFTER:
+            if (running) {
+                double duration = ctx->command_arguments[spec->first + 1].d;
+                /* Negative and NaN durations mean zero. Positive infinity
+                 * behaves like an infinite Delay and sets no finite deadline. */
+                if (!(duration >= 0)) {
+                    duration = 0;
+                }
+                double deadline = t->started + duration;
+                if (!t->timed || deadline < t->deadline) {
+                    t->deadline = deadline;
+                    t->timed = true;
+                }
+                if (t->deadline > ctx->now) {
+                    program_request_deliver(request, NULL, 0);
+                    break;
+                }
+            }
+            /* An overdue pending task is cancelled at this safe point. */
+            /* fall through */
         case NODE_COMMAND_TASK_CANCEL: {
             /* A continuation is not yet listed while it first runs, so
              * cancelling its task, which may itself be running, cannot
@@ -381,20 +445,210 @@ int program_task_command(
                     ctx->error_message = "a task cannot await itself";
                     return FLOW_ERR_STATE;
                 }
-                apush(t->waiters, request);
+                apush(
+                    t->waiters,
+                    ((task_waiter){ request,
+                                    ctx->command_arguments[spec->first + 1].u64 })
+                );
                 return FLOW_OK;
             }
             if (!t && handle) {
-                ctx->error_message = "the awaited task's results have expired; "
-                                     "keep a result you need longer in a state";
+                ctx->error_message = "the task handle does not belong to this "
+                                     "owner";
                 return FLOW_ERR_STATE;
             }
-            program_request_deliver(request, t ? t->results : NULL, t ? t->result_count : 0);
-            break;
+            deliver(
+                t,
+                (task_waiter){ request, ctx->command_arguments[spec->first + 1].u64 }
+            );
+            return FLOW_OK;
         default: assert(false); return FLOW_ERR_STATE;
     }
     flow_host_release(request);
     return FLOW_OK;
+}
+
+typedef struct
+{
+    uint64_t handle;
+    execution_task *task;
+    execution_instance *instance;
+} task_root;
+typedef struct
+{
+    task_root *index;
+    execution_task **pending;
+    uint64_t lookup_steps;
+} task_roots;
+static int compare_roots(const void *left, const void *right)
+{
+    uint64_t a = ((const task_root *)left)->handle;
+    uint64_t b = ((const task_root *)right)->handle;
+    return (a > b) - (a < b);
+}
+static void mark_value(void *, const pin_value *);
+static void mark_task(task_roots *roots, uint64_t handle)
+{
+    if (!handle) {
+        return;
+    }
+    int first = 0, end = acount(roots->index);
+    while (first < end) {
+        int middle = first + (end - first) / 2;
+        const task_root *entry = &roots->index[middle];
+        roots->lookup_steps++;
+        if (entry->handle < handle) {
+            first = middle + 1;
+            continue;
+        }
+        end = middle;
+    }
+    /* A generation can wrap after billions of starts. Conservatively retain
+     * every equal global handle; owner-local lookup still enforces ownership. */
+    for (int i = first; i < acount(roots->index) && roots->index[i].handle == handle;
+         i++) {
+        const task_root *entry = &roots->index[i];
+        roots->lookup_steps++;
+        if (!entry->task->marked) {
+            entry->task->marked = true;
+            apush(roots->pending, entry->task);
+        }
+    }
+}
+static void mark_fields(task_roots *roots, const type_desc *type, const void *data)
+{
+    for (int i = 0; i < type->field_count; i++) {
+        const type_field *field = &type->fields[i];
+        const void *member = (const char *)data + field->offset;
+        pin_value value = { .type = field->type, .type_name = field->type_name };
+        if (field->type == PIN_STRUCT) {
+            value.ptr = (void *)member;
+        } else if (field->type == PIN_TASK) {
+            memcpy(&value.u64, member, sizeof value.u64);
+        } else if (field->type == PIN_UNION) {
+            memcpy(&value.ptr, member, sizeof value.ptr);
+        } else {
+            continue;
+        }
+        mark_value(roots, &value);
+    }
+}
+static void mark_value(void *user, const pin_value *value)
+{
+    task_roots *roots = user;
+    /* Collection elements retain their declared storage kind (constructors
+     * and prepared decoding enforce homogeneous, scalar elements). Primitive
+     * arrays/sets/maps cannot hide tasks, so skip their entire payload. Struct
+     * fields and union payloads still need recursive inspection. */
+    if (value->type != PIN_TASK && value->type != PIN_UNION && value->type != PIN_STRUCT) {
+        return;
+    }
+    if (value->container != PIN_CONTAINER_SINGLE) {
+        const pin_array *array = value->ptr;
+        for (int i = 0; array && i < array->count; i++) {
+            mark_value(roots, &array->items[i]);
+        }
+        return;
+    }
+    switch (value->type) {
+        case PIN_TASK: mark_task(roots, value->u64); break;
+        case PIN_UNION: {
+            const pin_union *un = value->ptr;
+            for (int i = 0; un && i < un->count; i++) {
+                mark_value(roots, &un->values[i]);
+            }
+            break;
+        }
+        case PIN_STRUCT:
+            if (value->ptr) {
+                const type_desc *type = type_catalog_find(value->type_name);
+                assert(type);
+                mark_fields(roots, type, value->ptr);
+            }
+            break;
+        default: break;
+    }
+}
+static void mark_activation(task_roots *roots, execution_activation *a)
+{
+    if (!a->finished) {
+        behavior_function_visit_values(a->function, &a->context, mark_value, roots);
+        for (int i = 0; i < acount(a->actions); i++) {
+            for (int j = 0; j < a->actions[i].count; j++) {
+                mark_value(roots, &a->actions[i].values[j]);
+            }
+        }
+    }
+    /* Captured references keep detached locals after their declaring frame returns. */
+    for (int i = 0; i < acount(a->held); i++) {
+        mark_value(roots, a->held[i]->value);
+    }
+    for (int i = 0; i < acount(a->boxes); i++) {
+        mark_value(roots, a->boxes[i]->value);
+    }
+}
+void program_tasks_collect(execution_program *p)
+{
+    p = p->owner_program;
+    assert(!p->running);
+    task_roots roots = { 0 };
+    p->task_lookup_steps = 0;
+    for (int scope = -1; scope < acount(p->imports); scope++) {
+        execution_program *program = scope < 0 ? p : p->imports[scope];
+        assert(!program->running);
+        for (int i = 0; i < acount(program->instances); i++) {
+            execution_instance *instance = program->instances[i];
+            for (int j = 0; j < acount(instance->tasks); j++) {
+                execution_task *t = &instance->tasks[j];
+                t->marked = false;
+                if (t->generation) {
+                    apush(roots.index, ((task_root){ handle_of(instance, t), t, instance }));
+                }
+            }
+        }
+    }
+    if (!acount(roots.index)) {
+        return;
+    }
+    /* One global index avoids searching every owner for every handle root. */
+    qsort(roots.index, (size_t)acount(roots.index), sizeof *roots.index, compare_roots);
+    for (int scope = -1; scope < acount(p->imports); scope++) {
+        execution_program *program = scope < 0 ? p : p->imports[scope];
+        for (int i = 0; i < program->module->plan.state_count; i++) {
+            mark_value(&roots, &program->shared[i].value);
+        }
+        for (int i = 0; i < acount(program->events); i++) {
+            for (int j = 0; j < program->events[i].count; j++) {
+                mark_value(&roots, &program->events[i].arguments[j]);
+            }
+        }
+        for (int i = 0; i < acount(program->instances); i++) {
+            execution_instance *instance = program->instances[i];
+            for (int j = 0; j < program->module->plan.state_count; j++) {
+                mark_value(&roots, &instance->values[j]);
+            }
+            for (int j = 0; j < acount(instance->activations); j++) {
+                mark_activation(&roots, instance->activations[j]);
+            }
+        }
+    }
+    /* A result can itself contain task handles. Iterate instead of recursing
+     * down arbitrarily long chains of completed tasks. */
+    for (int i = 0; i < acount(roots.pending); i++) {
+        execution_task *t = roots.pending[i];
+        for (int j = 0; j < t->result_count; j++) {
+            mark_value(&roots, &t->results[j]);
+        }
+    }
+    for (int i = 0; i < acount(roots.index); i++) {
+        execution_task *t = roots.index[i].task;
+        if (!t->activation && !t->marked) {
+            reclaim(roots.index[i].instance, t);
+        }
+    }
+    p->task_lookup_steps = roots.lookup_steps;
+    afree(roots.pending);
+    afree(roots.index);
 }
 
 void program_tasks_free(execution_instance *instance)
@@ -402,7 +656,7 @@ void program_tasks_free(execution_instance *instance)
     for (int i = 0; i < acount(instance->tasks); i++) {
         execution_task *t = &instance->tasks[i];
         for (int j = 0; j < acount(t->waiters); j++) {
-            flow_host_release(t->waiters[j]);
+            flow_host_release(t->waiters[j].request);
         }
         afree(t->waiters);
         arena_free(&t->storage);

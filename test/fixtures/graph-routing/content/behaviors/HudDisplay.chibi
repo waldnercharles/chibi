@@ -29,11 +29,11 @@ behavior "HudDisplay" {
         } else {
         }
     }
-    pure function "current / max(maximum, 1)"<T0: int, T1: int, T2: double>(current: T0 = 0, maximum: T1 = 0) -> (Result: T2 = 0.0) {
+    "current / max(maximum, 1)" :: pure fn<T0: int, T1: int, T2: double>(current: T0 = 0, maximum: T1 = 0) -> (Result: T2 = 0.0) {
         depth_limit 64;
         return divide(A: double = convert<"To Real">(entry.current), B: double = max(A: double = convert<"To Real">(entry.maximum), B: double = real(Value: 1.0)))
     }
-    pure function "length(vec2(velocity.x, velocity.y))"<T0: struct<"Velocity">, T1: double>(velocity: T0 = null) -> (Result: T1 = 0.0) {
+    "length(vec2(velocity.x, velocity.y))" :: pure fn<T0: struct<"Velocity">, T1: double>(velocity: T0 = null) -> (Result: T1 = 0.0) {
         depth_limit 64;
         return vector_length(Value: make_cf_v2(x: entry.velocity.x, y: entry.velocity.y))
     }

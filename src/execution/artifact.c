@@ -21,7 +21,9 @@ void behavior_jit_free(void *code)
 
 execution_artifact *execution_artifact_new()
 {
-    return xcalloc(1, sizeof(execution_artifact));
+    execution_artifact *artifact = xcalloc(1, sizeof *artifact);
+    atomic_init(&artifact->inspection_state, 0);
+    return artifact;
 }
 void execution_artifact_free(execution_artifact *artifact)
 {

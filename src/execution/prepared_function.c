@@ -336,6 +336,12 @@ void prepared_function(prepared_context *c, behavior_function *f)
     ARRAY(variable_defaults, VALUE(f->variable_defaults[index]));
     ARRAY(slots, ENUM(f->slots[index]));
     ARRAY(slot_kinds, ENUM(f->slot_kinds[index]));
+    ARRAY(value_roots, {
+        behavior_value_root *v = &f->value_roots[index];
+        ENUM(v->bank);
+        INT(v->index);
+        VALUE(v->shape);
+    });
     ARRAY(instructions, {
         behavior_function_instruction *v = &f->instructions[index];
         ENUM(v->op);

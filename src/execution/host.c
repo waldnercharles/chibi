@@ -52,6 +52,34 @@ void behavior_function_reset_data(behavior_data_storage *data)
         }
     }
 }
+size_t behavior_function_data_storage_bytes(const behavior_data_storage *data)
+{
+    if (!data) {
+        return 0;
+    }
+    size_t bytes = sizeof *data;
+#define VECTOR(values)                                                         \
+    ((values) ? sizeof(dyna_hdr) + (size_t)acap(values) * sizeof *(values) : 0)
+    bytes += VECTOR(data->values) + VECTOR(data->buffers) + VECTOR(data->calls);
+#undef VECTOR
+    for (int i = 0; i < acount(data->function->data_values); i++) {
+        bytes += data->function->data_values[i].size;
+    }
+    return bytes;
+}
+size_t behavior_function_host_storage_bytes(const behavior_function_context *ctx)
+{
+    size_t bytes = behavior_function_data_storage_bytes(ctx->data);
+#define VECTOR(values)                                                         \
+    ((values) ? sizeof(dyna_hdr) + (size_t)acap(values) * sizeof *(values) : 0)
+    bytes += VECTOR(ctx->queries) + VECTOR(ctx->commands) +
+             VECTOR(ctx->command_arguments) + VECTOR(ctx->command_results);
+#undef VECTOR
+    for (int i = 0; i < acount(ctx->queries); i++) {
+        bytes += (size_t)ctx->queries[i].snapshot.capacity * sizeof(pin_value);
+    }
+    return bytes;
+}
 void behavior_function_prepare_data(
     const behavior_function *f,
     const service_binding *services,
@@ -99,14 +127,18 @@ void behavior_function_prepare_data(
 }
 void behavior_function_prepare_host(const behavior_function *f, behavior_function_context *ctx)
 {
-    assert(!ctx->queries && !ctx->commands && !ctx->command_arguments && !ctx->command_results);
+    assert(
+        !acount(ctx->queries) && !acount(ctx->commands) &&
+        !acount(ctx->command_arguments) && !acount(ctx->command_results)
+    );
     ctx->points = f->points;
     ctx->watches = f->watches;
     ctx->edges = f->edges;
-    if (!ctx->data &&
-        (acount(f->host_calls) || acount(f->data_values) || acount(f->calls))) {
+    if (ctx->data || acount(f->host_calls) || acount(f->data_values) ||
+        acount(f->calls)) {
+        bool owned = ctx->owned_data || !ctx->data;
         behavior_function_prepare_data(f, ctx->services, &ctx->data);
-        ctx->owned_data = true;
+        ctx->owned_data = owned;
     }
     for (int i = 0; i < acount(f->queries); i++) {
         const behavior_function_query *q = &f->queries[i];
@@ -157,6 +189,36 @@ void behavior_function_release_host(behavior_function_context *ctx)
         ctx->owned_data = false;
     }
     ctx->owned_host = false;
+}
+void behavior_function_reset_host(behavior_function_context *ctx)
+{
+    for (int i = 0; i < acount(ctx->queries); i++) {
+        free(ctx->queries[i].snapshot.items);
+    }
+#define CLEAR(values)                                                          \
+    do {                                                                       \
+        if (values) {                                                          \
+            memset(values, 0, (size_t)acount(values) * sizeof *(values));      \
+            asetlen(values, 0);                                                \
+        }                                                                      \
+    } while (0)
+    CLEAR(ctx->queries);
+    CLEAR(ctx->commands);
+    CLEAR(ctx->command_arguments);
+    CLEAR(ctx->command_results);
+#undef CLEAR
+    behavior_function_reset_data(ctx->data);
+    if (ctx->data) {
+        for (int i = 0; i < acount(ctx->data->calls); i++) {
+            ctx->data->calls[i].service = NULL;
+        }
+    }
+    *ctx = (behavior_function_context){ .data = ctx->data,
+                                        .owned_data = ctx->owned_data,
+                                        .queries = ctx->queries,
+                                        .commands = ctx->commands,
+                                        .command_arguments = ctx->command_arguments,
+                                        .command_results = ctx->command_results };
 }
 
 void behavior_function_rebind_host(

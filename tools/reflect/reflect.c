@@ -1,5 +1,7 @@
 #include "reflect_internal.h"
+#include "types/catalog.h"
 
+#include <assert.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +12,17 @@ int g_failed;
 const collect_ctx *g_collection;
 static char g_prefix_storage[128];
 const char *g_prefix = "REFLECTION";
+
+/* Reflection validates declarations before any generated pack exists. */
+int type_catalog_pack_count()
+{
+    return 0;
+}
+type_catalog_pack type_catalog_pack_at(int index)
+{
+    assert(false);
+    return (type_catalog_pack){ 0 };
+}
 
 const char *symbol_prefix()
 {

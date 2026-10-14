@@ -43,6 +43,7 @@ static uint64_t semantic_generation(const script_analysis *a, const script_catal
         const script_symbol *s = &a->symbols[i];
         MIX(s->id);
         NAME(s->name);
+        NAME(s->unit);
         MIX(s->capability);
         MIX(s->kind);
         TYPE(s->type);
@@ -108,6 +109,7 @@ static uint64_t semantic_generation(const script_analysis *a, const script_catal
         MIX(s->body);
         MIX(s->alternative);
         MIX(s->op);
+        MIX(s->reduction);
         MIX(s->effects);
         MIX(s->child_count);
         for (int j = 0; j < s->child_count; j++) {
@@ -152,9 +154,11 @@ static uint64_t semantic_generation(const script_analysis *a, const script_catal
         /* Port names are source syntax, excluded from the execution ABI. */
         for (int j = 0; j < c->parameter_count; j++) {
             NAME(c->parameters[j].name);
+            NAME(c->parameters[j].unit);
         }
         for (int j = 0; j < c->result_count; j++) {
             NAME(c->results[j].name);
+            NAME(c->results[j].unit);
         }
     }
 #undef MIX
@@ -243,9 +247,10 @@ authoring_source_presentation *authoring_source_presentation_new(
             analysis->scopes[s->scope].function >= 0) {
             continue;
         }
-        if (s->kind == SCRIPT_STATE || s->kind == SCRIPT_SHARED_STATE ||
-            s->kind == SCRIPT_LOCAL || s->kind == SCRIPT_ACTION ||
-            s->kind == SCRIPT_EVENT || s->kind == SCRIPT_COMPONENT) {
+        if (s->kind == SCRIPT_CONSTANT || s->kind == SCRIPT_STATE ||
+            s->kind == SCRIPT_SHARED_STATE || s->kind == SCRIPT_LOCAL ||
+            s->kind == SCRIPT_ACTION || s->kind == SCRIPT_EVENT ||
+            s->kind == SCRIPT_COMPONENT) {
             source_view_declaration(&p, i);
         }
         if (s->kind == SCRIPT_COMPONENT) {

@@ -811,6 +811,213 @@ CI runs `make test-tools`; the planner's `--tools` also selects that complete gr
 Both modes retain one shared 60-second supervisor deadline. Retired script suites
 have not been reproduced completely.
 
+For reflection range metadata, `python3 tools/test_policy.py tool reflect-ranges`
+selects two existing C cases with unchanged assertions: numeric units and range
+generation, malformed and nonnumeric annotations, unsafe endpoints, distinct
+hints/defaults, and failed generation preserving prior outputs. The fixed sources
+are below 2 KiB; twelve reflection children retain their existing ten-second
+limits inside one shared 60-second supervisor deadline. There are no engine
+frames, GPU or network operations. This is an admission for the first supervised
+measurement, not a recorded pass. Configure the tooling driver with
+`CHIBI_REFLECT_EXECUTABLE` and select its directory with `CHIBI_TOOLS_BUILD_DIR`;
+the selector rejects a driver built without reflection. The complete tooling
+group retains both cases. This focused check covers reflection range metadata
+only and does not establish a complete tooling-group pass.
+
+The language follow-up admits these focused C checks under the same supervisor:
+
+- `tool ecs-query` runs the existing ECS query correctness cases plus bounded
+  membership-cache and query-planning regressions. They create at most 256
+  entities, reserve at most 2,048 slots, and enumerate at most two 36-by-36-by-36
+  relationship products to check the 1 MiB retention limit. They assert invalidation,
+  live values, generation safety, partial-iteration behavior, allocation counts and
+  work counters. No files, child processes, engine frames or GPU work run.
+- `tool language-query-program` selects source-system cases for relationship
+  joins, qualified filters, optional targets, multi-target streams, suspension and
+  prepared round trips. The SDK cases and `tool source-query-rows` check generation-aware tuple
+  state, reload, independent change cursors, same-value publication, busy tasks,
+  provider changes, pure helper predicates, value-gate timing, binding gates and
+  stateless memory accounting. Builder/prepared rejection cases check unbound
+  variables and impure predicates. The complete program selector retains the SDK
+  cases; the native group retains the full-engine source-query cases.
+  The new runtime fixtures use at most 33 entities and six supplied-time steps
+  per backend, without files, children or GPU work.
+- `tool language-incremental` prepares four tiny source overlays per case and
+  checks unchanged-generation reuse, dependency and catalog invalidation, binding
+  generations, backend changes and ownership after older collections retire.
+  Signature-unit cases cover cross-library contracts, unit-only invalidation and
+  owned native metadata after the producing catalog is retired.
+  It uses disposable empty source roots and bounded in-process preparations.
+- `tool language-scalarize` and `tool language-ranges` compare canonical and
+  optimized scalar IR and execute fixed numeric, ownership and control-flow
+  counterexamples on the VM, compiled backend and inspection path where applicable.
+  Allocation and instruction assertions establish removed work; elapsed time is
+  not an optimization oracle. There are no child processes, frames or GPU work.
+  The scalarization cases include forward joins, nested union escapes, retained
+  native side effects/errors and bounded analysis fallback; real waits, managed
+  payloads and inspection remain conservative counterexamples.
+- `tool wasm-query-program`, `tool wasm-scalarize` and `tool wasm-ranges` run
+  those same C cases through the browser target's Node launcher.
+- The optimizer microbenchmarks below use the existing C dispatchers, five
+  small trials and the same 60-second supervisor. Setup and correctness checks
+  stay outside timed loops; no elapsed-time threshold determines a pass.
+  `xalloc` requested bytes measure allocation traffic through that allocator,
+  not live or peak memory. Compare Release builds with identical flags and
+  retain native sanitizer and Wasm correctness coverage separately.
+  `tool language-activation-benchmark` runs three source workloads on 32 owners
+  for 100 invocations per owner per trial, on VM and the compiled backend.
+  `tool language-binding-benchmark` maintains two programs with eight owners
+  and a three-binding chain, for 12 iterations per trial, with stable and changed
+  membership. `tool language-borrow-benchmark` sums arrays of one and 128
+  elements for 32 dispatches per trial on both backends.
+  `tool language-incremental-benchmark` prepares four tiny in-memory sources
+  once initially, then five times for each of unchanged, body-edit and
+  presentation-edit modes; it creates one disposable empty source directory.
+  `tool scheduler-benchmark` compares identical registration and warm dispatch
+  of 12 systems over 128 passes per trial, plus owned-descriptor, dependency and
+  failure checks. These fixtures perform no child-process, engine-frame or GPU
+  work. The four language selectors also have `wasm-` variants using the same
+  C checks. Initial admissions establish bounded work, not measured speedups.
+  The scheduler selector also covers unchanged owned descriptors, callback and
+  effect replacement, failure retry and ordering, one recursive dispatch, and a
+  129-system oversized-cache fallback. There are eight fixed cases; cached
+  allocation assertions and retained scratch accounting complement timings.
+- `tool language-binding-schedule` and `tool wasm-binding-schedule` exercise four
+  fixed binding-cache cases on both backends: module/owner generation changes,
+  peer destruction, caller ordering, cycle rejection before writes, query-gate
+  changes and dynamic dependency targets. Cache fallback uses 17 programs and
+  1,025 independent constant binding rows, proving cache bounds are not execution
+  limits. There are no frames, child processes or GPU work.
+- `tool language-activation-cache` and `tool wasm-activation-cache` use five
+  cases on both backends to check warm allocation counts, owner/default reset,
+  nested tasks, read-only observation, reload, managed payloads, errors, suspended
+  work and debugger pause/resume. Each fixture has at most two entities and ten
+  supplied-time dispatch/pump/step operations. One cap fixture has 4,096 scalar
+  default arguments and a two-instruction body, executed twice, to prove large
+  activations still run without retaining oversized storage. No frames, child
+  processes or GPU work are involved.
+- `tool language-borrow` and `tool wasm-borrow` use six fixed cases: one authored
+  read-only array loop with 0, 1 and 128 items; null/empty/mixed-header and failure
+  fallbacks; scalar, saved-activation and VM scratch aliasing; mutation/identity/capacity/escape/opaque
+  call exclusions; debug and real-wait continuation; and an in-memory prepared
+  roundtrip that rederives the optimization and rejects a forged canonical flag
+  (two buffers, each below 64 KiB). Native/Wasm normal and
+  inspection execution compare exact values, pointer ownership and arena bytes.
+  There are no files, frames, child processes or GPU work.
+- `tool c-export-alias` executes twelve tiny generated-C I32/I64 DIV/MOD
+  fixtures covering operand and result aliases, signed inputs, division by zero
+  and overflow, plus one authored union fixture for source pause, debugger detach
+  and continuation. One extra verified array function executes eight normal and
+  inspection calls, checking guarded borrowing, mixed-header fallback copies and
+  an array whose items alias the public activation's saved-value bank.
+  One compiler child builds one temporary shared library from less
+  than 128 KiB of generated source, using the configured compiler and C/build-type
+  flags, enabled sanitizers and assertions. The existing 10-second child and shared 60-second
+  deadlines apply. The existing tooling driver loads the library and compares 120
+  normal/inspection executions against the canonical VM and runs two pause/resume
+  samples including negative zero, then removes all files.
+  This native POSIX source-build check requires authoring and is unavailable for Wasm, cross compilation,
+  multi-configuration generators and installed-SDK builds; an explicit unavailable
+  selector returns failure.
+  The default tooling group retains it. No separate executable, frames or GPU work
+  are introduced.
+- `tool unit-validation` runs the existing single controller unit-diagnostic
+  case with its original setup/cleanup. Tiny component/system sources cover
+  project/source errors and same-layout unit changes in one retained controller.
+  Its original child deadlines and shared 60-second limit remain unchanged;
+  it runs no gameplay frames or GPU work.
+- `tool unit-fixtures` checks six fixed measured sources from
+  `declared-components` and `feature-coverage` against their native and declared
+  component catalogs. It limits each executable source to 16 KiB, their total
+  to 64 KiB, and the two component declarations to 16 KiB combined. These sources
+  use only native and declared component capabilities, so no unrelated scene,
+  prototype or executable declarations are needed. No other bodies are analyzed.
+  This is semantic-only representative rollout coverage: no lowering, JIT, scenes,
+  child processes or all-project traversal. It does not establish that every
+  repository or external project compiles.
+
+The call-view/reduction follow-up adds bounded affected-contract checks:
+
+- `tool language-reductions` and `tool wasm-reductions` run four fixed public-SDK
+  execution cases on the VM and compiled backend, with at most eight rows, a 4,096-step
+  budget and prepared buffers capped at 64 KiB. They cover producer retirement
+  before prepared reload, typed ordered folding, wrapping, clamping, unordered
+  regrouping, NaN/signed-zero min/max, and whole-log rejection/discard. No files,
+  children, frames or GPU work run. A fifth case finalizes three tiny public-IR
+  predicate variants (snapshot, raw read and native aggregate input) and checks
+  conservative component dependencies without executing rows.
+- `tool source-reductions` covers source/engine scheduling, dependent value/change
+  filters, failed preparation and publication, actual worker overlap with a
+  two-second bounded gate, and debugger pause/resume/reset using fixed supplied
+  clocks and at most four owners per regression fixture. The debugger fixture
+  has one kinematic physics body and no renderer. Worker tasks are always joined.
+  A ninth, one-target case changes a later system's effects while a reducer is
+  paused and checks phase restart with fresh contributions and no physics replay.
+  A tenth case fails one producer before a later peer pauses and checks that the
+  failed batch cancels that peer's log and inspector state without publication.
+- `tool source-reduction-benchmark` compares ordinary serial writes and ordered
+  or unordered reductions, each serially and with a two-worker executor. Five
+  modes each use one target and 256 contributor entities, two systems, one warmup
+  and five trials of eight passes (1,024 contributions per pass). It reports
+  exact values, published revisions, worker participation, log records, retained
+  and peak buffer bytes, allocation traffic and timings. Setup and correctness
+  assertions stay outside timers; elapsed time is never a pass threshold.
+- `tool language-borrow-benchmark` now measures the direct loop and one/two-level
+  ordinary helper calls at the original one/128-item sizes and 32-dispatch,
+  five-trial bounds. There are twelve preparations and 1,920 timed dispatches
+  total, without files/children/frames/GPU work. The same fixture runs on Wasm.
+- The existing borrow ownership selector adds helper forwarding, callback,
+  actual suspension, mutation/escape, prepared linking and program-state-header
+  aliases. The C-export fixture adds a caller export and callback fallback to
+  its one existing shared-library compilation, still capped at 128 KiB source.
+- Four additional scheduler cases use three synthetic registrations, a reverse
+  inline executor and fixed failures/pauses to check ordered publication,
+  prepare-after-commit, discard and resume without replay. They create no worker
+  threads and stay in `tool scheduler-benchmark`.
+- The component-setter source-presentation case also projects four tiny reduction
+  spellings and checks receiver/value origins and reduction-mode cache identity.
+
+These are first-measurement admissions after independent workload review, not
+recorded passes. The original cases, assertions, sanitizers and 60-second limits
+remain intact. Separate semantic, syntax, formatting and prepared-boundary checks
+still cover their affected contracts; these selectors do not imply a full-suite pass.
+
+The execution-storage and row-worker follow-up adds these reviewed bounds:
+
+- Existing `language-query-program` / `wasm-query-program` cases add three-filter,
+  nested-helper scratch reuse on four owners over four steps, then one module
+  replacement per backend. A failing predicate first warms its cache. Two further
+  cases cover update clocks, queued handlers, a delayed continuation and debugger
+  retry (eight tiny runs), plus two three-row filtered query refreshes. No real
+  waits, files, children, engine frames or GPU work are added.
+- Existing activation-cache checks use two ordinary helper levels and add a
+  4,096-value host-bank cap variant, two executions per backend. The execution
+  selector adds four fixed-struct host calls to check clearing and service
+  rebinding. Payload-reuse extensions add one array warmup and two dispatches,
+  one managed-string reuse, and one 65,537-byte oversized payload followed by
+  two small dispatches per backend. No workload uses an executor or real wait.
+  The full program selector retains the query regressions.
+- The SDK reduction selector adds four scalar-helper proof cases on each
+  backend, with two input rows and one destination per case. A reachable
+  numeric helper chain qualifies; component-reading, array-argument and unused
+  helpers stay conservative. Eight small compilations and updates use a
+  4,096-step budget, without an executor or additional processes. The positive
+  case also passes through the existing bounded prepared-artifact buffer. One
+  two-row public-IR case per backend preserves mixed-mode serial failure owner
+  and source diagnostics without publishing partial results.
+- `source-execution-benchmark` measures one program on 16 light rows, 1,024 light
+  rows and 1,024 rows with 64 integer-mixing iterations, serially and with a
+  requested two-worker executor. An ordered heavy pair complements the unordered
+  modes: eight fixtures, one warmup and five trials of four passes each. It
+  reports exact results, published revisions, actual row jobs/worker participation,
+  warm allocation traffic and idle retained bytes. Timing never determines a pass.
+  Workers are joined; there are no files, children, engine frames or GPU work.
+- Source-reduction correctness adds stable row-order and failed-dispatch checks,
+  inspection/profile fallbacks and metadata-cache invalidation controls for
+  component-column relocation and entity generation changes. The scheduler
+  fixture checks the singleton row hook and keeps multi-system work on its
+  existing executor path.
+
 Configure/build separately and report that time separately from test execution:
 
 ```sh

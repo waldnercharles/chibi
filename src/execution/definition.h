@@ -89,8 +89,15 @@ typedef struct behavior_function_vm_storage
 } behavior_function_vm_storage;
 typedef struct
 {
+    behavior_value_bank bank;
+    int index;
+    pin_value shape;
+} behavior_value_root;
+typedef struct
+{
     int pc;
     int *values; /* Slots followed by locals, in the activation's scalar storage. */
+    behavior_value_root *roots; /* Aggregate shapes for the live saved values. */
 } behavior_function_suspension;
 /* A read-only entity reduction has a checked prelude, one cursor loop and a
  * private accumulator. Publication uses these regions to fuse compatible scans. */
@@ -116,11 +123,14 @@ struct behavior_function
     behavior_reduction *reductions;
     compile_diagnostic *query_diagnostics;
     behavior_function_suspension *suspensions;
+    behavior_value_root *value_roots;
     behavior_function_point *points;
     behavior_source_point *source_points;
     behavior_source_watch *source_watches;
     bool waits, breakpoints, batchable, managed, custom_lowering, uses_storage,
         checkpoints, pin_watches;
+    /* Recomputed from verified bodies, never serialized or accepted as an ABI promise. */
+    bool readonly_collections;
     behavior_function_watch *watches;
     behavior_function_edge *edges;
     size_t watch_size;
@@ -166,7 +176,27 @@ static inline bool behavior_function_inspectable(const behavior_function *f)
     return f->waits || f->host_calls != NULL || f->calls != NULL ||
            f->managed || f->custom_lowering || f->checkpoints || f->pin_watches;
 }
+static inline bool behavior_function_inspection_required(
+    const behavior_function *f,
+    const behavior_function_context *ctx
+)
+{
+    if (ctx->inspect || ctx->watch || ctx->trace || ctx->source_pause ||
+        ctx->source_capture) {
+        return true;
+    }
+    if (!ctx->activation || !ctx->activation->pc) {
+        return false;
+    }
+    /* A debug pause saves canonical live values. After detaching inspection,
+     * finish this continuation canonically: optimized aliases may require
+     * different slots. Real waits remain boundaries shared by both bodies. */
+    behavior_function_op op = f->instructions[ctx->activation->pc - 1].op;
+    return op == BF_POINT || op == BF_SOURCE_POINT;
+}
 void behavior_function_calls_free(struct behavior_function_calls *calls);
+void behavior_function_calls_reset(struct behavior_function_calls *calls);
+size_t behavior_function_calls_storage_bytes(const struct behavior_function_calls *calls);
 static inline bool behavior_function_runtime_keeps(const behavior_function *f, int pc)
 {
     return !f->runtime_map || f->runtime_map[pc] != f->runtime_map[pc + 1];
@@ -201,6 +231,7 @@ void behavior_function_own(behavior_function *function);
 void behavior_function_parallel_proof(behavior_function *function);
 void *behavior_function_jit_system(const behavior_function *function);
 void *behavior_function_jit(const behavior_function *function, bool inspected);
+bool behavior_function_compile_inspection(const behavior_function *function);
 void *behavior_function_guard(const behavior_function *function);
 /* Canonicalize registry/builtin names whose lifetime exceeds program generations. */
 bool behavior_function_static_name(const char **name);
@@ -213,9 +244,15 @@ void behavior_function_rebind_host(
     const struct service_binding *
 );
 void behavior_function_borrow_arrays(behavior_function *function);
+void behavior_function_borrow_snapshots(behavior_function *function, const bool *keep);
+void behavior_function_prepare_borrows(behavior_function *function);
+bool program_call_views_allowed(const behavior_function_context *context);
 void behavior_function_reuse_accesses(behavior_function *function);
 void behavior_function_reuse_reads(behavior_function *function, bool *keep);
+void behavior_function_optimize_ranges(behavior_function *function, const bool *keep);
 void behavior_function_optimize(behavior_function *function);
+void behavior_function_scalarize_unions(behavior_function *function, bool *keep);
+size_t behavior_function_scalarize_scratch(const behavior_function *function);
 typedef struct
 {
     int first, last; /* Canonical instruction PCs of immutable I32 inputs. */

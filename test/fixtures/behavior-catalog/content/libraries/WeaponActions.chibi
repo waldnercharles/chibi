@@ -1,8 +1,8 @@
 library "WeaponActions" {
-    pure function "Check Firing Interval"(Elapsed: float = 0.0, Cooldown: float = 0.0) -> (Ready: bool = false, Remainder: float = 0.0) {
+    "Check Firing Interval" :: pure fn(Elapsed: float = 0.0, Cooldown: float = 0.0) -> (Ready: bool = false, Remainder: float = 0.0) {
         return (entry.Elapsed >= max(entry.Cooldown, B: float = 0.01), entry.Elapsed - max(entry.Cooldown, B: float = 0.01))
     }
-    function "Fire Projectile"(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0, Prototype: name = "ArenaProjectile", Shooter: handle<"ecs.entity"> = 0) -> (Entity: handle<"ecs.entity"> = 0) {
+    "Fire Projectile" :: fn(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0, Prototype: name = "ArenaProjectile", Shooter: handle<"ecs.entity"> = 0) -> (Entity: handle<"ecs.entity"> = 0) {
         action spawn_prototype = engine["Spawn Prototype"](entry.Prototype)
         after spawn_prototype {
             spawn_prototype.Entity.Transform = entry.Origin

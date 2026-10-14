@@ -144,16 +144,17 @@ reaches. `intensity` scales how bright emissive surfaces look, and `resolution`
 sets the detail of the light grid. `sky` lights a side view from above: open
 ground receives its color, and absorbing materials block it like other light,
 so the ground under an overhang and the inside of a cave stay dark. Studio adds the component with `ambient` and
-`intensity` at 1 and `resolution` at 0.5, but KDL loads an omitted field as
-zero, so write every setting a scene needs. See the `Lighting` prototype in
-`test/fixtures/sprites`.
+`intensity` at 1 and `resolution` at 0.5, but KDL initializes an omitted field to
+zero before range validation (`resolution` becomes 0.1), so write every setting
+a scene needs. See the `Lighting` prototype in `test/fixtures/sprites`.
 
 ## Declare components
 
 A game declares its own component types under `content/components`, one `.chibi`
 file per component. Fields are laid out in order with natural alignment and start
-zeroed. A field's type is a script scalar (`bool`, `int`, `float`, `double`,
-`number`, `string`, `entity`, ...), an engine struct such as `CF_V2`, or a
+zeroed, then clamped into any declared range. A field's type is a script scalar
+(`bool`, `int`, `float`, `double`, `number`, `string`, `entity`, ...), an engine
+struct such as `CF_V2`, or a
 measure: a `number` with an optional range and an optional unit. The `//`
 comments directly above the component and each field describe them.
 
@@ -169,24 +170,61 @@ component Charge {
 }
 ```
 
-A range such as `0..1` or `-1.5..2` sets the field's editing range in Studio. It
-is a hint, never a clamp: scripts and assets may store any value. A unit such as
-`u/s`, `rad`, `u/s^2` (shown as u/s²) or `banana/basket` labels the value. Unit
-names mean units only in a field's type, so `s` stays a free name in scripts.
+A range such as `0..1` or `-1.5..2` is an inclusive stored-value contract. Scripts,
+asset loads, aggregate constructors, prepared players and native engine writes
+clamp values outside it to the nearest endpoint. Bounded `number` fields keep
+fractions: assigning `2.75` into `0..10` stores `2.75`. Explicit `cast<int>(2.75)`
+truncates toward zero. Each assignment clamps independently; two saturating
+updates cannot be reassociated. Floating arithmetic may overflow to infinity
+before the store; positive/negative infinity clamp to the high/low endpoint.
+NaN becomes the field's validated default, or zero clamped into the interval
+when no default is declared, with a development diagnostic and no exception.
+KDL text still rejects nonfinite literals before loading; typed asset values
+and prepared streams use the same validation as runtime writes.
+
+Native `NODE_RANGE` declares the same contract. `NODE_RANGE_DEFAULT` supplies a
+finite NaN fallback. `NODE_RANGE_HINT` is only a slider suggestion. The existing
+friction sliders, 3D restitution, appearance antialias width, optical absorption,
+material edge light and HDR emission use hints because their native consumers
+permit values above the slider's maximum. Other existing native range
+annotations are contracts.
+
+Native writes through mutable C row pointers and the execution view bypass
+validation until `ecs_component_modified` commits the row. Reflected write APIs
+and component insertion validate immediately; constructors and scene preparation
+validate newly published values. Copying an aggregate preserves its value.
+Range metadata alone is not proof about a borrowed C pointer. Compiler range
+facts may originate only from a validated value; unchecked pointer loads do
+not authorize check elimination or arithmetic reassociation. Component range
+changes invalidate the linked storage contract, and prepared players retain
+their ranges. Reloaded scripts and whole-component snapshots use the world's
+registered component schema while a replacement catalog is being prepared.
+Generic local values and nested layouts still use the current nominal type
+catalog; replacing their physical layouts while those values are live remains
+outside the existing runtime contract.
+
+A unit such as `u/s`, `rad`, `u/s^2` (shown as u/s²) or `banana/basket` labels the
+value. Unit names mean units only in a field's type, so `s` stays a free name in scripts.
 A unit standing alone must be a common one (`u`, `px`, `m`, `s`, `ms`, `rad`,
 `deg`, `Hz`, `fps`, `bpm`, `EV`, `dB`, `kg`, `N`), so a misspelled type name
 is reported instead of becoming a unit; after a range or with a `/`, any name
 works.
 
-Scripts check units the way F# does, and units are erased before the game
-runs. `*` and `/` combine them, so `charge.rate * dt` is in `charge` because
+Units are nominal dimensions, erased before the game runs. `*` and `/` combine
+them, so `charge.rate * dt` is in `charge` because
 `dt` and `delta` are in seconds. `+`, `-`, `%`, comparisons, assignment and `bind` need the
 same unit on both sides. A plain number literal takes the unit it meets in a
 sum or comparison, and as a factor it may carry any unit, so `3 * dt` is not
-checked. A value nothing measures, such as a local set to `0` or a function's
-result, is never checked either. The engine's own fields carry units too: a `Movement.speed` is in
-`u/s` and a collider's `radius` is in `u`. A mismatch is a warning for now.
-`validate_project` lists it with its line, and the program still runs:
+checked. A value nothing measures, such as a local set to `0` or an unannotated
+function result, has no dimensional proof. Measured initializers propagate their units
+through locals, constants and state; every possible `fallback` value is checked.
+Function parameters and results can declare erased units, for example
+`Distance :: (speed: u/s, elapsed: s) -> u`. Calls, defaults, returns and writes
+through `ref` parameters check these contracts, including across libraries.
+Unannotated signatures remain dimensionally unknown. The engine's own fields carry
+units too: a `Movement.speed` is in `u/s` and a collider's `radius` is in `u`.
+Proven mismatches and malformed referenced unit metadata are compile errors;
+`validate_project` reports their source locations and prevents execution:
 
 ```code
 system Recharge(charge: Charge) {
@@ -195,12 +233,218 @@ system Recharge(charge: Charge) {
 }
 ```
 
+Valid custom names such as `charge` and `banana/basket` remain supported. Units
+with different names are distinct; there are no implicit conversions between
+`m` and `u`, or aliases from `Hz` to `1/s`. Fix a mismatch by correcting the
+declared units or the calculation, such as multiplying a rate by `dt`. Plain
+numbers still infer double-precision `number`; use `int` explicitly when integer
+semantics are intended. Neither absent unit information nor an editor hint
+authorizes arithmetic optimizations.
+
 Prototypes, scenes, behaviors and systems then use `Charge` like an engine
 component. A name may not reuse an engine type. The compiler stores the
 declarations in the prepared artifact, so the player needs no source.
 `chibi_ctl` formats, validates, describes and runs them like engine components.
 Projects saved before version 20 declared components in KDL; `--migrate`
 rewrites each into `.chibi`.
+
+## System queries
+
+A system's query header binds components and infers reads and writes from its
+body. Required bindings determine which root entities run it. `where` combines
+component membership with `and`, `or`, `not` and parentheses; an unqualified
+component always refers to the root entity, as does `self.Component`.
+
+```code
+system Home query position: Transform, velocity: Velocity
+    join aim: Targets.Transform?
+    where (Player or Ally) and not self.Frozen and not Targets.Frozen {
+    if aim {
+        position.x = aim.x
+        position.y = aim.y
+    }
+}
+```
+
+Here `Targets` must be an engine relationship exposed in the script catalog
+with the exclusive trait. A scalar `Targets.Transform` binding follows that
+single target and requires its component. Adding `?` keeps roots with no target
+or no target component; test the binding before reading its fields. Reads and
+writes resolve the current provider rather than retaining a component pointer.
+Test optional presence again after a structural change or suspension.
+Several roots may share a target, so sourced access does not assume that their
+writes are independent.
+
+`join` followed by a typed binding groups sourced components; it does not
+introduce another loop or an entity alias. `join aim: Targets.Transform` and a regular header binding
+`aim: Targets.Transform` have identical membership and access costs. The expanded
+spelling is `join aim: Transform from Targets`; root bindings can explicitly say
+`position: Transform from self`. A typed `join` must name a relationship, bound entity variable or ancestor
+source. Several bindings can share one `join`, separated by commas, or use
+separate `join` clauses.
+
+Pure membership `where` clauses filter the root's membership. `Frozen` or `self.Frozen` tests
+the root; `Targets.Frozen` tests its exclusive target. A missing target makes
+`Targets.Frozen` false and `not Targets.Frozen` true. Thus the optional join above
+keeps a projectile without a target, but excludes one whose target is frozen.
+Making `aim` required excludes roots without that target component regardless of
+the filter. Filters do not replace the presence guard on an optional binding.
+
+`has(Targets)` tests whether the root has at least one target, including for a
+relationship with multiple targets. It never duplicates the root's body. Combine
+it with `not`, `and` or `or`, for example `where has(Targets) and not Disabled`.
+`has(Component)` retains its component meaning; component names take precedence
+if a catalog also exposes a relationship with that name.
+
+Ancestor sources are explicit and independent of relationship paths:
+
+```code
+system Inherit query position: Transform,
+    team: Team from ancestor(ChildOf) {
+    position.x = team.spawn_x
+}
+```
+
+`ancestor(ChildOf)` starts at the parent and selects the nearest ancestor with
+the requested component. `self_or_ancestor(ChildOf)` checks the root first.
+Traversal requires an exclusive, traversable relationship. `ChildOf` is built
+in; other names and their traits come from the embedding engine's catalog.
+An optional ancestor binding uses the same `?` spelling. A compact path does
+not implicitly continue searching ancestors.
+
+Filters use the same source notation: `where ancestor(ChildOf).Team` or
+`where self_or_ancestor(ChildOf).Team`. Each term independently searches for its
+requested component; two ancestor terms need not select the same provider.
+
+For a relationship with multiple targets, a body loop visits one
+target at a time without materializing an array, while the system's state and
+outer body still run once per root:
+
+```code
+system DamageTargets query damage: Damage {
+    for target in self.Targets {
+        if target.Health {
+            target.Health.value -= damage.amount
+        }
+    }
+}
+```
+
+The loop supplies target identity for component access and ordinary Boolean
+conditions. Its body may write component values, but cannot suspend or change
+entity structure while the relationship stream is open. Required scalar query
+bindings remove the root from membership when their provider disappears;
+optional bindings do not. Reactive `bind` destinations remain on the root;
+write a target or ancestor in the system body.
+
+To give each matching target its own system execution, use an explicit generator
+in the header:
+
+```code
+system DamageTargets query damage: Damage
+    join target in self.Targets
+    join health: Health from target
+    where health.value > 0 and changed(damage) {
+    health.value -= damage.amount
+}
+```
+
+`join target in self.Targets` binds an entity variable for each target. The typed
+binding reads `Health` from that variable. Generators can chain through earlier
+variables, such as `join ally in target.Allies`, or enumerate another relationship
+from `self`. Two independent generators with eight and four targets produce up
+to 32 rows per root. The current query engine supports eight named variables;
+forward references, duplicate names and uses before binding are errors.
+
+An optional component binding does not make its generator optional. A root with
+no `Targets` has no generated rows; a target without an optional component still
+has a row. `has(target.Health)` tests component membership on the bound entity,
+and `has(target.Targets)` tests relationship existence without creating more rows.
+The existing scalar join spelling continues to execute once per root.
+
+Each complete root/target tuple owns independent state and suspended work. Entity
+generations participate in identity: a tuple absent at the next membership
+refresh releases its state and cancels its work; a later entity reusing a slot
+cannot inherit it. Removing and restoring the same relationship entirely between
+refreshes preserves the tuple. Reordering
+relationships preserves surviving tuples' state. The cost grows with retained
+matches and live continuations. The query cache's byte cap does not cap this
+separate state. Use a body loop when one root should own the state for all its
+targets. Proven stateless, synchronous generator systems can stream through one
+temporary row instead of retaining an instance for every tuple. Each admitted
+body uses an activation. Serial synchronous invocations can reuse one idle
+activation per program, retaining at most 64 KiB of fixed frame storage. Payloads,
+host banks and nested calls still release their owned storage between invocations.
+Suspended, inspected, cancelled and failed work does not return to this cache.
+Prepared system batches still need separate activations for simultaneous rows.
+`execution_program_memory_usage` reports idle `activation_cache_bytes` separately
+from live activation headers.
+Value-filtered streaming first records one admission bit per structural row so
+body writes cannot change later rows' admission within the same update.
+
+### Value and change filters
+
+`where` also accepts Boolean value expressions using component bindings,
+constants, supported globals and read-only helper functions. Preserve ordinary
+short-circuit order: `where aim and aim.x > 0` guards an optional binding; `where
+aim or aim.x > 0` does not. Header predicates cannot write, suspend, perform host
+side effects, consume randomness, or read system state or event payloads. These
+restrictions also apply through helpers. Put conditions on persistent system
+state inside the body, so rejecting a query row need not construct that state.
+
+`changed(damage)` observes published writes to the whole bound component, not
+only the fields used in the body. A same-value write counts. A new matching row
+is eligible once. Each system row has its own observation history, so another
+system does not consume its notification. Direct native pointer writes become
+observable when their owner calls `ecs_component_modified`.
+
+The complete dynamic `where` expression gates new work in source order. Required
+header bindings and generators define structural membership; membership tests
+inside a mixed value/change expression belong to that gate. A false gate does not destroy
+existing tuple state or cancel an already suspended body. Structural tuple loss
+does. Changes are consumed only when new work is admitted, so a busy row does not
+lose a write while waiting. Writing a component watched by the same system can
+make that row eligible again on a later update.
+
+Change tracking stores an eight-byte revision per world slot for each tracked
+component, shared across systems, plus source/revision history per retained row
+and `changed` term. `execution_program_memory_usage` reports logical instance,
+activation, state-bank, query-history and index bytes separately. Allocator
+overhead and nested buffers are excluded from those header counts; shared ECS
+tracking bytes should not be summed across programs.
+
+Component values and predicate results are not part of the structural query
+cache. They are checked against current execution data. Cascade ordering and
+arbitrary fixed-entity sources remain native-query features.
+
+Native queries use `ecs_query_plan_new`, `ecs_query_begin_plan` and
+`ecs_query_plan_free` to reuse a world-bound logical plan. The world must outlive
+the plan, and only one iterator may use a plan at a time. Between iterations,
+component registration, entity growth, pair edits and component membership
+changes are supported. Authored systems retain this plan across updates.
+Completed iterations cache root membership and provider/variable bindings, never
+component values. Relevant component additions/removals, `Disabled` membership,
+relationship edits and relationship ordering invalidate that cache. Unrelated
+component changes and ordinary field writes retain it. Plans over all entities
+also track entity creation/destruction. A rebuild refreshes storage references,
+candidate selection and ancestor caches; a hit reads current component values
+through current handles. Ending an iteration early never publishes a partial
+result as a complete cache.
+
+Simple single-component queries use their direct index unless `Disabled`
+filtering requires additional work. Cached row payload is limited to 1 MiB per
+plan; oversized joins keep streaming. A multi-target query whose cardinality is
+not known in advance can require a counting pass before reserving enough rows.
+This bounds retained row storage; it does not impose a fixed runtime bound on
+an arbitrarily large query.
+
+Candidate selection estimates both matching rows and sparse bitset scanning.
+Pure predicates move before later variable generators as soon as their required
+variables are bound; generator order stays intact. `ecs_query_plan_stats`
+reports cache hits/builds/overflows, candidates, predicate tests, source lookups,
+binding steps and retained row bytes so callers can inspect actual work.
+The native API also exposes pair variables, Boolean
+scopes, `ECS_UP`, `ECS_SELF_UP` and explicit cascade ordering.
 
 ## Scene entities
 

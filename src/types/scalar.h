@@ -21,6 +21,8 @@
     X(PIN_F64, double, d)                                                      \
     X(PIN_ENUM, int32_t, e)                                                    \
     X(PIN_HANDLE, uint64_t, u64)                                               \
+    X(PIN_TASK, uint64_t, u64)                                                 \
+    X(PIN_UNION, void *, ptr)                                                  \
     X(PIN_NAME, const char *, str)                                             \
     X(PIN_STR, const char *, str)
 
@@ -37,8 +39,10 @@ static inline uint64_t behavior_scalar_bits(pin_value value)
         case PIN_U32: return value.u;
         case PIN_I64: return (uint64_t)value.i64;
         case PIN_U64:
-        case PIN_HANDLE: return value.u64;
+        case PIN_HANDLE:
+        case PIN_TASK: return value.u64;
         case PIN_ENUM: return (uint64_t)value.e;
+        case PIN_UNION: return (uintptr_t)value.ptr;
         case PIN_NAME:
         case PIN_STR: return (uintptr_t)value.str;
         default: assert(false); return 0;

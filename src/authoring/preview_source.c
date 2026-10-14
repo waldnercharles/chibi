@@ -122,8 +122,12 @@ static int prepare(preview_world *world, char *error, size_t size)
                                                            acount(state->edits)
                                                        );
     script_lower_bindings bindings = authoring_language_bindings(state->native);
-    authoring_sources
-        *next = authoring_sources_prepare_catalog(catalog, &bindings, state->backend);
+    authoring_sources *next = authoring_sources_prepare_incremental(
+        catalog,
+        &bindings,
+        state->backend,
+        state->working
+    );
     if (state->working != state->applied) {
         authoring_sources_free(state->working);
     }
@@ -422,8 +426,12 @@ authoring_sources *preview_sources_candidate(
                     : source_catalog_edited(state->root, native, merged, acount(merged));
     edits_free(merged);
     script_lower_bindings bindings = authoring_language_bindings(state->native);
-    authoring_sources
-        *candidate = authoring_sources_prepare_catalog(catalog, &bindings, state->backend);
+    authoring_sources *candidate = authoring_sources_prepare_incremental(
+        catalog,
+        &bindings,
+        state->backend,
+        state->working
+    );
     candidate_status(candidate, error, size);
     return candidate;
 }

@@ -250,8 +250,33 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                                  .right = -1,
                                  .type = script_analyzer_bad_type(),
                                  .effects = receiver.effects };
-    if (receiver.type.flags & SCRIPT_TYPE_TASK) {
+    if ((receiver.type.flags & SCRIPT_TYPE_TASK) &&
+        receiver.type.container == PIN_CONTAINER_SINGLE) {
         script_analyzer_diagnostic(a, member, "Await this task to read '%s'", name);
+        free(name);
+        return script_analyzer_expr_add(a, result);
+    }
+    if (receiver.type.flags & SCRIPT_TYPE_UNION) {
+        const script_catalog_type
+            *type = script_catalog_type_by_id(a->catalog, receiver.type.nominal);
+        for (int i = 0; type && i < type->variant_count; i++) {
+            const script_catalog_variant *v = &type->variants[i];
+            if (!receiver.type.parameter || receiver.type.parameter != v->tag) {
+                continue;
+            }
+            for (int j = 0; j < v->field_count; j++) {
+                if (!strcmp(v->fields[j].name, name)) {
+                    result.kind = SCRIPT_EXPR_UNWRAP;
+                    result.type = v->fields[j].type;
+                    result.tag = v->tag;
+                    result.offset = (size_t)j;
+                    result.symbol = -1;
+                    free(name);
+                    return script_analyzer_expr_add(a, result);
+                }
+            }
+        }
+        script_analyzer_diagnostic(a, member, "Narrow this union to a matching variant before reading '%s'", name);
         free(name);
         return script_analyzer_expr_add(a, result);
     }
@@ -271,6 +296,7 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
                                               : NULL;
     bool output_root = receiver.kind == SCRIPT_EXPR_SYMBOL ||
                        receiver.kind == SCRIPT_EXPR_CALL ||
+                       receiver.kind == SCRIPT_EXPR_UNWRAP ||
                        receiver.kind == SCRIPT_EXPR_JOIN;
     bool named_output = output_root && initializer_capability &&
                         script_analyzer_parameter_index(
@@ -351,6 +377,32 @@ int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expe
             result.member = type->id;
             result.effects |= SCRIPT_EFFECT_READ;
             result.writable = !type->derived;
+            free(name);
+            return script_analyzer_expr_add(a, result);
+        }
+        uint64_t relationship = !strcmp(name, "ChildOf") ? SCRIPT_CHILD_OF : 0;
+        for (int i = 0; !relationship && i < a->catalog->relationship_count; i++) {
+            if (!strcmp(a->catalog->relationships[i].name, name)) {
+                relationship = a->catalog->relationships[i].id;
+            }
+        }
+        if (relationship) {
+            TSNode parent = ts_node_parent(node);
+            while (script_analyzer_is(parent, "parenthesized_expression")) {
+                parent = ts_node_parent(parent);
+            }
+            if ((!script_analyzer_is(parent, "foreach_statement") &&
+                 !script_analyzer_is(parent, "for_statement")) ||
+                !ts_node_is_null(script_analyzer_field(parent, "first"))) {
+                script_analyzer_diagnostic(a, node, "Relationship targets require a streaming for-in loop");
+            }
+            result.kind = SCRIPT_EXPR_RELATION;
+            result.type = (script_type){ .storage = PIN_HANDLE,
+                                         .nominal = a->out->owner_type,
+                                         .container = PIN_CONTAINER_ARRAY };
+            result.capability = relationship;
+            result.effects |= SCRIPT_EFFECT_READ;
+            result.writable = false;
             free(name);
             return script_analyzer_expr_add(a, result);
         }
@@ -1347,12 +1399,22 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
     if (authored_task || library_task) {
         result.task = true;
         result.effects &= ~SCRIPT_EFFECT_SUSPEND;
-        result.type = (script_type){
-            .storage = PIN_U64,
-            .nominal = library_task ? capability->id
-                                    : a->out->symbols[function->symbol].id,
-            .flags = SCRIPT_TYPE_TASK
-        };
+        int results = library_task ? capability->result_count
+                                   : acount(function->results);
+        script_type success = results == 1
+                                ? (library_task
+                                       ? capability->results[0].type
+                                       : a->out->symbols[function->results[0]].type)
+                            : results > 1
+                                ? (script_type){ .storage = PIN_STRUCT,
+                                                 .nominal = result.capability,
+                                                 .flags = SCRIPT_TYPE_RESULTS }
+                                : (script_type){ .storage = PIN_FLOW };
+        result.type = script_analyzer_task_type(
+            a,
+            success,
+            library_task ? capability->id : a->out->symbols[function->symbol].id
+        );
         for (int i = 0; i < acount(result.arguments); i++) {
             int p = result.arguments[i].parameter;
             script_type type = p < 0 ? script_analyzer_bad_type()

@@ -66,7 +66,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(Collider)
     bool pierce_fragments; /* Continuous sensors report debris hits without stopping. */
     uint64_t ignore_entity NODE_HANDLE(ecs.entity);
     float restitution NODE_RANGE(0, 1);
-    float friction NODE_RANGE(0, 1);
+    float friction NODE_RANGE_HINT(0, 1);
 }
 Collider;
 
@@ -363,7 +363,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(FluidVolume)
     float spacing;
     float mass;
     unsigned color NODE_COLOR;
-    float absorption NODE_RANGE(0, 1);
+    float absorption NODE_RANGE_HINT(0, 1);
     float emission;
     /* Camera-only minimum visibility; contributes no radiance or bounce. */
     float visibility;
@@ -434,7 +434,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(Appearance)
     float glow_radius;
     unsigned glow_color NODE_COLOR;
     float stroke_width;
-    float antialias NODE_RANGE(0, 1);
+    float antialias NODE_RANGE_HINT(0, 1);
     int layer;
     /* World units the shape stands above the plane where its scene color
      * covers, as a Sprite's relief; a material graph's Height adds to it. In
@@ -499,9 +499,9 @@ typedef NODE_COMPONENT_TYPE_DENSE(Material)
     unsigned albedo NODE_COLOR;
     unsigned filter NODE_COLOR;
     unsigned emission_color NODE_COLOR;
-    float emission_intensity NODE_RANGE(0, 4);
+    float emission_intensity NODE_RANGE_HINT(0, 4);
     float emission_multiplier;
-    float absorption NODE_RANGE(0, 1);
+    float absorption NODE_RANGE_HINT(0, 1);
     unsigned border_scene NODE_COLOR;
     unsigned border_emission_color NODE_COLOR;
     unsigned border_albedo NODE_COLOR;
@@ -510,7 +510,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(Material)
      * HRC2D.surface_radius into it. Zero disables; no unlit outline.
      * With Depth thickness, a solid that absorbs nothing instead takes its
      * HRC light shaded by its facing and by heights in the way, this much. */
-    float edge_light NODE_RANGE(0, 1);
+    float edge_light NODE_RANGE_HINT(0, 1);
 }
 Material;
 
@@ -895,7 +895,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(ParticleEmitter)
     ParticleCurve drag;
     ParticleCurve emission;
     ParticleCurve antialias;
-    float absorption NODE_RANGE(0, 1);
+    float absorption NODE_RANGE_HINT(0, 1);
     int metaball_group;
     float metaball_blend;
     bool velocity_align;
@@ -1211,7 +1211,7 @@ typedef NODE_COMPONENT_TYPE_DENSE(HRC2D)
      * probe per 2x2 pixels. Brightness keeps this detail, and most lighting
      * cost scales with its area. 1, 0.5, 0.25 and 0.125 give whole-pixel
      * cells. With adaptive on, the highest resolution it uses. */
-    float resolution NODE_RANGE(0.1, 1);
+    float resolution NODE_RANGE(0.1, 1) NODE_RANGE_DEFAULT(.5);
     /* Steps lighting down while the scene's GPU time misses target_fps, first
      * color detail, then resolution by halves down to 0.25, and back up when
      * there is room. Where the GPU reports its time (Metal, and
@@ -1250,10 +1250,10 @@ typedef NODE_COMPONENT_TYPE_DENSE(HRC2D)
     float bounce_intensity;
     /* Current-frame weight of bounce light: 1 disables temporal smoothing, not
      * bounce, and lower values retain more history. Camera movement resets it. */
-    float bounce_hysteresis NODE_RANGE(0, 1);
+    float bounce_hysteresis NODE_RANGE(0, 1) NODE_RANGE_DEFAULT(.8);
     /* Current-frame weight of received light: 1 disables temporal smoothing,
      * and lower values retain more history. */
-    float radiance_hysteresis NODE_RANGE(0, 1);
+    float radiance_hysteresis NODE_RANGE(0, 1) NODE_RANGE_DEFAULT(.8);
     /* Feeds light reflected by lit surfaces back into the transport as bounce
      * light. */
     bool feedback;
@@ -1422,8 +1422,8 @@ typedef NODE_COMPONENT_TYPE_DENSE(Collider3D)
     unsigned category;
     unsigned mask;
     bool sensor;
-    float friction NODE_RANGE(0, 1);
-    float restitution NODE_RANGE(0, 1);
+    float friction NODE_RANGE_HINT(0, 1);
+    float restitution NODE_RANGE_HINT(0, 1);
 }
 Collider3D;
 

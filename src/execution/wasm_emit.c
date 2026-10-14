@@ -99,7 +99,7 @@ static int value_type(pin_type type)
     if (type == PIN_F64) {
         return 0x7c;
     }
-    if (type == PIN_I64 || type == PIN_U64 || type == PIN_HANDLE) {
+    if (type == PIN_I64 || type == PIN_U64 || (type == PIN_HANDLE || type == PIN_TASK)) {
         return 0x7e;
     }
     return 0x7f;
@@ -117,6 +117,7 @@ static unsigned load_op(pin_type type)
         case PIN_F64: return 0x2b;
         case PIN_I64:
         case PIN_U64:
+        case PIN_TASK:
         case PIN_HANDLE: return 0x29;
         default: return 0x28;
     }
@@ -134,6 +135,7 @@ static unsigned store_op(pin_type type)
         case PIN_F64: return 0x39;
         case PIN_I64:
         case PIN_U64:
+        case PIN_TASK:
         case PIN_HANDLE: return 0x37;
         default: return 0x36;
     }
@@ -210,8 +212,8 @@ static bool direct(const behavior_function *f, const behavior_function_instructi
         return true;
     }
     if (i->op == BF_STORE || i->op == BF_RESULT) {
-        return (i->type >= PIN_BOOL && i->type <= PIN_F64) ||
-               i->type == PIN_ENUM || i->type == PIN_HANDLE;
+        return (i->type >= PIN_BOOL && i->type <= PIN_F64) || i->type == PIN_ENUM ||
+               (i->type == PIN_HANDLE || i->type == PIN_TASK || i->type == PIN_UNION);
     }
     if (i->op == BF_LOAD || i->op == BF_READ || i->op == BF_WRITE) {
         return i->type >= PIN_BOOL && i->type <= PIN_F64 && i->offset <= UINT32_MAX;
@@ -230,7 +232,8 @@ static bool direct(const behavior_function *f, const behavior_function_instructi
         return false;
     }
     pin_type type = f->slots[i->left];
-    if (type < PIN_BOOL || (type > PIN_F64 && type != PIN_HANDLE && type != PIN_ENUM)) {
+    if (type < PIN_BOOL || (type > PIN_F64 && type != PIN_HANDLE && type != PIN_TASK &&
+                            type != PIN_UNION && type != PIN_ENUM)) {
         return false;
     }
     if (i->right < 0 || i->right >= acount(f->slots) || f->slots[i->right] != type) {
@@ -361,6 +364,8 @@ static size_t observer_callback(behavior_function_op op)
     switch (op) {
         case BF_SOURCE_POINT:
             return offsetof(behavior_function_context, source_pause);
+        case BF_SOURCE_WATCH:
+            return offsetof(behavior_function_context, source_capture);
         case BF_POINT: return offsetof(behavior_function_context, inspect);
         case BF_WATCH_BEGIN:
         case BF_WATCH_RESET:
@@ -390,6 +395,7 @@ static void helper(writer *w, int pc)
 
 bool execution_wasm_emit(
     const behavior_function *f,
+    bool inspected,
     unsigned char **bytes,
     size_t *size,
     char *error,
@@ -397,6 +403,12 @@ bool execution_wasm_emit(
 )
 {
     assert(f && bytes && size);
+    behavior_function runtime;
+    if (!inspected && f->runtime_body) {
+        runtime = *f;
+        runtime.instructions = f->runtime_body;
+        f = &runtime;
+    }
     *bytes = NULL;
     *size = 0;
     int count = acount(f->instructions);
@@ -513,6 +525,9 @@ bool execution_wasm_emit(
         int end = block + 1 < block_count ? starts[block + 1] : count;
         int next = end;
         for (int pc = starts[block]; pc < end; pc++) {
+            if (!inspected && !behavior_function_runtime_keeps(f, pc)) {
+                continue;
+            }
             const behavior_function_instruction *i = &f->instructions[pc];
             if (i->op == BF_JUMP) {
                 next = i->target;

@@ -84,7 +84,7 @@ TEST_CASE(source_view_clone_owns_defaults_and_edit_origins)
 {
     REQUIRE(project(
         "behavior View { text: string = \"hello\";"
-        " function Pair(n: double) -> (total: double, message: string) {"
+        " Pair :: fn(n: double) -> (total: double, message: string) {"
         " return (n, text); }"
         " on Tick { current := Pair(2); text = current.message; } }"
     ));
@@ -190,7 +190,7 @@ TEST_CASE(source_view_locals_stay_in_their_callable)
 {
     REQUIRE(project(
         "behavior View { count: double = 0;"
-        " function Target(n: double) -> (result: double) {"
+        " Target :: fn(n: double) -> (result: double) {"
         " width := n * 8; if (n > 0) { nested := width - 1; return nested; }"
         " return width; }"
         " on Tick { width := Target(count); count = width; } }"
@@ -228,7 +228,7 @@ TEST_CASE(source_view_entries_have_layout_priority)
 {
     REQUIRE(project(
         "behavior View { count: double = 0;"
-        " function Target(n: double) -> (result: double) {"
+        " Target :: fn(n: double) -> (result: double) {"
         " unused := 7; return n + 1; }"
         " on Tick { unused := 8; count = Target(count); } }"
     ));
@@ -260,7 +260,7 @@ TEST_CASE(source_view_formulas_preserve_readable_source)
 {
     REQUIRE(project(
         "behavior View { count: double = 0;"
-        " function Target(n: double) -> (result: double) {"
+        " Target :: fn(n: double) -> (result: double) {"
         " return (n * 8 + 2) / 2; }"
         " on Tick { count += (Target(count) - count) * (1 - 0.01); } }"
     ));
@@ -303,7 +303,7 @@ TEST_CASE(source_view_formulas_preserve_readable_source)
     cleanup();
     REQUIRE(project(
         "behavior View { count: double = 0;"
-        " function Next() -> (result: double) { count += 1; return count; }"
+        " Next :: fn() -> (result: double) { count += 1; return count; }"
         " on Tick { count = Next() + 2; } }"
     ));
     REQUIRE(analysis->diagnostic_count == 0);
@@ -408,7 +408,7 @@ TEST_CASE(source_view_branch_terminals_do_not_rejoin)
 {
     REQUIRE(project(
         "behavior Inventory { items: double = 0;"
-        " function Inspect(limit: double) -> (total: double) {"
+        " Inspect :: fn(limit: double) -> (total: double) {"
         " if items > limit { return 1; } else { items = 2; }"
         " items = 3; return items; } on Tick {} }"
     ));
@@ -698,27 +698,85 @@ TEST_CASE(source_view_component_setters_expose_entity_not_component_read)
                                                  .entity_type = 40,
                                                  .capabilities = capabilities,
                                                  .capability_count = 2 };
-    syntax = script_parse("behavior Motion { on Tick { self.Position.x = 7; } }");
-    analysis = script_analyze(syntax, &declarations);
-    REQUIRE(analysis->diagnostic_count == 0);
-    view = authoring_source_presentation_new(analysis, &declarations, NULL);
-    REQUIRE(view);
-    node *set = statement_at("self.Position.x = 7");
-    REQUIRE(set && set->input_count == 3);
-    int entity = named_pin(set->input_pins, set->input_count, PIN_DATA, "Entity");
-    REQUIRE(entity >= 0);
-    graph *g = behavior_asset_find_graph_by_name(authoring_source_presentation_view(view), "Tick");
-    REQUIRE(g);
-    const source_presentation_origin *o = authoring_source_presentation_origin(
-        view,
-        g->graph_id,
-        set->id,
-        set->input_pins[entity].id
-    );
-    REQUIRE(o && o->range.end - o->range.start == 4);
-    REQUIRE(!strncmp(authoring_source_presentation_text(view) + o->range.start, "self", 4));
-    for (int i = 0; i < acount(g->nodes); i++) {
-        REQUIRE(strcmp(g->nodes[i]->desc->name, "Get Position"));
+    const char *sources[] = {
+        "behavior Motion { on Tick { self.Position.x = 7; } }",
+        "system Motion(position: Position) { reduce self.Position.x += 7; }",
+        "system Motion(position: Position) { reduce min(self.Position.x, 7); }",
+        "system Motion(position: Position) { reduce max(self.Position.x, 7); }",
+        "system Motion(position: Position) { reduce unordered self.Position.x "
+        "+= 7; }",
+    };
+    const char *titles[] = { "Set self.Position.x",
+                             "Reduce add self.Position.x",
+                             "Reduce min self.Position.x",
+                             "Reduce max self.Position.x",
+                             "Reduce unordered add self.Position.x" };
+    const char *pins[] = { "Entity", "Value" }, *ranges[] = { "self", "7" };
+    for (int sample = 0; sample < 5; sample++) {
+        cleanup();
+        syntax = script_parse(sources[sample]);
+        REQUIRE(syntax->diagnostic_count == 0);
+        analysis = script_analyze(syntax, &declarations);
+        REQUIRE(analysis->diagnostic_count == 0);
+        view = authoring_source_presentation_new(analysis, &declarations, NULL);
+        REQUIRE(view);
+        const source_presentation_origin *statement = source_origin(
+            view,
+            SOURCE_PRESENTATION_STATEMENT,
+            sample ? "reduce" : "self.Position.x = 7"
+        );
+        REQUIRE(statement);
+        REQUIRE(authoring_source_presentation_matches(view, analysis, &declarations));
+        if (sample) {
+            script_statement *reduction = &analysis->statements[statement->record];
+            script_reduction_op original = reduction->reduction;
+            reduction->reduction = original == SCRIPT_REDUCTION_ADD
+                                     ? SCRIPT_REDUCTION_MIN
+                                     : SCRIPT_REDUCTION_ADD;
+            REQUIRE(!authoring_source_presentation_matches(view, analysis, &declarations));
+            reduction->reduction = original;
+            REQUIRE(authoring_source_presentation_matches(view, analysis, &declarations));
+        }
+        node *set = origin_node(view, statement);
+        REQUIRE(set && set->input_count == 3 && !strcmp(set->desc->name, titles[sample]));
+        graph *g = behavior_asset_find_graph(
+            authoring_source_presentation_view(view),
+            statement->graph
+        );
+        REQUIRE(g);
+        for (int i = 0; i < 2; i++) {
+            int pin = named_pin(set->input_pins, set->input_count, PIN_DATA, pins[i]);
+            REQUIRE(pin >= 0);
+            const source_presentation_origin *o = authoring_source_presentation_origin(
+                view,
+                g->graph_id,
+                set->id,
+                set->input_pins[pin].id
+            );
+            REQUIRE(o && o->kind == SOURCE_PRESENTATION_EXPRESSION);
+            REQUIRE(o->range.end - o->range.start == (int)strlen(ranges[i]));
+            REQUIRE(!strncmp(
+                authoring_source_presentation_text(view) + o->range.start,
+                ranges[i],
+                strlen(ranges[i])
+            ));
+        }
+        const source_presentation_origin *target = NULL;
+        for (int i = 0; i < authoring_source_presentation_origin_count(view); i++) {
+            const source_presentation_origin *o = authoring_source_presentation_origin_at(view, i);
+            if (o->kind == SOURCE_PRESENTATION_EXPRESSION && !o->pin &&
+                o->graph == g->graph_id && o->node == set->id) {
+                target = o;
+                break;
+            }
+        }
+        REQUIRE(target && target->range.end - target->range.start == 15);
+        REQUIRE(
+            !strncmp(authoring_source_presentation_text(view) + target->range.start, "self.Position.x", 15)
+        );
+        for (int i = 0; i < acount(g->nodes); i++) {
+            REQUIRE(strcmp(g->nodes[i]->desc->name, "Get Position"));
+        }
     }
     return true;
 }
@@ -726,10 +784,10 @@ TEST_CASE(source_view_authored_calls_keep_named_typed_editable_ports)
 {
     REQUIRE(project(
         "behavior Inventory { count: double = 0;"
-        " function Pair(amount: double, text: string) -> (total: double, "
+        " Pair :: fn(amount: double, text: string) -> (total: double, "
         "message: string) {"
         " return (amount + 1, text); }"
-        " function Other() -> (value: double) { return 3; }"
+        " Other :: fn() -> (value: double) { return 3; }"
         " on Tick { current := Pair(text: \"apple\", amount: 2); count = "
         "current.total; await Delay(0.1); } }"
     ));
@@ -800,7 +858,7 @@ TEST_CASE(source_view_effectful_authored_calls_remain_explicit)
 {
     REQUIRE(project(
         "behavior Counter { count: double = 0;"
-        " function Next(amount: double) -> (total: double) { count += amount; "
+        " Next :: fn(amount: double) -> (total: double) { count += amount; "
         "return count; }"
         " on Tick { count = Next(2) + 1; } }"
     ));
@@ -827,7 +885,7 @@ TEST_CASE(source_view_small_value_calls_fold_with_editable_origins)
 {
     REQUIRE(project(
         "behavior Counter { count: double = 0;"
-        " function Double(amount: double) -> (total: double) { return amount * "
+        " Double :: fn(amount: double) -> (total: double) { return amount * "
         "2; }"
         " on Tick { count = Double(2); } }"
     ));
@@ -968,7 +1026,7 @@ TEST_CASE(source_view_short_circuit_effects_are_not_eager_flow)
 {
     REQUIRE(project(
         "behavior Counter { count: double = 0; ready: bool = false;"
-        " function Check(amount: double) -> (ok: bool) { count += amount; "
+        " Check :: fn(amount: double) -> (ok: bool) { count += amount; "
         "return true; }"
         " on Tick { ready = ready && Check(1); } }"
     ));
@@ -1069,9 +1127,28 @@ static bool native_palette_composition_keeps_declared_capabilities()
     palette = NULL;
     return true;
 }
+TEST_CASE(source_view_keeps_constant_definitions)
+{
+    REQUIRE(project("behavior View { Base :: 2; Run :: () { Local :: Base + 1; } }"));
+    REQUIRE(analysis->valid);
+    int constants = 0;
+    for (int i = 0; i < authoring_source_presentation_origin_count(view); i++) {
+        const source_presentation_origin *origin = authoring_source_presentation_origin_at(view, i);
+        if (origin->kind != SOURCE_PRESENTATION_SYMBOL || origin->pin ||
+            analysis->symbols[origin->record].kind != SCRIPT_CONSTANT) {
+            continue;
+        }
+        REQUIRE(origin_node(view, origin));
+        constants++;
+    }
+    REQUIRE(constants == 2);
+    return true;
+}
+
 void test_source_presentation()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(source_view_keeps_constant_definitions);
     RUN_TEST_CASE(source_view_clone_owns_defaults_and_edit_origins);
     RUN_TEST_CASE(source_views_keep_named_invalid_drafts);
     RUN_TEST_CASE(source_view_locals_stay_in_their_callable);

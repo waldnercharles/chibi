@@ -25,7 +25,7 @@ typedef struct
     char *type;        /* the authored type name; "number" for a measure */
     char *unit;        /* display text, such as "u/s²"; NULL without one */
     char *description; /* NULL without one */
-    double min, max;   /* an editor hint, never a clamp; unbounded when equal */
+    double min, max; /* inclusive stored-value contract; unbounded when equal */
     script_range range;
 } script_component_field;
 typedef struct
@@ -43,4 +43,6 @@ script_component *script_component_read(
     script_diagnostic **diagnostics
 );
 void script_component_free(script_component *);
+/* Common unambiguous unit names that may stand alone in a numeric type slot. */
+bool script_unit_shorthand(const char *);
 #endif

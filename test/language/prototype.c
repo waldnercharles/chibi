@@ -6,6 +6,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -771,6 +772,101 @@ TEST_CASE(prototype_expansion_bytes_are_bounded)
     return true;
 }
 
+typedef struct
+{
+    double amount, positive, hint;
+    int count;
+} ranged_values;
+static const type_field ranged_fields[] = {
+    { .name = "amount",
+      .type = PIN_F64,
+      .size = sizeof(double),
+      .range_contract = true,
+      .min = 0,
+      .max = 10,
+      .range_default = 3.5 },
+    { .name = "positive",
+      .type = PIN_F64,
+      .size = sizeof(double),
+      .offset = offsetof(ranged_values, positive),
+      .range_contract = true,
+      .min = 2,
+      .max = 5 },
+    { .name = "hint",
+      .type = PIN_F64,
+      .size = sizeof(double),
+      .offset = offsetof(ranged_values, hint),
+      .min = 0,
+      .max = 1 },
+    { .name = "count",
+      .type = PIN_I32,
+      .size = sizeof(int),
+      .offset = offsetof(ranged_values, count),
+      .range_contract = true,
+      .min = 0,
+      .max = 10 },
+};
+static const type_desc ranged_type = {
+    .name = "Ranged",
+    .size = sizeof(ranged_values),
+    .fields = ranged_fields,
+    .field_count = 4,
+};
+static const ecs_component_desc ranged_desc = {
+    .id = 9004,
+    .key = "Ranged",
+    .name = "Ranged",
+    .element_size = sizeof(ranged_values),
+    .type = &ranged_type,
+};
+TEST_CASE(prototype_ranges_validate_load_defaults_reload_and_nonfinite_values)
+{
+    const ecs_component_desc *descs[] = { &ranged_desc };
+    prototype_registry registry = { .components = descs, .component_count = 1 };
+    char error[256];
+    document = prototype_load(
+        "name \"Ranges\"\ncomponents { Ranged amount=-4 hint=20; }\n",
+        &registry,
+        error,
+        sizeof error
+    );
+    REQUIRE(document && acount(document->components) == 1);
+    const ranged_values *row = document->components[0].data;
+    REQUIRE(row->amount == 0 && row->positive == 2 && row->hint == 20);
+    REQUIRE(
+        !prototype_write_field(document, "Ranged", "amount", (pin_value){ .type = PIN_F64, .d = 2.75 })
+    );
+    REQUIRE(row->amount == 2.75);
+    loaded = prototype_load(
+        "name \"Ranges\"\ncomponents { Ranged amount=200 positive=-30 "
+        "count=18446744073709551615; }\n",
+        &registry,
+        error,
+        sizeof error
+    );
+    REQUIRE(loaded);
+    const ranged_values *next = loaded->components[0].data;
+    REQUIRE(next->amount == 10 && next->positive == 2 && next->count == 10);
+    prototype_free(loaded);
+    loaded = NULL;
+    /* The typed asset-value entry point and prepared streams can receive
+     * nonfinite numeric payloads even though KDL text rejects #nan/#inf. */
+    av_doc *input = av_doc_new();
+    av_value *root = av_obj(input);
+    av_doc_set_root(input, root);
+    av_obj_add_str(input, root, "name", "Ranges");
+    av_value *components_value = av_obj_add_obj(input, root, "components");
+    av_value *fields = av_obj_add_obj(input, components_value, "Ranged");
+    av_obj_add_val(input, fields, "amount", av_real(input, NAN));
+    av_obj_add_val(input, fields, "positive", av_real(input, INFINITY));
+    loaded = prototype_load_value(root, &registry, error, sizeof error);
+    av_doc_free(input);
+    REQUIRE(loaded);
+    next = loaded->components[0].data;
+    REQUIRE(next->amount == 3.5 && next->positive == 5);
+    return true;
+}
+
 void test_prototype_document()
 {
     pu_setup(NULL, cleanup);
@@ -785,5 +881,6 @@ void test_prototype_document()
     RUN_TEST_CASE(entity_paths_spawn_as_their_entities);
     RUN_TEST_CASE(prototype_expansion_is_bounded);
     RUN_TEST_CASE(prototype_expansion_bytes_are_bounded);
+    RUN_TEST_CASE(prototype_ranges_validate_load_defaults_reload_and_nonfinite_values);
     pu_clear_setup();
 }

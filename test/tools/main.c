@@ -35,6 +35,9 @@ void test_tool_tilemap();
 void test_tool_tilemap_project();
 #endif
 void test_tool_execution_policy();
+#ifdef CHIBI_TEST_C_EXPORT
+void test_tool_c_export();
+#endif
 void test_tool_package();
 void test_tool_collab();
 void test_tool_test_policy();
@@ -65,6 +68,7 @@ void test_tool_ecs_relationships();
 void test_tool_ecs_hierarchy();
 void test_tool_ecs_world();
 void test_tool_ecs_query();
+void test_tool_validate_units(const char *binary);
 void test_tool_ecs_query_benchmark();
 void test_arena();
 void test_tool_validate_project(const char *binary);
@@ -137,12 +141,18 @@ void test_preview_shader_libraries();
 void test_source_presentation();
 void test_component_presentation();
 void test_system_schedule();
+void test_source_reductions();
+void test_source_reduction_benchmark();
+void test_source_execution_benchmark();
+void test_tool_scheduler_benchmark();
 void test_code_system_runtime();
+void test_code_query_rows();
 void test_source_edit();
 void test_shader_parameters_prepared();
 int run_language_semantic_corpora(const char *);
 int run_language_prepare_corpora(const char *);
 int run_language_prepare_corpora_sljit(const char *);
+void test_language_unit_fixtures();
 void test_source_native_numeric_queries();
 void test_source_native_material_features();
 #endif
@@ -219,6 +229,7 @@ void test_model_import();
 #endif
 #ifdef CHIBI_TEST_REFLECT
 void test_tool_reflect();
+void test_tool_reflect_ranges();
 #endif
 #ifdef CHIBI_TEST_NATIVE_RUNTIME
 void test_tool_native();
@@ -500,6 +511,44 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
+    if (argc == 3 && !strcmp(argv[1], "--unit-validation")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_validate_units(argv[2]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--ecs-query")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_ecs_query();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+    if (argc == 2 && !strcmp(argv[1], "--c-export-alias")) {
+#ifdef CHIBI_TEST_C_EXPORT
+        tool_init();
+        pu_display_time(true);
+        test_tool_c_export();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires a native in-tree POSIX single-configuration build\n", argv[1]);
+        return 2;
+#endif
+    }
+    if (argc == 2 && !strcmp(argv[1], "--reflect-ranges")) {
+#ifdef CHIBI_TEST_REFLECT
+        tool_init();
+        pu_display_time(true);
+        test_tool_reflect_ranges();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s is not built in this configuration\n", argv[1]);
+        return 2;
+#endif
+    }
     bool tilemap = false, tilemap_project = false;
 #ifdef CHIBI_TEST_TILEMAP
     tilemap = argc == 2 && !strcmp(argv[1], "--tilemap");
@@ -544,11 +593,14 @@ int main(int argc, char **argv)
     bool whole_math = false, whole_integer = false, whole_conversion = false,
          whole_select = false, owned_tick = false, parallel_tick = false,
          whole_alias = false, persistent_store = false;
-    bool source_features = false, source_numeric = false,
-         source_material = false, source_presentation = false,
-         system_schedule = false, source_systems = false, source_edit = false,
+    bool source_features = false, source_numeric = false, source_material = false,
+         source_presentation = false, system_schedule = false,
+         scheduler_benchmark = false, source_reductions = false,
+         source_reduction_benchmark = false, source_execution_benchmark = false,
+         source_systems = false, source_query_rows = false, source_edit = false,
          new_asset = false, asset_refactor = false;
     int corpus = 0;
+    bool unit_fixtures = false;
     /* The material selector given, or none. */
     int material = 0;
 #ifdef CHIBI_TEST_MATERIAL_RUNTIME
@@ -586,6 +638,7 @@ int main(int argc, char **argv)
     asset_refactor = argc == 2 && !strcmp(argv[1], "--asset-refactor");
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
+    unit_fixtures = argc == 2 && !strcmp(argv[1], "--unit-fixtures");
     shader_parameters = argc == 2 && !strcmp(argv[1], "--shader-parameters-prepared");
     source_edit = argc == 2 && !strcmp(argv[1], "--source-edit");
     if (argc == 3) {
@@ -594,8 +647,15 @@ int main(int argc, char **argv)
                : !strcmp(argv[1], "--prepare-corpora-sljit") ? 3
                                                              : 0;
     }
+    source_reductions = argc == 2 && !strcmp(argv[1], "--source-reductions");
+    source_reduction_benchmark = argc == 2 &&
+                                 !strcmp(argv[1], "--source-reduction-benchmark");
+    source_execution_benchmark = argc == 2 &&
+                                 !strcmp(argv[1], "--source-execution-benchmark");
     system_schedule = argc == 2 && !strcmp(argv[1], "--system-schedule");
+    scheduler_benchmark = argc == 2 && !strcmp(argv[1], "--scheduler-benchmark");
     source_systems = argc == 2 && !strcmp(argv[1], "--source-systems");
+    source_query_rows = argc == 2 && !strcmp(argv[1], "--source-query-rows");
     source_presentation = argc == 2 && !strcmp(argv[1], "--source-presentation");
     source_features = argc == 2 && !strcmp(argv[1], "--source-native-features");
     source_numeric = argc == 2 && !strcmp(argv[1], "--source-native-numeric-queries");
@@ -676,12 +736,12 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !example && !corpus && !coverage && !preview_components &&
-        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
-        !tilemap && !tilemap_project && !package && !unit && !web_storage &&
-        !webgpu_staging && !wasm_browser && !query_benchmark && !prepared &&
-        !read && !scene && !scene_prepared && !scene_hierarchy && !native &&
-        !native_values && !native_catalog && !physics && !physics3d &&
+    if (argc != 1 && !example && !corpus && !unit_fixtures && !coverage &&
+        !preview_components && !shader_parameters && !source_edit && !new_asset &&
+        !asset_refactor && !tilemap && !tilemap_project && !package && !unit &&
+        !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
+        !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
+        !native && !native_values && !native_catalog && !physics && !physics3d &&
         !transforms && !render_resources && !interior_border && !viewport_resize &&
         !sdf_visibility && !radiance && !radiance_depth && !material_sampling &&
         !scene2d && !scene3d && !material_ramps && !texture_transform &&
@@ -693,12 +753,17 @@ int main(int argc, char **argv)
         !whole_math && !whole_integer && !whole_conversion && !whole_select &&
         !owned_tick && !parallel_tick && !source_features && !source_numeric &&
         !source_material && !source_presentation && !system_schedule &&
-        !source_systems && !examples_projects && !validate_project && !expansion &&
-        !controller && !render_fixture && !graph_document && !graph_presentation &&
+        !scheduler_benchmark && !source_reductions && !source_reduction_benchmark &&
+        !source_execution_benchmark && !source_systems && !source_query_rows &&
+        !examples_projects && !validate_project && !expansion && !controller &&
+        !render_fixture && !graph_document && !graph_presentation &&
         !graph_functions && !vector_nodes && !material_render && !material) {
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
+            "--reflect-ranges | --c-export-alias | --ecs-query | "
+            "--unit-fixtures | "
+            "--unit-validation <chibi_ctl> | "
             "--web-storage | "
             "--webgpu-staging | --wasm-browser | "
             "--ecs-query-benchmark | --arena | "
@@ -736,7 +801,11 @@ int main(int argc, char **argv)
             "--whole-select | --owned-tick | "
             "--parallel-tick | --source-native-features | "
             "--source-native-numeric-queries | --source-native-material | "
-            "--source-presentation | --system-schedule | --source-systems | "
+            "--source-presentation | --system-schedule | --scheduler-benchmark "
+            "| --source-systems | "
+            "--source-query-rows | --source-reductions | "
+            "--source-reduction-benchmark | "
+            "--source-execution-benchmark | "
             "--source-edit | --new-asset | --asset-refactor | "
             "--shader-parameters-prepared | "
             "--graph-document | --graph-presentation | --graph-functions | "
@@ -765,10 +834,13 @@ int main(int argc, char **argv)
     }
 #endif
 #ifdef CHIBI_TEST_SOURCE_RUNTIME
-    source_runtime_active = corpus || coverage || preview_components ||
-                            shader_parameters || source_edit || new_asset ||
-                            asset_refactor || system_schedule ||
-                            source_systems || persistent_store ||
+    source_runtime_active = corpus || unit_fixtures || coverage ||
+                            preview_components || shader_parameters ||
+                            source_edit || new_asset || asset_refactor ||
+                            system_schedule || scheduler_benchmark ||
+                            source_reductions || source_reduction_benchmark ||
+                            source_execution_benchmark || source_systems ||
+                            source_query_rows || persistent_store ||
                             source_presentation || whole_alias || whole_math ||
                             whole_integer || whole_conversion || whole_select ||
                             owned_tick || parallel_tick || source_features ||
@@ -810,6 +882,11 @@ int main(int argc, char **argv)
         }
 #endif
 #ifdef CHIBI_TEST_SOURCE_FEATURES
+        if (unit_fixtures) {
+            test_language_unit_fixtures();
+            pu_print_stats();
+            return pu_test_failed() ? 1 : 0;
+        }
         if (corpus) {
             return corpus == 1 ? run_language_semantic_corpora(argv[2])
                  : corpus == 2 ? run_language_prepare_corpora(argv[2])
@@ -827,8 +904,18 @@ int main(int argc, char **argv)
             test_source_edit();
         } else if (system_schedule) {
             test_system_schedule();
+        } else if (source_reductions) {
+            test_source_reductions();
+        } else if (source_reduction_benchmark) {
+            test_source_reduction_benchmark();
+        } else if (source_execution_benchmark) {
+            test_source_execution_benchmark();
+        } else if (scheduler_benchmark) {
+            test_tool_scheduler_benchmark();
         } else if (source_systems) {
             test_code_system_runtime();
+        } else if (source_query_rows) {
+            test_code_query_rows();
         } else if (source_presentation) {
             test_source_presentation();
             test_component_presentation();
@@ -1070,6 +1157,9 @@ int main(int argc, char **argv)
         test_tool_test_policy();
         test_tool_validation_plan();
         test_tool_publish();
+#ifdef CHIBI_TEST_C_EXPORT
+        test_tool_c_export();
+#endif
 #ifdef CHIBI_TEST_AUDIO_ANALYSIS
         test_tool_audio_analysis();
 #ifdef CHIBI_TEST_RENDER_RUNTIME
@@ -1078,6 +1168,10 @@ int main(int argc, char **argv)
 #endif
 #ifdef CHIBI_TEST_REFLECT
         test_tool_reflect();
+#endif
+#ifdef CHIBI_TEST_SOURCE_FEATURES
+        source_runtime_active = true;
+        test_language_unit_fixtures();
 #endif
     }
     pu_print_stats();

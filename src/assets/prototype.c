@@ -230,6 +230,11 @@ static int parse_field(
     size_t error_size
 )
 {
+    if (field->range_contract && av_is_num(json) &&
+        (field->type == PIN_F32 || field->type == PIN_F64)) {
+        pin_write_field(base, field, pin_field_number(field, av_get_num(json)));
+        return 0;
+    }
     pin_value value = { .type = field->type, .type_name = field->type_name };
     int result = 0;
     int64_t signed_value = 0;
@@ -336,7 +341,13 @@ static int parse_field(
             }
             break;
         }
+        case PIN_TASK:
+        case PIN_UNION:
         case PIN_FLOW: result = 1; break;
+    }
+    if (result && field->range_contract && (av_is_sint(json) || av_is_uint(json))) {
+        value = pin_field_number(field, av_get_num(json));
+        result = 0;
     }
     if (result) {
         set_error(error, error_size, "field %s has the wrong value type", field->name);
@@ -374,6 +385,7 @@ static int parse_fields(
             return -1;
         }
     }
+    type_validate_ranges(type, base);
     return 0;
 }
 
@@ -1017,6 +1029,8 @@ static bool zero_field(const void *base, const type_field *field)
         case PIN_STR: return !value.str;
         case PIN_STRUCT: return !value.ptr;
         case PIN_HANDLE:
+        case PIN_TASK:
+        case PIN_UNION:
         case PIN_FLOW: return true;
     }
     return false;
@@ -1054,6 +1068,8 @@ static av_value *write_value(av_doc *doc, const prototype *document, const void 
             return object;
         }
         case PIN_HANDLE:
+        case PIN_TASK:
+        case PIN_UNION:
         case PIN_FLOW: return av_null(doc);
     }
     return av_null(doc);
@@ -2101,6 +2117,7 @@ int prototype_add_component(prototype *document, const ecs_component_desc *desc)
         }
         break;
     }
+    type_validate_ranges(desc->type, component.data);
     apush(document->components, component);
     return 0;
 }

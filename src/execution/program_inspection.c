@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/union.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -98,6 +99,8 @@ execution_inspector *execution_program_inspector(execution_program *p)
 {
     assert(p && !p->running);
     if (!p->inspector) {
+        /* Preparation has already chosen retained activations or row IDs. */
+        assert(!p->system_prepared);
         p->inspector = xcalloc(1, sizeof *p->inspector);
         p->inspector->references = 1;
         p->inspector->program = p;
@@ -365,6 +368,7 @@ static void activity(
     for (int n = 0; n < acount(i->activity); n++) {
         execution_debug_activity *v = &i->activity[n];
         if (v->owner == a->instance->owner && v->module == module &&
+            !memcmp(v->query_variables, a->instance->query_variables, sizeof v->query_variables) &&
             v->function == function && v->occurrence == occurrence &&
             v->from_occurrence == a->debug_previous && v->from_module == a->debug_module &&
             v->from_function == a->debug_function) {
@@ -398,6 +402,11 @@ static void activity(
             .from_function = a->debug_function,
             .from_occurrence = a->debug_previous
         };
+        memcpy(
+            i->activity[row].query_variables,
+            a->instance->query_variables,
+            sizeof i->activity[row].query_variables
+        );
     }
     if (i->activity[row].count < UINT64_MAX) {
         i->activity[row].count++;
@@ -453,6 +462,11 @@ static int pause_point(void *user, behavior_function_context *ctx, const behavio
                                           .point = *point,
                                           .depth = d,
                                           .status = stop ? FLOW_PAUSED_RESULT : FLOW_OK };
+    memcpy(
+        i->cursor.query_variables,
+        a->instance->query_variables,
+        sizeof i->cursor.query_variables
+    );
     frames(i, a, ctx, *point);
     owner_row *row = owner_snapshot(i, a->instance->owner, true);
     row->cursor = i->cursor;
@@ -548,6 +562,18 @@ static bool value_size(size_t *total, const pin_value *v, int nesting)
         return type && add_size(total, type->size) &&
                fields_size(total, type, v->ptr, nesting + 1);
     }
+    if (v->type == PIN_UNION && v->ptr) {
+        const pin_union *value = v->ptr;
+        if (value->count < 0 || value->count > 65536 ||
+            !add_size(total, sizeof *value + (size_t)value->count * sizeof(pin_value))) {
+            return false;
+        }
+        for (int n = 0; n < value->count; n++) {
+            if (!value_size(total, &value->values[n], nesting + 1)) {
+                return false;
+            }
+        }
+    }
     return v->type != PIN_FLOW;
 }
 static void capture(
@@ -571,6 +597,7 @@ static void capture(
     for (int n = 0; n < acount(i->watches); n++) {
         const execution_debug_watch *v = &i->watches[n].view;
         if (v->generation == i->generation && v->owner == a->instance->owner &&
+            !memcmp(v->query_variables, a->instance->query_variables, sizeof v->query_variables) &&
             v->module == m->plan.id && v->function == id &&
             v->source.origin.occurrence == source->origin.occurrence &&
             v->source.output == source->output && v->source.ordinal == source->ordinal) {
@@ -609,6 +636,7 @@ static void capture(
                                 .owner = a->instance->owner,
                                 .source = *source,
                                 .value = source->initial } };
+    memcpy(r->view.query_variables, a->instance->query_variables, sizeof r->view.query_variables);
     if (!value) {
         r->view.availability = EXECUTION_WATCH_UNCONSUMED_REFERENCE;
         return;
@@ -665,9 +693,8 @@ void program_inspection_finish(execution_activation *a)
     if (!i) {
         return;
     }
-    int status = i->paused && i->paused->instance->owner == a->instance->owner
-                   ? FLOW_PAUSED_RESULT
-                   : a->status;
+    int status = i->paused && i->paused->instance == a->instance ? FLOW_PAUSED_RESULT
+                                                                 : a->status;
     owner_row *row = owner_snapshot(i, a->instance->owner, false);
     if (row && row->cursor.run == root(a)->debug_run) {
         row->cursor.status = status;
@@ -718,10 +745,18 @@ void program_inspection_remove_owner(execution_instance *instance)
         return;
     }
     owner_row *row = owner_snapshot(i, instance->owner, false);
-    if (row) {
+    if (row && !memcmp(
+                   row->cursor.query_variables,
+                   instance->query_variables,
+                   sizeof instance->query_variables
+               )) {
         row->cursor.retired = true;
     }
-    if (i->cursor.owner == instance->owner) {
+    if (i->cursor.owner == instance->owner && !memcmp(
+                                                  i->cursor.query_variables,
+                                                  instance->query_variables,
+                                                  sizeof instance->query_variables
+                                              )) {
         i->cursor.retired = true;
     }
 }

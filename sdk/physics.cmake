@@ -72,8 +72,9 @@ configure_file("${box3d_SOURCE_DIR}/src/block_allocator.c"
     "${box3d_patched_root}/src/block_allocator.c" COPYONLY)
 find_package(Git REQUIRED)
 execute_process(
-    COMMAND "${GIT_EXECUTABLE}" apply --unsafe-paths
-        "--directory=${box3d_patched_root}" "${box3d_patch}"
+    COMMAND "${GIT_EXECUTABLE}" "--work-tree=${box3d_patched_root}"
+        apply "${box3d_patch}"
+    WORKING_DIRECTORY "${box3d_patched_root}"
     RESULT_VARIABLE box3d_patch_result
     ERROR_VARIABLE box3d_patch_error)
 if(NOT box3d_patch_result EQUAL 0)
@@ -158,7 +159,7 @@ if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CHIBI_WEB_THREADS)
     target_link_libraries(chibi_task_pool_runtime PRIVATE chibi_task_scheduler)
     target_include_directories(chibi_task_pool_runtime PRIVATE "${enkits_SOURCE_DIR}/src")
     target_compile_definitions(chibi_task_pool_runtime PRIVATE CHIBI_HAS_ENKITS=1)
-    if(CHIBI_WEB_WORKERS)
+    if(CHIBI_WEB_THREADS)
         target_compile_definitions(chibi_task_pool_runtime PRIVATE CHIBI_WEB_WORKERS=${CHIBI_WEB_WORKERS})
     endif()
     install(FILES "${enkits_SOURCE_DIR}/License.txt" DESTINATION share/chibi/licenses/enkits)

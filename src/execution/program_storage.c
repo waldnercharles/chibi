@@ -116,6 +116,7 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
     assert(p && !p->owner_program->running);
     execution_memory_usage result = { 0 };
     execution_activation **values = activations(p->owner_program, NULL);
+    result.activation_bytes = (size_t)acount(values) * sizeof(execution_activation);
     for (int i = 0; i < acount(values); i++) {
         size_t bytes, capacity;
         arena_usage(&values[i]->payload, &bytes, &capacity);
@@ -123,5 +124,74 @@ execution_memory_usage execution_program_memory_usage(const execution_program *p
         result.payload_capacity += capacity;
     }
     afree(values);
+    p = p->owner_program;
+    result.task_lookup_steps = p->task_lookup_steps;
+    result.query_rows = p->query_rows;
+    result.query_lookup_steps = p->query_lookup_steps;
+    result.ecs_change_bytes = p->world ? ecs_world_change_tracking_bytes(p->world) : 0;
+    for (int scope = -1; scope < acount(p->imports); scope++) {
+        const execution_program *program = scope < 0 ? p : p->imports[scope];
+        result.activation_cache_bytes += program_activation_cache_bytes(program);
+        result.row_worker_capacity += program_row_worker_bytes(program);
+        result.row_parallel_jobs += program->row_parallel_jobs;
+        result.row_parallel_workers += program->row_parallel_workers;
+        result.query_cache_bytes += program->query_cache_bytes;
+        result.reduction_bytes += (size_t)acount(program->reductions) *
+                                  sizeof *program->reductions;
+        result.reduction_capacity += program->reductions
+                                       ? sizeof(dyna_hdr) +
+                                             (size_t)acap(program->reductions) *
+                                                 sizeof *program->reductions
+                                       : 0;
+        result.reduction_capacity += program->reduction_table
+                                       ? sizeof(dyna_hdr) +
+                                             (size_t)acap(program->reduction_table) *
+                                                 sizeof *program->reduction_table
+                                       : 0;
+        result.reduction_contributions += program->reduction_contributions;
+        result.reduction_records += program->reduction_records;
+        result.reduction_peak_bytes += program->reduction_peak_bytes;
+        result.system_row_bytes += (size_t)acount(program->system_rows) *
+                                   sizeof *program->system_rows;
+        result.system_row_capacity += program->system_rows
+                                        ? sizeof(dyna_hdr) +
+                                              (size_t)acap(program->system_rows) *
+                                                  sizeof *program->system_rows
+                                        : 0;
+        for (int i = 0; i < acount(program->system_activations); i++) {
+            const execution_activation *activation = program->system_activations[i];
+            if (activation) {
+                result.activation_bytes += sizeof *activation;
+                size_t bytes, capacity;
+                arena_usage(&activation->payload, &bytes, &capacity);
+                result.payload_bytes += bytes;
+                result.payload_capacity += capacity;
+            }
+        }
+        result.instance_count += acount(program->instances);
+        result.instance_bytes += (size_t)acount(program->instances) *
+                                 sizeof(execution_instance);
+        result.query_index_bytes += (size_t)acount(program->row_table) *
+                                    sizeof *program->row_table;
+        result.binding_schedule_bytes += program_binding_storage_bytes(program);
+        result.query_history_bytes += (size_t)acount(program->instances) *
+                                      (size_t)acount(program->change_queries) *
+                                      2 * sizeof(query_change);
+        result.query_history_bytes += (size_t)acount(program->query_admissions) *
+                                      sizeof(uint64_t);
+        result.state_bank_bytes += (size_t)acount(program->instances) *
+                                   (size_t)program->module->plan.state_count *
+                                   (sizeof(state_value) + sizeof(pin_value) +
+                                    sizeof(behavior_variable_storage));
+        for (int i = 0; i < acount(program->instances); i++) {
+            const execution_instance *instance = program->instances[i];
+            result.task_slots += acount(instance->tasks);
+            for (int j = 0; j < acount(instance->tasks); j++) {
+                const execution_task *task = &instance->tasks[j];
+                result.retained_tasks += task->generation && !task->activation;
+                result.task_result_bytes += arena_storage_bytes(&task->storage);
+            }
+        }
+    }
     return result;
 }

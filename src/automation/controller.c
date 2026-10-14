@@ -1576,7 +1576,7 @@ static void catalog_add_diagnostic(
     };
     apush(asset->diagnostics, diagnostic);
 }
-/* A source's unit warnings, which leave it valid. */
+/* Non-fatal source warnings leave the source valid. */
 static void catalog_add_warnings(catalog_asset *asset, const script_analysis *analysis)
 {
     asset->warnings = analysis->warning_count;
@@ -1890,12 +1890,14 @@ static void catalog_validate_asset(
             );
         }
         for (int i = 0; source && i < source->diagnostic_count; i++) {
-            catalog_add_diagnostic(
-                asset,
-                "error",
-                0,
-                "SOURCE",
-                source->diagnostics[i].message
+            const script_diagnostic *diagnostic = &source->diagnostics[i];
+            apush(
+                asset->diagnostics,
+                ((catalog_diagnostic){ .severity = xstrdup("error"),
+                                       .rule_name = xstrdup("SOURCE"),
+                                       .message = xstrdup(diagnostic->message),
+                                       .line = diagnostic->range.line,
+                                       .column = diagnostic->range.column })
             );
         }
         if (source) {
@@ -7518,6 +7520,10 @@ static void scenario_hash_value(uint64_t *hash, pin_type type, const char *type_
             }
             break;
         }
+        case PIN_TASK:
+        case PIN_UNION:
+            assert(false && "Managed task and union values cannot be ECS fields");
+            break;
         case PIN_FLOW: break;
     }
 }

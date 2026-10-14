@@ -22,6 +22,7 @@ struct execution_wasm_jit
     uint64_t id;
     atomic_uint references;
     atomic_bool retired;
+    _Atomic(struct execution_wasm_jit *) inspection;
 };
 
 static atomic_uint_fast64_t compilations;
@@ -210,6 +211,47 @@ static uint64_t allocate_id()
         }
     }
 }
+
+static execution_wasm_jit *compile_entry(const behavior_function *f, bool inspected)
+{
+    execution_wasm_jit *jit = xcalloc(1, sizeof *jit);
+    atomic_init(&jit->references, 1);
+    atomic_init(&jit->retired, false);
+    atomic_init(&jit->inspection, NULL);
+    jit->id = allocate_id();
+    if (!jit->id ||
+        !execution_wasm_emit(f, inspected, &jit->bytes, &jit->size, last_error, sizeof last_error)) {
+        atomic_fetch_add_explicit(&compile_failures, 1, memory_order_relaxed);
+        release(jit);
+        return NULL;
+    }
+    return jit;
+}
+
+static execution_wasm_jit *inspection_for(const behavior_function *f)
+{
+    execution_wasm_jit *normal = f->artifact->wasm_jit;
+    execution_wasm_jit *inspection = atomic_load_explicit(&normal->inspection, memory_order_acquire);
+    if (inspection) {
+        return inspection;
+    }
+    execution_wasm_jit *candidate = compile_entry(f, true);
+    if (!candidate) {
+        return NULL;
+    }
+    if (atomic_compare_exchange_strong_explicit(
+            &normal->inspection,
+            &inspection,
+            candidate,
+            memory_order_acq_rel,
+            memory_order_acquire
+        )) {
+        return candidate;
+    }
+    /* The losing bytes were never installed in a thread's table. */
+    release(candidate);
+    return inspection;
+}
 #endif
 
 bool behavior_function_compile_wasm(behavior_function *f)
@@ -220,20 +262,12 @@ bool behavior_function_compile_wasm(behavior_function *f)
     }
     last_error[0] = '\0';
 #ifdef __EMSCRIPTEN__
-    execution_wasm_jit *jit = xcalloc(1, sizeof *jit);
-    atomic_init(&jit->references, 1);
-    atomic_init(&jit->retired, false);
-    jit->id = allocate_id();
-    if (!jit->id ||
-        !execution_wasm_emit(f, &jit->bytes, &jit->size, last_error, sizeof last_error)) {
-        atomic_fetch_add_explicit(&compile_failures, 1, memory_order_relaxed);
-        free(jit->bytes);
-        free(jit);
+    execution_wasm_jit *jit = compile_entry(f, false);
+    if (!jit) {
         return false;
     }
     if (!entry_for(jit)) {
-        free(jit->bytes);
-        free(jit);
+        release(jit);
         return false;
     }
     f->artifact->wasm_jit = jit;
@@ -253,13 +287,20 @@ int behavior_function_run_wasm(const behavior_function *f, behavior_function_con
         ctx->error_message = last_error;
         return FLOW_ERR_COMPILE;
     }
-    wasm_entry entry = entry_for(f->artifact->wasm_jit);
+    bool inspected = behavior_function_inspection_required(f, ctx);
+    execution_wasm_jit *jit = inspected ? inspection_for(f) : f->artifact->wasm_jit;
+    wasm_entry entry = jit ? entry_for(jit) : NULL;
     if (!entry) {
         ctx->error_message = last_error;
         return FLOW_ERR_COMPILE;
     }
     execution_machine machine;
     execution_machine_begin(&machine, f, ctx, false);
+    /* Both emitted entries keep canonical PCs, including continuation leaders.
+     * Helpers read exactly the immutable stream used to emit this entry. */
+    if (!inspected && f->runtime_body) {
+        machine.instructions = f->runtime_body;
+    }
     atomic_fetch_add_explicit(&executions, 1, memory_order_relaxed);
     int result = entry(&machine);
     execution_machine_end(&machine, result);
@@ -278,6 +319,9 @@ void execution_wasm_jit_free(execution_wasm_jit *jit)
         return;
     }
 #ifdef __EMSCRIPTEN__
+    execution_wasm_jit_free(
+        atomic_exchange_explicit(&jit->inspection, NULL, memory_order_acq_rel)
+    );
     /* Only retired generations are collected. Idle threads retain their cache
      * references until the next call or their pthread cleanup destructor. */
     atomic_store_explicit(&jit->retired, true, memory_order_release);

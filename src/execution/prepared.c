@@ -6,6 +6,7 @@
 #include "support/array.h"
 #include "support/xalloc.h"
 #include "types/catalog.h"
+#include "types/union.h"
 
 #include <float.h>
 #include <limits.h>
@@ -44,7 +45,7 @@ static bool value_identity(prepared_context *c, const pin_value *value, unsigned
     if (depth > EXECUTION_WIRE_MAX_DEPTH) {
         return false;
     }
-    if (value->type_name && value->type >= PIN_HANDLE) {
+    if (value->type_name && value->type >= PIN_HANDLE && value->type != PIN_TASK) {
         bool found = false;
         for (int i = 0; i < c->plan->type_count; i++) {
             const execution_type_requirement *t = &c->plan->types[i];
@@ -64,6 +65,13 @@ static bool value_identity(prepared_context *c, const pin_value *value, unsigned
         const pin_array *array = value->ptr;
         for (int i = 0; i < array->count; i++) {
             if (!value_identity(c, &array->items[i], depth + 1)) {
+                return false;
+            }
+        }
+    } else if (value->type == PIN_UNION) {
+        const pin_union *tagged = value->ptr;
+        for (int i = 0; i < tagged->count; i++) {
+            if (!value_identity(c, &tagged->values[i], depth + 1)) {
                 return false;
             }
         }
@@ -321,6 +329,7 @@ static uint64_t context_abi()
                               FIELD(bind_instance),
                               FIELD(commit_instance),
                               FIELD(store_component),
+                              FIELD(reduce_component),
                               FIELD(delta_seconds),
                               FIELD(steps),
                               FIELD(budget),
@@ -402,7 +411,7 @@ static void types(prepared_context *c)
         ENUM(v->storage);
         STRING(v->name);
         SIZE(v->size);
-        if (!v->id || !v->name || v->storage < PIN_BOOL || v->storage > PIN_ENUM) {
+        if (!v->id || !v->name || v->storage < PIN_BOOL || v->storage > PIN_UNION) {
             w->error = "invalid prepared type requirement";
             break;
         }
@@ -571,9 +580,16 @@ static void payload(prepared_context *c)
         execution_module_query *v = &p->queries[index];
         ENUM(v->kind);
         U64(v->component);
+        U64(v->source_relationship);
+        INT(v->source_traversal);
+        INT(v->source_variable);
+        INT(v->target_variable);
+        root_ref(c, &v->predicate);
         ints(w, &v->children, &v->child_count);
     });
     INT(p->query);
+    INT(p->query_variable_count);
+    INT(p->query_filter);
     ARRAY(bindings, binding_count, {
         execution_module_binding *v = &p->bindings[index];
         U64(v->target);
@@ -668,6 +684,9 @@ static bool owners(prepared_context *c)
         OWNER(p->bindings[i].body);
         OWNER(p->bindings[i].dependencies);
     }
+    for (int i = 0; i < p->query_count; i++) {
+        OWNER(p->queries[i].predicate);
+    }
     for (int i = 0; i < count; i++) {
         for (int j = 0; j < acount(c->functions[i]->definitions); j++) {
             OWNER(c->functions[i]->definitions[j]);
@@ -689,6 +708,9 @@ static bool owners(prepared_context *c)
     for (int i = 0; i < p->binding_count; i++) {
         valid &= reached(c, p->bindings[i].body, seen, 0);
         valid &= reached(c, p->bindings[i].dependencies, seen, 0);
+    }
+    for (int i = 0; i < p->query_count; i++) {
+        valid &= reached(c, p->queries[i].predicate, seen, 0);
     }
     for (int i = 0; i < count; i++) {
         valid &= seen[i];
@@ -713,6 +735,9 @@ static void discard_functions(prepared_context *c)
     for (int i = 0; i < c->plan->binding_count; i++) {
         c->plan->bindings[i].body = NULL;
         c->plan->bindings[i].dependencies = NULL;
+    }
+    for (int i = 0; i < c->plan->query_count; i++) {
+        c->plan->queries[i].predicate = NULL;
     }
 }
 static bool write_depth(
@@ -744,6 +769,9 @@ static bool write_depth(
     for (int i = 0; i < c.plan->binding_count && !c.wire.error; i++) {
         add_function(&c, c.plan->bindings[i].body, 0);
         add_function(&c, c.plan->bindings[i].dependencies, 0);
+    }
+    for (int i = 0; i < c.plan->query_count && !c.wire.error; i++) {
+        add_function(&c, c.plan->queries[i].predicate, 0);
     }
     execution_wire *w = &c.wire;
     header(w);

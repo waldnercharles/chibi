@@ -13,7 +13,7 @@ behavior "InputBehavior" {
     after set_gamevelocity {
         await "Face Direction"(input.Direction)
     }
-    function "Face Direction"(Direction: struct<"CF_V2"> = null) {
+    "Face Direction" :: fn(Direction: struct<"CF_V2"> = null) {
         after entry {
             if self.Orientation {
                 if 0.0 >= abs(entry.Direction.x) + abs(entry.Direction.y) {

@@ -1,7 +1,10 @@
 #include "capabilities/catalog.h"
 
+#include "types/union.h"
+
 #include <assert.h>
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 
 static const script_catalog *project;
@@ -53,6 +56,9 @@ int script_catalog_find_type(const script_catalog *catalog, const char *name)
 {
     int found = -1;
     for (int i = 0; i < catalog->type_count; i++) {
+        if (catalog->types[i].internal) {
+            continue;
+        }
         const char *full = catalog->types[i].name;
         if (!strcmp(full, name)) {
             return i;
@@ -145,12 +151,16 @@ const char *script_scalar_name(pin_type storage)
         [PIN_I32] = "int",       [PIN_U32] = "uint",   [PIN_I64] = "int64",
         [PIN_U64] = "uint64",    [PIN_F32] = "float",  [PIN_F64] = "double",
         [PIN_NAME] = "name",     [PIN_STR] = "string", [PIN_HANDLE] = "handle",
-        [PIN_STRUCT] = "struct", [PIN_ENUM] = "enum"
+        [PIN_STRUCT] = "struct", [PIN_ENUM] = "enum",  [PIN_TASK] = "task",
+        [PIN_UNION] = "union"
     };
-    return storage >= PIN_FLOW && storage <= PIN_ENUM ? names[storage] : "error";
+    return storage >= PIN_FLOW && storage <= PIN_UNION ? names[storage] : "error";
 }
 script_type script_builtin_type(const char *name)
 {
+    if (!strcmp(name, "Cancelled")) {
+        return script_cancelled_type();
+    }
     for (int i = PIN_FLOW; i <= PIN_ENUM; i++) {
         if (!strcmp(name, script_scalar_name((pin_type)i))) {
             return (script_type){ .storage = (pin_type)i };
@@ -167,7 +177,7 @@ script_type script_builtin_type(const char *name)
                               .nominal = script_catalog_id("type", "ecs.entity") };
     }
     if (!strcmp(name, "task")) {
-        return (script_type){ .storage = PIN_U64, .flags = SCRIPT_TYPE_TASK };
+        return (script_type){ .storage = PIN_TASK, .flags = SCRIPT_TYPE_TASK };
     }
     if (!strcmp(name, "any")) {
         return (script_type){ .storage = PIN_FLOW, .flags = SCRIPT_TYPE_UNTYPED };
@@ -176,8 +186,15 @@ script_type script_builtin_type(const char *name)
 }
 bool script_type_equal(script_type a, script_type b)
 {
+    if ((a.flags | b.flags) & SCRIPT_TYPE_TASK) {
+        return a.container == b.container && (a.flags & b.flags & SCRIPT_TYPE_TASK) &&
+               (!a.parameter || !b.parameter || a.parameter == b.parameter) &&
+               (a.flags & SCRIPT_TYPE_OPTIONAL) == (b.flags & SCRIPT_TYPE_OPTIONAL);
+    }
     return a.storage == b.storage && a.container == b.container &&
            a.nominal == b.nominal &&
+           (!(a.flags & SCRIPT_TYPE_LITERAL) ||
+            !(b.flags & SCRIPT_TYPE_LITERAL) || a.parameter == b.parameter) &&
            (a.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS)) ==
                (b.flags & (SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_RESULTS));
 }
@@ -194,18 +211,30 @@ bool script_type_assignable(script_type expected, script_type actual)
     if ((expected.flags | actual.flags) & SCRIPT_TYPE_ERROR) {
         return true;
     }
+    if (expected.flags & SCRIPT_TYPE_BOXED_OPTIONAL) {
+        expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+        actual.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+        return script_type_equal(expected, actual);
+    }
     if ((expected.flags | actual.flags) & SCRIPT_TYPE_UNTYPED) {
         return true;
     }
     expected.flags &= ~SCRIPT_TYPE_GENERIC;
     actual.flags &= ~SCRIPT_TYPE_GENERIC;
     if ((expected.flags | actual.flags) & SCRIPT_TYPE_TASK) {
-        /* Any task fits any task slot, whichever function started it. */
-        return expected.flags & actual.flags & SCRIPT_TYPE_TASK;
+        return expected.container == actual.container &&
+               (expected.flags & actual.flags & SCRIPT_TYPE_TASK) &&
+               (!(actual.flags & SCRIPT_TYPE_OPTIONAL) ||
+                (expected.flags & SCRIPT_TYPE_OPTIONAL)) &&
+               (!expected.parameter || expected.parameter == actual.parameter);
     }
     if ((actual.flags & SCRIPT_TYPE_OPTIONAL) &&
         !(expected.flags & SCRIPT_TYPE_OPTIONAL)) {
         return false;
+    }
+    if (expected.flags & SCRIPT_TYPE_OPTIONAL) {
+        expected.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
+        actual.flags &= ~(SCRIPT_TYPE_OPTIONAL | SCRIPT_TYPE_BOXED_OPTIONAL);
     }
     if (script_type_numeric(expected) && script_type_numeric(actual)) {
         return true;
@@ -242,10 +271,81 @@ script_type script_catalog_canonical_type(const script_catalog *catalog, script_
 }
 bool script_catalog_type_assignable(const script_catalog *catalog, script_type expected, script_type actual)
 {
+    if (expected.flags & SCRIPT_TYPE_LITERAL) {
+        return (actual.flags & SCRIPT_TYPE_LITERAL) &&
+               expected.parameter == actual.parameter;
+    }
+    if ((expected.flags & SCRIPT_TYPE_UNION) &&
+        expected.container == PIN_CONTAINER_SINGLE &&
+        !(actual.flags & SCRIPT_TYPE_ERROR)) {
+        if (expected.nominal == actual.nominal && (actual.flags & SCRIPT_TYPE_UNION) &&
+            expected.container == actual.container &&
+            (!(actual.flags & SCRIPT_TYPE_OPTIONAL) ||
+             (expected.flags & SCRIPT_TYPE_OPTIONAL))) {
+            return true;
+        }
+        const script_catalog_type
+            *type = script_catalog_type_by_id(catalog, expected.nominal);
+        const script_catalog_type
+            *source = (actual.flags & SCRIPT_TYPE_UNION) &&
+                              !(actual.flags & SCRIPT_TYPE_BOXED_OPTIONAL) &&
+                              actual.container == PIN_CONTAINER_SINGLE
+                        ? script_catalog_type_by_id(catalog, actual.nominal)
+                        : NULL;
+        if (source) {
+            for (int i = 0; i < source->variant_count; i++) {
+                bool found = false;
+                for (int j = 0; type && j < type->variant_count; j++) {
+                    found |= source->variants[i].tag == type->variants[j].tag;
+                }
+                if (!found) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        for (int i = 0; type && i < type->variant_count; i++) {
+            const script_catalog_variant *v = &type->variants[i];
+            if (!v->tagged && script_type_equal(v->type, actual) &&
+                (!v->is_literal || ((actual.flags & SCRIPT_TYPE_LITERAL) &&
+                                    v->type.parameter == actual.parameter))) {
+                return true;
+            }
+        }
+        return false;
+    }
     return script_type_assignable(
         script_catalog_canonical_type(catalog, expected),
         script_catalog_canonical_type(catalog, actual)
     );
+}
+
+script_type script_cancelled_type()
+{
+    return (script_type){ .storage = PIN_UNION,
+                          .nominal = PIN_UNION_CANCELLED_TAG,
+                          .flags = SCRIPT_TYPE_SINGLETON };
+}
+uint64_t script_type_tag(script_type type)
+{
+    if (type.flags & SCRIPT_TYPE_SINGLETON) {
+        return type.nominal;
+    }
+    if (type.flags & SCRIPT_TYPE_LITERAL) {
+        return type.parameter;
+    }
+    char name[96];
+    snprintf(
+        name,
+        sizeof name,
+        "%d:%d:%llu:%llu:%u",
+        type.storage,
+        type.container,
+        (unsigned long long)(type.flags & SCRIPT_TYPE_TASK ? 0 : type.nominal),
+        (unsigned long long)(type.flags & SCRIPT_TYPE_TASK ? type.parameter : 0),
+        type.flags & (SCRIPT_TYPE_RESULTS | SCRIPT_TYPE_TASK | SCRIPT_TYPE_OPTIONAL)
+    );
+    return script_catalog_id("union-type", name);
 }
 
 static uint64_t abi_word(uint64_t hash, uint64_t value)
@@ -265,20 +365,79 @@ static uint64_t abi_text(uint64_t hash, const char *text)
     }
     return (hash ^ 0) * UINT64_C(1099511628211);
 }
-static uint64_t abi_type(uint64_t hash, const script_catalog *catalog, script_type type)
+static uint64_t abi_type_shape(
+    uint64_t hash,
+    const script_catalog *catalog,
+    script_type type,
+    uint64_t *parents,
+    int depth
+)
 {
     hash = abi_word(hash, type.storage);
     hash = abi_word(hash, type.container);
     hash = abi_word(hash, type.nominal);
     hash = abi_word(hash, type.parameter);
     hash = abi_word(hash, type.flags);
+    if ((type.flags & SCRIPT_TYPE_TASK) && type.parameter && depth < 64) {
+        const script_catalog_type *result = script_catalog_type_by_id(catalog, type.parameter);
+        if (result) {
+            bool recursive = false;
+            for (int i = 0; i < depth; i++) {
+                recursive |= parents[i] == type.parameter;
+            }
+            if (recursive) {
+                return hash;
+            }
+            parents[depth] = type.parameter;
+            hash = abi_type_shape(hash, catalog, result->type, parents, depth + 1);
+            hash = abi_word(hash, result->field_count);
+            for (int i = 0; i < result->field_count; i++) {
+                hash = abi_text(hash, result->fields[i].name);
+                hash = abi_type_shape(hash, catalog, result->fields[i].type, parents, depth + 1);
+            }
+        }
+    }
     const script_catalog_type *record = script_catalog_type_by_id(catalog, type.nominal);
     if (record) {
         hash = abi_word(hash, record->layout);
         hash = abi_word(hash, record->size);
         hash = abi_word(hash, record->underlying);
+        for (int i = 0; i < depth; i++) {
+            if (parents[i] == record->id) {
+                return hash;
+            }
+        }
+        if (depth == 64) {
+            return hash;
+        }
+        parents[depth++] = record->id;
+        hash = abi_word(hash, record->variant_count);
+        for (int i = 0; i < record->variant_count; i++) {
+            const script_catalog_variant *v = &record->variants[i];
+            hash = abi_word(hash, v->tag);
+            hash = abi_text(hash, v->name);
+            hash = abi_word(hash, v->tagged);
+            hash = abi_word(hash, v->is_literal);
+            if (!v->tagged) {
+                hash = abi_type_shape(hash, catalog, v->type, parents, depth);
+            }
+            if (v->is_literal) {
+                hash = abi_word(hash, v->literal.type);
+                hash = abi_text(hash, v->literal.str);
+            }
+            hash = abi_word(hash, v->field_count);
+            for (int j = 0; j < v->field_count; j++) {
+                hash = abi_text(hash, v->fields[j].name);
+                hash = abi_type_shape(hash, catalog, v->fields[j].type, parents, depth);
+            }
+        }
     }
     return hash;
+}
+static uint64_t abi_type(uint64_t hash, const script_catalog *catalog, script_type type)
+{
+    uint64_t parents[64];
+    return abi_type_shape(hash, catalog, type, parents, 0);
 }
 uint64_t script_catalog_capability_abi(const script_catalog *catalog, const script_catalog_capability *capability)
 {

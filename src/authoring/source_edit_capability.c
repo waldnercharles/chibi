@@ -385,6 +385,7 @@ bool source_edit_capability(
                 apush(
                     owned_parameters,
                     ((script_catalog_parameter){ .name = parameter->name,
+                                                 .unit = parameter->unit,
                                                  .type = parameter->type,
                                                  .has_default = parameter->initializer >= 0 })
                 );
@@ -394,6 +395,7 @@ bool source_edit_capability(
                 apush(
                     owned_results,
                     ((script_catalog_parameter){ .name = result->name,
+                                                 .unit = result->unit,
                                                  .type = result->type })
                 );
             }

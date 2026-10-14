@@ -24,7 +24,7 @@ behavior "ArenaDropBehavior" {
         } else {
         }
     }
-    function "Emit Source Frame"(Position: struct<"Transform"> = null, Appearance: struct<"Geometry3D"> = null, Material: struct<"Shader"> = null, Orientation: struct<"Orientation"> = null, Visual: struct<"VisualTransform"> = null) -> () {
+    "Emit Source Frame" :: fn(Position: struct<"Transform"> = null, Appearance: struct<"Geometry3D"> = null, Material: struct<"Shader"> = null, Orientation: struct<"Orientation"> = null, Visual: struct<"VisualTransform"> = null) -> () {
         depth_limit 64;
         action forloop = for_loop(FirstIndex: 0, LastIndex: cast<int>(subtract(A: plain int = primitive_part(Appearance: entry.Appearance, Index: 0).Count, B: plain int = 1)));
         after entry {
@@ -38,7 +38,7 @@ behavior "ArenaDropBehavior" {
             return ();
         }
     }
-    function "Spawn Surface Pulse"(Prototype: name = "ArenaHitPulse", Position: struct<"Transform"> = null) -> () {
+    "Spawn Surface Pulse" :: fn(Prototype: name = "ArenaHitPulse", Position: struct<"Transform"> = null) -> () {
         depth_limit 64;
         action spawn_prototype = engine["Spawn Prototype"](Prototype: entry.Prototype);
         after entry {
@@ -49,7 +49,7 @@ behavior "ArenaDropBehavior" {
             return ();
         }
     }
-    function "Spawn Source Beam"(Position: struct<"Transform"> = null, Appearance: struct<"Geometry3D"> = null, Material: struct<"Shader"> = null, Orientation: struct<"Orientation"> = null, Visual: struct<"VisualTransform"> = null, Center: struct<"CF_V2"> = null, "Center Y": float = 0.0, Width: float = 0.0, Height: float = 0.0, Depth: float = 0.0, Primitive: int = 0) -> () {
+    "Spawn Source Beam" :: fn(Position: struct<"Transform"> = null, Appearance: struct<"Geometry3D"> = null, Material: struct<"Shader"> = null, Orientation: struct<"Orientation"> = null, Visual: struct<"VisualTransform"> = null, Center: struct<"CF_V2"> = null, "Center Y": float = 0.0, Width: float = 0.0, Height: float = 0.0, Depth: float = 0.0, Primitive: int = 0) -> () {
         depth_limit 64;
         action spawn_prototype = engine["Spawn Prototype"](Prototype: "ArenaEnemyShard");
         after entry {

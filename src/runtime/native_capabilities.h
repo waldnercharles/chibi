@@ -49,10 +49,13 @@ native_capabilities *native_capabilities_new(
     size_t size
 );
 /* Retain an immutable table; free releases one reference. Kernel descriptors
- * remain borrowed for every table/module lifetime. References are thread-confined. */
+ * remain borrowed and immutable for every table/module lifetime. Replacing a
+ * native implementation creates a new table. References are thread-confined. */
 native_capabilities *native_capabilities_retain(native_capabilities *);
 void native_capabilities_free(native_capabilities *);
 const script_catalog *native_capabilities_catalog(const native_capabilities *);
+/* Process-unique immutable table generation, independent of allocator reuse. */
+uint64_t native_capabilities_generation(const native_capabilities *);
 const native_capability_binding *native_capabilities_find(
     const native_capabilities *,
     uint64_t id,

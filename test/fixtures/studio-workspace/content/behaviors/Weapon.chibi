@@ -34,7 +34,7 @@ behavior "Weapon" {
             elapsed = min(elapsed, cast<double>(self.Weapon.Cooldown))
         }
     }
-    pure function "position + offset"<T0: struct<"CF_V2">, T1: struct<"CF_V2">, T2: struct<"CF_V2">>(position: T0 = null, offset: T1 = null) -> (Result: T2 = null) {
+    "position + offset" :: pure fn<T0: struct<"CF_V2">, T1: struct<"CF_V2">, T2: struct<"CF_V2">>(position: T0 = null, offset: T1 = null) -> (Result: T2 = null) {
         return add(entry.position, entry.offset)
     }
 }

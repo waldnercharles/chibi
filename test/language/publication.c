@@ -322,7 +322,7 @@ TEST_CASE(publication_preserves_detached_root_and_imported_shared_state)
         catalog = (script_catalog){ .capabilities = capabilities,
                                     .capability_count = 6 };
         REQUIRE(
-            compile(0, "system SharedChild { shared total:double=0; function Next()->(amount:double){total+=2;return(total);} }", backends[b])
+            compile(0, "system SharedChild { shared total:double=0; Next :: fn()->(amount:double){total+=2;return(total);} }", backends[b])
         );
         imported = modules[0];
         REQUIRE(compile(
@@ -334,8 +334,8 @@ TEST_CASE(publication_preserves_detached_root_and_imported_shared_state)
         REQUIRE(execution_module_import_count(modules[1]) == 1);
         REQUIRE(compile(
             2,
-            "system SharedChild { shared total:double=500; function "
-            "Next()->(amount:double){total+=20;return(total);} }",
+            "system SharedChild { shared total:double=500; Next :: fn"
+            "()->(amount:double){total+=20;return(total);} }",
             backends[b]
         ));
         imported = modules[2];

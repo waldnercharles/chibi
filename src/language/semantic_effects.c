@@ -53,6 +53,243 @@ bool script_analyzer_function_waits(const analyzer *a, int function)
     }
     return false;
 }
+enum
+{
+    QUERY_STARTS_TASK = 1,
+    QUERY_READS_INVOCATION = 2
+};
+static unsigned query_expression_restrictions(const script_analysis *, int, bool *);
+static unsigned query_statement_restrictions(const script_analysis *out, int index, bool *functions)
+{
+    if (index < 0) {
+        return 0;
+    }
+    const script_statement *statement = &out->statements[index];
+    unsigned restrictions = query_expression_restrictions(out, statement->expression, functions) |
+                            query_expression_restrictions(out, statement->second, functions) |
+                            query_expression_restrictions(out, statement->third, functions) |
+                            query_statement_restrictions(out, statement->body, functions) |
+                            query_statement_restrictions(out, statement->alternative, functions);
+    for (int i = 0; i < statement->child_count; i++) {
+        restrictions |= query_statement_restrictions(out, statement->children[i], functions);
+    }
+    return restrictions;
+}
+static unsigned query_expression_restrictions(const script_analysis *out, int index, bool *functions)
+{
+    if (index < 0) {
+        return 0;
+    }
+    const script_expression *value = &out->expressions[index];
+    unsigned restrictions = value->task ? QUERY_STARTS_TASK : 0;
+    if (value->kind == SCRIPT_EXPR_SYMBOL && value->symbol >= 0) {
+        const script_symbol *symbol = &out->symbols[value->symbol];
+        if (symbol->kind == SCRIPT_STATE || symbol->kind == SCRIPT_SHARED_STATE ||
+            ((symbol->kind == SCRIPT_PARAMETER || symbol->kind == SCRIPT_LOCAL) &&
+             symbol->scope >= 0 && out->scopes[symbol->scope].function < 0)) {
+            restrictions |= QUERY_READS_INVOCATION;
+        }
+    }
+    restrictions |= query_expression_restrictions(out, value->left, functions);
+    if (value->kind == SCRIPT_EXPR_CALL || value->kind == SCRIPT_EXPR_JOIN) {
+        if (value->right >= 0 && !functions[value->right]) {
+            functions[value->right] = true;
+            restrictions |= query_statement_restrictions(
+                out,
+                out->functions[value->right].body,
+                functions
+            );
+        }
+    } else {
+        restrictions |= query_expression_restrictions(out, value->right, functions);
+    }
+    for (int i = 0; i < value->argument_count; i++) {
+        restrictions |= query_expression_restrictions(out, value->arguments[i].value, functions);
+    }
+    return restrictions;
+}
+typedef struct
+{
+    analyzer *a;
+    uint64_t component;
+    bool *functions;
+    bool access, opaque, task;
+} reduction_check;
+static void reduction_capability(reduction_check *check, uint64_t id)
+{
+    const script_catalog_capability
+        *cap = script_catalog_capability_by_id(check->a->catalog, id);
+    if (!cap) {
+        return;
+    }
+    if (cap->component_access != SCRIPT_COMPONENT_ACCESS_NONE) {
+        if (cap->component_access != SCRIPT_COMPONENT_ACCESS_HAS) {
+            check->access |= cap->component == check->component;
+            check->opaque |= !cap->component;
+        }
+        return;
+    }
+    if (cap->state_access == SCRIPT_STATE_ACCESS_NONE) {
+        check->opaque |= (cap->effects &
+                          (SCRIPT_EFFECT_READ | SCRIPT_EFFECT_WRITE |
+                           SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_STRUCTURAL)) != 0;
+    }
+}
+static void reduction_expression(reduction_check *, int, bool);
+static void reduction_statement(reduction_check *check, int index)
+{
+    if (index < 0) {
+        return;
+    }
+    const script_analysis *out = check->a->out;
+    const script_statement *s = &out->statements[index];
+    if (s->kind == SCRIPT_STMT_REDUCE) {
+        /* Locating the target does not read its value. Its entity expression
+         * can still read component storage and must be checked. */
+        int base = s->expression;
+        while (base >= 0 && out->expressions[base].kind == SCRIPT_EXPR_MEMBER) {
+            base = out->expressions[base].left;
+        }
+        if (base >= 0 && out->expressions[base].kind == SCRIPT_EXPR_COMPONENT) {
+            reduction_expression(check, out->expressions[base].left, false);
+        }
+    } else {
+        reduction_expression(check, s->expression, s->kind == SCRIPT_STMT_IF || s->kind == SCRIPT_STMT_WHILE);
+    }
+    reduction_expression(check, s->second, false);
+    reduction_expression(check, s->third, false);
+    reduction_statement(check, s->body);
+    reduction_statement(check, s->alternative);
+    for (int i = 0; i < acount(s->children); i++) {
+        reduction_statement(check, s->children[i]);
+    }
+}
+static void reduction_expression(reduction_check *check, int index, bool condition)
+{
+    if (index < 0) {
+        return;
+    }
+    const script_analysis *out = check->a->out;
+    const script_expression *e = &out->expressions[index];
+    if (e->read) {
+        reduction_capability(check, e->read);
+    }
+    if (e->write) {
+        reduction_capability(check, e->write);
+    }
+    bool membership = condition && (e->type.flags & SCRIPT_TYPE_OPTIONAL);
+    if (!membership) {
+        check->access |= e->kind == SCRIPT_EXPR_COMPONENT &&
+                         e->capability == check->component;
+        check->access |= e->kind == SCRIPT_EXPR_SYMBOL && e->symbol >= 0 &&
+                         out->symbols[e->symbol].kind == SCRIPT_COMPONENT &&
+                         out->symbols[e->symbol].type.nominal == check->component;
+    }
+    check->task |= e->task;
+    bool predicate = (e->kind == SCRIPT_EXPR_UNARY && e->op == SCRIPT_OP_NOT) ||
+                     (e->kind == SCRIPT_EXPR_BINARY &&
+                      (e->op == SCRIPT_OP_AND || e->op == SCRIPT_OP_OR));
+    if (e->kind == SCRIPT_EXPR_BINARY &&
+        (e->op == SCRIPT_OP_EQ || e->op == SCRIPT_OP_NE)) {
+        predicate |= (e->left >= 0 && out->expressions[e->left].kind == SCRIPT_EXPR_NIL) ||
+                     (e->right >= 0 && out->expressions[e->right].kind == SCRIPT_EXPR_NIL);
+    }
+    reduction_expression(check, e->left, predicate);
+    if (e->kind == SCRIPT_EXPR_CALL || e->kind == SCRIPT_EXPR_JOIN) {
+        if (e->right >= 0 && !check->functions[e->right]) {
+            check->functions[e->right] = true;
+            reduction_statement(check, out->functions[e->right].body);
+        }
+        if (e->right < 0) {
+            reduction_capability(check, e->capability);
+        }
+    } else {
+        reduction_expression(check, e->right, predicate);
+    }
+    for (int i = 0; i < acount(e->arguments); i++) {
+        reduction_expression(check, e->arguments[i].value, false);
+    }
+}
+static void finish_reductions(analyzer *a)
+{
+    script_analysis *out = a->out;
+    uint64_t *checked = NULL;
+    for (int i = 0; i < acount(out->statements); i++) {
+        const script_statement *s = &out->statements[i];
+        if (s->kind != SCRIPT_STMT_REDUCE) {
+            continue;
+        }
+        uint64_t component = script_analyzer_component_target(out, s->expression);
+        bool seen = false;
+        for (int j = 0; j < acount(checked); j++) {
+            seen |= checked[j] == component;
+        }
+        if (!component || seen) {
+            continue;
+        }
+        apush(checked, component);
+        bool unordered = s->reduction == SCRIPT_REDUCTION_ADD_UNORDERED;
+        for (int j = i + 1; j < acount(out->statements); j++) {
+            const script_statement *other = &out->statements[j];
+            if (other->kind == SCRIPT_STMT_REDUCE &&
+                script_analyzer_component_target(out, other->expression) == component &&
+                (other->reduction == SCRIPT_REDUCTION_ADD_UNORDERED) != unordered) {
+                script_diagnostic d = { .range = other->range };
+                snprintf(d.message, sizeof d.message, "A component cannot mix ordered and unordered reductions in one system");
+                apush(out->diagnostics, d);
+                break;
+            }
+        }
+        reduction_check check = {
+            .a = a,
+            .component = component,
+            .functions = xcalloc((size_t)acount(out->functions) + 1, sizeof(bool))
+        };
+        bool suspend = false;
+        for (int j = 0; j < acount(out->functions); j++) {
+            const script_function *f = &out->functions[j];
+            if (f->kind == SCRIPT_FUNCTION_SYSTEM) {
+                suspend |= (f->effects & SCRIPT_EFFECT_SUSPEND) != 0;
+                reduction_statement(&check, f->body);
+            }
+        }
+        const script_catalog_type *type = script_catalog_type_by_id(a->catalog, component);
+        for (int j = 0; j < acount(out->queries); j++) {
+            const script_query *q = &out->queries[j];
+            if (q->kind == SCRIPT_QUERY_VALUE) {
+                reduction_expression(&check, q->value, true);
+            }
+            check.access |= q->kind == SCRIPT_QUERY_CHANGED && type &&
+                            q->component == type->component_id;
+        }
+        for (int j = 0; j < acount(out->bindings); j++) {
+            reduction_expression(&check, out->bindings[j].target, false);
+            reduction_expression(&check, out->bindings[j].value, false);
+        }
+        if (suspend || check.task) {
+            script_diagnostic d = { .range = s->range };
+            snprintf(d.message, sizeof d.message, "Reduction requires a synchronous system body without tasks");
+            apush(out->diagnostics, d);
+        }
+        if (check.access || check.opaque) {
+            script_diagnostic d = { .range = s->range };
+            if (check.opaque) {
+                snprintf(d.message, sizeof d.message, "Reduction producer cannot call an opaque component accessor");
+            } else {
+                snprintf(
+                    d.message,
+                    sizeof d.message,
+                    "Reduction producer cannot read or write component '%s' "
+                    "outside reductions",
+                    type ? type->name : "unknown"
+                );
+            }
+            apush(out->diagnostics, d);
+        }
+        free(check.functions);
+    }
+    afree(checked);
+}
 void script_analyzer_finish_effects(analyzer *a)
 {
     script_analysis *out = a->out;
@@ -64,7 +301,8 @@ void script_analyzer_finish_effects(analyzer *a)
             if (expression->left >= 0) {
                 effects |= out->expressions[expression->left].effects;
             }
-            if (expression->kind == SCRIPT_EXPR_CALL) {
+            if (expression->kind == SCRIPT_EXPR_CALL ||
+                expression->kind == SCRIPT_EXPR_JOIN) {
                 if (expression->right >= 0) {
                     effects |= out->functions[expression->right].effects &
                                ~(expression->task ? SCRIPT_EFFECT_SUSPEND : 0u);
@@ -100,9 +338,41 @@ void script_analyzer_finish_effects(analyzer *a)
             break;
         }
     }
+    finish_reductions(a);
     const unsigned impure = SCRIPT_EFFECT_WRITE | SCRIPT_EFFECT_STRUCTURAL |
                             SCRIPT_EFFECT_HOST | SCRIPT_EFFECT_SUSPEND |
                             SCRIPT_EFFECT_RANDOM;
+    for (int i = 0; i < acount(out->queries); i++) {
+        const script_query *query = &out->queries[i];
+        if (query->kind != SCRIPT_QUERY_VALUE) {
+            continue;
+        }
+        bool *functions = xcalloc((size_t)(acount(out->functions) + 1), sizeof *functions);
+        unsigned restrictions = query_expression_restrictions(out, query->value, functions);
+        free(functions);
+        if ((out->expressions[query->value].effects & impure) ||
+            (restrictions & QUERY_STARTS_TASK)) {
+            script_diagnostic d = { .range = query->range };
+            snprintf(d.message, sizeof d.message, "Query predicate requires a deterministic value without side effects or suspension");
+            apush(out->diagnostics, d);
+        }
+        if (restrictions & QUERY_READS_INVOCATION) {
+            script_diagnostic d = { .range = query->range };
+            snprintf(d.message, sizeof d.message, "Query predicate cannot read system state, body locals or event payload; test invocation values in the system body");
+            apush(out->diagnostics, d);
+        }
+    }
+    for (int i = 0; i < acount(out->statements); i++) {
+        const script_statement *s = &out->statements[i];
+        if (s->kind == SCRIPT_STMT_FOREACH &&
+            out->expressions[s->expression].kind == SCRIPT_EXPR_RELATION &&
+            (out->statements[s->body].effects &
+             (SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_STRUCTURAL))) {
+            script_diagnostic d = { .range = s->range };
+            snprintf(d.message, sizeof d.message, "Streaming relationship iteration cannot suspend or change entity structure");
+            apush(out->diagnostics, d);
+        }
+    }
     for (int i = 0; i < acount(out->functions); i++) {
         script_function *function = &out->functions[i];
         if (function->pure && function->effects & impure) {
@@ -220,6 +490,7 @@ void script_analyzer_callable_definition(analyzer *a, int index, TSNode body)
     }
     a->out->functions[index].body = script_analyzer_statement_add(a, block);
     a->out->functions[index].effects = block.effects;
+    script_analyzer_union_results(a, index, body);
     a->scope = old_scope;
     a->function = old_function;
     asetlen(a->narrowed, 0);

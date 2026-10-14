@@ -67,6 +67,7 @@ static const char *highlight(const authoring_navigation *index, authoring_target
         case SCRIPT_PARAMETER:
         case SCRIPT_RESULT: return "tok-param";
         case SCRIPT_COMPONENT:
+        case SCRIPT_TYPE:
         case SCRIPT_TYPE_PARAMETER: return "tok-type";
         case SCRIPT_EVENT: return "tok-event";
         case SCRIPT_FUNCTION:
@@ -187,12 +188,16 @@ static char *finish_text(char *text)
     afree(text);
     return out;
 }
-static char *declaration(const script_catalog *catalog, const char *name, script_type type)
+static char *declaration(const script_catalog *catalog, const char *name, script_type type, const char *unit)
 {
     char *out = NULL;
     append(&out, name);
     append(&out, ": ");
     type_text(&out, catalog, type);
+    if (unit) {
+        append(&out, " ");
+        append(&out, unit);
+    }
     return finish_text(out);
 }
 static void parameter_text(char **out, const script_catalog *catalog, const script_catalog_parameter *p)
@@ -200,6 +205,10 @@ static void parameter_text(char **out, const script_catalog *catalog, const scri
     append(out, p->name);
     append(out, ": ");
     type_text(out, catalog, p->type);
+    if (p->unit) {
+        append(out, " ");
+        append(out, p->unit);
+    }
     if (p->has_default) {
         append(out, " = ");
         char value[96];
@@ -253,7 +262,7 @@ static char *symbol_detail(const authoring_navigation *index, authoring_target t
         return NULL;
     }
     if (s->kind != SCRIPT_FUNCTION && s->kind != SCRIPT_MACRO) {
-        return declaration(catalog, s->name, s->type);
+        return declaration(catalog, s->name, s->type, s->unit);
     }
     for (int d = 0; d < authoring_navigation_document_count(index); d++) {
         const script_analysis *a = authoring_navigation_document_at(index, d)->analysis;
@@ -276,6 +285,10 @@ static char *symbol_detail(const authoring_navigation *index, authoring_target t
                 append(&out, param->name);
                 append(&out, ": ");
                 type_text(&out, catalog, param->type);
+                if (param->unit) {
+                    append(&out, " ");
+                    append(&out, param->unit);
+                }
             }
             append(&out, ")");
             if (f->result_count) {
@@ -288,13 +301,17 @@ static char *symbol_detail(const authoring_navigation *index, authoring_target t
                     append(&out, result->name);
                     append(&out, ": ");
                     type_text(&out, catalog, result->type);
+                    if (result->unit) {
+                        append(&out, " ");
+                        append(&out, result->unit);
+                    }
                 }
                 append(&out, ")");
             }
             return finish_text(out);
         }
     }
-    return declaration(catalog, s->name, s->type);
+    return declaration(catalog, s->name, s->type, s->unit);
 }
 char *authoring_source_hover(const authoring_navigation *index, int document, int offset)
 {
@@ -325,7 +342,7 @@ char *authoring_source_hover(const authoring_navigation *index, int document, in
         return local;
     }
     const char *name = authoring_navigation_name(index, ref->target);
-    return name ? declaration(catalog, name, ref->type) : NULL;
+    return name ? declaration(catalog, name, ref->type, NULL) : NULL;
 }
 void authoring_completions_free(authoring_completions *out)
 {
@@ -855,7 +872,7 @@ void authoring_source_complete(
         if (receiver.storage == PIN_HANDLE && receiver.nominal == catalog->entity_type) {
             for (int i = 0; i < catalog->type_count; i++) {
                 const script_catalog_type *t = &catalog->types[i];
-                if (!t->component) {
+                if (t->internal || !t->component) {
                     continue;
                 }
                 const char *name = t->source_name ? t->source_name : t->name;
@@ -879,7 +896,7 @@ void authoring_source_complete(
                 if (!compatible(catalog, expected, f->type)) {
                     continue;
                 }
-                char *detail = declaration(catalog, f->name, f->type);
+                char *detail = declaration(catalog, f->name, f->type, f->unit);
                 offer(
                     out,
                     word,
@@ -974,6 +991,9 @@ void authoring_source_complete(
     if (!events) {
         for (int i = 0; i < catalog->type_count; i++) {
             const script_catalog_type *t = &catalog->types[i];
+            if (t->internal) {
+                continue;
+            }
             const char *name = t->source_name ? t->source_name : t->name;
             offer(
                 out,

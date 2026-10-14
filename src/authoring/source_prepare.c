@@ -5,9 +5,55 @@
 #include "support/xalloc.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void performance_diagnostics(authoring_source *source)
+{
+    static const char *const names[] = { "allocation", "copy", "escape" };
+    for (int i = 0; i < execution_module_function_count(source->module); i++) {
+        execution_module_function_info
+            function = execution_module_function_at(source->module, i);
+        if (!function.body) {
+            continue;
+        }
+        execution_cost_summary costs = behavior_function_costs(function.body);
+        for (int possible = 0; possible < 2; possible++) {
+            unsigned flags = possible ? costs.possible : costs.proven;
+            const execution_cost_site *sites = possible ? costs.possible_sites
+                                                        : costs.proven_sites;
+            for (int bit = 0; bit < EXECUTION_COST_KINDS; bit++) {
+                if (!(flags & (1u << bit))) {
+                    continue;
+                }
+                authoring_performance_diagnostic d = { .function = function.id,
+                                                       .cost = 1u << bit,
+                                                       .possible = possible != 0 };
+                const behavior_function_source *origin = sites[bit].function
+                                                           ? behavior_function_instruction_source(
+                                                                 sites[bit].function,
+                                                                 sites[bit].instruction
+                                                             )
+                                                           : NULL;
+                if (origin) {
+                    d.origin = *origin;
+                }
+                snprintf(
+                    d.message,
+                    sizeof d.message,
+                    "%s %s operation: %s",
+                    possible ? "Possible" : "Proven",
+                    names[bit],
+                    sites[bit].reason
+                );
+                apush(source->performance, d);
+            }
+        }
+    }
+    source->performance_count = acount(source->performance);
+}
 
 authoring_source *authoring_source_analyze(
     const char *path,
@@ -18,6 +64,7 @@ authoring_source *authoring_source_analyze(
 {
     assert(path && syntax && catalog);
     authoring_source *source = xcalloc(1, sizeof *source);
+    source->references = 1;
     source->path = xstrdup(path);
     source->syntax = xcalloc(1, sizeof *source->syntax);
     source->syntax->text = xstrdup(syntax->text);
@@ -66,6 +113,9 @@ void authoring_source_lower(
     execution_module_plan_free(plan);
     source->diagnostic_count = acount(source->diagnostics);
     source->valid = source->module && !source->diagnostic_count;
+    if (source->valid) {
+        performance_diagnostics(source);
+    }
 }
 
 authoring_source *authoring_source_prepare(
@@ -94,15 +144,26 @@ authoring_source *authoring_source_prepare_document(
     return source;
 }
 
+authoring_source *authoring_source_retain(authoring_source *source)
+{
+    assert(source && source->references > 0 && source->references < INT_MAX);
+    source->references++;
+    return source;
+}
 void authoring_source_free(authoring_source *source)
 {
     if (!source) {
+        return;
+    }
+    assert(source->references > 0);
+    if (--source->references) {
         return;
     }
     execution_module_free(source->module);
     script_analysis_free(source->analysis);
     script_syntax_free(source->syntax);
     afree(source->diagnostics);
+    afree(source->performance);
     free(source->path);
     free(source);
 }

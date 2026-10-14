@@ -985,7 +985,7 @@ TEST_CASE(field_source_library_keeps_parameter_defaults)
 {
     const char
         *text = "library \"Discs\" {\n"
-                "    pure function \"Disc\"(X: float = 0.0, Y: float = 0.0, "
+                "    \"Disc\" :: pure fn(X: float = 0.0, Y: float = 0.0, "
                 "Radius: float = 40.0) -> (Value: float = 0.0) {\n"
                 "        return field_circle(entry.X, entry.Y, entry.Radius)\n"
                 "    }\n"
@@ -1020,17 +1020,17 @@ TEST_CASE(field_source_library_calls_follow_names)
 {
     static const char *sources[] = {
         "library \"Values\" {"
-        "pure function \"Other\"() -> (Value: float) { return 111.0 }"
-        "pure function \"Difference\"(X: float = 10.0, Y: float = 3.0) "
+        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 }"
+        "\"Difference\" :: pure fn(X: float = 10.0, Y: float = 3.0) "
         "-> (Value: float) { return field_subtract(entry.X, entry.Y) } }",
         "library \"Values\" {"
-        "pure function \"Inserted\"() -> (Value: float) { return 999.0 }"
-        "pure function \"Other\"() -> (Value: float) { return 111.0 }"
-        "pure function \"Difference\"(Y: float = 30.0, X: float = 100.0) "
+        "\"Inserted\" :: pure fn() -> (Value: float) { return 999.0 }"
+        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 }"
+        "\"Difference\" :: pure fn(Y: float = 30.0, X: float = 100.0) "
         "-> (Value: float) { return field_subtract(entry.X, entry.Y) } }",
         "library \"Values\" {"
-        "pure function \"Inserted\"() -> (Value: float) { return 999.0 }"
-        "pure function \"Other\"() -> (Value: float) { return 111.0 } }",
+        "\"Inserted\" :: pure fn() -> (Value: float) { return 999.0 }"
+        "\"Other\" :: pure fn() -> (Value: float) { return 111.0 } }",
     };
     test_source_fixture fixture = test_source_prepare("content/libraries/Values.chibi", sources[0]);
     behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);

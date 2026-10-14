@@ -1,6 +1,7 @@
 #include "execution/machine.h"
 
 #include "ecs/execution.h"
+#include "execution/borrow.h"
 #include "execution/definition.h"
 #include "execution/random.h"
 #include "execution/status.h"
@@ -74,7 +75,7 @@ void execution_machine_begin(
             frame_count = acount(f->fast->frames);
         }
     }
-    bool inspected = ctx->inspect || ctx->watch || ctx->trace;
+    bool inspected = behavior_function_inspection_required(f, ctx);
     if (compact && behavior_function_fast_allowed(f, ctx)) {
         f = f->fast;
     }
@@ -405,7 +406,9 @@ int execution_machine_step(execution_machine *m, int pc)
                 }
                 break;
             }
-            ctx->error_message = call->value
+            ctx->error_message = i->right == BF_HOST_BORROW_ARRAY
+                                   ? behavior_function_borrow_snapshot(ctx, i->target)
+                               : call->value
                                    ? call->value(
                                          ctx->value_storage,
                                          ctx->data->values + spec->first,

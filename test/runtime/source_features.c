@@ -20,6 +20,7 @@
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <assert.h>
+#include <float.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,7 +38,7 @@ static entities *test_entities;
 static physics3d *test_physics3d;
 static url_requests *test_urls;
 static engine_input *input_service;
-static declared_components *declared;
+static declared_components *declared, *newer_declared;
 static shader_prepared_asset shader_record;
 static unsigned char *shader_bytes;
 static player_resource_host resource_host;
@@ -82,6 +83,8 @@ static void cleanup()
     }
     ecs_world_free(test_world);
     test_world = NULL;
+    declared_components_free(newer_declared);
+    newer_declared = NULL;
     declared_components_free(declared);
     declared = NULL;
     if (resource_generation) {
@@ -204,8 +207,8 @@ TEST_CASE(source_native_reaction_preserves_delay_snapshot_and_target)
         "behavior Reaction { owner \"ecs.entity\"; state done:bool=false; "
         "state rotation:struct<\"CF_V3\">={x:-1.0,y:2.0,z:3.0}; state "
         "target:handle<\"ecs.entity\">=0; "
-        "function "
-        "Apply(Rotation:struct<\"CF_V3\">,Target:handle<\"ecs.entity\">)->(){ "
+        "Apply :: fn"
+        "(Rotation:struct<\"CF_V3\">,Target:handle<\"ecs.entity\">)->(){ "
         "await delay(Duration:0.125); await "
         "trigger_visual_reaction(Rotation:Rotation,Lift:4.0%s); } "
         "on Tick { await Apply(Rotation:rotation,Target:target); done=true; } "
@@ -282,13 +285,13 @@ TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
     const char
         *text = "behavior Rhythm { state phase:double=0; state pulse:double=0; "
                 "state period:double=0; state duration:double=0; "
-                "function "
-                "Read()->(Phase:double,Pulse:double,Period:double,Duration:"
+                "Read :: fn"
+                "()->(Phase:double,Pulse:double,Period:double,Duration:"
                 "double){ r:=scene_rhythm(); "
                 "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
                 "Duration); } "
-                "function "
-                "Apply()->(Phase:double,Pulse:double,Period:double,Duration:"
+                "Apply :: fn"
+                "()->(Phase:double,Pulse:double,Period:double,Duration:"
                 "double){ await delay(Duration:0.125); r:=Read(); "
                 "return(Phase:r.Phase,Pulse:r.Pulse,Period:r.Period,Duration:r."
                 "Duration); } "
@@ -322,8 +325,8 @@ TEST_CASE(source_native_rhythm_samples_live_clock_after_nested_wait)
 }
 TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission)
 {
-    const char *text = "behavior Particles { state done:bool=false; function "
-                       "Emit()->(){ "
+    const char *text = "behavior Particles { state done:bool=false; Emit :: fn"
+                       "()->(){ "
                        "await "
                        "emit_particles(Position:{x:1.0,y:-2.0},Color:"
                        "4040002047,Count:3,Speed:80.0,Lifetime:0.3); "
@@ -381,8 +384,8 @@ TEST_CASE(source_native_motion_retains_numeric_outputs)
                "state smooth:double=0; state root:double=0; state "
                "low:double=0; state high:double=0; state nearest:double=0; "
                "state position:float=0; state velocity:float=0; "
-               "function "
-               "Calculate(Value:double)->(Angle:double,Smooth:double,Root:"
+               "Calculate :: fn"
+               "(Value:double)->(Angle:double,Smooth:double,Root:"
                "double,Low:double,High:double,Nearest:double){ "
                "return(Angle:quantize_angle(Angle:Value,Step:1."
                "5707963267948966),Smooth:smooth_step(Value:Value),Root:sqrt("
@@ -476,7 +479,7 @@ TEST_CASE(source_native_query_retains_nested_iteration_and_membership)
 {
     const char *text = "behavior Query { state visits:int=0; state "
                        "last:handle<\"ecs.entity\">=0; "
-                       "function Count()->(){ foreach (outer in "
+                       "Count :: fn()->(){ foreach (outer in "
                        "find_entities_with_component(Component:\"Health\")) { "
                        "foreach (inner in "
                        "find_entities_with_component(Component:\"Health\")) { "
@@ -789,7 +792,7 @@ TEST_CASE(source_native_material_retains_typed_parameter_writes_after_wait)
                 sizeof text,
                 "behavior Material { owner \"ecs.entity\"; state "
                 "done:bool=false; state payload:%s; "
-                "function Apply(Value:%s,Target:handle<\"ecs.entity\">)->(){ "
+                "Apply :: fn(Value:%s,Target:handle<\"ecs.entity\">)->(){ "
                 "await delay(Duration:0.125); "
                 "await "
                 "set_material_parameter(Entity:Target,Name:\"Value\",Value:"
@@ -1038,6 +1041,126 @@ void test_source_native_features()
     test_source_input_save();
 }
 
+TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
+{
+    const char *source =
+        "behavior Ranges { state input:number=0; state observed:number=0; "
+        "state steps:number=0; state converted:int=0; state "
+        "constructed:number=0; state fresh:Bounded={}; state "
+        "defaulted:number=0; "
+        "on Tick { self.Bounded.value=input; observed=self.Bounded.value; "
+        "self.Bounded.value+=100; self.Bounded.value-=1; "
+        "steps=self.Bounded.value; "
+        "self.Bounded.count=cast<int>(observed); converted=self.Bounded.count; "
+        "local:Bounded={value:input}; constructed=local.value; "
+        "defaulted=fresh.positive; } "
+        "on Begin { copy:=self.Bounded; self.Bounded=copy; "
+        "observed=self.Bounded.value; } "
+        "}";
+    static const struct
+    {
+        double input, expected;
+        int integer;
+    } cases[] = {
+        { -5, 0, 0 },         { 2.75, 2.75, 2 },   { 100, 10, 10 },
+        { INFINITY, 10, 10 }, { -INFINITY, 0, 0 }, { NAN, 0, 0 },
+        { DBL_MAX, 10, 10 },
+    };
+    for (int backend = 0; backend < 2; backend++) {
+        char error[256];
+        declared_field fields[] = {
+            { .name = "value", .type = "number", .min = 0, .max = 10 },
+            { .name = "count", .type = "int", .min = 0, .max = 10 },
+            { .name = "positive", .type = "number", .min = 2, .max = 5 },
+        };
+        declared_component component = { .name = "Bounded",
+                                         .fields = fields,
+                                         .field_count = 3 };
+        declared = declared_components_new(&component, 1, error, sizeof error);
+        REQUIRE(declared);
+        const ecs_component_desc *desc = declared_components_ecs(declared).components[0];
+        test_world = ecs_world_new();
+        REQUIRE(ecs_world_register_component(test_world, desc, NULL) == ECS_OK);
+        ecs_entity owner = ecs_world_create_entity(test_world);
+        REQUIRE(ecs_world_record_add(test_world, owner, desc->id, NULL, 0) == ECS_OK);
+        REQUIRE(ecs_world_apply_commands(test_world) == ECS_OK);
+        behavior_backend selected = backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+        REQUIRE(prepare(source, selected));
+        uint64_t tick = execution_module_event(prepared->module, "Tick");
+        uint64_t input = state_id("input"), observed = state_id("observed"),
+                 steps = state_id("steps"), converted = state_id("converted"),
+                 constructed = state_id("constructed"),
+                 defaulted = state_id("defaulted");
+        instance = execution_program_attach(program, ecs_entity_to_u64(owner));
+        REQUIRE(
+            instance && tick && input && observed && steps && converted &&
+            constructed && defaulted
+        );
+        for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+            REQUIRE(
+                execution_instance_set_state(
+                    instance,
+                    input,
+                    (pin_value){ .type = PIN_F64, .d = cases[i].input }
+                ) == FLOW_OK
+            );
+            REQUIRE(dispatch(tick, 4096) >= 0);
+            REQUIRE(execution_instance_state(instance, observed)->d == cases[i].expected);
+            REQUIRE(
+                execution_instance_state(instance, constructed)->d == cases[i].expected
+            );
+            REQUIRE(execution_instance_state(instance, converted)->i == cases[i].integer);
+            REQUIRE(execution_instance_state(instance, defaulted)->d == 2);
+            /* Each saturating assignment is observable: these two updates
+             * cannot be reassociated into a single addition of 99. */
+            REQUIRE(execution_instance_state(instance, steps)->d == 9);
+        }
+        REQUIRE(
+            ecs_component_write_field(
+                test_world,
+                owner,
+                desc->id,
+                0,
+                (pin_value){ .type = PIN_F64, .d = 1.75 }
+            ) == ECS_OK
+        );
+        fields[0].max = 1;
+        newer_declared = declared_components_new(&component, 1, error, sizeof error);
+        REQUIRE(newer_declared);
+        uint64_t copy = execution_module_event(prepared->module, "Begin");
+        REQUIRE(copy && dispatch(copy, 4096) >= 0);
+        /* Both whole-component snapshot and publication retain the world's
+         * original range while a newer global schema is being prepared. */
+        REQUIRE(execution_instance_state(instance, observed)->d == 1.75);
+        declared_components_free(newer_declared);
+        newer_declared = NULL;
+        script_lower_bindings bindings = authoring_language_bindings(catalog);
+        authoring_source *replacement = authoring_source_prepare_document(
+            "features.chibi",
+            "test/native-features",
+            "behavior Ranges { state input:number=0; on Tick { "
+            "self.Bounded.value=input*input; } }",
+            authoring_language_catalog_view(catalog),
+            &bindings,
+            selected
+        );
+        REQUIRE(replacement && replacement->valid);
+        int replaced = execution_program_replace(program, replacement->module, false);
+        authoring_source_free(replacement);
+        REQUIRE(replaced == FLOW_OK);
+        instance = execution_program_instance(program, ecs_entity_to_u64(owner));
+        REQUIRE(instance);
+        /* The retained DBL_MAX input overflows only floating intermediates;
+         * publication sees +infinity and stores the finite high endpoint. */
+        REQUIRE(dispatch(tick, 4096) >= 0);
+        pin_value actual;
+        REQUIRE(ecs_component_read_field(test_world, owner, desc->id, 0, &actual) == ECS_OK);
+        REQUIRE(actual.d == 10);
+        cleanup();
+    }
+    return true;
+}
+
 void test_source_native_numeric_queries()
 {
     pu_setup(NULL, cleanup);
@@ -1047,6 +1170,7 @@ void test_source_native_numeric_queries()
     RUN_TEST_CASE(source_native_physics3d_queries_read_colliders);
     RUN_TEST_CASE(source_tilemap_queries_use_live_authored_cells);
     RUN_TEST_CASE(source_pointer_ray_reads_copied_values_and_inactive_default);
+    RUN_TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement);
     pu_clear_setup();
 }
 

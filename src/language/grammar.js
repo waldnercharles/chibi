@@ -16,7 +16,14 @@ const K = Object.fromEntries(
     "bind",
     "events",
     "pure",
-    "function",
+    "fn",
+    "union",
+    "switch",
+    "is",
+    "not",
+    "and",
+    "or",
+    "where",
     "macro",
     "entry",
     "exit",
@@ -26,18 +33,19 @@ const K = Object.fromEntries(
     "dataflow",
     "depth_limit",
     "query",
+    "join",
     "if",
     "else",
     "while",
     "for",
     "foreach",
     "in",
-    "match",
     "case",
-    "default",
     "sequence",
     "branch",
     "return",
+    "reduce",
+    "unordered",
     "goto",
     "break",
     "continue",
@@ -61,7 +69,7 @@ const K = Object.fromEntries(
   ].map((word) => [word, word]),
 );
 
-const CONTEXTUAL = ["from", "split", "component"];
+const CONTEXTUAL = ["from", "split", "component", "not", "join", "unordered"];
 
 const P = {
   or: 1,
@@ -96,6 +104,10 @@ module.exports = grammar({
     member: ($) => [],
   },
   conflicts: ($) => [
+    [$._common_declaration, $._statement],
+    [$._single_type],
+    [$.type_name],
+    [$._name, $._member_name],
     [$._expression, $._name],
     [$.argument_list, $.parenthesized_expression],
     [$._state_declaration_value, $.local_declaration, $.label_statement],
@@ -104,6 +116,10 @@ module.exports = grammar({
     [$._expression, $._member_name],
     [$._expression, $._call_target, $._name],
     [$._expression, $._call_target],
+    [$.reduce_statement, $._expression],
+    [$.reduce_statement, $._call_target],
+    [$.measured_type, $._signature_type],
+    [$._compound_unit, $._expression],
   ],
   rules: {
     source_file: ($) =>
@@ -120,8 +136,13 @@ module.exports = grammar({
       seq(
         K.system,
         field("name", $._name),
-        optional(field("parameters", $.parameter_list)),
+        optional(choice(
+          field("parameters", $.parameter_list),
+          seq(K.query, field("parameters", $.query_parameter_list)),
+        )),
+        repeat(field("join", $.query_join)),
         optional(field("without", $.without_clause)),
+        optional(seq(K.where, field("where", $._expression))),
         field("body", $.system_body),
       ),
     // A component's fields are data: a type, or a number measured by an
@@ -137,7 +158,7 @@ module.exports = grammar({
       seq(
         field("name", $._name),
         ":",
-        field("type", choice($.type, $.measure)),
+        field("type", choice($.type, $.measure, $.measured_type)),
         $._end,
       ),
     // A lone name is a type; a unit standing alone reads as one and resolves
@@ -153,6 +174,8 @@ module.exports = grammar({
     _negative_number: ($) => seq(field("operator", "-"), field("operand", $.number)),
     // u, s, u/s, u/s^2: unit names exist only here, so they stay free names.
     unit: ($) => seq($._unit_term, repeat(seq("/", $._unit_term))),
+    measured_type: ($) => seq(field("base", $.type), field("unit", $.unit)),
+    _signature_type: ($) => choice($.type, $.measured_type, alias($._compound_unit, $.unit)),
     _compound_unit: ($) =>
       choice(
         seq($.identifier, "^", $.number, repeat(seq("/", $._unit_term))),
@@ -172,6 +195,8 @@ module.exports = grammar({
         $.bind_declaration,
         $.handler,
         $.function_declaration,
+        $.constant_declaration,
+        $.union_declaration,
         $.macro_declaration,
         $.events_declaration,
         $.entry_declaration,
@@ -247,14 +272,28 @@ module.exports = grammar({
         field("member", $._member_name),
       ),
     function_declaration: ($) =>
-      seq(optional(K.pure), K.function, $._callable_declaration),
+      seq(field("name", $._name), "::", optional(K.pure), optional(K.fn),
+        $._callable_signature, optional(";")),
+    constant_declaration: ($) =>
+      seq(field("name", $._name), "::", field("value", $._expression), $._end),
+    union_declaration: ($) =>
+      seq(field("name", $._name), "::", K.union, "{",
+        $.union_variant, repeat(seq("|", $.union_variant)), optional("|"), "}", optional(";")),
+    union_variant: ($) => choice(
+      field("literal", $.string),
+      seq(field("name", $.identifier), optional(field("parameters", $.parameter_list))),
+    ),
     macro_declaration: ($) => seq(K.macro, $._callable_declaration),
     _callable_declaration: ($) =>
       seq(
         field("name", $._name),
+        $._callable_signature,
+      ),
+    _callable_signature: ($) =>
+      seq(
         optional(field("type_parameters", $.type_parameter_list)),
         field("parameters", $.parameter_list),
-        optional(seq("->", field("results", $.parameter_list))),
+        optional(seq("->", field("results", choice($.parameter_list, $._signature_type)))),
         field("body", $.callable_body),
       ),
     callable_body: ($) =>
@@ -267,14 +306,22 @@ module.exports = grammar({
         optional(seq(":", field("type", $.type))),
       ),
     parameter_list: ($) => seq("(", optional(comma($.parameter)), ")"),
+    query_parameter_list: ($) => comma($.parameter),
+    query_join: ($) => seq(K.join, choice(
+      field("parameters", $.query_parameter_list),
+      field("generator", $.query_generator),
+    )),
+    query_generator: ($) => seq(
+      field("name", $._name), K.in, field("source", $._expression),
+    ),
     parameter: ($) =>
       seq(
         choice(
           seq(
             field("name", $._name),
-            optional(seq(":", field("type", $.type))),
+            optional(seq(":", field("type", $._signature_type))),
           ),
-          seq(field("type", $.type), field("name", $._name)),
+          seq(field("type", $._signature_type), field("name", $._name)),
         ),
         optional(seq(choice(K.from, K.split), field("source", $._expression))),
         optional(seq("=", field("value", $._expression))),
@@ -295,7 +342,12 @@ module.exports = grammar({
       ),
     query_declaration: ($) =>
       seq(K.query, field("value", $._expression), $._end),
-    type: ($) =>
+    type: ($) => choice($._single_type, $.union_type),
+    union_type: ($) => prec.left(1, seq(
+      field("member", alias($._single_type, $.type)),
+      repeat1(seq("|", field("member", alias($._single_type, $.type)))),
+    )),
+    _single_type: ($) =>
       seq(
         repeat(
           field(
@@ -321,12 +373,14 @@ module.exports = grammar({
       choice(
         $.local_declaration,
         $.assignment,
+        $.reduce_statement,
         $.expression_statement,
         $.if_statement,
         $.while_statement,
         $.for_statement,
         $.foreach_statement,
-        $.match_statement,
+        $.switch_statement,
+        $.constant_declaration,
         $.sequence_statement,
         $.return_statement,
         $.goto_statement,
@@ -354,6 +408,17 @@ module.exports = grammar({
         $._end,
       ),
     expression_statement: ($) => seq($._expression, $._end),
+    reduce_statement: ($) => seq(
+      K.reduce,
+      choice(
+        seq(optional(field("ordering", K.unordered)),
+          field("target", $._expression), field("operator", "+="),
+          field("value", $._expression)),
+        seq(field("operator", choice("min", "max")), "(",
+          field("target", $._expression), ",", field("value", $._expression), ")"),
+      ),
+      $._end,
+    ),
     if_statement: ($) =>
       prec.right(
         seq(
@@ -393,22 +458,15 @@ module.exports = grammar({
       ),
     _foreach_header: ($) =>
       seq(field("name", $._name), K.in, field("value", $._expression)),
-    match_statement: ($) =>
-      seq(
-        K.match,
-        optional(field("kind", choice("enum", "name"))),
-        "(",
-        field("value", $._expression),
-        ")",
-        "{",
-        repeat($.match_arm),
-        "}",
-      ),
-    match_arm: ($) =>
-      seq(
-        choice(seq(K.case, field("value", $._expression)), K.default),
-        field("body", $.block),
-      ),
+    switch_statement: ($) =>
+      seq(K.switch, field("value", $._expression), "{", repeat($.switch_arm), "}"),
+    switch_arm: ($) =>
+      seq(K.case, optional(field("value", choice($.variant_pattern, $._expression))),
+        ":", field("body", choice($.block, alias($._case_statements, $.block)))),
+    _case_statements: ($) => repeat1($._statement),
+    variant_pattern: ($) => seq(".", field("name", $.identifier),
+      optional(field("bindings", $.pattern_bindings))),
+    pattern_bindings: ($) => seq("(", optional(comma($.identifier)), ")"),
     sequence_statement: ($) =>
       seq(K.sequence, "{", repeat($.branch_statement), "}"),
     branch_statement: ($) => seq(K.branch, field("body", $.block)),
@@ -423,11 +481,13 @@ module.exports = grammar({
     break_statement: ($) => seq(K.break, $._end),
     continue_statement: ($) => seq(K.continue, $._end),
     yield_statement: ($) => seq(K.yield, $._end),
-    cancel_statement: ($) => seq(K.cancel, field("value", $._expression), $._end),
+    cancel_statement: ($) => seq(K.cancel, field("value", $._expression),
+        optional(seq(K.after, field("duration", $._expression))), $._end),
     label_statement: ($) => seq(field("name", $._name), ":"),
     _expression: ($) =>
       choice(
         $.identifier,
+        alias(K.unordered, $.identifier),
         alias("self", $.identifier),
         $.string,
         $.number,
@@ -439,6 +499,8 @@ module.exports = grammar({
         $.index_expression,
         $.call_expression,
         $.cast_expression,
+        $.is_expression,
+        $.as_expression,
         $.parenthesized_expression,
         $.unary_expression,
         $.binary_expression,
@@ -477,7 +539,7 @@ module.exports = grammar({
         ),
       )),
     _call_target: ($) => choice(
-      $.identifier, $.string, $.engine_reference, $.builtin_reference,
+      $.identifier, alias(K.unordered, $.identifier), $.string, $.engine_reference, $.builtin_reference,
       $.member_expression, $.index_expression, $.call_expression,
       $.parenthesized_expression,
     ),
@@ -515,6 +577,13 @@ module.exports = grammar({
         field("value", $._expression),
         ")",
       ),
+    is_expression: ($) => prec.left(P.comparison, seq(
+      field("value", $._expression), K.is, optional(field("negated", K.not)),
+      field("type", choice($.type, $.variant_pattern)), optional(field("binding", $.identifier)),
+    )),
+    as_expression: ($) => prec.left(P.comparison, seq(
+      field("value", $._expression), K.as, field("type", $.type),
+    )),
     parenthesized_expression: ($) =>
       seq("(", field("expression", $._expression), ")"),
     await_expression: ($) =>
@@ -523,7 +592,7 @@ module.exports = grammar({
       prec(
         P.unary,
         seq(
-          field("operator", choice("!", "-", "+", "~")),
+          field("operator", choice("!", K.not, "-", "+", "~")),
           field("operand", $._expression),
         ),
       ),
@@ -531,7 +600,9 @@ module.exports = grammar({
       choice(
         ...[
           [P.or, "||"],
+          [P.or, K.or],
           [P.and, "&&"],
+          [P.and, K.and],
           [P.bit_or, "|"],
           [P.bit_xor, "^"],
           [P.bit_and, "&"],

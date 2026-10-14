@@ -16,7 +16,8 @@ static void constant(FILE *out, pin_type type, pin_value value)
         type_name(out, value.str);
         return;
     }
-    if (behavior_scalar_integer(type) || type == PIN_HANDLE) {
+    if (behavior_scalar_integer(type) ||
+        (type == PIN_HANDLE || type == PIN_TASK || type == PIN_UNION)) {
         uint64_t bits = behavior_scalar_bits(value);
         fprintf(out, "(%s)UINT64_C(%llu)", behavior_scalar_c_type(type), (unsigned long long)bits);
         return;
@@ -427,6 +428,30 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     break;
                 }
                 if (spec->call->value) {
+                    /* Exported entries keep their self-contained C ABI. The
+                     * shared invocation driver borrows verified arguments;
+                     * caller snapshots need its callback identity guard too. */
+                    if (i->right == BF_HOST_BORROW_ARRAY && !f->calls) {
+                        fprintf(
+                            out,
+                            "c->error_message=NULL;if(c->call_enter||c->call_"
+                            "leave||"
+                            "c->bind_instance||c->commit_instance||c->failure_"
+                            "observer||"
+                            "!behavior_borrow_array(c,"
+                            "(behavior_borrow_layout){%d,%d,%d,%d,%d,%d},c->"
+                            "data->values+%d,c->"
+                            "data->values+%d))",
+                            f->variable_count,
+                            f->result_count,
+                            acount(f->data_values),
+                            acount(f->slots),
+                            acount(f->locals),
+                            acount(f->frames),
+                            spec->first,
+                            spec->result_first
+                        );
+                    }
                     fprintf(
                         out,
                         "{c->error_message=c->data->calls[%d].value(c->value_"
@@ -847,7 +872,7 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
             case BF_CAST: {
                 pin_type from = f->slots[i->left];
                 const char *type = behavior_scalar_c_type(i->type);
-                if (i->type == PIN_F64 || from == PIN_I32) {
+                if (from == i->type || i->type == PIN_F64 || from == PIN_I32) {
                     fprintf(out, "v%d=(%s)v%d;\n", i->output, type, i->left);
                     break;
                 }
@@ -989,12 +1014,19 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
                     if (i->target >= 0) {
                         fprintf(
                             out,
-                            "v%d=v%d%s v%d;\n",
-                            i->target,
+                            "{%s primary=v%d%s v%d, secondary=v%d%s v%d;"
+                            "v%d=secondary;v%d=primary;}\n",
+                            behavior_scalar_c_type(i->type),
+                            i->left,
+                            i->op == BF_DIV ? "/" : "%",
+                            i->right,
                             i->left,
                             i->op == BF_DIV ? "%" : "/",
-                            i->right
+                            i->right,
+                            i->target,
+                            i->output
                         );
+                        break;
                     }
                 }
                 if (i->op >= BF_ADD && i->op <= BF_MUL &&
@@ -1037,7 +1069,8 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         out,
         "#include \"execution/scalar.h\"\n#include "
         "\"execution/function.h\"\n#include "
-        "\"execution/random.h\"\n#include <math.h>\n#include "
+        "\"execution/random.h\"\n#include \"execution/borrow.h\"\n#include "
+        "<math.h>\n#include "
         "<string.h>\n#include \"support/cos_sin.h\"\n#include "
         "\"ecs/execution.h\"\n%sint %s",
         local ? "static inline " : "",
@@ -1065,7 +1098,17 @@ static void write_definition(const behavior_function *f, FILE *out, const char *
         fprintf(out, "}\n");
     }
     if (f->runtime_map) {
-        fprintf(out, "if(!c->inspect && !c->watch && !c->trace){\n");
+        fprintf(out, "if(!c->inspect && !c->watch && !c->trace && !c->source_pause && !c->source_capture");
+        /* Keep detached debug continuations canonical, as the runtime's
+         * behavior_function_inspection_required selection does. */
+        for (int i = 0; i < acount(f->suspensions); i++) {
+            int pc = f->suspensions[i].pc;
+            behavior_function_op op = f->instructions[pc].op;
+            if (op == BF_POINT || op == BF_SOURCE_POINT) {
+                fprintf(out, " && (!c->activation || c->activation->pc!=%d)", pc + 1);
+            }
+        }
+        fprintf(out, "){\n");
         body(f, out, 'N', false);
         fprintf(out, "}\n");
     }

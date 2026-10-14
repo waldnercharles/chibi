@@ -112,9 +112,9 @@ static bool alias_run(bool reverse, bool nested, behavior_backend backend)
         text,
         sizeof text,
         "behavior AliasCase { output:%s=null; "
-        "pure function Convert(input:%s)->(Value:%s) {return "
+        "Convert :: pure fn(input:%s)->(Value:%s) {return "
         "AliasConvert(input);} "
-        "function Nested(input:%s)->(Value:%s) {return Convert(input);} "
+        "Nested :: fn(input:%s)->(Value:%s) {return Convert(input);} "
         "on Pulse(input) {output=%s;} }",
         types[to].name,
         types[from].name,

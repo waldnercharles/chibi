@@ -20,6 +20,47 @@
 #include <unistd.h>
 #include <yyjson.h>
 
+/* Historical migration steps parse their source contract, independently of
+ * the current language accepted by compilation and authoring. */
+const TSLanguage *tree_sitter_chibi_project23();
+
+static script_syntax *parse23(const char *text)
+{
+    script_syntax *syntax = xcalloc(1, sizeof *syntax);
+    syntax->text = xstrdup(text);
+    TSParser *parser = ts_parser_new();
+    bool compatible = ts_parser_set_language(parser, tree_sitter_chibi_project23());
+    assert(compatible);
+    (void)compatible;
+    syntax->tree = ts_parser_parse_string(parser, NULL, text, (uint32_t)strlen(text));
+    ts_parser_delete(parser);
+    assert(syntax->tree);
+    TSNode problem = ts_tree_root_node(syntax->tree);
+    if (ts_node_has_error(problem)) {
+        for (;;) {
+            TSNode child = { 0 };
+            for (uint32_t i = 0; i < ts_node_child_count(problem); i++) {
+                TSNode candidate = ts_node_child(problem, i);
+                if (ts_node_has_error(candidate)) {
+                    child = candidate;
+                    break;
+                }
+            }
+            if (ts_node_is_null(child) || ts_node_is_error(problem)) {
+                break;
+            }
+            problem = child;
+        }
+        script_diagnostic diagnostic = {
+            .range = script_node_range(problem),
+            .message = "Invalid version 23 source syntax"
+        };
+        apush(syntax->diagnostics, diagnostic);
+        syntax->diagnostic_count = 1;
+    }
+    return syntax;
+}
+
 typedef struct
 {
     int file;
@@ -243,7 +284,7 @@ char **chibi_migrate_task_calls(const char *const *sources, int count)
     corpus c = { .sources = sources };
     script_syntax **syntax = xmalloc((size_t)(count + 1) * sizeof *syntax);
     for (int i = 0; i < count; i++) {
-        syntax[i] = script_parse(sources[i]);
+        syntax[i] = parse23(sources[i]);
         collect(ts_tree_root_node(syntax[i]->tree), i, (TSNode){ 0 }, false, &c.functions);
     }
     for (bool changed = true; changed;) {
@@ -833,7 +874,7 @@ char *chibi_migrate_results(const char *source)
         afree(all);
         return NULL;
     }
-    script_syntax *syntax = script_parse(stripped);
+    script_syntax *syntax = parse23(stripped);
     TSNode root = ts_tree_root_node(syntax->tree);
     insertion *inserts = NULL;
     char **texts = NULL;
@@ -1243,7 +1284,7 @@ int chibi_migrate_values(const char *source, char **migrated, char *error, size_
         afree(all);
         return 0;
     }
-    script_syntax *syntax = script_parse(text);
+    script_syntax *syntax = parse23(text);
     TSNode root = ts_tree_root_node(syntax->tree);
     for (int i = 0; i < acount(all); i++) {
         TSNode node = ts_node_descendant_for_byte_range(
@@ -2009,7 +2050,7 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
         afree(all);
         return 0;
     }
-    script_syntax *syntax = script_parse(text);
+    script_syntax *syntax = parse23(text);
     TSNode root = ts_tree_root_node(syntax->tree);
     int status = 0;
     for (int i = 0; i < acount(all); i++) {
@@ -2147,7 +2188,7 @@ int chibi_migrate_locals(const char *source, char **migrated, char *error, size_
             apush(result, text[from]);
         }
         apush(result, '\0');
-        script_syntax *check = script_parse(result);
+        script_syntax *check = parse23(result);
         if (ts_node_has_error(ts_tree_root_node(check->tree))) {
             status = -1;
             if (error_size) {
@@ -2698,7 +2739,7 @@ char *chibi_migrate_component(const char *kdl, char *error, size_t error_size)
     char *migrated = xstrdup(out);
     afree(out);
     /* A name KDL allowed may be a reserved word in .chibi. */
-    script_syntax *syntax = script_parse(migrated);
+    script_syntax *syntax = parse23(migrated);
     if (syntax->diagnostic_count) {
         const char *line = migrated;
         for (int i = 1; i < syntax->diagnostics[0].range.line; i++) {
@@ -3254,7 +3295,12 @@ static char *prefix_apply(const char *text, replacement *edits)
         return NULL;
     }
     qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
-    char *out = xmalloc(strlen(text) + 1), *next = out;
+    size_t size = strlen(text) + 1;
+    for (int i = 0; i < acount(edits); i++) {
+        size += strlen(edits[i].text);
+        size -= (size_t)(edits[i].end - edits[i].start);
+    }
+    char *out = xmalloc(size), *next = out;
     int from = 0;
     for (int i = 0; i < acount(edits); i++) {
         assert(from <= edits[i].start);
@@ -3442,7 +3488,7 @@ char *chibi_migrate_prefixes(const char *text, bool source, char *error, size_t 
 {
     replacement *edits = NULL;
     if (source) {
-        script_syntax *syntax = script_parse(text);
+        script_syntax *syntax = parse23(text);
         collect_prefix_edits(text, ts_tree_root_node(syntax->tree), &edits);
         script_syntax_free(syntax);
     } else {
@@ -3569,9 +3615,32 @@ static bool metadata_prefixes(yyjson_mut_doc *document, yyjson_mut_val *value, b
     }
     return metadata_edge_prefixes(document, value) || changed;
 }
+/* Moving a function keyword past its name changes the declaration's start,
+ * particularly when a comment separates the old keyword and name. */
+static int declaration_anchor(TSNode node, int offset)
+{
+    if (is(node, "function_declaration") &&
+        ts_node_start_byte(node) == (uint32_t)offset) {
+        return (int)ts_node_start_byte(ts_node_child_by_field_name(node, "name", 4));
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        TSNode child = ts_node_named_child(node, i);
+        if (ts_node_start_byte(child) <= (uint32_t)offset &&
+            ts_node_end_byte(child) > (uint32_t)offset) {
+            return declaration_anchor(child, offset);
+        }
+    }
+    return offset;
+}
 /* Source-bound graph IDs and layout survive the rename. Only metadata bound
  * to the old source gets a new hash; already stale metadata stays stale. */
-static char *prefix_metadata(const char *json, const char *before, const char *after, replacement *edits)
+static char *migrate_source_metadata(
+    const char *json,
+    const char *before,
+    const char *after,
+    replacement *edits,
+    bool prefixes
+)
 {
     yyjson_doc *parsed = yyjson_read(json, strlen(json), 0);
     if (!parsed || !yyjson_is_obj(yyjson_doc_get_root(parsed))) {
@@ -3580,18 +3649,22 @@ static char *prefix_metadata(const char *json, const char *before, const char *a
     }
     yyjson_mut_doc *document = yyjson_doc_mut_copy(parsed, NULL);
     yyjson_mut_val *root = yyjson_mut_doc_get_root(document);
-    bool changed = metadata_prefixes(document, root, false, false);
+    bool changed = prefixes && metadata_prefixes(document, root, false, false);
     char old_hash[17], new_hash[17];
     prefix_hash(before, old_hash);
     prefix_hash(after, new_hash);
     const char *bound = yyjson_mut_get_str(yyjson_mut_obj_get(root, "source_hash"));
     if (strcmp(before, after) && bound && !strcmp(bound, old_hash)) {
+        script_syntax *syntax = prefixes ? NULL : parse23(before);
         yyjson_mut_val *anchors = yyjson_mut_obj_get(root, "anchors"), *anchor;
         size_t i, count;
         yyjson_mut_arr_foreach(anchors, i, count, anchor)
         {
             yyjson_mut_val *start = yyjson_mut_obj_get(anchor, "start");
             int offset = (int)yyjson_mut_get_uint(start), shift = 0;
+            if (syntax) {
+                offset = declaration_anchor(ts_tree_root_node(syntax->tree), offset);
+            }
             for (int j = 0; j < acount(edits) && edits[j].end <= offset; j++) {
                 shift += (int)strlen(edits[j].text) - (edits[j].end - edits[j].start);
             }
@@ -3599,6 +3672,7 @@ static char *prefix_metadata(const char *json, const char *before, const char *a
                 yyjson_mut_set_uint(start, (uint64_t)(offset + shift));
             }
         }
+        script_syntax_free(syntax);
         yyjson_mut_obj_put(
             root,
             yyjson_mut_str(document, "source_hash"),
@@ -3620,7 +3694,7 @@ static char **migrate_prefixes(char **sources, char **paths, int count, char *er
     char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
     for (int i = 0; i < count; i++) {
         if (has_suffix(paths[i], ".chibi")) {
-            syntax[i] = script_parse(sources[i]);
+            syntax[i] = parse23(sources[i]);
             collect(
                 ts_tree_root_node(syntax[i]->tree),
                 i,
@@ -3645,11 +3719,12 @@ static char **migrate_prefixes(char **sources, char **paths, int count, char *er
         size_t length = strlen(paths[i]) - strlen(".meta");
         for (int j = 0; j < count; j++) {
             if (strlen(paths[j]) == length && !memcmp(paths[i], paths[j], length)) {
-                migrated[i] = prefix_metadata(
+                migrated[i] = migrate_source_metadata(
                     sources[i],
                     sources[j],
                     migrated[j] ? migrated[j] : sources[j],
-                    edits[j]
+                    edits[j],
+                    true
                 );
                 break;
             }
@@ -3770,6 +3845,134 @@ static char *drop_lab_settings(const char *asset)
     av_doc_free(document);
     return migrated;
 }
+/* Replace only syntax tokens, preserving comments, strings and each name. */
+static void declaration_edits(const char *text, TSNode node, replacement **edits)
+{
+    if (is(node, "function_declaration")) {
+        TSNode name = ts_node_child_by_field_name(node, "name", 4);
+        bool pure = false;
+        for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+            TSNode child = ts_node_child(node, i);
+            if (!is(child, "pure") && !is(child, "function")) {
+                continue;
+            }
+            pure |= is(child, "pure");
+            int end = (int)ts_node_end_byte(child);
+            while (text[end] == ' ' || text[end] == '\t') {
+                end++;
+            }
+            apush(
+                *edits,
+                ((replacement){ .start = (int)ts_node_start_byte(child),
+                                .end = end,
+                                .text = xstrdup("") })
+            );
+        }
+        int end = (int)ts_node_end_byte(name);
+        apush(
+            *edits,
+            ((replacement){ .start = end,
+                            .end = end,
+                            .text = xstrdup(pure ? " :: pure fn" : " :: fn") })
+        );
+    }
+    if (is(node, "match_statement")) {
+        for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+            TSNode child = ts_node_child(node, i);
+            if (is(child, "match") || is(child, "enum") || is(child, "name")) {
+                apush(
+                    *edits,
+                    ((replacement){ .start = (int)ts_node_start_byte(child),
+                                    .end = (int)ts_node_end_byte(child),
+                                    .text = xstrdup(is(child, "match") ? "switch" : "") })
+                );
+            }
+        }
+    }
+    if (is(node, "match_arm")) {
+        TSNode value = ts_node_child_by_field_name(node, "value", 5);
+        if (!ts_node_is_null(value)) {
+            int end = (int)ts_node_end_byte(value);
+            apush(*edits, ((replacement){ .start = end, .end = end, .text = xstrdup(":") }));
+        } else {
+            for (uint32_t i = 0; i < ts_node_child_count(node); i++) {
+                TSNode child = ts_node_child(node, i);
+                if (is(child, "default")) {
+                    apush(
+                        *edits,
+                        ((replacement){ .start = (int)ts_node_start_byte(child),
+                                        .end = (int)ts_node_end_byte(child),
+                                        .text = xstrdup("case:") })
+                    );
+                }
+            }
+        }
+    }
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); i++) {
+        declaration_edits(text, ts_node_named_child(node, i), edits);
+    }
+}
+
+int chibi_migrate_declarations(const char *source, char **migrated, char *error, size_t size)
+{
+    *migrated = NULL;
+    script_syntax *current = script_parse(source);
+    bool done = !current->diagnostic_count;
+    script_syntax_free(current);
+    if (done) {
+        return 0;
+    }
+    script_syntax *syntax = parse23(source);
+    if (syntax->diagnostic_count) {
+        snprintf(error, size, "Cannot migrate invalid version 23 source");
+        script_syntax_free(syntax);
+        return -1;
+    }
+    replacement *edits = NULL;
+    declaration_edits(source, ts_tree_root_node(syntax->tree), &edits);
+    char *result = prefix_apply(source, edits);
+    prefix_edits_free(edits);
+    script_syntax_free(syntax);
+    script_syntax *check = script_parse(result ? result : source);
+    bool valid = !check->diagnostic_count;
+    script_syntax_free(check);
+    if (!valid) {
+        snprintf(error, size, "Declaration migration produced invalid source");
+        free(result);
+        return -1;
+    }
+    *migrated = result;
+    return 0;
+}
+
+static char **migrate_declarations(char **sources, char **paths, int count, char *error, size_t size)
+{
+    char **migrated = xcalloc((size_t)(count + 1), sizeof *migrated);
+    for (int i = 0; i < count && !error[0]; i++) {
+        if (!has_suffix(paths[i], ".chibi")) {
+            continue;
+        }
+        if (chibi_migrate_declarations(sources[i], &migrated[i], error, size) ||
+            !migrated[i]) {
+            continue;
+        }
+        script_syntax *syntax = parse23(sources[i]);
+        replacement *edits = NULL;
+        declaration_edits(sources[i], ts_tree_root_node(syntax->tree), &edits);
+        qsort(edits, (size_t)acount(edits), sizeof *edits, by_start);
+        size_t length = strlen(paths[i]);
+        for (int j = 0; j < count; j++) {
+            if (!strncmp(paths[j], paths[i], length) &&
+                !strcmp(paths[j] + length, ".meta")) {
+                migrated[j] = migrate_source_metadata(sources[j], sources[i], migrated[i], edits, false);
+            }
+        }
+        prefix_edits_free(edits);
+        script_syntax_free(syntax);
+    }
+    return migrated;
+}
+
 int chibi_project_migrate_content(
     const char *content,
     const char *start_scene,
@@ -3789,20 +3992,20 @@ int chibi_project_migrate_content(
                        from == 20 || from == 21 || from == 22;
     int status = collect_sources(
         content,
-        from == 22    ? ".chibi.meta"
-        : declarative ? DECLARATIVE_ASSET_EXTENSION
-                      : ".chibi",
+        (from == 22 || from == 23) ? ".chibi.meta"
+        : declarative              ? DECLARATIVE_ASSET_EXTENSION
+                                   : ".chibi",
         &paths,
         error,
         error_size
     );
-    /* Replace sidecars before their sources so an interrupted version 23
-     * step can rerun without losing the old hash needed to remap anchors. */
+    /* Replace sidecars before their sources so interrupted source migrations
+     * can rerun without losing the old hash needed to remap anchors. */
     if (!status && from == 22) {
         status = collect_sources(content, DECLARATIVE_ASSET_EXTENSION, &paths, error, error_size);
     }
     /* Versions 16 and 18 also check scripts for names they remove. */
-    if (!status && (from == 15 || from == 17 || from == 22)) {
+    if (!status && (from == 15 || from == 17 || from == 22 || from == 23)) {
         status = collect_sources(content, ".chibi", &paths, error, error_size);
     }
     /* The scan skips hidden entries, and the start scene may lie outside the
@@ -3910,6 +4113,11 @@ int chibi_project_migrate_content(
             case 22:
                 error[0] = '\0';
                 migrated = migrate_prefixes(sources, paths, count, error, error_size);
+                status = error[0] ? -1 : 0;
+                break;
+            case 23:
+                error[0] = '\0';
+                migrated = migrate_declarations(sources, paths, count, error, error_size);
                 status = error[0] ? -1 : 0;
                 break;
             default: assert(false);

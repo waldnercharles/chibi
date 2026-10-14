@@ -1,5 +1,5 @@
 library "WeaponActions" {
-    function "Spawn Prototype At"(Prototype: name = "", Transform: struct<"Transform"> = null) -> (Entity: handle<"ecs.entity"> = 0) {
+    "Spawn Prototype At" :: fn(Prototype: name = "", Transform: struct<"Transform"> = null) -> (Entity: handle<"ecs.entity"> = 0) {
         action spawn_prototype = engine["Spawn Prototype"](entry.Prototype)
         after entry {
             spawn_prototype()
@@ -9,7 +9,7 @@ library "WeaponActions" {
             return spawn_prototype.Entity
         }
     }
-    function "Fire Projectile"(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0, Prototype: name = "Projectile", Shooter: handle<"ecs.entity"> = 0) -> (Entity: handle<"ecs.entity"> = 0) {
+    "Fire Projectile" :: fn(Origin: struct<"CF_V2"> = null, Direction: struct<"CF_V2"> = null, Damage: int = 0, Prototype: name = "Projectile", Shooter: handle<"ecs.entity"> = 0) -> (Entity: handle<"ecs.entity"> = 0) {
         action spawn_prototype_at = "Spawn Prototype At"(entry.Prototype, convert<"transform_to_cf">(entry.Origin))
         after entry {
             spawn_prototype_at()

@@ -651,6 +651,15 @@ int main(int argc, char **argv)
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
     }
+#ifdef CHIBI_TEST_NATIVE_RUNTIME
+    if (argc == 2 && !strcmp(argv[1], "--entity-names")) {
+        tool_init();
+        pu_display_time(true);
+        test_tool_entity_names();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+    }
+#endif
     if (argc == 2 && !strcmp(argv[1], "--ecs-query")) {
         tool_init();
         pu_display_time(true);
@@ -894,7 +903,7 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --tilemap-project | --package | --unit | "
-            "--reflect-ranges | --c-export-alias | --ecs-query | "
+            "--reflect-ranges | --c-export-alias | --ecs-query | --entity-names | "
             "--unit-fixtures | "
             "--unit-validation <chibi_ctl> | "
             "--web-storage | "
@@ -1283,9 +1292,6 @@ int main(int argc, char **argv)
         test_tool_ecs();
         test_tool_ecs_relationships();
         test_tool_ecs_hierarchy();
-#ifdef CHIBI_TEST_NATIVE_RUNTIME
-        test_tool_entity_names();
-#endif
         test_tool_ecs_world();
         test_tool_ecs_query();
         test_tool_package();

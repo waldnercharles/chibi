@@ -67,6 +67,7 @@ NATIVE = {
     ('--cli-authoring',): 'Independently reviewed six bounded argument/evidence cases, synthetic responses,16x16CPU PNG encoding/decoding, frozen source/image mutation and resident mismatch/refusal, tiny temp files, symlinks and nonblocking FIFO refusal; no app/window/GPU/process/network, shared60s',
     ('--c-export-alias',): 'Reviewed bounded C case: twelve tiny I32/I64 DIV/MOD operand-alias fixtures, one authored union pause/detach/continuation fixture and one verified guarded-array fixture, one shared-library compiler child with existing10s limit, source<128KiB, 120 alias executions, two pause/resume samples including negative zero and eleven array calls including saved-bank alias and callback fallback, native POSIX source build with authoring only, same configured C flags/sanitizers; no new executable/frames/GPU/network; shared60s; docs/testing.md',
     ('--ecs-query',): 'Reviewed bounded C ECS query cases: membership/binding cache invalidation, live values, partial traversal, generation safety, allocation-free stable iteration, candidate costs and capped Cartesian retention; no processes/files/frames/GPU; shared60s; docs/testing.md',
+    ('--entity-names',): 'Reviewed two bounded CPU C entity-name cases: a child name snapshot across rename, destruction and a zero handle, and a loaded scene instance name through a player with no global name mutation and a reload; no window, GPU, files, network or sleeps; shared 60s.',
     ('--reflect-ranges',): 'First supervised measurement: two reviewed existing C reflection cases, twelve children with existing 10s limits, fixed sources <2KiB, numeric units/ranges/hints/defaults, malformed and unsafe endpoints, transactional failed outputs; no engine frames/GPU/network; shared 60s; docs/testing.md',
     ('--player-clock',): 'Reviewed two deterministic C cases compiling actual player clock initialization for native and browser with only the Cute limiter setter recorded; no clocks/sleeps/window/GPU; 2cases4asserts passed inside native group3.534s/shared60s; browser case fails with the prior unconditional60FPS setter; docs/testing.md',
     ('--audio-browser',): 'Reviewed two C browser PCM age regressions against production capture transport with fake permission/device endpoints, no recording or GPU; native launcher1case8asserts/browser2cases6asserts1.372s; requires matching Wasm test_tools; shared60s',
@@ -222,6 +223,7 @@ TOOLS = {
     'shader-parameters-prepared': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--shader-parameters-prepared'],
     # Existing query correctness cases, including bounded cache/optimizer regressions.
     'ecs-query': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query'],
+    'entity-names': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--entity-names'],
     # Reviewed fixed ECS query workloads; compare builds through benchmark_trials.
     'ecs-query-benchmark': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--ecs-query-benchmark'],
     # Two reviewed arena cases: aligned growth, block reuse after reset and a zero-initialized arena.
@@ -542,7 +544,7 @@ GROUPS = {
                'png-encoding', 'project-document', 'prototype-documents', 'reference-index',
                'asset-source', 'asset-schema', 'resource-catalog', 'shader-authoring', 'cli-authoring', 'gpu-capabilities',
                'behavior-loader', 'engine-clock', 'preview-layout', 'fields',
-               'model-graphs', 'model-catalog', 'render-geometry', 'arena', 'shader-graphs'],
+               'model-graphs', 'model-catalog', 'render-geometry', 'arena', 'shader-graphs', 'entity-names'],
     # Whole projects, imported assets and the Release chibi_ctl: feature coverage,
     # project validation and prototype expansion, mesh and model import, and the
     # controller and render fixture command-response cases.

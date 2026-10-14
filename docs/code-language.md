@@ -56,7 +56,7 @@ of a line continues the expression.
 program: it drops semicolons, argument labels before the first skipped
 parameter, literal arguments equal to their defaults, inferable declaration and
 argument types, redundant parentheses and casts, handler aliases (the payload is
-`event`), empty `else` blocks, `-> ()` and `return()`, and writes `return(x)` as `return x`. Each rewrite is kept only
+`event`), empty `else` blocks, an `else` block holding only an `if` as `else if`, `-> ()` and `return()`, the `state` keyword on behavior-root declarations, and writes `return(x)` as `return x`. Each rewrite is kept only
 when the re-analyzed program is unchanged; source that does not analyze is only
 re-indented. Parentheses that group `&&` under `||`, or one bitwise operator under another,
 stay. Ranges are written `0..n - 1`.
@@ -106,6 +106,12 @@ Boolean, string and homogeneous array defaults also infer their type. Empty arra
 and nominal values require an explicit type. `elapsed: number = 0;` spells out the
 type; native storage types such as `float` and `int64` remain available when precision
 or a reflected interface needs them. Formatting keeps a declared type unless inference produces the same storage.
+
+Behavior-root declarations take no `self.` prefix: `self.elapsed := 0;` at behavior
+root is a syntax error with the diagnostic "Remove redundant self.". Inside a
+callable, `self.` still names the owner's member, so it disambiguates a local that
+shadows the name. The `state` keyword is optional at behavior root and formatting
+removes it.
 
 `::` defines a compile-time constant, function or union type. A constant such as
 `BaseDamage :: 12` has no writable instance storage. Its initializer can use literals,
@@ -515,6 +521,44 @@ A generated action may mark its caller capture as writable even though its
 function entry takes a value snapshot and its body writes a named state directly.
 The ordinary function preserves that value parameter and concrete state write;
 the generated caller-only reference flag is no longer retained.
+
+### Function values (design, not yet implemented)
+
+Goal: pass a callable to a helper or store it in a field, so repeated
+callbacks can be written inline. Status: design only. Nothing in this section
+is accepted by the compiler yet.
+
+Minimal slice:
+
+- Syntax: `fn(value: float) -> (result: float) { return value * 2 }` is an
+  expression. It is allowed wherever a value is, and is typed by its signature
+  as `fn(float) -> float`. Result-less callables use `fn(value: float) { ... }`.
+- No captures in the first slice. The body sees its parameters, its program's
+  `self`, state and components, and the global catalog, but not enclosing
+  locals. Capturing locals later follows the task rule (a shared local, kept
+  while the closure lives), which needs a lifetime design of its own.
+- Values are immutable handles to a function in the same program generation.
+  They compare by identity, can be stored in a state field of a `fn` type, and
+  can be passed as parameters. Reference parameters are not allowed.
+- A call `f(args)` through a `fn` value is checked against its signature and
+  lowers to an indirect invocation of that program function. `await f(args)`
+  follows the normal rules for a function that awaits.
+- Live reload follows the state rules: a compatible `fn` field keeps its handle,
+  and changing a signature requires a restart.
+
+Blockers to implementation:
+
+- The grammar change needs the tree-sitter CLI to regenerate `parser.c`. The
+  CLI is not a declared build dependency, and it must match the committed
+  parser's version.
+- A new value kind touches the scalar and value tables in `src/types`.
+- Indirect invocation needs a function table and a call node in the execution
+  module. `behavior_function_invocation` currently holds a direct function
+  pointer.
+- Navigation, formatting and the reference index must understand `fn`
+  expressions, so `docs/authoring-navigation.md` gets a new row.
+
+Adding the feature needs no project version bump: no project uses it yet.
 
 Macros declare semantic entry and exit paths:
 

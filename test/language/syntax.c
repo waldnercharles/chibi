@@ -1,6 +1,7 @@
 #include "language/syntax.h"
 
 #include "authoring/source_format.h"
+#include "support/array.h"
 #include "third_party/pico_headers/pico_unit.h"
 
 #include <stdio.h>
@@ -361,6 +362,29 @@ TEST_CASE(language_invalid_source_has_positioned_diagnostics)
     return true;
 }
 
+static bool has_diagnostic(const script_syntax *syntax, const char *text)
+{
+    for (int i = 0; i < acount(syntax->diagnostics); i++) {
+        if (strstr(syntax->diagnostics[i].message, text)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+TEST_CASE(language_root_self_field_is_rejected)
+{
+    original = script_parse("behavior Demo {\n    self.GraphPane: string = \"secondary\"\n    on Tick {}\n}\n");
+    REQUIRE(has_diagnostic(original, "Remove redundant self."));
+    cleanup();
+    original = script_parse("behavior Demo {\n    GraphPane: string = \"secondary\"\n    on Tick {}\n}\n");
+    REQUIRE(!original->diagnostic_count);
+    cleanup();
+    original = script_parse("behavior Demo {\n    count := 0\n    on Tick { self.count = 1 }\n}\n");
+    REQUIRE(!original->diagnostic_count);
+    return true;
+}
+
 TEST_CASE(language_incremental_snapshot_matches_fresh)
 {
     original = script_parse("behavior Edit {\n// café\ncount := 1\n}\n");
@@ -534,6 +558,7 @@ void test_language_syntax()
     RUN_TEST_CASE(language_obsolete_declaration_tokens_rejected);
     RUN_TEST_CASE(language_expressions_precedence_and_continuation);
     RUN_TEST_CASE(language_invalid_source_has_positioned_diagnostics);
+    RUN_TEST_CASE(language_root_self_field_is_rejected);
     RUN_TEST_CASE(language_incremental_snapshot_matches_fresh);
     RUN_TEST_CASE(language_incremental_errors_match_fresh);
     pu_clear_setup();

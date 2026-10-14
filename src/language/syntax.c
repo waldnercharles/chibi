@@ -33,6 +33,24 @@ static bool hidden_error(TSNode node)
     return true;
 }
 
+/* `self.Name: type` at a behavior root: the error starts at the dot after `self`. */
+static bool root_self_prefix(const script_syntax *syntax, TSNode node)
+{
+    int at = (int)ts_node_start_byte(node);
+    if (at < 4 || syntax->text[at] != '.' ||
+        strncmp(syntax->text + at - 4, "self", 4)) {
+        return false;
+    }
+    TSNode declaration = node;
+    for (int depth = 0; depth < 3 && !ts_node_is_null(declaration); depth++) {
+        if (!strcmp(ts_node_type(declaration), "state_declaration")) {
+            return !strcmp(ts_node_type(ts_node_parent(declaration)), "declaration_body");
+        }
+        declaration = ts_node_parent(declaration);
+    }
+    return false;
+}
+
 static void diagnose(script_syntax *syntax)
 {
     TSTreeCursor cursor = ts_tree_cursor_new(ts_tree_root_node(syntax->tree));
@@ -43,6 +61,8 @@ static void diagnose(script_syntax *syntax)
             script_diagnostic diagnostic = { .range = script_node_range(node) };
             if (missing) {
                 snprintf(diagnostic.message, sizeof diagnostic.message, "Expected %s", ts_node_type(node));
+            } else if (error && root_self_prefix(syntax, node)) {
+                snprintf(diagnostic.message, sizeof diagnostic.message, "Remove redundant self.: declare a behavior field by its name");
             } else if (error) {
                 snprintf(diagnostic.message, sizeof diagnostic.message, "Unexpected syntax");
             } else {

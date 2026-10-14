@@ -306,12 +306,19 @@ static bool same_expression(const pair *p, int i, int j)
                    : same_expression(p, x->right, y->right);
     return right && same_arguments(p, x, y);
 }
-/* An empty else block and an absent one run the same statements. */
+/* An empty else block and an absent one run the same statements. A block that
+ * holds only an if runs the same statements as `else if`. */
 static int alternative(const script_analysis *a, int i)
 {
-    if (i >= 0 && a->statements[i].kind == SCRIPT_STMT_BLOCK &&
-        !a->statements[i].child_count) {
+    if (i < 0 || a->statements[i].kind != SCRIPT_STMT_BLOCK) {
+        return i;
+    }
+    if (!a->statements[i].child_count) {
         return -1;
+    }
+    int only = a->statements[i].children[0];
+    if (a->statements[i].child_count == 1 && a->statements[only].kind == SCRIPT_STMT_IF) {
+        return only;
     }
     return i;
 }
@@ -820,6 +827,18 @@ static bool literal_inference_changes(const collector *c, TSNode name, TSNode va
            !same_value_type(initializer->type, inferred);
 }
 
+/* Root declarations already own persistent state, so `state` is optional there. */
+static void root_state_keyword(collector *c, TSNode node)
+{
+    TSNode storage = field(node, "storage");
+    if (ts_node_is_null(storage) || !is(ts_node_parent(node), "declaration_body")) {
+        return;
+    }
+    if (end(storage) - start(storage) == 5 &&
+        !strncmp(c->text + start(storage), "state", 5)) {
+        add(c, start(storage), start(field(node, "name")), "");
+    }
+}
 /* `name: type = value` and `type name = value` become `name := value`. */
 static void inferred_declaration(collector *c, TSNode node)
 {
@@ -1229,6 +1248,9 @@ static void collect(collector *c, TSNode node, pass phase)
         TSNode other = field(node, "alternative");
         if (is(other, "block") && !ts_node_named_child_count(other)) {
             add(c, end(field(node, "consequence")), end(other), "");
+        } else if (is(other, "block") && ts_node_named_child_count(other) == 1 && is(ts_node_named_child(other, 0), "if_statement")) {
+            /* `else { if ... }` becomes `else if ...`. */
+            unwrap_node(c, other, ts_node_named_child(other, 0));
         }
     } else if (!strcmp(type, "function_declaration") || !strcmp(type, "macro_declaration")) {
         TSNode results = field(node, "results");
@@ -1242,6 +1264,7 @@ static void collect(collector *c, TSNode node, pass phase)
         }
     } else if (!strcmp(type, "state_declaration") || !strcmp(type, "local_declaration")) {
         inferred_declaration(c, node);
+        root_state_keyword(c, node);
     } else if (!strcmp(type, "typed_argument")) {
         TSNode value = field(node, "value");
         if (!ts_node_is_null(value) && ts_node_is_null(field(node, "source"))) {
